@@ -385,431 +385,431 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Rhyming slang secrets \u2014 playful tongue-in-cheek revelations",
-        "_b_theme": "Cockney market chatter \u2014 twisted phrases and cheeky banter",
-        "_style": "L.S. Lowry-inspired paintings with a bustling urban twist",
-        "_guidance": "Capture the lively humor and colorful language of London's Cockney culture through vibrant street and market scenes; ensure varied depictions of local characters and interactions to avoid redundancy in recent image history.",
-        "prompt": "Lively barbershop scene, Cockney clientele enjoying banter with barbers, fading haircuts amid laughter, mirrored walls reflecting vibrant Lowry-style urban street outside, colorful window signage.",
+        "_a_theme": "Hidden corners of a resurgent garden",
+        "_b_theme": "Imagined encounters with figures of fantasy within the verdant maze",
+        "_style": "Art Nouveau illustration, inspired by Alphonse Mucha's natural motifs",
+        "_guidance": "Select urban scenes where rain enhances the narrative qualities of the setting, capturing dynamic interactions and emotions while ensuring these compositions differ from recent mid-summer and aviation themes.",
+        "prompt": "Art Nouveau alleyway hidden under arched foliage, benches beside whirling floral murals, rain trickles down, reflecting the soft glow of vintage lanterns in an urban retreat.",
         "history_var": [
           {
-            "timestamp": "2026-03-01 20:00:03",
+            "timestamp": "2026-06-27 21:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Stretching meadows bordered by dry-stone walls, ancient oaks casting soft shadows, early crocuses pierce through February's frost, evoking a serene transition to spring with realist precision."
+              "prompt": "Black and white scene of city lamplight reflecting off rain-glazed pavements, solitary cyclist pedals through mist, creating a moment of tranquility amidst urban motion, inspired by Cartier-Bresson."
             },
-            "text_input": "'Subtle transitions to early spring in British ...",
-            "explanation": "I selected a meadow setting with dry-stone walls and ancient oaks, which are not previously explo..."
+            "text_input": "'Instruments of the urban environment respondin...",
+            "explanation": "By focusing on a solitary cyclist in motion under the reflection of lamplight on rain-soaked pave..."
           },
           {
-            "timestamp": "2026-03-01 21:00:03",
+            "timestamp": "2026-06-27 22:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Coastal path overlooking rugged sea cliffs, gulls soaring against overcast February sky, intertwining with first budding heather\u2014realistically capturing seasonal shifts toward spring."
+              "prompt": "Classic black and white capture of vintage car parked under rain-soaked streetlight, raindrops glisten on chrome details, nostalgic aura reflecting history amidst present urban movement."
             },
-            "text_input": "'Ordinary mid-February landscapes across the UK...",
-            "explanation": "I chose a coastal path scene with sea cliffs and gulls, avoiding previously explored inland setti..."
+            "text_input": "'Symphony of cascading raindrops' in the style ...",
+            "explanation": "To craft a unique scene, I chose a vintage car under a streetlight, emphasizing the nostalgic int..."
           },
           {
-            "timestamp": "2026-03-01 22:00:03",
+            "timestamp": "2026-06-27 23:00:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Broad river meandering through tidal salt marshes, February's slate-gray waters reflecting soft morning fog, quiet herons amidst resilient grasses, capturing subtle seasonal awakening."
+              "prompt": "Black and white photograph of bustling outdoor cafe, patrons under awnings, introspective contrasts between moving raindrops and static observers, timeless urban life vignette, depicting dynamic narratives."
             },
-            "text_input": "'Subtle transitions to early spring in British ...",
-            "explanation": "I selected tidal salt marshes where a river flows, avoiding previous landscapes like rural paths ..."
+            "text_input": "'Symphony of cascading raindrops' in the style ...",
+            "explanation": "I chose an outdoor cafe scene with patrons taking refuge under awnings from the rain. This settin..."
           },
           {
-            "timestamp": "2026-03-01 23:00:04",
+            "timestamp": "2026-06-28 06:00:13",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Abandoned railway viaduct arching over deserted fields, morning frost fading into grass, first snowdrops embracing February sunlight, encapsulating the picturesque quietude of seasonal shift."
+              "prompt": "In a lush, labyrinthine garden, an ethereal faun plays a flute beneath arching vines, Art Nouveau swirls of ivy echoing in the rain-soaked dawn light."
             },
-            "text_input": "'Subtle transitions to early spring in British ...",
-            "explanation": "I selected an abandoned railway viaduct, a unique and underexplored feature, along with deserted ..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I focused on a fantasy figure within a natural maze, incorporating an ethereal faun. The intricat..."
           },
           {
-            "timestamp": "2026-03-02 06:00:18",
+            "timestamp": "2026-06-28 07:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Cockney market with chatty vendors in flat caps, colorful stalls of fruits and flowers, children playing amidst bustling crowd, all in Lowry's distinct style."
+              "prompt": "Ethereal pixie with luminescent wings skimming over rain-speckled mosaic tiles in an urban park at twilight, Art Nouveau vines curling around lampposts, illuminating whispered enchantments."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I crafted a vibrant street scene with market atmosphere, focused on cockney culture with fluffy e..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I chose to depict a pixie interacting with an urban setting, a blend rarely explored. The Art Nou..."
           },
           {
-            "timestamp": "2026-03-02 07:00:02",
+            "timestamp": "2026-06-28 08:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Lively Cockney market scene, traders animatedly bartering with cheeky gestures, vibrant stalls adorned with fresh produce, boisterous crowd captured in Lowry's dynamic urban style."
+              "prompt": "Rain-drenched city square where a ghostly herald emerges from mist, ethereal Art Nouveau swirls framing vibrant umbrella symphony amidst glowing streetlamps."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "I avoided previously used settings like coastal paths, railways, or fields by focusing on a vibra..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "To create a unique urban fantasy scene, I depicted a city square with a supernatural figure appea..."
           },
           {
-            "timestamp": "2026-03-02 08:00:02",
+            "timestamp": "2026-06-28 09:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Bustling London market lane, lively vendors in bowler hats, swirling with Cockney banter, curious children peeking from alleys, vibrant hues echoing L.S. Lowry's city rhythm."
+              "prompt": "In a hidden courtyard, a serene griffon rests amid creeping ivy, rain-kissed Art Nouveau architecture framing this mythical repose, soft light highlighting tranquil majesty."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "The prompt captures a bustling urban market lane populated with distinctive Cockney characters, e..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I focused on a griffon within an urban setting to ensure fresh content, contrasting previous faun..."
           },
           {
-            "timestamp": "2026-03-02 09:00:02",
+            "timestamp": "2026-06-28 10:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Cockney pub interior alive with chatter, dartboards and framed quotes, colorful patrons sharing cheeky tales, dim light casting vivid contrasts, evoking Lowry's dynamic yet intimate scenes."
+              "prompt": "Midnight tableau of rain-slicked urban rooftop garden, where a dragon emerges in shimmering moonlight amidst swirling Art Nouveau clouds, plants glistening with raindrops, evoking mystic allure."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "To differentiate from previous market-focused prompts, I situated the image in a lively Cockney p..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I depicted a unique setting by choosing an urban rooftop garden at night, with a dragon subtly em..."
           },
           {
-            "timestamp": "2026-03-02 10:00:04",
+            "timestamp": "2026-06-28 11:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Bustling train station platform, Cockney hawkers peddle wares amidst lively banter, trains steaming in, reminiscent of Lowry's energetic urban sceneries."
+              "prompt": "Rain-dappled city bridge where a luminous pegasus gracefully hovers above intricately sculpted arches, Art Nouveau foliage entwining wrought-iron details, capturing an ethereal midnight encounter."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "To avoid repetition, I chose a train station platform setting, incorporating Cockney hawkers and ..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I focused on a city bridge setting, which is distinct from previous urban squares, courtyards, or..."
           },
           {
-            "timestamp": "2026-03-02 11:00:03",
+            "timestamp": "2026-06-28 12:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Crowded city bus interior, Cockney passengers exchanging rhyming slang, varied expressions and gestures, illuminated by streetlights through rain-speckled windows, portraying London life in Lowry-esque detail."
+              "prompt": "In a misty, rain-kissed urban alleyway, a shimmering unicorn gently bows, surrounded by ivy-clad brick, reflecting Art Nouveau's elegance with swirling motifs engendering ephemeral magic."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I selected a bus interior, a setting distinct from markets or stations. The focus on passengers e..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "To differentiate, I chose an urban alleyway, a setting distinct from previous prompts. The unicor..."
           },
           {
-            "timestamp": "2026-03-02 12:00:04",
+            "timestamp": "2026-06-28 13:00:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Urban street performers entertaining amidst bustling London avenue, enthralling audience with rhyming slang, vibrant signage and architecture, capturing Cockney spirit through Lowry's energetic, textured style."
+              "prompt": "Rain-soaked Art Nouveau pergola cradling blooming wild roses, ivy tendrils curling over ornate lattice, glistening droplets highlight vibrant rebirth under soft twilight glow."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I chose an urban avenue scene with street performers, distinct from previous market or pub settin..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I selected a pergola draped in natural elements rather than focusing on creatures or broad urban ..."
           },
           {
-            "timestamp": "2026-03-02 15:00:04",
+            "timestamp": "2026-06-28 14:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Cockney rooftop gathering, figures sharing rhymes under starlit sky, chimneys and brickwork framing the lively tableau, evoking Lowry's urban charm and whimsical language."
+              "prompt": "Art Nouveau gazebo with elaborate floral patterns, rain softly cascading over glass panes, peacocks perched, verdant foliage twining columns in a secret urban oasis."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I focused on a unique rooftop scene to differentiate from previously depicted market, pub, or bus..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "To create a unique image, I chose a gazebo setting within a resurgent garden. The focus is on an ..."
           },
           {
-            "timestamp": "2026-03-02 16:00:04",
+            "timestamp": "2026-06-28 15:00:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Street corner with singer leading a Cockney rhyming slang choir, colorful instruments, animated spectators, capturing Lowry's bustling energy and London's humorous spirit."
+              "prompt": "In a secluded city greenhouse, ornate Art Nouveau vines intertwine with domed glass, rain patters gently, casting dancing reflections upon vibrant flora beneath a cloudy sky."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I focused on a street corner with a unique choir scene, avoiding previously described locations l..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I opted for a city greenhouse as the setting, contrasting with previously mentioned open gardens ..."
           },
           {
-            "timestamp": "2026-03-02 17:00:03",
+            "timestamp": "2026-06-28 16:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Crowded London rooftop terrace, vibrant laundry fluttering between chimneys, diverse Cockney residents exchanging rhyming phrases, night skyline embodying Lowry's playful city spirit."
+              "prompt": "Art Nouveau caf\u00e9 terrace hidden by overgrown vines, rain beading off wrought-iron tables, soft streetlamp glow creating a mysterious urban haven of nature's quiet revival."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "By selecting a rooftop terrace with vivid elements like fluttering laundry, I avoided past depict..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I chose a unique setting of a caf\u00e9 terrace to differentiate from previous prompts featuring gazeb..."
           },
           {
-            "timestamp": "2026-03-02 18:00:05",
+            "timestamp": "2026-06-28 17:00:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Vibrant corner bakery, Cockney bakers shaping dough with playful rhymes, loaves lined up like terraced houses, Lowry-inspired cityscape glimpsed through steamy windows."
+              "prompt": "Rain-drenched urban botanical corner, Art Nouveau trellis over a cobblestone path, luminescent lilies spill from cracked fountains, serene, poignant rejuvenation in ethereal dusk."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I chose a corner bakery to create an indoor setting distinct from transitory or public locations ..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I crafted a scene focusing on a specific botanical corner in an urban area, distinct from previou..."
           },
           {
-            "timestamp": "2026-03-02 19:00:04",
+            "timestamp": "2026-06-28 18:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Bustling London dock, Cockney stevedores sharing banter while unloading ships, dynamic cranes and cargo accentuating vibrant urban tapestry in Lowry's distinctive cityscape style."
+              "prompt": "Art Nouveau overgrown rooftop balcony, rain puddles forming intricate patterns on tiled floors, lush ferns conceal wrought-iron furniture, amidst tranquil urban skyline."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "To avoid previous settings like pubs, rooftops, or markets, I chose a dock scene. The focus on st..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I chose an overgrown rooftop balcony to offer a new perspective absent in previous prompts. The f..."
           },
           {
-            "timestamp": "2026-03-02 20:00:03",
+            "timestamp": "2026-06-28 19:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Early morning bookmaker's shop, Cockney punters tossing cheeky bets, exchanging playful jabs over newspapers and tea, tactile textures and muted tones, inspired by Lowry's urban scenes."
+              "prompt": "An urban secret passage, hidden behind rusted Art Nouveau gates, rain drips from arching floral motifs, while ivy-choked walls cradle a lone marble statue."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "To differentiate from previous prompts, I chose the inside of a bookmaker's shop as a unique sett..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I selected a secret passage as a setting, focusing on rusted gates and a marble statue to create ..."
           },
           {
-            "timestamp": "2026-03-02 21:00:04",
+            "timestamp": "2026-06-28 20:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Cockney flea market at twilight, bustling stalls with quirky goods, traders animatedly haggling in rhyming slang, Lowry-inspired urban vibrancy, contrasting lamp-lit shadows and lively expressions."
+              "prompt": "Misty urban atrium, crumbling Art Nouveau balconies, rain patterns painting vivid portraits on wet surfaces, giant ferns creeping into corridors, shadows cast by flickering lanterns evoke an ethereal calm."
             },
-            "text_input": "'Rhyming slang secrets \u2014 playful tongue-in-chee...",
-            "explanation": "I avoided previous settings like pubs, buses, docks, or rooftops by choosing a flea market scene...."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I depicted an urban atrium with deteriorating balconies, focusing on the interaction between arch..."
           },
           {
-            "timestamp": "2026-03-02 22:00:03",
+            "timestamp": "2026-06-28 21:00:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Underground fishmonger shop, Cockney vendors exchanging jests, glistening fish contrasting rustic interiors, vibrant tiaras and nets, capturing Lowry's bustling urban life with humorous flair."
+              "prompt": "Art Nouveau intricately carved fountain, rain pooling atop leaf motifs, shimmering water dragons cavort playfully, surrounded by emerald vines and delicate floral embellishments in an urban sanctuary."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "I chose the underground fishmonger setting to distinctly separate from marketplaces, public trans..."
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I focused on a fountain within an urban sanctuary, differing from previous scenes like bridges or..."
           },
           {
-            "timestamp": "2026-03-02 23:00:01",
+            "timestamp": "2026-06-28 22:00:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Lively barbershop scene, Cockney clientele enjoying banter with barbers, fading haircuts amid laughter, mirrored walls reflecting vibrant Lowry-style urban street outside, colorful window signage."
+              "prompt": "Art Nouveau alleyway hidden under arched foliage, benches beside whirling floral murals, rain trickles down, reflecting the soft glow of vintage lanterns in an urban retreat."
             },
-            "text_input": "'Cockney market chatter \u2014 twisted phrases and c...",
-            "explanation": "To differentiate, I chose an indoor barbershop setting distinct from previous places like docks, ..."
+            "text_input": "'Hidden corners of a resurgent garden' in the s...",
+            "explanation": "I focused on an alleyway cloaked in Art Nouveau features with a unique perspective on benches and..."
           }
         ],
         "prompt_history": [
           {
-            "timestamp": "2026-03-01 20:00:05",
+            "timestamp": "2026-06-27 21:00:06",
             "type": "generation",
-            "prompt": "Stretching meadows bordered by dry-stone walls,...",
+            "prompt": "Black and white scene of city lamplight reflect...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260301-200101-a1a51a96.jpg"
+              "20260627-200030-328eb325.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-01 21:00:06",
+            "timestamp": "2026-06-27 22:00:07",
             "type": "generation",
-            "prompt": "Coastal path overlooking rugged sea cliffs, gul...",
+            "prompt": "Classic black and white capture of vintage car ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260301-210113-825c61b5.jpg"
+              "20260627-210103-51152e3f.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-01 22:00:06",
+            "timestamp": "2026-06-27 23:00:05",
             "type": "generation",
-            "prompt": "Broad river meandering through tidal salt marsh...",
+            "prompt": "Black and white photograph of bustling outdoor ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260301-220040-787e86a8.jpg"
+              "20260627-220055-219bc8c7.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-01 23:00:07",
+            "timestamp": "2026-06-28 06:00:16",
             "type": "generation",
-            "prompt": "Abandoned railway viaduct arching over deserted...",
+            "prompt": "In a lush, labyrinthine garden, an ethereal fau...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260301-230049-9456d45c.jpg"
+              "20260628-050133-64e822b1.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 06:00:22",
+            "timestamp": "2026-06-28 07:00:06",
             "type": "generation",
-            "prompt": "Cockney market with chatty vendors in flat caps...",
+            "prompt": "Ethereal pixie with luminescent wings skimming ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-060057-5a9c1887.jpg"
+              "20260628-060030-5d9dc016.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 07:00:08",
+            "timestamp": "2026-06-28 08:00:08",
             "type": "generation",
-            "prompt": "Lively Cockney market scene, traders animatedly...",
+            "prompt": "Rain-drenched city square where a ghostly heral...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-070042-04493710.jpg"
+              "20260628-070032-75b1269a.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 08:00:06",
+            "timestamp": "2026-06-28 09:00:06",
             "type": "generation",
-            "prompt": "Bustling London market lane, lively vendors in ...",
+            "prompt": "In a hidden courtyard, a serene griffon rests a...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-080107-60dd9ff6.jpg"
+              "20260628-080030-f0c6790c.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 09:00:05",
+            "timestamp": "2026-06-28 10:00:07",
             "type": "generation",
-            "prompt": "Cockney pub interior alive with chatter, dartbo...",
+            "prompt": "Midnight tableau of rain-slicked urban rooftop ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-090100-28489c96.jpg"
+              "20260628-090032-5a6283f6.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 10:00:07",
+            "timestamp": "2026-06-28 11:00:06",
             "type": "generation",
-            "prompt": "Bustling train station platform, Cockney hawker...",
+            "prompt": "Rain-dappled city bridge where a luminous pegas...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-100122-5fb3bc1a.jpg"
+              "20260628-100030-7023bd6b.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 11:00:07",
+            "timestamp": "2026-06-28 12:00:07",
             "type": "generation",
-            "prompt": "Crowded city bus interior, Cockney passengers e...",
+            "prompt": "In a misty, rain-kissed urban alleyway, a shimm...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-110122-4cc8bae2.jpg"
+              "20260628-110033-1e1882ad.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 12:00:10",
+            "timestamp": "2026-06-28 13:00:05",
             "type": "generation",
-            "prompt": "Urban street performers entertaining amidst bus...",
+            "prompt": "Rain-soaked Art Nouveau pergola cradling bloomi...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-143705-746ff66f.jpg"
+              "20260628-120035-c1246ed5.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 15:00:15",
+            "timestamp": "2026-06-28 14:00:07",
             "type": "generation",
-            "prompt": "Cockney rooftop gathering, figures sharing rhym...",
+            "prompt": "Art Nouveau gazebo with elaborate floral patter...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-150040-8a8b3ca0.jpg"
+              "20260628-130031-08a72be5.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 16:00:08",
+            "timestamp": "2026-06-28 15:00:05",
             "type": "generation",
-            "prompt": "Street corner with singer leading a Cockney rhy...",
+            "prompt": "In a secluded city greenhouse, ornate Art Nouve...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-160056-3435b6ab.jpg"
+              "20260628-140112-839a5620.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 17:00:06",
+            "timestamp": "2026-06-28 16:00:07",
             "type": "generation",
-            "prompt": "Crowded London rooftop terrace, vibrant laundry...",
+            "prompt": "Art Nouveau caf\u00e9 terrace hidden by overgrown vi...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-170046-27837090.jpg"
+              "20260628-150032-1810872c.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 18:00:11",
+            "timestamp": "2026-06-28 17:00:05",
             "type": "generation",
-            "prompt": "Vibrant corner bakery, Cockney bakers shaping d...",
+            "prompt": "Rain-drenched urban botanical corner, Art Nouve...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-180049-155b0e15.jpg"
+              "20260628-160045-68d7d817.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 19:00:09",
+            "timestamp": "2026-06-28 18:00:06",
             "type": "generation",
-            "prompt": "Bustling London dock, Cockney stevedores sharin...",
+            "prompt": "Art Nouveau overgrown rooftop balcony, rain pud...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-190035-7834d48e.jpg"
+              "20260628-170032-ada53acf.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 20:00:07",
+            "timestamp": "2026-06-28 19:00:06",
             "type": "generation",
-            "prompt": "Early morning bookmaker's shop, Cockney punters...",
+            "prompt": "An urban secret passage, hidden behind rusted A...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-200047-e86fe87a.jpg"
+              "20260628-180030-eab660e2.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 21:00:09",
+            "timestamp": "2026-06-28 20:00:07",
             "type": "generation",
-            "prompt": "Cockney flea market at twilight, bustling stall...",
+            "prompt": "Misty urban atrium, crumbling Art Nouveau balco...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-210033-884a8cbb.jpg"
+              "20260628-190036-cec293f1.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 22:00:07",
+            "timestamp": "2026-06-28 21:00:07",
             "type": "generation",
-            "prompt": "Underground fishmonger shop, Cockney vendors ex...",
+            "prompt": "Art Nouveau intricately carved fountain, rain p...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-220032-cf7ef451.jpg"
+              "20260628-200105-34444fa0.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-03-02 23:00:05",
+            "timestamp": "2026-06-28 22:00:08",
             "type": "generation",
-            "prompt": "Lively barbershop scene, Cockney clientele enjo...",
+            "prompt": "Art Nouveau alleyway hidden under arched foliag...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260302-230032-2165c2f5.jpg"
+              "20260628-210037-88565184.jpg"
             ],
             "published": true
           }
@@ -1025,175 +1025,160 @@
         "vis_confidence": "82%",
         "vis_rationale": "Evokes a vivid scene with masked figures and chaos in a community setting."
       },
-      "last_generated": "20260302-230032-2165c2f5.jpg",
+      "last_generated": "20260628-210037-88565184.jpg",
       "publish_destination": "south-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2026-03-02T23:51:29.432171",
+  "last_updated": "2026-07-19T11:05:03.901073",
   "last_trigger_executions": {
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_0": "2026-02-28T00:22:00.010709",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_1": "2026-02-28T00:37:00.056848",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_2": "2026-02-28T00:52:00.779872",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_3": "2026-02-28T01:07:01.357780",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_4": "2026-02-28T01:22:01.949280",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_5": "2026-02-28T01:37:01.990019",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_6": "2026-02-28T01:52:00.546668",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_7": "2026-02-28T02:07:00.205284",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_8": "2026-02-28T02:22:01.597834",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_9": "2026-02-28T02:37:00.092271",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_10": "2026-02-28T02:52:01.787482",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-02-28": "2026-02-28T03:00:01.672577",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_11": "2026-02-28T03:07:00.901214",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_12": "2026-02-28T03:22:00.778806",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_13": "2026-02-28T03:37:00.409828",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_14": "2026-02-28T03:52:00.414103",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_15": "2026-02-28T04:07:00.515052",
-    "158578f4060f785538defa5246c1f15b_2026-02-28": "2026-02-28T04:10:00.714274",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_16": "2026-02-28T04:22:01.062359",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_17": "2026-02-28T04:37:00.222595",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_18": "2026-02-28T04:52:00.535707",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_19": "2026-02-28T05:07:00.870173",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_20": "2026-02-28T05:22:00.788690",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_21": "2026-02-28T05:37:00.106858",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_22": "2026-02-28T05:52:01.310482",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_23": "2026-02-28T06:07:00.401386",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_24": "2026-02-28T06:22:01.104300",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_25": "2026-02-28T06:37:00.268614",
-    "f65e26b4527c95c05af4f657d9560b34_2026-02-28_26": "2026-02-28T06:52:01.960757",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_0": "2026-02-28T07:00:01.126989",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_0": "2026-02-28T07:05:00.457295",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_1": "2026-02-28T08:00:00.917548",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_2": "2026-02-28T09:00:00.124052",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_1": "2026-02-28T09:05:01.951019",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_3": "2026-02-28T10:00:00.944176",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_4": "2026-02-28T11:00:01.414814",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_2": "2026-02-28T11:05:01.820563",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_5": "2026-02-28T12:00:01.189378",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_6": "2026-02-28T13:00:00.076822",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_3": "2026-02-28T13:05:00.779599",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_7": "2026-02-28T14:00:01.598775",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_8": "2026-02-28T15:00:01.290049",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_4": "2026-02-28T15:05:01.137092",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_9": "2026-02-28T16:00:00.126338",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_10": "2026-02-28T17:00:00.233993",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_5": "2026-02-28T17:05:00.145873",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_11": "2026-02-28T18:00:00.918184",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_12": "2026-02-28T19:00:00.876891",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_6": "2026-02-28T19:05:00.720587",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_13": "2026-02-28T20:00:00.343193",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_14": "2026-02-28T21:00:00.193923",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_7": "2026-02-28T21:05:00.614155",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_15": "2026-02-28T22:00:00.559183",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-02-28_16": "2026-02-28T23:00:00.305276",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-02-28_8": "2026-02-28T23:05:00.085198",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_0": "2026-03-01T00:22:01.479649",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_1": "2026-03-01T00:37:02.039891",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_2": "2026-03-01T00:52:00.589074",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_3": "2026-03-01T01:07:00.572217",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_4": "2026-03-01T01:22:01.198840",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_5": "2026-03-01T01:37:00.436843",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_6": "2026-03-01T01:52:00.942999",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_7": "2026-03-01T02:07:00.413796",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_8": "2026-03-01T02:22:00.507927",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_9": "2026-03-01T02:37:00.438161",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_10": "2026-03-01T02:52:00.045890",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-03-01": "2026-03-01T03:00:01.487372",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_11": "2026-03-01T03:07:01.298642",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_12": "2026-03-01T03:22:00.617878",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_13": "2026-03-01T03:37:01.345121",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_14": "2026-03-01T03:52:00.466292",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_15": "2026-03-01T04:07:01.749106",
-    "158578f4060f785538defa5246c1f15b_2026-03-01": "2026-03-01T04:10:01.195473",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_16": "2026-03-01T04:22:01.261993",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_17": "2026-03-01T04:37:01.843137",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_18": "2026-03-01T04:52:00.602970",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_19": "2026-03-01T05:07:01.195366",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_20": "2026-03-01T05:22:00.392770",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_21": "2026-03-01T05:37:01.127621",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_22": "2026-03-01T05:52:00.241848",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_23": "2026-03-01T06:07:01.977259",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_24": "2026-03-01T06:22:01.589653",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_25": "2026-03-01T06:37:01.109245",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-01_26": "2026-03-01T06:52:00.851156",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_0": "2026-03-01T07:00:00.822130",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_0": "2026-03-01T07:05:00.784143",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_1": "2026-03-01T08:00:00.841605",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_2": "2026-03-01T09:00:01.572733",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_1": "2026-03-01T09:05:00.286123",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_3": "2026-03-01T10:00:00.720161",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_4": "2026-03-01T11:00:00.433712",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_2": "2026-03-01T11:05:01.347406",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_5": "2026-03-01T12:00:00.968064",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_6": "2026-03-01T13:00:00.070006",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_3": "2026-03-01T13:05:00.599162",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_7": "2026-03-01T14:00:01.430762",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_8": "2026-03-01T15:00:01.886020",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_4": "2026-03-01T15:05:00.856501",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_9": "2026-03-01T16:00:01.959494",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_10": "2026-03-01T17:00:00.412462",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_5": "2026-03-01T17:05:01.614200",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_11": "2026-03-01T18:00:00.060234",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_12": "2026-03-01T19:00:00.624459",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_6": "2026-03-01T19:05:01.094109",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_13": "2026-03-01T20:00:00.259079",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_14": "2026-03-01T21:00:00.580657",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_7": "2026-03-01T21:05:01.486979",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_15": "2026-03-01T22:00:00.087842",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-01_16": "2026-03-01T23:00:01.462796",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-01_8": "2026-03-01T23:05:00.026799",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_0": "2026-03-02T00:22:01.061798",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_1": "2026-03-02T00:37:01.394853",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_2": "2026-03-02T00:52:00.625497",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_3": "2026-03-02T01:07:00.053697",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_4": "2026-03-02T01:22:01.344920",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_5": "2026-03-02T01:37:01.316514",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_6": "2026-03-02T01:52:00.301502",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_7": "2026-03-02T02:07:00.462165",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_8": "2026-03-02T02:22:01.537773",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_9": "2026-03-02T02:37:00.435320",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_10": "2026-03-02T02:52:00.903884",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-03-02": "2026-03-02T03:00:01.522309",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_11": "2026-03-02T03:07:00.364362",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_12": "2026-03-02T03:22:01.937798",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_13": "2026-03-02T03:37:00.091458",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_14": "2026-03-02T03:52:00.482767",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_15": "2026-03-02T04:07:00.563468",
-    "158578f4060f785538defa5246c1f15b_2026-03-02": "2026-03-02T04:10:00.317868",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_16": "2026-03-02T04:22:00.915849",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_17": "2026-03-02T04:37:00.809805",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_18": "2026-03-02T04:52:00.840882",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_19": "2026-03-02T05:07:00.269983",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_20": "2026-03-02T05:22:00.489142",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_21": "2026-03-02T05:37:01.202124",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_22": "2026-03-02T05:52:01.501081",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_23": "2026-03-02T06:07:01.059022",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_24": "2026-03-02T06:22:01.395839",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_25": "2026-03-02T06:37:00.077051",
-    "f65e26b4527c95c05af4f657d9560b34_2026-03-02_26": "2026-03-02T06:52:01.262265",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_0": "2026-03-02T07:00:00.046527",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_0": "2026-03-02T07:05:00.354134",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_1": "2026-03-02T08:00:00.135995",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_2": "2026-03-02T09:00:00.249888",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_1": "2026-03-02T09:05:00.493709",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_3": "2026-03-02T10:00:01.601465",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_4": "2026-03-02T11:00:00.604519",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_2": "2026-03-02T11:05:01.900754",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_5": "2026-03-02T12:00:01.695763",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_8": "2026-03-02T15:00:01.552206",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_4": "2026-03-02T15:05:01.185434",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_9": "2026-03-02T16:00:01.496442",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_10": "2026-03-02T17:00:00.626608",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_5": "2026-03-02T17:05:00.436553",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_11": "2026-03-02T18:00:01.850621",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_12": "2026-03-02T19:00:01.786289",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_6": "2026-03-02T19:05:00.218386",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_13": "2026-03-02T20:00:00.612462",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_14": "2026-03-02T21:00:02.000629",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_7": "2026-03-02T21:05:00.379764",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_15": "2026-03-02T22:00:00.927265",
-    "615c22f09f03cb1b6164dab4b2980a01_2026-03-02_16": "2026-03-02T23:00:00.963083",
-    "b812f679a565a0c56311d86bfaf3ca2d_2026-03-02_8": "2026-03-02T23:05:01.531267"
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_0": "2026-07-17T00:22:00.129529",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_1": "2026-07-17T00:37:01.656995",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_2": "2026-07-17T00:52:01.625834",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_3": "2026-07-17T01:07:01.637887",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_4": "2026-07-17T01:22:01.425297",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_5": "2026-07-17T01:37:00.072621",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_6": "2026-07-17T01:52:01.526125",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_7": "2026-07-17T02:07:00.295355",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_8": "2026-07-17T02:22:00.076997",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_9": "2026-07-17T02:37:00.112194",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_10": "2026-07-17T02:52:01.447560",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-07-17": "2026-07-17T03:00:02.067020",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_11": "2026-07-17T03:07:01.367934",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_12": "2026-07-17T03:22:01.192452",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_13": "2026-07-17T03:37:01.297930",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_14": "2026-07-17T03:52:01.081881",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_15": "2026-07-17T04:07:01.780615",
+    "158578f4060f785538defa5246c1f15b_2026-07-17": "2026-07-17T04:10:00.417509",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_16": "2026-07-17T04:22:00.698211",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_17": "2026-07-17T04:37:00.065944",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_18": "2026-07-17T04:52:00.317433",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_19": "2026-07-17T05:07:01.222306",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_20": "2026-07-17T05:22:01.461902",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_21": "2026-07-17T05:37:01.007620",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_22": "2026-07-17T05:52:02.048116",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_23": "2026-07-17T06:07:00.189269",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_24": "2026-07-17T06:22:00.276156",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_25": "2026-07-17T06:37:00.728491",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-17_26": "2026-07-17T06:52:00.768694",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_0": "2026-07-17T07:00:00.884254",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_0": "2026-07-17T07:05:00.635936",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_1": "2026-07-17T08:00:00.160319",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_2": "2026-07-17T09:00:01.695719",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_1": "2026-07-17T09:05:00.456797",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_3": "2026-07-17T10:00:00.420196",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_4": "2026-07-17T11:00:00.277731",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_2": "2026-07-17T11:05:01.672057",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_5": "2026-07-17T12:00:01.795066",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_6": "2026-07-17T13:00:00.843687",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_3": "2026-07-17T13:05:01.215053",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_7": "2026-07-17T14:00:00.544430",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_8": "2026-07-17T15:00:00.563010",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_4": "2026-07-17T15:05:01.569298",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_9": "2026-07-17T16:00:00.866049",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_10": "2026-07-17T17:00:00.809191",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_5": "2026-07-17T17:05:00.327775",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_11": "2026-07-17T18:00:01.303101",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_12": "2026-07-17T19:00:01.439904",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_6": "2026-07-17T19:05:01.414150",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_13": "2026-07-17T20:00:00.140256",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_14": "2026-07-17T21:00:01.219084",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_7": "2026-07-17T21:05:00.157259",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_15": "2026-07-17T22:00:01.721733",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-17_16": "2026-07-17T23:00:00.775055",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-17_8": "2026-07-17T23:05:00.238640",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_0": "2026-07-18T00:22:00.647308",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_1": "2026-07-18T00:37:01.054088",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_2": "2026-07-18T00:52:00.197143",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_3": "2026-07-18T01:07:01.531104",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_4": "2026-07-18T01:22:00.686084",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_5": "2026-07-18T01:37:01.811783",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_6": "2026-07-18T01:52:00.130425",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_7": "2026-07-18T02:07:01.864923",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_8": "2026-07-18T02:22:00.933184",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_9": "2026-07-18T02:37:01.873636",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_10": "2026-07-18T02:52:00.124608",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-07-18": "2026-07-18T03:00:00.943640",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_11": "2026-07-18T03:07:01.346894",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_12": "2026-07-18T03:22:01.474186",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_13": "2026-07-18T03:37:01.407259",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_14": "2026-07-18T03:52:00.806225",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_15": "2026-07-18T04:07:00.517837",
+    "158578f4060f785538defa5246c1f15b_2026-07-18": "2026-07-18T04:10:00.334135",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_16": "2026-07-18T04:22:01.414567",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_17": "2026-07-18T04:37:00.117578",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_18": "2026-07-18T04:52:00.443780",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_19": "2026-07-18T05:07:00.975416",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_20": "2026-07-18T05:22:00.140278",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_21": "2026-07-18T05:37:01.882987",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_22": "2026-07-18T05:52:00.225262",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_23": "2026-07-18T06:07:00.413272",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_24": "2026-07-18T06:22:00.351175",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_25": "2026-07-18T06:37:00.585476",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-18_26": "2026-07-18T06:52:00.524885",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_0": "2026-07-18T07:00:01.059000",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_0": "2026-07-18T07:05:02.042123",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_1": "2026-07-18T08:00:00.551338",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_2": "2026-07-18T09:00:01.433934",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_1": "2026-07-18T09:05:01.504193",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_3": "2026-07-18T10:00:01.046550",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_4": "2026-07-18T11:00:01.083962",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_2": "2026-07-18T11:05:01.780087",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_5": "2026-07-18T12:00:00.841989",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_6": "2026-07-18T13:00:00.597457",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_3": "2026-07-18T13:05:01.970394",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_7": "2026-07-18T14:00:00.055424",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_8": "2026-07-18T15:00:00.634064",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_4": "2026-07-18T15:05:00.515115",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_9": "2026-07-18T16:00:00.392325",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_10": "2026-07-18T17:00:00.974818",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_5": "2026-07-18T17:05:00.456808",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_11": "2026-07-18T18:00:01.014860",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_12": "2026-07-18T19:00:01.520246",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_6": "2026-07-18T19:05:01.556438",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_13": "2026-07-18T20:00:01.413202",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_14": "2026-07-18T21:00:01.363712",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_7": "2026-07-18T21:05:00.343296",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_15": "2026-07-18T22:00:00.017557",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-18_16": "2026-07-18T23:00:00.830498",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-18_8": "2026-07-18T23:05:01.621719",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_0": "2026-07-19T00:22:01.262509",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_1": "2026-07-19T00:37:00.042729",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_2": "2026-07-19T00:52:00.383112",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_3": "2026-07-19T01:07:01.559719",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_4": "2026-07-19T01:22:01.546469",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_5": "2026-07-19T01:37:00.739204",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_6": "2026-07-19T01:52:00.057671",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_7": "2026-07-19T02:07:01.085058",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_8": "2026-07-19T02:22:01.053532",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_9": "2026-07-19T02:37:01.334523",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_10": "2026-07-19T02:52:00.533068",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-07-19": "2026-07-19T03:00:01.224376",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_11": "2026-07-19T03:07:00.624232",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_12": "2026-07-19T03:22:01.510253",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_13": "2026-07-19T03:37:01.830851",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_14": "2026-07-19T03:52:01.919347",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_15": "2026-07-19T04:07:00.837679",
+    "158578f4060f785538defa5246c1f15b_2026-07-19": "2026-07-19T04:10:00.343113",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_16": "2026-07-19T04:22:01.089680",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_17": "2026-07-19T04:37:00.959276",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_18": "2026-07-19T04:52:01.983745",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_19": "2026-07-19T05:07:01.068304",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_20": "2026-07-19T05:22:00.179395",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_21": "2026-07-19T05:37:01.830787",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_22": "2026-07-19T05:52:01.739385",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_23": "2026-07-19T06:07:01.575885",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_24": "2026-07-19T06:22:00.216951",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_25": "2026-07-19T06:37:01.150499",
+    "f65e26b4527c95c05af4f657d9560b34_2026-07-19_26": "2026-07-19T06:52:00.187745",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-19_0": "2026-07-19T07:00:00.355893",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-19_0": "2026-07-19T07:05:01.303184",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-19_1": "2026-07-19T08:00:00.134678",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-19_2": "2026-07-19T09:00:00.143293",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-19_1": "2026-07-19T09:05:00.776078",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-19_3": "2026-07-19T10:00:00.144238",
+    "615c22f09f03cb1b6164dab4b2980a01_2026-07-19_4": "2026-07-19T11:00:00.616999",
+    "b812f679a565a0c56311d86bfaf3ca2d_2026-07-19_2": "2026-07-19T11:05:01.808851"
   },
   "active_events": {
     "__exit_block__": []
@@ -1201,1371 +1186,1371 @@
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2026-03-01T07:00:00.835272",
-      "expires": "2026-03-01T07:01:00.835272",
+      "active_from": "2026-07-17T15:00:00.606216",
+      "expires": "2026-07-17T15:01:00.606216",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T07:00:00.835272",
-      "unique_id": "fe3e2157-acce-4b66-8f1a-ebceb302fca7",
+      "created_at": "2026-07-17T15:00:00.606216",
+      "unique_id": "9c617d37-648c-4864-a194-9637ffbc7889",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T07:00:02.845600"
+      "consumed_at": "2026-07-17T15:00:02.567478"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T07:00:00.835272",
-      "expires": "2026-03-01T07:01:00.835272",
+      "active_from": "2026-07-17T15:00:00.606216",
+      "expires": "2026-07-17T15:01:00.606216",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T07:00:00.835272",
-      "unique_id": "fe3e2157-acce-4b66-8f1a-ebceb302fca7",
+      "created_at": "2026-07-17T15:00:00.606216",
+      "unique_id": "9c617d37-648c-4864-a194-9637ffbc7889",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T07:00:02.845600"
+      "consumed_at": "2026-07-17T15:00:02.567478"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T07:05:00.993308",
-      "expires": "2026-03-01T07:06:00.993308",
+      "active_from": "2026-07-17T15:05:01.930482",
+      "expires": "2026-07-17T15:06:01.930482",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T07:05:00.993308",
-      "unique_id": "d83d3643-02df-4d94-b36a-681038b97258",
+      "created_at": "2026-07-17T15:05:01.930482",
+      "unique_id": "9fad507e-7184-4eec-b604-d257fec15926",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T07:05:02.785439"
+      "consumed_at": "2026-07-17T15:05:03.574446"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T07:05:00.993308",
-      "expires": "2026-03-01T07:06:00.993308",
+      "active_from": "2026-07-17T15:05:01.930482",
+      "expires": "2026-07-17T15:06:01.930482",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T07:05:00.993308",
-      "unique_id": "d83d3643-02df-4d94-b36a-681038b97258",
+      "created_at": "2026-07-17T15:05:01.930482",
+      "unique_id": "9fad507e-7184-4eec-b604-d257fec15926",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T07:05:02.785439"
+      "consumed_at": "2026-07-17T15:05:03.574446"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T08:00:00.853122",
-      "expires": "2026-03-01T08:01:00.853122",
+      "active_from": "2026-07-17T16:00:00.883735",
+      "expires": "2026-07-17T16:01:00.883735",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T08:00:00.853122",
-      "unique_id": "c572f2c6-2604-4237-a79f-9ec54c8ebbd0",
+      "created_at": "2026-07-17T16:00:00.883735",
+      "unique_id": "680cfabd-d6af-4702-9ce8-bde86994df66",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T08:00:02.918236"
+      "consumed_at": "2026-07-17T16:00:02.930037"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T08:00:00.853122",
-      "expires": "2026-03-01T08:01:00.853122",
+      "active_from": "2026-07-17T16:00:00.883735",
+      "expires": "2026-07-17T16:01:00.883735",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T08:00:00.853122",
-      "unique_id": "c572f2c6-2604-4237-a79f-9ec54c8ebbd0",
+      "created_at": "2026-07-17T16:00:00.883735",
+      "unique_id": "680cfabd-d6af-4702-9ce8-bde86994df66",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T08:00:02.918236"
+      "consumed_at": "2026-07-17T16:00:02.930037"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T09:00:01.592634",
-      "expires": "2026-03-01T09:01:01.592634",
+      "active_from": "2026-07-17T17:00:00.831434",
+      "expires": "2026-07-17T17:01:00.831434",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T09:00:01.592634",
-      "unique_id": "fd9a8628-8f09-4431-8646-c2e0d9398b46",
+      "created_at": "2026-07-17T17:00:00.831434",
+      "unique_id": "c0638db3-dfa6-42a9-93a0-835adf118d2a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T09:00:03.654472"
+      "consumed_at": "2026-07-17T17:00:02.827472"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T09:00:01.592634",
-      "expires": "2026-03-01T09:01:01.592634",
+      "active_from": "2026-07-17T17:00:00.831434",
+      "expires": "2026-07-17T17:01:00.831434",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T09:00:01.592634",
-      "unique_id": "fd9a8628-8f09-4431-8646-c2e0d9398b46",
+      "created_at": "2026-07-17T17:00:00.831434",
+      "unique_id": "c0638db3-dfa6-42a9-93a0-835adf118d2a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T09:00:03.654472"
+      "consumed_at": "2026-07-17T17:00:02.827472"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T09:05:00.560540",
-      "expires": "2026-03-01T09:06:00.560540",
+      "active_from": "2026-07-17T17:05:00.499807",
+      "expires": "2026-07-17T17:06:00.499807",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T09:05:00.560540",
-      "unique_id": "5731128c-8922-4de9-8d53-792ffc183403",
+      "created_at": "2026-07-17T17:05:00.499807",
+      "unique_id": "a00ae731-f261-4a33-beac-634783df163d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T09:05:02.314884"
+      "consumed_at": "2026-07-17T17:05:02.329479"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T09:05:00.560540",
-      "expires": "2026-03-01T09:06:00.560540",
+      "active_from": "2026-07-17T17:05:00.499807",
+      "expires": "2026-07-17T17:06:00.499807",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T09:05:00.560540",
-      "unique_id": "5731128c-8922-4de9-8d53-792ffc183403",
+      "created_at": "2026-07-17T17:05:00.499807",
+      "unique_id": "a00ae731-f261-4a33-beac-634783df163d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T09:05:02.314884"
+      "consumed_at": "2026-07-17T17:05:02.329479"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T10:00:00.759660",
-      "expires": "2026-03-01T10:01:00.759660",
+      "active_from": "2026-07-17T18:00:01.319754",
+      "expires": "2026-07-17T18:01:01.319754",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T10:00:00.759660",
-      "unique_id": "749ea720-9f36-4202-b768-7b1eca032499",
+      "created_at": "2026-07-17T18:00:01.319754",
+      "unique_id": "8ad7e3f5-4422-409a-b88b-5f7e841807d2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T10:00:02.761308"
+      "consumed_at": "2026-07-17T18:00:03.404982"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T10:00:00.759660",
-      "expires": "2026-03-01T10:01:00.759660",
+      "active_from": "2026-07-17T18:00:01.319754",
+      "expires": "2026-07-17T18:01:01.319754",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T10:00:00.759660",
-      "unique_id": "749ea720-9f36-4202-b768-7b1eca032499",
+      "created_at": "2026-07-17T18:00:01.319754",
+      "unique_id": "8ad7e3f5-4422-409a-b88b-5f7e841807d2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T10:00:02.761308"
+      "consumed_at": "2026-07-17T18:00:03.404982"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T11:00:00.499223",
-      "expires": "2026-03-01T11:01:00.499223",
+      "active_from": "2026-07-17T19:00:01.451914",
+      "expires": "2026-07-17T19:01:01.451914",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T11:00:00.499223",
-      "unique_id": "83d3b592-b1a8-4b89-9221-fc33dbf3891f",
+      "created_at": "2026-07-17T19:00:01.451914",
+      "unique_id": "ae63f064-4219-4d65-9aba-3fa6a2c4e7f7",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T11:00:02.456608"
+      "consumed_at": "2026-07-17T19:00:03.489531"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T11:00:00.499223",
-      "expires": "2026-03-01T11:01:00.499223",
+      "active_from": "2026-07-17T19:00:01.451914",
+      "expires": "2026-07-17T19:01:01.451914",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T11:00:00.499223",
-      "unique_id": "83d3b592-b1a8-4b89-9221-fc33dbf3891f",
+      "created_at": "2026-07-17T19:00:01.451914",
+      "unique_id": "ae63f064-4219-4d65-9aba-3fa6a2c4e7f7",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T11:00:02.456608"
+      "consumed_at": "2026-07-17T19:00:03.489531"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T11:05:01.583485",
-      "expires": "2026-03-01T11:06:01.583485",
+      "active_from": "2026-07-17T19:05:01.626816",
+      "expires": "2026-07-17T19:06:01.626816",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T11:05:01.583485",
-      "unique_id": "1ec048a4-22bf-46dc-807f-11a7702bb180",
+      "created_at": "2026-07-17T19:05:01.626816",
+      "unique_id": "ed1a817a-8b69-4ef1-92f4-72d7b4e80479",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T11:05:03.493446"
+      "consumed_at": "2026-07-17T19:05:03.497193"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T11:05:01.583485",
-      "expires": "2026-03-01T11:06:01.583485",
+      "active_from": "2026-07-17T19:05:01.626816",
+      "expires": "2026-07-17T19:06:01.626816",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T11:05:01.583485",
-      "unique_id": "1ec048a4-22bf-46dc-807f-11a7702bb180",
+      "created_at": "2026-07-17T19:05:01.626816",
+      "unique_id": "ed1a817a-8b69-4ef1-92f4-72d7b4e80479",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T11:05:03.493446"
+      "consumed_at": "2026-07-17T19:05:03.497193"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T12:00:00.988002",
-      "expires": "2026-03-01T12:01:00.988002",
+      "active_from": "2026-07-17T20:00:00.167484",
+      "expires": "2026-07-17T20:01:00.167484",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T12:00:00.988002",
-      "unique_id": "4845690c-a7d2-48a6-8d27-5e97d5e65010",
+      "created_at": "2026-07-17T20:00:00.167484",
+      "unique_id": "19fe8cdf-8bb7-42e0-aded-7f5d212a5702",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T12:00:02.970590"
+      "consumed_at": "2026-07-17T20:00:02.234500"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T12:00:00.988002",
-      "expires": "2026-03-01T12:01:00.988002",
+      "active_from": "2026-07-17T20:00:00.167484",
+      "expires": "2026-07-17T20:01:00.167484",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T12:00:00.988002",
-      "unique_id": "4845690c-a7d2-48a6-8d27-5e97d5e65010",
+      "created_at": "2026-07-17T20:00:00.167484",
+      "unique_id": "19fe8cdf-8bb7-42e0-aded-7f5d212a5702",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T12:00:02.970590"
+      "consumed_at": "2026-07-17T20:00:02.234500"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T13:00:00.097887",
-      "expires": "2026-03-01T13:01:00.097887",
+      "active_from": "2026-07-17T21:00:01.231367",
+      "expires": "2026-07-17T21:01:01.231367",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T13:00:00.097887",
-      "unique_id": "41fea360-1335-48be-8784-024dc948fc2a",
+      "created_at": "2026-07-17T21:00:01.231367",
+      "unique_id": "8ce82b6e-c321-4237-b26a-6219dea3a86b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T13:00:02.093756"
+      "consumed_at": "2026-07-17T21:00:03.279054"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T13:00:00.097887",
-      "expires": "2026-03-01T13:01:00.097887",
+      "active_from": "2026-07-17T21:00:01.231367",
+      "expires": "2026-07-17T21:01:01.231367",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T13:00:00.097887",
-      "unique_id": "41fea360-1335-48be-8784-024dc948fc2a",
+      "created_at": "2026-07-17T21:00:01.231367",
+      "unique_id": "8ce82b6e-c321-4237-b26a-6219dea3a86b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T13:00:02.093756"
+      "consumed_at": "2026-07-17T21:00:03.279054"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T13:05:00.860018",
-      "expires": "2026-03-01T13:06:00.860018",
+      "active_from": "2026-07-17T21:05:00.389518",
+      "expires": "2026-07-17T21:06:00.389518",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T13:05:00.860018",
-      "unique_id": "51df02ea-0c1f-46df-a0f1-f53b63fb5216",
+      "created_at": "2026-07-17T21:05:00.389518",
+      "unique_id": "74431949-7272-46c4-902b-05b16d30f6a9",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T13:05:02.610570"
+      "consumed_at": "2026-07-17T21:05:02.227093"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T13:05:00.860018",
-      "expires": "2026-03-01T13:06:00.860018",
+      "active_from": "2026-07-17T21:05:00.389518",
+      "expires": "2026-07-17T21:06:00.389518",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T13:05:00.860018",
-      "unique_id": "51df02ea-0c1f-46df-a0f1-f53b63fb5216",
+      "created_at": "2026-07-17T21:05:00.389518",
+      "unique_id": "74431949-7272-46c4-902b-05b16d30f6a9",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T13:05:02.610570"
+      "consumed_at": "2026-07-17T21:05:02.227093"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T14:00:01.447184",
-      "expires": "2026-03-01T14:01:01.447184",
+      "active_from": "2026-07-17T22:00:01.768317",
+      "expires": "2026-07-17T22:01:01.768317",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T14:00:01.447184",
-      "unique_id": "fcbc4d56-d267-4454-af9d-d54d17fbb1e7",
+      "created_at": "2026-07-17T22:00:01.768317",
+      "unique_id": "b3a2b1cd-75a5-4680-96eb-3453d57836ef",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T14:00:03.529910"
+      "consumed_at": "2026-07-17T22:00:03.728846"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T14:00:01.447184",
-      "expires": "2026-03-01T14:01:01.447184",
+      "active_from": "2026-07-17T22:00:01.768317",
+      "expires": "2026-07-17T22:01:01.768317",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T14:00:01.447184",
-      "unique_id": "fcbc4d56-d267-4454-af9d-d54d17fbb1e7",
+      "created_at": "2026-07-17T22:00:01.768317",
+      "unique_id": "b3a2b1cd-75a5-4680-96eb-3453d57836ef",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T14:00:03.529910"
+      "consumed_at": "2026-07-17T22:00:03.728846"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T15:00:01.936751",
-      "expires": "2026-03-01T15:01:01.936751",
+      "active_from": "2026-07-17T23:00:00.795110",
+      "expires": "2026-07-17T23:01:00.795110",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T15:00:01.936751",
-      "unique_id": "243e4347-8c44-42e1-bbe9-41b29d33feea",
+      "created_at": "2026-07-17T23:00:00.795110",
+      "unique_id": "d8120884-f39d-4be6-9cff-f4ba27e12f84",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T15:00:03.908718"
+      "consumed_at": "2026-07-17T23:00:02.858343"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T15:00:01.936751",
-      "expires": "2026-03-01T15:01:01.936751",
+      "active_from": "2026-07-17T23:00:00.795110",
+      "expires": "2026-07-17T23:01:00.795110",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-01T15:00:01.936751",
-      "unique_id": "243e4347-8c44-42e1-bbe9-41b29d33feea",
+      "created_at": "2026-07-17T23:00:00.795110",
+      "unique_id": "d8120884-f39d-4be6-9cff-f4ba27e12f84",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T15:00:03.908718"
+      "consumed_at": "2026-07-17T23:00:02.858343"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T15:05:01.066529",
-      "expires": "2026-03-01T15:06:01.066529",
+      "active_from": "2026-07-17T23:05:00.454699",
+      "expires": "2026-07-17T23:06:00.454699",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T15:05:01.066529",
-      "unique_id": "f678e6f6-8c17-41f3-8da2-48ea59313af5",
+      "created_at": "2026-07-17T23:05:00.454699",
+      "unique_id": "f9738a96-7f83-4948-b7e6-afb04ea041a2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T15:05:02.937846"
+      "consumed_at": "2026-07-17T23:05:02.286157"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-01T15:05:01.066529",
-      "expires": "2026-03-01T15:06:01.066529",
+      "active_from": "2026-07-17T23:05:00.454699",
+      "expires": "2026-07-17T23:06:00.454699",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-01T15:05:01.066529",
-      "unique_id": "f678e6f6-8c17-41f3-8da2-48ea59313af5",
+      "created_at": "2026-07-17T23:05:00.454699",
+      "unique_id": "f9738a96-7f83-4948-b7e6-afb04ea041a2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T15:05:02.937846"
+      "consumed_at": "2026-07-17T23:05:02.286157"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-01T16:00:01.974605",
-      "expires": "2026-03-01T16:01:01.974605",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T16:00:01.974605",
-      "unique_id": "2c299bdc-7972-4ee4-bf69-00b8fddc30d7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T16:00:03.977794"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T16:00:01.974605",
-      "expires": "2026-03-01T16:01:01.974605",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T16:00:01.974605",
-      "unique_id": "2c299bdc-7972-4ee4-bf69-00b8fddc30d7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T16:00:03.977794"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T17:00:00.432363",
-      "expires": "2026-03-01T17:01:00.432363",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T17:00:00.432363",
-      "unique_id": "05d319a7-a61b-431a-8cc7-742cfb94e82e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T17:00:02.438730"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T17:00:00.432363",
-      "expires": "2026-03-01T17:01:00.432363",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T17:00:00.432363",
-      "unique_id": "05d319a7-a61b-431a-8cc7-742cfb94e82e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T17:00:02.438730"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T17:05:01.847525",
-      "expires": "2026-03-01T17:06:01.847525",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T17:05:01.847525",
-      "unique_id": "39b069e7-b7ae-438f-a0d7-bd240615d9b3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T17:05:03.653208"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T17:05:01.847525",
-      "expires": "2026-03-01T17:06:01.847525",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T17:05:01.847525",
-      "unique_id": "39b069e7-b7ae-438f-a0d7-bd240615d9b3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T17:05:03.653208"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T18:00:00.145502",
-      "expires": "2026-03-01T18:01:00.145502",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T18:00:00.145502",
-      "unique_id": "f5ce7e24-b45e-44b8-b921-74719406e820",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T18:00:02.144633"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T18:00:00.145502",
-      "expires": "2026-03-01T18:01:00.145502",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T18:00:00.145502",
-      "unique_id": "f5ce7e24-b45e-44b8-b921-74719406e820",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T18:00:02.144633"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T19:00:00.644819",
-      "expires": "2026-03-01T19:01:00.644819",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T19:00:00.644819",
-      "unique_id": "4fa68831-740b-4921-904d-335f7b0d19b0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T19:00:02.654970"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T19:00:00.644819",
-      "expires": "2026-03-01T19:01:00.644819",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T19:00:00.644819",
-      "unique_id": "4fa68831-740b-4921-904d-335f7b0d19b0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T19:00:02.654970"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T19:05:01.364475",
-      "expires": "2026-03-01T19:06:01.364475",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T19:05:01.364475",
-      "unique_id": "cea178bc-55b8-43f2-8666-e49f6582cb34",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T19:05:03.157129"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T19:05:01.364475",
-      "expires": "2026-03-01T19:06:01.364475",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T19:05:01.364475",
-      "unique_id": "cea178bc-55b8-43f2-8666-e49f6582cb34",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T19:05:03.157129"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T20:00:00.300279",
-      "expires": "2026-03-01T20:01:00.300279",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T20:00:00.300279",
-      "unique_id": "eea0736c-06c0-4907-b898-8c7a04ec373d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T20:00:02.313320"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T20:00:00.300279",
-      "expires": "2026-03-01T20:01:00.300279",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T20:00:00.300279",
-      "unique_id": "eea0736c-06c0-4907-b898-8c7a04ec373d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T20:00:02.313320"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T21:00:00.603703",
-      "expires": "2026-03-01T21:01:00.603703",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T21:00:00.603703",
-      "unique_id": "a0d90b41-88ff-47c5-9219-8beba3467f85",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T21:00:02.624562"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T21:00:00.603703",
-      "expires": "2026-03-01T21:01:00.603703",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T21:00:00.603703",
-      "unique_id": "a0d90b41-88ff-47c5-9219-8beba3467f85",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T21:00:02.624562"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T21:05:01.786511",
-      "expires": "2026-03-01T21:06:01.786511",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T21:05:01.786511",
-      "unique_id": "e47b67ba-b8ed-4d2e-8589-26531c266e8a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T21:05:03.550476"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T21:05:01.786511",
-      "expires": "2026-03-01T21:06:01.786511",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T21:05:01.786511",
-      "unique_id": "e47b67ba-b8ed-4d2e-8589-26531c266e8a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T21:05:03.550476"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T22:00:00.099968",
-      "expires": "2026-03-01T22:01:00.099968",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T22:00:00.099968",
-      "unique_id": "9b530a93-9337-4680-8d3a-b15bccf1486e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T22:00:02.176764"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T22:00:00.099968",
-      "expires": "2026-03-01T22:01:00.099968",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T22:00:00.099968",
-      "unique_id": "9b530a93-9337-4680-8d3a-b15bccf1486e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T22:00:02.176764"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T23:00:01.478708",
-      "expires": "2026-03-01T23:01:01.478708",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T23:00:01.478708",
-      "unique_id": "9d96b576-27d0-4719-a2eb-53f0ce5bfbe9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T23:00:03.535937"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-01T23:00:01.478708",
-      "expires": "2026-03-01T23:01:01.478708",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-03-01T23:00:01.478708",
-      "unique_id": "9d96b576-27d0-4719-a2eb-53f0ce5bfbe9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T23:00:03.535937"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T23:05:00.295502",
-      "expires": "2026-03-01T23:06:00.295502",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T23:05:00.295502",
-      "unique_id": "22c31a2a-a06c-4589-ae0e-ecb4e3abfd28",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T23:05:02.059072"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-03-01T23:05:00.295502",
-      "expires": "2026-03-01T23:06:00.295502",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-03-01T23:05:00.295502",
-      "unique_id": "22c31a2a-a06c-4589-ae0e-ecb4e3abfd28",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-01T23:05:02.059072"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-03-02T06:00:15.929028",
-      "expires": "2026-03-02T06:01:15.929028",
+      "active_from": "2026-07-18T06:00:11.187441",
+      "expires": "2026-07-18T06:01:11.187441",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2026-03-02T06:00:15.929028",
-      "unique_id": "7cf007d2-f678-4c50-a466-2287ea4836ce",
+      "created_at": "2026-07-18T06:00:11.187441",
+      "unique_id": "971bb226-f1fa-4d49-8843-fd287d7ee45f",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T06:00:17.923279"
+      "consumed_at": "2026-07-18T06:00:12.197050"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T06:00:15.929028",
-      "expires": "2026-03-02T06:01:15.929028",
+      "active_from": "2026-07-18T06:00:11.187441",
+      "expires": "2026-07-18T06:01:11.187441",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2026-03-02T06:00:15.929028",
-      "unique_id": "7cf007d2-f678-4c50-a466-2287ea4836ce",
+      "created_at": "2026-07-18T06:00:11.187441",
+      "unique_id": "971bb226-f1fa-4d49-8843-fd287d7ee45f",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T06:00:17.923279"
+      "consumed_at": "2026-07-18T06:00:12.197050"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T07:00:00.065800",
-      "expires": "2026-03-02T07:01:00.065800",
+      "active_from": "2026-07-18T07:00:01.109414",
+      "expires": "2026-07-18T07:01:01.109414",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T07:00:00.065800",
-      "unique_id": "cd9fe99d-f1f4-4606-887b-1f1bfabf9aa0",
+      "created_at": "2026-07-18T07:00:01.109414",
+      "unique_id": "849f46f0-5e8e-4539-8ddc-0546c8356301",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T07:00:02.075653"
+      "consumed_at": "2026-07-18T07:00:03.067468"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T07:00:00.065800",
-      "expires": "2026-03-02T07:01:00.065800",
+      "active_from": "2026-07-18T07:00:01.109414",
+      "expires": "2026-07-18T07:01:01.109414",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T07:00:00.065800",
-      "unique_id": "cd9fe99d-f1f4-4606-887b-1f1bfabf9aa0",
+      "created_at": "2026-07-18T07:00:01.109414",
+      "unique_id": "849f46f0-5e8e-4539-8ddc-0546c8356301",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T07:00:02.075653"
+      "consumed_at": "2026-07-18T07:00:03.067468"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T07:05:00.569410",
-      "expires": "2026-03-02T07:06:00.569410",
+      "active_from": "2026-07-18T07:05:02.235824",
+      "expires": "2026-07-18T07:06:02.235824",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T07:05:00.569410",
-      "unique_id": "679a99b8-950e-4e0a-ae4c-0ad8e4ef2ded",
+      "created_at": "2026-07-18T07:05:02.235824",
+      "unique_id": "0daa9903-ab20-4298-bcb9-7400c3ffaf82",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T07:05:02.401461"
+      "consumed_at": "2026-07-18T07:05:04.128489"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T07:05:00.569410",
-      "expires": "2026-03-02T07:06:00.569410",
+      "active_from": "2026-07-18T07:05:02.235824",
+      "expires": "2026-07-18T07:06:02.235824",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T07:05:00.569410",
-      "unique_id": "679a99b8-950e-4e0a-ae4c-0ad8e4ef2ded",
+      "created_at": "2026-07-18T07:05:02.235824",
+      "unique_id": "0daa9903-ab20-4298-bcb9-7400c3ffaf82",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T07:05:02.401461"
+      "consumed_at": "2026-07-18T07:05:04.128489"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T08:00:00.147192",
-      "expires": "2026-03-02T08:01:00.147192",
+      "active_from": "2026-07-18T08:00:00.583879",
+      "expires": "2026-07-18T08:01:00.583879",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T08:00:00.147192",
-      "unique_id": "b4755a7d-f8e9-4e13-8154-f71793ff886b",
+      "created_at": "2026-07-18T08:00:00.583879",
+      "unique_id": "527219ab-5da4-4227-80b7-15b235aab64d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T08:00:02.213096"
+      "consumed_at": "2026-07-18T08:00:02.553462"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T08:00:00.147192",
-      "expires": "2026-03-02T08:01:00.147192",
+      "active_from": "2026-07-18T08:00:00.583879",
+      "expires": "2026-07-18T08:01:00.583879",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T08:00:00.147192",
-      "unique_id": "b4755a7d-f8e9-4e13-8154-f71793ff886b",
+      "created_at": "2026-07-18T08:00:00.583879",
+      "unique_id": "527219ab-5da4-4227-80b7-15b235aab64d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T08:00:02.213096"
+      "consumed_at": "2026-07-18T08:00:02.553462"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T09:00:00.281335",
-      "expires": "2026-03-02T09:01:00.281335",
+      "active_from": "2026-07-18T09:00:01.463107",
+      "expires": "2026-07-18T09:01:01.463107",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T09:00:00.281335",
-      "unique_id": "dd53955e-e870-4c05-ba86-af391a5a664d",
+      "created_at": "2026-07-18T09:00:01.463107",
+      "unique_id": "5ecb6ab6-0015-4768-9d7c-de2c61d7ec13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T09:00:02.265442"
+      "consumed_at": "2026-07-18T09:00:03.469350"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T09:00:00.281335",
-      "expires": "2026-03-02T09:01:00.281335",
+      "active_from": "2026-07-18T09:00:01.463107",
+      "expires": "2026-07-18T09:01:01.463107",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T09:00:00.281335",
-      "unique_id": "dd53955e-e870-4c05-ba86-af391a5a664d",
+      "created_at": "2026-07-18T09:00:01.463107",
+      "unique_id": "5ecb6ab6-0015-4768-9d7c-de2c61d7ec13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T09:00:02.265442"
+      "consumed_at": "2026-07-18T09:00:03.469350"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T09:05:00.697243",
-      "expires": "2026-03-02T09:06:00.697243",
+      "active_from": "2026-07-18T09:05:01.723230",
+      "expires": "2026-07-18T09:06:01.723230",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T09:05:00.697243",
-      "unique_id": "22ecfb4b-7211-4c5b-9507-95a1d6eb5787",
+      "created_at": "2026-07-18T09:05:01.723230",
+      "unique_id": "93f4fb51-fb96-4a86-81aa-4c7b352f546b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T09:05:02.583908"
+      "consumed_at": "2026-07-18T09:05:03.567664"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T09:05:00.697243",
-      "expires": "2026-03-02T09:06:00.697243",
+      "active_from": "2026-07-18T09:05:01.723230",
+      "expires": "2026-07-18T09:06:01.723230",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T09:05:00.697243",
-      "unique_id": "22ecfb4b-7211-4c5b-9507-95a1d6eb5787",
+      "created_at": "2026-07-18T09:05:01.723230",
+      "unique_id": "93f4fb51-fb96-4a86-81aa-4c7b352f546b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T09:05:02.583908"
+      "consumed_at": "2026-07-18T09:05:03.567664"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T10:00:01.645356",
-      "expires": "2026-03-02T10:01:01.645356",
+      "active_from": "2026-07-18T10:00:01.065332",
+      "expires": "2026-07-18T10:01:01.065332",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T10:00:01.645356",
-      "unique_id": "1fb20ee5-bd4a-4597-acf7-c46d63202eb8",
+      "created_at": "2026-07-18T10:00:01.065332",
+      "unique_id": "9f307f37-fce3-4529-ae89-5e8ae4162321",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T10:00:03.622136"
+      "consumed_at": "2026-07-18T10:00:03.052303"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T10:00:01.645356",
-      "expires": "2026-03-02T10:01:01.645356",
+      "active_from": "2026-07-18T10:00:01.065332",
+      "expires": "2026-07-18T10:01:01.065332",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T10:00:01.645356",
-      "unique_id": "1fb20ee5-bd4a-4597-acf7-c46d63202eb8",
+      "created_at": "2026-07-18T10:00:01.065332",
+      "unique_id": "9f307f37-fce3-4529-ae89-5e8ae4162321",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T10:00:03.622136"
+      "consumed_at": "2026-07-18T10:00:03.052303"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T11:00:00.628684",
-      "expires": "2026-03-02T11:01:00.628684",
+      "active_from": "2026-07-18T11:00:01.103627",
+      "expires": "2026-07-18T11:01:01.103627",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T11:00:00.628684",
-      "unique_id": "0a8c4392-8562-4573-9301-5bb00bf606a4",
+      "created_at": "2026-07-18T11:00:01.103627",
+      "unique_id": "4623a047-43b9-41eb-b80d-ea4985fbcc13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T11:00:02.697830"
+      "consumed_at": "2026-07-18T11:00:03.140839"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T11:00:00.628684",
-      "expires": "2026-03-02T11:01:00.628684",
+      "active_from": "2026-07-18T11:00:01.103627",
+      "expires": "2026-07-18T11:01:01.103627",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T11:00:00.628684",
-      "unique_id": "0a8c4392-8562-4573-9301-5bb00bf606a4",
+      "created_at": "2026-07-18T11:00:01.103627",
+      "unique_id": "4623a047-43b9-41eb-b80d-ea4985fbcc13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T11:00:02.697830"
+      "consumed_at": "2026-07-18T11:00:03.140839"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T11:05:02.104551",
-      "expires": "2026-03-02T11:06:02.104551",
+      "active_from": "2026-07-18T11:05:01.953489",
+      "expires": "2026-07-18T11:06:01.953489",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T11:05:02.104551",
-      "unique_id": "2cfdf7b5-02b7-432f-879c-056ccd3b367f",
+      "created_at": "2026-07-18T11:05:01.953489",
+      "unique_id": "8dbece9c-cfbf-43e1-ad29-9dfd5f29051e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T11:05:03.952668"
+      "consumed_at": "2026-07-18T11:05:03.867719"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T11:05:02.104551",
-      "expires": "2026-03-02T11:06:02.104551",
+      "active_from": "2026-07-18T11:05:01.953489",
+      "expires": "2026-07-18T11:06:01.953489",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T11:05:02.104551",
-      "unique_id": "2cfdf7b5-02b7-432f-879c-056ccd3b367f",
+      "created_at": "2026-07-18T11:05:01.953489",
+      "unique_id": "8dbece9c-cfbf-43e1-ad29-9dfd5f29051e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T11:05:03.952668"
+      "consumed_at": "2026-07-18T11:05:03.867719"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T12:00:01.709006",
-      "expires": "2026-03-02T12:01:01.709006",
+      "active_from": "2026-07-18T12:00:00.865904",
+      "expires": "2026-07-18T12:01:00.865904",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T12:00:01.709006",
-      "unique_id": "96c61921-5bdb-4ec7-9d45-9f4a41f5df49",
+      "created_at": "2026-07-18T12:00:00.865904",
+      "unique_id": "54e33006-ad52-4a7c-ae68-204359e6d94a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T12:00:03.746351"
+      "consumed_at": "2026-07-18T12:00:02.894936"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T12:00:01.709006",
-      "expires": "2026-03-02T12:01:01.709006",
+      "active_from": "2026-07-18T12:00:00.865904",
+      "expires": "2026-07-18T12:01:00.865904",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T12:00:01.709006",
-      "unique_id": "96c61921-5bdb-4ec7-9d45-9f4a41f5df49",
+      "created_at": "2026-07-18T12:00:00.865904",
+      "unique_id": "54e33006-ad52-4a7c-ae68-204359e6d94a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T12:00:03.746351"
+      "consumed_at": "2026-07-18T12:00:02.894936"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T15:00:01.592010",
-      "expires": "2026-03-02T15:01:01.592010",
+      "active_from": "2026-07-18T13:00:00.616512",
+      "expires": "2026-07-18T13:01:00.616512",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T15:00:01.592010",
-      "unique_id": "5c5ac638-2779-424d-9c45-c06072517739",
+      "created_at": "2026-07-18T13:00:00.616512",
+      "unique_id": "1f514b35-dff2-43b8-aa98-75d957d524e6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T15:00:03.578870"
+      "consumed_at": "2026-07-18T13:00:02.647247"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T15:00:01.592010",
-      "expires": "2026-03-02T15:01:01.592010",
+      "active_from": "2026-07-18T13:00:00.616512",
+      "expires": "2026-07-18T13:01:00.616512",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T15:00:01.592010",
-      "unique_id": "5c5ac638-2779-424d-9c45-c06072517739",
+      "created_at": "2026-07-18T13:00:00.616512",
+      "unique_id": "1f514b35-dff2-43b8-aa98-75d957d524e6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T15:00:03.578870"
+      "consumed_at": "2026-07-18T13:00:02.647247"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T15:05:01.436247",
-      "expires": "2026-03-02T15:06:01.436247",
+      "active_from": "2026-07-18T13:05:02.131910",
+      "expires": "2026-07-18T13:06:02.131910",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T15:05:01.436247",
-      "unique_id": "1d4a3d77-2c15-43aa-89e7-637eec9bf47e",
+      "created_at": "2026-07-18T13:05:02.131910",
+      "unique_id": "58bcb1dd-7006-46f8-8de3-469749e58196",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T15:05:03.242626"
+      "consumed_at": "2026-07-18T13:05:04.052136"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T15:05:01.436247",
-      "expires": "2026-03-02T15:06:01.436247",
+      "active_from": "2026-07-18T13:05:02.131910",
+      "expires": "2026-07-18T13:06:02.131910",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T15:05:01.436247",
-      "unique_id": "1d4a3d77-2c15-43aa-89e7-637eec9bf47e",
+      "created_at": "2026-07-18T13:05:02.131910",
+      "unique_id": "58bcb1dd-7006-46f8-8de3-469749e58196",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T15:05:03.242626"
+      "consumed_at": "2026-07-18T13:05:04.052136"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T16:00:01.610566",
-      "expires": "2026-03-02T16:01:01.610566",
+      "active_from": "2026-07-18T14:00:00.065532",
+      "expires": "2026-07-18T14:01:00.065532",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T16:00:01.610566",
-      "unique_id": "24d53991-0fcc-469c-931b-46df4c8e50b5",
+      "created_at": "2026-07-18T14:00:00.065532",
+      "unique_id": "eaed8f62-c5fb-408e-8252-926d4a761e04",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T16:00:03.500915"
+      "consumed_at": "2026-07-18T14:00:02.097194"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T16:00:01.610566",
-      "expires": "2026-03-02T16:01:01.610566",
+      "active_from": "2026-07-18T14:00:00.065532",
+      "expires": "2026-07-18T14:01:00.065532",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T16:00:01.610566",
-      "unique_id": "24d53991-0fcc-469c-931b-46df4c8e50b5",
+      "created_at": "2026-07-18T14:00:00.065532",
+      "unique_id": "eaed8f62-c5fb-408e-8252-926d4a761e04",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T16:00:03.500915"
+      "consumed_at": "2026-07-18T14:00:02.097194"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T17:00:00.658906",
-      "expires": "2026-03-02T17:01:00.658906",
+      "active_from": "2026-07-18T15:00:00.667810",
+      "expires": "2026-07-18T15:01:00.667810",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T17:00:00.658906",
-      "unique_id": "ebb7b3f9-5d68-461b-a4ed-6c0f25b3a92b",
+      "created_at": "2026-07-18T15:00:00.667810",
+      "unique_id": "7e210313-6ead-44b2-9257-0233f0602bd5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T17:00:02.662398"
+      "consumed_at": "2026-07-18T15:00:02.723792"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T17:00:00.658906",
-      "expires": "2026-03-02T17:01:00.658906",
+      "active_from": "2026-07-18T15:00:00.667810",
+      "expires": "2026-07-18T15:01:00.667810",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T17:00:00.658906",
-      "unique_id": "ebb7b3f9-5d68-461b-a4ed-6c0f25b3a92b",
+      "created_at": "2026-07-18T15:00:00.667810",
+      "unique_id": "7e210313-6ead-44b2-9257-0233f0602bd5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T17:00:02.662398"
+      "consumed_at": "2026-07-18T15:00:02.723792"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T17:04:59.523138",
-      "expires": "2026-03-02T17:05:59.523138",
+      "active_from": "2026-07-18T15:05:00.714709",
+      "expires": "2026-07-18T15:06:00.714709",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T17:04:59.523138",
-      "unique_id": "3a25ff78-f108-4d22-91f3-43e7d9816703",
+      "created_at": "2026-07-18T15:05:00.714709",
+      "unique_id": "c6042958-215b-48a7-96d4-a3c5c36537d1",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T17:05:02.495175"
+      "consumed_at": "2026-07-18T15:05:02.539687"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T17:04:59.523138",
-      "expires": "2026-03-02T17:05:59.523138",
+      "active_from": "2026-07-18T15:05:00.714709",
+      "expires": "2026-07-18T15:06:00.714709",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T17:04:59.523138",
-      "unique_id": "3a25ff78-f108-4d22-91f3-43e7d9816703",
+      "created_at": "2026-07-18T15:05:00.714709",
+      "unique_id": "c6042958-215b-48a7-96d4-a3c5c36537d1",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T17:05:02.495175"
+      "consumed_at": "2026-07-18T15:05:02.539687"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T18:00:01.883795",
-      "expires": "2026-03-02T18:01:01.883795",
+      "active_from": "2026-07-18T16:00:00.420711",
+      "expires": "2026-07-18T16:01:00.420711",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T18:00:01.883795",
-      "unique_id": "f90d15ce-29d0-4942-9f8e-143bfee0cbd1",
+      "created_at": "2026-07-18T16:00:00.420711",
+      "unique_id": "9dcab70a-0108-4e81-ae70-ca11dc2d511c",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T18:00:03.882357"
+      "consumed_at": "2026-07-18T16:00:02.468871"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T18:00:01.883795",
-      "expires": "2026-03-02T18:01:01.883795",
+      "active_from": "2026-07-18T16:00:00.420711",
+      "expires": "2026-07-18T16:01:00.420711",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T18:00:01.883795",
-      "unique_id": "f90d15ce-29d0-4942-9f8e-143bfee0cbd1",
+      "created_at": "2026-07-18T16:00:00.420711",
+      "unique_id": "9dcab70a-0108-4e81-ae70-ca11dc2d511c",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T18:00:03.882357"
+      "consumed_at": "2026-07-18T16:00:02.468871"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T19:00:01.819662",
-      "expires": "2026-03-02T19:01:01.819662",
+      "active_from": "2026-07-18T17:00:00.990932",
+      "expires": "2026-07-18T17:01:00.990932",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T19:00:01.819662",
-      "unique_id": "181b140d-fdc7-474d-bae7-fe3ba83f9dba",
+      "created_at": "2026-07-18T17:00:00.990932",
+      "unique_id": "b5984538-4461-4b3a-8ca4-33fc47466d98",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T19:00:03.808095"
+      "consumed_at": "2026-07-18T17:00:03.037542"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T19:00:01.819662",
-      "expires": "2026-03-02T19:01:01.819662",
+      "active_from": "2026-07-18T17:00:00.990932",
+      "expires": "2026-07-18T17:01:00.990932",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T19:00:01.819662",
-      "unique_id": "181b140d-fdc7-474d-bae7-fe3ba83f9dba",
+      "created_at": "2026-07-18T17:00:00.990932",
+      "unique_id": "b5984538-4461-4b3a-8ca4-33fc47466d98",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T19:00:03.808095"
+      "consumed_at": "2026-07-18T17:00:03.037542"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T19:05:00.434689",
-      "expires": "2026-03-02T19:06:00.434689",
+      "active_from": "2026-07-18T17:05:00.641142",
+      "expires": "2026-07-18T17:06:00.641142",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T19:05:00.434689",
-      "unique_id": "03261bf7-4a07-44f4-87ee-190e884496c7",
+      "created_at": "2026-07-18T17:05:00.641142",
+      "unique_id": "527877bf-b1b3-4116-a225-d5174f4ccc38",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T19:05:02.225973"
+      "consumed_at": "2026-07-18T17:05:02.468740"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T19:05:00.434689",
-      "expires": "2026-03-02T19:06:00.434689",
+      "active_from": "2026-07-18T17:05:00.641142",
+      "expires": "2026-07-18T17:06:00.641142",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T19:05:00.434689",
-      "unique_id": "03261bf7-4a07-44f4-87ee-190e884496c7",
+      "created_at": "2026-07-18T17:05:00.641142",
+      "unique_id": "527877bf-b1b3-4116-a225-d5174f4ccc38",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T19:05:02.225973"
+      "consumed_at": "2026-07-18T17:05:02.468740"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T20:00:00.667323",
-      "expires": "2026-03-02T20:01:00.667323",
+      "active_from": "2026-07-18T18:00:01.054705",
+      "expires": "2026-07-18T18:01:01.054705",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T20:00:00.667323",
-      "unique_id": "b147e990-e97e-4fd0-b486-f51f771fab88",
+      "created_at": "2026-07-18T18:00:01.054705",
+      "unique_id": "57a7964e-bd04-4d66-8b13-2d68e2767ea9",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T20:00:02.644409"
+      "consumed_at": "2026-07-18T18:00:03.105859"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T20:00:00.667323",
-      "expires": "2026-03-02T20:01:00.667323",
+      "active_from": "2026-07-18T18:00:01.054705",
+      "expires": "2026-07-18T18:01:01.054705",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T20:00:00.667323",
-      "unique_id": "b147e990-e97e-4fd0-b486-f51f771fab88",
+      "created_at": "2026-07-18T18:00:01.054705",
+      "unique_id": "57a7964e-bd04-4d66-8b13-2d68e2767ea9",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T20:00:02.644409"
+      "consumed_at": "2026-07-18T18:00:03.105859"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T21:00:02.023083",
-      "expires": "2026-03-02T21:01:02.023083",
+      "active_from": "2026-07-18T19:00:01.541843",
+      "expires": "2026-07-18T19:01:01.541843",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T21:00:02.023083",
-      "unique_id": "9d304feb-8871-4b93-8e3e-4d4222a2d2a0",
+      "created_at": "2026-07-18T19:00:01.541843",
+      "unique_id": "0ad74080-e54c-4955-a5ab-a58679224c13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T21:00:04.037028"
+      "consumed_at": "2026-07-18T19:00:03.601574"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T21:00:02.023083",
-      "expires": "2026-03-02T21:01:02.023083",
+      "active_from": "2026-07-18T19:00:01.541843",
+      "expires": "2026-07-18T19:01:01.541843",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T21:00:02.023083",
-      "unique_id": "9d304feb-8871-4b93-8e3e-4d4222a2d2a0",
+      "created_at": "2026-07-18T19:00:01.541843",
+      "unique_id": "0ad74080-e54c-4955-a5ab-a58679224c13",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T21:00:04.037028"
+      "consumed_at": "2026-07-18T19:00:03.601574"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T21:05:00.673982",
-      "expires": "2026-03-02T21:06:00.673982",
+      "active_from": "2026-07-18T19:05:01.754599",
+      "expires": "2026-07-18T19:06:01.754599",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T21:05:00.673982",
-      "unique_id": "0db8ef08-a95d-4bf1-92f4-9a7f7574b0e1",
+      "created_at": "2026-07-18T19:05:01.754599",
+      "unique_id": "e34c3308-19ba-464c-a7bf-2489e3cbcc85",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T21:05:02.477816"
+      "consumed_at": "2026-07-18T19:05:03.590802"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T21:05:00.673982",
-      "expires": "2026-03-02T21:06:00.673982",
+      "active_from": "2026-07-18T19:05:01.754599",
+      "expires": "2026-07-18T19:06:01.754599",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T21:05:00.673982",
-      "unique_id": "0db8ef08-a95d-4bf1-92f4-9a7f7574b0e1",
+      "created_at": "2026-07-18T19:05:01.754599",
+      "unique_id": "e34c3308-19ba-464c-a7bf-2489e3cbcc85",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T21:05:02.477816"
+      "consumed_at": "2026-07-18T19:05:03.590802"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T22:00:00.939796",
-      "expires": "2026-03-02T22:01:00.939796",
+      "active_from": "2026-07-18T20:00:01.444706",
+      "expires": "2026-07-18T20:01:01.444706",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T22:00:00.939796",
-      "unique_id": "ba427058-d642-41bc-82f8-727bbbfb74e1",
+      "created_at": "2026-07-18T20:00:01.444706",
+      "unique_id": "13b95bca-e8b9-4236-a8b4-52523e68d6a6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T22:00:02.954323"
+      "consumed_at": "2026-07-18T20:00:03.430500"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T22:00:00.939796",
-      "expires": "2026-03-02T22:01:00.939796",
+      "active_from": "2026-07-18T20:00:01.444706",
+      "expires": "2026-07-18T20:01:01.444706",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T22:00:00.939796",
-      "unique_id": "ba427058-d642-41bc-82f8-727bbbfb74e1",
+      "created_at": "2026-07-18T20:00:01.444706",
+      "unique_id": "13b95bca-e8b9-4236-a8b4-52523e68d6a6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T22:00:02.954323"
+      "consumed_at": "2026-07-18T20:00:03.430500"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T23:00:01.013203",
-      "expires": "2026-03-02T23:01:01.013203",
+      "active_from": "2026-07-18T21:00:01.376143",
+      "expires": "2026-07-18T21:01:01.376143",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T23:00:01.013203",
-      "unique_id": "2c46ddda-7b3d-4c8e-bfc8-684357c4aad5",
+      "created_at": "2026-07-18T21:00:01.376143",
+      "unique_id": "8ddab31f-83a4-4f4a-9ddb-d0b01c0d261d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T23:00:02.985858"
+      "consumed_at": "2026-07-18T21:00:03.439284"
     },
     {
       "key": "Generate",
-      "active_from": "2026-03-02T23:00:01.013203",
-      "expires": "2026-03-02T23:01:01.013203",
+      "active_from": "2026-07-18T21:00:01.376143",
+      "expires": "2026-07-18T21:01:01.376143",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-03-02T23:00:01.013203",
-      "unique_id": "2c46ddda-7b3d-4c8e-bfc8-684357c4aad5",
+      "created_at": "2026-07-18T21:00:01.376143",
+      "unique_id": "8ddab31f-83a4-4f4a-9ddb-d0b01c0d261d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T23:00:02.985858"
+      "consumed_at": "2026-07-18T21:00:03.439284"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T23:05:01.756085",
-      "expires": "2026-03-02T23:06:01.756085",
+      "active_from": "2026-07-18T21:05:00.552356",
+      "expires": "2026-07-18T21:06:00.552356",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T23:05:01.756085",
-      "unique_id": "c1829b11-d597-43c3-bd9f-6268a8ab2772",
+      "created_at": "2026-07-18T21:05:00.552356",
+      "unique_id": "9362fc99-08ca-409e-bccc-da68a78846e4",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T23:05:03.537416"
+      "consumed_at": "2026-07-18T21:05:02.375257"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-03-02T23:05:01.756085",
-      "expires": "2026-03-02T23:06:01.756085",
+      "active_from": "2026-07-18T21:05:00.552356",
+      "expires": "2026-07-18T21:06:00.552356",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-03-02T23:05:01.756085",
-      "unique_id": "c1829b11-d597-43c3-bd9f-6268a8ab2772",
+      "created_at": "2026-07-18T21:05:00.552356",
+      "unique_id": "9362fc99-08ca-409e-bccc-da68a78846e4",
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2026-03-02T23:05:03.537416"
+      "consumed_at": "2026-07-18T21:05:02.375257"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-18T22:00:00.054534",
+      "expires": "2026-07-18T22:01:00.054534",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-18T22:00:00.054534",
+      "unique_id": "ba4a1f22-59d5-4249-94ad-07d7541e53e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T22:00:02.019679"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-18T22:00:00.054534",
+      "expires": "2026-07-18T22:01:00.054534",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-18T22:00:00.054534",
+      "unique_id": "ba4a1f22-59d5-4249-94ad-07d7541e53e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T22:00:02.019679"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-18T23:00:00.843976",
+      "expires": "2026-07-18T23:01:00.843976",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-18T23:00:00.843976",
+      "unique_id": "7669c314-582a-4e60-a1f8-7f600f0fe248",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T23:00:02.894218"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-18T23:00:00.843976",
+      "expires": "2026-07-18T23:01:00.843976",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-18T23:00:00.843976",
+      "unique_id": "7669c314-582a-4e60-a1f8-7f600f0fe248",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T23:00:02.894218"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-18T23:05:01.819881",
+      "expires": "2026-07-18T23:06:01.819881",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-18T23:05:01.819881",
+      "unique_id": "1b5a7ce1-e4ac-48f5-96be-3c3582348a07",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T23:05:03.653843"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-18T23:05:01.819881",
+      "expires": "2026-07-18T23:06:01.819881",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-18T23:05:01.819881",
+      "unique_id": "1b5a7ce1-e4ac-48f5-96be-3c3582348a07",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-18T23:05:03.653843"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T06:00:10.399109",
+      "expires": "2026-07-19T06:01:10.399109",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2026-07-19T06:00:10.399109",
+      "unique_id": "f19bdbf2-99ca-4aac-9a12-c8d47e4c6d6e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T06:00:12.463532"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T06:00:10.399109",
+      "expires": "2026-07-19T06:01:10.399109",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2026-07-19T06:00:10.399109",
+      "unique_id": "f19bdbf2-99ca-4aac-9a12-c8d47e4c6d6e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T06:00:12.463532"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T07:00:00.398605",
+      "expires": "2026-07-19T07:01:00.398605",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T07:00:00.398605",
+      "unique_id": "c847353e-0332-4ebd-ac48-3bdc7d09f9b8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T07:00:02.364022"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T07:00:00.398605",
+      "expires": "2026-07-19T07:01:00.398605",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T07:00:00.398605",
+      "unique_id": "c847353e-0332-4ebd-ac48-3bdc7d09f9b8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T07:00:02.364022"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T07:05:01.536612",
+      "expires": "2026-07-19T07:06:01.536612",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T07:05:01.536612",
+      "unique_id": "ec48f84a-bb3c-4c00-a5ab-6bc52079b3ee",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T07:05:03.355354"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T07:05:01.536612",
+      "expires": "2026-07-19T07:06:01.536612",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T07:05:01.536612",
+      "unique_id": "ec48f84a-bb3c-4c00-a5ab-6bc52079b3ee",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T07:05:03.355354"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T08:00:00.149756",
+      "expires": "2026-07-19T08:01:00.149756",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T08:00:00.149756",
+      "unique_id": "cdb69f5f-2f73-47b6-b210-e3eb6ba246e8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T08:00:02.160299"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T08:00:00.149756",
+      "expires": "2026-07-19T08:01:00.149756",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T08:00:00.149756",
+      "unique_id": "cdb69f5f-2f73-47b6-b210-e3eb6ba246e8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T08:00:02.160299"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T09:00:00.158527",
+      "expires": "2026-07-19T09:01:00.158527",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T09:00:00.158527",
+      "unique_id": "78a73739-ee22-4d14-822f-07a43dc25395",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T09:00:02.238673"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T09:00:00.158527",
+      "expires": "2026-07-19T09:01:00.158527",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T09:00:00.158527",
+      "unique_id": "78a73739-ee22-4d14-822f-07a43dc25395",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T09:00:02.238673"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T09:05:00.999377",
+      "expires": "2026-07-19T09:06:00.999377",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T09:05:00.999377",
+      "unique_id": "fe799f9f-8b29-48e4-8e58-6054c0d45196",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T09:05:02.852148"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T09:05:00.999377",
+      "expires": "2026-07-19T09:06:00.999377",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T09:05:00.999377",
+      "unique_id": "fe799f9f-8b29-48e4-8e58-6054c0d45196",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T09:05:02.852148"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T10:00:00.186530",
+      "expires": "2026-07-19T10:01:00.186530",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T10:00:00.186530",
+      "unique_id": "236c21a7-570e-4a5c-8aeb-7eb568b1ecbe",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T10:00:02.246227"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T10:00:00.186530",
+      "expires": "2026-07-19T10:01:00.186530",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T10:00:00.186530",
+      "unique_id": "236c21a7-570e-4a5c-8aeb-7eb568b1ecbe",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T10:00:02.246227"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T11:00:00.647578",
+      "expires": "2026-07-19T11:01:00.647578",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T11:00:00.647578",
+      "unique_id": "a46a662d-ce33-42ac-9961-642b3d603464",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T11:00:02.703208"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-19T11:00:00.647578",
+      "expires": "2026-07-19T11:01:00.647578",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-19T11:00:00.647578",
+      "unique_id": "a46a662d-ce33-42ac-9961-642b3d603464",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T11:00:02.703208"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T11:05:01.966109",
+      "expires": "2026-07-19T11:06:01.966109",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T11:05:01.966109",
+      "unique_id": "0192ad5f-6d13-4933-b31d-626b9f94df18",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T11:05:03.879397"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-19T11:05:01.966109",
+      "expires": "2026-07-19T11:06:01.966109",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-19T11:05:01.966109",
+      "unique_id": "0192ad5f-6d13-4933-b31d-626b9f94df18",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2026-07-19T11:05:03.879397"
     }
   ]
 }
