@@ -8,13 +8,13 @@ from pathlib import Path
 
 # Application paths
 ROOT_DIR = Path(__file__).parent
-STATIC_FOLDER = 'build'
+STATIC_FOLDER = 'dist'
 OUTPUT_DIR = 'output'
 
 # Server settings
 HOST = "0.0.0.0"
 PORT = 5000
-DEBUG = True
+DEBUG = False
 WS_PORT = 8765
 
 # API settings
@@ -30,6 +30,22 @@ SCHEDULER_TICK_INTERVAL = 2.0  # Seconds between scheduler trigger checks
 SCHEDULER_TICK_BUFFER = 0.5    # Additional buffer time for scheduler operations 
 MAX_EVENT_HISTORY = 100
 MAX_SCHEDULER_LOG_SIZE = 5000
+
+# Alerting (Siren) — see utils/alerts/ and docs/ALERTING_PROPOSAL.md.
+# Credentials and recipient live in .env (ALERT_EMAIL_TO, GOOGLE_*,
+# HEALTHCHECK_PING_URL); env ALERTING_ENABLED=0 disables (tests/dev).
+ALERTING_ENABLED = True
+ALERT_QUEUE_MAX = 1000
+ALERT_STATE_PATH = str(ROOT_DIR / "logs" / "alerts_state.json")
+ALERT_THROTTLE = {
+    "critical": {"min_interval_s": 600, "reminder_s": 6 * 3600},
+    "error":    {"min_interval_s": 6 * 3600, "reminder_s": None},
+    "warning":  {"batch_flush_s": 3600},
+}
+ALERT_GLOBAL_MAX_PER_HOUR = 12   # storm brake; one alerting.storm email on breach
+ALERT_LOG_TAIL_LINES = 30
+HEARTBEAT_STALE_S = 600          # scheduler loop considered wedged after 10 min
+HEALTHCHECK_PING_INTERVAL_S = 300
 
 # User interaction settings
 USER_INTERACTION_WAIT_TIME = "2m"  # Wait time after user interaction before resuming normal operation

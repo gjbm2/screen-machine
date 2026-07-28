@@ -18,10 +18,12 @@ from flask_cors import CORS
 
 # Local imports
 from config import (
-    STATIC_FOLDER, OUTPUT_DIR, HOST, PORT, DEBUG, WS_PORT,
+    ROOT_DIR, STATIC_FOLDER, OUTPUT_DIR, HOST, PORT, DEBUG, WS_PORT,
     API_PREFIX, LOG_LIMIT
 )
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
+from utils.alerts import alert, init_alerting
+from utils.alerts import health as alerts_health
 from routes.generate import detect_file_type, save_jpeg_with_metadata, save_video_with_metadata
 from routes.alexa import process as alexa_process
 from routes.utils import encode_image_uploads, encode_reference_urls
@@ -75,11 +77,23 @@ app.register_blueprint(test_scheduler_bp)
 # Register utility blueprints (no prefix needed for utility routes)
 app.register_blueprint(file_bp)
 
+# Alerting (Siren): dispatch worker, threading.excepthook, Flask errorhandler.
+# Installed before schedulers start so their failures are observable.
+init_alerting(app)
+
 # Initialize schedulers from saved states
 with app.app_context():
     initialize_schedulers_from_disk()
 
 # API Routes
+@app.route(f'{API_PREFIX}/health', methods=['GET'])
+def api_health():
+    """Liveness/health payload; probed by the Deadman watchdog on the media
+    server (?probe=deadman) and usable for ad-hoc diagnosis."""
+    if request.args.get('probe') == 'deadman':
+        alerts_health.note_watchdog_probe()
+    return jsonify(alerts_health.build_health())
+
 @app.route(f'{API_PREFIX}/logs', methods=['GET'])
 def get_logs():
     """Retrieve recent application logs."""
@@ -138,6 +152,23 @@ def simulate_scheduler():
     """Handle scheduler simulation requests."""
     return simulate_scheduler_handler()
 
+# Unknown API paths must 404 as JSON for every method, never fall through to
+# the SPA page; Werkzeug matches all real /api rules before this fallback
+@app.route(API_PREFIX, defaults={'api_path': ''})
+@app.route(f'{API_PREFIX}/<path:api_path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def api_not_found(api_path):
+    return jsonify({"error": "not found", "path": f'api/{api_path}'}), 404
+
+# Legacy build/ assets: the Android APK lives outside the Vite build and the
+# frontend requests it at both /build/sdk/... and /sdk/... paths
+@app.route('/build/<path:asset_path>')
+def serve_build_asset(asset_path):
+    return send_from_directory(str(ROOT_DIR / 'build'), asset_path)
+
+@app.route('/sdk/<path:asset_path>')
+def serve_sdk_asset(asset_path):
+    return send_from_directory(str(ROOT_DIR / 'build' / 'sdk'), asset_path)
+
 # Static File Serving
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -146,7 +177,7 @@ def serve(path):
     # Handle output directory requests
     if path.startswith(f'{OUTPUT_DIR}/'):
         return send_from_directory(OUTPUT_DIR, path[len(OUTPUT_DIR)+1:])
-    
+
     # Handle React frontend requests
     if path != "" and os.path.exists(app.static_folder + '/' + path):
         if path.endswith('.js'):
@@ -157,9 +188,36 @@ def serve(path):
     else:
         return send_from_directory(app.static_folder, 'index.html')
 
+def _run_ws_server_supervised():
+    """The WS server used to run unsupervised: if its asyncio loop died,
+    Flask carried on with no overlays, no RunPod progress relay and no lux
+    ingestion. Restart it and tell the operator."""
+    import time as _time
+    while True:
+        try:
+            start_ws_server()
+            alert("ws.server_died",
+                  "Overlay WebSocket server exited; restarting in 5s",
+                  severity="critical")
+        except Exception as e:
+            alert("ws.server_died",
+                  "Overlay WebSocket server crashed; restarting in 5s",
+                  severity="critical", exc=e)
+        alerts_health.note_ws_restart()
+        _time.sleep(5)
+
 if __name__ == '__main__':
     info(f"Starting websockets server (to listen for front end messages on localhost:{WS_PORT}.")
-    Thread(target=start_ws_server, daemon=True).start()
-    
-    info(f"Starting Flask server on port {PORT}")
-    app.run(host=HOST, debug=DEBUG, port=PORT, use_reloader=False)
+    ws_thread = Thread(target=_run_ws_server_supervised, daemon=True, name="ws-server")
+    ws_thread.start()
+    alerts_health.register_ws_thread(ws_thread)
+
+    if DEBUG:
+        info(f"Starting Flask dev server on port {PORT} (DEBUG)")
+        app.run(host=HOST, debug=True, port=PORT, use_reloader=False)
+    else:
+        from waitress import serve as waitress_serve
+        info(f"Starting waitress server on port {PORT}")
+        # Generation requests block their worker on external APIs for minutes;
+        # the pool must stay large enough that kiosk /output polls never queue
+        waitress_serve(app, host=HOST, port=PORT, threads=64)
