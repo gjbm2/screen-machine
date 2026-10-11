@@ -12,11 +12,19 @@ publish_api = Blueprint('publish_api', __name__)
 PUBLISH_DESTINATIONS_FILE = findfile("publish-destinations.json")
 publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATIONS_FILE)
 
+# Device credentials/addresses are backend-only (Samsung pairing token, LAN IP,
+# MAC); no frontend code reads them, but this endpoint is public.
+_PRIVATE_DESTINATION_KEYS = ("samsung-token", "ip-address", "mac")
+
 @publish_api.route('/publish-destinations', methods=['GET'])
 def get_publish_destinations():
     """Get all available publish destinations"""
     try:
-        return jsonify(publish_destinations)
+        return jsonify([
+            {k: v for k, v in d.items() if k not in _PRIVATE_DESTINATION_KEYS}
+            if isinstance(d, dict) else d
+            for d in publish_destinations
+        ])
     except Exception as e:
         logging.error(f"Error getting publish destinations: {str(e)}")
         return jsonify({"error": "Failed to get publish destinations"}), 500

@@ -4,6 +4,7 @@ Blueprint at /api/admin-355729b8. All routes require
 Authorization: Bearer <ADMIN_API_TOKEN> (set in .env).
 """
 
+import base64
 import hmac
 import subprocess
 import os
@@ -14,17 +15,24 @@ from dotenv import dotenv_values
 admin_api = Blueprint('admin_api', __name__)
 
 
+def admin_token_ok(req) -> bool:
+    """True if the request carries the ADMIN_API_TOKEN bearer token."""
+    # Read lazily: this module is imported before app.py calls load_dotenv()
+    expected = os.environ.get('ADMIN_API_TOKEN', '')
+    auth = req.headers.get('Authorization', '')
+    provided = auth[7:] if auth.startswith('Bearer ') else ''
+    # Fail closed: an unset token means no access at all. Compare bytes:
+    # compare_digest raises on non-ASCII str (headers decode as latin-1)
+    return bool(expected) and hmac.compare_digest(
+        provided.encode('utf-8', 'surrogateescape'), expected.encode('utf-8'))
+
+
 @admin_api.before_request
 def _require_admin_token():
     # CORS preflight carries no credentials
     if request.method == 'OPTIONS':
         return None
-    # Read lazily: this module is imported before app.py calls load_dotenv()
-    expected = os.environ.get('ADMIN_API_TOKEN', '')
-    auth = request.headers.get('Authorization', '')
-    provided = auth[7:] if auth.startswith('Bearer ') else ''
-    # Fail closed: an unset token means no access at all
-    if not expected or not hmac.compare_digest(provided, expected):
+    if not admin_token_ok(request):
         return jsonify({'error': 'unauthorized'}), 401
 
 # Load SSH config from media-server env
@@ -180,11 +188,13 @@ def set_url():
 
     port = 9222 if screen == 'north' else 9223
 
-    # Write a CDP navigation script to remote, then execute it
-    script = _CDP_SCRIPT.replace('__PORT__', str(port)).replace('__URL__', url)
-    # Escape single quotes in the script for shell
-    escaped = script.replace("'", "'\\''")
-    cmd = f"echo '{escaped}' > /tmp/_cdp_nav.py && python3 /tmp/_cdp_nav.py"
+    # Write a CDP navigation script to remote, then execute it.
+    # repr() yields a valid Python string literal for the URL, and the script
+    # travels base64-encoded so no shell (some echos eat backslashes) can turn
+    # quotes in the URL into code on the media server.
+    script = _CDP_SCRIPT.replace('__PORT__', str(port)).replace('__URL__', repr(str(url)))
+    encoded = base64.b64encode(script.encode('utf-8')).decode('ascii')
+    cmd = f"echo {encoded} | base64 -d > /tmp/_cdp_nav.py && python3 /tmp/_cdp_nav.py"
     return jsonify(_ssh_run(cmd, timeout=15))
 
 
@@ -193,7 +203,7 @@ _CDP_SCRIPT = r"""
 import json, socket, os, re, sys, base64, urllib.request
 
 port = __PORT__
-url = "__URL__"
+url = __URL__
 
 try:
     tabs = json.loads(urllib.request.urlopen("http://localhost:%d/json" % port, timeout=3).read())

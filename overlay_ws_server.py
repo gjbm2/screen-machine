@@ -41,6 +41,40 @@ _WS_LOGGER.addFilter(_WebsocketsHandshakeNoiseFilter())
 # Registry for job progress listeners (used by generator.py)
 job_progress_listeners = {}  # job_id: list of asyncio.Queue
 job_progress_listeners_latest = {}  # job_id -> most recent update
+# Generators only read the entry for their own in-flight job, so keep the most
+# recently updated jobs and evict the oldest (previously grew without bound).
+MAX_TRACKED_JOBS = 500
+
+# Clients render these fields as HTML. External senders (RunPod worker sends
+# {job_id, comfy}; light relay sends {lux, sensor_name}) never set them, so
+# stripping them from relayed frames stops anyone who can reach this port from
+# injecting markup/script into the kiosks and operator UI. Server-originated
+# overlays go through send_overlay_to_clients directly and are unaffected.
+_RELAY_STRIPPED_KEYS = ("html", "substitutions")
+
+
+# The operator UI turns 'generation_update' frames into gallery entries; no
+# backend code emits that type, so a relayed one can only be spoofed.
+_RELAY_BLOCKED_TYPES = ("generation_update",)
+
+
+def _sanitize_relayed(data):
+    if not isinstance(data, dict):
+        return data
+    blocked_type = data.get("type") in _RELAY_BLOCKED_TYPES
+    if blocked_type or any(k in data for k in _RELAY_STRIPPED_KEYS):
+        warning(f"Stripped HTML/blocked fields from relayed WS message (keys: {sorted(data.keys())})")
+        return {k: v for k, v in data.items()
+                if k not in _RELAY_STRIPPED_KEYS and not (k == "type" and blocked_type)}
+    return data
+
+
+def _record_job_progress(job_id, data):
+    # Assign in place (never pop first): generator threads read this dict
+    # concurrently and must not see the key briefly missing
+    job_progress_listeners_latest[job_id] = data
+    while len(job_progress_listeners_latest) > MAX_TRACKED_JOBS:
+        job_progress_listeners_latest.pop(next(iter(job_progress_listeners_latest)), None)
 
 # No per-client audio set needed (handled by registry)
 
@@ -134,6 +168,7 @@ async def handler(websocket):
                     # Start passive keep-alive so we respond to client pings
                     keepalive_task = asyncio.create_task(passive_keepalive(websocket))
 
+                data = _sanitize_relayed(data)
                 # Handle lux sensor data if present
                 if "lux" in data:
                     sensor_name = data.get("sensor_name", "default")  # Use default if no name provided
@@ -143,8 +178,8 @@ async def handler(websocket):
 
                 # 🔁 Also notify any job-specific listeners (e.g. generator.py)
                 job_id = data.get("job_id")
-                if job_id: 
-                    job_progress_listeners_latest[job_id] = data  # 🧠 Store latest update
+                if job_id:
+                    _record_job_progress(job_id, data)  # 🧠 Store latest update
                     if job_id in job_progress_listeners:
                         for queue in job_progress_listeners[job_id]:
                             await queue.put(data)
@@ -208,14 +243,14 @@ async def handler(websocket):
             else:
                 if DEBUGGING: debug(f"📥 Message from {websocket.remote_address}: {msg}")
                 try:
-                    data = json.loads(msg)
+                    data = _sanitize_relayed(json.loads(msg))
                     # Handle lux sensor data if present
                     if "lux" in data:
                         sensor_name = data.get("sensor_name", "default")
                         await broadcast_lux_level(sensor_name, data["lux"])
                     job_id = data.get("job_id")
                     if job_id:
-                        job_progress_listeners_latest[job_id] = data
+                        _record_job_progress(job_id, data)
                     if job_id in job_progress_listeners:
                         for queue in job_progress_listeners[job_id]:
                             await queue.put(data)
@@ -231,7 +266,10 @@ async def handler(websocket):
         # Cleanup on disconnection
         if ping_task:
             ping_task.cancel()
-        
+
+        # Closed viewers were only dropped when a later broadcast failed on them
+        registry.remove_overlay(websocket)
+
         if is_audio_client:
             registry.detach_audio(target, websocket)
             info("🎵 Audio stream ended for audio websocket")

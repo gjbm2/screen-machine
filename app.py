@@ -41,7 +41,7 @@ from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.lightsensor import lightsensor_bp
 from routes.audio_utils import audio_bp
 from routes.audio_api import audio_api
-from routes.admin_api import admin_api
+from routes.admin_api import admin_api, admin_token_ok
 
 # Load environment variables
 load_dotenv()
@@ -134,7 +134,12 @@ def alexa_webhook():
 # Test/Simulation Routes
 @app.route("/test-overlay", methods=["POST"])
 def test_overlay():
-    """Test the overlay functionality with provided data."""
+    """Test the overlay functionality with provided data.
+
+    Manual testing aid only; it pushes arbitrary HTML (incl. script) to every
+    screen, so it needs the admin bearer token like the other admin tools."""
+    if not admin_token_ok(request):
+        return jsonify({"error": "unauthorized"}), 401
     data = request.json
     info(f"Data: {data}")
     send_overlay(

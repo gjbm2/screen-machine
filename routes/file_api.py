@@ -28,11 +28,19 @@ def resolve_path(path: str) -> str:
 
 def is_safe_path(path: str) -> bool:
     """Check if a path is safe to access (within allowed directories)."""
-    # Convert to absolute path
-    abs_path = os.path.abspath(resolve_path(path))
-    
-    # Check if it's within allowed directories
-    return any(abs_path.startswith(base_dir) for base_dir in ALLOWED_BASE_DIRS)
+    # Resolve symlinks and '..' so the check is on the real target
+    try:
+        real_path = os.path.realpath(resolve_path(path))
+    except (ValueError, OSError, TypeError):  # e.g. embedded NUL byte
+        return False
+
+    # Must be the allowed directory itself or inside it; a plain prefix test
+    # also accepted siblings such as 'routes/scheduler/scripts_evil/'
+    for base_dir in ALLOWED_BASE_DIRS:
+        real_base = os.path.realpath(base_dir)
+        if os.path.commonpath([real_path, real_base]) == real_base:
+            return True
+    return False
 
 @file_bp.route('/api/files', methods=['GET'])
 def list_files():

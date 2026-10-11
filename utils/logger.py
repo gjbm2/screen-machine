@@ -9,6 +9,7 @@ import sys
 import os
 import inspect
 import logging
+import threading
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, Any
 from collections import defaultdict
@@ -16,9 +17,33 @@ from collections import defaultdict
 # Initialize internal log storage (will be imported by app.py)
 console_logs = []
 
+# Both buffers used to grow for the life of the process (multi-GB RSS after
+# months of uptime). console_logs stays a list, trimmed in place, because
+# importers slice it; _recent_logs only matters inside the throttle window.
+MAX_CONSOLE_LOGS = 10000
+_RECENT_LOGS_PRUNE_AT = 5000
+_buffer_lock = threading.Lock()
+
 # Track recent logs to prevent spam
 _recent_logs = defaultdict(lambda: {"timestamp": 0, "count": 0})
 _LOG_THROTTLE_TIME = 2  # seconds between identical log messages
+
+
+def _store_console_log(formatted_message: str) -> None:
+    with _buffer_lock:
+        console_logs.append(formatted_message)
+        if len(console_logs) > MAX_CONSOLE_LOGS + MAX_CONSOLE_LOGS // 10:
+            del console_logs[:-MAX_CONSOLE_LOGS]
+
+
+def _prune_recent_logs(current_time: float) -> None:
+    with _buffer_lock:
+        if len(_recent_logs) < _RECENT_LOGS_PRUNE_AT:
+            return
+        stale = [k for k, v in list(_recent_logs.items())
+                 if current_time - v["timestamp"] >= _LOG_THROTTLE_TIME]
+        for k in stale:
+            _recent_logs.pop(k, None)
 
 # Create logs directory if it doesn't exist
 LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
@@ -84,12 +109,13 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
             formatted_message = f"[{timestamp}] [{source}] {throttled_message}"
             print(formatted_message, file=sys.stdout)
             sys.stdout.flush()
-            console_logs.append(formatted_message)
+            _store_console_log(formatted_message)
             # Log throttled messages to file with WARNING level
             file_logger.warning(formatted_message)
         return ""  # Return empty string for throttled messages
     
     # Reset counter if outside throttle window
+    _prune_recent_logs(current_time)
     _recent_logs[log_key] = {"timestamp": current_time, "count": 1}
     
     # Format and log the message
@@ -101,7 +127,7 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
     sys.stdout.flush()
     
     # Store for frontend retrieval (will be accessed by app.py)
-    console_logs.append(formatted_message)
+    _store_console_log(formatted_message)
     
     # Log to file based on message level
     if message.startswith("DEBUG:"):

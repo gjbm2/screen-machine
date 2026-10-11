@@ -95,14 +95,22 @@
       };
 
       try {
+        // /test-overlay needs the admin token (the Admin panel stores it on this origin)
+        const token = localStorage.getItem("sm_admin_token") || "";
         const res = await fetch("/test-overlay", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: "Bearer " + token } : {})
           },
           body: JSON.stringify(message)
         });
 
+        if (!res.ok) {
+          log.textContent = "❌ Overlay rejected (HTTP " + res.status + ")" +
+            (res.status === 401 ? " — log in on the Admin panel first so the admin token is stored" : "");
+          return;
+        }
         const result = await res.json();
         log.textContent = "✅ Overlay sent:\n" + JSON.stringify(message, null, 2);
       } catch (err) {

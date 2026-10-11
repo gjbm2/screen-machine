@@ -548,6 +548,28 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
             except Exception as e2:
                 error(f"Failed even to create minimal fallback sidecar: {e2}")
 
+_TEMP_MEDIA_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
+
+def _source_within_allowed_roots(source, output_root) -> bool:
+    """Local publish sources must be media-store files or our own temp media
+    files (URL downloads, uploads). Anything else would be copied into the
+    publicly served output tree, e.g. a request naming ../../.env."""
+    try:
+        real = os.path.realpath(str(source))
+    except Exception:
+        return False
+
+    def _within(root) -> bool:
+        real_root = os.path.realpath(str(root))
+        return os.path.commonpath([real, real_root]) == real_root
+
+    if _within(output_root):
+        return True
+    # Our own downloads are NamedTemporaryFiles directly in the temp dir
+    return (os.path.dirname(real) == os.path.realpath(tempfile.gettempdir())
+            and Path(real).suffix.lower() in _TEMP_MEDIA_EXTS)
+
+
 def _publish_to_destination(
     source: Path,
     publish_destination_id: str,
@@ -561,7 +583,12 @@ def _publish_to_destination(
 ) -> dict:
     """Internal helper for publish_to_destination."""
     try:
+        # Raises for unknown ids, so the root below comes from a configured id
         dest = get_destination(publish_destination_id)
+
+        if not _source_within_allowed_roots(source, Path(bucket_path(publish_destination_id)).parent):
+            warning(f"[publish] Refusing source outside media store/temp dir: {source}")
+            return {"success": False, "error": "Source path is not allowed"}
 
         if dest.get("headless", False):
             bucket_filename = None

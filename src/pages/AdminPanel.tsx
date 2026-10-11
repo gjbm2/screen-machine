@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import destinations from '../data/publish-destinations.json';
 
 const API = '/api/admin-355729b8';
 const POLL_INTERVAL = 120_000; // 2 minutes
@@ -10,10 +9,30 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-// Screens that have a /display/ page
-const displayScreens = destinations.filter(
-  d => d.has_bucket && !d.hidden && d.id !== '_recent'
-);
+interface DisplayScreen {
+  id: string;
+  name: string;
+  has_bucket?: boolean;
+  hidden?: boolean;
+}
+
+// Screens that have a /display/ page. Fetched at runtime: importing the
+// destinations JSON bundled device tokens/IPs into the public JS.
+function useDisplayScreens(): DisplayScreen[] {
+  const [screens, setScreens] = useState<DisplayScreen[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/publish-destinations')
+      .then(r => (r.ok ? r.json() : []))
+      .then((all: DisplayScreen[]) => {
+        if (cancelled || !Array.isArray(all)) return;
+        setScreens(all.filter(d => d.has_bucket && !d.hidden && d.id !== '_recent'));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return screens;
+}
 
 interface ApiResult {
   success: boolean;
@@ -48,6 +67,7 @@ function parseStatus(output: string) {
 }
 
 export default function AdminPanel() {
+  const displayScreens = useDisplayScreens();
   const [status, setStatus] = useState<ReturnType<typeof parseStatus> | null>(null);
   const [statusOk, setStatusOk] = useState<boolean | null>(null);
   const [loading, setLoading] = useState('');
