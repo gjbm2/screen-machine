@@ -133,6 +133,7 @@ This section describes how to test overlays using the `/test-overlay` endpoint. 
    - **IMPORTANT:** The file name in your API call MUST match the file name on disk exactly. For example, if your file is named `!!overlay_alert.html`, you must use `"htmlFile": "!!overlay_alert.html"` in your request.
 
 2. **Send a POST Request to `/test-overlay`**
+   - Include the admin token header: `Authorization: Bearer <ADMIN_API_TOKEN>` (from `.env`); without it the endpoint returns 401.
    - Use the following JSON structure:
      ```json
      {

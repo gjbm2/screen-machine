@@ -640,8 +640,24 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     
     debug(f"[copy_image_from_bucket_to_bucket] Starting operation: src_id={source_publish_destination}, dst_id={target_publish_destination}, fname={filename}")
 
+    # The source must be a configured bucket too, and the file must resolve
+    # inside it; otherwise source='..' / filename='.env' copied arbitrary files
+    # into the publicly served output tree
+    src_dest = next((d for d in dests if d["id"] == source_publish_destination and d.get("has_bucket", False)), None)
+    if not src_dest:
+        error(f"[copy_image_from_bucket_to_bucket] Invalid source or no bucket support: {source_publish_destination}")
+        raise ValueError("Invalid source_publish_destination or destination does not support buckets")
+
     # Get source and target paths
     src_path = bucket_path(source_publish_destination) / filename
+    src_root = os.path.realpath(bucket_path(source_publish_destination))
+    try:
+        src_real = os.path.realpath(src_path)
+    except (ValueError, OSError):
+        src_real = ""
+    if not src_real or os.path.commonpath([src_real, src_root]) != src_root:
+        error(f"[copy_image_from_bucket_to_bucket] Source path escapes bucket: {filename}")
+        raise FileNotFoundError("source file not found")
     if not src_path.exists():
         error(f"[copy_image_from_bucket_to_bucket] Source file not found: {src_path}")
         raise FileNotFoundError("source file not found")

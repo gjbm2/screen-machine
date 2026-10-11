@@ -11,6 +11,7 @@ from utils.logger import log_to_console, info, error, warning, debug, console_lo
 from io import BytesIO
 import re
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+from jinja2.sandbox import SandboxedEnvironment
 import cv2
 import qrcode
 from urllib.parse import urlencode, urlparse
@@ -112,6 +113,29 @@ def findfile(file_param):
     if os.path.exists(file_in_home):
         return os.path.abspath(file_in_home)
 
+    return None
+
+# Templates (overlays, prompt/schema templates, reasoners, frontend-shared JSON)
+# only ever live under these roots. findfile() also accepts absolute paths and
+# falls back to cwd/home, so callers that may receive untrusted text (overlay
+# html, scheduler overlay text) must use find_template_file() instead, or a
+# value like ".env" would be read and broadcast.
+TEMPLATE_ROOTS = [
+    os.path.realpath(SCRIPT_DIR),
+    os.path.realpath(os.path.join(os.getcwd(), "src", "data")),
+]
+
+def find_template_file(name):
+    if not isinstance(name, str) or not name or "\n" in name or len(name) > 512:
+        return None
+    path = findfile(name)
+    if not path:
+        return None
+    real = os.path.realpath(path)
+    for root in TEMPLATE_ROOTS:
+        if os.path.commonpath([real, root]) == root:
+            return path
+    warning(f"[find_template_file] Refusing template outside template roots: {name}")
     return None
 
 def detect_file_type(url: str) -> str:
@@ -388,13 +412,14 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=None):
 
 def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
     substitutions = substitutions or {}
-    filepath = findfile(template_or_file)
+    filepath = find_template_file(template_or_file)
 
+    # Sandboxed: inline templates can carry scheduler/LLM/user-supplied text
     if filepath:
         template_name = os.path.basename(filepath)
         template_dir = os.path.dirname(filepath)
 
-        env = Environment(loader=FileSystemLoader(template_dir))
+        env = SandboxedEnvironment(loader=FileSystemLoader(template_dir))
         env.filters['tojson'] = lambda val: json.dumps(val)
 
         try:
@@ -408,7 +433,7 @@ def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
             return ""
     else:
         # NEW: Use a loader so {% include %} still works in string templates
-        env = Environment(loader=FileSystemLoader(SEARCH_PATHS))
+        env = SandboxedEnvironment(loader=FileSystemLoader(SEARCH_PATHS))
         env.filters['tojson'] = lambda val: json.dumps(val)
         try:
             template = env.from_string(template_or_file)

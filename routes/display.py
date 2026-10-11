@@ -5,7 +5,7 @@ import ast
 import os
 from pathlib import Path
 from flask import Blueprint, jsonify, abort, request
-from routes.utils import findfile, dict_substitute, _load_json_once
+from routes.utils import findfile, find_template_file, dict_substitute, _load_json_once
 from routes.display_utils import compute_mask
 from overlay_ws_server import send_overlay_to_clients
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
@@ -192,7 +192,8 @@ def send_overlay(
     fadein=0,
     job_id=None
 ):
-    file_path = findfile(html)
+    # Only overlay/template files may be read; anything else is literal HTML
+    file_path = find_template_file(html)
     if file_path and os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             html_content = f.read()

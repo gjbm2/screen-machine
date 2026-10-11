@@ -8,6 +8,7 @@ from utils.logger import info, error, debug
 import random
 import re
 import jinja2
+import jinja2.sandbox
 import hashlib
 import threading
 from dataclasses import dataclass, field
@@ -2682,8 +2683,10 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             return value
             
         try:
-            # Set up Jinja environment
-            env = jinja2.Environment(
+            # Set up Jinja environment. Sandboxed: instruction strings and the
+            # variables they reference can arrive via the HTTP API, Alexa or LLM
+            # output, and a plain Environment allows code execution.
+            env = jinja2.sandbox.SandboxedEnvironment(
                 autoescape=False,  # Don't need HTML escaping
                 undefined=jinja2.Undefined  # Allow undefined variables
             )
