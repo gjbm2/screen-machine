@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import copy
 import dataclasses
 import datetime as dt
 import hashlib
@@ -53,17 +54,16 @@ import subprocess
 import time
 from typing import Any, Callable, Optional
 
-from . import palettes
+from . import palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction
 from .effects import EffectChain, EffectSlot
-from .fx_director import FxDirector
+from .fx_director import FxDirector, FxMove
 from .fx_state import SessionFx
 from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
-from .mask import parse_mask
 from .media import MediaHub
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
@@ -184,7 +184,6 @@ class Session(EngineListener):
         self.end_reason: Optional[str] = None
         self.media = MediaHub(sid, profile.fps)
         self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
-        self.mask: Optional[dict] = None    # the light mask last set (mask.py); the engine eases its gains
         self.lock = asyncio.Lock()
         self.pending_scene: Any = None      # set up, shown on go
         self.current_scene: Any = None      # the scene source that is (or is becoming) visible
@@ -250,7 +249,18 @@ class Session(EngineListener):
         self.slow_trips = 0
         self.current_spec: Optional[SceneSpec] = None     # the scene on screen (or becoming so)
         self.prev_spec: Optional[SceneSpec] = None        # the one before it: a slow scene's recovery target
-        self.director.vet = self.fx_director.vet = self.auto_ok
+        self.director.vet = self.fx_director.vet = self.room_ok
+        # -- room-level direction (rooms.py): set by the manager on create --
+        self.room: Optional[str] = None
+        self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
+        self.follow_pick: Optional[dict] = None   # the leader's next pick, prepared here
+        self._follow_prep: Optional[asyncio.Task] = None
+        self._follow_want: Optional[tuple] = None
+        self._follow_gen = 0
+        self._room_synced: Optional[str] = None   # the leader this follower last caught up with
+        self._fx_want: Optional[tuple] = None     # (leader's auto presets, fade_s, why) to mirror
+        self._fx_check_t = 0.0
+        self._following = False
 
     # -- helpers -----------------------------------------------------------------
     def emit(self, type_: str, **data) -> None:
@@ -380,11 +390,192 @@ class Session(EngineListener):
         """May the directors pick this plug-in on their own?  (the vetted pool; manual cues may pick anything)"""
         return self.mgr.auto_ok(kind, plugin, self.gpu, self.trip_budget_4k())
 
+    # -- room-level direction (rooms.py): one director per room, the room's other screens follow it ----------
+    def room_leader(self) -> Optional["Session"]:
+        """The session whose director decides for this one's room (itself when it leads); None: not in a room."""
+        if not self.room or self.director.auto is None or self.exited:
+            return None
+        return self.mgr.room_leader(self.room)
+
+    def following(self) -> Optional["Session"]:
+        ld = self.room_leader()
+        return ld if ld is not None and ld is not self else None
+
+    def room_peers(self) -> list["Session"]:
+        if not self.room or self.director.auto is None or self.exited:
+            return []
+        return [s for s in rooms.members(self.mgr.sessions.values(), self.room) if s is not self]
+
+    def followers(self) -> list["Session"]:
+        return self.room_peers() if self.room_leader() is self else []
+
+    def room_ok(self, kind: str, plugin: Optional[str]) -> bool:
+        """The directors' vetted pool: what every screen in the room may show."""
+        return self.auto_ok(kind, plugin) and all(p.auto_ok(kind, plugin) for p in self.room_peers())
+
+    def room_status(self) -> Optional[dict]:
+        if not self.room:
+            return None
+        ld = self.room_leader()
+        return {"id": self.room, "role": "solo" if ld is None else "leader" if ld is self else "follower",
+                "leader": None if ld is None else ld.screen,
+                "screens": [s.screen for s in rooms.members(self.mgr.sessions.values(), self.room)]}
+
+    def _room_prepare(self, pk: dict) -> None:
+        """Leader: the next pick is prepared here, so prepare it on the followers too."""
+        for f in self.followers():
+            f.follow_prepare(pk["spec"], pk["trans_spec"])
+
+    async def _room_ready(self) -> None:
+        """Leader: wait (at most READY_S) for the followers' copies of the pick, so the screens cut together."""
+        tasks = [f._follow_prep for f in self.followers() if f._follow_prep is not None]
+        if tasks:
+            await asyncio.wait(tasks, timeout=rooms.READY_S)
+
+    def _room_go(self, cue: dict) -> None:
+        """Leader: an auto cue just started here; the followers cut to the same scene."""
+        for f in self.followers():
+            f.follow_cue(cue["spec"], cue["trans_spec"], cue["at"], f"{self.screen}: {cue.get('detail') or cue['scene']}")
+
+    async def _prepare_like(self, spec: SceneSpec, trans_spec: TransitionSpec) -> dict:
+        """The leader's scene and transition, prepared on this session's GPU (with its own fit)."""
+        mine = self._fit(self.mgr.presets.resolve_scene(rooms.room_body(spec)), False)
+        src = await self._make_scene(mine)
+        try:
+            trans = await self._transition_ready(trans_spec)
+        except Exception:
+            try:
+                trans_spec, trans = self.t_in, await self._transition_ready(self.t_in)
+            except Exception:
+                self._retire(src)
+                raise
+        return {"want": (spec.name, trans_spec.name), "spec": mine, "src": src, "trans_spec": trans_spec,
+                "trans": trans}
+
+    def follow_prepare(self, spec: SceneSpec, trans_spec: TransitionSpec) -> None:
+        if self.exited or self.state not in LIVE_STATES:
+            return
+        want = (spec.name, trans_spec.name)
+        if self._follow_want == want and (self._follow_prep is not None or self.follow_pick is not None):
+            return
+        self._follow_gen += 1
+        self._follow_want = want
+        self._follow_prep = asyncio.create_task(self._follow_prepare(self._follow_gen, spec, trans_spec))
+
+    async def _follow_prepare(self, gen: int, spec: SceneSpec, trans_spec: TransitionSpec) -> None:
+        epoch = self._epoch
+        try:
+            pk = await self._prepare_like(spec, trans_spec)
+            pk["want"] = (spec.name, trans_spec.name)
+        except Exception as e:
+            log.warning("[%s] room: preparing the leader's pick %s failed: %s", self.id, spec.name,
+                        getattr(e, "detail", None) or f"{type(e).__name__}: {e}")
+            return
+        finally:
+            if gen == self._follow_gen:
+                self._follow_prep = None
+        if gen != self._follow_gen or self._epoch != epoch or self.state not in LIVE_STATES:
+            self._retire(pk["src"], pk["trans"])
+            return
+        old, self.follow_pick = self.follow_pick, pk
+        if old is not None:
+            self._retire(old["src"], old["trans"])
+
+    def _drop_follow(self) -> None:
+        self._follow_gen += 1
+        self._follow_want = None
+        if self.follow_pick is not None:
+            pk, self.follow_pick = self.follow_pick, None
+            self._retire(pk["src"], pk["trans"])
+
+    def follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str) -> None:
+        if self.exited or self.state not in LIVE_STATES:
+            return
+        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail))
+
+    async def _follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str) -> None:
+        want = (spec.name, trans_spec.name)
+        epoch = self._epoch
+        try:
+            if self._follow_prep is not None and self._follow_want == want:
+                await asyncio.wait([self._follow_prep], timeout=rooms.READY_S * 2)
+            pk, self.follow_pick = self.follow_pick, None
+            if pk is not None and pk["want"] != want:
+                self._retire(pk["src"], pk["trans"])
+                pk = None
+            self._follow_gen += 1                       # a copy still being prepared is dropped when it lands
+            self._follow_want = None
+            if pk is None:
+                pk = await self._prepare_like(spec, trans_spec)
+            async with self.lock:
+                if self._epoch != epoch or self.state not in LIVE_STATES or self.following() is None:
+                    self._retire(pk["src"], pk["trans"])
+                    return
+                cue = self._new_cue("auto", pk["spec"], pk["trans_spec"], pk["src"], pk["trans"], at, "room", detail)
+                if self._dispatch(cue) != "skipped":
+                    self.scene_spec = pk["spec"]
+        except Exception as e:
+            log.warning("[%s] room: following %s failed: %s", self.id, spec.name,
+                        getattr(e, "detail", None) or f"{type(e).__name__}: {e}")
+
+    def _room_direction(self, cause: str) -> None:
+        """Leader: its effective direction just changed; the followers take it."""
+        for f in self.followers():
+            f._apply_direction(cause)
+
+    def _room_fx(self) -> None:
+        """Leader: its auto FX just moved; the followers mirror the bus."""
+        want = [p for _, p in rooms.auto_fx(self.fx.stack)]
+        for f in self.followers():
+            f.follow_fx(want, self.fx_director.fade_s(), "room")
+
+    def follow_fx(self, want: list, fade_s: float, why: str) -> None:
+        self._fx_want = (list(want), fade_s, why)
+        if self._fx_task is None and self.state == "live" and not self.exited:
+            self._fx_task = asyncio.create_task(self._follow_fx())
+
+    async def _follow_fx(self) -> None:
+        """Move this screen's auto effects to the leader's, one add / remove / swap at a time."""
+        try:
+            for _ in range(8):
+                if self._fx_want is None:
+                    break
+                want, fade_s, why = self._fx_want
+                add, remove = rooms.fx_step(rooms.auto_fx(self.fx.stack), want)
+                if add is None and remove is None:
+                    self._fx_want = None
+                    break
+                op = "swap" if add and remove else "add" if add else "remove"
+                res = await self.fx.auto_move(FxMove(op, add, remove, f"{why}: {op} {add or remove}"), fade_s)
+                if res is None:
+                    break
+                if add and res.get("rejected"):          # cannot run here: leave it out on this screen
+                    want.remove(add)
+        except Exception:
+            log.exception("[%s] room: mirroring the leader's effects failed", self.id)
+        finally:
+            self._fx_task = None
+
+    def _follow_tick(self, now: float, ld: "Session") -> None:
+        """Follower: catch up with a (new) leader's scene once, and keep the auto effects equal to its."""
+        if self.state != "live" or self.exited:
+            return
+        if self._room_synced != ld.id and not self.inflight and self.pending is None:
+            self._room_synced = ld.id
+            if ld.current_spec is not None and ld.current_name != self.current_name \
+                    and ld.scene_cause in ("go", "auto") and ld.state == "live":
+                self.follow_cue(ld.current_spec, self.t_in, "now", f"joined {ld.screen}")
+        if now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and ld._fx_task is None:
+            self._fx_check_t = now
+            want = [p for _, p in rooms.auto_fx(ld.fx.stack)]
+            if rooms.fx_step(rooms.auto_fx(self.fx.stack), want) != (None, None):
+                self.follow_fx(want, ld.fx_director.fade_s(), "room")
+
     def _fit(self, spec: SceneSpec, explicit: bool) -> SceneSpec:
         return self.mgr.fit_scene(spec, self.gpu, self.pixels_ratio(), explicit)
 
     def fx_auto_status(self) -> dict:
-        return self.fx_director.status(time.monotonic())
+        return (self.following() or self).fx_director.status(time.monotonic())
 
     def _pts_now(self) -> float:
         return getattr(self.engine, "frames", 0) / self.profile.fps
@@ -423,6 +614,7 @@ class Session(EngineListener):
             self.set_state("entering")
             self.engine.submit(StartTransition("in", tid, src, trans))
             self.director.note_cue(self.scene_spec.name, self.t_in.name, self.sampler.snapshot())
+            self.scene_cause = "go"
             return {"cue_id": cue_id, "duration_s": trans.duration_s}
 
     def _patched_spec(self, body: dict) -> SceneSpec:
@@ -439,21 +631,16 @@ class Session(EngineListener):
         return spec
 
     async def patch(self, body: dict) -> None:
-        unknown = set(body) - {"scene", "params", "transition", "mask", *LOOK_FIELDS}
+        unknown = set(body) - {"scene", "params", "transition", *LOOK_FIELDS}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
         look = self._parse_look(body)             # validated before anything changes (400)
-        mask = parse_mask(body["mask"]) if "mask" in body else None
         if not {"scene", "params", "transition"} & set(body):
-            # direction / palette / auto / beat_follow / mask only: every non-terminal state (R12)
+            # direction / palette / auto / beat_follow only: every non-terminal state (R12)
             if self.state in ("ended", "failed"):
                 raise SessionError(409, "bad_state", f"session is {self.state}")
             self._apply_look(look)
-            if mask is not None:
-                self.set_mask(mask)
             return
-        if mask is not None:
-            self.set_mask(mask)
         self._require("holding", *LIVE_STATES)
         spec = self._patched_spec(body)           # validated before anything changes (400)
         trans_spec = self.mgr.presets.resolve_transition(body["transition"]) if body.get("transition") \
@@ -542,6 +729,7 @@ class Session(EngineListener):
         if self.prepared_pick is not None:
             pk, self.prepared_pick = self.prepared_pick, None
             self._retire(pk["src"], pk["trans"])
+        self._drop_follow()
 
     async def end(self, reason: str, detail: Optional[str] = None) -> None:
         if self.state == "ended":
@@ -560,6 +748,10 @@ class Session(EngineListener):
         if self.prepared_pick is not None:
             leftovers += [self.prepared_pick["src"], self.prepared_pick["trans"]]
             self.prepared_pick = None
+        if self.follow_pick is not None:
+            leftovers += [self.follow_pick["src"], self.follow_pick["trans"]]
+            self.follow_pick = None
+        self._follow_gen += 1
         await self._run(self.engine.stop)
         for obj in [pending, *leftovers]:
             if obj is not None:
@@ -573,7 +765,8 @@ class Session(EngineListener):
                  reason: Optional[str] = None, detail: Optional[str] = None, source: Optional[str] = None) -> dict:
         return {"cue_id": self.next_cue_id(), "cause": cause, "reason": reason, "detail": detail,
                 "source": source, "scene": spec.name, "transition": trans_spec.name, "spec": spec, "src": src,
-                "trans": trans, "at": at, "fallback": None, "at_pts": None, "duration_s": trans.duration_s}
+                "trans": trans, "trans_spec": trans_spec, "at": at, "fallback": None, "at_pts": None,
+                "duration_s": trans.duration_s}
 
     def _cue_event(self, phase: str, cue: dict, **extra) -> None:
         fields = {k: cue[k] for k in ("cause", "reason", "source", "scene", "transition", "at", "fallback",
@@ -630,6 +823,9 @@ class Session(EngineListener):
         self.last_cue = {k: cue.get(k) for k in ("cue_id", "cause", "reason", "detail", "scene", "transition", "at",
                                                  "fallback", "at_pts", "duration_s")}
         self.director.last = self.last_cue if cue["cause"] == "auto" else self.director.last
+        self.scene_cause = cue["cause"]
+        if cue["cause"] == "auto" and cue.get("reason") != "room" and self.room_leader() is self:
+            self._room_go(cue)
 
     def _release_pending(self) -> None:
         if self.pending is None or len(self.inflight) >= MAX_SCENE_TRANSITIONS:
@@ -738,11 +934,16 @@ class Session(EngineListener):
         if to == "auto":
             if self.director.auto is None:
                 raise SessionError(409, "auto_unavailable", "the session has no auto block")
+            ld = self.following()
+            if ld is not None and cause == "manual":    # "next" on any screen in a room moves the room
+                return await ld.cue(body, cause=cause, reason=reason, detail=detail)
             if cause == "manual":
                 cause, reason = "auto", "next"
             pk = self._take_prepared() if via is None else None
             if pk is None:
                 pk = await self._pick_and_prepare(via)
+                self._room_prepare(pk)
+            await self._room_ready()                     # the room's other screens cut with this one
             spec, trans_spec, src, trans = pk["spec"], pk["trans_spec"], pk["src"], pk["trans"]
             detail = f"{detail}; {pk['why']}" if detail else pk["why"]
         else:
@@ -808,12 +1009,14 @@ class Session(EngineListener):
             out["direction_ease_s"] = parse_seconds(body["direction_ease_s"], "direction_ease_s", 0, 120)
         return out
 
-    def set_mask(self, mask: tuple) -> None:
-        """The light mask (mask.parse_mask's result): eased in the renderer's final pass."""
-        gains, duration_s, self.mask = mask
-        self.engine.mask.set(gains, duration_s, time.monotonic())
-
     def _apply_look(self, look: dict) -> None:
+        """A look is the room's (rooms.py): it applies to this session and to the room's other screens."""
+        peers = self.room_peers() if look else []
+        self._apply_look_here(look)
+        for p in peers:
+            p._apply_look_here(copy.deepcopy(look))
+
+    def _apply_look_here(self, look: dict) -> None:
         if "direction_ease_s" in look:
             self.direction_ease_s = self.runtime.ease_s = look["direction_ease_s"]
         if "direction" in look:
@@ -840,7 +1043,9 @@ class Session(EngineListener):
 
     def _apply_direction(self, cause: str) -> None:
         now = time.monotonic()
-        eff = effective_direction(self.direction, self.music.proposal, self.music.m)
+        ld = self.following()
+        eff = ld.direction_effective if ld is not None else \
+            effective_direction(self.direction, self.music.proposal, self.music.m)
         self.direction_effective = eff
         key = pick_key(eff)
         if key != self._dir_key and (cause in ("panel", "auto") or now - self._dir_drop_t >= self.DIR_DROP_MIN_S):
@@ -857,6 +1062,8 @@ class Session(EngineListener):
             fd.next_at = min(fd.next_at, now + fd.interval())
         if cause != "music":                            # the music's numeric drift is visible through GET only
             self._emit_director(cause)
+        if ld is None:
+            self._room_direction(cause)
 
     def _drop_prepared(self) -> None:
         if self.prepared_pick is not None:
@@ -891,6 +1098,15 @@ class Session(EngineListener):
             self._emit_director()
         d.observe(snap, fresh)
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed)
+        ld = self.following()
+        if ld is not None:          # the room's leader directs this screen: its music, picks and effects
+            self._following = True
+            self._follow_tick(now, ld)
+            self._inputs_tick(now)
+            return
+        if self._following:         # promoted (the leader left): direct from here on
+            self._following, self._room_synced = False, None
+            cause = cause or "room"
         if cause is not None:
             self._apply_direction(cause)
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
@@ -926,6 +1142,7 @@ class Session(EngineListener):
                                "at_pts": round(self._pts_now(), 3)}
                     if move.add and res.get("rejected"):      # failed to prepare: never again this session
                         fd.quarantine(move.add, now, session=True)
+                    self._room_fx()
         except SessionError as e:
             log.warning("[%s] auto fx move failed: %s", self.id, e.detail)
         except ParamError as e:
@@ -949,6 +1166,7 @@ class Session(EngineListener):
                 self._retire(pk["src"], pk["trans"])
             else:
                 self.prepared_pick = pk
+                self._room_prepare(pk)
         except SessionError:
             pass
         except Exception:
@@ -1057,10 +1275,12 @@ class Session(EngineListener):
         out["fx_bindings"] = self.fx.bindings()
         out["masters"] = self.runtime.masters()
         out["lead"] = {"total_ms": None if self.lead_ms is None else round(self.lead_ms, 1), **self.lead_parts}
-        nx = self.director.next_eligible(now)
+        ds = self.following() or self                  # who directs this screen (the room's leader, else itself)
+        nx = ds.director.next_eligible(now)
         out["auto"] = {**nx, "armed": self.director.armed, "enabled": self.director.enabled,
-                       "pending_change": self.director.latched, "last_decision": self.director.last}
-        out["music"] = self._music_status(now)
+                       "pending_change": ds.director.latched, "last_decision": ds.director.last}
+        out["music"] = ds._music_status(now)
+        out["room"] = self.room_status()
         return out
 
     def _music_status(self, now: float) -> dict:
@@ -1213,7 +1433,8 @@ class Session(EngineListener):
     # -- reporting ---------------------------------------------------------------
     def summary(self) -> dict:
         e = self.engine.summary()
-        nx = self.director.next_eligible(time.monotonic())
+        ds = self.following() or self                  # who directs this screen (the room's leader, else itself)
+        nx = ds.director.next_eligible(time.monotonic())
         return {
             "session": self.id, "screen": self.screen, "state": self.state, "profile": self.profile.name,
             "created_at": _iso(self.created_at), "scene": self.scene_spec.name,
@@ -1236,13 +1457,13 @@ class Session(EngineListener):
                     "last": self.last_cue, "in_flight": len(self.inflight)},
             "auto": None if self.director.auto is None else {
                 **self.director.auto, "armed": self.director.armed, "seed": self.director.seed,
-                "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": self.fx_director.armed},
+                "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": ds.fx_director.armed},
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
-            "mask": self.mask,
-            "direction_effective": self.direction_effective, "music": self._music_status(time.monotonic()),
-            "music_fields": music_fields(self.direction, self.music.proposal, self.music.m),
+            "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
+            "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
+            "room": self.room_status(),
             "masters": self.runtime.masters(), "fixture": self.fixture, "beat_follow": self.beat_follow,
             "lead_ms": None if self.lead_ms is None else round(self.lead_ms, 1),
             # effects layer (EFFECTS_LAYER_DESIGN D.2)
@@ -1287,6 +1508,8 @@ class SessionManager:
         self.slow: dict[tuple[str, str], dict] = {}      # (kind, plug-in) -> the GPU guard's trip (process-wide)
         self.slow_trips = 0
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
+        self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
+        self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
     def note_plugin_error(self, kind: Optional[str], name: Optional[str], detail: Optional[str], sid: str) -> int:
@@ -1462,6 +1685,16 @@ class SessionManager:
     def active(self) -> list[Session]:
         return [s for s in self.sessions.values() if s.state != "ended"]
 
+    def room_leader(self, room: str) -> Optional[Session]:
+        """The session that directs a room (rooms.py): kept while it stays live, else the oldest live member."""
+        ld = rooms.pick_leader(rooms.members(self.sessions.values(), room), self.room_leaders.get(room))
+        if ld is None:
+            self.room_leaders.pop(room, None)
+        elif self.room_leaders.get(room) != ld.id:
+            self.room_leaders[room] = ld.id
+            log.info("[%s] room %s: %s leads", ld.id, room, ld.screen)
+        return ld
+
     def get(self, sid: str) -> Session:
         s = self.sessions.get(sid)
         if s is None:
@@ -1473,7 +1706,7 @@ class SessionManager:
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         known = {"screen", "gpu", "profile", "anchor", "scene", "transitions", "ttl_s", "idempotency_key",
-                 "color_trc", "fixture", "width", "height", "mask", *LOOK_FIELDS}
+                 "color_trc", "fixture", "width", "height", "room", *LOOK_FIELDS}
         unknown = set(body) - known
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1543,9 +1776,12 @@ class SessionManager:
             if not isinstance(body["fixture"], str) or not FIXTURE_RE.match(body["fixture"]):
                 raise ParamError("bad_request", "fixture must be an id like 'screen.north'")
             look["fixture"] = body["fixture"]
-        mask = parse_mask(body["mask"]) if body.get("mask") is not None else None
+        room = body.get("room")
+        if room is not None and (not isinstance(room, str) or not rooms.ROOM_RE.match(room)):
+            raise ParamError("bad_request", "room must be an id like 'drawing-room'")
+        look_room = room or self.rooms.room_of(screen)
         return dict(screen=screen, gpu=gpu, profile=profile, scene=scene, t_in=t_in, t_out=t_out, ttl_s=ttl,
-                    idempotency_key=key, png=png, rgb=rgb, look=look, mask=mask)
+                    idempotency_key=key, png=png, rgb=rgb, look=look, room=look_room)
 
     def attach_for(self, s: Session, host: str) -> dict:
         base = self.public_base or f"ws://{host}"
@@ -1574,11 +1810,14 @@ class SessionManager:
         self._creating[slot] = fut
         self._creating_ids[slot] = sid
         try:
+            look = p["look"]
+            ld = self.room_leader(p["room"]) if p["room"] and look["auto"] is not None else None
+            if ld is not None and ld.screen != p["screen"]:
+                look = {**look, **rooms.look_of(ld)}      # joining a room: the room's look, not the body's
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
-                        t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **p["look"])
+                        t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
+            s.room = p["room"]
             s.attach = self.attach_for(s, host)
-            if p["mask"] is not None:
-                s.set_mask(p["mask"])                     # the first frame is already at the room's light
             anchor = await s.decode(p["png"], p["rgb"])   # ParamError (400) before the session exists
             self.sessions[sid] = s
             try:
