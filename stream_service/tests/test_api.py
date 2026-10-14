@@ -80,6 +80,9 @@ async def test_catalog(client):
     ({"screen": "Dev Test!", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]}}, "bad_request"),
     ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]},
       "transitions": {"in": {"transition": "nope"}}}, "unknown_transition"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]}, "width": 2160}, "bad_request"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]}, "profile": "h264-720p30",
+      "width": 2160, "height": 3840}, "bad_request"),                                     # over the profile's pixels
 ])
 async def test_create_validation(client, body, code):
     r = await client.post("/api/sessions", json=body, headers=AUTH)

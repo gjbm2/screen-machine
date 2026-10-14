@@ -1376,7 +1376,7 @@ class SessionManager:
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         known = {"screen", "gpu", "profile", "anchor", "scene", "transitions", "ttl_s", "idempotency_key",
-                 "color_trc", "fixture", *LOOK_FIELDS}
+                 "color_trc", "fixture", "width", "height", *LOOK_FIELDS}
         unknown = set(body) - known
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1394,6 +1394,15 @@ class SessionManager:
             profile = PROFILES[pname].with_trc(body.get("color_trc"))
         except ValueError as e:
             raise ParamError("bad_request", str(e)) from None
+        if "width" in body or "height" in body:
+            # The display's own size (e.g. a portrait TV: 2160 x 3840), up to the profile's pixel count.
+            w, h = body.get("width"), body.get("height")
+            if not all(isinstance(v, int) and not isinstance(v, bool) and 64 <= v <= 4096 for v in (w, h)):
+                raise ParamError("bad_request", "width and height must both be integers 64..4096")
+            if w * h > profile.w * profile.h:
+                raise ParamError("bad_request", f"width x height is over the profile's {profile.w}x{profile.h} "
+                                                "pixels: pick a smaller size or a bigger profile")
+            profile = dataclasses.replace(profile, w=w - w % 2, h=h - h % 2)    # 4:2:0 needs even sizes
         if profile.codec == "av1":
             from .gpu import supports_av1_encode
             if supports_av1_encode(gpu) is False:
