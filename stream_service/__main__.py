@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8082)
     ap.add_argument("--public-base", default=None,
-                    help="base for attach URLs, e.g. ws://192.168.1.205:8702 in production "
+                    help="base for attach URLs, e.g. ws://<lan-host>:8702 in production "
                          "(default: the request's Host)")
     ap.add_argument("--config-dir", default=str(REPO / "config" / "live"))
     ap.add_argument("--token-file", default="~/.config/screen-machine/stream_service.token")
