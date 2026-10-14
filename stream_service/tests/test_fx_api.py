@@ -25,7 +25,7 @@ async def client(monkeypatch, tmp_path):
     under test, not the plug-in files."""
     FakeEngine.instances.clear()
     monkeypatch.setattr(sessions_mod, "Engine", FakeEngine)
-    app = make_app(token=TOKEN, config_dir=fx_config(tmp_path), max_sessions=3, registry=fx_registry())
+    app = make_app(config_dir=fx_config(tmp_path), max_sessions=3, registry=fx_registry())
     async with TestClient(TestServer(app)) as c:
         yield c
 

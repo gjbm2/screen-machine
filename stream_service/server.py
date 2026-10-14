@@ -1,28 +1,24 @@
 """aiohttp app: REST API, events WebSocket, media WebSockets and the dev page (LIVE_V1 §1).
 
-Auth: every /api/* route (and the dev /dev/synth proxy) needs ``Authorization: Bearer <token>``; the events socket
-takes ``?token=``; a media socket takes its session's ``?k=<key>`` (wrong key -> close 4403).  /dev, /dev/art/*,
-/static/* and /healthz are open (the dev page asks for the token and keeps it in localStorage).
+No password (owner, 14 Oct).  With --local-control, /api/* and /dev* answer only this machine (the app's /renderer/
+pass-through); /healthz, /media/* and /static/* stay open.  A media socket takes its session's ``?k=<key>`` (wrong
+key -> close 4403).
 
 Additive (LIVE_V1 1.1): POST /api/sessions/{id}/cue, GET /api/sessions/{id}/inputs, the catalog's api / vocab /
 palettes / signals / errors blocks, the show-bus client task (--show-bus) and, dev only, GET /dev/art/{screen}.png:
-the screen's current artwork (Flask's output/<screen>.jpg, read-only) letterboxed to a profile's size, and
-GET/POST /dev/synth: a proxy to show-synth's control API (http://H:P/v1/control for --show-bus ws://H:P/v1/show).
+the screen's current artwork (Flask's output/<screen>.jpg, read-only) letterboxed to a profile's size.
 """
 from __future__ import annotations
 
 import asyncio
 import hmac
 import io
-import json
 import logging
 import pathlib
 import time
 from typing import Any, Optional
 
-import aiohttp
-from aiohttp import WSCloseCode, web
-from yarl import URL
+from aiohttp import web
 
 from . import __version__, palettes
 from .bodies import parse_body
@@ -46,12 +42,9 @@ MANAGER = web.AppKey("manager", SessionManager)
 EVENTS = web.AppKey("events", EventHub)
 PRESETS = web.AppKey("presets", Presets)
 REGISTRY = web.AppKey("registry", Registry)
-TOKEN = web.AppKey("token", str)
 TASKS = web.AppKey("tasks", list)
 ART_DIR = web.AppKey("art_dir", object)
 SHOW_BUS = web.AppKey("show_bus", object)
-SYNTH_URL = web.AppKey("synth_url", object)
-SYNTH_TIMEOUT_S = 3.0
 LIBRARY = web.AppKey("library", Library)
 PREVIEWS = web.AppKey("previews", Previews)
 RATINGS = web.AppKey("ratings", Ratings)
@@ -68,13 +61,9 @@ def err(status: int, code: str, detail: str = "") -> web.Response:
     return web.json_response({"error": code, "detail": detail}, status=status)
 
 
-def _token_ok(request: web.Request, given: Optional[str]) -> bool:
-    return given is not None and hmac.compare_digest(given.encode(), request.app[TOKEN].encode())
-
-
 def _guarded(path: str) -> bool:
-    """Bearer-token routes with JSON errors: the API and the dev show-synth proxy."""
-    return path.startswith("/api/") or path in ("/dev/synth", "/dev/rescan", "/dev/lab/rescan", "/dev/preview", "/dev/rate")
+    """Routes with JSON errors: the API and the dev actions."""
+    return path.startswith("/api/") or path in ("/dev/rescan", "/dev/lab/rescan", "/dev/preview", "/dev/rate")
 
 
 LOCAL_CONTROL = web.AppKey("local_control", bool)
@@ -385,42 +374,6 @@ async def dev_art(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type="image/png", headers={"Cache-Control": "no-store"})
 
 
-def synth_control_url(show_bus: Optional[str]) -> Optional[str]:
-    """show-synth's control API next to its bus: ws://H:P/v1/show -> http://H:P/v1/control (wss -> https)."""
-    if not show_bus:
-        return None
-    u = URL(show_bus)
-    if not u.is_absolute():
-        return None
-    return str(u.with_scheme("https" if u.scheme == "wss" else "http").with_path("/v1/control"))
-
-
-async def dev_synth(request: web.Request) -> web.Response:
-    """Dev only: GET / POST show-synth's runtime control (tempo, ramp, song, pulses, next section) through this
-    origin, so the console needs no CORS.  The bearer token is checked here and never forwarded."""
-    url = request.app[SYNTH_URL]
-    if url is None:
-        return err(404, "not_found", "no --show-bus: start stream_service with --show-bus "
-                                     "ws://127.0.0.1:8711/v1/show (show-synth) to control the simulated music")
-    kw: dict = {}
-    if request.method == "POST":
-        body = await read_json(request, allow_empty=False)
-        if not isinstance(body, dict):
-            raise ParamError("bad_request", "body must be a JSON object")
-        kw["json"] = body
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=SYNTH_TIMEOUT_S)) as http:
-            async with http.request(request.method, url, **kw) as r:
-                status, text = r.status, await r.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        return err(502, "synth_unreachable", f"show-synth control at {url} did not answer ({type(e).__name__})")
-    try:
-        data = json.loads(text)
-    except ValueError:
-        return err(502, "not_synth", f"{url} answered HTTP {status} without JSON: is the show bus show-synth?")
-    return web.json_response(data, status=status)
-
-
 async def renew(request: web.Request) -> web.Response:
     s = _session(request)
     return web.json_response({"session": s.id, "state": s.state,
@@ -500,7 +453,7 @@ async def presets_watch(app: web.Application) -> None:
 
 
 # -- app ------------------------------------------------------------------------
-def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str] = None,
+def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
@@ -514,14 +467,12 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     mgr = SessionManager(registry=registry, presets=presets, events=events, max_sessions=max_sessions,
                          public_base=public_base, inputs=inputs, latency_file=latency_file)
     app = web.Application(middlewares=[auth_and_errors], client_max_size=MAX_BODY)
-    app[TOKEN] = token
     app[REGISTRY] = registry
     app[PRESETS] = presets
     app[EVENTS] = events
     app[MANAGER] = mgr
     app[ART_DIR] = pathlib.Path(art_dir) if art_dir else None
     app[SHOW_BUS] = inputs
-    app[SYNTH_URL] = synth_control_url(show_bus)
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
     app[RATINGS] = Ratings(pathlib.Path(config_dir) / "ratings.json")
@@ -531,8 +482,6 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     r.add_get("/healthz", healthz)
     r.add_get("/dev", dev_page)
     r.add_get("/dev/art/{screen}.png", dev_art)
-    r.add_get("/dev/synth", dev_synth)
-    r.add_post("/dev/synth", dev_synth)
     r.add_get("/dev/library", dev_library)
     r.add_get("/dev/thumb/{name}.png", dev_thumb)
     r.add_get("/dev/preview/{name}.mp4", dev_preview)

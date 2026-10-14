@@ -19,7 +19,6 @@ from stream_service import server as server_mod
 from stream_service import sessions as sessions_mod
 from stream_service.renderer import Engine, Retire, StartTransition, UpdateParams
 from stream_service.server import MANAGER, make_app
-from stream_service.tokens import load_or_create_token
 
 REPO_CONFIG = pathlib.Path(__file__).resolve().parents[2] / "config" / "live"
 TOKEN = "cd" * 32
@@ -81,7 +80,7 @@ class FakeEngine:
 async def client(monkeypatch):
     FakeEngine.instances.clear()
     monkeypatch.setattr(sessions_mod, "Engine", FakeEngine)
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG, max_sessions=3)
+    app = make_app(config_dir=REPO_CONFIG, max_sessions=3)
     async with TestClient(TestServer(app)) as c:
         yield c
 
@@ -375,7 +374,7 @@ async def test_api_errors_are_json(client, monkeypatch):
 
 async def test_body_over_limit_is_json_413(monkeypatch):
     monkeypatch.setattr(server_mod, "MAX_BODY", 1024)
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG)
+    app = make_app(config_dir=REPO_CONFIG)
     async with TestClient(TestServer(app)) as c:
         r = await c.post("/api/sessions", data=b"x" * 4096, headers={**AUTH, "Content-Type": "application/json"})
         assert r.status == 413 and (await r.json())["error"] == "too_large"
@@ -435,22 +434,3 @@ def test_commands_submitted_after_release_are_disposed_of():
     assert owned.closed == 0
 
 
-def test_token_file_concurrent_creation(tmp_path):
-    path = tmp_path / "cfg" / "t.token"
-    results: list[str] = []
-    errors: list[BaseException] = []
-
-    def worker():
-        try:
-            results.append(load_or_create_token(str(path)))
-        except BaseException as e:  # SystemExit included
-            errors.append(e)
-
-    threads = [threading.Thread(target=worker) for _ in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert not errors and len(set(results)) == 1 and len(results) == 8
-    assert [p.name for p in path.parent.iterdir()] == ["t.token"]   # no temp files left behind
-    assert oct(path.stat().st_mode & 0o777) == "0o600"

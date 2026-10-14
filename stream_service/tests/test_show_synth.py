@@ -1,18 +1,16 @@
 """show-synth runtime control: tempo changes and ramps keep the beat phase, the truth record stays exact, the
-control endpoint, and stream_service's /dev/synth proxy (no GPU)."""
+control endpoint (no GPU)."""
 from __future__ import annotations
 
 import io
 import json
 import pathlib
 import random
-import socket
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from stream_service.inputs import FixtureSignals
-from stream_service.server import make_app, synth_control_url
 from stream_service.tools.show_synth import Song, Synth
 
 REPO_CONFIG = pathlib.Path(__file__).resolve().parents[2] / "config" / "live"
@@ -267,49 +265,3 @@ async def test_control_rejects_non_json(synth_client):
     assert r.status == 415                                     # a cross-site form / no-preflight POST can't drive it
     r = await synth_client.post("/v1/control", data="{nope", headers={"Content-Type": "application/json"})
     assert r.status == 400 and (await r.json())["error"] == "bad_json"
-
-
-# -- stream_service's /dev/synth proxy --------------------------------------------------------------------------------
-def test_synth_control_url():
-    assert synth_control_url("ws://127.0.0.1:8711/v1/show") == "http://127.0.0.1:8711/v1/control"
-    assert synth_control_url("wss://host:9/v1/show") == "https://host:9/v1/control"
-    assert synth_control_url(None) is None and synth_control_url("") is None
-
-
-@pytest.mark.asyncio
-async def test_dev_synth_without_a_show_bus():
-    async with TestClient(TestServer(make_app(token=TOKEN, config_dir=REPO_CONFIG))) as c:
-        r = await c.get("/dev/synth")                                   # no password needed
-        body = await r.json()
-        assert r.status == 404 and "--show-bus" in body["detail"]
-
-
-@pytest.mark.asyncio
-async def test_dev_synth_proxies_to_show_synth():
-    synth = Synth(Song("pop", 124, 7))
-    async with TestServer(synth.app()) as ss:
-        bus = f"ws://127.0.0.1:{ss.port}/v1/show"
-        async with TestClient(TestServer(make_app(token=TOKEN, config_dir=REPO_CONFIG, show_bus=bus))) as c:
-            r = await c.get("/dev/synth")                               # no password needed
-            assert r.status == 200 and (await r.json())["song"] == "pop"
-            assert r.headers["Cache-Control"] == "no-store"
-            r = await c.post("/dev/synth", json={"bpm": 150}, headers=AUTH)
-            assert r.status == 200 and (await r.json())["bpm"] == 150
-            assert synth.song.bpm == 150
-            r = await c.post("/dev/synth", json={"bpm": 999}, headers=AUTH)          # the synth's 400 passes through
-            assert r.status == 400 and "40-200" in (await r.json())["detail"]
-            r = await c.post("/dev/synth", data=b"{nope", headers={**AUTH, "Content-Type": "application/json"})
-            assert r.status == 400 and (await r.json())["error"] == "bad_json"
-            r = await c.post("/dev/synth", json=[1], headers=AUTH)
-            assert r.status == 400
-
-
-@pytest.mark.asyncio
-async def test_dev_synth_unreachable():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG, show_bus=f"ws://127.0.0.1:{port}/v1/show")
-    async with TestClient(TestServer(app)) as c:
-        r = await c.get("/dev/synth", headers=AUTH)
-        assert r.status == 502 and (await r.json())["error"] == "synth_unreachable"
