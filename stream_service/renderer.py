@@ -56,7 +56,7 @@ from .encode.bitstream import StreamConfig
 from .encode.encoder import NvencPipeline
 from .encode.fmp4 import TIMESCALE, init_segment, media_fragment
 from .guard import CudaEvents, GpuTimer, SlowPlugin
-from .layers import FrameCtx, Layer, SourceLayer, StillLayer, TransitionLayer
+from .layers import RATE_HOLD_FRAMES, FrameCtx, Layer, SourceLayer, StillLayer, TransitionLayer
 from .profiles import Profile
 from .stats import Ring, pct
 
@@ -64,6 +64,7 @@ log = logging.getLogger("stream_service.renderer")
 
 N_SLOTS = 6
 MAX_PENDING_WRITES = 5
+POOL_BASE = 2        # gpu.RenderContext's preallocated frames (one transition level)
 RENDER_BOUND = 0.85   # repeats only when the recent render cost exceeds this fraction of a frame period
 RESYNC_S = 0.25
 STARTUP_GRACE_S = 2.0  # at most this long after the first encoded frame, start-up catch-up is not counted late
@@ -238,6 +239,8 @@ class Engine:
                 source.setup(ctx, params)
             s.synchronize()
         self.prime(source, "source")
+        if not getattr(source, "internal", False):   # a scene on a struggling GPU holds a frame (layers.py): R20
+            self.ensure_pool(POOL_BASE + RATE_HOLD_FRAMES)
         return source
 
     def prepare_transition(self, transition: Any) -> Any:
@@ -262,7 +265,7 @@ class Engine:
                 effect.setup(ctx, params)
             s.synchronize()
         self.prime(effect, "effect")
-        self.ensure_pool(POOL_RESERVE)
+        self.ensure_pool(POOL_RESERVE + RATE_HOLD_FRAMES)
         return effect
 
     def prime(self, obj: Any, kind: str) -> None:

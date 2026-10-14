@@ -15,7 +15,7 @@ from stream_service.director import Director, validate_direction
 from stream_service.effects import EffectChain, EffectLayer, EffectSlot, MasterBus
 from stream_service.fx_director import FxDirector
 from stream_service.guard import MAX_GPU_BACKLOG, TRIP_FRAME_MS, GpuTimer, SlowPlugin, trip_budget_ms
-from stream_service.layers import FrameCtx, SourceLayer, TransitionLayer
+from stream_service.layers import RATE_MAX_DIV, RATE_UP_S, FrameCtx, SourceLayer, TransitionLayer
 from stream_service.profiles import PROFILES
 from stream_service.renderer import Engine, EngineListener, StartTransition
 from stream_service.server import MANAGER
@@ -123,13 +123,13 @@ def timer_for(gpu, fps=FPS):
 def test_sustained_over_budget_scene_trips_within_half_a_second_and_goes_black():
     gpu = FakeGpu()
     timer = timer_for(gpu)
-    src = Heavy(gpu, 80.0)                               # budget at 30 fps: 1.5 x 33.3 = 50 ms
+    src = Heavy(gpu, 250.0)        # too slow even every 4th frame: budget at 30 fps 1.5 x 33.3 = 50 ms, x 4
     layer = SourceLayer(src, 0.0)
     _, vals, errors, repeats = drive(layer, timer, gpu, 0, 60, until=lambda e: bool(e))
     assert len(errors) == 1
     kind, obj, exc, action = errors[0]
     assert kind == "source" and obj is src and action == "solid" and isinstance(exc, SlowPlugin)
-    assert exc.why == "sustained" and exc.ms == pytest.approx(80.0) and exc.budget_ms == pytest.approx(50.0)
+    assert exc.why == "sustained" and exc.ms == pytest.approx(250.0) and exc.budget_ms == pytest.approx(200.0)
     assert gpu.now <= 0.8                                # 0.5 s of over-budget GPU time, read a frame late
     assert layer.failed and layer.slow and repeats > 0   # the back-pressure kept the GPU at most 2 frames behind
     n = max(vals) + 1
@@ -224,6 +224,39 @@ def test_slow_effects_are_dropped_from_the_bus_and_the_scene_chain():
     assert acts == {("effect", "e1", "removed"), ("effect", "s1", "removed")}
     assert bus.chain.slots[0].failed and bus.chain.slots[0].slow and scene.chain.slots[0].slow
     assert list(vals.values())[-1] == 1.0                # both dropped: the scene passes through
+
+
+def test_a_struggling_gpu_drops_the_scenes_frame_rate_instead_of_tripping():
+    gpu = FakeGpu()
+    timer = timer_for(gpu)
+    src = Heavy(gpu, [80.0] * 200 + [5.0] * 1000)      # 80 ms: 3.4 x RATE_TARGET's 23.3 ms -> every 4th frame
+    layer = SourceLayer(src, 0.0)
+    _, vals, errors, _ = drive(layer, timer, gpu, 0, 120)
+    assert errors == [] and not layer.failed and layer.rate_div == RATE_MAX_DIV
+    r0 = src.renders
+    _, vals, errors, repeats = drive(layer, timer, gpu, 120, 240)
+    assert errors == [] and src.renders - r0 <= 120 / RATE_MAX_DIV + 1         # the scene at 7.5 fps ...
+    assert repeats <= 0.3 * 120          # the stream keeps up but for a frame queued behind each long render
+    n = 240
+    while src.renders < 200 and n < 2000:                                       # the cost falls: back to every frame
+        _, vals, errors, _ = drive(layer, timer, gpu, n, n + 1)
+        n += 1
+    _, vals, errors, _ = drive(layer, timer, gpu, n, n + int((RATE_UP_S + 1) * FPS))
+    assert errors == [] and layer.rate_div == 1 and layer.hold is None and timer.trips == 0
+
+
+def test_held_frames_repeat_the_last_render_and_dt_accrues():
+    src = Const(1.0)
+    layer = SourceLayer(src, 0.0)
+    layer.rate_div = 3
+    pool = Pool()
+    for n in range(7):
+        out = np.zeros((1, 1, 4))
+        layer.render(FrameCtx(n, FPS, pool), out)
+        assert out[0, 0, 0] == 1.0
+    assert [round(dt * FPS) for _, dt in src.calls] == [0, 3, 3] and pool.out == 1
+    layer.close(FrameCtx(7, FPS, pool))
+    assert pool.out == 0
 
 
 def test_monitor_budget_and_backlog_limit():
