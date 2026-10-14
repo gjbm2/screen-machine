@@ -12,7 +12,8 @@ Trip rules (:class:`TripMonitor`, per plug-in call site):
     ``TRIP_WINDOW_S`` (0.5 s) of GPU time, or span 0.5 s worth of frames;
   * ``frame``: any single frame over ``TRIP_FRAME_MS`` (0.5 s);
   * ``stuck``: a call still running on the GPU 0.5 s after it was seen to start (a frame that may never end).
-A trip calls the owner's ``trip(fc, SlowPlugin)``, which substitutes through the failure paths the layers already
+A scene rendering only every ``rate_div``-th frame (layers.py: a struggling GPU drops the scene's frame rate) gets
+``rate_div`` x the budget per render.  A trip calls the owner's ``trip(fc, SlowPlugin)``, which substitutes through the failure paths the layers already
 have (layers.py, effects.py): a scene shows black and the session cues a recovery, a transition finishes as a cut,
 an effect is dropped.  Internal plug-ins (the anchor / exit stills) are never timed.
 
@@ -75,15 +76,15 @@ class TripMonitor:
         self.window_ms = TRIP_WINDOW_S * 1000.0
         self.frame_ms = TRIP_FRAME_MS
 
-    def feed(self, st: Stat, ms: float) -> Optional[str]:
-        """One measured sample -> the trip reason, or None."""
+    def feed(self, st: Stat, ms: float, scale: float = 1.0) -> Optional[str]:
+        """One measured sample -> the trip reason, or None.  ``scale``: the call site's frames per render."""
         st.samples += 1
         st.last_ms = ms
         if st.tripped:
             return None
         if ms >= self.frame_ms:
             return "frame"
-        if ms > self.budget_ms:
+        if ms > self.budget_ms * scale:
             st.n_over += 1
             st.sum_over += ms
             if st.n_over >= self.window_frames or st.sum_over >= self.window_ms:
@@ -247,7 +248,7 @@ class GpuTimer:
         if st.probation:
             st.probation = False
             self.probation -= 1
-        why = self.mon.feed(st, ms)
+        why = self.mon.feed(st, ms, getattr(rec.owner, "rate_div", 1))
         if why is not None:
             self._trip(fc, rec, ms if why != "sustained" else st.sum_over / max(1, st.n_over), why)
 
@@ -259,7 +260,7 @@ class GpuTimer:
         name = plugin_name(rec.kind, rec.owner, rec.obj)
         self.trips += 1
         self.last_trip = {"kind": rec.kind, "name": name, "ms": round(ms, 1), "why": why}
-        exc = SlowPlugin(rec.kind, name, ms, self.mon.budget_ms, why)
+        exc = SlowPlugin(rec.kind, name, ms, self.mon.budget_ms * getattr(rec.owner, "rate_div", 1), why)
         log.warning("GPU guard: %s %s tripped: %s", rec.kind, name, exc)
         try:
             rec.owner.trip(fc, exc)

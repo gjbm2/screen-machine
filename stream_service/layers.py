@@ -23,13 +23,30 @@ GPU frame-time guard (guard.py): with ``FrameCtx.timer`` set, every plug-in call
 effect) is bracketed by GPU timing events; a plug-in that stays over budget is tripped through ``trip(fc, exc)``:
 a source goes black like a failing one (the session cues a recovery), a transition finishes as a cut, an effect
 is dropped.  ``StillLayer`` shows a frozen frame (an exit that must not render a slow scene).
+
+Scene frame rate under GPU load (owner, 15 Oct 2026): a scene source whose measured GPU cost per render is over
+``RATE_TARGET`` of a frame period renders only every 2nd, 3rd or 4th frame (``rate_div``) and shows its last frame
+in between, so a struggling GPU drops the scene's frame rate (e.g. 15 fps in a 30 fps stream) instead of falling
+behind or tripping; transitions, effects and the stream itself still run every frame.  The guard's budget for the
+scene scales with ``rate_div``: it trips only a scene that cannot keep up even at ``RATE_MAX_DIV``.  The rate comes
+back up once the cost has stayed low enough for ``RATE_UP_S``.
 """
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Protocol
 
 from .easing import ease
+
+log = logging.getLogger("stream_service.layers")
+
+RATE_TARGET = 0.7      # a scene may cost this share of a frame period per output frame
+RATE_MAX_DIV = 4       # render at most this many frames apart (7.5 fps in a 30 fps stream)
+RATE_UP_S = 3.0        # stream seconds the cost must stay low (with a 20% margin) before the rate comes back up
+RATE_EMA = 0.3
+RATE_HOLD_FRAMES = 2   # pooled frames held at once: a transition's outgoing and incoming scenes (the engine reserves)
 
 # notify(kind, phase, pts, tid, superseded)
 Notify = Callable[[str, str, float, int, bool], None]
@@ -106,8 +123,48 @@ class SourceLayer(Layer):
         self.scene_t = 0.0
         self.failed = False
         self.slow = False
+        # -- the scene's frame rate under GPU load: render every rate_div-th frame, hold the last in between --
+        self.rate_div = 1
+        self.hold: Any = None
+        self.n_rendered: Optional[int] = None
+        self.cost_ema: Optional[float] = None
+        self._samples_seen = 0
+        self._low_since: Optional[float] = None
+
+    def _adapt_rate(self, fc: FrameCtx) -> None:
+        """Pick rate_div from the guard's measurements of this scene (gpu_stat, read a frame or two late)."""
+        st = getattr(self, "gpu_stat", None)
+        if st is None or st.samples == self._samples_seen:
+            return
+        self._samples_seen = st.samples
+        ms = st.last_ms
+        # up at once on a costly render, down smoothly
+        self.cost_ema = ms if self.cost_ema is None else max(ms, self.cost_ema + RATE_EMA * (ms - self.cost_ema))
+        per = RATE_TARGET * 1000.0 / fc.fps
+        want = min(RATE_MAX_DIV, max(1, math.ceil(self.cost_ema / per)))
+        if want > self.rate_div:
+            self._set_rate(want, fc)
+        elif max(1, math.ceil(self.cost_ema / (0.8 * per))) < self.rate_div:
+            if self._low_since is None:
+                self._low_since = fc.t
+            elif fc.t - self._low_since >= RATE_UP_S:
+                self._set_rate(max(1, math.ceil(self.cost_ema / (0.8 * per))), fc)
+        else:
+            self._low_since = None
+
+    def _set_rate(self, div: int, fc: FrameCtx) -> None:
+        log.info("scene %s: %.1f ms per render on the GPU: renders every %s (%.1f fps)",
+                 getattr(self.source, "name", type(self.source).__name__), self.cost_ema,
+                 "frame" if div == 1 else f"{div} frames", fc.fps / div)
+        self.rate_div, self._low_since = div, None
 
     def render(self, fc: FrameCtx, out: Any) -> None:
+        if not self.failed:
+            self._adapt_rate(fc)
+            if self.rate_div > 1 and self.hold is not None and self.n_rendered is not None \
+                    and 0 <= fc.n - self.n_rendered < self.rate_div:
+                fc.ops.copy(self.hold, out)                 # between renders: the last frame again (dt accrues)
+                return
         t_local = fc.t - self.t0
         dt = 0.0 if self.last_t is None else max(0.0, t_local - self.last_t)
         self.last_t = t_local
@@ -119,16 +176,26 @@ class SourceLayer(Layer):
         if self.failed:
             fc.ops.fill(out, (0, 0, 0))
             return
+        if self.rate_div > 1 and self.hold is None:
+            self.hold = fc.pool.acquire()
+        elif self.rate_div == 1 and self.hold is not None:
+            fc.pool.release(self.hold)
+            self.hold = None
+        dst = out if self.hold is None else self.hold
         tok = fc.timer.begin(self, "source", self.source) if fc.timer is not None else None
         try:
-            self.source.render(t_local, dt, out)
+            self.source.render(t_local, dt, dst)
         except Exception as e:      # C.1: a failing scene shows black; the session cues a recovery
             self.failed = True
             fc.ops.fill(out, (0, 0, 0))
             fc.failed("source", self.source, e, "solid")
+            return
         finally:
             if tok is not None:
                 fc.timer.end(tok)
+        self.n_rendered = fc.n
+        if dst is not out:
+            fc.ops.copy(dst, out)
 
     def trip(self, fc: FrameCtx, exc: BaseException) -> None:
         """Over its GPU budget (guard.py): black from the next frame, like a failing scene."""
@@ -138,6 +205,9 @@ class SourceLayer(Layer):
         fc.failed("source", self.source, exc, "solid")
 
     def close(self, fc: FrameCtx) -> None:
+        if self.hold is not None:
+            fc.pool.release(self.hold)
+            self.hold = None
         fc.retire(self.source)
 
     def describe(self) -> Any:
