@@ -3,7 +3,7 @@ import { RefreshCw, Pause, CircleStop, Play, Square, ChevronUp, ChevronDown, Plu
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import { schedulerApi } from '@/shared/api';
 
 // Action icons component
 interface ActionIconButtonProps {
@@ -118,16 +118,16 @@ export const SchedulerControl = ({
       let result;
       switch (action) {
         case 'start':
-          result = await apiService.startScheduler(destination, {});
+          result = await schedulerApi.startScheduler(destination, {});
           break;
         case 'stop':
-          result = await apiService.stopScheduler(destination);
+          result = await schedulerApi.stopScheduler(destination);
           break;
         case 'pause':
-          result = await apiService.pauseScheduler(destination);
+          result = await schedulerApi.pauseScheduler(destination);
           break;
         case 'unpause':
-          result = await apiService.unpauseScheduler(destination);
+          result = await schedulerApi.unpauseScheduler(destination);
           break;
       }
       
@@ -142,7 +142,7 @@ export const SchedulerControl = ({
   // Handle unload top script action
   const handleUnloadTopScript = async () => {
     try {
-      const success = await apiService.unloadSchedule(destination);
+      const success = await schedulerApi.unloadSchedule(destination);
       if (success) {
         toast.success('Top script unloaded successfully');
         refreshScheduler(destination);

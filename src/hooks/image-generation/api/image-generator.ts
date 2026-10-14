@@ -1,6 +1,6 @@
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import { bucketsApi, generationApi } from '@/shared/api';
 import { GeneratedImage } from '../types';
 import { processUploadedFiles } from './reference-image-utils';
 import { createPlaceholderBatch } from './placeholder-utils';
@@ -288,7 +288,7 @@ export const generateImage = async (
         // Enhanced logging to debug
         console.log("[image-generator] Sending API payload:", payload);
 
-        const response = await apiService.generateImage(payload);
+        const response = await generationApi.generateImage(payload);
         
         addConsoleLog({
           type: 'success',
@@ -359,7 +359,7 @@ export const generateImage = async (
             // Fetch metadata for each generated file individually
             const imageDetailsPromises = response.recent_files.map(async (filename: string) => {
               try {
-                const imageDetails = await apiService.getImageComplete('_recent', filename);
+                const imageDetails = await bucketsApi.getImageComplete('_recent', filename);
                 return { filename, details: imageDetails };
               } catch (error) {
                 console.warn(`[image-generator] Failed to fetch details for ${filename}:`, error);

@@ -10,7 +10,7 @@ import tempfile
 import json
 
 # Add the project root to the Python path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
 
 from routes.bucket_utils import ReferenceImageStorage, ReferenceSource, ReferenceImageInfo
 from routes.bucketer import bucket_path, load_meta, save_meta

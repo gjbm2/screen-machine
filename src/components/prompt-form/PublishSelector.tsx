@@ -11,7 +11,6 @@ import {
   HoverCardTrigger,
   HoverCardContent,
 } from '@/components/ui/hover-card';
-import { PublishDestination } from '@/utils/api';
 import { Share2, ScreenShareOff } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';

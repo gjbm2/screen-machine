@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
-import apiService from '@/utils/api';
+import { publishApi } from '@/shared/api';
 
 interface DetailViewActionBarProps {
   imageUrl: string;
@@ -169,14 +169,14 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         }
         
         // Use the bucket-to-bucket publishing route
-        success = await apiService.publishImageUnified({
+        success = await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           src_bucket_id: sourceBucket,
           filename: filename
         });
       } else {
         // External URL case (generated images)
-        success = await apiService.publishImageUnified({
+        success = await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           source_url: imageUrl,
           metadata: generationInfo,

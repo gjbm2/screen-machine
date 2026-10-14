@@ -10,7 +10,7 @@ import { Workflow } from '@/types/workflows';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
 import { clearAll } from '@/utils/photoCache';
-import apiService from '@/utils/api';
+import { bucketsApi, publishApi } from '@/shared/api';
 
 // Debug flag - set to true to enable on-screen debug messages
 const DEBUG_MODE = false;
@@ -606,39 +606,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
     
     try {
       // Step 1: Upload file to bucket
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const uploadResponse = await fetch(`${apiService.getApiUrl()}/buckets/${publishDestination}/upload`, {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
-      }
-      
-      const uploadResult = await uploadResponse.json();
+      const uploadResult = await bucketsApi.uploadToBucket(publishDestination, file);
       console.log('📸 Upload successful:', uploadResult);
       
       // Step 2: Publish from bucket to display
-      const publishResponse = await fetch(`${apiService.getApiUrl()}/publish`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          dest_bucket_id: publishDestination,
-          src_bucket_id: publishDestination,
-          filename: uploadResult.filename
-        })
-      });
-      
-      if (!publishResponse.ok) {
-        throw new Error(`Publish failed: ${publishResponse.statusText}`);
-      }
-      
-      const publishResult = await publishResponse.json();
+      const publishResult = await publishApi.publishBucketFile(publishDestination, publishDestination, uploadResult.filename);
       console.log('📸 Publish successful:', publishResult);
       
     } catch (error) {
@@ -653,22 +625,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     console.log('📸 publishUrlToDestination:', url.substring(0, 50) + '...', 'to', publishDestination);
     
     try {
-      const response = await fetch(`${apiService.getApiUrl()}/publish`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          dest_bucket_id: publishDestination,
-          source_url: url
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Publish failed: ${response.statusText}`);
-      }
-      
-      const result = await response.json();
+      const result = await publishApi.publishUrl(publishDestination, url);
       console.log('📸 URL publish successful:', result);
       
     } catch (error) {

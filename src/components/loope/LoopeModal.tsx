@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import { bucketsApi, publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { ReferenceImageService } from '@/services/reference-image-service';
 
@@ -274,7 +274,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         console.log('Toggling favorite state:', { id: img.id, bucketId, currentState, newState: !currentState });
         
         // Call the API to toggle favorite status
-        const success = await apiService.toggleFavorite(bucketId, img.id, !currentState);
+        const success = await bucketsApi.toggleFavorite(bucketId, img.id, !currentState);
         
         if (success) {
           // Update the state in context
@@ -354,7 +354,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
         
         // Call API to copy
-        await apiService.copyImageToBucket(sourceBucketId, destinationId, img.id, true);
+        await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, true);
         toast.success(`Copied to ${destinationId}`);
       } catch (error) {
         console.error('Error copying image:', error);
@@ -395,7 +395,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
         
         // Call API to move (copy with delete)
-        await apiService.copyImageToBucket(sourceBucketId, destinationId, img.id, false);
+        await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, false);
         toast.success(`Moved to ${destinationId}`);
         
         // Close modal as the current image is gone
@@ -439,7 +439,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
         
         // Call API to publish - using correct method with proper parameters
-        await apiService.publishImageUnified({
+        await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           src_bucket_id: sourceBucketId,
           filename: img.id
@@ -489,7 +489,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
         
         // Call API to delete
-        await apiService.deleteFromBucket(bucketId, img.id);
+        await bucketsApi.deleteFromBucket(bucketId, img.id);
         toast.success('Image deleted');
         
         // Close modal as the current image is gone

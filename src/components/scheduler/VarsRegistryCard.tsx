@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCcw, Edit, Trash2, Plus, Download, Upload, Globe, Users, FileText, ChevronDown, ChevronRight } from 'lucide-react';
-import apiService from '@/utils/api';
+import { varsApi } from '@/shared/api';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useToast } from '@/components/ui/use-toast';
@@ -78,7 +78,7 @@ export const VarsRegistryCard: React.FC = () => {
   const fetchRegistry = async () => {
     setLoading(true);
     try {
-      const response = await apiService.getVarsRegistry();
+      const response = await varsApi.getVarsRegistry();
       if (response && response.status === 'success') {
         setData(response.registry);
       }
@@ -115,7 +115,7 @@ export const VarsRegistryCard: React.FC = () => {
   const handleDeleteVar = async (name: string) => {
     if (confirm(`Are you sure you want to delete the variable "${name}"?`)) {
       try {
-        await apiService.deleteExportedVar(name);
+        await varsApi.deleteExportedVar(name);
         toast({
           title: 'Success',
           description: `Variable "${name}" deleted successfully`,
@@ -137,7 +137,7 @@ export const VarsRegistryCard: React.FC = () => {
     if (!editingVar) return;
     
     try {
-      await apiService.setExportedVar(editingVar.key, editingVar.value);
+      await varsApi.setExportedVar(editingVar.key, editingVar.value);
       setEditDialogOpen(false);
       toast({
         title: 'Success',

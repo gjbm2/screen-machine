@@ -215,7 +215,7 @@ def _create(client, **kwargs):
         raise
 ```
 
-Why here and not in the four callers (`generate_handler.py:518/590`, `alexa.py:538`, `scheduler_handlers.py:1410`): the callers all *deliberately* swallow/fallback — correct for keeping screens alive, wrong place to detect. Wrapping inside `openai_prompt` alerts **before** the swallowing, and the existing tests that mock `routes.openai.openai_prompt` (`test.py:76`, `tests/unit/test_instruction_handlers.py`) are untouched. The SDK already retries 429s twice internally (openai 1.77.0, `DEFAULT_MAX_RETRIES=2`), so what reaches the wrapper is real. Also add an `openai.auth` alert beside the missing-key RuntimeError at `routes/openai.py:60-62`.
+Why here and not in the four callers (`generate_handler.py:518/590`, `alexa.py:538`, `scheduler_handlers.py:1410`): the callers all *deliberately* swallow/fallback — correct for keeping screens alive, wrong place to detect. Wrapping inside `openai_prompt` alerts **before** the swallowing, and the existing tests that mock `routes.openai.openai_prompt` (`scripts/manual/manual_scheduler_handlers.py:76`, formerly root `test.py`; `tests/unit/test_instruction_handlers.py`) are untouched. The SDK already retries 429s twice internally (openai 1.77.0, `DEFAULT_MAX_RETRIES=2`), so what reaches the wrapper is real. Also add an `openai.auth` alert beside the missing-key RuntimeError at `routes/openai.py:60-62`.
 
 ### 7.2 Structural safety nets
 

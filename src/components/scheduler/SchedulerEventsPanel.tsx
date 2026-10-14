@@ -42,9 +42,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Clock, Calendar, Maximize, Package, ChevronDown, ChevronRight, Trash2, Send, History, List } from 'lucide-react';
-import apiService from '@/utils/api';
+import { eventsApi, publishApi } from '@/shared/api';
 import { toast } from 'sonner';
-import { PublishDestination } from '@/utils/api';
+import type { PublishDestination } from '@/shared/api';
 import { HierarchicalHeader } from './HierarchicalHeader';
 import { HierarchicalContent } from './HierarchicalContent';
 
@@ -150,7 +150,7 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
     console.log('SchedulerEventsPanel: Fetching destinations and groups');
     try {
       // Get destinations
-      const publishDestinations = await apiService.getPublishDestinations();
+      const publishDestinations = await publishApi.getPublishDestinations();
       console.log('SchedulerEventsPanel: Received destinations:', publishDestinations);
       setDestinations(publishDestinations);
       
@@ -235,7 +235,7 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
     setLoading(true);
     try {
       console.log(`SchedulerEventsPanel: Calling API to get all events`);
-      const allEvents = await apiService.getAllEvents();
+      const allEvents = await eventsApi.getAllEvents();
       console.log(`SchedulerEventsPanel: Received ${allEvents.queue.length} queued events and ${allEvents.history.length} history events`);
       setEventsData(allEvents);
     } catch (error) {
@@ -313,7 +313,7 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
     try {
       // Use the API service to throw the event
       console.log('SchedulerEventsPanel: Calling API to throw event');
-      const result = await apiService.throwEvent(eventData);
+      const result = await eventsApi.throwEvent(eventData);
       console.log('SchedulerEventsPanel: Event thrown successfully, result:', result);
       toast.success(`Event "${eventKey}" thrown successfully`);
       console.log('SchedulerEventsPanel: Now fetching updated events');
@@ -403,11 +403,11 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
         
         if (event.unique_id) {
           // Delete by ID if available
-          await apiService.clearEventById(event.destination_id, event.unique_id);
+          await eventsApi.clearEventById(event.destination_id, event.unique_id);
           toast.success(`Event ID ${event.unique_id.substring(0, 8)}... deleted`);
         } else {
           // Fall back to deleting by key
-          await apiService.clearEventByKey(event.destination_id, event.key);
+          await eventsApi.clearEventByKey(event.destination_id, event.key);
           toast.success(`Event '${event.key}' deleted`);
         }
         
@@ -765,7 +765,7 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
         return;
       }
       
-      await apiService.clearAllEvents(scope);
+      await eventsApi.clearAllEvents(scope);
       toast.success(`All events for ${scope} cleared`);
       
       // Refresh events list

@@ -1,6 +1,5 @@
 // ReferenceImageService: fetches and validates reference images for a generation
-import { ReferenceImageInfo } from '@/utils/api';
-import apiService from '@/utils/api';
+import type { ReferenceImageInfo } from '@/shared/api';
 
 export class ReferenceImageService {
   // Convert stored reference image paths to accessible URLs

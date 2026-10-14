@@ -20,7 +20,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import apiService from '@/utils/api';
+import { publishApi, schedulerApi, API_URL } from '@/shared/api';
 import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
@@ -123,11 +123,11 @@ const Scheduler = () => {
     setLoading(true);
     try {
       // Get list of running schedulers
-      const response = await apiService.listSchedulers();
+      const response = await schedulerApi.listSchedulers();
       const runningSchedulers = response.running || [];
       
       // Get publish destinations from the service
-      const publishDestinations = await apiService.getPublishDestinations(true);
+      const publishDestinations = await publishApi.getPublishDestinations(true);
       
       // Extract destination IDs from the publish destinations
       const destinationIds = publishDestinations.map(dest => dest.id);
@@ -139,7 +139,7 @@ const Scheduler = () => {
       const enhancedDestinations: Destination[] = [];
       
       // Get all scheduler statuses in one batch request
-      const allStatusesResponse = await apiService.getAllSchedulerStatuses();
+      const allStatusesResponse = await schedulerApi.getAllSchedulerStatuses();
       const allStatuses = allStatusesResponse.statuses || {};
       
       // Get details for each destination
@@ -181,12 +181,12 @@ const Scheduler = () => {
             // If it's running, get additional details
             try {
               // Get logs
-              const logsResponse = await apiService.getSchedulerLogs(destId);
+              const logsResponse = await schedulerApi.getSchedulerLogs(destId);
               destination.logs = logsResponse.log || [];
               
               // Get schedule stack
               try {
-                const stackResponse = await apiService.getScheduleStack(destId);
+                const stackResponse = await schedulerApi.getScheduleStack(destId);
                 destination.scheduleStack = stackResponse.stack || [];
               } catch (stackError) {
                 if (process.env.NODE_ENV === 'development') {
@@ -197,7 +197,7 @@ const Scheduler = () => {
               
               // Get context
               try {
-                const contextResponse = await apiService.getSchedulerContext(destId);
+                const contextResponse = await schedulerApi.getSchedulerContext(destId);
                 if (contextResponse.context_stack) {
                   destination.contextStack = contextResponse.context_stack || [];
                 } else if (contextResponse.vars || contextResponse.last_generated) {
@@ -238,12 +238,12 @@ const Scheduler = () => {
             
             // Even though it's not running or is paused, try to get the schedule stack
             try {
-              const stackResponse = await apiService.getScheduleStack(destId);
+              const stackResponse = await schedulerApi.getScheduleStack(destId);
               destination.scheduleStack = stackResponse.stack || [];
               
               // Try to get context as well
               try {
-                const contextResponse = await apiService.getSchedulerContext(destId);
+                const contextResponse = await schedulerApi.getSchedulerContext(destId);
                 if (contextResponse.context_stack) {
                   destination.contextStack = contextResponse.context_stack || [];
                 } else if (contextResponse.vars || contextResponse.last_generated) {
@@ -358,7 +358,7 @@ const Scheduler = () => {
 
   const fetchLogs = async (destinationId: string) => {
     try {
-      const logs = await apiService.getSchedulerLogs(destinationId);
+      const logs = await schedulerApi.getSchedulerLogs(destinationId);
       setLocalLogs(prevLogs => ({
         ...prevLogs,
         [destinationId]: logs.log || []
@@ -376,7 +376,7 @@ const Scheduler = () => {
   const fetchSchedulerStatus = async (destinationId: string) => {
     try {
       // First check if scheduler is running
-      const runningResponse = await apiService.getDestinations();
+      const runningResponse = await schedulerApi.getDestinations();
       const destination = runningResponse.destinations.find(d => d.id === destinationId);
       const isRunning = destination?.scheduler_running || false;
       
@@ -391,11 +391,11 @@ const Scheduler = () => {
         try {
           if (process.env.NODE_ENV === 'development') {
             console.log(`Fetching next action for destination ${destinationId}`);
-            const apiUrl = apiService.getApiUrl();
+            const apiUrl = API_URL;
             console.log(`Using API URL: ${apiUrl}/schedulers/${destinationId}/next_action`);
           }
           
-          const actionResponse = await apiService.getNextScheduledAction(destinationId);
+          const actionResponse = await schedulerApi.getNextScheduledAction(destinationId);
           
           if (process.env.NODE_ENV === 'development') {
             console.log(`Next action response:`, actionResponse);
@@ -438,7 +438,7 @@ const Scheduler = () => {
   // New function to fetch all scheduler statuses at once
   const fetchAllSchedulerStatuses = async () => {
     try {
-      const response = await apiService.getAllSchedulerStatuses();
+      const response = await schedulerApi.getAllSchedulerStatuses();
       if (response && response.statuses) {
         setSchedulerStatus(response.statuses);
       }
@@ -469,10 +469,10 @@ const Scheduler = () => {
       
       // If currently paused, unpause it
       if (currentlyPaused) {
-        await apiService.unpauseScheduler(destinationId);
+        await schedulerApi.unpauseScheduler(destinationId);
       } else {
         // Otherwise pause it
-        await apiService.pauseScheduler(destinationId);
+        await schedulerApi.pauseScheduler(destinationId);
       }
       
       // Refresh the data to ensure we have accurate state
@@ -499,7 +499,7 @@ const Scheduler = () => {
     try {
       // Get the schema
       console.log('SCHEDULER: Fetching schema from API');
-      const schemaResponse = await apiService.getSchedulerSchema();
+      const schemaResponse = await schedulerApi.getSchedulerSchema();
       console.log('SCHEDULER: Schema received (first 100 chars):', schemaResponse.substring(0, 100));
       console.log('SCHEDULER: Schema type:', typeof schemaResponse);
       console.log('SCHEDULER: Schema length:', schemaResponse.length);
@@ -521,7 +521,7 @@ const Scheduler = () => {
         destination: destinationId,
         schema: schemaResponse,
         initialData: {},
-        saveEndpoint: `${apiService.getApiUrl()}/schedulers/${destinationId}/schedule`,
+        saveEndpoint: `${API_URL}/schedulers/${destinationId}/schedule`,
         saveMethod: 'POST'
       });
       
@@ -545,7 +545,7 @@ const Scheduler = () => {
   const handleStartScheduler = async (destinationId: string) => {
     try {
       // Start the scheduler with an empty schedule
-      await apiService.startScheduler(destinationId, {});
+      await schedulerApi.startScheduler(destinationId, {});
       
       // Refresh the data
       await fetchDestinations();
@@ -567,7 +567,7 @@ const Scheduler = () => {
   const handleStopScheduler = async (destinationId: string) => {
     try {
       // Stop the scheduler
-      await apiService.stopScheduler(destinationId);
+      await schedulerApi.stopScheduler(destinationId);
       
       // Refresh the data
       await fetchDestinations();
@@ -589,7 +589,7 @@ const Scheduler = () => {
   const handleUnloadSchedule = async (destinationId: string) => {
     try {
       // Unload the top schedule
-      await apiService.unloadSchedule(destinationId);
+      await schedulerApi.unloadSchedule(destinationId);
       
       // Refresh the data
       await fetchDestinations();
@@ -611,14 +611,14 @@ const Scheduler = () => {
   const handleEditSchedule = async (destinationId: string, layer: number) => {
     try {
       // Get the schedule at the specified position
-      const response = await apiService.getScheduleAtPosition(destinationId, layer);
+      const response = await schedulerApi.getScheduleAtPosition(destinationId, layer);
       
       if (!response.schedule) {
         throw new Error('Failed to get schedule');
       }
       
       // Get the schema
-      const schemaResponse = await apiService.getSchedulerSchema();
+      const schemaResponse = await schedulerApi.getSchedulerSchema();
       
       if (!schemaResponse) {
         throw new Error('Failed to get schema');
@@ -629,7 +629,7 @@ const Scheduler = () => {
         destination: destinationId,
         schema: schemaResponse,
         initialData: response.schedule,
-        saveEndpoint: `${apiService.getApiUrl()}/schedulers/${destinationId}/schedule/${layer}`,
+        saveEndpoint: `${API_URL}/schedulers/${destinationId}/schedule/${layer}`,
         saveMethod: 'PUT'
       });
       
@@ -714,7 +714,7 @@ const Scheduler = () => {
   // Add function to fetch instruction queue for a destination
   const fetchInstructionQueue = async (destinationId: string) => {
     try {
-      const response = await apiService.getInstructionQueue(destinationId);
+      const response = await schedulerApi.getInstructionQueue(destinationId);
       setInstructionQueues(prevQueues => ({
         ...prevQueues,
         [destinationId]: response

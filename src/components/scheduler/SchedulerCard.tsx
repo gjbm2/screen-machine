@@ -19,7 +19,7 @@ import {
   RefreshCcw
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import apiService from '@/utils/api';
+import { eventsApi, schedulerApi } from '@/shared/api';
 import { SetVarsButton } from './SetVarsButton';
 import { extractEventTriggers } from '@/utils/scheduleUtils';
 import { MobileActionSheet } from '@/components/ui/MobileActionSheet';
@@ -127,7 +127,7 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
   // Handle throwing an event
   const handleThrowEvent = async (eventKey: string) => {
     try {
-      await apiService.throwEvent({
+      await eventsApi.throwEvent({
         event: eventKey,
         scope: destination.id,
         ttl: "60s"
@@ -153,7 +153,7 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
     
     const fetchLogs = async () => {
       try {
-        const logs = await apiService.getSchedulerLogs(destination.id);
+        const logs = await schedulerApi.getSchedulerLogs(destination.id);
         if (logs && logs.log) {
           if (logsContainerRef.current && window.getSelection) {
             const selection = window.getSelection();

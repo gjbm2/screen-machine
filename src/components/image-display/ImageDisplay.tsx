@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from '
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
 import useImageDisplayState from './hooks/useImageDisplayState';
-import apiService from '@/utils/api';
+import { bucketsApi, publishApi, schedulerApi } from '@/shared/api';
 import { getReferenceUrl } from '@/utils/image-utils';
-import { PublishDestination } from '@/utils/api';
+import type { PublishDestination } from '@/shared/api';
 import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -140,7 +140,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     
     // Also immediately fetch the latest scheduler status for this bucket
     try {
-      const status = await apiService.getSchedulerStatus(bucket);
+      const status = await schedulerApi.getSchedulerStatus(bucket);
       // Update just this one scheduler status without affecting others
       setSchedulerStatuses(prev => ({
         ...prev,
@@ -237,7 +237,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       try {
         const statuses = await Promise.all(
           destinationsWithBuckets.map(async (dest) => {
-            const status = await apiService.getSchedulerStatus(dest.id);
+            const status = await schedulerApi.getSchedulerStatus(dest.id);
             return { [dest.id]: status };
           })
         );
@@ -542,7 +542,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
         if (!isHeadless) {
           console.log(`Publishing image ${activeId} to ${destId}`);
-          apiService.publishImageUnified({
+          publishApi.publishImageUnified({
             dest_bucket_id: destId,
             src_bucket_id: sourceBucket,
             filename: activeId
@@ -599,7 +599,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     
     if (action === 'copy') {
       console.log(`Copying image ${imageId} from ${selectedTab} to ${destId}`);
-      apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
+      bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
         .then(() => {
           toast.success(`Copied to ${destId}`);
           stableRefreshBucket(destId);
@@ -610,7 +610,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         });
     } else if (action === 'move') {
       console.log(`Moving image ${imageId} from ${selectedTab} to ${destId}`);
-      apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
+      bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
         .then(() => {
           toast.success(`Moved to ${destId}`);
           stableRefreshBucket(destId);
@@ -627,7 +627,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       // Determine the appropriate publish method based on source tab
       if (selectedTab !== 'generated') {
         // For bucket-to-bucket publishing (non-generated images)
-        apiService.publishImageUnified({
+        publishApi.publishImageUnified({
           dest_bucket_id: destId,
           src_bucket_id: getDestinationFile(selectedTab),
           filename: imageId
@@ -645,7 +645,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${getDestinationFile(selectedTab)}/raw/${imageId}`;
         console.log(`Source URL: ${fullSourceUrl}`);
         
-        apiService.publishImageUnified({
+        publishApi.publishImageUnified({
           dest_bucket_id: destId,
           source_url: fullSourceUrl,
           metadata: {}, // Add metadata if available

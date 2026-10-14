@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
-import apiService from '@/utils/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 export interface PromptFormInitialValues {

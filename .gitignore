@@ -36,3 +36,13 @@ output*/
 samsungtvws/example/web_interface/images
 
 *.wav
+
+# Root clutter (2026-10-14 cleanup)
+.pytest_cache/
+*.tmp
+*.plog
+*:Zone.Identifier
+# npm is the package manager; keeps the old Lovable bun lockfile from coming back
+bun.lockb
+# TV pairing tokens must never be added again (the two live ones are still tracked; see REFACTOR_PLAN P2)
+/*-token*.txt

@@ -3,7 +3,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { X, Maximize2, Minimize2, Copy, ChevronsDown, RefreshCw } from 'lucide-react';
 import ConsoleOutput from './ConsoleOutput';
-import apiService from '@/utils/api';
+import { logsApi } from '@/shared/api';
 import { useQuery } from '@tanstack/react-query';
 
 interface ResizableConsoleProps {
@@ -50,7 +50,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   // Fetch backend logs using React Query with proper caching
   const { data: backendLogsData, isLoading, refetch } = useQuery({
     queryKey: ['backendLogs'],
-    queryFn: () => apiService.getLogs(100),
+    queryFn: () => logsApi.getLogs(100),
     refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds when visible
     enabled: isVisible,
     staleTime: 2000, // Consider data fresh for 2 seconds to reduce API calls
