@@ -43,6 +43,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--app-url", default="",
                     help="the renderer's address in the app, e.g. http://<lan-host>:8700/renderer: a browser "
                          "on /dev is sent there (with --local-control)")
+    ap.add_argument("--warm", action="store_true",
+                    help="at start, load the usual transitions on every GPU in the background (production)")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
 
@@ -60,7 +62,7 @@ def main(argv: list[str] | None = None) -> None:
                    max_sessions=args.max_sessions, show_bus=args.show_bus,
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
                    art_dir=pathlib.Path(args.art_dir), local_control=args.local_control,
-                   app_url=args.app_url)
+                   app_url=args.app_url, warm=args.warm)
     logging.getLogger("stream_service").info("listening on %s:%d (dev page: /dev)", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None, access_log=None,
                 shutdown_timeout=10.0)

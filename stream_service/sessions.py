@@ -180,7 +180,7 @@ class Session(EngineListener):
         self.hold_pts: Optional[float] = None
         self.error: Optional[str] = None
         self.end_reason: Optional[str] = None
-        self.media = MediaHub(sid)
+        self.media = MediaHub(sid, profile.fps)
         self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
         self.lock = asyncio.Lock()
         self.pending_scene: Any = None      # set up, shown on go
@@ -387,9 +387,8 @@ class Session(EngineListener):
     # -- lifecycle -----------------------------------------------------------------
     async def start(self, anchor: ImageSource) -> None:
         await self._run(self.engine.create_context)
-        if hasattr(self.engine, "warm") and self.gpu not in self.mgr.warmed:
-            await self._run(self.engine.warm, self.mgr.warm_plugins)   # compile/load every transition (R20)
-            self.mgr.warmed.add(self.gpu)
+        if hasattr(self.engine, "warm"):    # compile/load the usual transitions once per GPU (R20); usually done at start
+            await self.mgr.ensure_warm(self.gpu, lambda: self._run(self.engine.warm, self.mgr.warm_plugins))
         anchor = await self._prepare(anchor)
         self.pending_scene = await self._make_scene(self.scene_spec)
         await self._run(self.engine.start, anchor)
@@ -1224,6 +1223,7 @@ class SessionManager:
         self.inputs = inputs                             # the show bus (None: no --show-bus)
         self.latency_file = latency_file
         self.warmed: set[int] = set()                    # GPUs whose plug-in kernels are loaded
+        self.warming: dict[int, asyncio.Future] = {}     # a warm in progress per GPU (server start or a session)
         self.plugin_errors: dict[tuple[str, str], dict] = {}   # (kind, name) -> {count, sessions, last_*}
         self.library: Any = None                         # library.Library (dev: costs, thumbnails)
         self.slow: dict[tuple[str, str], dict] = {}      # (kind, plug-in) -> the GPU guard's trip (process-wide)
@@ -1354,6 +1354,45 @@ class SessionManager:
             except Exception:
                 log.exception("warming transition %s failed", name)
         ctx.cp.cuda.get_current_stream().synchronize()
+
+    async def ensure_warm(self, gpu: int, run: Callable[[], Any]) -> None:
+        """Warm `gpu` once.  A caller arriving while a warm runs (e.g. the server-start one) waits on that warm;
+        if it failed, the caller runs its own.  A failed warm is logged, never raised: plug-ins then compile on
+        demand when a cue prepares them."""
+        while gpu not in self.warmed:
+            task = self.warming.get(gpu)
+            if task is None:
+                task = self.warming[gpu] = asyncio.ensure_future(self._warm(gpu, run))
+                await asyncio.shield(task)
+                return
+            await asyncio.shield(task)
+
+    async def _warm(self, gpu: int, run: Callable[[], Any]) -> None:
+        t0 = time.monotonic()
+        try:
+            await run()
+            self.warmed.add(gpu)
+            log.info("GPU %d warm in %.1f s", gpu, time.monotonic() - t0)
+        except Exception:
+            log.exception("warming GPU %d failed", gpu)
+        finally:
+            self.warming.pop(gpu, None)
+
+    def warm_gpu(self, gpu: int) -> None:
+        """Worker thread, server start: a small throwaway context on `gpu`, then warm_plugins, so the first live
+        session on that GPU never pays the CUDA start-up and the transition compiles (kernels are cached per
+        device for the whole process)."""
+        from .gpu import RenderContext
+
+        ctx = RenderContext(gpu, 1280, 720, 30, prealloc_buffers=0)
+        with ctx.device:
+            self.warm_plugins(ctx)
+
+    async def warm_all(self) -> None:
+        """Server start (--warm): warm every GPU in the background, one after another."""
+        loop = asyncio.get_running_loop()
+        for gpu in range(len(self.gpu_names())):
+            await self.ensure_warm(gpu, lambda gpu=gpu: loop.run_in_executor(None, self.warm_gpu, gpu))
 
     def post(self, fn: Callable, *args) -> None:
         """Run fn(*args) on the loop thread (from any thread)."""

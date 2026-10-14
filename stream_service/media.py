@@ -1,8 +1,9 @@
 """Media WebSocket fan-out for one session (LIVE_V1 §1.4), ported from the lab's Hub/Client.
 
 Server -> client: one ``config`` text message, ``[0x01][init]``, then ``[0x02][key][frame_id u32 BE][moof+mdat]``
-from the next keyframe on, and ``{"type": "eos"}`` when the session ends.  A client that falls 8 frames
-behind (frames queued here plus one stuck in the transport) is dropped to the next keyframe.  Small kernel
+from the next keyframe on, and ``{"type": "eos"}`` when the session ends.  A client that falls 0.5 s of frames
+behind (frames queued here plus one stuck in the transport; 2 s in its first 2 s, while a new viewer's decoder
+warms up, which is exactly when a transition starts) is dropped to the next keyframe.  Small kernel
 send buffers keep the backlog in the asyncio transport, where it is visible (lab finding: otherwise the
 kernel buffers megabytes of stale frames that drop-to-key cannot see).
 """
@@ -21,7 +22,10 @@ from aiohttp import web
 
 log = logging.getLogger("stream_service.media")
 
-MAX_QUEUE = 8
+MAX_QUEUE = 8              # floor, in frames
+MAX_BACKLOG_S = 0.5        # drop-to-key past this much backlog (time-based: 30 and 60 fps behave the same)
+GRACE_S = 2.0              # a new viewer's first seconds after its first keyframe ...
+GRACE_BACKLOG_S = 2.0      # ... may fall this far behind before a drop (owner: "crossfade starts half way")
 WRITE_HIGH = 16 << 10
 SNDBUF = 256 << 10
 NOTSENT_LOWAT = 64 << 10
@@ -64,6 +68,7 @@ class MediaClient:
         self.dropped = 0          # frames lost to drop-to-key once streaming
         self.join_skipped = 0     # frames skipped waiting for the first keyframe
         self.connected_at = time.time()
+        self.first_key_at: Optional[float] = None   # monotonic, when streaming began (drop-to-key grace)
         self.stats: Optional[dict] = None   # last {"type": "stats", ...} from the page
 
     def transport_backlog(self) -> int:
@@ -82,8 +87,9 @@ class MediaClient:
 
 
 class MediaHub:
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, fps: float = 30.0):
         self.session_id = session_id
+        self.fps = fps
         self.clients: dict[int, MediaClient] = {}
         self.config_msg: Optional[str] = None
         self.init_msg: Optional[bytes] = None
@@ -114,7 +120,7 @@ class MediaHub:
                     c.join_skipped += 1
                 continue
             backlog = len(c.media) + (c.transport_backlog() > WRITE_HIGH)
-            if backlog >= MAX_QUEUE:
+            if backlog >= self.max_queue(c):
                 c.dropped += len(c.media)
                 c.media.clear()
                 if not key:  # wait for the next keyframe; an arriving keyframe restarts the stream at once
@@ -123,8 +129,15 @@ class MediaHub:
                     continue
             c.needs_key = False
             c.streaming = True
+            if c.first_key_at is None:
+                c.first_key_at = time.monotonic()
             c.media.append(msg)
             c.wake.set()
+
+    def max_queue(self, c: MediaClient) -> int:
+        """Frames a client may fall behind before drop-to-key: 0.5 s, or 2 s while its decoder warms up."""
+        young = c.first_key_at is not None and time.monotonic() - c.first_key_at < GRACE_S
+        return max(MAX_QUEUE, round(self.fps * (GRACE_BACKLOG_S if young else MAX_BACKLOG_S)))
 
     def end(self) -> None:
         """Send eos to everyone; the per-client senders then close their sockets."""

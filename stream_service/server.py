@@ -503,7 +503,7 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
-             app_url: str = "") -> web.Application:
+             app_url: str = "", warm: bool = False) -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -570,6 +570,8 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
         from .library import vetting
 
         mgr.loop.run_in_executor(None, vetting)    # the vetted pool's sheet / cost scan, off the loop
+        if warm:                                   # --warm: the first live session on a GPU starts fast
+            app[TASKS].append(asyncio.create_task(mgr.warm_all()))
         if inputs is not None:
             from . import showbus
 
