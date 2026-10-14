@@ -279,10 +279,7 @@ def test_synth_control_url():
 @pytest.mark.asyncio
 async def test_dev_synth_without_a_show_bus():
     async with TestClient(TestServer(make_app(token=TOKEN, config_dir=REPO_CONFIG))) as c:
-        for method in ("GET", "POST"):
-            r = await c.request(method, "/dev/synth", json={"bpm": 120})
-            assert r.status == 401 and (await r.json())["error"] == "unauthorized"
-        r = await c.get("/dev/synth", headers=AUTH)
+        r = await c.get("/dev/synth")                                   # no password needed
         body = await r.json()
         assert r.status == 404 and "--show-bus" in body["detail"]
 
@@ -293,9 +290,7 @@ async def test_dev_synth_proxies_to_show_synth():
     async with TestServer(synth.app()) as ss:
         bus = f"ws://127.0.0.1:{ss.port}/v1/show"
         async with TestClient(TestServer(make_app(token=TOKEN, config_dir=REPO_CONFIG, show_bus=bus))) as c:
-            r = await c.get("/dev/synth", headers={"Authorization": "Bearer wrong"})
-            assert r.status == 401
-            r = await c.get("/dev/synth", headers=AUTH)
+            r = await c.get("/dev/synth")                               # no password needed
             assert r.status == 200 and (await r.json())["song"] == "pop"
             assert r.headers["Cache-Control"] == "no-store"
             r = await c.post("/dev/synth", json={"bpm": 150}, headers=AUTH)

@@ -10,18 +10,21 @@ import { LivePlayer } from "/static/live-player.js";
 const KINDS = [["scene", "Scenes"], ["transition", "Transitions"], ["effect", "Effects"]];
 const FAV_KEY = "sm.library.favs";
 const UI_KEY = "sm.library.ui";
+const PARAMS_KEY = "sm.library.params";
 const BATCH = 60;                                    // cards rendered per page of the infinite scroll
 const STATUS_RANK = { accepted: 0, unreviewed: 1, needs_work: 2, building: 3, rejected: 4 };
-const VALUE_ORDER = { energy: ["low", "mid", "high"], stage: STAGES, status: Object.keys(STATUS_RANK), origin: ["core", "imported"],
+const RATING_ORDER = ["5★", "4★", "3★", "2★", "1★", "unrated", "rejected"];
+const ratingFacet = (e) => (e?.reject ? "rejected" : e?.stars ? `${e.stars}★` : "unrated");
+const VALUE_ORDER = { rating: RATING_ORDER, energy: ["low", "mid", "high"], stage: STAGES, status: Object.keys(STATUS_RANK), origin: ["core", "imported"],
                       licence: ["permissive", "attribution", "noncommercial", "unknown"], dims: ["2d", "3d"], style: ["gentle", "lively", "wild"] };
 const DEFAULT_FACETS = {
-  scene: ["dims", "family", "origin", "moods", "technique", "energy", "licence"],
-  transition: ["family", "origin", "style", "technique", "energy", "licence"],
-  effect: ["stage", "dims", "origin", "moods", "style", "technique", "energy", "licence"],
+  scene: ["rating", "mytags", "dims", "family", "origin", "moods", "technique", "energy", "licence"],
+  transition: ["rating", "mytags", "family", "origin", "style", "technique", "energy", "licence"],
+  effect: ["rating", "mytags", "stage", "dims", "origin", "moods", "style", "technique", "energy", "licence"],
 };
 const NEW_MS = 3600e3;                               // "new": the plug-in file changed in the last hour
 const REFRESH_MS = 20000;                            // the server rescans plug-ins every 20 s
-const SORTS = [["recommended", "Recommended"], ["name", "Name"], ["energy", "Energy: calm → wild"], ["newest", "Newest"], ["fastest", "Fastest"]];
+const SORTS = [["recommended", "Recommended"], ["rating", "Rating"], ["name", "Name"], ["energy", "Energy: calm → wild"], ["newest", "Newest"], ["fastest", "Fastest"]];
 const ACTION = { scene: "Cue", transition: "Use next", effect: "+ FX" };
 
 const asList = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
@@ -105,6 +108,7 @@ export function mount({ library, fxbus } = {}) {
     items: [], byKey: new Map(), idx: null, source: null, note: null, loadedAt: 0,
     kind: DEFAULT_FACETS[ui.kind] ? ui.kind : "scene", sort: ui.sort, favOnly: !!ui.favOnly, q: "", qt: [],
     filters: {}, favs: new Set(asList(store.get(FAV_KEY, []))), nextVia: null, nextFx: [], at: ui.at || null,
+    ratings: new Map(),
     limit: BATCH, detail: null, filtersOpen: false, list: [], current: null, errors: [], errorsDismissed: 0, lab: null, labAvail: "unknown",
   };
   for (const k of Object.keys(DEFAULT_FACETS)) {
@@ -169,6 +173,39 @@ export function mount({ library, fxbus } = {}) {
 
   // ---- loading
   let loading = null;
+  // ---- the owner's ratings (stars / reject / own tags; GET /dev/ratings, POST /dev/rate -> config/live/ratings.json)
+  async function loadRatings() {
+    if (ctx.mock) return;
+    const r = await http("GET", "/dev/ratings", undefined, { auth: false });
+    if (r.ok && r.data?.ratings) S.ratings = new Map(Object.entries(r.data.ratings));
+  }
+  function applyRating(it) {
+    const e = S.ratings.get(it.key);
+    it._rating = e?.stars || 0; it._reject = !!e?.reject; it._mytags = e?.tags || [];
+    it.facets.rating = [ratingFacet(e)];
+    it.facets.mytags = [...it._mytags];
+    it._hay = it._hay.replace(/ \u0001.*$/, "") + (it._mytags.length ? " \u0001" + it._mytags.join(" ") : "");
+  }
+  async function rate(it, patch) {
+    const r = await http("POST", "/dev/rate", { key: it.key, ...patch });
+    if (!r.ok) { toast(explain(r, "rating"), "err", 2500); return; }
+    if (r.data?.entry) S.ratings.set(it.key, r.data.entry); else S.ratings.delete(it.key);
+    applyRating(it);
+    const c = cards.get(it.key); if (c) updateCard(c);
+    if (loupe?.key === it.key) hudRender(it);
+    const row = S.detail === it.key ? detailEl.querySelector(".lib-rate") : null;
+    if (row) row.replaceWith(rateRow(it));
+    renderTabs();
+  }
+  function rateRow(it, big = false) {
+    const stars = [1, 2, 3, 4, 5].map((n) => h("button", {
+      class: `lib-star-btn${n <= it._rating ? " on" : ""}`, "aria-label": `${n} star${n > 1 ? "s" : ""}`, title: `${n} star${n > 1 ? "s" : ""} (key ${n}; again to clear)`,
+      onclick: (e) => { e.stopPropagation(); rate(it, { stars: it._rating === n ? 0 : n }); } }, "★"));
+    const rej = h("button", { class: `lib-rej-btn${it._reject ? " on" : ""}`, "aria-label": "reject", title: "reject (x)",
+      onclick: (e) => { e.stopPropagation(); rate(it, { reject: !it._reject }); } }, "✕");
+    return h("div", { class: `lib-rate${big ? " big" : ""}`, role: "group", "aria-label": "rating" }, stars, rej);
+  }
+
   async function loadIndex(reason = "") {
     if (loading) return loading;
     loading = (async () => {
@@ -191,6 +228,8 @@ export function mount({ library, fxbus } = {}) {
       S.source = source; S.note = note;
       if (idx) {
         S.idx = idx; S.items = normalise(idx, source === "mock" ? multiply : 1); S.byKey = new Map(S.items.map((i) => [i.key, i]));
+        await loadRatings();
+        for (const it of S.items) applyRating(it);
         S.loadedAt = Date.now();
         if (ui.nextVia && !S.nextVia) S.nextVia = S.byKey.get(ui.nextVia) || null;
         for (const [k, c] of [...cards]) {
@@ -238,6 +277,7 @@ export function mount({ library, fxbus } = {}) {
       name,
       energy: (a, b) => (a._e ?? 9) - (b._e ?? 9) || name(a, b),
       newest: (a, b) => b._added - a._added || name(a, b),
+      rating: (a, b) => ((b._reject ? -1 : b._rating || 0) - (a._reject ? -1 : a._rating || 0)) || name(a, b),
       fastest: (a, b) => (a.bench_ms_4k ?? 1e9) - (b.bench_ms_4k ?? 1e9) || name(a, b),
       recommended: (a, b) =>
         (S.favs.has(b.key) - S.favs.has(a.key)) || ((a.load === "error") - (b.load === "error")) ||
@@ -403,7 +443,7 @@ export function mount({ library, fxbus } = {}) {
     el.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") { clearTimeout(hoverT); hoverT = setTimeout(() => startPreview(c), 140); } });
     el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { clearTimeout(hoverT); if (playing?.c === c) stopPreview(); } });
     thumb.addEventListener("pointerdown", (e) => { lastPointer = e.pointerType; });
-    el.addEventListener("click", (e) => { if (!e.target.closest("button")) livePreview(it); });   // click = see it live
+    el.addEventListener("click", (e) => { if (!e.target.closest("button, a")) toggleDetail(it.key); });   // card view (+ live)
     el.addEventListener("focus", () => { roving = it.key; clearTimeout(hoverT); hoverT = setTimeout(() => { if (document.activeElement === el) startPreview(c); }, 350); });
     el.addEventListener("blur", () => { clearTimeout(hoverT); if (playing?.c === c && !el.matches(":hover")) stopPreview(); });
     cards.set(it.key, c);
@@ -421,7 +461,8 @@ export function mount({ library, fxbus } = {}) {
       : it.runtime_errors > 0 ? `${it.runtime_errors} runtime error(s)${it.runtime_error ? ": " + it.runtime_error : ""}` : null;
     const isNew = it._added && Date.now() - it._added < NEW_MS;
     c.el.title = it.load === "error" ? `BROKEN: ${it.error || "import error"}` : "";
-    put(c.badges, 
+    put(c.badges,
+      it._reject ? h("span", { class: "lib-badge err", title: "rejected" }, "✕") : it._rating ? h("span", { class: "lib-badge rate", title: `${it._rating} of 5` }, "★".repeat(it._rating)) : null,
       isNew ? h("span", { class: "lib-badge new", title: `added / changed ${ago(it.added_at)}` }, "new") : null,
       shortOrigin(it.origin) === "core" ? null : h("span", { class: "lib-badge lab", title: it.origin }, shortOrigin(it.origin)),
       it.heavy ? h("span", { class: "lib-badge heavy", title: `heavy: ${fmt(it.bench_ms_4k)} ms at 4K` }, "heavy") : null,
@@ -484,55 +525,240 @@ export function mount({ library, fxbus } = {}) {
     c.el.classList.remove("playing");
   }
 
-  // ---- live preview: a card click plays the item LIVE in one reusable 720p session per tab (POST /dev/preview,
-  // stream_service/preview.py); later clicks re-cue the same stream with a cut, so switching is instant
+  // ---- live preview INSIDE the card view: opening a card plays it live in the media box (POST /dev/preview,
+  // stream_service/preview.py: one reusable 720p session per tab; another card re-cues it with a cut and the same
+  // <video> moves into the new card view, so switching is instant).  Closing the card view stops the player; the
+  // session then ends at its TTL unless another card is opened first.
   const LP_CLIENT = (() => {
     const make = () => "t" + Math.random().toString(36).slice(2, 12);
     try { let c = sessionStorage.getItem("sm.preview.client"); if (!c) { c = make(); sessionStorage.setItem("sm.preview.client", c); } return c; }
     catch (_) { return make(); }
   })();
-  const lpStage = h("div", { class: "lib-lp-stage" }, h("div", { class: "lib-lp-spin", "aria-hidden": "true" }));
-  const lpTitle = h("span", { class: "lib-lp-title" });
-  const lpNote = h("span", { class: "lib-lp-note" });
-  const lp = h("div", { class: "lib-lp", role: "dialog", "aria-label": "live preview", hidden: true },
-    h("div", { class: "lib-lp-bar" }, lpTitle, lpNote,
-      h("button", { class: "lib-lp-close", "aria-label": "close the preview", title: "close (Esc)", onclick: () => liveStop() }, "×")),
-    lpStage);
-  document.body.appendChild(lp);
-  let lpPlayer = null, lpUrl = null, lpKeep = null, lpSeq = 0, lpKey = null;
-  const lpMark = () => { for (const c of cards.values()) c.el.classList.toggle("previewing", c.it.key === lpKey); };
-  async function livePreview(it) {
-    if (ctx.mock) { toast("mock mode: no live preview", "info", 1800); return; }
-    if (it.load === "error") { toast(`${it.label}: cannot load (${it.error || "import error"})`, "err", 2500); return; }
+  let lpPlayer = null, lpUrl = null, lpKeep = null, lpSeq = 0, lpKey = null, lpSid = null;
+  async function liveInto(media, it) {
+    if (ctx.mock || it.load === "error") return;
+    const note = h("span", { class: "lp-note" });
+    media.append(note);
+    const label = it.kind === "transition" ? "live · looping between two scenes" : it.kind === "effect" ? "live · on a moving scene" : "live";
+    const adopt = () => { lpHost(media).append(lpPlayer.video); lpPlayer.video.play().catch(() => {}); };   // moving a <video> pauses it
+    const done = () => { media.classList.remove("loading"); loupe?.stage.classList.remove("loading"); };
+    if (lpKey === it.key && lpPlayer) { adopt(); note.textContent = label; return; }   // a re-render: keep playing
     const seq = ++lpSeq;
-    lpKey = it.key; lpMark();
-    lp.hidden = false; lp.classList.add("loading");
-    lpTitle.textContent = it.label;
-    lpNote.textContent = it.kind === "transition" ? "looping between two scenes" : it.kind === "effect" ? "on a moving scene" : "live";
+    lpKey = it.key;
+    media.classList.add("loading"); loupe?.stage.classList.add("loading");
+    note.textContent = "starting…";
     const r = await http("POST", "/dev/preview", { client: LP_CLIENT, kind: it.kind, spec: it.spec });
-    if (seq !== lpSeq) return;                                   // a newer click won
-    if (!r.ok) { lp.classList.remove("loading"); lpNote.textContent = explain(r, "preview"); return; }
+    if (seq !== lpSeq) return;                                   // another card was opened meanwhile
+    if (!r.ok) { done(); note.textContent = explain(r, "live preview"); if (loupe) loupe.count.textContent = note.textContent; return; }
     const att = r.data.attach || {};
-    if (att.url && att.url !== lpUrl) {                           // first click (or the old session ended): attach
+    lpSid = r.data.session;
+    if (loupe?.key === it.key && loupe.paramsOpen) paramsRender(it);
+    if (lpPlayer && att.url === lpUrl) {                        // same session: move the playing <video> here
+      adopt();
+      setTimeout(() => { if (seq === lpSeq) done(); }, 300);
+    } else {
       if (lpPlayer) lpPlayer.stop();
       lpUrl = att.url;
-      lpPlayer = new LivePlayer({ url: att.url, targetBufferMs: att.target_buffer_ms ?? 300, mount: lpStage, sendStats: false });
+      lpPlayer = new LivePlayer({ url: att.url, targetBufferMs: att.target_buffer_ms ?? 300, mount: lpHost(media), sendStats: false });
       lpPlayer.start();
-      lpPlayer.onFirstFrame(() => { if (seq === lpSeq) lp.classList.remove("loading"); });
-    } else {
-      setTimeout(() => { if (seq === lpSeq) lp.classList.remove("loading"); }, 300);   // same stream, cut in
+      lpPlayer.onFirstFrame(() => { if (seq === lpSeq) done(); });
     }
+    note.textContent = label;
     clearInterval(lpKeep);
     lpKeep = setInterval(() => { http("POST", "/dev/preview", { client: LP_CLIENT, keepalive: true }); }, 10000);
   }
   function liveStop() {
-    lpSeq++; lpKey = null; lpMark();
+    lpSeq++; lpKey = null; lpSid = null;
     clearInterval(lpKeep); lpKeep = null;
     if (lpPlayer) { lpPlayer.stop(); lpPlayer = null; lpUrl = null; }
-    lp.hidden = true; lp.classList.remove("loading");
-    http("DELETE", `/dev/preview?client=${encodeURIComponent(LP_CLIENT)}`);
   }
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !lp.hidden && !S.detail) liveStop(); });
+
+  // ---- loupe: click the live picture in a card view -> the same stream large, with ‹ › (arrows / swipe) through
+  // the gallery's current list; the card view follows along, Esc / × / backdrop returns to it
+  let loupe = null;                                  // {el, stage, title, count, key}
+  const lpHost = (media) => (loupe ? loupe.stage : media);
+  function openLoupe(key) {
+    if (loupe) return;
+    const stage = h("div", { class: "lib-loupe-stage" });
+    const title = h("div", { class: "lib-loupe-title" });
+    const count = h("span", { class: "lib-loupe-count" });
+    const nav = (d, cls, label, sym) => h("button", { class: `lib-loupe-nav ${cls}`, "aria-label": label, title: label, onclick: (e) => { e.stopPropagation(); loupeStep(d); } }, sym);
+    const el = h("div", { class: "lib-loupe", role: "dialog", "aria-modal": "true", "aria-label": "large live preview" },
+      h("div", { class: "lib-loupe-bar" }, title, count,
+        h("button", { class: "lib-loupe-close", "aria-label": "close (Esc)", title: "close (Esc)", onclick: (e) => { e.stopPropagation(); closeLoupe(); } }, "×")),
+      h("div", { class: "lib-loupe-body" }, nav(-1, "prev", "previous (←)", "‹"), stage, nav(1, "next", "next (→)", "›")));
+    el.addEventListener("click", (e) => { if (e.target === el || e.target.classList.contains("lib-loupe-body")) closeLoupe(); });
+    let x0 = null;                                   // swipe on the picture (phones)
+    stage.addEventListener("pointerdown", (e) => { x0 = e.clientX; });
+    let swiped = false;
+    stage.addEventListener("pointerup", (e) => { swiped = x0 != null && Math.abs(e.clientX - x0) > 50; if (swiped && !e.target.closest(".lib-hud, .lib-params")) loupeStep(e.clientX < x0 ? 1 : -1); x0 = null; });
+    const hud = h("div", { class: "lib-hud" });
+    const panel = h("div", { class: "lib-params", hidden: true });
+    stage.append(hud, panel);
+    document.body.append(el);
+    document.body.classList.add("lib-noscroll");
+    loupe = { el, stage, title, count, key, hud, panel, timer: null, paramsOpen: !!store.get(PARAMS_KEY, false), cur: {} };
+    const busy = () => el.matches(":has(.lib-hud:hover), :has(.lib-params:hover)") ||
+      (el.contains(document.activeElement) && ["INPUT", "SELECT"].includes(document.activeElement.tagName));
+    loupe.wake = () => {
+      if (!loupe) return;
+      el.classList.add("hud-on");
+      clearTimeout(loupe.timer);
+      loupe.timer = setTimeout(function idle() { if (!loupe) return; if (busy()) loupe.timer = setTimeout(idle, 1500); else el.classList.remove("hud-on"); }, 2500);
+    };
+    el.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") loupe?.wake(); });
+    stage.addEventListener("pointerup", (e) => {                    // a tap (not a swipe) toggles the controls on touch
+      if (e.pointerType !== "mouse" && !swiped && !e.target.closest(".lib-hud, .lib-params"))
+        el.classList.contains("hud-on") ? el.classList.remove("hud-on") : loupe?.wake();
+    });
+    if (lpPlayer) { stage.append(lpPlayer.video); lpPlayer.video.play().catch(() => {}); }
+    loupeInfo(key);
+    loupe.panel.hidden = !loupe.paramsOpen;
+    if (loupe.paramsOpen) { const it = S.byKey.get(key); if (it && lpSid) paramsRender(it); }
+    loupe.wake();
+  }
+
+  // ---- loupe controls: rating, tags, live parameters
+  function hudRender(it) {
+    if (!loupe) return;
+    const sys = ["family", "dims", "moods", "technique", "style", "stage"].flatMap((f) => (it.facets[f] || []).map((v) => h("span", { class: "lib-tag sys", title: f }, v)));
+    const mine = it._mytags.map((t) => h("span", { class: "lib-tag mine" }, t,
+      h("button", { "aria-label": `remove tag ${t}`, title: "remove", onclick: (e) => { e.stopPropagation(); rate(it, { tags: it._mytags.filter((x) => x !== t) }); } }, "×")));
+    const input = h("input", { class: "lib-tag-in", placeholder: "+ tag", "aria-label": "add tags (comma separated)", size: 9, autocomplete: "off" });
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        const add = input.value.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+        input.value = "";
+        if (add.length) rate(it, { tags: [...new Set([...it._mytags, ...add])] });
+      } else if (e.key === "Escape") input.blur();
+    });
+    const pbtn = h("button", { class: `lib-hud-params${loupe.paramsOpen ? " on" : ""}`, title: "live parameters (e)", "aria-pressed": String(loupe.paramsOpen),
+      onclick: (e) => { e.stopPropagation(); toggleParams(); } }, "⚙ Parameters");
+    put(loupe.hud, rateRow(it, true), h("div", { class: "lib-tags" }, sys, mine, input), pbtn);
+  }
+  function toggleParams() {
+    if (!loupe) return;
+    loupe.paramsOpen = !loupe.paramsOpen;
+    store.set(PARAMS_KEY, loupe.paramsOpen);
+    loupe.panel.hidden = !loupe.paramsOpen;
+    const it = S.byKey.get(loupe.key);
+    if (it) { hudRender(it); if (loupe.paramsOpen) paramsRender(it); }
+  }
+  const specObj = (it) => (typeof it.spec === "string" ? { preset: it.spec } : Object.fromEntries(Object.entries(it.spec || {}).filter(([k]) => k !== "params")));
+  async function paramsRender(it) {
+    if (!loupe || !loupe.paramsOpen) return;
+    const cat = ctx.catalog() || {};
+    const list = it.kind === "scene" ? cat.sources : it.kind === "transition" ? cat.transitions : cat.effects;
+    const props = (list || []).find((x) => x.name === it.plugin)?.schema?.properties || {};
+    const sid = lpSid;
+    let vals = {}, bound = new Set();
+    if (it.kind === "scene" && sid) {
+      const r = await http("GET", `/api/sessions/${sid}`);
+      if (r.ok) { vals = r.data.scene_params || {}; bound = new Set(Object.keys(r.data.scene_bindings || {})); }
+    } else if (it.kind === "effect" && sid) {
+      const r = await http("GET", `/api/sessions/${sid}/fx`);
+      const slot = r.ok ? (r.data.stack || []).find((x) => x.id === "pv") : null;
+      vals = slot?.params || {}; bound = new Set(Object.keys(slot?.bindings || {}));
+    } else if (it.kind === "transition") {
+      vals = { ...(cat.presets?.transitions?.[typeof it.spec === "string" ? it.spec : ""]?.params || {}), ...(it.spec?.params || {}) };
+    }
+    if (!loupe || loupe.key !== it.key) return;
+    const cur = loupe.cur = { ...Object.fromEntries(Object.entries(props).map(([k, p]) => [k, p.default])), ...vals };
+    const send = paramSender(it);
+    const rows = Object.entries(props).map(([k, p]) => paramRow(k, p, cur[k], bound.has(k), (v) => { cur[k] = v; send(k, v); })).filter(Boolean);
+    put(loupe.panel,
+      h("div", { class: "lib-params-head" }, h("strong", {}, "Parameters"),
+        h("span", { class: "small" }, it.kind === "transition" ? "next run" : "live"),
+        h("button", { title: "back to the preset's values", onclick: (e) => { e.stopPropagation(); lpKey = null; openDetail(it.key); } }, "Reset")),
+      rows.length ? rows : h("div", { class: "small" }, Object.keys(props).length ? "" : "no parameters (or save the token to load the catalog)"));
+  }
+  function paramSender(it) {
+    let pend = {}, t = null;
+    const flush = () => {
+      const sid = lpSid, p = pend; pend = {};
+      if (!sid && it.kind !== "transition") return;
+      if (it.kind === "scene") http("PATCH", `/api/sessions/${sid}`, { params: p });
+      else if (it.kind === "effect") http("PUT", `/api/sessions/${sid}/fx`, { stack: [{ id: "pv", ...specObj(it), params: { ...loupe.cur } }], fade_s: 0 });
+      else http("POST", "/dev/preview", { client: LP_CLIENT, kind: it.kind, spec: { ...specObj(it), params: { ...loupe.cur } } });
+    };
+    return (k, v) => { pend[k] = v; clearTimeout(t); t = setTimeout(flush, it.kind === "transition" ? 400 : 60); };
+  }
+  function paramRow(k, p, v, isBound, onChange) {
+    const ui = p["x-ui"] || {};
+    const label = h("span", { class: `pl${isBound ? " bound" : ""}`, title: `${k}${p["x-tier"] ? " · " + p["x-tier"] : ""}${isBound ? " · follows the music (moving it takes over)" : ""}` },
+      (isBound ? "♪ " : "") + (ui.label || k));
+    const out = h("span", { class: "pv" });
+    let ctl;
+    if (p.type === "boolean") { ctl = h("input", { type: "checkbox" }); ctl.checked = !!v; ctl.addEventListener("change", () => onChange(ctl.checked)); }
+    else if (Array.isArray(p.enum)) {
+      ctl = h("select", {}, p.enum.map((x, i) => h("option", { value: String(x) }, ui.labels?.[i] ?? String(x))));
+      ctl.value = String(v ?? p.default);
+      ctl.addEventListener("change", () => onChange(p.type === "string" ? ctl.value : Number(ctl.value)));
+    } else if (p.type === "string" && (p.format === "color" || ui.widget === "color")) {
+      ctl = h("input", { type: "color" }); ctl.value = v || p.default || "#ffffff";
+      ctl.addEventListener("input", () => onChange(ctl.value));
+    } else if (p.type === "number" || p.type === "integer") {
+      const lo = p.minimum ?? 0, hi = p.maximum ?? 1, step = p.type === "integer" ? 1 : (ui.step || (hi - lo) / 200);
+      ctl = h("input", { type: "range", min: lo, max: hi, step });
+      ctl.value = String(v ?? p.default ?? lo);
+      const show = () => { out.textContent = p.type === "integer" ? ctl.value : fmt(Number(ctl.value), Math.abs(hi - lo) >= 50 ? 0 : 2); };
+      show();
+      ctl.addEventListener("input", () => { show(); label.classList.remove("bound"); onChange(p.type === "integer" ? parseInt(ctl.value, 10) : Number(ctl.value)); });
+    } else return null;
+    return h("label", { class: "lib-prow" }, label, ctl, out);
+  }
+  function loupeInfo(key) {
+    const it = S.byKey.get(key);
+    if (!loupe || !it) return;
+    loupe.key = key;
+    const i = S.list.findIndex((x) => x.key === key);
+    put(loupe.title, h("strong", {}, it.label), h("span", { class: "small" }, it.kind === "effect" ? `${it.stage || ""} effect` : it.kind), ...chipsFor(it));
+    loupe.count.textContent = i >= 0 ? `${i + 1} / ${S.list.length}` : "";
+    loupe.stage.style.backgroundImage = it.thumb ? `url(${it.thumb})` : "none";
+    loupe.i = i;
+    hudRender(it);
+    if (loupe.paramsOpen) put(loupe.panel, h("div", { class: "small" }, "loading…"));
+  }
+  function loupeStep(d) {
+    if (!loupe || !S.list.length) return;
+    const n = S.list.length;
+    const at = S.list.findIndex((x) => x.key === loupe.key);
+    const i = at < 0 ? Math.max(0, Math.min(n - 1, (loupe.i ?? 0) + (d > 0 ? 0 : d))) : (((at + d) % n) + n) % n;
+    const it = S.list[i];
+    if (i >= S.limit) { S.limit = Math.ceil((i + 1) / BATCH) * BATCH; renderGrid(true); }   // its card must exist
+    loupeInfo(it.key);
+    openDetail(it.key);                              // the card view follows; liveInto re-cues into the loupe
+  }
+  function closeLoupe() {
+    if (!loupe) return;
+    clearTimeout(loupe.timer);
+    const { el } = loupe;
+    loupe = null;
+    el.remove();
+    document.body.classList.remove("lib-noscroll");
+    if (S.detail) openDetail(S.detail);              // re-render: the playing <video> moves back into the card view
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!loupe) return;
+    const t = e.target;
+    const field = t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName);
+    if (field && !["range", "checkbox", "color"].includes(t.type)) {   // typing (e.g. a tag): only Escape is ours
+      if (e.key === "Escape") { t.blur(); e.preventDefault(); e.stopPropagation(); }
+      return;
+    }
+    const it = S.byKey.get(loupe.key);
+    const arrows = !(field && t.type === "range");                  // a focused slider keeps its arrow keys
+    if (e.key === "ArrowRight" && arrows) loupeStep(1);
+    else if (e.key === "ArrowLeft" && arrows) loupeStep(-1);
+    else if (e.key === "Escape") closeLoupe();
+    else if (/^[0-5]$/.test(e.key) && it) rate(it, { stars: Number(e.key) });
+    else if ((e.key === "x" || e.key === "X") && it) rate(it, { reject: !it._reject });
+    else if (e.key === "e" || e.key === "E") toggleParams();
+    else if (e.key === "t" || e.key === "T") { loupe.wake(); loupe.hud.querySelector(".lib-tag-in")?.focus(); }
+    else return;
+    e.preventDefault(); e.stopPropagation(); loupe?.wake();
+  }, true);
 
   // ---- grid with progressive rendering
   const sentinel = h("div", { class: "lib-more-row" });
@@ -592,6 +818,7 @@ export function mount({ library, fxbus } = {}) {
   function closeDetail(render = true) {
     const was = S.detail;
     S.detail = null;
+    liveStop();
     detailEl.querySelectorAll("video").forEach((v) => { try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {} });
     detailEl.remove();
     if (render && was) { const c = cards.get(was); if (c) { updateCard(c); c.el.focus({ preventScroll: true }); } }
@@ -612,10 +839,10 @@ export function mount({ library, fxbus } = {}) {
     if (prev) { const p = cards.get(prev); if (p) updateCard(p); }
     stopPreview();
     const media = h("div", { class: "media" });
-    if (it.preview) media.appendChild(h("video", { src: it.preview, muted: true, loop: true, autoplay: true, playsinline: true, preload: "auto", poster: it.thumb || null }));
-    else if (it.thumb) media.appendChild(h("img", { src: it.thumb, alt: "" }));
-    else media.appendChild(h("div", { class: "lib-thumb", style: { position: "absolute", inset: 0 } }, h("span", { class: "lib-ph" }, "no preview yet")));
-    const v = media.querySelector("video"); if (v) { v.muted = true; v.play?.().catch(() => {}); }
+    if (it.thumb) media.appendChild(h("img", { src: it.thumb, alt: "" }));
+    else media.appendChild(h("div", { class: "lib-thumb", style: { position: "absolute", inset: 0 } }, h("span", { class: "lib-ph" }, "")));
+    media.title = "click: view large (← → to browse)";
+    media.addEventListener("click", () => openLoupe(it.key));
     const kv = [];
     const row = (k, v2) => { if (v2 != null && v2 !== "") kv.push(h("span", {}, k), h("span", {}, v2)); };
     row("plug-in", it.plugin); row("preset", it.preset || "— (plug-in defaults)");
@@ -668,6 +895,7 @@ export function mount({ library, fxbus } = {}) {
     put(detailEl, media, h("div", {},
       h("h3", {}, it.label, " ", h("span", { class: "small", style: { fontWeight: 400 } }, it.kind === "effect" ? `${it.stage || ""} effect` : it.kind)),
       it.description ? h("p", {}, it.description) : null,
+      rateRow(it),
       h("div", { class: "kv" }, kv),
       tagrows.length ? h("div", { class: "tagrows" }, tagrows) : null,
       presetRows,
@@ -675,6 +903,7 @@ export function mount({ library, fxbus } = {}) {
       h("div", { class: "acts" }, acts)));
     const c = cards.get(key);
     if (c) { updateCard(c); placeDetail(); detailEl.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    liveInto(media, it);
   }
 
   // ---- actions
@@ -739,7 +968,7 @@ export function mount({ library, fxbus } = {}) {
 
   function setKind(k) {
     if (S.kind === k) return;
-    S.kind = k; S.limit = BATCH; S.detail = null; detailEl.remove(); roving = null;
+    S.kind = k; S.limit = BATCH; S.detail = null; liveStop(); detailEl.remove(); roving = null;
     saveUi(); renderAll(); scroller.scrollTop = 0;
   }
 
@@ -827,8 +1056,8 @@ export function mount({ library, fxbus } = {}) {
     else if (k === "Enter") primary(c.it);
     else if (k === "f" || k === "F") toggleFav(c.it.key);
     else if (k === "i" || k === "I" || k === ".") toggleDetail(c.it.key);
-    else if (k === "p" || k === "P" || k === " ") { lpKey === c.it.key ? liveStop() : livePreview(c.it); }
-    else if (k === "Escape") { if (S.detail) closeDetail(); else if (lpKey) liveStop(); else stopPreview(); }
+    else if (k === "p" || k === "P" || k === " ") toggleDetail(c.it.key);
+    else if (k === "Escape") { if (S.detail) closeDetail(); else stopPreview(); }
     else return;
     e.preventDefault();
   });

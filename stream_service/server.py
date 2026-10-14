@@ -32,6 +32,7 @@ from .plugins import Registry
 from .plugins.base import STAGES, ParamError
 from .presets import Presets
 from .preview import PreviewError, Previews
+from .ratings import Ratings
 from .profiles import PROFILES
 from .inputs import ShowInputs, signal_catalog
 from .sessions import SessionError, SessionManager
@@ -53,6 +54,7 @@ SYNTH_URL = web.AppKey("synth_url", object)
 SYNTH_TIMEOUT_S = 3.0
 LIBRARY = web.AppKey("library", Library)
 PREVIEWS = web.AppKey("previews", Previews)
+RATINGS = web.AppKey("ratings", Ratings)
 RESCAN_S = 20.0                     # live plug-in discovery: new / changed / removed plug-in modules
 DEV_ART_SCREENS = ("north-screen", "south-screen", "devtest")
 
@@ -72,20 +74,13 @@ def _token_ok(request: web.Request, given: Optional[str]) -> bool:
 
 def _guarded(path: str) -> bool:
     """Bearer-token routes with JSON errors: the API and the dev show-synth proxy."""
-    return path.startswith("/api/") or path in ("/dev/synth", "/dev/rescan", "/dev/lab/rescan", "/dev/preview")
+    return path.startswith("/api/") or path in ("/dev/synth", "/dev/rescan", "/dev/lab/rescan", "/dev/preview", "/dev/rate")
 
 
 @web.middleware
 async def auth_and_errors(request: web.Request, handler):
     path = request.path
-    if _guarded(path):
-        if path == "/api/events":
-            given = request.query.get("token")
-        else:
-            h = request.headers.get("Authorization", "")
-            given = h[7:].strip() if h[:7].lower() == "bearer " else None
-        if not _token_ok(request, given):
-            return err(401, "unauthorized", "missing or wrong bearer token")
+    # No password (owner, 14 Oct): a test rig in a private house. A bearer token from older clients is ignored.
     try:
         resp = await handler(request)
     except ParamError as e:
@@ -107,6 +102,8 @@ async def auth_and_errors(request: web.Request, handler):
         return err(500, "internal", f"{type(e).__name__}")
     if _guarded(path) or path in ("/dev", "/healthz"):
         resp.headers["Cache-Control"] = "no-store"
+    elif path.startswith("/static/"):
+        resp.headers.setdefault("Cache-Control", "no-cache")   # dev JS/CSS change often: always revalidate (304)
     return resp
 
 
@@ -201,6 +198,16 @@ async def dev_live_preview(request: web.Request) -> web.Response:
 
 async def dev_live_preview_stop(request: web.Request) -> web.Response:
     return web.json_response(await request.app[PREVIEWS].stop(request.query.get("client", "")))
+
+
+# -- dev ratings: the owner's stars / reject / tags per Library item (ratings.py, config/live/ratings.json)
+async def dev_ratings(request: web.Request) -> web.Response:
+    return web.json_response({"ratings": request.app[RATINGS].all()}, headers={"Cache-Control": "no-store"})
+
+
+async def dev_rate(request: web.Request) -> web.Response:
+    body = await read_json(request, allow_empty=False)
+    return web.json_response(await asyncio.get_running_loop().run_in_executor(None, request.app[RATINGS].set, body))
 
 
 async def rescan_now(app: web.Application, reason: str) -> dict:
@@ -497,6 +504,7 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     app[SYNTH_URL] = synth_control_url(show_bus)
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
+    app[RATINGS] = Ratings(pathlib.Path(config_dir) / "ratings.json")
     r = app.router
     r.add_get("/healthz", healthz)
     r.add_get("/dev", dev_page)
@@ -508,6 +516,8 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     r.add_get("/dev/preview/{name}.mp4", dev_preview)
     r.add_post("/dev/preview", dev_live_preview)
     r.add_delete("/dev/preview", dev_live_preview_stop)
+    r.add_get("/dev/ratings", dev_ratings)
+    r.add_post("/dev/rate", dev_rate)
     r.add_get("/dev/plugins", dev_plugin_status)
     r.add_post("/dev/rescan", dev_rescan)
     r.add_get("/dev/lab/status", dev_plugin_status)      # the console's plug-in status footer (library.js)

@@ -89,10 +89,10 @@
 <body>
 <header>
   <h1>stream_service · dev</h1>
-  <span id="conn" class="pill">no token</span>
+  <span id="conn" class="pill">connecting</span>
   <span class="spacer"></span>
-  <input id="token" type="password" placeholder="bearer token" size="20" autocomplete="off">
-  <button id="saveToken">Save token</button>
+  <input id="token" type="hidden">
+  <button id="saveToken" hidden>Save token</button>
 </header>
 <div id="top">
   <section id="library"></section>
@@ -312,7 +312,7 @@ import { LivePlayer } from "/static/live-player.js";
 const $ = (id) => document.getElementById(id);
 const LS = "sm.stream.token";
 let token = "";
-try { token = localStorage.getItem(LS) || ""; } catch (_) {}
+token = "open";   // no password (owner, 14 Oct)
 let catalog = null;
 let session = null;        // {id, attach, sceneValue, params, demo?, artCss?, artB64?, targetCss?}
 let player = null;

@@ -201,7 +201,7 @@ async def test_inputs_and_diag_without_a_bus(client):
     d = await r.json()
     assert r.status == 200 and d["host"]["cpus"] >= 1 and d["verdict"]["level"] in ("ok", "warn", "bad")
     assert d["sessions"][0]["session"] == sid
-    assert (await client.get("/api/diag")).status == 401
+    assert (await client.get("/api/diag")).status == 200   # no password
 
 
 async def test_catalog_v11_blocks(client):

@@ -63,7 +63,7 @@ export const store = {
 };
 
 function token() {
-  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; }
+  return "";   // no password (owner, 14 Oct)
 }
 
 // ---------------------------------------------------------------- HTTP: never throws; {ok, status, data, error, detail}
