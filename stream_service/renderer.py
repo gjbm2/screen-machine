@@ -57,6 +57,7 @@ from .encode.encoder import NvencPipeline
 from .encode.fmp4 import TIMESCALE, init_segment, media_fragment
 from .guard import CudaEvents, GpuTimer, SlowPlugin
 from .layers import FrameCtx, Layer, SourceLayer, StillLayer, TransitionLayer
+from .mask import MaskRamp
 from .profiles import Profile
 from .stats import Ring, pct
 
@@ -204,6 +205,7 @@ class Engine:
         self.resync_times: collections.deque[float] = collections.deque(maxlen=64)
         # -- effects layer (EFFECTS_LAYER_DESIGN B.3, C.1) --
         self.bus = MasterBus(None)            # the session sets bus.runtime (master bindings)
+        self.mask = MaskRamp()                # the light mask, applied in the RGBA -> NV12 pass (mask.py)
         self.plugin_errors: dict[tuple[str, str], dict] = {}
         self._reported: set[int] = set()
         self._out_layer: Optional[TransitionLayer] = None
@@ -662,7 +664,7 @@ class Engine:
             retired = self.bus.chain.retire_done(fc)
             if retired and not self.stop_evt.is_set():
                 self.post(self.listener.on_fx, {"retired": retired})
-        self.ctx.kernels.rgba_to_nv12(self.frame, self.d_nv12, self.w, self.h)
+        self.ctx.kernels.rgba_to_nv12(self.frame, self.d_nv12, self.w, self.h, self.mask.at(time.monotonic()))
         slot.ev_rendered.record(stream)
         if timer is not None and self.timer is timer:
             timer.frame_end()
