@@ -259,6 +259,19 @@ body.lib-noscroll { overflow: hidden; }
 .lib-params-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .lib-params-head strong { flex: 1; }
 .lib-params-head .small { color: #8b95a1; }
+.lib-params-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.lib-params-tools button { font-size: 12px; padding: 3px 8px; min-height: 28px; border-radius: 6px; background: rgba(255, 255, 255, .1); }
+.lib-params-tools button:hover:not(:disabled) { background: rgba(255, 255, 255, .18); }
+.lib-params-tools button.on { background: var(--lib-amber); color: #111; }
+.lib-params-tools button:disabled { opacity: .4; cursor: default; }
+.lib-looks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; }
+.lib-looks > .small { color: #8b95a1; margin-right: 2px; }
+.lib-look { display: inline-flex; align-items: center; border-radius: 10px; background: rgba(110, 180, 255, .2); color: #cfe6ff; font-size: 11px; }
+.lib-look button { background: none; border: 0; color: inherit; padding: 2px 3px 2px 8px; min-height: 0; cursor: pointer; }
+.lib-look button:hover { text-decoration: underline; }
+.lib-look button.x { padding: 2px 7px 2px 2px; text-decoration: none; opacity: .7; }
+.lib-look-in { font-size: 12px; padding: 2px 6px; background: rgba(0, 0, 0, .5); border: 1px solid #3a4552; color: #e6e6e6; border-radius: 10px; width: 10em; }
+.lib-badge.looks { color: #8fc3ff; }
 .lib-prow { display: grid; grid-template-columns: minmax(0, 1fr) 120px 40px; align-items: center; gap: 6px; padding: 2px 0; }
 .lib-prow .pl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9d1d9; }
 .lib-prow .pl.bound { color: var(--lib-amber); }

@@ -3,6 +3,16 @@
 // and window.smDev (the dev.html hook) may be missing when a page embeds these panels on its own.
 
 export const TOKEN_KEY = "sm.stream.token";
+
+// The renderer's base path: "" at :8702/dev, "/renderer" behind the Screen Machine app's pass-through.  Read once
+// from this module's own URL (served at <base>/static/libkit.js), else from the page path (<base>/dev).
+export const BASE = (() => {
+  try { const m = new URL(import.meta.url).pathname.match(/^(.*)\/static\/libkit\.js$/); if (m) return m[1]; } catch (_) {}
+  const m = location.pathname.match(/^(.*?)\/dev(\/|$)/);
+  return m ? m[1] : "";
+})();
+// A server path ("/dev/...", "/api/...", "/static/...") under the base; absolute URLs (ws://..., https://...) unchanged.
+export const withBase = (p) => (typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !(BASE && p.startsWith(BASE + "/")) ? BASE + p : p);
 export const LIVE_STATES = new Set(["entering", "live"]);          // a cue is accepted
 export const FX_STATES = new Set(["starting", "holding", "entering", "live"]);   // PUT /fx is accepted (D.2)
 export const STAGES = ["warp", "feedback", "glitch", "stylise", "colour", "light", "projection", "motion", "overlay"];
@@ -74,7 +84,7 @@ export async function http(method, path, body, { auth = true } = {}) {
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let r;
   try {
-    r = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: "no-store" });
+    r = await fetch(withBase(path), { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: "no-store" });
   } catch (e) {
     return { ok: false, status: 0, data: null, error: "network", detail: e.message };
   }
@@ -116,7 +126,7 @@ export function toast(msg, cls = "", ms = 3200) {
 export function explain(res, what) {
   if (!res) return `${what} failed`;
   if (res.status === 0) return `${what}: the server is unreachable`;
-  if (res.status === 401) return `${what}: save the bearer token first`;
+  if (res.status === 401) return `${what}: refused by the server (401)`;
   if (res.status === 404 && /^http_404|not_found$/.test(res.error || "")) return `${what}: not available on this server yet`;
   return `${what}: ${res.error}${res.detail ? " — " + res.detail : ""}`;
 }

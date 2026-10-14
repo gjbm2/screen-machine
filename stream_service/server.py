@@ -77,9 +77,23 @@ def _guarded(path: str) -> bool:
     return path.startswith("/api/") or path in ("/dev/synth", "/dev/rescan", "/dev/lab/rescan", "/dev/preview", "/dev/rate")
 
 
+LOCAL_CONTROL = web.AppKey("local_control", bool)
+_LOOPBACK = ("127.0.0.1", "::1")
+
+
+def _control_path(path: str) -> bool:
+    """Control routes (/api/*, /dev*). /healthz, /media/* (the TVs' and previews' video) and /static/* stay open."""
+    return path.startswith("/api/") or path == "/dev" or path.startswith("/dev/")
+
+
 @web.middleware
 async def auth_and_errors(request: web.Request, handler):
     path = request.path
+    # --local-control: control only from this machine (the Screen Machine app's /renderer/* pass-through on the
+    # LAN door :8700); people never address the renderer directly.  No password either way.
+    if request.app.get(LOCAL_CONTROL) and _control_path(path) and request.remote not in _LOOPBACK:
+        return err(403, "local_only", "open the renderer through the Screen Machine app: "
+                                      "http://192.168.1.205:8700/renderer/dev")
     # No password (owner, 14 Oct): a test rig in a private house. A bearer token from older clients is ignored.
     try:
         resp = await handler(request)
@@ -484,7 +498,7 @@ async def presets_watch(app: web.Application) -> None:
 def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
-             art_dir: Optional[pathlib.Path] = None) -> web.Application:
+             art_dir: Optional[pathlib.Path] = None, local_control: bool = False) -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -505,6 +519,7 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
     app[RATINGS] = Ratings(pathlib.Path(config_dir) / "ratings.json")
+    app[LOCAL_CONTROL] = local_control
     r = app.router
     r.add_get("/healthz", healthz)
     r.add_get("/dev", dev_page)

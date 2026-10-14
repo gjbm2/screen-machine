@@ -1,7 +1,7 @@
 // FX bus panel for the dev console (docs/EFFECTS_LAYER_DESIGN.md §I.3, API §D.2-D.3).
 // GET / PUT /api/sessions/{id}/fx (whole stack, if_rev, retry once on 409), session.fx events, Auto FX (auto.fx +
 // direction.fx).  With ?mock=1 the bus lives in memory (MockFx) so the panel works without the backend.
-import { h, put, http, ctx, debounce, clamp01, fmt, toast, explain, store, STAGES, FX_STATES } from "/static/libkit.js";
+import { h, put, http, ctx, debounce, clamp01, fmt, toast, explain, store, STAGES, FX_STATES } from "./libkit.js";
 
 const AUTO_KEY = "sm.fx.auto";            // per-viewer: the Auto FX descriptors survive a reload
 const POLL_MS = 500;                      // 2 Hz while visible and a session can hold a bus

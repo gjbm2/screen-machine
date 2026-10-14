@@ -3,9 +3,9 @@
 // imported) from GET /dev/library, with thumbnails, hover / tap previews, favourites, a next-cue composer and the
 // FX bus panel (fxbus.js).  Defensive: /dev/library missing -> the catalog without thumbnails; ?mock=1 -> the
 // library-mock.json fixture and an in-memory bus (add &mockx=4 to multiply the items for a 300+ card test).
-import { h, put, add, http, ctx, debounce, hashHue, ago, store, toast, explain, fmt, LIVE_STATES, STAGES } from "/static/libkit.js";
-import { mountFxBus } from "/static/fxbus.js";
-import { LivePlayer } from "/static/live-player.js";
+import { h, put, add, http, ctx, debounce, hashHue, ago, store, toast, explain, fmt, withBase, LIVE_STATES, STAGES } from "./libkit.js";
+import { mountFxBus } from "./fxbus.js";
+import { LivePlayer } from "./live-player.js";
 
 const KINDS = [["scene", "Scenes"], ["transition", "Transitions"], ["effect", "Effects"]];
 const FAV_KEY = "sm.library.favs";
@@ -13,7 +13,7 @@ const UI_KEY = "sm.library.ui";
 const PARAMS_KEY = "sm.library.params";
 const BATCH = 60;                                    // cards rendered per page of the infinite scroll
 const STATUS_RANK = { accepted: 0, unreviewed: 1, needs_work: 2, building: 3, rejected: 4 };
-const RATING_ORDER = ["5★", "4★", "3★", "2★", "1★", "unrated", "rejected"];
+const RATING_ORDER = ["saved looks", "5★", "4★", "3★", "2★", "1★", "unrated", "rejected"];
 const ratingFacet = (e) => (e?.reject ? "rejected" : e?.stars ? `${e.stars}★` : "unrated");
 const VALUE_ORDER = { rating: RATING_ORDER, energy: ["low", "mid", "high"], stage: STAGES, status: Object.keys(STATUS_RANK), origin: ["core", "imported"],
                       licence: ["permissive", "attribution", "noncommercial", "unknown"], dims: ["2d", "3d"], style: ["gentle", "lively", "wild"] };
@@ -79,6 +79,7 @@ function normalise(idx, multiply = 1) {
     if (!raw || !DEFAULT_FACETS[raw.kind] || !raw.name) continue;
     const it = { ...raw };
     it.key = it.key || `${it.kind}/${it.name}`;
+    it.thumb = withBase(it.thumb); it.preview = withBase(it.preview);       // server paths under the base path
     it.label = it.label || it.name;
     it.facets = it.facets && typeof it.facets === "object" ? it.facets : {};
     if (it.kind === "effect" && !it.stage) it.stage = it.facets.stage?.[0] || null;
@@ -181,8 +182,8 @@ export function mount({ library, fxbus } = {}) {
   }
   function applyRating(it) {
     const e = S.ratings.get(it.key);
-    it._rating = e?.stars || 0; it._reject = !!e?.reject; it._mytags = e?.tags || [];
-    it.facets.rating = [ratingFacet(e)];
+    it._rating = e?.stars || 0; it._reject = !!e?.reject; it._mytags = e?.tags || []; it._looks = e?.looks || [];
+    it.facets.rating = [ratingFacet(e), ...(it._looks.length ? ["saved looks"] : [])];
     it.facets.mytags = [...it._mytags];
     it._hay = it._hay.replace(/ \u0001.*$/, "") + (it._mytags.length ? " \u0001" + it._mytags.join(" ") : "");
   }
@@ -192,7 +193,7 @@ export function mount({ library, fxbus } = {}) {
     if (r.data?.entry) S.ratings.set(it.key, r.data.entry); else S.ratings.delete(it.key);
     applyRating(it);
     const c = cards.get(it.key); if (c) updateCard(c);
-    if (loupe?.key === it.key) hudRender(it);
+    if (loupe?.key === it.key) { hudRender(it); if (loupe.paramsOpen && loupe.props) paramsDraw(it); }
     const row = S.detail === it.key ? detailEl.querySelector(".lib-rate") : null;
     if (row) row.replaceWith(rateRow(it));
     renderTabs();
@@ -222,7 +223,7 @@ export function mount({ library, fxbus } = {}) {
           if (c && c.presets) {
             idx = indexFromCatalog(c); source = "catalog";
             note = r.status === 404 ? "no /dev/library on this server yet: the catalog, without thumbnails" : explain(r, "/dev/library");
-          } else note = r.status === 401 || !c ? "save the bearer token to load the library" : explain(r, "library");
+          } else note = !c ? "the library could not be loaded (is the server up?)" : explain(r, "library");
         }
       }
       S.source = source; S.note = note;
@@ -463,6 +464,7 @@ export function mount({ library, fxbus } = {}) {
     c.el.title = it.load === "error" ? `BROKEN: ${it.error || "import error"}` : "";
     put(c.badges,
       it._reject ? h("span", { class: "lib-badge err", title: "rejected" }, "✕") : it._rating ? h("span", { class: "lib-badge rate", title: `${it._rating} of 5` }, "★".repeat(it._rating)) : null,
+      it._looks?.length ? h("span", { class: "lib-badge looks", title: `${it._looks.length} saved look${it._looks.length > 1 ? "s" : ""}` }, `◆${it._looks.length}`) : null,
       isNew ? h("span", { class: "lib-badge new", title: `added / changed ${ago(it.added_at)}` }, "new") : null,
       shortOrigin(it.origin) === "core" ? null : h("span", { class: "lib-badge lab", title: it.origin }, shortOrigin(it.origin)),
       it.heavy ? h("span", { class: "lib-badge heavy", title: `heavy: ${fmt(it.bench_ms_4k)} ms at 4K` }, "heavy") : null,
@@ -597,7 +599,8 @@ export function mount({ library, fxbus } = {}) {
     stage.append(hud, panel);
     document.body.append(el);
     document.body.classList.add("lib-noscroll");
-    loupe = { el, stage, title, count, key, hud, panel, timer: null, paramsOpen: !!store.get(PARAMS_KEY, false), cur: {} };
+    loupe = { el, stage, title, count, key, hud, panel, timer: null, paramsOpen: !!store.get(PARAMS_KEY, false), cur: {},
+               props: null, bound: new Set(), base: {}, pkey: null, hist: [], touched: new Set(), tour: null, saving: false };
     const busy = () => el.matches(":has(.lib-hud:hover), :has(.lib-params:hover)") ||
       (el.contains(document.activeElement) && ["INPUT", "SELECT"].includes(document.activeElement.tagName));
     loupe.wake = () => {
@@ -641,6 +644,7 @@ export function mount({ library, fxbus } = {}) {
     if (!loupe) return;
     loupe.paramsOpen = !loupe.paramsOpen;
     store.set(PARAMS_KEY, loupe.paramsOpen);
+    if (!loupe.paramsOpen) tourStop();
     loupe.panel.hidden = !loupe.paramsOpen;
     const it = S.byKey.get(loupe.key);
     if (it) { hudRender(it); if (loupe.paramsOpen) paramsRender(it); }
@@ -658,36 +662,230 @@ export function mount({ library, fxbus } = {}) {
       if (r.ok) { vals = r.data.scene_params || {}; bound = new Set(Object.keys(r.data.scene_bindings || {})); }
     } else if (it.kind === "effect" && sid) {
       const r = await http("GET", `/api/sessions/${sid}/fx`);
-      const slot = r.ok ? (r.data.stack || []).find((x) => x.id === "pv") : null;
+      const ours = r.ok ? (r.data.stack || []).filter((x) => FX_IDS.includes(x.id)) : [];
+      const slot = ours.find((x) => !["fading_out", "failed"].includes(x.state)) || ours[0] || null;   // not the one leaving
+      if (loupe) loupe.fxId = slot?.id || FX_IDS[0];
       vals = slot?.params || {}; bound = new Set(Object.keys(slot?.bindings || {}));
     } else if (it.kind === "transition") {
       vals = { ...(cat.presets?.transitions?.[typeof it.spec === "string" ? it.spec : ""]?.params || {}), ...(it.spec?.params || {}) };
     }
     if (!loupe || loupe.key !== it.key) return;
     const cur = loupe.cur = { ...Object.fromEntries(Object.entries(props).map(([k, p]) => [k, p.default])), ...vals };
-    const send = paramSender(it);
-    const rows = Object.entries(props).map(([k, p]) => paramRow(k, p, cur[k], bound.has(k), (v) => { cur[k] = v; send(k, v); })).filter(Boolean);
+    Object.assign(loupe, { props, bound });
+    if (loupe.pkey !== it.key) Object.assign(loupe, { pkey: it.key, base: { ...cur }, hist: [], touched: new Set(), saving: false });
+    paramsDraw(it);
+  }
+  function paramsDraw(it) {
+    if (!loupe || loupe.key !== it.key || !loupe.props) return;
+    const { props, bound, cur } = loupe;
+    const send = loupe.send = paramSender(it);
+    const rows = Object.entries(props).map(([k, p]) => paramRow(k, p, cur[k], bound.has(k), (v) => {
+      tourStop(); cur[k] = v; bound.delete(k); loupe.touched.add(k); send(k, v);
+    })).filter(Boolean);
+    const canVary = varyKeys(it, props, bound).length > 0;
+    const tool = (label, title, fn, { cls = "", off = false } = {}) =>
+      h("button", { class: cls, title, disabled: off, onclick: (e) => { e.stopPropagation(); fn(); } }, label);
+    const novary = canVary ? "" : " (nothing here to vary)";
+    const tools = h("div", { class: "lib-params-tools" },
+      tool("🎲 Shuffle", `try a random variation around the preset (r)${novary}`, () => varyStep(it, "wide"), { off: !canVary }),
+      tool("≈ Nudge", `a small change from here (n)${novary}`, () => varyStep(it, "near"), { off: !canVary }),
+      tool("↶ Back", "back to the values before the last shuffle / nudge / look (b)", () => varyBack(it), { off: !loupe.hist.length }),
+      tool(loupe.tour ? "■ Stop" : "▶ Tour", "keep shuffling every few seconds; Back steps through what it showed", () => tourToggle(it),
+        { cls: `tour${loupe.tour ? " on" : ""}`, off: !canVary }),
+      tool("＋ Save look", `save these values as a look for this ${it.kind} (s)`, () => saveStart(it)));
+    const looks = it._looks.map((l) => h("span", { class: "lib-look" },
+      h("button", { title: `apply "${l.name}"`, onclick: (e) => { e.stopPropagation(); tourStop(); applyVals(it, l.params); } }, l.name),
+      h("button", { class: "x", "aria-label": `delete look ${l.name}`, title: "delete this look",
+        onclick: (e) => { e.stopPropagation(); rate(it, { looks: it._looks.filter((x) => x !== l) }); } }, "×")));
+    let input = null;
+    if (loupe.saving) {
+      input = h("input", { class: "lib-look-in", "aria-label": "name for this look", maxlength: 40, autocomplete: "off" });
+      input.value = nextLookName(it);
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") saveLook(it, input.value);
+        else if (e.key === "Escape") { loupe.saving = false; paramsDraw(it); }
+      });
+    }
     put(loupe.panel,
       h("div", { class: "lib-params-head" }, h("strong", {}, "Parameters"),
         h("span", { class: "small" }, it.kind === "transition" ? "next run" : "live"),
-        h("button", { title: "back to the preset's values", onclick: (e) => { e.stopPropagation(); lpKey = null; openDetail(it.key); } }, "Reset")),
-      rows.length ? rows : h("div", { class: "small" }, Object.keys(props).length ? "" : "no parameters (or save the token to load the catalog)"));
+        h("button", { title: "back to the preset's values", onclick: (e) => { e.stopPropagation(); tourStop(); loupe.touched = new Set(); lpKey = null; openDetail(it.key); } }, "Reset")),
+      tools,
+      looks.length || input ? h("div", { class: "lib-looks" }, h("span", { class: "small" }, "Looks"), looks, input) : null,
+      rows.length ? rows : h("div", { class: "small" }, Object.keys(props).length ? "" : "no parameters"));
+    if (input) { input.focus(); input.select(); }
+  }
+
+  // ---- variations: Shuffle (around the preset's values), Nudge (near the current ones), Tour (shuffle on a timer),
+  // Back (undo), saved looks (POST /dev/rate {looks}).  Music-bound (♪) params, render scale, an effect's amount and
+  // a transition's duration are left alone.
+  const VARY_SKIP = new Set(["amount", "render_scale", "duration_s"]);
+  const TOUR_MS = { scene: 5000, effect: 5000, transition: 8000 };
+  const rnd = Math.random;
+  const gauss = () => (rnd() + rnd() + rnd() - 1.5) * 2;           // ~N(0, 1), bounded at ±3
+  const isColor = (p) => p.type === "string" && (p.format === "color" || p["x-ui"]?.widget === "color");
+  function varyKeys(it, props, bound) {
+    return Object.keys(props).filter((k) => {
+      const p = props[k];
+      if (VARY_SKIP.has(k) || p["x-tier"] === "quality" || bound.has(k)) return false;
+      return p.type === "boolean" || Array.isArray(p.enum) || p.type === "number" || p.type === "integer" || isColor(p);
+    });
+  }
+  function varyNum(p, from, base, near) {
+    const lo = p.minimum ?? 0, hi = p.maximum ?? 1;
+    if (!(hi > lo)) return from;
+    const log = lo > 0 && hi / lo >= 20;                         // wide positive ranges (scales, counts) vary in log space
+    const f = log ? Math.log : (x) => x, g = log ? Math.exp : (x) => x;
+    const L = f(lo), H = f(hi), span = H - L;
+    const at = (v) => f(Math.min(hi, Math.max(lo, Number.isFinite(Number(v)) ? Number(v) : (p.default ?? lo))));
+    const x = near ? at(from) + gauss() * 0.08 * span : at(base) + (L + rnd() * span - at(base)) * (0.35 + 0.65 * rnd());
+    let v = g(Math.min(H, Math.max(L, x)));
+    const step = p["x-ui"]?.step;
+    if (p.type === "integer") v = Math.round(v);
+    else { if (step) v = Math.round(v / step) * step; v = Number(v.toPrecision(6)); }
+    return Math.min(hi, Math.max(lo, v));
+  }
+  function varyColor(hex, near) {
+    const n = parseInt(String(hex || "#ffffff").slice(1, 7), 16) || 0;
+    let [r, gr, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => c / 255);
+    const mx = Math.max(r, gr, b), mn = Math.min(r, gr, b), d = mx - mn;
+    let hh = d === 0 ? 0 : mx === r ? ((gr - b) / d) % 6 : mx === gr ? (b - r) / d + 2 : (r - gr) / d + 4;
+    hh = (hh / 6 + 1) % 1;
+    let sat = mx ? d / mx : 0, val = mx;
+    if (near) { hh = (hh + gauss() * 0.04 + 1) % 1; sat = Math.min(1, Math.max(0, sat + gauss() * 0.06)); val = Math.min(1, Math.max(0.1, val + gauss() * 0.06)); }
+    else { hh = rnd(); sat = 0.45 + 0.55 * rnd(); val = 0.55 + 0.45 * rnd(); }
+    const k = (m) => (m + hh * 6) % 6, c = (m) => val - val * sat * Math.max(0, Math.min(k(m), 4 - k(m), 1));
+    return "#" + [c(5), c(3), c(1)].map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
+  }
+  function variation(it, near) {
+    const { props, bound, cur, base } = loupe;
+    const keys = varyKeys(it, props, bound);
+    const next = {};
+    const odds = near ? { num: 1, pick: 0.12, flag: 0.08, color: 0.5 } : { num: 0.7, pick: 0.5, flag: 0.35, color: 0.7 };
+    for (const k of keys) {
+      const p = props[k], from = cur[k], b = base[k] ?? p.default;
+      if (/(^|_)seed$/.test(k)) {                                   // seeds have no "near": Shuffle picks a new one, Nudge keeps it
+        if (!near) { const lo = p.minimum ?? 0, hi = Math.min(p.maximum ?? 1e6, lo + 2 ** 31 - 1); next[k] = lo + Math.floor(rnd() * (hi - lo + 1)); }
+      } else if (Array.isArray(p.enum)) { if (rnd() < odds.pick && p.enum.length > 1) next[k] = p.enum.filter((x) => x !== from)[Math.floor(rnd() * (p.enum.length - 1))]; }
+      else if (p.type === "boolean") { if (rnd() < odds.flag) next[k] = !from; }
+      else if (isColor(p)) { if (rnd() < odds.color) next[k] = varyColor(near ? from : b, near); }
+      else if (rnd() < odds.num) next[k] = varyNum(p, from, b, near);
+    }
+    const pickable = keys.filter((k) => !(near && /(^|_)seed$/.test(k)));
+    if (!Object.keys(next).length && pickable.length) {            // always change something
+      const k = pickable[Math.floor(rnd() * pickable.length)], p = props[k];
+      next[k] = Array.isArray(p.enum) ? p.enum.find((x) => x !== cur[k]) ?? cur[k] : p.type === "boolean" ? !cur[k]
+        : isColor(p) ? varyColor(cur[k], near) : varyNum(p, cur[k], base[k] ?? p.default, near);
+    }
+    return next;
+  }
+  function varyStep(it, mode) {
+    if (!loupe?.props || loupe.key !== it.key) return;
+    if (!applyVals(it, variation(it, mode === "near"))) toast("no change: try again", "", 1200);
+  }
+  function applyVals(it, next) {
+    if (!loupe?.props || loupe.key !== it.key) return false;
+    const cur = loupe.cur, diff = {};
+    for (const [k, v] of Object.entries(next || {})) if (k in loupe.props && cur[k] !== v) diff[k] = v;
+    if (!Object.keys(diff).length) return false;
+    loupe.hist.push({ ...cur });
+    if (loupe.hist.length > 60) loupe.hist.shift();
+    Object.assign(cur, diff);
+    for (const k of Object.keys(diff)) { loupe.touched.add(k); loupe.bound.delete(k); }
+    loupe.send.many(diff);
+    paramsDraw(it);
+    loupe.wake();
+    return true;
+  }
+  function varyBack(it) {
+    if (!loupe?.hist.length) return;
+    tourStop();
+    const prev = loupe.hist.pop(), cur = loupe.cur, diff = {};
+    for (const [k, v] of Object.entries(prev)) if (cur[k] !== v) diff[k] = v;
+    Object.assign(cur, diff);
+    if (Object.keys(diff).length) loupe.send.many(diff);
+    paramsDraw(it);
+  }
+  function tourToggle(it) {
+    if (!loupe) return;
+    if (loupe.tour) { tourStop(); return; }
+    varyStep(it, "wide");
+    loupe.tour = setInterval(() => {
+      const x = loupe && S.byKey.get(loupe.key);
+      if (x && loupe.props) varyStep(x, "wide"); else tourStop();
+    }, TOUR_MS[it.kind] || 5000);
+    paramsDraw(it);
+  }
+  function tourStop() {
+    if (!loupe?.tour) return;
+    clearInterval(loupe.tour);
+    loupe.tour = null;
+    const b = loupe.panel.querySelector(".lib-params-tools .tour");     // no redraw: a slider may be mid-drag
+    if (b) { b.textContent = "▶ Tour"; b.classList.remove("on"); }
+  }
+  function nextLookName(it) {
+    const used = new Set(it._looks.map((l) => l.name));
+    let n = it._looks.length + 1;
+    while (used.has(`look ${n}`)) n++;
+    return `look ${n}`;
+  }
+  function saveStart(it) {
+    if (!loupe?.props) return;
+    tourStop();
+    loupe.saving = true;
+    loupe.wake();
+    paramsDraw(it);
+  }
+  async function saveLook(it, name) {
+    name = String(name || "").trim().slice(0, 40) || nextLookName(it);
+    const params = ownParams(it);
+    if (it.kind === "effect") delete params.amount;              // the show sets an effect's amount
+    const others = it._looks.filter((l) => l.name !== name);
+    if (others.length >= 24) { toast("24 looks is the limit: delete one first", "err", 2500); return; }
+    loupe.saving = false;
+    await rate(it, { looks: [...others, { name, params }] });
+    if (S.ratings.get(it.key)?.looks?.some((l) => l.name === name)) toast(`saved look "${name}"`, "", 1600);
+  }
+  // A structural param (seed, a mode read at start-up) only takes effect when the plug-in starts, so changing one
+  // restarts it: a scene is re-cued with a cut, an effect gets a fresh bus slot (the other id), with the values set
+  // here.  Music-bound (♪) params are left out unless moved by hand, so they keep following the music.
+  const FX_IDS = ["pv", "pv1"];
+  const restarts = (p) => p?.["x-tier"] === "structural";
+  function ownParams(it) {
+    const { props, bound, cur, touched } = loupe;
+    return Object.fromEntries(Object.keys(props)
+      .filter((k) => cur[k] !== undefined && (touched.has(k) || (!bound.has(k) && props[k]["x-tier"] !== "quality")))
+      .map((k) => [k, cur[k]]));
   }
   function paramSender(it) {
     let pend = {}, t = null;
-    const flush = () => {
+    const flush = async () => {
       const sid = lpSid, p = pend; pend = {};
-      if (!sid && it.kind !== "transition") return;
-      if (it.kind === "scene") http("PATCH", `/api/sessions/${sid}`, { params: p });
-      else if (it.kind === "effect") http("PUT", `/api/sessions/${sid}/fx`, { stack: [{ id: "pv", ...specObj(it), params: { ...loupe.cur } }], fade_s: 0 });
-      else http("POST", "/dev/preview", { client: LP_CLIENT, kind: it.kind, spec: { ...specObj(it), params: { ...loupe.cur } } });
+      if (!loupe?.props || loupe.key !== it.key || (!sid && it.kind !== "transition")) return;
+      const restart = Object.keys(p).some((k) => restarts(loupe.props[k]));
+      const own = ownParams(it);
+      let r;
+      if (it.kind === "scene") {
+        r = restart ? await http("POST", "/dev/preview", { client: LP_CLIENT, kind: "scene", spec: { ...specObj(it), params: own } })
+          : await http("PATCH", `/api/sessions/${sid}`, { params: p });
+      } else if (it.kind === "effect") {
+        if (restart) loupe.fxId = loupe.fxId === FX_IDS[0] ? FX_IDS[1] : FX_IDS[0];   // a new id: a fresh slot
+        if ("amount" in loupe.cur) own.amount = loupe.cur.amount;
+        r = await http("PUT", `/api/sessions/${sid}/fx`, { stack: [{ id: loupe.fxId || FX_IDS[0], ...specObj(it), params: own }], fade_s: 0 });
+      } else {
+        r = await http("POST", "/dev/preview", { client: LP_CLIENT, kind: it.kind, spec: { ...specObj(it), params: { ...loupe.cur } } });
+      }
+      if (!r.ok) toast(explain(r, "parameters"), "err", 2500);
     };
-    return (k, v) => { pend[k] = v; clearTimeout(t); t = setTimeout(flush, it.kind === "transition" ? 400 : 60); };
+    const send = (k, v) => { pend[k] = v; clearTimeout(t); t = setTimeout(flush, it.kind === "transition" ? 400 : 60); };
+    send.many = (o) => { Object.assign(pend, o); clearTimeout(t); t = setTimeout(flush, 0); };
+    return send;
   }
   function paramRow(k, p, v, isBound, onChange) {
     const ui = p["x-ui"] || {};
-    const label = h("span", { class: `pl${isBound ? " bound" : ""}`, title: `${k}${p["x-tier"] ? " · " + p["x-tier"] : ""}${isBound ? " · follows the music (moving it takes over)" : ""}` },
-      (isBound ? "♪ " : "") + (ui.label || k));
+    const label = h("span", { class: `pl${isBound ? " bound" : ""}`, title: `${k}${p["x-tier"] ? " · " + p["x-tier"] : ""}${isBound ? " · follows the music (moving it takes over)" : ""}${restarts(p) ? " · changing it restarts the plug-in" : ""}` },
+      (isBound ? "♪ " : "") + (ui.label || k) + (restarts(p) ? " ↻" : ""));
     const out = h("span", { class: "pv" });
     let ctl;
     if (p.type === "boolean") { ctl = h("input", { type: "checkbox" }); ctl.checked = !!v; ctl.addEventListener("change", () => onChange(ctl.checked)); }
@@ -702,7 +900,11 @@ export function mount({ library, fxbus } = {}) {
       const lo = p.minimum ?? 0, hi = p.maximum ?? 1, step = p.type === "integer" ? 1 : (ui.step || (hi - lo) / 200);
       ctl = h("input", { type: "range", min: lo, max: hi, step });
       ctl.value = String(v ?? p.default ?? lo);
-      const show = () => { out.textContent = p.type === "integer" ? ctl.value : fmt(Number(ctl.value), Math.abs(hi - lo) >= 50 ? 0 : 2); };
+      const show = () => {                                     // big integers (seeds) abbreviated; the full value on hover
+        const n = Number(ctl.value);
+        out.textContent = p.type === "integer" ? (Math.abs(n) >= 1e5 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : ctl.value) : fmt(n, Math.abs(hi - lo) >= 50 ? 0 : 2);
+        out.title = ctl.value;
+      };
       show();
       ctl.addEventListener("input", () => { show(); label.classList.remove("bound"); onChange(p.type === "integer" ? parseInt(ctl.value, 10) : Number(ctl.value)); });
     } else return null;
@@ -711,6 +913,7 @@ export function mount({ library, fxbus } = {}) {
   function loupeInfo(key) {
     const it = S.byKey.get(key);
     if (!loupe || !it) return;
+    if (loupe.key !== key) { tourStop(); loupe.saving = false; }
     loupe.key = key;
     const i = S.list.findIndex((x) => x.key === key);
     put(loupe.title, h("strong", {}, it.label), h("span", { class: "small" }, it.kind === "effect" ? `${it.stage || ""} effect` : it.kind), ...chipsFor(it));
@@ -733,6 +936,7 @@ export function mount({ library, fxbus } = {}) {
   function closeLoupe() {
     if (!loupe) return;
     clearTimeout(loupe.timer);
+    tourStop();
     const { el } = loupe;
     loupe = null;
     el.remove();
@@ -755,6 +959,11 @@ export function mount({ library, fxbus } = {}) {
     else if (/^[0-5]$/.test(e.key) && it) rate(it, { stars: Number(e.key) });
     else if ((e.key === "x" || e.key === "X") && it) rate(it, { reject: !it._reject });
     else if (e.key === "e" || e.key === "E") toggleParams();
+    else if (/^[rnbs]$/i.test(e.key) && it && !loupe.paramsOpen) toggleParams();      // the tools live in the panel
+    else if ((e.key === "r" || e.key === "R") && it) { tourStop(); varyStep(it, "wide"); }
+    else if ((e.key === "n" || e.key === "N") && it) { tourStop(); varyStep(it, "near"); }
+    else if ((e.key === "b" || e.key === "B") && it) varyBack(it);
+    else if ((e.key === "s" || e.key === "S") && it) saveStart(it);
     else if (e.key === "t" || e.key === "T") { loupe.wake(); loupe.hud.querySelector(".lib-tag-in")?.focus(); }
     else return;
     e.preventDefault(); e.stopPropagation(); loupe?.wake();
