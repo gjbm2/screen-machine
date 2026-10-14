@@ -1,0 +1,22 @@
+st-toon-water-with-fbm:
+  label: Toon Water with FBM
+  source: st_toon_water_with_fbm
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    family: water
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

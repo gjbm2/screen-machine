@@ -1,0 +1,25 @@
+tv-static-band-wipe:
+  label: Static band wipe
+  transition: tv_static
+  params: {static_span: 0.1, tracking: 0.55, scanlines: 0.5, grain_size: 3.0, chroma_noise: 0.15, vertical_roll: 0.2, palette: ice}
+  tags:
+    energy: [0.5, 0.85]
+    moods: [retro, glitchy]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [glitch, noise, retro]
+    weight: 1.0
+
+tv-static-lost-signal:
+  label: Lost signal (full snow)
+  transition: tv_static
+  params: {static_span: 1.0, tracking: 0.9, scanlines: 0.7, grain_size: 3.5, chroma_noise: 0.55, vertical_roll: 0.75, palette: neon, palette_period: 1.4, colour_drift: 0.3}
+  tags:
+    energy: [0.65, 1.0]
+    moods: [retro, glitchy, tense]
+    style: wild
+    family: glitch
+    dims: 2d
+    technique: [glitch, noise, retro]
+    weight: 0.9

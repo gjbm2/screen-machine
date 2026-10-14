@@ -1,0 +1,25 @@
+water-drop-still-pond:
+  label: Still pond
+  transition: water_drop
+  params: {depth: 0.025, ring_frequency: 26.0, wave_speed: 24.0, damping: 0.25, glint: 0.55, drops: 1}
+  tags:
+    energy: [0.15, 0.5]
+    moods: [calm, liquid, dreamy, organic]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [displacement, warp, analytic]
+    weight: 1.0
+
+water-drop-rain-cascade:
+  label: Rain cascade
+  transition: water_drop
+  params: {depth: 0.045, ring_frequency: 42.0, wave_speed: 46.0, damping: 0.55, glint: 0.8, drops: 4, stagger: 0.15}
+  tags:
+    energy: [0.4, 0.75]
+    moods: [playful, liquid, bright, organic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [displacement, warp, analytic]
+    weight: 0.9

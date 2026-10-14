@@ -1,0 +1,31 @@
+wave-warp-breathe:
+  label: Breathe (rolling sine swell, light silk sheen)
+  effect: wave_warp
+  params: {amount: 0.7, wavelength: 0.45, direction: 30, cross_mix: 0.35, wave_shape: 0.0, depth: 0.03,
+           sheen: 0.3, kick: 1.0, travel_speed: 0.25}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [liquid, hypnotic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 1.0
+
+wave-warp-tile-grid:
+  label: Tile grid (crossed square-ish waves that surge on the beat)
+  effect: wave_warp
+  params: {amount: 0.8, wavelength: 0.18, direction: 0, cross_mix: 1.0, wave_shape: 0.8, depth: 0.025,
+           sheen: 0.2, kick: 1.4, travel_speed: 0.45}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [playful, hypnotic, liquid]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.9

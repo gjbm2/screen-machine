@@ -1,0 +1,21 @@
+st-okay-ish-looking-3-d-sine-fbm:
+  label: Okay ish looking 3 D sine fbm
+  source: st_okay_ish_looking_3_d_sine_fbm
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: abstract
+    dims: 3d
+    technique:
+    - noise
+    weight: 0.15

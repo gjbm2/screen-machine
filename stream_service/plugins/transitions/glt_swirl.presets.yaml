@@ -1,0 +1,16 @@
+glt-swirl:
+  label: Swirl
+  transition: glt_swirl
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: 3d
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

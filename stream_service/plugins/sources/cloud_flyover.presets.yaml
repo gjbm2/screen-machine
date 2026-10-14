@@ -1,0 +1,52 @@
+cloud-flyover-golden-dawn:
+  label: Golden dawn glide
+  source: cloud_flyover
+  params:
+    palette: dusk
+    palette_period: 0.8
+    sun_elevation: 0.06
+    coverage: 0.62
+    cloud_altitude: 0.45
+    camera_height: 0.9
+    sky_tint: 0.45
+    haze: 0.4
+    rim_flash: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [dreamy, bright, warm]
+    style: lively
+    family: landscape
+    dims: 3d
+    technique: [volumetric, heightfield, noise]
+    weight: 1.0
+
+cloud-flyover-euphoric-peaks:
+  label: Euphoric peaks rush
+  source: cloud_flyover
+  params:
+    palette: candy
+    palette_period: 1.2
+    drift_speed: 0.05
+    sun_elevation: 0.35
+    coverage: 0.75
+    cloud_altitude: 0.3
+    terrain_roughness: 0.75
+    camera_height: 0.5
+    sky_tint: 0.35
+    haze: 0.25
+    rim_flash: 0.9
+    flight_speed: 1.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [euphoric, bright]
+    style: lively
+    family: landscape
+    dims: 3d
+    technique: [volumetric, heightfield, noise]
+    weight: 1.0

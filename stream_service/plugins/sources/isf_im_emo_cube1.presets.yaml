@@ -1,0 +1,21 @@
+isf-im-emo-cube1:
+  label: IM Emo Cube1
+  source: isf_im_emo_cube1
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: geometric
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

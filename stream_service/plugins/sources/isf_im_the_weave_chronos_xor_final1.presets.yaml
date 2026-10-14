@@ -1,0 +1,21 @@
+isf-im-the-weave-chronos-xor-final1:
+  label: IM The Weave Chronos Xor Final1
+  source: isf_im_the_weave_chronos_xor_final1
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

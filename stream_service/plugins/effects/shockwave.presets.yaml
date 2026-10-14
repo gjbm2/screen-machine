@@ -1,0 +1,30 @@
+shockwave-kick-ring:
+  label: Kick ring (refracting ripple from the centre)
+  effect: shockwave
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [aggressive, euphoric, liquid]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [displacement, optical, light]
+    weight: 1.0
+
+shockwave-prism-blast:
+  label: Prism blast (wide, fast, chromatic glowing fronts)
+  effect: shockwave
+  params: {amount: 1.0, wave_width: 0.2, ring_speed: 1.6, max_radius: 1.3, chroma: 0.85, glow: 0.8,
+           palette: rainbow, palette_period: 1.6, drift_speed: 0.12}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.65, 1.0]
+    moods: [euphoric, aggressive, bright]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [displacement, optical, colour]
+    weight: 0.8

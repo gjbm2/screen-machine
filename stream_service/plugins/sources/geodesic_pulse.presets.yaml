@@ -1,0 +1,41 @@
+geodesic-pulse-neon-eq:
+  label: Neon EQ globe
+  source: geodesic_pulse
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [geometric, euphoric, bright]
+    style: lively
+    family: geometric
+    dims: 3d
+    technique: [raymarch, sdf, tiling]
+    weight: 1.0
+
+geodesic-pulse-chrome-spidroball:
+  label: Chrome spidroball
+  source: geodesic_pulse
+  params:
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.05
+    subdivision: 5
+    extrusion_pattern: 1.7
+    material: 0.15
+    twist: 0.6
+    cell_gap: 0.5
+    bevel: 0.7
+    extrusion: 1.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [geometric, icy, euphoric]
+    style: lively
+    family: geometric
+    dims: 3d
+    technique: [raymarch, sdf, tiling]
+    weight: 0.8

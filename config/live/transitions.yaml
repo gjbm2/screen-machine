@@ -1,0 +1,82 @@
+# Transition presets for stream_service (hot-reloaded; LIVE_V1 §1.1).
+#   <preset-name>: {label, transition: <plug-in name>, params: {duration_s, easing, ...}, tags}
+# easing: linear | ease-in-out | ease-in | ease-out (CSS curves)
+# tags (LIVE_V1 1.1 §1.8): {transition_style: [gentle|lively|wild], energy: [lo, hi], weight}.  The auto-director
+# picks only tagged presets (cut stays untagged: manual only), matching direction.transition_style and energy.
+
+crossfade-3s:
+  label: Crossfade 3 s
+  transition: crossfade
+  params: {duration_s: 3.0, easing: ease-in-out}
+  tags: {transition_style: [gentle], energy: [0.0, 0.6], weight: 1.0}
+
+crossfade-1s:
+  label: Crossfade 1 s
+  transition: crossfade
+  params: {duration_s: 1.0, easing: ease-in-out}
+  tags: {transition_style: [gentle, lively], energy: [0.3, 1.0], weight: 0.6}
+
+crossfade-6s:
+  label: Crossfade 6 s
+  transition: crossfade
+  params: {duration_s: 6.0, easing: ease-in-out}
+  tags: {transition_style: [gentle], energy: [0.0, 0.35], weight: 0.6}
+
+cut:
+  label: Cut
+  transition: cut
+  params: {duration_s: 0.0}
+
+melt-2s:
+  label: Screen melt 2 s
+  transition: melt
+  params: {duration_s: 2.0}
+  tags: {transition_style: [lively, wild], energy: [0.4, 1.0], weight: 1.0}
+
+burn-2s:
+  label: Burn 2.5 s
+  transition: burn
+  params: {duration_s: 2.5}
+  tags: {transition_style: [lively, wild], energy: [0.3, 1.0], weight: 1.0}
+
+zoom-punch:
+  label: Zoom punch 1.2 s
+  transition: zoom
+  params: {duration_s: 1.2}
+  tags: {transition_style: [lively, wild], energy: [0.6, 1.0], weight: 1.0}
+
+luma-3s:
+  label: Luma reveal 3 s
+  transition: luma
+  params: {duration_s: 3.0}
+  tags: {transition_style: [gentle, lively], energy: [0.0, 0.7], weight: 1.0}
+
+wipe-iris:
+  label: Iris wipe 1.5 s
+  transition: wipe
+  params: {duration_s: 1.5, shape: iris, softness: 0.06}
+  tags: {transition_style: [gentle, lively], energy: [0.2, 0.8], weight: 0.8}
+
+wipe-clock:
+  label: Clock wipe 1.5 s
+  transition: wipe
+  params: {duration_s: 1.5, shape: clock, softness: 0.02}
+  tags: {transition_style: [lively], energy: [0.3, 0.9], weight: 0.7}
+
+wipe-soft:
+  label: Soft diagonal wipe 3 s
+  transition: wipe
+  params: {duration_s: 3.0, shape: linear, softness: 0.35, angle: 20}
+  tags: {transition_style: [gentle], energy: [0.0, 0.6], weight: 0.8}
+
+glitch:
+  label: Glitch 0.8 s
+  transition: glitch
+  params: {duration_s: 0.8}
+  tags: {transition_style: [wild], energy: [0.6, 1.0], weight: 1.0}
+
+pixelate-1.5s:
+  label: Pixelate 1.5 s
+  transition: pixelate
+  params: {duration_s: 1.5}
+  tags: {transition_style: [lively, wild], energy: [0.4, 1.0], weight: 0.8}

@@ -1,0 +1,31 @@
+smear-drag-melt:
+  label: Melting drip (light runs down the picture)
+  effect: smear_drag
+  params: {amount: 1.0, direction: 0.0, sort_rate: 0.75, threshold: 0.25, recovery: 0.35, streak_length: 0.6,
+           polarity: 0.9, meander: 0.45, tint: 0.45, palette: acid, palette_period: 1.2, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [liquid, dark, glitchy]
+    style: lively
+    family: feedback
+    dims: 2d
+    technique: [feedback, simulation]
+    weight: 1.0
+
+smear-drag-wind:
+  label: Ink wind (dark streaks blown sideways)
+  effect: smear_drag
+  params: {amount: 1.0, direction: 90.0, sort_rate: 0.6, threshold: 0.3, recovery: 0.5, streak_length: 0.75,
+           polarity: 0.2, meander: 0.6, tint: 0.3, palette: ice, palette_period: 0.9, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [liquid, dark, tense]
+    style: lively
+    family: feedback
+    dims: 2d
+    technique: [feedback, simulation]
+    weight: 0.8

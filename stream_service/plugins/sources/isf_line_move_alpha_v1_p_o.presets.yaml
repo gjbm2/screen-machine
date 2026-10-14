@@ -1,0 +1,21 @@
+isf-line-move-alpha-v1-p-o:
+  label: Line Move Alpha V1 (P.O.)
+  source: isf_line_move_alpha_v1_p_o
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

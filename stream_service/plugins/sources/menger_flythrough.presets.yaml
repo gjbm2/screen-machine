@@ -1,0 +1,41 @@
+menger-flythrough-dusk-cathedral:
+  label: Menger cathedral
+  source: menger_flythrough
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [hypnotic, geometric, tense]
+    style: lively
+    family: fractal
+    dims: 3d
+    technique: [raymarch, fractal, sdf]
+    weight: 1.0
+
+menger-flythrough-neon-space-base:
+  label: Menger space base
+  source: menger_flythrough
+  params:
+    palette: neon
+    palette_period: 1.4
+    drift_speed: 0.05
+    twist_per_iter: 0.32
+    hole_offset: 0.95
+    corridor_cell: 2.5
+    iterations: 4.5
+    glow_mix: 0.85
+    fog_density: 0.08
+    flash_kick: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [geometric, tense, cosmic]
+    style: wild
+    family: architecture
+    dims: 3d
+    technique: [raymarch, fractal, sdf]
+    weight: 0.8

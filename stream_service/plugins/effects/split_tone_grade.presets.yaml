@@ -1,0 +1,31 @@
+split-tone-grade-teal-orange:
+  label: Teal and orange (subtle cinematic grade)
+  effect: split_tone_grade
+  params: {amount: 0.75, tone_mode: 0.08, palette: rainbow, hue: 0.19, palette_spread: -0.3, contrast: 1.15,
+           saturation: 1.1, balance: 0.1, tint_strength: 0.7, punch: 0.6, drift_speed: 0.01}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, warm, mellow]
+    style: gentle
+    family: colour
+    dims: 2d
+    technique: [colour]
+    weight: 1.0
+
+split-tone-grade-dusk-tritone:
+  label: Dusk tritone (gradient map, drifting)
+  effect: split_tone_grade
+  params: {amount: 0.85, tone_mode: 0.85, palette: dusk, hue: 0.8, palette_spread: 0.22, contrast: 1.25,
+           saturation: 1.15, balance: 0.0, tint_strength: 0.6, punch: 0.9, drift_speed: 0.025}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [warm, elegant, dreamy]
+    style: gentle
+    family: colour
+    dims: 2d
+    technique: [colour]
+    weight: 0.9

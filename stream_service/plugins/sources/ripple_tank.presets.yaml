@@ -1,0 +1,45 @@
+ripple-tank-double-slit:
+  label: Double slit (glowing fringes)
+  source: ripple_tank
+  params:
+    source_layout: 1.0
+    render_style: 0.5
+    wavelength: 0.3
+    damping: 0.2
+    palette: ice
+    palette_period: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [hypnotic, calm, icy, geometric]
+    style: gentle
+    family: water
+    dims: 2d
+    technique: [simulation, heightfield, optical]
+    weight: 1.0
+
+ripple-tank-mirror-pool:
+  label: Mirror pool (dipper ring in an elliptical tank)
+  source: ripple_tank
+  params:
+    source_layout: 0.5
+    render_style: 0.0
+    barrier_geometry: 1.0
+    symmetry: 6.0
+    damping: 0.45
+    palette: ocean
+    palette_period: 1.2
+    drift_speed: 0.03
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [liquid, hypnotic, calm]
+    style: gentle
+    family: water
+    dims: 2d
+    technique: [simulation, heightfield, optical]
+    weight: 1.0

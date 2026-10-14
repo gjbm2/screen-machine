@@ -1,0 +1,22 @@
+isf-v002-erode:
+  label: V002 Erode
+  effect: isf_v002_erode
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - dreamy
+    - mellow
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

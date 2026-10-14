@@ -1,0 +1,22 @@
+isf-quasi-infinite-zoom-voronoi-xl-bxww:
+  label: Quasi Infinite Zoom Voronoi Xl BXWw
+  source: isf_quasi_infinite_zoom_voronoi_xl_bxww
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - organic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

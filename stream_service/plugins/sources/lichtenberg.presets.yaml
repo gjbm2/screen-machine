@@ -1,0 +1,46 @@
+lichtenberg-blue-lightning:
+  label: Blue lightning (from the sky and the ground)
+  source: lichtenberg
+  params:
+    style: 0.05
+    seed_layout: line
+    branchiness: 0.9
+    anisotropy: 0.0
+    palette: ice
+    palette_period: 0.8
+    regrow_cycle_length: 15.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 1.0]
+    moods: [tense, icy, aggressive]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [simulation, fractal]
+    weight: 1.0
+
+lichtenberg-coral-bloom:
+  label: Coral bloom (many seeds, warm)
+  source: lichtenberg
+  params:
+    style: 0.5
+    seed_layout: many
+    branchiness: 0.5
+    reach: 0.8
+    palette: ember
+    palette_period: 1.3
+    drift_speed: 0.04
+    regrow_cycle_length: 23.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.75]
+    moods: [organic, warm, dreamy]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [simulation, fractal]
+    weight: 0.9

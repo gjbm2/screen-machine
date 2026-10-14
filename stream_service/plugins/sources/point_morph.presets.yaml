@@ -1,0 +1,41 @@
+point-morph-neon-knots:
+  label: Neon knot morph
+  source: point_morph
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [hypnotic, elegant, cosmic]
+    style: lively
+    family: abstract
+    dims: 3d
+    technique: [points, particles]
+    weight: 1.0
+
+point-morph-ice-gyroid:
+  label: Ice gyroid dream
+  source: point_morph
+  params:
+    shape_a: gyroid
+    shape_b: lissajous
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.05
+    dof_amount: 0.8
+    swirl: 0.6
+    cycle: 0.7
+    camera_distance: 3.4
+    glow: 1.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.1, 0.7]
+    moods: [dreamy, icy, cosmic]
+    style: gentle
+    family: abstract
+    dims: 3d
+    technique: [points, particles]
+    weight: 0.8

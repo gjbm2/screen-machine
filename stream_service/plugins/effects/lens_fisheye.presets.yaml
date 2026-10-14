@@ -1,0 +1,31 @@
+lens-fisheye-gopro:
+  label: GoPro (full-frame barrel, rim vignette, punches into the bulge on the beat)
+  effect: lens_fisheye
+  params: {amount: 0.75, strength: 1.35, autofit: 1.0, vignette: 0.5, fringe: 0.004, centre_drift: 0.04,
+           punch: 0.6, rim_glow: 0.2, wander_speed: 0.12, palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [playful, tense]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [optical, warp]
+    weight: 1.0
+
+lens-fisheye-peephole:
+  label: Peephole (circular fisheye, wandering lens, neon coating glow at the rim)
+  effect: lens_fisheye
+  params: {amount: 0.9, strength: 1.9, autofit: 0.15, vignette: 0.6, fringe: 0.006, centre_drift: 0.1,
+           punch: 0.8, rim_glow: 0.55, wander_speed: 0.2, palette: neon, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [tense, aggressive, playful]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [optical, warp]
+    weight: 0.8

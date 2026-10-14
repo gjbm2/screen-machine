@@ -1,0 +1,43 @@
+crystal-mirror-ice-jewel:
+  label: Ice jewel
+  source: crystal_mirror
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [icy, elegant, bright, hypnotic]
+    style: gentle
+    family: geometric
+    dims: 3d
+    technique: [raymarch, sdf, optical]
+    weight: 1.0
+
+crystal-mirror-candy-prism:
+  label: Candy prism
+  source: crystal_mirror
+  params:
+    family: icosa
+    truncation: 0.3
+    bevel: 0.3
+    palette: candy
+    palette_period: 1.4
+    drift_speed: 0.05
+    glass_tint: 0.85
+    dispersion: 0.75
+    edge_thickness: 0.5
+    core_size: 0.35
+    camera_distance: 6.0
+    glow_kick: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.25, 0.7]
+    moods: [bright, euphoric, hypnotic, elegant]
+    style: lively
+    family: geometric
+    dims: 3d
+    technique: [raymarch, sdf, optical]
+    weight: 0.9

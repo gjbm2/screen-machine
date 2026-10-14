@@ -1,0 +1,22 @@
+st-sponge-fractal-modificado2:
+  label: Sponge fractal modificado2
+  source: st_sponge_fractal_modificado2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.15

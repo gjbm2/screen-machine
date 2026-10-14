@@ -1,0 +1,23 @@
+st-menger-sponge-space-base:
+  label: Menger sponge space base
+  source: st_menger_sponge_space_base
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.15

@@ -1,0 +1,31 @@
+dither-mac-1bit:
+  label: 1-bit Mac (black and white, blue-noise dither)
+  effect: dither
+  params: {amount: 1.0, levels: 2, pixel_scale: 2.5, matrix: 3.0, palette_mix: 1.0, palette: mono,
+           palette_period: 1.0, drift_speed: 0.0, cycle_speed: 0.0, contrast: 1.35, luma_lock: 0.0, beat_kick: 0.8}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [retro, geometric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [retro, colour]
+    weight: 1.0
+
+dither-demo-cycle:
+  label: Demoscene colour cycling (CGA-ish Bayer bands)
+  effect: dither
+  params: {amount: 1.0, levels: 4, pixel_scale: 4, matrix: 1.0, palette_mix: 1.0, palette: neon,
+           palette_period: 1.6, drift_speed: 0.03, cycle_speed: 0.3, contrast: 1.2, luma_lock: 0.45, beat_kick: 1.2}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [retro, playful, geometric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [retro, colour]
+    weight: 0.9

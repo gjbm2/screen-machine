@@ -1,0 +1,24 @@
+st-volumetric-particles-186-c:
+  label: Volumetric particles (186 c)
+  source: st_volumetric_particles_186_c
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: fractal
+    dims: 3d
+    technique:
+    - raymarch
+    - fractal
+    weight: 0.15

@@ -1,0 +1,25 @@
+page-curl-book-turn:
+  label: Book page turn
+  transition: page_curl
+  params: {curl_angle_deg: 8.0, cylinder_radius: 0.14, shadow_strength: 0.55, back_tint: 0.15, gloss: 0.35, paper_colour: 0.1, palette: dusk}
+  tags:
+    energy: [0.0, 0.45]
+    moods: [elegant, calm]
+    style: gentle
+    family: 3d
+    dims: 2d
+    technique: [analytic, projection, light]
+    weight: 1.0
+
+page-curl-corner-peel:
+  label: Corner peel
+  transition: page_curl
+  params: {curl_angle_deg: 40.0, cylinder_radius: 0.09, shadow_strength: 0.7, back_tint: 0.7, gloss: 0.6, paper_colour: 0.35, palette: candy}
+  tags:
+    energy: [0.15, 0.5]
+    moods: [playful, elegant]
+    style: gentle
+    family: 3d
+    dims: 2d
+    technique: [analytic, projection, light]
+    weight: 0.9

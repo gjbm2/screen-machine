@@ -1,0 +1,16 @@
+glt-polka-dots-curtain:
+  label: Polka Dots Curtain
+  transition: glt_polka_dots_curtain
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: fragment
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

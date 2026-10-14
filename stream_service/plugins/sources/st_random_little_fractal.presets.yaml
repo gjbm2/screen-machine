@@ -1,0 +1,23 @@
+st-random-little-fractal:
+  label: Random little fractal
+  source: st_random_little_fractal
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.4

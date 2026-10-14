@@ -1,0 +1,23 @@
+isf-im-yonim-tunnel-fix-multipath-audioreact:
+  label: IM YONIM Tunnel Fix multipath audioreactive FINAL
+  source: isf_im_yonim_tunnel_fix_multipath_audioreact
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: tunnel
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.6

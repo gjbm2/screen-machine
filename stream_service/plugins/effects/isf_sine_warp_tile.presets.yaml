@@ -1,0 +1,22 @@
+isf-sine-warp-tile:
+  label: Sine Warp Tile
+  effect: isf_sine_warp_tile
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - hypnotic
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

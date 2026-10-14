@@ -1,0 +1,42 @@
+hyper-lattice-neon-bloom:
+  label: Neon hyperbloom
+  source: hyper_lattice
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [cosmic, euphoric, geometric, hypnotic]
+    style: lively
+    family: cosmic
+    dims: 3d
+    technique: [raymarch, sdf, volumetric]
+    weight: 1.0
+
+hyper-lattice-deep-fold:
+  label: Deep 4D fold
+  source: hyper_lattice
+  params:
+    palette: candy
+    palette_period: 1.6
+    drift_speed: 0.07
+    inversion_strength: 10.0
+    rotation_plane_mix: 0.85
+    slice_depth: 0.55
+    sphere_radius: 0.28
+    wall_thickness: 0.035
+    camera_distance: 3.4
+    lurch_kick: 1.4
+    flash_kick: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.65, 1.0]
+    moods: [cosmic, hypnotic, euphoric, geometric]
+    style: wild
+    family: geometric
+    dims: 3d
+    technique: [raymarch, sdf, volumetric]
+    weight: 0.8

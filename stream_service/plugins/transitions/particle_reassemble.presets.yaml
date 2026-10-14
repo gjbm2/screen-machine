@@ -1,0 +1,25 @@
+particle-reassemble-sandstorm:
+  label: Sandstorm reassemble
+  transition: particle_reassemble
+  params: {duration_s: 4.0, grain_size: 4.0, turbulence: 0.9, wind_angle: 12, scatter_distance: 1.0, depth: 0.4, glow: 0.7, boundary_warp: 1.0, backdrop: 0.2, ember: 0.4, palette: ember, palette_period: 1.2}
+  tags:
+    energy: [0.5, 0.9]
+    moods: [euphoric, warm]
+    style: wild
+    family: fragment
+    dims: 3d
+    technique: [particles, points]
+    weight: 1.0
+
+particle-reassemble-supernova:
+  label: Supernova drop
+  transition: particle_reassemble
+  params: {duration_s: 4.5, grain_size: 3.5, turbulence: 1.4, wind_angle: 95, scatter_distance: 1.5, depth: 1.0, glow: 1.3, boundary_warp: 1.6, backdrop: 0.1, ember: 0.7, palette: neon, palette_period: 1.6, drift_speed: 0.12}
+  tags:
+    energy: [0.7, 1.0]
+    moods: [euphoric, cosmic]
+    style: wild
+    family: fragment
+    dims: 3d
+    technique: [particles, points]
+    weight: 1.0

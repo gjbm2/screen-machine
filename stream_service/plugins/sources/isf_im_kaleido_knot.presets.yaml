@@ -1,0 +1,24 @@
+isf-im-kaleido-knot:
+  label: IM Kaleido Knot
+  source: isf_im_kaleido_knot
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: water
+    dims: 2d
+    technique:
+    - kaleido
+    - warp
+    weight: 0.6

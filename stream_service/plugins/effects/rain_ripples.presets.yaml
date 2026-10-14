@@ -1,0 +1,33 @@
+rain-ripples-drizzle:
+  label: Drizzle (soft rings on a still puddle, a drop on each beat)
+  effect: rain_ripples
+  params: {amount: 0.9, drop_rate: 8.0, drop_size: 0.3, damping: 0.35, wave_speed: 0.7, refraction: 0.012,
+           glint: 0.5, beat_drop: 1.0, palette: ice, drift_speed: 0.04}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [liquid, calm, organic]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [simulation, heightfield, displacement]
+    weight: 1.0
+
+rain-ripples-downpour:
+  label: Downpour (dense interfering rings, bright glints, big beat drops)
+  effect: rain_ripples
+  params: {amount: 1.0, drop_rate: 24.0, drop_size: 0.5, damping: 0.6, wave_speed: 0.95, refraction: 0.02,
+           glint: 0.75, beat_drop: 1.6, palette: ocean, palette_period: 1.6, drift_speed: 0.08}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.7]
+    moods: [liquid, organic, dreamy]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [simulation, heightfield, displacement]
+    weight: 0.9

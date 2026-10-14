@@ -1,0 +1,23 @@
+st-house-in-a-box:
+  label: House in a Box
+  source: st_house_in_a_box
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

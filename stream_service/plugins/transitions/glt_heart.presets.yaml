@@ -1,0 +1,16 @@
+glt-heart:
+  label: Heart
+  transition: glt_heart
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - playful
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

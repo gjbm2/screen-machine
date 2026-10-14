@@ -1,0 +1,40 @@
+ink-marbling-ebru:
+  label: Ebru marbling (ocean inks on cream)
+  source: ink_marbling
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, organic, liquid, calm]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [analytic, warp]
+    weight: 1.0
+
+ink-marbling-ember-night:
+  label: Ember feathers on black
+  source: ink_marbling
+  params:
+    palette: ember
+    paper_tone: 0.04
+    drop_vs_comb: 0.65
+    tine_spacing: 0.11
+    stroke_direction: 90
+    vortex_amount: 0.45
+    colour_count: 4
+    paper_texture: 0.3
+    drift_speed: 0.03
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [elegant, liquid, warm, dark]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [analytic, warp]
+    weight: 0.8

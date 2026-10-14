@@ -1,0 +1,23 @@
+isf-gn-signal-trinity:
+  label: Gn Signal Trinity
+  effect: isf_gn_signal_trinity
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - geometric
+    style: lively
+    family: feedback
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.5

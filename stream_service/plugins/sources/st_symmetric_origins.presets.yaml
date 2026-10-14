@@ -1,0 +1,25 @@
+st-symmetric-origins:
+  label: Symmetric Origins
+  source: st_symmetric_origins
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: fractal
+    dims: 3d
+    technique:
+    - raymarch
+    - fractal
+    - kaleido
+    weight: 0.7

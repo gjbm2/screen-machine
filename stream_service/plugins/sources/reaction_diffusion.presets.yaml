@@ -1,0 +1,41 @@
+reaction_diffusion-dusk-coral:
+  label: Dusk coral relief
+  source: reaction_diffusion
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [organic, calm, hypnotic, mellow]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [simulation, heightfield]
+    weight: 1.0
+
+reaction_diffusion-ocean-cells:
+  label: Ocean dividing cells
+  source: reaction_diffusion
+  params:
+    pattern: 0.25
+    pattern_scale: 1.3
+    flow_swirl: -0.25
+    flow_zoom: 0.06
+    relief: 0.9
+    colour_by: 0.45
+    palette: ocean
+    palette_period: 1.3
+    drift_speed: 0.03
+    bloom_kick: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [organic, liquid, hypnotic, dreamy]
+    style: lively
+    family: organic
+    dims: 2d
+    technique: [simulation, heightfield]
+    weight: 0.8

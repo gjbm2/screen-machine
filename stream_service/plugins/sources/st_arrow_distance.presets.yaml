@@ -1,0 +1,22 @@
+st-arrow-distance:
+  label: Arrow   distance
+  source: st_arrow_distance
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

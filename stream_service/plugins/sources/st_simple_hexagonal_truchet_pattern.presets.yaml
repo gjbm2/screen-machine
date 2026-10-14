@@ -1,0 +1,23 @@
+st-simple-hexagonal-truchet-pattern:
+  label: Simple hexagonal truchet pattern
+  source: st_simple_hexagonal_truchet_pattern
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    family: geometric
+    dims: 2d
+    technique:
+    - kaleido
+    weight: 0.15

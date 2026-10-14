@@ -1,0 +1,29 @@
+venetian_blinds-classic:
+  label: Venetian blinds
+  transition: venetian_blinds
+  params: {duration_s: 3.0, slats: 14, angle: 0.0, wave_stagger: 0.55, wave_origin: 0.0, jitter: 0.15,
+           thickness: 0.12, perspective: 0.5, tilt: 0.5, gap_shadow: 0.8, edge_light: 1.0, overshoot: 0.35,
+           palette: dusk}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [geometric, elegant]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 1.0
+
+venetian_blinds-shutter-burst:
+  label: Shutter burst
+  transition: venetian_blinds
+  params: {duration_s: 2.5, slats: 28, angle: 30.0, wave_stagger: 0.7, wave_origin: 0.5, jitter: 0.3,
+           thickness: 0.22, perspective: 0.8, tilt: 0.8, gap_shadow: 0.9, edge_light: 1.7, overshoot: 0.7,
+           palette: neon, drift_speed: 0.2}
+  tags:
+    energy: [0.5, 0.9]
+    moods: [geometric, bright]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 0.8

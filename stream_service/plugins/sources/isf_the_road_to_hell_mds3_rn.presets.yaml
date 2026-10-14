@@ -1,0 +1,22 @@
+isf-the-road-to-hell-mds3-rn:
+  label: The road to Hell Mds3 Rn
+  source: isf_the_road_to_hell_mds3_rn
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - retro
+    - playful
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

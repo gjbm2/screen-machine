@@ -1,0 +1,16 @@
+glt-x-axis-translation:
+  label: X axis translation
+  transition: glt_x_axis_translation
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

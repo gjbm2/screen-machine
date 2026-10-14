@@ -1,0 +1,31 @@
+bulge-pinch-speaker-cone:
+  label: Speaker cone (one big glass lens that thumps on the beat)
+  effect: bulge_pinch
+  params: {amount: 0.85, bias: 0.55, radius: 0.85, lens_count: 1.0, wander: 0.3, punch: 0.9, sheen: 0.3,
+           fringe: 0.25, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [playful, aggressive]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, optical]
+    weight: 1.0
+
+bulge-pinch-bubble-wrap:
+  label: Bubble wrap (a drifting lattice of glossy domes)
+  effect: bulge_pinch
+  params: {amount: 0.8, bias: 0.75, radius: 0.85, lens_count: 12.0, wander: 0.5, punch: 0.6, sheen: 0.45,
+           fringe: 0.15, palette: candy, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [playful, liquid]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, optical]
+    weight: 0.9

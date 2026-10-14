@@ -1,0 +1,31 @@
+afterimage-ghost-comets:
+  label: Comet trails (rainbow light painting)
+  effect: afterimage_ghost
+  params: {amount: 1.0, persistence: 0.72, bright_threshold: 0.18, blend: 0.0, trail_hue_drift: 0.18,
+           trail_tint: 0.5, beat_kick: 1.2, palette: neon, palette_period: 1.6, drift_speed: 0.06}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [euphoric, hypnotic, bright]
+    style: lively
+    family: feedback
+    dims: 2d
+    technique: [feedback, light]
+    weight: 1.0
+
+afterimage-ghost-dream:
+  label: Ghosting (soft long-exposure afterimages)
+  effect: afterimage_ghost
+  params: {amount: 0.9, persistence: 0.8, bright_threshold: 0.05, blend: 0.75, trail_hue_drift: 0.05,
+           trail_tint: 0.35, beat_kick: 0.7, palette: dusk, palette_period: 1.0, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [dreamy, hypnotic, mellow]
+    style: gentle
+    family: feedback
+    dims: 2d
+    technique: [feedback, light]
+    weight: 0.9

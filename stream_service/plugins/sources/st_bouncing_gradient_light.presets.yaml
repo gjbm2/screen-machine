@@ -1,0 +1,22 @@
+st-bouncing-gradient-light:
+  label: Bouncing gradient light
+  source: st_bouncing_gradient_light
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

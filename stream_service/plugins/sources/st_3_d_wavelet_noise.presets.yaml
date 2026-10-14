@@ -1,0 +1,24 @@
+st-3-d-wavelet-noise:
+  label: 3 D Wavelet Noise
+  source: st_3_d_wavelet_noise
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - liquid
+    family: water
+    dims: 3d
+    technique:
+    - raymarch
+    - noise
+    weight: 0.7

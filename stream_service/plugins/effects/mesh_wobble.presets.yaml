@@ -1,0 +1,31 @@
+mesh-wobble-jelly:
+  label: Jelly (rubbery MilkDrop bends that bounce on the beat)
+  effect: mesh_wobble
+  params: {amount: 0.75, warp: 1.1, warp_scale: 1.0, zoom_bias: 0.07, zoomexp: 1.6, sway: 0.55, squash: 0.45,
+           sheen: 0.3, kick: 1.0, warp_speed: 1.0, palette: candy}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [playful, liquid, hypnotic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, displacement]
+    weight: 1.0
+
+mesh-wobble-faceted-spin:
+  label: Faceted spin (coarse lattice, twisting zoom, hard beat kicks)
+  effect: mesh_wobble
+  params: {amount: 0.85, warp: 1.7, warp_scale: 1.4, zoom_bias: -0.05, rot_bias: 0.12, zoomexp: 2.4, sway: 0.8,
+           squash: 0.6, sheen: 0.45, kick: 1.6, warp_speed: 1.6, grid_res: 14, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [playful, hypnotic, geometric]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, displacement]
+    weight: 0.8

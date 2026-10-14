@@ -1,0 +1,33 @@
+rotate-wobble-dutch-sway:
+  label: Dutch sway (overscanned pendulum roll, beats push it side to side)
+  effect: rotate_wobble
+  params: {amount: 0.8, roll_max: 7.0, tilt3d: 0.35, period: 1.7, damping: 0.16, idle_sway: 0.5, kick: 1.0,
+           backdrop: 0.0, pivot: 0.25, gloss: 0.25, palette: dusk}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.75]
+    moods: [dreamy, playful, hypnotic]
+    style: lively
+    family: motion
+    dims: 2d
+    technique: [projection, displacement]
+    weight: 1.0
+
+rotate-wobble-hanging-card:
+  label: Hanging card (shadowed 3D card swinging from its top edge over a dark backdrop)
+  effect: rotate_wobble
+  params: {amount: 0.9, roll_max: 10.0, tilt3d: 0.85, period: 2.2, damping: 0.1, idle_sway: 0.6, kick: 1.4,
+           backdrop: 1.0, pivot: 0.85, gloss: 0.45, palette: neon, drift_speed: 0.05}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [playful, hypnotic, dreamy]
+    style: lively
+    family: motion
+    dims: 2d
+    technique: [projection, displacement]
+    weight: 0.8

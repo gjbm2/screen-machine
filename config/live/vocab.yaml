@@ -1,0 +1,8 @@
+# Art-direction vocabulary (LIVE_V1 1.1 §1.8, hot-reloaded; served in GET /api/catalog as `vocab`).
+# Preset tags and direction values use these words; a tag word outside them logs a warning and is listed in the
+# catalog's `errors` (the preset still loads).  room_service's look adapter validates direction against it.
+moods: [calm, mellow, dreamy, warm, cool, bright, dark, euphoric, tense, playful, hypnotic, aggressive,
+        cosmic, organic, geometric, retro, glitchy, elegant, liquid, fiery, icy]
+genre: [pop, techno, house, jazz, ambient, classical, rock, soul]
+transition_style: [gentle, lively, wild]
+palette_family: [warm, cool, vivid, neutral]

@@ -1,0 +1,23 @@
+isf-im-relentless-struss:
+  label: IM Relentless Struss
+  source: isf_im_relentless_struss
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - organic
+    family: geometric
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

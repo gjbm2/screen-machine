@@ -1,0 +1,23 @@
+st-rymrch-wksp-3-d-sphere-shadows:
+  label: RYMRCH WKSP   3 D Sphere Shadows
+  source: st_rymrch_wksp_3_d_sphere_shadows
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

@@ -1,0 +1,72 @@
+# Laser fans presets.  pan / tilt are optional Maestro bindings: the show bus's pan (-1..1) and tilt (-0.5..0.5)
+# offset the centred defaults (kick = add amount x signal; the plug-in clamps to 0..1 and smooths over 150 ms).
+laser-fans-arena:
+  label: Arena laser fans
+  source: laser_fans
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+    pan: {kick: pan, amount: 0.35}
+    tilt: {kick: tilt, amount: 0.4}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [euphoric, bright, aggressive, geometric]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [analytic, light]
+    weight: 1.0
+
+laser-fans-liquid-sky:
+  label: Liquid sky
+  source: laser_fans
+  params:
+    sheet_mix: 0.85
+    projectors: 1
+    fan_spread: 140
+    beam_density: 16
+    haze: 0.7
+    scan_mix: 0.1
+    palette: ocean
+    palette_period: 0.5
+    drift_speed: 0.03
+    tilt: 0.35
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+    pan: {kick: pan, amount: 0.25}
+  tags:
+    energy: [0.45, 0.9]
+    moods: [euphoric, liquid, cosmic, dreamy]
+    style: gentle
+    family: light
+    dims: 2d
+    technique: [analytic, light, volumetric]
+    weight: 0.8
+
+laser-fans-ice-scanner:
+  label: Ice scanner
+  source: laser_fans
+  params:
+    projectors: 4
+    fan_spread: 36
+    beam_density: 20
+    scan_mix: 0.75
+    haze: 0.3
+    beam_width: 0.15
+    palette: ice
+    palette_period: 0.0
+    drift_speed: 0.05
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+    pan: {kick: pan, amount: 0.4}
+  tags:
+    energy: [0.65, 1.0]
+    moods: [tense, aggressive, icy, geometric]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [analytic, light]
+    weight: 0.9

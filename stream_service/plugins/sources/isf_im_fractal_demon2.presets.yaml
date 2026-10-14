@@ -1,0 +1,23 @@
+isf-im-fractal-demon2:
+  label: IM Fractal Demon2
+  source: isf_im_fractal_demon2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.6

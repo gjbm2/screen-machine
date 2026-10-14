@@ -1,0 +1,22 @@
+st-sdf-quadratic-b-zier-shape:
+  label: SDF Quadratic Bézier Shape
+  source: st_sdf_quadratic_b_zier_shape
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

@@ -1,0 +1,22 @@
+st-sh-directional-lights:
+  label: SH   directional lights
+  source: st_sh_directional_lights
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.4

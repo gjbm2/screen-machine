@@ -1,0 +1,17 @@
+glt-hsvfade:
+  label: HSVfade
+  transition: glt_hsvfade
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - cosmic
+    - dreamy
+    style: gentle
+    family: blend
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

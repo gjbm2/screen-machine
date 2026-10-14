@@ -1,0 +1,21 @@
+st-dragon-eye-ii:
+  label: Dragon Eye II
+  source: st_dragon_eye_ii
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    family: abstract
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.7

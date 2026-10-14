@@ -1,0 +1,18 @@
+glt-drop-zone-flicker:
+  label: Drop Zone Flicker
+  transition: glt_drop_zone_flicker
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - liquid
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

@@ -1,0 +1,22 @@
+st-ben-s-first-sdf-shader:
+  label: Ben's first SDF shader
+  source: st_ben_s_first_sdf_shader
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

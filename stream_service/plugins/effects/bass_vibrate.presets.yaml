@@ -1,0 +1,30 @@
+bass-vibrate-cone-hum:
+  label: Cone hum (horizontal string buzz on every kick)
+  effect: bass_vibrate
+  params: {amount: 0.85}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [aggressive, tense, glitchy]
+    style: wild
+    family: motion
+    dims: 2d
+    technique: [displacement, optical]
+    weight: 1.0
+
+bass-vibrate-subwoofer:
+  label: Subwoofer (low radial cone breath, wide prism fringes)
+  effect: bass_vibrate
+  params: {amount: 1.0, frequency: 24, amplitude_px: 40, axis: 1.75, string: 0.0, rgb_split: 0.65,
+           decay_ms: 320, idle_buzz: 0.05, palette: rainbow, palette_period: 1.6, drift_speed: 0.1}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.7, 1.0]
+    moods: [aggressive, tense]
+    style: wild
+    family: motion
+    dims: 2d
+    technique: [displacement, optical]
+    weight: 0.8

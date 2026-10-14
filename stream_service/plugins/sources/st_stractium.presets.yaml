@@ -1,0 +1,24 @@
+st-stractium:
+  label: Stractium
+  source: st_stractium
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - hypnotic
+    family: fractal
+    dims: 3d
+    technique:
+    - raymarch
+    - fractal
+    weight: 0.7

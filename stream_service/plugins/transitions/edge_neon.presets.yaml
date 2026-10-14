@@ -1,0 +1,25 @@
+edge-neon-line-art:
+  label: Neon line art
+  transition: edge_neon
+  params: {neon_tint: 0.3, edge_thickness: 3.0, edge_brightness: 8.0, glow: 1.0, flash: 0.25, palette: neon}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [bright, retro, euphoric]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [field, light]
+    weight: 1.0
+
+edge-neon-overexposed:
+  label: Neon overexposure (downbeat flash)
+  transition: edge_neon
+  params: {duration_s: 2.5, neon_tint: 0.15, edge_thickness: 4.0, edge_brightness: 11.0, glow: 1.6, flash: 0.85, palette: candy, palette_period: 1.8, colour_drift: 0.4}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, bright]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [field, light]
+    weight: 0.9

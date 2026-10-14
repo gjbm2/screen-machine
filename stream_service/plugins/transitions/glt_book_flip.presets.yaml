@@ -1,0 +1,16 @@
+glt-book-flip:
+  label: Book Flip
+  transition: glt_book_flip
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: 3d
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

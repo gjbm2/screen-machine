@@ -1,0 +1,22 @@
+st-party-concert-visuals-2020:
+  label: '@Party Concert Visuals 2020'
+  source: st_party_concert_visuals_2020
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

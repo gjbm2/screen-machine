@@ -1,0 +1,22 @@
+isf-broken-lcd:
+  label: Broken LCD
+  effect: isf_broken_lcd
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

@@ -1,0 +1,31 @@
+mirror-ball-party:
+  label: Party mirror ball (rainbow gels)
+  effect: mirror_ball
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 1.0]
+    moods: [euphoric, playful, bright]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, light, optical]
+    weight: 1.0
+
+mirror-ball-glitter:
+  label: Big glitter ball (fine facets, white light, dark room)
+  effect: mirror_ball
+  params: {amount: 1.0, ball_size: 0.42, ball_y: 0.2, facet_count: 48, spin_speed: 0.035, kick: 0.15,
+           speck_intensity: 1.0, speck_count: 0.95, speck_size: 0.16, speck_spread: 0.55, speck_colour: 0.2,
+           sparkle: 1.1, background_dim: 0.55, palette: ice}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [euphoric, bright, elegant]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, light, optical]
+    weight: 0.8

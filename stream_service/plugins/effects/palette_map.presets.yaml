@@ -1,0 +1,31 @@
+palette-map-duotone-glow:
+  label: Duotone glow (full gradient map, warm split)
+  effect: palette_map
+  params: {amount: 0.85, map_mix: 1.0, palette: ember, palette_period: 0.35, contrast: 1.35, keep_saturation: 0.15,
+           band_offset: 0.3, posterize: 0.0, drift_speed: 0.025, drift_kick: 3.5, sat_kick: 0.8}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [warm, bright, retro]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [colour]
+    weight: 1.0
+
+palette-map-hue-drift:
+  label: Gentle hue drift (keeps source colours, icy)
+  effect: palette_map
+  params: {amount: 0.6, map_mix: 0.2, palette: ice, palette_period: 0.8, contrast: 1.05, keep_saturation: 0.8,
+           band_offset: 0.1, drift_speed: 0.02, drift_kick: 2.0, sat_kick: 0.5}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [icy, mellow, dreamy]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [colour]
+    weight: 0.9

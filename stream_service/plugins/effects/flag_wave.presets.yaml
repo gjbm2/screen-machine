@@ -1,0 +1,31 @@
+flag-wave-pole:
+  label: Flag on a pole
+  effect: flag_wave
+  params: {amount: 1.0, pin: left, wind_strength: 0.75, wavelength: 0.45, wind_speed: 0.8, margin: 0.08,
+           sheen: 0.45, fold_shading: 0.75, palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [organic, elegant, playful]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, displacement, analytic]
+    weight: 1.0
+
+flag-wave-banner:
+  label: Silk banner (hung from the top)
+  effect: flag_wave
+  params: {amount: 1.0, pin: top, wind_strength: 0.6, wavelength: 0.7, wind_speed: 0.55, margin: 0.12,
+           sheen: 0.75, fold_shading: 0.6, kick: 1.3, backdrop: 0.3, palette: ember, palette_period: 1.6}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [elegant, warm, organic]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, displacement, analytic]
+    weight: 0.9

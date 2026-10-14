@@ -1,0 +1,42 @@
+penrose_tiling-dusk-arcs:
+  label: Dusk Penrose with circle arcs
+  source: penrose_tiling
+  params:
+    decoration: 1.0
+    scale: 8.0
+    palette: dusk
+    colour_mode: 0.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [elegant, geometric, calm, warm]
+    style: gentle
+    family: architecture
+    dims: 2d
+    technique: [tiling, analytic]
+    weight: 1.0
+
+penrose_tiling-ice-ribbons:
+  label: Icy Penrose ribbons (orientation colours)
+  source: penrose_tiling
+  params:
+    decoration: 2.0
+    scale: 11.0
+    palette: ice
+    palette_period: 1.4
+    colour_mode: 0.9
+    bevel_depth: 0.8
+    grout_width: 0.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [elegant, geometric, icy, calm]
+    style: gentle
+    family: architecture
+    dims: 2d
+    technique: [tiling, analytic]
+    weight: 0.8

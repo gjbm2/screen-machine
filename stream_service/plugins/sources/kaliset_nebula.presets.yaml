@@ -1,0 +1,47 @@
+kaliset-nebula-dusk-veils:
+  label: Kaliset nebula (dusk veils into coral)
+  source: kaliset_nebula
+  params:
+    palette: dusk
+    palette_period: 1.0
+    drift_speed: 0.02
+    preset_a: nebula
+    preset_b: coral
+    morph: 0.35
+    colour_shift: 0.3
+    palette_mix: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [cosmic, dreamy, hypnotic]
+    style: gentle
+    family: fractal
+    dims: 3d
+    technique: [volumetric, fractal]
+    weight: 1.0
+
+kaliset-nebula-ice-lotus:
+  label: Kaliset nebula (icy lotus flowers)
+  source: kaliset_nebula
+  params:
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.04
+    preset_a: flower
+    preset_b: lotus
+    morph: 0.5
+    colour_shift: 0.6
+    palette_mix: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [cosmic, dreamy, hypnotic]
+    style: gentle
+    family: fractal
+    dims: 3d
+    technique: [volumetric, fractal]
+    weight: 0.9

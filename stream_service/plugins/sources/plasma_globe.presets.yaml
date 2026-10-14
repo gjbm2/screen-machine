@@ -1,0 +1,41 @@
+plasma-globe-tesla:
+  label: Tesla plasma ball
+  source: plasma_globe
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [tense, cosmic, hypnotic]
+    style: lively
+    family: light
+    dims: 3d
+    technique: [raymarch, volumetric, noise]
+    weight: 1.0
+
+plasma-globe-ice-storm:
+  label: Ice storm globe
+  source: plasma_globe
+  params:
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.04
+    filament_density: 13
+    filament_thickness: 0.8
+    globe_size: 0.85
+    glass_tint: 0.8
+    core_size: 0.3
+    refraction: 0.8
+    flare_kick: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [icy, aggressive, tense]
+    style: wild
+    family: light
+    dims: 3d
+    technique: [raymarch, volumetric, noise]
+    weight: 0.8

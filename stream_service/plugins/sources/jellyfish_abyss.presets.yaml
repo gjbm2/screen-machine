@@ -1,0 +1,44 @@
+jellyfish-abyss-bioluminescent-bloom:
+  label: Bioluminescent bloom
+  source: jellyfish_abyss
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [dreamy, organic, hypnotic]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [particles, points, wireframe]
+    weight: 1.0
+
+jellyfish-abyss-midnight-drift:
+  label: Midnight drift
+  source: jellyfish_abyss
+  params:
+    palette: ocean
+    palette_period: 1.6
+    drift_speed: 0.01
+    jelly_count: 8
+    tentacle_length: 1.6
+    hue_spread: 0.6
+    depth_of_field: 0.8
+    marine_snow: 1.4
+    siphonophores: 1.0
+    fog: 0.75
+    glow: 1.1
+    swim_speed: 0.7
+    current: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.7}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [dreamy, calm, dark, organic]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [particles, points, wireframe]
+    weight: 0.8

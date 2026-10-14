@@ -1,0 +1,31 @@
+bloom-concert-haze:
+  label: Concert haze (wide warm halos)
+  effect: bloom
+  params: {amount: 0.8, threshold: 0.5, knee: 0.25, radius: 0.75, tint_mix: 0.45, saturation: 1.15, glow_kick: 0.7,
+           palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [euphoric, bright, dreamy]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [light, optical]
+    weight: 1.0
+
+bloom-soft-glow:
+  label: Soft dreamy glow (tight, source colours)
+  effect: bloom
+  params: {amount: 0.6, threshold: 0.65, knee: 0.35, radius: 0.35, tint_mix: 0.1, saturation: 0.9, glow_kick: 0.35,
+           palette: ice, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [dreamy, mellow, elegant]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [light, optical]
+    weight: 0.9

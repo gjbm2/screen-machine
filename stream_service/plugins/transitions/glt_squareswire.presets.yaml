@@ -1,0 +1,16 @@
+glt-squareswire:
+  label: Squareswire
+  transition: glt_squareswire
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - geometric
+    style: lively
+    family: fragment
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

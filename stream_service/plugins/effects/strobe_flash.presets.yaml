@@ -1,0 +1,31 @@
+strobe_flash-drop-white:
+  label: Drop strobe (white-hot flash, slight RGB tear)
+  effect: strobe_flash
+  params: {amount: 0.8, mode: 0.12, flash_ceiling: 0.5, envelope_shape: 1.8, channel_stagger: 0.25, spatial: 0.2,
+           base_mix: 0.05, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.8, 1.0]
+    moods: [aggressive, euphoric, bright]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [light, colour]
+    weight: 1.0
+
+strobe_flash-solar-glitch:
+  label: Solarised RGB strobe (edges and highlights)
+  effect: strobe_flash
+  params: {amount: 0.7, mode: 0.9, flash_ceiling: 0.4, envelope_shape: 1.2, channel_stagger: 0.8, spatial: 0.6,
+           base_mix: 0.2, palette: acid, palette_index: 0.3, drift_speed: 0.08}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.8, 1.0]
+    moods: [glitchy, aggressive, euphoric]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [colour, glitch]
+    weight: 0.9

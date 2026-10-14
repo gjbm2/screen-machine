@@ -1,0 +1,41 @@
+murmuration-dusk:
+  label: Starlings at dusk
+  source: murmuration
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [organic, elegant, calm, warm]
+    style: gentle
+    family: particles
+    dims: 3d
+    technique: [agents, simulation, particles]
+    weight: 1.0
+
+murmuration-shoal:
+  label: Glowing shoal
+  source: murmuration
+  params:
+    environment: 1.0
+    palette: ocean
+    palette_period: 1.6
+    drift_speed: 0.03
+    attractor_shape: 0.95
+    flock_size: 0.8
+    cohesion: 0.65
+    bird_size: 1.2
+    camera_distance: 8.0
+    glow: 1.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [organic, liquid, dreamy, hypnotic]
+    style: gentle
+    family: particles
+    dims: 3d
+    technique: [agents, simulation, particles]
+    weight: 0.9

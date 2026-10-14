@@ -1,0 +1,23 @@
+isf-radial-replicate:
+  label: Radial Replicate
+  effect: isf_radial_replicate
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

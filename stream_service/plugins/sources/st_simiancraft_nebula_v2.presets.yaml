@@ -1,0 +1,23 @@
+st-simiancraft-nebula-v2:
+  label: Simiancraft Nebula v2
+  source: st_simiancraft_nebula_v2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - cosmic
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

@@ -1,0 +1,22 @@
+st-sdf-2-d-convex-polygon-shape:
+  label: SDF 2 D Convex Polygon Shape
+  source: st_sdf_2_d_convex_polygon_shape
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

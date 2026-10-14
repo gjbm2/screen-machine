@@ -1,0 +1,40 @@
+earth-aurora-polar-night:
+  label: Polar night aurora
+  source: earth_aurora
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [cosmic, dreamy, calm]
+    style: gentle
+    family: cosmic
+    dims: 3d
+    technique: [analytic, volumetric, noise]
+    weight: 1.0
+
+earth-aurora-crimson-dawn:
+  label: Crimson storm at dawn
+  source: earth_aurora
+  params:
+    palette: dusk
+    palette_period: 1.3
+    drift_speed: 0.02
+    aurora_intensity: 1.4
+    curtain_folds: 0.85
+    orbit_altitude: 750
+    terminator_angle: 0.8
+    cloud_cover: 0.6
+    city_lights: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [cosmic, dreamy, warm]
+    style: gentle
+    family: cosmic
+    dims: 3d
+    technique: [analytic, volumetric, noise]
+    weight: 0.8

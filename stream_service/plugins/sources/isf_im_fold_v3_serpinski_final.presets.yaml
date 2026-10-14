@@ -1,0 +1,22 @@
+isf-im-fold-v3-serpinski-final:
+  label: IM Fold V3 Serpinski Final
+  source: isf_im_fold_v3_serpinski_final
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.6

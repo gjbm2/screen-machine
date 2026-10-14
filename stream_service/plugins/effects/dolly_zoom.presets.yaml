@@ -1,0 +1,31 @@
+dolly-zoom-vertigo:
+  label: Vertigo (slow push-pull, the room breathes around the centre)
+  effect: dolly_zoom
+  params: {amount: 0.75, fov_range: 0.5, rate: 0.1, bias: 0.0, depth_source: 0.25, subject_radius: 0.35,
+           edge_fill: 0.6, twist: 0.25, snap: 0.6, blur: 0.5, fog: 0.4, palette: dusk, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [tense, hypnotic]
+    style: lively
+    family: motion
+    dims: 2d
+    technique: [optical, warp]
+    weight: 1.0
+
+dolly-zoom-drop-lurch:
+  label: Drop lurch (background looms in and snaps back on every beat)
+  effect: dolly_zoom
+  params: {amount: 0.9, fov_range: 0.65, rate: 0.22, bias: -0.35, depth_source: 0.5, subject_radius: 0.28,
+           edge_fill: 0.8, twist: 0.45, snap: 1.2, blur: 0.8, fog: 0.55, palette: ember, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 0.9]
+    moods: [dark, tense, aggressive]
+    style: wild
+    family: motion
+    dims: 2d
+    technique: [optical, warp]
+    weight: 0.8

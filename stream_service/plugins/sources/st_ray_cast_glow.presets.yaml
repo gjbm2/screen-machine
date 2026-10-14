@@ -1,0 +1,22 @@
+st-ray-cast-glow:
+  label: Ray Cast Glow
+  source: st_ray_cast_glow
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

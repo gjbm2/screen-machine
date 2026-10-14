@@ -1,0 +1,21 @@
+isf-toon:
+  label: Toon
+  effect: isf_toon
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - hypnotic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

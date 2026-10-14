@@ -1,0 +1,23 @@
+st-twitch-ps1-singularity-jorts:
+  label: 'Twitch: PS1 Singularity Jorts'
+  source: st_twitch_ps1_singularity_jorts
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - bright
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

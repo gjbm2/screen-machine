@@ -1,0 +1,50 @@
+life_generations-brain-fireworks:
+  label: Brain fireworks
+  source: life_generations
+  params:
+    rule: brain
+    cell_size: 5
+    trail_decay: 0.6
+    glow: 0.8
+    cell_look: 0.7
+    palette: neon
+    palette_period: 1.2
+    drift_speed: 0.05
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [glitchy, playful, euphoric]
+    style: lively
+    family: abstract
+    dims: 2d
+    technique: [cellular, simulation]
+    weight: 1.0
+
+life_generations-life-mandala:
+  label: Life soup mandala
+  source: life_generations
+  params:
+    rule: life
+    cell_size: 4
+    seed_symmetry: 2
+    trail_decay: 0.8
+    seed_density: 0.65
+    glow: 0.7
+    cell_look: 0.3
+    colour_spread: 0.45
+    palette: rainbow
+    palette_period: 0.8
+    drift_speed: 0.03
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [geometric, playful, hypnotic]
+    style: lively
+    family: abstract
+    dims: 2d
+    technique: [cellular, simulation, kaleido]
+    weight: 0.9

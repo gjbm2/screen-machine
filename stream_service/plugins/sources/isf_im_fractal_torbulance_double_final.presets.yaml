@@ -1,0 +1,24 @@
+isf-im-fractal-torbulance-double-final:
+  label: IM Fractal Torbulance DOUBLE FINAL
+  source: isf_im_fractal_torbulance_double_final
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: fractal
+    dims: 3d
+    technique:
+    - raymarch
+    - fractal
+    weight: 0.6

@@ -1,0 +1,21 @@
+isf-triangle-mosaic:
+  label: Triangle Mosaic
+  effect: isf_triangle_mosaic
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - geometric
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

@@ -1,0 +1,30 @@
+spark-overlay-forge:
+  label: Forge sparks (highlights throw sparks on the kick)
+  effect: spark_overlay
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [fiery, aggressive, euphoric]
+    style: wild
+    family: overlay
+    dims: 2d
+    technique: [particles, simulation]
+    weight: 1.0
+
+spark-overlay-rising-embers:
+  label: Rising embers (fire from below, drifting on the air)
+  effect: spark_overlay
+  params: {amount: 0.85, gravity: -0.7, emitter: 0.22, turbulence: 0.7, launch: 0.9, streak_length: 0.02,
+           size: 2.4, life: 2.2, density: 0.4, kick: 0.7, glow: 0.9, palette: dusk, palette_period: 0.45}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [fiery, warm, euphoric]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [particles, simulation]
+    weight: 0.8

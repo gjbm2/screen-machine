@@ -1,0 +1,22 @@
+isf-god-rays:
+  label: God Rays
+  effect: isf_god_rays
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - bright
+    - euphoric
+    style: lively
+    family: light
+    dims: 2d
+    technique:
+    - light
+    weight: 0.5

@@ -1,0 +1,30 @@
+vhs-worn-tape:
+  label: Worn VHS tape
+  effect: vhs
+  params: {amount: 0.7}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [retro, warm, mellow]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [retro, noise, glitch]
+    weight: 1.0
+
+vhs-chewed-tape:
+  label: Chewed tape (heavy tracking errors)
+  effect: vhs
+  params: {amount: 0.9, noise_level: 0.75, roll_size: 0.7, roll_speed: 0.3, colour_bleed: 0.9, tape_wobble: 0.75,
+           curvature: 0.18, tint_mix: 0.5, burst_kick: 1.6, palette: ember}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 0.85]
+    moods: [retro, glitchy, tense]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [retro, glitch, noise]
+    weight: 0.8

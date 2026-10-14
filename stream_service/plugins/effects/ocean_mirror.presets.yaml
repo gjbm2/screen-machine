@@ -1,0 +1,31 @@
+ocean-mirror-sunset:
+  label: Sunset sea (the picture as sky over a mirror ocean)
+  effect: ocean_mirror
+  params: {amount: 1.0, horizon: 0.56, frame_scale: 0.9, choppiness: 0.3, fresnel_tint: 0.35, glitter: 0.9,
+           surround: 0.8, palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, dreamy, liquid]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, optical, heightfield]
+    weight: 1.0
+
+ocean-mirror-billboard:
+  label: Night billboard on a choppy sea
+  effect: ocean_mirror
+  params: {amount: 1.0, horizon: 0.6, frame_scale: 0.5, wave_scale: 1.4, choppiness: 0.6, fresnel_tint: 0.6,
+           glitter: 1.2, surround: 0.15, vantage: 0.6, swell_speed: 1.3, palette: ocean}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [dreamy, liquid, cosmic]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, optical, heightfield]
+    weight: 0.8

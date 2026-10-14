@@ -1,0 +1,26 @@
+doorway-grand:
+  label: Grand doorway
+  transition: doorway
+  params: {perspective: 0.5, depth: 3.0, reflection: 0.4, gap_glow: 0.7, palette: dusk, glow_tint: 0.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [elegant, bright, euphoric]
+    style: lively
+    family: 3d
+    dims: 2d
+    technique: [projection, light]
+    weight: 1.0
+
+doorway-hatch:
+  label: Light hatch
+  transition: doorway
+  params: {perspective: 0.8, depth: 5.0, reflection: 0.55, gap_glow: 1.0, shading: 0.65, palette: neon,
+           glow_tint: 0.3, door_axis: horizontal}
+  tags:
+    energy: [0.45, 0.85]
+    moods: [euphoric, bright, cosmic]
+    style: lively
+    family: 3d
+    dims: 2d
+    technique: [projection, light]
+    weight: 0.8

@@ -1,0 +1,42 @@
+megastructure-necropolis:
+  label: Necropolis flight
+  source: megastructure
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [dark, tense, aggressive]
+    style: lively
+    family: architecture
+    dims: 3d
+    technique: [raymarch, ifs, sdf]
+    weight: 1.0
+
+megastructure-neon-citadel:
+  label: Neon citadel
+  source: megastructure
+  params:
+    palette: neon
+    palette_period: 1.4
+    drift_speed: 0.04
+    window_density: 0.8
+    tower_height: 0.85
+    structure_scale: 1.25
+    haze: 0.7
+    sun_angle: 0.05
+    beam_glow: 1.6
+    trench_glow: 1.4
+    fold_complexity: 5.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [dark, aggressive, tense]
+    style: lively
+    family: architecture
+    dims: 3d
+    technique: [raymarch, ifs, sdf]
+    weight: 0.8

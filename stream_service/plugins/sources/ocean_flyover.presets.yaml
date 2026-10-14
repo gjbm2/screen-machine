@@ -1,0 +1,47 @@
+ocean-flyover-golden-hour:
+  label: Golden hour skim
+  source: ocean_flyover
+  params:
+    palette: dusk
+    palette_period: 1.4
+    sun_elevation: 4.0
+    sea_state: 0.35
+    water_tint: 0.5
+    fog: 0.35
+    camera_altitude: 1.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [calm, mellow, dreamy, warm]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [raymarch, heightfield, analytic]
+    weight: 1.0
+
+ocean-flyover-storm-front:
+  label: Storm front
+  source: ocean_flyover
+  params:
+    palette: ice
+    sea_state: 0.9
+    wave_scale: 1.5
+    sun_elevation: 22.0
+    water_tint: 0.3
+    fog: 0.6
+    camera_altitude: 2.5
+    swell_kick: 0.9
+    flare_kick: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.35, 0.8]
+    moods: [organic, tense, icy, dark]
+    style: lively
+    family: water
+    dims: 3d
+    technique: [raymarch, heightfield, analytic]
+    weight: 0.8

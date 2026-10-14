@@ -1,0 +1,22 @@
+st-raymarch-sampler-2d-displace-01:
+  label: Raymarch sampler 2d displace 01
+  source: st_raymarch_sampler_2d_displace_01
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

@@ -1,0 +1,16 @@
+glt-rotate-scale-fade:
+  label: Rotate scale fade
+  transition: glt_rotate_scale_fade
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: 3d
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

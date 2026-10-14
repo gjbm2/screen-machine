@@ -1,0 +1,30 @@
+sync-fault-v-hold:
+  label: V-hold (picture slips a frame on every downbeat, catches, tear bands drift)
+  effect: sync_fault
+  params: {amount: 0.75}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [retro, glitchy, tense]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [glitch, retro]
+    weight: 1.0
+
+sync-fault-lost-signal:
+  label: Lost signal (rolling picture, heavy tearing, combing and acid colour drift)
+  effect: sync_fault
+  params: {amount: 1.0, roll_speed: 1.6, hold: 0.6, blanking_bar: 0.8, tear_amount: 0.85, scanline_jitter: 0.6,
+           interlace: 0.85, colour_drift: 0.8, kick: 1.6, palette: acid, palette_period: 1.5, drift_speed: 0.15}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [glitchy, tense, retro]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [glitch, retro]
+    weight: 0.8

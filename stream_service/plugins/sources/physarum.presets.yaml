@@ -1,0 +1,71 @@
+physarum-neural-web:
+  label: Neural web
+  source: physarum
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.25, 0.8]
+    moods: [organic, hypnotic, cosmic, dark]
+    style: lively
+    family: organic
+    dims: 2d
+    technique: [agents, simulation, feedback]
+    weight: 1.0
+
+physarum-ember-veins:
+  label: Ember veins
+  source: physarum
+  params:
+    palette: ember
+    palette_period: 1.4
+    drift_speed: 0.015
+    species_mix: 0.0
+    sensor_angle: 30
+    sensor_distance: 13
+    turn_angle: 40
+    trail_decay: 0.93
+    density: 0.5
+    glow: 1.0
+    surge_kick: 0.8
+    scatter_kick: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [organic, warm, dark, mellow]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [agents, simulation]
+    weight: 0.8
+
+physarum-rival-tides:
+  label: Rival tides
+  source: physarum
+  params:
+    palette: ice
+    palette_period: 1.2
+    drift_speed: 0.04
+    species_mix: 1.0
+    sensor_angle: 35
+    sensor_distance: 26
+    turn_angle: 45
+    trail_decay: 0.9
+    density: 0.7
+    glow: 1.05
+    surge_kick: 1.2
+    scatter_kick: 1.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [liquid, tense, icy, hypnotic]
+    style: wild
+    family: organic
+    dims: 2d
+    technique: [agents, simulation, feedback]
+    weight: 0.8

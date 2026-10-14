@@ -1,0 +1,22 @@
+isf-suture-fluid:
+  label: Suture Fluid
+  effect: isf_suture_fluid
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - liquid
+    - organic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

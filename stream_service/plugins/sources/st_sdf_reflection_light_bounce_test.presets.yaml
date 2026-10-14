@@ -1,0 +1,23 @@
+st-sdf-reflection-light-bounce-test:
+  label: SDF Reflection/Light Bounce Test
+  source: st_sdf_reflection_light_bounce_test
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - bright
+    family: glitch
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

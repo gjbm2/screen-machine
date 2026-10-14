@@ -1,0 +1,38 @@
+warp-sweep-camera-push:
+  label: Camera push sweep
+  transition: warp_sweep
+  params: {direction_deg: 180.0, edge_softness: 0.55, zoom_amount: 1.1, camera_mix: 0.75}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [bright, euphoric, playful]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 1.0
+
+warp-sweep-iris-rush:
+  label: Iris rush
+  transition: warp_sweep
+  params: {front_curvature: 1.0, edge_softness: 0.3, zoom_amount: 1.4, camera_mix: 0.35, center_x: 0.5, center_y: 0.5}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, playful, bright]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.9
+
+warp-sweep-smear-edge:
+  label: Diagonal smear edge
+  transition: warp_sweep
+  params: {direction_deg: 225.0, edge_softness: 0.12, zoom_amount: 0.7, camera_mix: 0.0, front_curvature: 0.25}
+  tags:
+    energy: [0.3, 0.75]
+    moods: [playful, bright, elegant]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.8

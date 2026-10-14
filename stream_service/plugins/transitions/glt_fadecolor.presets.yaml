@@ -1,0 +1,16 @@
+glt-fadecolor:
+  label: Fadecolor
+  transition: glt_fadecolor
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: blend
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

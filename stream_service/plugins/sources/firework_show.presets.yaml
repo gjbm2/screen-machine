@@ -1,0 +1,41 @@
+firework-show-harbour-night:
+  label: Harbour fireworks
+  source: firework_show
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [euphoric, playful, bright]
+    style: wild
+    family: particles
+    dims: 3d
+    technique: [particles, points]
+    weight: 1.0
+
+firework-show-golden-willows:
+  label: Golden willows
+  source: firework_show
+  params:
+    shell_mix: 0.55
+    droop: 0.75
+    trails: 1.6
+    glitter: 0.85
+    smoke: 0.7
+    burst_size: 1.15
+    launch_rate: 0.8
+    palette: ember
+    palette_period: 0.6
+    drift_speed: 0.015
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [warm, elegant, euphoric]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [particles, points]
+    weight: 0.9

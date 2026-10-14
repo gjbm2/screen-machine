@@ -1,0 +1,25 @@
+kaleido-morph-mirror-prism:
+  label: Mirror prism
+  transition: kaleido_morph
+  params: {fold_mix: 1.0, mirror_angle_deg: 120.0, fold_scale: 2.0, zoom: 1.5, spin: 5.0, fold_iterations: 8.0, seam_glow: 0.35}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [hypnotic, geometric, euphoric]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [kaleido, warp, analytic]
+    weight: 1.0
+
+kaleido-morph-hex-storm:
+  label: Hex storm
+  transition: kaleido_morph
+  params: {fold_mix: 0.35, mirror_angle_deg: 60.0, fold_scale: 1.4, zoom: 2.4, spin: 9.0, fold_iterations: 9.5, seam_glow: 0.6, palette: rainbow}
+  tags:
+    energy: [0.6, 0.9]
+    moods: [euphoric, geometric, hypnotic]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [kaleido, warp, analytic]
+    weight: 0.9

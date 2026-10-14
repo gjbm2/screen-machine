@@ -1,0 +1,23 @@
+st-striped-2-d-waves:
+  label: Striped 2 D Waves
+  source: st_striped_2_d_waves
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - bright
+    family: water
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.15

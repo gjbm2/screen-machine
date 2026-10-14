@@ -1,0 +1,16 @@
+glt-multiply-blend:
+  label: Multiply blend
+  transition: glt_multiply_blend
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: blend
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

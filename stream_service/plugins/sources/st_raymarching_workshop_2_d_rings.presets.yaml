@@ -1,0 +1,22 @@
+st-raymarching-workshop-2-d-rings:
+  label: Raymarching Workshop   2 D Rings
+  source: st_raymarching_workshop_2_d_rings
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

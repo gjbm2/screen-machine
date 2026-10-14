@@ -1,0 +1,31 @@
+spring-punch-zoom-bounce:
+  label: Zoom bounce (the frame punches in on the kick and rebounds like a rubber band)
+  effect: spring_punch
+  params: {amount: 0.85, zoom_mix: 0.85, jolt_mix: 0.2, squash_mix: 0.35, stiffness: 4.0, damping: 0.22,
+           jolt_direction: 90.0, blur: 0.45}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [euphoric, playful]
+    style: lively
+    family: motion
+    dims: 2d
+    technique: [displacement, analytic]
+    weight: 1.0
+
+spring-punch-rubber-jolt:
+  label: Rubber jolt (side-to-side jolts that squash and wobble, with coloured ghost trails)
+  effect: spring_punch
+  params: {amount: 0.9, zoom_mix: 0.35, jolt_mix: 0.85, squash_mix: 0.7, stiffness: 6.0, damping: 0.3,
+           jolt_direction: 0.0, jolt_turn: 180.0, blur: 0.6, trail_tint: 0.55, palette: candy, drift_speed: 0.08}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 1.0]
+    moods: [aggressive, playful]
+    style: lively
+    family: motion
+    dims: 2d
+    technique: [displacement, analytic]
+    weight: 0.9

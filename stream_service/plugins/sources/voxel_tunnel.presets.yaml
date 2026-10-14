@@ -1,0 +1,43 @@
+voxel-tunnel-neon-rush:
+  label: Voxel tunnel (neon rush)
+  source: voxel_tunnel
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [retro, euphoric, geometric]
+    style: wild
+    family: retro
+    dims: 3d
+    technique: [raymarch, tiling, retro]
+    weight: 1.0
+
+voxel-tunnel-ember-cave:
+  label: Voxel tunnel (ember cave)
+  source: voxel_tunnel
+  params:
+    palette: ember
+    palette_period: 1.4
+    drift_speed: 0.03
+    tunnel_shape: 1.85
+    octree_depth: 2.0
+    emissive_ratio: 0.09
+    voxel_size: 0.45
+    tunnel_radius: 4.6
+    ribs: 0.1
+    bevel: 0.7
+    fog: 0.04
+    roll_speed: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [retro, geometric]
+    style: wild
+    family: retro
+    dims: 3d
+    technique: [raymarch, tiling, retro]
+    weight: 0.8

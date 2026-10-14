@@ -1,0 +1,23 @@
+isf-im-vohel-head-icosahedron:
+  label: Im Vohel Head Icosahedron
+  source: isf_im_vohel_head_icosahedron
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - organic
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.6

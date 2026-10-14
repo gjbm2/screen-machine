@@ -1,0 +1,23 @@
+st-tunnely-torus-thingy:
+  label: Tunnely Torus Thingy
+  source: st_tunnely_torus_thingy
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - bright
+    - euphoric
+    family: tunnel
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

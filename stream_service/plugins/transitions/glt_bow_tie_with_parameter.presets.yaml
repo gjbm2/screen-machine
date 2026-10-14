@@ -1,0 +1,16 @@
+glt-bow-tie-with-parameter:
+  label: Bow Tie With Parameter
+  transition: glt_bow_tie_with_parameter
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

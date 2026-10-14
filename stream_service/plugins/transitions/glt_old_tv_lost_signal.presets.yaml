@@ -1,0 +1,18 @@
+glt-old-tv-lost-signal:
+  label: Old tv lost signal
+  transition: glt_old_tv_lost_signal
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - retro
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

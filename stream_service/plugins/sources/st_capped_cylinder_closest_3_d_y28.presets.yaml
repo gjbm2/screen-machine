@@ -1,0 +1,22 @@
+st-capped-cylinder-closest-3-d-y28:
+  label: Capped Cylinder   Closest 3 D Y28
+  source: st_capped_cylinder_closest_3_d_y28
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

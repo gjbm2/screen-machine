@@ -1,0 +1,22 @@
+st-psychedelic-burning-wheel-2-d:
+  label: Psychedelic burning Wheel (2 D)
+  source: st_psychedelic_burning_wheel_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - fiery
+    - warm
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

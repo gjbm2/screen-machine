@@ -1,0 +1,17 @@
+glt-overexposure:
+  label: Overexposure
+  transition: glt_overexposure
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - bright
+    - euphoric
+    style: gentle
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

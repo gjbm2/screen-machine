@@ -1,0 +1,27 @@
+sphere-grid-cascade:
+  label: Ball cascade
+  transition: sphere_grid
+  params: {duration_s: 3.0, cells: 6, stagger_pattern: 0.6, stagger: 0.6, z_bob: 0.55, spin_axis_angle: 20.0,
+           axis_spread: 0.35, gloss: 0.65, seam_glow: 0.55, gap_dim: 0.6, palette: neon}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [playful, geometric, bright]
+    style: wild
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 1.0
+
+sphere-grid-globe:
+  label: Globe roll
+  transition: sphere_grid
+  params: {duration_s: 3.5, cells: 1, stagger: 0.0, z_bob: 0.6, spin_axis_angle: 0.0, axis_spread: 0.0,
+           gloss: 0.75, seam_glow: 0.7, gap_dim: 0.85, palette: ice, palette_period: 0.4}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [cosmic, playful]
+    style: wild
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 0.9

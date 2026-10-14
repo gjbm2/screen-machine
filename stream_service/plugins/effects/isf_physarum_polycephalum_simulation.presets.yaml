@@ -1,0 +1,21 @@
+isf-physarum-polycephalum-simulation:
+  label: Physarum Polycephalum Simulation
+  effect: isf_physarum_polycephalum_simulation
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - organic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

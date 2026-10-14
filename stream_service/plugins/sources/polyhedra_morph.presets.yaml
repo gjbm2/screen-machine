@@ -1,0 +1,43 @@
+polyhedra-morph-neon-nest:
+  label: Neon polyhedra nest
+  source: polyhedra_morph
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [geometric, hypnotic, bright]
+    style: lively
+    family: geometric
+    dims: 3d
+    technique: [raymarch, analytic, kaleido]
+    weight: 1.0
+
+polyhedra-morph-crystal-octa:
+  label: Crystal octahedra
+  source: polyhedra_morph
+  params:
+    symmetry: octa
+    palette: ice
+    palette_period: 1.3
+    drift_speed: 0.05
+    generator_u: 0.35
+    generator_v: 0.7
+    morph_range: 1.0
+    nest_count: 2.0
+    shell_spread: 1.6
+    face_opacity: 0.55
+    edge_width: 0.02
+    glow: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.75]
+    moods: [icy, elegant, hypnotic, geometric]
+    style: gentle
+    family: geometric
+    dims: 3d
+    technique: [raymarch, analytic, kaleido]
+    weight: 0.8

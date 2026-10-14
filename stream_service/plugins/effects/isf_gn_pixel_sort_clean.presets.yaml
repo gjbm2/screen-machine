@@ -1,0 +1,22 @@
+isf-gn-pixel-sort-clean:
+  label: Gn Pixel Sort Clean
+  effect: isf_gn_pixel_sort_clean
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - retro
+    - playful
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

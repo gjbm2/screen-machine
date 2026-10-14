@@ -1,0 +1,16 @@
+glt-randomsquares:
+  label: Randomsquares
+  transition: glt_randomsquares
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - geometric
+    style: wild
+    family: fragment
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

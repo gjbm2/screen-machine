@@ -1,0 +1,21 @@
+isf-multi-frame-3x3:
+  label: Multi Frame 3x3
+  effect: isf_multi_frame_3x3
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

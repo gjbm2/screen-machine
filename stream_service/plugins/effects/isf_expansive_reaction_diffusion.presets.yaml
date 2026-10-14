@@ -1,0 +1,21 @@
+isf-expansive-reaction-diffusion:
+  label: Expansive reaction diffusion
+  effect: isf_expansive_reaction_diffusion
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - organic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

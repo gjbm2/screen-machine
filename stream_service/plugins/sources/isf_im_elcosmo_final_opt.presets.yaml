@@ -1,0 +1,21 @@
+isf-im-elcosmo-final-opt:
+  label: IM ELCOSMO FINAL OPT
+  source: isf_im_elcosmo_final_opt
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

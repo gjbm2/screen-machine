@@ -1,0 +1,23 @@
+isf-gn-brutalist-crush:
+  label: Gn Brutalist Crush
+  effect: isf_gn_brutalist_crush
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - retro
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

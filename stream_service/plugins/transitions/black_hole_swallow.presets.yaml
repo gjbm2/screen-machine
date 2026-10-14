@@ -1,0 +1,25 @@
+black-hole-swallow-event-horizon:
+  label: Event horizon
+  transition: black_hole_swallow
+  params: {duration_s: 3.0, mass: 0.5, twist: 0.6, lensing: 0.7, disc_brightness: 1.0, disc_tilt: 0.8, palette: ember}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [cosmic, dark, tense]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, optical]
+    weight: 1.0
+
+black-hole-swallow-quasar:
+  label: Quasar
+  transition: black_hole_swallow
+  params: {duration_s: 2.5, mass: 0.85, twist: 0.9, lensing: 0.95, disc_brightness: 1.5, disc_tilt: 0.6, disc_size: 3.8, flash: 1.2, palette: neon, palette_period: 1.4, spin: anticlockwise}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [cosmic, tense, aggressive]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, optical, light]
+    weight: 0.9

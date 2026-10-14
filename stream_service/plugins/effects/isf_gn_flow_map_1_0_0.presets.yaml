@@ -1,0 +1,22 @@
+isf-gn-flow-map-1-0-0:
+  label: Gn Flow Map 1.0.0
+  effect: isf_gn_flow_map_1_0_0
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

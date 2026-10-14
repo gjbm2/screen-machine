@@ -1,0 +1,16 @@
+glt-simple-zoom:
+  label: Simple Zoom
+  transition: glt_simple_zoom
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

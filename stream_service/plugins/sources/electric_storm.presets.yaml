@@ -1,0 +1,65 @@
+electric-storm-tempest:
+  label: Electric tempest
+  source: electric_storm
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [aggressive, tense, icy, dark]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [noise, warp, light]
+    weight: 1.0
+
+electric-storm-plasma-ring:
+  label: Plasma ring
+  source: electric_storm
+  params:
+    mask: 0.0
+    palette: candy
+    palette_period: 1.0
+    drift_speed: 0.03
+    turbulence: 1.1
+    filament_sharpness: 0.55
+    octaves: 4.5
+    bolt_branching: 0.35
+    writhe_kick: 2.5
+    bolt_rate: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [tense, cosmic, hypnotic, dark]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [noise, warp, light]
+    weight: 0.8
+
+electric-storm-horizon:
+  label: Storm over the horizon
+  source: electric_storm
+  params:
+    mask: 0.5
+    palette: ocean
+    palette_period: 1.2
+    filament_sharpness: 0.85
+    filament_scale: 1.3
+    bolt_branching: 0.85
+    flash_kick: 0.5
+    bolt_rate: 1.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [dark, tense, aggressive, icy]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [noise, warp, light]
+    weight: 0.8

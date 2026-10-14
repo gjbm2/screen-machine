@@ -1,0 +1,23 @@
+st-neon-warbler:
+  label: Neon Warbler
+  source: st_neon_warbler
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - bright
+    family: light
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

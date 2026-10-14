@@ -1,0 +1,17 @@
+glt-power-kaleido:
+  label: Power Kaleido
+  transition: glt_power_kaleido
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    style: lively
+    family: 3d
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

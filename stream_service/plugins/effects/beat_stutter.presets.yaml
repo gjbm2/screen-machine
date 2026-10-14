@@ -1,0 +1,32 @@
+beat-stutter-chop:
+  label: Beat chop (whole-frame freeze / live stutter on the beat)
+  effect: beat_stutter
+  params: {amount: 1.0, region: 0.0, repeat_length: 2, steps_per_beat: 4, fade: 0.4, chance: 0.7,
+           repeat_zoom: 0.04, hold_tint: 0.3, flash: 0.35, palette: neon, palette_period: 1.2, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [glitchy, aggressive, playful]
+    style: wild
+    family: feedback
+    dims: 2d
+    technique: [feedback, glitch]
+    weight: 1.0
+
+beat-stutter-collage:
+  label: Freeze collage (random rectangles hold and rewind past beats)
+  effect: beat_stutter
+  params: {amount: 1.0, region: 1.0, repeat_length: 4, steps_per_beat: 4, fade: 0.6, rect_size: 0.38,
+           chance: 0.85, repeat_zoom: 0.02, hold_tint: 0.5, flash: 0.25, palette: acid, palette_period: 1.6,
+           drift_speed: 0.08}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [glitchy, playful, aggressive]
+    style: wild
+    family: feedback
+    dims: 2d
+    technique: [feedback, glitch]
+    weight: 0.9

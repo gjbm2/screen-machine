@@ -1,0 +1,40 @@
+infinity-room-souls:
+  label: Infinity room (souls of a million lights)
+  source: infinity_room
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [euphoric, hypnotic, bright]
+    style: lively
+    family: light
+    dims: 3d
+    technique: [analytic, optical, light]
+    weight: 1.0
+
+infinity-room-black-water:
+  label: Infinity room on black water (hex, ember)
+  source: infinity_room
+  params:
+    water: 1.0
+    room_shape: 1.0
+    palette: ember
+    palette_period: 0.6
+    lights_per_room: 16
+    mirror_tint: 0.6
+    seams: 0.2
+    camera_drift: 0.25
+    drift_speed: 0.02
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [hypnotic, warm, dreamy]
+    style: lively
+    family: light
+    dims: 3d
+    technique: [analytic, optical, light]
+    weight: 0.8

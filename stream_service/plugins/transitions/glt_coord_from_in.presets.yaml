@@ -1,0 +1,16 @@
+glt-coord-from-in:
+  label: Coord from in
+  transition: glt_coord_from_in
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - hypnotic
+    style: gentle
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

@@ -1,0 +1,23 @@
+st-capsule-distance-l-inf-2:
+  label: Capsule   distance L inf 2
+  source: st_capsule_distance_l_inf_2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - bright
+    family: cosmic
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

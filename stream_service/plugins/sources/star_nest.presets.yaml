@@ -1,0 +1,47 @@
+star-nest-classic:
+  label: Star nest (classic blue)
+  source: star_nest
+  params:
+    palette: ice
+    palette_period: 1.2
+    drift_speed: 0.02
+    formuparam: 0.53
+    darkmatter: 0.3
+    saturation: 0.85
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [cosmic, hypnotic, dreamy, icy]
+    style: gentle
+    family: cosmic
+    dims: 3d
+    technique: [fractal, volumetric, raymarch]
+    weight: 1.0
+
+star-nest-ember-voids:
+  label: Star nest (ember clouds, deep voids)
+  source: star_nest
+  params:
+    palette: dusk
+    palette_period: 1.6
+    drift_speed: 0.05
+    formuparam: 0.57
+    darkmatter: 0.5
+    distfading: 0.78
+    tile: 0.78
+    fov: 70
+    roll_drift: 4.0
+    fly_kick: 1.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [cosmic, euphoric, warm, hypnotic]
+    style: lively
+    family: cosmic
+    dims: 3d
+    technique: [fractal, volumetric, raymarch]
+    weight: 0.9

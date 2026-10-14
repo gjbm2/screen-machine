@@ -1,0 +1,47 @@
+plexus-network-deep-ocean:
+  label: Plexus (deep ocean constellation)
+  source: plexus_network
+  params:
+    palette: ocean
+    palette_period: 1.0
+    drift_speed: 0.02
+    node_density: 7.0
+    layers: 4.0
+    sparkle: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [cosmic, elegant, calm, geometric]
+    style: gentle
+    family: cosmic
+    dims: 2d
+    technique: [points, wireframe, analytic]
+    weight: 1.0
+
+plexus-network-neon-synapse:
+  label: Plexus (neon synapse, dense and firing)
+  source: plexus_network
+  params:
+    palette: neon
+    palette_period: 1.6
+    drift_speed: 0.05
+    node_density: 10.0
+    layers: 4.6
+    connection_reach: 1.3
+    line_width: 1.8
+    sparkle: 0.8
+    flash_kick: 1.3
+    zoom_kick: 5.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [cosmic, geometric, bright, hypnotic]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [points, wireframe, analytic]
+    weight: 0.8

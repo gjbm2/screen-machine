@@ -1,0 +1,16 @@
+glt-polar-function:
+  label: Polar function
+  transition: glt_polar_function
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

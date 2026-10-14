@@ -1,0 +1,23 @@
+st-icecream-warped-fbm:
+  label: Icecream warped FBM
+  source: st_icecream_warped_fbm
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - noise
+    - warp
+    weight: 0.15

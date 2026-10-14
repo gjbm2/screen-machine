@@ -1,0 +1,23 @@
+st-crumpled-noise:
+  label: Crumpled Noise
+  source: st_crumpled_noise
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - cosmic
+    family: cosmic
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

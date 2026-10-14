@@ -1,0 +1,23 @@
+st-tileable-textures-collection:
+  label: Tileable textures collection
+  source: st_tileable_textures_collection
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - organic
+    family: organic
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.4

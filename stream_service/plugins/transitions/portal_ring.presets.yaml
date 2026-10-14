@@ -1,0 +1,26 @@
+portal-ring-firestorm:
+  label: Firestorm portal
+  transition: portal_ring
+  params: {spark_density: 0.6, ring_width: 0.45, spin_speed: 0.5, ember_count: 200, palette: ember, duration_s: 3.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [fiery, euphoric]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [light, particles]
+    weight: 1.0
+
+portal-ring-stargate:
+  label: Stargate
+  transition: portal_ring
+  params: {spark_density: 0.85, ring_width: 0.3, spin_speed: 0.9, ember_count: 120, depth: 0.8, palette: ice,
+           hue: 0.1, duration_s: 3.5}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [cosmic, euphoric, icy]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [light, particles]
+    weight: 0.8

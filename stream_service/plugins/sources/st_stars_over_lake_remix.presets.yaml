@@ -1,0 +1,22 @@
+st-stars-over-lake-remix:
+  label: Stars over Lake (remix)
+  source: st_stars_over_lake_remix
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

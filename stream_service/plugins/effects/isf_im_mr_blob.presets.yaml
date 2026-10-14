@@ -1,0 +1,22 @@
+isf-im-mr-blob:
+  label: IM Mr Blob
+  effect: isf_im_mr_blob
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - organic
+    - geometric
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

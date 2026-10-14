@@ -1,0 +1,27 @@
+ink-bleed-sepia-wash:
+  label: Sepia ink wash
+  transition: ink_bleed
+  params: {duration_s: 4.5, bloom_count: 4, edge_strength: 0.75, colour_lag: 0.7, field_scale: 1.0,
+           paper_tint: 0.45, palette: ember, palette_period: 0.8, drift_speed: 0.05}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [elegant, calm, warm, organic]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [noise, field]
+    weight: 1.0
+
+ink-bleed-indigo-pools:
+  label: Indigo ink pools
+  transition: ink_bleed
+  params: {duration_s: 3.5, bloom_count: 7, edge_strength: 1.05, colour_lag: 0.45, field_scale: 1.5,
+           paper_tint: 0.7, palette: ocean, palette_period: 1.4, drift_speed: 0.12, vignette: 0.22}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [dreamy, elegant, icy]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [noise, field]
+    weight: 0.9

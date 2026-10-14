@@ -1,0 +1,16 @@
+glt-zoom-left-wipe:
+  label: Zoom Left Wipe
+  transition: glt_zoom_left_wipe
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

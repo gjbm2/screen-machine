@@ -1,0 +1,33 @@
+snowfall-hush:
+  label: Hush (soft bokeh snow, frosted edges)
+  effect: snowfall
+  params: {amount: 0.75, density: 0.5, flake_size: 1.0, wind: 0.1, depth_of_field: 0.75, layers: 6.0,
+           frost: 0.35, cool: 0.35, tint: 0.15, gust: 0.8, sparkle: 0.8, palette: ice, palette_period: 0.6,
+           drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.45]
+    moods: [calm, dreamy, icy]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [particles, noise]
+    weight: 1.0
+
+snowfall-flurry:
+  label: Flurry (windswept glittering snow)
+  effect: snowfall
+  params: {amount: 0.9, density: 0.8, flake_size: 1.15, wind: 0.5, depth_of_field: 0.55, layers: 8.0,
+           frost: 0.1, cool: 0.2, tint: 0.4, gust: 1.5, sparkle: 1.6, palette: dusk, palette_period: 0.8,
+           drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [dreamy, icy, calm]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [particles, noise]
+    weight: 0.8

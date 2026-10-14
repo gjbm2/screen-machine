@@ -1,0 +1,22 @@
+isf-multi-pixellate:
+  label: Multi Pixellate
+  effect: isf_multi_pixellate
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - retro
+    - playful
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

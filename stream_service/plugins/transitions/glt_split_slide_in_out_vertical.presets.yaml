@@ -1,0 +1,17 @@
+glt-split-slide-in-out-vertical:
+  label: Split Slide In Out Vertical
+  transition: glt_split_slide_in_out_vertical
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

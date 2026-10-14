@@ -1,0 +1,18 @@
+glt-hexagonalize:
+  label: Hexagonalize
+  transition: glt_hexagonalize
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - retro
+    - playful
+    - geometric
+    style: gentle
+    family: fragment
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

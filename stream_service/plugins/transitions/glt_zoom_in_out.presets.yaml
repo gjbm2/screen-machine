@@ -1,0 +1,17 @@
+glt-zoom-in-out:
+  label: Zoom In Out
+  transition: glt_zoom_in_out
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - dreamy
+    - mellow
+    style: gentle
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

@@ -1,0 +1,23 @@
+st-box-intersection:
+  label: Box   intersection
+  source: st_box_intersection
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - bright
+    family: cosmic
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.7

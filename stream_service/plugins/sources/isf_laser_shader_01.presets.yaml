@@ -1,0 +1,22 @@
+isf-laser-shader-01:
+  label: Laser Shader 01
+  source: isf_laser_shader_01
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

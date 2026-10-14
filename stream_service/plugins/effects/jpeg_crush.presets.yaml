@@ -1,0 +1,31 @@
+jpeg-crush-codec:
+  label: Codec crush (blocky over-compressed JPEG, quality collapses on the beat)
+  effect: jpeg_crush
+  params: {amount: 0.8}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [glitchy, retro, aggressive]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [glitch, tiling]
+    weight: 1.0
+
+jpeg-crush-datamosh:
+  label: Datamosh (16x16 macroblocks, heavy DC runs, P-frame smear, acid tint)
+  effect: jpeg_crush
+  params: {amount: 0.9, quality: 0.1, block_size: "16", block_scale: 3.0, chroma_subsample: 1.0, bit_depth: 0.5,
+           dc_corruption: 0.65, pframe_smear: 0.7, tempo: 5.0, palette: acid, palette_period: 1.4,
+           drift_speed: 0.1}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [glitchy, aggressive, tense]
+    style: wild
+    family: glitch
+    dims: 2d
+    technique: [glitch, tiling]
+    weight: 0.8

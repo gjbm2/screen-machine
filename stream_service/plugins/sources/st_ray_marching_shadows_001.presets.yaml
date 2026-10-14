@@ -1,0 +1,23 @@
+st-ray-marching-shadows-001:
+  label: Ray Marching Shadows 001
+  source: st_ray_marching_shadows_001
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - dark
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

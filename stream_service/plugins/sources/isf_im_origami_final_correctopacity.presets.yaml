@@ -1,0 +1,21 @@
+isf-im-origami-final-correctopacity:
+  label: IM Origami Final correctopacity
+  source: isf_im_origami_final_correctopacity
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: abstract
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.6

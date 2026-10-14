@@ -1,0 +1,23 @@
+isf-301-s-fire-shader-remix-gpt-modified:
+  label: 301's Fire Shader Remix GPT Modified
+  source: isf_301_s_fire_shader_remix_gpt_modified
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - fiery
+    - warm
+    - icy
+    family: fire
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

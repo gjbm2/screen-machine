@@ -1,0 +1,18 @@
+glt-strip-datamosh-glitch:
+  label: Strip Datamosh Glitch
+  transition: glt_strip_datamosh_glitch
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - geometric
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

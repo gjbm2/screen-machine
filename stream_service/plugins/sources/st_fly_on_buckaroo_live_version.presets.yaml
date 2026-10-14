@@ -1,0 +1,22 @@
+st-fly-on-buckaroo-live-version:
+  label: Fly On, Buckaroo (Live Version)
+  source: st_fly_on_buckaroo_live_version
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

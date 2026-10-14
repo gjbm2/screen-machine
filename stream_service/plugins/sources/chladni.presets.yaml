@@ -1,0 +1,53 @@
+chladni-ember-sand:
+  label: Ember sand plate
+  source: chladni
+  params:
+    sand_mix: 0.85
+    mode: 0.3
+    palette: ember
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.55]
+    moods: [hypnotic, calm, elegant, warm]
+    weight: 1.0
+
+chladni-ice-rings:
+  label: Ice rings (circular plate, glowing lines)
+  source: chladni
+  params:
+    sand_mix: 0.0
+    plate_shape: 1.0
+    mode: 0.55
+    palette: ice
+    palette_period: 1.4
+    line_sharpness: 0.7
+    shake_kick: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.45]
+    moods: [calm, icy, elegant, geometric]
+    weight: 0.8
+
+chladni-prism-lattice:
+  label: Prism lattice
+  source: chladni
+  params:
+    sand_mix: 0.3
+    mode: 0.85
+    rotation: 22.5
+    palette: rainbow
+    palette_period: 2.0
+    plate_scale: 1.4
+    line_sharpness: 0.45
+    drift_speed: 0.04
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.25, 0.6]
+    moods: [geometric, hypnotic, bright, playful]
+    weight: 0.8

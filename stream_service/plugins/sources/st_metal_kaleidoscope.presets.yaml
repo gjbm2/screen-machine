@@ -1,0 +1,24 @@
+st-metal-kaleidoscope:
+  label: Metal Kaleidoscope
+  source: st_metal_kaleidoscope
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    family: light
+    dims: 2d
+    technique:
+    - noise
+    - kaleido
+    weight: 0.4

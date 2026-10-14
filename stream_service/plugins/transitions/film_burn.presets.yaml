@@ -1,0 +1,25 @@
+film-burn-warm-leak:
+  label: Warm film burn
+  transition: film_burn
+  params: {leak_intensity: 1.0, leak_density: 8.0, leak_tint: 0.15, palette: ember, blur_amount: 0.03, zoom_jitter: 0.03, burn_through: 0.45}
+  tags:
+    energy: [0.1, 0.5]
+    moods: [warm, dreamy, retro]
+    style: gentle
+    family: light
+    dims: 2d
+    technique: [light, optical, retro]
+    weight: 1.0
+
+film-burn-flare-out:
+  label: Flare-out burn
+  transition: film_burn
+  params: {leak_intensity: 1.35, leak_density: 12.0, leak_tint: 0.6, palette: dusk, palette_period: 1.2, blur_amount: 0.045, zoom_jitter: 0.07, burn_through: 0.85}
+  tags:
+    energy: [0.3, 0.6]
+    moods: [fiery, warm, retro]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [light, optical, analytic]
+    weight: 0.9

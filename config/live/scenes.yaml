@@ -1,0 +1,96 @@
+# Scene presets for stream_service (hot-reloaded; LIVE_V1 §1.1, AV_PROGRAMME §4.2).
+#   <preset-name>: {label, source: <plug-in name>, params: {<only what differs from the plug-in defaults>}, tags}
+# The plug-in schemas (with defaults and ranges) are in GET /api/catalog.  Unknown params invalidate a preset
+# (it is skipped with a log line); out-of-range numbers are clamped.
+# tags (LIVE_V1 1.1 §1.8; tags.py): {energy: [lo, hi], moods, genre, palette_family, weight}.  The auto-director
+# picks only tagged presets (black stays untagged: manual only), weighted by their match with the direction.
+# `heavy: true` marks presets a pool filter ({"tags": {"heavy": false}}) can keep off the P4000.
+# Params may be bindings to show signals (LIVE_V1 1.1 §1.9): {bind: <signal>, range: [lo, hi], rest?}.  Beat kicks
+# (beat: predicted on the beat; pulse: raw, lands `lead` late) drive short swells; activity_slow and level_slow
+# drive pace and depth.  With no show bus a binding sits at its rest (triggers: lo; levels: the midpoint).
+
+fractal-zoom:
+  label: Fractal zoom
+  source: fractal_zoom
+  params: {preset: nebula, palette: ember,
+           exposure: {bind: beat, range: [1.0, 1.3]}, palette_shift: {bind: beat, range: [0.0, 0.06]},
+           zoom_rate: {bind: activity_slow, range: [0.15, 0.4]}}
+  tags: {energy: [0.1, 0.6], moods: [dreamy, warm, hypnotic, mellow], weight: 1.0}
+
+fractal-dendrite:
+  label: Fractal zoom (dendrite, neon)
+  source: fractal_zoom
+  params: {preset: dendrite, palette: neon, palette_period: 8,
+           exposure: {bind: beat, range: [1.0, 1.35]},
+           zoom_rate: {bind: activity_slow, range: [0.2, 0.45]}}
+  tags: {energy: [0.4, 0.9], moods: [bright, euphoric, tense], weight: 0.8}
+
+fractal-rabbit:
+  label: Fractal zoom (rabbit, ice)
+  source: fractal_zoom
+  params: {preset: rabbit, palette: ice, palette_period: 5, zoom_rate: 0.2,
+           exposure: {bind: beat, range: [1.0, 1.3]}, palette_shift: {bind: beat, range: [0.0, 0.05]}}
+  tags: {energy: [0.2, 0.7], moods: [cool, playful, dreamy], weight: 0.8}
+
+fractal-seahorse:
+  label: Fractal zoom (seahorse, mono; heavy at 4K60 on the P4000)
+  source: fractal_zoom
+  params: {preset: seahorse, palette: mono, palette_period: 10, zoom_rate: 0.2, iterations: 160,
+           exposure: {bind: beat, range: [1.0, 1.25]}}
+  tags: {energy: [0.0, 0.5], moods: [dark, hypnotic, calm], weight: 0.4, heavy: true}
+
+# Warp stacks render at half size at 4K (render_scale 0.5, ~1080 lines) and upsample: 2 scenes render at once
+# during a transition.
+warp-liquid:
+  label: Warp (liquid)
+  source: warp_stack
+  params: {field: fbm, field_scale: 1.2, field_speed: 0.15, w1_type: domain, w1_amount: 0.9, w1_scale: 1.1,
+           w1_speed: 0.12, w1_n: 2, palette: dusk, palette_period: 1.3, drift_speed: 0.04, contrast: 0.5,
+           render_scale: 0.5,
+           energy: {bind: activity_slow, range: [0.15, 0.85]}, gain: {bind: beat, range: [1.0, 1.2]}}
+  tags: {energy: [0.0, 0.5], moods: [calm, mellow, dreamy, warm], weight: 1.0}
+
+warp-ink-tunnel:
+  label: Warp (ink tunnel)
+  source: warp_stack
+  params: {field: fbm, field_scale: 1.5, field_speed: 0.0, w1_type: tunnel, w1_amount: 0.6, w1_scale: 3,
+           w1_speed: 0.8, palette: neon, palette_period: 1.5, ink: 6, ink_width: 0.08, fb_amount: 0.85,
+           fb_zoom: 1.6, fb_mode: lighten, fb_decay: 0.93, render_scale: 0.5,
+           energy: {bind: activity_slow, range: [0.2, 0.9]}, gain: {bind: beat, range: [1.0, 1.45]},
+           fb_zoom: {bind: beat, range: [1.6, 2.6]}}
+  tags: {energy: [0.5, 1.0], moods: [hypnotic, tense, euphoric], weight: 1.0}
+
+warp-kaleido:
+  label: Warp (kaleidoscope)
+  source: warp_stack
+  params: {field: plasma, field_scale: 5, field_speed: 0.6, w1_type: swirl, w1_amount: 2, w1_scale: 1.5,
+           w1_speed: 0.1, w2_type: kaleido, w2_n: 6, w2_scale: 1, w2_speed: 0.15, palette: acid, fb_amount: 0.55,
+           fb_zoom: 1.15, fb_rotate: 10, fb_chroma: 0.004, render_scale: 0.5,
+           energy: {bind: activity_slow, range: [0.2, 0.9]}, w1_amount: {bind: beat, range: [2.0, 3.2]},
+           gain: {bind: pulse, range: [1.0, 1.25]}}
+  tags: {energy: [0.4, 1.0], moods: [euphoric, playful, bright], weight: 1.0}
+
+warp-cells:
+  label: Warp (cells)
+  source: warp_stack
+  params: {field: cells, field_scale: 4, field_speed: 0.8, w1_type: ripple, w1_amount: 0.08, w1_scale: 9,
+           w1_speed: 2, w2_type: rotozoom, w2_amount: 0.15, w2_scale: 1, w2_speed: 0.05, w2_n: 0.5, palette: ember,
+           palette_period: 0.8, contrast: 0.8, fb_amount: 0.5, fb_mode: screen, fb_zoom: 0.9, render_scale: 0.5,
+           energy: {bind: activity_slow, range: [0.2, 0.9]}, w1_amount: {bind: beat, range: [0.08, 0.3]},
+           fb_amount: {bind: level_slow, range: [0.3, 0.7]}}
+  tags: {energy: [0.3, 0.8], moods: [playful, warm, bright], weight: 1.0}
+
+warp-smoke:
+  label: Warp (smoke)
+  source: warp_stack
+  params: {field: fbm, field_scale: 2, w1_type: domain, w1_amount: 0.6, w1_n: 1, ink: 10, ink_width: 0.06,
+           fb_amount: 0.92, fb_zoom: 1.25, fb_rotate: -20, fb_chroma: 0.006, palette: rainbow, palette_period: 2,
+           drift_speed: 0.1, render_scale: 0.5,
+           fb_zoom: {bind: beat, range: [1.25, 1.9]}, drift_speed: {bind: activity_slow, range: [0.04, 0.3]},
+           gain: {bind: beat, range: [1.0, 1.2]}}
+  tags: {energy: [0.1, 0.6], moods: [dreamy, hypnotic, cool], weight: 1.0}
+
+black:
+  label: Black
+  source: solid
+  params: {rgb: "#000000"}

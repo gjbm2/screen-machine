@@ -1,0 +1,27 @@
+hex-grid-reveal-diagonal:
+  label: Hex sweep
+  transition: hex_grid_reveal
+  params: {cell_size: 0.11, shape_morph: 0.0, order: 0.0, direction: 35.0, scatter: 0.15, window: 0.42,
+           squeeze: 0.75, ring_zoom: 0.35, edge_glow: 0.6, palette: neon, duration_s: 2.0}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [geometric, playful]
+    style: lively
+    family: wipe
+    dims: 2d
+    technique: [tiling, analytic]
+    weight: 1.0
+
+hex-grid-reveal-voronoi-luma:
+  label: Drifting cells (luma order)
+  transition: hex_grid_reveal
+  params: {cell_size: 0.08, shape_morph: 3.0, order: 3.0, scatter: 0.25, window: 0.5, squeeze: 0.9,
+           ring_zoom: 0.6, edge_glow: 0.8, softness: 0.1, palette: candy, palette_period: 1.4, duration_s: 2.5}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [geometric, playful, organic]
+    style: lively
+    family: wipe
+    dims: 2d
+    technique: [tiling, analytic, cellular]
+    weight: 0.8
