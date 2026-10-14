@@ -1,14 +1,19 @@
 // Library gallery for the dev console (docs/EFFECTS_LAYER_DESIGN.md §I.1-I.2).
 // export mount({library, fxbus}): a tagged, filterable gallery of every scene, transition and effect (core, lab,
-// imported) from GET /dev/library, with thumbnails, hover / tap previews, favourites, a next-cue composer and the
+// imported) from GET /dev/library, with thumbnails, hover / tap previews, the owner's ratings (0-5 stars + reject, Lightroom style), a next-cue composer and the
 // FX bus panel (fxbus.js).  Defensive: /dev/library missing -> the catalog without thumbnails; ?mock=1 -> the
 // library-mock.json fixture and an in-memory bus (add &mockx=4 to multiply the items for a 300+ card test).
 import { h, put, add, http, ctx, debounce, hashHue, ago, store, toast, explain, fmt, withBase, LIVE_STATES, STAGES } from "./libkit.js";
 import { mountFxBus } from "./fxbus.js";
 import { LivePlayer } from "./live-player.js";
+import { push as pushTo, SCREENS, ready as screensReady } from "./push.js";
 
 const KINDS = [["scene", "Scenes"], ["transition", "Transitions"], ["effect", "Effects"]];
-const FAV_KEY = "sm.library.favs";
+const FAV_KEY = "sm.library.favs";                  // the old per-browser favourites: moved once into the tag "favourite"
+const FAV_TAG = "favourite";
+// The rating filter (Lightroom's Attribute bar): stars compared with ≥ / = / ≤ (0 = no star filter), and the reject flag.
+const RATING_OPS = [["ge", "≥"], ["eq", "="], ["le", "≤"]];
+const FLAG_MODES = [["all", "rejects: shown"], ["hide", "rejects: hidden"], ["only", "rejects only"]];
 const UI_KEY = "sm.library.ui";
 const PARAMS_KEY = "sm.library.params";
 const BATCH = 60;                                    // cards rendered per page of the infinite scroll
@@ -104,11 +109,14 @@ export function mount({ library, fxbus } = {}) {
   ctx.mock = q.has("mock") && q.get("mock") !== "0";
   const multiply = Math.max(1, Math.min(10, parseInt(q.get("mockx") || "1", 10) || 1));
 
-  const ui = { kind: "scene", sort: "recommended", favOnly: false, filters: {}, nextVia: null, at: null, ...store.get(UI_KEY, {}) };
+  const ui = { kind: "scene", sort: "recommended", rf: null, filters: {}, nextVia: null, at: null, ...store.get(UI_KEY, {}) };
+  const rf0 = ui.rf || {};
   const S = {
     items: [], byKey: new Map(), idx: null, source: null, note: null, loadedAt: 0,
-    kind: DEFAULT_FACETS[ui.kind] ? ui.kind : "scene", sort: ui.sort, favOnly: !!ui.favOnly, q: "", qt: [],
-    filters: {}, favs: new Set(asList(store.get(FAV_KEY, []))), nextVia: null, nextFx: [], at: ui.at || null,
+    kind: DEFAULT_FACETS[ui.kind] ? ui.kind : "scene", sort: ui.sort, q: "", qt: [],
+    rf: { op: RATING_OPS.some(([v]) => v === rf0.op) ? rf0.op : "ge", n: Math.max(0, Math.min(5, rf0.n | 0)),
+          flag: FLAG_MODES.some(([v]) => v === rf0.flag) ? rf0.flag : "all" },
+    filters: {}, nextVia: null, nextFx: [], at: ui.at || null,
     ratings: new Map(),
     limit: BATCH, detail: null, filtersOpen: false, list: [], current: null, errors: [], errorsDismissed: 0, lab: null, labAvail: "unknown",
   };
@@ -117,7 +125,7 @@ export function mount({ library, fxbus } = {}) {
     for (const [f, vals] of Object.entries(ui.filters?.[k] || {})) if (Array.isArray(vals) && vals.length) S.filters[k][f] = new Set(vals);
   }
   const saveUi = () => store.set(UI_KEY, {
-    kind: S.kind, sort: S.sort, favOnly: S.favOnly, at: S.at, nextVia: S.nextVia?.key || null,
+    kind: S.kind, sort: S.sort, rf: S.rf, at: S.at, nextVia: S.nextVia?.key || null,
     filters: Object.fromEntries(Object.entries(S.filters).map(([k, f]) => [k, Object.fromEntries(Object.entries(f).filter(([, s]) => s.size).map(([n, s]) => [n, [...s]]))])),
   });
 
@@ -144,7 +152,12 @@ export function mount({ library, fxbus } = {}) {
   const filtBtn = h("button", { class: "lib-filtbtn", "aria-expanded": "false", "aria-controls": "lib-filters" }, "Filters", filtN);
   const sortSel = h("select", { "aria-label": "sort" }, SORTS.map(([v, t]) => h("option", { value: v }, t)));
   sortSel.value = SORTS.some(([v]) => v === S.sort) ? S.sort : "recommended";
-  const favBtn = h("button", { class: "lib-iconbtn", title: "favourites only (★ on a card to add)", "aria-pressed": String(S.favOnly), "aria-label": "favourites only" }, "★");
+  const rfOp = h("select", { class: "lib-rf-op", "aria-label": "rating comparison", title: "rating at least / exactly / at most" },
+    RATING_OPS.map(([v, t]) => h("option", { value: v }, t)));
+  const rfStars = [1, 2, 3, 4, 5].map((n) => h("button", { class: "lib-rf-star", "aria-label": `${n} star${n > 1 ? "s" : ""}` }, "★"));
+  const rfFlag = h("select", { class: "lib-rf-flag", "aria-label": "rejected items", title: "the reject flag (x on a card)" },
+    FLAG_MODES.map(([v, t]) => h("option", { value: v }, t)));
+  const rfBox = h("div", { class: "lib-rf", role: "group", "aria-label": "filter by rating" }, rfOp, h("span", { class: "lib-rf-stars" }, rfStars), rfFlag);
   const active = h("div", { class: "lib-active", "aria-label": "active filters" });
   const filters = h("div", { class: "lib-filters", id: "lib-filters", hidden: true });
   const next = h("div", { class: "lib-next", "aria-label": "next cue" });
@@ -160,7 +173,7 @@ export function mount({ library, fxbus } = {}) {
 
   put(library, 
     h("h2", { class: "lib-h2" }, "Library", srcNote, h("span", { style: { flex: 1 } }), labBadge),
-    h("div", { class: "lib-bar" }, tabs, search, filtBtn, sortSel, favBtn),
+    h("div", { class: "lib-bar" }, tabs, search, filtBtn, sortSel, rfBox),
     active, filters, next, banner, noteEl, scroller, status, lab);
 
   const bus = fxbus ? mountFxBus(fxbus, {
@@ -196,7 +209,7 @@ export function mount({ library, fxbus } = {}) {
     if (loupe?.key === it.key) { hudRender(it); if (loupe.paramsOpen && loupe.props) paramsDraw(it); }
     const row = S.detail === it.key ? detailEl.querySelector(".lib-rate") : null;
     if (row) row.replaceWith(rateRow(it));
-    renderTabs();
+    if (rfActive() && !loupe) renderAll(); else renderTabs();
   }
   function rateRow(it, big = false) {
     const stars = [1, 2, 3, 4, 5].map((n) => h("button", {
@@ -226,7 +239,15 @@ export function mount({ library, fxbus } = {}) {
           } else note = !c ? "the library could not be loaded (is the server up?)" : explain(r, "library");
         }
       }
-      S.source = source; S.note = note;
+      const sig = idx ? JSON.stringify(idx.items) : null;
+      if (idx && !reason && source === S.source && sig === S.sig) {   // the 20 s refresh, nothing changed: leave the page alone
+        await loadRatings();
+        for (const it of S.items) applyRating(it);
+        for (const c of cards.values()) if (c.el.isConnected) updateCard(c);
+        return;
+      }
+      S.source = source; S.note = note; S.sig = sig;
+      const top = scroller.scrollTop;
       if (idx) {
         S.idx = idx; S.items = normalise(idx, source === "mock" ? multiply : 1); S.byKey = new Map(S.items.map((i) => [i.key, i]));
         await loadRatings();
@@ -241,6 +262,7 @@ export function mount({ library, fxbus } = {}) {
         if (reason) ctx.log(`library reloaded (${reason}): ${S.items.length} items`, "ev");
       }
       renderAll();
+      scroller.scrollTop = top;                                       // a reload never moves the gallery
       library.dataset.ready = idx ? "1" : "0";
     })();
     try { await loading; } finally { loading = null; }
@@ -256,9 +278,35 @@ export function mount({ library, fxbus } = {}) {
 
   // ---- filtering
   function hideRejected(kind) { return !S.filters[kind].status?.has("rejected"); }
+  // the rating filter: stars (op n; n 0 = off) and the owner's reject flag, as in Lightroom's Attribute bar
+  function ratingOk(it) {
+    const { op, n, flag } = S.rf;
+    if (flag === "hide" && it._reject) return false;
+    if (flag === "only" && !it._reject) return false;
+    if (!n) return true;
+    const r = it._rating || 0;
+    return op === "eq" ? r === n : op === "le" ? r <= n : r >= n;
+  }
+  const rfActive = () => !!S.rf.n || S.rf.flag !== "all";
+  const rfText = () => [S.rf.n ? `rating ${RATING_OPS.find(([v]) => v === S.rf.op)[1]} ${S.rf.n}★` : null,
+    S.rf.flag === "hide" ? "rejects hidden" : S.rf.flag === "only" ? "rejects only" : null].filter(Boolean).join(", ");
+  function setRf(patch) {
+    S.rf = { ...S.rf, ...patch };
+    S.limit = BATCH; saveUi(); renderAll();
+  }
+  function renderRf() {
+    rfOp.value = S.rf.op; rfFlag.value = S.rf.flag;
+    rfStars.forEach((b, i) => {
+      const n = i + 1;
+      b.classList.toggle("on", n <= S.rf.n);
+      b.setAttribute("aria-pressed", String(n === S.rf.n));
+      b.title = S.rf.n === n ? "click again to clear the star filter" : `rating ${RATING_OPS.find(([v]) => v === S.rf.op)[1]} ${n}★`;
+    });
+    rfBox.classList.toggle("on", rfActive());
+  }
   function matches(it, kind, except) {
     if (it.kind !== kind) return false;
-    if (S.favOnly && !S.favs.has(it.key)) return false;
+    if (!ratingOk(it)) return false;
     for (const t of S.qt) if (!it._hay.includes(t)) return false;
     const f = S.filters[kind];
     for (const facet in f) {
@@ -281,7 +329,7 @@ export function mount({ library, fxbus } = {}) {
       rating: (a, b) => ((b._reject ? -1 : b._rating || 0) - (a._reject ? -1 : a._rating || 0)) || name(a, b),
       fastest: (a, b) => (a.bench_ms_4k ?? 1e9) - (b.bench_ms_4k ?? 1e9) || name(a, b),
       recommended: (a, b) =>
-        (S.favs.has(b.key) - S.favs.has(a.key)) || ((a.load === "error") - (b.load === "error")) ||
+        ((b._reject ? -1 : b._rating || 0) - (a._reject ? -1 : a._rating || 0)) || ((a.load === "error") - (b.load === "error")) ||
         ((STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1)) || ((a.preset == null) - (b.preset == null)) ||
         ((b.weight ?? 1) - (a.weight ?? 1)) || name(a, b),
     }[by] || name;
@@ -292,7 +340,7 @@ export function mount({ library, fxbus } = {}) {
   // ---- render: tabs, chips, filters, grid
   function renderTabs() {
     for (const [k] of KINDS) {
-      const n = S.items.reduce((acc, it) => acc + (it.kind === k && (!S.favOnly || S.favs.has(it.key)) && S.qt.every((t) => it._hay.includes(t)) && !(hideRejected(k) && it.status === "rejected") ? 1 : 0), 0);
+      const n = S.items.reduce((acc, it) => acc + (it.kind === k && ratingOk(it) && S.qt.every((t) => it._hay.includes(t)) && !(hideRejected(k) && it.status === "rejected") ? 1 : 0), 0);
       tabEls[k].n.textContent = String(n);
       tabEls[k].b.setAttribute("aria-selected", String(k === S.kind));
       tabEls[k].b.tabIndex = k === S.kind ? 0 : -1;
@@ -315,7 +363,11 @@ export function mount({ library, fxbus } = {}) {
       chips.push(h("span", { class: "lib-pill acc" }, `${facet}: ${v}`,
         h("button", { "aria-label": `remove filter ${facet} ${v}`, title: "remove", onclick: () => toggleFilter(S.kind, facet, v, false) }, "×")));
     }
-    if (chips.length > 1) chips.push(h("button", { class: "lib-iconbtn", style: { fontSize: "11px" }, onclick: () => { S.filters[S.kind] = {}; S.limit = BATCH; saveUi(); renderAll(); } }, "clear all"));
+    if (S.rf.n) chips.unshift(h("span", { class: "lib-pill acc" }, rfText().split(", ")[0],
+      h("button", { "aria-label": "remove the star filter", title: "remove", onclick: () => setRf({ n: 0 }) }, "×")));
+    if (S.rf.flag !== "all") chips.unshift(h("span", { class: "lib-pill acc" }, S.rf.flag === "hide" ? "rejects hidden" : "rejects only",
+      h("button", { "aria-label": "show rejected items", title: "remove", onclick: () => setRf({ flag: "all" }) }, "×")));
+    if (chips.length > 1) chips.push(h("button", { class: "lib-iconbtn", style: { fontSize: "11px" }, onclick: () => { S.filters[S.kind] = {}; S.rf = { ...S.rf, n: 0, flag: "all" }; S.limit = BATCH; saveUi(); renderAll(); } }, "clear all"));
     put(active, ...chips);
     const n = activeCount(S.kind);
     filtN.textContent = String(n); filtN.hidden = !n;
@@ -426,9 +478,8 @@ export function mount({ library, fxbus } = {}) {
       if (thumbIO) thumbIO.observe(img); else img.src = it.thumb;
     }
     const badges = h("span", { class: "lib-badges" });
-    const star = h("button", { class: "lib-star", "aria-label": `favourite ${it.label}`, title: "favourite (f)", tabindex: "-1" }, "★");
-    star.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(it.key); });
-    add(thumb, badges, star, it.preview ? h("span", { class: "lib-play", "aria-hidden": "true" }, "▶ preview") : null);
+    const star = cardRate(it);
+    add(thumb, badges, star, it.preview ? h("span", { class: "lib-play", "aria-hidden": "true" }, "▶ preview") : null, pushButtons(it, "lib-pushbtns"));
     const dot = h("span", { class: "lib-dot" });
     const title = h("div", { class: "lib-title" }, dot, h("span", { class: "t" }, it.label));
     const chips = h("div", { class: "lib-chips" }, chipsFor(it));
@@ -452,10 +503,18 @@ export function mount({ library, fxbus } = {}) {
     return c;
   }
 
+  // the card's rating: 5 stars + reject; shown when set, all of it on hover / focus (always on touch screens)
+  function cardRate(it) {
+    const el = rateRow(it);
+    el.classList.add("lib-cardrate");
+    el.classList.toggle("set", !!(it._rating || it._reject));
+    for (const b of el.querySelectorAll("button")) b.tabIndex = -1;
+    return el;
+  }
   function updateCard(c) {
     const it = c.it;
-    const fav = S.favs.has(it.key);
-    c.star.setAttribute("aria-pressed", String(fav));
+    const star = cardRate(it);
+    c.star.replaceWith(star); c.star = star;
     c.dot.className = `lib-dot ${it.status}`;
     c.dot.title = `status: ${it.status}`;
     const errText = it.load === "error" ? `import error: ${it.error || "?"}` : it.load === "stale" ? it.error
@@ -463,7 +522,6 @@ export function mount({ library, fxbus } = {}) {
     const isNew = it._added && Date.now() - it._added < NEW_MS;
     c.el.title = it.load === "error" ? `BROKEN: ${it.error || "import error"}` : "";
     put(c.badges,
-      it._reject ? h("span", { class: "lib-badge err", title: "rejected" }, "✕") : it._rating ? h("span", { class: "lib-badge rate", title: `${it._rating} of 5` }, "★".repeat(it._rating)) : null,
       it._looks?.length ? h("span", { class: "lib-badge looks", title: `${it._looks.length} saved look${it._looks.length > 1 ? "s" : ""}` }, `◆${it._looks.length}`) : null,
       isNew ? h("span", { class: "lib-badge new", title: `added / changed ${ago(it.added_at)}` }, "new") : null,
       shortOrigin(it.origin) === "core" ? null : h("span", { class: "lib-badge lab", title: it.origin }, shortOrigin(it.origin)),
@@ -531,11 +589,12 @@ export function mount({ library, fxbus } = {}) {
   // stream_service/preview.py: one reusable 720p session per tab; another card re-cues it with a cut and the same
   // <video> moves into the new card view, so switching is instant).  Closing the card view stops the player; the
   // session then ends at its TTL unless another card is opened first.
-  const LP_CLIENT = (() => {
-    const make = () => "t" + Math.random().toString(36).slice(2, 12);
-    try { let c = sessionStorage.getItem("sm.preview.client"); if (!c) { c = make(); sessionStorage.setItem("sm.preview.client", c); } return c; }
-    catch (_) { return make(); }
-  })();
+  // one preview session per page load (not per sessionStorage: a duplicated tab copies it, and two tabs would then
+  // drive one session and switch each other's picture); closing the page ends it at once instead of at its TTL
+  const LP_CLIENT = "t" + Math.random().toString(36).slice(2, 12);
+  window.addEventListener("pagehide", () => {
+    if (lpSid) try { fetch(withBase(`/dev/preview?client=${LP_CLIENT}`), { method: "DELETE", keepalive: true }); } catch (_) {}
+  });
   let lpPlayer = null, lpUrl = null, lpKeep = null, lpSeq = 0, lpKey = null, lpSid = null;
   async function liveInto(media, it) {
     if (ctx.mock || it.load === "error") return;
@@ -638,7 +697,7 @@ export function mount({ library, fxbus } = {}) {
     });
     const pbtn = h("button", { class: `lib-hud-params${loupe.paramsOpen ? " on" : ""}`, title: "live parameters (e)", "aria-pressed": String(loupe.paramsOpen),
       onclick: (e) => { e.stopPropagation(); toggleParams(); } }, "⚙ Parameters");
-    put(loupe.hud, rateRow(it, true), h("div", { class: "lib-tags" }, sys, mine, input), pbtn);
+    put(loupe.hud, rateRow(it, true), h("div", { class: "lib-tags" }, sys, mine, input), pushButtons(it, "lib-pushrow"), pbtn);
   }
   function toggleParams() {
     if (!loupe) return;
@@ -649,12 +708,31 @@ export function mount({ library, fxbus } = {}) {
     const it = S.byKey.get(loupe.key);
     if (it) { hudRender(it); if (loupe.paramsOpen) paramsRender(it); }
   }
+  // ---- push to a real screen for a while (push.js): the item as it is, or as tuned in the loupe; an effect at amount 1
+  function pushSpec(it) {
+    const tuned = loupe?.key === it.key && loupe.props ? ownParams(it) : null;
+    const amount = it.kind === "effect" && "amount" in propsFor(it) ? { amount: 1 } : {};
+    if (!tuned && !Object.keys(amount).length) return it.spec;
+    const base = typeof it.spec === "object" ? it.spec.params || {} : {};
+    return { ...specObj(it), params: { ...base, ...amount, ...(tuned || {}) } };
+  }
+  function pushButtons(it, cls) {
+    if (!SCREENS.length) return null;
+    return h("span", { class: cls, role: "group", "aria-label": "show on a screen for 2 minutes" },
+      SCREENS.map(([id, name]) => h("button", {
+        title: `show ${it.label} on the ${name} TV for 2 minutes, then put it back`, tabindex: "-1",
+        onclick: (e) => { e.stopPropagation(); pushTo(id, it, pushSpec(it)); } }, `📺 ${name}`)));
+  }
+  function propsFor(it) {
+    const cat = ctx.catalog() || {};
+    const list = it.kind === "scene" ? cat.sources : it.kind === "transition" ? cat.transitions : cat.effects;
+    return (list || []).find((x) => x.name === it.plugin)?.schema?.properties || {};
+  }
   const specObj = (it) => (typeof it.spec === "string" ? { preset: it.spec } : Object.fromEntries(Object.entries(it.spec || {}).filter(([k]) => k !== "params")));
   async function paramsRender(it) {
     if (!loupe || !loupe.paramsOpen) return;
     const cat = ctx.catalog() || {};
-    const list = it.kind === "scene" ? cat.sources : it.kind === "transition" ? cat.transitions : cat.effects;
-    const props = (list || []).find((x) => x.name === it.plugin)?.schema?.properties || {};
+    const props = propsFor(it);
     const sid = lpSid;
     let vals = {}, bound = new Set();
     if (it.kind === "scene" && sid) {
@@ -986,8 +1064,8 @@ export function mount({ library, fxbus } = {}) {
     else for (const el of els) if (el.parentNode !== grid) grid.insertBefore(el, sentinel.parentNode === grid ? sentinel : null);
     if (!list.length) {
       put(grid, h("div", { class: "lib-empty" }, !S.items.length ? (S.note || "Loading the library…")
-        : S.favOnly && !S.items.some((i) => i.kind === S.kind && S.favs.has(i.key)) ? "No favourites here yet: ★ a card to keep it handy."
-        : "Nothing matches. ", S.items.length ? h("button", { onclick: () => { S.q = ""; S.qt = []; search.value = ""; S.filters[S.kind] = {}; S.favOnly = false; favBtn.setAttribute("aria-pressed", "false"); saveUi(); renderAll(); } }, "Clear search and filters") : null));
+        : rfActive() && !S.items.some((i) => i.kind === S.kind && ratingOk(i)) ? `Nothing here with ${rfText()} yet: rate with 1–5 (x rejects) on a card, in its details or in the loupe. `
+        : "Nothing matches. ", S.items.length ? h("button", { onclick: () => { S.q = ""; S.qt = []; search.value = ""; S.filters[S.kind] = {}; S.rf = { ...S.rf, n: 0, flag: "all" }; saveUi(); renderAll(); } }, "Clear search and filters") : null));
     }
     if (S.limit < list.length) {
       put(sentinel, h("button", { onclick: () => { S.limit += BATCH; renderGrid(true); } }, `Show more (${list.length - S.limit} left)`));
@@ -1001,7 +1079,7 @@ export function mount({ library, fxbus } = {}) {
     if (S.detail && keys.includes(S.detail)) placeDetail(); else if (S.detail && !append) closeDetail(false);
     const rej = S.items.filter((i) => i.kind === S.kind && i.status === "rejected").length;
     status.textContent = S.items.length
-      ? `${Math.min(S.limit, list.length)} of ${list.length} shown${rej && hideRejected(S.kind) ? ` · ${rej} rejected hidden` : ""} · keys: / search, arrows move, Enter ${ACTION[S.kind]}, i details, f favourite, p preview`
+      ? `${Math.min(S.limit, list.length)} of ${list.length} shown${rej && hideRejected(S.kind) ? ` · ${rej} rejected hidden` : ""} · keys: / search, arrows move, Enter ${ACTION[S.kind]}, 0–5 rate, x reject, i details, p preview`
       : "";
   }
 
@@ -1017,7 +1095,7 @@ export function mount({ library, fxbus } = {}) {
 
   function renderAll() {
     S.list = sorted(S.items.filter((it) => matches(it, S.kind)));
-    renderSource(); renderTabs(); renderActive(); renderFilters(); renderNext(); renderBanner(); renderGrid();
+    renderSource(); renderTabs(); renderRf(); renderActive(); renderFilters(); renderNext(); renderBanner(); renderGrid();
     noteEl.hidden = !(S.note && S.source !== "library" && S.source !== "mock" && S.items.length);
     noteEl.textContent = S.note || "";
   }
@@ -1098,7 +1176,7 @@ export function mount({ library, fxbus } = {}) {
       acts.push(h("button", { disabled: !ok, title: ok ? "part of the next cued scene (it transitions with the scene)" : "needs a server with scene effects (api feature 'effects')", onclick: () => attachNext(it) },
         on ? "Detach from next cue" : "Attach to next cue"));
     }
-    acts.push(h("button", { onclick: () => toggleFav(it.key) }, S.favs.has(it.key) ? "★ Unfavourite" : "☆ Favourite"));
+    acts.push(pushButtons(it, "lib-pushrow"));
     if (it.preview) acts.push(h("a", { href: it.preview, target: "_blank", rel: "noopener", class: "small", style: { alignSelf: "center", color: "var(--info)" } }, "open preview"));
     acts.push(h("button", { onclick: () => closeDetail(), "aria-label": "close details" }, "Close"));
     put(detailEl, media, h("div", {},
@@ -1116,12 +1194,24 @@ export function mount({ library, fxbus } = {}) {
   }
 
   // ---- actions
-  function toggleFav(key) {
-    S.favs.has(key) ? S.favs.delete(key) : S.favs.add(key);
-    store.set(FAV_KEY, [...S.favs]);
-    const c = cards.get(key); if (c) updateCard(c);
-    if (S.favOnly) renderAll(); else renderTabs();
-    if (S.detail === key) openDetail(key);
+  // The old favourites lived in this browser only; they become the owner's tag "favourite" (kept in ratings.json),
+  // once. Keys the index doesn't have (yet) stay for the next load.
+  async function migrateFavs() {
+    const favs = asList(store.get(FAV_KEY, []));
+    if (!favs.length || ctx.mock || S.source !== "library") return;
+    const left = [];
+    let moved = 0;
+    for (const key of favs) {
+      const it = S.byKey.get(key);
+      if (!it) { left.push(key); continue; }
+      if (it._mytags.includes(FAV_TAG)) continue;
+      const r = await http("POST", "/dev/rate", { key, tags: [...it._mytags, FAV_TAG] });
+      if (!r.ok) { left.push(key); continue; }
+      if (r.data?.entry) S.ratings.set(key, r.data.entry);
+      applyRating(it); moved++;
+    }
+    store.set(FAV_KEY, left);
+    if (moved) { toast(`${moved} favourite${moved > 1 ? "s" : ""} kept as the tag "${FAV_TAG}" (Filters → mytags)`, "", 4000); renderAll(); }
   }
 
   function composeTo(it) {
@@ -1243,7 +1333,9 @@ export function mount({ library, fxbus } = {}) {
   });
   filtBtn.addEventListener("click", () => { S.filtersOpen = !S.filtersOpen; renderFilters(); });
   sortSel.addEventListener("change", () => { S.sort = sortSel.value; S.limit = BATCH; saveUi(); renderAll(); });
-  favBtn.addEventListener("click", () => { S.favOnly = !S.favOnly; favBtn.setAttribute("aria-pressed", String(S.favOnly)); S.limit = BATCH; saveUi(); renderAll(); });
+  rfOp.addEventListener("change", () => setRf({ op: rfOp.value }));
+  rfFlag.addEventListener("change", () => setRf({ flag: rfFlag.value }));
+  rfStars.forEach((b, i) => b.addEventListener("click", () => setRf({ n: S.rf.n === i + 1 ? 0 : i + 1 })));
 
   // keyboard: roving focus in the grid
   grid.addEventListener("keydown", (e) => {
@@ -1263,7 +1355,8 @@ export function mount({ library, fxbus } = {}) {
     else if (k === "Home") go(0);
     else if (k === "End") go(els.length - 1);
     else if (k === "Enter") primary(c.it);
-    else if (k === "f" || k === "F") toggleFav(c.it.key);
+    else if (/^[0-5]$/.test(k)) rate(c.it, { stars: Number(k) });
+    else if (k === "x" || k === "X") rate(c.it, { reject: !c.it._reject });
     else if (k === "i" || k === "I" || k === ".") toggleDetail(c.it.key);
     else if (k === "p" || k === "P" || k === " ") toggleDetail(c.it.key);
     else if (k === "Escape") { if (S.detail) closeDetail(); else stopPreview(); }
@@ -1315,6 +1408,6 @@ export function mount({ library, fxbus } = {}) {
   setInterval(() => { if (!ctx.mock && !document.hidden) { loadIndex(); if (lab.open) loadLab(); } }, REFRESH_MS);
 
   renderAll();
-  loadIndex().finally(loadLab);           // mock: the lab status lives in the fixture
+  screensReady.finally(() => loadIndex().then(migrateFavs).finally(loadLab));   // the TV buttons need the screen list; mock: the lab status lives in the fixture
   return { reload: () => loadIndex("manual"), state: S };
 }
