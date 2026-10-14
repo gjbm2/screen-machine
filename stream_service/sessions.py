@@ -387,6 +387,7 @@ class Session(EngineListener):
     # -- lifecycle -----------------------------------------------------------------
     async def start(self, anchor: ImageSource) -> None:
         await self._run(self.engine.create_context)
+        if getattr(self.engine, "ctx", None) is not None: self.engine.ctx.screen = self.screen  # for live_art
         if hasattr(self.engine, "warm"):    # compile/load the usual transitions once per GPU (R20); usually done at start
             await self.mgr.ensure_warm(self.gpu, lambda: self._run(self.engine.warm, self.mgr.warm_plugins))
         anchor = await self._prepare(anchor)
