@@ -193,19 +193,79 @@ details.fx-sub .slider { grid-template-columns: 90px 1fr 40px; }
 .lib-presets .chips button { font-size: 11px; padding: 1px 8px; }
 .lib-card.dim .lib-thumb { filter: grayscale(1); }
 
-/* live preview (a card click plays the item live; preview.py) */
+/* live preview inside the card view (preview.py): the media box plays the item live */
 .lib-card { cursor: pointer; }
-.lib-card.previewing { border-color: var(--lib-amber); }
-.lib-lp { position: fixed; right: 16px; bottom: 16px; width: min(560px, calc(100vw - 32px)); z-index: 60; background: #0b0e12;
-          border: 1px solid #3a4552; border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, .55); overflow: hidden; }
-.lib-lp[hidden] { display: none; }
-.lib-lp-bar { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; font-size: 13px; }
-.lib-lp-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
-.lib-lp-note { flex: 1; color: #8b95a1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lib-lp-close { flex: 0 0 auto; min-width: 32px; min-height: 32px; font-size: 18px; line-height: 1; }
-.lib-lp-stage { position: relative; aspect-ratio: 16 / 9; background: #000; }
-.lib-lp-spin { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; z-index: 2; display: none;
-               border: 3px solid rgba(255, 255, 255, .2); border-top-color: var(--lib-amber); border-radius: 50%; animation: lib-lp-spin .8s linear infinite; }
-.lib-lp.loading .lib-lp-spin { display: block; }
+@media (min-width: 901px) { .lib-detail { grid-template-columns: minmax(0, 480px) 1fr; } }
+.lib-detail .media .lp-note { position: absolute; left: 6px; bottom: 6px; z-index: 3; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+                              background: rgba(0, 0, 0, .6); color: #e6e6e6; pointer-events: none; }
+.lib-detail .media.loading::after { content: ""; position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; z-index: 2;
+                                    border: 3px solid rgba(255, 255, 255, .2); border-top-color: var(--lib-amber); border-radius: 50%; animation: lib-lp-spin .8s linear infinite; }
 @keyframes lib-lp-spin { to { transform: rotate(360deg); } }
-@media (max-width: 520px) { .lib-lp { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 10px 10px 0 0; } }
+
+/* loupe: the live preview large, with prev / next (library.js openLoupe) */
+.lib-detail .media { cursor: zoom-in; }
+body.lib-noscroll { overflow: hidden; }
+.lib-loupe { position: fixed; inset: 0; z-index: 70; background: rgba(4, 6, 9, .95); display: flex; flex-direction: column; }
+.lib-loupe-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 16px; font-size: 14px; }
+.lib-loupe-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lib-loupe-title .small { color: #8b95a1; }
+.lib-loupe-count { color: #8b95a1; font-size: 12px; white-space: nowrap; }
+.lib-loupe-close { min-width: 40px; min-height: 40px; font-size: 22px; line-height: 1; }
+.lib-loupe-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 12px 16px; }
+.lib-loupe-stage { position: relative; flex: 0 1 auto; width: min(calc(100vw - 150px), calc((100vh - 80px) * 16 / 9)); aspect-ratio: 16 / 9;
+                   background: #000 center / cover no-repeat; border-radius: 8px; overflow: hidden; touch-action: pan-y; }
+.lib-loupe-stage video { object-fit: contain; }
+.lib-loupe-stage.loading::after { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; z-index: 2;
+                                  border: 3px solid rgba(255, 255, 255, .25); border-top-color: var(--lib-amber); border-radius: 50%; animation: lib-lp-spin .8s linear infinite; }
+.lib-loupe-nav { flex: 0 0 auto; width: 52px; height: 104px; font-size: 44px; line-height: 1; border-radius: 8px; background: rgba(255, 255, 255, .07); }
+.lib-loupe-nav:hover { background: rgba(255, 255, 255, .14); }
+@media (max-width: 700px) {
+  .lib-loupe-body { position: relative; padding: 0 0 12px; gap: 0; }
+  .lib-loupe-stage { width: 100%; border-radius: 0; }
+  .lib-loupe-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 4; width: 40px; height: 72px; background: rgba(0, 0, 0, .45); }
+  .lib-loupe-nav.prev { left: 4px; } .lib-loupe-nav.next { right: 4px; }
+}
+
+/* ratings (stars / reject) on cards, in the card view and in the loupe */
+.lib-badge.rate { color: var(--lib-amber); letter-spacing: -1px; }
+.lib-rate { display: flex; align-items: center; gap: 2px; margin: 2px 0 6px; }
+.lib-rate button { background: none; border: 0; padding: 0 2px; min-height: 0; font-size: 18px; line-height: 1; color: #4a525c; cursor: pointer; }
+.lib-rate .lib-star-btn.on { color: var(--lib-amber); }
+.lib-rate:hover .lib-star-btn { color: var(--lib-amber); }
+.lib-rate .lib-star-btn:hover ~ .lib-star-btn { color: #4a525c; }
+.lib-rate .lib-rej-btn { margin-left: 8px; font-size: 15px; }
+.lib-rate .lib-rej-btn.on { color: var(--bad, #e5534b); }
+.lib-rate.big button { font-size: 26px; }
+.lib-rate.big .lib-rej-btn { font-size: 20px; }
+
+/* loupe controls: a bottom bar (rating, tags, parameters) that shows on hover / tap and hides when idle */
+.lib-hud { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+           padding: 28px 14px 10px; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); opacity: 0; transition: opacity .25s; pointer-events: none; }
+.lib-loupe.hud-on .lib-hud { opacity: 1; pointer-events: auto; }
+.lib-hud .lib-rate { margin: 0; }
+.lib-tags { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.lib-tag { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: rgba(255, 255, 255, .12); color: #d8dde3; white-space: nowrap; }
+.lib-tag.sys { background: rgba(255, 255, 255, .07); color: #9aa4af; }
+.lib-tag.mine { background: rgba(240, 192, 60, .22); color: #f3d58a; }
+.lib-tag.mine button { background: none; border: 0; color: inherit; padding: 0 0 0 4px; min-height: 0; cursor: pointer; }
+.lib-tag-in { font-size: 12px; padding: 2px 6px; background: rgba(0, 0, 0, .5); border: 1px solid #3a4552; color: #e6e6e6; border-radius: 10px; width: 9em; }
+.lib-hud-params { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: rgba(255, 255, 255, .1); }
+.lib-hud-params.on { background: var(--lib-amber); color: #111; }
+
+/* loupe: live parameters, a panel on the right of the picture */
+.lib-params { position: absolute; top: 8px; right: 8px; bottom: 64px; z-index: 4; width: min(320px, 46%); overflow: auto; padding: 8px 10px;
+              background: rgba(8, 11, 15, .86); border: 1px solid #2c3540; border-radius: 8px; font-size: 12px; }
+.lib-params[hidden] { display: none; }
+.lib-params-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.lib-params-head strong { flex: 1; }
+.lib-params-head .small { color: #8b95a1; }
+.lib-prow { display: grid; grid-template-columns: minmax(0, 1fr) 120px 40px; align-items: center; gap: 6px; padding: 2px 0; }
+.lib-prow .pl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9d1d9; }
+.lib-prow .pl.bound { color: var(--lib-amber); }
+.lib-prow .pv { text-align: right; color: #8b95a1; font-variant-numeric: tabular-nums; }
+.lib-prow input[type=range] { width: 100%; }
+.lib-prow select, .lib-prow input[type=color] { width: 100%; }
+@media (max-width: 700px) {
+  .lib-params { left: 8px; width: auto; top: auto; bottom: 96px; max-height: 50%; }
+  .lib-prow { grid-template-columns: minmax(0, 1fr) 45% 36px; }
+}

@@ -367,8 +367,8 @@ async def test_api_errors_are_json(client, monkeypatch):
     assert r.status == 404 and (await r.json())["error"] == "not_found"
     r = await client.put("/api/sessions", headers=AUTH)
     assert r.status == 405 and (await r.json())["error"] == "method_not_allowed" and "Allow" in r.headers
-    r = await client.get("/api/events", headers=AUTH)              # not a WebSocket upgrade (no ?token=)
-    assert r.status == 401
+    r = await client.get("/api/events", headers=AUTH)              # not a WebSocket upgrade
+    assert r.status == 400
     r = await client.get(f"/api/events?token={TOKEN}")             # token but not an upgrade
     assert r.status == 400 and (await r.json())["error"] == "bad_request"
 

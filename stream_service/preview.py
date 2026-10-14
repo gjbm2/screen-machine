@@ -7,7 +7,8 @@
 The first show for a client creates its session (h264-720p30, a black anchor, no director, short TTL) and goes
 live straight into the item; every later show re-cues the same session with a hard cut, so switching cards is
 instant.  A scene plays as itself (its preset's bindings make it react to the show bus); an effect plays at
-amount 1 on a moving core scene; a transition loops between two core scenes via that transition.  The page
+amount 1 on the session's master FX bus (slot id "pv") over a moving core scene, so the page can change its
+params live with PUT /api/sessions/<id>/fx; a transition loops between two core scenes via that transition.  The page
 sends a keepalive while its player is open; without one the session ends at its TTL.
 
 Everything goes through the Sessions API (create / go / cue / renew / delete): no engine internals.
@@ -31,6 +32,7 @@ CUT = {"transition": "cut"}
 SCENE_A = {"source": "warp_stack"}                  # transition previews alternate A <-> B; effects run over A
 SCENE_B = {"source": "fractal_zoom"}
 HOLD_S = 1.2                                        # each side is shown this long between transition runs
+FX_ID = "pv"                                        # the effect preview's slot on the session's FX bus
 CLIENT_RE = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
 LIVE = ("entering", "live")
 
@@ -47,6 +49,7 @@ class Previews:
         self.sids: dict[str, str] = {}               # client -> session id
         self.loops: dict[str, asyncio.Task] = {}     # client -> transition loop
         self.locks: dict[str, asyncio.Lock] = {}
+        self.kinds: dict[str, str] = {}              # client -> kind on screen (effect: scene A + the bus slot)
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
@@ -73,20 +76,21 @@ class Previews:
         if t is not None:
             t.cancel()
 
-    def _effect_scene(self, spec: Any) -> dict:
-        """The effect at amount 1 (when it has an amount) over scene A."""
+    def _effect_slot(self, spec: Any) -> dict:
+        """The FX bus slot for an effect preview: the effect at amount 1 (when it has an amount)."""
         fx = {"preset": spec} if isinstance(spec, str) else dict(spec)
         e = self.presets.resolve_effect(fx)                       # a bad spec is a 400 here
         cls = self.presets.registry.effects.get(e.effect)
-        if cls is not None and "amount" in cls.param_props():
+        if cls is not None and "amount" in cls.param_props() and "amount" not in (fx.get("params") or {}):
             fx = {**fx, "params": {**(fx.get("params") or {}), "amount": 1.0}}
-        return {**SCENE_A, "effects": [fx]}
+        return {"id": FX_ID, **fx}
 
     def _to(self, kind: str, spec: Any) -> Any:
         if kind == "scene":
             return spec
         if kind == "effect":
-            return self._effect_scene(spec)
+            self._effect_slot(spec)                                 # validate now
+            return SCENE_A
         if kind == "transition":
             self.presets.resolve_transition(spec)        # validate now: a bad spec is a 400, not a dead loop
             return SCENE_A
@@ -114,6 +118,7 @@ class Previews:
             self._stop_loop(client)
             to = self._to(kind, spec)
             s = self._session(client)
+            was = self.kinds.get(client) if s is not None else None
             if s is None:
                 s, _ = await self.mgr.create({
                     "screen": self._screen(client), "gpu": gpu, "profile": PROFILE, "anchor": {"rgb": [0, 0, 0]},
@@ -125,10 +130,17 @@ class Previews:
             else:
                 s.renew()
                 await self._wait_state(s, LIVE)
-                await s.cue({"to": to, "via": CUT, "at": "now"})
+                if not (kind == "effect" and was == "effect"):       # effect -> effect keeps scene A running
+                    await s.cue({"to": to, "via": CUT, "at": "now"})
+            if kind == "effect":
+                await s.fx.put({"stack": [self._effect_slot(spec)], "fade_s": 0.0})
+            elif was == "effect":
+                await s.fx.put({"stack": [], "fade_s": 0.0})
+            self.kinds[client] = kind
             if kind == "transition":
                 self.loops[client] = asyncio.get_running_loop().create_task(self._loop(client, s, spec))
-            return {"session": s.id, "state": s.state, "attach": s.attach, "kind": kind}
+            return {"session": s.id, "state": s.state, "attach": s.attach, "kind": kind,
+                    "fx_id": FX_ID if kind == "effect" else None}
 
     async def _loop(self, client: str, s, via: Any) -> None:
         """Alternate A -> B -> A ... via the previewed transition while the session lives."""
@@ -162,6 +174,7 @@ class Previews:
         self._stop_loop(client)
         s = self._session(client)
         self.sids.pop(client, None)
+        self.kinds.pop(client, None)
         if s is not None:
             await self.mgr.delete(s.id)
         return {"ended": s.id if s is not None else None}

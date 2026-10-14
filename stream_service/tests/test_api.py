@@ -36,10 +36,9 @@ ROUTES = [("GET", "/api/catalog"), ("GET", "/api/sessions"), ("POST", "/api/sess
 @pytest.mark.parametrize("method,path", ROUTES)
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer nope"}, {"Authorization": TOKEN},
                                      {"Authorization": f"Basic {TOKEN}"}])
-async def test_api_needs_bearer_token(client, method, path, headers):
+async def test_api_needs_no_password(client, method, path, headers):
     r = await client.request(method, path, headers=headers)
-    assert r.status == 401
-    assert (await r.json())["error"] == "unauthorized"
+    assert r.status != 401      # no password (owner, 14 Oct); any Authorization header is ignored
 
 
 @pytest.mark.asyncio
@@ -108,9 +107,7 @@ async def test_state_lists_gpus(client):
 
 @pytest.mark.asyncio
 async def test_events_socket_token(client):
-    with pytest.raises(aiohttp.WSServerHandshakeError) as e:
-        await client.ws_connect("/api/events?token=wrong")
-    assert e.value.status == 401
+    (await client.ws_connect("/api/events?token=wrong")).close   # no password: any token (or none) is fine
     ws = await client.ws_connect(f"/api/events?token={TOKEN}")
     await ws.send_str("ignored")             # client messages are ignored
     client.app[MANAGER].events.emit({"type": "session.state", "session": "s-x", "screen": "devtest",

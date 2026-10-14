@@ -17,11 +17,21 @@ TOKEN = "cd" * 32
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 
+class FakeFx:
+    def __init__(self):
+        self.puts = []
+
+    async def put(self, body):
+        self.puts.append(body)
+        return {}
+
+
 class FakeSession:
     def __init__(self, sid, body):
         self.id, self.body, self.state = sid, body, "holding"
         self.attach = {"url": f"ws://x/media/{sid}?k=k", "target_buffer_ms": 300}
         self.cues, self.renewed, self.went = [], 0, 0
+        self.fx = FakeFx()
 
     async def go(self):
         self.went += 1
@@ -105,13 +115,21 @@ async def test_tabs_get_their_own_sessions_and_an_ended_one_is_replaced(pv):
     assert c["session"] not in (a["session"], b["session"]) and len(pv.mgr.created) == 3
 
 
-async def test_effect_runs_at_amount_1_on_scene_a(pv):
-    await pv.show({"client": "tab-1", "kind": "effect", "spec": {"effect": "glow"}}, "h")
-    scene = pv.mgr.created[0]["scene"]
-    assert scene["source"] == P.SCENE_A["source"]
-    assert scene["effects"] == [{"effect": "glow", "params": {"amount": 1.0}}]
-    await pv.show({"client": "tab-2", "kind": "effect", "spec": {"effect": "flat"}}, "h")   # no amount param
-    assert pv.mgr.created[1]["scene"]["effects"] == [{"effect": "flat"}]
+async def test_effect_runs_at_amount_1_on_the_fx_bus_over_scene_a(pv):
+    r = await pv.show({"client": "tab-1", "kind": "effect", "spec": {"effect": "glow"}}, "h")
+    assert pv.mgr.created[0]["scene"] == P.SCENE_A and r["fx_id"] == P.FX_ID
+    s = pv.mgr.sessions[r["session"]]
+    assert s.fx.puts == [{"stack": [{"id": P.FX_ID, "effect": "glow", "params": {"amount": 1.0}}], "fade_s": 0.0}]
+    await pv.show({"client": "tab-1", "kind": "effect", "spec": {"effect": "flat"}}, "h")   # no amount param
+    assert s.fx.puts[-1]["stack"] == [{"id": P.FX_ID, "effect": "flat"}]
+    assert s.cues == []                                       # effect -> effect keeps scene A running
+    await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
+    assert s.fx.puts[-1] == {"stack": [], "fade_s": 0.0} and s.cues[-1]["to"] == "a"   # the bus is cleared
+
+
+async def test_an_explicit_amount_is_kept(pv):
+    r = await pv.show({"client": "tab-1", "kind": "effect", "spec": {"effect": "glow", "params": {"amount": 0.3}}}, "h")
+    assert pv.mgr.sessions[r["session"]].fx.puts[-1]["stack"][0]["params"] == {"amount": 0.3}
 
 
 async def test_transition_loops_between_two_scenes_until_the_next_click(pv):
@@ -155,10 +173,10 @@ async def client():
         yield c
 
 
-async def test_route_needs_the_bearer_token(client):
+async def test_route_needs_no_password(client):
     for method in ("POST", "DELETE"):
         r = await client.request(method, "/dev/preview?client=tab-1", json={"client": "tab-1"})
-        assert r.status == 401 and (await r.json())["error"] == "unauthorized"
+        assert r.status != 401
 
 
 async def test_route_validates_and_keepalive_without_a_session(client):
@@ -170,3 +188,39 @@ async def test_route_validates_and_keepalive_without_a_session(client):
     assert r.status == 200 and (await r.json()) == {"ended": None}
     r = await client.get("/dev/preview/x.mp4")          # the old clip route is untouched (open, 404 here)
     assert r.status == 404
+
+
+# -- ratings ----------------------------------------------------------------------------------------------------------
+from stream_service.ratings import Ratings   # noqa: E402
+
+
+def test_ratings_set_merge_clear_and_persist(tmp_path):
+    r = Ratings(tmp_path / "ratings.json")
+    assert r.set({"key": "scene/st_x", "stars": 4})["entry"]["stars"] == 4
+    e = r.set({"key": "scene/st_x", "tags": ["Great ", "loud", "great"]})["entry"]
+    assert e["stars"] == 4 and e["tags"] == ["great", "loud"]
+    e = r.set({"key": "scene/st_x", "reject": True})["entry"]
+    assert e["reject"] is True and "stars" not in e                       # reject replaces the stars
+    e = r.set({"key": "scene/st_x", "stars": 2})["entry"]
+    assert e["stars"] == 2 and "reject" not in e
+    assert Ratings(tmp_path / "ratings.json").all()["scene/st_x"]["tags"] == ["great", "loud"]   # persisted
+    assert r.set({"key": "scene/st_x", "stars": 0, "tags": []})["entry"] is None                # all cleared
+    assert r.all() == {}
+
+
+@pytest.mark.parametrize("body", [{"key": "nope", "stars": 1}, {"key": "scene/x", "stars": 6}, {"key": "scene/x", "stars": True},
+                                  {"key": "scene/x", "reject": 1}, {"key": "scene/x", "tags": ["<b>"]}, {"key": "scene/x", "x": 1}])
+def test_ratings_validation(tmp_path, body):
+    with pytest.raises(ParamError):
+        Ratings(tmp_path / "ratings.json").set(body)
+
+
+async def test_rating_routes(tmp_path):
+    app = make_app(token=TOKEN, config_dir=tmp_path)
+    async with TestClient(TestServer(app)) as c:
+        r = await c.post("/dev/rate", json={"key": "scene/st_x", "stars": 5}, headers=AUTH)
+        assert r.status == 200 and (await r.json())["entry"]["stars"] == 5
+        r = await c.post("/dev/rate", json={"key": "scene/st_x", "stars": 9}, headers=AUTH)
+        assert r.status == 400
+        r = await c.get("/dev/ratings")
+        assert r.status == 200 and (await r.json())["ratings"]["scene/st_x"]["stars"] == 5
