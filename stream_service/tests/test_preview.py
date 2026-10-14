@@ -177,7 +177,7 @@ async def test_validation(pv, body):
 
 @pytest.fixture
 async def client():
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG)
+    app = make_app(config_dir=REPO_CONFIG)
     async with TestClient(TestServer(app)) as c:
         yield c
 
@@ -225,7 +225,7 @@ def test_ratings_validation(tmp_path, body):
 
 
 async def test_rating_routes(tmp_path):
-    app = make_app(token=TOKEN, config_dir=tmp_path)
+    app = make_app(config_dir=tmp_path)
     async with TestClient(TestServer(app)) as c:
         r = await c.post("/dev/rate", json={"key": "scene/st_x", "stars": 5}, headers=AUTH)
         assert r.status == 200 and (await r.json())["entry"]["stars"] == 5

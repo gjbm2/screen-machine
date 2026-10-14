@@ -1,5 +1,5 @@
 """python -m stream_service [--host 0.0.0.0] [--port 8082] [--public-base ws://host:port]
-                          [--config-dir config/live] [--token-file ~/.config/screen-machine/stream_service.token]
+                          [--config-dir config/live]
                           [--show-bus ws://127.0.0.1:8701/v1/show] [--show-bus-token-file FILE]
                           [--latency-file config/room/latency.json] [--art-dir output]
 """
@@ -27,7 +27,6 @@ def main(argv: list[str] | None = None) -> None:
                     help="base for attach URLs, e.g. ws://<lan-host>:8702 in production "
                          "(default: the request's Host)")
     ap.add_argument("--config-dir", default=str(REPO / "config" / "live"))
-    ap.add_argument("--token-file", default="~/.config/screen-machine/stream_service.token")
     ap.add_argument("--max-sessions", type=int, default=4)
     ap.add_argument("--show-bus", default=None,
                     help="show bus to subscribe to (K3), e.g. ws://127.0.0.1:8701/v1/show; show-synth: :8711")
@@ -55,10 +54,8 @@ def main(argv: list[str] | None = None) -> None:
     from aiohttp import web
 
     from .server import make_app
-    from .tokens import load_or_create_token
 
-    token = load_or_create_token(args.token_file)
-    app = make_app(token=token, config_dir=pathlib.Path(args.config_dir), public_base=args.public_base,
+    app = make_app(config_dir=pathlib.Path(args.config_dir), public_base=args.public_base,
                    max_sessions=args.max_sessions, show_bus=args.show_bus,
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
                    art_dir=pathlib.Path(args.art_dir), local_control=args.local_control,

@@ -1,9 +1,7 @@
 """HTTP API auth, request validation, catalog and the token file (no GPU sessions are started)."""
 from __future__ import annotations
 
-import os
 import pathlib
-import stat
 
 import aiohttp
 import pytest
@@ -11,7 +9,6 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from stream_service.media import MediaHub
 from stream_service.server import MANAGER, make_app
-from stream_service.tokens import load_or_create_token
 
 REPO_CONFIG = pathlib.Path(__file__).resolve().parents[2] / "config" / "live"
 TOKEN = "ab" * 32
@@ -19,7 +16,7 @@ TOKEN = "ab" * 32
 
 @pytest.fixture
 async def client():
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG)
+    app = make_app(config_dir=REPO_CONFIG)
     async with TestClient(TestServer(app)) as c:
         yield c
 
@@ -158,22 +155,10 @@ async def test_media_socket_key(client):
     assert msg.type == aiohttp.WSMsgType.CLOSE
 
 
-def test_token_file(tmp_path):
-    path = tmp_path / "sub" / "t.token"
-    tok = load_or_create_token(str(path))
-    assert len(tok) == 64 and all(c in "0123456789abcdef" for c in tok)
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert load_or_create_token(str(path)) == tok
-    path.write_text("short")
-    with pytest.raises(SystemExit):
-        load_or_create_token(str(path))
-    os.chmod(path, 0o600)
-
-
 @pytest.mark.asyncio
 async def test_local_control_answers_control_only_from_this_machine():
     from stream_service.server import make_app
-    app = make_app(token=TOKEN, config_dir=REPO_CONFIG, local_control=True)
+    app = make_app(config_dir=REPO_CONFIG, local_control=True)
     async with TestClient(TestServer(app)) as c:      # the test client connects from 127.0.0.1: allowed
         assert (await c.get("/api/catalog")).status == 200
         assert (await c.get("/healthz")).status == 200
