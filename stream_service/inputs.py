@@ -334,7 +334,7 @@ class FixtureSignals:
             t, arrival, raw, self.slow, fresh_input, f.anchor, f.period, f.confidence, f.last_edge, f.is_locked,
             f.timeout(), dict(self.stable),
             {"edges_accepted": f.accepted, "edges_rejected": f.rejected, "refits": f.refits,
-             "locked_since": f.locked_since})
+             "locked_since": f.locked_since, "pulse_peak": round(f.peak, 4)})
 
 
 class ShowInputs:

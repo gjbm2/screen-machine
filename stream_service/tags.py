@@ -122,7 +122,8 @@ def descriptor_matches(key: str, want: Any, have: Any) -> bool:
         lo, hi = have
         return lo <= float(want) <= hi
     want_set = {want} if isinstance(want, str) else set(want)
-    return bool(want_set & set(have))
+    have_set = {have} if isinstance(have, str) else set(have)     # a scalar tag (e.g. style: "gentle") is one word
+    return bool(want_set & have_set)
 
 
 def match_weight(tags: dict, direction: dict, keys: Iterable[str]) -> float:

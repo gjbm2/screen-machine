@@ -208,7 +208,7 @@ async def test_catalog_v11_blocks(client):
     cat = await (await client.get("/api/catalog", headers=AUTH)).json()
     assert cat["api"] == {"contract": "LIVE_V1", "rev": "1.1",
                           "features": ["cue", "auto", "direction", "palette", "inputs", "bindings", "effects",
-                                       "fx_bus", "fx_auto", "plugin_errors", "gpu_guard"]}
+                                       "fx_bus", "fx_auto", "plugin_errors", "gpu_guard", "music_direction"]}
     assert set(cat["vocab"]) == {"moods", "genre", "transition_style", "palette_family"}
     assert cat["palettes"]["ember"]["swatch"][0].startswith("#") and cat["signals"]["activity_slow"]["idle"] == 0.5
     assert cat["errors"] == []
