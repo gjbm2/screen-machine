@@ -17,6 +17,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from stream_service import server as server_mod
 from stream_service import sessions as sessions_mod
+from stream_service.mask import MaskRamp
 from stream_service.renderer import Engine, Retire, StartTransition, UpdateParams
 from stream_service.server import MANAGER, make_app
 
@@ -34,6 +35,7 @@ class FakeEngine:
         self.started_with = None
         self.stopped = 0
         self.prepare_delay = 0.0
+        self.mask = MaskRamp()
         FakeEngine.instances.append(self)
 
     def create_context(self):
@@ -433,4 +435,18 @@ def test_commands_submitted_after_release_are_disposed_of():
     threading.Event().wait(0.1)
     assert owned.closed == 0
 
+
+async def test_light_mask_on_create_and_patch(client):
+    """The room's light mask: set on create (first frame), changed by PATCH in any live state, shown in the summary."""
+    res, s = await create(client, mask={"brightness": 0.5, "warm_hex": "#ff8000", "warm_alpha": 0.5,
+                                        "transition_ms": 0})
+    eng = FakeEngine.instances[-1]
+    assert eng.mask.at(1e9) == pytest.approx((0.5, 0.5 * (0.5 + 0.5 * 128 / 255), 0.25))
+    r = await client.patch(f"/api/sessions/{res['session']}", json={"mask": {"brightness": 1.0}}, headers=AUTH)
+    assert r.status == 200 and (await r.json())["mask"]["brightness"] == 1.0
+    assert eng.mask.at(1e9) == (1.0, 1.0, 1.0)
+    r = await client.patch(f"/api/sessions/{res['session']}", json={"mask": {"brightness": 2}}, headers=AUTH)
+    assert r.status == 400
+    r = await client.patch(f"/api/sessions/{res['session']}", json={"mask": None}, headers=AUTH)
+    assert r.status == 200 and (await r.json())["mask"] is None
 

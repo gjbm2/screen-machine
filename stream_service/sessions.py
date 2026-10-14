@@ -63,6 +63,7 @@ from .fx_state import SessionFx
 from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
+from .mask import parse_mask
 from .media import MediaHub
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
@@ -183,6 +184,7 @@ class Session(EngineListener):
         self.end_reason: Optional[str] = None
         self.media = MediaHub(sid, profile.fps)
         self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
+        self.mask: Optional[dict] = None    # the light mask last set (mask.py); the engine eases its gains
         self.lock = asyncio.Lock()
         self.pending_scene: Any = None      # set up, shown on go
         self.current_scene: Any = None      # the scene source that is (or is becoming) visible
@@ -437,16 +439,21 @@ class Session(EngineListener):
         return spec
 
     async def patch(self, body: dict) -> None:
-        unknown = set(body) - {"scene", "params", "transition", *LOOK_FIELDS}
+        unknown = set(body) - {"scene", "params", "transition", "mask", *LOOK_FIELDS}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
         look = self._parse_look(body)             # validated before anything changes (400)
+        mask = parse_mask(body["mask"]) if "mask" in body else None
         if not {"scene", "params", "transition"} & set(body):
-            # direction / palette / auto / beat_follow only: every non-terminal state (R12)
+            # direction / palette / auto / beat_follow / mask only: every non-terminal state (R12)
             if self.state in ("ended", "failed"):
                 raise SessionError(409, "bad_state", f"session is {self.state}")
             self._apply_look(look)
+            if mask is not None:
+                self.set_mask(mask)
             return
+        if mask is not None:
+            self.set_mask(mask)
         self._require("holding", *LIVE_STATES)
         spec = self._patched_spec(body)           # validated before anything changes (400)
         trans_spec = self.mgr.presets.resolve_transition(body["transition"]) if body.get("transition") \
@@ -800,6 +807,11 @@ class Session(EngineListener):
         if "direction_ease_s" in body:
             out["direction_ease_s"] = parse_seconds(body["direction_ease_s"], "direction_ease_s", 0, 120)
         return out
+
+    def set_mask(self, mask: tuple) -> None:
+        """The light mask (mask.parse_mask's result): eased in the renderer's final pass."""
+        gains, duration_s, self.mask = mask
+        self.engine.mask.set(gains, duration_s, time.monotonic())
 
     def _apply_look(self, look: dict) -> None:
         if "direction_ease_s" in look:
@@ -1228,6 +1240,7 @@ class Session(EngineListener):
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
+            "mask": self.mask,
             "direction_effective": self.direction_effective, "music": self._music_status(time.monotonic()),
             "music_fields": music_fields(self.direction, self.music.proposal, self.music.m),
             "masters": self.runtime.masters(), "fixture": self.fixture, "beat_follow": self.beat_follow,
@@ -1460,7 +1473,7 @@ class SessionManager:
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         known = {"screen", "gpu", "profile", "anchor", "scene", "transitions", "ttl_s", "idempotency_key",
-                 "color_trc", "fixture", "width", "height", *LOOK_FIELDS}
+                 "color_trc", "fixture", "width", "height", "mask", *LOOK_FIELDS}
         unknown = set(body) - known
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1530,8 +1543,9 @@ class SessionManager:
             if not isinstance(body["fixture"], str) or not FIXTURE_RE.match(body["fixture"]):
                 raise ParamError("bad_request", "fixture must be an id like 'screen.north'")
             look["fixture"] = body["fixture"]
+        mask = parse_mask(body["mask"]) if body.get("mask") is not None else None
         return dict(screen=screen, gpu=gpu, profile=profile, scene=scene, t_in=t_in, t_out=t_out, ttl_s=ttl,
-                    idempotency_key=key, png=png, rgb=rgb, look=look)
+                    idempotency_key=key, png=png, rgb=rgb, look=look, mask=mask)
 
     def attach_for(self, s: Session, host: str) -> dict:
         base = self.public_base or f"ws://{host}"
@@ -1563,6 +1577,8 @@ class SessionManager:
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **p["look"])
             s.attach = self.attach_for(s, host)
+            if p["mask"] is not None:
+                s.set_mask(p["mask"])                     # the first frame is already at the room's light
             anchor = await s.decode(p["png"], p["rgb"])   # ParamError (400) before the session exists
             self.sessions[sid] = s
             try:
