@@ -82,9 +82,28 @@
 .lib-badge.lab { color: #9cc4ff; }
 .lib-badge.err { background: var(--bad); color: #fff; font-weight: 700; pointer-events: auto; cursor: help; }
 .lib-badge.heavy { color: var(--lib-amber); }
-.lib-star { position: absolute; right: 4px; top: 3px; border: 0; background: none; padding: 0 3px; font-size: 16px; line-height: 1; color: rgba(255,255,255,.55); text-shadow: 0 1px 2px #000; }
-.lib-star[aria-pressed="true"] { color: #ffc94a; }
-.lib-star:hover { color: #ffe08a; }
+/* the card's rating (5 stars + reject), top right of the thumbnail: the set part always, all of it on hover / focus */
+.lib-rate.lib-cardrate { position: absolute; right: 3px; top: 2px; margin: 0; gap: 0; z-index: 2; padding: 1px 3px; border-radius: 8px; }
+.lib-rate.lib-cardrate button { font-size: 14px; padding: 0 1px; color: rgba(255,255,255,.5); text-shadow: 0 1px 2px #000; }
+.lib-rate.lib-cardrate .lib-star-btn.on { color: var(--lib-amber); }
+.lib-rate.lib-cardrate .lib-rej-btn { margin-left: 4px; font-size: 12px; }
+.lib-rate.lib-cardrate .lib-rej-btn.on { color: var(--bad, #e5534b); }
+.lib-rate.lib-cardrate:hover .lib-star-btn { color: var(--lib-amber); }
+.lib-rate.lib-cardrate .lib-star-btn:hover ~ .lib-star-btn { color: rgba(255,255,255,.5); }
+.lib-rate.lib-cardrate:not(.set) { opacity: 0; }
+.lib-rate.lib-cardrate.set .lib-star-btn:not(.on), .lib-rate.lib-cardrate.set .lib-rej-btn:not(.on) { opacity: 0; }
+.lib-card:hover .lib-cardrate, .lib-card:focus-within .lib-cardrate { opacity: 1; background: rgba(10,12,15,.55); }
+.lib-card:hover .lib-cardrate button, .lib-card:focus-within .lib-cardrate button { opacity: 1 !important; }
+@media (hover: none) { .lib-rate.lib-cardrate { opacity: 1; background: rgba(10,12,15,.45); } .lib-rate.lib-cardrate button { opacity: 1 !important; } }
+/* the toolbar's rating filter: ≥ / = / ≤, five stars, the reject flag */
+.lib-rf { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border: 1px solid transparent; border-radius: 8px; }
+.lib-rf.on { border-color: var(--acc); }
+.lib-rf select { flex: 0 0 auto; }
+.lib-rf-stars { display: inline-flex; }
+.lib-rf-star { background: none; border: 0; padding: 0 1px; min-height: 0; font-size: 18px; line-height: 1; color: #4a525c; cursor: pointer; }
+.lib-rf-star.on { color: var(--lib-amber); }
+.lib-rf-stars:hover .lib-rf-star { color: var(--lib-amber); }
+.lib-rf-stars .lib-rf-star:hover ~ .lib-rf-star { color: #4a525c; }
 .lib-play { position: absolute; right: 5px; bottom: 5px; font-size: 9px; line-height: 14px; padding: 0 5px; border-radius: 7px; background: rgba(10,12,15,.72); color: #cfd6df; pointer-events: none; }
 .lib-card.playing .lib-play { display: none; }
 .lib-body { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
@@ -282,3 +301,24 @@ body.lib-noscroll { overflow: hidden; }
   .lib-params { left: 8px; width: auto; top: auto; bottom: 96px; max-height: 50%; }
   .lib-prow { grid-template-columns: minmax(0, 1fr) 45% 36px; }
 }
+
+/* push to a real screen for a while (push.js): hover buttons on a card, a row in the card view / loupe, the bar */
+.lib-pushbtns { position: absolute; left: 6px; bottom: 6px; z-index: 2; display: none; gap: 4px; }
+.lib-card:hover .lib-pushbtns, .lib-card:focus-within .lib-pushbtns { display: flex; }
+@media (hover: none) { .lib-card .lib-pushbtns { display: none !important; } }
+.lib-pushbtns button, .lib-pushrow button { font-size: 12px; padding: 3px 9px; min-height: 26px; border-radius: 999px; border: 0;
+  background: rgba(10, 13, 17, .78); color: #f1f3f5; cursor: pointer; white-space: nowrap; }
+.lib-pushbtns button:hover, .lib-pushrow button:hover { background: var(--lib-amber); color: #111; }
+.lib-pushrow { display: inline-flex; gap: 4px; align-items: center; }
+.lib-hud .lib-pushrow button { background: rgba(255, 255, 255, .12); }
+.lib-pushbar { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px;
+  max-width: calc(100vw - 32px); }
+.lib-pushbar[hidden] { display: none; }
+.lib-push { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 999px; background: #14191f;
+  border: 1px solid var(--lib-amber); color: #e8ecef; font-size: 13px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); }
+.lib-push .where { font-weight: 600; white-space: nowrap; }
+.lib-push .what { min-width: 0; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-push .phase { color: #8b95a1; font-size: 12px; white-space: nowrap; }
+.lib-push .left { font-variant-numeric: tabular-nums; color: var(--lib-amber); }
+.lib-push button { font-size: 12px; padding: 3px 10px; min-height: 26px; border-radius: 999px; background: rgba(255, 255, 255, .1); }
+@media (max-width: 600px) { .lib-push .phase { display: none; } .lib-push { gap: 6px; padding-left: 10px; } }

@@ -91,8 +91,6 @@
   <h1>stream_service · dev</h1>
   <span id="conn" class="pill">connecting</span>
   <span class="spacer"></span>
-  <input id="token" type="hidden">
-  <button id="saveToken" hidden>Save token</button>
 </header>
 <div id="top">
   <section id="library"></section>
@@ -313,9 +311,6 @@ import { LivePlayer } from "./static/live-player.js";
 // server path is prefixed with BASE ("" or "/renderer").
 const BASE = location.pathname.replace(/\/dev\/?$/, "");
 const $ = (id) => document.getElementById(id);
-const LS = "sm.stream.token";
-let token = "";
-token = "open";   // no password (owner, 14 Oct)
 let catalog = null;
 let session = null;        // {id, attach, sceneValue, params, demo?, artCss?, artB64?, targetCss?}
 let player = null;
@@ -344,7 +339,7 @@ const decide = (msg, cls = "") => logTo($("decisions"), msg, cls, 300);
 
 async function api(method, path, body) {
   const r = await fetch(path.startsWith("/") ? BASE + path : path, {
-    method, headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    method, headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
@@ -357,6 +352,25 @@ async function api(method, path, body) {
   }
   return data;
 }
+
+// room_service owns the screens (the Live demo drives the real one through it): same origin through the app's
+// /renderer pass-through, at root paths (not under BASE)
+const ROOM = "";
+async function room(method, path, body) {
+  const r = await fetch(ROOM + path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+  if (!r.ok) {
+    const msg = data && data.error ? `${data.error}: ${data.detail}` : `HTTP ${r.status}`;
+    log(`room ${method} ${path} -> ${r.status} ${msg}`, "err");
+    throw new Error(msg);
+  }
+  return data;
+}
+// the media socket for a session: the renderer's own attach URL (its --public-base host, direct on the LAN like the
+// TVs: 4K video never goes through the app's /renderer pass-through); null when the renderer didn't give one
+const mediaUrl = (sid, att) => att?.url || null;
 
 function blobToB64(blob) {
   return new Promise((res, rej) => {
@@ -530,7 +544,7 @@ async function loadCatalog() {
 function connectEvents() {
   if (eventsWs) { eventsWs.onclose = null; eventsWs.close(); }   // no reconnect from the socket we replace
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = (eventsWs = new WebSocket(`${proto}://${location.host}${BASE}/api/events?token=${encodeURIComponent(token)}`));
+  const ws = (eventsWs = new WebSocket(`${proto}://${location.host}${BASE}/api/events`));
   ws.onmessage = (e) => {
     const ev = JSON.parse(e.data);
     evListeners.forEach((fn) => { try { fn(ev); } catch (_) {} });
@@ -547,7 +561,7 @@ function connectEvents() {
           log(`exit cut at mediaTime ${mt.toFixed(3)} (hold_pts ${ev.hold_pts})`, "ev");
         });
       }
-      if (session.demo) {
+      if (session.demo && !session.room) {     // room's sessions are room's to end (it would just recreate them)
         const sid = session.id;
         $("dStatus").textContent = `holding the artwork (hold_pts ${ev.hold_pts}); the session is deleted in a few seconds`;
         setTimeout(async () => {
@@ -559,7 +573,7 @@ function connectEvents() {
       }
     }
   };
-  ws.onclose = () => setTimeout(() => token && eventsWs === ws && connectEvents(), 2000);
+  ws.onclose = () => setTimeout(() => eventsWs === ws && connectEvents(), 2000);
 }
 
 function onDecisionEvent(ev) {
@@ -633,6 +647,10 @@ function setState(st) {
   if (session?.demo) {
     $("dStop").disabled = !(st === "live" || st === "entering");
     if (st === "failed" || st === "ended") demoButtons(false);
+    if (session.room && (st === "failed" || st === "ended")) {
+      setTimeout(detach, 500);
+      $("dStatus").textContent = `${session.room}: back on the artwork`;
+    }
   }
 }
 
@@ -708,7 +726,7 @@ setInterval(() => {
 }, 10000);
 
 setInterval(async () => {
-  if (!token || !catalog) return;
+  if (!catalog) return;
   try {
     const { sessions } = await api("GET", "/api/sessions");
     const tb = $("sessions").querySelector("tbody");
@@ -766,43 +784,63 @@ async function waitState(sid, want, ms) {
   throw new Error(`timed out waiting for ${want}`);
 }
 
+// The demo drives the REAL screen: room_service puts it live (PUT /api/v1/screens/{id} {desired}) on the GPU and
+// profile its display config says, the screen's own page shows it, and this console watches and steers the same
+// session (live params, director, palette, FX bus).  Stop is room's {desired: "art"} and nothing else: room owns the
+// session and would recreate one we ended behind its back.
+async function roomScreen(screen) { return (await room("GET", "/api/v1/status")).screens?.[screen]; }
+async function waitRoom(screen, phases, ms) {
+  const t0 = performance.now();
+  let last = "";
+  while (performance.now() - t0 < ms) {
+    const sc = await roomScreen(screen);
+    const o = sc?.observed || {};
+    const ph = `${o.phase}${o.detail && !String(o.detail).startsWith("s-") ? " (" + o.detail + ")" : ""}`;
+    if (ph !== last) { last = ph; $("dStatus").textContent = `${screen}: ${ph}…`; }
+    if (o.phase === "failed") throw new Error(`room: ${o.detail || "failed"}`);
+    if (sc?.desired === "art") throw new Error(`${screen} went back to art`);
+    if (o.session && phases.includes(o.phase)) return o.session;
+    await sleep(300);
+  }
+  throw new Error(`timed out waiting for ${screen} (${last})`);
+}
+async function loadScreens() {           // the screens room knows that may go live
+  try {
+    const s = await room("GET", "/api/v1/status");
+    const ids = Object.entries(s.screens || {}).filter(([, v]) => v?.policy?.live_enabled !== false).map(([id]) => id).sort();
+    if (!ids.length) return;
+    const was = $("dScreen").value;
+    $("dScreen").replaceChildren(...ids.map((id) => { const o = document.createElement("option"); o.textContent = id; return o; }));
+    $("dScreen").value = ids.includes(was) ? was : ids.includes("devtest") ? "devtest" : ids[0];
+  } catch (e) { log(`room screens: ${e.message}`, "err"); }
+}
+for (const id of ["dGpu", "dProfile"]) { $(id).disabled = true; $(id).title = "set by the display's config (room_service)"; }
+loadScreens();
+
 $("dStart").onclick = async () => {
   if (!catalog) return;
   demoButtons(true); $("dStop").disabled = true;
   try {
-    const screen = $("dScreen").value, profile = $("dProfile").value, prof = catalog.profiles[profile];
-    $("dStatus").textContent = `fetching ${screen}'s artwork…`;
-    const r = await fetch(`${BASE}/dev/art/${screen}.png?w=${prof.w}&h=${prof.h}`);
-    if (!r.ok) throw new Error(`no artwork for ${screen} (HTTP ${r.status})`);
-    const blob = await r.blob();
-    const artB64 = await blobToB64(blob);
-    const artCss = `url(${URL.createObjectURL(blob)})`;
+    const screen = $("dScreen").value;
     const entry = $("dEntry").value || randomEntry();
-    // a dev screen id: a room_service pointed at this instance owns north-screen / south-screen sessions
-    // (it ends ones it did not create); the fixture still follows the chosen screen
-    const body = {
-      screen: `dev-${screen}`, fixture: screen === "south-screen" ? "screen.south" : "screen.north",
-      gpu: parseInt($("dGpu").value, 10), profile, anchor: { png_b64: artB64 }, scene: entry,
-      transitions: { in: $("dIn").value, out: $("dOut").value }, ttl_s: 120,
-      idempotency_key: `dev-demo-${Date.now()}`, auto: autoBlock(), direction: directionObj(),
-      ...(palette ? { palette } : {}),
-    };
-    $("dStatus").textContent = `creating a session on GPU ${body.gpu} (${profile})…`;
-    const res = await api("POST", "/api/sessions", body);
-    const summ = await api("GET", `/api/sessions/${res.session}`);
-    session = { id: res.session, attach: res.attach, sceneValue: `preset:${entry}`, params: summ.scene_params,
-                demo: true, artCss, artB64, targetCss: artCss };
-    $("sid").textContent = res.session; $("curScene").textContent = entry;
+    $("dStatus").textContent = `asking room to put ${screen} live…`;
+    await room("PUT", `/api/v1/screens/${screen}`, { desired: { live: { scene: entry, transitions: { in: $("dIn").value, out: $("dOut").value } } } });
+    const sid = await waitRoom(screen, ["attaching", "entering", "live"], 60000);
+    const summ = await api("GET", `/api/sessions/${sid}`);
+    session = { id: sid, attach: summ.attach || null, sceneValue: `preset:${entry}`, params: summ.scene_params, demo: true, room: screen };
+    $("sid").textContent = sid; $("curScene").textContent = entry;
     $("decisions").replaceChildren();
-    decide(`session ${res.session} on ${screen}: anchor = its current artwork; entry ${entry} via ${$("dIn").value}`, "info");
-    setState(res.state);
+    decide(`${screen} live through room: session ${sid}, entry ${entry} via ${$("dIn").value}`, "info");
+    setState(summ.state);
     buildLiveForm();
-    attach(res.attach.url, res.attach.target_buffer_ms, artCss);
-    $("dStatus").textContent = "holding the artwork…";
-    await waitState(res.session, ["holding"], 30000);
-    await sleep(800);                                   // let the player buffer the still first
-    await api("POST", `/api/sessions/${res.session}/go`, {});
-    $("dStatus").textContent = "live: the director moves on DMX changes (effect / variant) or at max dwell";
+    const url = mediaUrl(sid, summ.attach);
+    if (url) attach(url, summ.attach.target_buffer_ms ?? 300, null);
+    else log(`can't watch ${sid} here yet (the renderer doesn't give its media key); ${screen} itself shows it`, "err");
+    await waitRoom(screen, ["entering", "live"], 60000);
+    try {                                               // the console's director settings, through room
+      await room("PATCH", `/api/v1/screens/${screen}/look`, { auto: autoBlock(), direction: directionObj(), ...(palette ? { palette } : {}) });
+    } catch (_) {}
+    $("dStatus").textContent = `${screen} live: the director moves on DMX changes (effect / variant) or at max dwell`;
     $("dStop").disabled = false;
   } catch (e) {
     log(`start failed: ${e.message}`, "err"); $("dStatus").textContent = `start failed: ${e.message}`;
@@ -813,10 +851,10 @@ $("dStart").onclick = async () => {
 $("dStop").onclick = async () => {
   if (!session) return;
   $("dStop").disabled = true;
+  const screen = session.room || $("dScreen").value;
   try {
-    session.targetCss = session.artCss;
-    const res = await api("POST", `/api/sessions/${session.id}/exit`, { target: { png_b64: session.artB64 } });
-    $("dStatus").textContent = `exiting to the artwork (${res.duration_s} s)…`;
+    await room("PUT", `/api/v1/screens/${screen}`, { desired: "art" });
+    $("dStatus").textContent = `${screen}: back to the artwork via ${$("dOut").value}…`;
   } catch (e) { log(`stop failed: ${e.message}`, "err"); $("dStop").disabled = false; }
 };
 
@@ -896,7 +934,7 @@ let inputs = null, inputsAt = 0;
 function setMeter(id, vid, v, d = 2) { $(id).style.width = `${Math.round(clamp01(v ?? 0) * 100)}%`; $(vid).textContent = fmt(v, d); }
 
 setInterval(async () => {
-  if (!session || !token || ["ended", "failed"].includes($("state").textContent)) return;
+  if (!session || ["ended", "failed"].includes($("state").textContent)) return;
   try { inputs = await api("GET", `/api/sessions/${session.id}/inputs`); inputsAt = performance.now(); }
   catch (_) { inputs = null; return; }
   const i = inputs, d = i.derived || {}, v = i.values || {};
@@ -1048,10 +1086,10 @@ $("mNext").onclick = () => music({ next_section: true }, "next section", null);
 
 let synthGone = false;   // the real show bus (room_service / Maestro) has no synth controls: stop asking
 const synthTimer = setInterval(async () => {
-  if (!token || synthGone) return;
+  if (synthGone) return;
   let r, data = null;
   try {
-    r = await fetch(`${BASE}/dev/synth`, { headers: { Authorization: `Bearer ${token}` } });
+    r = await fetch(`${BASE}/dev/synth`);
     data = await r.json().catch(() => null);
   } catch (_) { r = null; }
   if (r && (r.status === 502 || r.status === 404)) {   // real show bus or none: no simulated Maestro here
@@ -1063,7 +1101,7 @@ const synthTimer = setInterval(async () => {
   }
   if (!r || !r.ok) {
     synth = null;
-    $("mSynth").textContent = r?.status === 404 ? "no --show-bus" : r?.status === 401 ? "auth" : "synth unreachable";
+    $("mSynth").textContent = r?.status === 404 ? "no --show-bus" : "synth unreachable";
     $("mSynth").className = "pill failed";
     $("mState").textContent = data?.detail ?? "–";
     return;
@@ -1116,7 +1154,7 @@ function bar(label, frac, text, colour) {
 }
 
 setInterval(async () => {
-  if (!token || !catalog) return;
+  if (!catalog) return;
   let d;
   try { d = await api("GET", `/api/diag${session ? "?session=" + encodeURIComponent(session.id) : ""}`); } catch (_) { return; }
   const v = $("verdict");
@@ -1148,18 +1186,11 @@ setInterval(async () => {
 }, 500);
 
 // ---------------------------------------------------------------- boot
-$("token").value = token;
-$("saveToken").onclick = () => {
-  token = $("token").value.trim();
-  try { localStorage.setItem(LS, token); } catch (_) {}
-  boot();
-};
 sliderLabels();
 
 async function boot() {
-  if (!token) { $("conn").textContent = "enter the token (~/.config/screen-machine/stream_service.token)"; return; }
   try { await loadCatalog(); connectEvents(); }
-  catch (e) { $("conn").textContent = "auth failed"; $("conn").className = "pill failed"; }
+  catch (e) { $("conn").textContent = "renderer unreachable"; $("conn").className = "pill failed"; }
 }
 
 // ?attach=<ws url>&target_ms=300 plays a stream straight away (used by the headless test)
