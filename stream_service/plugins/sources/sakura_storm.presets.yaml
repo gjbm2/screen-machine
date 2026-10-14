@@ -1,0 +1,43 @@
+sakura-storm-moonlit:
+  label: Moonlit sakura storm
+  source: sakura_storm
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [elegant, dreamy, calm]
+    style: lively
+    family: organic
+    dims: 3d
+    technique: [particles, noise]
+    weight: 1.0
+
+sakura-storm-neon-gale:
+  label: Neon blossom gale
+  source: sakura_storm
+  params:
+    palette: neon
+    palette_period: 1.4
+    drift_speed: 0.05
+    petal_tone: 0.9
+    petal_density: 0.9
+    wind_turbulence: 0.8
+    backdrop: 0.15
+    dof: 0.8
+    focus: 3.5
+    wind: 1.4
+    gust: 1.5
+    landmark: torii
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [euphoric, bright, dreamy]
+    style: wild
+    family: organic
+    dims: 3d
+    technique: [particles, noise]
+    weight: 0.8

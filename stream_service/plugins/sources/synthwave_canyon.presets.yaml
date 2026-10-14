@@ -1,0 +1,40 @@
+synthwave_canyon-sunset-run:
+  label: Sunset canyon run
+  source: synthwave_canyon
+  params:
+    palette: dusk
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [retro, euphoric, warm, bright]
+    style: lively
+    family: retro
+    dims: 3d
+    technique: [heightfield, noise, retro]
+    weight: 1.0
+
+synthwave_canyon-cyber-grid:
+  label: Cyber grid canyon
+  source: synthwave_canyon
+  params:
+    palette: neon
+    sky_mix: 0.7
+    grid_density: 0.75
+    canyon_width: 0.9
+    plane_spacing: 0.4
+    palette_period: 0.9
+    sun_size: 1.25
+    drift_speed: 0.04
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 0.95]
+    moods: [retro, euphoric, bright, cosmic]
+    style: lively
+    family: retro
+    dims: 3d
+    technique: [heightfield, noise, retro]
+    weight: 0.8

@@ -1,0 +1,23 @@
+st-flux-core:
+  label: Flux Core
+  source: st_flux_core
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - hypnotic
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    weight: 1.0

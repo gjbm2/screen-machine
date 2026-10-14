@@ -1,0 +1,23 @@
+st-box-sdf-from-i-q-s-website:
+  label: Box SDF (from i Q's website)
+  source: st_box_sdf_from_i_q_s_website
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

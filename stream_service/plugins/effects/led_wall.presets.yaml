@@ -1,0 +1,32 @@
+led_wall-stadium:
+  label: Stadium screen (round SMD LEDs, soft glow, refresh band on the beat)
+  effect: led_wall
+  params: {amount: 1.0, pitch: 16, emitter_shape: 0.1, emitter_size: 0.74, subpixel: 0.0, gap_darkness: 0.88,
+           glow: 0.55, module_size: 16, colour_bits: 6, variation: 0.45, tint: 0.2, palette: neon,
+           palette_period: 0.8, drift_speed: 0.04, beat_kick: 1.2, refresh_band: 0.7}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [bright, euphoric, retro]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [tiling, light]
+    weight: 1.0
+
+led_wall-dip-triads:
+  label: Old festival wall (chunky R/G/B triads, 4-bit banding, patchy modules)
+  effect: led_wall
+  params: {amount: 1.0, pitch: 30, emitter_shape: 0.0, emitter_size: 0.86, subpixel: 1.0, gap_darkness: 0.95,
+           glow: 0.7, module_size: 8, colour_bits: 4, variation: 0.85, tint: 0.0, beat_kick: 1.5, refresh_band: 0.5}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [retro, bright, euphoric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [tiling, light]
+    weight: 0.8

@@ -1,0 +1,30 @@
+rutt-etra-classic:
+  label: Rutt/Etra scan (source colour)
+  effect: rutt_etra
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [retro, hypnotic, geometric]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, retro, displacement]
+    weight: 1.0
+
+rutt-etra-mono-grid:
+  label: Rutt/Etra mono grid (palette, steep tilt)
+  effect: rutt_etra
+  params: {amount: 1.0, line_spacing: 14.0, z_scale: 0.3, tilt: 38.0, line_glow: 0.7, colour: 1.0, grid: 0.65,
+           sway: 0.5, kick: 1.1, palette: neon, palette_period: 0.8, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [retro, hypnotic, cosmic]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, retro, wireframe]
+    weight: 0.8

@@ -1,0 +1,16 @@
+glt-zoom-in-circles:
+  label: Zoom In Circles
+  transition: glt_zoom_in_circles
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

@@ -1,0 +1,21 @@
+isf-random-shape-blast:
+  label: Random Shape Blast
+  source: isf_random_shape_blast
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - geometric
+    family: geometric
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

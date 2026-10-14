@@ -1,0 +1,31 @@
+halftone-cmyk-print:
+  label: CMYK print (cream paper, slow-turning rosette)
+  effect: halftone
+  params: {amount: 0.85, colour_mode: 1.0, cell_size: 12, shape: 0.15, rotate_speed: 1.0, palette: ember,
+           ink_paper: 0.1, dot_kick: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.75]
+    moods: [retro, bright, geometric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [retro, tiling, colour]
+    weight: 1.0
+
+halftone-pop-art:
+  label: Pop art (big palette dots on bright paper)
+  effect: halftone
+  params: {amount: 1.0, colour_mode: 0.0, cell_size: 22, shape: 0.0, grid_angle_deg: 10, rotate_speed: 2.5,
+           palette: candy, palette_period: 1.2, drift_speed: 0.04, ink_paper: 0.35, dot_kick: 1.4}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [playful, retro, bright]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [retro, tiling]
+    weight: 0.9

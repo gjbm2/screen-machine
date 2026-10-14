@@ -1,0 +1,73 @@
+splat-demo-neon-core:
+  label: Neon galaxy core
+  source: splat_demo
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [cosmic, hypnotic, bright, geometric]
+    style: lively
+    family: cosmic
+    dims: 3d
+    technique: [particles, points, wireframe]
+    weight: 1.0
+
+splat-demo-ember-drift:
+  label: Ember nebula drift
+  source: splat_demo
+  params:
+    palette: ember
+    palette_period: 0.7
+    drift_speed: 0.01
+    density: 1.0
+    tilt: 0.95
+    camera_distance: 9.5
+    glow: 1.2
+    wire_size: 0.45
+    cage: 0.0
+    polyhedron: dodecahedron
+    arms: 4
+    spin_speed: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.7}
+  tags:
+    energy: [0.1, 0.5]
+    moods: [warm, dreamy, cosmic, mellow]
+    style: gentle
+    family: cosmic
+    dims: 3d
+    technique: [particles, points]
+    weight: 0.8
+
+splat-demo-ice-lattice:
+  label: Ice lattice
+  source: splat_demo
+  params:
+    palette: ice
+    palette_period: 1.8
+    drift_speed: 0.05
+    density: 0.45
+    tilt: 0.2
+    camera_distance: 5.0
+    glow: 0.9
+    wire_size: 1.2
+    cage: 0.9
+    stars: 1.4
+    polyhedron: stella
+    arms: 2
+    spin_speed: 1.6
+    orbit_speed: 1.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [icy, geometric, tense, euphoric]
+    style: wild
+    family: geometric
+    dims: 3d
+    technique: [wireframe, particles, points]
+    weight: 0.8

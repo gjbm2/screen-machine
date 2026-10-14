@@ -1,0 +1,22 @@
+st-implicit-motion-gradients:
+  label: Implicit Motion Gradients
+  source: st_implicit_motion_gradients
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: particles
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

@@ -1,0 +1,23 @@
+st-wave-distance:
+  label: Wave   distance
+  source: st_wave_distance
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - bright
+    family: water
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

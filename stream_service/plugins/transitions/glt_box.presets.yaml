@@ -1,0 +1,16 @@
+glt-box:
+  label: Box
+  transition: glt_box
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

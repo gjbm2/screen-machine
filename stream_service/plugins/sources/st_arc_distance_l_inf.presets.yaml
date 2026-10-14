@@ -1,0 +1,23 @@
+st-arc-distance-l-inf:
+  label: Arc   distance L inf
+  source: st_arc_distance_l_inf
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - bright
+    family: cosmic
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

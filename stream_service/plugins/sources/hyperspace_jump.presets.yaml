@@ -1,0 +1,43 @@
+hyperspace-jump-light-speed:
+  label: Light-speed jump
+  source: hyperspace_jump
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, cosmic, aggressive]
+    style: wild
+    family: cosmic
+    dims: 3d
+    technique: [points, particles]
+    weight: 1.0
+
+hyperspace-jump-neon-vortex:
+  label: Neon hyperspace vortex
+  source: hyperspace_jump
+  params:
+    palette: neon
+    palette_period: 1.6
+    drift_speed: 0.05
+    warp_factor: 0.85
+    star_density: 0.8
+    tunnel_radius: 1.4
+    twist: 0.85
+    doppler_strength: 0.4
+    nebula: 1.0
+    planets: 0.3
+    glow: 1.1
+    roll_speed: 1.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, hypnotic, cosmic]
+    style: wild
+    family: tunnel
+    dims: 3d
+    technique: [points, particles]
+    weight: 0.8

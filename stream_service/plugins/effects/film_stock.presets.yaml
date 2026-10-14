@@ -1,0 +1,31 @@
+film_stock-dye-transfer:
+  label: Dye-transfer candy (three-strip, red halation)
+  effect: film_stock
+  params: {amount: 0.85, stock: 1.0, dye_strength: 1.15, halation: 0.5, grain: 0.3, warmth: 0.25, print_tone: 0.2,
+           punch: 1.0, palette: ember, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [retro, warm]
+    style: gentle
+    family: colour
+    dims: 2d
+    technique: [colour, retro]
+    weight: 1.0
+
+film_stock-bleach-bypass:
+  label: Bleach bypass (crunchy silver, heavy grain)
+  effect: film_stock
+  params: {amount: 0.9, stock: 0.0, dye_strength: 1.3, halation: 0.25, grain: 0.6, warmth: -0.15, print_tone: 0.15,
+           punch: 1.2, palette: ice, drift_speed: 0.015}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [retro, dark]
+    style: gentle
+    family: colour
+    dims: 2d
+    technique: [colour, retro]
+    weight: 0.9

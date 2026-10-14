@@ -1,0 +1,33 @@
+crt-monitor-arcade:
+  label: Arcade cabinet (240-line tube, shadow mask, warm bloom)
+  effect: crt_monitor
+  params: {amount: 0.9, lines: 240.0, curvature: 0.75, mask_type: 1.6, mask_strength: 0.6, mask_pitch: 1.4,
+           scanlines: 0.85, bloom: 0.6, convergence: 0.45, bezel: 0.85, hum: 0.25, tint: 0.12, punch: 0.9,
+           palette: ember}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [retro, warm, mellow]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [retro, optical]
+    weight: 1.0
+
+crt-monitor-broadcast:
+  label: Broadcast monitor (crisp 540-line aperture grille, flat-ish glass)
+  effect: crt_monitor
+  params: {amount: 0.8, lines: 540.0, curvature: 0.3, mask_type: 0.0, mask_strength: 0.5, mask_pitch: 1.0,
+           scanlines: 0.65, bloom: 0.3, convergence: 0.15, bezel: 0.5, hum: 0.1, tint: 0.05, punch: 0.6,
+           palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [retro, mellow]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [retro, optical]
+    weight: 0.9

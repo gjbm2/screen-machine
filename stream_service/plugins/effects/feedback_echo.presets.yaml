@@ -1,0 +1,31 @@
+feedback-echo-tunnel:
+  label: Echo tunnel (neon light trails flying outward)
+  effect: feedback_echo
+  params: {amount: 1.0, trail_length: 0.72, zoom_speed: 0.7, rotate_speed: 9.0, warp_amount: 0.005, blend: 0.1,
+           rgb_spread: 0.55, hue_drift: 0.06, echo_tint: 0.55, zoom_kick: 1.2, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [hypnotic, euphoric, cosmic]
+    style: lively
+    family: feedback
+    dims: 2d
+    technique: [feedback, warp, colour]
+    weight: 1.0
+
+feedback-echo-liquid:
+  label: Liquid ghosts (slow swirling afterimages)
+  effect: feedback_echo
+  params: {amount: 1.0, trail_length: 0.8, zoom_speed: 0.12, rotate_speed: -4.0, warp_amount: 0.018, blend: 0.5,
+           rgb_spread: 0.25, hue_drift: 0.03, echo_tint: 0.3, zoom_kick: 0.6, palette: dusk, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.7}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [dreamy, liquid, hypnotic]
+    style: gentle
+    family: feedback
+    dims: 2d
+    technique: [feedback, warp]
+    weight: 0.9

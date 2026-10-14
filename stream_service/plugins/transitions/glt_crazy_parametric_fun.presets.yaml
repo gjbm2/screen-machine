@@ -1,0 +1,17 @@
+glt-crazy-parametric-fun:
+  label: Crazy Parametric Fun
+  transition: glt_crazy_parametric_fun
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - hypnotic
+    - geometric
+    style: wild
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

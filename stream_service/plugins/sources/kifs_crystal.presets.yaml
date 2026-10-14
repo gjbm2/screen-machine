@@ -1,0 +1,42 @@
+kifs-crystal-ice-gem:
+  label: Ice gem
+  source: kifs_crystal
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.9]
+    moods: [hypnotic, icy, elegant]
+    style: lively
+    family: fractal
+    dims: 3d
+    technique: [raymarch, ifs, fractal]
+    weight: 1.0
+
+kifs-crystal-neon-reliquary:
+  label: Neon reliquary
+  source: kifs_crystal
+  params:
+    palette: neon
+    palette_period: 1.6
+    drift_speed: 0.06
+    fold_angle_a: 1.9
+    fold_angle_b: 2.3
+    scale: 2.15
+    offset: 0.92
+    fold_smoothness: 0.018
+    iterations: 6.5
+    carve: 0.75
+    morph: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [hypnotic, geometric, bright, cosmic]
+    style: lively
+    family: fractal
+    dims: 3d
+    technique: [raymarch, ifs, fractal]
+    weight: 0.8

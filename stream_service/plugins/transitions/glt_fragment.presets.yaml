@@ -1,0 +1,16 @@
+glt-fragment:
+  label: Fragment
+  transition: glt_fragment
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

@@ -1,0 +1,25 @@
+butterfly-wave-scrawl:
+  label: Butterfly scrawl
+  transition: butterfly_wave
+  params: {curve_mix: 0.0, amplitude: 1.2, waves: 30.0, colour_separation: 0.35}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, playful, glitchy]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [displacement, warp, analytic]
+    weight: 1.0
+
+butterfly-wave-hypno-rings:
+  label: Hypnotic ring fold
+  transition: butterfly_wave
+  params: {curve_mix: 1.0, amplitude: 0.8, waves: 20.0, colour_separation: 0.25, curve_a: 4.5, curve_b: 1.3}
+  tags:
+    energy: [0.5, 0.9]
+    moods: [euphoric, hypnotic, playful]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [displacement, warp, analytic]
+    weight: 0.9

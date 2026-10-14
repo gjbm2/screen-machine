@@ -1,0 +1,30 @@
+handheld-drift-steadicam:
+  label: Steadicam float (slow drift, breathing, footstep on the beat)
+  effect: handheld_drift
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, mellow, dreamy]
+    style: gentle
+    family: motion
+    dims: 2d
+    technique: [noise, displacement]
+    weight: 1.0
+
+handheld-drift-documentary:
+  label: Documentary handheld (looser drift, more roll, frequent reframes)
+  effect: handheld_drift
+  params: {amount: 1.0, drift_amount: 0.75, drift_speed: 1.6, roll: 1.4, zoom_breath: 0.026, reframe_rate: 6.0,
+           step_bob: 0.012}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [mellow, dreamy, organic]
+    style: gentle
+    family: motion
+    dims: 2d
+    technique: [noise, displacement]
+    weight: 0.8

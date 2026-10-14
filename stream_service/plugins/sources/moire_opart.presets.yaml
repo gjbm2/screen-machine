@@ -1,0 +1,54 @@
+moire-opart-steel-rings:
+  label: Steel ring moire
+  source: moire_opart
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [hypnotic, geometric, tense, icy]
+    weight: 1.0
+
+moire-opart-current:
+  label: Current (black and white lines)
+  source: moire_opart
+  params:
+    grating: 0.0
+    line_frequency: 72
+    offset_scale: 1.012
+    warp_amount: 0.22
+    line_thickness: 0.5
+    interference_mix: 1.0
+    colour_mix: 0.0
+    bloom_kick: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [tense, hypnotic, geometric, dark]
+    weight: 1.0
+
+moire-opart-vortex:
+  label: Duotone vortex
+  source: moire_opart
+  params:
+    grating: 0.9
+    line_frequency: 46
+    offset_scale: 0.985
+    warp_amount: 0.08
+    line_thickness: 0.42
+    interference_mix: 0.9
+    colour_mix: 1.0
+    bloom_kick: 0.8
+    palette: ember
+    palette_period: 0.8
+    drift_speed: 0.03
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 0.95]
+    moods: [hypnotic, tense, warm, geometric]
+    weight: 0.8

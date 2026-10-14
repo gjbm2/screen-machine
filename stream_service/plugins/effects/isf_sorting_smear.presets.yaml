@@ -1,0 +1,22 @@
+isf-sorting-smear:
+  label: Sorting Smear
+  effect: isf_sorting_smear
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: lively
+    family: feedback
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.5

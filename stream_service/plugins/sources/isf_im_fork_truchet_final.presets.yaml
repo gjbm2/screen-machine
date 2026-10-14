@@ -1,0 +1,21 @@
+isf-im-fork-truchet-final:
+  label: IM Fork Truchet Final
+  source: isf_im_fork_truchet_final
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: geometric
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

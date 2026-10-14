@@ -1,0 +1,27 @@
+tri-scatter-shatter:
+  label: Shatter sweep
+  transition: tri_scatter
+  params: {path_spread: 1.0, stagger_x: 0.9, stagger_y: 0.15, depth_spread: 0.5, time_stretch: 0.5, spin: 0.4,
+           glow: 0.55, backdrop: 0.35, palette: neon, triangle_density: 32}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, aggressive, geometric]
+    style: wild
+    family: fragment
+    dims: 2d
+    technique: [particles, projection]
+    weight: 1.0
+
+tri-scatter-cosmic-swarm:
+  label: Cosmic swarm
+  transition: tri_scatter
+  params: {path_spread: 1.5, stagger_x: 0.6, stagger_y: 0.35, depth_spread: 0.9, time_stretch: 0.8, spin: 0.7,
+           glow: 0.8, backdrop: 0.45, palette: rainbow, triangle_density: 56, jitter: 0.9}
+  tags:
+    energy: [0.7, 1.0]
+    moods: [cosmic, euphoric, bright]
+    style: wild
+    family: fragment
+    dims: 2d
+    technique: [particles, projection]
+    weight: 0.9

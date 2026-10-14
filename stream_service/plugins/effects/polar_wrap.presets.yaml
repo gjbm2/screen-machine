@@ -1,0 +1,31 @@
+polar-wrap-tiny-planet:
+  label: Tiny planet (picture rolled into a slowly turning little world)
+  effect: polar_wrap
+  params: {amount: 1.0, direction: rect_to_polar, repeats: 1.0, twist: 0.12, inner_radius: 0.04, radius: 1.0,
+           tunnel: 0.0, glow: 0.3, kick: 1.0, spin_rate: 0.025, scroll_rate: 0.03, palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [cosmic, playful, dreamy]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, kaleido]
+    weight: 1.0
+
+polar-wrap-tunnel:
+  label: Picture tunnel (mirrored spiral rings streaming outward)
+  effect: polar_wrap
+  params: {amount: 1.0, direction: rect_to_polar, repeats: 3.0, twist: 0.7, inner_radius: 0.0, radius: 1.2,
+           tunnel: 1.0, glow: 0.45, kick: 1.4, spin_rate: 0.05, scroll_rate: 0.22, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 0.9]
+    moods: [hypnotic, cosmic]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, kaleido]
+    weight: 0.9

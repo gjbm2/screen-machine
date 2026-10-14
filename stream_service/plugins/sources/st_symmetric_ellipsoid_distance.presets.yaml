@@ -1,0 +1,24 @@
+st-symmetric-ellipsoid-distance:
+  label: Symmetric Ellipsoid   distance
+  source: st_symmetric_ellipsoid_distance
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    - kaleido
+    weight: 0.15

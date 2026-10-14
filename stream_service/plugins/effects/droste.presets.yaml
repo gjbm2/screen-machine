@@ -1,0 +1,32 @@
+droste-print-gallery:
+  label: Print gallery (one-strand Escher spiral, falling inwards)
+  effect: droste
+  params: {amount: 1.0, ratio: 0.14, twist: 1.0, strands: 1.0, copy_turn: 0.0, frame_border: 0.007, glow: 0.4,
+           wander: 0.05, punch: 1.6, zoom_speed: 0.35, palette: neon, palette_period: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [hypnotic, cosmic, tense]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 1.0
+
+droste-picture-tunnel:
+  label: Picture tunnel (nested, turning copies, off-centre, no twist)
+  effect: droste
+  params: {amount: 1.0, ratio: 0.42, twist: 0.0, copy_turn: 0.16, frame_border: 0.012, glow: 0.55,
+           centre_x: 0.18, centre_y: -0.1, wander: 0.08, punch: 2.0, zoom_speed: 0.5, palette: candy,
+           palette_period: 1.6}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [hypnotic, tense]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.8

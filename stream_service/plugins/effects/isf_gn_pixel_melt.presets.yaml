@@ -1,0 +1,23 @@
+isf-gn-pixel-melt:
+  label: Gn Pixel Melt
+  effect: isf_gn_pixel_melt
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - retro
+    - playful
+    - organic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

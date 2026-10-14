@@ -1,0 +1,40 @@
+quasicrystal-prism-rosette:
+  label: Prism rosette (7-fold)
+  source: quasicrystal
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.9]
+    moods: [hypnotic, geometric, cosmic]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [analytic, field, optical]
+    weight: 1.0
+
+quasicrystal-ice-lens:
+  label: Ice lens (9-fold, warped)
+  source: quasicrystal
+  params:
+    wave_count: 9.0
+    scale: 1.3
+    fold: 1.0
+    angle_jitter: 0.3
+    per_wave_hue: 0.6
+    radial_warp: 0.5
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.05
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [hypnotic, icy, cosmic, elegant]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [analytic, field, optical]
+    weight: 0.8

@@ -1,0 +1,23 @@
+st-blobby-cross-distance-2-d:
+  label: Blobby Cross   distance 2 D
+  source: st_blobby_cross_distance_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

@@ -1,0 +1,31 @@
+twirl-paint-stir:
+  label: Paint stir (counter-rotating pair, tinted arms)
+  effect: twirl
+  params: {amount: 0.75, max_angle: 5.5, radius: 0.75, vortex_count: 2.0, spin_mix: 1.0, orbit: 0.12,
+           sway: 0.4, punch: 0.9, tint: 0.25, palette: candy, orbit_speed: 0.3}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [liquid, playful, hypnotic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 1.0
+
+twirl-whirlpool:
+  label: Whirlpool (one big centred vortex, hard beat twist)
+  effect: twirl
+  params: {amount: 0.85, max_angle: 7.5, radius: 1.1, vortex_count: 1.0, orbit: 0.05, sway: 0.25,
+           punch: 1.6, tint: 0.0, orbit_speed: 0.5}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 1.0]
+    moods: [hypnotic, liquid]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.8

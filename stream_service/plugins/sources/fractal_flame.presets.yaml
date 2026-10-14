@@ -1,0 +1,11 @@
+fractal-flame-ember-sheep:
+  label: Ember sheep
+  source: fractal_flame
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [fiery, euphoric, elegant]
+    weight: 1.0

@@ -1,0 +1,41 @@
+quaternion-julia-coral:
+  label: Quaternion coral
+  source: quaternion_julia
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [organic, liquid, cosmic]
+    style: gentle
+    family: fractal
+    dims: 3d
+    technique: [raymarch, fractal]
+    weight: 1.0
+
+quaternion-julia-ember-flame:
+  label: Quaternion flame (cubic)
+  source: quaternion_julia
+  params:
+    palette: ember
+    palette_period: 1.6
+    drift_speed: 0.04
+    power: 3.0
+    c_path_radius: 0.95
+    c_path_shape: 0.7
+    slice_w: -0.2
+    iterations: 9.0
+    surface_softness: 0.15
+    glow: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [fiery, organic, cosmic]
+    style: gentle
+    family: fractal
+    dims: 3d
+    technique: [raymarch, fractal]
+    weight: 0.8

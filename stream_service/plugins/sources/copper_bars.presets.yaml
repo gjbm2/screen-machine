@@ -1,0 +1,48 @@
+copper_bars-amiga-chrome:
+  label: Amiga chrome copper bars
+  source: copper_bars
+  params:
+    bar_count: 10
+    angle: 0.0
+    shading: 0.15
+    wave_complexity: 2.0
+    spread: 0.65
+    palette: rainbow
+    palette_period: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [retro, playful, euphoric]
+    style: lively
+    family: retro
+    dims: 2d
+    technique: [analytic, retro]
+    weight: 1.0
+
+copper_bars-kefrens-wall:
+  label: Kefrens ribbon wall
+  source: copper_bars
+  params:
+    bar_count: 18
+    angle: 1.0
+    thickness: 0.8
+    spread: 1.0
+    shading: 0.5
+    wave_complexity: 2.5
+    mirror_symmetry: 0.0
+    palette: neon
+    palette_period: 1.5
+    drift_speed: 0.08
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [retro, euphoric, hypnotic]
+    style: lively
+    family: retro
+    dims: 2d
+    technique: [analytic, retro]
+    weight: 0.9

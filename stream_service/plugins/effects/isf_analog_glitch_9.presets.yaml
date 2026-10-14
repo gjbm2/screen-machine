@@ -1,0 +1,23 @@
+isf-analog-glitch-9:
+  label: Analog Glitch 9
+  effect: isf_analog_glitch_9
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - hypnotic
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

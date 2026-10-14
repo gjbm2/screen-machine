@@ -1,0 +1,21 @@
+isf-dubstep-my-ass-ms-xgr2:
+  label: Dubstep my ass! Ms XGR2
+  source: isf_dubstep_my_ass_ms_xgr2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

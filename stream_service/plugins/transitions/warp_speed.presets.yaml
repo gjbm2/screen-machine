@@ -1,0 +1,25 @@
+warp-speed-hyperspace:
+  label: Hyperspace jump
+  transition: warp_speed
+  params: {duration_s: 2.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, cosmic]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [light, warp]
+    weight: 1.0
+
+warp-speed-neon-spin:
+  label: Neon spin jump
+  transition: warp_speed
+  params: {streak_length: 0.85, star_density: 0.85, spin: 18.0, zoom: 0.6, chroma: 0.85, palette: neon, blue_shift: 0.45}
+  tags:
+    energy: [0.7, 1.0]
+    moods: [euphoric, cosmic, bright]
+    style: wild
+    family: light
+    dims: 2d
+    technique: [light, warp]
+    weight: 0.8

@@ -1,0 +1,23 @@
+st-starry-background-with-nebula:
+  label: Starry background with nebula
+  source: st_starry_background_with_nebula
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

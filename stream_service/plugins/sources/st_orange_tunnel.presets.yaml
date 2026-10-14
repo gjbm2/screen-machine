@@ -1,0 +1,23 @@
+st-orange-tunnel:
+  label: Orange Tunnel
+  source: st_orange_tunnel
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - dreamy
+    - mellow
+    family: tunnel
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

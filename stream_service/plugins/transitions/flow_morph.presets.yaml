@@ -1,0 +1,25 @@
+flow-morph-heat-haze:
+  label: Heat-haze ink
+  transition: flow_morph
+  params: {strength: 0.25, map_source: 0.0, noise_scale: 0.6, anisotropy: 0.35, flow: 0.25, smear: 2}
+  tags:
+    energy: [0.1, 0.45]
+    moods: [liquid, dreamy, mellow]
+    style: gentle
+    family: organic
+    dims: 2d
+    technique: [displacement, noise, warp]
+    weight: 1.0
+
+flow-morph-luma-push:
+  label: New scene pushes through
+  transition: flow_morph
+  params: {strength: 0.7, map_source: 0.85, noise_scale: 0.35, anisotropy: 1.0, flow: 0.55, smear: 3}
+  tags:
+    energy: [0.35, 0.7]
+    moods: [liquid, organic, dreamy]
+    style: lively
+    family: organic
+    dims: 2d
+    technique: [displacement, warp, field]
+    weight: 0.9

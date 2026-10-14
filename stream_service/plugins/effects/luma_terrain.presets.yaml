@@ -1,0 +1,31 @@
+luma-terrain-flyover:
+  label: Luma landscape flyover
+  effect: luma_terrain
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [cosmic, dreamy, elegant]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, heightfield]
+    weight: 1.0
+
+luma-terrain-misty-peaks:
+  label: Misty glowing peaks (slow, high mountains)
+  effect: luma_terrain
+  params: {amount: 1.0, height: 0.7, smoothing: 3.8, camera_pitch: 79.0, flight_speed: 0.05, fog: 0.7,
+           light_angle: -40.0, glow: 0.75, kick: 0.35, sky_tint: 0.65, palette: ocean, palette_period: 1.2,
+           drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [dreamy, cosmic, calm]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, heightfield]
+    weight: 0.8

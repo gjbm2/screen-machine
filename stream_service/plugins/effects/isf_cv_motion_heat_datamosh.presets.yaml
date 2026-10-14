@@ -1,0 +1,23 @@
+isf-cv-motion-heat-datamosh:
+  label: CV Motion Heat Datamosh
+  effect: isf_cv_motion_heat_datamosh
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - fiery
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

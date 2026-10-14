@@ -1,0 +1,23 @@
+st-spiral-galaxy:
+  label: Spiral galaxy
+  source: st_spiral_galaxy
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - hypnotic
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.7

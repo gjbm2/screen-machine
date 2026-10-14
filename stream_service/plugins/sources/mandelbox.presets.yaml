@@ -1,0 +1,42 @@
+mandelbox-dusk-cathedral:
+  label: Mandelbox cathedral
+  source: mandelbox
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [cosmic, dark, tense, geometric]
+    style: lively
+    family: fractal
+    dims: 3d
+    technique: [raymarch, fractal, sdf]
+    weight: 1.0
+
+mandelbox-ice-city:
+  label: Mandelbox city
+  source: mandelbox
+  params:
+    structure: city
+    box_scale: 2.7
+    min_radius: 0.4
+    fold_limit: 1.0
+    twist: 0.03
+    palette: ice
+    palette_period: 1.4
+    drift_speed: 0.04
+    path_curvature: 0.3
+    glow: 1.3
+    flash_kick: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [cosmic, geometric, icy, tense]
+    style: wild
+    family: architecture
+    dims: 3d
+    technique: [raymarch, fractal, sdf]
+    weight: 0.8

@@ -1,0 +1,22 @@
+isf-cv-flow-divergence-crack:
+  label: CV Flow Divergence Crack
+  effect: isf_cv_flow_divergence_crack
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

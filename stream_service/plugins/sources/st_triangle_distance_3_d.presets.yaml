@@ -1,0 +1,23 @@
+st-triangle-distance-3-d:
+  label: Triangle   distance 3 D
+  source: st_triangle_distance_3_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.7

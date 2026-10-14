@@ -1,0 +1,31 @@
+tunnel-wall-journey:
+  label: Picture tunnel (rounded, banking, glowing exit)
+  effect: tunnel_wall
+  params: {amount: 1.0, repeats: 2.0, shape: 0.7, twist: 0.2, fog: 0.5, bank: 0.55, speed: 1.0, kick: 1.2,
+           rings: 0.45, glow: 0.6, palette: neon, palette_period: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [hypnotic, cosmic, euphoric]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 1.0
+
+tunnel-wall-hyperspace:
+  label: Square hyperspace corridor (4 repeats, spiral twist, hot rings)
+  effect: tunnel_wall
+  params: {amount: 1.0, repeats: 4.0, shape: 0.0, twist: 0.6, fog: 0.7, bank: 0.8, speed: 1.6, kick: 2.0,
+           rings: 0.8, glow: 0.85, palette: acid, palette_period: 1.6, drift_speed: 0.08}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, cosmic, geometric]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, analytic, light]
+    weight: 0.8

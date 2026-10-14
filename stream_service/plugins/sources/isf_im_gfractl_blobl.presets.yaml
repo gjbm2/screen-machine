@@ -1,0 +1,24 @@
+isf-im-gfractl-blobl:
+  label: IM GFractl Blobl
+  source: isf_im_gfractl_blobl
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - dreamy
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    - feedback
+    weight: 0.6

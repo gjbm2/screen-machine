@@ -1,0 +1,23 @@
+isf-im-lopyfrac3-d-ortho-fractal-evolution:
+  label: IM LOPYFrac3 D Ortho Fractal Evolution
+  source: isf_im_lopyfrac3_d_ortho_fractal_evolution
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.6

@@ -1,0 +1,22 @@
+isf-shockwave-pulse:
+  label: Shockwave Pulse
+  effect: isf_shockwave_pulse
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - liquid
+    - organic
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

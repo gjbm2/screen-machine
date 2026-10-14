@@ -1,0 +1,22 @@
+st-modified-star-nest-2:
+  label: Modified Star Nest 2
+  source: st_modified_star_nest_2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

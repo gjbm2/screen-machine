@@ -1,0 +1,31 @@
+sketch_hatch-ink-sketchbook:
+  label: Ink sketchbook (tinted ink lines and cross-hatch on cream paper)
+  effect: sketch_hatch
+  params: {amount: 0.9, style: 1.0, line_weight: 0.55, hatch_density: 0.55, hatch_layers: 3.0, paper_tone: 0.35,
+           boil_rate: 8.0, ink_tint: 0.4, palette: dusk, palette_period: 0.8, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, mellow]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [field, noise]
+    weight: 1.0
+
+sketch_hatch-coloured-pencil:
+  label: Coloured pencil (palette-tinted strokes and white chalk on toned paper)
+  effect: sketch_hatch
+  params: {amount: 1.0, style: 1.85, line_weight: 0.4, hatch_density: 0.65, hatch_layers: 4.0, paper_tone: 0.8,
+           boil_rate: 10.0, ink_tint: 0.55, palette: candy, palette_period: 1.2, drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.7]
+    moods: [playful, elegant]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [field, noise]
+    weight: 0.9

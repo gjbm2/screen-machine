@@ -1,0 +1,23 @@
+isf-comet-tails:
+  label: Comet Tails
+  effect: isf_comet_tails
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - retro
+    style: lively
+    family: feedback
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.5

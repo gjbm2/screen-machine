@@ -1,0 +1,24 @@
+isf-im-glass-fractal-flight-twist:
+  label: IM Glass Fractal Flight Twist
+  source: isf_im_glass_fractal_flight_twist
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    - warp
+    weight: 0.6

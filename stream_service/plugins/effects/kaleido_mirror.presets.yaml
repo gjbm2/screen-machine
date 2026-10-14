@@ -1,0 +1,30 @@
+kaleido-mirror-mandala:
+  label: Turning mandala
+  effect: kaleido_mirror
+  params: {amount: 1.0, segments: 8.0, rotate_speed: 8.0, rotate_kick: 70.0, zoom_kick: 0.08, seam_glow: 0.3}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [hypnotic, geometric, euphoric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [kaleido, tiling]
+    weight: 1.0
+
+kaleido-mirror-rose-window:
+  label: Rose window (12-fold, fast lurch)
+  effect: kaleido_mirror
+  params: {amount: 1.0, segments: 12.0, zoom: 1.35, mirror_angle_deg: 75.0, rotate_speed: -14.0, rotate_kick: 160.0,
+           zoom_kick: 0.16, seam_glow: 0.55, palette: rainbow, palette_period: 2.4, drift_speed: 0.15}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, geometric, cosmic]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [kaleido, colour]
+    weight: 0.8

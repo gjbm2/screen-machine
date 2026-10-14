@@ -1,0 +1,41 @@
+truchet-flow-neon-arcs:
+  label: Neon arcs maze
+  source: truchet_flow
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [geometric, playful, hypnotic, bright]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [tiling, analytic]
+    weight: 1.0
+
+truchet-flow-c64-print:
+  label: C64 10 PRINT diagonals
+  source: truchet_flow
+  params:
+    tile_style: 0.0
+    tile_scale: 22
+    line_width: 0.06
+    multiscale: 0.15
+    flip_rate: 6.0
+    glow: 1.1
+    wave_kick: 0.5
+    palette: candy
+    palette_period: 1.4
+    drift_speed: 0.04
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [retro, playful, geometric, hypnotic]
+    style: lively
+    family: retro
+    dims: 2d
+    technique: [tiling, retro, analytic]
+    weight: 0.8

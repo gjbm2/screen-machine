@@ -1,0 +1,17 @@
+glt-ripple:
+  label: Ripple
+  transition: glt_ripple
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - liquid
+    - organic
+    style: gentle
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

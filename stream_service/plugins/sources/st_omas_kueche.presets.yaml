@@ -1,0 +1,23 @@
+st-omas-kueche:
+  label: Omas Kueche
+  source: st_omas_kueche
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - fiery
+    - warm
+    - bright
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

@@ -1,0 +1,23 @@
+isf-im-xor-circle-advance:
+  label: IM XOR Circle Advance
+  source: isf_im_xor_circle_advance
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - organic
+    family: cosmic
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

@@ -1,0 +1,16 @@
+glt-wipe-right:
+  label: Wipe Right
+  transition: glt_wipe_right
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

@@ -1,0 +1,16 @@
+glt-directional-scaled:
+  label: Directional Scaled
+  transition: glt_directional_scaled
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

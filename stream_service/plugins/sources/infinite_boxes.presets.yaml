@@ -1,0 +1,42 @@
+infinite-boxes-mondrian:
+  label: Mondrian zoom
+  source: infinite_boxes
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [geometric, playful, retro, bright]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [analytic, tiling, sdf]
+    weight: 1.0
+
+infinite-boxes-neon-outlines:
+  label: Neon box outlines
+  source: infinite_boxes
+  params:
+    palette: neon
+    palette_period: 1.3
+    drift_speed: 0.05
+    fill_mix: 0.15
+    split_probability: 0.75
+    line_width: 3.0
+    corner_round: 0.35
+    twist: 0.25
+    flash_kick: 1.1
+    zoom_kick: 3.0
+    zoom_speed: 0.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 0.95]
+    moods: [geometric, hypnotic, bright, euphoric]
+    style: wild
+    family: geometric
+    dims: 2d
+    technique: [analytic, tiling, sdf]
+    weight: 0.8

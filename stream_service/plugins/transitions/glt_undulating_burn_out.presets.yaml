@@ -1,0 +1,17 @@
+glt-undulating-burn-out:
+  label: Undulating Burn Out
+  transition: glt_undulating_burn_out
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - fiery
+    - warm
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

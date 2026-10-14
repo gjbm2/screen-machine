@@ -1,0 +1,23 @@
+st-lucky-buggy-galaxy:
+  label: Lucky buggy galaxy
+  source: st_lucky_buggy_galaxy
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

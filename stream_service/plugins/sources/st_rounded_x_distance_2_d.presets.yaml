@@ -1,0 +1,22 @@
+st-rounded-x-distance-2-d:
+  label: Rounded X   distance 2 D
+  source: st_rounded_x_distance_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

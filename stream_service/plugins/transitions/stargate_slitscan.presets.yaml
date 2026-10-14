@@ -1,0 +1,25 @@
+stargate-slitscan-corridor:
+  label: Star Gate corridor
+  transition: stargate_slitscan
+  params: {duration_s: 6.0, axis: vertical, speed: 1.0, slit_width: 0.3, colour_smear: 0.55, glow: 0.8, palette: neon}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [hypnotic, cosmic, retro]
+    style: wild
+    family: warp
+    dims: 3d
+    technique: [warp, light, retro]
+    weight: 1.0
+
+stargate-slitscan-floor-rush:
+  label: Slit-scan floor rush
+  transition: stargate_slitscan
+  params: {duration_s: 4.0, axis: horizontal, speed: 1.8, plane_angle: -12.0, slit_width: 0.7, colour_smear: 0.75, glow: 1.0, palette: candy, palette_period: 1.6, colour_drift: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [cosmic, euphoric, hypnotic]
+    style: wild
+    family: warp
+    dims: 3d
+    technique: [warp, light, retro]
+    weight: 0.9

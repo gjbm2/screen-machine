@@ -1,0 +1,17 @@
+glt-circleopen:
+  label: Circleopen
+  transition: glt_circleopen
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - dreamy
+    - mellow
+    style: gentle
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

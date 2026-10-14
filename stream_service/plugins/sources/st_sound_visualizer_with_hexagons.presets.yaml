@@ -1,0 +1,21 @@
+st-sound-visualizer-with-hexagons:
+  label: Sound visualizer with hexagons
+  source: st_sound_visualizer_with_hexagons
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - geometric
+    family: geometric
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.15

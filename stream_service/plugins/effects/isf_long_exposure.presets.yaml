@@ -1,0 +1,22 @@
+isf-long-exposure:
+  label: Long Exposure
+  effect: isf_long_exposure
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - fiery
+    - warm
+    style: lively
+    family: feedback
+    dims: 2d
+    technique:
+    - feedback
+    weight: 0.5

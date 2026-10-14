@@ -1,0 +1,25 @@
+crt-power-channel-change:
+  label: CRT channel change
+  transition: crt_power
+  params: {signal_loss: 0.6, curvature: 0.55, line_glow: 0.7, overshoot: 0.6, scanlines: 0.5, phosphor_tint: 0.35, palette: ice}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [retro, glitchy]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [retro, glitch]
+    weight: 1.0
+
+crt-power-clean-switch:
+  label: CRT clean switch-off
+  transition: crt_power
+  params: {duration_s: 1.4, signal_loss: 0.0, curvature: 0.8, line_glow: 1.0, overshoot: 0.85, scanlines: 0.7, phosphor_tint: 0.7, palette: neon, colour_drift: 0.4}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [retro, playful]
+    style: lively
+    family: glitch
+    dims: 2d
+    technique: [retro, glitch]
+    weight: 0.8

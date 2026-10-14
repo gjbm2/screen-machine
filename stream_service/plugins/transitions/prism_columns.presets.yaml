@@ -1,0 +1,26 @@
+prism-columns-neon-wave:
+  label: Neon prism wave
+  transition: prism_columns
+  params: {duration_s: 2.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [geometric, bright]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic, light]
+    weight: 1.0
+
+prism-columns-split:
+  label: Prism split
+  transition: prism_columns
+  params: {duration_s: 2.4, columns: 5, stagger: 0.35, wave_shape: 1.0, separation_z: 0.9, camera: 0.8,
+           third_face_style: 0.15, specular: 0.8, palette: ice, direction: alternate}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [geometric, bright]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic, light]
+    weight: 0.8

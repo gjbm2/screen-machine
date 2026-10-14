@@ -1,0 +1,22 @@
+st-hsv-and-hsl:
+  label: HSV and HSL
+  source: st_hsv_and_hsl
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.7

@@ -1,0 +1,22 @@
+st-oval-gradient-3-d:
+  label: Oval   gradient 3 D
+  source: st_oval_gradient_3_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

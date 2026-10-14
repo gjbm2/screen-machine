@@ -1,0 +1,23 @@
+st-trapezoid-distance:
+  label: Trapezoid   distance
+  source: st_trapezoid_distance
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

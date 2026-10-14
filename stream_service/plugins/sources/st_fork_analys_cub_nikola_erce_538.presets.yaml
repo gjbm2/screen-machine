@@ -1,0 +1,22 @@
+st-fork-analys-cub-nikola-erce-538:
+  label: Fork Analys Cub Nikola Erce 538
+  source: st_fork_analys_cub_nikola_erce_538
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: geometric
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

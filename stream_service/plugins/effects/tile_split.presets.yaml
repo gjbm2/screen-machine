@@ -1,0 +1,32 @@
+tile-split-video-wall:
+  label: Video wall (3x3, bezels flash, rows slide on the beat)
+  effect: tile_split
+  params: {amount: 1.0, cells: 3.0, lattice: rect, mirror: 0.0, gutter: 0.7, slide_axis: 0.3, slide_kick: 0.5,
+           spring_hz: 2.2, sway: 0.04, bezel_glow: 0.45, tint: 0.2, palette: neon, drift_speed: 0.06}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [geometric, playful, euphoric]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [tiling]
+    weight: 1.0
+
+tile-split-hex-mirror:
+  label: Hex mirror hive (5 across, mirrored, swinging screens)
+  effect: tile_split
+  params: {amount: 1.0, cells: 5.0, lattice: hex, mirror: 1.0, gutter: 0.5, slide_axis: 0.6, slide_kick: 0.65,
+           spring_hz: 3.0, sway: 0.06, cell_rotation: 0.12, bezel_glow: 0.6, tint: 0.3, palette: rainbow,
+           palette_period: 1.6, drift_speed: 0.12}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [euphoric, geometric, playful]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [tiling, kaleido]
+    weight: 0.8

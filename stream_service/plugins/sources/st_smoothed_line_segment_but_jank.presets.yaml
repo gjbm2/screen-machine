@@ -1,0 +1,23 @@
+st-smoothed-line-segment-but-jank:
+  label: Smoothed Line Segment but jank
+  source: st_smoothed_line_segment_but_jank
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - organic
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

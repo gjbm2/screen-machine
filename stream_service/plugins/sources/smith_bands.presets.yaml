@@ -1,0 +1,56 @@
+smith-bands-sweet:
+  label: Sweet ribbons
+  source: smith_bands
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [elegant, calm, mellow, warm]
+    weight: 1.0
+
+smith-bands-ember-stack:
+  label: Ember paper stack
+  source: smith_bands
+  params:
+    palette: ember
+    palette_period: 0.5
+    drift_speed: 0.01
+    layer_count: 11
+    layer_spacing: 0.15
+    mobius_spread: 0.4
+    shear_frequency: 4.5
+    shadow_softness: 0.6
+    tone_ramp: 0.85
+    view_scale: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [warm, elegant, hypnotic, dark]
+    weight: 0.8
+
+smith-bands-tide:
+  label: Tide ribbons
+  source: smith_bands
+  params:
+    palette: ocean
+    palette_period: 1.1
+    drift_speed: 0.02
+    layer_count: 6
+    layer_spacing: 0.28
+    mobius_spread: 0.1
+    shear_frequency: 1.5
+    shadow_softness: 0.25
+    tone_ramp: 0.5
+    view_scale: 1.4
+    beat_kick: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.4]
+    moods: [calm, dreamy, liquid, mellow]
+    weight: 0.8

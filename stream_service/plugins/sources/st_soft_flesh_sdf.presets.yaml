@@ -1,0 +1,23 @@
+st-soft-flesh-sdf:
+  label: Soft Flesh SDF
+  source: st_soft_flesh_sdf
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - dreamy
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

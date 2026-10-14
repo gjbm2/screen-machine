@@ -1,0 +1,21 @@
+isf-oscilloscope-analysis-luminance:
+  label: Oscilloscope analysis luminance
+  effect: isf_oscilloscope_analysis_luminance
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - hypnotic
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

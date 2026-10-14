@@ -1,0 +1,23 @@
+st-hyperspace-tunnel-simplex-noise:
+  label: Hyperspace Tunnel, Simplex Noise
+  source: st_hyperspace_tunnel_simplex_noise
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - cosmic
+    family: tunnel
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

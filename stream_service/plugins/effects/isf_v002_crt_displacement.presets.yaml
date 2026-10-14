@@ -1,0 +1,22 @@
+isf-v002-crt-displacement:
+  label: V002 CRT Displacement
+  effect: isf_v002_crt_displacement
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - retro
+    - playful
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

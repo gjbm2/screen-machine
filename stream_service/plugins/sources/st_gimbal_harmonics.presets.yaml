@@ -1,0 +1,23 @@
+st-gimbal-harmonics:
+  label: Gimbal Harmonics
+  source: st_gimbal_harmonics
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: light
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.7

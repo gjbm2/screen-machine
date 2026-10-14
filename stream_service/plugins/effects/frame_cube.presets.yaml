@@ -1,0 +1,46 @@
+frame-cube-showcase:
+  label: Spinning showcase cube
+  effect: frame_cube
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.85]
+    moods: [playful, geometric, bright]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 1.0
+
+frame-cube-prism:
+  label: Prism cube (hue-stepped faces, tumbling)
+  effect: frame_cube
+  params: {amount: 1.0, size: 0.5, spin: 0.09, kick: 0.8, tumble: 0.8, face_hue: 0.17, elevation: 22.0,
+           backdrop: 0.3, reflection: 0.7, faces: repeat}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [euphoric, playful, cosmic]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, analytic, colour]
+    weight: 0.8
+
+frame-cube-gallery:
+  label: Slow gallery cube
+  effect: frame_cube
+  params: {amount: 1.0, size: 0.72, spin: 0.025, kick: 0.15, tumble: 0.1, elevation: 9.0, light: 0.55,
+           backdrop: 0.55, reflection: 0.4}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.05, 0.45]
+    moods: [calm, elegant, dreamy]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 0.9

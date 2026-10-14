@@ -1,0 +1,22 @@
+st-doyle-spirals:
+  label: Doyle spirals
+  source: st_doyle_spirals
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.4

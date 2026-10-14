@@ -1,0 +1,50 @@
+dune-sea-golden-hour:
+  label: Golden hour dune sea
+  source: dune_sea
+  params:
+    palette: ember
+    dune_shape: 0.3
+    sun_elevation: 7.0
+    haze: 0.35
+    ripple_detail: 0.6
+    spindrift: 0.5
+    camera_height: 0.25
+    palette_tint: 0.45
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [warm, calm, hypnotic]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [heightfield, noise]
+    weight: 1.0
+
+dune-sea-moonlit-stars:
+  label: Moonlit star dunes
+  source: dune_sea
+  params:
+    palette: ice
+    dune_shape: 0.85
+    dune_scale: 1.4
+    relief: 1.3
+    sun_elevation: -9.0
+    haze: 0.2
+    ripple_detail: 0.4
+    spindrift: 0.35
+    camera_height: 0.45
+    palette_tint: 0.6
+    drift_speed: 0.004
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.7}
+  tags:
+    energy: [0.0, 0.45]
+    moods: [calm, dreamy, cosmic]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [heightfield, noise]
+    weight: 0.8

@@ -1,0 +1,42 @@
+demo-fire-doom:
+  label: Doom fire (chunky ember)
+  source: demo_fire
+  params:
+    palette: ember
+    chunkiness: 0.75
+    cooling: 0.35
+    wind_shear: 0.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [fiery, retro, aggressive]
+    style: wild
+    family: fire
+    dims: 2d
+    technique: [simulation, retro]
+    weight: 1.0
+
+demo-fire-blue-ring:
+  label: Blue gas ring
+  source: demo_fire
+  params:
+    palette: ice
+    emitter_shape: 1.0
+    chunkiness: 0.2
+    cooling: 0.5
+    turbulence: 0.6
+    spark_density: 0.6
+    palette_period: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [icy, retro, tense]
+    style: wild
+    family: fire
+    dims: 2d
+    technique: [simulation, retro]
+    weight: 0.8

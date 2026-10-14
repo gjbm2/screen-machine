@@ -1,0 +1,41 @@
+black-hole-gargantua:
+  label: Gargantua
+  source: black_hole
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [cosmic, dark, tense]
+    style: lively
+    family: cosmic
+    dims: 3d
+    technique: [analytic, optical]
+    weight: 1.0
+
+black-hole-neon-maw:
+  label: Neon maw
+  source: black_hole
+  params:
+    palette: candy
+    palette_period: 1.4
+    drift_speed: 0.05
+    disc_palette: 1.0
+    camera_distance: 20.0
+    inclination: 24.0
+    disc_width: 14.0
+    beaming_strength: 1.0
+    turbulence: 0.85
+    star_field: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [cosmic, tense, hypnotic]
+    style: lively
+    family: cosmic
+    dims: 3d
+    technique: [analytic, optical, colour]
+    weight: 0.8

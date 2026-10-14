@@ -1,0 +1,30 @@
+cube-grid-diagonal-wall:
+  label: Cube wall (diagonal quarter-turn waves)
+  effect: cube_grid
+  params: {amount: 1.0, cells: 10, wave_pattern: 1.0, flip: 0.25, hold: 0.5, sweep: 1.0, axis_mix: 0.3, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [geometric, playful]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, tiling, analytic]
+    weight: 1.0
+
+cube-grid-radial-flip:
+  label: Cube wall (radial half-turn flips, palette backs)
+  effect: cube_grid
+  params: {amount: 1.0, cells: 16, wave_pattern: 2.0, flip: 0.5, hold: 0.35, sweep: 0.8, axis_mix: 0.5, gap: 0.07,
+           perspective: 0.8, tint: 0.6, edge: 0.7, glow: 0.7, auto: 0.4, palette: candy}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, geometric, playful]
+    style: wild
+    family: projection
+    dims: 3d
+    technique: [projection, tiling, analytic]
+    weight: 0.8

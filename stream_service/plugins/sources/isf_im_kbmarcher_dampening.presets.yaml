@@ -1,0 +1,21 @@
+isf-im-kbmarcher-dampening:
+  label: IM KBMARCHER DAMPENING
+  source: isf_im_kbmarcher_dampening
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.6

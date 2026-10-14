@@ -1,0 +1,31 @@
+neon_contours-topo-neon:
+  label: Topo neon (marching height lines on near-black)
+  effect: neon_contours
+  params: {amount: 0.85, contour_count: 14, line_width: 0.35, glow: 0.55, base_dim: 0.8, flow_speed: 0.35,
+           colour_by: 0.0, smoothness: 0.5, pulse_kick: 1.0, palette: neon, palette_period: 1.5, drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [hypnotic, bright, geometric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [field, light]
+    weight: 1.0
+
+neon_contours-rainbow-isobars:
+  label: Rainbow isobars (dense per-line colours over the scene)
+  effect: neon_contours
+  params: {amount: 0.7, contour_count: 26, line_width: 0.2, glow: 0.35, base_dim: 0.55, flow_speed: -0.6,
+           colour_by: 1.0, smoothness: 0.7, pulse_kick: 1.2, palette: rainbow, palette_period: 1.0, drift_speed: 0.06}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [hypnotic, bright, euphoric]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [field, light]
+    weight: 0.8

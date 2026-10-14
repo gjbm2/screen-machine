@@ -1,0 +1,38 @@
+neon-signs-brick-alley:
+  label: Neon signs on a brick alley wall
+  source: neon_signs
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [retro, playful, warm]
+    style: lively
+    family: retro
+    dims: 2d
+    technique: [sdf, light, retro]
+    weight: 1.0
+
+neon-signs-tiled-diner:
+  label: Neon signs in a tiled diner (mirrored)
+  source: neon_signs
+  params:
+    wall_material: 1.0
+    palette: candy
+    palette_period: 1.4
+    layout_symmetry: 0.9
+    sign_density: 0.6
+    halo_size: 0.65
+    flicker_amount: 0.25
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.35, 0.9]
+    moods: [retro, playful, bright]
+    style: lively
+    family: retro
+    dims: 2d
+    technique: [sdf, light, retro]
+    weight: 0.8

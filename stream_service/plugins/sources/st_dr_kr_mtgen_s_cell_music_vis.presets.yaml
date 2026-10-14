@@ -1,0 +1,21 @@
+st-dr-kr-mtgen-s-cell-music-vis:
+  label: Dr. Krömtgen's cell (music vis)
+  source: st_dr_kr_mtgen_s_cell_music_vis
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - organic
+    family: organic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

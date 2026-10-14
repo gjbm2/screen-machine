@@ -1,0 +1,23 @@
+st-alien-waterworld:
+  label: Alien Waterworld
+  source: st_alien_waterworld
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - liquid
+    - organic
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

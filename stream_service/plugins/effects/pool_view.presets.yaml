@@ -1,0 +1,30 @@
+pool-view-lido:
+  label: Sunny lido
+  effect: pool_view
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [liquid, calm, bright]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, heightfield, optical]
+    weight: 1.0
+
+pool-view-deep-end:
+  label: Deep end, choppy, tiled rim
+  effect: pool_view
+  params: {amount: 1.0, depth: 0.9, chop: 0.8, caustics: 0.9, tint: 0.65, camera_tilt: 20.0, rim: 0.7,
+           glint: 0.7, flow: 0.9, ripple: 0.85}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.25, 0.7]
+    moods: [liquid, bright, dreamy]
+    style: gentle
+    family: projection
+    dims: 3d
+    technique: [projection, heightfield, optical]
+    weight: 0.8

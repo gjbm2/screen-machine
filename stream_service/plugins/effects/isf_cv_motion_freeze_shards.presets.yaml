@@ -1,0 +1,23 @@
+isf-cv-motion-freeze-shards:
+  label: CV Motion Freeze Shards
+  effect: isf_cv_motion_freeze_shards
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - geometric
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

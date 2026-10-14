@@ -1,0 +1,24 @@
+st-parallelogram-distance-2-d:
+  label: Parallelogram   distance 2 D
+  source: st_parallelogram_distance_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - bright
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    - kaleido
+    weight: 0.4

@@ -1,0 +1,24 @@
+st-retro-cube-effect-with-twist:
+  label: Retro cube effect with twist
+  source: st_retro_cube_effect_with_twist
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - fiery
+    - warm
+    - icy
+    family: fire
+    dims: 3d
+    technique:
+    - raymarch
+    - warp
+    weight: 0.4

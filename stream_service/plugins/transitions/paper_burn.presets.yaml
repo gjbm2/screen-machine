@@ -1,0 +1,25 @@
+paper-burn-ember:
+  label: Paper burn
+  transition: paper_burn
+  params: {roughness: 1.0, origin_x: 0.5, origin_y: 0.68, burn_width: 0.5, char_depth: 0.75, smoke: 0.6, spark_density: 0.5, ember_hue: 0.03, palette: ember, colour_drift: 0.12}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [fiery, tense, dark]
+    style: wild
+    family: organic
+    dims: 2d
+    technique: [noise, light]
+    weight: 1.0
+
+paper-burn-wildfire:
+  label: Wildfire burn
+  transition: paper_burn
+  params: {roughness: 1.8, origin_x: 0.35, origin_y: 1.0, burn_width: 0.85, char_depth: 0.95, smoke: 0.9, spark_density: 0.9, ember_hue: 0.0, palette: ember, palette_period: 1.3, colour_drift: 0.25, duration_s: 3.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [fiery, aggressive, dark]
+    style: wild
+    family: organic
+    dims: 2d
+    technique: [noise, light]
+    weight: 0.9

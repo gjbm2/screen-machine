@@ -1,0 +1,18 @@
+glt-bounce:
+  label: Bounce
+  transition: glt_bounce
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - dark
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

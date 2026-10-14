@@ -1,0 +1,170 @@
+"""HTTP API auth, request validation, catalog and the token file (no GPU sessions are started)."""
+from __future__ import annotations
+
+import os
+import pathlib
+import stat
+
+import aiohttp
+import pytest
+from aiohttp.test_utils import TestClient, TestServer
+
+from stream_service.media import MediaHub
+from stream_service.server import MANAGER, make_app
+from stream_service.tokens import load_or_create_token
+
+REPO_CONFIG = pathlib.Path(__file__).resolve().parents[2] / "config" / "live"
+TOKEN = "ab" * 32
+
+
+@pytest.fixture
+async def client():
+    app = make_app(token=TOKEN, config_dir=REPO_CONFIG)
+    async with TestClient(TestServer(app)) as c:
+        yield c
+
+
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
+ROUTES = [("GET", "/api/catalog"), ("GET", "/api/sessions"), ("POST", "/api/sessions"), ("GET", "/api/state"),
+          ("GET", "/api/sessions/s-1"), ("PATCH", "/api/sessions/s-1"), ("DELETE", "/api/sessions/s-1"),
+          ("POST", "/api/sessions/s-1/go"), ("POST", "/api/sessions/s-1/exit"), ("POST", "/api/sessions/s-1/renew"),
+          ("GET", "/api/sessions/s-1/frames")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", ROUTES)
+@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer nope"}, {"Authorization": TOKEN},
+                                     {"Authorization": f"Basic {TOKEN}"}])
+async def test_api_needs_bearer_token(client, method, path, headers):
+    r = await client.request(method, path, headers=headers)
+    assert r.status == 401
+    assert (await r.json())["error"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_open_routes(client):
+    r = await client.get("/healthz")
+    assert r.status == 200 and (await r.json())["ok"] is True
+    r = await client.get("/dev")
+    assert r.status == 200 and "LivePlayer" in await r.text()
+    r = await client.get("/static/live-player.js")
+    assert r.status == 200
+
+
+@pytest.mark.asyncio
+async def test_catalog(client):
+    r = await client.get("/api/catalog", headers=AUTH)
+    assert r.status == 200
+    cat = await r.json()
+    assert set(cat) >= {"sources", "transitions", "filters", "profiles", "presets"}
+    assert set(cat["profiles"]) == {"hevc-2160p60", "hevc-2160p30", "hevc-1080p60", "h264-720p30", "av1-720p30"}
+    p = cat["profiles"]["hevc-2160p60"]
+    assert (p["codec"], p["w"], p["h"], p["fps"], p["bitrate"], p["gop_s"]) == ("hevc", 3840, 2160, 60, "50M", 1.0)
+    assert cat["presets"]["scenes"]["fractal-zoom"]["source"] == "fractal_zoom"
+    assert cat["presets"]["transitions"]["crossfade-3s"]["transition"] == "crossfade"
+    assert r.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body,code", [
+    ({"screen": "devtest", "anchor": {"rgb": [0, 0, 0]}}, "bad_request"),                       # no scene
+    ({"screen": "devtest", "scene": "nope", "anchor": {"rgb": [0, 0, 0]}}, "unknown_preset"),
+    ({"screen": "devtest", "scene": {"preset": "fractal-zoom", "params": {"speed": 1}},
+      "anchor": {"rgb": [0, 0, 0]}}, "unknown_param"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 999]}}, "bad_still"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"png_b64": "!!"}}, "bad_still"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"png_b64": "aGVsbG8="}}, "bad_image"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "profile": "8k", "anchor": {"rgb": [0, 0, 0]}},
+     "unknown_profile"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]}, "bogus": 1}, "bad_request"),
+    ({"screen": "Dev Test!", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]}}, "bad_request"),
+    ({"screen": "devtest", "scene": "fractal-zoom", "anchor": {"rgb": [0, 0, 0]},
+      "transitions": {"in": {"transition": "nope"}}}, "unknown_transition"),
+])
+async def test_create_validation(client, body, code):
+    r = await client.post("/api/sessions", json=body, headers=AUTH)
+    assert r.status == 400, await r.text()
+    assert (await r.json())["error"] == code
+
+
+@pytest.mark.asyncio
+async def test_bad_json_and_unknown_session(client):
+    r = await client.post("/api/sessions", data=b"{not json", headers={**AUTH, "Content-Type": "application/json"})
+    assert r.status == 400 and (await r.json())["error"] == "bad_json"
+    for method, path in [("GET", "/api/sessions/s-404"), ("POST", "/api/sessions/s-404/go"),
+                         ("DELETE", "/api/sessions/s-404")]:
+        r = await client.request(method, path, headers=AUTH, json={})
+        assert r.status == 404 and (await r.json())["error"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_state_lists_gpus(client):
+    r = await client.get("/api/state", headers=AUTH)
+    st = await r.json()
+    assert st["sessions"] == []
+    assert all({"index", "name", "mem_used_mb"} <= set(g) for g in st["gpus"])
+
+
+@pytest.mark.asyncio
+async def test_events_socket_token(client):
+    with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+        await client.ws_connect("/api/events?token=wrong")
+    assert e.value.status == 401
+    ws = await client.ws_connect(f"/api/events?token={TOKEN}")
+    await ws.send_str("ignored")             # client messages are ignored
+    client.app[MANAGER].events.emit({"type": "session.state", "session": "s-x", "screen": "devtest",
+                                     "state": "holding"})
+    msg = await ws.receive_json(timeout=2)
+    assert msg["state"] == "holding"
+    await ws.close()
+
+
+class FakeSession:
+    def __init__(self):
+        self.id = "s-fake"
+        self.key = "right-key"
+        self.media = MediaHub(self.id)
+        self.state = "holding"
+
+    async def end(self, reason, detail=None):
+        self.state = "ended"
+
+
+@pytest.mark.asyncio
+async def test_media_socket_key(client):
+    client.app[MANAGER].sessions["s-fake"] = FakeSession()
+    ws = await client.ws_connect("/media/s-fake?k=wrong-key")
+    msg = await ws.receive(timeout=2)
+    assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == 4403
+    ws = await client.ws_connect("/media/s-fake")
+    msg = await ws.receive(timeout=2)
+    assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == 4403
+    ws = await client.ws_connect("/media/s-none?k=x")
+    msg = await ws.receive(timeout=2)
+    assert msg.type == aiohttp.WSMsgType.CLOSE and msg.data == 4404
+    # the right key gets config + init once known, then frames from a keyframe, then eos
+    fake = client.app[MANAGER].sessions["s-fake"]
+    ws = await client.ws_connect("/media/s-fake?k=right-key")
+    fake.media.set_config({"type": "config", "codec": "h264"}, b"\x01init")
+    fake.media.on_frame(0, False, b"\x02\x00\x00\x00\x00\x00delta")   # skipped: no keyframe yet
+    fake.media.on_frame(1, True, b"\x02\x01\x00\x00\x00\x01key")
+    assert (await ws.receive_json(timeout=2))["session"] == "s-fake"
+    assert await ws.receive_bytes(timeout=2) == b"\x01init"
+    assert await ws.receive_bytes(timeout=2) == b"\x02\x01\x00\x00\x00\x01key"
+    fake.media.end()
+    assert (await ws.receive_json(timeout=2)) == {"type": "eos"}
+    msg = await ws.receive(timeout=2)
+    assert msg.type == aiohttp.WSMsgType.CLOSE
+
+
+def test_token_file(tmp_path):
+    path = tmp_path / "sub" / "t.token"
+    tok = load_or_create_token(str(path))
+    assert len(tok) == 64 and all(c in "0123456789abcdef" for c in tok)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert load_or_create_token(str(path)) == tok
+    path.write_text("short")
+    with pytest.raises(SystemExit):
+        load_or_create_token(str(path))
+    os.chmod(path, 0o600)

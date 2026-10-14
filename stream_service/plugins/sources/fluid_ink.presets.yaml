@@ -1,0 +1,86 @@
+fluid-ink-silk:
+  label: Silk ink
+  source: fluid_ink
+  params:
+    palette: ocean
+    palette_period: 0.8
+    drift_speed: 0.03
+    vorticity: 6.0
+    trail_length: 0.8
+    splat_radius: 0.5
+    emitter_symmetry: 2.0
+    emitter_orbit: 0.35
+    shading: 0.35
+    bloom: 0.9
+    emitter_spin: 0.05
+    splat_kick: 0.6
+    surge_kick: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.6]
+    moods: [liquid, dreamy, calm, elegant]
+    style: gentle
+    family: water
+    dims: 2d
+    technique: [simulation, field]
+    weight: 1.0
+
+fluid-ink-neon-swirl:
+  label: Neon swirl
+  source: fluid_ink
+  params:
+    palette: neon
+    palette_period: 0.7
+    drift_speed: 0.05
+    vorticity: 20.0
+    trail_length: 0.6
+    splat_radius: 0.3
+    emitter_symmetry: 6.0
+    emitter_orbit: 0.55
+    shading: 0.6
+    bloom: 1.1
+    emitter_spin: 0.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.35, 0.85]
+    moods: [liquid, hypnotic, euphoric, bright]
+    style: lively
+    family: abstract
+    dims: 2d
+    technique: [simulation, light]
+    weight: 1.0
+
+fluid-ink-paint-splash:
+  label: Paint splash
+  source: fluid_ink
+  params:
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.06
+    vorticity: 14.0
+    trail_length: 0.35
+    splat_radius: 0.4
+    emitter_symmetry: 4.0
+    emitter_orbit: 0.65
+    shading: 0.85
+    bloom: 1.0
+    emitter_spin: 0.35
+    splat_kick: 2.0
+    surge_kick: 2.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+    pan: {bind: pan, range: [-0.6, 0.6]}
+    tilt: {bind: tilt, range: [-0.6, 0.6]}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, playful, organic, liquid]
+    style: wild
+    family: organic
+    dims: 2d
+    technique: [simulation, light]
+    weight: 1.0

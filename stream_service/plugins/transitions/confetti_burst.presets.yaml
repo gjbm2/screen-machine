@@ -1,0 +1,25 @@
+confetti_burst-party-pop:
+  label: Party popper
+  transition: confetti_burst
+  params: {duration_s: 3.5, direction: burst, palette: rainbow, chip_size: 16, force: 1.2, count: 0.45, metallic: 0.55, sparkle: 0.7, stagger: 0.55, burst_y: 0.6}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [euphoric, playful, bright]
+    style: wild
+    family: fragment
+    dims: 3d
+    technique: [particles, projection]
+    weight: 1.0
+
+confetti_burst-gold-rain:
+  label: Golden confetti rain
+  transition: confetti_burst
+  params: {duration_s: 4.5, direction: rain, palette: ember, chip_size: 20, force: 0.8, count: 0.3, metallic: 0.9, sparkle: 0.8, stagger: 0.8, flutter: 0.8, burst_y: 0.5}
+  tags:
+    energy: [0.5, 0.9]
+    moods: [euphoric, warm, bright]
+    style: wild
+    family: fragment
+    dims: 3d
+    technique: [particles, projection]
+    weight: 0.8

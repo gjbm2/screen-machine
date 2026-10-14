@@ -1,0 +1,40 @@
+mercury-blobs-studio-chrome:
+  label: Studio chrome
+  source: mercury_blobs
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [liquid, elegant, mellow]
+    style: gentle
+    family: abstract
+    dims: 3d
+    technique: [raymarch, sdf, optical]
+    weight: 1.0
+
+mercury-blobs-neon-mercury:
+  label: Neon mercury
+  source: mercury_blobs
+  params:
+    env_style: 2.0
+    palette: neon
+    palette_period: 1.3
+    drift_speed: 0.04
+    blob_count: 12
+    smoothness: 0.75
+    roughness: 0.05
+    metal_tint: 0.1
+    flash: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [liquid, elegant, hypnotic, dreamy]
+    style: gentle
+    family: abstract
+    dims: 3d
+    technique: [raymarch, sdf, optical]
+    weight: 0.9

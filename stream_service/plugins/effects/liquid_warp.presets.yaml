@@ -1,0 +1,31 @@
+liquid-warp-underwater:
+  label: Underwater (swirling water with caustic light)
+  effect: liquid_warp
+  params: {amount: 0.8, scale: 2.0, complexity: 2.2, anisotropy: 1.0, curl_mix: 0.75, depth: 0.03,
+           refraction_chroma: 0.35, caustics: 0.6, flow_speed: 0.3}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [liquid, dreamy, organic]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [warp, noise, displacement]
+    weight: 1.0
+
+liquid-warp-heat-haze:
+  label: Heat haze (rising shimmer, prism fringes)
+  effect: liquid_warp
+  params: {amount: 0.9, scale: 3.5, complexity: 2.6, anisotropy: 0.0, curl_mix: 0.3, depth: 0.014,
+           refraction_chroma: 0.55, caustics: 0.0, kick: 1.3, flow_speed: 0.9}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.15, 0.7]
+    moods: [warm, dreamy, liquid]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [warp, noise, displacement]
+    weight: 0.9

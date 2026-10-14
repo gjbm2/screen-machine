@@ -1,0 +1,21 @@
+st-first-try-at-domain-warping:
+  label: First try at domain warping
+  source: st_first_try_at_domain_warping
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.4

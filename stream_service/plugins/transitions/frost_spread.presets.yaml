@@ -1,0 +1,27 @@
+frost_spread-hoarfrost:
+  label: Hoarfrost
+  transition: frost_spread
+  params: {duration_s: 4.0, cells: 9, edge_bias: 0.85, crack_brightness: 1.0, ice_tint: 0.65, blur: 0.6,
+           displacement: 0.45, fringe: 0.45, glints: 0.7, palette: ice}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [icy, elegant, calm]
+    style: lively
+    family: organic
+    dims: 2d
+    technique: [tiling, optical]
+    weight: 1.0
+
+frost_spread-glacier-shards:
+  label: Glacier shards
+  transition: frost_spread
+  params: {duration_s: 3.5, cells: 15, edge_bias: 0.6, crack_brightness: 1.5, ice_tint: 0.8, blur: 0.85,
+           displacement: 0.9, fringe: 0.85, glints: 1.0, palette: ocean, drift_speed: 0.2}
+  tags:
+    energy: [0.45, 0.8]
+    moods: [icy, tense]
+    style: lively
+    family: organic
+    dims: 2d
+    technique: [tiling, optical]
+    weight: 0.8

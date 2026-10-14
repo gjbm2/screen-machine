@@ -1,0 +1,23 @@
+st-bandlimited-fbm-box-2-d:
+  label: Bandlimited fbm (box, 2 D)
+  source: st_bandlimited_fbm_box_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - retro
+    family: geometric
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.7

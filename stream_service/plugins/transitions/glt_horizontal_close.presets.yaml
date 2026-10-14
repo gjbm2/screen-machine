@@ -1,0 +1,16 @@
+glt-horizontal-close:
+  label: Horizontal Close
+  transition: glt_horizontal_close
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - hypnotic
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

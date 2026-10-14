@@ -1,0 +1,22 @@
+isf-gn-broke-in-bad:
+  label: Gn Broke in Bad
+  effect: isf_gn_broke_in_bad
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.5

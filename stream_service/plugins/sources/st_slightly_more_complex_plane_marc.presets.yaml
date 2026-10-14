@@ -1,0 +1,24 @@
+st-slightly-more-complex-plane-marc:
+  label: Slightly more complex plane marc
+  source: st_slightly_more_complex_plane_marc
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - bright
+    - euphoric
+    family: light
+    dims: 3d
+    technique:
+    - raymarch
+    - noise
+    weight: 0.15

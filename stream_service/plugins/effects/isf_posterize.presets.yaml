@@ -1,0 +1,22 @@
+isf-posterize:
+  label: Posterize
+  effect: isf_posterize
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - retro
+    - playful
+    style: lively
+    family: colour
+    dims: 2d
+    technique:
+    - colour
+    weight: 0.5

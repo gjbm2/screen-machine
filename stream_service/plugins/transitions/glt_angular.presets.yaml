@@ -1,0 +1,17 @@
+glt-angular:
+  label: Angular
+  transition: glt_angular
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

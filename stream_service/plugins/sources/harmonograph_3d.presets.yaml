@@ -1,0 +1,43 @@
+harmonograph-3d-laser-weave:
+  label: Laser weave
+  source: harmonograph_3d
+  params:
+    curve_count: 6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [hypnotic, geometric, bright]
+    style: gentle
+    family: light
+    dims: 3d
+    technique: [wireframe, analytic]
+    weight: 1.0
+
+harmonograph-3d-silk-pendulum:
+  label: Silk pendulum
+  source: harmonograph_3d
+  params:
+    palette: dusk
+    palette_period: 0.7
+    drift_speed: 0.015
+    ratio_set: 0.0
+    curve_count: 3
+    damping: 0.65
+    tube_width: 0.1
+    twist: 0.7
+    complexity: 0.5
+    trail: 1.3
+    rotation: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.7}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [elegant, hypnotic, dreamy]
+    style: gentle
+    family: light
+    dims: 3d
+    technique: [wireframe, analytic]
+    weight: 0.8

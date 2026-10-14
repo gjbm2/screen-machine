@@ -1,0 +1,30 @@
+globe-wrap-world:
+  label: Floating world (ice atmosphere)
+  effect: globe_wrap
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.6]
+    moods: [cosmic, elegant, dreamy]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, analytic, light]
+    weight: 1.0
+
+globe-wrap-neon-planet:
+  label: Neon planet (tilted, fast, starfield)
+  effect: globe_wrap
+  params: {amount: 1.0, size: 0.52, tilt: 32.0, spin_speed: 0.08, kick: 0.55, atmosphere: 0.95, background: 0.15,
+           stars: 0.85, lighting: 0.85, palette: neon, drift_speed: 0.09, wrap: single}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [cosmic, euphoric]
+    style: lively
+    family: projection
+    dims: 3d
+    technique: [projection, analytic, light]
+    weight: 0.8

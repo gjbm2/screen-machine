@@ -1,0 +1,23 @@
+isf-im-trunchan-tran-voroni-final-release:
+  label: IM TRUNCHAN tran Voroni FINAL RELEASE
+  source: isf_im_trunchan_tran_voroni_final_release
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: geometric
+    dims: 2d
+    technique:
+    - kaleido
+    weight: 0.6

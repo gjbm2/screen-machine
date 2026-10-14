@@ -1,0 +1,22 @@
+st-corroding-arbitrary-sdf:
+  label: Corroding Arbitrary SDF
+  source: st_corroding_arbitrary_sdf
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

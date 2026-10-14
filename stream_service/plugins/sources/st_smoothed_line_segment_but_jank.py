@@ -1,0 +1,56 @@
+"""Smoothed Line Segment but jank: Modified https://www.shadertoy.com/view/3tdSDj by IQ Trying to get a smoothed line segment SDF. Used smoothstep, but this approach suffers from artifacts when...
+
+Source: https://www.shadertoy.com/view/NdyGRz
+Author: TimArt
+License: MIT
+license_class: permissive
+Imported verbatim from GLSL (Shadertoy); runs through stream_service.plugins._lib.glsl (GLSL -> CUDA).
+Licence line in the shader: // The MIT License
+"""
+from stream_service.plugins._lib.glsl import GlslSource, scene_params
+
+
+GLSL = r'''// The MIT License
+// Copyright © 2020 Inigo Quilez
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// Signed distance and line segment
+
+// Segment:              https://www.shadertoy.com/view/3tdSDj
+// and many more here:   http://www.iquilezles.org/www/articles/distfunctions2d/distfunctions2d.htm
+
+float line_segment(in vec2 p, in vec2 a, in vec2 b) {
+	vec2 ba = b - a;
+	vec2 pa = p - a;
+	float normalizedX = (p.x - a.x) / (b.x - a.x);
+    float lineCenterY = mix (a.y, b.y, smoothstep(0.0f, 1.0f, normalizedX));
+    return lineCenterY - p.y;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+	vec2 pos = (fragCoord - iResolution.xy * .5) / iResolution.y;
+	float zoom = 2.5;
+	pos *= zoom;
+
+	vec2 v1 = cos(iTime + vec2(0.,5.));
+	vec2 v2 = cos(iTime + vec2(0.,5.) + 3.1);
+	float thickness = .2 * (.5 + .5 * sin(iTime * 1.));
+
+	float d = line_segment(pos, v1, v2) - thickness;
+
+	vec3 color = vec3(1.) - sign(d) * vec3(0., 0., 0.);
+	color *= 1.5 - exp(.5 * abs(d));
+	color *= .5 + .3 * cos(120. * d);
+	color = mix(color, vec3(1.), 1. - smoothstep(.0, .015, abs(d)));
+
+	fragColor = vec4(color, 1.);
+}'''
+
+
+class StSmoothedLineSegmentButJank(GlslSource):
+    name = 'st_smoothed_line_segment_but_jank'
+    label = 'Smoothed Line Segment but jank'
+    description = 'Modified https://www.shadertoy.com/view/3tdSDj by IQ Trying to get a smoothed line segment SDF. Used smoothstep, but this approach suffers from artifacts when...'
+    dialect = 'st'
+    GLSL = GLSL
+    params = scene_params({}, render_scale=0.5)

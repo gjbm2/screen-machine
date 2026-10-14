@@ -1,0 +1,22 @@
+isf-kaleidoscope:
+  label: Kaleidoscope
+  effect: isf_kaleidoscope
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - hypnotic
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

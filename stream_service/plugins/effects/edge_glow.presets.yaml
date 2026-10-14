@@ -1,0 +1,31 @@
+edge_glow-tron-grid:
+  label: Tron grid (neon outlines on near-black)
+  effect: edge_glow
+  params: {amount: 0.85, edge_threshold: 0.3, line_width: 0.6, source_dim: 0.85, colour_by: 0.15, glow_radius: 0.55,
+           glow_kick: 1.0, drift_kick: 0.8, palette: neon, palette_period: 1.0, drift_speed: 0.05}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [geometric, tense, retro]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [light, retro]
+    weight: 1.0
+
+edge_glow-led-trace:
+  label: LED trace (soft glowing contours over the scene)
+  effect: edge_glow
+  params: {amount: 0.6, edge_threshold: 0.2, line_width: 1.1, source_dim: 0.45, colour_by: 0.7, glow_radius: 0.8,
+           glow_kick: 0.6, drift_kick: 0.4, palette: candy, palette_period: 1.6, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [bright, geometric]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [light, optical]
+    weight: 0.8

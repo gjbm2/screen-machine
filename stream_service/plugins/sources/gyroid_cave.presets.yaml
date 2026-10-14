@@ -1,0 +1,40 @@
+gyroid-cave-dream:
+  label: Gyroid dream cave
+  source: gyroid_cave
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [organic, dreamy, liquid]
+    style: gentle
+    family: organic
+    dims: 3d
+    technique: [raymarch, sdf, field]
+    weight: 1.0
+
+gyroid-cave-diamond-lattice:
+  label: Diamond lattice cave
+  source: gyroid_cave
+  params:
+    palette: neon
+    palette_period: 1.6
+    drift_speed: 0.05
+    surface_morph: 1.0
+    frequency: 1.3
+    shell_thickness: 0.14
+    warp_amount: 0.6
+    double_layer: 0.75
+    fog: 0.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.8]
+    moods: [cosmic, hypnotic, liquid]
+    style: lively
+    family: organic
+    dims: 3d
+    technique: [raymarch, sdf, field]
+    weight: 0.8

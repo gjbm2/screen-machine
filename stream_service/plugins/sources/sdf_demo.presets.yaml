@@ -1,0 +1,57 @@
+sdf-demo-neon-hall:
+  label: Neon pillar hall
+  source: sdf_demo
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [hypnotic, geometric, bright, playful]
+    weight: 1.0
+
+sdf-demo-ember-cathedral:
+  label: Ember cathedral
+  source: sdf_demo
+  params:
+    palette: ember
+    palette_period: 0.7
+    drift_speed: 0.02
+    column_spacing: 4.6
+    column_shape: 0.0
+    twist: 0.0
+    glow: 0.8
+    fog: 0.07
+    blob_smooth: 1.1
+    blob_count: 5
+    camera_distance: 6.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.1, 0.55]
+    moods: [warm, dark, dreamy, mellow]
+    weight: 0.8
+
+sdf-demo-ice-twist:
+  label: Ice twist
+  source: sdf_demo
+  params:
+    palette: ice
+    palette_period: 1.6
+    drift_speed: 0.06
+    column_spacing: 2.8
+    column_shape: 1.0
+    twist: 1.0
+    glow: 1.4
+    fog: 0.03
+    blob_smooth: 0.4
+    blob_count: 7
+    camera_distance: 4.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [icy, euphoric, geometric, tense]
+    weight: 0.8

@@ -1,0 +1,40 @@
+wire-terrain-outrun-grid:
+  label: Outrun grid
+  source: wire_terrain
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [retro, geometric, euphoric]
+    style: lively
+    family: retro
+    dims: 3d
+    technique: [wireframe, heightfield, retro]
+    weight: 1.0
+
+wire-terrain-unknown-pleasures:
+  label: Unknown pleasures
+  source: wire_terrain
+  params:
+    style: 0.0
+    palette: ice
+    palette_period: 0.35
+    drift_speed: 0.01
+    line_density: 0.4
+    terrain_roughness: 0.6
+    glow: 0.6
+    sun: 0.0
+    ripple: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [retro, hypnotic, dark]
+    style: lively
+    family: retro
+    dims: 3d
+    technique: [wireframe, heightfield, retro]
+    weight: 1.0

@@ -1,0 +1,17 @@
+glt-windowslice:
+  label: Windowslice
+  transition: glt_windowslice
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - icy
+    - geometric
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

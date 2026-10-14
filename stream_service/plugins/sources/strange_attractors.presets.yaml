@@ -1,0 +1,40 @@
+strange-attractors-lorenz-silk:
+  label: Lorenz silk
+  source: strange_attractors
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.9]
+    moods: [cosmic, hypnotic, dreamy]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [particles, simulation]
+    weight: 1.0
+
+strange-attractors-thomas-flight:
+  label: Thomas labyrinth flight
+  source: strange_attractors
+  params:
+    attractor: thomas
+    palette: dusk
+    palette_period: 1.3
+    drift_speed: 0.03
+    trail_persistence: 0.93
+    camera_distance: 2.3
+    flythrough: 0.85
+    tracers: 0.8
+    glow: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.1, 0.7]
+    moods: [cosmic, dreamy, hypnotic]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [particles, simulation]
+    weight: 0.8

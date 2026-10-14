@@ -1,0 +1,40 @@
+lava-lake-caldera:
+  label: Caldera lava lake
+  source: lava_lake
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [fiery, aggressive, dark]
+    style: wild
+    family: fire
+    dims: 3d
+    technique: [heightfield, noise, particles]
+    weight: 1.0
+
+lava-lake-sulphur-night:
+  label: Sulphur night (blue flames)
+  source: lava_lake
+  params:
+    sulphur: 0.8
+    crust_size: 2.2
+    crack_width: 0.3
+    smoke: 0.7
+    camera_height: 4.5
+    fountains: 0.6
+    heat_haze: 0.7
+    palette_period: 0.8
+    drift_speed: 0.03
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.9}
+  tags:
+    energy: [0.4, 0.9]
+    moods: [dark, tense, fiery]
+    style: wild
+    family: fire
+    dims: 3d
+    technique: [heightfield, noise, particles]
+    weight: 0.8

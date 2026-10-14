@@ -1,0 +1,40 @@
+neon-city-night-flight:
+  label: Neon city night flight
+  source: neon_city
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [dark, tense, retro, geometric]
+    style: lively
+    family: architecture
+    dims: 3d
+    technique: [analytic, tiling, light]
+    weight: 1.0
+
+neon-city-rooftops:
+  label: Neon city rooftops
+  source: neon_city
+  params:
+    palette: candy
+    palette_period: 1.6
+    drift_speed: 0.04
+    camera_altitude: 0.85
+    haze: 0.3
+    building_density: 0.9
+    height_variance: 0.9
+    window_density: 0.7
+    strobe_kick: 1.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.45, 0.9]
+    moods: [dark, retro, euphoric, geometric]
+    style: lively
+    family: architecture
+    dims: 3d
+    technique: [analytic, tiling, light]
+    weight: 0.8

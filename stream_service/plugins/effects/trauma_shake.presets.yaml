@@ -1,0 +1,30 @@
+trauma-shake-camera:
+  label: Camera shake (beat hits, quick decay)
+  effect: trauma_shake
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [aggressive, tense, euphoric]
+    style: wild
+    family: motion
+    dims: 2d
+    technique: [displacement, noise]
+    weight: 1.0
+
+trauma-shake-earthquake:
+  label: Earthquake (slow rumble, vertical, rolling, long decay)
+  effect: trauma_shake
+  params: {amount: 1.0, frequency: 3.0, max_offset: 0.05, max_roll: 3.5, decay: 0.55, idle_trauma: 0.18,
+           axis_bias: 0.55, motion_blur: 0.6}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [aggressive, tense, dark]
+    style: wild
+    family: motion
+    dims: 2d
+    technique: [displacement, noise]
+    weight: 0.8

@@ -1,0 +1,16 @@
+glt-windowblinds:
+  label: Windowblinds
+  transition: glt_windowblinds
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - geometric
+    style: gentle
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

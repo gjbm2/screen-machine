@@ -1,0 +1,18 @@
+glt-parametric-glitch:
+  label: Parametric glitch
+  transition: glt_parametric_glitch
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    - geometric
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

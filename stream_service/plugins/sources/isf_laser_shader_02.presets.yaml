@@ -1,0 +1,23 @@
+isf-laser-shader-02:
+  label: Laser Shader 02
+  source: isf_laser_shader_02
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - bright
+    family: water
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

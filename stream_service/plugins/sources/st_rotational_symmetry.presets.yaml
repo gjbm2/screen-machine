@@ -1,0 +1,24 @@
+st-rotational-symmetry:
+  label: Rotational symmetry
+  source: st_rotational_symmetry
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - hypnotic
+    family: cosmic
+    dims: 3d
+    technique:
+    - raymarch
+    - kaleido
+    weight: 0.7

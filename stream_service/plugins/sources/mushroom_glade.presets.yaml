@@ -1,0 +1,40 @@
+mushroom-glade-foxfire:
+  label: Foxfire glade
+  source: mushroom_glade
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [dreamy, organic, playful]
+    style: gentle
+    family: organic
+    dims: 3d
+    technique: [raymarch, sdf, particles]
+    weight: 1.0
+
+mushroom-glade-parasol-moonmist:
+  label: Parasol moonmist
+  source: mushroom_glade
+  params:
+    palette: ice
+    palette_period: 1.6
+    drift_speed: 0.03
+    mushroom_density: 0.85
+    cap_shape: 0.85
+    glow_spread: 0.8
+    fog: 0.65
+    firefly_count: 0.8
+    mycelium: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.9}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [dreamy, mellow, icy]
+    style: gentle
+    family: organic
+    dims: 3d
+    technique: [raymarch, sdf, particles]
+    weight: 0.8

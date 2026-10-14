@@ -1,0 +1,22 @@
+st-distance-field-tutorial-part-2:
+  label: Distance field tutorial part 2
+  source: st_distance_field_tutorial_part_2
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: light
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

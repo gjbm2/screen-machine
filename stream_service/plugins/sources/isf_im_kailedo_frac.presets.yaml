@@ -1,0 +1,24 @@
+isf-im-kailedo-frac:
+  label: Im Kailedo Frac
+  source: isf_im_kailedo_frac
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    - organic
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    - kaleido
+    weight: 0.6

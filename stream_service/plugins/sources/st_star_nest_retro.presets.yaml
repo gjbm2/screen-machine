@@ -1,0 +1,23 @@
+st-star-nest-retro:
+  label: Star Nest Retro
+  source: st_star_nest_retro
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.7

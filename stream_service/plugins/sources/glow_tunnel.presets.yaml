@@ -1,0 +1,48 @@
+glow-tunnel-neon-rush:
+  label: Glow tunnel (neon rush)
+  source: glow_tunnel
+  params:
+    palette: neon
+    palette_period: 1.0
+    drift_speed: 0.05
+    twist: 0.9
+    tunnel_radius: 1.0
+    glow_falloff: 1.8
+    strand_mix: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, bright, hypnotic]
+    style: lively
+    family: tunnel
+    dims: 3d
+    technique: [raymarch, volumetric, noise]
+    weight: 1.0
+
+glow-tunnel-liquid-ember:
+  label: Glow tunnel (liquid ember haze)
+  source: glow_tunnel
+  params:
+    palette: dusk
+    palette_period: 1.6
+    drift_speed: 0.03
+    twist: 1.4
+    tunnel_radius: 1.4
+    turbulence_frequency: 1.0
+    turbulence_octaves: 3.4
+    glow_falloff: 1.25
+    strand_mix: 0.35
+    bend: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 0.95]
+    moods: [liquid, hypnotic, warm]
+    style: lively
+    family: tunnel
+    dims: 3d
+    technique: [raymarch, volumetric, warp]
+    weight: 0.9

@@ -1,0 +1,41 @@
+caustic-depths-turquoise-shallows:
+  label: Turquoise shallows
+  source: caustic_depths
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [liquid, calm, dreamy]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [analytic, optical, volumetric]
+    weight: 1.0
+
+caustic-depths-kelp-cathedral:
+  label: Kelp cathedral
+  source: caustic_depths
+  params:
+    depth: 0.7
+    kelp: 0.85
+    shaft_density: 1.25
+    turbidity: 0.6
+    seabed_relief: 1.1
+    caustic_scale: 0.75
+    water_tint: 0.55
+    palette: forest
+    palette_period: 0.8
+    drift_speed: 0.015
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.7]
+    moods: [liquid, dreamy, mellow]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [analytic, optical, volumetric]
+    weight: 0.8

@@ -1,0 +1,23 @@
+st-slicing-a-4-d-apollian:
+  label: Slicing a 4 D apollian
+  source: st_slicing_a_4_d_apollian
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 3d
+    technique:
+    - fractal
+    weight: 0.4

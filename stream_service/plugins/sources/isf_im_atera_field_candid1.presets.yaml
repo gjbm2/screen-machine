@@ -1,0 +1,22 @@
+isf-im-atera-field-candid1:
+  label: IM Atera Field Candid1
+  source: isf_im_atera_field_candid1
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - dreamy
+    - mellow
+    family: abstract
+    dims: 3d
+    technique:
+    - analytic
+    weight: 0.6

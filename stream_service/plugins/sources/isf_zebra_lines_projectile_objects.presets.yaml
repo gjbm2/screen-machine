@@ -1,0 +1,21 @@
+isf-zebra-lines-projectile-objects:
+  label: Zebra Lines Projectile Objects
+  source: isf_zebra_lines_projectile_objects
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - geometric
+    family: geometric
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

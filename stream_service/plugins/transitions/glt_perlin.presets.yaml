@@ -1,0 +1,17 @@
+glt-perlin:
+  label: Perlin
+  transition: glt_perlin
+  params: {}
+  tags:
+    energy:
+    - 0.6
+    - 1.0
+    moods:
+    - glitchy
+    - tense
+    style: wild
+    family: glitch
+    dims: 2d
+    technique:
+    - glitch
+    weight: 0.6

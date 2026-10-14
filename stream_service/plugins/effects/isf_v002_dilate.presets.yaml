@@ -1,0 +1,22 @@
+isf-v002-dilate:
+  label: V002 Dilate
+  effect: isf_v002_dilate
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - dreamy
+    - mellow
+    style: lively
+    family: stylise
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.5

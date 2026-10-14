@@ -1,0 +1,25 @@
+revolve-vortex-flash:
+  label: Vortex flash
+  transition: revolve
+  params: {max_rotation: 2.4, swirl: 3.4, peak_zoom: 2.5, barrel: 0.45, flash: 0.75, palette: neon}
+  tags:
+    energy: [0.7, 1.0]
+    moods: [euphoric, aggressive, bright]
+    style: wild
+    family: warp
+    dims: 2d
+    technique: [warp, analytic, light]
+    weight: 1.0
+
+revolve-twist-through:
+  label: Twist-through
+  transition: revolve
+  params: {max_rotation: 1.2, swirl: 2.0, peak_zoom: 1.6, barrel: 0.22, motion_blur: 0.7, direction: 0.8, flash: 0.2}
+  tags:
+    energy: [0.6, 0.9]
+    moods: [euphoric, bright, playful]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, analytic]
+    weight: 0.9

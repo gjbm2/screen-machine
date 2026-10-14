@@ -1,0 +1,23 @@
+isf-im-ethernal-waves-star:
+  label: IM Ethernal Waves Star
+  source: isf_im_ethernal_waves_star
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    - cosmic
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

@@ -1,0 +1,51 @@
+matrix-maelstrom-classic:
+  label: Matrix maelstrom
+  source: matrix_maelstrom
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [retro, hypnotic, dark, glitchy]
+    weight: 1.0
+
+matrix-maelstrom-downpour:
+  label: Downpour into the drain
+  source: matrix_maelstrom
+  params:
+    swirl_amount: 0.32
+    glyph_density: 70
+    trail_length: 0.75
+    hole_radius: 0.24
+    glyph_rate: 1.6
+    rain_kick: 1.6
+    wave_kick: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [retro, dark, tense, glitchy]
+    weight: 0.9
+
+matrix-maelstrom-neon-drain:
+  label: Neon code drain
+  source: matrix_maelstrom
+  params:
+    palette: candy
+    palette_period: 1.2
+    drift_speed: 0.05
+    tint_mix: 0.85
+    glyph_density: 90
+    hole_radius: 0.42
+    trail_length: 0.45
+    glyph_rate: 2.5
+    wave_kick: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.55, 1.0]
+    moods: [glitchy, hypnotic, euphoric, cosmic]
+    weight: 0.8

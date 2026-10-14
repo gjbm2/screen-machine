@@ -1,0 +1,21 @@
+isf-monochrome-channelmix:
+  label: Monochrome Channelmix
+  effect: isf_monochrome_channelmix
+  params:
+    amount: 1.0
+  bindings:
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 1.0
+    moods:
+    - hypnotic
+    style: lively
+    family: colour
+    dims: 2d
+    technique:
+    - colour
+    weight: 0.5

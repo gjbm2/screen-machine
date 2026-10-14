@@ -1,0 +1,23 @@
+st-twisty-torus-dudes:
+  label: Twisty Torus Dudes
+  source: st_twisty_torus_dudes
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    - warp
+    weight: 0.15

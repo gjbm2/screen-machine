@@ -1,0 +1,21 @@
+st-15-edits-of-something-by:
+  label: 15 edits of something by.....
+  source: st_15_edits_of_something_by
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - geometric
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.15

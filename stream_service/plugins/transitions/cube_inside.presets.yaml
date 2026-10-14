@@ -1,0 +1,26 @@
+cube-inside-quarter-turn:
+  label: Inside the cube (quarter turn)
+  transition: cube_inside
+  params: {duration_s: 2.0, fov_pump: 0.55, seam_glow: 0.6, wall_dim: 0.35, bank: 5.0, palette: neon}
+  tags:
+    energy: [0.3, 0.8]
+    moods: [hypnotic, geometric]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 1.0
+
+cube-inside-vertigo:
+  label: Vertigo half turn
+  transition: cube_inside
+  params: {duration_s: 2.6, turns: 2, fov_pump: 1.0, seam_glow: 0.85, wall_dim: 0.25, cap_dim: 0.2, bank: -9.0,
+           vignette: 0.6, palette: acid, palette_period: 1.4, drift_speed: 0.15}
+  tags:
+    energy: [0.6, 1.0]
+    moods: [tense, hypnotic]
+    style: lively
+    family: 3d
+    dims: 3d
+    technique: [projection, analytic]
+    weight: 0.8

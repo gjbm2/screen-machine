@@ -1,0 +1,24 @@
+isf-domain-warped-fbm-noise:
+  label: Domain warped FBM noise
+  source: isf_domain_warped_fbm_noise
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - noise
+    - warp
+    weight: 0.6

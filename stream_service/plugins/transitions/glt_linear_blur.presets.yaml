@@ -1,0 +1,17 @@
+glt-linear-blur:
+  label: Linear Blur
+  transition: glt_linear_blur
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - dreamy
+    - mellow
+    style: gentle
+    family: blend
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

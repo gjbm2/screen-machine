@@ -1,0 +1,22 @@
+st-ellipse-gradient-2-d:
+  label: Ellipse   gradient 2 D
+  source: st_ellipse_gradient_2_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

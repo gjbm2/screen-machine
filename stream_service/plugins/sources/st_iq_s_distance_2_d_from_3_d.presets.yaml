@@ -1,0 +1,23 @@
+st-iq-s-distance-2-d-from-3-d:
+  label: Iq's distance 2 D from 3 D
+  source: st_iq_s_distance_2_d_from_3_d
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - bright
+    - euphoric
+    family: abstract
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.15

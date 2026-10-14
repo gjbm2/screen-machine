@@ -1,0 +1,22 @@
+st-high-quality-hash-and-visualizer:
+  label: High Quality Hash and Visualizer
+  source: st_high_quality_hash_and_visualizer
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    family: abstract
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

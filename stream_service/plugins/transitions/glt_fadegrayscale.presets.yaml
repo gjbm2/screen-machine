@@ -1,0 +1,17 @@
+glt-fadegrayscale:
+  label: Fadegrayscale
+  transition: glt_fadegrayscale
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - bright
+    - euphoric
+    style: gentle
+    family: blend
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

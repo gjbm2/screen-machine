@@ -1,0 +1,43 @@
+sacred-mandala-neon-flower:
+  label: Neon flower of life
+  source: sacred_mandala
+  params:
+    symmetry_order: 10
+    overlay: 0.67
+    palette: neon
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [hypnotic, geometric, cosmic]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [analytic, kaleido]
+    weight: 1.0
+
+sacred-mandala-metatron-gold:
+  label: Metatron's gold (outward drift)
+  source: sacred_mandala
+  params:
+    symmetry_order: 12
+    overlay: 1.0
+    zoom_factor: 2.1
+    zoom_speed: -0.6
+    spin: -0.4
+    line_weight: 0.35
+    palette: ember
+    palette_period: 1.6
+    drift_speed: 0.02
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.7]
+    moods: [hypnotic, geometric, warm, elegant]
+    style: lively
+    family: geometric
+    dims: 2d
+    technique: [analytic, kaleido]
+    weight: 0.8

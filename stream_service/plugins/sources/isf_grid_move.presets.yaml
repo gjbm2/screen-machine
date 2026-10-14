@@ -1,0 +1,23 @@
+isf-grid-move:
+  label: Grid Move
+  source: isf_grid_move
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - bright
+    - euphoric
+    - geometric
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

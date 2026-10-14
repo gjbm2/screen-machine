@@ -1,0 +1,40 @@
+radial-spectrum-neon-ring:
+  label: Neon spectrum ring
+  source: radial_spectrum
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [euphoric, bright, playful]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [analytic, light]
+    weight: 1.0
+
+radial-spectrum-led-floor:
+  label: LED floor analyser
+  source: radial_spectrum
+  params:
+    layout: 1.0
+    bar_style: 1.0
+    bar_count: 96
+    symmetry: 1.0
+    reflection: 0.5
+    colour_by: 1.0
+    palette: rainbow
+    palette_period: 0.45
+    drift_speed: 0.02
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [retro, playful, bright, euphoric]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [analytic, light, retro]
+    weight: 0.9

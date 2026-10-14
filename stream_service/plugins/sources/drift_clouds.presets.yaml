@@ -1,0 +1,43 @@
+drift-clouds-dusk-drift:
+  label: Dusk drift (sunset clouds, beat lightning)
+  source: drift_clouds
+  params:
+    palette: dusk
+    sky: 0.5
+    cloud_cover: 0.5
+    layering: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, mellow, warm, dreamy]
+    style: gentle
+    family: landscape
+    dims: 2d
+    technique: [noise, field]
+    weight: 1.0
+
+drift-clouds-neon-night:
+  label: Neon night storm
+  source: drift_clouds
+  params:
+    palette: neon
+    sky: 0.95
+    cloud_cover: 0.6
+    cloud_scale: 1.4
+    dark_light: 0.35
+    layering: 0.7
+    lightning: 1.5
+    drift_speed: 0.04
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.2, 0.6]
+    moods: [mellow, bright, cosmic]
+    style: gentle
+    family: landscape
+    dims: 2d
+    technique: [noise, field]
+    weight: 0.8

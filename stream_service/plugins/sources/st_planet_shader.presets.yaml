@@ -1,0 +1,23 @@
+st-planet-shader:
+  label: Planet Shader
+  source: st_planet_shader
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.4

@@ -1,0 +1,22 @@
+isf-strange-cloud:
+  label: Strange Cloud
+  source: isf_strange_cloud
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    - geometric
+    family: fractal
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.6

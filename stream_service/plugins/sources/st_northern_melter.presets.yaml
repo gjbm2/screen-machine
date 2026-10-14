@@ -1,0 +1,23 @@
+st-northern-melter:
+  label: Northern Melter
+  source: st_northern_melter
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - liquid
+    family: water
+    dims: 2d
+    technique:
+    - noise
+    weight: 0.15

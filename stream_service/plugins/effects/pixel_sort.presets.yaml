@@ -1,0 +1,31 @@
+pixel-sort-pour:
+  label: Pouring sort (bright melts down, acid tint)
+  effect: pixel_sort
+  params: {amount: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [glitchy, tense, aggressive]
+    style: lively
+    family: stylise
+    dims: 2d
+    technique: [glitch, colour]
+    weight: 1.0
+
+pixel-sort-hue-shear:
+  label: Hue shear (sideways hue sort, long jagged spans)
+  effect: pixel_sort
+  params: {amount: 1.0, direction: right, sort_key: hue, low_threshold: 0.0, high_threshold: 1.0,
+           span_limit: 240, span_jitter: 0.85, pour_speed: 0.8, persistence: 0.96, surge_kick: 1.8,
+           tint_mix: 0.2, reverse: true, palette: neon}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.65, 1.0]
+    moods: [glitchy, aggressive, retro]
+    style: wild
+    family: stylise
+    dims: 2d
+    technique: [glitch, colour]
+    weight: 0.8

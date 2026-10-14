@@ -1,0 +1,17 @@
+glt-cross-zoom:
+  label: Cross Zoom
+  transition: glt_cross_zoom
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - dreamy
+    - mellow
+    style: gentle
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

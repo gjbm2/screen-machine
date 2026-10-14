@@ -1,0 +1,31 @@
+hue-drift-rainbow-tones:
+  label: Rainbow tones (slow hue drift fanned across shadows to highlights)
+  effect: hue_drift
+  params: {amount: 0.85, rate: 0.04, luma_spread: 0.85, channel_cycle: 0.0, saturation: 1.2, vibrance: 0.4,
+           tint_strength: 0.15, punch: 0.5, sat_punch: 0.3, palette: rainbow, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [dreamy, playful, euphoric]
+    style: gentle
+    family: colour
+    dims: 2d
+    technique: [colour]
+    weight: 1.0
+
+hue-drift-channel-rave:
+  label: Channel cycle (R->G->B swaps that whoosh on the beat)
+  effect: hue_drift
+  params: {amount: 1.0, rate: 0.1, luma_spread: 0.3, channel_cycle: 0.85, saturation: 1.35, vibrance: 0.3,
+           tint_strength: 0.25, punch: 1.4, sat_punch: 0.6, palette: neon, drift_speed: 0.06}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, playful]
+    style: lively
+    family: colour
+    dims: 2d
+    technique: [colour]
+    weight: 0.8

@@ -1,0 +1,31 @@
+kuwahara-oil-canvas:
+  label: Oil canvas (flowing strokes, warm glaze)
+  effect: kuwahara
+  params: {amount: 0.85, brush_size: 5.0, sharpness: 0.5, hardness: 0.55, anisotropy: 0.8, saturation_boost: 0.45,
+           glaze_mix: 0.3, impasto: 0.4, soften_kick: 0.8, brush_kick: 0.5, palette: dusk, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [dreamy, elegant, warm]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [colour, optical]
+    weight: 1.0
+
+kuwahara-watercolour-wash:
+  label: Soft wash (round strokes, cool glaze, blooms on the beat)
+  effect: kuwahara
+  params: {amount: 0.7, brush_size: 6.5, sharpness: 0.3, hardness: 0.4, anisotropy: 0.25, saturation_boost: 0.3,
+           glaze_mix: 0.4, impasto: 0.15, soften_kick: 1.2, brush_kick: 0.3, palette: ice, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.0, 0.4]
+    moods: [calm, dreamy, mellow]
+    style: gentle
+    family: stylise
+    dims: 2d
+    technique: [colour, optical]
+    weight: 0.8

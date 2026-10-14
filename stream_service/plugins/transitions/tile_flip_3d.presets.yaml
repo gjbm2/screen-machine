@@ -1,0 +1,27 @@
+tile_flip_3d-wave:
+  label: Diagonal tile wave
+  transition: tile_flip_3d
+  params: {tile_count: 8, stagger: 0.5, stagger_spread: 0.65, divider_width: 0.04, perspective: 0.6,
+           thickness: 0.06, snap: 0.4, palette: neon, backing: 0.3}
+  tags:
+    energy: [0.4, 0.85]
+    moods: [geometric, playful, bright]
+    style: lively
+    family: 3d
+    dims: 2d
+    technique: [tiling, projection, analytic]
+    weight: 1.0
+
+tile_flip_3d-burst:
+  label: Radial tile burst
+  transition: tile_flip_3d
+  params: {tile_count: 14, stagger: 1.0, stagger_spread: 0.8, divider_width: 0.07, flip_axis_deg: 35.0,
+           perspective: 0.85, thickness: 0.1, snap: 0.75, palette: dusk, backing: 0.6}
+  tags:
+    energy: [0.55, 0.9]
+    moods: [geometric, bright, euphoric]
+    style: wild
+    family: 3d
+    dims: 2d
+    technique: [tiling, projection, light]
+    weight: 0.9

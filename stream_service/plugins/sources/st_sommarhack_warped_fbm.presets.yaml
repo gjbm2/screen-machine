@@ -1,0 +1,23 @@
+st-sommarhack-warped-fbm:
+  label: Sommarhack warped fbm
+  source: st_sommarhack_warped_fbm
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - noise
+    - warp
+    weight: 0.15

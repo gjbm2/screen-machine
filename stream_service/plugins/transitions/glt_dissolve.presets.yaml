@@ -1,0 +1,18 @@
+glt-dissolve:
+  label: Dissolve
+  transition: glt_dissolve
+  params: {}
+  tags:
+    energy:
+    - 0.0
+    - 0.6
+    moods:
+    - fiery
+    - warm
+    - bright
+    style: gentle
+    family: light
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

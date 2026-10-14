@@ -1,0 +1,26 @@
+colour-distance-settle:
+  label: Colour settle
+  transition: colour_distance
+  params: {metric: 0.0, power: 5.0, softness: 0.08, dither: 0.05, smoothing: 0.6, glow: 0.0}
+  tags:
+    energy: [0.0, 0.4]
+    moods: [calm, elegant, mellow]
+    style: gentle
+    family: blend
+    dims: 2d
+    technique: [colour, analytic]
+    weight: 1.0
+
+colour-distance-hue-glow:
+  label: Hue glow dissolve
+  transition: colour_distance
+  params: {metric: 0.9, power: 4.0, softness: 0.05, dither: 0.1, smoothing: 0.4, glow: 0.45, palette: dusk,
+           palette_period: 1.5, drift_speed: 0.15}
+  tags:
+    energy: [0.15, 0.5]
+    moods: [dreamy, elegant, mellow]
+    style: gentle
+    family: blend
+    dims: 2d
+    technique: [colour, noise, light]
+    weight: 0.9

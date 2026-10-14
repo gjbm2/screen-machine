@@ -1,0 +1,16 @@
+glt-left-right:
+  label: Left Right
+  transition: glt_left_right
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - geometric
+    style: lively
+    family: warp
+    dims: 2d
+    technique:
+    - warp
+    weight: 0.6

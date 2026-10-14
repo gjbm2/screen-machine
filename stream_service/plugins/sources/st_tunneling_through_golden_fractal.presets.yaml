@@ -1,0 +1,23 @@
+st-tunneling-through-golden-fractal:
+  label: Tunneling through golden fractal
+  source: st_tunneling_through_golden_fractal
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - hypnotic
+    - geometric
+    family: tunnel
+    dims: 2d
+    technique:
+    - fractal
+    weight: 0.4

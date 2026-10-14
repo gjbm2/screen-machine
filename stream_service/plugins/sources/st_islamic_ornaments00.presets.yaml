@@ -1,0 +1,23 @@
+st-islamic-ornaments00:
+  label: Islamic ornaments00
+  source: st_islamic_ornaments00
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - cosmic
+    - dreamy
+    - bright
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.7

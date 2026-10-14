@@ -1,0 +1,40 @@
+flurry-classic:
+  label: Classic flurry
+  source: flurry
+  params: {}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.1, 0.9]
+    moods: [dreamy, hypnotic, elegant]
+    style: lively
+    family: particles
+    dims: 2d
+    technique: [particles, light]
+    weight: 1.0
+
+flurry-tiedye-mandala:
+  label: Tie-dye mandala
+  source: flurry
+  params:
+    palette: candy
+    palette_period: 1.2
+    drift_speed: 0.04
+    colour_mode: tiedye
+    stream_count: 9
+    mirror_symmetry: 2.0
+    spark_chaos: 0.3
+    fade_time: 3.2
+    glow: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [hypnotic, dreamy, euphoric]
+    style: lively
+    family: particles
+    dims: 2d
+    technique: [particles, light, kaleido]
+    weight: 0.8

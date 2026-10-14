@@ -1,0 +1,16 @@
+glt-bow-tie-vertical:
+  label: Bow Tie Vertical
+  transition: glt_bow_tie_vertical
+  params: {}
+  tags:
+    energy:
+    - 0.3
+    - 0.9
+    moods:
+    - geometric
+    style: lively
+    family: wipe
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6

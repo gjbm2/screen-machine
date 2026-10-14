@@ -1,0 +1,23 @@
+st-4-d-rounded-box:
+  label: 4 D Rounded Box
+  source: st_4_d_rounded_box
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - icy
+    - cosmic
+    - dreamy
+    family: cosmic
+    dims: 3d
+    technique:
+    - raymarch
+    weight: 0.4

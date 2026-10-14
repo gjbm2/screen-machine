@@ -1,0 +1,23 @@
+isf-im-fold-v3-final:
+  label: IM Fold V3 Final
+  source: isf_im_fold_v3_final
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - glitchy
+    - tense
+    - cosmic
+    family: cosmic
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6
