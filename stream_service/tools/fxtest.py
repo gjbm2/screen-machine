@@ -4,7 +4,7 @@
       --preset '{"field": "plasma"}' [--bindings '{...}'] [--bench] [--video 8] [--name NAME]
 
 Writes out/<name>/: sheet.png (contact sheet), summary.json, and video.mp4 with --video.
-Run from /home/gjbm2/dev/sm-fx-lab.  GPU: $FX_GPU (default 1, the P4000).  A GPU slot lock (3 slots) keeps
+Run from the repo root (python -m stream_service.tools.fxtest).  GPU: $FX_GPU (default 1, the P4000).  A GPU slot lock (3 slots) keeps
 previews from piling up; --bench takes all slots, so its timings are uncontended by other fx agents.
 
 Sources are driven by a synthetic song (124 bpm pop, show_synth.Song): signals energy (smoothed activity),

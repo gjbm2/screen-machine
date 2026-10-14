@@ -8,7 +8,7 @@ Author: Pablo Roman Andrioli (Kali)
 License: MIT
 license_class: permissive
 Licence seen: the shader header, "// Star Nest by Pablo Roman Andrioli" / "// License: MIT"
-        (local copy: sm-fx-lab out/research-2d-more/xss/src/xscreensaver-6.17/hacks/glx/glsl/starnest.glsl).
+        (xscreensaver-6.17 hacks/glx/glsl/starnest.glsl).
 Ported from GLSL by smfx (ideas/changes: the tiling fold, the kaliset "abs(p)/dot(p,p) - formuparam" loop with its
         absolute-sum-of-change accumulator, the dark-matter voids, distance fading and saturation mix are ported
         faithfully.  Changed: 16 volume steps x 15 iterations (accumulator rescaled by 17/15 so the original constants
