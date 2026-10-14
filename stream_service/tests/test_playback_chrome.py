@@ -9,7 +9,6 @@ shows for the held target (a data point for the day-1 colour check).
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import pathlib
 import time
@@ -36,12 +35,11 @@ async def test_chrome_playback(service, tmp_path):
 
     out_dir = pathlib.Path(os.environ.get("SM_TEST_OUT", tmp_path))
     out_dir.mkdir(parents=True, exist_ok=True)
-    H = {"Authorization": f"Bearer {service['token']}"}
     async with aiohttp.ClientSession() as http:
-        ev = Events(await http.ws_connect(f"{BASE}/api/events?token={service['token']}"))
+        ev = Events(await http.ws_connect(f"{BASE}/api/events"))
         body = {"screen": "devtest", "gpu": GPU, "profile": "h264-720p30", "anchor": {"rgb": [40, 40, 40]},
                 "scene": "fractal-zoom", "transitions": {"in": "crossfade-1s", "out": "crossfade-1s"}, "ttl_s": 120}
-        r = await http.post(f"{BASE}/api/sessions", json=body, headers=H)
+        r = await http.post(f"{BASE}/api/sessions", json=body)
         assert r.status == 201, await r.text()
         res = await r.json()
         sid, attach = res["session"], res["attach"]
@@ -52,8 +50,6 @@ async def test_chrome_playback(service, tmp_path):
                                                args=["--autoplay-policy=no-user-gesture-required"])
             try:
                 page = await browser.new_page(viewport={"width": 1400, "height": 1000})
-                # the dev page reads its token from localStorage: seed it so the catalog-driven forms load too
-                await page.add_init_script(f"localStorage.setItem('sm.stream.token', {json.dumps(service['token'])})")
                 logs: list[str] = []
                 page.on("console", lambda m: logs.append(m.text))
                 page.on("pageerror", lambda e: logs.append(f"pageerror {e}"))
@@ -65,7 +61,7 @@ async def test_chrome_playback(service, tmp_path):
                 await page.wait_for_function("document.querySelectorAll('#sceneParams [data-param]').length > 5",
                                              timeout=5000)
                 assert await page.locator("#scene option").count() >= 5
-                r = await http.post(f"{BASE}/api/sessions/{sid}/go", json={}, headers=H)
+                r = await http.post(f"{BASE}/api/sessions/{sid}/go", json={})
                 assert r.status == 200
                 await asyncio.sleep(2.0)                       # through the 1 s crossfade
                 s0 = await page.evaluate("window.__player.stats()")
@@ -76,8 +72,7 @@ async def test_chrome_playback(service, tmp_path):
                 await page.screenshot(path=str(out_dir / "chrome_live.png"))
 
                 # exit: the page cuts on the first presented frame with mediaTime >= hold_pts - 0.5/fps
-                r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": list(TARGET)}},
-                                    headers=H)
+                r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": list(TARGET)}})
                 assert r.status == 202
                 held = await ev.wait(lambda e: e["type"] == "session.held" and e["session"] == sid, 5.0)
                 mt = await page.evaluate("(pts) => new Promise(r => window.__player.watchHold(pts, r))",
@@ -87,7 +82,7 @@ async def test_chrome_playback(service, tmp_path):
                 s2 = await page.evaluate("window.__player.stats()")
             finally:
                 await browser.close()
-        await http.delete(f"{BASE}/api/sessions/{sid}", headers=H)
+        await http.delete(f"{BASE}/api/sessions/{sid}")
         await ev.ws.close()
 
     presented = s1["presented"] - s0["presented"]
