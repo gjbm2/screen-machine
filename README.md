@@ -147,7 +147,7 @@ End-to-end flow:
 * Front-end listens and displays overlays using a portal; TVs render overlays on-screen for progress or alerts.
 
 ## 7. Scheduler & Automation Engine
-* **JSON-defined schedules** stored in `schedules/`.  
+* **JSON-defined schedules** stored in `routes/scheduler/` (scripts in `routes/scheduler/scripts/`).  
   `{ cron: "0 * * * *", workflow: "latent-imagine.json", publish: "north-screen" }`
 * Supports variable exports/imports so later jobs can reference earlier outputs.
 * API endpoints allow creating one-off, recurring, or conditional tasks.

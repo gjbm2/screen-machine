@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import { bucketsApi, generationApi, publishApi } from '@/shared/api';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DragStartEvent, DragEndEvent, useDndMonitor, DragOverlay } from '@dnd-kit/core';
@@ -179,7 +179,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Fetch bucket destinations for copy/move operations
   const fetchDestinations = async () => {
     try {
-      const buckets = await apiService.getPublishDestinations();
+      const buckets = await publishApi.getPublishDestinations();
       
       // Filter out hidden destinations like _recent
       const visibleDestinations = buckets.filter(dest => !dest.headless && dest.has_bucket);
@@ -242,7 +242,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     const currentSelections = {...selectedImageByBatch};
     
     try {
-      const details = await apiService.getBucketDetails('_recent');
+      const details = await bucketsApi.getBucketDetails('_recent');
       if (details.error) {
         throw new Error(details.error);
       }
@@ -480,7 +480,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   const handleDeleteImage = async (image: ImageItem) => {
     try {
       const bucketId = image.bucketId || '_recent';
-      await apiService.deleteImage(bucketId, image.id);
+      await bucketsApi.deleteImage(bucketId, image.id);
       toast.success('Image deleted');
       
       // Optimistically update UI
@@ -509,7 +509,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
       // Delete each image
       const deletePromises = batch.images.map(img => {
         const bucketId = img.bucketId || '_recent';
-        return apiService.deleteImage(bucketId, img.id);
+        return bucketsApi.deleteImage(bucketId, img.id);
       });
       
       await Promise.all(deletePromises);
@@ -531,7 +531,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     try {
       toast.loading(`Copying to ${targetBucketId}...`, { id: 'copy-toast' });
       const bucketId = img.bucketId || '_recent';
-      await apiService.copyImageToBucket(bucketId, targetBucketId, img.id, true);
+      await bucketsApi.copyImageToBucket(bucketId, targetBucketId, img.id, true);
       toast.dismiss('copy-toast');
       toast.success(`Image copied to ${targetBucketId}`);
     } catch (error) {
@@ -546,7 +546,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     try {
       toast.loading(`Publishing to ${targetBucketId}...`, { id: 'publish-toast' });
       const bucketId = img.bucketId || '_recent';
-      await apiService.publishImageUnified({
+      await publishApi.publishImageUnified({
         dest_bucket_id: targetBucketId,
         src_bucket_id: bucketId,
         filename: img.id
@@ -677,7 +677,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     };
     params.__skipPlaceholder = true;
     toast.loading('Generating image...', { id: 'generate-toast' });
-    apiService.generateImage(params)
+    generationApi.generateImage(params)
       .then(() => {
         toast.dismiss('generate-toast');
         toast.success('Image generated');

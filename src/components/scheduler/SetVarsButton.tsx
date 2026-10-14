@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Settings } from 'lucide-react';
 import { SetVarsModal } from './SetVarsModal';
-import apiService from '@/utils/api';
+import { schedulerApi } from '@/shared/api';
 
 interface SetVarsButtonProps {
   destinationId: string;
@@ -34,7 +34,7 @@ export const SetVarsButton: React.FC<SetVarsButtonProps> = ({
   const handleSaved = async () => {
     try {
       // Fetch the latest context data to ensure UI is updated
-      const response = await apiService.getSchedulerContext(destinationId);
+      const response = await schedulerApi.getSchedulerContext(destinationId);
       
       if (onVarsSaved) {
         // Pass the updated context vars to the parent

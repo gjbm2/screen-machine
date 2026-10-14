@@ -12,8 +12,7 @@ import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import apiService from '@/utils/api';
-import { PublishDestination } from '@/utils/api';
+import type { PublishDestination } from '@/shared/api';
 import { processGenerationResults, markBatchAsError } from '@/hooks/image-generation/api/result-handler';
 import {
   DndContext,

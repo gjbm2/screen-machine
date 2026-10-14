@@ -1,7 +1,7 @@
 /**
  * Utility functions for image handling in Screen Machine
  */
-import apiService from './api';
+import { API_URL } from '@/shared/api';
 
 /**
  * Checks if a filename is a video file
@@ -62,7 +62,7 @@ export const getReferenceUrl = (item: any): string => {
         ? `${window.location.origin}${videoRawUrl}`
         : videoRawUrl;
         
-      const highResImageUrl = `${apiService.getApiUrl()}/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
+      const highResImageUrl = `${API_URL}/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
       console.log('Using high-resolution first frame for video reference:', highResImageUrl);
       return highResImageUrl;
     }

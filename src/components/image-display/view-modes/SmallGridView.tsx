@@ -1,5 +1,5 @@
 import React from 'react';
-import { BucketItem } from '@/utils/api';
+import type { BucketItem } from '@/shared/api';
 import { Card } from '@/components/ui/card';
 import { Image as ImageIcon } from 'lucide-react';
 

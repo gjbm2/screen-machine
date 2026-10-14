@@ -9,7 +9,7 @@ import {
 import { Share, Share2, Loader2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import { publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface PublishMenuProps {
@@ -59,7 +59,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
         }
         
         // Use the bucket-to-bucket publishing route
-        success = await apiService.publishImageUnified({
+        success = await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           src_bucket_id: sourceBucket,
           filename: filename
@@ -67,7 +67,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
       } else {
         // External URL case (generated images)
         // Pass the complete URL (with all auth params intact)
-        success = await apiService.publishImageUnified({
+        success = await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           source_url: imageUrl,
           metadata: generationInfo,

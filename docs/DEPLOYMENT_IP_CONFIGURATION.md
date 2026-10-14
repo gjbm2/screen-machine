@@ -82,8 +82,7 @@ find /home/gjbm2 -name "*.sh" -exec sed -i 's/OLD_IP_ADDRESS/NEW_IP_ADDRESS/g' {
 
 ### Code Files (Use Environment Variables)
 - **`routes/publisher.py`** - Uses `VITE_API_URL` environment variable
-- **`src/config.ts`** - Frontend configuration
-- **`src/utils/api.ts`** - API client configuration
+- **`src/shared/http/client.ts`** - Frontend API base URL (`API_URL`, from `VITE_API_URL`); every frontend API call goes through it
 
 ### Test Files
 - **`tests/integration/test_url_formats.py`** - Test configuration

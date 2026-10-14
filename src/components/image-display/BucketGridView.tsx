@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format, formatDistance } from 'date-fns';
-import apiService from '@/utils/api';
+import { audioApi, bucketsApi, generationApi, lightApi, publishApi } from '@/shared/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/utils/api';
+import type { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/shared/api';
 import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -51,9 +51,7 @@ import { isVideoFile } from '@/utils/image-utils';
 // Import the new useLoopeView context
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import { Switch } from "@/components/ui/switch";
-import { Api } from "@/utils/api";
 import { Download } from 'lucide-react';
-import { getTranscriptionStatus } from '../../api';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
@@ -205,7 +203,7 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   const handlePurge = async () => {
     setIsLoading(true);
     try {
-      const result = await apiService.purgeBucket(destination, days);
+      const result = await bucketsApi.purgeBucket(destination, days);
       if (result.status === 'purged') {
         const message = result.removed.length > 0 
           ? `Purged ${result.removed.length} files successfully`
@@ -227,7 +225,7 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   const handleReindex = async () => {
     setIsLoading(true);
     try {
-      const success = await apiService.performBucketMaintenance(destination, 'reindex');
+      const success = await bucketsApi.performBucketMaintenance(destination, 'reindex');
       if (success) {
         toast.success('Bucket reindexed successfully');
         onActionComplete();
@@ -244,7 +242,7 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   const handleExtractJson = async () => {
     setIsLoading(true);
     try {
-      const success = await apiService.performBucketMaintenance(destination, 'extract');
+      const success = await bucketsApi.performBucketMaintenance(destination, 'extract');
       if (success) {
         toast.success('JSON extracted successfully');
         onActionComplete();
@@ -357,7 +355,6 @@ export const BucketGridView = ({
   const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   const [deleteImagesCount, setDeleteImagesCount] = useState(0);
   const [maskEnabled, setMaskEnabled] = useState(true);
-  const api = new Api();
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
@@ -392,7 +389,7 @@ export const BucketGridView = ({
   useEffect(() => {
     const fetchMaskState = async () => {
       try {
-        const result = await api.getMaskState(destination);
+        const result = await lightApi.getMaskState(destination);
         setMaskEnabled(result.enabled);
       } catch (error) {
         console.error('Error fetching mask state:', error);
@@ -412,7 +409,7 @@ export const BucketGridView = ({
 
   const fetchDestinations = async () => {
     try {
-      const buckets = await apiService.getPublishDestinations();
+      const buckets = await publishApi.getPublishDestinations();
       
       // Set destinations list
       setDestinations(buckets.map(bucket => ({
@@ -436,7 +433,7 @@ export const BucketGridView = ({
     setError(null);
     try {
       // Check if the current destination has a bucket
-      const currentDest = await apiService.getPublishDestinations();
+      const currentDest = await publishApi.getPublishDestinations();
       const destInfo = currentDest.find(d => d.id === destination);
       const hasDestBucket = destInfo?.has_bucket !== false;
       
@@ -448,7 +445,7 @@ export const BucketGridView = ({
         console.log(`Destination ${destination} does not have a bucket, using getPublishedContent API`);
         
         // NEVER call getBucketDetails for bucketless destinations - use dedicated published content API
-        const publishedContent = await apiService.getPublishedContent(destination);
+        const publishedContent = await publishApi.getPublishedContent(destination);
         
         // Set empty bucket data with only published content
         setBucketDetails({
@@ -487,7 +484,7 @@ export const BucketGridView = ({
       }
       
       // Only for destinations WITH buckets, proceed with normal getBucketDetails logic
-      const details: any = await apiService.getBucketDetails(destination);
+      const details: any = await bucketsApi.getBucketDetails(destination);
       if (details.error) {
         throw new Error(details.error);
       }
@@ -609,7 +606,7 @@ export const BucketGridView = ({
   const handleToggleFavorite = async (image: BucketImage) => {
     try {
       const newFavoriteState = !image.metadata?.favorite;
-      const success = await apiService.toggleFavorite(destination, image.id, newFavoriteState);
+      const success = await bucketsApi.toggleFavorite(destination, image.id, newFavoriteState);
       if (success) {
         // Update local state immediately
         setBucketImages(prevImages => 
@@ -642,7 +639,7 @@ export const BucketGridView = ({
     }
     
     try {
-      const success = await apiService.deleteImage(destination, image.id);
+      const success = await bucketsApi.deleteImage(destination, image.id);
       if (success) {
         // Update local state immediately
         setBucketImages(prevImages => prevImages.filter(img => img.id !== image.id));
@@ -662,7 +659,7 @@ export const BucketGridView = ({
   const handlePublish = async (bucket: string, filename: string) => {
     try {
       // Use the new unified publish API for bucket-to-bucket publishing
-      const success = await apiService.publishImageUnified({
+      const success = await publishApi.publishImageUnified({
         dest_bucket_id: bucket,
         src_bucket_id: destination,
         filename: filename
@@ -705,7 +702,7 @@ export const BucketGridView = ({
     try {
       // Extract the original ID if this is a duplicate image
       const originalId = getOriginalId(image.id);
-      const result = await apiService.copyImageToBucket(destination, targetBucket, originalId, true);
+      const result = await bucketsApi.copyImageToBucket(destination, targetBucket, originalId, true);
       if (result && (result.status === 'copied' || result.status === 'moved')) {
         toast.success(`Image ${result.status} to ${targetBucket} successfully`);
         // Refresh the target bucket to show the new image
@@ -726,7 +723,7 @@ export const BucketGridView = ({
 
   const handleReindex = async () => {
     try {
-      const success = await apiService.performBucketMaintenance(destination, 'reindex');
+      const success = await bucketsApi.performBucketMaintenance(destination, 'reindex');
       if (success) {
         toast.success('Bucket reindexed successfully');
         debouncedFetchBucketDetails();
@@ -739,7 +736,7 @@ export const BucketGridView = ({
 
   const handleExtractJson = async () => {
     try {
-      const success = await apiService.performBucketMaintenance(destination, 'extract');
+      const success = await bucketsApi.performBucketMaintenance(destination, 'extract');
       if (success) {
         toast.success('JSON extracted successfully');
         refreshBucket(destination);
@@ -807,7 +804,7 @@ export const BucketGridView = ({
     params.__skipPlaceholder = true;
     
     toast.loading('Generating image...', { id: 'generate-toast' });
-    apiService.generateImage(params)
+    generationApi.generateImage(params)
       .then(() => {
         toast.dismiss('generate-toast');
         toast.success('Image generated');
@@ -862,20 +859,9 @@ export const BucketGridView = ({
 
     try {
       if (uploadFile) {
-        const formData = new FormData();
-        formData.append('file', uploadFile);
-        const response = await fetch(`${apiService.getApiUrl()}/buckets/${destination}/upload`, {
-          method: 'POST',
-          body: formData
-        });
-        if (!response.ok) throw new Error('Upload failed');
+        await bucketsApi.uploadToBucket(destination, uploadFile);
       } else if (uploadUrl) {
-        const response = await fetch(`${apiService.getApiUrl()}/buckets/${destination}/upload`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: uploadUrl })
-        });
-        if (!response.ok) throw new Error('Upload failed');
+        await bucketsApi.uploadUrlToBucket(destination, uploadUrl);
       }
       
       setShowUploadModal(false);
@@ -1057,7 +1043,7 @@ export const BucketGridView = ({
       // Strip any #dup suffix from filenames
       const originalFilename = getOriginalId(filename);
       const originalTargetFilename = targetFilename ? getOriginalId(targetFilename) : null;
-      await apiService.moveToPosition(destination, originalFilename, originalTargetFilename);
+      await bucketsApi.moveToPosition(destination, originalFilename, originalTargetFilename);
       toast.success('Image position updated');
       debouncedFetchBucketDetails();
     } catch (error) {
@@ -1291,7 +1277,7 @@ export const BucketGridView = ({
           // Strip any #dup suffix from both ids
           const originalDraggedId = getOriginalId(draggedImage.id);
           const originalTargetId = getOriginalId(targetImage.id);
-          await apiService.moveToPosition(
+          await bucketsApi.moveToPosition(
             destination,
             originalDraggedId,
             originalTargetId ? getOriginalId(originalTargetId) : null
@@ -1369,7 +1355,7 @@ export const BucketGridView = ({
           insertAfterId = targetIndex <= 0 ? null : sortedImages[targetIndex - 1].id;
         }
 
-        await apiService.moveToPosition(
+        await bucketsApi.moveToPosition(
           destination,
           getOriginalId(draggedImage.id),
           insertAfterId ? getOriginalId(insertAfterId) : null
@@ -1547,7 +1533,7 @@ export const BucketGridView = ({
     // Process deletions sequentially to avoid overwhelming the server
     for (const image of imagesToDelete) {
       try {
-        await apiService.deleteImage(destination, image.id);
+        await bucketsApi.deleteImage(destination, image.id);
         deleteCount++;
       } catch (error) {
         console.error(`Error deleting image ${image.id}:`, error);
@@ -1918,7 +1904,7 @@ export const BucketGridView = ({
       setIsLoadingPublished(true);
       try {
         // Get all destinations first
-        const allDestinations = await apiService.getPublishDestinations();
+        const allDestinations = await publishApi.getPublishDestinations();
         
         // Filter out headless destinations - they should not be part of published view
         const visibleDestinations = allDestinations.filter(dest => !dest.headless);
@@ -1929,7 +1915,7 @@ export const BucketGridView = ({
         for (const dest of visibleDestinations) {
           try {
             // Use direct API call to get full metadata
-            const response = await apiService.getPublishedContentForDestination(dest.id);
+            const response = await publishApi.getPublishedContentForDestination(dest.id);
             if (!response.published) continue;
             
             publishedImages.push({
@@ -2092,9 +2078,9 @@ export const BucketGridView = ({
   const handleMaskToggle = async (enabled: boolean) => {
     try {
       if (enabled) {
-        await api.enableMask(destination);
+        await lightApi.enableMask(destination);
       } else {
-        await api.disableMask(destination);
+        await lightApi.disableMask(destination);
       }
       setMaskEnabled(enabled);
     } catch (error) {
@@ -2187,7 +2173,7 @@ export const BucketGridView = ({
 
     const pollTranscriptionStatus = async () => {
       try {
-        const status = await getTranscriptionStatus();
+        const status = await audioApi.getTranscriptionStatus();
         console.log('Transcription status:', status); // Debug log
         // Update recording state based on API response
         const isRecording = status.is_recording[destination] || false;

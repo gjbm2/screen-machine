@@ -8,7 +8,7 @@ import { Button, Dialog as MuiDialog, DialogContent as MuiDialogContent,
   DialogTitle as MuiDialogTitle, DialogActions, Tabs, Tab, 
   Select, MenuItem, TextField, Dialog, DialogTitle, DialogContent, List, ListItem, ListItemText, IconButton, Switch, FormControlLabel } from '@mui/material';
 import { Check, X, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react';
-import apiService from '../../utils/api';
+import { filesApi } from '@/shared/api';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
@@ -702,7 +702,7 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
     if (!scriptsDirectory) return;
     
     try {
-      const files = await apiService.listFiles(scriptsDirectory);
+      const files = await filesApi.listFiles(scriptsDirectory);
       
       // Filter to only show .json files
       const jsonFiles = files.filter((file: string) => 
@@ -722,7 +722,7 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
     
     try {
       const filePath = `${scriptsDirectory}/${filename}`;
-      const data = await apiService.readFile(filePath);
+      const data = await filesApi.readFile(filePath);
       
       if (data) {
         setFormData(data);
@@ -751,7 +751,7 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
       const filePath = `${scriptsDirectory}/${filename}`;
       const content = JSON.stringify(formData, null, 2);
       
-      await apiService.writeFile(filePath, content);
+      await filesApi.writeFile(filePath, content);
       
       setSaveDialogOpen(false);
       setSaveFileName("");

@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { adminApi } from '@/shared/api';
 
-const API = '/api/admin-355729b8';
 const POLL_INTERVAL = 120_000; // 2 minutes
-const TOKEN_KEY = 'sm_admin_token';
-
-function authHeaders(): Record<string, string> {
-  const t = localStorage.getItem(TOKEN_KEY) || '';
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
 
 interface DisplayScreen {
   id: string;
@@ -22,8 +16,7 @@ function useDisplayScreens(): DisplayScreen[] {
   const [screens, setScreens] = useState<DisplayScreen[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/publish-destinations')
-      .then(r => (r.ok ? r.json() : []))
+    adminApi.getRawPublishDestinations()
       .then((all: DisplayScreen[]) => {
         if (cancelled || !Array.isArray(all)) return;
         setScreens(all.filter(d => d.has_bucket && !d.hidden && d.id !== '_recent'));
@@ -90,7 +83,7 @@ export default function AdminPanel() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/status`, { headers: authHeaders() });
+      const res = await adminApi.getStatusResponse();
       if (res.status === 401) {
         setAuthRequired(true);
         setStatusOk(false);
@@ -122,11 +115,11 @@ export default function AdminPanel() {
   const fetchLight = useCallback(async () => {
     try {
       const [lightRes, northMask, southMask, northOv, southOv] = await Promise.all([
-        fetch('/api/lightsensor/lightsense'),
-        fetch('/api/north-screen/mask'),
-        fetch('/api/south-screen/mask'),
-        fetch('/api/north-screen/brightness-override'),
-        fetch('/api/south-screen/brightness-override'),
+        adminApi.getLightsenseResponse(),
+        adminApi.getMaskResponse('north-screen'),
+        adminApi.getMaskResponse('south-screen'),
+        adminApi.getBrightnessOverrideResponse('north-screen'),
+        adminApi.getBrightnessOverrideResponse('south-screen'),
       ]);
       setLightData(await lightRes.json());
       setMaskData({
@@ -152,11 +145,7 @@ export default function AdminPanel() {
   const doAction = async (endpoint: string, label: string, body?: object) => {
     setLoading(label);
     try {
-      const res = await fetch(`${API}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      const res = await adminApi.runAction(endpoint, body);
       if (res.status === 401) {
         setAuthRequired(true);
         addLog(label, {
@@ -166,7 +155,7 @@ export default function AdminPanel() {
         setLoading('');
         return;
       }
-      const data: ApiResult = await res.json();
+      const data: ApiResult = res.data;
       addLog(label, data);
     } catch (e) {
       addLog(label, {
@@ -222,7 +211,7 @@ export default function AdminPanel() {
           <button
             style={{ ...btnBase, background: '#2563eb' }}
             onClick={() => {
-              localStorage.setItem(TOKEN_KEY, tokenInput.trim());
+              localStorage.setItem(adminApi.ADMIN_TOKEN_KEY, tokenInput.trim());
               setTokenInput('');
               fetchStatus();
             }}
@@ -386,7 +375,7 @@ export default function AdminPanel() {
                 {isOverridden && (
                   <button
                     onClick={async () => {
-                      await fetch(`/api/${screenId}/brightness-override`, { method: 'DELETE' });
+                      await adminApi.clearBrightnessOverride(screenId);
                       fetchLight();
                     }}
                     style={{
@@ -406,11 +395,7 @@ export default function AdminPanel() {
                   const val = parseInt(e.target.value) / 100;
                   setMaskData(prev => ({ ...prev, [screenId]: { ...prev[screenId], brightness: val } }));
                   setOverrides(prev => ({ ...prev, [screenId]: { active: true, override: val } }));
-                  await fetch(`/api/${screenId}/brightness-override`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ brightness: val }),
-                  });
+                  await adminApi.setBrightnessOverride(screenId, val);
                 }}
                 style={{ width: '100%' }}
               />

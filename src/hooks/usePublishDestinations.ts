@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Api, PublishDestination } from '../utils/api';
-
-const api = new Api();
+import { publishApi } from '@/shared/api';
+import type { PublishDestination } from '@/shared/api';
 
 export function usePublishDestinations() {
   const [destinations, setDestinations] = useState<PublishDestination[]>([]);
@@ -11,7 +10,7 @@ export function usePublishDestinations() {
   useEffect(() => {
     async function fetchDestinations() {
       try {
-        const data = await api.getPublishDestinations();
+        const data = await publishApi.getPublishDestinations();
         setDestinations(data);
         setError(null);
       } catch (err) {

@@ -1,5 +1,7 @@
 # Proposal: Moving the Vite Frontend to Production
 
+> **Update 2026-10-14:** the frontend API layer was split. `src/utils/api.ts` is now a thin facade; the base URL lives in `src/shared/http/client.ts` and the calls in `src/shared/api/*`. **The mock-mode trap described below is gone** (mock mode was removed), so a relative `VITE_API_URL` no longer fakes the backend; the base URL itself is still resolved exactly as before. Line references to `api.ts` and `apiService.ts` below are historical.
+
 **Date:** 2026-07-28
 **Status:** Proposed
 **Companion doc:** [SECURITY_PROPOSAL.md](SECURITY_PROPOSAL.md) (this proposal implements its "serve a built frontend" step and sets up its end-state)
@@ -153,5 +155,5 @@ Dev workflow is untouched: `npm run dev` on `:8080` still works, and its `/api` 
 
 - **Baked public IP:** API/WS URLs hairpin via `95.141.21.170` inlined at build time — an ISP IP change forces a rebuild. Fix belongs to the Option C/TLS phase (relative URLs require first removing the mock-mode trap).
 - **Stored URL rot:** mp4 publishes persist absolute `http://…:5000/api/...` thumbnails in `bucket.json`/sidecars ([publisher.py:447-462,493-508](../routes/publisher.py#L447-L462)); the shipped APK hardcodes a previous IP. Sweep stored JSON after migration; prefer emitting relative URLs backend-side going forward.
-- **Doc drift:** [README.md:206](../README.md#L206) claims dev on `:5173`; [DEPLOYMENT_IP_CONFIGURATION.md:28](../DEPLOYMENT_IP_CONFIGURATION.md#L28) mislabels `:8000` as ngrok; [check-status.sh:198](../media-server/check-status.sh#L198) calls `:8000` "Flask". Fix alongside the migration so the next debugging session isn't misled.
+- **Doc drift:** [README.md:206](../README.md#L206) claims dev on `:5173`; [DEPLOYMENT_IP_CONFIGURATION.md:28](DEPLOYMENT_IP_CONFIGURATION.md#L28) mislabels `:8000` as ngrok; [check-status.sh:198](../media-server/check-status.sh#L198) calls `:8000` "Flask". Fix alongside the migration so the next debugging session isn't misled.
 - **Dead fallback:** `'/static/placeholder.jpg'` ([publisher.py:462,816](../routes/publisher.py#L462)) has no serving route in any topology.

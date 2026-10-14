@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Api } from "@/utils/api";
+import { lightApi } from "@/shared/api";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -73,7 +73,6 @@ export default function LightSense() {
   const [targetGroup, setTargetGroup] = useState<string>("");
   const [isEditing, setIsEditing] = useState(false);
   const { toast } = useToast();
-  const api = new Api();
 
   // Load settings and sensor data on mount
   useEffect(() => {
@@ -95,7 +94,7 @@ export default function LightSense() {
 
   const loadSettings = async () => {
     try {
-      const response = await api.getIntensitySettings();
+      const response = await lightApi.getIntensitySettings();
       setSettings(response);
     } catch (error) {
       toast({
@@ -108,7 +107,7 @@ export default function LightSense() {
 
   const loadSensorData = async () => {
     try {
-      const response = await api.getLightsense();
+      const response = await lightApi.getLightsense();
       setSensorData(response);
     } catch (error) {
       console.error('Error loading sensor data:', error);
@@ -119,7 +118,7 @@ export default function LightSense() {
     if (!selectedSensor) return;
 
     try {
-      await api.updateIntensitySettings(selectedSensor, {
+      await lightApi.updateIntensitySettings(selectedSensor, {
         points,
         target_group: targetGroup,
       });

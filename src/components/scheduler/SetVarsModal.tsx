@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
 import { Trash2 } from 'lucide-react';
-import apiService from '@/utils/api';
+import { schedulerApi, API_URL } from '@/shared/api';
 
 interface SetVarsModalProps {
   open: boolean;
@@ -138,7 +138,7 @@ export const SetVarsModal: React.FC<SetVarsModalProps> = ({
       }
 
       // Call API to set the context variable
-      const response = await apiService.setSchedulerContextVar(
+      const response = await schedulerApi.setSchedulerContextVar(
         destination,
         varName,
         parsedValue
@@ -182,11 +182,11 @@ export const SetVarsModal: React.FC<SetVarsModalProps> = ({
       
       // Debug logs
       console.log(`Deleting variable ${selectedVar} from destination ${destination}`);
-      console.log('Using endpoint:', `${apiService.getApiUrl()}/schedulers/${destination}/context`);
+      console.log('Using endpoint:', `${API_URL}/schedulers/${destination}/context`);
       console.log('Request payload:', { var_name: selectedVar, var_value: null });
       
       // Call API with null value to delete the variable
-      const response = await apiService.setSchedulerContextVar(
+      const response = await schedulerApi.setSchedulerContextVar(
         destination,
         selectedVar,
         null

@@ -27,8 +27,7 @@ import {
   DropdownMenuPortal
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
-import { PublishDestination } from '@/utils/api';
+import { generationApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface HeaderSectionProps {
@@ -48,7 +47,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const handleCancelAllJobs = async () => {
     toast.loading("Cancelling all jobs...");
     try {
-      const result = await apiService.cancelAllJobs();
+      const result = await generationApi.cancelAllJobs();
       if (result.success) {
         toast.success(`Cancelled ${result.cancelled} jobs`);
       } else {
