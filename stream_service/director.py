@@ -21,6 +21,11 @@ Pure state + decisions, no GPU and no I/O: sessions.py calls it on the asyncio l
 Effects layer (EFFECTS_LAYER_DESIGN D.3): ``direction.fx`` {density, rate, stages, moods} are the art
 director's descriptors for the master FX bus; ``auto.fx`` {enabled, pool, max} says what the FX director
 (fx_director.py) may do on its own.  ``auto.fx.enabled`` defaults to false, so existing clients see no change.
+
+The music proposes direction too (music_direction.py, owner 15 Oct): ``auto.music`` {enabled, weight, activity}
+turns the show bus (Maestro's ACTIVITY, DIMMER pulse and GOBO step) into a direction that the session applies under
+the panel's (a trim: a panel at its defaults follows the music).  ``follow_dmx`` defaults to ["effect"] (the GOBO
+step marks sections; PRISM ``variant`` is opt-in: Maestro and the fake show change it far more often).
 """
 from __future__ import annotations
 
@@ -37,12 +42,13 @@ from .tags import matches_filter, scene_weight, transition_weight
 FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None}
 AUTO_FX_DEFAULTS: dict[str, Any] = {"enabled": False, "pool": "all", "max": 2}
 AUTO_FX_MAX = 4
+AUTO_MUSIC_DEFAULTS: dict[str, Any] = {"enabled": True, "weight": 1.0, "activity": [0.0, 1.0]}
 DIRECTION_DEFAULTS: dict[str, Any] = {
     "energy": 0.5, "pace": 0.5, "intensity": 1.0, "change_rate": 0.5, "moods": [], "genre": None,
     "transition_style": None, "palette_family": None, "source": None, "note": None, "fx": FX_DIRECTION_DEFAULTS}
 AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
-    "follow_dmx": list(FOLLOW_ATTRS), "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS}
+    "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
 SNAPS = ("now", "beat")
 DWELL_AT_0 = (120.0, 240.0)      # change_rate 0
 DWELL_AT_1 = (15.0, 30.0)        # change_rate 1
@@ -137,6 +143,32 @@ def validate_auto_fx(body: Any, base: Optional[dict] = None) -> dict:
     return out
 
 
+def validate_auto_music(body: Any, base: Optional[dict] = None) -> dict:
+    """auto.music, merged over ``base``: {enabled, weight 0-1, activity [lo, hi] (Maestro's ACTIVITY calibration)}."""
+    if not isinstance(body, dict):
+        raise ParamError("bad_request", "auto.music must be an object")
+    unknown = set(body) - set(AUTO_MUSIC_DEFAULTS)
+    if unknown:
+        raise ParamError("bad_request", f"auto.music: unknown fields {sorted(unknown)}")
+    out = dict(base or AUTO_MUSIC_DEFAULTS)
+    if "enabled" in body:
+        if not isinstance(body["enabled"], bool):
+            raise ParamError("bad_request", "auto.music.enabled must be true or false")
+        out["enabled"] = body["enabled"]
+    if "weight" in body:
+        out["weight"] = _unit(body["weight"], "auto.music.weight")
+    if "activity" in body:
+        a = body["activity"]
+        if not (isinstance(a, list) and len(a) == 2 and all(
+                isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in a)):
+            raise ParamError("bad_request", "auto.music.activity must be [lo, hi] in 0-1")
+        lo, hi = (min(1.0, max(0.0, float(x))) for x in a)
+        if hi - lo < 0.05:
+            raise ParamError("bad_request", "auto.music.activity: hi must be at least 0.05 above lo")
+        out["activity"] = [lo, hi]
+    return out
+
+
 def _pool_spec(v: Any, field: str) -> Any:
     if v == "all":
         return v
@@ -195,6 +227,10 @@ def validate_auto(body: Any, base: Optional[dict] = None) -> dict:
         out["fx"] = validate_auto_fx(body["fx"], (base or AUTO_DEFAULTS).get("fx") or AUTO_FX_DEFAULTS)
     else:
         out["fx"] = dict(out.get("fx") or AUTO_FX_DEFAULTS)
+    if "music" in body:
+        out["music"] = validate_auto_music(body["music"], (base or AUTO_DEFAULTS).get("music") or AUTO_MUSIC_DEFAULTS)
+    else:
+        out["music"] = dict(out.get("music") or AUTO_MUSIC_DEFAULTS)
     return out
 
 

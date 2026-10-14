@@ -65,6 +65,7 @@ from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixt
 from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
+from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
 from .plugins import Registry
 from .plugins.base import ParamError
 from .plugins.sources.image import ImageSource, load_png
@@ -233,6 +234,12 @@ class Session(EngineListener):
         self.fx = SessionFx(self)
         self.fx_director = FxDirector(self.director.seed)
         self.fx_director.configure((auto or {}).get("fx"), self.direction)
+        # -- the music proposes direction (music_direction.py): the directors use the panel's, trimmed by it --
+        self.music = MusicDirection(self.director.auto.get("music") if self.director.auto else None)
+        self.direction_effective = self.direction
+        self._dir_key = pick_key(self.direction)
+        self._dir_gen = 0                         # bumped when a prepared pick no longer fits the direction
+        self._dir_drop_t = -1e9
         self._fx_task: Optional[asyncio.Task] = None
         self._scene_fx_n = 0
         self.plugin_error_count = 0
@@ -799,15 +806,11 @@ class Session(EngineListener):
             self.direction_ease_s = self.runtime.ease_s = look["direction_ease_s"]
         if "direction" in look:
             self.direction = look["direction"]
-            self.director.direction = self.direction
-            self.runtime.speed_target = speed_for(self.direction["pace"])     # eased over direction_ease_s
-            self.runtime.depth_target = self.direction["intensity"]
-            self._drop_prepared()                       # it was picked for the old direction
         if "auto" in look:
             self.director.set_auto(look["auto"])
-            self._drop_prepared()
+            self.music.configure(self.director.auto.get("music") if self.director.auto else None)
         if look.keys() & {"direction", "auto"}:
-            self.fx_director.configure((self.director.auto or {}).get("fx"), self.direction)
+            self._apply_direction("panel" if "direction" in look else "auto")
         if "palette_transition_s" in look:
             self.palette_s = self.runtime.palette_s = look["palette_transition_s"]
         if "palette" in look and look["palette"] != self.palette:
@@ -817,20 +820,47 @@ class Session(EngineListener):
             self.palette = self.runtime.palette = look["palette"]
         if "beat_follow" in look:
             self.beat_follow = self.sampler.follow = look["beat_follow"]
-        if look.keys() & {"direction", "auto"}:
-            self._emit_director()
+
+    # The one place a direction takes effect: the panel's (self.direction), trimmed by the music's proposal.
+    # A prepared pick is dropped when the pick-relevant part changes (energy decile, moods, style, genre,
+    # palette family): always for a panel / auto change, at most once per DIR_DROP_MIN_S for the music's own moves.
+    DIR_DROP_MIN_S = 30.0
+
+    def _apply_direction(self, cause: str) -> None:
+        now = time.monotonic()
+        eff = effective_direction(self.direction, self.music.proposal, self.music.m)
+        self.direction_effective = eff
+        key = pick_key(eff)
+        if key != self._dir_key and (cause in ("panel", "auto") or now - self._dir_drop_t >= self.DIR_DROP_MIN_S):
+            self._dir_key, self._dir_gen, self._dir_drop_t = key, self._dir_gen + 1, now
+            self._drop_prepared()                       # it was picked for the old direction
+        elif cause == "auto":
+            self._drop_prepared()                       # a new pool / transitions / dwell
+        self.director.direction = eff
+        self.runtime.speed_target = speed_for(eff["pace"])     # eased over direction_ease_s
+        self.runtime.depth_target = eff["intensity"]
+        fd = self.fx_director
+        fd.configure((self.director.auto or {}).get("fx"), eff)
+        if fd.next_at is not None:                      # a busier direction may bring the next move earlier, never later
+            fd.next_at = min(fd.next_at, now + fd.interval())
+        if cause != "music":                            # the music's numeric drift is visible through GET only
+            self._emit_director(cause)
 
     def _drop_prepared(self) -> None:
         if self.prepared_pick is not None:
             pk, self.prepared_pick = self.prepared_pick, None
             self._retire(pk["src"], pk["trans"])
 
-    def _emit_director(self) -> None:
+    def _emit_director(self, cause: Optional[str] = None) -> None:
         now = time.monotonic()
         nx = self.director.next_eligible(now)
+        eff = self.direction_effective
         self.emit("session.director", armed=self.director.armed, enabled=self.director.enabled,
                   dwell_s=nx["dwell_s"], dwell_from=nx["dwell_from"],
-                  eligible_at_pts=self._in_pts(nx["eligible_in_s"]), max_at_pts=self._in_pts(nx["max_in_s"]))
+                  eligible_at_pts=self._in_pts(nx["eligible_in_s"]), max_at_pts=self._in_pts(nx["max_in_s"]),
+                  **({"cause": cause} if cause else {}),
+                  direction_effective={k: eff.get(k) for k in ("energy", "change_rate", "transition_style", "moods")},
+                  music={"band": self.music.band, "m": self.music.m})
 
     def _in_pts(self, in_s: Optional[float]) -> Optional[float]:
         return None if in_s is None else round(self._pts_now() + in_s, 3)
@@ -848,10 +878,13 @@ class Session(EngineListener):
                 d.scene_done(now)
             self._emit_director()
         d.observe(snap, fresh)
+        cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed)
+        if cause is not None:
+            self._apply_direction(cause)
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
-            due = d.due(now)
+            due = None if self.music.settling(now) else d.due(now)   # a section change: pick for the new direction
             if due is not None:
                 self._auto_task = asyncio.create_task(self._auto_cue(*due))
         self._fx_tick(now)
@@ -896,10 +929,11 @@ class Session(EngineListener):
             self._fx_task = None
 
     async def _prepare_next(self) -> None:
-        epoch = self._epoch
+        epoch, gen = self._epoch, self._dir_gen
         try:
             pk = await self._pick_and_prepare()
-            if self._epoch != epoch or self.state != "live" or self.prepared_pick is not None:
+            if (self._epoch != epoch or self._dir_gen != gen or self.state != "live"
+                    or self.prepared_pick is not None):
                 self._retire(pk["src"], pk["trans"])
             else:
                 self.prepared_pick = pk
@@ -1014,7 +1048,15 @@ class Session(EngineListener):
         nx = self.director.next_eligible(now)
         out["auto"] = {**nx, "armed": self.director.armed, "enabled": self.director.enabled,
                        "pending_change": self.director.latched, "last_decision": self.director.last}
+        out["music"] = self._music_status(now)
         return out
+
+    def _music_status(self, now: float) -> dict:
+        st = self.music.status(now)
+        lc = st.get("last_change")
+        if lc:
+            st["last_change"] = {"cause": lc["cause"], "at_pts": self._in_pts(lc["at"] - now)}
+        return st
 
     # -- engine callbacks (loop thread) ----------------------------------------------
     def on_encoder_config(self, cfg, config_msg: dict, init_msg: bytes) -> None:
@@ -1186,6 +1228,8 @@ class Session(EngineListener):
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
+            "direction_effective": self.direction_effective, "music": self._music_status(time.monotonic()),
+            "music_fields": music_fields(self.direction, self.music.proposal, self.music.m),
             "masters": self.runtime.masters(), "fixture": self.fixture, "beat_follow": self.beat_follow,
             "lead_ms": None if self.lead_ms is None else round(self.lead_ms, 1),
             # effects layer (EFFECTS_LAYER_DESIGN D.2)
