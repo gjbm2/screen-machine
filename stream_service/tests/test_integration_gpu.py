@@ -89,18 +89,17 @@ def close_to(img: np.ndarray, rgb, tol=5) -> bool:
 
 
 async def test_integration_session_lifecycle(service, tmp_path):
-    H = {"Authorization": f"Bearer {service['token']}"}
     out_dir = pathlib.Path(os.environ.get("SM_TEST_OUT", tmp_path))
     out_dir.mkdir(parents=True, exist_ok=True)
     async with aiohttp.ClientSession() as http:
-        ev = Events(await http.ws_connect(f"{BASE}/api/events?token={service['token']}"))
+        ev = Events(await http.ws_connect(f"{BASE}/api/events"))
         body = {"screen": "devtest", "gpu": GPU, "profile": "h264-720p30", "anchor": {"rgb": list(ANCHOR)},
                 "scene": "fractal-zoom",
                 "transitions": {"in": {"transition": "crossfade", "params": {"duration_s": 2.0, "easing": "linear"}},
                                 "out": {"preset": "crossfade-1s", "params": {"easing": "linear"}}},
                 "ttl_s": 60, "idempotency_key": f"it-{time.time()}"}
         t0 = time.monotonic()
-        r = await http.post(f"{BASE}/api/sessions", json=body, headers=H)
+        r = await http.post(f"{BASE}/api/sessions", json=body)
         assert r.status == 201, await r.text()
         res = await r.json()
         sid = res["session"]
@@ -109,18 +108,18 @@ async def test_integration_session_lifecycle(service, tmp_path):
         assert att["url"].startswith(f"ws://127.0.0.1:{PORT}/media/{sid}?k=")
         assert (att["codec"], att["w"], att["h"], att["fps"], att["target_buffer_ms"]) == ("h264", 1280, 720, 30, 300)
         # the same idempotency key returns the same session
-        r2 = await http.post(f"{BASE}/api/sessions", json=body, headers=H)
+        r2 = await http.post(f"{BASE}/api/sessions", json=body)
         assert (await r2.json())["session"] == sid
         media = Media(await http.ws_connect(att["url"]))
 
         await ev.wait(lambda e: e["type"] == "session.ready" and e["session"] == sid, 5.0)
         t_ready = time.monotonic() - t0
-        assert (await (await http.get(f"{BASE}/api/sessions/{sid}", headers=H)).json())["state"] == "holding"
+        assert (await (await http.get(f"{BASE}/api/sessions/{sid}")).json())["state"] == "holding"
         await asyncio.sleep(1.5)
 
-        r = await http.post(f"{BASE}/api/sessions/{sid}/go", json={}, headers=H)
+        r = await http.post(f"{BASE}/api/sessions/{sid}/go", json={})
         assert r.status == 200 and (await r.json())["state"] == "entering"
-        assert (await http.post(f"{BASE}/api/sessions/{sid}/go", json={}, headers=H)).status == 409
+        assert (await http.post(f"{BASE}/api/sessions/{sid}/go", json={})).status == 409
         in_start = await ev.wait(lambda e: e["type"] == "session.transition" and e["kind"] == "in"
                                  and e["phase"] == "started")
         in_done = await ev.wait(lambda e: e["type"] == "session.transition" and e["kind"] == "in"
@@ -128,13 +127,13 @@ async def test_integration_session_lifecycle(service, tmp_path):
         assert in_done["pts"] - in_start["pts"] == pytest.approx(2.0, abs=1e-6)
         await ev.wait(lambda e: e["type"] == "session.state" and e.get("state") == "live")
 
-        r = await http.patch(f"{BASE}/api/sessions/{sid}", json={"params": {"zoom_rate": 0.6}}, headers=H)
+        r = await http.patch(f"{BASE}/api/sessions/{sid}", json={"params": {"zoom_rate": 0.6}})
         assert r.status == 200 and (await r.json())["scene_params"]["zoom_rate"] == 0.6
-        r = await http.patch(f"{BASE}/api/sessions/{sid}", json={"params": {"speed": 1}}, headers=H)
+        r = await http.patch(f"{BASE}/api/sessions/{sid}", json={"params": {"speed": 1}})
         assert r.status == 400 and (await r.json())["error"] == "unknown_param"
         await asyncio.sleep(2.0)
 
-        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": list(TARGET)}}, headers=H)
+        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": list(TARGET)}})
         assert r.status == 202 and (await r.json())["state"] == "exiting"
         out_start = await ev.wait(lambda e: e["type"] == "session.transition" and e["kind"] == "out"
                                   and e["phase"] == "started")
@@ -143,13 +142,13 @@ async def test_integration_session_lifecycle(service, tmp_path):
         held = await ev.wait(lambda e: e["type"] == "session.held", 5.0)
         assert held["hold_pts"] == out_done["pts"]
         assert out_done["pts"] - out_start["pts"] == pytest.approx(1.0, abs=1e-6)
-        summary = await (await http.get(f"{BASE}/api/sessions/{sid}", headers=H)).json()
+        summary = await (await http.get(f"{BASE}/api/sessions/{sid}")).json()
         assert summary["state"] == "held" and summary["hold_pts"] == held["hold_pts"]
         assert summary["clients"] == 1
         await asyncio.sleep(1.0)
-        summary = await (await http.get(f"{BASE}/api/sessions/{sid}", headers=H)).json()
+        summary = await (await http.get(f"{BASE}/api/sessions/{sid}")).json()
 
-        r = await http.delete(f"{BASE}/api/sessions/{sid}", headers=H)
+        r = await http.delete(f"{BASE}/api/sessions/{sid}")
         assert r.status == 204
         ended = await ev.wait(lambda e: e["type"] == "session.ended", 5.0)
         assert ended["reason"] == "deleted"
@@ -205,46 +204,45 @@ async def test_integration_letterbox_scene_changes_and_reexit(service, tmp_path)
 
     from PIL import Image
 
-    H = {"Authorization": f"Bearer {service['token']}"}
     out_dir = pathlib.Path(os.environ.get("SM_TEST_OUT", tmp_path))
     png = io.BytesIO()
     Image.new("RGB", (640, 480), (220, 20, 20)).save(png, "PNG")     # 4:3 -> pillarboxed in 16:9
     async with aiohttp.ClientSession() as http:
-        ev = Events(await http.ws_connect(f"{BASE}/api/events?token={service['token']}"))
+        ev = Events(await http.ws_connect(f"{BASE}/api/events"))
         body = {"screen": "devtest", "gpu": GPU, "profile": "h264-720p30",
                 "anchor": {"png_b64": base64.b64encode(png.getvalue()).decode()},
                 "scene": {"source": "fractal_zoom", "params": {"preset": "dendrite", "palette": "neon"}},
                 "transitions": {"in": "cut", "out": "crossfade-1s"}, "ttl_s": 60}
-        res = await (await http.post(f"{BASE}/api/sessions", json=body, headers=H)).json()
+        res = await (await http.post(f"{BASE}/api/sessions", json=body)).json()
         sid = res["session"]
         media = Media(await http.ws_connect(res["attach"]["url"]))
         mine = lambda pred: (lambda e: e.get("session") == sid and pred(e))  # noqa: E731
         await ev.wait(mine(lambda e: e["type"] == "session.ready"), 5.0)
         await asyncio.sleep(0.5)
-        assert (await http.post(f"{BASE}/api/sessions/{sid}/go", json={}, headers=H)).status == 200
+        assert (await http.post(f"{BASE}/api/sessions/{sid}/go", json={})).status == 200
         in_done = await ev.wait(mine(lambda e: e["type"] == "session.transition" and e["kind"] == "in"
                                      and e["phase"] == "done"))
         await ev.wait(mine(lambda e: e.get("state") == "live"))
         await asyncio.sleep(1.0)
-        r = await http.patch(f"{BASE}/api/sessions/{sid}", headers=H,
+        r = await http.patch(f"{BASE}/api/sessions/{sid}",
                              json={"scene": "black", "transition": {"transition": "crossfade",
                                                                     "params": {"duration_s": 0.5}}})
         assert r.status == 200 and (await r.json())["scene"] == "black"
         sc1 = await ev.wait(mine(lambda e: e["type"] == "session.transition" and e["kind"] == "scene"
                                  and e["phase"] == "done"))
-        r = await http.patch(f"{BASE}/api/sessions/{sid}", headers=H,
+        r = await http.patch(f"{BASE}/api/sessions/{sid}",
                              json={"scene": {"source": "solid", "params": {"rgb": "#00ff00"}},
                                    "transition": "cut"})
         assert r.status == 200
         await ev.wait(mine(lambda e: e["type"] == "session.transition" and e["kind"] == "scene"
                            and e["phase"] == "done" and e["pts"] > sc1["pts"]))
         await asyncio.sleep(0.5)
-        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": [0, 0, 255]}}, headers=H)
+        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", json={"target": {"rgb": [0, 0, 255]}})
         assert r.status == 202
         await ev.wait(mine(lambda e: e["type"] == "session.transition" and e["kind"] == "out"
                            and e["phase"] == "started"))
         await asyncio.sleep(0.3)       # mid-way through the 1 s crossfade: re-exit to another target with a cut
-        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", headers=H,
+        r = await http.post(f"{BASE}/api/sessions/{sid}/exit",
                             json={"target": {"rgb": [255, 255, 0]}, "transition": "cut"})
         assert r.status == 202
         held1 = await ev.wait(mine(lambda e: e["type"] == "session.held"), 5.0)
@@ -254,14 +252,14 @@ async def test_integration_letterbox_scene_changes_and_reexit(service, tmp_path)
         assert sum(1 for e in ev.items if e.get("session") == sid and e["type"] == "session.held") == 1
         await asyncio.sleep(0.5)
         # exit again from held (additive): a new target and a new hold_pts
-        r = await http.post(f"{BASE}/api/sessions/{sid}/exit", headers=H,
+        r = await http.post(f"{BASE}/api/sessions/{sid}/exit",
                             json={"target": {"rgb": [255, 0, 255]},
                                   "transition": {"transition": "crossfade", "params": {"duration_s": 0.5}}})
         assert r.status == 202
         held2 = await ev.wait(mine(lambda e: e["type"] == "session.held" and e["hold_pts"] > held1["hold_pts"]), 5)
         assert held2["hold_pts"] - held1["hold_pts"] > 0.5
         await asyncio.sleep(0.5)
-        assert (await http.delete(f"{BASE}/api/sessions/{sid}", headers=H)).status == 204
+        assert (await http.delete(f"{BASE}/api/sessions/{sid}")).status == 204
         await asyncio.wait_for(media.task, 5.0)
         await ev.ws.close()
 

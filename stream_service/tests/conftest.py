@@ -47,12 +47,10 @@ def _no_harness_data(monkeypatch, tmp_path_factory):
 @pytest.fixture(scope="session")
 def service(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("svc")
-    token_file = tmp / "stream.token"
     log = open(tmp / "service.log", "w")
     env = {**os.environ, "CUDA_DEVICE_ORDER": "PCI_BUS_ID"}
-    proc = subprocess.Popen([sys.executable, "-m", "stream_service", "--host", "127.0.0.1", "--port", str(PORT),
-                             "--token-file", str(token_file)], cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
-                            env=env)
+    proc = subprocess.Popen([sys.executable, "-m", "stream_service", "--host", "127.0.0.1", "--port", str(PORT)],
+                            cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env)
     try:
         t_end = time.time() + 20
         while time.time() < t_end:
@@ -65,7 +63,7 @@ def service(tmp_path_factory):
                 time.sleep(0.2)
         else:
             raise RuntimeError("service did not come up")
-        yield {"token": token_file.read_text().strip(), "log": tmp / "service.log", "proc": proc}
+        yield {"log": tmp / "service.log", "proc": proc}
     finally:
         proc.send_signal(signal.SIGINT)   # aiohttp shuts down gracefully: sessions end, ffmpeg exits
         try:
