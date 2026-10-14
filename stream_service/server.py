@@ -301,7 +301,8 @@ def _session(request: web.Request):
 
 
 async def get_session(request: web.Request) -> web.Response:
-    return web.json_response(_session(request).summary())
+    s = _session(request)
+    return web.json_response({**s.summary(), "attach": s.attach})   # so a console can watch room's session
 
 
 async def patch_session(request: web.Request) -> web.Response:
