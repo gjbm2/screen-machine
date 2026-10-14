@@ -78,6 +78,7 @@ def _guarded(path: str) -> bool:
 
 
 LOCAL_CONTROL = web.AppKey("local_control", bool)
+APP_URL = web.AppKey("app_url", str)      # --app-url: where the renderer's console lives in the app (deploy/sm-stream.env)
 _LOOPBACK = ("127.0.0.1", "::1")
 
 
@@ -92,8 +93,11 @@ async def auth_and_errors(request: web.Request, handler):
     # --local-control: control only from this machine (the Screen Machine app's /renderer/* pass-through on the
     # LAN door :8700); people never address the renderer directly.  No password either way.
     if request.app.get(LOCAL_CONTROL) and _control_path(path) and request.remote not in _LOOPBACK:
-        return err(403, "local_only", "open the renderer through the Screen Machine app: "
-                                      "http://192.168.1.205:8700/renderer/dev")
+        app_url = request.app.get(APP_URL, "")
+        if app_url and request.method == "GET" and not path.startswith("/api/"):
+            raise web.HTTPFound(app_url + path)      # a browser on :8702/dev lands on the app's console
+        return err(403, "local_only", "open the renderer through the Screen Machine app"
+                                      + (f": {app_url}/dev" if app_url else "'s /renderer/dev"))
     # No password (owner, 14 Oct): a test rig in a private house. A bearer token from older clients is ignored.
     try:
         resp = await handler(request)
@@ -498,7 +502,8 @@ async def presets_watch(app: web.Application) -> None:
 def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
-             art_dir: Optional[pathlib.Path] = None, local_control: bool = False) -> web.Application:
+             art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
+             app_url: str = "") -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -520,6 +525,7 @@ def make_app(*, token: str, config_dir: pathlib.Path, public_base: Optional[str]
     app[PREVIEWS] = Previews(mgr, presets)
     app[RATINGS] = Ratings(pathlib.Path(config_dir) / "ratings.json")
     app[LOCAL_CONTROL] = local_control
+    app[APP_URL] = app_url.rstrip("/")
     r = app.router
     r.add_get("/healthz", healthz)
     r.add_get("/dev", dev_page)
