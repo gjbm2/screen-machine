@@ -165,3 +165,15 @@ def test_token_file(tmp_path):
     with pytest.raises(SystemExit):
         load_or_create_token(str(path))
     os.chmod(path, 0o600)
+
+
+@pytest.mark.asyncio
+async def test_local_control_answers_control_only_from_this_machine():
+    from stream_service.server import make_app
+    app = make_app(token=TOKEN, config_dir=REPO_CONFIG, local_control=True)
+    async with TestClient(TestServer(app)) as c:      # the test client connects from 127.0.0.1: allowed
+        assert (await c.get("/api/catalog")).status == 200
+        assert (await c.get("/healthz")).status == 200
+    from stream_service.server import _control_path
+    assert _control_path("/api/sessions") and _control_path("/dev") and _control_path("/dev/library")
+    assert not _control_path("/healthz") and not _control_path("/media/s-1") and not _control_path("/static/x.js")

@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="render->photon calibration (presented->photon per screen)")
     ap.add_argument("--art-dir", default=str(REPO / "output"),
                     help="dev page only: where <screen>.jpg (the current artwork) is read from")
+    ap.add_argument("--local-control", action="store_true",
+                    help="answer /api/* and /dev* only from this machine (the app's /renderer/* pass-through); "
+                         "/healthz, /media/* and /static/* stay open")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
 
@@ -53,7 +56,7 @@ def main(argv: list[str] | None = None) -> None:
     app = make_app(token=token, config_dir=pathlib.Path(args.config_dir), public_base=args.public_base,
                    max_sessions=args.max_sessions, show_bus=args.show_bus,
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
-                   art_dir=pathlib.Path(args.art_dir))
+                   art_dir=pathlib.Path(args.art_dir), local_control=args.local_control)
     logging.getLogger("stream_service").info("listening on %s:%d (dev page: /dev)", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None, access_log=None,
                 shutdown_timeout=10.0)

@@ -29,6 +29,7 @@ class FakeFx:
 class FakeSession:
     def __init__(self, sid, body):
         self.id, self.body, self.state = sid, body, "holding"
+        self.screen, self.gpu = body.get("screen", "tv"), body.get("gpu", 0)
         self.attach = {"url": f"ws://x/media/{sid}?k=k", "target_buffer_ms": 300}
         self.cues, self.renewed, self.went = [], 0, 0
         self.fx = FakeFx()
@@ -49,6 +50,14 @@ class FakeSession:
 class FakeMgr:
     def __init__(self):
         self.sessions, self.created, self.deleted = {}, [], []
+
+    def gpu_names(self):
+        return ["rtx4060", "p4000"]
+
+    def tv(self, gpu, state="live"):                 # a non-preview (TV) session on a GPU
+        s = FakeSession(f"tv-{gpu}", {"screen": "south-screen", "gpu": gpu})
+        s.state = state
+        self.sessions[s.id] = s
 
     async def create(self, body, host):
         s = FakeSession(f"s-{len(self.created)}", body)
@@ -224,3 +233,40 @@ async def test_rating_routes(tmp_path):
         assert r.status == 400
         r = await c.get("/dev/ratings")
         assert r.status == 200 and (await r.json())["ratings"]["scene/st_x"]["stars"] == 5
+
+
+async def test_preview_avoids_a_gpu_with_a_tv_session(pv):
+    r = await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
+    assert pv.mgr.created[-1]["gpu"] == 1                       # default: GPU 1
+    pv.mgr.tv(1)                                                # the south TV goes live on GPU 1
+    r2 = await pv.show({"client": "tab-1", "kind": "scene", "spec": "b"}, "h")
+    assert pv.mgr.created[-1]["gpu"] == 0 and r2["session"] != r["session"]   # moved to the free GPU
+    assert pv.mgr.deleted == [r["session"]]
+    pv.mgr.tv(0)                                                # both busy: GPU 1 (the default)
+    await pv.show({"client": "tab-2", "kind": "scene", "spec": "a"}, "h")
+    assert pv.mgr.created[-1]["gpu"] == 1
+
+
+async def test_ended_tv_sessions_do_not_count(pv):
+    pv.mgr.tv(1, state="ended")
+    await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
+    assert pv.mgr.created[-1]["gpu"] == 1
+
+
+def test_ratings_saved_looks(tmp_path):
+    r = Ratings(tmp_path / "ratings.json")
+    looks = [{"name": " warm ", "params": {"seed": 12, "field": "rings", "glow": 0.4, "invert": False, "tint": "#ff8800"}}]
+    e = r.set({"key": "scene/st_x", "looks": looks})["entry"]
+    assert e["looks"] == [{"name": "warm", "params": looks[0]["params"]}]
+    e = r.set({"key": "scene/st_x", "reject": True})["entry"]
+    assert e["looks"][0]["name"] == "warm"                                  # a reject keeps the looks
+    assert r.set({"key": "scene/st_x", "reject": False, "looks": []})["entry"] is None
+
+
+@pytest.mark.parametrize("looks", [{}, [{"name": "a"}], [{"name": "", "params": {}}], [{"name": "<b>", "params": {}}],
+                                   [{"name": "a", "params": {"bad key": 1}}], [{"name": "a", "params": {"x": [1]}}],
+                                   [{"name": "a", "params": {"x": float("nan")}}], [{"name": "a", "params": {}, "z": 1}],
+                                   [{"name": f"l{i}", "params": {}} for i in range(25)]])
+def test_ratings_looks_validation(tmp_path, looks):
+    with pytest.raises(ParamError):
+        Ratings(tmp_path / "ratings.json").set({"key": "scene/x", "looks": looks})

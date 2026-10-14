@@ -71,6 +71,20 @@ class Previews:
             return None
         return s
 
+    def _pick_gpu(self) -> int:
+        """A GPU with no TV (non-preview) session, preferring the default (GPU 1); the default if all are busy,
+        so a preview never competes with a live north / south screen when it can avoid it."""
+        busy = {s.gpu for s in self.mgr.sessions.values()
+                if s.state not in ("ended", "failed") and not str(s.screen).startswith("dev-preview-")}
+        try:
+            n = len(self.mgr.gpu_names()) or 1
+        except Exception:
+            n = 1
+        for g in [self.gpu] + [i for i in range(n) if i != self.gpu]:
+            if g not in busy and g < n:
+                return g
+        return self.gpu
+
     def _stop_loop(self, client: str) -> None:
         t = self.loops.pop(client, None)
         if t is not None:
@@ -112,16 +126,21 @@ class Previews:
         spec = body.get("spec")
         if spec is None:
             raise ParamError("bad_request", "spec is required (a preset name or a plug-in spec)")
-        gpu = body.get("gpu", self.gpu)
+        gpu = body.get("gpu")
         lock = self.locks.setdefault(client, asyncio.Lock())
         async with lock:
             self._stop_loop(client)
             to = self._to(kind, spec)
             s = self._session(client)
+            want = gpu if gpu is not None else self._pick_gpu()
+            if s is not None and gpu is None and s.gpu != want:     # its GPU got a TV session: move to the free one
+                self.sids.pop(client, None)
+                await self.mgr.delete(s.id)
+                s = None
             was = self.kinds.get(client) if s is not None else None
             if s is None:
                 s, _ = await self.mgr.create({
-                    "screen": self._screen(client), "gpu": gpu, "profile": PROFILE, "anchor": {"rgb": [0, 0, 0]},
+                    "screen": self._screen(client), "gpu": want, "profile": PROFILE, "anchor": {"rgb": [0, 0, 0]},
                     "scene": to, "transitions": {"in": CUT, "out": CUT}, "ttl_s": TTL_S}, host)
                 self.sids[client] = s.id
                 await self._wait_state(s, ("holding",) + LIVE)
