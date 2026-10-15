@@ -32,6 +32,9 @@ export function summariseScreen(screen, label = (s) => specName(s)) {
     const text = desiredLive ? "Switching to live…" : desired === "art" ? "Going back to art…" : "Changing…";
     return { tone: "warn", text, busy: true, problem: false, live: false, ...(desiredLive ? retryWords(screen) : {}) };
   }
+  if ((phase === "live" || obs.layer === "live") && desired === "art") {
+    return { tone: "warn", text: "Going back to art…", busy: true, problem: false, live: false };
+  }
   if (phase === "live" || obs.layer === "live") {
     const sc = desiredLive?.scene;
     const name = sc ? label(sc) : null;
@@ -130,6 +133,7 @@ const CAUSE = {
   dmx_variant: "the lighting desk changed variant",
   plugin_error: "the previous scene failed",
   music: "the music changed",
+  next: "someone asked for the next scene",
 };
 export function directorWords(ev, label = (s) => friendly(s), plugin = (n) => friendly(n)) {
   if (!ev) return null;
