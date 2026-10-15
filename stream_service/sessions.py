@@ -863,6 +863,8 @@ class Session(EngineListener):
         self.engine.submit(StartTransition("scene", tid, cue["src"], cue["trans"], at_mono=at_mono))
         self._cue_event("scheduled", cue)
         self.director.note_cue(cue["scene"], cue["transition"], self.sampler.snapshot())
+        if cue["cause"] != "auto" and self.director.dwell_start is not None:
+            self.director.scene_done(now)     # a hand-picked scene gets a full dwell (again from its transition's done)
         self.last_cue = {k: cue.get(k) for k in ("cue_id", "cause", "reason", "detail", "scene", "transition", "at",
                                                  "fallback", "at_pts", "duration_s")}
         self.director.last = self.last_cue if cue["cause"] == "auto" else self.director.last
