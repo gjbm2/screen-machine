@@ -434,3 +434,13 @@ def test_commands_submitted_after_release_are_disposed_of():
     assert owned.closed == 0
 
 
+
+
+async def test_scene_auto_lets_the_director_pick_the_first_scene(client):
+    """Owner, 15 Oct: modes carry tags / direction, the director picks the first scene too."""
+    res, s = await create(client, scene="auto", auto={"enabled": True, "pool": ["warp-cells"]})
+    assert s.scene_spec.name == "warp-cells"
+    res, s = await create(client, screen="other", scene={"auto": True}, auto={"enabled": True, "pool": {"tags": {"energy": [0.9, 1.0]}}})
+    assert s.scene_spec.name in s.mgr.presets.scenes
+    r = await client.post("/api/sessions", json=body(screen="third", scene="auto", auto={"enabled": True, "pool": ["nope"]}), headers=AUTH)
+    assert r.status == 201                           # an empty auto pool falls back to the whole vetted pool

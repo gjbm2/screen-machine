@@ -1648,6 +1648,29 @@ class SessionManager:
         ms = est.get(plugin)
         return budget_4k is None or ms is None or ms <= budget_4k
 
+    def first_scene(self, p: dict, look: dict, leader: Optional[Session]) -> SceneSpec:
+        """A session created with scene "auto": the room leader's scene when joining a room (the screens start
+        together), else the director's weighted pick from the auto pool for this direction (vetted pool, ratings),
+        falling back to the whole vetted pool when the auto pool has nothing that fits."""
+        pixels = p["profile"].w * p["profile"].h / (3840 * 2160)
+        name = None
+        if leader is not None and leader.screen != p["screen"]:
+            name = (leader.current_spec or leader.scene_spec).name
+        if name is None or name not in self.presets.scenes:
+            budget = trip_budget_ms(p["profile"].fps) / max(1e-6, pixels)
+            for auto in (look.get("auto"), None):
+                d = Director(auto, look.get("direction") or dict(DIRECTION_DEFAULTS, moods=[]))
+                d.vet = lambda kind, plugin: self.auto_ok(kind, plugin, p["gpu"], budget)
+                d.rate = self.rating_weight
+                got = d.pick_scene(self.presets.scenes, None, time.monotonic())
+                if got is not None:
+                    name = got[0]
+                    break
+        if name is None:
+            raise ParamError("empty_pool", "scene \"auto\": no scene in the pool can run here")
+        log.info("first scene (auto) for %s: %s", p["screen"], name)
+        return self.fit_scene(self.presets.resolve_scene(name), p["gpu"], pixels)
+
     def fit_scene(self, spec: SceneSpec, gpu: int, pixels_ratio: float = 1.0, explicit: bool = False) -> SceneSpec:
         """The calibration's ``fit_scale`` (measured at 4K on this GPU) as the scene's render_scale, scaled to the
         session's pixels; never raised above the spec's own value, and not when the cue sets render_scale."""
@@ -1804,9 +1827,12 @@ class SessionManager:
             if supports_av1_encode(gpu) is False:
                 raise ParamError("unsupported_profile", f"GPU {gpu} has no AV1 encoder (needs an Ada GPU)")
         if "scene" not in body:
-            raise ParamError("bad_request", "scene is required")
-        scene = self.fit_scene(self.presets.resolve_scene(body["scene"]), gpu,
-                               profile.w * profile.h / (3840 * 2160), sets_render_scale(body["scene"]))
+            raise ParamError("bad_request", "scene is required (a preset, a spec, or \"auto\": the director picks it)")
+        # "auto" / {"auto": true} (owner, 15 Oct: modes carry tags and direction, never scenes): the first scene is the
+        # director's pick from the session's auto pool and direction, or the room leader's scene (create()).
+        scene = None if body["scene"] == "auto" or body["scene"] == {"auto": True} else \
+            self.fit_scene(self.presets.resolve_scene(body["scene"]), gpu, profile.w * profile.h / (3840 * 2160),
+                           sets_render_scale(body["scene"]))
         trans = body.get("transitions") or {}
         if not isinstance(trans, dict) or set(trans) - {"in", "out"}:
             raise ParamError("bad_request", "transitions must be {\"in\": spec, \"out\": spec}")
@@ -1880,6 +1906,8 @@ class SessionManager:
             ld = self.room_leader(p["room"]) if p["room"] and look["auto"] is not None else None
             if ld is not None and ld.screen != p["screen"]:
                 look = {**look, **rooms.look_of(ld)}      # joining a room: the room's look, not the body's
+            if p["scene"] is None:
+                p["scene"] = self.first_scene(p, look, ld)
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
             s.room = p["room"]
