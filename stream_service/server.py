@@ -332,12 +332,31 @@ def with_owner_sets(cat: dict, ratings: dict) -> dict:
     return {**cat, "scenes": out}
 
 
+SCENE_TAG_SKIP = {"energy", "weight", "auto", "heavy", "status", "origin", "licence", "license_class"}
+
+
+def scene_tag_index(presets: dict) -> list[dict]:
+    """Every tag word on the scene presets, by facet, with how many presets carry it: the generic vocabulary a
+    mode's ``scene_tags`` chooses from (owner, 16 Oct: modes select by tags as config, nothing hard-coded).
+    ``modes`` holds the presets' set words plus the owner's Library tags (with_owner_sets)."""
+    counts: dict[tuple[str, str], int] = {}
+    for p in ((presets.get("scenes") or {}).values()):
+        for facet, v in (p.get("tags") or {}).items():
+            if facet in SCENE_TAG_SKIP:
+                continue
+            words = [v] if isinstance(v, str) else v if isinstance(v, list) else []
+            for w in {str(x).strip().lower() for x in words if isinstance(x, str) and x.strip()}:
+                counts[(facet, w)] = counts.get((facet, w), 0) + 1
+    return [{"tag": w, "facet": f, "count": n} for (f, w), n in sorted(counts.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1]))]
+
+
 async def catalog(request: web.Request) -> web.Response:
     presets = request.app[PRESETS]
     presets.reload_if_changed()
     out = request.app[REGISTRY].catalog()
     out["profiles"] = {name: p.describe() for name, p in PROFILES.items()}
     out["presets"] = with_owner_sets(presets.catalog(), request.app[RATINGS].all())
+    out["scene_tags"] = scene_tag_index(out["presets"])
     # additive (LIVE_V1 1.1): feature discovery, vocabulary, palettes, bindable signals, tag problems
     out["api"] = {"contract": "LIVE_V1", "rev": "1.1", "features": list(FEATURES)}
     out["vocab"] = presets.vocab.words
