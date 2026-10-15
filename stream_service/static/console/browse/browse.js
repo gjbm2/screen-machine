@@ -5,7 +5,7 @@ import { h, put, debounce } from "../kit.js";
 import { S } from "../store.js";
 import { lib } from "../data/library.js";
 import * as room from "../data/room.js";
-import { matches, counts, sorted, tokens, activeFilters, badgeCount, facetValues, facetWord, itemForSpec } from "../data/query.js";
+import { matches, counts, sorted, tokens, activeFilters, badgeCount, facetValues, facetWord, itemForSpec, FACET_DEFS } from "../data/query.js";
 import { createGrid } from "./grid.js";
 import * as viewer from "./viewer.js";
 import * as review from "./review.js";
@@ -108,6 +108,7 @@ function drawQuick() {
   const kids = act.map((f) => chip(f.label, { cls: "on", tid: "active-chip", data: { facet: f.facet, value: f.value }, removable: true, removeLabel: `Remove the filter ${f.label}`,
     onRemove: () => removeActive(f), onClick: () => removeActive(f) }));
   if (act.length) kids.push(chip("Clear all", { tid: "clear-all", onClick: () => clearFilters(kind) }));
+  for (const t of tagSuggestions(s, kind)) kids.push(t);
   const unrated = lib.items.filter((it) => it.kind === kind && !it._rating && !it._reject && matches(it, { ...stateForQuery(), stars: { n: null } }, kind)).length;
   if (unrated) kids.push(chip(`Review unrated ${unrated}`, { tid: "review-unrated", onClick: () => reviewUnrated() }));
   const sel = (f) => new Set(s.facets[kind]?.[f] || []);
@@ -122,6 +123,26 @@ function drawQuick() {
   // one chip per word: a Look "calm" and Movement "Calm" (or a tag of the same name) would read "Calm · … · Calm"
   const seen = new Set();
   put(quick, kids.filter((c) => { const w = c.textContent.trim().toLowerCase(); if (seen.has(w)) return false; seen.add(w); return true; }));
+}
+// Searching "piano" offers the tag piano (any facet: sets, your tags, look, technique, style, depth) with how many it
+// would show; tapping it filters by the tag and clears the words.
+const SUGGEST_FACETS = ["modes", "mytags", "look", "technique", "style", "dims"];
+function tagSuggestions(s, kind) {
+  const words = String(s.q || "").toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+  if (!words.length) return [];
+  const base = { ...stateForQuery(), q: "", qt: [] };
+  const out = [];
+  for (const facet of SUGGEST_FACETS) {
+    const chosen = new Set(s.facets[kind]?.[facet] || []);
+    for (const [v, n] of facetValues(lib.items, base, kind, facet)) {
+      const w = String(v).toLowerCase();
+      if (!n || chosen.has(v) || !words.some((q) => w.includes(q))) continue;
+      out.push(chip(facetWord(facet, v), { count: n, cls: "suggest", tid: "tag-suggest", data: { facet, value: v },
+        title: `Show only ${FACET_DEFS[facet]?.label?.toLowerCase() || "tag"} "${facetWord(facet, v)}"`,
+        onClick: () => { setFacet(kind, facet, v, true); searchIn.value = ""; S.set({ q: "" }); } }));
+    }
+  }
+  return out.slice(0, 6);
 }
 function removeActive(f) {
   const s = S.get();
