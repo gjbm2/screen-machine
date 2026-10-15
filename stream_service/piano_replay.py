@@ -6,7 +6,8 @@ all with ``source: "test"`` and a fresh ``sess``.  The renderer can run it in-pr
 as stream ``test-piano``; :meth:`TestPiano.midi` gives the same performance as raw MIDI for that sender.
 
 Material: a ``.mid`` file (``TestPiano.from_file``; type 0/1, tempo map, running status; every channel is the one
-keyboard; CC64/66/67 are the pedals), or a built-in phrase (``PHRASES``):
+keyboard; CC64/66/67 are the pedals; config/live/test-piano/ holds real classical and jazz performances, see its
+SOURCES.md), or a built-in test pattern (``PHRASES``):
   sweep        every key A0..C8 once (does each key land where it should?)
   scale        two octaves of C major up and down, with a crescendo
   arpeggios    I-vi-IV-V, the damper changed every bar
@@ -118,29 +119,30 @@ def _sostenuto() -> list[Event]:
 _BUILDERS = {"sweep": _sweep, "scale": _scale, "arpeggios": _arpeggios, "chords": _chords,
              "repeats": _repeats, "sostenuto": _sostenuto}
 PHRASES = tuple(_BUILDERS) + ("medley",)
-PHRASE_LABELS = {                              # what the Room page calls them, in its order
-    "medley": "A bit of everything",
-    "chords": "Slow pedalled chords",
-    "arpeggios": "Flowing arpeggios",
-    "scale": "Scales",
-    "sostenuto": "Held bass, tune above",
-    "repeats": "Fast repeated notes",
-    "sweep": "Every key, low to high",
+PHRASE_LABELS = {                              # generated test patterns, listed after the real music
+    "medley": "Test pattern: a bit of everything",
+    "chords": "Test pattern: slow pedalled chords",
+    "arpeggios": "Test pattern: flowing arpeggios",
+    "scale": "Test pattern: scales",
+    "sostenuto": "Test pattern: held bass, tune above",
+    "repeats": "Test pattern: fast repeated notes",
+    "sweep": "Test pattern: every key, low to high",
 }
 LIBRARY_DIR = pathlib.Path(__file__).resolve().parents[1] / "config" / "live" / "test-piano"
 
 
 def library(root: pathlib.Path = LIBRARY_DIR) -> list[dict]:
-    """The pieces a test piano can play: the built-in phrases, then every .mid in ``root`` (by file name)."""
-    out = [{"id": k, "label": v, "kind": "phrase"} for k, v in PHRASE_LABELS.items()]
+    """The pieces a test piano can play: every .mid in ``root`` (real performances, by file name; see its
+    SOURCES.md), then the built-in test patterns."""
+    out = []
     try:
         files = sorted(p for p in root.iterdir() if p.suffix.lower() in (".mid", ".midi") and p.is_file())
     except OSError:
         files = []
     for p in files:
-        out.append({"id": f"file:{p.name}", "label": p.stem.replace("_", " ").replace("-", " ").strip().capitalize(),
-                    "kind": "file"})
-    return out
+        label = " ".join(p.stem.replace("_", " ").split())
+        out.append({"id": f"file:{p.name}", "label": label[:1].upper() + label[1:], "kind": "file"})
+    return out + [{"id": k, "label": v, "kind": "phrase"} for k, v in PHRASE_LABELS.items()]
 
 
 def resolve(piece: str, root: pathlib.Path = LIBRARY_DIR) -> "TestPiano":
