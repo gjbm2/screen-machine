@@ -68,6 +68,7 @@ from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
+from .piano import PianoSignals
 from .plugins import Registry
 from .plugins.base import ParamError
 from .plugins.sources.image import ImageSource, load_png
@@ -241,6 +242,7 @@ class Session(EngineListener):
         self.fx_director.configure((auto or {}).get("fx"), self.direction)
         # -- the music proposes direction (music_direction.py): the directors use the panel's, trimmed by it --
         self.music = MusicDirection(self.director.auto.get("music") if self.director.auto else None)
+        self.piano = PianoSignals()               # the piano's bind signals (piano.py) from self.sound
         self.direction_effective = self.direction
         self._dir_key = pick_key(self.direction)
         self._dir_gen = 0                         # bumped when a prepared pick no longer fits the direction
@@ -1160,7 +1162,9 @@ class Session(EngineListener):
             self._emit_director()
         d.observe(snap, fresh)
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed)
-        self.runtime.extra = self.music.signals(now)        # the mappings' music signals (binding.py)
+        # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
+        self.runtime.extra = {**self.music.signals(now),
+                              **self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self._following = True
@@ -1798,7 +1802,7 @@ class SessionManager:
             if s.sound is not None and s.state not in ("ended", "failed"):
                 s.sound.on_message(msg)
 
-    def test_piano(self, on: bool, path: Optional[str] = None) -> dict:
+    def test_piano(self, on: bool, path: Optional[str] = None, phrase: Optional[str] = None) -> dict:
         """Loop thread: start / stop a generated (or .mid) piano feeding every session, until the real MIDI is in."""
         t = getattr(self, "_piano_task", None)
         if t is not None:
@@ -1806,7 +1810,7 @@ class SessionManager:
             self._piano_task = None
         if on:
             from .sound_view import TestPiano
-            piano = TestPiano(path) if path else TestPiano()
+            piano = TestPiano.from_file(path, loop=True) if path else TestPiano(phrase or "medley", loop=True)
 
             async def run() -> None:
                 while True:
