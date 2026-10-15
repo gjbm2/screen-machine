@@ -1,0 +1,10 @@
+cal-flash:
+  label: Calibration flash (latency_cal only)
+  source: cal_flash
+  params:
+    white: 0
+  tags:
+    auto: false
+    energy: [0.0, 0.0]
+    moods: [geometric]
+    weight: 0.0
