@@ -123,14 +123,14 @@ def timer_for(gpu, fps=FPS):
 def test_sustained_over_budget_scene_trips_within_half_a_second_and_goes_black():
     gpu = FakeGpu()
     timer = timer_for(gpu)
-    src = Heavy(gpu, 250.0)        # too slow even every 4th frame: budget at 30 fps 1.5 x 33.3 = 50 ms, x 4
+    src = Heavy(gpu, 450.0)        # too slow even every 8th frame: budget at 30 fps 1.5 x 33.3 = 50 ms, x 8
     layer = SourceLayer(src, 0.0)
     _, vals, errors, repeats = drive(layer, timer, gpu, 0, 60, until=lambda e: bool(e))
     assert len(errors) == 1
     kind, obj, exc, action = errors[0]
     assert kind == "source" and obj is src and action == "solid" and isinstance(exc, SlowPlugin)
-    assert exc.why == "sustained" and exc.ms == pytest.approx(250.0) and exc.budget_ms == pytest.approx(200.0)
-    assert gpu.now <= 0.8                                # 0.5 s of over-budget GPU time, read a frame late
+    assert exc.why == "sustained" and exc.ms == pytest.approx(450.0) and exc.budget_ms == pytest.approx(400.0)
+    assert gpu.now <= 1.5                                # 0.5 s of over-budget GPU time, read a frame late
     assert layer.failed and layer.slow and repeats > 0   # the back-pressure kept the GPU at most 2 frames behind
     n = max(vals) + 1
     _, vals, errors, _ = drive(layer, timer, gpu, n, n + 40)
@@ -232,10 +232,10 @@ def test_a_struggling_gpu_drops_the_scenes_frame_rate_instead_of_tripping():
     src = Heavy(gpu, [80.0] * 200 + [5.0] * 1000)      # 80 ms: 3.4 x RATE_TARGET's 23.3 ms -> every 4th frame
     layer = SourceLayer(src, 0.0)
     _, vals, errors, _ = drive(layer, timer, gpu, 0, 120)
-    assert errors == [] and not layer.failed and layer.rate_div == RATE_MAX_DIV
+    assert errors == [] and not layer.failed and layer.rate_div == 4 < RATE_MAX_DIV
     r0 = src.renders
     _, vals, errors, repeats = drive(layer, timer, gpu, 120, 240)
-    assert errors == [] and src.renders - r0 <= 120 / RATE_MAX_DIV + 1         # the scene at 7.5 fps ...
+    assert errors == [] and src.renders - r0 <= 120 / 4 + 1                   # the scene at 7.5 fps ...
     assert repeats <= 0.3 * 120          # the stream keeps up but for a frame queued behind each long render
     n = 240
     while src.renders < 200 and n < 2000:                                       # the cost falls: back to every frame
@@ -507,3 +507,16 @@ async def test_fit_scale_becomes_render_scale_unless_the_cue_sets_it(client, har
     assert s2.scene_spec.params["render_scale"] == pytest.approx(0.5)
     _, s3 = await create(client, gpu=1, profile="hevc-2160p60", scene="warp-cells")
     assert s3.scene_spec.params["render_scale"] == pytest.approx(0.3)
+
+
+def test_a_slow_shader_at_its_smallest_scale_keeps_running():
+    """Owner, 15 Oct: degrade, never refuse.  The GLSL layer only gives up on a shader over HARD_MS several times."""
+    from stream_service.plugins._lib.glsl.plugins import HARD_MS, GpuTooSlow, _Watch
+    w = _Watch(None, "st_ghostly_cavern", 20.0)
+    for ms in [23.1] * 50:                                # over "slow" at the minimum scale: still fine here
+        w.poll = lambda ms=ms: ms
+        assert w.judge(0.25, 0.25) is None
+    w.poll = lambda: HARD_MS + 50
+    assert w.judge(0.25, 0.25) is None and w.judge(0.25, 0.25) is None
+    with pytest.raises(GpuTooSlow):
+        w.judge(0.25, 0.25)

@@ -25,7 +25,7 @@ a source goes black like a failing one (the session cues a recovery), a transiti
 is dropped.  ``StillLayer`` shows a frozen frame (an exit that must not render a slow scene).
 
 Scene frame rate under GPU load (owner, 15 Oct 2026): a scene source whose measured GPU cost per render is over
-``RATE_TARGET`` of a frame period renders only every 2nd, 3rd or 4th frame (``rate_div``) and shows its last frame
+``RATE_TARGET`` of a frame period renders only every 2nd, 3rd, ... up to 8th frame (``rate_div``) and shows its last frame
 in between, so a struggling GPU drops the scene's frame rate (e.g. 15 fps in a 30 fps stream) instead of falling
 behind or tripping; transitions, effects and the stream itself still run every frame.  The guard's budget for the
 scene scales with ``rate_div``: it trips only a scene that cannot keep up even at ``RATE_MAX_DIV``.  The rate comes
@@ -43,7 +43,7 @@ from .easing import ease
 log = logging.getLogger("stream_service.layers")
 
 RATE_TARGET = 0.7      # a scene may cost this share of a frame period per output frame
-RATE_MAX_DIV = 4       # render at most this many frames apart (7.5 fps in a 30 fps stream)
+RATE_MAX_DIV = 8       # render at most this many frames apart (3.75 fps in a 30 fps stream): degrade, never refuse
 RATE_UP_S = 3.0        # stream seconds the cost must stay low (with a 20% margin) before the rate comes back up
 RATE_EMA = 0.3
 RATE_HOLD_FRAMES = 2   # pooled frames held at once: a transition's outgoing and incoming scenes (the engine reserves)

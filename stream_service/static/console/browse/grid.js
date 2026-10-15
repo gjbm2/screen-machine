@@ -72,7 +72,7 @@ export function createGrid({ mode = "browse", onSelect, rate, ribbons = () => ne
 
   function badgeFor(it, rib) {
     if (it.load === "error" || it._broken) return badge("Broken", "bad", { onPic: true, tid: "tile-badge" });
-    if (it.slow) return badge(it.slow.status === "broken" ? "Broken" : "Too slow", it.slow.status === "broken" ? "bad" : "warn", { onPic: true, tid: "tile-badge" });
+    if (it.slow) return badge(it.slow.status === "broken" ? "Broken" : "Heavy", it.slow.status === "broken" ? "bad" : "warn", { onPic: true, tid: "tile-badge" });
     if (mode === "pick") return null;
     if (it.status && it.status !== "accepted") return badge("Needs work", "warn", { onPic: true, tid: "tile-badge" });
     if (rib?.length) return null;                        // the ribbon says it

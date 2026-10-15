@@ -244,7 +244,7 @@ export async function applyLook(it, look) {
 const keepOpen = { more: false, engine: false };
 export function renderPanel(host, it, { failed = null } = {}) {
   const box = h("div", { class: "tune", tid: "tune-panel" });
-  if (failed) { put(host, h("div", { class: "status tone-warn" }, h("span", { class: "dot", style: { marginTop: "7px" } }), h("div", { class: "grow" }, `Tune is off: ${failed}`))); return; }
+  const note = failed ? h("p", { class: "hint", tid: "tune-note" }, `The preview stopped (${failed}); changes here still apply to the next preview and to a screen.`) : null;
   if (!T.props) {
     put(host, h("div", { class: "tune", tid: "tune-panel" }, h("p", { class: "hint" }, "Loading the settings…")));
     load();
@@ -292,6 +292,6 @@ export function renderPanel(host, it, { failed = null } = {}) {
   };
   changesLine();
   put(box, head, tools, nameIn ? h("div", { class: "row" }, h("label", { class: "field grow" }, h("span", { class: "lab" }, "Name this look (Enter saves, Esc cancels)"), nameIn)) : null, rows, changes);
-  put(host, box);
+  put(host, ...(note ? [note, box] : [box]));
   if (nameIn) requestAnimationFrame(() => { nameIn.focus(); nameIn.select(); });
 }
