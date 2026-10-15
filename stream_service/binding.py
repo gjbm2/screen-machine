@@ -49,6 +49,7 @@ SECTION_EASE_S = 4.0
 NEVER = {"speed", "intensity", "seed", "render_scale", "random_seed", "start_time"}
 NEVER_RX = re.compile(r"(^|_)(iterations?|octaves|quality|max_steps|raymarch_steps|samples|ao_samples|taps)($|_)")
 FLASH_RX = re.compile(r"flash|strobe|flicker|blink")
+RATE_RX = re.compile(r"speed|rate|spin|velocity|_vel$|omega|per_s")   # rotation_speed is a rate, not an angle
 POSITION_RX = re.compile(r"(^|_)(pan|tilt|x|y|z|pos|position|centre|center|origin|offset|angle|rotation|"
                          r"direction|heading)($|_)")
 
@@ -226,7 +227,7 @@ def parse_v2(name: str, prop: dict, spec: dict, *, kind: str = "scene") -> dict:
             bad("bad_kick", "kick.amt must be in (0, 0.3]")
         elif k.get("by") is not None and (k["by"] not in INPUT_SIGNALS or k["by"] in TRIGGERS or k["by"] == "gobo"):
             bad("bad_kick", "kick.by must be a level signal")
-        elif POSITION_RX.search(name):
+        elif POSITION_RX.search(name) and not RATE_RX.search(name):
             bad("bad_kick", "no kicks on positions or angles")
         elif k["sig"] == "beat" and tier == "regional" and not bindable:
             bad("bad_kick", "no beat kick on a regional param")
