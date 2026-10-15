@@ -31,7 +31,7 @@ def test_binding_defaults_rest_by_signal_kind():
 
 
 @pytest.mark.parametrize("spec,detail", [
-    ({"bind": "energy", "range": [0, 1]}, "unknown signal"),          # renamed to activity_slow (R19)
+    ({"bind": "bogus", "range": [0, 1]}, "unknown signal"),
     ({"bind": "rgb", "range": [0, 1]}, "unknown signal"),             # rgb is not bindable in v1
     ({"kick": "beat", "amount": 0.3}, "binding"),                     # v1 is {bind, range, rest}
     ({"bind": "beat", "curve": 2}, "unknown binding keys"),

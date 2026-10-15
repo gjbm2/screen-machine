@@ -14,7 +14,7 @@ Features (loop thread, from ``snapshot()``: never ``peek()``, whose idle easing 
   D      = EMA(0.7 * clamp(rate / 2.2) + 0.3 * punch, tau 8 s)            "drive"
   energy = (1 - w) * E + w * D, w = 0.3 if a pulse edge was accepted in the last 30 s else 0
   tempo  = clamp((bpm - 60) / 90) while the follower is locked, else None
-Proposal: pace 0.1 + 0.8 * (0.7 e + 0.3 tempo | e), intensity 0.6 + 0.4 e, change_rate 0.9 e, fx.density 0.1 + 0.8 e,
+Proposal: pace 0.1 + 0.8 * (0.7 e + 0.3 tempo | e), intensity 1.0 (the per-item mappings make calm music calm), change_rate 0.9 e, fx.density 0.1 + 0.8 e,
 fx.rate 0.05 + 0.85 e, and per band (energy edges 0.30 / 0.55 / 0.80, +-0.04 hysteresis; the 0.30-0.55 band splits
 on drive into "groove" < 0.55 / "pulse" >= 0.65) moods, fx.moods and transition_style (BANDS).
 A GOBO change (a stable new ``effect`` on a fresh frame) starts a 1.5 s settle: E is then re-seeded from the last
@@ -141,6 +141,11 @@ class MusicDirection:
         self._last_eval = -1e9
         self._last_apply = -1e9
         self._lv_t: Optional[float] = None
+        self.epoch = 0                    # bumped on a section change or a new energy band (the mappings' section mode)
+        self._epoch_band: Optional[int] = None
+        self._signals_t: Optional[float] = None
+        self._drive_seen = False
+        self._tempo: Optional[float] = None
         self.configure(cfg)
 
     def configure(self, cfg: Optional[dict]) -> None:
@@ -156,15 +161,17 @@ class MusicDirection:
         """Step the features; -> a cause ("music", "band", "section", "online", "offline", "off", "m") when the
         effective direction should be recomputed, else None."""
         m_was = self.m
+        reseeded = False
+        if snap is not None and fresh:      # every tick, director or not: the per-item mappings read the features
+            reseeded = self._features(now, snap, tuple(follow or ()))
         if not (active and self.enabled):
-            self.m, self.lv, self._settle_at = 0.0, 0.0, None
+            self.m, self.lv = 0.0, 0.0
             self._fresh_since = self._stale_since = None
             self._cold = True
             return "off" if m_was > 0.0 else None
         self._liveness(now, snap is not None and fresh)
         cause = None
         if snap is not None and fresh:
-            reseeded = self._features(now, snap, tuple(follow or ()))
             cause = self._propose(now, reseeded)
         if self.m != m_was:
             return "online" if m_was == 0.0 else "offline" if self.m == 0.0 else "m"
@@ -230,6 +237,17 @@ class MusicDirection:
         self._D = drive if self._D is None else self._D + (drive - self._D) * ad
         w = DRIVE_WEIGHT if self._last_edge_seen is not None and now - self._last_edge_seen <= DRIVE_RECENT_S else 0.0
         energy = _c01((1.0 - w) * self._E + w * self._D)
+        i = self._epoch_band
+        i = sum(energy >= x for x in EDGES) if i is None else i
+        while i < 3 and energy >= EDGES[i] + BAND_HYST:
+            i += 1
+        while i > 0 and energy < EDGES[i - 1] - BAND_HYST:
+            i -= 1
+        if reseeded or (self._epoch_band is not None and i != self._epoch_band):
+            self.epoch += 1                 # a section change or a new energy band: section-mode mappings re-sample
+        self._epoch_band = i
+        self._signals_t = now
+        self._drive_seen = self._last_edge_seen is not None and now - self._last_edge_seen <= DRIVE_RECENT_S
         locked = snap.locked(now) and snap.period
         bpm = 60.0 / snap.period if locked else None
         tempo = _c01((bpm - 60.0) / 90.0) if bpm else None
@@ -267,7 +285,7 @@ class MusicDirection:
         pace_in = 0.7 * e + 0.3 * tempo if tempo is not None else e
         band = self._band_of(e, self.features["D"])
         moods, fx_moods, style = BANDS[band]
-        target = {"energy": round(e, 3), "pace": round(0.1 + 0.8 * pace_in, 3), "intensity": round(0.6 + 0.4 * e, 3),
+        target = {"energy": round(e, 3), "pace": round(0.1 + 0.8 * pace_in, 3), "intensity": DIRECTION_DEFAULTS["intensity"],
                   "change_rate": round(0.9 * e, 3), "moods": list(moods), "transition_style": style,
                   "fx": {"density": round(0.1 + 0.8 * e, 3), "rate": round(0.05 + 0.85 * e, 3), "moods": list(fx_moods)}}
         cause = None
@@ -286,6 +304,16 @@ class MusicDirection:
             self.proposal, self._last_apply = target, now
             self.last_change = {"cause": cause, "at": now}
         return cause
+
+    SIGNALS_STALE_S = 2.0
+
+    def signals(self, now: float) -> dict:
+        """The music features as mapping signals (binding.py): {energy, drive, punch, tempo, epoch}; None = n/a."""
+        f = self.features
+        if not f or self._signals_t is None or now - self._signals_t > self.SIGNALS_STALE_S:
+            return {"energy": None, "drive": None, "punch": None, "tempo": None, "epoch": self.epoch}
+        return {"energy": f["energy"], "drive": f["D"] if self._drive_seen else None,
+                "punch": f["punch"] if self._drive_seen else None, "tempo": self._tempo, "epoch": self.epoch}
 
     def status(self, now: float) -> dict:
         return {"enabled": self.enabled, "online": self.m > 0.0, "m": self.m, "band": self.band,

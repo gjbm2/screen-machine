@@ -54,7 +54,7 @@ import subprocess
 import time
 from typing import Any, Callable, Optional
 
-from . import palettes, rooms
+from . import binding, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction
@@ -62,7 +62,7 @@ from .effects import EffectChain, EffectSlot
 from .fx_director import FxDirector, FxMove
 from .fx_state import SessionFx
 from .guard import trip_budget_ms
-from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
+from .inputs import BEAT_FOLLOW, BIND_SIGNALS, MUSIC_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
@@ -250,6 +250,7 @@ class Session(EngineListener):
         self.current_spec: Optional[SceneSpec] = None     # the scene on screen (or becoming so)
         self.prev_spec: Optional[SceneSpec] = None        # the one before it: a slow scene's recovery target
         self.director.vet = self.fx_director.vet = self.room_ok
+        self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
         # -- room-level direction (rooms.py): set by the manager on create --
         self.room: Optional[str] = None
         self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
@@ -287,9 +288,38 @@ class Session(EngineListener):
     def _transition(self, spec: TransitionSpec):
         return self.mgr.registry.transition(spec.transition)(spec.params)
 
-    async def _transition_ready(self, spec: TransitionSpec):
-        """A transition instance, set up on a worker thread when the engine supports it (R20)."""
+    def _cue_signals(self) -> dict:
+        """The signals now, as the render thread would see them (bus + music features), for cue-mode mappings."""
+        sig = dict(self.sampler.peek(time.monotonic()))
+        w = self.sampler.w
+        for k, v in (self.runtime.extra or {}).items():
+            if k in MUSIC_SIGNALS:
+                sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+        return sig
+
+    def _sample_transition(self, spec: TransitionSpec) -> TransitionSpec:
+        """A transition's cue-mode mappings sampled now: a spec with plain values (the room's followers get this
+        one, so every screen runs the same transition)."""
+        if not spec.bindings:
+            return spec
+        cls = self.mgr.registry.transition(spec.transition)
+        grid = self.sampler.beat_grid(time.monotonic())
+        vals = binding.sample_cue(cls.param_props(), spec.bindings, spec.params, self._cue_signals(), None,
+                                  self.runtime.depth, f"transition/{spec.transition}", grid[1] if grid else None)
+        if not vals:
+            return dataclasses.replace(spec, bindings={})
+        try:
+            params = cls.validate({**spec.params, **vals})
+        except ParamError:
+            params = spec.params
+        return dataclasses.replace(spec, params=params, bindings={})
+
+    async def _transition_ready(self, spec: TransitionSpec, mapped: bool = True):
+        """A transition instance, set up on a worker thread when the engine supports it (R20).  ``mapped``: sample
+        its cue-mode music mappings (never for go / exit: art <-> live stays as authored)."""
+        spec = self._sample_transition(spec) if mapped else spec
         t = self._transition(spec)
+        t.frozen_spec = spec
         if hasattr(self.engine, "prepare_transition") and getattr(self.engine, "ctx", None) is not None:
             try:
                 await self._run(self.engine.prepare_transition, t)
@@ -321,9 +351,11 @@ class Session(EngineListener):
         cls = self.mgr.registry.source(spec.source)
         src = cls()
         # scene sources (never the internal image source: R1) get the session's modulation
-        src.modulation = Modulation(self.runtime, cls.param_props(), spec.bindings)
+        props = cls.param_props()
+        params, live = self._cue_split(props, spec.bindings, spec.params, f"scene/{spec.source}")
+        src.modulation = Modulation(self.runtime, props, live, key=f"scene/{spec.source}")
         try:
-            src = await self._run(self.engine.prepare, src, spec.params)
+            src = await self._run(self.engine.prepare, src, params)
         except ParamError:
             raise
         except Exception as e:         # C.3: a plug-in that fails to set up / prime
@@ -335,8 +367,9 @@ class Session(EngineListener):
             slots: list[EffectSlot] = []
             for i, es in enumerate(spec.effects):
                 ecls = self.mgr.registry.effect(es.effect)
+                eparams, elive = self._cue_split(ecls.param_props(), es.bindings, es.params, f"effect/{es.effect}")
                 try:
-                    eff = await self.prepare_effect(ecls(), es.params)
+                    eff = await self.prepare_effect(ecls(), eparams)
                 except Exception as e:
                     self.note_prepare_failure("effect", es.effect, es.preset, e)
                     for sl in slots:
@@ -345,12 +378,21 @@ class Session(EngineListener):
                     raise SessionError(500, "prepare_failed", f"{es.name}: {type(e).__name__}") from None
                 slots.append(EffectSlot(f"s{self._scene_fx_n}-{i}", eff, name=ecls.name, preset=es.preset,
                                         stage=getattr(ecls, "stage", "stylise"),
-                                        modulation=Modulation(self.runtime, ecls.param_props(), es.bindings),
+                                        modulation=Modulation(self.runtime, ecls.param_props(), elive,
+                                                              key=f"effect/{es.effect}"),
                                         mix=getattr(ecls, "amount_mode", "native") == "mix", level=1.0, target=1.0,
                                         where="scene", label=es.label))
             src.fx_chain = EffectChain(slots)
             src.fx_specs = spec.effects
         return src
+
+    def _cue_split(self, props: dict, bindings: dict, params: dict, key: str) -> tuple[dict, dict]:
+        """-> (params with the cue-mode mappings sampled in, the bindings left for the render thread)."""
+        if not any(binding.is_v2(b) and b.get("at") == "cue" and "colour" not in b for b in bindings.values()):
+            return params, bindings
+        vals = binding.sample_cue(props, bindings, params, self._cue_signals(), None, self.runtime.depth, key)
+        live = {k: b for k, b in bindings.items() if k not in vals}
+        return {**params, **vals}, live
 
     async def prepare_effect(self, eff: Any, params: dict) -> Any:
         """Set an effect up (and prime it) on a worker thread."""
@@ -424,7 +466,7 @@ class Session(EngineListener):
     def _room_prepare(self, pk: dict) -> None:
         """Leader: the next pick is prepared here, so prepare it on the followers too."""
         for f in self.followers():
-            f.follow_prepare(pk["spec"], pk["trans_spec"])
+            f.follow_prepare(pk["spec"], getattr(pk["trans"], "frozen_spec", None) or pk["trans_spec"])
 
     async def _room_ready(self) -> None:
         """Leader: wait (at most READY_S) for the followers' copies of the pick, so the screens cut together."""
@@ -435,7 +477,8 @@ class Session(EngineListener):
     def _room_go(self, cue: dict) -> None:
         """Leader: an auto cue just started here; the followers cut to the same scene."""
         for f in self.followers():
-            f.follow_cue(cue["spec"], cue["trans_spec"], cue["at"], f"{self.screen}: {cue.get('detail') or cue['scene']}")
+            f.follow_cue(cue["spec"], getattr(cue["trans"], "frozen_spec", None) or cue["trans_spec"], cue["at"],
+                         f"{self.screen}: {cue.get('detail') or cue['scene']}")
 
     async def _prepare_like(self, spec: SceneSpec, trans_spec: TransitionSpec) -> dict:
         """The leader's scene and transition, prepared on this session's GPU (with its own fit)."""
@@ -597,7 +640,7 @@ class Session(EngineListener):
     async def go(self) -> dict:
         async with self.lock:
             self._require("holding")
-            trans = await self._transition_ready(self.t_in)
+            trans = await self._transition_ready(self.t_in, mapped=False)
             if self.state != "holding":
                 self._retire(trans)
                 self._require("holding")
@@ -702,7 +745,7 @@ class Session(EngineListener):
         async with self.lock:
             self._require(*exit_states)
             target = await self._prepare(target)
-            trans = await self._transition_ready(trans_spec)
+            trans = await self._transition_ready(trans_spec, mapped=False)
             if self.state not in exit_states:
                 self._retire(target, trans)
                 raise SessionError(409, "bad_state", f"session is {self.state}")
@@ -1098,6 +1141,7 @@ class Session(EngineListener):
             self._emit_director()
         d.observe(snap, fresh)
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed)
+        self.runtime.extra = self.music.signals(now)        # the mappings' music signals (binding.py)
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self._following = True
@@ -1269,7 +1313,14 @@ class Session(EngineListener):
         out["derived"].update(bpm=r3(sig["bpm"]), beat_confidence=r3(sig["beat_confidence"]),
                               beat_phase=r3(sig["beat_phase"]), beat=r3(sig["beat"]),
                               beat_locked=sig["beat_locked"], beat_follow=self.beat_follow)
-        out["signals"] = {k: r3(sig[k]) for k in BIND_SIGNALS}
+        sig = {**sig, **{k: (None if v is None else 0.5 + self.sampler.w * (v - 0.5))
+                         for k, v in (self.runtime.extra or {}).items() if k in MUSIC_SIGNALS}}
+        out["signals"] = {k: r3(sig.get(k)) for k in BIND_SIGNALS}
+        out["avail"] = {k: round(v, 3) for k, v in self.runtime.avail.items()}
+        out["epoch"] = list(self.runtime.epoch)
+        out["colour"] = {"maestro": sig.get("colour"), "amount": round(self.runtime.colour_avail, 3),
+                         "scene": round(getattr(getattr(self.current_scene, "modulation", None), "colour_amount",
+                                                lambda: 0.0)(), 3)}
         mod = getattr(self.current_scene, "modulation", None)
         out["bindings"] = mod.describe() if mod is not None else []
         out["fx_bindings"] = self.fx.bindings()
@@ -1508,6 +1559,7 @@ class SessionManager:
         self.slow: dict[tuple[str, str], dict] = {}      # (kind, plug-in) -> the GPU guard's trip (process-wide)
         self.slow_trips = 0
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
+        self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
@@ -1568,13 +1620,20 @@ class SessionManager:
             self._broken_names = (key, frozenset(str(b.get("name")) for b in reg.broken.values()))
         return self._broken_names[1]
 
+    def rating_weight(self, kind: str, plugin: Optional[str]) -> float:
+        """How much the auto-directors favour a plug-in by its Library rating (ratings.STAR_WEIGHT); 1.0 unrated."""
+        return 1.0 if self.ratings is None else self.ratings.weight(kind, plugin)
+
     def auto_ok(self, kind: str, plugin: Optional[str], gpu: Optional[int] = None,
                 budget_4k: Optional[float] = None) -> bool:
-        """The vetted pool: may a director pick this plug-in on its own?  Not slow (a GPU guard trip) and not broken;
-        then the calibration entry for this GPU decides when there is one (status ok and fits); otherwise core, or
-        imported with a harness sheet (it rendered at least once) and no harness cost over the session's budget."""
+        """The vetted pool: may a director pick this plug-in on its own?  Not rejected in the Library, not slow (a GPU
+        guard trip) and not broken; then the calibration entry for this GPU decides when there is one (status ok and
+        fits); otherwise core, or imported with a harness sheet (it rendered at least once) and no harness cost over
+        the session's budget."""
         if not plugin:
             return True
+        if self.rating_weight(kind, plugin) == 0.0:      # rejected in the Library
+            return False
         if (kind, plugin) in self.slow or plugin in self.broken_names():
             return False
         if gpu is not None:

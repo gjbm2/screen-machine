@@ -18,6 +18,13 @@ Derived masters (R13), eased over ``direction_ease_s`` after create:
 There is no luminance master (R2).  The session ``palette`` (R14) is crossfaded here, on the render thread, and
 handed as cosine rows to sources that mark their palette param ``x-palette: true``.
 
+Bindings v2 (binding.py; owner, 15 Oct 2026): a param may instead follow a blend of signals, in live / section /
+cue mode, pivoting on its plain value (the preset's: the base); the per-item mappings (mappings.py) supply them.
+The runtime merges the session's music features (``extra``, set by the loop each tick) into the bus signals, fades
+n/a inputs in and out (``avail``, tau 2 s), keeps the section epoch, and eases Maestro's colour into cosine rows
+(``maestro_rows``) for the colour form: a palette-driven scene (``session_palette()``) gets its palette blended
+toward the room's colour by the binding's mix, and a GLSL scene's ``palette_mix`` is raised to that amount.
+
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
 
@@ -31,9 +38,15 @@ from typing import Any, Optional
 
 import numpy as np
 
-from . import palettes
-from .inputs import BIND_SIGNALS, TRIGGERS, Sampler
+import logging
+
+from . import binding, palettes
+from .inputs import BIND_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
 from .plugins.base import ParamError, is_bindable
+
+log = logging.getLogger("stream_service.modulation")
+AVAIL_TAU_S = 2.0
+MAESTRO_EASE_S = 3.0
 
 
 def _finite(v: Any, what: str) -> float:
@@ -98,8 +111,15 @@ def split_bindings(props: dict[str, dict], params: Optional[dict], base_bindings
                 bindings[key] = r_bind[key]
             plain[key] = r_plain.get(key, prop["default"])
         elif isinstance(value, dict):
+            if binding.is_v2(value):                 # a v2 mapping: the plain value stays (it is the base)
+                bindings[key] = binding.parse_v2(key, prop, value)
+                continue
+            if set(value) == {"base"}:               # move a mapped param's centre, keeping its mapping
+                plain[key] = value["base"]
+                continue
             if "bind" not in value:
-                raise ParamError("bad_param", f"{key}: an object value must be a binding {{\"bind\": ...}}")
+                raise ParamError("bad_param", f"{key}: an object value must be a binding {{\"bind\": ...}}, "
+                                              f"a v2 mapping {{\"in\": ...}} or {{\"base\": v}}")
             b = parse_binding(key, prop, value)
             bindings[key] = b
             plain[key] = b["rest"]
@@ -130,6 +150,16 @@ class SessionRuntime:
         self._pal_name: Optional[str] = None
         self._pal_t = 0.0
         self._t: Optional[float] = None
+        # bindings v2: written by the loop (whole dict), merged here
+        self.extra: dict = {}                     # music features {energy, drive, punch, tempo, epoch}
+        self.now = 0.0
+        self.dt = 0.0
+        self.avail: dict[str, float] = {}         # n/a-able signals' eased availability 0-1
+        self._lastv: dict[str, float] = {}
+        self.epoch: tuple = (0, 0)                # (music section/band epoch, liveness crossings)
+        self._live_hi = False
+        self.maestro_rows: Optional[np.ndarray] = None    # Maestro's colour as cosine rows (eased), or None
+        self.colour_avail = 0.0
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -155,7 +185,34 @@ class SessionRuntime:
             self.palette_rows = self._pal_from + (target - self._pal_from) * u
             if u >= 1.0:
                 self._pal_from = None
-        self.signals = self.sampler.sample(now) if self.sampler is not None else {}
+        sig = self.sampler.sample(now) if self.sampler is not None else {}
+        w = self.sampler.w if self.sampler is not None else 0.0
+        ex = self.extra
+        for k in MUSIC_SIGNALS:                 # the music features, eased to idle with the bus's liveness
+            v = ex.get(k)
+            sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+        av = 1.0 - math.exp(-dt / AVAIL_TAU_S) if dt > 0 else 0.0
+        for k in NA_SIGNALS:                    # n/a inputs fade out (holding their last value) and back in
+            v = sig.get(k)
+            if v is not None:
+                self._lastv[k] = v
+            a = self.avail.get(k, 0.0)
+            a += ((1.0 if v is not None else 0.0) - a) * av
+            self.avail[k] = a
+            sig[k] = self._lastv.get(k) if a > 1e-3 else None
+        hi = w >= 0.5
+        live_ep = self.epoch[1] + (1 if hi != self._live_hi else 0)
+        self._live_hi = hi
+        self.epoch = (int(ex.get("epoch") or 0), live_ep)
+        col = sig.get("colour")
+        ac = 1.0 - math.exp(-dt / MAESTRO_EASE_S) if dt > 0 else 0.0
+        if col is not None:
+            target = np.array(binding.maestro_rows(col["hue"], col["spread"], col["sat"]), np.float64)
+            self.maestro_rows = target if self.maestro_rows is None else \
+                self.maestro_rows + (target - self.maestro_rows) * ac
+        self.colour_avail += ((w if col is not None else 0.0) - self.colour_avail) * ac
+        self.now, self.dt = now, dt
+        self.signals = sig
 
     def masters(self) -> dict:
         return {"speed": round(self.speed, 4), "depth": round(self.depth, 4),
@@ -165,34 +222,87 @@ class SessionRuntime:
 class Modulation:
     """One scene source's bindings, clock and palette hand-off (render thread)."""
 
-    def __init__(self, runtime: SessionRuntime, props: dict[str, dict], bindings: Optional[dict] = None):
+    def __init__(self, runtime: SessionRuntime, props: dict[str, dict], bindings: Optional[dict] = None,
+                 key: str = ""):
         self.runtime = runtime
         self.props = props
-        self.bindings = dict(bindings or {})
+        self.key = key                            # "scene/<plug-in>": seeds section (gobo) inputs per item
         self.last: dict[str, float] = {}          # the last resolved bound values (read by the inputs API)
+        self.colour_mix = 0.0                     # the colour form's mix on this item's palette
+        self._own_palette: Any = None
+        self._colour_k = 0.0
+        self.set_bindings(bindings or {})
 
     def set_bindings(self, bindings: dict) -> None:
+        """Render thread (UpdateParams / SlotUpdate) or before the source is shown.  v2 mappings are compiled
+        here; one that does not compile is dropped (logged) and the param keeps its plain value."""
         self.bindings = dict(bindings)
+        bound, mix = {}, 0.0
+        for k, b in self.bindings.items():
+            if not binding.is_v2(b) or not b.get("on", True) or k not in self.props:
+                continue
+            if "colour" in b:
+                mix = float(b.get("mix", 0.0))
+                continue
+            try:
+                old = self._bound.get(k) if hasattr(self, "_bound") else None
+                bd = binding.Bound(k, self.props[k], b, self.key)
+                if old is not None and old.y is not None:
+                    bd.y = old.y                  # a swap eases from what was showing
+                bound[k] = bd
+            except Exception as e:
+                log.warning("%s: mapping on %s dropped: %s", self.key or "?", k, e)
+        self._bound = bound
+        self.colour_mix = mix
 
     def scale_dt(self, dt: float) -> float:
         """The speed master as the scene clock."""
         return dt * self.runtime.speed
 
     def palette_rows(self) -> Optional[np.ndarray]:
-        return self.runtime.palette_rows
+        rt = self.runtime
+        rows = rt.palette_rows
+        k = self._colour_k
+        if k <= 0.0 or rt.maestro_rows is None:
+            return rows
+        base = rows
+        if base is None:
+            base = _own_rows(self._own_palette)
+        if base is None:
+            return rt.maestro_rows if k >= 0.5 else None
+        return base + (rt.maestro_rows - base) * k
+
+    def colour_amount(self) -> float:
+        return self._colour_k
 
     def apply(self, values: dict) -> dict:
         if not self.bindings:
             return values
-        sig = self.runtime.signals
-        depth = self.runtime.depth
+        rt = self.runtime
+        sig = rt.signals
+        depth = rt.depth
         out = dict(values)
         last = {}
+        for key, bd in self._bound.items():
+            try:
+                v = bd.step(sig, rt.avail, values.get(key), depth, rt.epoch, rt.now, rt.dt)
+            except Exception as e:                # a mapping never takes a frame down: drop it, keep the value
+                log.warning("%s: mapping on %s failed (%s): dropped", self.key or "?", key, e)
+                self._bound = {k: b for k, b in self._bound.items() if k != key}
+                break
+            out[key] = v
+            last[key] = v
+        if self.colour_mix > 0.0:
+            self._own_palette = values.get("palette")
+            self._colour_k = self.colour_mix * rt.colour_avail
+            if "palette_mix" in self.props and isinstance(out.get("palette_mix"), (int, float)):
+                out["palette_mix"] = max(out["palette_mix"], self._colour_k)
         for key, b in self.bindings.items():
             prop = self.props.get(key)
-            if prop is None:
+            if prop is None or "bind" not in b:
                 continue
-            s = min(1.0, max(0.0, float(sig.get(b["bind"], 0.0) or 0.0)))
+            s = sig.get(b["bind"])
+            s = idle_value(b["bind"]) if s is None else min(1.0, max(0.0, float(s)))   # n/a: idle
             lo, hi = b["range"]
             rest = b["rest"]
             v = _clamp(prop, rest + depth * (lo + (hi - lo) * s - rest))
@@ -204,5 +314,17 @@ class Modulation:
         return out
 
     def describe(self) -> list[dict]:
-        return [{"param": k, **b, **({"value": round(self.last[k], 5)} if k in self.last else {})}
-                for k, b in self.bindings.items()]
+        return [binding.describe(k, b, self.last.get(k)) for k, b in self.bindings.items()]
+
+
+_ROWS: dict = {}
+
+
+def _own_rows(name: Any) -> Optional[np.ndarray]:
+    """A plug-in palette name's cosine rows (plugins/_lib/palettes.py), cached; None for anything else."""
+    if not isinstance(name, str):
+        return None
+    if name not in _ROWS:
+        from .plugins._lib.palettes import PALETTES
+        _ROWS[name] = np.array(PALETTES[name], np.float64) if name in PALETTES else None
+    return _ROWS[name]
