@@ -61,6 +61,20 @@ __device__ __forceinline__ float ink_at(const unsigned char* tex, int w, int h, 
     return ((r0[0] * (1.f - fx) + r0[1] * fx) * (1.f - fy) + (r1[0] * (1.f - fx) + r1[1] * fx) * fy) / 255.f;
 }
 
+// the page's grain, fibre and vignette, baked once in setup (5 value-noise lookups a pixel are too dear per frame)
+extern "C" __global__
+void bake_page(unsigned char* __restrict__ page, const int W, const int H, const int night, const unsigned int seed)
+{
+    const int x = blockIdx.x * blockDim.x + threadIdx.x, y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= W || y >= H) return;
+    const float X = x + 0.5f, Y = y + 0.5f, u = X / W, v = Y / H;
+    const float grain = fbm(u * 9.f, v * 5.f, seed + 3u) - 0.5f;
+    const float fibre = vnoise(X * 0.35f, Y * 0.02f + 3.f, seed + 9u) - 0.5f;
+    const float vig = 1.f - 0.35f * ((u - 0.5f) * (u - 0.5f) * 1.6f + (v - 0.5f) * (v - 0.5f) * 2.f);
+    const float k = night ? (0.9f + 0.25f * grain) * vig : (0.93f + 0.05f * grain + 0.015f * fibre) * vig;
+    page[y * W + x] = (unsigned char)(clamp01(k / 1.2f) * 255.f + 0.5f);
+}
+
 // P: [0..11] palette [12]W [13]H [14]look [15]time [16]energy [17]kick [18]gain [19]note glow [20]drift
 //    [21]period [22..25] live bbox x0 y0 x1 y1 [26] synthetic staves [27..30] synthetic top/bottom (treble, bass)
 //    [31] synthetic x0 [32] synthetic x1 [33] paper drift phase
@@ -69,7 +83,7 @@ __device__ __forceinline__ float ink_at(const unsigned char* tex, int w, int h, 
 extern "C" __global__
 void score(uchar4* __restrict__ out, const float* __restrict__ P, const unsigned char* __restrict__ ink,
            const float* __restrict__ S, const int* __restrict__ SI, const float* __restrict__ L, const int nl,
-           const unsigned int seed)
+           const unsigned char* __restrict__ page)
 {
     const int W = (int)P[12], H = (int)P[13];
     const int x = blockIdx.x * blockDim.x + threadIdx.x, y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -77,18 +91,14 @@ void score(uchar4* __restrict__ out, const float* __restrict__ P, const unsigned
     const float X = x + 0.5f, Y = y + 0.5f;
     const int night = (int)P[14];
     const float t = P[15], e = P[16], kick = P[17];
-    // the page
-    const float u = X / W, v = Y / H;
-    const float grain = fbm(u * 9.f + P[33] * 0.07f, v * 5.f, seed + 3u) - 0.5f;
-    const float fibre = vnoise(X * 0.35f, Y * 0.02f + 3.f, seed + 9u) - 0.5f;
-    const float vig = 1.f - 0.35f * ((u - 0.5f) * (u - 0.5f) * 1.6f + (v - 0.5f) * (v - 0.5f) * 2.f);
+    // the page (baked), breathing very slowly
+    const float v = Y / H;
+    const float k = page[y * W + x] * (1.2f / 255.f) * (1.f + 0.012f * sinf(P[33]));
     float3 c, inkc;
     if (!night) {
-        const float k = (0.93f + 0.05f * grain + 0.015f * fibre) * vig;
         c = make_float3(0.95f * k, 0.905f * k, 0.80f * k);
         inkc = make_float3(0.11f, 0.085f, 0.07f);
     } else {
-        const float k = (0.9f + 0.25f * grain) * vig;
         c = make_float3(0.028f * k, 0.034f * k, 0.055f * k + 0.01f * (1.f - v));
         inkc = make_float3(0.92f, 0.82f, 0.58f);
     }
@@ -205,6 +215,13 @@ class LiveScore(Source):
         self.L = cp.zeros(MAX_LIVE * 6, cp.float32)
         self.Lh = np.zeros(MAX_LIVE * 6, np.float32)
         self.seed = int(params["seed"]) & 0x7FFFFFFF
+        self.page = cp.zeros((self.h, self.w), cp.uint8)
+        launch_2d(raw_module(_SRC).get_function("bake_page"), self.w, self.h,
+                  (self.page, np.int32(self.w), np.int32(self.h), np.int32(LOOKS.index(params["look"])),
+                   np.uint32(self.seed)))
+        # ink arrives every bar or so: staged through pinned memory, the upload is an async copy on the stream
+        self._pinned = cp.cuda.alloc_pinned_memory(self.tex_bytes)
+        self.stage = np.frombuffer(self._pinned, np.uint8, self.tex_bytes)
         from stream_service.score.quantize import ScoreBuilder
         self.builder = ScoreBuilder()
         self.clock_bar = 0                                    # clock bars committed in this phrase
@@ -281,7 +298,9 @@ class LiveScore(Source):
             if cw and ch:
                 self.ink[prev:prev + cw * ch] = self.ink[cur:cur + cw * ch]     # the old render, to fade from
                 s.pdims = (cw, ch)
-            self.ink[cur:cur + w * h].set(np.frombuffer(ink, np.uint8, w * h))
+            n = w * h
+            self.stage[:n] = np.frombuffer(ink, np.uint8, n)        # bars arrive ~2 s apart: the last copy is done
+            self.ink[cur:cur + n].set(self.stage[:n], stream=self.ctx.cp.cuda.get_current_stream())
             s.dims, s.meta = (w, h), meta
             s.fade = 0.0 if cw else 1.0
             s.fresh = 1.0 if s.bars else 0.0
@@ -389,7 +408,7 @@ class LiveScore(Source):
         pulse = min(max(float(p["pulse"]), 0.0), 1.0)
         spd = max(float(p["speed"]), 0.0)
         self.clock += dt
-        self.paper += 0.15 * spd * dt
+        self.paper += 0.25 * spd * dt
         self.drift += float(p["drift_speed"]) * spd * dt
         a = 1.0 - math.exp(-dt / 0.15) if dt > 0 else 1.0
         self.kick += (pulse - self.kick) * a
@@ -433,18 +452,19 @@ class LiveScore(Source):
         Ph[26] = 1.0 if synthetic and self.engraver is None else 0.0
         Ph[27:31] = (*self._synthetic_staff(0), *self._synthetic_staff(1))
         Ph[31], Ph[32] = x_off, x_off + self.ew
-        Ph[33] = self.paper % 1000.0
+        Ph[33] = self.paper % (2.0 * math.pi)
         self.P.set(Ph)
         self.S.set(Sh)
         self.SI.set(SIh)
         if nl:
             self.L.set(self.Lh)
         launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.ink, self.S, self.SI, self.L, np.int32(nl),
-                                           np.uint32(self.seed)))
+                                           self.page))
         present(self.ctx, self.buf, out)
 
     def close(self) -> None:
         if self.engraver is not None:
             self.engraver.close()
             self.engraver = None
-        self.buf = self.ink = self.P = self.S = self.SI = self.L = None
+        self.buf = self.ink = self.P = self.S = self.SI = self.L = self.page = None
+        self.stage = self._pinned = None
