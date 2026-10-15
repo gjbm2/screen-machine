@@ -308,3 +308,16 @@ def test_library_lists_phrases_then_files(tmp_path):
     for bad in ("file:../etc/passwd", "file:nope.mid", "jazz"):
         with pytest.raises(ValueError):
             resolve(bad, tmp_path)
+
+
+def test_owner_library_tags_put_scenes_in_sets():
+    from stream_service.server import with_owner_sets
+    cat = {"scenes": {"a-1": {"source": "a", "tags": {"modes": ["piano"]}}, "b-1": {"source": "b", "tags": None},
+                      "c-1": {"source": "c", "tags": {"moods": ["calm"]}}}, "effects": {}}
+    out = with_owner_sets(cat, {"scene/b": {"tags": ["Piano", "late night"]}, "scene/a": {"tags": ["piano"]},
+                                "effect/x": {"tags": ["piano"]}, "scene/c": {"stars": 4}})
+    assert out["scenes"]["a-1"]["tags"]["modes"] == ["piano"]
+    assert out["scenes"]["b-1"]["tags"]["modes"] == ["piano", "late night"]
+    assert out["scenes"]["c-1"]["tags"] == {"moods": ["calm"]}
+    assert cat["scenes"]["b-1"]["tags"] is None                    # the presets themselves are untouched
+    assert with_owner_sets(cat, {}) is cat

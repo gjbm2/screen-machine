@@ -309,12 +309,35 @@ async def dev_page(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(STATIC / "dev.html")
 
 
+def with_owner_sets(cat: dict, ratings: dict) -> dict:
+    """The owner's Library tags put scenes in sets (owner, 16 Oct): a scene tagged "piano" in the Library joins its
+    presets to ``tags.modes`` beside the presets' own, so it is in every mode whose screens take scene_tags
+    ["piano"] (room resolves those against this catalog), and a new tag becomes a set the Room page's mode editor
+    offers.  Tags are matched lower-case ("Piano" is the piano set).  The presets themselves are not changed."""
+    scenes = cat.get("scenes")
+    extra = {k[len("scene/"):]: [str(t).strip().lower() for t in v["tags"]]
+             for k, v in ratings.items() if k.startswith("scene/") and v.get("tags")}
+    if not isinstance(scenes, dict) or not extra:
+        return cat
+    out = dict(scenes)
+    for name, e in scenes.items():
+        add = extra.get(e.get("source")) or extra.get(name)
+        if not add:
+            continue
+        tags = dict(e.get("tags") or {"energy": [0.0, 1.0], "weight": 1.0})
+        have = tags.get("modes")
+        have = [have] if isinstance(have, str) else list(have or [])
+        tags["modes"] = have + [t for t in add if t not in have]
+        out[name] = {**e, "tags": tags}
+    return {**cat, "scenes": out}
+
+
 async def catalog(request: web.Request) -> web.Response:
     presets = request.app[PRESETS]
     presets.reload_if_changed()
     out = request.app[REGISTRY].catalog()
     out["profiles"] = {name: p.describe() for name, p in PROFILES.items()}
-    out["presets"] = presets.catalog()
+    out["presets"] = with_owner_sets(presets.catalog(), request.app[RATINGS].all())
     # additive (LIVE_V1 1.1): feature discovery, vocabulary, palettes, bindable signals, tag problems
     out["api"] = {"contract": "LIVE_V1", "rev": "1.1", "features": list(FEATURES)}
     out["vocab"] = presets.vocab.words
