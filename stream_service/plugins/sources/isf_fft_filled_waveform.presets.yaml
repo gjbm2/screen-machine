@@ -1,0 +1,22 @@
+isf-fft-filled-waveform:
+  label: FFT Filled Waveform
+  source: isf_fft_filled_waveform
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - liquid
+    - organic
+    family: water
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6
