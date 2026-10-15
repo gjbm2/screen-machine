@@ -9,6 +9,7 @@ export const NEW_MS = 3600e3;                       // "New": the plug-in file c
 // group "main" shows in the sheet; "more" sits under "More filters".
 export const FACET_DEFS = {
   look:      { label: "Look", group: "main" },
+  modes:     { label: "Sets", group: "main" },
   energy:    { label: "Movement", group: "main", order: ["low", "mid", "high"], words: { low: "Calm", mid: "Medium", high: "Lively" } },
   dims:      { label: "Depth", group: "main", order: ["2d", "3d"], words: { "2d": "2D", "3d": "3D" } },
   stage:     { label: "Stage", group: "main", order: ["warp", "feedback", "glitch", "stylise", "colour", "light", "projection", "motion", "overlay"] },
@@ -22,9 +23,9 @@ export const FACET_DEFS = {
   added:     { label: "Added", group: "more", words: { new: "New (last hour)" } },
 };
 export const FACETS = {
-  scene:      ["look", "energy", "dims", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
-  transition: ["look", "energy", "style", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
-  effect:     ["look", "energy", "dims", "stage", "style", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
+  scene:      ["look", "modes", "energy", "dims", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
+  transition: ["look", "modes", "energy", "style", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
+  effect:     ["look", "modes", "energy", "dims", "stage", "style", "technique", "origin", "licence", "mytags", "looks", "status", "added"],
 };
 export const facetWord = (facet, v) => FACET_DEFS[facet]?.words?.[v] ??
   (facet === "origin" && String(v).startsWith("lab") ? "Lab" : friendly(v));

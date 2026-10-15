@@ -40,9 +40,9 @@ SHEET_TOP = 22                                # the sheet's title strip
 TILE_W = {"scene": 480, "transition": 320, "effect": 320}
 TILE_PICK = {"scene": 1, "transition": 2, "effect": 3}
 FACETS = {
-    "scene": ["dims", "family", "origin", "moods", "technique", "energy", "licence"],
-    "transition": ["family", "origin", "style", "technique", "energy", "licence"],
-    "effect": ["stage", "dims", "origin", "moods", "style", "technique", "energy", "licence"],
+    "scene": ["modes", "dims", "family", "origin", "moods", "technique", "energy", "licence"],
+    "transition": ["modes", "family", "origin", "style", "technique", "energy", "licence"],
+    "effect": ["modes", "stage", "dims", "origin", "moods", "style", "technique", "energy", "licence"],
 }
 IMPORTED_PREFIXES = ("glt_", "isf_", "st_")         # imported GLSL (gl-transitions, ISF, Shadertoy)
 INDEX_TTL_S = 5.0
@@ -298,11 +298,11 @@ class Library:
                 "counts": counts, "items": items}
 
     def _item(self, kind: str, name: str, cls: type, plist: list, errs: dict, broken: Optional[dict]) -> dict:
-        tags: dict[str, list] = {"family": [], "dims": [], "technique": [], "moods": [], "style": []}
+        tags: dict[str, list] = {"family": [], "dims": [], "technique": [], "moods": [], "style": [], "modes": []}
         lo, hi, weight = None, None, None
         for _, p in plist:
             t = p.get("tags") or {}
-            for k in ("family", "dims", "technique", "moods"):
+            for k in ("family", "dims", "technique", "moods", "modes"):
                 for v in _list(t.get(k)):
                     if v not in tags[k]:
                         tags[k].append(v)
@@ -324,6 +324,7 @@ class Library:
         energy = [lo, hi] if lo is not None else None
         facets = {"family": tags["family"], "dims": [d.lower() for d in tags["dims"]], "technique": tags["technique"],
                   "moods": tags["moods"], "style": tags["style"], "energy": _bands(energy),
+                  "modes": [str(m).lower() for m in tags["modes"]],
                   "stage": [stage] if stage else [], "licence": [_licence(cls)], "origin": [origin_of(name)]}
         facets = {f: facets.get(f, []) for f in FACETS[kind]}
         first = plist[0][0] if plist else None

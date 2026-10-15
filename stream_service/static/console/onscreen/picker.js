@@ -48,12 +48,30 @@ export function openPicker(kind, { title, onPick, footer = null, surprise = null
     foot = h("div", { class: "row", style: { gap: "12px" } }, h("label", { class: "field grow", style: { minWidth: "200px" } }, h("span", { class: "lab" }, "Transition"), tr), beat);
   }
   sheet = openSheet({ id: "picker", title: title || `Pick ${KIND_WORDS[kind][0] === "effect" ? "an effect" : `a ${KIND_WORDS[kind][0]}`}`, body, foot, tid: "picker-sheet", wide: true, full: true });
+  // One tag filter at a time, from any facet (sets, your tags, look, technique, style): searching "piano" offers the
+  // tag piano with how many scenes carry it; tapping it filters by the tag and clears the words.
   const draw = () => {
-    const s = { q, qt: tokens(q), stars: { n: null }, rejects: "hide", facets: { [kind]: look ? { look: [look] } : {} } };
+    const s = { q, qt: tokens(q), stars: { n: null }, rejects: "hide", facets: { [kind]: look ? { [look.facet]: [look.value] } : {} } };
     const list = sorted(lib.items.filter((it) => matches(it, s, kind)), "best");
     grid.setList(list);
-    const vals = facetValues(lib.items, { ...s, facets: { [kind]: {} } }, kind, "look").filter(([, n]) => n).slice(0, 8);
-    put(chips, vals.map(([v]) => chip(facetWord("look", v), { pressed: look === v, onClick: () => { look = look === v ? null : v; draw(); } })));
+    const base = { ...s, q: "", qt: [], facets: { [kind]: {} } };
+    const words = String(q || "").toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+    const cands = [];
+    for (const facet of words.length ? ["modes", "mytags", "look", "technique", "style"] : ["modes", "look"]) {
+      for (const [v, n] of facetValues(lib.items, base, kind, facet)) {
+        if (n && (!words.length || words.some((w) => String(v).toLowerCase().includes(w)))) cands.push({ facet, value: v, n });
+      }
+    }
+    const on = look ? [{ ...look, n: null }] : [];
+    const shown = [...on, ...cands.filter((c) => !look || c.facet !== look.facet || c.value !== look.value)].slice(0, 10);
+    put(chips, shown.map((c) => chip(facetWord(c.facet, c.value), {
+      count: c.n, pressed: !!look && look.facet === c.facet && look.value === c.value, tid: "picker-tag", data: { facet: c.facet, value: c.value },
+      onClick: () => {
+        const same = look && look.facet === c.facet && look.value === c.value;
+        look = same ? null : { facet: c.facet, value: c.value };
+        if (!same && words.length) { q = ""; search.value = ""; }
+        draw();
+      } })));
   };
   search.addEventListener("input", debounce(() => { q = search.value; draw(); }, 120));
   draw();
