@@ -203,3 +203,13 @@ async def test_the_console_page_always_opens_through_the_app():
         assert r.status == 200                                      # through the app's pass-through
         assert (await c.get("/dev/library", allow_redirects=False)).status == 200
 
+
+
+def test_scene_tag_index_is_every_tag_word_by_facet():
+    """Owner, 16 Oct: a mode selects scenes by any tag (config), so the catalog lists every tag word generically."""
+    from stream_service.server import scene_tag_index
+    idx = scene_tag_index({"scenes": {
+        "a": {"tags": {"energy": [0, 1], "moods": ["Calm", "dreamy"], "modes": ["piano"], "family": "fluid"}},
+        "b": {"tags": {"moods": ["calm"], "weight": 2}}}})
+    got = {(x["facet"], x["tag"]): x["count"] for x in idx}
+    assert got == {("family", "fluid"): 1, ("modes", "piano"): 1, ("moods", "calm"): 2, ("moods", "dreamy"): 1}
