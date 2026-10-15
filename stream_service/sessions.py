@@ -68,7 +68,7 @@ from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
-from .piano import PianoSignals
+from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
 from .plugins.base import ParamError
 from .plugins.sources.image import ImageSource, load_png
@@ -1336,8 +1336,10 @@ class Session(EngineListener):
         out["derived"].update(bpm=r3(sig["bpm"]), beat_confidence=r3(sig["beat_confidence"]),
                               beat_phase=r3(sig["beat_phase"]), beat=r3(sig["beat"]),
                               beat_locked=sig["beat_locked"], beat_follow=self.beat_follow)
+        ex = self.runtime.extra or {}
         sig = {**sig, **{k: (None if v is None else 0.5 + self.sampler.w * (v - 0.5))
-                         for k, v in (self.runtime.extra or {}).items() if k in MUSIC_SIGNALS}}
+                         for k, v in ex.items() if k in MUSIC_SIGNALS},
+               **{k: ex.get(k) for k in PIANO_LEVELS}, **piano_envelopes(ex, now)}
         out["signals"] = {k: r3(sig.get(k)) for k in BIND_SIGNALS}
         out["avail"] = {k: round(v, 3) for k, v in self.runtime.avail.items()}
         out["epoch"] = list(self.runtime.epoch)

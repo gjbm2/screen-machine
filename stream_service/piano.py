@@ -102,7 +102,7 @@ class PianoSignals:
         if dt > 0:
             self.rate = _ema(self.rate, n_on / dt, dt, TAU_RATE_S)
         amps = st.amps if st.amps is not None else ()
-        sounding = [(p, a) for p, a in enumerate(amps) if a >= SOUNDING]
+        sounding = [(p, float(a)) for p, a in enumerate(amps) if a >= SOUNDING]     # plain floats (amps: numpy)
         if sounding:
             w = sum(a for _, a in sounding)
             mean = sum(p * a for p, a in sounding) / w

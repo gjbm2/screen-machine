@@ -56,6 +56,18 @@ def test_signals_follow_the_playing_and_go_na_when_silent():
     assert all(v is None for k, v in ps.step(t + 1, None).items() if k in piano.PIANO_LEVELS)
 
 
+def test_numpy_amps_give_plain_floats():
+    import json
+    import numpy as np
+    a = np.zeros(128, np.float32)
+    a[[60, 64, 67]] = 0.7
+    ps = PianoSignals()
+    ps.step(0.0, NoteState(online=True, amps=a, onsets=[(0.0, 60, 0.5)]))
+    out = ps.step(0.1, NoteState(online=True, amps=a, pedal=np.float32(0.5)))
+    json.dumps(out)                                                        # the /inputs monitor serialises these
+    assert type(out["register"]) is float and type(out["tension"]) is float
+
+
 def test_chord_changes_fire_once_per_new_harmony():
     ps = PianoSignals()
     t, fired = 0.0, []
