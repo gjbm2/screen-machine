@@ -16,7 +16,7 @@ import io
 import logging
 import pathlib
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from aiohttp import web
 
@@ -701,7 +701,7 @@ async def presets_watch(app: web.Application) -> None:
 # -- app ------------------------------------------------------------------------
 def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
-             show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
+             music_bus: Sequence[str] = (), show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
              app_url: str = "", warm: bool = False) -> web.Application:
     from .plugins import default_registry
@@ -782,6 +782,11 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
 
             app[TASKS].append(asyncio.create_task(showbus.run(show_bus, inputs, show_bus_token_file,
                                                                sound_sink=mgr.broadcast_sound)))
+        for url in music_bus:                      # --music-bus: sound only (show_service), never the fixtures
+            from . import showbus
+
+            app[TASKS].append(asyncio.create_task(showbus.run(url, None, sound_sink=mgr.broadcast_sound,
+                                                               name="music bus")))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:

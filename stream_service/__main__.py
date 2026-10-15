@@ -30,6 +30,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--max-sessions", type=int, default=4)
     ap.add_argument("--show-bus", default=None,
                     help="show bus to subscribe to (K3), e.g. ws://127.0.0.1:8701/v1/show; show-synth: :8711")
+    ap.add_argument("--music-bus", action="append", default=[],
+                    help="a sound-only bus (repeatable), e.g. show_service's ws://127.0.0.1:8703/v1/show: its "
+                         "music.* and show.state reach the scenes' sound, never the fixtures")
     ap.add_argument("--show-bus-token-file", default="~/.config/screen-machine/show_bus.token",
                     help="the bus token (sent in hello when the file exists)")
     ap.add_argument("--latency-file", default=str(REPO / "config" / "room" / "latency.json"),
@@ -56,7 +59,7 @@ def main(argv: list[str] | None = None) -> None:
     from .server import make_app
 
     app = make_app(config_dir=pathlib.Path(args.config_dir), public_base=args.public_base,
-                   max_sessions=args.max_sessions, show_bus=args.show_bus,
+                   max_sessions=args.max_sessions, show_bus=args.show_bus, music_bus=args.music_bus,
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
                    art_dir=pathlib.Path(args.art_dir), local_control=args.local_control,
                    app_url=args.app_url, warm=args.warm)
