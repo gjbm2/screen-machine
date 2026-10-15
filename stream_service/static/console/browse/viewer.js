@@ -1,6 +1,6 @@
 // The Viewer: one component, three layouts (phone full-height sheet, tablet side sheet, desktop inspector).  The live
 // picture leads and is never covered; under it: title, the one contextual primary, rating, variations, saved looks,
-// Tune, tags, About.  ⋯ holds the rest.
+// Tune, Music (how it follows the music: browse/music.js), tags, About.  ⋯ holds the rest.
 import { h, put, store as ls, ago, fmt } from "../kit.js";
 import { S } from "../store.js";
 import { lib } from "../data/library.js";
@@ -8,6 +8,7 @@ import { rate } from "../data/ratings.js";
 import * as room from "../data/room.js";
 import * as preview from "./preview.js";
 import * as tune from "./tune.js";
+import * as music from "./music.js";
 import * as fx from "../onscreen/fx.js";
 import { openShowOn } from "../onscreen/push.js";
 import { cueBody, setVia, toggleFx, hasFx } from "../onscreen/compose.js";
@@ -51,13 +52,14 @@ const rateHost = h("div", {});
 const varSec = h("div", { class: "vsec", tid: "variations" });
 const lookSec = h("div", { class: "vsec", tid: "looks" });
 const tuneU = unroll("Tune", { tid: "tune-unroll", hint: "Shuffle, nudge, save a look" });
+const musicU = unroll("Music", { tid: "music-unroll", hint: "How it follows the music" });
 const tagSec = h("div", { class: "vsec", tid: "tags" });
 const aboutU = unroll("About this item", { tid: "about-unroll" });
 const panel = h("div", { class: "viewer-panel" },
   h("div", { class: "stepper" }, prevBtn, nextBtn),
   h("div", { class: "vtitle-row" }, titleEl, subEl),
   h("div", {}, h("div", { class: "primary-row" }, h("div", { class: "pcol" }, primary, primaryNote), showonSecondary), primaryWhy),
-  rateHost, varSec, lookSec, tuneU, tagSec, aboutU);
+  rateHost, varSec, lookSec, tuneU, musicU, tagSec, aboutU);
 export const el = h("div", { class: "viewer", tid: "viewer", role: "region", "aria-label": "Viewer" }, bar, stage, panel);
 let strip = null;
 const tagList = h("span", { class: "chips", style: { display: "contents" } });
@@ -103,6 +105,8 @@ tagIn.addEventListener("keydown", (e) => {
   if (it && add.length) rate(it, { tags: [...new Set([...it._mytags, ...add])] });
 });
 tuneU.addEventListener("toggle", () => { if (tuneU.open) drawTune(); });
+musicU.addEventListener("toggle", () => { if (musicU.open) drawMusic(); });
+music.watchNow(() => musicU.open && !!V.it, () => drawMusic());
 tune.onTune(() => { if (tuneU.open) drawTune(); drawPrimary(); });
 
 // ---------------------------------------------------------------- show an item
@@ -110,7 +114,7 @@ export function show(it, { variant = null, keepVariant = false } = {}) {
   const same = V.it?.key === it.key;
   V.it = it;
   if (!same || !keepVariant) V.variant = variant || (typeof it.spec === "string" ? it.spec : it.preset) || null;
-  if (!same || !keepVariant) tune.reset(it, V.variant);
+  if (!same || !keepVariant) { tune.reset(it, V.variant); music.reset(it, V.variant); }
   drawAll();
   preview.host(pvhost);
   preview.show(it, V.variant || it.spec, { label: variantLabel(it, V.variant) });
@@ -131,8 +135,10 @@ export function setVariant(name) {
   if (!it || V.variant === name) return;
   V.variant = name;
   tune.reset(it, name);
+  music.reset(it, name);
   drawVariants(); drawPrimary(); drawAbout();
   if (tuneU.open) drawTune();
+  if (musicU.open) drawMusic();
   preview.show(it, name, { label: variantLabel(it, name) });
 }
 export function stepVariant(d) {
@@ -155,6 +161,7 @@ function drawAll() {
   strip.update(it);
   drawVariants(); drawLooks(); drawTags(); drawAbout(); drawPrimary(); drawCaption();
   if (tuneU.open) drawTune();
+  if (musicU.open) drawMusic();
 }
 export function refresh() {
   const it = V.it;
@@ -369,6 +376,13 @@ function drawTune() {
   const ae = document.activeElement;
   if (ae && tuneU.body.contains(ae) && ae.type === "range") return;     // never redraw under a dragging finger
   tune.renderPanel(tuneU.body, it, { failed });
+}
+function drawMusic() {
+  const it = V.it;
+  if (!it) return;
+  const ae = document.activeElement;
+  if (ae && musicU.body.contains(ae) && (ae.type === "range" || ae.tagName === "SELECT")) return;   // never under a finger
+  music.renderPanel(musicU.body, it, V.variant);
 }
 export function toggleTune(open = !tuneU.open) { tuneU.open = open; if (open) { drawTune(); tuneU.scrollIntoView({ block: "nearest" }); } }
 export const tuneOpen = () => tuneU.open;

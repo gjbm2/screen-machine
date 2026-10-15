@@ -134,7 +134,18 @@ export function renderLive(host, target, { openPicker }) {
     ["beat", "now"].map((s) => { const b = h("button", { type: "button", tid: `snap-${s}`, "aria-pressed": "false" }, s === "beat" ? "On the beat" : "At once"); b.addEventListener("click", () => patchLook(target, { auto: { snap: s } })); return b; }));
   const wander = switchEl("Wander", wanderOn, (on) => { wanderOn = on; scheduleWander(target); }, { tid: "wander-switch", sub: "Nudges the feel every 10–30 s while this page is open" });
   const dirStatus = h("p", { class: "hint" });
-  put(more.body, h("div", { class: "stack" }, sl.energy, sl.pace, sl.intensity, sl.change_rate,
+  // the music steers the feel (music_direction.py): the sliders are your trim around it; ♪ marks what it is moving
+  const musicSw = switchEl("Music steers the feel", true, (on) => patchLook(target, { auto: { music: { enabled: on } } }),
+    { tid: "music-steers", sub: "From the lighting desk: busier music, busier pictures" });
+  const musicW = slider("How much", { tid: "music-weight", value: 1, fmt: (v) => `${Math.round(v * 100)}%`, title: "How far the music moves the feel",
+    onCommit: (v) => patchLook(target, { auto: { music: { weight: +v.toFixed(2) } } }) });
+  const musicLine = h("p", { class: "hint", tid: "music-line" });
+  const notes = {};
+  for (const k of Object.keys(sl)) {
+    notes[k] = h("span", { class: "gl", tid: `music-note-${k}`, title: "The music moves this: the slider is your trim around it" });
+    sl[k].querySelector(".name").append(notes[k]);
+  }
+  put(more.body, h("div", { class: "stack" }, musicSw, musicW, musicLine, sl.energy, sl.pace, sl.intensity, sl.change_rate,
     h("div", { class: "fields" }, h("label", { class: "field" }, h("span", { class: "lab" }, "Transition style"), style), h("label", { class: "field" }, h("span", { class: "lab" }, "Genre"), genre)),
     h("div", { class: "vsec" }, h("h3", {}, "Moods"), moodBox),
     h("div", {}, h("span", { class: "lab" }, "How long each scene stays (seconds)"), h("div", { class: "row" }, dmin, h("span", {}, "to"), dmax)),
@@ -220,6 +231,14 @@ export function renderLive(host, target, { openPicker }) {
     const near = FEEL.reduce((x, y) => (Math.abs(y[2] - e) < Math.abs(x[2] - e) ? y : x));
     feelChips.forEach((c, i) => c.setAttribute("aria-pressed", String(FEEL[i] === near && Math.abs(near[2] - e) < 0.08)));
     for (const k of Object.keys(sl)) if (typeof di[k] === "number") sl[k].set(di[k]);
+    const mf = new Set(d.music_fields || []), eff = d.direction_effective || {}, mu = d.music || {};
+    for (const k of Object.keys(sl)) notes[k].textContent = mf.has(k) && typeof eff[k] === "number" ? ` ♪ ${fmt(eff[k])}` : "";
+    const am = a.music || {};
+    musicSw.sw.set(am.enabled !== false);
+    musicW.set(typeof am.weight === "number" ? am.weight : 1);
+    musicW.hidden = am.enabled === false;
+    musicLine.textContent = am.enabled === false ? "The feel stays where you set it." : !mu.online ? "Waiting for the lighting desk…"
+      : `Hearing ${mu.band || "music"}${typeof eff.energy === "number" ? ` · energy ${fmt(eff.energy)}` : ""}${mf.has("moods") ? ` · moods ${(eff.moods || []).slice(0, 2).join(", ")}` : ""}${mf.has("transition_style") ? ` · ${eff.transition_style} changes` : ""}`;
     if (document.activeElement !== style) style.value = di.transition_style || "";
     if (document.activeElement !== genre) genre.value = di.genre || "";
     moods = Array.isArray(di.moods) ? [...di.moods] : []; drawMoods();

@@ -434,6 +434,21 @@ body.viewer-top.has-nowbar .viewer-sheet .viewer-panel, body.viewer-top.has-nowb
 .prow .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prow .gl { color: var(--ink-3); margin-left: 4px; font-size: var(--fs-meta); }
 
+/* music (browse/music.js): how each setting follows the music */
+.music .mrows { margin-top: var(--s2); }
+.mrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s2); align-items: center; padding: 10px 0; min-height: var(--tap);
+  border-top: 1px solid var(--line); cursor: pointer; }
+.mrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.mrow .mname { font-weight: var(--fw-medium); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow .mine { color: var(--accent); font-weight: normal; font-size: var(--fs-meta); }
+.mrow .mwords { grid-column: 1 / -1; font-size: var(--fs-small); color: var(--ink-2); }
+.mrow .now { font-size: var(--fs-meta); color: var(--accent); font-variant-numeric: tabular-nums; }
+.mbars { display: inline-flex; align-items: flex-end; gap: 3px; height: 24px; position: relative; padding: 0 2px; }
+.mbars > i { width: 9px; height: 6%; background: var(--accent); border-radius: 2px 2px 0 0; }
+.mbars > b { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--ink-3); }
+.medit { background: var(--surface-muted); border-radius: var(--r-md); padding: var(--s3); margin: 2px 0 var(--s2); }
+.medit .lab { display: block; font-size: var(--fs-small); color: var(--ink-2); margin-bottom: 4px; }
+
 /* ---------------------------------------------------------------- Review */
 .review { position: fixed; inset: 0; z-index: var(--z-review); background: var(--stage); color: var(--ink-on-stage); display: grid;
   grid-template-rows: 56px minmax(0, 1fr) auto auto; }
