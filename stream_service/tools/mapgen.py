@@ -358,11 +358,16 @@ def digest(cls: type, limit: int = 150) -> str:
         src = inspect.getsource(cls)
     except (OSError, TypeError):
         src = ""
-    glsl = getattr(cls, "source_code", None) or getattr(cls, "glsl", None)
+    glsl = getattr(cls, "GLSL", None)
     if isinstance(glsl, str) and glsl:
         lines = glsl.splitlines()
-        uni = [ln for ln in lines if re.search(r"\buniform\b|INPUTS|\"NAME\"", ln)]
-        return "\n".join((uni + ["// ..."] + lines[:60])[:limit])
+        names = {(pr.get("x-glsl") or {}).get("u") for pr in cls.param_props().values() if pr.get("x-glsl")}
+        names.discard(None)
+        rx = re.compile(r"\b(" + "|".join(map(re.escape, sorted(names))) + r")\b") if names else None
+        used = [f"{i + 1}: {ln.strip()}" for i, ln in enumerate(lines) if rx and rx.search(ln)]
+        uni = {p: (pr.get("x-glsl") or {}).get("u") for p, pr in cls.param_props().items() if pr.get("x-glsl")}
+        return "\n".join([f"// param -> uniform: {uni}", "// lines that use those uniforms:"] + used[:limit - 40]
+                         + ["// shader head:"] + lines[:40])
     out, where = [], "class"
     for ln in src.splitlines():
         m = re.match(r"\s*def (\w+)", ln)
@@ -489,12 +494,18 @@ def cmd_merge(args) -> None:
             if changed > 10:
                 flags.append("needs_eyes")
             stats["edited" if changed else "kept"] += 1
-            if it.get("hero") is not None:
-                rec["hero"] = it["hero"]
+            if "hero" in it:
+                if it["hero"]:
+                    rec["hero"] = it["hero"]
+                else:
+                    rec.pop("hero", None)
             rec["bindings"] = dict(sorted(new_b.items()))
             rec["review"] = {"by": "llm", "batch": batch.get("batch"), "confidence": it.get("confidence"),
                              "flags": sorted(set(flags)), "decision": dec}
             items[key] = rec
+    if args.dry_run:
+        print(json.dumps({**stats, "dry_run": True}))
+        sys.exit(1 if stats["rejected"] or stats["bindings_rejected"] else 0)
     data.setdefault("gen", {})["merged_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     write_gen(path, data)
     print(json.dumps(stats))
@@ -531,6 +542,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     b.add_argument("--all", action="store_true", help="include items already reviewed")
     m = sub.add_parser("merge")
     m.add_argument("files", nargs="+")
+    m.add_argument("--dry-run", action="store_true", help="validate only: print rejections, write nothing")
     args = ap.parse_args(argv)
     {"rules": cmd_rules, "check": cmd_check, "batches": cmd_batches, "merge": cmd_merge}[args.cmd](args)
 

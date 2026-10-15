@@ -89,6 +89,13 @@ def test_validation_codes(spec, code):
     assert code in {p["code"] for p in e.value.problems}
 
 
+def test_kicks_on_rates_but_not_on_angles():
+    k = {"in": [{"sig": "energy"}], "map": {"scale": [0.8, 1.2]}, "kick": {"sig": "beat", "amt": 0.08}}
+    assert binding.parse_v2("rotation_speed", NUM, k)["kick"]["amt"] == 0.08
+    with pytest.raises(binding.MappingError, match="no kicks on positions"):
+        binding.parse_v2("rotation", NUM, k)
+
+
 def test_tier_rules_flash_and_never():
     reg = {"type": "number", "minimum": 0.0, "maximum": 1.0, "x-tier": "regional"}
     with pytest.raises(binding.MappingError, match="live_needs_ok"):
