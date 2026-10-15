@@ -118,6 +118,42 @@ def _sostenuto() -> list[Event]:
 _BUILDERS = {"sweep": _sweep, "scale": _scale, "arpeggios": _arpeggios, "chords": _chords,
              "repeats": _repeats, "sostenuto": _sostenuto}
 PHRASES = tuple(_BUILDERS) + ("medley",)
+PHRASE_LABELS = {                              # what the Room page calls them, in its order
+    "medley": "A bit of everything",
+    "chords": "Slow pedalled chords",
+    "arpeggios": "Flowing arpeggios",
+    "scale": "Scales",
+    "sostenuto": "Held bass, tune above",
+    "repeats": "Fast repeated notes",
+    "sweep": "Every key, low to high",
+}
+LIBRARY_DIR = pathlib.Path(__file__).resolve().parents[1] / "config" / "live" / "test-piano"
+
+
+def library(root: pathlib.Path = LIBRARY_DIR) -> list[dict]:
+    """The pieces a test piano can play: the built-in phrases, then every .mid in ``root`` (by file name)."""
+    out = [{"id": k, "label": v, "kind": "phrase"} for k, v in PHRASE_LABELS.items()]
+    try:
+        files = sorted(p for p in root.iterdir() if p.suffix.lower() in (".mid", ".midi") and p.is_file())
+    except OSError:
+        files = []
+    for p in files:
+        out.append({"id": f"file:{p.name}", "label": p.stem.replace("_", " ").replace("-", " ").strip().capitalize(),
+                    "kind": "file"})
+    return out
+
+
+def resolve(piece: str, root: pathlib.Path = LIBRARY_DIR) -> "TestPiano":
+    """A looping TestPiano for a piece id from :func:`library` (ValueError if unknown)."""
+    if piece.startswith("file:"):
+        name = piece[5:]
+        path = root / name
+        if "/" in name or "\\" in name or name.startswith(".") or not path.is_file():
+            raise ValueError(f"no such piece: {piece!r}")
+        return TestPiano.from_file(path, loop=True)
+    if piece not in PHRASES:
+        raise ValueError(f"no such piece: {piece!r}")
+    return TestPiano(piece, loop=True)
 
 
 def phrase(name: str) -> list[Event]:

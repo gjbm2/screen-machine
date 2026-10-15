@@ -545,7 +545,7 @@ async def dev_art(request: web.Request) -> web.Response:
 
 
 async def sound_test(request: web.Request) -> web.Response:
-    """POST /api/sound/test {"on": bool, "phrase"?: "medley", "path"?: a .mid file}: a test piano feeding every session's sound view
+    """POST /api/sound/test {"on": bool, "piece"?: an id from GET, "phrase"?: "medley", "path"?: a .mid file}: a test piano feeding every session's sound view
     (sound.py) until the real MIDI is in.  409 while sound_view.py is not installed."""
     from . import sound as sound_mod
     body = await read_json(request, allow_empty=False)
@@ -553,11 +553,24 @@ async def sound_test(request: web.Request) -> web.Response:
         raise ParamError("bad_request", 'body must be {"on": true|false, "path"?: "file.mid"}')
     if not sound_mod.available():
         return err(409, "no_sound_view", "stream_service/sound_view.py is not installed yet")
-    path, phrase = body.get("path"), body.get("phrase")
-    if any(v is not None and not isinstance(v, str) for v in (path, phrase)):
-        raise ParamError("bad_request", "path and phrase must be strings (phrase: sweep, scale, arpeggios, chords, "
-                                        "repeats, sostenuto, medley)")
-    return web.json_response(request.app[MANAGER].test_piano(body["on"], path, phrase))
+    path, phrase, piece = body.get("path"), body.get("phrase"), body.get("piece")
+    if any(v is not None and not isinstance(v, str) for v in (path, phrase, piece)):
+        raise ParamError("bad_request", "path, phrase and piece must be strings (piece: an id from GET "
+                                        "/api/sound/test; phrase: sweep, scale, arpeggios, chords, repeats, "
+                                        "sostenuto, medley)")
+    try:
+        return web.json_response(request.app[MANAGER].test_piano(body["on"], path, phrase, piece))
+    except ValueError as e:
+        raise ParamError("bad_request", str(e))
+
+
+async def sound_test_status(request: web.Request) -> web.Response:
+    """GET /api/sound/test: {available, running, piece, playing_s, pieces: [{id, label, kind}]} (the Room page's
+    Test music card; .mid files dropped in config/live/test-piano/ appear as pieces)."""
+    from . import sound as sound_mod
+    if not sound_mod.available():
+        return web.json_response({"available": False, "running": False, "piece": None, "pieces": []})
+    return web.json_response(request.app[MANAGER].test_piano_status())
 
 
 async def renew(request: web.Request) -> web.Response:
@@ -688,6 +701,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_delete("/api/mappings/{kind}/{name}", mapping_delete)
     r.add_post("/api/sessions", create_session)
     r.add_post("/api/sound/test", sound_test)
+    r.add_get("/api/sound/test", sound_test_status)
     r.add_get("/api/sessions", list_sessions)
     r.add_get("/api/sessions/{sid}", get_session)
     r.add_patch("/api/sessions/{sid}", patch_session)
