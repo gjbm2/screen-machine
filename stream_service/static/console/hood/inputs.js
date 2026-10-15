@@ -44,8 +44,21 @@ export function mountInputs(host, ctx) {
       h("span", {}, "Masters"), h("span", {}, `speed ×${fmt(I.masters?.speed)} · depth ${fmt(I.masters?.depth)}`));
     const src = { confidence: d.beat_confidence, activity_slow: d.activity_slow, activity: v.activity, pulse: v.pulse, beat: d.beat, level: v.level };
     for (const [k] of names) { setMeter(meters[k], src[k] ?? 0); vals[k].textContent = fmt(src[k]); }
-    binds.textContent = (I.bindings || []).map((b) => `${String(b.param).padEnd(14)} ← ${String(b.bind).padEnd(13)} [${(b.range || []).map((x) => fmt(x)).join(", ")}]  ${fmt(b.value, 3)}`).join("\n") || "Nothing is bound to the music.";
+    binds.textContent = (I.bindings || []).map((b) => `${String(b.param).padEnd(14)} ← ${bindSource(b).padEnd(13)} ${bindRange(b)}  ${fmt(b.value, 3)}`).join("\n") || "Nothing is bound to the music.";
   }, 250, ctx.isOpen("inputs"));
   const frame = () => { requestAnimationFrame(frame); if (lamp.isConnected && ctx.isOpen("inputs")()) paintLamp(lamp, I, at); };
   requestAnimationFrame(frame);
 }
+
+// A binding row (stream_service/binding.py describe()): v1 {bind, range} or v2 {in: [{sig, w}], map: {range|scale|around}}.
+function bindSource(b) {
+  if (b.bind) return String(b.bind);
+  const ins = (b.in || []).map((i) => (i.w != null && i.w !== 1 ? `${fmt(i.w, 2)}·` : "") + i.sig);
+  return ins.join(" + ") || "–";
+}
+function bindRange(b) {
+  const r = b.range || (b.map && (b.map.range || b.map.scale || b.map.around));
+  const kind = b.range || b.map?.range ? "" : b.map?.scale ? "×" : b.map?.around ? "±" : "";
+  return Array.isArray(r) ? `${kind}[${r.map((x) => fmt(x)).join(", ")}]` : "";
+}
+
