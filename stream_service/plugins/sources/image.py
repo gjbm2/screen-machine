@@ -1,7 +1,8 @@
 """Image: holds a still (the entry anchor or the exit target).  Internal: never picked by a person.
 
 Stills arrive as PNG bytes of any size; :func:`load_png` letterboxes a non-matching size onto black (the
-display page's background) at the profile size.  The pixels are uploaded once in ``setup`` and copied into
+display page's background) at the profile size (:func:`load_image` does the same for PNG or JPEG: the
+live_art feed).  The pixels are uploaded once in ``setup`` and copied into
 the frame on every render (a device-to-device copy, ~0.2 ms at 4K).
 """
 from __future__ import annotations
@@ -30,6 +31,33 @@ def load_png(data: bytes, width: int, height: int) -> np.ndarray:
         raise
     except Exception as e:  # PIL raises many types (UnidentifiedImageError, DecompressionBombError, OSError...)
         raise ParamError("bad_image", f"could not decode the PNG: {type(e).__name__}: {e}") from None
+    return _fit_rgb(img, width, height)
+
+
+def load_image(data: bytes, width: int, height: int) -> np.ndarray:
+    """PNG or JPEG bytes -> (H, W, 3) uint8 sRGB at exactly width x height, letterboxed on black exactly like
+    :func:`load_png` (same pixel guard, same alpha handling).  A JPEG's EXIF orientation is applied first."""
+    from PIL import Image, ImageOps
+
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format not in ("PNG", "JPEG"):
+            raise ParamError("bad_image", f"expected a PNG or a JPEG, got {img.format}")
+        img.load()
+        if img.format == "JPEG" and img.getexif().get(0x0112, 1) not in (None, 1):   # 0x0112 = Orientation
+            img = ImageOps.exif_transpose(img)   # (only when needed: it copies even an upright image)
+    except ParamError:
+        raise
+    except Exception as e:  # PIL raises many types (UnidentifiedImageError, DecompressionBombError, OSError...)
+        raise ParamError("bad_image", f"could not decode the image: {type(e).__name__}: {e}") from None
+    return _fit_rgb(img, width, height)
+
+
+def _fit_rgb(img, width: int, height: int) -> np.ndarray:
+    """A loaded PIL image -> (H, W, 3) uint8 RGB at width x height (transparency on black, letterboxed)."""
+    from PIL import Image
+
     if img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info):
         # transparent areas show the page's black background
         rgba = img.convert("RGBA")
