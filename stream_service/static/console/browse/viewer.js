@@ -225,7 +225,7 @@ function drawPrimary() {
   showonSecondary.hidden = a === "showon";
   const missing = S.get().roomLink === "missing";
   primary.disabled = a === "showon" && missing;
-  primaryWhy.textContent = a === "showon" && missing ? "Show on needs the room service: open the Library from the Room page." : "";
+  primaryWhy.textContent = a === "showon" && missing ? "This page was opened outside the Screen Machine app, so it can't reach the screens: use the Library link on the Room page." : "";
   primaryWhy.hidden = !primaryWhy.textContent;
   primaryNote.textContent = cur.note || (a === "play" ? `Changes ${S.get().compose.at === "now" ? "now" : "on the beat"}${S.get().compose.via ? ` via ${S.get().compose.via.label}` : ""}` : "");
   primaryNote.hidden = !primaryNote.textContent;

@@ -272,7 +272,7 @@ export function openShowOn(it, { options = [], value = null } = {}) {
       }
       rowsHost.append(sec);
     }
-    if (!n) rowsHost.append(h("p", { class: "hint" }, missing ? "No screens: there's no room service at this address." : down ? "No screens: the room service isn't answering." : "Loading the screens…"));
+    if (!n) rowsHost.append(h("p", { class: "hint" }, missing ? "No screens: this page was opened outside the Screen Machine app." : down ? "No screens: the room service isn't answering." : "Loading the screens…"));
   }
   function renderGo() {
     const name = room.nameOf(chosen);
@@ -280,7 +280,7 @@ export function openShowOn(it, { options = [], value = null } = {}) {
     const mins = DURS.find(([s]) => s === dur)?.[1] || "2 min";
     goBtn.querySelector(".label").textContent = rowEls.size ? `${b ? "Replace on" : "Show on"} ${name} for ${mins}` : `Show on a screen for ${mins}`;
     goBtn.disabled = blocked || !rowEls.size;
-    why.textContent = missing ? "Show on needs the room service: open the Library from the Room page." : blocked && down ? "Show on needs the room service, and it isn't answering." : "";
+    why.textContent = missing ? "This page was opened outside the Screen Machine app, so it can't reach the screens: use the Library link on the Room page." : blocked && down ? "Show on needs the room service, and it isn't answering." : "";
     why.hidden = !why.textContent;
   }
   body.append(h("div", { class: "stack", style: { marginTop: "16px" } }, durRow, asRow, note));

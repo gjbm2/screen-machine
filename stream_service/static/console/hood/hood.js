@@ -130,7 +130,7 @@ export function mount(host) {
     const broken = (lab?.plugins || []).filter((p) => p.load !== "ok").length;
     const rAns = reach.renderer && Date.now() - reach.renderer < 30000;
     const l1 = rAns ? `Renderer: answering · ${n} plug-ins${slow ? `, ${slow} too slow` : ""}${broken ? `, ${broken} broken` : ""}${rt ? ` · ${rt} with runtime errors (see Plug-ins)` : ""}` : "Renderer: not answering";
-    const l2 = s.roomLink === "missing" ? "Room service: not at this address (open the Library from the Room page)" : s.roomLink === "up" ? "Room service: answering · live updates on" : "Room service: not answering";
+    const l2 = s.roomLink === "missing" ? "Room service: not reachable from this address (the page was opened outside the Screen Machine app)" : s.roomLink === "up" ? "Room service: answering · live updates on" : "Room service: not answering";
     const d = H.healthDiag;
     const gpu = d?.gpus?.length ? d.gpus.map((g) => `GPU ${g.index} (${String(g.name).replace(/NVIDIA |GeForce /g, "")}): ${g.util ?? "–"} % busy`).join(" · ") : "GPUs: no reading";
     const t = s.target, ts = room.screenOf(t);
