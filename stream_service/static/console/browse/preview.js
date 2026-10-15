@@ -5,7 +5,7 @@
 // inspector, the Viewer and Review (no re-cue).  Stops: 10 s after it is no longer shown, at once when the page is
 // hidden, after 3 min with no activity, and on pagehide.
 import { LivePlayer } from "../../live-player.js";
-import { h, http, withBase, emitter } from "../kit.js";
+import { h, http, withBase, emitter, mediaUrl } from "../kit.js";
 import { S } from "../store.js";
 import { onEvent } from "../data/renderer.js";
 import { lib } from "../data/library.js";
@@ -84,7 +84,7 @@ async function post() {
   if (!player || att.url !== url) {
     if (player) player.stop();
     url = att.url;
-    player = new LivePlayer({ url: att.url, targetBufferMs: att.target_buffer_ms ?? 300, mount: box, sendStats: false });
+    player = new LivePlayer({ url: mediaUrl(att.url), targetBufferMs: att.target_buffer_ms ?? 300, mount: box, sendStats: false });
     player.start();
     player.video.dataset.pv = "";
     player.video.setAttribute("aria-label", "Live preview");

@@ -2,7 +2,7 @@
 // open), Attach / Detach, and "Show the art cuts" (the anchor / target overlay cut at the first frame / hold_pts),
 // offered only for a session with an anchor or target.  ?attach=<ws>&target_ms= plays at once and sets
 // window.__player (the headless playback test relies on it; previews never set it).
-import { h, put, visibleInterval } from "../kit.js";
+import { h, put, visibleInterval, mediaUrl } from "../kit.js";
 import { LivePlayer } from "../../live-player.js";
 import { onEvent } from "../data/renderer.js";
 import { button, switchEl } from "../ui/controls.js";
@@ -32,7 +32,7 @@ export function mountPlayer(host, ctx) {
     cuts.hidden = !(artCss || meta.targetCss);
     if (artCss && cuts.sw.get()) showArt(artCss); else art.classList.add("hidden");
     const codecMsg = (name, d) => { if (name === "type-unsupported") msg.textContent = "This browser can't play this stream (its codec); the TV shows it."; };
-    player = new LivePlayer({ url: u, targetBufferMs: targetMs, mount: stage, onEvent: (name, d) => {
+    player = new LivePlayer({ url: mediaUrl(u), targetBufferMs: targetMs, mount: stage, onEvent: (name, d) => {
       codecMsg(name, d);
       if (["config", "first-frame", "eos", "stall", "ws-close", "teardown"].includes(name) || d?.fatal) window.smDev?.log?.(`player ${name} ${JSON.stringify(d)}`, d?.fatal ? "err" : "");
     } });

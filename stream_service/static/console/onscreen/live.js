@@ -2,7 +2,7 @@
 // "What the director did", Next change, Auto + Next, the four Feel chips and "More about the feel" (incl. Wander),
 // Colours, Effects, Scene settings (room PATCH /live {params}) and Watch here.  Everything goes through room's
 // per-screen API, so room's look records it; controls show the server's values.
-import { h, put, oneInFlight, http, fmt } from "../kit.js";
+import { h, put, oneInFlight, http, fmt, mediaUrl } from "../kit.js";
 import { S } from "../store.js";
 import * as room from "../data/room.js";
 import * as catalog from "../data/catalog.js";
@@ -207,7 +207,7 @@ export function renderLive(host, target, { openPicker }) {
       return;
     }
     put(wU.body, wStage, wLine, h("p", { class: "meta" }, `${att.codec || ""} ${att.w}×${att.h} @ ${att.fps} fps · GPU ${r.data?.gpu ?? "–"} · set by the screen's config`));
-    wPlayer = new LivePlayer({ url: att.url, targetBufferMs: att.target_buffer_ms ?? 300, mount: wStage, sendStats: false });
+    wPlayer = new LivePlayer({ url: mediaUrl(att.url), targetBufferMs: att.target_buffer_ms ?? 300, mount: wStage, sendStats: false });
     wPlayer.start();
     clearInterval(wStats);
     wStats = setInterval(() => { if (!wPlayer || !wU.isConnected) { clearInterval(wStats); wPlayer?.stop(); return; } const st = wPlayer.stats(); wLine.textContent = `${st.state} · ${st.codec ?? ""} · ${st.presented} frames · buffered ${st.buffered_ms ?? "–"} ms`; }, 250);
