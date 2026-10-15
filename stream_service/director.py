@@ -296,6 +296,15 @@ class Director:
         self.bad_transitions: set[str] = set()        # transition presets that failed to prepare
         self.last: Optional[dict] = None              # the last decision, for the panel and GET session
         self.vet: Optional[Callable[[str, Optional[str]], bool]] = None   # (kind, plug-in) -> auto may pick it
+        self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
+
+    def _rated(self, kind: str, plugin: Optional[str]) -> float:
+        if self.rate is None:
+            return 1.0
+        try:
+            return float(self.rate(kind, plugin))
+        except Exception:
+            return 1.0
 
     def _vetted(self, kind: str, plugin: Optional[str]) -> bool:
         if self.vet is None:
@@ -412,8 +421,8 @@ class Director:
         else:
             avoid = set(list(self.recent_scenes)[-n_avoid:]) | ({current} if current else set()) if n_avoid else \
                 ({current} if current else set())
-        got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction),
-                            self.rng_scene, avoid)
+        got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction)
+                            * self._rated("source", scenes[n].get("source")), self.rng_scene, avoid)
         if got is None:
             return None
         name, p, n = got
@@ -424,8 +433,8 @@ class Director:
         names = [n for n in resolve_pool(auto["transitions"], transitions)
                  if n not in self.bad_transitions and self._vetted("transition", transitions[n].get("transition"))]
         avoid = set(list(self.recent_transitions)[-1:])
-        got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction),
-                            self.rng_transition, avoid)
+        got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction)
+                            * self._rated("transition", transitions[n].get("transition")), self.rng_transition, avoid)
         if got is None:
             return None
         name, p, n = got
