@@ -1804,15 +1804,22 @@ class SessionManager:
             if s.sound is not None and s.state not in ("ended", "failed"):
                 s.sound.on_message(msg)
 
-    def test_piano(self, on: bool, path: Optional[str] = None, phrase: Optional[str] = None) -> dict:
-        """Loop thread: start / stop a generated (or .mid) piano feeding every session, until the real MIDI is in."""
+    def test_piano(self, on: bool, path: Optional[str] = None, phrase: Optional[str] = None,
+                   piece: Optional[str] = None) -> dict:
+        """Loop thread: start / stop a generated (or .mid) piano feeding every session, until the real MIDI is in.
+        ``piece`` is an id from piano_replay.library() (a phrase, or file:<name> in config/live/test-piano/)."""
+        from .piano_replay import TestPiano, resolve
         t = getattr(self, "_piano_task", None)
         if t is not None:
             t.cancel()
             self._piano_task = None
+        self._piano_piece = None
         if on:
-            from .sound_view import TestPiano
-            piano = TestPiano.from_file(path, loop=True) if path else TestPiano(phrase or "medley", loop=True)
+            if piece:
+                piano = resolve(piece)
+            else:
+                piano = TestPiano.from_file(path, loop=True) if path else TestPiano(phrase or "medley", loop=True)
+                piece = f"file:{path.replace(chr(92), '/').rsplit('/', 1)[-1]}" if path else (phrase or "medley")
 
             async def run() -> None:
                 while True:
@@ -1821,7 +1828,17 @@ class SessionManager:
                     await asyncio.sleep(0.02)
 
             self._piano_task = asyncio.ensure_future(run())
-        return {"test_piano": on}
+            self._piano_piece, self._piano_since = piece, time.monotonic()
+        return {"test_piano": on, **self.test_piano_status()}
+
+    def test_piano_status(self) -> dict:
+        """What the test piano is playing and what it could play (GET /api/sound/test, the Room page's Test music)."""
+        from .piano_replay import library
+        piece = getattr(self, "_piano_piece", None)
+        running = piece is not None and getattr(self, "_piano_task", None) is not None
+        return {"available": True, "running": running, "piece": piece if running else None,
+                "playing_s": round(time.monotonic() - self._piano_since, 1) if running else None,
+                "pieces": library()}
 
     def room_leader(self, room: str) -> Optional[Session]:
         """The session that directs a room (rooms.py): kept while it stays live, else the oldest live member."""

@@ -294,3 +294,17 @@ def test_read_midi():
     assert ev == [(0.0, 0x90, 60, 80), (1.0, 0x80, 64, 0), (1.0, 0xB0, 64, 127), (2.0, 0x80, 60, 32)]
     with pytest.raises(ValueError):
         read_midi(b"RIFF....")
+
+
+def test_library_lists_phrases_then_files(tmp_path):
+    from stream_service.piano_replay import PHRASE_LABELS, library, resolve
+    (tmp_path / "gymnopedie_no_1.mid").write_bytes(_smf())
+    (tmp_path / "notes.txt").write_text("x")
+    lib = library(tmp_path)
+    assert [x["id"] for x in lib][:len(PHRASE_LABELS)] == list(PHRASE_LABELS)
+    assert lib[-1] == {"id": "file:gymnopedie_no_1.mid", "label": "Gymnopedie no 1", "kind": "file"}
+    assert resolve("file:gymnopedie_no_1.mid", tmp_path).loop
+    assert resolve("chords", tmp_path).events
+    for bad in ("file:../etc/passwd", "file:nope.mid", "jazz"):
+        with pytest.raises(ValueError):
+            resolve(bad, tmp_path)
