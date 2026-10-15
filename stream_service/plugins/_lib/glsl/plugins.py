@@ -94,10 +94,12 @@ def _mix(cp, kmix, a, b, out, t: float) -> None:
 log = logging.getLogger("stream_service.plugins.glsl")
 
 # Frame-time thresholds (GPU ms per render call).  Imported shaders are untrusted for cost: a shader over its
-# "slow" threshold is shrunk (render scale) until it fits; one still over it at the minimum scale for a few
-# frames, or over "hard" once there, raises GpuTooSlow and the engine substitutes it (scene -> black + recovery
-# cue, transition -> crossfade, effect -> passthrough).  The kernels themselves are bounded too: every loop
-# carries a per-pixel iteration cap and an SM-clock budget (glsl_compat.cuh), so no launch can hang the GPU.
+# "slow" threshold is shrunk (render scale) until it fits.  At the minimum scale it keeps running (owner, 15 Oct:
+# degrade, never refuse): the engine then lowers a scene's frame rate (layers.py rate_div) and its guard (guard.py)
+# decides.  Only a shader over "hard" for a few frames in a row raises GpuTooSlow here, and the engine substitutes it
+# (scene -> black + recovery cue, transition -> crossfade, effect -> passthrough).  The kernels themselves are bounded
+# too: every loop carries a per-pixel iteration cap and an SM-clock budget (glsl_compat.cuh), so no launch can hang
+# the GPU.
 SCENE_SLOW_MS, EFFECT_SLOW_MS, TRANSITION_SLOW_MS, HARD_MS = 20.0, 12.0, 25.0, 200.0
 SCENE_MIN_SCALE, EFFECT_MIN_SCALE = 0.25, 0.35
 
@@ -143,8 +145,11 @@ class _Watch:
             new = max(min_scale, round(scale * (self.slow_ms / ms) ** 0.5 * 0.9, 2))
             log.warning("%s: %.1f ms on the GPU, render scale %.2f -> %.2f", self.name, ms, scale, new)
             return new
+        if ms <= HARD_MS:                      # slow but workable: the engine degrades the frame rate instead
+            self.strikes = 0
+            return None
         self.strikes += 1
-        if self.strikes >= 3 or ms > HARD_MS:
+        if self.strikes >= 3:
             raise GpuTooSlow(f"{self.name}: {ms:.1f} ms on the GPU at render scale {scale:.2f}")
         return None
 

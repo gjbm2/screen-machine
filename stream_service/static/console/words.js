@@ -111,17 +111,20 @@ export function pluginErrorWords(ev) {
   if (!ev) return "failed";
   if (ev.reason === "slow" || /GpuTooSlow/.test(String(ev.detail || ""))) {
     const ms = Number(ev.gpu_ms) || Number(String(ev.detail || "").match(/([\d.]+)\s*ms/)?.[1]);
-    const budget = Number(ev.budget_ms) || 33;
-    return `too slow for this GPU${ms ? ` (${Math.round(ms)} ms a frame, needs under ${Math.round(budget)} ms)` : ""}`;
+    const budget = Number(ev.budget_ms);
+    return `too slow for this GPU${ms ? ` (${Math.round(ms)} ms a frame${budget > 0 && ms > budget ? `, needs under ${Math.round(budget)} ms` : ""})` : ""}`;
   }
   if (ev.action === "rejected" || ev.phase === "prepare") return "failed to start (a code error in the plug-in)";
   return `failed (${String(ev.detail || ev.action || "error").split("\n")[0].slice(0, 120)})`;
 }
 
+/** Information only, never a refusal (owner, 15 Oct: degrade, don't say no): it still plays, at a lower frame rate
+ *  or resolution, and the auto director just doesn't pick it on its own. */
 export function slowWords(sl) {
   if (!sl) return "";
-  if (sl.source === "calibration") return sl.status === "broken" ? "broken on this GPU (calibration)" : `too slow for GPU ${sl.gpu} (calibration${sl.ms != null ? `, ${Math.round(sl.ms)} ms a frame` : ""})`;
-  return `too slow for this GPU (${Math.round(sl.ms)} ms a frame, needs under ${Math.round(sl.budget_ms || 33)} ms)`;
+  if (sl.source === "calibration" && sl.status === "broken") return "broken on this GPU (calibration)";
+  const ms = sl.ms != null ? `${Math.round(sl.ms)} ms a frame` : "";
+  return `heavy for ${sl.source === "calibration" ? `GPU ${sl.gpu}` : "this GPU"}${ms ? ` (${ms})` : ""}: it plays at a lower frame rate or resolution`;
 }
 
 // ---------------------------------------------------------------- the director, in words
