@@ -30,6 +30,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 CONFIG = REPO / "config" / "live"
 KINDS = {"scene": ("source", "sources"), "effect": ("effect", "effects"), "transition": ("transition", "transitions")}
 MAX_LIVE, MAX_SECTION = 8, 10
+NO_MUSIC = {"cal_flash"}          # measurement scenes: never moved by the music (tools/room/latency_cal)
 FLASH = binding.FLASH_RX
 GLSL_PREFIX = ("st_", "isf_", "glt_")
 GLSL_LIVE = {"palette_period", "drift_speed"}      # GLSL wrapper params read every frame (glsl/plugins.py)
@@ -300,6 +301,8 @@ def cmd_rules(args) -> None:
             key = f"{kind}/{plugin}"
             prev = old.get("items", {}).get(key)
             rec = draft_item(kind, plugin, cls)
+            if plugin in NO_MUSIC:
+                rec = {**rec, "follow": False, "bindings": {}}
             if prev and (prev.get("review") or {}).get("by") == "llm" and prev.get("schema_hash") == rec["schema_hash"]:
                 rec = prev                            # a reviewed item whose params have not changed
                 kept += 1

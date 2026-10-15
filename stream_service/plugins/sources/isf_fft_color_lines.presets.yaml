@@ -1,0 +1,21 @@
+isf-fft-color-lines:
+  label: FFT Color Lines
+  source: isf_fft_color_lines
+  params: {}
+  bindings:
+    energy:
+      bind: energy
+    pulse:
+      kick: beat
+      amount: 1.0
+  tags:
+    energy:
+    - 0.2
+    - 0.9
+    moods:
+    - hypnotic
+    family: abstract
+    dims: 2d
+    technique:
+    - analytic
+    weight: 0.6
