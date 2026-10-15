@@ -32,6 +32,8 @@ from typing import Any, Optional
 
 import yaml
 
+from . import binding as binding_v2
+from .mappings import Mappings
 from .modulation import parse_binding, split_bindings
 from .plugins import Registry
 from .plugins.base import ParamError, is_bindable
@@ -92,6 +94,7 @@ class TransitionSpec:
     params: dict = field(hash=False)
     preset: Optional[str] = None
     label: str = ""
+    bindings: dict = field(default_factory=dict, hash=False)   # cue-mode music mappings (sampled at prepare)
 
     @property
     def name(self) -> str:
@@ -134,6 +137,7 @@ class Presets:
         self.plugin_errors: list[str] = []
         self.rev = 0
         self.vocab = Vocab(self.dir)
+        self.maps = Mappings(self.dir)           # per-item music mappings (mappings.py)
         self.reload_if_changed(force=True)
 
     # -- loading ------------------------------------------------------------
@@ -156,6 +160,7 @@ class Presets:
             self._reload_lock.release()
 
     def _reload(self, force: bool, plugin_files: bool) -> bool:
+        self.maps.reload_if_changed(force)        # its own rev: the preset tables do not depend on it
         changed = self.vocab.reload_if_changed()
         sig = self._plugin_sig() if plugin_files or force else (self.registry.rev,) + self._plugin_mtimes[1:]
         plugins_moved = sig != self._plugin_mtimes
@@ -190,7 +195,9 @@ class Presets:
         self.rev += 1
 
     # -- plug-in presets: <id>.presets.yaml next to the plug-in, else an automatic one ----------------------
-    _SIG_MAP = {"energy": "activity_slow", "activity": "activity", "beat": "beat", "pulse": "pulse", "level": "level"}
+    _SIG_MAP = {"energy": "activity_slow", "activity": "activity", "beat": "beat", "pulse": "pulse", "level": "level",
+                "pan": "pan_slow", "tilt": "tilt_slow", "zoom": "zoom", "motion": "motion", "drive": "drive",
+                "punch": "punch", "tempo": "tempo", "section": "section"}
 
     @staticmethod
     def _plugin_files() -> list[pathlib.Path]:
@@ -213,11 +220,19 @@ class Presets:
     def _binding(self, prop: dict, value, b: dict):
         """Plug-in preset binding ({bind: energy} / {kick: beat, amount: a}) -> engine form {bind, range}."""
         lo, hi = prop.get("minimum", 0.0), prop.get("maximum", 1.0)
+        sig = b.get("kick") if "kick" in b else b.get("bind")
+        if sig not in self._SIG_MAP:
+            raise ParamError("bad_param", f"unknown signal {sig!r} (known: {sorted(self._SIG_MAP)})")
         if "kick" in b:
             base = value if isinstance(value, (int, float)) else prop.get("default", lo)
-            return {"bind": self._SIG_MAP.get(b["kick"], "beat"),
-                    "range": [base, min(hi, base + float(b.get("amount", 1.0)) * (hi - lo))]}
-        return {"bind": self._SIG_MAP.get(b.get("bind"), "activity_slow"), "range": list(b.get("range", [lo, hi]))}
+            return {"bind": self._SIG_MAP[sig], "range": [base, min(hi, base + float(b.get("amount", 1.0)) * (hi - lo))]}
+        return {"bind": self._SIG_MAP[sig], "range": list(b.get("range", [lo, hi]))}
+
+    @staticmethod
+    def _generic(b: dict) -> bool:
+        """A plug-in preset's catch-all binding ({bind: energy} over the whole range, {kick: beat, amount: 1}): the
+        per-item mappings replace it."""
+        return ("bind" in b and "range" not in b) or ("kick" in b and float(b.get("amount", 1.0)) == 1.0)
 
     @staticmethod
     def _auto_tags(tags: dict, kind: str, cls: type) -> dict:
@@ -293,14 +308,22 @@ class Presets:
                 continue
             try:
                 params = dict(e.get("params") or {})
+                generic = []
                 for k, b in (e.get("bindings") or {}).items():
                     if k in props and isinstance(b, dict):
-                        params[k] = self._binding(props[k], params.get(k), b)
+                        try:
+                            params[k] = self._binding(props[k], params.get(k), b)
+                        except ParamError as be:
+                            errs.append(f"{kind} preset {pname}: binding {k} skipped: {be.detail}")
+                            continue
+                        if self._generic(b):
+                            generic.append(k)
                 if kind == "transition":
                     cls.validate(params)
                 else:
                     cls.validate(split_bindings(props, params)[0])
-                entry = {"label": str(e.get("label") or pname), key: name, "params": params, "auto": True}
+                entry = {"label": str(e.get("label") or pname), key: name, "params": params, "auto": True,
+                         **({"generic": generic} if generic else {})}
                 if kind == "effect":
                     entry["stage"] = getattr(cls, "stage", "stylise")
                 try:
@@ -395,8 +418,41 @@ class Presets:
         if entry is None or entry["source"] != spec.source:
             return {}, {}
         cls = self.registry.source(spec.source)
-        plain, bindings = split_bindings(cls.param_props(), entry["params"])
+        props = cls.param_props()
+        plain, bindings = split_bindings(props, entry["params"])
+        bindings = self._layer("scene", cls, props, spec.preset, entry, bindings,
+                               default_bindings_for(cls, props, set(entry["params"])))
         return cls.validate(plain), bindings
+
+    # -- the music mappings over a preset's own bindings (mappings.py) ----------------------------------------
+    def _layer(self, kind: str, cls: type, props: dict, preset: Optional[str], entry: Optional[dict],
+               authored: dict, defaults: dict) -> dict:
+        """Class defaults + generic preset bindings < generated < authored < the owner's edits (the spec's own
+        bindings go on top, in the caller).  A band map becomes a range from the preset's tags.energy."""
+        follow, gen, user = self.maps.layers(kind, cls.name, preset, props)
+        if not follow:
+            return {}
+        generic = set((entry or {}).get("generic") or ())
+        out = dict(defaults)
+        out.update({k: v for k, v in authored.items() if k in generic})
+        for layer, then in ((gen, {k: v for k, v in authored.items() if k not in generic}), (user, None)):
+            for k, v in layer.items():
+                if v is None:
+                    out.pop(k, None)
+                else:
+                    out[k] = v
+            if then:
+                out.update(then)
+        tags = ((entry or {}).get("tags") or {}).get("energy") or [0.0, 1.0]
+        for k, b in list(out.items()):
+            m = b.get("map") if binding_v2.is_v2(b) else None
+            if m and "band" in m:
+                prop = props[k]
+                lo_p, hi_p = prop.get("minimum", 0.0), prop.get("maximum", 1.0)
+                pad = m["band"] * (hi_p - lo_p)
+                lo, hi = max(lo_p, lo_p + tags[0] * (hi_p - lo_p) - pad), min(hi_p, lo_p + tags[1] * (hi_p - lo_p) + pad)
+                out[k] = {**b, "map": {"range": [lo, hi]}}
+        return out
 
     # -- resolution -----------------------------------------------------------
     @staticmethod
@@ -430,16 +486,16 @@ class Presets:
             props = cls.param_props()
             plain, bindings = split_bindings(props, entry["params"])
             base = cls.validate(plain)
-            set_keys = set(entry["params"]) | set(overrides)
+            bindings = self._layer("scene", cls, props, preset, entry, bindings,
+                                   default_bindings_for(cls, props, set(entry["params"])))
             plain, bindings = split_bindings(props, overrides, bindings)
-            bindings = {**default_bindings_for(cls, props, set_keys), **bindings}
             fx = spec["effects"] if fx_given else entry.get("effects") or []
             return SceneSpec(cls.name, cls.validate(plain, base=base), preset, entry["label"], bindings,
                              self.resolve_effects(fx))
         cls = self.registry.source(source)
         props = cls.param_props()
-        plain, bindings = split_bindings(props, overrides)
-        bindings = {**default_bindings_for(cls, props, set(overrides)), **bindings}
+        bindings = self._layer("scene", cls, props, None, None, {}, default_bindings_for(cls, props, set()))
+        plain, bindings = split_bindings(props, overrides, bindings)
         fx = (spec.get("effects") or []) if fx_given else []
         return SceneSpec(cls.name, cls.validate(plain), None, cls.label or cls.name, bindings,
                          self.resolve_effects(fx))
@@ -474,17 +530,19 @@ class Presets:
             props = cls.param_props()
             plain, bindings = split_bindings(props, entry["params"])
             base = cls.validate(plain)
+            bindings = self._layer("effect", cls, props, preset, entry, bindings,
+                                   default_bindings_for(cls, props, set(entry["params"])))
             plain, bindings = split_bindings(props, overrides, bindings)
-            bindings = {**default_bindings_for(cls, props, set(entry["params"]) | set(overrides)), **bindings}
             params = cls.validate(plain, base=base)
-            params.update({k: b["rest"] for k, b in bindings.items() if k not in plain and k not in entry["params"]})
+            params.update({k: b["rest"] for k, b in bindings.items()
+                           if "rest" in b and k not in plain and k not in entry["params"]})
             return EffectSpec(cls.name, params, preset, entry["label"], bindings)
         cls = self.registry.effect(name)
         props = cls.param_props()
-        plain, bindings = split_bindings(props, overrides)
-        bindings = {**default_bindings_for(cls, props, set(overrides)), **bindings}
+        bindings = self._layer("effect", cls, props, None, None, {}, default_bindings_for(cls, props, set()))
+        plain, bindings = split_bindings(props, overrides, bindings)
         params = cls.validate(plain)
-        params.update({k: b["rest"] for k, b in bindings.items() if k not in plain})
+        params.update({k: b["rest"] for k, b in bindings.items() if "rest" in b and k not in plain})
         return EffectSpec(cls.name, params, None, getattr(cls, "label", "") or cls.name, bindings)
 
     def resolve_transition(self, spec: Any) -> TransitionSpec:
@@ -496,6 +554,11 @@ class Presets:
                                  f"unknown transition preset {preset!r} (known: {sorted(self.transitions)})")
             cls = self.registry.transition(entry["transition"])
             base = cls.validate(entry["params"])
-            return TransitionSpec(cls.name, cls.validate(overrides, base=base), preset, entry["label"])
+            props = cls.param_props()
+            maps = {k: b for k, b in self._layer("transition", cls, props, preset, entry, {}, {}).items()
+                    if k not in overrides}
+            return TransitionSpec(cls.name, cls.validate(overrides, base=base), preset, entry["label"], maps)
         cls = self.registry.transition(name)
-        return TransitionSpec(cls.name, cls.validate(overrides), None, cls.label or cls.name)
+        props = cls.param_props()
+        maps = {k: b for k, b in self._layer("transition", cls, props, None, None, {}, {}).items() if k not in overrides}
+        return TransitionSpec(cls.name, cls.validate(overrides), None, cls.label or cls.name, maps)

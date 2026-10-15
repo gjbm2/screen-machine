@@ -9,6 +9,17 @@ Bindable signals are scalars 0-1 (``BIND_SIGNALS``; ``rgb`` is not bindable in v
   smoothed  activity_slow (tau 2 s), level_slow (tau 1 s)
   follower  beat: 1 at each predicted beat, decaying (unlocked or off: the raw pulse-edge envelope, which
             lands ``lead`` late); beat_phase 0-1 (held when unlocked); beat_confidence
+Derived from Maestro's channels for the per-item mappings (binding.py; owner, 15 Oct 2026):
+  movers    pan_slow, tilt_slow (tau 0.5 s; a jump over 0.25 in one frame, a "teleport" at a section change,
+            eases over 2 s instead), zoom_slow (tau 1 s; n/a until ZOOM moves), motion (how fast PAN/TILT
+            sweep, tau 2 s; n/a after 30 s without movement)
+  colour    sat (saturation of lit frames, tau 3 s), warmth (0.5 + 0.5 sat cos(hue - 30 deg)); n/a after 30 s
+            unlit.  Not bindable, for the palette fit: pal_hue, pal_spread (weighted circular mean / spread of
+            the lit hue, tau 6 s)
+  section   a trigger: 1 at each stable GOBO change, decaying (tau 1.5 s); ``gobo`` (the stable GOBO value)
+            seeds section-mode bindings
+  music     energy, drive, punch, tempo: music_direction.py's features, merged in by the session (modulation.py)
+An n/a signal is None; a binding drops it and renormalises the rest.
 When the bus is down or the input stale, each signal eases to its idle value (triggers 0, levels 0.5,
 beat_phase held): hold 250 ms, then 2 s; recovery needs 1 s of fresh frames, then a 1 s ease back (R16).
 
@@ -35,9 +46,12 @@ from typing import Any, Optional
 
 log = logging.getLogger("stream_service.inputs")
 
-TRIGGERS = ("pulse", "beat")
+TRIGGERS = ("pulse", "beat", "section")
+MUSIC_SIGNALS = ("energy", "drive", "punch", "tempo")       # from music_direction.py (the session merges them)
+DERIVED_SIGNALS = ("pan_slow", "tilt_slow", "zoom_slow", "motion", "sat", "warmth", "section")
 BIND_SIGNALS = ("level", "pulse", "pan", "tilt", "zoom", "activity", "activity_slow", "level_slow",
-                "beat", "beat_phase", "beat_confidence")
+                "beat", "beat_phase", "beat_confidence") + DERIVED_SIGNALS + MUSIC_SIGNALS
+NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS   # may be None (n/a)
 FOLLOW_ATTRS = ("effect", "variant")      # discrete attributes whose changes the director can follow
 BEAT_FOLLOW = ("extrapolate", "off")
 
@@ -51,14 +65,30 @@ STALE_EASE_S = 2.0         # ... then ease to idle over this long
 RECOVER_AFTER_S = 1.0      # recovery: this long of fresh frames ...
 RECOVER_EASE_S = 1.0       # ... then ease back over this long
 FOLLOW_STABLE_S = 0.3      # a follow_dmx attribute counts once it has held a new value this long
+TAU_PAN_S = 0.5
+TELEPORT = 0.25            # a pan/tilt step this big in one frame is a jump, not movement
+TELEPORT_TAU_S, TELEPORT_HOLD_S = 2.0, 2.0
+TAU_ZOOM_S = 1.0
+TAU_MOTION_S = 2.0
+MOTION_FULL = 1.5          # pan/tilt sweep speed (0-1 units per second) that reads as motion 1
+MOVED = 0.02               # a pan/tilt/zoom change this big counts as movement
+MOTION_NA_S, ZOOM_NA_S, COLOUR_NA_S = 30.0, 300.0, 30.0
+TAU_SAT_S, TAU_HUE_S = 3.0, 6.0
+LIT_V = 0.05
+SECTION_DECAY_S = 1.5
 DEFAULT_PHOTON_MS = 178.7  # presented -> photon when latency.json is absent (south, 13 Oct)
 DEFAULT_FIXTURES = {"north-screen": "screen.north", "south-screen": "screen.south", "devtest": "screen.north"}
 
 
+def signal_kind(s: str) -> str:
+    return "trigger" if s in TRIGGERS else "phase" if s == "beat_phase" else "level"
+
+
 def signal_catalog() -> dict:
-    """The catalog's ``signals`` block: {name: {kind, idle}}."""
-    return {s: {"kind": "trigger" if s in TRIGGERS else "phase" if s == "beat_phase" else "level",
-                "idle": 0.0 if s in TRIGGERS else None if s == "beat_phase" else 0.5} for s in BIND_SIGNALS}
+    """The catalog's ``signals`` block: {name: {kind, idle, na?}}."""
+    return {s: {"kind": signal_kind(s), "idle": 0.0 if s in TRIGGERS else None if s == "beat_phase" else 0.5,
+                **({"na": True} if s in NA_SIGNALS else {}), **({"from": "music"} if s in MUSIC_SIGNALS else {})}
+            for s in BIND_SIGNALS}
 
 
 def idle_value(signal: str) -> float:
@@ -282,6 +312,7 @@ class Snapshot:
     timeout: float
     stable: dict = field(default_factory=dict)      # follow_dmx attr -> its stable value (>= 300 ms)
     follower: dict = field(default_factory=dict)    # counters for /inputs
+    ext: dict = field(default_factory=dict)         # derived signals (pan_slow ... section_at): see the docstring
 
     def locked(self, now: float) -> bool:
         return self.is_locked and self.last_edge is not None and now - self.last_edge <= self.timeout
@@ -298,6 +329,7 @@ class FixtureSignals:
         self.slow: dict = {}
         self.stable: dict = {}                # attr -> stable value
         self.candidate: dict = {}             # attr -> (value, since)
+        self.ext: dict = {}                   # derived signals' state (_derive)
         self.snapshot: Optional[Snapshot] = None
 
     def update(self, t: float, arrival: float, fx: dict, activity: Any, fresh_input: bool = True) -> None:
@@ -328,13 +360,82 @@ class FixtureSignals:
                     self.candidate[attr] = (v, t)
                 elif v != self.stable[attr] and t - since >= FOLLOW_STABLE_S:
                     self.stable[attr] = v
+                    if attr == "effect":
+                        self.ext["section_at"] = t        # GOBO steps on Maestro's section changes
+        self._derive(t, dt, raw)
         f = self.follower
         f.feed(t, raw.get(self.edge_from, 0.0))
         self.snapshot = Snapshot(
             t, arrival, raw, self.slow, fresh_input, f.anchor, f.period, f.confidence, f.last_edge, f.is_locked,
             f.timeout(), dict(self.stable),
             {"edges_accepted": f.accepted, "edges_rejected": f.rejected, "refits": f.refits,
-             "locked_since": f.locked_since, "pulse_peak": round(f.peak, 4)})
+             "locked_since": f.locked_since, "pulse_peak": round(f.peak, 4)},
+            dict(self.ext))
+
+    def _derive(self, t: float, dt: float, raw: dict) -> None:
+        """pan_slow, tilt_slow, zoom_slow, motion, sat, the lit hue's mean and spread (loop thread)."""
+        x = self.ext
+        pan, tilt, zoom = _clamp01(0.5 + 0.5 * raw["pan"]), _clamp01(0.5 + 0.5 * raw["tilt"]), raw["zoom"]
+        if "pan" not in x:
+            x.update(pan=pan, tilt=tilt, pan_slow=pan, tilt_slow=tilt, zoom_slow=zoom, motion=0.0, ref=(pan, tilt),
+                     zoom_ref=zoom, moved_t=None, zoom_t=None, tele_until=-1e9, lit_t=None, sat=None,
+                     hx=0.0, hy=0.0, hw=0.0)
+        else:
+            step = math.hypot(pan - x["pan"], tilt - x["tilt"])
+            if step > TELEPORT:
+                x["tele_until"] = t + TELEPORT_HOLD_S
+            if dt > 0:
+                a = 1.0 - math.exp(-dt / (TELEPORT_TAU_S if t < x["tele_until"] else TAU_PAN_S))
+                x["pan_slow"] += (pan - x["pan_slow"]) * a
+                x["tilt_slow"] += (tilt - x["tilt_slow"]) * a
+                speed = 0.0 if step > TELEPORT else step / dt
+                x["motion"] += (min(1.0, speed / MOTION_FULL) - x["motion"]) * (1.0 - math.exp(-dt / TAU_MOTION_S))
+                x["zoom_slow"] += (zoom - x["zoom_slow"]) * (1.0 - math.exp(-dt / TAU_ZOOM_S))
+            if math.hypot(pan - x["ref"][0], tilt - x["ref"][1]) > MOVED:
+                x["ref"], x["moved_t"] = (pan, tilt), t
+            if abs(zoom - x["zoom_ref"]) > MOVED:
+                x["zoom_ref"], x["zoom_t"] = zoom, t
+            x["pan"], x["tilt"] = pan, tilt
+        r, g, b = raw["rgb"]
+        v = max(r, g, b)
+        if v > LIT_V:
+            s = (v - min(r, g, b)) / v
+            h = _hue(r, g, b, v)
+            wt = s * v
+            hx, hy = wt * math.cos(2 * math.pi * h), wt * math.sin(2 * math.pi * h)
+            if x["sat"] is None or x["lit_t"] is None:
+                x.update(sat=s, hx=hx, hy=hy, hw=wt)
+            elif dt > 0:
+                a_s, a_h = 1.0 - math.exp(-dt / TAU_SAT_S), 1.0 - math.exp(-dt / TAU_HUE_S)
+                x["sat"] += (s - x["sat"]) * a_s
+                x["hx"] += (hx - x["hx"]) * a_h
+                x["hy"] += (hy - x["hy"]) * a_h
+                x["hw"] += (wt - x["hw"]) * a_h
+            x["lit_t"] = t
+
+
+def _hue(r: float, g: float, b: float, v: float) -> float:
+    """HSV hue 0-1 (0 red, 1/3 green, 2/3 blue) of a lit colour (v = max(r, g, b) > 0)."""
+    c = v - min(r, g, b)
+    if c <= 1e-9:
+        return 0.0
+    if v == r:
+        h = ((g - b) / c) % 6.0
+    elif v == g:
+        h = (b - r) / c + 2.0
+    else:
+        h = (r - g) / c + 4.0
+    return (h / 6.0) % 1.0
+
+
+def colour_stats(x: dict) -> Optional[tuple[float, float, float]]:
+    """(pal_hue 0-1, pal_spread turns 0.02-0.25, sat) from FixtureSignals.ext, or None before a lit frame."""
+    if x.get("sat") is None or not x.get("hw"):
+        return None
+    hue = (math.atan2(x["hy"], x["hx"]) / (2 * math.pi)) % 1.0
+    rr = min(1.0, math.hypot(x["hx"], x["hy"]) / x["hw"])
+    spread = math.sqrt(-2.0 * math.log(max(rr, 1e-6))) / (2 * math.pi)
+    return hue, min(0.25, max(0.02, spread)), x["sat"]
 
 
 class ShowInputs:
@@ -462,7 +563,21 @@ class Sampler:
             beat = math.exp(-(now - snap.last_edge) / BEAT_DECAY_S) if snap.last_edge and now >= snap.last_edge \
                 else 0.0
         live["beat"] = beat
-        out = {k: idle_value(k) + w * (v - idle_value(k)) for k, v in live.items()}
+        x = snap.ext
+        if x:
+            live["pan_slow"], live["tilt_slow"] = x["pan_slow"], x["tilt_slow"]
+            live["zoom_slow"] = x["zoom_slow"] if x["zoom_t"] is not None and now - x["zoom_t"] <= ZOOM_NA_S else None
+            live["motion"] = x["motion"] if x["moved_t"] is not None and now - x["moved_t"] <= MOTION_NA_S else None
+            cs = colour_stats(x) if x["lit_t"] is not None and now - x["lit_t"] <= COLOUR_NA_S else None
+            live["sat"] = None if cs is None else cs[2]
+            live["warmth"] = None if cs is None else _clamp01(0.5 + 0.5 * cs[2] * math.cos(2 * math.pi * (cs[0] - 0.08)))
+            sa = x.get("section_at")
+            live["section"] = math.exp(-(now - sa) / SECTION_DECAY_S) if sa is not None and now >= sa else 0.0
+        out = {k: (None if v is None else idle_value(k) + w * (v - idle_value(k))) for k, v in live.items()}
+        if x:
+            cs = colour_stats(x) if x["lit_t"] is not None and now - x["lit_t"] <= COLOUR_NA_S else None
+            out["colour"] = None if cs is None else {"hue": cs[0], "spread": cs[1], "sat": cs[2]}
+        out["gobo"] = snap.stable.get("effect")
         out["beat_phase"] = phase
         out["bpm"] = 60.0 / snap.period if locked and snap.period and self.follow == "extrapolate" else None
         out["beat_locked"] = locked

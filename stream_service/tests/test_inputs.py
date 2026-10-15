@@ -222,7 +222,8 @@ def test_follow_dmx_needs_300ms_of_stable_value():
 
 def test_signal_catalog_and_photon_lead(tmp_path):
     cat = signal_catalog()
-    assert set(cat) == set(BIND_SIGNALS) and "energy" not in cat and "activity_slow" in cat
+    assert set(cat) == set(BIND_SIGNALS) and cat["energy"]["from"] == "music" and "activity_slow" in cat
+    assert cat["section"]["kind"] == "trigger" and cat["motion"]["na"] is True
     assert cat["beat"]["idle"] == 0.0 and cat["level"]["idle"] == 0.5 and "rgb" not in cat
     ms, src = load_photon(tmp_path / "missing.json", "north-screen")
     assert ms > 0 and src == "default"

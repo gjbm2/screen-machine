@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from aiohttp import web
 
-from . import __version__, palettes
+from . import __version__, binding, mappings as mappings_mod, palettes
 from .bodies import parse_body
 from .events import EventHub
 from .library import Library
@@ -53,7 +53,7 @@ DEV_ART_SCREENS = ("north-screen", "south-screen", "devtest")
 
 
 FEATURES = ("cue", "auto", "direction", "palette", "inputs", "bindings", "effects", "fx_bus", "fx_auto",
-            "plugin_errors", "gpu_guard", "music_direction")
+            "plugin_errors", "gpu_guard", "music_direction", "rooms", "mappings")
 HTTP_ERROR_CODES = {400: "bad_request", 404: "not_found", 405: "method_not_allowed", 413: "too_large"}
 
 
@@ -90,6 +90,8 @@ async def auth_and_errors(request: web.Request, handler):
     # No password (owner, 14 Oct): a test rig in a private house. A bearer token from older clients is ignored.
     try:
         resp = await handler(request)
+    except binding.MappingError as e:
+        return web.json_response({"error": e.code, "detail": e.detail, "problems": e.problems}, status=400)
     except ParamError as e:
         return err(400, e.code, e.detail)
     except SessionError as e:
@@ -128,6 +130,169 @@ async def read_json(request: web.Request, *, allow_empty: bool = True) -> Any:
     if body is None and allow_empty:
         return {}
     return body
+
+
+# -- per-item music mappings (mappings.py, binding.py) ---------------------------------------------------
+_MAP_KIND = {"scene": "source", "effect": "effect", "transition": "transition"}
+
+
+def _map_item(request: web.Request) -> tuple[str, str, type, dict]:
+    kind, name = request.match_info["kind"], request.match_info["name"]
+    if kind not in _MAP_KIND:
+        raise SessionError(404, "unknown_item", f"kind must be one of {sorted(_MAP_KIND)}")
+    try:
+        cls = request.app[REGISTRY].table(_MAP_KIND[kind])[name]
+    except KeyError:
+        raise SessionError(404, "unknown_item", f"no {kind} plug-in {name!r}") from None
+    return kind, name, cls, cls.param_props()
+
+
+def _effective(kind: str, layered: tuple) -> dict:
+    follow, gen, user = layered
+    if not follow:
+        return {}
+    out = {k: v for k, v in gen.items() if v is not None}
+    for k, v in user.items():
+        if v is None:
+            out.pop(k, None)
+        else:
+            out[k] = v
+    return out
+
+
+def _mapping_index(app: web.Application, query: Any) -> dict:
+    presets = app[PRESETS]
+    maps = presets.maps
+    reg = app[REGISTRY]
+    kinds = [query["kind"]] if query.get("kind") in _MAP_KIND else list(_MAP_KIND)
+    q = (query.get("q") or "").lower()
+    items: dict = {}
+    for kind in kinds:
+        for name, cls in sorted(reg.table(_MAP_KIND[kind]).items()):
+            if getattr(cls, "internal", False) or (q and q not in name.lower()):
+                continue
+            key = f"{kind}/{name}"
+            gen, user = maps.records(key)
+            if query.get("edited") == "1" and not user:
+                continue
+            flags = (gen.get("review") or {}).get("flags") or []
+            if query.get("flagged") == "1" and not flags:
+                continue
+            props = cls.param_props()
+            eff = _effective(kind, maps.layers(kind, name, None, props))
+            modes = {"live": 0, "section": 0, "cue": 0}
+            sigs: set = set()
+            colour = None
+            for b in eff.values():
+                if "colour" in b:
+                    colour = b.get("mix")
+                    continue
+                modes[b.get("at", "live")] = modes.get(b.get("at", "live"), 0) + 1
+                sigs.update(t["sig"] for t in b.get("in") or ())
+            items[key] = {"src": "user" if user else "llm" if (gen.get("review") or {}).get("by") == "llm"
+                          else "rule" if gen else "class", "edited": bool(user),
+                          "follow": user.get("follow", gen.get("follow", True)) is not False, **modes,
+                          "colour": colour, "signals": sorted(sigs), "flags": flags,
+                          "confidence": (gen.get("review") or {}).get("confidence")}
+    return {"rev": maps.rev, "gen": maps.gen.get("gen") or {}, "signals": signal_catalog(),
+            "canon_states": list(mappings_mod.CANON), "errors": maps.errors, "items": items}
+
+
+async def mappings_index(request: web.Request) -> web.Response:
+    request.app[PRESETS].reload_if_changed()
+    out = await asyncio.get_running_loop().run_in_executor(None, _mapping_index, request.app, dict(request.query))
+    return web.json_response(out)
+
+
+def _mapping_record(app: web.Application, kind: str, name: str, cls: type, props: dict, preset: Optional[str],
+                    extra: Optional[dict] = None) -> dict:
+    presets = app[PRESETS]
+    maps = presets.maps
+    key = f"{kind}/{name}"
+    table = {"scene": presets.scenes, "effect": presets.effects, "transition": presets.transitions}[kind]
+    kkey = _MAP_KIND[kind]
+    plist = [{"name": n, "tags": e.get("tags") or {}, "params": e.get("params") or {}}
+             for n, e in sorted(table.items()) if e.get(kkey) == name]
+    pick = preset or (plist[0]["name"] if plist else None)
+    gen, user = maps.records(key)
+    spec_in = {"preset": pick} if pick else {kkey: name}
+    if kind == "scene":
+        spec = presets.resolve_scene(spec_in)
+    elif kind == "effect":
+        spec = presets.resolve_effect(spec_in)
+    else:
+        spec = presets.resolve_transition(spec_in)
+    eff = dict(spec.bindings)
+    if extra:
+        eff.update({k: v for k, v in extra.items() if v is not None})
+        for k in [k for k, v in extra.items() if v is None]:
+            eff.pop(k, None)
+    params = {}
+    gen_b = gen.get("bindings") or {}
+    for p, prop in props.items():
+        params[p] = {"schema": prop, "tier": prop.get("x-tier"), "modes": mappings_mod.modes_for(p, prop, kind),
+                     **({"fam": gen_b[p].get("fam")} if isinstance(gen_b.get(p), dict) and gen_b[p].get("fam") else {})}
+    prev = mappings_mod.preview(props, eff, spec.params, key)
+    return {"key": key, "rev": user.get("rev", 0), "schema_hash": mappings_mod.schema_hash(props),
+            "preset": pick, "presets": plist, "params": params,
+            "generated": {k: gen.get(k) for k in ("bindings", "presets", "review", "follow", "hero", "schema_hash")
+                          if k in gen},
+            "user": user or None,
+            "effective": {p: {"binding": b, "base": spec.params.get(p), "preview": prev.get(p)} for p, b in eff.items()},
+            "problems": maps.problems(kind, name, props),
+            "stale": (gen.get("schema_hash") not in (None, mappings_mod.schema_hash(props)))}
+
+
+async def mapping_get(request: web.Request) -> web.Response:
+    request.app[PRESETS].reload_if_changed()
+    kind, name, cls, props = _map_item(request)
+    return web.json_response(_mapping_record(request.app, kind, name, cls, props, request.query.get("preset")))
+
+
+async def mapping_put(request: web.Request) -> web.Response:
+    kind, name, cls, props = _map_item(request)
+    body = await read_json(request, allow_empty=False)
+    if not isinstance(body, dict):
+        raise ParamError("bad_request", "body must be a JSON object")
+    maps = request.app[PRESETS].maps
+    merge = request.method == "PATCH"
+    preset = body.get("preset") if merge else None
+    drop = [p for p, b in (body.get("bindings") or {}).items() if b == "default"] if merge else []
+    if drop:
+        body = {**body, "bindings": {p: b for p, b in body["bindings"].items() if b != "default"}}
+    rec = maps.validate_record(kind, props, body)
+    key = f"{kind}/{name}"
+    maps.put_user(key, rec, body.get("base_rev"), merge=merge, preset=preset)
+    if drop:
+        maps.drop_default(key, preset, drop)
+    request.app[EVENTS].emit({"type": "mappings.changed", "key": key, "rev": maps.rev})
+    return web.json_response(_mapping_record(request.app, kind, name, cls, props, preset))
+
+
+async def mapping_delete(request: web.Request) -> web.Response:
+    kind, name, cls, props = _map_item(request)
+    maps = request.app[PRESETS].maps
+    key = f"{kind}/{name}"
+    maps.delete_user(key, request.query.get("param"), request.query.get("preset"))
+    request.app[EVENTS].emit({"type": "mappings.changed", "key": key, "rev": maps.rev})
+    return web.json_response(_mapping_record(request.app, kind, name, cls, props, request.query.get("preset")))
+
+
+async def mapping_eval(request: web.Request) -> web.Response:
+    """{key, preset?, bindings?} -> the record with those bindings tried over the effective ones (writes nothing)."""
+    body = await read_json(request, allow_empty=False)
+    key = body.get("key") if isinstance(body, dict) else None
+    if not isinstance(key, str) or "/" not in key:
+        raise ParamError("bad_request", "key must be like scene/<plug-in>")
+    kind, name = key.split("/", 1)
+    if kind not in _MAP_KIND or name not in request.app[REGISTRY].table(_MAP_KIND[kind]):
+        raise SessionError(404, "unknown_item", f"no {key}")
+    cls = request.app[REGISTRY].table(_MAP_KIND[kind])[name]
+    props = cls.param_props()
+    extra = None
+    if body.get("bindings") is not None:
+        extra = request.app[PRESETS].maps.validate_record(kind, props, {"bindings": body["bindings"]})["bindings"]
+    return web.json_response(_mapping_record(request.app, kind, name, cls, props, body.get("preset"), extra))
 
 
 # -- handlers -------------------------------------------------------------------
@@ -475,7 +640,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     app[SHOW_BUS] = inputs
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
-    app[RATINGS] = Ratings(pathlib.Path(config_dir) / "ratings.json")
+    app[RATINGS] = mgr.ratings = Ratings(pathlib.Path(config_dir) / "ratings.json")
     app[LOCAL_CONTROL] = local_control
     app[APP_URL] = app_url.rstrip("/")
     r = app.router
@@ -494,6 +659,12 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_get("/dev/lab/status", dev_plugin_status)      # the console's plug-in status footer (library.js)
     r.add_post("/dev/lab/rescan", dev_rescan)
     r.add_get("/api/catalog", catalog)
+    r.add_get("/api/mappings", mappings_index)
+    r.add_post("/api/mappings/eval", mapping_eval)
+    r.add_get("/api/mappings/{kind}/{name}", mapping_get)
+    r.add_put("/api/mappings/{kind}/{name}", mapping_put)
+    r.add_patch("/api/mappings/{kind}/{name}", mapping_put)
+    r.add_delete("/api/mappings/{kind}/{name}", mapping_delete)
     r.add_post("/api/sessions", create_session)
     r.add_get("/api/sessions", list_sessions)
     r.add_get("/api/sessions/{sid}", get_session)
