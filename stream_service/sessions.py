@@ -65,6 +65,7 @@ from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, MUSIC_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
 from .media import MediaHub
+from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
 from .plugins import Registry
@@ -210,7 +211,10 @@ class Session(EngineListener):
         self.palette = palette
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
-        self.engine.frame_hook = self.runtime.begin_frame
+        # -- what scenes can hear (sound.py): the piano and the room mic, one view per session --
+        self.sound = new_sound()
+        self.engine.sound = self.sound
+        self.engine.frame_hook = self._frame_hook
         if getattr(self.engine, "bus", None) is not None:
             self.engine.bus.runtime = self.runtime        # master bus bindings
         # -- cues and the director (director.py) --
@@ -628,8 +632,21 @@ class Session(EngineListener):
         return round(self._pts_now() + dt_s, 3)
 
     # -- lifecycle -----------------------------------------------------------------
+    def _frame_hook(self, now: float) -> None:
+        """Render thread, once per rendered frame: the modulation clock, then the sound view at photon time."""
+        self.runtime.begin_frame(now)
+        if self.sound is not None:
+            self.sound.update(now + self.sampler.lead)
+
+    def _alloc_sound(self) -> None:
+        ctx = getattr(self.engine, "ctx", None)
+        if self.sound is not None and ctx is not None:
+            with ctx.device:
+                self.sound.alloc(ctx.cp)
+
     async def start(self, anchor: ImageSource) -> None:
         await self._run(self.engine.create_context)
+        await self._run(self._alloc_sound)
         if getattr(self.engine, "ctx", None) is not None: self.engine.ctx.screen = self.screen  # for live_art
         if hasattr(self.engine, "warm"):    # compile/load the usual transitions once per GPU (R20); usually done at start
             await self.mgr.ensure_warm(self.gpu, lambda: self._run(self.engine.warm, self.mgr.warm_plugins))
@@ -1773,6 +1790,32 @@ class SessionManager:
 
     def active(self) -> list[Session]:
         return [s for s in self.sessions.values() if s.state != "ended"]
+
+    # -- sound (sound.py): every music.* / show.state message to each session's view; a test piano -------------
+    def broadcast_sound(self, msg: dict) -> None:
+        """Any thread (the bus loop): append-only on each view."""
+        for s in list(self.sessions.values()):
+            if s.sound is not None and s.state not in ("ended", "failed"):
+                s.sound.on_message(msg)
+
+    def test_piano(self, on: bool, path: Optional[str] = None) -> dict:
+        """Loop thread: start / stop a generated (or .mid) piano feeding every session, until the real MIDI is in."""
+        t = getattr(self, "_piano_task", None)
+        if t is not None:
+            t.cancel()
+            self._piano_task = None
+        if on:
+            from .sound_view import TestPiano
+            piano = TestPiano(path) if path else TestPiano()
+
+            async def run() -> None:
+                while True:
+                    for m in piano.poll(time.monotonic() * 1000.0):
+                        self.broadcast_sound(m)
+                    await asyncio.sleep(0.02)
+
+            self._piano_task = asyncio.ensure_future(run())
+        return {"test_piano": on}
 
     def room_leader(self, room: str) -> Optional[Session]:
         """The session that directs a room (rooms.py): kept while it stays live, else the oldest live member."""

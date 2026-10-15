@@ -234,10 +234,13 @@ class Source(Plugin):
     internal: ClassVar[bool] = False
     ease_tau_s: ClassVar[float] = 0.8
 
+    listens: ClassVar[tuple] = ()      # what it reads from self.sound: "notes", "spectrum", "chroma" (sound.py)
+
     def __init__(self) -> None:
         self.ctx = None
         self.easer: Optional[ParamEaser] = None
         self.modulation = None   # modulation.Modulation, set by the session for scene sources (None: plain)
+        self.sound = None        # sound.Sound: the piano and room mic (classes that declare ``listens``)
 
     # -- lifecycle ----------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
@@ -358,10 +361,12 @@ class Effect(Plugin):
     ease_tau_s: ClassVar[float] = 0.3
     internal: ClassVar[bool] = False
     default_bindings: ClassVar[dict] = {"pulse": {"bind": "beat", "range": [0.0, 1.0], "rest": 0.0}}
+    listens: ClassVar[tuple] = ()      # what it reads from self.sound: "notes", "spectrum", "chroma" (sound.py)
 
     def __init__(self) -> None:
         self.ctx = None
         self.easer: Optional[ParamEaser] = None
+        self.sound = None
 
     def setup(self, ctx, params: dict) -> None:
         self.ctx = ctx
