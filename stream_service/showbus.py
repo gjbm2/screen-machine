@@ -1,12 +1,14 @@
 """Show-bus client: subscribes to room_service's show bus (or show-synth in development) (LIVE_V1 1.1 §1.9).
 
   --show-bus ws://127.0.0.1:8701/v1/show   [--show-bus-token-file ~/.config/screen-machine/show_bus.token]
+  --music-bus ws://127.0.0.1:8703/v1/show  (repeatable; show_service: sound only, no fixtures)
 
 K3 handshake: send {"type": "hello", "v": 1, "role": "renderer", "client_id": ..., "token"?: ...}, expect
 {"type": "welcome", ...} within 5 s, then receive ``show.state`` frames and hand each to
 :meth:`ShowInputs.on_frame` on arrival (every frame: the follower needs each pulse edge).  On any error or close
 the client reconnects with full-jitter backoff (0.5 s doubling to 5 s).  A 4401 close (bad token) re-reads the
-token file once.  The token is never logged.  Losing the bus never changes session state: signals ease to
+token file once.  The token is never logged.  A music bus runs the same client with ``inputs=None``: its
+messages reach only the sound views, so it never touches the fixtures or the bus state the directors read.  Losing the bus never changes session state: signals ease to
 their idle values (inputs.py).  Runs as a task on the asyncio loop.
 """
 from __future__ import annotations
@@ -40,9 +42,10 @@ def read_token(path: Optional[str]) -> Optional[str]:
         return None
 
 
-async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None,
-              sound_sink: Optional[Callable[[dict], None]] = None) -> None:
-    """``sound_sink``: every music.* and show.state message, for the sessions' sound views (sound.py)."""
+async def run(url: str, inputs: Optional[ShowInputs], token_file: Optional[str] = None,
+              sound_sink: Optional[Callable[[dict], None]] = None, name: str = "show bus") -> None:
+    """``sound_sink``: every music.* and show.state message, for the sessions' sound views (sound.py).
+    ``inputs`` None: a sound-only bus (--music-bus)."""
     token = read_token(token_file)
     reread = False
     backoff = BACKOFF_MIN_S
@@ -64,8 +67,9 @@ async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None,
                             token, reread = read_token(token_file), True
                         raise ConnectionError(f"no welcome (close code {code})")
                     reread = False
-                    inputs.on_connected(welcome)
-                    log.info("show bus up: %s (%s)", url, welcome.get("source") or "room_service")
+                    if inputs is not None:
+                        inputs.on_connected(welcome)
+                    log.info("%s up: %s (%s)", name, url, welcome.get("source") or "room_service")
                     was_up, backoff = True, BACKOFF_MIN_S
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -76,7 +80,7 @@ async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None,
                             if not isinstance(frame, dict):
                                 continue
                             kind = str(frame.get("type") or "")
-                            if kind == "show.state":
+                            if kind == "show.state" and inputs is not None:
                                 inputs.on_frame(frame)
                             if sound_sink is not None and (kind == "show.state" or kind.startswith("music.")):
                                 try:
@@ -87,13 +91,15 @@ async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None,
                             break
                     reason = f"closed ({ws.close_code})"
         except asyncio.CancelledError:
-            inputs.on_disconnected()
+            if inputs is not None:
+                inputs.on_disconnected()
             raise
         except Exception as e:  # connection refused, timeout, bad frame...: retry
             reason = f"{type(e).__name__}: {e}"
-        inputs.on_disconnected()
+        if inputs is not None:
+            inputs.on_disconnected()
         if was_up is not False:
-            log.warning("show bus down (%s); retrying", reason)
+            log.warning("%s down (%s); retrying", name, reason)
             was_up = False
         await asyncio.sleep(random.uniform(0, backoff))
         backoff = min(BACKOFF_MAX_S, backoff * 2)
