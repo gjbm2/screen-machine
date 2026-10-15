@@ -80,6 +80,35 @@ stream_service/plugins/<kind>/<name>.presets.yaml   1–3 presets for your plug-
 - **No `cupy.random`.** curand is missing in this venv. Generate randomness on the host with numpy in setup, or hash in-kernel (`hash1`).
 - fp32 only. fp64 runs at 1/32–1/64 rate on these cards.
 
+## 2b. Listening: the piano's notes and the room's sound (owner, 15 Oct)
+
+Maestro is coming out. show_service (docs/SHOW_ENGINE.md) now hears the room mic and takes the Steinway's MIDI, so every note is exact: pitch, velocity, pedals. Scenes and effects can read it directly.
+
+- **Declare it:** a class attribute `listens = ("notes",)`, or any of `"notes"`, `"spectrum"`, `"chroma"`. The catalog shows it. The director prefers listening scenes while the piano plays (piano mode pools them).
+- **Read `self.sound`** in `render`. The session refreshes it once per frame, before any plug-in renders, and both scenes of a transition see the same frame.
+  - `self.sound.present`: the piano is playing, or played in the last few seconds.
+  - `self.sound.notes_gpu`: cupy float32 `[128, 4]`, one row per MIDI pitch (piano keys are 21–108). Columns, from `stream_service.sound_view`:
+    - `LEVEL`: how loud the note still sounds, 0–1. It includes the piano's decay, the damper and sostenuto holds, and the undamped top keys.
+    - `VEL`: strike velocity, 0–1.
+    - `AGE_ON`: seconds since the strike (`inf` = never).
+    - `AGE_OFF`: seconds since key-up; −1 while the key is held.
+  - `self.sound.frame`: host-side `SoundFrame`, with the same `notes` plus:
+    - `onsets` `[(pitch, vel, age_s)]`: new strikes this frame, each exactly once. Use it to spawn ripples or particles.
+    - `releases`;
+    - `pedals` (damper, soft, sostenuto);
+    - `chroma[12]`, `key`, `mode`, `tension`, `register`, `spread`;
+    - `spectrum[32]` and `history[256, 32]` with `history_row` (smoothed, τ ≥ 300 ms);
+    - `t_ms`: the photon time, the frame's clock in ms.
+  - `self.sound.spectrum_gpu`: `[32]`.
+- **`self.sound` may be `None`**, or never `present`: look alive anyway. Idle motion, drift and breathing must not depend on notes.
+- **Ages are at photon time.** The TV shows a frame ~0.3 s after it is rendered, so what you draw for a note already matches what the ear hears at that moment. The strike itself always lands late, so:
+  - **bloom in, ease out;** no hard flash on an onset;
+  - scrolling forms (a note rising from the keyboard) hide the lag well;
+  - kicks go to rates and amplitudes, never positions (as for `pulse`).
+- **Read-only, no allocation.** Pass `notes_gpu` straight to your kernel. Keep host-side note history in arrays you preallocate in `setup`.
+- **Velocities are already capped** for the v1 adsilent's occasional hot notes (show_rt), so don't filter them again.
+- **Crash check:** fxtest gives listening plug-ins a test piano on its own clock. Use `--piano chords|arpeggios|scale|sweep|repeats|sostenuto|medley`, or `--piano file.mid`.
+
 ## 3. Parameters: tiers and the standard macro interface
 
 **Every parameter declares `x-tier`** using the helpers in `stream_service/plugins/_lib/params.py` (`num`, `enum`, `flag`):

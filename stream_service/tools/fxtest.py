@@ -12,6 +12,9 @@ beat (decaying envelope on each beat), pulse (raw), level, rgb.  Default binding
 interface: energy<-energy, pulse<-beat.  Bindings: {"param": {"bind": sig, "range": [lo, hi]}} sets;
 {"param": {"kick": sig, "amount": a}} adds.
 
+Scenes and effects that declare ``listens`` (sound.py) hear a test piano on the harness clock: ``--piano PHRASE``
+(piano_replay.PHRASES, default medley) or ``--piano path.mid``, through the same SoundView the sessions use.
+
 Checks reported in summary.json:
   * dead_params: realtime/regional numeric params whose min vs max render differs by < 0.75/255 mean (a dead knob)
   * jumpy: for sources, the largest frame-to-frame mean change during the run vs the median (flicker / jumps)
@@ -149,6 +152,50 @@ def drive(obj, bindings: dict, sigsrc: Signals | None, fixed: dict | None = None
     obj.step_params = step
 
 
+PIANO = "medley"
+
+
+class FxSound:
+    """sound.Sound's shape for the harness: the test piano, polled and evaluated on the harness clock."""
+
+    def __init__(self, cp, material: str):
+        from stream_service.piano_replay import TestPiano
+        from stream_service.sound_view import SoundView
+        self.view = SoundView()
+        self.piano = (TestPiano.from_file(material, loop=True, start_ms=0.0) if material.endswith(".mid")
+                      else TestPiano(material, loop=True, start_ms=0.0))
+        self.frame = self.view.frame
+        self.notes_gpu = cp.zeros((128, 4), cp.float32)
+        self.spectrum_gpu = cp.zeros((32,), cp.float32)
+
+    @property
+    def present(self) -> bool:
+        return bool(self.frame.present)
+
+    def tick(self, t_s: float) -> None:
+        ms = t_s * 1000.0
+        for m in self.piano.poll(ms):
+            self.view.on_message(m)
+        self.frame = self.view.update(ms)
+        self.notes_gpu.set(self.frame.notes)
+        self.spectrum_gpu.set(self.frame.spectrum)
+
+
+def listen(obj, ctx):
+    """Give a plug-in that ``listens`` a test piano (before setup, as Engine.prepare does), ticked per render."""
+    if not getattr(type(obj), "listens", None):
+        return
+    snd = FxSound(ctx.cp, PIANO)
+    obj.sound = snd
+    orig = obj.render
+
+    def render(t_local, dt, *a):
+        snd.tick(t_local)
+        return orig(t_local, dt, *a)
+
+    obj.render = render
+
+
 def to_img(cp, frame, w=480):
     from PIL import Image
     im = Image.fromarray(cp.asnumpy(frame)[:, :, :3])
@@ -211,6 +258,7 @@ def preview_source(cls, preset, bindings, ctx, outdir, video_s):
     summary = {}
     sig = Signals()
     s = cls()
+    listen(s, ctx)
     s.setup(ctx, cls.validate(preset))
     drive(s, bindings, sig)
     frame, prev = ctx.new_frame(), ctx.new_frame()
@@ -253,6 +301,7 @@ def preview_source(cls, preset, bindings, ctx, outdir, video_s):
             if prop.get("x-tier") == "realtime" and prop.get("x-bindable") == "rate" and v > 4 * max(1.0, abs(prop.get("default", 1))):
                 v = 4 * max(1.0, abs(prop.get("default", 1))) * (1 if v > 0 else -1)
             x = cls()
+            listen(x, ctx)
             x.setup(ctx, cls.validate({**SWEEP_HOLD(cls), **preset, k: v}))
             f = ctx.new_frame()
             for i in range(FPS):
@@ -524,6 +573,7 @@ def bench(cls, kind, preset, size):
         ev0, ev1 = cp.cuda.Event(), cp.cuda.Event()
         if kind == "source":
             s = cls()
+            listen(s, ctx)
             s.setup(ctx, cls.validate(preset))
             for i in range(30):
                 s.render(i / 60, 1 / 60, out)
@@ -569,7 +619,10 @@ def main():
     ap.add_argument("--bench-size", default="3840x2160")
     ap.add_argument("--video", type=float, default=0.0)
     ap.add_argument("--no-preview", action="store_true")
+    ap.add_argument("--piano", default="medley", help="test piano for plug-ins that listen: a phrase or a .mid path")
     args = ap.parse_args()
+    global PIANO
+    PIANO = args.piano
     cls = load(args.spec)
     kind = kind_of(cls)
     preset = json.loads(args.preset)
