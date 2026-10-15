@@ -72,9 +72,8 @@ def validate_direction(body: Any, vocab: Optional[dict] = None) -> dict:
     """The complete direction object (R12): a missing field takes its neutral default."""
     if not isinstance(body, dict):
         raise ParamError("bad_request", "direction must be an object")
-    unknown = set(body) - set(DIRECTION_DEFAULTS)
-    if unknown:
-        raise ParamError("bad_request", f"direction: unknown fields {sorted(unknown)}")
+    # Unknown fields are ignored (forward-compatible, docs/SHOW_ENGINE.md: show_brain may add arousal, tension,
+    # section, density, groove ... before the director reads them).
     out = dict(DIRECTION_DEFAULTS, moods=[], fx=dict(FX_DIRECTION_DEFAULTS))
     if body.get("fx") is not None:
         out["fx"] = validate_direction_fx(body["fx"])
