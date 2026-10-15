@@ -61,3 +61,23 @@ def test_mei_engraves(tmp_path):
     meta, ink = engrave(tk, {"id": 1, "mei": system(bars[:2], 4, 0), "width": 800})
     assert meta["ok"] and len(ink) == meta["w"] * meta["h"] and len(meta["measures"]) == 4
     assert all(m["x1"] > m["x0"] and len(m["staves"]) == 2 for m in meta["measures"])
+
+
+def test_bars_engrave_at_one_staff_size():
+    verovio = pytest.importorskip("verovio")
+    pytest.importorskip("resvg_py")
+    from stream_service.score.engrave import engrave
+    from stream_service.score.mei import bar_doc, header_doc
+    sb = ScoreBuilder()
+    for i in range(40):
+        p = (48, 60, 64, 67, 72, 76)[i % 6]
+        sb.note_on(p, 0.6, i * 0.25)
+        sb.note_off(p, i * 0.25 + 0.2)
+    bars = [b for b in sb.poll(30.0) if not b.marker]
+    tk = verovio.toolkit()
+    spaces = []
+    for doc in [header_doc(2, meter=True)] + [bar_doc(b, 2) for b in bars[:3]]:
+        meta, ink = engrave(tk, {"id": 1, "mei": doc, "space_px": 12})
+        top, bottom = meta["measures"][0]["staves"][0]
+        spaces.append((bottom - top) / 4)
+    assert all(abs(s - 12) < 0.3 for s in spaces), spaces

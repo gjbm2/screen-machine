@@ -1,7 +1,7 @@
 """The scene's side of the engraving worker (engrave.py): one subprocess per scene, requests and replies on pipes.
 
-``submit(key, mei)`` queues a request; only the newest per key is sent (a system re-engraved before the last
-render came back skips the stale one).  ``results()`` returns finished renders without blocking: [(key, meta,
+``submit(key, mei, **extra)`` queues a request; only the newest per key is sent (a part re-engraved before the last
+render came back skips the stale one).  With ``space_px`` every render is at one fixed staff size (engrave.py).  ``results()`` returns finished renders without blocking: [(key, meta,
 ink bytes)].  If the worker can't start (Verovio / resvg not installed) or dies, ``ok`` turns False and the scene
 draws without engraving; it is never restarted more than once a minute.
 """
@@ -25,8 +25,8 @@ RESTART_S = 60.0
 
 
 class Engraver:
-    def __init__(self, width: int, page_width: int = 3800, scale: int = 50) -> None:
-        self.width, self.page_width, self.scale = width, page_width, scale
+    def __init__(self, width: int, page_width: int = 3800, scale: int = 50, space_px: float | None = None) -> None:
+        self.width, self.page_width, self.scale, self.space_px = width, page_width, scale, space_px
         self.proc: Optional[subprocess.Popen] = None
         self.out: "queue.Queue" = queue.Queue()
         self.pending: dict = {}                 # key -> newest mei not yet sent
@@ -73,9 +73,10 @@ class Engraver:
             log.warning("engraving worker exited (code %s)", proc.poll())
             self.ok = False
 
-    def submit(self, key: str, mei: str) -> None:
+    def submit(self, key: str, mei: str, **extra) -> None:
+        """Queue a render; ``extra`` goes into the request (e.g. margin_left)."""
         with self.lock:
-            self.pending[key] = mei
+            self.pending[key] = (mei, extra)
         self._pump()
 
     def _pump(self) -> None:
@@ -84,7 +85,7 @@ class Engraver:
                 return
             alive = self.proc is not None and self.proc.poll() is None
             if alive:
-                key, mei = next(iter(self.pending.items()))
+                key, (mei, extra) = next(iter(self.pending.items()))
                 del self.pending[key]
                 self.next_id += 1
                 rid = self.next_id
@@ -97,7 +98,7 @@ class Engraver:
                     self._pump()
             return
         req = json.dumps({"id": rid, "mei": mei, "width": self.width, "page_width": self.page_width,
-                          "scale": self.scale}).encode()
+                          "scale": self.scale, "space_px": self.space_px, **extra}).encode()
         try:
             self.proc.stdin.write(struct.pack(">I", len(req)) + req)
             self.proc.stdin.flush()
@@ -107,13 +108,14 @@ class Engraver:
                 self.inflight.pop(rid, None)
             self.ok = False
 
-    def results(self) -> list:
+    def results(self, limit: int | None = None) -> list:
         out = []
-        while True:
+        while limit is None or len(out) < limit:
             try:
                 out.append(self.out.get_nowait())
             except queue.Empty:
                 return out
+        return out
 
     def close(self) -> None:
         p, self.proc = self.proc, None
