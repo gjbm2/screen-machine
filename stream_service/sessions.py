@@ -1224,6 +1224,29 @@ class Session(EngineListener):
             fd.done(time.monotonic(), move)
             self._fx_task = None
 
+    async def fx_next(self) -> dict:
+        """POST /api/sessions/{sid}/fx/next: change the effect now (the owner's Next for effects).  In a room the
+        leader moves and the followers mirror it, like Next for scenes."""
+        ld = self.room_leader()
+        if ld is not None and ld is not self:
+            return await ld.fx_next()
+        self._require("live")
+        if self._fx_task is not None:                    # the director is mid-move: let it land first
+            await asyncio.shield(self._fx_task)
+        fd, now = self.fx_director, time.monotonic()
+        move = fd.next_move(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
+                            self.pixels_ratio())
+        if move is None:
+            raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
+        res = await self.fx.auto_move(move, fd.fade_s())
+        if res is None:
+            raise SessionError(409, "bad_state", f"session is {self.state}")
+        fd.last = {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why,
+                   "at_pts": round(self._pts_now(), 3)}
+        fd.done(time.monotonic(), move)                  # a full interval before the director's own next move
+        self._room_fx()
+        return {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why}
+
     async def _prepare_next(self) -> None:
         epoch, gen = self._epoch, self._dir_gen
         try:

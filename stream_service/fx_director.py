@@ -206,6 +206,20 @@ class FxDirector:
                 return FxMove("swap", got[0], old.id, f"swap: {got[1]} for {old.spec.name}")
         return None
 
+    def next_move(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
+                  pixels_ratio: float = 1.0) -> Optional[FxMove]:
+        """The owner's "next effect" (16 Oct): a change now, whatever the schedule or auto.fx says.  Swaps the oldest
+        auto effect for a new pick, or adds one when there is none; manual (hand-placed) effects are never touched."""
+        autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
+        if autos:
+            old = autos[0]
+            got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets)
+            return None if got is None else FxMove("swap", got[0], old.id, f"next: {got[1]} for {old.spec.name}")
+        if len(stack) >= MAX_BUS_SLOTS:
+            return None
+        got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio), presets)
+        return None if got is None else FxMove("add", got[0], None, f"next: {got[1]}")
+
     def status(self, now: float) -> dict:
         fxd = self.fxd
         return {**self.auto_fx, "density": fxd["density"], "rate": fxd["rate"], "armed": self.armed,

@@ -615,6 +615,11 @@ async def sound_test_status(request: web.Request) -> web.Response:
     return web.json_response(request.app[MANAGER].test_piano_status())
 
 
+async def fx_next(request: web.Request) -> web.Response:
+    """POST /api/sessions/{sid}/fx/next: change the effect now (swap the oldest auto effect, or add one)."""
+    return web.json_response(await _session(request).fx_next())
+
+
 async def renew(request: web.Request) -> web.Response:
     s = _session(request)
     return web.json_response({"session": s.id, "state": s.state,
@@ -755,6 +760,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_get("/api/sessions/{sid}/inputs", session_inputs)
     r.add_get("/api/sessions/{sid}/fx", get_fx)
     r.add_put("/api/sessions/{sid}/fx", put_fx)
+    r.add_post("/api/sessions/{sid}/fx/next", fx_next)
     r.add_get("/api/sessions/{sid}/frames", session_frames)
     r.add_get("/api/state", state)
     r.add_get("/api/diag", diag)
