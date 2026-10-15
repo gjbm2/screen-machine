@@ -1727,6 +1727,11 @@ class SessionManager:
         ctx = RenderContext(gpu, 1280, 720, 30, prealloc_buffers=0)
         with ctx.device:
             self.warm_plugins(ctx)
+            try:    # live_art's pinned upload buffers (process-wide, idempotent): its first set-up never stalls
+                from .plugins.sources import live_art
+                live_art.reserve_pinned(ctx.cp, 3840, 2160)
+            except Exception:
+                log.exception("reserving live_art's pinned buffers failed")
 
     async def warm_all(self) -> None:
         """Server start (--warm): warm every GPU in the background, one after another."""
