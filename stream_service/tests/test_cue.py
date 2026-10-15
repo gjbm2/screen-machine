@@ -217,3 +217,15 @@ async def test_catalog_v11_blocks(client):
     assert "tags" not in cat["presets"]["scenes"]["black"] and "tags" not in cat["presets"]["transitions"]["cut"]
     names = {t["name"] for t in cat["transitions"]}
     assert {"melt", "burn", "zoom", "luma", "wipe", "glitch", "pixelate"} <= names
+
+
+async def test_a_hand_picked_scene_gets_a_full_dwell(client):
+    """A manual cue (or a PATCH scene) restarts the auto director's dwell, so max_dwell never overrides it at once."""
+    import time
+    sid, s, eng = await live(client, auto={"enabled": True, "dwell_s": [6, 12]})
+    s.director.armed = True
+    s.director.dwell_start = time.monotonic() - 100          # long overdue: auto would move right now
+    assert s.director.due(time.monotonic()) is not None
+    r = await cue(client, sid, to="warp-cells")
+    assert r.status == 202
+    assert s.director.due(time.monotonic()) is None and time.monotonic() - s.director.dwell_start < 1.0
