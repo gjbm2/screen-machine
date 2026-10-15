@@ -17,7 +17,7 @@ import logging
 import os
 import pathlib
 import random
-from typing import Optional
+from typing import Callable, Optional
 
 import aiohttp
 
@@ -40,7 +40,9 @@ def read_token(path: Optional[str]) -> Optional[str]:
         return None
 
 
-async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None) -> None:
+async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None,
+              sound_sink: Optional[Callable[[dict], None]] = None) -> None:
+    """``sound_sink``: every music.* and show.state message, for the sessions' sound views (sound.py)."""
     token = read_token(token_file)
     reread = False
     backoff = BACKOFF_MIN_S
@@ -71,8 +73,16 @@ async def run(url: str, inputs: ShowInputs, token_file: Optional[str] = None) ->
                                 frame = json.loads(msg.data)
                             except ValueError:
                                 continue
-                            if isinstance(frame, dict) and frame.get("type") == "show.state":
+                            if not isinstance(frame, dict):
+                                continue
+                            kind = str(frame.get("type") or "")
+                            if kind == "show.state":
                                 inputs.on_frame(frame)
+                            if sound_sink is not None and (kind == "show.state" or kind.startswith("music.")):
+                                try:
+                                    sound_sink(frame)
+                                except Exception:
+                                    log.exception("sound sink failed")
                         elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                     reason = f"closed ({ws.close_code})"

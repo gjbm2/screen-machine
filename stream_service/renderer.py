@@ -197,6 +197,7 @@ class Engine:
         self._writer_thread: Optional[threading.Thread] = None
         self.stream_cfg: Optional[StreamConfig] = None
         self.frame_hook: Optional[Callable[[float], None]] = None   # render thread, once per rendered frame
+        self.sound: Any = None                # sound.Sound: handed to every plug-in prepared here (the session sets it)
         self.frame_mono = 0.0                 # the current frame's time on CLOCK_MONOTONIC (s)
         self._scheduled: list[StartTransition] = []
         self._out_applied = False
@@ -233,6 +234,8 @@ class Engine:
         render do so here, never on the render thread."""
         ctx = self.ctx
         cp = ctx.cp
+        if self.sound is not None:
+            source.sound = self.sound
         with ctx.device:
             s = cp.cuda.Stream(non_blocking=True)
             with s:
@@ -259,6 +262,8 @@ class Engine:
     def prepare_effect(self, effect: Any, params: dict) -> Any:
         """Set an effect up and prime it (worker thread); also reserves the frame pool for effect chains."""
         ctx = self.ctx
+        if self.sound is not None:
+            effect.sound = self.sound
         with ctx.device:
             s = ctx.cp.cuda.Stream(non_blocking=True)
             with s:
