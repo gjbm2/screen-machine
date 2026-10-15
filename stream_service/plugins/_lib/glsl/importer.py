@@ -352,7 +352,8 @@ def import_glt(root: pathlib.Path, used: set) -> list[dict]:
 
 # ------------------------------------------------------------------------------------------- ISF
 
-ISF_SKIP_CATS = {"Utility", "Masking", "Histogram", "Audio Visualizer", "Test Pattern"}
+# "Audio Visualizer" is imported (15 Oct: the show's real spectrum and the piano's notes feed the audio textures)
+ISF_SKIP_CATS = {"Utility", "Masking", "Histogram", "Test Pattern"}
 
 
 def isf_params(meta: dict) -> tuple[dict, list[str]]:

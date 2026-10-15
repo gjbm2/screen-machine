@@ -18,6 +18,8 @@ import math
 import re
 import time
 
+from typing import Any
+
 import numpy as np
 
 from stream_service.gpu import raw_module
@@ -273,20 +275,63 @@ def _to_rgba(rows: list[np.ndarray]) -> np.ndarray:
     return tex
 
 
+# show_service's spectrum32 (music.features): 32 log-spaced bands, 0-1 (smoothed upstream).  Edges assumed here
+# until c8 publishes them (SHOW_ENGINE §4).  Shadertoy's FFT row is 512 linear bins up to 11 025 Hz.
+SPEC_LO_HZ, SPEC_HI_HZ = 30.0, 16000.0
+ST_FFT_HZ = 11025.0
+NOTE_AGE_CAP_S = 1.0e4
+
+
+def spectrum_row(spec: Any, n: int) -> np.ndarray:
+    """32 log bands -> an n-bin linear-frequency row (0-1), interpolated in log frequency."""
+    s = np.clip(np.asarray(spec, np.float32).ravel(), 0.0, 1.0)
+    nb = s.shape[0]
+    f = (np.arange(n, dtype=np.float32) + 0.5) * (ST_FFT_HZ / n)
+    pos = (np.log(np.maximum(f, SPEC_LO_HZ)) - np.log(SPEC_LO_HZ)) / (np.log(SPEC_HI_HZ) - np.log(SPEC_LO_HZ)) * nb - 0.5
+    return np.interp(np.clip(pos, 0, nb - 1), np.arange(nb, dtype=np.float32), s).astype(np.float32)
+
+
 class ShowTextures:
-    """Device textures fed from show-bus params: ``music`` (Shadertoy 512x2: GL row y=0.25 FFT, y=0.75 wave),
-    ``fft`` and ``wave`` (ISF audioFFT / audio, one row each) and a fixed 256x256 RGBA ``noise``."""
+    """Device textures fed from the show: ``music`` (Shadertoy 512x2: GL row y=0.25 FFT, y=0.75 wave), ``fft`` and
+    ``wave`` (ISF audioFFT / audio, one row each), ``notes`` (128x1 float RGBA per MIDI pitch: level, velocity, s
+    since the strike, s since key-up / -1 while held: VEDA-style) and a fixed 256x256 RGBA ``noise``.
+
+    With sound (``sound``: the session's sound.Sound) the FFT rows are its real spectrum32 while it is present and
+    the waveform follows its loudness; without, they are synthesised from energy and the beat as before.  The notes
+    are copied on the GPU from ``sound.notes_gpu`` (zero without sound)."""
 
     def __init__(self, cp, n: int = 512, seed: int = 1):
         self.cp, self.n = cp, n
         self.music = cp.zeros((2, n, 4), cp.uint8)
         self.fft = cp.zeros((1, n, 4), cp.uint8)
         self.wave = cp.zeros((1, n, 4), cp.uint8)
+        self.notes = cp.zeros((1, 128, 4), cp.float32)
+        self._notes_live = False
         rng = np.random.default_rng(seed)
         self.noise = cp.asarray(rng.integers(0, 256, (256, 256, 4), dtype=np.uint8))
 
-    def update(self, t: float, energy: float, beat: float) -> None:
+    def update(self, t: float, energy: float, beat: float, sound: Any = None) -> None:
         fft, wave = _audio_rows(t, energy, beat, self.n)
+        fr = getattr(sound, "frame", sound) if sound is not None else None
+        spec = getattr(fr, "spectrum", None) if fr is not None and getattr(sound, "present", False) else None
+        if spec is not None and len(spec):
+            real = spectrum_row(spec, self.n)
+            fft = np.clip(real + 0.6 * beat * np.exp(-((np.arange(self.n) / self.n - 0.02) / 0.03) ** 2), 0, 1)
+            loud = float(np.mean(real))
+            wave = 0.5 + (wave - 0.5) * min(1.0, 0.25 + 1.5 * loud) / max(1e-3, 0.3 + 0.7 * energy + 0.3 * beat)
+            wave = np.clip(wave, 0, 1)
         self.music.set(_to_rgba([wave, fft]))     # buffer row 0 = GL top = waveform
         self.fft.set(_to_rgba([fft]))
         self.wave.set(_to_rgba([wave]))
+        gpu = getattr(sound, "notes_gpu", None) if sound is not None else None
+        notes = None if gpu is not None or fr is None else getattr(fr, "notes", None)
+        if gpu is not None:
+            self.cp.minimum(gpu, NOTE_AGE_CAP_S, out=self.notes[0])        # on the GPU: ages inf -> a big number
+            self._notes_live = True
+        elif notes is not None:
+            a = np.asarray(notes, np.float32).reshape(128, 4)
+            self.notes.set(np.minimum(a, NOTE_AGE_CAP_S)[None, :, :])
+            self._notes_live = True
+        elif self._notes_live:
+            self.notes.fill(0)
+            self._notes_live = False

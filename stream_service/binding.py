@@ -44,6 +44,7 @@ INPUT_SIGNALS = tuple(s for s in BIND_SIGNALS if s != "beat_phase") + ("gobo",)
 KEYS = {"at", "in", "op", "curve", "map", "kick", "steps", "quant", "ease_s", "live_ok", "on", "fam", "src", "why"}
 COLOUR_KEYS = {"colour", "mix", "at", "ease_s", "on", "fam", "src", "why"}
 MAX_INPUTS = 4
+KICK_SIGNALS = ("beat", "section", "note_on", "chord_change")
 SECTION_MIN_S = 8.0
 SECTION_EASE_S = 4.0
 NEVER = {"speed", "intensity", "seed", "render_scale", "random_seed", "start_time"}
@@ -221,8 +222,8 @@ def parse_v2(name: str, prop: dict, spec: dict, *, kind: str = "scene") -> dict:
             bad("bad_kick", "kick must be {sig, amt, by?}")
         elif at != "live":
             bad("bad_kick", "kicks are live only")
-        elif k.get("sig") not in ("beat", "section"):
-            bad("bad_kick", "kick.sig must be beat or section")
+        elif k.get("sig") not in KICK_SIGNALS:
+            bad("bad_kick", f"kick.sig must be one of {list(KICK_SIGNALS)}")
         elif not _num(k.get("amt")) or not 0.0 < k["amt"] <= 0.3:
             bad("bad_kick", "kick.amt must be in (0, 0.3]")
         elif k.get("by") is not None and (k["by"] not in INPUT_SIGNALS or k["by"] in TRIGGERS or k["by"] == "gobo"):
