@@ -189,3 +189,17 @@ async def test_local_control_sends_other_machines_to_the_app(method):
     assert e.value.location == "http://app.example:8700/renderer/dev"
     resp = await auth_and_errors(make_mocked_request(method, "/api/catalog", app=app, transport=transport), handler)
     assert resp.status == 403
+
+
+@pytest.mark.asyncio
+async def test_the_console_page_always_opens_through_the_app():
+    """Even from this machine (e.g. localhost:8702/dev on the PC): the console needs room's API on its origin."""
+    from stream_service.server import make_app
+    app = make_app(config_dir=REPO_CONFIG, local_control=True, app_url="http://lan:8700/renderer")
+    async with TestClient(TestServer(app)) as c:
+        r = await c.get("/dev?attach=x", allow_redirects=False)
+        assert r.status == 302 and r.headers["Location"] == "http://lan:8700/renderer/dev?attach=x"
+        r = await c.get("/dev", headers={"X-Forwarded-Prefix": "/renderer"}, allow_redirects=False)
+        assert r.status == 200                                      # through the app's pass-through
+        assert (await c.get("/dev/library", allow_redirects=False)).status == 200
+

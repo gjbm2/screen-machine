@@ -79,10 +79,15 @@ def _control_path(path: str) -> bool:
 @web.middleware
 async def auth_and_errors(request: web.Request, handler):
     path = request.path
+    # The console page itself always opens through the app (it needs room's API on its own origin), even from this
+    # machine, e.g. http://localhost:8702/dev in a browser on the PC.  The app's pass-through marks its requests.
+    app_url = request.app.get(APP_URL, "")
+    if app_url and path in ("/dev", "/dev/") and request.method in ("GET", "HEAD") \
+            and "X-Forwarded-Prefix" not in request.headers:
+        raise web.HTTPFound(app_url + "/dev" + (f"?{request.query_string}" if request.query_string else ""))
     # --local-control: control only from this machine (the Screen Machine app's /renderer/* pass-through on the
     # LAN door :8700); people never address the renderer directly.  No password either way.
     if request.app.get(LOCAL_CONTROL) and _control_path(path) and request.remote not in _LOOPBACK:
-        app_url = request.app.get(APP_URL, "")
         if app_url and request.method in ("GET", "HEAD") and not path.startswith("/api/"):
             raise web.HTTPFound(app_url + path)      # a browser on :8702/dev lands on the app's console (HEAD: curl -I)
         return err(403, "local_only", "open the renderer through the Screen Machine app"
