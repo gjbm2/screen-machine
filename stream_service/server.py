@@ -83,8 +83,8 @@ async def auth_and_errors(request: web.Request, handler):
     # LAN door :8700); people never address the renderer directly.  No password either way.
     if request.app.get(LOCAL_CONTROL) and _control_path(path) and request.remote not in _LOOPBACK:
         app_url = request.app.get(APP_URL, "")
-        if app_url and request.method == "GET" and not path.startswith("/api/"):
-            raise web.HTTPFound(app_url + path)      # a browser on :8702/dev lands on the app's console
+        if app_url and request.method in ("GET", "HEAD") and not path.startswith("/api/"):
+            raise web.HTTPFound(app_url + path)      # a browser on :8702/dev lands on the app's console (HEAD: curl -I)
         return err(403, "local_only", "open the renderer through the Screen Machine app"
                                       + (f": {app_url}/dev" if app_url else "'s /renderer/dev"))
     # No password (owner, 14 Oct): a test rig in a private house. A bearer token from older clients is ignored.
@@ -656,7 +656,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_post("/dev/rate", dev_rate)
     r.add_get("/dev/plugins", dev_plugin_status)
     r.add_post("/dev/rescan", dev_rescan)
-    r.add_get("/dev/lab/status", dev_plugin_status)      # the console's plug-in status footer (library.js)
+    r.add_get("/dev/lab/status", dev_plugin_status)      # the console's Plug-ins section (static/console/hood/plugins.js)
     r.add_post("/dev/lab/rescan", dev_rescan)
     r.add_get("/api/catalog", catalog)
     r.add_get("/api/mappings", mappings_index)

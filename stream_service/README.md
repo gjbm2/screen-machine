@@ -143,8 +143,10 @@ v1 plug-ins: `image` (internal: anchors and targets; PNGs of any size are letter
   presets use are warmed at a GPU's first session; everything else compiles when a cue prepares it.
 * **/dev library**: `GET /dev/library` (one item per plug-in, presets, tags as facets, origin core / imported by
   the `glt_` / `isf_` / `st_` prefix), `GET /dev/thumb/<name>.png` (the fxtest sheet's run tile, as JPEG),
-  `GET /dev/preview/<name>.mp4`, `GET /dev/plugins` (status), `POST /dev/rescan` (bearer). The console's Library
-  (static/library.js) cues scenes, sets the next transition and adds / removes effects on the bus (static/fxbus.js).
+  `GET /dev/preview/<name>.mp4`, `GET /dev/plugins` (status), `POST /dev/rescan`. The console at `/dev`
+  (static/dev.html, a shell for the ES modules in static/console/: Browse, On screen, Under the hood) shows the
+  Library live through `/dev/preview`, rates and tags through `/dev/rate`, and drives room screens only through
+  room's per-screen API (cue, look, fx, live, inputs); see static/console/app.js for the module map.
 
 ### fractal_zoom
 

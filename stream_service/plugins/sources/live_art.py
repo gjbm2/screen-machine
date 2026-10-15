@@ -5,9 +5,9 @@ Author: smfx (screen-machine)
 License: MIT
 license_class: permissive
 
-room_service serves each screen's current art frame at ``GET {SM_ROOM_URL}/api/v1/screens/{screen}/art``: RAW (no
-light mask, no warm tint: the renderer applies the room's mask itself in its final pass, so a masked feed would
-double it), JPEG normally (PNG allowed), ETag = the frame (304 on a matching If-None-Match), ``X-Art-Kind: still |
+room_service serves each screen's current art frame at ``GET {SM_ROOM_URL}/api/v1/screens/{screen}/art``: with the
+light mask the TV page draws, frozen at the room's Normal value for the show (the renderer never masks; effects on
+top), JPEG normally (PNG allowed), ETag = the frame (304 on a matching If-None-Match), ``X-Art-Kind: still |
 video`` and, for video, ``X-Art-Next-S`` = seconds until the next frame; JSON 404 for an unknown screen / no art;
 503 + Retry-After while the first frame is prepared.  An older room has only ``/art.png``: a text/plain 404
 (aiohttp's "no such route") on ``/art`` switches this instance to it.  SM_ROOM_URL defaults to the loopback door
