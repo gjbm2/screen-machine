@@ -1,0 +1,67 @@
+note-fluid-prism:
+  label: Note fluid (prism)
+  source: note_fluid
+  params:
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.02
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.1, 0.85]
+    moods: [liquid, dreamy, elegant]
+    modes: [piano]
+    family: water
+    dims: 2d
+    technique: [simulation, field]
+    weight: 1.0
+
+note-fluid-dusk-pool:
+  label: Note fluid (dusk, pooling)
+  source: note_fluid
+  params:
+    palette: dusk
+    palette_period: 0.9
+    drift_speed: 0.015
+    curl: 14.0
+    dissipation: 0.2
+    splat_radius: 0.06
+    emit: 1.3
+    shading: 0.75
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, dreamy, warm, liquid]
+    modes: [piano]
+    family: water
+    dims: 2d
+    technique: [simulation, field]
+    weight: 1.0
+
+note-fluid-ice-silk:
+  label: Note fluid (ice silk)
+  source: note_fluid
+  params:
+    palette: ice
+    palette_period: 1.0
+    drift_speed: 0.03
+    curl: 38.0
+    dissipation: 0.4
+    splat_radius: 0.04
+    force: 1.3
+    shading: 0.5
+    intensity: 1.15
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.7}
+  tags:
+    energy: [0.25, 1.0]
+    moods: [elegant, liquid, icy]
+    modes: [piano]
+    family: water
+    dims: 2d
+    technique: [simulation, field]
+    weight: 1.0
