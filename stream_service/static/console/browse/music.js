@@ -16,10 +16,14 @@ const SIGNALS = [
   ["zoom_slow", "the lights' zoom"], ["warmth", "warm light"], ["sat", "colourful light"],
   ["level_slow", "light level"], ["activity_slow", "activity"], ["gobo", "each section's own look"],
   ["beat", "the beat"], ["section", "a new section"],
+  // the piano (its MIDI: piano.py)
+  ["velocity", "how hard the piano is played"], ["note_rate", "how busy the playing is"], ["register", "high or low on the keyboard"],
+  ["spread", "how full the chords are"], ["pedal", "the piano's pedal"], ["tension", "harmonic tension"],
+  ["note_on", "each piano note"], ["chord_change", "a chord change"],
 ];
 const SIG = Object.fromEntries(SIGNALS);
-const MAIN = new Set(["energy", "drive", "punch", "tempo", "motion", "warmth", "gobo", "beat"]);
-const TRIG = new Set(["beat", "pulse", "section"]);
+const MAIN = new Set(["energy", "drive", "punch", "tempo", "warmth", "gobo", "beat", "velocity", "pedal"]);
+const TRIG = new Set(["beat", "pulse", "section", "note_on", "chord_change"]);
 const WHEN = { live: "moves with", section: "changes each section with", cue: "is set at the start by" };
 const WHEN_SEG = { live: "Moves", section: "Each section", cue: "At the start" };
 const STATES = [["ambient", "Quiet"], ["jazz", "Jazz"], ["chorus", "Chorus"], ["peak", "Peak"]];
@@ -60,7 +64,7 @@ function inputsWords(b) {
   if (b.bind) return `follows ${SIG[b.bind] || b.bind} (set by the preset)`;
   const ins = (b.in || []).map((t) => `${t.inv ? "less " : ""}${SIG[t.sig] || t.sig}`);
   const list = ins.length > 1 ? `${ins.slice(0, -1).join(", ")} and ${ins[ins.length - 1]}` : ins[0] || "";
-  const kick = b.kick ? `, kicks on ${b.kick.sig === "section" ? "each new section" : "the beat"}` : "";
+  const kick = b.kick ? `, kicks on ${{ section: "each new section", note_on: "each piano note", chord_change: "each chord change" }[b.kick.sig] || "the beat"}` : "";
   return `${WHEN[b.at] || "follows"} ${list}${kick}`;
 }
 function num(v) {
