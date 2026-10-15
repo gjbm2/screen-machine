@@ -35,6 +35,7 @@ import yaml
 from . import binding as binding_v2
 from .mappings import Mappings
 from .modulation import parse_binding, split_bindings
+from .piano import PIANO_SIGNALS
 from .plugins import Registry
 from .plugins.base import ParamError, is_bindable
 from .tags import TagError, Vocab, unknown_words, validate_tags
@@ -197,7 +198,8 @@ class Presets:
     # -- plug-in presets: <id>.presets.yaml next to the plug-in, else an automatic one ----------------------
     _SIG_MAP = {"energy": "activity_slow", "activity": "activity", "beat": "beat", "pulse": "pulse", "level": "level",
                 "pan": "pan_slow", "tilt": "tilt_slow", "zoom": "zoom", "motion": "motion", "drive": "drive",
-                "punch": "punch", "tempo": "tempo", "section": "section"}
+                "punch": "punch", "tempo": "tempo", "section": "section",
+                **{s: s for s in PIANO_SIGNALS}}           # note_on, note_rate, velocity, ... (piano.py)
 
     @staticmethod
     def _plugin_files() -> list[pathlib.Path]:
