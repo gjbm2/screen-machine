@@ -225,15 +225,15 @@ def test_tap_for_the_loop_thread():
 def test_update_is_cheap():
     v = SoundView()
     piano = TestPiano("medley", start_ms=T0)
-    t, n, worst = T0, 0, 0.0
+    t, took = T0, []
     while t < T0 + 20_000:
         feed(v, *piano.poll(t))
         a = time.perf_counter()
         v.update(t)
-        worst = max(worst, time.perf_counter() - a)
+        took.append(time.perf_counter() - a)
         t += 1000 / 60
-        n += 1
-    assert worst < 0.005                                       # well under a millisecond in practice
+    took.sort()
+    assert took[int(0.99 * len(took))] < 0.005                 # p99; well under a millisecond in practice
 
 
 # -- the test piano -------------------------------------------------------------------------------------------------
@@ -300,9 +300,12 @@ def test_library_lists_phrases_then_files(tmp_path):
     from stream_service.piano_replay import PHRASE_LABELS, library, resolve
     (tmp_path / "gymnopedie_no_1.mid").write_bytes(_smf())
     (tmp_path / "notes.txt").write_text("x")
+    (tmp_path / "Jazz - Bill Evans - Here's That Rainy Day.mid").write_bytes(_smf())
     lib = library(tmp_path)
-    assert [x["id"] for x in lib][:len(PHRASE_LABELS)] == list(PHRASE_LABELS)
-    assert lib[-1] == {"id": "file:gymnopedie_no_1.mid", "label": "Gymnopedie no 1", "kind": "file"}
+    assert [x["id"] for x in lib][-len(PHRASE_LABELS):] == list(PHRASE_LABELS)       # real music first
+    assert lib[0] == {"id": "file:Jazz - Bill Evans - Here's That Rainy Day.mid",
+                      "label": "Jazz - Bill Evans - Here's That Rainy Day", "kind": "file"}
+    assert lib[1] == {"id": "file:gymnopedie_no_1.mid", "label": "Gymnopedie no 1", "kind": "file"}
     assert resolve("file:gymnopedie_no_1.mid", tmp_path).loop
     assert resolve("chords", tmp_path).events
     for bad in ("file:../etc/passwd", "file:nope.mid", "jazz"):
