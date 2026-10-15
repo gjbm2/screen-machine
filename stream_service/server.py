@@ -545,7 +545,7 @@ async def dev_art(request: web.Request) -> web.Response:
 
 
 async def sound_test(request: web.Request) -> web.Response:
-    """POST /api/sound/test {"on": bool, "path"?: a .mid file}: a test piano feeding every session's sound view
+    """POST /api/sound/test {"on": bool, "phrase"?: "medley", "path"?: a .mid file}: a test piano feeding every session's sound view
     (sound.py) until the real MIDI is in.  409 while sound_view.py is not installed."""
     from . import sound as sound_mod
     body = await read_json(request, allow_empty=False)
@@ -553,10 +553,11 @@ async def sound_test(request: web.Request) -> web.Response:
         raise ParamError("bad_request", 'body must be {"on": true|false, "path"?: "file.mid"}')
     if not sound_mod.available():
         return err(409, "no_sound_view", "stream_service/sound_view.py is not installed yet")
-    path = body.get("path")
-    if path is not None and not isinstance(path, str):
-        raise ParamError("bad_request", "path must be a string")
-    return web.json_response(request.app[MANAGER].test_piano(body["on"], path))
+    path, phrase = body.get("path"), body.get("phrase")
+    if any(v is not None and not isinstance(v, str) for v in (path, phrase)):
+        raise ParamError("bad_request", "path and phrase must be strings (phrase: sweep, scale, arpeggios, chords, "
+                                        "repeats, sostenuto, medley)")
+    return web.json_response(request.app[MANAGER].test_piano(body["on"], path, phrase))
 
 
 async def renew(request: web.Request) -> web.Response:

@@ -444,3 +444,24 @@ async def test_scene_auto_lets_the_director_pick_the_first_scene(client):
     assert s.scene_spec.name in s.mgr.presets.scenes
     r = await client.post("/api/sessions", json=body(screen="third", scene="auto", auto={"enabled": True, "pool": ["nope"]}), headers=AUTH)
     assert r.status == 201                           # an empty auto pool falls back to the whole vetted pool
+
+
+async def test_every_session_hears_the_piano(client):
+    """sound.py: one sound view per session; a bus note reaches each, evaluated at the time the frame passes."""
+    import time
+    from stream_service.sound_view import LEVEL, TestPiano
+    res, s = await create(client)
+    res2, s2 = await create(client, screen="other")
+    assert s.sound is not None and s2.sound is not None and s.sound is not s2.sound
+    now = time.monotonic() * 1000.0
+    msg = {"type": "music.note", "data": {"seq": 1, "t_ms": now, "on": True, "pitch": 60, "vel": 100, "source": "test"}}
+    s.mgr.broadcast_sound(msg)
+    for sess in (s, s2):
+        sess.sound.update(now / 1000.0 + 0.05)
+        assert sess.sound.frame.notes[60, LEVEL] > 0 and sess.sound.present
+    piano = TestPiano("scale", loop=True)
+    assert piano.poll(now + 60_000)                                # the test piano emits bus messages
+    r = await client.post("/api/sound/test", json={"on": True, "phrase": "scale"}, headers=AUTH)
+    assert r.status == 200
+    r = await client.post("/api/sound/test", json={"on": False}, headers=AUTH)
+    assert r.status == 200
