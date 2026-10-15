@@ -5,6 +5,7 @@ import pathlib
 
 import aiohttp
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from stream_service.media import MediaHub
@@ -165,3 +166,26 @@ async def test_local_control_answers_control_only_from_this_machine():
     from stream_service.server import _control_path
     assert _control_path("/api/sessions") and _control_path("/dev") and _control_path("/dev/library")
     assert not _control_path("/healthz") and not _control_path("/media/s-1") and not _control_path("/static/x.js")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+async def test_local_control_sends_other_machines_to_the_app(method):
+    """A browser (GET) or curl -I (HEAD) on :8702/dev from the LAN is redirected to the app's console; the API
+    answers 403 local_only."""
+    from unittest import mock
+    from aiohttp.test_utils import make_mocked_request
+    from stream_service.server import auth_and_errors, LOCAL_CONTROL, APP_URL
+    app = web.Application()
+    app[LOCAL_CONTROL] = True
+    app[APP_URL] = "http://app.example:8700/renderer"
+    transport = mock.Mock()
+    transport.get_extra_info.side_effect = lambda k, d=None: ("192.168.1.50", 50000) if k == "peername" else d
+
+    async def handler(request):
+        return web.Response(text="ok")
+    with pytest.raises(web.HTTPFound) as e:
+        await auth_and_errors(make_mocked_request(method, "/dev", app=app, transport=transport), handler)
+    assert e.value.location == "http://app.example:8700/renderer/dev"
+    resp = await auth_and_errors(make_mocked_request(method, "/api/catalog", app=app, transport=transport), handler)
+    assert resp.status == 403

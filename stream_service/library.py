@@ -1,6 +1,6 @@
 """The dev console's library index: one item per plug-in (scene, transition, effect), broken ones included.
 
-``GET /dev/library`` returns ``{rev, generated_at, stages, facets, counts, items}``; static/library.js renders it.
+``GET /dev/library`` returns ``{rev, generated_at, stages, facets, counts, items}``; static/console/ (data/library.js) renders it.
 An item gathers a plug-in's presets (config/live and its own ``<id>.presets.yaml``), their tags (family, dims,
 technique, moods, style, energy) as filter facets, a thumbnail and preview from the fxtest harness output
 (``~/.cache/sm-fxtest/out/<name>/sheet.png`` / ``video.mp4``), the module's mtime (``added_at``: "new" badges)
