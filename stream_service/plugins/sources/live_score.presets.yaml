@@ -1,0 +1,36 @@
+live-score-paper:
+  label: Live score (ink on paper)
+  source: live_score
+  params:
+    look: paper
+    palette: ember
+    bars_per_line: 4
+    note_glow: 0.8
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
+
+live-score-night:
+  label: Live score (gold on night)
+  source: live_score
+  params:
+    look: night
+    palette: ember
+    bars_per_line: 4
+    note_glow: 1.0
+    ink_glow: 1.6
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
