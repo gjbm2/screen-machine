@@ -2,7 +2,7 @@
 // add / remove from Browse, the On screen Effects chips (level, on / off, remove, the slot's error in words),
 // Strength, and Effect options (Auto effects from the server's look, density, rate, stages, pulse, follows, fade,
 // Clear).  Updated on session.fx events for the screen's session, plus a 5 s safety read while visible.
-import { h, put, oneInFlight, emitter, fmt } from "../kit.js";
+import { h, put, oneInFlight, emitter, fmt, http } from "../kit.js";
 import { S } from "../store.js";
 import * as room from "../data/room.js";
 import { onEvent } from "../data/renderer.js";
@@ -132,6 +132,16 @@ export function mountEffects(host, { openPicker } = {}) {
     pulse, h("label", { class: "field" }, h("span", { class: "lab" }, "Strength follows"), amtF), h("label", { class: "field" }, h("span", { class: "lab" }, "Pulse follows"), pulF),
     h("div", { class: "row" }, h("span", { class: "grow" }, "Fade (seconds) for changes made here"), fadeIn), h("div", {}, clearBtn)));
 
+  // Next effect (owner, 16 Oct): change the effect now, like Next for scenes.  The renderer swaps the oldest auto
+  // effect for a new pick (or adds one); hand-placed effects stay.  In a room the leader moves and the others follow.
+  async function nextEffect(t) {
+    const sid = sessionOf(t);
+    if (!sid) { toastErr("Next effect works while the screen is live."); return; }
+    const r = await http("POST", `/api/sessions/${sid}/fx/next`);
+    if (!r.ok) { toastErr(errorWords(r, { target: "the renderer" })); return; }
+    toast(`Changing the effect to ${labelForSpec(r.data?.preset, lib.items, lib.pidx, "effect") || "a new one"}`);
+  }
+
   function masterBody(over) {
     const val = (k, sel) => {
       const v = over[k] ?? (k === "amount" ? Number(strength.input.value) : Number(pulse.input.value));
@@ -147,8 +157,9 @@ export function mountEffects(host, { openPicker } = {}) {
         pressed: open === s.id, data: { slot: s.id }, onClick: () => { open = open === s.id ? null : s.id; drawChips(); } });
       if (s.state === "failed") c.classList.add("tone-bad");
       return c;
-    }), chip("Effect", { tid: "fx-add", cls: "dashed", onClick: () => openPicker?.("effect") }));
-    chipsEl.lastElementChild.prepend(plusIcon());
+    }), chip("Effect", { tid: "fx-add", cls: "dashed", onClick: () => openPicker?.("effect") }),
+        chip("Next effect", { tid: "fx-next", onClick: () => nextEffect(target()) }));
+    chipsEl.children[chipsEl.children.length - 2].prepend(plusIcon());
     const s = st.find((x) => x.id === open);
     if (!s) { put(slotEl); return; }
     const err = (bus.data?.errors || []).find((x) => x.slot === s.id);

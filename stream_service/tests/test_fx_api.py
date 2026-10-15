@@ -323,3 +323,24 @@ async def test_catalog_effects_stages_and_presets(client):
     assert cat["presets"]["effects"]["grade-warm"]["stage"] == "colour"
     assert all("origin" in s for s in cat["sources"]) and all("tags" in t for t in cat["transitions"])
     assert cat["broken"] == [] and cat["plugins"]["counts"]["effects"] == 6      # incl. the internal passthrough
+
+
+async def test_next_effect_adds_then_swaps_and_never_touches_manual(client):
+    """The owner's Next for effects: a change now, whatever the schedule (or auto.fx) says."""
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": False}})
+    s.on_fx({"bus": "open"})
+    r = await client.post(f"/api/sessions/{sid}/fx/next", headers=AUTH)
+    first = await r.json()
+    assert r.status == 200 and first["op"] == "add" and first["preset"]
+    res = await get(client, sid)
+    assert [x["origin"] for x in res["stack"]] == ["auto"]
+    r = await client.post(f"/api/sessions/{sid}/fx/next", headers=AUTH)
+    second = await r.json()
+    assert r.status == 200 and second["op"] == "swap" and second["removed"] == res["stack"][0]["id"]
+    # a hand-placed effect stays put: only the auto one changes
+    res = await get(client, sid)
+    manual = {"preset": second["preset"], "level": 0.5}
+    r = await put(client, sid, stack=[*({"id": x["id"], "preset": x["preset"], "level": x["level"]} for x in res["stack"]), manual])
+    r = await client.post(f"/api/sessions/{sid}/fx/next", headers=AUTH)
+    res = await get(client, sid)
+    assert r.status == 200 and sum(1 for x in res["stack"] if x["origin"] == "manual") >= 1
