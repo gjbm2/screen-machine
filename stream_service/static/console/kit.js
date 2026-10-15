@@ -2,8 +2,9 @@
 // per-device storage that never throws, small timing helpers.
 //
 // The renderer's paths (/dev/..., /api/..., /static/...) go under BASE: "" when stream_service serves the page itself,
-// "/renderer" behind the Screen Machine app's pass-through.  Room's paths (/api/v1/...) are root paths on the page's
-// own origin.  No hosts, ports, tokens or auth anywhere.
+// "/renderer" behind room's pass-through, "/rs/renderer" behind the HTTPS name (Caddy: /rs/* -> room).  Room's paths
+// (/api/v1/...) go under ROOM_BASE, the same prefix without "/renderer": "" or "/rs".  No hosts, ports, tokens or
+// auth anywhere.
 
 export const BASE = (() => {
   try {
@@ -14,12 +15,23 @@ export const BASE = (() => {
   return m ? m[1] : "";
 })();
 
-// A renderer path under the base; absolute URLs and room paths stay as they are.
-export const withBase = (p) =>
-  typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/api/v1/") && !(BASE && p.startsWith(BASE + "/"))
-    ? BASE + p : p;
+export const ROOM_BASE = BASE.replace(/\/renderer$/, "");
+
+// A renderer path under BASE, a room path (/api/v1/...) under ROOM_BASE; absolute URLs and prefixed paths stay as they are.
+export const withBase = (p) => {
+  if (typeof p !== "string" || !p.startsWith("/") || p.startsWith("//")) return p;
+  if (p.startsWith("/api/v1/")) return ROOM_BASE + p;
+  return BASE && p.startsWith(BASE + "/") ? p : BASE + p;
+};
 
 export const wsUrl = (path) => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
+
+// A media socket the page may open.  The renderer hands out its own ws://<lan>:8702 address: fine from the LAN's http
+// page (and it spares the app), but mixed content on an https page, so there it goes through the pass-through (wss).
+export function mediaUrl(u) {
+  if (location.protocol !== "https:" || !u) return u;
+  try { const x = new URL(u); return wsUrl(`${BASE}${x.pathname}${x.search}`); } catch (_) { return u; }
+}
 
 // ---------------------------------------------------------------- DOM
 export function h(tag, attrs, ...kids) {

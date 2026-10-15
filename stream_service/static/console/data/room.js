@@ -2,7 +2,7 @@
 // 4 a second), a 2 s status poll only while the socket is down, and wrappers for the per-screen API.  Root paths on
 // the page's own origin (the app's /renderer pass-through), never under BASE.  Without room (the renderer opened on
 // its own) /api/v1/* is a 404: the link becomes "missing" and nothing throws.
-import { http, wsUrl, emitter, sleep } from "../kit.js";
+import { http, wsUrl, withBase, emitter, sleep } from "../kit.js";
 import { S } from "../store.js";
 import { summariseScreen, friendly } from "../words.js";
 
@@ -19,7 +19,7 @@ function connect() {
   clearTimeout(timer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch (_) {} }
   let sock;
-  try { sock = ws = new WebSocket(wsUrl("/api/v1/events")); } catch (_) { down(); return; }
+  try { sock = ws = new WebSocket(wsUrl(withBase("/api/v1/events"))); } catch (_) { down(); return; }
   sock.onopen = () => { wsUp = true; backoff = 1000; missing = false; stopPoll(); S.set({ roomLink: "up" }); };
   sock.onmessage = (e) => {
     let m;
@@ -109,7 +109,7 @@ export const patchLive = (id, body) => http("PATCH", `/api/v1/screens/${id}/live
 export const inputs = (id) => http("GET", `/api/v1/screens/${id}/inputs`);
 export const fake = () => http("GET", "/api/v1/dmx/fake");
 export const postFake = (body) => http("POST", "/api/v1/dmx/fake", body);
-export const artUrl = (id) => `/api/v1/screens/${encodeURIComponent(id)}/art.png`;
+export const artUrl = (id) => withBase(`/api/v1/screens/${encodeURIComponent(id)}/art.png`);
 
 // FX bus read-change-write: if_rev, one retry on 409 fx_conflict.  mutate(cur) -> body | null.
 const fxLocks = new Map();
