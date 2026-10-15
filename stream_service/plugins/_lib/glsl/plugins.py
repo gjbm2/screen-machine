@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import numpy as np
 
@@ -212,7 +212,8 @@ class GlslSource(Source):
     dialect: ClassVar[str] = "st"          # "st" (Shadertoy image pass) | "isf" (ISF generator)
     GLSL: ClassVar[str] = ""
     VS: ClassVar[Optional[str]] = None     # ISF vertex shader, if any
-    channels: ClassVar[dict] = {}          # Shadertoy: {0: "music" | "noise", ...}
+    channels: ClassVar[dict] = {}          # Shadertoy: {0: "music" | "noise" | "notes", ...}
+    listens: ClassVar[tuple] = ("spectrum", "notes")    # self.sound (sound.py): the audio and notes textures
     events: ClassVar[tuple] = ()           # ISF event inputs: fired on the beat
 
     def setup(self, ctx, params: dict) -> None:
@@ -259,7 +260,7 @@ class GlslSource(Source):
         self.drift += p["drift_speed"] * p["speed"] * dt
         k = self.prog
         apply_params(k, self.param_props(), p)
-        self.tex.update(self.t, energy, pulse)
+        self.tex.update(self.t, energy, pulse, sound_frame(self))
         if self.dialect == "st":
             k.set("iTime", self.t)
             k.set("iTimeDelta", step)
@@ -269,7 +270,7 @@ class GlslSource(Source):
             k.set("iDate", _date())
             for i in range(4):
                 kind = self.channels.get(i) or self.channels.get(str(i))
-                tex = {"music": self.tex.music, "noise": self.tex.noise}.get(kind)
+                tex = {"music": self.tex.music, "noise": self.tex.noise, "notes": self.tex.notes}.get(kind)
                 k.set(f"iChannel{i}", sampler(tex, wrap="repeat" if kind == "noise" else "clamp"))
                 if tex is not None:
                     k.u["iChannelResolution"][i] = (tex.shape[1], tex.shape[0], 1.0)
@@ -304,6 +305,12 @@ class GlslSource(Source):
             k.set(name, 1 if fire else 0)
 
 
+def sound_frame(plugin: Any) -> Any:
+    """The session's sound on a plug-in (sound.Sound, set for classes that declare ``listens``), or None."""
+    s = getattr(plugin, "sound", None)
+    return None if s is None or isinstance(s, (tuple, list, str)) else s
+
+
 # ------------------------------------------------------------------------------------------- effects
 
 def effect_params(shader_params: dict) -> dict:
@@ -317,6 +324,7 @@ class GlslEffect(Effect):
     stage: ClassVar[str] = "stylise"
     events: ClassVar[tuple] = ()
     scale: ClassVar[float] = 1.0           # < 1: heavy shader, rendered small then upsampled into the mix
+    listens: ClassVar[tuple] = ("spectrum", "notes")    # self.sound (sound.py): the audio textures
 
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
@@ -350,7 +358,7 @@ class GlslEffect(Effect):
             return
         k = self.prog
         apply_params(k, self.param_props(), p)
-        self.tex.update(self.t, amount, p["pulse"])
+        self.tex.update(self.t, amount, p["pulse"], sound_frame(self))
         for u in k.tr.params:
             ty = (u.meta or {}).get("TYPE")
             if ty == "image":

@@ -19,6 +19,8 @@ Derived from Maestro's channels for the per-item mappings (binding.py; owner, 15
   section   a trigger: 1 at each stable GOBO change, decaying (tau 1.5 s); ``gobo`` (the stable GOBO value)
             seeds section-mode bindings
   music     energy, drive, punch, tempo: music_direction.py's features, merged in by the session (modulation.py)
+  piano     note_on, chord_change (triggers), note_rate, velocity, register, spread, pedal, tension: piano.py, from
+            the piano's notes (Session.sound), merged in by the session too
 An n/a signal is None; a binding drops it and renormalises the rest.
 When the bus is down or the input stale, each signal eases to its idle value (triggers 0, levels 0.5,
 beat_phase held): hold 250 ms, then 2 s; recovery needs 1 s of fresh frames, then a 1 s ease back (R16).
@@ -46,12 +48,14 @@ from typing import Any, Optional
 
 log = logging.getLogger("stream_service.inputs")
 
-TRIGGERS = ("pulse", "beat", "section")
+from .piano import PIANO_LEVELS, PIANO_SIGNALS, PIANO_TRIGGERS
+
+TRIGGERS = ("pulse", "beat", "section") + PIANO_TRIGGERS
 MUSIC_SIGNALS = ("energy", "drive", "punch", "tempo")       # from music_direction.py (the session merges them)
 DERIVED_SIGNALS = ("pan_slow", "tilt_slow", "zoom_slow", "motion", "sat", "warmth", "section")
 BIND_SIGNALS = ("level", "pulse", "pan", "tilt", "zoom", "activity", "activity_slow", "level_slow",
-                "beat", "beat_phase", "beat_confidence") + DERIVED_SIGNALS + MUSIC_SIGNALS
-NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS   # may be None (n/a)
+                "beat", "beat_phase", "beat_confidence") + DERIVED_SIGNALS + MUSIC_SIGNALS + PIANO_SIGNALS
+NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS + PIANO_LEVELS   # may be None (n/a)
 FOLLOW_ATTRS = ("effect", "variant")      # discrete attributes whose changes the director can follow
 BEAT_FOLLOW = ("extrapolate", "off")
 
@@ -87,7 +91,8 @@ def signal_kind(s: str) -> str:
 def signal_catalog() -> dict:
     """The catalog's ``signals`` block: {name: {kind, idle, na?}}."""
     return {s: {"kind": signal_kind(s), "idle": 0.0 if s in TRIGGERS else None if s == "beat_phase" else 0.5,
-                **({"na": True} if s in NA_SIGNALS else {}), **({"from": "music"} if s in MUSIC_SIGNALS else {})}
+                **({"na": True} if s in NA_SIGNALS else {}), **({"from": "music"} if s in MUSIC_SIGNALS else {}),
+                **({"from": "piano"} if s in PIANO_SIGNALS else {})}
             for s in BIND_SIGNALS}
 
 

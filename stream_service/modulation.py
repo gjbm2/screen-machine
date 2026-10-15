@@ -40,7 +40,7 @@ import numpy as np
 
 import logging
 
-from . import binding, palettes
+from . import binding, palettes, piano
 from .inputs import BIND_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
 from .plugins.base import ParamError, is_bindable
 
@@ -191,6 +191,9 @@ class SessionRuntime:
         for k in MUSIC_SIGNALS:                 # the music features, eased to idle with the bus's liveness
             v = ex.get(k)
             sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+        for k in piano.PIANO_LEVELS:            # the piano's: n/a when it is silent or not connected
+            sig[k] = ex.get(k)
+        sig.update(piano.envelopes(ex, now))    # note_on / chord_change, sharp at the frame rate
         av = 1.0 - math.exp(-dt / AVAIL_TAU_S) if dt > 0 else 0.0
         for k in NA_SIGNALS:                    # n/a inputs fade out (holding their last value) and back in
             v = sig.get(k)
