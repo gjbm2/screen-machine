@@ -161,3 +161,47 @@ def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: 
 
 
 assert BAR == 16
+
+
+# -- per-bar engraving (live_score v2): every bar its own document at one staff size, never re-laid out ---------------
+def _doc(score_def: str, measures: str) -> str:
+    return ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.1">'
+            "<meiHead><fileDesc><titleStmt><title/></titleStmt><pubStmt/></fileDesc></meiHead>"
+            f"<music><body><mdiv><score>{score_def}<section>{measures}</section></score></mdiv></body></music></mei>")
+
+
+def _keysig(fifths: int) -> str:
+    return f"{fifths}s" if fifths > 0 else f"{-fifths}f" if fifths < 0 else "0"
+
+
+def bar_doc(bar: Bar, fifths: int, *, pedal: bool = False) -> str:
+    """One bar as it sits mid-line: no clefs, key or time signature, no brace (the line's header has them).
+    Spelling and accidentals still follow the key; ties reaching other bars are dropped (separate documents)."""
+    sig = signature(fifths)
+    pieces: dict[int, int] = {}
+    staves = "".join(f'<staff n="{n + 1}"><layer n="1">'
+                     f"{_layer(bar.staves[n], fifths, sig, pieces, open_in=False, open_out=False)}</layer></staff>"
+                     for n in (0, 1))
+    ctrl = f'<dynam staff="1" tstamp="1" place="below">{bar.dynamic}</dynam>' if bar.dynamic else ""
+    for pos, what in (bar.pedal if pedal else ()):
+        ctrl += f'<pedal staff="2" tstamp="{1 + pos / GRID:.3f}" dir="{what}" place="below"/>'
+    head = (f'<scoreDef meter.count="4" meter.unit="4" meter.form="invis" keysig="{_keysig(fifths)}" '
+            'keysig.show="false"><staffGrp symbol="none" bar.thru="true">'
+            '<staffDef n="1" lines="5" clef.shape="G" clef.line="2" clef.visible="false"/>'
+            '<staffDef n="2" lines="5" clef.shape="F" clef.line="4" clef.visible="false"/>'
+            "</staffGrp></scoreDef>")
+    return _doc(head, f'<measure xml:id="m0" n="{bar.index}">{staves}{ctrl}</measure>')
+
+
+def header_doc(fifths: int, *, meter: bool) -> str:
+    """A line's start: brace, clefs, key signature (and the time signature when a phrase starts), no music."""
+    form = "" if meter else ' meter.form="invis"'
+    head = (f'<scoreDef meter.count="4" meter.unit="4"{form} keysig="{_keysig(fifths)}">'
+            '<staffGrp symbol="brace" bar.thru="true">'
+            '<staffDef n="1" lines="5" clef.shape="G" clef.line="2"/>'
+            '<staffDef n="2" lines="5" clef.shape="F" clef.line="4"/>'
+            "</staffGrp></scoreDef>")
+    body = ('<measure xml:id="m0" n="1" right="invis">'
+            + "".join(f'<staff n="{n}"><layer n="1"><space dur="32"/></layer></staff>' for n in (1, 2)) + "</measure>")
+    return _doc(head, body)

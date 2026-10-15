@@ -66,20 +66,51 @@ def geometry(svg: str, width_px: int) -> list[dict]:
     return out
 
 
+_CAL: dict = {}                    # verovio scale -> staff space (px) at zoom 1
+
+
+def _staff_space(tk, scale: int) -> float:
+    """One staff space in raster px at resvg zoom 1 for this Verovio scale (measured once on a tiny bar)."""
+    if scale not in _CAL:
+        from .mei import bar_doc
+        from .quantize import Bar, Event
+        tk.setOptions({**OPTIONS, **BAR_OPTIONS, "scale": scale})
+        tk.loadData(bar_doc(Bar(index=1, staves=([Event(0, 16)], [Event(0, 16)]), t_start=0, t_end=0), 0))
+        svg = tk.renderToSVG(1)
+        root_w = float(ET.fromstring(svg).get("viewBox").split()[2])     # resvg's width at zoom 1
+        m = geometry(svg, root_w)
+        top, bot = m[0]["staves"][0]
+        _CAL[scale] = (bot - top) / 4.0
+    return _CAL[scale]
+
+
+BAR_OPTIONS = {"adjustPageWidth": True, "pageMarginLeft": 8, "pageMarginRight": 8}
+
+
 def engrave(tk, req: dict) -> tuple[dict, bytes]:
+    """``width``: scale the page to that many px; ``space_px``: a fixed zoom giving staff spaces that size (one
+    staff size for every bar), the page as wide as its music (``margin_left`` px of room before it, for a brace)."""
     import resvg_py
     from PIL import Image
     t0 = time.perf_counter()
-    tk.setOptions({**OPTIONS, "pageWidth": int(req.get("page_width", 3800)), "scale": int(req.get("scale", 50))})
+    scale = int(req.get("scale", 50))
+    if req.get("space_px"):
+        zoom = float(req["space_px"]) / _staff_space(tk, scale)
+        tk.setOptions({**OPTIONS, **BAR_OPTIONS, "scale": scale, "pageMarginLeft": int(req.get("margin_left", 8))})
+    else:
+        zoom = None
+        tk.setOptions({**OPTIONS, "pageWidth": int(req.get("page_width", 3800)), "scale": scale})
     if not tk.loadData(req["mei"]):
         return {"id": req.get("id"), "ok": False, "error": tk.getLog()[-500:]}, b""
     svg = tk.renderToSVG(1)
-    width = int(req["width"])
-    png = bytes(resvg_py.svg_to_bytes(svg_string=svg, width=width, skip_system_fonts=True))
+    if zoom is not None:
+        png = bytes(resvg_py.svg_to_bytes(svg_string=svg, zoom=zoom, skip_system_fonts=True))
+    else:
+        png = bytes(resvg_py.svg_to_bytes(svg_string=svg, width=int(req["width"]), skip_system_fonts=True))
     im = Image.open(io.BytesIO(png))
     ink = im.getchannel("A") if "A" in im.getbands() else im.convert("L").point(lambda v: 255 - v)
-    return ({"id": req.get("id"), "ok": True, "w": ink.width, "h": ink.height, "measures": geometry(svg, width),
-             "ms": round(1000 * (time.perf_counter() - t0))}, ink.tobytes())
+    return ({"id": req.get("id"), "ok": True, "w": ink.width, "h": ink.height,
+             "measures": geometry(svg, ink.width), "ms": round(1000 * (time.perf_counter() - t0))}, ink.tobytes())
 
 
 def _read(f) -> bytes | None:

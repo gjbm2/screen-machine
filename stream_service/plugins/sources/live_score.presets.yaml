@@ -4,7 +4,6 @@ live-score-paper:
   params:
     look: paper
     palette: ember
-    bars_per_line: 4
     note_glow: 0.8
   bindings:
     pulse: {kick: note_on, amount: 0.5}
@@ -22,7 +21,6 @@ live-score-night:
   params:
     look: night
     palette: ember
-    bars_per_line: 4
     note_glow: 1.0
     ink_glow: 1.6
   bindings:
