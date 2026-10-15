@@ -1,16 +1,20 @@
 // Test music: room's fake show (GET / POST /api/v1/dmx/fake), the stand-in for the lighting desk until Maestro is
 // set up: start / stop, tempo (slider, − +, quick chips, ramp), song, breakdown, next section.  Plus "The screen
 // hears…": the target screen's show-bus reading in words (room GET …/inputs, 2 Hz while visible and live) and a
-// small beat lamp.
+// small beat lamp.  Plus the test piano (the renderer's GET / POST /api/sound/test): a piece played into every
+// screen's sound view the way the Steinway's MIDI arrives, so scenes that listen follow it on whatever screen shows
+// them (Show on devtest; no room mode needed).  One test music at a time: the piano stops the band and vice versa.
 import { h, put, visibleInterval } from "../kit.js";
 import { S } from "../store.js";
 import * as room from "../data/room.js";
+import * as renderer from "../data/renderer.js";
 import { button, chip, select, switchEl, unroll, slider, busy } from "../ui/controls.js";
 import { toastErr } from "../ui/toast.js";
 import { errorWords, inputsWords, beatWords } from "../words.js";
 
 const QUICK = [90, 110, 124, 128, 140, 174];
 export const M = { view: null, err: null, hidden: false, inputs: null, inputsAt: 0 };
+export const P = { view: null };   // the test piano: GET /api/sound/test
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
 
 export function mountMusic(host, { visible = () => true, onInputs = () => {} } = {}) {
@@ -45,7 +49,49 @@ export function mountMusic(host, { visible = () => true, onInputs = () => {} } =
     h("p", { style: { margin: "6px 0 0" } }, state), note,
     h("p", { class: "row", style: { margin: "8px 0 0", fontSize: "15px" } }, h("span", { class: "muted" }, "The screen hears:"), hears, lamp),
     ctlU);
-  put(host, card);
+  // the test piano
+  const pState = h("span", { tid: "piano-state", class: "muted" }, "Loading…");
+  const pStart = button("Play", { kind: "primary", icon: "play", tid: "piano-start" });
+  const pStop = button("Stop", { kind: "outline", icon: "stop", tid: "piano-stop" });
+  pStop.hidden = true;
+  const piece = select([["medley", "A bit of everything"]], "medley", (v) => { if (P.view?.running) playPiece(v); }, { tid: "piano-piece", aria: "Piece" });
+  const pcard = h("div", { class: "card", tid: "piano-card", hidden: true },
+    h("div", { class: "row" }, h("h2", { class: "grow", style: { margin: 0 } }, "Test piano"), pStart, pStop),
+    h("p", { style: { margin: "6px 0 0" } }, pState),
+    h("label", { class: "field" }, h("span", { class: "lab" }, "Piece (switches at once while playing)"), piece),
+    h("p", { class: "hint" }, "Played into every screen the way the Steinway's MIDI arrives. Scenes that listen (Piano waterfall, Note fluid…) follow it: put one on the target screen with Show on."));
+  put(host, card, pcard);
+
+  const pieceLabel = (id) => (P.view?.pieces || []).find((x) => x.id === id)?.label || id || "";
+  async function pianoSend(body, what) {
+    const r = await renderer.api("POST", "/api/sound/test", body);
+    if (r.ok) { P.view = r.data; pdraw(); return true; }
+    toastErr(errorWords(r, { what: `Test piano: ${what}`, target: "the renderer" }));
+    return false;
+  }
+  async function playPiece(id) {
+    if (M.view?.running) await send({ action: "stop" }, "stop");      // one test music at a time
+    return pianoSend({ on: true, piece: id }, pieceLabel(id));
+  }
+  pStart.addEventListener("click", async () => { busy(pStart, true, "Starting…"); await playPiece(piece.value); busy(pStart, false); pdraw(); });
+  pStop.addEventListener("click", async () => { busy(pStop, true, "Stopping…"); await pianoSend({ on: false }, "stop"); busy(pStop, false); pdraw(); });
+  function pdraw() {
+    const v = P.view;
+    if (!v || v.available === false) { pcard.hidden = true; return; }
+    pcard.hidden = false;
+    const opts = (v.pieces || []).map((x) => [x.id, x.label]);
+    if (opts.length && piece.options.length !== opts.length) put(piece, opts.map(([id, lab]) => h("option", { value: id }, lab)));
+    if (v.running && v.piece && document.activeElement !== piece) piece.value = v.piece;
+    pStart.hidden = !!v.running; pStop.hidden = !v.running;
+    if (!pStart.querySelector(".spin")) pStart.disabled = false;
+    pState.textContent = v.running ? `Playing: ${pieceLabel(v.piece)}` : "Not playing";
+    pState.className = v.running ? "" : "muted";
+  }
+  async function ppoll() {
+    const r = await renderer.api("GET", "/api/sound/test");
+    if (r.ok) { P.view = r.data; pdraw(); }
+    else if (r.status === 404 || r.status === 405) { P.view = { available: false }; pdraw(); }   // an older renderer
+  }
 
   async function send(body, what) {
     const r = await room.postFake(body);
@@ -61,6 +107,7 @@ export function mountMusic(host, { visible = () => true, onInputs = () => {} } =
   }
   startBtn.addEventListener("click", async () => {
     busy(startBtn, true, "Starting…");
+    if (P.view?.running) await pianoSend({ on: false }, "stop");     // one test music at a time
     await send({ action: "start", song: song.value, bpm: Math.round(Number(bpm.input.value)) }, "start");
     busy(startBtn, false); draw();
   });
@@ -108,12 +155,13 @@ export function mountMusic(host, { visible = () => true, onInputs = () => {} } =
   }
   let last = 0;
   const stop1 = visibleInterval(async () => {
-    const every = M.view?.running ? 1000 : 3000;
+    const every = M.view?.running || P.view?.running ? 1000 : 3000;
     if (Date.now() - last < every - 50) return;
     last = Date.now();
-    await poll();
+    await Promise.all([poll(), ppoll()]);
   }, 500, visible);
   poll();
+  ppoll();
 
   // the screen hears (2 Hz while On screen is visible and the target is live)
   const stop2 = visibleInterval(async () => {
