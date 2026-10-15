@@ -64,6 +64,7 @@ class FxDirector:
         self.quarantined: dict[str, float] = {}
         self.last: Optional[dict] = None
         self.vet: Optional[Callable[[str, Optional[str]], bool]] = None   # (kind, plug-in) -> auto may add it
+        self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
 
     # -- configuration -------------------------------------------------------------
     def configure(self, auto_fx: Optional[dict], direction: dict) -> None:
@@ -151,6 +152,14 @@ class FxDirector:
             out.append(name)
         return out
 
+    def _rated(self, plugin: Optional[str]) -> float:
+        if self.rate is None:
+            return 1.0
+        try:
+            return float(self.rate("effect", plugin))
+        except Exception:
+            return 1.0
+
     def _vetted(self, plugin: Optional[str]) -> bool:
         try:
             return bool(self.vet("effect", plugin))
@@ -169,8 +178,8 @@ class FxDirector:
         if not names:
             return None
         recent = set(list(self.recent)[-NOVELTY_WINDOW:])
-        w = [max(1e-6, self.weight(presets[n].get("tags") or {}) * (NOVELTY_WEIGHT if n in recent else 1.0))
-             for n in names]
+        w = [max(1e-6, self.weight(presets[n].get("tags") or {}) * (NOVELTY_WEIGHT if n in recent else 1.0)
+                 * self._rated(presets[n].get("effect"))) for n in names]
         name = self.rng.choices(names, weights=w)[0]
         p = w[names.index(name)] / sum(w)
         return name, f"{name} (p {p:.2f} of {len(names)}, {presets[name].get('stage')})"

@@ -29,6 +29,12 @@ MAX_LOOKS = 24
 PARAM_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 LOOK_NAME_RE = re.compile(r"^[^<>\x00-\x1f]{1,40}$")
 
+# How much the auto-directors favour an item by the owner's rating: it multiplies the direction / tag match (and
+# novelty) weight of every preset of that plug-in.  Unrated is neutral, 3 stars and up are favoured, 1-2 stars are
+# rare, and a reject is never auto-picked (the vetted pool drops it).  Manual cues and pushes ignore ratings.
+STAR_WEIGHT = {0: 1.0, 1: 0.05, 2: 0.3, 3: 1.5, 4: 4.0, 5: 8.0}
+KIND_KEY = {"source": "scene", "scene": "scene", "transition": "transition", "effect": "effect"}
+
 
 class Ratings:
     def __init__(self, path: pathlib.Path):
@@ -36,6 +42,8 @@ class Ratings:
         self.lock = threading.Lock()
         self.data: dict[str, dict] = {}
         self.mtime = None
+        self._weights: dict[str, float] = {}
+        self._weights_at = None             # the mtime the weights were built from
         self._load()
 
     def _load(self) -> None:
@@ -52,6 +60,19 @@ class Ratings:
         except (OSError, ValueError):
             pass   # keep the last good copy
         self.mtime = m
+
+    def weight(self, kind: str, plugin: str | None) -> float:
+        """The auto-directors' rating weight for a plug-in (STAR_WEIGHT; 0.0 for a reject).  Cheap: one stat per call,
+        the table is rebuilt only when the file changed."""
+        if not plugin:
+            return 1.0
+        with self.lock:
+            self._load()
+            if self._weights_at != self.mtime:
+                self._weights = {k: 0.0 if v.get("reject") else STAR_WEIGHT.get(int(v.get("stars") or 0), 1.0)
+                                 for k, v in self.data.items()}
+                self._weights_at = self.mtime
+            return self._weights.get(f"{KIND_KEY.get(kind, kind)}/{plugin}", 1.0)
 
     def all(self) -> dict:
         with self.lock:
@@ -118,6 +139,7 @@ class Ratings:
         tmp.write_text(json.dumps({"ratings": dict(sorted(self.data.items()))}, indent=1, sort_keys=True) + "\n")
         tmp.replace(self.path)
         self.mtime = self.path.stat().st_mtime
+        self._weights_at = None             # a change here re-weights on the next pick
 
 
 def _looks(v: Any) -> list:
