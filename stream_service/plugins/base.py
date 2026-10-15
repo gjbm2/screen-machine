@@ -149,8 +149,11 @@ class Plugin:
 
     @classmethod
     def meta(cls) -> dict:
-        return {"origin": cls.origin, "tags": copy.deepcopy(dict(cls.tags or {})),
-                "license_class": cls.license_class}
+        out = {"origin": cls.origin, "tags": copy.deepcopy(dict(cls.tags or {})),
+               "license_class": cls.license_class}
+        if getattr(cls, "listens", ()):
+            out["listens"] = list(cls.listens)           # what it reads from self.sound (sound.py, CONVENTIONS §2b)
+        return out
 
     @classmethod
     def param_props(cls) -> dict[str, dict]:
