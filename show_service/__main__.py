@@ -61,6 +61,14 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
 * **Stage 4** (README S4.5): with the brain, ``mllink.MLFeed`` (show-rx, guard "ml.feed") and the context's engine
   slots ``rhythm`` (Features.rhythm), ``ml_feed`` and ``clock_correct`` (Clock.apply_integer_correction);
   ``/api/v1/state`` gains ``ml`` (the MLLink snapshot, also under brain.components.ml).
+* **Stage 5** (README S5.4): with the brain, the rig (``outputs.attach``: the fixture registry, the look engine and
+  the drivers, every output off until config/room/fixtures.yaml enables it) joins the brain last, after the
+  director, fed by reference: ``palette_fn`` and ``look_fn`` (the director's), the clock, ``Features.latest`` and
+  artnet_out's neutral colour and depth. ``ctx.set_look_out`` fans out to Art-Net out's ``set_look`` and the rig's
+  (each guarded); the ``music.hit`` bodies that reach ``Clock.observe_hit`` also reach ``Rig.on_hit`` (guard
+  "rig.hit"). The registry reads config/room/fixtures.yaml, the latency file (``--latency-file``) and artnet_out's
+  patch.yaml; nodes.json goes to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the brain
+  stops the rig first (runners, then drivers: Hue gives its area back), then Art-Net out, rx, bus.
 """
 
 from __future__ import annotations
@@ -88,15 +96,17 @@ from .bus import Bus  # noqa: E402
 log = logging.getLogger("show_service")
 
 RELOAD_S = 2.0          # latency.json mtime poll
+VM_LOOK_KEYS = ("hue_depth", "beat_lock", "reset")   # artnet_out's set_look; the rig's also takes beat_depth (S5.14)
 WARMUP_S = 10.0         # then gc.freeze()
 SNAPSHOT_S = 0.5        # show-rx -> API snapshot
 GUARD_LOG_S = 30.0
 PIANO_VEL_TAU_S = 2.0         # PianoView.velocity: EMA of strike velocities (README S3.4)
 PIANO_RATE_WINDOW_S = 4.0     # PianoView.notes_per_s: strikes in the last 4 s / 4
 RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on_tick (the state's rx_ms; ~16 s)
-#: Brain component modules, in add order (README S3.2 and S4.2: room, situations, autopilot, sources, ml, structure,
-#: listener, director; autopilot.attach returns the first three, mllink.attach the ml component)
-BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "director")
+#: Brain component modules, in add order (README S3.2, S4.2 and S5.4: room, situations, autopilot, sources, ml,
+#: structure, listener, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
+#: outputs.attach the rig, after the director: it reads the director's palette_fn and look_fn)
+BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "director", "outputs")
 NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
                                           "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
@@ -171,6 +181,9 @@ class Show:
         self.api: Any = None
         self.mlfeed: Any = None                      # Stage 4: mllink.MLFeed (show-rx writer), with the brain only
         self.ml: Any = None                          # Stage 4: the MLLink component
+        self.rig: Any = None                         # Stage 5: outputs.Rig (the rig component), with the brain only
+        self._out_cfg: dict = {}                     # artnet_out's config (the rig's neutral colour, patch.yaml)
+        self._amod: Any = None                       # the artnet_out module (its DEFAULT_RGB, HUE_DEPTH)
         self._brain_kw = {k: dict(v) for k, v in (brain_kw or {}).items()}
         self._pview: contract.PianoView = dict(NEUTRAL_PIANO_VIEW)        # type: ignore[assignment]
         self._vel_ema: Optional[float] = None
@@ -201,7 +214,8 @@ class Show:
         self._rx_tick_ms: collections.deque = collections.deque(maxlen=RX_COST_N)
         self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
                                           "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot",
-                                          "ring.write", "notetap", "piano.view", "ml.feed")}
+                                          "ring.write", "notetap", "piano.view", "ml.feed", "rig.hit",
+                                          "artnet.set_look", "rig.set_look")}
 
     # -- building (main thread) ----------------------------------------------------------------------------------
     def _read_show_file(self) -> dict:
@@ -267,13 +281,16 @@ class Show:
             except Exception as e:           # a bad SHOW_PATCH_FILE / SHOW_HUE_LATENCY_MS: its defaults
                 log.error("Art-Net out env: %s: using its defaults", e)
                 out_cfg = {}
+        self._out_cfg, self._amod = dict(out_cfg), amod
         if self.opts.brain:
             self._build_brain(out_cfg.get("patch_path"))
         if amod is not None:
             self.artnet = self._make("artnet_out", lambda: self._virtual_maestro(amod, out_cfg))
         if self.ctx is not None and self.artnet is not None:
             self.ctx.section_change = getattr(self.artnet, "section_change", None)
-            self.ctx.set_look_out = getattr(self.artnet, "set_look", None)   # the method itself: reset= reaches it
+        if self.ctx is not None and (getattr(self.artnet, "set_look", None) is not None
+                                     or getattr(self.rig, "set_look", None) is not None):
+            self.ctx.set_look_out = self._set_look_out     # Stage 5: Art-Net out's set_look, then the rig's
         if freeze_gc:
             t = time.perf_counter()
             gc.collect()
@@ -310,7 +327,9 @@ class Show:
         kw["target"] = self.opts.artnet_target          # config.py: --artnet-target over SHOW_ARTNET_TARGET
         clock = self.clock if hasattr(self.clock, "next_beat") else None
         features_fn = self.features.latest if self.features is not None else None
-        palette_fn = getattr(self.director, "palette_fn", None)    # the director's look (None: the fixed colour)
+        # the director's look (None: the fixed colour); maestro_palette_fn carries the drop's hit as Hue takes it, since
+        # the virtual Maestro's lamp channels are what room streams to Hue (README S5.14)
+        palette_fn = getattr(self.director, "maestro_palette_fn", None) or getattr(self.director, "palette_fn", None)
         return amod.VirtualMaestro(**kw, clock=clock, features_fn=features_fn, palette_fn=palette_fn)
 
     # -- Stage 3: the brain (main thread, before rx and the brain start) ------------------------------------------
@@ -329,8 +348,34 @@ class Show:
             "director": {"log_path": logs["director"], "vibes_path": pathlib.Path(self.opts.vibes_file),
                          **({"patch_path": pathlib.Path(patch_path)} if patch_path else {})},
         }.get(name, {})
-        kw.update(self._brain_kw.get(name, {}))
+        if name == "outputs":
+            kw = self._rig_kw(patch_path)
+        extra = dict(self._brain_kw.get(name, {}))
+        if name == "outputs" and isinstance(extra.get("driver_kw"), dict):       # per driver kind, on top
+            dk = {k: dict(v) for k, v in (kw.get("driver_kw") or {}).items()}
+            for kind, v in extra.pop("driver_kw").items():
+                dk[kind] = {**dk.get(kind, {}), **dict(v)}
+            kw["driver_kw"] = dk
+        kw.update(extra)
         return kw
+
+    def _rig_kw(self, patch_path: Any) -> dict:
+        """Stage 5 (README S5.4): the rig's inputs, all by reference. ``neutral`` is artnet_out's own colour
+        (SHOW_PALETTE, else DEFAULT_RGB) and hue depth, so a rig with no vibe looks exactly like the virtual Maestro."""
+        d, f, c = self.director, self.features, self.clock
+        amod = self._amod
+        neutral = None
+        rgb, depth = getattr(amod, "DEFAULT_RGB", None), getattr(amod, "HUE_DEPTH", None)
+        if rgb is not None and depth is not None:
+            neutral = (self._out_cfg.get("palette") or rgb, depth)
+        driver_kw: dict[str, dict] = {"artnet": {"state_file": pathlib.Path(self.opts.state_dir) / "nodes.json"}}
+        if patch_path:
+            driver_kw["hue"] = {"patch_path": pathlib.Path(patch_path)}
+        return {"palette_fn": getattr(d, "palette_fn", None), "look_fn": getattr(d, "look_fn", None),
+                "clock": c if c is not None and hasattr(c, "snapshot") else None,
+                "features_fn": f.latest if f is not None else None, "neutral": neutral,
+                "latency_path": pathlib.Path(self.cfg.latency_file),
+                **({"patch_path": pathlib.Path(patch_path)} if patch_path else {}), "driver_kw": driver_kw}
 
     def _build_brain(self, patch_path: Any) -> None:
         """README S3.4 steps 3-5: the ring and the note tap (show-rx writers), the context, the Brain and its
@@ -386,8 +431,26 @@ class Show:
                 self.director = got
             if name == "mllink" and not isinstance(got, (list, tuple)):
                 self.ml = got
+            if name == "outputs" and not isinstance(got, (list, tuple)):
+                self.rig = got
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
+
+    def _set_look_out(self, **kw: Any) -> None:
+        """``ctx.set_look_out`` (Stage 5): Art-Net out's set_look, then the rig's (the look engine's), each under its
+        own guard, so one failing never stops the other."""
+        vm = getattr(self.artnet, "set_look", None)
+        if vm is not None:
+            try:
+                vm(**{k: v for k, v in kw.items() if k in VM_LOOK_KEYS})   # beat_depth is the rig's alone
+            except Exception:
+                self._g["artnet.set_look"].failed()
+        rs = getattr(self.rig, "set_look", None)
+        if rs is not None:
+            try:
+                rs(**kw)
+            except Exception:
+                self._g["rig.set_look"].failed()
 
     def _clock_action(self, word: str, t_s: float) -> None:
         """contract.ClockAction (any thread; the clock queues it for show-rx)."""
@@ -509,13 +572,21 @@ class Show:
         self._rx_audio_ms.append((time.perf_counter() - t_in) * 1000.0)
 
     def _features_publish(self, msg: dict) -> None:
-        """The publish Features gets: everything to the bus; music.hit bodies also to Clock.observe_hit (show-rx)."""
-        if msg.get("type") == contract.MUSIC_HIT and self.clock is not None:
-            try:
-                d = msg["data"]
-                self.clock.observe_hit(d["t_ms"] / 1000.0, d["band"], d["strength"])
-            except Exception:
-                self._g["clock.observe_hit"].failed()
+        """The publish Features gets: everything to the bus; music.hit bodies also to Clock.observe_hit and (Stage 5)
+        Rig.on_hit (show-rx)."""
+        if msg.get("type") == contract.MUSIC_HIT:
+            if self.clock is not None:
+                try:
+                    d = msg["data"]
+                    self.clock.observe_hit(d["t_ms"] / 1000.0, d["band"], d["strength"])
+                except Exception:
+                    self._g["clock.observe_hit"].failed()
+            rig = self.rig
+            if rig is not None:                  # Stage 5: the hit flashes (DMX only) and pulls a frame forward
+                try:
+                    rig.on_hit(msg["data"])
+                except Exception:
+                    self._g["rig.hit"].failed()
         self.publish(msg)
 
     def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
@@ -720,6 +791,7 @@ class Show:
             "brain": self._brain_state(),
             "api": _attr(self.api, "stats") if self.api is not None else None,
             "ml": _attr(self.ml, "snapshot") if self.ml is not None else None,
+            "rig": _attr(self.rig, "snapshot") if self.rig is not None else None,
         }
 
     def _brain_state(self) -> Optional[dict]:

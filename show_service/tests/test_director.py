@@ -484,7 +484,7 @@ def test_beat_lock_false_tells_artnet(tmp_path):
     r.d.set_target("beta")
     r.run(1.0)
     looks = [kw for k, kw in r.calls if k == "look"]
-    assert looks[-1] == {"hue_depth": 0.0, "beat_lock": False}
+    assert looks[-1] == {"hue_depth": 0.0, "beat_lock": False, "beat_depth": 0.0}
     assert r.d.direction["beat_lock"] is False and r.d.direction["loose"] is False
 
 
@@ -492,16 +492,24 @@ def test_beat_lock_and_accents_after_one_phrase(tmp_path):
     r = Rig(tmp_path, clock=True)
     r.d.set_target("alpha")
     r.run(1.0)
-    assert [kw for k, kw in r.calls if k == "look"][-1] == {"hue_depth": 0.0, "beat_lock": True}
+    assert [kw for k, kw in r.calls if k == "look"][-1] == {"hue_depth": 0.0, "beat_lock": True, "beat_depth": 0.0}
     r.run(16.5)                                                        # one phrase (16 s at 120 bpm)
     depth = [kw for k, kw in r.calls if k == "look"][-1]
     level = r.d.look["level"]
     assert depth["beat_lock"] is True
     assert depth["hue_depth"] == pytest.approx(min(0.5, 1 - 0.1 / level), abs=1e-3)
+    assert depth["beat_depth"] == depth["hue_depth"]
     r.gate = "dmx"                                                     # the clock unsure: no beat swell, "loosely"
     r.run(0.3)
-    assert [kw for k, kw in r.calls if k == "look"][-1] == {"hue_depth": 0.0, "beat_lock": False}
-    assert r.d.direction["loose"] is True
+    # README S5.14: Hue (hue_depth) and the virtual Maestro stop swelling; beat_lock stays the vibe's own and the
+    # depth before the gate stays, so DMX keeps its beat at the clock's middle confidence (§5.4; the engine gates it)
+    got = [kw for k, kw in r.calls if k == "look"][-1]
+    assert got["hue_depth"] == 0.0 and got["beat_lock"] is True and got["beat_depth"] == depth["beat_depth"]
+    assert r.d.direction["loose"] is True and r.d.direction["beat_lock"] is False and \
+        r.d.look["accents"]["beat_lock"] is False                      # the renderer's words are unchanged
+    r.gate = "none"
+    r.run(0.3)
+    assert [kw for k, kw in r.calls if k == "look"][-1]["hue_depth"] == 0.0
 
 
 def test_gate_ref_follows_the_vibe_and_is_put_back(rig):
@@ -811,11 +819,25 @@ def _names_from_config() -> set[str]:
     names |= set(((sh.get("lamps") or {}).get("roles") or {}).keys())                 # role names: config only
     names |= set(((sh.get("lamps") or {}).get("placement_roles") or {}).keys())
     names |= set((((sh.get("director") or {}).get("bands") or {}).get("words") or {}).keys())
+    # Stage 5 (README S5.0 rule 1): fixtures.yaml's ids, zones, screens and placements, and show.yaml's layer ids.
+    # The builtin type ids are fixed vocabulary (fixtures.BUILTIN_TYPES), like contract.DRIVERS.
+    from show_service import fixtures as fxmod
+    fx = yaml.safe_load(contract.FIXTURES_FILE.read_text()) or {}
+    for sec in ("fixtures", "outputs", "nodes", "types", "groups"):
+        names |= set((fx.get(sec) or {}).keys())
+    for f in (fx.get("fixtures") or {}).values():
+        if isinstance(f, dict):
+            names |= {f[k] for k in ("zone", "screen", "placement", "role") if isinstance(f.get(k), str)}
+            names |= {t for t in f.get("tags") or [] if isinstance(t, str)}
+    names |= {L["id"] for L in ((sh.get("looks") or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
+    names -= set(fxmod.BUILTIN_TYPES)
     return (names - _fixed_vocabulary()) | {"piano"}
 
 
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
-                                    "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py"])
+                                    "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py",
+                                    "fixtures.py", "ofl.py", "outputs.py", "looks.py", "colour_mix.py", "hue_out.py",
+                                    "artnet_lan.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
     if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
         pytest.skip(f"{module} isn't there yet")
@@ -1102,10 +1124,15 @@ def test_an_armed_drop_dips_then_cuts_and_hits_the_lamps_never_the_screens(tmp_p
     assert all(max(r.d.palette_fn(r.t)[k]) == pytest.approx(0.25, abs=1e-3) for k in r.d.look["lamps"])
     hit = r.d._hit
     assert hit is not None and hit[0] == pytest.approx(line) and set(hit[2]) == set(r.d.look["lamps"])
+    lh = r.d.look["hit"]                                              # README S5.14: the hit is LookData's ...
+    assert lh["predicted"] is True and lh["t0_ms"] == pytest.approx(line * 1000.0, abs=0.1)
+    assert set(lh["lamps"]) == set(r.d.look["lamps"]) and r.d.look["dip"] is True
     r.sec.update(phase="drop", bp=0.0)
     r.run_to(line + 0.05, check_screens)
-    pf = r.d.palette_fn(line + 0.01)
-    for did in r.d.look["lamps"]:
+    base = r.d.palette_fn(line + 0.01)                                # ... never palette_fn's (each output takes
+    assert all(max(base[d]) < 1.0 - 1e-6 or base[d] != pytest.approx(hit[2][d]) for d in ("lamp.two",))   # it
+    pf = r.d.maestro_palette_fn(line + 0.01)                          # by its caps); the virtual Maestro's lamps
+    for did in r.d.look["lamps"]:                                     # (Hue's, P0-P4) get a predicted line's at once
         assert pf[did] == pytest.approx(hit[2][did]) and max(pf[did]) == pytest.approx(1.0)   # the unison hit, full
     washes = {tuple(round(v, 3) for v in pf[d]) for d in ("lamp.one", "lamp.three", "lamp.four")}
     assert len(washes) == 1                                           # one colour across a role
@@ -1266,7 +1293,8 @@ def test_stage4_settings_and_bad_values(tmp_path):
     cfg = r.d.cfg
     assert cfg["sections"] == {"max_late_bars": 2.0, "express_gain": 0.5, "phase_hint_s": 1.5}
     assert cfg["peaks"] == {"after_build_s": 12.0} and cfg["build"]["dip_level"] == 0.3
-    assert cfg["build"]["narrow"] == 0.6 and cfg["screens"] == {"send_palette": True, "palette_transition_s": 2.0}
+    assert cfg["build"]["narrow"] == 0.6 and cfg["screens"] == {"send_palette": True, "palette_transition_s": 2.0,
+                                                                "hold_hand_picks": True, "own_echo_s": 3.0}   # S5.8
     probs = "\n".join(r.d.settings_problems)
     for frag in ("director.sections.express_gain", "director.build.narrow", "director.breakdown",
                  "director.screens.send_palette"):
@@ -1300,7 +1328,8 @@ def test_the_screens_get_the_directors_palette_once_per_change(tmp_path):
         assert patches == []                                           # no feel: nothing
         r.d.set_target("alpha")
         await run(1.0)
-        assert patches == [("/api/v1/screens/wall-left/look", {"palette": "neon", "palette_transition_s": 4.0})]
+        assert patches == [("/api/v1/screens/wall-left/look", {"palette": "neon", "palette_transition_s": 4.0,
+                                                               "source": contract.SHOW_SOURCE})]   # Stage 5: source
         await run(2.0)
         assert len(patches) == 1                                       # only on change
         r.d.set_palette("rainbow")
@@ -1315,7 +1344,8 @@ def test_the_screens_get_the_directors_palette_once_per_change(tmp_path):
         assert len(patches) == 3                                       # retried only after SCREENS_RETRY_S
         answers.clear()
         await run(dmod.SCREENS_RETRY_S)
-        assert patches[-1] == ("/api/v1/screens/wall-right/look", {"palette": "rainbow", "palette_transition_s": 4.0})
+        assert patches[-1] == ("/api/v1/screens/wall-right/look", {"palette": "rainbow", "palette_transition_s": 4.0,
+                                                                   "source": contract.SHOW_SOURCE})
         n = len(patches)
         r.d.set_palette("art")                                         # an art palette: the screens keep their own
         await run(1.0)
@@ -1393,3 +1423,679 @@ def test_a_new_songs_own_section_boundary_lands_with_the_track_look(tmp_path):
     assert len(r.looks()) - n0 == 2 and r.looks()[-1]["at_ms"] == pytest.approx(line * 1000.0)   # re-announced
     assert r.d.look["palette"]["name"] == "rainbow" and r.gobos() == g0 + 1     # with the look, on its line
     assert r.d.snapshot()["sections"]["stats"]["looks"] == 1
+
+
+# -- Stage 5: the screens' hand-pick hold (README S5.8) -------------------------------------------------------------------
+LIVE = {"layer": "live", "phase": "live", "cutting": False}
+
+
+class LookRoom:
+    """A fake room's look route and its ``screen.look`` events (README S5.8); never the real room.
+    ``new``: room with 2f's code (takes ``source``; its event carries it, "web" by default). ``new=False``: the old room
+    (400 bad_request for a key it doesn't know; its events, when ``events``, carry no source). The event reaches the
+    director before the PATCH answers, as room's WS can beat its HTTP answer."""
+
+    def __init__(self, r: Rig, new: bool = True, events: bool = True) -> None:
+        self.r, self.new, self.events = r, new, events
+        self.patches: list[tuple[str, dict]] = []
+        self.boot = "boot-1"
+
+    async def patch(self, path: str, body: dict, timeout: float = 5.0):
+        self.patches.append((path, dict(body)))
+        sid = path.split("/")[4]
+        body = dict(body)
+        source = body.pop("source", None)
+        if source is not None and not self.new:
+            return 400, {"error": "bad_request", "detail": "body may contain only ['palette', ...]"}
+        self.emit(sid, body["palette"], source or "web", changed=sorted(body))
+        return 200, {"screen": sid}
+
+    def emit(self, sid: str, palette, source: str = "web", changed=("palette",)) -> None:
+        """A screen.look as room sends it (a person's pick when called by the test)."""
+        if not self.events:
+            return
+        evt = {"screen": sid, "session": "s-" + sid, "changed": list(changed), "palette": palette}
+        if self.new:
+            evt["source"] = source
+        self.r.d.on_room_event(contract.ROOM_SCREEN_LOOK, evt)
+
+    def sent(self, since: int = 0) -> list[tuple[str, dict]]:
+        return [(p.split("/")[4], b) for p, b in self.patches[since:]]
+
+
+def hold_rig(tmp_path, *, new: bool = True, events: bool = True, settings: dict | None = None) -> tuple[Rig, LookRoom]:
+    r = Rig(tmp_path, clock=True, settings=settings)
+    room = LookRoom(r, new, events)
+    r.ctx.room_boot = lambda: room.boot
+    r.room = {"current": "m1", "stored_restore": {}, "screens": {"wall-left": dict(LIVE), "wall-right": dict(LIVE)}}
+    r.d.on_mode_change(None, "m1")
+    return r, room
+
+
+async def ticks(r: Rig, seconds: float) -> None:
+    for _ in range(int(round(seconds * 10))):
+        r.t = round(r.t + 0.1, 6)
+        r.wall += 0.1
+        r.d.tick(r.t)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+
+def go(r: Rig, room: LookRoom, body) -> None:
+    async def main():
+        r.ctx.loop = asyncio.get_running_loop()
+        r.ctx.room_patch = room.patch
+        try:
+            await body()
+        finally:
+            r.d.stop()
+    asyncio.run(main())
+
+
+def logged(r: Rig, kind: str) -> list[dict]:
+    return [e for e in r.d.log(LOG_ALL) if e["kind"] == kind]
+
+
+LOG_ALL = 500
+NEON = {"palette": "neon", "palette_transition_s": 4.0}
+
+
+def pick_chip(r: Rig) -> dict | None:
+    got = [c for c in r.d.chips() if c["id"] == contract.SCREEN_PICK]
+    return got[0] if got else None
+
+
+def test_the_source_probe_against_a_new_room(tmp_path):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        await ticks(r, 0.5)
+        sp = r.d.snapshot()["screens_palette"]
+        assert sp["look_source"] == "unknown" and sp["boot"] == "boot-1" and sp["hold"] is None
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        assert room.sent() == [("wall-left", {**NEON, "source": contract.SHOW_SOURCE}),
+                               ("wall-right", {**NEON, "source": contract.SHOW_SOURCE})]
+        sp = r.d.snapshot()["screens_palette"]
+        assert sp["look_source"] == "yes" and sp["own_echoes"] == 2 and sp["picks"] == 0
+        assert set(sp["sent_at"]) == {"wall-left", "wall-right"} and pick_chip(r) is None
+        room.boot = "boot-2"                                           # room_service restarted: probe again
+        await ticks(r, 0.2)
+        assert r.d.snapshot()["screens_palette"]["look_source"] == "unknown"
+        r.d.set_palette("rainbow")
+        await ticks(r, 0.5)
+        assert [b.get("source") for _, b in room.sent(2)] == [contract.SHOW_SOURCE] * 2
+        sp = r.d.snapshot()["screens_palette"]
+        assert sp["look_source"] == "yes" and sp["boot"] == "boot-2" and sp["picks"] == 0
+
+    go(r, room, body)
+    assert [(e["state"], e["via"]) for e in logged(r, "look_source")] == [
+        ("yes", "event"), ("unknown", "room_boot"), ("yes", "event")]
+
+
+def test_the_source_probe_against_the_old_room(tmp_path):
+    r, room = hold_rig(tmp_path, new=False)
+
+    async def body():
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        assert room.sent() == [("wall-left", {**NEON, "source": contract.SHOW_SOURCE}),   # refused (400 bad_request)
+                               ("wall-left", NEON),                                     # again at once, without
+                               ("wall-right", NEON)]                                    # and the next one without
+        sp = r.d.snapshot()["screens_palette"]
+        assert sp["look_source"] == "no" and sp["sent"] == {"wall-left": "neon", "wall-right": "neon"}
+        assert sp["error"] is None and sp["picks"] == 0 and sp["own_echoes"] == 2   # no source: ours by the echo
+        r.d.set_palette("rainbow")
+        await ticks(r, 0.5)
+        assert room.sent(3) == [("wall-left", {**NEON, "palette": "rainbow"}),
+                                ("wall-right", {**NEON, "palette": "rainbow"})]
+        r.d.on_room_event(contract.ROOM_SCREEN_LOOK, {"screen": "wall-left", "session": "s", "source": "web",
+                                                      "changed": ["direction"]})   # any event with a source: yes
+        await ticks(r, 0.1)
+        sp = r.d.snapshot()["screens_palette"]
+        assert sp["look_source"] == "yes" and sp["picks"] == 0 and r.d.screen_pick is None   # no palette: no pick
+
+    go(r, room, body)
+    assert [(e["state"], e["via"]) for e in logged(r, "look_source")] == [("no", "patch"), ("yes", "event")]
+
+
+def test_our_echo_is_not_a_pick_and_another_palette_or_a_late_echo_is(tmp_path):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        room.emit("wall-left", "ice", source=contract.SHOW_SOURCE)     # source show_service: ours, whatever it says
+        room.emit("wall-left", "neon", source="web")                   # ours within own_echo_s (a PATCH that lost
+        await ticks(r, 0.2)                                            # its source on the way)
+        assert r.d.screen_pick is None and r.d.snapshot()["screens_palette"]["own_echoes"] == 4
+        room.emit("wall-right", "ember")                               # another palette: a person's
+        await ticks(r, 0.1)
+        assert r.d.screen_pick["palette"] == "ember" and r.d.screen_pick["screen"] == "wall-right"
+
+    go(r, room, body)
+
+    r2, room2 = hold_rig(tmp_path / "old" if (tmp_path / "old").mkdir() is None else tmp_path, new=False)
+
+    async def body2():
+        r2.d.set_target("alpha")
+        await ticks(r2, 0.5)
+        await ticks(r2, 2.0)
+        room2.emit("wall-left", "neon")                                # 2.5 s after we sent it: ours
+        assert r2.d.screen_pick is None
+        await ticks(r2, 1.0)
+        room2.emit("wall-left", "neon")                                # 3.5 s: past own_echo_s, so a person's
+        await ticks(r2, 0.1)
+        assert r2.d.screen_pick == {"palette": "neon", "label": "Neon", "screen": "wall-left",
+                                    "at": pytest.approx(r2.wall - 0.1, abs=1e-3), "source": None}
+
+    go(r2, room2, body2)
+
+
+def test_a_hand_pick_holds_every_screen_with_a_chip_and_the_lamps_carry_on(tmp_path):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        n = len(room.patches)
+        assert not r.d.snapshot()["engaged"]
+        w = r.wall
+        room.emit("wall-right", "ember")                               # a person, on wall-right's card
+        await ticks(r, 0.1)
+        chip = pick_chip(r)
+        assert {k: v for k, v in chip.items() if k != "value"} == {
+            "id": contract.SCREEN_PICK, "kind": contract.SCREEN_PICK, "label": "Colours: Ember (picked on a screen)",
+            "expires_in_s": None}
+        assert chip["value"] == {"palette": "ember", "label": "Ember", "screen": "wall-right",
+                                 "at": pytest.approx(w, abs=1e-3), "source": "web"}
+        snap = r.d.snapshot()
+        assert snap["engaged"] and r.d.provides()["engaged"]() is True     # Auto won't leave the mode under it
+        assert snap["screens_palette"]["hold"] == chip["value"]
+        assert snap["screens_palette"]["why"] == "held: Ember was picked on a screen"
+        json.dumps(snap)
+        before = r.colours()
+        r.d.set_palette("rainbow")                                     # the director moves on...
+        await ticks(r, 2.0)
+        assert r.d.look["palette"]["name"] == "rainbow" and r.colours() != before   # ...the lamps follow it...
+        assert len(room.patches) == n                                  # ...the screens don't: every one is held
+        r.room["screens"]["wall-third"] = dict(LIVE)                   # a screen going live: held too
+        await ticks(r, 0.5)
+        assert len(room.patches) == n
+        for palette, label in (("zz-unknown", "zz-unknown"), ({"stops": ["#ff0000", "#0000ff"]}, "custom colours"),
+                               (None, "the scene's own"), ("gold", "Gold")):     # null: the card's own words
+            room.emit("wall-left", palette)                            # a newer pick replaces it: the chip follows
+            await ticks(r, 0.1)
+            assert [c["label"] for c in r.d.chips() if c["kind"] == contract.SCREEN_PICK] == [
+                f"Colours: {label} (picked on a screen)"]
+            assert r.d.screen_pick["palette"] == palette and r.d.screen_pick["screen"] == "wall-left"
+        assert len(room.patches) == n and r.d.snapshot()["screens_palette"]["picks"] == 5
+
+    go(r, room, body)
+    picked = [e for e in logged(r, "screen_pick") if e["what"] == "picked"]
+    assert len(picked) == 5 and all(e["held"] for e in picked) and picked[0]["event"]["palette"] == "ember"
+    lines = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"screen_pick"' in z]
+    assert len(lines) == 5                                             # in director.jsonl too
+
+
+@pytest.mark.parametrize("how", ["chip", "all", "mode"])
+def test_the_hold_ends_by_the_chip_back_to_auto_or_a_mode_change_and_resends_at_once(tmp_path, how):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        r.d.set_target("alpha")
+        r.d.step("wilder")                                             # another nudge: × clears only the hold
+        await ticks(r, 0.5)
+        room.emit("wall-left", "ember")
+        await ticks(r, 0.5)
+        n = len(room.patches)
+        if how == "chip":
+            assert r.d.clear(contract.SCREEN_PICK) == [contract.SCREEN_PICK] and r.d.steps == 1
+        elif how == "all":
+            assert sorted(r.d.clear("all")) == sorted(["steps", contract.SCREEN_PICK])
+        else:
+            r.d.on_mode_change("m1", "m2")
+        assert r.d.screen_pick is None and pick_chip(r) is None
+        await ticks(r, 0.1)                                            # at once, to every live screen
+        assert room.sent(n) == [("wall-left", {**NEON, "source": contract.SHOW_SOURCE}),
+                                ("wall-right", {**NEON, "source": contract.SHOW_SOURCE})]
+        await ticks(r, 1.0)
+        assert r.d.screen_pick is None and len(room.patches) == n + 2   # our own echoes are not picks
+        snap = r.d.snapshot()
+        assert snap["screens_palette"]["hold"] is None and snap["screens_palette"]["why"] is None
+        assert snap["engaged"] == (how == "chip")                      # the steps stay only after the ×
+
+    go(r, room, body)
+    cleared = [e for e in logged(r, "screen_pick") if e["what"] == "cleared"]
+    assert [e["why"] for e in cleared] == [{"chip": "the chip's ×", "all": "back to auto",
+                                            "mode": "the mode changed"}[how]]
+    assert cleared[0]["pick"]["palette"] == "ember"
+
+
+def test_the_hold_is_persisted_and_restored_until_the_mode_differs(tmp_path):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        room.emit("wall-left", "ember")
+        await ticks(r, 0.1)
+
+    go(r, room, body)
+    saved = json.loads(json.dumps(r.d.persist()))
+    assert saved["nudges"][contract.SCREEN_PICK] == {k: v for k, v in r.d.screen_pick.items()}
+    assert saved["nudges"][contract.SCREEN_PICK]["label"] == "Ember"
+
+    for sub, mode, held in (("same", "m1", True), ("other", "m2", False)):
+        (tmp_path / sub).mkdir()
+        r2, room2 = hold_rig(tmp_path / sub)
+        r2.d.restore(saved)
+        assert pick_chip(r2)["label"] == "Colours: Ember (picked on a screen)"
+        r2.room["current"] = mode
+
+        async def body2():
+            await ticks(r2, 0.5)
+
+        go(r2, room2, body2)
+        if held:                                                       # the same mode: still held, nothing sent
+            assert r2.d.screen_pick["palette"] == "ember" and room2.patches == []
+            assert r2.d.snapshot()["engaged"]
+        else:                                                          # another mode: it ends, and ours goes out
+            assert r2.d.screen_pick is None and [s for s, _ in room2.sent()] == ["wall-left", "wall-right"]
+
+    r3, _ = hold_rig(tmp_path / "junk" if (tmp_path / "junk").mkdir() is None else tmp_path)
+    r3.d.restore({"nudges": {contract.SCREEN_PICK: "junk"}})
+    assert r3.d.screen_pick is None
+    r3.d.restore({"nudges": {contract.SCREEN_PICK: {"palette": None, "screen": 5, "at": "x"}}})
+    assert r3.d.screen_pick["label"] == "the scene's own" and r3.d.screen_pick["screen"] == ""
+    assert r3.d.screen_pick["at"] == r3.wall and r3.d.screen_pick["source"] is None
+
+
+def test_hold_hand_picks_false_only_logs_and_turning_it_off_ends_a_hold(tmp_path):
+    r, room = hold_rig(tmp_path)
+
+    async def body():
+        r.d.set_target("alpha")
+        await ticks(r, 0.5)
+        room.emit("wall-left", "ember")
+        await ticks(r, 0.1)
+        assert r.d.screen_pick is not None
+        n = len(room.patches)
+        off = json.loads(json.dumps(SETTINGS))
+        off["director"]["screens"] = {"hold_hand_picks": False}
+        r.d.configure(off)                                             # hot-reloaded off: the hold ends at once
+        await ticks(r, 0.1)
+        assert r.d.screen_pick is None and [s for s, _ in room.sent(n)] == ["wall-left", "wall-right"]
+        room.emit("wall-right", "gold")                                # a pick now is only logged
+        await ticks(r, 0.5)
+        assert r.d.screen_pick is None and pick_chip(r) is None and not r.d.snapshot()["engaged"]
+        r.d.set_palette("rainbow")
+        await ticks(r, 0.5)                                            # and the director sends as in Stage 4
+        assert [(s, b["palette"]) for s, b in room.sent(n + 2)] == [("wall-left", "rainbow"), ("wall-right", "rainbow")]
+
+    go(r, room, body)
+    picks = [e for e in logged(r, "screen_pick")]
+    assert [(e["what"], e.get("held")) for e in picks] == [("picked", True), ("cleared", None), ("picked", False)]
+    assert "hold_hand_picks" in picks[1]["why"]
+
+
+def test_the_hold_settings_and_bad_values(tmp_path):
+    s = json.loads(json.dumps(SETTINGS))
+    s["director"]["screens"] = {"hold_hand_picks": "yes", "own_echo_s": "soon"}
+    r = Rig(tmp_path, settings=s)
+    assert any("director.screens.hold_hand_picks" in p for p in r.d.settings_problems)
+    assert any("director.screens.own_echo_s" in p for p in r.d.settings_problems)
+    assert r.d.cfg["screens"]["hold_hand_picks"] is True and r.d.cfg["screens"]["own_echo_s"] == 3.0
+    s["director"]["screens"] = {"own_echo_s": 1.5}
+    r.d.configure(s)
+    assert r.d.cfg["screens"]["own_echo_s"] == 1.5 and not r.d.settings_problems
+    r.d.on_room_event("log", {"level": "info", "msg": "x"})            # other events, and junk: nothing
+    r.d.on_room_event(contract.ROOM_SCREEN_LOOK, "junk")
+    # README S5.14: no feel playing, so the director isn't sending the screens' palette: a pick is only logged
+    r.d.on_room_event(contract.ROOM_SCREEN_LOOK, {"palette": "ember"})
+    assert r.d.screen_pick is None and not r.d.snapshot()["engaged"]
+    r.d.set_target("alpha")
+    r.run(0.3)
+    r.d.on_room_event(contract.ROOM_SCREEN_LOOK, {"palette": "ember"})   # no screen: still a person's pick
+    assert r.d.screen_pick["screen"] == "" and r.d.screen_pick["source"] is None
+    assert "on_room_event" in r.d.provides()
+    # send_palette off (hot-reloaded): the director isn't sending, so the hold ends and a new pick is only logged
+    s["director"]["screens"] = {"send_palette": False}
+    r.d.configure(s)
+    r.run(0.3)
+    assert r.d.screen_pick is None and not r.d.snapshot()["engaged"]
+    r.d.on_room_event(contract.ROOM_SCREEN_LOOK, {"palette": "gold", "screen": "wall-left"})
+    assert r.d.screen_pick is None
+    picks = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"screen_pick"' in z]
+    assert [(e["what"], e.get("held"), e.get("why")) for e in picks] == [
+        ("picked", False, "no feel is playing"), ("picked", True, None),
+        ("cleared", None, "show.yaml director.screens.send_palette is off"),
+        ("picked", False, "director.screens.send_palette is off")]
+
+
+def test_the_hold_through_roomlink_and_a_fake_rooms_events(tmp_path):
+    """The real RoomLink against a fake room on an ephemeral 127.0.0.1 port (never room's): PATCH
+    /api/v1/screens/{id}/look emits screen.look on WS /api/v1/events as room_service does (the new room: with
+    ``source``; the old: 400 bad_request for it, events without one); status carries service.started_at."""
+    from aiohttp import web
+    from show_service.autopilot import RoomLink
+
+    class Room:
+        def __init__(self) -> None:
+            self.new = True
+            self.started_at = "2026-10-16T09:00:00+00:00"
+            self.patches: list[tuple[str, dict]] = []
+            self.clients: set = set()
+
+        def status(self) -> dict:
+            return {"service": {"version": "x", "started_at": self.started_at},
+                    "mode": {"current": "m1", "target": None, "transition": None, "last_transition": None},
+                    "screens": {s: {"observed": {"layer": "live", "phase": "live"}} for s in ("wall-left", "wall-right")},
+                    "subsystems": {}, "stored": {}, "config": {"revision": "r1", "error": None}}
+
+        async def start(self) -> None:
+            async def h_status(q):
+                return web.json_response(self.status())
+
+            async def h_config(q):
+                return web.json_response({"config": {"modes": {"m1": {"label": "M1"}}}, "revision": "r1"})
+
+            app = web.Application()
+            app.router.add_get("/api/v1/status", h_status)
+            app.router.add_get("/api/v1/room/config", h_config)
+            app.router.add_get("/api/v1/events", self.h_events)
+            app.router.add_patch("/api/v1/screens/{id}/look", self.h_look)
+            self.runner = web.AppRunner(app, shutdown_timeout=0.2)
+            await self.runner.setup()
+            site = web.TCPSite(self.runner, "127.0.0.1", 0)
+            await site.start()
+            port = self.runner.addresses[0][1]
+            assert port not in (6454, 6980, 6981, 6982, 8700, 8701, 8702, 8703)
+            self.url = f"http://127.0.0.1:{port}"
+
+        async def h_events(self, q):
+            ws = web.WebSocketResponse()
+            await ws.prepare(q)
+            await ws.send_json({"type": "status", "data": self.status()})
+            self.clients.add(ws)
+            try:
+                async for _ in ws:
+                    pass
+            finally:
+                self.clients.discard(ws)
+            return ws
+
+        async def send(self, msg: dict) -> None:
+            for ws in list(self.clients):
+                await ws.send_json(msg)
+
+        async def h_look(self, q):
+            sid = q.match_info["id"]
+            b = await q.json()
+            self.patches.append((sid, dict(b)))
+            src = b.pop("source", None)
+            if src is not None and not self.new:
+                return web.json_response({"error": "bad_request", "detail": "test"}, status=400)
+            await self.pick(sid, b["palette"], src or "web", sorted(b))
+            return web.json_response({"screen": sid})
+
+        async def pick(self, sid: str, palette, source: str = "web", changed=("palette",)) -> None:
+            evt = {"screen": sid, "session": "s-" + sid, "changed": list(changed), "palette": palette}
+            if self.new:
+                evt["source"] = source
+            await self.send({"type": "screen.look", "data": evt})
+
+    r = Rig(tmp_path, clock=True)
+    room = Room()
+
+    async def main():
+        await room.start()
+        loop = asyncio.get_running_loop()
+        r.ctx.loop = loop
+        link = RoomLink(r.ctx)
+        for k, v in link.provides().items():
+            setattr(r.ctx, k, v)
+        r.ctx.on_room_event.append(r.d.provides()["on_room_event"])    # as brain.add does
+        link.configure({"room": {"url": room.url}})
+        link.start()
+
+        async def until(pred, limit: int = 300) -> None:
+            for _ in range(limit):
+                if pred():
+                    return
+                r.t = round(r.t + 0.1, 6)
+                r.wall += 0.1
+                r.d.tick(r.t)
+                await asyncio.sleep(0.01)
+            raise AssertionError("never happened")
+
+        try:
+            await until(lambda: link.view()["reachable"] and link.view()["screens"])
+            assert r.ctx.room_boot() == room.started_at
+            r.d.set_target("alpha")
+            await until(lambda: len(room.patches) == 2 and r.d._look_source == "yes")
+            assert [b.get("source") for _, b in room.patches] == [contract.SHOW_SOURCE] * 2
+            await until(lambda: r.d.snapshot()["screens_palette"]["own_echoes"] == 2)
+            assert r.d.screen_pick is None
+            await room.pick("wall-left", "ember")                      # a person, on the screen's card
+            await until(lambda: r.d.screen_pick is not None)
+            assert pick_chip(r)["label"] == "Colours: Ember (picked on a screen)"
+            r.d.set_palette("rainbow")
+            for _ in range(20):                                        # 2 s of ticks
+                r.t = round(r.t + 0.1, 6)
+                r.d.tick(r.t)
+                await asyncio.sleep(0.005)
+            assert len(room.patches) == 2                              # held
+            assert r.d.clear(contract.SCREEN_PICK) == [contract.SCREEN_PICK]
+            await until(lambda: len(room.patches) == 4)
+            assert [(s, b["palette"]) for s, b in room.patches[2:]] == [("wall-left", "rainbow"),
+                                                                       ("wall-right", "rainbow")]
+            assert link.snapshot()["stats"]["room_events"].get(contract.ROOM_SCREEN_LOOK, 0) >= 3
+            # room_service restarts with the old code: a new boot, the probe again, refused, sent without
+            room.new = False
+            room.started_at = "2026-10-16T10:00:00+00:00"
+            await room.send({"type": "status", "data": room.status()})
+            await until(lambda: r.d.snapshot()["screens_palette"]["boot"] == room.started_at)
+            r.d.set_palette("gold")
+            await until(lambda: len(room.patches) == 7)
+            assert [("source" in b, b["palette"]) for _, b in room.patches[4:]] == [
+                (True, "gold"), (False, "gold"), (False, "gold")]
+            await until(lambda: r.d.snapshot()["screens_palette"]["own_echoes"] >= 6)
+            assert r.d._look_source == "no" and r.d.screen_pick is None   # our echoes without source: not picks
+            await room.pick("wall-right", "ice")                       # the old room's event: no source
+            await until(lambda: r.d.screen_pick is not None)
+            assert r.d.screen_pick["palette"] == "ice" and r.d.screen_pick["source"] is None
+        finally:
+            link.stop()
+            r.d.stop()
+            for ws in list(room.clients):
+                await ws.close()
+            await room.runner.cleanup()
+            await asyncio.sleep(0.05)
+
+    asyncio.run(main())
+
+
+# -- Stage 5: the lamps from the fixture registry, look_fn (README S5.8) ---------------------------------------------------
+def registry_view(fixtures: dict | None = None) -> dict:
+    """A contract.RigView with this file's made-up names: two screens, lamps by placement, a lamp with its own role,
+    an intensity-only fixture (not one of the director's lamps)."""
+    types = {"tvt": {"id": "tvt", "kind": "screen", "attrs": ["colour"]},
+             "lampt": {"id": "lampt", "kind": "lamp", "attrs": ["intensity", "colour"]},
+             "dimt": {"id": "dimt", "kind": "lamp", "attrs": ["intensity"]}}
+    fx = fixtures if fixtures is not None else {
+        "tv.left": {"id": "tv.left", "type": "tvt", "screen": "wall-left", "label": "L"},
+        "tv.right": {"id": "tv.right", "type": "tvt", "screen": "wall-right", "label": "R"},
+        "lamp.one": {"id": "lamp.one", "type": "lampt", "screen": "wall-left", "placement": "over"},
+        "lamp.two": {"id": "lamp.two", "type": "lampt", "screen": "wall-left", "placement": "facing"},
+        "par.new": {"id": "par.new", "type": "lampt", "screen": "wall-right", "placement": "over", "role": "keylight"},
+        "dim.x": {"id": "dim.x", "type": "dimt"}}
+    return {"revision": "test", "path": "test", "error": None, "problems": [], "outputs": {}, "nodes": {},
+            "types": types, "fixtures": fx, "groups": {}}
+
+
+def test_the_lamps_and_screens_come_from_the_registry(tmp_path):
+    r = Rig(tmp_path, clock=True)
+    view = registry_view()
+    r.ctx.rig = lambda: view
+    r.d.set_target("alpha")
+    r.run(3.0)
+    p = r.d.snapshot()["patch"]
+    assert p["from"] == "fixtures.yaml" and p["screens"] == ["tv.left", "tv.right"]
+    assert p["lamps"] == {"lamp.one": "wash", "lamp.two": "keylight", "par.new": "keylight"}   # its own role wins
+    cols = r.colours()
+    assert {"lamp.one", "lamp.two", "par.new", "tv.left", "tv.right"} <= set(cols) and "dim.x" not in cols
+    assert "lamp.three" not in cols                                  # patch.yaml's layout isn't used
+    look = r.d.look_fn()
+    assert look is r.d.look and look["lamps"]["par.new"]["role"] == "keylight"
+    assert set(look["screens"]) == {"tv.left", "tv.right"}
+    assert max(cols["tv.left"]) == pytest.approx(1.0, abs=1e-6)          # screens are never scaled
+    # an error with no fixtures, or no rig at all: patch.yaml's layout, as before Stage 5
+    view = dict(registry_view({}), error="bad yaml")
+    r.ctx.rig = lambda: view
+    r.run(0.3)
+    p = r.d.snapshot()["patch"]
+    assert p["from"] == "patch.yaml" and set(p["lamps"]) == {"lamp.one", "lamp.two", "lamp.three", "lamp.four"}
+    r.ctx.rig = None
+    r.run(0.3)
+    assert r.d.snapshot()["patch"]["from"] == "patch.yaml"
+
+
+def test_look_fn_is_none_until_the_first_compose(tmp_path):
+    ctx = contract.BrainContext(publish=lambda m: None)
+    (tmp_path / "vocab.yaml").write_text(VOCAB)
+    (tmp_path / "vibes.yaml").write_text(VIBES)
+    d = dmod.Director(ctx, vibes=Vibes(tmp_path / "vibes.yaml", vocab_path=tmp_path / "vocab.yaml"),
+                      catalog=pal.Catalog(), patch_path=tmp_path / "missing.yaml", log_path=None)
+    assert d.look_fn() is None
+    assert dmod.layout_from_rig(None) is None and dmod.layout_from_rig({"fixtures": {}}) is None
+    lamps, screens = dmod.layout_from_rig(registry_view())
+    assert set(lamps) == {"lamp.one", "lamp.two", "par.new"} and set(screens) == {"tv.left", "tv.right"}
+    assert lamps["par.new"] == {"kind": "lamp", "screen": "wall-right", "placement": "over", "label": "par.new",
+                                "role": "keylight", "house": None}
+
+
+# -- README S5.14: the review fixes ------------------------------------------------------------------------------------
+def test_an_unforeseen_drop_is_lookdatas_and_swells_on_the_virtual_maestros_lamps(tmp_path):
+    """An unarmed drop's hit: LookData.hit with predicted false; palette_fn never carries it (each rig output takes it
+    by its caps); maestro_palette_fn (the virtual Maestro's lamps are Hue's, P0-P4) swells: >= 300 ms up."""
+    r = stage4_rig(tmp_path)
+    r.event("build", r.t - 8.0, section_id=0, phase="build", build_progress=0.5)
+    r.run(0.2)
+    r.sec["phase"] = "drop"
+    r.event("drop", r.t - 0.1, section_id=1, strength=0.8)
+    r.run(0.1)
+    h = r.d._hit
+    assert h is not None and h[3] is False
+    lh = r.d.look["hit"]
+    assert lh["predicted"] is False and lh["swell_ms"] == 300.0 and set(lh["lamps"]) == set(r.d.look["lamps"])
+    assert set(lh["lamps"]).isdisjoint({"tv.left", "tv.right"})          # never a screen
+    t0, t1 = h[0], h[1]
+    base = r.d.palette_fn(t0 + 0.01)
+    assert all(base[k] != pytest.approx(h[2][k]) for k in h[2] if max(h[2][k]) - max(base[k]) > 0.05)
+    lamp = max(sorted(h[2]), key=lambda k: max(h[2][k]) - max(base[k]))   # the lamp the hit lifts most
+    lift = max(h[2][lamp]) - max(base[lamp])
+    assert lift > 0.02
+    levels = [(t0 + i * 0.01, max(r.d.maestro_palette_fn(t0 + i * 0.01)[lamp])) for i in range(0, 60)]
+    full = next(t for t, v in levels if v >= max(h[2][lamp]) - 1e-6)
+    assert full - t0 >= 0.3 - 1e-9                                    # a swell, not a reactive hit (§5.4)
+    assert max(b[1] - a[1] for a, b in zip(levels, levels[1:])) < 0.1 * lift + 1e-9
+    for k in ("tv.left", "tv.right"):                                 # screens: never
+        assert r.d.maestro_palette_fn(t0 + 0.3)[k] == r.d.palette_fn(t0 + 0.3)[k]
+    assert r.d.maestro_palette_fn(t1 + 0.31)[lamp] == pytest.approx(r.d.palette_fn(t1 + 0.31)[lamp])
+    r.run_to(t1 + 0.15)
+    assert r.t < t1 + 0.3 and r.d._hit is not None                    # kept while its swell falls back
+    r.run_to(t1 + 0.45)
+    assert r.d._hit is None and r.d.look["hit"] is None
+
+
+def _cct(rgb) -> float:
+    """McCamy's CCT from sRGB (fine near the Planckian locus, which is where a key light is)."""
+    lin = [pal._lin(c) for c in rgb]
+    X = 0.4124564 * lin[0] + 0.3575761 * lin[1] + 0.1804375 * lin[2]
+    Y = 0.2126729 * lin[0] + 0.7151522 * lin[1] + 0.0721750 * lin[2]
+    Z = 0.0193339 * lin[0] + 0.1191920 * lin[1] + 0.9503041 * lin[2]
+    x, y = X / (X + Y + Z), Y / (X + Y + Z)
+    n = (x - 0.3320) / (0.1858 - y)
+    return 449 * n ** 3 + 3525 * n ** 2 + 6823.3 * n + 5520.33
+
+
+def test_the_key_light_stays_at_key_cct_in_the_warm_white_feels(tmp_path):
+    """README S5.14 (§8.8: the key is warm white, 2400-3000 K, in the quiet feels). The real vibes.yaml and show.yaml:
+    every feel whose lamp_chroma_max is a faint tint, every role with a white. A neutral palette leaves the key at
+    its key_cct; a coloured one tints it at most lamp_chroma_max (OKLab) from that white, never into the avoided
+    hues. It used to be cut to an absolute chroma, which dragged a 2700 K white to ~5000 K, lavender or lime."""
+    show = yaml.safe_load(contract.SHOW_FILE.read_text())
+    r = Rig(tmp_path, settings={"lamps": show["lamps"], "director": show["director"]})
+    real = Vibes(contract.VIBES_FILE, palette_names=r.d.palettes.names)
+    real.poll(force=True)
+    roles = {n: rc for n, rc in r.d.lamps_cfg["roles"].items() if rc.get("white_k")}
+    assert roles
+    quiet = [n for n in real.names() if (real.get(n)["lamp_chroma_max"] or 1.0) <= 0.06]
+    assert quiet
+    greys = ("#ffffff", "#808080", "#f0f0f0")
+    coloured = ("#2050ff", "#00c8b0", "#ff0000", "#00ff00", "#a000ff", "#ffe000", "#ff8080")
+    checked = 0
+    for vibe in quiet:
+        vs = real.get(vibe)
+        wk, cm = float(vs["key_cct"]), float(vs["lamp_chroma_max"])
+        w_lab = pal.to_oklab(pal.white(wk))
+        for rn, rc in roles.items():
+            ah = rc.get("avoid_hues") or []
+            for sat in (float(vs["saturation"][0]), float(vs["saturation"][1]), 1.0):
+                for hx in greys + coloured:
+                    look_pal = {"roles": {k: {"hex": hx} for k in contract.PALETTE_ROLES}}
+                    c = r.d._lamp_colour({"placement": None, "screen": None}, rc, look_pal, {}, vs, sat, 0.0, 0.0,
+                                         0, r.t)
+                    lab = pal.to_oklab(c)
+                    L, C, h = pal.to_oklch(c)
+                    assert not any(lo <= h <= hi for lo, hi in ah) or C < 1e-3, (vibe, hx, h)
+                    if hx in greys:
+                        assert abs(_cct(c) - wk) <= 200.0, (vibe, rn, hx, _cct(c))
+                    else:                                             # a faint tint of the white, at most cm away
+                        tint = math.hypot(lab[1] * w_lab[0] / lab[0] - w_lab[1], lab[2] * w_lab[0] / lab[0] - w_lab[2])
+                        assert tint <= cm + 0.02, (vibe, hx, tint)
+                        assert abs(_cct(c) - wk) <= 20000.0 * cm, (vibe, rn, hx, _cct(c))
+                        assert _cct(c) < 4000.0                       # never the old ~5000 K, lavender or lime
+                    checked += 1
+    assert checked >= 40
+    # the old failure cases, one by one (vibes with key_cct 2700 and lamp_chroma_max 0.04)
+    for hx in ("#2050ff", "#00c8b0"):
+        c = dmod.white_tint(pal.white(2700), pal.scale_saturation(pal.full(pal.rgb_of(hx)), 0.6), 0.6, 0.04)
+        assert _cct(pal.full(c)) < 3600 and not 140 <= pal.to_oklch(c)[2] <= 230
+    assert dmod.white_tint(pal.white(2700), (1.0, 1.0, 1.0), 0.6, 0.04) == pytest.approx(pal.white(2700), abs=2e-3)
+    blue = pal.full(pal.rgb_of("#2050ff"))                            # no cap: the old mix (full colour at 1)
+    assert dmod.white_tint(pal.white(3000), blue, 1.0, None) == pytest.approx(blue, abs=2e-3)
+
+
+def test_house_lights_use_the_fixtures_own_house_when_room_has_none(tmp_path):
+    """README S5.14: a fixture room knows nothing about (every DMX fixture) takes its fixtures.yaml ``house`` under
+    House lights and as the start of an entry fade, before show.yaml's director.house (§8.4: 80 % warm white)."""
+    r = Rig(tmp_path, clock=True)
+    fx = {"tv.left": {"id": "tv.left", "type": "tvt", "screen": "wall-left"},
+          "lamp.one": {"id": "lamp.one", "type": "lampt", "screen": "wall-left", "placement": "over"},
+          "spot.dark": {"id": "spot.dark", "type": "lampt", "placement": "over",
+                        "house": {"intensity": 0, "hex": "#ffffff"}},
+          "spot.red": {"id": "spot.red", "type": "lampt", "placement": "over",
+                       "house": {"intensity": 0.5, "hex": "#ff0000"}},
+          "spot.bad": {"id": "spot.bad", "type": "lampt", "placement": "over", "house": {"hex": "nope"}}}
+    view = registry_view(fx)
+    r.ctx.rig = lambda: view
+    r.room = {"current": "x", "screens": {}, "stored_restore": {"lamp.one": {"on": True, "bri": 50, "mirek": 370}}}
+    r.run(0.2)
+    t_entry = r.t + 0.1
+    r.d.set_target("alpha")
+    r.run(0.1)
+    start = r.d.palette_fn(t_entry)                                   # the entry fade starts from the house state
+    assert start["spot.dark"] == pytest.approx((0.0, 0.0, 0.0), abs=1e-9)
+    assert start["spot.red"] == pytest.approx((0.5, 0.0, 0.0))
+    warm = pal.scale_level(pal.white(2700), 0.8)
+    assert start["spot.bad"] == pytest.approx(warm)                   # doesn't read: show.yaml's house
+    assert start["lamp.one"] == pytest.approx(pal.scale_level(pal.white(1e6 / 370), 0.5))   # room's stored state
+    r.run(9.0)
+    r.d.action("house")
+    r.run(1.0)
+    c = r.colours()
+    assert c["spot.dark"] == (0.0, 0.0, 0.0) and c["spot.red"] == pytest.approx((0.5, 0.0, 0.0))
+    assert c["spot.bad"] == pytest.approx(warm)
+    assert max(c["tv.left"]) == pytest.approx(1.0)                    # screens: never

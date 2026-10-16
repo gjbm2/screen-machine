@@ -57,17 +57,38 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
     to a new look with a unison hit on the lamps at the line; an unarmed drop with a token hits at once and cuts at
     the first bar line structure.events.min_lead_s ahead (the screens' lead, §5.4); without a token the drop shows
     inside the look; a breakdown lifts the floor and slows and
-    desaturates the lamps. Screens are never dipped or hit (palette_fn's hit only carries lamps).
+    desaturates the lamps. Screens are never dipped or hit (the hit only carries lamps). The hit is LookData.hit
+    (with ``predicted`` and show.yaml ``director.build.hit_swell_ms``), never palette_fn: each rig output takes it by
+    its caps (looks.py), and ``maestro_palette_fn`` lays it over the virtual Maestro's lamps as Hue takes it (a
+    predicted line's hit at the line, an unforeseen drop's as a slow swell, §5.4). LookData.dip says the pre-drop dip
+    is on (no music.hit flashes over it).
   * Screens' palette (agreed with 2f and 04, 16 Oct): when the look's palette changes to a renderer catalog name, it
     goes to every live screen through the room (PATCH /api/v1/screens/{id}/look {palette, palette_transition_s});
     an art palette has no renderer name, so the screens keep their own (the snapshot says so).
+
+**The screens' hand-pick hold** (Stage 5, README S5.8; agreed with 2f, 16 Oct). Our look PATCHes carry
+``source: "show_service"`` unless this room boot refused it (the probe: a 2xx with it, or any ``screen.look`` event
+carrying a ``source``, is ``yes``; a 400 ``bad_request`` is the old room: ``no``, and the PATCH goes again at once
+without it; a new ``ctx.room_boot()`` probes again). Room's ``screen.look`` events come in through ``on_room_event``.
+One with a ``palette`` that isn't ours (ours: source ``show_service``, or the palette we last sent that screen within
+``director.screens.own_echo_s``) is a person's pick: while ``hold_hand_picks`` is on, the director stops sending the
+screens' palette (to every screen), shows the chip ``screen_pick`` ("Colours: <label> (picked on a screen)"), and
+counts as engaged. It ends at the next mode change, Back to auto, or the chip's ×; then what was sent is forgotten,
+so the director's palette goes back to every live screen at once. The lamps never change for it. Persisted with the
+other nudges.
 
 **Neutral.** No target, or a vibe that isn't in vibes.yaml: ``palette_fn`` returns None (artnet_out keeps its fixed
 colour), ``set_look_out`` and ``set_gate_ref`` are left alone (put back to their defaults once, if we had moved them),
 and room.direction / room.look are still published with ``vibe: null``.
 
-``palette_fn(t)`` (show-artnet, any thread) returns the dict built on show-brain, swapped by reference; only a
-crossfade's OKLab lerp runs in the call.
+``palette_fn(t)`` (the rig's look engine, any thread) returns the dict built on show-brain, swapped by reference;
+only a crossfade's OKLab lerp runs in the call. ``maestro_palette_fn(t)`` (show-artnet) is the same plus the drop's
+hit as Hue takes it (README S5.14).
+
+**set_look_out** (artnet_out's and the rig's): ``hue_depth`` (the accent depth, 0 unless the clock's gate is beat),
+``beat_lock`` (the vibe's own) and ``beat_depth`` (the accent depth before the gate, for DMX at middle confidence,
+§5.4; artnet_out never gets it). A key role's white (``white_k``) is tinted toward the palette at most ``chroma_max``
+from that white (``white_tint``), so the key light stays near key_cct (§8.8).
 """
 
 from __future__ import annotations
@@ -90,7 +111,10 @@ from .vibes import Vibes
 log = logging.getLogger("show_service.director")
 
 # -- fixed vocabulary and timing ---------------------------------------------------------------------------------------
-SCREEN_KIND = "screen"              # patch.yaml device kind (room_service/dmx/patch.py KINDS): the renderer's fixtures
+SCREEN_KIND = "screen"              # patch.yaml device kind (room_service/dmx/patch.py KINDS): the renderer's fixtures;
+                                    # also a fixtures.yaml type's kind (contract.FIXTURE_KINDS)
+LAMP_KIND = "lamp"                  # contract.FIXTURE_KINDS: a fixtures.yaml type's kind for a lamp (Stage 5)
+COLOUR_ATTR = "colour"              # contract TypeInfo.attrs: a type the engine can colour
 RGB_FIELDS = ("r", "g", "b")
 RENDERER_CATALOG_PATH = "/renderer/api/catalog"      # stream_service's catalog through room's one front door
 ART_PATHS = ("/api/v1/screens/{id}/art",                 # the live art feed: the TV's art now, as on the glass
@@ -150,6 +174,9 @@ EVENTS_LEAD_S = 1.1                 # show.yaml structure.events.min_lead_s (sta
                                     # song's look (with its GOBO step) lands on a bar at least this far ahead
 SCREEN_LOOK_PATH = "/api/v1/screens/{id}/look"               # room's live look route (PATCH: palette)
 SCREENS_RETRY_S = 15.0              # a screen whose PATCH failed is tried again after this
+PICK_CUSTOM = "custom colours"      # the hold chip's words for a pick that has no name (README S5.8)
+PICK_SCENE = "the scene's own"      # ... for palette null: the Room page's own words for "The scene's own colours"
+SOURCE_REFUSED = (400, "bad_request")   # the old room's answer to a look PATCH with a key it doesn't know (S5.8)
 MUSIC_EVENTS_MAX = 64
 NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "chroma_max", "motion": False}
 
@@ -168,19 +195,21 @@ DIRECTOR_FALLBACK = {
     "sections": {"max_late_bars": 1.0, "express_gain": 0.5, "phase_hint_s": 1.5},
     "peaks": {"after_build_s": 30.0},
     "build": {"step_bars": 4.0, "step_bars_late": 2.0, "narrow": 0.6, "dip_level": 0.25, "dip_bars": 1.0,
-              "hit_beats": 1.0},
+              "hit_beats": 1.0, "hit_swell_ms": 300.0},
     "breakdown": {"floor_add": 0.1, "motion_scale": 0.5, "saturation_scale": 0.8},
     # the screens' palette (agreed with 2f and 04, 16 Oct): palette_transition_s is a starting point (the renderer's
-    # own default, LIVE_V1 §1.11); send_palette false turns it off (hot-reloaded)
-    "screens": {"send_palette": True, "palette_transition_s": 4.0}}
+    # own default, LIVE_V1 §1.11); send_palette false turns it off (hot-reloaded). Stage 5 (README S5.8): a person's
+    # pick on a screen holds (hold_hand_picks, hot-reloaded); own_echo_s is agreed with 2f (16 Oct)
+    "screens": {"send_palette": True, "palette_transition_s": 4.0, "hold_hand_picks": True, "own_echo_s": 3.0}}
 #: Stage 4's show.yaml director keys: section -> key -> (lowest, highest) allowed, or bool
 STAGE4_KEYS: dict[str, dict[str, Any]] = {
     "sections": {"max_late_bars": (0.0, 64.0), "express_gain": (0.0, 2.0), "phase_hint_s": (0.0, 10.0)},
     "peaks": {"after_build_s": (0.0, 600.0)},
     "build": {"step_bars": (0.25, 64.0), "step_bars_late": (0.25, 64.0), "narrow": (0.0, 1.0), "dip_level": (0.0, 1.0),
-              "dip_bars": (0.0, 16.0), "hit_beats": (0.0, 16.0)},
+              "dip_bars": (0.0, 16.0), "hit_beats": (0.0, 16.0), "hit_swell_ms": (300.0, 10000.0)},
     "breakdown": {"floor_add": (0.0, 1.0), "motion_scale": (0.0, 1.0), "saturation_scale": (0.0, 1.0)},
-    "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0)}}
+    "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0), "hold_hand_picks": bool,
+                "own_echo_s": (0.0, 60.0)}}
 
 
 def _c01(x: float) -> float:
@@ -281,6 +310,51 @@ def parse_patch(raw: Any) -> tuple[dict[str, dict], dict[str, dict]]:
     return lamps, screens
 
 
+def layout_from_rig(view: Any) -> Optional[tuple[dict[str, dict], dict[str, dict]]]:
+    """(lamps, screens) from the fixture registry (README S5.8, Stage 5): the ``lamp`` fixtures whose type has
+    ``colour`` in its attrs, and the ``screen`` fixtures, each ``{"kind", "screen", "placement", "label", "role",
+    "house"}`` (a fixture's own ``role`` wins over its placement; ``house`` is fixtures.yaml's, what House lights and
+    an entry fade start from when room has no stored state for it). None without a view that has fixtures (no rig,
+    or an error with no last good registry): the caller keeps patch.yaml's layout."""
+    fixtures = view.get("fixtures") if isinstance(view, dict) else None
+    if not isinstance(fixtures, dict) or not fixtures:
+        return None
+    types = view.get("types") if isinstance(view.get("types"), dict) else {}
+    lamps: dict[str, dict] = {}
+    screens: dict[str, dict] = {}
+    for fid, f in fixtures.items():
+        if not isinstance(f, dict):
+            continue
+        t = types.get(f.get("type")) if isinstance(types.get(f.get("type")), dict) else {}
+        kind = t.get("kind") or f.get("kind")
+        info = {"kind": kind, "screen": f.get("screen") if isinstance(f.get("screen"), str) else None,
+                "placement": f.get("placement") if isinstance(f.get("placement"), str) else None,
+                "label": str(f.get("label") or fid), "role": f.get("role") if isinstance(f.get("role"), str) else None,
+                "house": f.get("house") if isinstance(f.get("house"), dict) else None}
+        if kind == SCREEN_KIND:
+            screens[str(fid)] = info
+        elif kind == LAMP_KIND and COLOUR_ATTR in (t.get("attrs") or ()):
+            lamps[str(fid)] = info
+    return lamps, screens
+
+
+def white_tint(white: pal.Rgb, colour: pal.Rgb, amount: float, cap: Optional[float]) -> pal.Rgb:
+    """A role with a white (``white_k``): that white, tinted toward ``colour`` by ``amount`` (the look's saturation),
+    with the tint's OKLab (a, b) distance from the white at most ``cap`` (the role's ``chroma_max``; README S5.14).
+    A colour's neutral axis is re-anchored on the white in proportion to how achromatic it is, so a grey or white
+    palette leaves the white exactly as it is (the key light stays at key_cct, §8.8), and a fully coloured one moves
+    toward the colour itself, as far as the cap lets it (no cap: the old mix, the colour at amount 1)."""
+    Lw, aw, bw = pal.to_oklab(white)
+    Lc, ac, bc = pal.to_oklab(colour)
+    Cw, Cc = math.hypot(aw, bw), math.hypot(ac, bc)
+    s = min(1.0, Cc / Cw) if Cw > 1e-9 else 1.0
+    u = _c01(amount)
+    da, db, dL = u * (ac - s * aw), u * (bc - s * bw), u * s * (Lc - Lw)
+    d = math.hypot(da, db)
+    k = 1.0 if cap is None or d <= cap else max(0.0, cap) / d
+    return pal.from_oklab((Lw + dL * k, aw + da * k, bw + db * k))
+
+
 class Director:
     """Component ``director`` (contract.Component). Everything runs on show-brain except ``palette_fn``,
     ``snapshot`` and the ``provides`` readers, which read references swapped there."""
@@ -305,10 +379,14 @@ class Director:
         self.cfg: dict = json.loads(json.dumps(DIRECTOR_FALLBACK))
         self.lamps_cfg: dict = {"placement_roles": {}, "default_role": None, "roles": {}}
         self.settings_problems: list[str] = []
-        # patch
+        # patch (and, Stage 5, the fixture registry: ctx.rig)
         self.lamps: dict[str, dict] = {}
         self.screens: dict[str, dict] = {}
         self.patch_error: Optional[str] = None
+        self._patch_layout: tuple[dict, dict] = ({}, {})   # patch.yaml's (lamps, screens), the fallback
+        self._rig_seen: Any = None                         # the registry view the layout was last read from
+        self._rig_layout: Optional[tuple[dict, dict]] = None
+        self.lamps_from = "patch.yaml"                     # "fixtures.yaml" while the registry gives the layout
         self._patch_sig: Optional[tuple] = None
         # the target (L0) and nudges (L3), persisted
         self.target: Optional[contract.VibeTarget] = None
@@ -425,7 +503,8 @@ class Director:
         self._tokens: collections.deque = collections.deque()   # peak-token spends (monotonic s), the last hour
         self._armed: Optional[dict] = None               # a reserved token at a drop line: {"at_s", "section_id"}
         self._last_line_s: Optional[float] = None        # the last armed line that spent its token
-        self._hit: Optional[tuple] = None                # (t0, t1, {lamp: rgb}): the unison hit, read by palette_fn
+        self._hit: Optional[tuple] = None                # (t0, t1, {lamp: rgb}, predicted): the unison hit, in
+                                                         # LookData.hit and maestro_palette_fn (README S5.14)
         self._hit_want: Optional[tuple[float, float]] = None   # an unarmed drop's hit, coloured at the next compose
         self._build: Optional[dict] = None               # {"start_bar", "idx", "step_bar"}: the subdivision steps
         self._build_last_s: Optional[float] = None       # the last moment a build was heard
@@ -437,8 +516,14 @@ class Director:
         self.sec_stats: dict[str, Any] = {"events": {k: 0 for k in contract.MUSIC_EVENT_KINDS}, "looks": 0,
                                           "recalled": 0, "kept": 0, "expressed": 0, "tokens_spent": 0,
                                           "tokens_refused": 0, "tokens_refunded": 0}
-        self._scr: dict[str, Any] = {"palette": None, "sent": {}, "retry": {}, "busy": False, "why": "no feel is set",
-                                     "error": None, "live": [], "sends": 0}
+        self._scr: dict[str, Any] = {"palette": None, "sent": {}, "sent_at": {}, "retry": {}, "busy": False,
+                                     "why": "no feel is set", "error": None, "live": [], "sends": 0, "picks": 0,
+                                     "own_echoes": 0}
+        # Stage 5: the screens' hand-pick hold (README S5.8), all on show-brain
+        self.screen_pick: Optional[contract.ScreenPick] = None   # persisted as nudges.screen_pick
+        self._look_source = contract.LOOK_SOURCE_STATES[0]       # "unknown": does this room boot take {source}?
+        self._look_boot: Optional[str] = None            # the room boot (ctx.room_boot) that _look_source is about
+        self._echo: dict[str, tuple[Any, float]] = {}    # screen -> (palette we last PATCHed there, monotonic s)
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -446,13 +531,78 @@ class Director:
     # ================================================================================================================
     def provides(self) -> dict:
         return {"vibe": self._vibe_now, "target": self._target_now, "engaged": self._engaged_now,
-                "on_mode_change": self.on_mode_change, "on_music_event": self.on_music_event}
+                "on_mode_change": self.on_mode_change, "on_music_event": self.on_music_event,
+                "on_room_event": self.on_room_event}
 
     def on_music_event(self, ev: dict) -> None:
         """structure's room.event (contract.MusicEventData), on show-brain: queued for this tick (structure ticks
         first in the same 10 Hz beat)."""
         if isinstance(ev, dict) and ev.get("kind") in contract.MUSIC_EVENT_KINDS:
             self._mev.append(ev)
+
+    def on_room_event(self, type_: str, data: dict) -> None:
+        """A room WS event (autopilot.RoomLink, on show-brain). Only ``screen.look`` matters here (README S5.8): one
+        that carries a ``source`` says this room boot takes ours; one with a ``palette`` that isn't ours is a person's
+        pick on a screen, which holds the screens' palette while ``hold_hand_picks`` is on."""
+        if type_ != contract.ROOM_SCREEN_LOOK or not isinstance(data, dict):
+            return
+        source = data.get("source")
+        if "source" in data:
+            self._set_look_source(contract.LOOK_SOURCE_STATES[1], self._look_boot, "event")
+        if "palette" not in data:
+            return                                       # not a palette change (direction, auto, ...)
+        sc = self._scr
+        screen = data.get("screen") if isinstance(data.get("screen"), str) else ""
+        palette = data["palette"]
+        echo = self._echo.get(screen)
+        own_s = float(self.cfg["screens"]["own_echo_s"])
+        if source == contract.SHOW_SOURCE or (echo is not None and echo[0] == palette
+                                              and self._mono() - echo[1] <= own_s):
+            sc["own_echoes"] += 1
+            return
+        sc["picks"] += 1
+        scfg = self.cfg["screens"]
+        # a hold only means something while the director is sending the screens' palette: a vibe plays and
+        # send_palette is on (README S5.14); otherwise (and with hold_hand_picks off) the pick is only logged
+        why = None
+        if not scfg["hold_hand_picks"]:
+            why = "director.screens.hold_hand_picks is off"
+        elif self._vibe_name is None:
+            why = "no feel is playing"
+        elif not scfg["send_palette"]:
+            why = "director.screens.send_palette is off"
+        self._log_event("screen_pick", {"what": "picked", "event": dict(data), "held": why is None,
+                                        **({"why": why} if why else {})})
+        if why is not None:
+            return
+        self.screen_pick = {"palette": palette, "label": self._pick_label(palette), "screen": screen,
+                            "at": round(self._wall(), 3), "source": source if isinstance(source, str) else None}
+        self._changed()
+
+    def _pick_label(self, palette: Any) -> str:
+        """The chip's words for a pick: the catalog's label for a name, else the name; null (the screen card's "The
+        scene's own colours") reads as the scene's own; anything else "custom colours"."""
+        if isinstance(palette, str) and palette:
+            return self.palettes.label(palette)          # the name itself when the catalog doesn't know it
+        if palette is None:
+            return PICK_SCENE
+        return PICK_CUSTOM
+
+    def _set_look_source(self, state: str, boot: Optional[str], via: str) -> None:
+        """The probe's answer for ``boot`` (dropped when the room has restarted since); logged once per change."""
+        if boot != self._look_boot or state == self._look_source:
+            return
+        self._look_source = state
+        self._log_event("look_source", {"state": state, "boot": boot, "via": via})
+
+    def _end_pick(self, why: str) -> None:
+        """End the hold: forget what was sent, so the director's palette goes back to every live screen at once."""
+        pick, self.screen_pick = self.screen_pick, None
+        sc = self._scr
+        sc["sent"].clear()
+        sc["sent_at"].clear()
+        sc["retry"].clear()
+        self._log_event("screen_pick", {"what": "cleared", "why": why, "pick": pick})
 
     def _vibe_now(self) -> Optional[contract.VibeSettings]:
         return self._vs_pub
@@ -657,6 +807,14 @@ class Director:
         self._restore_check = self.mode is not None
         self.house = bool(n.get("house", False))
         self.low = bool(n.get("low", False)) and not self.house
+        sp = n.get(contract.SCREEN_PICK)
+        if isinstance(sp, dict) and "palette" in sp:     # the hold (S5.8); a junk record is dropped
+            src = sp.get("source")
+            self.screen_pick = {"palette": sp["palette"],
+                                "label": sp["label"] if isinstance(sp.get("label"), str) and sp["label"]
+                                else self._pick_label(sp["palette"]),
+                                "screen": sp["screen"] if isinstance(sp.get("screen"), str) else "",
+                                "at": _num(sp.get("at"), self._wall()), "source": src if isinstance(src, str) else None}
 
     def persist(self) -> Optional[dict]:
         k = self._keep_in()
@@ -665,7 +823,8 @@ class Director:
                 "target_source": self.target_source if self.target_source in ("mode", "api") else "mode",
                 "target_set_at": self.target_set_at, "mode": self.mode,
                 "nudges": {"steps": self.steps, "palette": self.palette_pick, "moods": list(self.moods)
-                           if self.moods else None, "keep_until": ku, "house": self.house, "low": self.low}}
+                           if self.moods else None, "keep_until": ku, "house": self.house, "low": self.low,
+                           contract.SCREEN_PICK: dict(self.screen_pick) if self.screen_pick else None}}
 
     def start(self) -> None:
         self.palettes.poll()
@@ -693,6 +852,7 @@ class Director:
             self.palettes.poll()
             self.vibes.poll()
             self._check_patch()
+        self._check_rig()
         self._fetches(now_s)
 
         vs, known = self._effective()
@@ -908,8 +1068,8 @@ class Director:
     def _changes(self, now_s: float, vs: dict, grid: Grid, cutting: bool) -> None:
         if self._vibe_name is None:
             return
-        if not self._phrase_passed and self.entered_s is not None and grid.phrase_s and grid.gate == "beat" \
-                and now_s - self.entered_s >= grid.phrase_s:
+        if not self._phrase_passed and self.entered_s is not None and grid.phrase_s and grid.gate in ("beat", "dmx") \
+                and now_s - self.entered_s >= grid.phrase_s:     # §8.6: locked (DMX's from middle confidence, §5.4)
             self._phrase_passed = True
         if grid.ok and self.look_bar is None:
             self.look_bar = grid.bar_at(now_s)
@@ -1445,8 +1605,9 @@ class Director:
             self._build = None
         if self._drop_inside_s is not None and phase != "drop":
             self._drop_inside_s = None
-        if self._hit is not None and now_s >= self._hit[1]:
-            self._hit = None
+        h = self._hit
+        if h is not None and now_s >= h[1] + (0.0 if h[3] else float(self.cfg["build"]["hit_swell_ms"]) / 1000.0):
+            self._hit = None                             # an unforeseen drop's swell falls back over swell_ms first
 
     def _hit_colours(self, look_pal: dict, vs: dict, now_s: float) -> dict[str, tuple]:
         """The unison hit: every lamp in the look's accent at full value, through its own role's limits (a key lamp's
@@ -1463,9 +1624,21 @@ class Director:
     def _screens_palette(self, now_s: float, room: Any) -> None:
         """A renderer catalog palette goes to every live screen once per change (PATCH /api/v1/screens/{id}/look,
         idempotent); an art palette has no renderer name, so the screens keep their own. A screen that leaves live is
-        forgotten, so it gets the palette again when it comes back."""
+        forgotten, so it gets the palette again when it comes back. Stage 5 (S5.8): a person's pick on a screen holds
+        every screen's palette (nothing is sent) until the hold ends."""
         sc = self._scr
         cfg = self.cfg["screens"]
+        boot = _call(getattr(self.ctx, "room_boot", None))
+        if isinstance(boot, str) and boot != self._look_boot:
+            if self._look_boot is not None and self._look_source != contract.LOOK_SOURCE_STATES[0]:
+                self._look_source = contract.LOOK_SOURCE_STATES[0]     # room restarted: probe again
+                self._log_event("look_source", {"state": self._look_source, "boot": boot, "via": "room_boot"})
+            self._look_boot = boot
+        if self.screen_pick is not None and not (cfg["hold_hand_picks"] and cfg["send_palette"]):
+            self._end_pick("show.yaml director.screens." + ("hold_hand_picks" if not cfg["hold_hand_picks"]
+                                                            else "send_palette") + " is off")   # hot-reloaded off
+            self._dirty()
+            self._notify()
         if isinstance(room, dict) and room.get("reachable") is False:
             sc["why"] = "the room isn't answering"         # keep what was sent: a blip is not a screen leaving live
             return
@@ -1473,6 +1646,7 @@ class Director:
         live = sorted(sid for sid, x in screens.items() if isinstance(x, dict) and x.get("layer") == "live")
         for sid in [x for x in sc["sent"] if x not in live]:
             del sc["sent"][sid]
+            sc["sent_at"].pop(sid, None)
         sc["live"] = live
         name = ((self.look or {}).get("palette") or {}).get("name") if self.known else None
         if self._pal_chosen == contract.PALETTE_ART:      # art not on hand yet: the lamps' stand-in stays theirs
@@ -1480,6 +1654,9 @@ class Director:
         sc["palette"] = name
         if not cfg["send_palette"]:
             sc["why"] = "off (show.yaml director.screens.send_palette)"
+            return
+        if self.screen_pick is not None:
+            sc["why"] = f"held: {self.screen_pick['label']} was picked on a screen"
             return
         if not self.known or not name:
             sc["why"] = "no feel is set"
@@ -1508,14 +1685,31 @@ class Director:
         sc = self._scr
         try:
             for sid in sids:
+                if self.screen_pick is not None and self.cfg["screens"]["hold_hand_picks"]:
+                    break                                # a person picked on a screen meanwhile: hold
                 path = SCREEN_LOOK_PATH.format(id=urllib.parse.quote(sid, safe=""))
-                st, body = await self.ctx.room_patch(path, {"palette": name, "palette_transition_s": tr_s})
+                req = {"palette": name, "palette_transition_s": tr_s}
+                boot = self._look_boot
+                if self._look_source != contract.LOOK_SOURCE_STATES[2]:
+                    req["source"] = contract.SHOW_SOURCE
+                self._echo[sid] = (name, self._mono())   # before the PATCH: room's event can beat its answer
+                st, body = await self.ctx.room_patch(path, req)
+                if "source" in req:
+                    if isinstance(st, int) and 200 <= st < 300:
+                        self._set_look_source(contract.LOOK_SOURCE_STATES[1], boot, "patch")
+                    elif (st, body.get("error") if isinstance(body, dict) else None) == SOURCE_REFUSED:
+                        self._set_look_source(contract.LOOK_SOURCE_STATES[2], boot, "patch")   # the old room
+                        del req["source"]
+                        self._echo[sid] = (name, self._mono())
+                        st, body = await self.ctx.room_patch(path, req)
                 if isinstance(st, int) and 200 <= st < 300:
                     sc["sent"][sid] = name
+                    sc["sent_at"][sid] = round(self._wall(), 3)
                     sc["retry"].pop(sid, None)
                     sc["error"] = None
                     sc["sends"] += 1
-                    self._log_event("screens_palette", {"screen": sid, "palette": name, "transition_s": tr_s})
+                    self._log_event("screens_palette", {"screen": sid, "palette": name, "transition_s": tr_s,
+                                                        "source": "source" in req})
                 else:
                     sc["retry"][sid] = self._mono() + SCREENS_RETRY_S
                     err = body.get("error") if isinstance(body, dict) else None
@@ -1691,15 +1885,21 @@ class Director:
 
     def _lamp_role(self, dev: dict) -> tuple[str, dict]:
         lc = self.lamps_cfg
-        rn = lc["placement_roles"].get(dev.get("placement") or "", None) if dev.get("placement") else None
+        rn = dev.get("role") if dev.get("role") in lc["roles"] else None      # a fixture's own role wins (Stage 5)
+        if rn is None:
+            rn = lc["placement_roles"].get(dev.get("placement") or "", None) if dev.get("placement") else None
         rn = rn or lc["default_role"]
         if rn is None or rn not in lc["roles"]:
             return "neutral", NEUTRAL_ROLE
         return rn, lc["roles"][rn]
 
     def _house_rgb(self, did: str, room: Any) -> pal.Rgb:
+        """A lamp's house light: room's stored state for it, else its fixtures.yaml ``house`` (hex x intensity; a DMX
+        fixture room knows nothing about, README S5.14), else show.yaml director.house (§8.4: warm white at 80 %)."""
         h = self.cfg["house"]
-        fallback = pal.scale_level(pal.white(h["white_k"]), h["level"])
+        fallback = self._fixture_house(did)
+        if fallback is None:
+            fallback = pal.scale_level(pal.white(h["white_k"]), h["level"])
         st = (room or {}).get("stored_restore") if isinstance(room, dict) else None
         v = st.get(did) if isinstance(st, dict) else None
         if isinstance(v, dict) and "value" in v and "on" not in v:
@@ -1718,6 +1918,22 @@ class Director:
         if isinstance(v, str) and v not in HOUSE_FOLLOWING:
             return (0.0, 0.0, 0.0)                         # the room's stored state is the lamp switched off
         return fallback
+
+    def _fixture_house(self, did: str) -> Optional[pal.Rgb]:
+        """fixtures.yaml's ``house`` for a registry lamp, as the look engine reads it (hex x intensity, intensity
+        default 1.0); None when it has none, or it doesn't read."""
+        hv = (self.lamps.get(did) or {}).get("house")
+        if not isinstance(hv, dict):
+            return None
+        try:
+            c = pal.rgb_of(str(hv.get("hex", "")))
+        except ValueError:
+            return None
+        k = _num(hv.get("intensity", 1.0))
+        if k is None:
+            return None
+        k = _c01(k)
+        return (c[0] * k, c[1] * k, c[2] * k)
 
     def _compose(self, now_s: float, vs: dict, known: bool, grid: Grid, room: Any) -> None:
         m = self.music
@@ -1790,18 +2006,19 @@ class Director:
                 c = pal.full(pal.rgb_of(roles[emphasis]["hex"]))          # the screens rule: never scaled
                 colours[did] = c
                 screens[did] = {"hex": pal.hex_of(c), "rgb": [round(x, 4) for x in c]}
-            # the unison hit: an armed line's (from the line), or an unarmed drop's (now); lamps only, never under
-            # House lights or Lights low
+            # the unison hit: an armed line's (from the line: predicted), or an unarmed drop's (now: nobody predicted
+            # it); lamps only, never under House lights or Lights low. It goes out in LookData.hit, never in
+            # palette_fn: each output takes it from its driver's caps (§5.4: Hue swells for an unforeseen drop)
             if self.house or self.low or not gram:
                 self._hit = self._hit_want = None
             elif self._armed is not None:
                 hb = float(self.cfg["build"]["hit_beats"]) * (grid.beat_s or 0.5)
                 a_s = self._armed["at_s"]
                 if now_s >= a_s - max(1.0, float(self.cfg["build"]["dip_bars"]) * (grid.bar_s or 2.0)):
-                    # coloured from the dip on (palette_fn starts it exactly at the line)
-                    self._hit = (a_s, a_s + hb, self._hit_colours(look_pal, vs, now_s)) if hb > 0 else None
+                    # coloured from the dip on (it starts exactly at the line)
+                    self._hit = (a_s, a_s + hb, self._hit_colours(look_pal, vs, now_s), True) if hb > 0 else None
             elif self._hit_want is not None:
-                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s))
+                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s), False)
                 self._hit_want = None
         accents = {"style": vs["accents"], "density": round(_c01(density), 3), "subdivision": sub,
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
@@ -1813,7 +2030,9 @@ class Director:
                      "saturation": round(sat, 3), "contrast": round(contrast, 3),
                      "motion": {"speed": round(speed, 3), "amount": round(amount, 3)}, "accents": accents,
                      "spread": round(spread, 3), "change_rate": vs["change_rate"], "transition": tr,
-                     "lamps": lamps, "screens": screens}
+                     "lamps": lamps, "screens": screens,
+                     "dip": bool(known and dip is not None and not self.house and not self.low),
+                     "hit": self._hit_view()}
         bars = 0
         if grid.ok and self.look_bar is not None:
             bars = max(0, grid.bar_at(now_s) - self.look_bar)
@@ -1879,8 +2098,8 @@ class Director:
                      speed: float, amount: float, idx: int, now_s: float, narrow: float = 0.0) -> pal.Rgb:
         """One lamp at full value from its role's fields (no role is known by name): the palette role (moved on by the
         look's variation when the role moves), a slow drift toward the next role, a build's narrowing toward the
-        accent (``narrow``, §8.5), x saturation, white first where the role has a white, the chroma cap, the hues to
-        avoid."""
+        accent (``narrow``, §8.5), x saturation, white first where the role has a white (its chroma cap then limits
+        the tint's distance from that white: ``white_tint``), else the chroma cap, then the hues to avoid."""
         pr = rc.get("palette_role") if rc.get("palette_role") in contract.PALETTE_ROLES else "base"
         moving = bool(rc.get("motion"))
         if moving and self.variation:
@@ -1912,9 +2131,9 @@ class Director:
         if nq:
             c = pal.full(pal.mix(c, pal.full(pal.rgb_of(roles["accent"]["hex"])), nq * QUANT))
         c = pal.scale_saturation(c, q_sat)
-        if wk is not None:
-            c = pal.mix(pal.white(wk), c, q_sat)                     # white first, tinted toward the colour
-        if cm is not None:
+        if wk is not None:                                          # white first, tinted toward the colour, the
+            c = white_tint(pal.white(wk), c, q_sat, cm)             # tint at most cm from the white (S5.14)
+        elif cm is not None:
             c = pal.limit_chroma(c, cm)
         if ah:
             c = pal.avoid_hues(c, ah)
@@ -1924,25 +2143,54 @@ class Director:
             self._colour_cache.popitem(last=False)
         return c
 
-    # -- palette_fn (show-artnet, any thread) --------------------------------------------------------------------------------
+    # -- look_fn (Stage 5: the rig's look engine, any thread) ----------------------------------------------------------------
+    def look_fn(self) -> Optional[contract.LookData]:
+        """The latest LookData, swapped by reference each compose (README S5.8): the look engine's ``look_fn``."""
+        return self.look
+
+    def _hit_view(self) -> Optional[contract.LookHit]:
+        """LookData.hit: the drop's unison hit while it lasts (README S5.14), or None."""
+        h = self._hit
+        if h is None:
+            return None
+        return {"t0_ms": round(h[0] * 1000.0, 1), "t1_ms": round(h[1] * 1000.0, 1), "predicted": bool(h[3]),
+                "swell_ms": float(self.cfg["build"]["hit_swell_ms"]),
+                "lamps": {k: [round(x, 4) for x in v] for k, v in h[2].items()}}
+
+    # -- palette_fn (the rig's look engine, and show-artnet; any thread) ------------------------------------------------------
     def palette_fn(self, t_s: float) -> Optional[dict[str, tuple[float, float, float]]]:
+        """The director's colours at ``t_s`` (crossfades, House, Low, dips). The drop's unison hit is not in it: it
+        is LookData.hit, which each output takes by its caps (looks.py), and ``maestro_palette_fn`` for the virtual
+        Maestro (README S5.14)."""
         p = self._pal
         if p is None:
             return None
         t0, t1, frm, to, frm_lab, to_lab = p
         if t_s >= t1:
-            out = to
-        elif t_s <= t0:
-            out = frm
-        else:
-            x = (t_s - t0) / (t1 - t0)
-            out = dict(to)
-            for k, la in frm_lab.items():                   # only the devices that move
-                out[k] = pal.mix_lab(la, to_lab[k], x)
-        h = self._hit                                       # a drop's unison hit: lamps only, timed to the line
-        if h is not None and h[0] <= t_s < h[1]:
-            out = dict(out)
-            out.update(h[2])
+            return to
+        if t_s <= t0:
+            return frm
+        x = (t_s - t0) / (t1 - t0)
+        out = dict(to)
+        for k, la in frm_lab.items():                       # only the devices that move
+            out[k] = pal.mix_lab(la, to_lab[k], x)
+        return out
+
+    def maestro_palette_fn(self, t_s: float) -> Optional[dict[str, tuple[float, float, float]]]:
+        """artnet_out's palette_fn (show-artnet, any thread): ``palette_fn`` with the drop's hit laid over the lamps
+        as an output without hits takes it, since the virtual Maestro's lamp channels are what room streams to Hue
+        (P0-P4): a predicted drop line's hit exactly at the line, an unforeseen drop's as a slow swell (§5.4;
+        contract.hit_weight, the look engine's own rule). Screens never carry it."""
+        out = self.palette_fn(t_s)
+        h = self._hit
+        if out is None or h is None:
+            return out
+        w = contract.hit_weight(t_s, h[0], h[1], bool(h[3]), float(self.cfg["build"]["hit_swell_ms"]) / 1000.0)
+        if w <= 0.0:
+            return out
+        out = dict(out)
+        for k, c in h[2].items():
+            out[k] = tuple(c) if w >= 1.0 else pal.mix(out.get(k) or (0.0, 0.0, 0.0), c, w)   # OKLab, as looks.py
         return out
 
     def _set_colours(self, new: dict[str, pal.Rgb], now_s: float, dur: float,
@@ -2023,17 +2271,21 @@ class Director:
                 self._look_pub_s = now_s
         if not known:
             return
-        beat_lock = bool(vs["beat_lock"]) and grid.gate == "beat"
+        # The accent depth (§8.5), and how each reader takes it (README S5.14): ``hue_depth`` is 0 unless the clock's
+        # gate is beat (the virtual Maestro's Hue swell, and the look engine's Hue parity); ``beat_depth`` is the same
+        # depth before the gate, so DMX stays beat-locked at the clock's middle confidence (§5.4: the engine reads
+        # the gate itself); ``beat_lock`` is the vibe's own (artnet_out's clock is gated at beat by itself).
+        vibe_lock = bool(vs["beat_lock"])
         depth = 0.0
-        if beat_lock and self._phrase_passed and not self.house and not self.low:
+        if vibe_lock and self._phrase_passed and not self.house and not self.low:
             depth = self.cfg["accent_depth"].get(vs["accents"], 0.0)
             lvl = self.look["level"] if self.look else 1.0
             if lvl > 0:
                 depth = min(depth, max(0.0, 1.0 - vs["floor"] / lvl))
-        out = (round(depth, 3), beat_lock)
+        out = (round(depth if grid.gate == "beat" else 0.0, 3), vibe_lock, round(depth, 3))
         if out != self._look_out:
             self._look_out = out
-            _call(self.ctx.set_look_out, hue_depth=out[0], beat_lock=out[1])
+            _call(self.ctx.set_look_out, hue_depth=out[0], beat_lock=out[1], beat_depth=out[2])
         ref = vs["loudness_ref_lufs"]
         if ref is not None and ref != self._gate_ref:
             self._gate_ref = ref
@@ -2073,7 +2325,31 @@ class Director:
             self.patch_error = f"{self.patch_path.name}: {type(e).__name__}: {e} (the last good layout stays)"
             return
         self.patch_error = None
-        self.lamps, self.screens = lamps, screens
+        self._patch_layout = (lamps, screens)
+        self._apply_layout()
+
+    def _check_rig(self) -> None:
+        """Stage 5 (README S5.8): the lamps and screens from the fixture registry (ctx.rig, read by reference each
+        tick), so a fixture added to fixtures.yaml gets the director's colours; patch.yaml's without one. The ids are
+        the same for the six existing devices, so nothing changes for them."""
+        view = _call(getattr(self.ctx, "rig", None))
+        if view is self._rig_seen:
+            return
+        self._rig_seen = view
+        try:
+            self._rig_layout = layout_from_rig(view)
+        except Exception:                                # noqa: BLE001  a malformed view: patch.yaml's layout
+            log.exception("director: the registry's layout couldn't be read; patch.yaml's stays")
+            self._rig_layout = None
+        self._apply_layout()
+
+    def _apply_layout(self) -> None:
+        if self._rig_layout is not None:
+            self.lamps, self.screens = self._rig_layout
+            self.lamps_from = "fixtures.yaml"
+        else:
+            self.lamps, self.screens = self._patch_layout
+            self.lamps_from = "patch.yaml"
 
     def _art_in_play(self) -> bool:
         if not self.known:
@@ -2301,7 +2577,9 @@ class Director:
             return None
         return max(0.0, self.keep_until - (now if now is not None else self._now()))
 
-    def clear(self, nudge_id: str) -> list[str]:
+    def clear(self, nudge_id: str, why: Optional[str] = None) -> list[str]:
+        """DELETE /api/v1/nudge/{id} ("all" = Back to auto), and every nudge at a mode change. ``why`` is only for
+        the log (the screens' hold says what ended it)."""
         active = [c["id"] for c in self.chips()]
         ids = active if nudge_id == "all" else [nudge_id] if nudge_id in active else []
         for i in ids:
@@ -2320,6 +2598,8 @@ class Director:
             elif i == "low":
                 self.low = False
                 self._house_toggled = float(self.cfg["low"]["fade_s"])
+            elif i == contract.SCREEN_PICK:
+                self._end_pick(why or ("back to auto" if nudge_id == "all" else "the chip's ×"))
         if ids:
             self._log_event("nudge", {"nudge": "clear", "ids": ids})
             self._changed()
@@ -2365,7 +2645,7 @@ class Director:
         """Every nudge clears when the room's mode changes (§8.4); the same mode coming back (a restart) keeps them."""
         if new == self.mode:
             return
-        cleared = self.clear("all")
+        cleared = self.clear("all", why="the mode changed")
         self._log_event("mode", {"from": old, "to": new, "cleared": cleared})
         self.mode = new
         self._dirty()
@@ -2391,6 +2671,10 @@ class Director:
             out.append({"id": "house", "kind": "house", "label": "House lights", "value": True, "expires_in_s": None})
         if self.low:
             out.append({"id": "low", "kind": "low", "label": "Lights low", "value": True, "expires_in_s": None})
+        if self.screen_pick is not None:
+            out.append({"id": contract.SCREEN_PICK, "kind": contract.SCREEN_PICK,
+                        "label": f"Colours: {self.screen_pick['label']} (picked on a screen)",
+                        "value": dict(self.screen_pick), "expires_in_s": None})
         return out
 
     def log(self, n: int = 50) -> list[dict]:
@@ -2473,7 +2757,7 @@ class Director:
             self._p95 = round(ticks[min(len(ticks) - 1, int(0.95 * len(ticks)))], 3)
         p95 = self._p95
         engaged = bool(self.steps or self.palette_pick != contract.PALETTE_AUTO or self.moods
-                       or self.keep_until is not None or self.house or self.low)
+                       or self.keep_until is not None or self.house or self.low or self.screen_pick is not None)
         art_age = None
         if self.art:
             art_age = round(self._mono() - max(a["at_s"] for a in self.art.values()), 1)
@@ -2488,7 +2772,7 @@ class Director:
             "catalog": {"source": self.palettes.source, "error": self.palettes.error,
                         "api_error": self.palettes.api_error, "palettes": len(self.palettes.names())},
             "patch": {"error": self.patch_error, "lamps": {d: self._lamp_role(v)[0] for d, v in self.lamps.items()},
-                      "screens": sorted(self.screens)},
+                      "screens": sorted(self.screens), "from": self.lamps_from},
             "settings_problems": list(self.settings_problems),
             "music": {k: v for k, v in self.music.items() if k not in ("pv", "beliefs")},
             "band": self._words_now.get("band"),
@@ -2496,8 +2780,10 @@ class Director:
             "relaxed": self._relaxed, "pending": dict(self.pending) if self.pending else None,
             "neutral": not self.known,
             "sections": self._sections_view(now_s),
-            "screens_palette": {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
-                                for k, v in self._scr.items() if k != "retry"},
+            "screens_palette": {**{k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
+                                   for k, v in self._scr.items() if k != "retry"},
+                                "hold": dict(self.screen_pick) if self.screen_pick else None,
+                                "look_source": self._look_source, "boot": self._look_boot},
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
                       "gobo_steps": self.gobo_steps, "log_error": self._log_error}}
 

@@ -19,8 +19,10 @@ Per frame (send time ``t``)::
                 through the next predicted beat, so **a frame leaves exactly at each beat** and on every 16th. Never
                 closer than MIN_GAP_S (22.7 ms, Art-Net's 44 Hz) to when the last frame actually left: ``t_last`` is
                 max(its due time, its send time), and GRID_HZ's 0.5 ms of slack keeps a frame that left a little late
-                from pushing the next grid point. If the clock re-phases a beat inside that gap, its edge frame goes
-                at last + MIN_GAP_S (late by less than one frame, never early). No beat: free-run at 44 Hz.
+                from pushing the next grid point; a grid point up to GRID_TOLERANCE_S (1 ms) inside the gap goes at
+                last + MIN_GAP_S instead of a tick later. If the clock re-phases a beat inside that gap, its edge
+                frame goes at last + MIN_GAP_S (late by less than one frame, never early). No beat: free-run at 44
+                Hz.
   compose(t)    the 512 channels, per device exactly as its patch.yaml profile lays them out:
 
   screen    RED GREEN BLUE  the palette at t (palette_fn; without one, the fixed P0 colour: SHOW_PALETTE, else
@@ -134,6 +136,8 @@ GRID_HZ = 43.0                      # the beat grid's tick is chosen for <= 43 H
 REPHASE_SKIP = 0.35                 # a beat this close (x P) after the last edge is that edge re-phased (the
                                     # follower's own refractory): never a second edge
 LATE_S = 0.005                      # woke this late: re-plan from now instead of bursting to catch up
+GRID_TOLERANCE_S = 0.001            # a grid point this little inside the gap (the last frame left late) goes at the
+                                    # gap's end instead of a whole tick on (README S5.14)
 BUILD_AHEAD_S = 0.001               # compose this long before the deadline, send at it
 
 # -- channel behaviour (module docstring) -----------------------------------------------------------------------------
@@ -668,7 +672,11 @@ class VirtualMaestro:
         if b <= earliest:                           # inside the minimum gap: the edge frame goes at earliest
             return earliest
         tick = grid_tick(self._period) if self._period else MIN_GAP_S
-        return b - math.floor((b - earliest) / tick + 1e-9) * tick
+        # the first grid point at or after earliest - GRID_TOLERANCE_S, never before earliest: a frame that left a
+        # little late moves the next one by that much, not by a whole tick (README S5.14: the screens' feed kept its
+        # 42.7 Hz, not 40 or 32)
+        lo = earliest - GRID_TOLERANCE_S
+        return max(earliest, b - math.floor((b - lo) / tick + 1e-9) * tick)
 
     def _features(self) -> Optional[Mapping[str, Any]]:
         if self.features_fn is None:

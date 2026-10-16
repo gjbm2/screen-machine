@@ -67,6 +67,7 @@ class FakeRoom:
         self.clients: set[web.WebSocketResponse] = set()
         self.status_held = False                         # room_service coalesces status after its events
         self.url = ""
+        self.started_at = "2026-10-16T09:00:00+00:00"   # Stage 5: status.service.started_at (RoomLink.room_boot)
 
     async def start(self) -> None:
         app = web.Application()
@@ -100,7 +101,8 @@ class FakeRoom:
     def status(self) -> dict:
         running = self.transition if self.transition and self.transition["status"] == "running" else None
         last = self.transition if self.transition and not running else self.last
-        return {"mode": {"current": self.current, "target": self.target, "via": [], "entered": [], "leaving": [],
+        return {"service": {"version": "test", "epoch": 1, "started_at": self.started_at},
+                "mode": {"current": self.current, "target": self.target, "via": [], "entered": [], "leaving": [],
                          "since_age_s": round(self.clock.t - self.since, 1), "default": "gallery",
                          "transition": self._pub(running), "last_transition": self._pub(last), "modes_error": None},
                 "subsystems": {"autopilot": {"kind": "level", "believed": self.on, "members": {"main": {
@@ -737,3 +739,46 @@ def test_roomlink_patch_for_the_screens_palette(tmp_path):
         assert st == 0 and out["error"] == "room_unreachable"
         h.link.url = url
     run(tmp_path, body)
+
+
+# -- Stage 5: room events and the room's boot (README S5.8) ----------------------------------------------------------------
+def test_roomlink_fans_out_other_room_events_guarded_and_reports_the_boot(tmp_path):
+    async def body(h: H) -> None:
+        got: list[tuple[str, dict]] = []
+
+        def broken(t: str, d: dict) -> None:
+            raise RuntimeError("a broken listener")
+
+        h.ctx.on_room_event.append(broken)                     # guarded: the next one still hears every event
+        h.ctx.on_room_event.append(lambda t, d: got.append((t, d)))
+        assert h.link.provides()["room_boot"] == h.link.room_boot and h.ctx.room_boot() == h.room.started_at
+        assert h.link.snapshot()["boot"] == h.room.started_at
+        look = {"screen": "wall-left", "session": "s1", "source": "web", "changed": ["palette"], "palette": "ember"}
+        await h.room.send({"type": c.ROOM_SCREEN_LOOK, "data": look})
+        await h.room.send({"type": "log", "data": {"level": "info", "msg": "hello"}})
+        await h.room.send({"type": c.ROOM_SCREEN_LOOK, "data": "not a dict"})   # junk: dropped
+        await h.room.send({"data": {"no": "type"}})
+        await h.room.person("disco")                           # mode.transition and status: not fanned out
+        await h.until(lambda: len(got) >= 2 and h.room.current == "disco")
+        await h.step()
+        assert got == [(c.ROOM_SCREEN_LOOK, look), ("log", {"level": "info", "msg": "hello"})]
+        assert h.link.snapshot()["stats"]["room_events"] == {c.ROOM_SCREEN_LOOK: 1, "log": 1}
+        json.dumps(h.link.snapshot())
+        h.room.started_at = "2026-10-16T10:00:00+00:00"        # room_service restarted
+        await h.room.push()
+        await h.until(lambda: h.link.room_boot() == "2026-10-16T10:00:00+00:00")
+        assert h.mode_changes == [("gallery", "disco")]        # the rest of RoomLink as before
+    run(tmp_path, body)
+
+
+def test_roomlink_room_boot_is_none_until_a_status_says_one():
+    link_ctx = c.BrainContext(publish=lambda m: None)
+    from show_service.autopilot import RoomLink
+    link = RoomLink(link_ctx)
+    assert link.room_boot() is None and link.snapshot()["boot"] is None
+    link._on_status({"mode": {"current": "gallery"}})
+    assert link.room_boot() is None
+    link._on_status({"mode": {"current": "gallery"}, "service": {"started_at": 1760600000}})
+    assert link.room_boot() == "1760600000"
+    link._on_message({"type": c.ROOM_SCREEN_LOOK, "data": {"screen": "x"}})     # no listeners: just counted
+    assert link.stats["room_events"] == {c.ROOM_SCREEN_LOOK: 1}

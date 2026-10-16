@@ -499,6 +499,21 @@ class LookData(TypedDict):
     transition: dict[str, Any]     # {"style": "cut"|"crossfade", "beats": float|None, "seconds": float|None}
     lamps: dict[str, LampOut]      # patch.yaml device id -> its colour now
     screens: dict[str, ScreenOut]  # patch.yaml screen fixture id ("screen.north") -> RGB
+    # Stage 5 review fixes (README S5.14): lamps and DMX only, never a screen
+    dip: bool                      # the pre-drop dip is on (§8.5): no music.hit flashes over it
+    hit: Optional["LookHit"]       # the drop's unison hit, applied per output from its caps (looks.py); None: none
+
+
+class LookHit(TypedDict):
+    """LookData.hit: the drop's unison hit (§8.5) on the lamps, never a screen. palette_fn never carries it: each
+    output takes it by its driver's caps (§5.4). An output that takes hits (DMX) shows ``lamps`` at once for
+    [t0, t1); one that doesn't (Hue) shows it at once only when ``predicted`` (an armed drop line), else as a slow
+    swell (attack ``swell_ms`` up, the same down after t1)."""
+    t0_ms: float                   # host time (CLOCK_MONOTONIC ms), as LookData.t_ms
+    t1_ms: float
+    predicted: bool                # an armed drop line (structure predicted it), not a drop nobody saw coming
+    swell_ms: float                # show.yaml director.build.hit_swell_ms (§5.4: >= 300 ms)
+    lamps: dict[str, list[float]]  # lamp id -> rgb 0..1 at full value (the look's accent through the lamp's role)
 
 
 class SectionRef(TypedDict):
@@ -930,6 +945,16 @@ class BrainContext:
     on_music_event: list[Callable[[dict], None]] = field(default_factory=list)   # structure calls each with every
                                                                        # MusicEventData it publishes (show-brain, guarded);
                                                                        # brain.add appends what components provide
+    # Stage 5 additions (README "Stage 5"; the shapes are in the Stage-5 block below). None or empty: that piece is
+    # missing, and its readers degrade (the director keeps patch.yaml's lamps; no screen-pick hold).
+    # brain side (provided by components)
+    rig: Optional[Callable[[], Optional["RigView"]]] = None           # outputs.Rig.view: the fixture registry (any thread)
+    room_boot: Optional[Callable[[], Optional[str]]] = None           # autopilot.RoomLink: room status.service.started_at
+                                                                       # (str), None until a status; changes per room boot
+    on_room_event: list[Callable[[str, dict], None]] = field(default_factory=list)   # RoomLink calls each with (type,
+                                                                       # data) for every room WS event other than status
+                                                                       # and mode.transition (screen.look, ...), on
+                                                                       # show-brain, guarded; brain.add appends
 
 
 class Component(Protocol):
@@ -1318,3 +1343,378 @@ class MusicEventData(EventData):
                                        # track; "missed": the line passed with no drop), at_ms = that line
     track_id: NotRequired[int]
     via: NotRequired[str]              # track_change: "sonos" | "dsp"
+
+
+# =====================================================================================================================
+# Stage 5 (README "Stage 5"): the rig. The fixture registry (config/room/fixtures.yaml, OFL types, tag groups; fixtures.py),
+# the look engine (looks.py, emitters.py), the output drivers and their runners (outputs.py; hue_out.py, artnet_lan.py),
+# and the screens' hand-pick hold (director.py + autopilot.RoomLink). Additions only: the names the five Stage-5
+# builders share (B12 the rig and the wiring, B13 the look engine, B14 Hue, B15 Art-Net on the LAN, B16 the director
+# and RoomLink seams). BrainContext's Stage-5 slots are at the end of BrainContext. Every output is OFF until
+# fixtures.yaml enables it: a restart with this code changes nothing anyone can see.
+# =====================================================================================================================
+
+# -- files --------------------------------------------------------------------------------------------------------------
+FIXTURES_FILE = CONFIG_ROOM_DIR / "fixtures.yaml"   # c8: the registry (§9.2); fixtures.py reads it (hot-reloaded)
+FIXTURE_TYPES_DIR = CONFIG_ROOM_DIR / "fixture-types"   # c8: OFL fixture JSON (MIT), ofl/<maker>/<model>.json; a type's
+                                                    # ``file`` is relative to this directory
+LATENCY_FILE = CONFIG_ROOM_DIR / "latency.json"     # 10's schema v2, read-only for us: outputs.<key>.<attribute>
+NODES_STATE_FILE = STATE_DIR / "nodes.json"         # artnet_lan: what discovery last saw per node (atomic); never config
+HUE_SECRETS_DIR = pathlib.Path.home() / ".config" / "screen-machine" / "hue"   # room_service.hue.pair writes
+                                                    # <bridge_id>.json (0600); hue_out reads it only through room's
+                                                    # BridgeSecrets.load (room_service.hue.client), read-only
+SHOW_SOURCE = "show_service"                        # the ``source`` on our room PATCHes; room's screen.look events carry it
+
+# -- vocabularies -------------------------------------------------------------------------------------------------------
+DRIVERS: tuple[str, ...] = ("showbus", "hue", "artnet", "ddp")    # fixtures.yaml outputs.<id>.driver
+DRIVERS_BUILT: tuple[str, ...] = ("hue", "artnet")  # Stage 5. showbus (P4) and ddp (LED strips, later) may be configured:
+                                                    # they show state "not_built" and never start
+FIXTURE_KINDS: tuple[str, ...] = ("screen", "lamp")   # a TYPE's kind. "screen" is never dimmed: no level, floor, master,
+                                                    # cap, dip, hit or intensity layer ever reaches it (the screens rule)
+ATTR_KINDS: tuple[str, ...] = ("intensity", "colour", "position")   # what a latency applies to (§5.4)
+#: latency.json ``outputs.<key>.<attribute>`` names read for each kind, first found wins. "brightness" is the TV
+#: routine's name for the intensity step (tools/room/latency_cal). Colour falls back to the intensity rise when unmeasured.
+LATENCY_ATTRS: dict[str, tuple[str, ...]] = {"intensity": ("intensity", "brightness"), "colour": ("colour",),
+                                             "position": ("position",)}
+FAILSAFE_MODES: tuple[str, ...] = ("hold", "zero", "full", "scene")   # a node's ArtAddress AcFail* (§9.3)
+#: OutputStatus.state words (HueStatus.state too). Room's hue adapter never sees these: the Hue routes answer the four
+#: HUE_ROOM_STATES words (hue_room_state), and the richer word stays in /api/v1/rig.
+OUTPUT_STATES: tuple[str, ...] = (
+    "off",           # enabled: false (the default for every output)
+    "not_built",     # a driver this stage doesn't build (showbus, ddp), or its module is missing
+    "no_config",     # enabled, but something it needs is missing (node, port_address, bridge secrets): ``detail`` says
+    "idle",          # enabled, nothing to send (hue: no lamp asked to follow)
+    "waiting_room",  # hue: patch.yaml hue.streamer isn't "show", so room_service streams the area (never fight)
+    "waiting_input", # hue: lamps asked, but no look to show for stop_after_s (P0's idle rules): area stopped
+    "starting",      # hue: resolving and starting the area
+    "streaming",     # hue: 50 Hz frames going out
+    "sending",       # artnet: frames going out (the beat grid, or keepalive while idle)
+    "releasing",     # hue: stopping the area for POST /api/v1/hue/release
+    "taken_over",    # hue: another app stopped or holds the area; nothing restarts until the wanted set changes
+    "error")         # retried after a backoff; ``detail`` says what
+FX_SHAPES: tuple[str, ...] = ("sine", "saw", "square", "triangle", "swell")   # looks.py oscillators (README S5.5)
+FX_PHASES: tuple[str, ...] = ("beat", "bar", "phrase", "time")                # the phase an oscillator runs on
+FX_NEEDS: tuple[str, ...] = ("beat", "grid", "none")   # beat: the clock's gate beat (dmx: hit outputs only, reduced);
+                                                    # grid: any clock grid; none: free-runs on time without one
+#: Inputs a show.yaml looks layer may take a number from (``depth``, ``spread``); anything else must be a number.
+LOOK_INPUTS: tuple[str, ...] = ("swell", "motion.amount", "motion.speed", "accents.density", "look.spread", "energy")
+#: OFL ColorIntensity colours -> our emitter names (lower snake case). An OFL colour not listed is an "other" channel.
+EMITTERS: tuple[str, ...] = ("red", "green", "blue", "white", "warm_white", "cold_white", "amber", "lime", "cyan",
+                             "magenta", "yellow", "indigo", "uv")
+CHANNEL_ATTRS: tuple[str, ...] = ("intensity", "emitter", "wheel", "shutter", "pan", "tilt", "other")
+CURVES: tuple[str, ...] = ("srgb", "linear")        # emitter curve: linear light -> DMX fraction; also "gamma:<g>"
+NUDGE_KINDS_STAGE5: tuple[str, ...] = ("screen_pick",)   # a person's palette pick on a screen holds the screens' palette
+SCREEN_PICK = "screen_pick"                         # its chip id and kind (DELETE /api/v1/nudge/screen_pick clears it)
+ROOM_SCREEN_LOOK = "screen.look"                    # room's event (2f): {screen, session, source (default "web"),
+                                                    # changed: [keys], palette (only when the PATCH carried one)}
+LOOK_SOURCE_STATES: tuple[str, ...] = ("unknown", "yes", "no")   # does this room boot accept PATCH ... {source}?
+
+# -- the registry (fixtures.py) -------------------------------------------------------------------------------------------
+class LatencyView(TypedDict):
+    """L(fixture, kind) in ms: from a frame leaving show_service to the perceived onset of the light (README S5.2).
+    Every output evaluates its look at ``t_send + L`` (§5.4). Unmeasured and not hand-set: 0, with source "unset"."""
+    rise_ms: float                 # intensity rising edge
+    fall_ms: float                 # intensity falling edge (only sets min_pulse_ms)
+    colour_ms: float
+    position_ms: float
+    min_pulse_ms: float            # max(looks.min_visible_ms, rise - fall + looks.min_visible_ms)
+    source: dict[str, str]         # "rise" | "fall" | "colour" | "position" -> "latency.json outputs.<key>.<attr>" |
+                                   # "fixtures.yaml" | "unset"
+
+
+class OutputConfig(TypedDict):
+    """fixtures.yaml outputs.<id>, resolved."""
+    id: str
+    driver: str                    # DRIVERS
+    enabled: bool                  # False unless fixtures.yaml says true
+    built: bool                    # driver in DRIVERS_BUILT and its module imported
+    node: Optional[str]            # artnet: the nodes entry
+    port_address: Optional[int]    # artnet: 15-bit Port-Address, >= 1 (0 is refused: room's universe)
+    latency_key: str               # latency.json outputs key for the output as a whole (default: the id)
+    latency: dict[str, Any]        # hand-set ms as written ({} when unset): {intensity: {rise_ms, fall_ms}, colour_ms,
+                                   # position_ms}
+    hits: Optional[bool]           # None: the driver's own (hue False, artnet True)
+    min_attack_ms: Optional[float] # None: the driver's own (hue 80, §5.4; artnet 0)
+    rate_hz: Optional[float]       # None: the driver's own (hue 50; artnet: the beat grid <= 44 Hz)
+    settings: dict[str, Any]       # every other key as written; hue: bridge, area, gamma, stop_after_s (each unset key
+                                   # read from patch.yaml's hue block, 68's, until P5)
+    problems: list[str]
+
+
+class NodeConfig(TypedDict):
+    """fixtures.yaml nodes.<id>: an Art-Net node, matched by MAC or short name; frames go to ``last_ip`` (or the address
+    discovery last matched it at: nodes.json)."""
+    id: str
+    match: dict[str, str]          # {"mac": "aa:bb:cc:dd:ee:ff"} | {"short_name": "..."} (ArtPollReply's)
+    last_ip: Optional[str]         # the address in config; None: virtual, or unknown (nothing is sent)
+    port: int                      # 6454 (tests: an ephemeral port; a loopback address on 6454 is never sent to)
+    full_512: bool                 # send all 512 channels (default false: up to the highest patched channel, even)
+    failsafe: Optional[str]        # FAILSAFE_MODES, sent once as ArtAddress; None: leave the node's own setting
+    virtual: bool                  # previz: frames stay in memory (GET /api/v1/rig/frame), never on a socket
+
+
+class AttrChannel(TypedDict):
+    """One DMX channel of a type's mode."""
+    offset: int                    # 0-based within the fixture's footprint
+    name: str                      # the OFL channel name ("Red", "Dimmer", "Strobe")
+    attr: str                      # CHANNEL_ATTRS
+    emitter: NotRequired[str]      # attr "emitter": an EMITTERS name
+    fine: NotRequired[int]         # the offset of its fine (LSB) channel, when the mode carries it
+    default: int                   # 0..255: OFL defaultValue; a shutter with none: its "Open" capability's DMX value;
+                                   # otherwise 0. What an undriven channel sends
+
+
+class TypeInfo(TypedDict):
+    id: str
+    source: str                    # "builtin" | "ofl"
+    kind: str                      # FIXTURE_KINDS
+    file: Optional[str]            # ofl: relative to FIXTURE_TYPES_DIR
+    mode: Optional[str]            # ofl: the mode's name or shortName
+    footprint: int                 # DMX channels (0 for the builtin types)
+    attrs: list[str]               # what the engine may drive: "intensity", "colour" (and later "position")
+    channels: list[AttrChannel]
+    emitters: dict[str, dict[str, Any]]   # emitter -> {"xy": [x, y], "Y": relative luminance, "source": "type" |
+                                   # "starting point"}
+    wheel: list[dict[str, Any]]    # colour slots only: [{"dmx": int, "hex": "#rrggbb", "name": str}]
+    curve: str                     # CURVES or "gamma:<g>"; neutral "srgb" (the palette's values straight across)
+    problems: list[str]
+
+
+class FixtureInfo(TypedDict):
+    id: str                        # as in patch.yaml, rooms.json, the Hue adapter, the renderer and the Room page
+    label: str
+    type: str
+    kind: str                      # its type's
+    output: Optional[str]
+    address: Optional[int]         # artnet: 1-based start channel
+    light: Optional[str]           # hue: the bridge's light id
+    screen: Optional[str]          # the screen it belongs to / hangs above
+    zone: Optional[str]
+    placement: Optional[str]       # above | opposite | ... (show.yaml lamps.placement_roles -> role)
+    role: Optional[str]            # unset: from placement
+    tags: list[str]
+    order: Optional[float]         # for ordered groups without an explicit order
+    wb: dict[str, float]           # emitter -> gain (white balance); {} = 1.0 each
+    curve: Optional[str]           # overrides the type's
+    pin: dict[str, int]            # OFL channel name -> DMX value (an undriven channel held there)
+    house: Optional[dict[str, Any]]   # {"intensity": 0..1, "hex": "#rrggbb"}: what it shows with no look; None = dark
+    latency: LatencyView
+
+
+class RigView(TypedDict):
+    """ctx.rig() and GET /api/v1/rig's ``registry``: the last good fixtures.yaml, resolved. Swapped by reference on
+    show-brain; never mutated after the swap."""
+    revision: str                  # sha1 of fixtures.yaml, 12 hex
+    path: str
+    error: Optional[str]           # the last load error (the last good registry stays)
+    problems: list[str]            # page words, one per thing it couldn't use as written
+    outputs: dict[str, OutputConfig]
+    nodes: dict[str, NodeConfig]
+    types: dict[str, TypeInfo]
+    fixtures: dict[str, FixtureInfo]
+    groups: dict[str, list[str]]   # group -> fixture ids in order
+
+
+# -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
+class FixtureFrame(TypedDict):
+    intensity: float               # 0..1 after layers, master and caps
+    colour: list[float]            # sRGB 0..1 at full value (largest channel 1), or [0, 0, 0]
+    rgb: list[float]               # colour x intensity: what room's Hue path took from Art-Net (hue's xy_bri input)
+    dmx: NotRequired[bytes]        # types with channels: the footprint, encoded (len = footprint)
+    t_eval_ms: float               # when its intensity was evaluated (t_send + rise), for previz and logs
+
+
+class Frame(TypedDict):
+    """LookEngine.evaluate(output, t_send) -> Driver.set_frame. Built and read on that output's runner thread only."""
+    output: str
+    seq: int                       # +1 per evaluate for this output
+    t_send_ms: float
+    active: bool                   # something to show: a vibe plays, or (no vibe) fresh, non-quiet features
+    why: Optional[str]             # inactive: "no_features" | "quiet" | "no_vibe" (caps.idle_without_vibe) |
+                                   # "no_look" | "rig_off"
+    fixtures: dict[str, FixtureFrame]   # this output's fixtures (kind screen never appears)
+
+
+class DriverCaps(TypedDict):
+    hits: bool                     # takes music.hit flashes (§5.4: DMX yes, Hue never)
+    min_attack_ms: float           # an intensity rise is never faster than this (Hue 80, §5.4)
+    grid: str                      # "beat": frames phase-locked to the beat (artnet) | "fixed": rate_hz (hue)
+    rate_hz: float
+    keepalive_s: Optional[float]   # idle: resend unchanged frames this often (artnet 1 s); None: always rate_hz
+    # README S5.14 (review fixes, 16 Oct); a driver without them reads 0 and False
+    min_period_ms: NotRequired[float]      # no oscillator on this output cycles faster (hue: 2 x min_attack_ms:
+                                           # "never strobes", §5.4); the engine coarsens a faster layer
+    idle_without_vibe: NotRequired[bool]   # no vibe -> the house look (artnet: nothing room-side gates DMX, §8.6);
+                                           # False (hue): room's hue adapter decides which lamps follow
+
+
+#: A smoothstep's peak slope. No intensity rise is steeper than SLEW_PEAK / min_attack (per second): the look engine's
+#: rise limit and hue_out's own (one number, so the driver never clips the engine's swell).
+SLEW_PEAK = 1.5
+
+
+def hit_weight(t_s: float, t0_s: float, t1_s: float, step: bool, swell_s: float) -> float:
+    """How much of LookData.hit's colour shows at ``t_s`` (0..1): the one rule for every output (looks.py) and the
+    virtual Maestro's lamp channels (director.maestro_palette_fn). ``step`` (an output that takes hits, or a predicted
+    drop line): 1 for [t0, t1). Otherwise a swell (§5.4: Hue never gets a reactive hit): a smoothstep up over
+    ``swell_s`` from t0, and back down over ``swell_s`` from t1."""
+    if t_s < t0_s:
+        return 0.0
+    if step:
+        return 1.0 if t_s < t1_s else 0.0
+    if swell_s <= 0.0 or t_s >= t1_s + swell_s:
+        return 0.0
+
+    def ss(x: float) -> float:
+        x = 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+        return x * x * (3.0 - 2.0 * x)
+    return max(0.0, min(ss((t_s - t0_s) / swell_s), 1.0 - ss((t_s - t1_s) / swell_s)))
+
+
+class OutputStatus(TypedDict):
+    id: str
+    driver: str
+    enabled: bool
+    state: str                     # OUTPUT_STATES
+    detail: Optional[str]          # page words
+    frames: int                    # sent (or kept, virtual)
+    rate_hz: float                 # measured over the last 5 s
+    late_ms: dict[str, Optional[float]]   # {"p50", "p95"}: how late frames left against their planned time
+    errors: int
+    last_frame_age_s: Optional[float]
+    extra: dict[str, Any]          # the driver's own (hue: HueStatus; artnet: {"node": NodeStatus, "length", ...})
+
+
+class NodeStatus(TypedDict):
+    id: str
+    ip: Optional[str]              # where frames go now
+    ip_from: str                   # "config" | "discovery" | "virtual" | "none"
+    matched: Optional[bool]        # the last reply's MAC / short name matched; None: no reply yet
+    replies: int
+    reply_age_s: Optional[float]
+    short_name: Optional[str]
+    long_name: Optional[str]
+    mac: Optional[str]
+    refresh_hz: Optional[float]    # ArtPollReply RefreshRate (Art-Net 4), when given
+    failsafe: Optional[str]        # what the node reports (Status3), when it does
+    merging: Optional[bool]
+    detail: Optional[str]          # "no replies: they need ca's relay (README S5.7)", "moved: update last_ip", ...
+
+
+class HueStatus(TypedDict):
+    """The hue output's own view (``/api/v1/rig`` ``.hue``, ``OutputStatus.extra``). The Hue routes answer
+    ``hue_answer(<this>)`` (HueAnswer), never this."""
+    state: str                     # OUTPUT_STATES (the driver's own word)
+    detail: Optional[str]
+    enabled: bool
+    output: Optional[str]          # the hue output's id
+    wanted: list[str]              # fixture ids room asked to follow (POST /api/v1/hue/stream) that are hue fixtures
+                                   # of this output (the ones streamed)
+    asked: list[str]               # what room asked to follow, unfiltered (the routes' ``lights``): the driver's own,
+                                   # or (the output off) the Rig's saved set; [] with no rig
+    streaming: bool
+    area: Optional[str]
+    channels: dict[str, int]       # light id -> entertainment channel
+    frames: int
+    dtls: bool
+    unknown: list[str]             # asked ids that aren't hue fixtures in the registry (ignored)
+    room_state: str                # HUE_ROOM_STATES: what the routes answer room (hue_room_state)
+    words: str                     # HUE_WORDS[room_state]: the console's and the card's words
+
+
+class HueAnswer(TypedDict):
+    """The Hue routes' answer to room's hue adapter (68's contract and its addendum, 16 Oct): ``POST
+    /api/v1/hue/stream`` and ``GET /api/v1/hue/status``. Room reads ``state``, ``lights`` and ``boot_id`` (its
+    ``_sync_show``: first contact adopts ``lights``; a new ``boot_id`` or ``lights`` unlike its own set re-sends it);
+    the rest is for people (curl, the console)."""
+    state: str                     # HUE_ROOM_STATES, exactly
+    lights: list[str]              # what room asked to follow, unfiltered (HueStatus.asked): never ``wanted``, so an id
+                                   # that isn't a hue fixture here never makes room re-send on every read
+    boot_id: Optional[str]         # this show_service process (api.Api.boot_id): a restart reads as a new one
+    words: str                     # HUE_WORDS[state]
+    detail: Optional[str]          # why, in plain words (the driver's own state and the rest: /api/v1/rig)
+    wanted: list[str]              # the lamps following the show (what room asked, that are hue fixtures here)
+    unknown: list[str]             # asked ids that aren't hue fixtures of the hue output (ignored)
+
+
+class HueRelease(TypedDict):
+    """POST /api/v1/hue/release {lights?}: ``released`` true only once the lamps are writable again (our stream is
+    over, the bridge reads the area inactive, and ``release_settle_s`` has passed since; §9.4 step 3)."""
+    released: bool
+    state: str                     # HUE_ROOM_STATES, as HueAnswer
+    why: Optional[str]             # not released: "shared_area" (other lamps still follow: the whole area streams),
+                                   # "taken_over" (the area reads active and isn't ours: another app holds it),
+                                   # "bridge_unreachable", "timeout", "starting" (show_service starting under
+                                   # patch.yaml hue.streamer: show: room checks the bridge itself)
+    still_following: list[str]
+    waited_ms: float
+    via: str                       # "show" | "room" (no hue output on: room_service streams, nothing held here)
+
+
+#: What the Hue routes answer room's hue adapter (68's contract): ``armed`` = following but silent (no sound yet,
+#: starting, or retrying after an error); ``idle`` = following nothing (nothing asked, the output off, room streams
+#: (hue.streamer isn't show), not paired, not built). Room acts on ``taken_over`` (never fought).
+HUE_ROOM_STATES: tuple[str, ...] = ("idle", "armed", "streaming", "taken_over")
+HUE_WORDS: dict[str, str] = {"idle": "Not following", "armed": "Ready: waiting for the music",
+                             "streaming": "Following the music", "taken_over": "Taken over by another app"}
+HUE_NOT_FOLLOWING: tuple[str, ...] = ("off", "waiting_room", "not_built", "no_config")   # driver states read "idle"
+HUE_RELEASE_MAX_S = 17.0           # a release never waits longer (room's adapter waits 20 s; the API adds 2 s)
+
+
+def hue_room_state(status: Any) -> str:
+    """The HUE_ROOM_STATES word for a HueStatus (or anything with ``state`` and ``wanted``)."""
+    s = status if isinstance(status, dict) else {}
+    st = s.get("state")
+    if st == "taken_over":
+        return "taken_over"
+    if not s.get("wanted") or st in HUE_NOT_FOLLOWING:
+        return "idle"
+    return "streaming" if st == "streaming" else "armed"
+
+
+def hue_answer(status: Any, boot_id: Optional[str] = None) -> HueAnswer:
+    """The Hue routes' answer (HueAnswer) for a HueStatus; ``boot_id`` is the API's (this process)."""
+    s = status if isinstance(status, dict) else {}
+    rs = hue_room_state(s)
+    detail = s.get("detail")
+    return {"state": rs, "lights": [x for x in (s.get("asked") or []) if isinstance(x, str)],
+            "boot_id": boot_id if isinstance(boot_id, str) else None,
+            "words": HUE_WORDS[rs], "detail": detail if isinstance(detail, str) else None,
+            "wanted": [x for x in (s.get("wanted") or []) if isinstance(x, str)],
+            "unknown": [x for x in (s.get("unknown") or []) if isinstance(x, str)]}
+
+
+def hue_off_status(output: Optional[str], detail: str, asked: Optional[list] = None) -> HueStatus:
+    """The HueStatus with no hue output running (it reads ``off``; the routes answer ``idle``). ``asked``: what room
+    asked while the output is off (the Rig keeps it for on again), reported as the routes' ``lights``."""
+    return {"state": "off", "detail": detail, "enabled": False, "output": output, "wanted": [],
+            "asked": [x for x in (asked or []) if isinstance(x, str)], "streaming": False,
+            "area": None, "channels": {}, "frames": 0, "dtls": False, "unknown": [], "room_state": "idle",
+            "words": HUE_WORDS["idle"]}
+
+
+class ScreenPick(TypedDict):
+    """The director's hold after a person picked a palette on a screen (README S5.8). Persisted in state.json under
+    director.nudges.screen_pick."""
+    palette: Any                   # what the room's event carried (a catalog name, or the renderer's own shape)
+    label: str                     # page words for the chip: the catalog label, the name, or "custom colours"
+    screen: str                    # where it was picked
+    at: float                      # epoch s
+    source: Optional[str]          # the event's source ("web", ...), None when the room didn't send one
+
+
+class Driver(Protocol):
+    """One output (README S5.4). outputs.py builds one per enabled, built output from its driver kind; a runner
+    thread ("show-out-<id>") calls plan/set_frame; show-brain calls configure/tick; status from any thread."""
+    kind: str                      # DRIVERS
+    output_id: str
+    caps: DriverCaps
+
+    def configure(self, out: OutputConfig, rig: RigView) -> None: ...   # show-brain: at start and on every reload
+    def start(self) -> None: ...                       # show-brain: before its runner starts (no I/O that blocks)
+    def stop(self, timeout: float = 2.0) -> None: ...  # show-brain: after its runner stopped; leaves the device in its
+                                                       # own failsafe (hue: stops the area; artnet: just stops sending)
+    def plan(self, t_last_s: float, now_s: float, active: bool) -> float: ...   # runner: the next send time (monotonic)
+    def set_frame(self, frame: Frame) -> None: ...     # runner: encode and send now; never blocks over 1 ms
+    def tick(self, now_s: float) -> None: ...          # show-brain, 1 Hz: discovery, takeover checks, health
+    def status(self) -> OutputStatus: ...              # any thread

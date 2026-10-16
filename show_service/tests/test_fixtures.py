@@ -1,0 +1,603 @@
+"""fixtures.py: the registry (README S5.2, S5.4). The real fixtures.yaml loads clean and matches patch.yaml; tmp files
+for the load rules (problems, left out vs kept, universes), OFL types through the registry, selectors and groups,
+latency, hue_settings, the hot reload and the last good view. Files go to ``tmp_path`` only.
+
+``-s`` prints the costs (the rig tick's budget is 3 ms p95, README S5.3; a no-change poll is part of it)."""
+
+from __future__ import annotations
+
+import ast
+import json
+import os
+import pathlib
+import statistics
+import time
+
+import pytest
+import yaml
+
+from show_service import contract
+from show_service import fixtures as fx
+from show_service.tests.test_ofl import PAR, SPOT
+
+SHOW = yaml.safe_load(contract.SHOW_FILE.read_text())
+LAMPS = SHOW.get("lamps")
+
+
+def bump(path: pathlib.Path, text: str) -> None:
+    """Rewrite a file so its mtime (ns) and size both move, whatever the filesystem's clock resolution."""
+    st = path.stat() if path.exists() else None
+    path.write_text(text)
+    if st:
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+
+def settle(r, **kw) -> bool:
+    """Registry.poll after a file edit: the first poll only notes the change (README S5.14's debounce), the next
+    one, seeing the same files, applies it."""
+    assert r.poll(**kw) is False
+    return r.poll(**kw)
+
+
+@pytest.fixture
+def rigdir(tmp_path):
+    types = tmp_path / "types"
+    (types / "ofl" / "test").mkdir(parents=True)
+    (types / "ofl" / "test" / "par.json").write_text(json.dumps(PAR))
+    (types / "ofl" / "test" / "spot.json").write_text(json.dumps(SPOT))
+    return tmp_path
+
+
+DMX = """
+version: 1
+outputs:
+  dmx-a: {driver: artnet, enabled: false, node: node-1, port_address: 1}
+  lamps: {driver: hue, enabled: false}
+nodes:
+  node-1: {match: {short_name: "eDMX1"}, last_ip: 192.0.2.10, failsafe: scene}
+types:
+  sm-hue: {source: builtin}
+  par: {source: ofl, file: ofl/test/par.json, mode: "Pro 7"}
+  spot: {source: ofl, file: ofl/test/spot.json, mode: 6ch}
+fixtures:
+  l1: {type: sm-hue, output: lamps, light: aaa, placement: above, zone: n, order: 2}
+  l2: {type: sm-hue, output: lamps, light: bbb, placement: opposite, zone: n, order: 1, tags: [warm]}
+  p1: {type: par, output: dmx-a, address: 1, tags: [ball, front], pin: {Strobe: 5}, wb: {white: 0.8},
+       house: {intensity: 0.3, hex: "#FFAA77"}, curve: "gamma:2.2"}
+  p2: {type: par, output: dmx-a, address: 8, tags: [ball], role: key}
+  s1: {type: spot, output: dmx-a, address: 15, zone: s}
+groups:
+  ring: {select: "kind:lamp", order: [p2, l1]}
+  balls: {select: "ball"}
+"""
+
+
+def load(tmp, text: str, **kw) -> contract.RigView:
+    p = tmp / "fixtures.yaml"
+    p.write_text(text)
+    kw.setdefault("types_dir", tmp / "types")
+    return fx.load(p, **kw)
+
+
+# -- the real files ----------------------------------------------------------------------------------------------------
+def test_the_real_fixtures_yaml_loads_clean_and_matches_patch_yaml():
+    v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"))
+    assert v["error"] is None and v["problems"] == [], v["problems"]
+    patch = yaml.safe_load(contract.PATCH_FILE.read_text())
+    devices = patch["devices"]
+    assert set(v["fixtures"]) == set(devices)
+    type_of = {"screen": "sm-screen", "hue": "sm-hue"}
+    for fid, d in devices.items():
+        f = v["fixtures"][fid]
+        assert f["label"] == d["label"] and f["screen"] == d.get("screen")
+        assert f["light"] == d.get("light") and f["placement"] == d.get("placement")
+        assert f["type"] == type_of[d["profile"]] and f["role"] is None and f["zone"]
+        assert f["latency"]["source"]["rise"] == "unset"                     # nothing measured for a lamp yet
+    assert all(o["enabled"] is False for o in v["outputs"].values())
+    assert v["groups"]["around"] == ["hue.ne", "hue.se", "hue.sw", "hue.nw"]
+    assert v["nodes"] == {} and sorted(v["types"]) == sorted(fx.BUILTIN_TYPES)
+    assert all(fx._is_id(x) for k in ("outputs", "types", "fixtures", "groups") for x in v[k])
+    hs = fx.hue_settings(v["outputs"]["hue"], patch)
+    assert hs == {**{k: patch["hue"][k] for k in fx.HUE_KEYS}, "streamer": patch["hue"].get("streamer", "room"),
+                  "host": patch["hue"].get("host")}
+
+
+def test_the_real_view_has_the_contract_shapes():
+    v = fx.load()
+    assert set(v) == set(contract.RigView.__annotations__)
+    for o in v["outputs"].values():
+        assert set(o) == set(contract.OutputConfig.__annotations__)
+    for t in v["types"].values():
+        assert set(t) == set(contract.TypeInfo.__annotations__) and t["kind"] in contract.FIXTURE_KINDS
+    for f in v["fixtures"].values():
+        assert set(f) == set(contract.FixtureInfo.__annotations__)
+        assert set(f["latency"]) == set(contract.LatencyView.__annotations__)
+    json.dumps(v)                                                              # served by GET /api/v1/rig
+
+
+def test_builtin_types():
+    assert fx.BUILTIN_TYPES["sm-screen"]["kind"] == "screen" and fx.BUILTIN_TYPES["sm-screen"]["attrs"] == ["colour"]
+    assert fx.BUILTIN_TYPES["sm-hue"]["kind"] == "lamp"
+    assert fx.BUILTIN_TYPES["sm-hue"]["attrs"] == ["intensity", "colour"]
+    assert all(t["footprint"] == 0 and t["channels"] == [] for t in fx.BUILTIN_TYPES.values())
+
+
+# -- OFL types through the registry ------------------------------------------------------------------------------------
+def test_a_dmx_rig_loads_with_ofl_types(rigdir):
+    v = load(rigdir, DMX, lamps=LAMPS)
+    assert v["error"] is None and v["problems"] == [], v["problems"]
+    par, spot = v["types"]["par"], v["types"]["spot"]
+    assert par["footprint"] == 7 and par["file"] == "ofl/test/par.json" and par["mode"] == "Pro 7"
+    assert spot["footprint"] == 6 and spot["mode"] == "6-channel" and spot["wheel"]
+    p1 = v["fixtures"]["p1"]
+    assert p1["kind"] == "lamp" and p1["pin"] == {"Strobe": 5} and p1["wb"] == {"white": 0.8}
+    assert p1["house"] == {"intensity": 0.3, "hex": "#ffaa77"} and p1["curve"] == "gamma:2.2"
+    assert p1["tags"] == ["ball", "front"] and p1["address"] == 1
+    n = v["nodes"]["node-1"]
+    assert n == {"id": "node-1", "match": {"short_name": "eDMX1"}, "last_ip": "192.0.2.10", "port": 6454,
+                 "full_512": False, "failsafe": "scene", "virtual": False}
+    o = v["outputs"]["dmx-a"]
+    assert (o["driver"], o["node"], o["port_address"], o["built"], o["enabled"]) == ("artnet", "node-1", 1, True,
+                                                                                      False)
+    assert v["groups"] == {"ring": ["p2", "l1", "l2", "p1", "s1"], "balls": ["p1", "p2"]}
+
+
+def test_type_overrides_emitters_and_curve(rigdir):
+    text = DMX.replace('par: {source: ofl, file: ofl/test/par.json, mode: "Pro 7"}',
+                       'par: {source: ofl, file: ofl/test/par.json, mode: "Pro 7", curve: linear,\n'
+                       '        emitters: {red: {xy: [0.69, 0.30], Y: 0.2}, amber: {xy: [0.57, 0.42], Y: 0.3},\n'
+                       '                   green: {xy: [2, 0.5], Y: 1}, plaid: {xy: [0.3, 0.3], Y: 1}}}')
+    v = load(rigdir, text)
+    par = v["types"]["par"]
+    assert par["curve"] == "linear"
+    assert par["emitters"] == {"red": {"xy": [0.69, 0.30], "Y": 0.2, "source": "type"}}
+    probs = "\n".join(v["problems"])
+    assert "types.par.emitters.amber: this type has no amber channel" in probs
+    assert "types.par.emitters.green: needs xy" in probs and "types.par.emitters.plaid: not an emitter" in probs
+
+
+def test_a_type_that_cant_be_read_is_left_out_with_its_fixtures(rigdir):
+    text = DMX.replace('mode: "Pro 7"', 'mode: "Pro 9"')
+    v = load(rigdir, text)
+    assert "par" not in v["types"] and "p1" not in v["fixtures"] and "p2" not in v["fixtures"]
+    probs = "\n".join(v["problems"])
+    assert "types.par: mode 'Pro 9' isn't in the file" in probs and "types.par: can't be used: left out" in probs
+    assert "fixtures.p1.type: 'par' isn't a usable type: left out" in probs
+    assert "s1" in v["fixtures"] and v["groups"]["balls"] == []
+    v2 = load(rigdir, DMX.replace("ofl/test/spot.json", "ofl/test/gone.json").replace(
+        "ofl/test/par.json", "../../etc/passwd"))
+    probs2 = "\n".join(v2["problems"])
+    assert "types.spot: ofl/test/gone.json: file not found" in probs2
+    assert "types.par.file: '../../etc/passwd' is outside" in probs2
+
+
+def test_a_matrix_type_is_kept_inert(rigdir):
+    (rigdir / "types" / "ofl" / "test" / "bar.json").write_text(json.dumps({
+        "name": "Bar", "matrix": {"pixelCount": [2, 1, 1]}, "availableChannels": {},
+        "templateChannels": {"Red $pixelKey": {"capability": {"type": "ColorIntensity", "color": "Red"}}},
+        "modes": [{"name": "px", "channels": [{"insert": "matrixChannels", "repeatFor": "eachPixelABC",
+                                               "channelOrder": "perPixel", "templateChannels": ["Red $pixelKey"]}]}]}))
+    text = DMX.replace("fixtures:\n", "fixtures:\n  b1: {type: bar, output: dmx-a, address: 30}\n")
+    v = load(rigdir, text.replace("types:\n", "types:\n  bar: {source: ofl, file: ofl/test/bar.json, mode: px}\n"))
+    assert v["types"]["bar"]["footprint"] == 0 and v["types"]["bar"]["attrs"] == []
+    assert "b1" in v["fixtures"]
+    probs = "\n".join(v["problems"])
+    assert "types.bar: mode 'px' uses pixel (matrix) channels" in probs
+    assert "fixtures.b1: type bar has no DMX channels: it sends nothing" in probs
+
+
+# -- problems: what is left out, what is kept --------------------------------------------------------------------------
+def test_port_address_zero_is_refused(rigdir):
+    v = load(rigdir, DMX.replace("port_address: 1}", "port_address: 0}"))
+    assert v["outputs"]["dmx-a"]["port_address"] is None
+    line = "outputs.dmx-a.port_address: 0 is room_service's virtual universe: refused (the output can't start)"
+    assert line in v["problems"] and line in v["outputs"]["dmx-a"]["problems"]
+    v2 = load(rigdir, DMX.replace("port_address: 1}", "port_address: 40000}"))
+    assert v2["outputs"]["dmx-a"]["port_address"] is None and any("isn't 1..32767" in p for p in v2["problems"])
+
+
+def test_a_footprint_past_512_is_left_out_and_overlaps_are_kept(rigdir):
+    v = load(rigdir, DMX.replace("address: 15, zone: s", "address: 510, zone: s").replace("address: 8,",
+                                                                                           "address: 5,"))
+    assert "fixtures.s1: address 510 + footprint 6 runs past 512: left out" in v["problems"]
+    assert "s1" not in v["fixtures"]
+    assert ("fixtures.p2: channels 5-11 overlap fixtures.p1 (1-7): both kept; the later address wins on the shared "
+            "channels") in v["problems"]
+    assert {"p1", "p2"} <= set(v["fixtures"])
+
+
+def test_overlaps_are_per_universe(rigdir):
+    dmx_b = "\n  dmx-b: {driver: artnet, node: node-1, port_address: 2}"
+    text = DMX.replace("  lamps: {driver: hue, enabled: false}", "  lamps: {driver: hue, enabled: false}" + dmx_b)
+    text = text.replace("p2: {type: par, output: dmx-a, address: 8", "p2: {type: par, output: dmx-b, address: 1")
+    v = load(rigdir, text)
+    assert not any("overlap" in p for p in v["problems"])
+    same = text.replace("port_address: 2}", "port_address: 1}")
+    v2 = load(rigdir, same)
+    assert any("outputs.dmx-b: node node-1 Port-Address 1 is also outputs.dmx-a's universe" in p
+               for p in v2["problems"])
+    assert any("fixtures.p2: channels 1-7 overlap fixtures.p1" in p for p in v2["problems"])
+
+
+def test_unknown_type_output_node_and_streamer(rigdir):
+    text = DMX.replace("node: node-1, port_address", "node: node-9, port_address").replace(
+        "  lamps: {driver: hue, enabled: false}", "  lamps: {driver: hue, enabled: false, streamer: show, gamma: 0.5,"
+                                                  " area: abc}").replace(
+        "s1: {type: spot, output: dmx-a", "s1: {type: spot, output: nowhere").replace(
+        "fixtures:\n", "fixtures:\n  z9: {type: mystery}\n  z8: {label: no type}\n")
+    v = load(rigdir, text)
+    probs = "\n".join(v["problems"])
+    assert "outputs.dmx-a.node: 'node-9' isn't in nodes: unset (the output can't start)" in probs
+    assert v["outputs"]["dmx-a"]["node"] is None
+    assert "outputs.lamps.streamer: room_service's switch" in probs
+    assert v["outputs"]["lamps"]["settings"] == {"gamma": 0.5, "area": "abc"}    # unknown keys -> the driver's
+    assert "fixtures.s1.output: 'nowhere' isn't an output: unrouted" in probs and v["fixtures"]["s1"]["output"] is None
+    assert "fixtures.z9.type: 'mystery' isn't a usable type: left out" in probs and "z9" not in v["fixtures"]
+    assert "fixtures.z8.type: required: left out" in probs
+
+
+def test_required_routing_keys_leave_a_fixture_out(rigdir):
+    text = DMX.replace("p2: {type: par, output: dmx-a, address: 8,", "p2: {type: par, output: dmx-a,").replace(
+        "light: bbb, ", "")
+    v = load(rigdir, text)
+    assert "p2" not in v["fixtures"] and "l2" not in v["fixtures"]
+    probs = "\n".join(v["problems"])
+    assert "fixtures.p2: on an artnet output it needs address (1..512): left out" in probs
+    assert "fixtures.l2: on a hue output it needs light (the bridge's light id): left out" in probs
+
+
+def test_bad_values_drop_to_unset_with_problem_lines(rigdir):
+    text = DMX.replace("dmx-a: {driver: artnet, enabled: false,", "dmx-a: {driver: artnet, enabled: yes please,"
+                       " hits: maybe, rate_hz: -1, min_attack_ms: fast, latency: {colour_ms: -3, wobble: 1},").replace(
+        "  lamps: {driver: hue, enabled: false}", "  lamps: {driver: hue, enabled: false}\n  odd: {driver: laser}"
+    ).replace("p2: {type: par, output: dmx-a, address: 8, tags: [ball], role: key}",
+              "p2: {type: par, output: dmx-a, address: 8, tags: [ball, Big Ball], role: villain, pin: {Nope: 1,"
+              " Dimmer: 300}, wb: {red: -1}, house: {hex: orange}, curve: wiggly, order: soon, colour: red}")
+    v = load(rigdir, text, lamps=LAMPS)
+    o = v["outputs"]["dmx-a"]
+    assert o["enabled"] is False and o["hits"] is None and o["rate_hz"] is None and o["min_attack_ms"] is None
+    assert o["latency"] == {} and "odd" not in v["outputs"]
+    p2 = v["fixtures"]["p2"]
+    assert p2["tags"] == ["ball"] and p2["role"] is None and p2["pin"] == {} and p2["wb"] == {}
+    assert p2["house"] is None and p2["curve"] is None and p2["order"] is None
+    probs = "\n".join(v["problems"])
+    for frag in ("outputs.dmx-a.enabled: 'yes please' isn't true or false: false", "outputs.dmx-a.hits",
+                 "outputs.dmx-a.rate_hz", "outputs.dmx-a.min_attack_ms", "outputs.dmx-a.latency.colour_ms",
+                 "outputs.dmx-a.latency.wobble: unknown key", "outputs.odd.driver: 'laser' isn't one of",
+                 "fixtures.p2.tags: 'Big Ball' isn't a tag", "fixtures.p2.role: 'villain' isn't a show.yaml",
+                 "fixtures.p2.pin.Nope: type par has no channel 'Nope'", "fixtures.p2.pin.Dimmer: 300 isn't 0..255",
+                 "fixtures.p2.wb.red", "fixtures.p2.house: needs hex", "fixtures.p2.curve: 'wiggly'",
+                 "fixtures.p2.order: 'soon'", "fixtures.p2.colour: unknown key: ignored"):
+        assert frag in probs, frag
+    assert all(o["problems"][i] in v["problems"] for i in range(len(o["problems"])))
+
+
+def test_nodes_match_ip_and_the_loopback_rule(rigdir):
+    text = DMX.replace('node-1: {match: {short_name: "eDMX1"}, last_ip: 192.0.2.10, failsafe: scene}',
+                       'node-1: {match: {mac: "AA-BB-CC-DD-EE-01"}, last_ip: 127.0.0.1, full_512: true}\n'
+                       '  node-2: {match: {serial: 1}, last_ip: not.an.ip, failsafe: smoke, port: 0}\n'
+                       '  node-3: {last_ip: 127.0.0.1, port: 40001}\n'
+                       '  BAD: {}')
+    v = load(rigdir, text)
+    n1, n2, n3 = (v["nodes"][k] for k in ("node-1", "node-2", "node-3"))
+    assert n1["match"] == {"mac": "aa:bb:cc:dd:ee:01"} and n1["full_512"] is True
+    assert n1["virtual"] is True                                    # 127.0.0.1:6454 is room's receiver: never sent to
+    assert n2["match"] == {} and n2["last_ip"] is None and n2["failsafe"] is None and n2["port"] == 6454
+    assert n3["virtual"] is False and n3["port"] == 40001           # a test's ephemeral sink is fine
+    assert "BAD" not in v["nodes"]
+    probs = "\n".join(v["problems"])
+    assert "nodes.node-1: 127.0.0.1:6454 is room_service's own Art-Net receiver: never sent to" in probs
+    for frag in ("nodes.node-2.match", "nodes.node-2.last_ip: 'not.an.ip'", "nodes.node-2.failsafe: 'smoke'",
+                 "nodes.node-2.port: 0", "nodes.BAD: 'BAD' isn't an id"):
+        assert frag in probs, frag
+
+
+def test_shared_lights_version_and_unknown_top_keys(rigdir):
+    text = DMX.replace("version: 1", "version: 2\nextras: {}").replace("light: bbb", "light: aaa")
+    v = load(rigdir, text)
+    probs = "\n".join(v["problems"])
+    assert "version: 2 (this reader knows 1)" in probs and "extras: unknown key: ignored" in probs
+    assert "fixtures.l2.light: also fixtures.l1's light on output lamps: both kept" in probs
+    assert {"l1", "l2"} <= set(v["fixtures"])
+
+
+def test_a_bad_file_gives_an_error_and_empty_maps(tmp_path):
+    for text in ("fixtures: [unclosed", "- a list", ""):
+        v = load(tmp_path, text)
+        assert v["error"] and v["fixtures"] == {} and v["outputs"] == {}
+    v = fx.load(tmp_path / "nope.yaml")
+    assert "nope.yaml" in v["error"] and v["revision"] == ""
+
+
+# -- selectors ---------------------------------------------------------------------------------------------------------
+@pytest.fixture
+def view(rigdir):
+    return load(rigdir, DMX, lamps=LAMPS)
+
+
+def test_selector_terms(view):
+    s = fx.select
+    assert s("kind:lamp", view) == ["l2", "l1", "p1", "p2", "s1"]          # order first, then id
+    assert s("*", view) == s("kind:lamp", view)
+    assert s("output:dmx-a type:par", view) == ["p1", "p2"]                  # AND
+    assert s("zone:n | zone:s", view) == ["l2", "l1", "s1"]                  # OR
+    assert s("kind:lamp !tag:ball", view) == ["l2", "l1", "s1"]              # NOT
+    assert s("ball !front", view) == ["p2"]                                  # bare words are tags
+    assert s("id:p*", view) == ["p1", "p2"] and s("tag:fr*", view) == ["p1"]  # prefixes
+    assert s("driver:hue", view) == ["l2", "l1"] and s("driver:artnet !type:par", view) == ["s1"]
+    assert s("placement:above", view) == ["l1"] and s("screen:*", view) == []
+    assert s("!*", view) == [] and s("kind:screen", view) == []
+
+
+def test_roles_follow_placement_with_lamps(view):
+    assert fx.select("role:key", view) == ["p2"]                              # own role only, without lamps
+    with_lamps = fx.select("role:key", view, lamps=LAMPS)
+    key_place = [p for p, r in LAMPS["placement_roles"].items() if r == "key"]
+    expect = ["l2"] if "opposite" in key_place else []
+    assert with_lamps == expect + ["p2"]
+    others = fx.select("kind:lamp !role:key", view, lamps=LAMPS)
+    assert "p2" not in others and set(others) | set(with_lamps) == set(fx.select("kind:lamp", view))
+
+
+def test_group_terms_order_by_the_group(view):
+    assert view["groups"]["ring"] == ["p2", "l1", "l2", "p1", "s1"]          # order lists first, the rest by order/id
+    assert fx.select("group:ring", view) == ["p2", "l1", "l2", "p1", "s1"]
+    assert fx.select("group:ring !type:spot", view) == ["p2", "l1", "l2", "p1"]
+    assert fx.select("group:balls | group:ring", view) == ["p1", "p2", "l1", "l2", "s1"]
+    assert fx.select("group:b*", view) == ["p1", "p2"]
+    assert fx.select("group:nope", view) == []
+
+
+def test_bad_selectors():
+    for bad in ("", "   ", "a |", "| a", "a || b", "!", "!!a", "colour:red", "id:", "id:a*b", "kind:*x"):
+        with pytest.raises(ValueError, match="bad_selector"):
+            fx.parse_selector(bad)
+    with pytest.raises(ValueError, match="bad_selector"):                    # looks.py writes the problem line
+        fx.select("colour:red", {"fixtures": {"a": {}}, "groups": {}, "outputs": {}})
+    assert fx.select("*", None) == []
+    sel = fx.parse_selector("zone:n   kind:lamp|!ball")
+    assert str(sel) == "zone:n kind:lamp | !tag:ball" and fx.parse_selector(str(sel)).clauses == sel.clauses
+    assert hash(sel) == hash(fx.parse_selector("zone:n   kind:lamp|!ball"))
+
+
+def test_groups_bad_selects_unknown_order_ids_and_cycles(rigdir):
+    text = DMX.replace("  balls: {select: \"ball\"}",
+                       "  balls: {select: \"ball\", order: [ghost, p2]}\n"
+                       "  broken: {select: \"colour:red\"}\n  empty: {}\n"
+                       "  a: {select: \"group:b | id:l1\"}\n  b: {select: \"group:a\"}\n"
+                       "  front: {select: \"group:balls front\"}")
+    v = load(rigdir, text)
+    probs = "\n".join(v["problems"])
+    assert v["groups"]["balls"] == ["p2", "p1"] and "groups.balls.order: 'ghost' isn't a fixture: skipped" in probs
+    assert "broken" not in v["groups"] and "groups.broken.select: bad_selector" in probs
+    assert "empty" not in v["groups"] and "groups.empty.select: required" in probs
+    assert "refers to itself through group:" in probs
+    assert v["groups"]["a"] == ["l1"] and v["groups"]["front"] == ["p1"]
+
+
+# -- latency -----------------------------------------------------------------------------------------------------------
+EDGE = {"rise": {"t10": 100.0, "t50": 180.0}, "fall": {"t10": 40.0, "t50": 80.0}, "trim_ms": 0.0}
+
+
+def out(**kw) -> contract.OutputConfig:
+    base = {"id": "o", "driver": "artnet", "enabled": False, "built": True, "node": None, "port_address": None,
+            "latency_key": "o", "latency": {}, "hits": None, "min_attack_ms": None, "rate_hz": None, "settings": {},
+            "problems": []}
+    return {**base, **kw}
+
+
+def test_latency_order_per_fixture_then_output_then_hand_set_then_unset():
+    doc = {"outputs": {"f": {"intensity": EDGE}, "o": {"intensity": {"rise": {"t10": 10.0, "t50": 50.0},
+                                                                     "fall": {"t10": 5.0, "t50": 9.0}}}}}
+    hand = out(latency={"intensity": {"rise_ms": 7.0, "fall_ms": 3.0}, "colour_ms": 11.0, "position_ms": 13.0})
+    lv = fx.resolve_latency("f", hand, doc, align_pct=25, min_visible_ms=40)
+    assert lv["rise_ms"] == pytest.approx(100 + 80 * 15 / 40)
+    assert lv["source"]["rise"] == "latency.json outputs.f.intensity"
+    assert lv["fall_ms"] == pytest.approx(40 + 40 * 15 / 40)
+    assert (lv["colour_ms"], lv["source"]["colour"]) == (11.0, "fixtures.yaml")
+    assert (lv["position_ms"], lv["source"]["position"]) == (13.0, "fixtures.yaml")
+    lv2 = fx.resolve_latency("g", hand, doc, align_pct=25, min_visible_ms=40)       # no per-lamp entry
+    assert lv2["rise_ms"] == pytest.approx(25.0) and lv2["source"]["rise"] == "latency.json outputs.o.intensity"
+    lv3 = fx.resolve_latency("g", hand, {}, align_pct=25, min_visible_ms=40)
+    assert (lv3["rise_ms"], lv3["fall_ms"], lv3["source"]["rise"]) == (7.0, 3.0, "fixtures.yaml")
+    lv4 = fx.resolve_latency("g", None, None)
+    assert lv4["rise_ms"] == 0 and set(lv4["source"].values()) == {"unset"} and lv4["min_pulse_ms"] == fx.MIN_VISIBLE_MS
+
+
+def test_latency_align_pct_trim_brightness_and_the_colour_fallback():
+    doc = {"outputs": {"tv": {"brightness": {**EDGE, "trim_ms": -5.0}}}}
+    at10 = fx.resolve_latency("x", out(latency_key="tv"), doc, align_pct=10, min_visible_ms=40)
+    at50 = fx.resolve_latency("x", out(latency_key="tv"), doc, align_pct=50, min_visible_ms=40)
+    assert at10["rise_ms"] == pytest.approx(95.0) and at50["rise_ms"] == pytest.approx(175.0)   # trim applies
+    assert at10["source"]["rise"] == "latency.json outputs.tv.brightness"
+    assert at10["colour_ms"] == at10["rise_ms"] and "(the intensity rise)" in at10["source"]["colour"]
+    doc["outputs"]["tv"]["colour"] = {"rise": {"t10": 20.0, "t50": 60.0}}
+    c = fx.resolve_latency("x", out(latency_key="tv"), doc, align_pct=30, min_visible_ms=40)
+    assert c["colour_ms"] == pytest.approx(40.0) and c["source"]["colour"] == "latency.json outputs.tv.colour"
+    only50 = {"outputs": {"x": {"intensity": {"rise": {"t50": 70.0}}}}}
+    assert fx.resolve_latency("x", None, only50)["rise_ms"] == 70.0
+
+
+def test_min_pulse_ms():
+    doc = {"outputs": {"f": {"intensity": {"rise": {"t10": 300.0, "t50": 300.0}, "fall": {"t10": 100.0,
+                                                                                         "t50": 100.0}}}}}
+    lv = fx.resolve_latency("f", None, doc, min_visible_ms=40)
+    assert lv["min_pulse_ms"] == pytest.approx(300 - 100 + 40)
+    fast_rise = {"outputs": {"f": {"intensity": {"rise": {"t10": 10.0, "t50": 10.0}, "fall": {"t10": 90.0,
+                                                                                              "t50": 90.0}}}}}
+    assert fx.resolve_latency("f", None, fast_rise, min_visible_ms=40)["min_pulse_ms"] == 40
+
+
+def test_latency_reaches_the_view(rigdir):
+    lat = {"outputs": {"l1": {"intensity": EDGE}, "dmx-a": {"intensity": {"rise": {"t10": 2.0, "t50": 6.0}}}}}
+    v = load(rigdir, DMX, latency=lat, looks={"align_pct": 50, "min_visible_ms": 10})
+    assert v["fixtures"]["l1"]["latency"]["rise_ms"] == 180.0
+    assert v["fixtures"]["p1"]["latency"]["rise_ms"] == 6.0
+    assert v["fixtures"]["l2"]["latency"]["source"]["rise"] == "unset"
+    bad = load(rigdir, DMX, looks={"align_pct": 400, "min_visible_ms": "x"})
+    assert any("looks.align_pct" in p for p in bad["problems"]) and any("looks.min_visible_ms" in p
+                                                                         for p in bad["problems"])
+
+
+# -- hue_settings ------------------------------------------------------------------------------------------------------
+def test_hue_settings_over_a_fake_patch():
+    patch = {"hue": {"bridge": "b1", "area": "a1", "gamma": 0.6, "stop_after_s": 10, "host": "h"}}
+    assert fx.hue_settings(out(driver="hue"), patch) == {"bridge": "b1", "area": "a1", "gamma": 0.6,
+                                                         "stop_after_s": 10, "streamer": "room", "host": "h"}
+    own = out(driver="hue", settings={"area": "a2", "gamma": 0.8, "stop_after_s": "soon"})
+    s = fx.hue_settings(own, {"hue": {**patch["hue"], "streamer": "show"}})
+    assert s == {"bridge": "b1", "area": "a2", "gamma": 0.8, "stop_after_s": 10, "streamer": "show", "host": "h"}
+    # room's BridgeSecrets.load(hue.bridge, hue.host): patch.yaml's host only for patch.yaml's own bridge
+    assert fx.hue_settings(out(driver="hue", settings={"bridge": "b2"}), patch)["host"] is None
+    assert fx.hue_settings(None, None) == {"bridge": None, "area": None, "gamma": None, "stop_after_s": None,
+                                           "streamer": "room", "host": None}
+
+
+# -- the registry: hot reload and the last good view -------------------------------------------------------------------
+@pytest.fixture
+def reg(rigdir):
+    (rigdir / "fixtures.yaml").write_text(DMX)
+    (rigdir / "latency.json").write_text(json.dumps({"version": 2, "outputs": {}}))
+    (rigdir / "patch.yaml").write_text("hue: {bridge: b1, area: a1, gamma: 0.6, stop_after_s: 10}\n")
+    r = fx.Registry(rigdir / "fixtures.yaml", types_dir=rigdir / "types", latency_path=rigdir / "latency.json",
+                    patch_path=rigdir / "patch.yaml")
+    assert r.view() is None
+    assert r.poll() is True
+    return r, rigdir
+
+
+def test_poll_reloads_only_on_change(reg):
+    r, d = reg
+    v = r.view()
+    assert r.poll() is False and r.view() is v
+    assert r.poll(force=True) is True and r.view() is not v
+    assert r.hue_settings(r.view()["outputs"]["lamps"])["streamer"] == "room"
+    bump(d / "patch.yaml", "hue: {bridge: b1, area: a1, gamma: 0.6, stop_after_s: 10, streamer: show}\n")
+    assert settle(r) is True and r.hue_settings(r.view()["outputs"]["lamps"])["streamer"] == "show"
+
+
+def test_a_bad_edit_keeps_the_last_good_view_with_the_error(reg):
+    r, d = reg
+    good = r.view()
+    bump(d / "fixtures.yaml", "fixtures: [oops")
+    assert settle(r) is True
+    bad = r.view()
+    assert bad["fixtures"] is good["fixtures"] and bad["revision"] == good["revision"]
+    assert "the last good registry stays in use" in bad["error"] and good["error"] is None   # never mutated
+    assert r.poll() is False and r.poll(force=True) is False                 # the same error: nothing new
+    bump(d / "fixtures.yaml", DMX.replace("address: 15", "address: 20"))
+    assert settle(r) is True and r.view()["error"] is None
+    assert r.view()["fixtures"]["s1"]["address"] == 20
+
+
+def test_a_half_written_file_is_never_loaded(reg):
+    """README S5.14: a poll that lands in the middle of an in-place save can read a truncated file that is still valid
+    YAML (here: an output switched on, its fixtures cut off). A change is applied only when the next poll sees the
+    same files, so the half-written one never becomes the view."""
+    r, d = reg
+    good = r.view()
+    full = DMX.replace("lamps: {driver: hue, enabled: false}", "lamps: {driver: hue, enabled: true}")
+    half = full[:full.index("fixtures:")]
+    (d / "half.yaml").write_text(half)
+    assert fx.load(d / "half.yaml", types_dir=d / "types")["error"] is None   # on its own it loads: ok, 0 fixtures
+    bump(d / "fixtures.yaml", half)                                          # the poll sees the save half done
+    assert r.poll() is False and r.view() is good
+    bump(d / "fixtures.yaml", full)                                          # the save finished
+    assert r.poll() is False and r.view() is good                            # a new change: seen once more
+    assert r.poll() is True
+    v = r.view()
+    assert v["outputs"]["lamps"]["enabled"] is True and set(v["fixtures"]) == set(good["fixtures"])
+    # show.yaml's inputs alone (not a file) still apply at once
+    assert r.poll(looks={"align_pct": 50}) is True
+
+
+def test_hot_reload_on_a_type_file_latency_and_looks(reg):
+    r, d = reg
+    assert r.view()["types"]["par"]["footprint"] == 7
+    par = json.loads(json.dumps(PAR))
+    par["modes"][1]["channels"] = par["modes"][1]["channels"][:6]             # Pro 7 loses its Strobe
+    bump(d / "types" / "ofl" / "test" / "par.json", json.dumps(par))
+    assert settle(r) is True and r.view()["types"]["par"]["footprint"] == 6
+    bump(d / "latency.json", json.dumps({"version": 2, "outputs": {"l1": {"intensity": EDGE}}}))
+    assert settle(r) is True and r.view()["fixtures"]["l1"]["latency"]["rise_ms"] == pytest.approx(130.0)
+    assert r.poll(looks={"align_pct": 50}) is True
+    assert r.view()["fixtures"]["l1"]["latency"]["rise_ms"] == pytest.approx(180.0)
+    assert r.poll(looks={"align_pct": 50}) is False
+    assert r.poll(looks={"align_pct": 50}, lamps=LAMPS) is True
+
+
+def test_unreadable_side_files_are_problems_not_errors(reg):
+    r, d = reg
+    bump(d / "latency.json", "{not json")
+    bump(d / "patch.yaml", "hue: [")
+    assert settle(r) is True
+    v = r.view()
+    assert v["error"] is None and r.patch is None and r.latency is None
+    assert any(p.startswith("latency.json") for p in v["problems"]) and any(p.startswith("patch.yaml")
+                                                                            for p in v["problems"])
+
+
+def test_no_good_view_yet_gives_the_error_view(tmp_path):
+    r = fx.Registry(tmp_path / "fixtures.yaml", types_dir=tmp_path, latency_path=tmp_path / "l.json",
+                    patch_path=tmp_path / "p.yaml")
+    assert r.poll() is True
+    assert r.view()["error"] and r.view()["fixtures"] == {}
+    assert fx.summary(r.view())["counts"] == {"outputs": 0, "nodes": 0, "types": 0, "fixtures": 0, "groups": 0}
+    bump(tmp_path / "fixtures.yaml", "version: 1\n")
+    assert settle(r) is True and r.view()["error"] is None
+    assert fx.summary(None)["error"] == "not loaded yet"
+
+
+def test_poll_costs(reg):
+    r, d = reg
+    for _ in range(20):
+        r.poll()
+    t = []
+    for _ in range(200):
+        t0 = time.perf_counter()
+        r.poll()
+        t.append((time.perf_counter() - t0) * 1e6)
+    reload_ = []
+    for _ in range(20):
+        t0 = time.perf_counter()
+        r.poll(force=True)
+        reload_.append((time.perf_counter() - t0) * 1e3)
+    p95 = statistics.quantiles(t, n=20)[18]
+    print(f"\nfixtures: poll, no change p95 {p95:.0f} us; a reload (5 fixtures, 2 OFL types) "
+          f"p50 {statistics.median(reload_):.1f} ms")
+    assert p95 < 3000                                                         # the rig tick's whole budget
+
+
+# -- the owner's rule: config names live in config ---------------------------------------------------------------------
+def _fixed_vocabulary() -> set[str]:
+    words: set[str] = set(fx.BUILTIN_TYPES)                                   # builtin type ids are fixed words
+    for v in vars(contract).values():
+        if isinstance(v, tuple) and all(isinstance(x, str) for x in v):
+            words |= set(v)
+        ann = getattr(v, "__annotations__", None)
+        if isinstance(v, type) and isinstance(ann, dict):
+            words |= set(ann)
+    return words
+
+
+def _config_names() -> set[str]:
+    names: set[str] = set()
+    f = yaml.safe_load(contract.FIXTURES_FILE.read_text())
+    for sec in ("outputs", "nodes", "types", "fixtures", "groups"):
+        names |= set((f.get(sec) or {}).keys())
+    for d in (f.get("fixtures") or {}).values():
+        names |= {d[k] for k in ("zone", "screen", "placement", "role") if isinstance(d, dict) and d.get(k)}
+    patch = yaml.safe_load(contract.PATCH_FILE.read_text())
+    names |= set((patch.get("devices") or {}).keys())
+    names |= set(((SHOW.get("lamps") or {}).get("roles") or {}).keys())
+    names |= set(((SHOW.get("lamps") or {}).get("placement_roles") or {}).keys())
+    return names - _fixed_vocabulary()
+
+
+@pytest.mark.parametrize("module", ["fixtures.py", "ofl.py"])
+def test_no_config_names_in_code(module):
+    src = pathlib.Path(fx.__file__).parent / module
+    names = _config_names()
+    hits = [n.value for n in ast.walk(ast.parse(src.read_text()))
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in names]
+    assert hits == [], f"{module} names config things in code: {sorted(set(hits))}"

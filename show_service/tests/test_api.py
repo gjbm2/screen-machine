@@ -16,6 +16,7 @@ import types
 
 import aiohttp
 import pytest
+import yaml
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -382,8 +383,9 @@ async def body(resp) -> dict:
 
 
 # -- starting / missing / busy -------------------------------------------------------------------------------------------
-def test_everything_answers_starting_before_the_brain_runs():
-    api = apimod.routes(lambda: None, lambda: ENGINE)
+def test_everything_answers_starting_before_the_brain_runs(tmp_path):
+    api = apimod.routes(lambda: None, lambda: ENGINE, patch_path=tmp_path / "patch.yaml",   # none: room streams
+                        fixtures_path=tmp_path / "fixtures.yaml")
 
     async def go():
         async with served(api) as cl:
@@ -400,6 +402,34 @@ def test_everything_answers_starting_before_the_brain_runs():
             r = await cl.post("/api/v1/hue/release")          # never blocks a mode's exit
             assert r.status == 200 and (await body(r))["released"] is True
 
+    run(go())
+
+
+@pytest.mark.parametrize("streamer,hue_on,want", [("show", True, False), ("show", False, True), ("room", True, True),
+                                                  (None, True, True), ("garbage", True, False),
+                                                  ("missing", True, True)])
+def test_a_hue_release_before_the_brain_runs(tmp_path, streamer, hue_on, want):
+    """Before the brain runs a release answers at once (a mode's exit never waits on show_service). Under patch.yaml
+    hue.streamer: show with a hue output on, a crashed predecessor may still hold the area: released false, why
+    "starting", so room checks the bridge itself. A patch.yaml that doesn't read counts as show (always safe)."""
+    patch, fx = tmp_path / "patch.yaml", tmp_path / "fixtures.yaml"
+    if streamer == "garbage":
+        patch.write_text("hue: [unclosed\n")
+    elif streamer != "missing":
+        patch.write_text(yaml.safe_dump({"hue": {"bridge": "b1", **({"streamer": streamer} if streamer else {})}}))
+    fx.write_text(yaml.safe_dump({"outputs": {"hue": {"driver": "hue", "enabled": hue_on},
+                                              "dmx-a": {"driver": "artnet", "enabled": True}}}))
+    api = apimod.routes(lambda: None, lambda: ENGINE, patch_path=patch, fixtures_path=fx)
+
+    async def go():
+        async with served(api) as cl:
+            r = await cl.post("/api/v1/hue/release", json={"lights": ["hue.ne"]})
+            b = await body(r)
+            assert r.status == 200 and b["released"] is want, b
+            if want:
+                assert b["via"] == "room" and b["state"] == "idle"
+            else:
+                assert b["why"] == "starting" and b["via"] == "show" and b["state"] in c.HUE_ROOM_STATES
     run(go())
 
 
@@ -691,7 +721,8 @@ def test_hue_release(brain):
     async def go():
         async with served(make_api(brain)) as cl:
             b = await body(await cl.post("/api/v1/hue/release"))
-            assert b["released"] is True and b["via"] == "room" and "P5" in b["detail"]
+            assert b["released"] is True and b["via"] == "room" and b["state"] == "idle"
+            assert "nothing streams Hue from show_service" in b["detail"]
 
     run(go())
 
@@ -1130,3 +1161,221 @@ def test_card_hearing_reads_music_context_genre_first():
     assert card(snap("jazz", 0.5), ENGINE)["hearing"]["text"] == "soul · relaxed"      # low conf: the beliefs
     assert card(snap(None, 0.0), ENGINE)["hearing"]["text"] == "soul · relaxed"
     assert card(snap("jazz", 0.9), None)["hearing"]["text"] == "soul · relaxed"        # no sound: not from it
+
+
+# -- Stage 5: the rig and the Hue routes (README S5.4) ----------------------------------------------------------------
+def _rig(hue_enabled=True):
+    """A real outputs.Rig on test_outputs' fakes: a fake registry (a hue output, an artnet output that is off, a
+    node), a fake engine and fake drivers. Nothing is sent anywhere."""
+    from show_service import outputs as om
+    from show_service.tests import test_outputs as to
+    reg = to.FakeRegistry(to.view({"o-hue": to.out("o-hue", "hue", enabled=hue_enabled),
+                                   "o-dmx": to.out("o-dmx", "artnet", enabled=False)}))
+    rig = to.make(reg, to.FakeEngine(), settings={"rig": {"enabled": True, "hue": {"release_timeout_s": 3}}})
+    rig.start()
+    assert isinstance(rig, om.Rig)
+    return rig
+
+
+def test_rig_routes_without_a_rig_component(brain):
+    api = make_api(brain)
+
+    async def go():
+        async with served(api) as cl:
+            b = await body(await cl.get("/api/v1/rig"))
+            assert b["enabled"] is False and "isn't running" in b["why"]
+            r = await cl.get("/api/v1/rig/frame?output=hue")
+            assert r.status == 404 and (await body(r))["error"] == "unknown_output"
+            r = await cl.post("/api/v1/rig/nodes/n1/record-failsafe")
+            assert r.status == 404 and (await body(r))["error"] == "unknown_node"
+            assert (await body(await cl.get("/api/v1/rig/dmx"))) == {"nodes": {}}
+            st = await body(await cl.post("/api/v1/hue/stream", json={"lights": ["hue.ne"], "on": True}))
+            assert st["state"] == "idle" and set(st) == set(c.HueAnswer.__annotations__)   # 68's four words
+            assert st["words"] == "Not following" and "isn't running" in st["detail"]
+            assert st["lights"] == [] and st["boot_id"] == api.boot_id                  # 68's addendum
+            hs = await body(await cl.get("/api/v1/hue/status"))
+            assert hs["state"] == "idle" and hs["lights"] == [] and hs["boot_id"] == api.boot_id
+            for bad in ({"lights": "hue.ne"}, {"lights": [1]}, {"lights": [], "on": "yes"}):
+                r = await cl.post("/api/v1/hue/stream", json=bad)
+                assert r.status == 400 and (await body(r))["error"] == "bad_request", bad
+            b = await body(await cl.post("/api/v1/hue/release", json={"lights": ["hue.ne"]}))
+            assert b["released"] is True and b["via"] == "room" and b["state"] == "idle"
+    run(go())
+
+
+def test_rig_routes_with_a_rig(brain):
+    rig = _rig()
+    brain.components["rig"] = rig
+    try:
+        async def go():
+            async with served(make_api(brain)) as cl:
+                snap = await body(await cl.get("/api/v1/rig"))
+                assert snap["enabled"] is True and snap["registry_view"]["revision"] == "r1"
+                assert snap["outputs"]["o-hue"]["state"] == "sending" and snap["outputs"]["o-dmx"]["state"] == "off"
+                r = await cl.get("/api/v1/rig/frame?output=nope")
+                b = await body(r)
+                assert r.status == 404 and b["error"] == "unknown_output" and b["choices"] == ["o-dmx", "o-hue"]
+                r = await cl.get("/api/v1/rig/frame")
+                assert r.status == 404 and "?output=" in (await body(r))["detail"]
+                for _ in range(50):
+                    fv = await body(await cl.get("/api/v1/rig/frame?output=o-hue"))
+                    if fv["fixtures"]:
+                        break
+                    await asyncio.sleep(0.02)
+                assert fv["output"] == "o-hue" and fv["fixtures"]["lamp.a"]["dmx"] == [1, 2]
+                st = await body(await cl.post("/api/v1/hue/stream", json={"lights": ["lamp.a"], "on": True}))
+                assert st["state"] == "idle" and rig.drivers_of("hue")[0].requests == [(["lamp.a"], True)]
+                assert (await body(await cl.get("/api/v1/hue/status")))["state"] == "idle"
+                rel = await body(await cl.post("/api/v1/hue/release", json={"lights": ["lamp.a"]}))
+                assert rel["via"] == "show" and rel["released"] is True
+                assert brain.timeouts["hue_release"] == 5.0                 # release_timeout_s + 2
+                r = await cl.post("/api/v1/hue/release", json={"lights": "lamp.a"})
+                assert r.status == 400
+                r = await cl.post("/api/v1/rig/nodes/n1/record-failsafe")
+                assert r.status == 200 and (await body(r))["recorded"] is False
+                r = await cl.post("/api/v1/rig/nodes/zz/record-failsafe")
+                assert r.status == 404 and (await body(r))["choices"] == ["n1"]
+        run(go())
+    finally:
+        rig.stop()
+
+
+def test_hue_routes_with_the_hue_output_off(brain):
+    rig = _rig(hue_enabled=False)
+    brain.components["rig"] = rig
+    api = make_api(brain)
+    try:
+        async def go():
+            async with served(api) as cl:
+                st = await body(await cl.post("/api/v1/hue/stream", json={"lights": ["lamp.a"], "on": True}))
+                assert st["state"] == "idle" and st["wanted"] == []
+                assert st["detail"] == "outputs.o-hue.enabled is false in config/room/fixtures.yaml"
+                assert st["lights"] == ["lamp.a"] and st["boot_id"] == api.boot_id     # kept for on again
+                hs = await body(await cl.get("/api/v1/hue/status"))
+                assert hs["lights"] == ["lamp.a"] and hs["boot_id"] == api.boot_id
+                b = await body(await cl.post("/api/v1/hue/release"))
+                assert b["released"] is True and b["via"] == "room" and b["state"] == "idle"
+        run(go())
+    finally:
+        rig.stop()
+
+
+@pytest.mark.parametrize("state,wanted,want", [("streaming", ["lamp.a"], "streaming"),
+                                               ("waiting_input", ["lamp.a"], "armed"),
+                                               ("starting", ["lamp.a"], "armed"),
+                                               ("error", ["lamp.a"], "armed"),
+                                               ("taken_over", ["lamp.a"], "taken_over"),
+                                               ("waiting_room", ["lamp.a"], "idle"),
+                                               ("off", ["lamp.a"], "idle"),
+                                               ("idle", [], "idle")])
+def test_hue_routes_answer_exactly_the_four_room_states(brain, state, wanted, want):
+    """68's contract: stream and status answer {state: idle|armed|streaming|taken_over}; the driver's own word stays in
+    GET /api/v1/rig."""
+    rig = _rig()
+    d = rig.drivers_of("hue")[0]
+    d.hue_status = lambda: {**om_hue_off(d.output_id), "state": state, "wanted": list(wanted)}
+    brain.components["rig"] = rig
+    try:
+        async def go():
+            async with served(make_api(brain)) as cl:
+                st = await body(await cl.post("/api/v1/hue/stream", json={"lights": ["lamp.a"], "on": True}))
+                assert st["state"] == want and st["words"] == c.HUE_WORDS[want]
+                st = await body(await cl.get("/api/v1/hue/status"))
+                assert st["state"] == want and st["state"] in c.HUE_ROOM_STATES
+                snap = await body(await cl.get("/api/v1/rig"))
+                assert snap["hue"]["state"] == state                     # the richer word, elsewhere
+        run(go())
+    finally:
+        rig.stop()
+
+
+def om_hue_off(oid):
+    from show_service import outputs as om
+    return om.hue_off(oid, "fake")
+
+
+class _RoomPatch:
+    """What room's HueAdapter reads of its Patch: ``hue`` (the switch, show_url) and ``of_kind("hue")``."""
+
+    def __init__(self, show_url: str) -> None:
+        self.hue = {"streamer": "show", "show_url": show_url, "writes_enabled": False}
+        self._devs = [types.SimpleNamespace(id=f"hue.{m}", label=m.upper(), extra={"light": f"light-{m}"})
+                      for m in ("ne", "nw", "se", "sw")]
+
+    def of_kind(self, kind):
+        return list(self._devs) if kind == "hue" else []
+
+
+class _RoomBridge:
+    """room's REST client stand-in (GET /light only); never a bridge."""
+
+    def __init__(self) -> None:
+        self.lights = [{"id": f"light-{m}", "on": {"on": False}, "mode": "normal"} for m in ("ne", "nw", "se", "sw")]
+
+    async def get(self, rtype, rid=None):
+        return [dict(x) for x in self.lights] if rtype == "light" else []
+
+    async def close(self):
+        pass
+
+
+def test_rooms_hue_adapter_adopts_our_set_then_re_sends_after_a_new_boot_or_a_stale_set(brain):
+    """68's addendum, end to end against room's real HueAdapter (room_service.adapters.hue, read-only import) and these
+    routes: GET /hue/status carries lights (what room asked, unfiltered) and boot_id.
+    - room restarted, show_service still following (its persisted set): room's first read adopts our set, with no
+      POST, and reads those lamps "dmx" (not "taken_over");
+    - show_service restarted (a new boot_id): room re-sends its set;
+    - show_service restored a stale set: room re-sends its own."""
+    pytest.importorskip("room_service.adapters.hue")
+    from room_service.adapters.hue import HueAdapter
+    from show_service import outputs as om
+    from show_service.tests import test_outputs as to
+
+    class AskedDriver(to.FakeDriver):
+        def __init__(self, oid, **kw):
+            super().__init__(oid, **kw)
+            self.asked: list = []
+
+        def hue_status(self):
+            return om.hue_off(self.output_id, "fake") | {"state": "waiting_input", "asked": list(self.asked),
+                                                         "wanted": [a for a in self.asked if a.startswith("hue.")]}
+
+        def request(self, lights, on):
+            self.requests.append((list(lights), on))
+            self.asked = list(dict.fromkeys(lights)) if on else []
+            return self.hue_status()
+
+    reg = to.FakeRegistry(to.view({"o-hue": to.out("o-hue", "hue")}))
+    rig = to.make(reg, to.FakeEngine(), factories={"hue": lambda oid, **k: AskedDriver(oid, kind="hue", **k)},
+                  settings={"rig": {"enabled": True}})
+    rig.start()
+    d = rig.drivers_of("hue")[0]
+    d.asked = ["hue.ne", "hue.sw"]                             # restored after a restart (state.json)
+    brain.components["rig"] = rig
+    api = make_api(brain)
+    try:
+        async def go():
+            async with served(api) as cl:
+                room = HueAdapter(types.SimpleNamespace(client=None, wanted=set(), state="show"),
+                                  _RoomPatch(str(cl.make_url("")).rstrip("/")), client=_RoomBridge())
+                try:
+                    members = ["ne", "nw", "se", "sw"]
+                    got = await room.read(members)                # room's first contact since its restart
+                    assert room.show_wanted == {"hue.ne", "hue.sw"} and d.requests == []          # adopted, no POST
+                    assert {m: r.value for m, r in got.items()} == {"ne": "dmx", "nw": "off", "se": "off",
+                                                                     "sw": "dmx"}
+                    await room.read(members)                      # in step: nothing sent
+                    assert d.requests == [] and room._show_boot == api.boot_id
+                    api.boot_id = "a-new-process"                 # show_service restarted
+                    await room.read(members)
+                    assert d.requests == [(["hue.ne", "hue.sw"], True)] and room._show_boot == "a-new-process"
+                    await room.read(members)
+                    assert len(d.requests) == 1                   # in step again
+                    d.asked = ["hue.nw"]                          # a stale restored set
+                    await room.read(members)
+                    assert d.requests[-1] == (["hue.ne", "hue.sw"], True) and d.asked == ["hue.ne", "hue.sw"]
+                finally:
+                    await room.close()
+        run(go())
+    finally:
+        rig.stop()

@@ -1,0 +1,100 @@
+# config/room/fixtures.yaml: the room's fixture registry (docs/SHOW_ENGINE.md §9.2; show_service/README.md "Stage 5",
+# S5.2 is the schema). Owner: screen-machine-c8 (AV_PROGRAMME §11). show_service re-reads it when it changes (mtime,
+# every 2 s); a bad edit keeps the last good registry, and GET /show/api/v1/rig shows the error and problems.
+#
+# EVERY OUTPUT IS OFF (enabled: false) until it is switched on here, so this file changes nothing anyone can see.
+#
+# What lives here and what doesn't:
+#   - The fixtures are exactly the room's existing devices, copied read-only from config/room/patch.yaml (68's), with
+#     the same ids, labels, light ids, screens and placements. zone is each device's screen side (patch.yaml's own
+#     G2 north / G3 south grouping). patch.yaml stays the virtual Maestro's channel layout and room_service's Hue
+#     block until P5; nothing here changes it.
+#   - Roles are not set: a lamp's role comes from its placement (show.yaml lamps.placement_roles).
+#   - Latency comes from config/room/latency.json (10's v2: outputs.<fixture id or output key>.<attribute>). Nothing
+#     here is a measured number; hand-set latencies stay unset until someone measures them.
+#   - Addresses: no IP in code. An Art-Net node is matched by MAC or short name, with last_ip here. The Hue bridge's
+#     address is patch.yaml hue.host when set (as room does), else the pairing file's (~/.config/screen-machine/hue/<bridge>.json), found by the bridge id.
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false.
+
+version: 1
+
+outputs:
+  screens:
+    driver: showbus                         # P4: show_service's own bus carries the screens. Not built in Stage 5:
+    enabled: false                          # until P4 the screens stay on the virtual Maestro (artnet_out.py ->
+                                            # room_service's own receiver, 127.0.0.1:6454; README S5.9)
+  hue:
+    driver: hue                             # Entertainment streaming from show_service (hue_out.py; §9.4 P5)
+    enabled: false                          # GO-LIVE STEP (with 68, README S5.12): true here first, then patch.yaml
+                                            # hue.streamer: show hands the area over. Until room asks (POST
+                                            # /show/api/v1/hue/stream) nothing streams, even when enabled.
+    # Each key left out is read from config/room/patch.yaml's hue block (68's; the one truth until P5 moves it here):
+    #   bridge, area, gamma, stop_after_s. Set one here only to make show_service differ from room_service.
+    # latency_key: hue                      # latency.json outputs.<key> for the output as a whole (default: this id).
+    #                                       # A lamp's own outputs.<fixture id> entry wins over it.
+    # latency: {intensity: {rise_ms: null, fall_ms: null}, colour_ms: null}   # hand-set ms; unset = measured or 0
+    # rate_hz: 50                           # the driver's own (§9.4: continuous 50 Hz)
+    # min_attack_ms: 80                     # the driver's own (§5.4: Hue beat pulses attack >= 80 ms)
+
+  # An Art-Net universe on a node (artnet_lan.py; §9.3). One entry per universe. Example, for when a node is bought:
+  # dmx-a:
+  #   driver: artnet
+  #   enabled: false
+  #   node: node-1                          # a nodes entry below
+  #   port_address: 1                       # 15-bit Port-Address, at least 1 (0 is room_service's virtual universe)
+
+# Art-Net nodes. None is bought yet (§9.3: a wired node, measured for output on receipt). Example:
+nodes: {}
+  # node-1:
+  #   match: {short_name: "<as the node reports it>"}   # or {mac: "aa:bb:cc:dd:ee:ff"}: checked against ArtPollReply
+  #   last_ip: <the node's LAN address>     # where frames go; discovery confirms it (nodes.json in the state dir)
+  #   full_512: false                       # true: always 512 channels (default: up to the highest patched, even)
+  #   failsafe: scene                       # hold | zero | full | scene (ArtAddress AcFail*); unset: the node's own
+  # previz:
+  #   virtual: true                         # frames stay in memory: GET /show/api/v1/rig/frame?output=<id>
+
+types:
+  sm-screen: {source: builtin}              # a Frame TV: colour only, kind screen (never dimmed)
+  sm-hue: {source: builtin}                 # a Hue colour lamp: intensity and colour (the hue driver's xy + brightness)
+  # An Open Fixture Library type (MIT), file relative to config/room/fixture-types/. Example:
+  # pinspot:
+  #   source: ofl
+  #   file: ofl/<maker>/<model>.json
+  #   mode: "<the OFL mode's name or shortName>"
+  #   curve: <measure it>                   # linear | gamma:<g> | srgb: how the type's emitters respond to DMX. The
+  #                                         # colour solve assumes it matches the fixture: srgb (the default) only
+  #                                         # fits one that dims like sRGB; a linear-dimming RGBA misses #ff8040 by
+  #                                         # ~0.1 xy under srgb. Measure each type, then set it (README S5.14)
+  #   emitters:                             # optional, measured: {<emitter>: {xy: [x, y], Y: <relative>}}. Any one
+  #     white: {xy: [<x>, <y>], Y: <Y>}     # declared sends the type through the least-squares solve, RGB and RGBW
+  #                                         # included (a warm-white W would otherwise turn 6500 K into ~3000 K)
+
+fixtures:
+  # The two Frame TVs (the renderer's fixture ids, LIVE_V1).
+  screen.north: {label: North Frame, type: sm-screen, output: screens, screen: north-screen, zone: north}
+  screen.south: {label: South Frame, type: sm-screen, output: screens, screen: south-screen, zone: south}
+  # The four Drawing-room colour lamps on the Hue Bridge Pro, Entertainment area "Screen Machine" (patch.yaml).
+  # Owner, 14 Oct: SE is above the south screen and SW opposite it; NE is above the north screen and NW opposite it.
+  hue.ne: {label: Drawing room NE, type: sm-hue, output: hue, light: 9e4f2b85-7129-44cc-9f2b-aa16f5b37e79,
+           screen: north-screen, zone: north, placement: above}
+  hue.nw: {label: Drawing room NW, type: sm-hue, output: hue, light: b952000c-b775-4a7c-bbc9-d8ac6bb453ca,
+           screen: north-screen, zone: north, placement: opposite}
+  hue.se: {label: Drawing room SE, type: sm-hue, output: hue, light: 2c0084d1-b408-4936-aa89-aee935d8c99b,
+           screen: south-screen, zone: south, placement: above}
+  hue.sw: {label: Drawing room SW, type: sm-hue, output: hue, light: 014c5c6c-2d07-4315-ace7-d030a7086c29,
+           screen: south-screen, zone: south, placement: opposite}
+  # A DMX fixture (example, for when one is bought; §9.3: 1-2 LED pinspots on the mirror ball first):
+  # spot.ball1:
+  #   label: Ball pinspot 1
+  #   type: pinspot
+  #   output: dmx-a
+  #   address: 1                            # 1-based start channel in its universe
+  #   tags: [ball]
+  #   role: ball-spot                       # a show.yaml lamps.roles entry; unset: from placement
+  #   house: {intensity: 0, hex: "#000000"} # what it shows with no look; unset = dark
+
+# Tag groups (LX-style selectors, README S5.2): a name -> {select, order?}. Effects and later the Rig page name them.
+groups:
+  around:                                   # the lamps clockwise round the room, by their compass corners (the
+    select: "kind:lamp"                     # patch.yaml labels): a phase spread across this group walks the room
+    order: [hue.ne, hue.se, hue.sw, hue.nw]
