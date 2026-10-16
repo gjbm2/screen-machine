@@ -67,6 +67,7 @@ from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
+from .music_feed import MusicFeed, clock_signals, blend as feed_blend
 from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, why_words
 from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
@@ -210,6 +211,7 @@ class Session(EngineListener):
         self.sampler = Sampler(mgr.inputs, self.fixture, self._initial_lead() / 1000.0, beat_follow)
         self.runtime = SessionRuntime(self.sampler, speed=speed_for(self.direction["pace"]),
                                       depth=self.direction["intensity"], ease_s=direction_ease_s)
+        self.runtime.feed = mgr.music_feed        # the room's sound and beat clock (music_feed.py)
         self.palette = palette
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
@@ -300,9 +302,15 @@ class Session(EngineListener):
 
     def _cue_signals(self) -> dict:
         """The signals now, as the render thread would see them (bus + music features), for cue-mode mappings."""
-        sig = dict(self.sampler.peek(time.monotonic()))
-        w = self.sampler.w
-        for k, v in (self.runtime.extra or {}).items():
+        now = time.monotonic()
+        sig = dict(self.sampler.peek(now))
+        feed = self.mgr.music_feed
+        c = feed.clock(now)
+        feed_blend(sig, feed.snapshot(), feed.liveness(now), clock_signals(c, now + self.sampler.lead) if c else {})
+        ex = self.runtime.extra or {}
+        w = ex.get("music_w")
+        w = self.sampler.w if w is None else w
+        for k, v in ex.items():
             if k in MUSIC_SIGNALS:
                 sig[k] = None if v is None else 0.5 + w * (v - 0.5)
         return sig
@@ -328,6 +336,9 @@ class Session(EngineListener):
         """(anchor, period) of the beat in host monotonic seconds (acoustic): show_service's music.clock while it
         is sure (SessionManager.music_grid), else the lighting desk's pulse follower; None when not following."""
         if self.sampler.follow != "extrapolate":
+            return None
+        r = self.mgr.room_direction_now(now)
+        if r is not None and r.get("beat_lock") is False:     # the room's vibe doesn't want changes on the beat
             return None
         return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
 
@@ -1386,10 +1397,12 @@ class Session(EngineListener):
                 d.scene_done(now)
             self._emit_director()
         d.observe(snap, fresh)
+        feed = self.mgr.music_feed
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
-                                  room=self.mgr.room_direction_now(now))
+                                  room=self.mgr.room_direction_now(now), feed=feed.fresh(now))
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
         self.runtime.extra = {**self.music.signals(now),
+                              "music_w": feed.liveness(now) if self.music.feeding else None,
                               **self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
@@ -1577,6 +1590,10 @@ class Session(EngineListener):
         now = time.monotonic()
         snap = self.sampler.snapshot()
         sig = self.sampler.peek(now)
+        feed = self.mgr.music_feed                 # the room's sound and clock, as the frames see them
+        fsnap, fw, clk = feed.snapshot(), feed.liveness(now), feed.clock(now)
+        csig = clock_signals(clk, now + self.sampler.lead) if clk else {}
+        feed_blend(sig, fsnap, fw, csig)
         r3 = lambda v: None if v is None else round(v, 4)  # noqa: E731
         out: dict = {"online": self.sampler.freshness(now, snap) is None, "stale": self.sampler.stale,
                      "liveness": round(self.sampler.w, 3), "fixture": self.fixture,
@@ -1598,12 +1615,23 @@ class Session(EngineListener):
         out["derived"].update(bpm=r3(sig["bpm"]), beat_confidence=r3(sig["beat_confidence"]),
                               beat_phase=r3(sig["beat_phase"]), beat=r3(sig["beat"]),
                               beat_locked=sig["beat_locked"], beat_follow=self.beat_follow)
+        out["feed"] = None if fsnap is None else {
+            "live": round(fw, 3), "age_ms": round((now - fsnap.t) * 1000, 1), "energy": r3(fsnap.energy),
+            "activity": r3(fsnap.activity), "activity_slow": r3(fsnap.activity_slow), "drive": r3(fsnap.drive),
+            "punch": r3(fsnap.punch), "section": fsnap.section_id,
+            "clock": None if clk is None else {k: clk.get(k) for k in ("bpm", "conf", "gate", "state", "epoch")}}
+        if csig:                                   # the clock's beat, not the desk follower's
+            out["derived"].update(beat_phase=r3(csig.get("beat_phase")), beat=r3(csig.get("beat", sig.get("beat"))),
+                                  beat_confidence=r3(csig.get("beat_confidence")))
+            if clk.get("gate") == "beat":
+                out["derived"].update(bpm=r3(float(clk["bpm"])), beat_locked=True)
         mg = self.mgr.music_grid(now)
         out["cuts_on"] = None if self._beat_grid(now) is None else "show_service clock" if mg is not None \
             else "lighting desk pulse"
         out["clock"] = None if mg is None else {"bpm": round(60.0 / mg[1], 2)}
         ex = self.runtime.extra or {}
-        sig = {**sig, **{k: (None if v is None else 0.5 + self.sampler.w * (v - 0.5))
+        mw = self.sampler.w if ex.get("music_w") is None else ex["music_w"]
+        sig = {**sig, **{k: (None if v is None else 0.5 + mw * (v - 0.5))
                          for k, v in ex.items() if k in MUSIC_SIGNALS},
                **{k: ex.get(k) for k in PIANO_LEVELS}, **piano_envelopes(ex, now)}
         out["signals"] = {k: r3(sig.get(k)) for k in BIND_SIGNALS}
@@ -1854,7 +1882,7 @@ class SessionManager:
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
-        self.music_clock: Optional[tuple[dict, float]] = None   # show_service's last music.clock, arrival
+        self.music_feed = MusicFeed()                    # show_service's music.features / clock / context
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
@@ -2083,7 +2111,7 @@ class SessionManager:
         groove = data.get("groove")
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
-                               "seq": data.get("seq"), "t": time.monotonic()}
+                               "beat_lock": data.get("beat_lock"), "seq": data.get("seq"), "t": time.monotonic()}
 
     def room_direction_now(self, now: float) -> Optional[dict]:
         """The room director's direction while it speaks (a vibe, fresh), else None (the Maestro features propose)."""
@@ -2097,10 +2125,9 @@ class SessionManager:
     def music_grid(self, now: float) -> Optional[tuple[float, float]]:
         """show_service's beat clock as (anchor, period) seconds on CLOCK_MONOTONIC (time.monotonic's clock), while
         it is fresh, has a tempo and its gate is "beat" (conf >= 0.70 to lock, 0.60 to let go, there); else None."""
-        c = self.music_clock
-        if c is None or now - c[1] > self.CLOCK_FRESH_S:
+        d = self.music_feed.clock(now)
+        if d is None:
             return None
-        d = c[0]
         try:
             bpm, anchor = float(d["bpm"]), float(d["anchor_ms"]) / 1000.0
         except (KeyError, TypeError, ValueError):
@@ -2111,8 +2138,8 @@ class SessionManager:
 
     def broadcast_sound(self, msg: dict) -> None:
         """Any thread (the bus loop): append-only on each view."""
-        if msg.get("type") == "music.clock" and isinstance(msg.get("data"), dict):
-            self.music_clock = (msg["data"], time.monotonic())
+        if str(msg.get("type") or "").startswith("music."):
+            self.music_feed.on_message(msg)
         for s in list(self.sessions.values()):
             if s.sound is not None and s.state not in ("ended", "failed"):
                 s.sound.on_message(msg)

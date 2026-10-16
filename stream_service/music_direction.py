@@ -39,6 +39,11 @@ genre like the moods), liveness counts it as fresh, a new section id bumps ``epo
 its energy and groove (as drive).  Otherwise the Maestro features above propose, as before.  Switching source
 drops the proposal and publishes at once.
 
+show_service's own features take the Maestro channels' place whenever they arrive (``feed``, music_feed.FeedSnap;
+d4's G2, owner 17 Oct): act = the features' energy (activity_slow), drive and punch as published, tempo from the
+beat clock while its gate is "beat", a new music.context section id re-seeds as a GOBO step does; liveness is the
+features' freshness (a quiet room is a real low value, not stale).  The desk's path is the fallback.
+
 Pure state and arithmetic, no I/O: sessions.py calls ``update`` from its 10 Hz tick.
 """
 from __future__ import annotations
@@ -158,7 +163,10 @@ class MusicDirection:
         self._signals_t: Optional[float] = None
         self._drive_seen = False
         self._tempo: Optional[float] = None
-        self.source: Optional[str] = None    # who proposes: "room" (show_service) | "maestro" | None
+        self._feeding = False
+        self._punch: Optional[float] = None
+        self.source: Optional[str] = None    # who proposes: "room" (its director) | "show" (its features) | "maestro"
+        self._feed_section: Any = None
         self.room: Optional[dict] = None     # the room.direction in use (SessionManager.room_direction_now)
         self._room_section = None
         self.configure(cfg)
@@ -172,13 +180,22 @@ class MusicDirection:
         return self.m > 0.0 and self._settle_at is not None
 
     # ------------------------------------------------------------------ the 10 Hz step
+    @property
+    def feeding(self) -> bool:
+        """The features come from show_service (the mapping signals ease with its liveness, not the desk's)."""
+        return self._feeding
+
     def update(self, now: float, snap: Any, fresh: bool, follow: Any, active: bool,
-               room: Optional[dict] = None) -> Optional[str]:
+               room: Optional[dict] = None, feed: Any = None) -> Optional[str]:
         """Step the features; -> a cause ("music", "band", "section", "online", "offline", "off", "m") when the
-        effective direction should be recomputed, else None.  ``room``: the room director's live direction, or None."""
+        effective direction should be recomputed, else None.  ``room``: the room director's live direction, or None;
+        ``feed``: show_service's features while they arrive (music_feed.FeedSnap), else None (the desk's)."""
         m_was = self.m
         reseeded = False
-        if snap is not None and fresh:      # every tick, director or not: the per-item mappings read the features
+        self._feeding = feed is not None
+        if feed is not None:                # every tick, director or not: the per-item mappings read the features
+            reseeded = self._features_feed(now, feed)
+        elif snap is not None and fresh:
             reseeded = self._features(now, snap, tuple(follow or ()))
         self.room = room
         if room is not None:
@@ -195,15 +212,15 @@ class MusicDirection:
             self._cold = True
             self.source = None
             return "off" if m_was > 0.0 else None
-        src = "room" if room is not None else "maestro"
+        src = "room" if room is not None else "show" if feed is not None else "maestro"
         switched = self.source is not None and src != self.source
         if src != self.source:
             self.source, self.proposal, self.band = src, None, None
-        self._liveness(now, room is not None or (snap is not None and fresh))
+        self._liveness(now, room is not None or feed is not None or (snap is not None and fresh))
         cause = None
         if room is not None:
             cause = self._propose_room(now, room, reseeded)
-        elif snap is not None and fresh:
+        elif feed is not None or (snap is not None and fresh):
             cause = self._propose(now, reseeded)
         if self.m != m_was:
             return "online" if m_was == 0.0 else "offline" if self.m == 0.0 else "m"
@@ -296,15 +313,7 @@ class MusicDirection:
         self._D = drive if self._D is None else self._D + (drive - self._D) * ad
         w = DRIVE_WEIGHT if self._last_edge_seen is not None and now - self._last_edge_seen <= DRIVE_RECENT_S else 0.0
         energy = _c01((1.0 - w) * self._E + w * self._D)
-        i = self._epoch_band
-        i = sum(energy >= x for x in EDGES) if i is None else i
-        while i < 3 and energy >= EDGES[i] + BAND_HYST:
-            i += 1
-        while i > 0 and energy < EDGES[i - 1] - BAND_HYST:
-            i -= 1
-        if reseeded or (self._epoch_band is not None and i != self._epoch_band):
-            self.epoch += 1                 # a section change or a new energy band: section-mode mappings re-sample
-        self._epoch_band = i
+        self._epoch_step(energy, reseeded)
         self._signals_t = now
         self._drive_seen = self._last_edge_seen is not None and now - self._last_edge_seen <= DRIVE_RECENT_S
         locked = snap.locked(now) and snap.period
@@ -315,6 +324,53 @@ class MusicDirection:
                          "bpm": None if bpm is None else round(bpm, 1), "locked": bool(locked)}
         self._tempo = tempo
         return reseeded
+
+    def _features_feed(self, now: float, f: Any) -> bool:
+        """show_service's features (G2): the same E / D / energy / band / epoch arithmetic as the desk's path."""
+        act = _c01(float(f.activity_slow))
+        dt = EVAL_S if self._t is None else min(5.0, max(0.0, now - self._t))
+        self._t = now
+        self._raw.append((now, _c01(float(f.energy))))
+        while self._raw and now - self._raw[0][0] > RESEED_WINDOW_S:
+            self._raw.popleft()
+        reseeded = False
+        sec = f.section_id
+        if self._feed_section is not None and sec is not None and sec != self._feed_section:
+            self._settle_at = now + SETTLE_S
+        if sec is not None:
+            self._feed_section = sec
+        if self._settle_at is not None and now >= self._settle_at:
+            self._E = sum(v for _, v in self._raw) / len(self._raw)
+            self._settle_at, reseeded = None, True
+        punch, drive = _c01(float(f.punch)), _c01(float(f.drive))
+        ae = 1.0 - math.exp(-dt / TAU_E_S)
+        self._E = act if self._E is None else self._E + (act - self._E) * ae
+        self._D = drive                     # already an 8 s EMA upstream (contract.FeaturesData.drive)
+        w = DRIVE_WEIGHT if drive > 0.02 else 0.0
+        energy = _c01((1.0 - w) * self._E + w * self._D)
+        self._epoch_step(energy, reseeded)
+        self._signals_t = now
+        self._drive_seen = True             # a quiet room is a real 0, not n/a
+        c = f.clock if f.clock is not None and now - f.clock_t <= 1.5 else None
+        bpm = float(c.get("bpm") or 0.0) if c else 0.0
+        locked = bool(c) and bpm > 0.0 and c.get("gate") == "beat"
+        self._tempo = _c01((bpm - 60.0) / 90.0) if locked else None
+        self.features = {"act": round(act, 3), "E": round(self._E, 3), "punch": round(punch, 3),
+                         "D": round(self._D, 3), "energy": round(energy, 3),
+                         "bpm": round(bpm, 1) if locked else None, "locked": locked, "from": "show_service"}
+        self._punch = punch
+        return reseeded
+
+    def _epoch_step(self, energy: float, reseeded: bool) -> None:
+        i = self._epoch_band
+        i = sum(energy >= x for x in EDGES) if i is None else i
+        while i < 3 and energy >= EDGES[i] + BAND_HYST:
+            i += 1
+        while i > 0 and energy < EDGES[i - 1] - BAND_HYST:
+            i -= 1
+        if reseeded or (self._epoch_band is not None and i != self._epoch_band):
+            self.epoch += 1                 # a section change or a new energy band: section-mode mappings re-sample
+        self._epoch_band = i
 
     def _band_of(self, e: float, d: float) -> str:
         names = ("still", "warm", "lively", "peak")

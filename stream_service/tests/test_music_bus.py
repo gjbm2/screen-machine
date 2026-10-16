@@ -66,20 +66,19 @@ def test_music_clock_gives_the_beat_grid_while_sure():
     import time
     from types import SimpleNamespace
 
+    from stream_service.music_feed import MusicFeed
     from stream_service.sessions import SessionManager
-    mgr = SimpleNamespace(music_clock=None, CLOCK_FRESH_S=SessionManager.CLOCK_FRESH_S)
+    mgr = SimpleNamespace(music_feed=MusicFeed())
     grid = lambda now: SessionManager.music_grid(mgr, now)             # noqa: E731
     assert grid(time.monotonic()) is None
     now = time.monotonic()
     clock = {"bpm": 120.0, "anchor_ms": now * 1000.0 - 250.0, "gate": "beat", "state": "locked", "conf": 0.9}
-    mgr.music_clock = (clock, now)
+    SessionManager.broadcast_sound(SimpleNamespace(music_feed=mgr.music_feed, sessions={}),
+                                   {"type": "music.clock", "data": clock})
     a, period = grid(now)
     assert period == 0.5 and abs(a - (now - 0.25)) < 1e-6
     assert grid(now + 2.0) is None                                     # stale
-    mgr.music_clock = ({**clock, "gate": "dmx"}, now)
+    mgr.music_feed.on_message({"type": "music.clock", "data": {**clock, "gate": "dmx"}}, now)
     assert grid(now) is None                                           # not sure enough: the desk's pulse
-    mgr.music_clock = ({**clock, "bpm": 0.0}, now)
+    mgr.music_feed.on_message({"type": "music.clock", "data": {**clock, "bpm": 0.0}}, now)
     assert grid(now) is None
-    ns = SimpleNamespace(music_clock=None, sessions={})
-    SessionManager.broadcast_sound(ns, {"type": "music.clock", "data": clock})
-    assert ns.music_clock[0] is clock
