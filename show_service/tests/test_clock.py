@@ -6,6 +6,10 @@ held and re-locked within 4 beats, random onsets and rubato kept below conf 0.4.
 Signals are synthesised at 48 kHz and fed as receiver blocks (n0, t0_host_s) with ticks every 10 ms of stream time,
 so every timing claim is checked against the true onset times, through what was *published* at least 50 ms before
 each beat (as a consumer with a lead would see it).
+
+Every clock here runs as production does: the activation on its show-beat thread (the default). The feeders call
+``wait_beat()`` after each block, so show-beat keeps up with an unpaced feed (live, the audio paces it) and the frames
+are exactly the inline ones (tests/test_clock_thread.py checks that, and the hand-off itself).
 """
 
 from __future__ import annotations
@@ -111,6 +115,7 @@ class Run:
             blk = x[n0:n0 + block]
             t0 = T0 + n0 / FS
             self.clk.process("room-mic", n0, t0, blk.reshape(-1, 1), FS, AUDIO_SEGMENT if n0 == 0 else 0)
+            self.clk.wait_beat()
             tend = t0 + len(blk) / FS
             while nt <= tend:
                 self.clk.tick(nt)
@@ -472,6 +477,7 @@ def feed(clk: C.Clock, x: np.ndarray, t_start: float, n_start: int = 0, block: i
         blk = x[n0:n0 + block]
         t0 = t_start + n0 / FS
         clk.process("room-mic", n_start + n0, t0, blk.reshape(-1, 1), FS, flags_first if i == 0 else 0)
+        clk.wait_beat()
         while nt <= t0 + len(blk) / FS:
             clk.tick(nt)
             nt += 0.01
@@ -584,6 +590,7 @@ def test_gaps_and_segments_dont_break_the_lane():
             flags = AUDIO_RESUME
         t0 = T0 + 14.0 + n0 / FS
         clk.process("room-mic", n_start + n0, t0, blk, FS, flags)
+        clk.wait_beat()
         while nt <= t0 + 256 / FS:
             clk.tick(nt)
             nt += 0.01
@@ -595,6 +602,7 @@ def test_gaps_and_segments_dont_break_the_lane():
     for i, n0 in enumerate(range(0, len(x44), 256)):
         t0 = T0 + 20.0 + n0 / 44100
         clk.process("pc22-loop", n0, t0, x44[n0:n0 + 256].reshape(-1, 1), 44100, AUDIO_SEGMENT if i == 0 else 0)
+        clk.wait_beat()
         clk.tick(t0)
     d2 = clk.snapshot()
     assert d2["state"] == "locked" and d2["epoch"] == d["epoch"]
@@ -638,6 +646,7 @@ def test_observe_hit_refines_phase_and_learns_the_lag():
             clk.observe_hit(T0 + beats[hit_i], "sub", 1.0)
             hit_i += 1
         clk.process("room-mic", n0, t0, x[n0:n0 + 256].reshape(-1, 1), FS, AUDIO_SEGMENT if n0 == 0 else 0)
+        clk.wait_beat()
         while nt <= t0 + 256 / FS:
             clk.tick(nt)
             nt += 0.01
@@ -726,6 +735,7 @@ def hit_run(x: np.ndarray, kicks: list[float], source: str = "madmom") -> Run:
             r.clk.observe_hit(hits[hi][0], hits[hi][1], 0.8)
             hi += 1
         r.clk.process("room-mic", n0, t0, x[n0:n0 + 256].reshape(-1, 1), FS, AUDIO_SEGMENT if n0 == 0 else 0)
+        r.clk.wait_beat()
         while nt <= t1:
             r.clk.tick(nt)
             nt += 0.01

@@ -104,7 +104,8 @@ def test_shapes_are_exactly_the_contract():
         assert set(h) == set(c.HitData.__annotations__) and h["band"] in c.BAND_NAMES and 0.0 <= h["strength"] <= 1.0
     json.dumps(msgs, allow_nan=False)                 # strict JSON, plain Python types
     assert all(type(v) is float for k, v in d.items() if k not in ("bands", "spectrum32", "stream"))
-    assert f.chroma12() is None
+    ch = f.chroma12()                                  # Stage 4's medium lane: None, or the (12,) audio chroma
+    assert ch is None or (ch.shape == (12,) and abs(float(ch.max()) - 1.0) < 1e-6)
     st = f.stats()
     for k in ("blocks", "hops", "hop_ms_p50", "hop_ms_p95", "block_ms_p95", "gaps"):
         assert k in st

@@ -276,3 +276,55 @@ def test_a_component_that_fails_to_start_does_not_stop_the_others(tmp_path):
         assert b.snapshot()["errors"] == {"start": 1, "configure": 1}
     finally:
         b.stop()
+
+
+# -- Stage 4 (README S4.5): list slots are appended to; an awaitable stop() is awaited -------------------------------
+def test_list_slots_collect_every_provider(tmp_path):
+    got = []
+    d = Comp("director", provides={"on_music_event": lambda ev: got.append(("director", ev["kind"]))})
+    li = Comp("listener", provides={"on_music_event": lambda ev: got.append(("listener", ev["kind"]))})
+    b, ctx, _ = make(tmp_path, [d, li])
+    assert len(ctx.on_music_event) == 2
+    for cb in ctx.on_music_event:                        # what structure does with every event it publishes
+        cb({"kind": "section_change"})
+    assert got == [("director", "section_change"), ("listener", "section_change")]
+
+
+class SlowStop(Comp):
+    """mllink.MLLink's shape: stop() returns a coroutine (the worker's stop sequence)."""
+
+    def __init__(self, name: str, delay: float) -> None:
+        super().__init__(name)
+        self.delay, self.done_in = delay, None
+
+    def stop(self):
+        self.calls.append("stop")
+
+        async def seq():
+            assert threading.current_thread().name == "show-brain"
+            await asyncio.sleep(self.delay)
+            self.done_in = self.delay
+            ORDER.append("stop:" + self.name)
+        return seq()
+
+
+def test_an_awaitable_stop_is_awaited_in_order(tmp_path, monkeypatch):
+    ORDER.clear()
+    a, ml, z = Comp("room"), SlowStop("ml", 0.3), Comp("director")
+    b, _, _ = make(tmp_path, [a, ml, z])
+    b.start()
+    until(lambda: b.running)
+    b.stop()
+    assert ml.done_in == 0.3 and [o for o in ORDER if o.startswith("stop:")] == ["stop:director", "stop:ml",
+                                                                                 "stop:room"]
+    import show_service.brain as brain_mod
+    monkeypatch.setattr(brain_mod, "STOP_AWAIT_S", 0.1)    # a stop that overruns is counted, the rest carry on
+    ORDER.clear()
+    a, ml, z = Comp("room"), SlowStop("ml", 5.0), Comp("director")
+    b, _, _ = make(tmp_path, [a, ml, z])
+    b.start()
+    until(lambda: b.running)
+    t = time.monotonic()
+    b.stop()
+    assert time.monotonic() - t < 3.0 and ml.done_in is None and "stop:room" in ORDER
+    assert b.snapshot()["errors"]["stop"] == 1

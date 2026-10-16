@@ -1,11 +1,11 @@
-"""dsp: the room's ears in real time. Audio blocks become ``music.features`` (25 Hz) and ``music.hit`` (per hit)
-(docs/SHOW_ENGINE.md §4, §6.3, §11.1).
+"""dsp: the room's ears in real time. Audio blocks become ``music.features`` (25 Hz), ``music.hit`` (per hit) and
+``music.rhythm`` (10 Hz, the medium lane) (docs/SHOW_ENGINE.md §4, §6.3, §11.1; README "Stage 4" S4.6).
 
 One ``Features`` lives on the hot thread ("show-rx"). ``__main__`` passes ``Features.process`` as ``on_audio`` and
 calls ``Features.tick`` from ``on_tick``. Nothing here locks, waits, logs or does I/O, and nothing is thread-safe
-except ``latest()`` and ``stats()``, which hand out snapshots swapped in by reference. Every buffer is allocated
+except ``latest()``, ``rhythm()`` and ``stats()``, which hand out snapshots swapped in by reference. Every buffer is allocated
 when the sample rate or channel count is first seen; a steady stream allocates no sample buffers (only numpy view
-headers, the 25 Hz message dicts and a hit's dict).
+headers, the 25 Hz and 10 Hz message dicts built in tick, a hit's dict, and a medium frame's few small scalars).
 
   process(stream, n0, t0_host_s, pcm, fs, flags)     = contract.OnAudio
       pcm float32 (frames, channels) or (frames,), any block size. Blocks over CHUNK (1024) frames are handled in
@@ -14,15 +14,23 @@ headers, the 25 Hz message dicts and a hit's dict).
       A new fs or channel count rebuilds every rate-dependent table: band filters, envelopes, mel bank, FFT bins
       and the R128 state. 48 kHz filters never run on 44.1 kHz audio.
   tick(now_s)          publishes music.features at publish_hz when a hop arrived since the last one; when the
-                       source stops, a fade (below), then nothing
+                       source stops, a fade (below), then nothing. Then music.rhythm once per new medium frame.
   latest()             the last FeaturesData (or None)
-  chroma12()           None: the medium lane (§4) is not built yet
-  reset()              filters, envelopes, onset frames, the analysis ring and the hit detectors. Kept: the R128
-                       state (rebuilt on fs/ch change) and the normalisation history. A new ``stream`` name clears
-                       the history too (percentiles, presence, punch/drive, the spectrum's smoothing).
+  rhythm()             the last RhythmData (or None); any thread (swapped by reference). A consumer treats a frame
+                       over 1 s old as stale: when the source stops, no more frames come.
+  chroma12()           the latest medium frame's harmonic chroma (12,) C..B, max-normalised (a new array per frame;
+                       don't write to it); None under the harmonic floor, before the first frame, or when the frame
+                       was first seen by tick more than 0.5 s (tick's clock) before the latest tick
+  clock_fn             None, or a callable returning the clock's ClockData (or None), read once per medium frame
+                       on this thread (``clock.snapshot``): swing, syncopation and the beat-synchronous chord change
+  reset()              filters, envelopes, onset frames, the analysis ring and the hit detectors, and the medium
+                       lane's history. Kept: the R128 state (rebuilt on fs/ch change) and the normalisation history.
+                       A new ``stream`` name clears the history too (percentiles, presence, punch/drive, the
+                       spectrum's smoothing).
   gate_ref_lufs        the mode's expected loudness (the director sets it; §6.3), default -30
-  stats()              blocks, hops, gaps, publishes, fades, hits per band, hop_ms_p50/p95 (a hop's blocks included),
-                       block_ms_p95, tick_ms_p95 (a publish), fs, channels, stream, kernel
+  stats()              blocks, hops, gaps, publishes (music.features), fades, hits per band, hop_ms_p50/p95 (a hop's
+                       blocks included, its medium frame not), block_ms_p95 (everything), tick_ms_p95 (a publish),
+                       fs, channels, stream, kernel; medium_frames, medium_ms_p50/p95, rhythm_publishes, onsets
 
 Flags (contract):
   AUDIO_GAP      zero-fill for packets that never came. It advances time only (the next block brings its own
@@ -93,6 +101,65 @@ with their own taus (300 ms, 1 s), energy, onset, punch, drive, band levels and 
 frame and nothing until audio returns (``stats()['fades']`` counts these frames). So the renderer (sound_view
 keeps a music.features spectrum for 5 s) and Art-Net out see the sound go, not freeze.
 
+Medium lane (§4, README S4.6): one frame per 100 ms of stream time, at the hop that crosses each multiple of fs/10
+samples since the reset, inside process (show-rx), from the analysis ring. RhythmData's dict is built and published
+by tick, so process allocates nothing but scalars for it. Window lengths and floors are dsp constants (DSP internals,
+not behaviour thresholds).
+  spectrum    N_M-point Hann FFT, N_M the power of two nearest 0.17 s (8192 at 44.1 and 48 kHz), power |X|^2 of
+              the bins up to 8 kHz.
+  HPSS-lite   Fitzgerald's median filtering, made causal. H = the median, per bin, of this frame and the 8 before it
+              (0.9 s; past frames only). P = the median over 17 bins of this frame (edges: the nearest bin repeated).
+              mask M = H^2 / (H^2 + P^2 + eps) on magnitudes, i.e. Hp / (Hp + Pp + eps) on powers (the median
+              commutes with squaring); harmonic = |X| M, percussive = |X| (1 - M). The 9-frame median is exact and
+              allocation-free: the history is 3 groups of 3 frames, each group kept sorted (only the group the new
+              frame lands in is re-sorted), and med9 = med3(max of the groups' lows, med3 of their middles, min of
+              their highs).
+  harmonic_db 10 log10(mean square of the harmonic part, 30 Hz-8 kHz) by Parseval (2 sum H^2 / (N_M sum w^2)), dBFS
+              (a full-scale sine reads -3.01), floored -120. Under HARM_FLOOR_DB (-60) the frame is "under the
+              harmonic floor": chroma12 reads all 0, chroma12() None, and its chord change counts 0.
+  chroma12    the harmonic magnitudes |X| M from 55 Hz to 5 kHz, each bin to its nearest semitone (A4 = 440 Hz:
+              round(69 + 12 log2(f / 440)) mod 12, C = 0), summed per pitch class, max-normalised.
+              chroma12_avg = the mean of the last 10 frames' chroma12 (1 s; fewer after a reset).
+  percussive_ratio  sum P^2 / sum (H^2 + P^2) over the last 10 frames (1 s), bins 30 Hz-8 kHz; 0 in silence.
+  harm_change the mean over the last 4 s of d = 1 - cos(c, c_before) on the unnormalised harmonic chroma; d = 0 when
+              either frame is under the harmonic floor. Without a clock lock, c_before is the frame 0.3 s (3 frames)
+              earlier and the mean is over the last 40 frames. While the clock's gate is beat or dmx it is
+              beat-synchronous: each beat's chroma is the sum of its frames' (beat(t) as contract.ClockData
+              defines it), d compares a beat with the beat before it, and the mean is over the beats that ended in
+              the last 4 s (at least 2, else the time-based value). A clock epoch or a lost lock restarts it.
+  onsets      the fast lane's per-hop SuperFlux, peak-picked once per frame for the hops up to 3 hops ago: a hop is
+              an onset when its flux is the largest within +-3 hops, above 1.5 x the median flux of the last 1 s
+              of hops (one median per frame) + ONSET_FLOOR, and over 3 hops after the previous onset. Its time is
+              the hop's onset time (the fast lane's: the hop's end - FAST_N / 4 / fs) and its strength the flux.
+              onset_rate = onsets in the last 4 s / 4 s (/ the time since the first frame, at least 1 s, earlier).
+              density = clamp((onset_rate - lo) / (hi - lo)) x gate, lo/hi the rolling p05/p95 (a row of the same
+              percentiles as onset and energy, pushed at 25 Hz).
+  pulse_clarity  the autocorrelation (FFT, zero-padded past the largest lag: no wrap; mean removed) of the last 6 s
+              of the flux, summed over pairs of hops (94 Hz at 48 kHz: half the FFT, the same lags to 11 ms); max
+              over lags 0.25-1.5 s / lag 0, clamped 0..1. 0 until 3 s of hops, and 0 when that envelope's RMS is
+              under PULSE_FLOOR (a steady tone's flux is ~0.2, noise's ~8): no pulse in a held chord's beating.
+              No clock. Computed on even frames (5 Hz), held on odd ones.
+  swing       with the clock's gate beat or dmx: the onsets of the last 8 beats whose phase frac(beat(t)) is in
+              [0.4, 0.8]; with at least 4, swing = median phase / (1 - median phase), clamped 1..3; else None.
+              Swing and syncopation are computed on odd frames (5 Hz) and held on even ones; the first frame with
+              a lock computes them at once, and they are None from the first frame without one. (A 16th-note hat
+              at phase 0.75 counts too, so straight 16ths read above 1: the formula as specified.)
+  syncopation with the gate beat or dmx: the onsets of the last 4 bars on a 16th grid (beats_per_bar x 4 steps
+              from bar_anchor_beat, each onset to its nearest step), summed per step (the 4 bars folded: the
+              mean pattern, up to scale). Levels: the downbeat 0, other beats 1, 8ths 2, 16ths 3. syncopation =
+              the share of the pattern's strength on levels 2-3 whose next stronger step (the next step, going
+              round the bar, of a lower level) carries less than half of it; 0 with no onsets; else None.
+  low_db      10 log10(slow_sub + slow_bass) + 3.01 (the hit path's envelopes, dB re a full-scale sine), floored
+              -120.
+  mfcc13      the orthonormal DCT-II of the fast lane's 40 log-mel bands (dB), c1..c13, of their mean over the
+              hops of the last 10 frames (1 s): the DCT is linear, so this is the mean MFCC.
+  gate        the loudness gate of the latest music.features (0 during the fade).
+  The clock is read once per frame through clock_fn (the snapshot, by reference); a body that raises, has no
+  tempo or isn't at gate beat|dmx means no grid, never an error.
+  Budget: a medium frame <= 0.5 ms p95 unloaded (<= 1 ms under the render), timed into medium_ms_p50/p95; its time
+  is left out of hop_ms (the fast lane's cost), so the hop's p95 does not move. The fast lane gains only a few
+  stores per hop (the flux and onset-time rings, the log-mel sum).
+
 Budget (README): a hop, its blocks included, <= 0.45 ms p95 under render load. The band filters run through scipy's
 in-place ``_sosfilt`` kernel (about 3 us a call; the public ``sosfilt`` costs about 60 us in argument checks). It
 is checked against ``sosfilt`` at import, and the public function is the fallback.
@@ -103,15 +170,16 @@ from __future__ import annotations
 import collections
 import math
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import pyebur128
+from scipy.ndimage import median_filter
 from scipy.signal import butter, sosfilt
 
 from .contract import (AUDIO_GAP, AUDIO_RESUME, AUDIO_SEGMENT, BAND_EDGES_HZ, BAND_NAMES, MUSIC_FEATURES, MUSIC_HIT,
-                       SPEC_BANDS, SPEC_EDGES_HZ, SPEC_HI_HZ, SPEC_LO_HZ, SPEC_REF_S, SPEC_TAU_S, SPEC_WINDOW_DB,
-                       FeaturesData, Publish)
+                       MUSIC_RHYTHM, RHYTHM_HZ, SPEC_BANDS, SPEC_EDGES_HZ, SPEC_HI_HZ, SPEC_LO_HZ, SPEC_REF_S,
+                       SPEC_TAU_S, SPEC_WINDOW_DB, ClockData, FeaturesData, Publish, RhythmData)
 
 # -- constants --------------------------------------------------------------------------------------------------------
 HOP = 256
@@ -119,7 +187,7 @@ CHUNK = 1024                    # the largest piece one pass handles; bigger blo
 HIT_BLOCK = 128                 # hit detection runs in pieces of at most this, so hits don't depend on block size
 FAST_N = 2048                   # fast-lane FFT (log-mel, SuperFlux)
 SPEC_N = 4096                   # spectrum32 / brightness / noisiness FFT (the lowest spectrum band is 7 Hz wide)
-RING_N = 8192                   # analysis ring: > SPEC_N + a hop + CHUNK
+RING_N = 16384                  # analysis ring: > SPEC_N + a hop + CHUNK, and >= the medium lane's N_M
 MEL_BANDS = 40
 MEL_LO_HZ, MEL_HI_HZ = 30.0, 16000.0
 MEL_FLOOR = 1e-8                # -80 dB: silence makes no flux
@@ -156,18 +224,96 @@ GATE_SPAN_LU = 15.0
 BRIGHT_LO_HZ, BRIGHT_HI_HZ = 50.0, 16000.0
 _BRIGHT_OCT = math.log2(BRIGHT_HI_HZ / BRIGHT_LO_HZ)
 
-# rolling percentiles: rows 0-5 band level dB, 6 onset flux, 7 lufs_m, 8 the loudest spectrum32 band dB
-Q_ONSET, Q_LUFS, Q_SPEC = NB, NB + 1, NB + 2
-Q_ROWS = NB + 3
+# rolling percentiles: rows 0-5 band level dB, 6 onset flux, 7 lufs_m, 8 the loudest spectrum32 band dB,
+# 9 the medium lane's onset_rate (density)
+Q_ONSET, Q_LUFS, Q_SPEC, Q_RATE = NB, NB + 1, NB + 2, NB + 3
+Q_ROWS = NB + 4
 Q_SHORT_S, Q_SHORT_HZ = SPEC_REF_S, 5.0         # 60 s: also the spectrum ref's window (§11.1)
 Q_LONG_S, Q_LONG_HZ = 600.0, 1.0
 Q_UPDATE_S = 1.0
 Q_MIN_COUNT = 5
-#                       bands x6            onset  lufs   spec
-Q_LO0 = np.array([-70.0] * NB + [0.0, -50.0, -40.0])
-Q_HI0 = np.array([-20.0] * NB + [50.0, -20.0, -40.0])
-Q_HI_FLOOR = np.array([HIT_FLOOR_DB] * NB + [10.0, -60.0, SPEC_REF_FLOOR_DB])
-Q_MIN_SPAN = np.array([12.0] * NB + [10.0, 10.0, 0.0])
+#                       bands x6            onset  lufs   spec   rate
+Q_LO0 = np.array([-70.0] * NB + [0.0, -50.0, -40.0, 0.0])
+Q_HI0 = np.array([-20.0] * NB + [50.0, -20.0, -40.0, 8.0])
+Q_HI_FLOOR = np.array([HIT_FLOOR_DB] * NB + [10.0, -60.0, SPEC_REF_FLOOR_DB, 2.0])
+Q_MIN_SPAN = np.array([12.0] * NB + [10.0, 10.0, 0.0, 2.0])
+
+# -- the medium lane (§4; README S4.6). Window lengths and floors: DSP internals, like the rest of dsp ----------------
+MED_HZ = int(RHYTHM_HZ)         # frames per second of stream time
+MED_WINDOW_S = 0.17             # N_M = the power of two nearest this (8192 at 44.1 and 48 kHz)
+MED_HI_HZ = 8000.0              # the medium spectrum's top
+MED_DEC_MIN_FS = 40000          # from here up the frame is halved in rate before its FFT (Nyquist >= 10 kHz after)
+HPSS_F = 17                     # P: the median over this many bins of the frame (H: 9 frames, 3 groups of 3)
+HPSS_EPS = 1e-30
+HIST_FLOOR = 1e-30              # added to |X|^2 in the float32 history: a normal float32, far under any sound
+PERC_LO_HZ = 30.0               # percussive_ratio and harmonic_db: 30 Hz-8 kHz
+CHROMA_LO_HZ, CHROMA_HI_HZ = 55.0, 5000.0
+A4_HZ = 440.0
+HARM_FLOOR_DB = -60.0           # the harmonic part under this (dBFS): no chroma, no chord change
+AVG_FRAMES = 10                 # 1 s of frames: chroma12_avg, percussive_ratio, mfcc13
+CHANGE_LAG = 3                  # harm_change without a lock: against the frame 0.3 s before ...
+CHANGE_FRAMES = 40              # ... averaged over 4 s
+CHANGE_S = 4.0                  # with a lock: the beats that ended in the last 4 s
+CHANGE_MIN_BEATS = 2
+CHANGE_BEATS_N = 64
+CHROMA_STALE_S = 0.5
+ONSET_HALF = 3                  # local max over +-3 hops
+ONSET_K = 1.5                   # above 1.5 x the median flux of the last 1 s ...
+ONSET_MED_S = 1.0
+ONSET_FLOOR = 20.0              # ... + this (SuperFlux units: dB summed over the 40 mel bands)
+ON_N = 512                      # onsets kept (double-written ring): > 8 beats / 4 bars of them at any sane rate
+RATE_S = 4.0
+PULSE_S = 6.0
+PULSE_MIN_S = 3.0
+PULSE_LAG_S = (0.25, 1.5)
+PULSE_HOPS = 2                  # the autocorrelation runs on the flux summed over 2 hops (94 Hz at 48 kHz)
+PULSE_FLOOR = 2.0               # that envelope's RMS (mean removed) under which there is no pulse (steady tones ~0.2)
+LOCK_GATES = ("beat", "dmx")    # contract.ClockData.gate values at which the grid is trusted
+SWING_BEATS = 8
+SWING_PHASE = (0.4, 0.8)
+SWING_MIN_N = 4
+SWING_RANGE = (1.0, 3.0)
+SYNC_BARS = 4
+SYNC_HALF = 0.5
+MFCC_N = 13
+
+
+def _dct_c1_c13() -> np.ndarray:
+    """(13, 40): rows c1..c13 of the orthonormal DCT-II."""
+    n = np.arange(MEL_BANDS)
+    k = np.arange(1, MFCC_N + 1)[:, None]
+    return np.sqrt(2.0 / MEL_BANDS) * np.cos(np.pi * k * (2 * n + 1) / (2 * MEL_BANDS))
+
+
+_DCT = np.ascontiguousarray(_dct_c1_c13())
+
+
+def _pow2_nearest(x: float) -> int:
+    lo = 1 << max(0, int(math.floor(math.log2(max(1.0, x)))))
+    return lo if x - lo <= 2 * lo - x else 2 * lo
+
+
+def _pow2_at_least(x: float) -> int:
+    return 1 << max(0, int(math.ceil(math.log2(max(1.0, x)))))
+
+
+def _sync_tables(steps: int) -> tuple[list[int], list[int]]:
+    """For a bar of ``steps`` 16ths: the steps on levels 2-3 (8ths, 16ths) and each one's next stronger step (the
+    next step, going round the bar, whose level is lower)."""
+    def level(s: int) -> int:
+        return 0 if s == 0 else 1 if s % 4 == 0 else 2 if s % 2 == 0 else 3
+
+    weak, nxt = [], []
+    for s in range(steps):
+        lv = level(s)
+        if lv < 2:
+            continue
+        k = 1
+        while level((s + k) % steps) >= lv:
+            k += 1
+        weak.append(s)
+        nxt.append((s + k) % steps)
+    return weak, nxt
 
 _MODES = pyebur128.MeasurementMode.MODE_M | pyebur128.MeasurementMode.MODE_S
 
@@ -197,6 +343,39 @@ def _pick_kernel():
 
 
 _filt, KERNEL = _pick_kernel()
+
+
+def _public_median(x: np.ndarray, size: int, out: np.ndarray) -> None:
+    """The fallback, same contract as the kernel: out <- the running median of x over ``size`` (odd) samples, the
+    edges repeating the nearest sample. x and out must not share memory."""
+    median_filter(x, size=size, output=out, mode="nearest")
+
+
+def _pick_median():
+    """scipy's 1-D rank filter without median_filter's argument handling (about 40 us a call under load: as much
+    as the filter), checked against median_filter at import; the public function is the fallback."""
+    try:
+        from scipy.ndimage import _ni_support, _rank_filter_1d
+        mode = _ni_support._extend_mode_to_code("nearest", is_filter=True)
+        zero = np.float64(0.0)
+
+        def kernel(x: np.ndarray, size: int, out: np.ndarray) -> None:
+            _rank_filter_1d.rank_filter(x, size // 2, size, out, mode, zero, 0)
+
+        rng = np.random.default_rng(2)
+        for n in (17, 40, 1366):
+            x = rng.random(n) ** 4
+            want, got = np.empty(n), np.empty(n)
+            _public_median(x, HPSS_F, want)
+            kernel(x, HPSS_F, got)
+            if not np.array_equal(want, got):
+                raise ValueError("mismatch")
+        return kernel, "scipy-private"
+    except Exception:                                   # noqa: BLE001 - any trouble: the public path
+        return _public_median, "public"
+
+
+_median, MEDIAN_KERNEL = _pick_median()
 
 
 # -- tables per sample rate -------------------------------------------------------------------------------------------
@@ -277,6 +456,25 @@ class _Tables:
         self.freqs_sel = np.ascontiguousarray(freqs_s[self.sel0:self.sel1])
         self.scale_s = scale_s
         self.onset_delay_s = (FAST_N / 4) / fs           # a transient peaks the flux when it reaches the Hann's middle
+
+        # the medium lane: at fs >= MED_DEC_MIN_FS the window is halved in rate first (same 0.17 s, same bins)
+        self.m_dec = dec = 2 if fs >= MED_DEC_MIN_FS else 1
+        fs_m = fs / dec
+        self.n_m = n_m = min(1 << int(math.log2((RING_N - 2) // dec)), _pow2_nearest(MED_WINDOW_S * fs_m))
+        self.n_raw = n_m * dec + (2 if dec == 2 else 0)          # ring samples one frame reads
+        self.hann_m = _hann(n_m)
+        freqs_m = np.fft.rfftfreq(n_m, 1.0 / fs_m)
+        self.k_m = int(min(freqs_m.size, np.searchsorted(freqs_m, MED_HI_HZ, side="right")))   # bins 0..k_m-1
+        self.k_p0 = int(min(self.k_m, np.searchsorted(freqs_m, PERC_LO_HZ)))
+        self.k_c0 = int(min(self.k_m, np.searchsorted(freqs_m, CHROMA_LO_HZ)))
+        self.k_c1 = int(max(self.k_c0, min(self.k_m, np.searchsorted(freqs_m, CHROMA_HI_HZ, side="right"))))
+        pc = np.rint(69.0 + 12.0 * np.log2(freqs_m[self.k_c0:self.k_c1] / A4_HZ)).astype(np.intp) % 12
+        w = np.zeros((12, self.k_c1 - self.k_c0))
+        w[pc, np.arange(pc.size)] = 1.0
+        self.chroma_w = np.ascontiguousarray(w)
+        self.ms_m = 2.0 / (n_m * float(np.dot(self.hann_m, self.hann_m)))   # one-sided sum |X|^2 -> mean square
+        # the decimator [1 3 3 1] has |H(f)| = 8 cos^3(pi f / fs): its gain and droop are divided back out of |X|^2
+        self.m_comp = (1.0 / (64.0 * np.cos(np.pi * freqs_m[:self.k_m] / fs) ** 6)) if dec == 2 else None
 
 
 # -- rolling percentiles ----------------------------------------------------------------------------------------------
@@ -370,10 +568,19 @@ def _smoothstep(e0: float, e1: float, x: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
+def _cos(a: np.ndarray, b: np.ndarray) -> float:
+    """The cosine of two non-negative vectors, 0..1; 1 (no change) when either is all zero."""
+    na, nb = float(np.dot(a, a)), float(np.dot(b, b))
+    if not (na > 0.0 and nb > 0.0):
+        return 1.0
+    return min(1.0, max(0.0, float(np.dot(a, b)) / math.sqrt(na * nb)))
+
+
 class Features:
     """Audio blocks in, music.features (25 Hz) and music.hit out. Hot thread only (see the module docstring)."""
 
     gate_ref_lufs: float = -30.0
+    clock_fn: Optional[Callable[[], Optional[ClockData]]] = None      # set by __main__: clock.snapshot
 
     def __init__(self, *, publish: Optional[Publish] = None, hop: int = HOP, publish_hz: float = 25.0) -> None:
         if not 32 <= hop <= CHUNK:
@@ -468,6 +675,45 @@ class Features:
         self._fade_idle = 0.0                         # seconds since the latest hop, at the previous fade frame
         self._fades = 0
 
+        # the medium lane: rate-dependent buffers come with _rebuild (_alloc_medium); these don't depend on the rate
+        self._mk: Optional[tuple] = None              # what the medium buffers were sized for
+        self._mel_acc = np.zeros(MEL_BANDS)           # log-mel summed over the hops since the last frame
+        self._mel_ring = np.zeros((AVG_FRAMES, MEL_BANDS))
+        self._mel_cnt = np.zeros(AVG_FRAMES)
+        self._mel_mean = np.zeros(MEL_BANDS)
+        self._mfcc = np.zeros(MFCC_N)
+        self._craw = np.zeros(12)                     # this frame's chroma, unnormalised (0 under the floor)
+        self._cn = np.zeros(12)                       # ... max-normalised
+        self._c_hist = np.zeros((CHANGE_LAG + 1, 12)) # the last 4 frames' craw (time-based change)
+        self._c_ok = np.zeros(CHANGE_LAG + 1, dtype=bool)
+        self._cn_ring = np.zeros((AVG_FRAMES, 12))
+        self._cavg = np.zeros(12)
+        self._chg_ring = np.zeros(CHANGE_FRAMES)
+        self._hp_ring = np.zeros(AVG_FRAMES)          # sum H^2, sum P^2 per frame (30 Hz-8 kHz)
+        self._pp_ring = np.zeros(AVG_FRAMES)
+        self._bs_acc = np.zeros(12)                   # the beat-synchronous change: this beat's chroma sum ...
+        self._bs_prev = np.zeros(12)                  # ... and the previous beat's
+        self._bs_t = np.zeros(CHANGE_BEATS_N)         # (end time, d) per finished beat
+        self._bs_d = np.zeros(CHANGE_BEATS_N)
+        self._bs_m = np.zeros(CHANGE_BEATS_N, dtype=bool)
+        self._on_t = np.full(2 * ON_N, -math.inf)     # onsets (double-written: the last m are contiguous)
+        self._on_s = np.zeros(2 * ON_N)
+        self._sync: dict[int, tuple[list[int], list[int]]] = {}
+        self._med_ms = np.zeros(512)
+        self._med_i = 0
+        self._med_frames = 0                          # since construction (stats)
+        self._med_seq = 0                             # +1 per frame; tick publishes when it moves
+        self._med_pub = 0
+        self._med_block_s = 0.0                       # medium time inside the current process call (not a hop's)
+        self._rhythm: Optional[RhythmData] = None
+        self._rhythm_pubs = 0
+        self._chroma_out: Optional[np.ndarray] = None
+        self._rhythm_wall = -math.inf                 # tick's now_s when the latest frame was published
+        self._tick_now = -math.inf
+        self._gate_now = 0.0
+        self._onsets_total = 0
+        self._m_rate = 0.0
+
         self._clear_history()
         self._reset_state()
 
@@ -523,6 +769,12 @@ class Features:
         if self._hops != self._hops_seen:             # host time at which the latest hop was first seen
             self._hops_seen = self._hops
             self._hop_wall = now_s
+        self._tick_now = now_s
+        self._tick_features(now_s)
+        if self._med_seq != self._med_pub:
+            self._publish_rhythm(now_s)
+
+    def _tick_features(self, now_s: float) -> None:
         if self._T is None or now_s < self._next_pub_s:
             return
         if self._hops_since_pub == 0:
@@ -532,6 +784,7 @@ class Features:
         tp = time.perf_counter()
         data = self._compose()
         self._latest = data
+        self._gate_now = data["gate"]
         self._real_t_ms, self._fade_idle = data["t_ms"], 0.0
         self._faded = False
         self._publishes += 1
@@ -575,6 +828,7 @@ class Features:
             "brightness": 0.0, "noisiness": 0.0, "gate": 0.0, "energy": 0.0, "punch": 0.0, "drive": 0.0,
             "spectrum32": np.round(sm, 4).tolist()}
         self._latest = data
+        self._gate_now = 0.0
         self._fades += 1
         self._publishes += 1
         if self._publish is not None:
@@ -583,8 +837,14 @@ class Features:
     def latest(self) -> Optional[FeaturesData]:
         return self._latest
 
+    def rhythm(self) -> Optional[RhythmData]:
+        return self._rhythm
+
     def chroma12(self) -> Optional[np.ndarray]:
-        return None
+        c = self._chroma_out
+        if c is None or self._tick_now - self._rhythm_wall > CHROMA_STALE_S:
+            return None
+        return c
 
     def reset(self) -> None:
         self._reset_state()
@@ -600,7 +860,10 @@ class Features:
                 "hop_ms_p50": pct(self._hop_ms, self._hop_i, 50), "hop_ms_p95": pct(self._hop_ms, self._hop_i, 95),
                 "block_ms_p95": pct(self._block_ms, self._block_i, 95),
                 "tick_ms_p95": pct(self._tick_ms, self._tick_i, 95),
-                "fs": self._fs, "channels": self._ch, "stream": self._stream, "kernel": KERNEL}
+                "fs": self._fs, "channels": self._ch, "stream": self._stream, "kernel": KERNEL,
+                "medium_frames": self._med_frames, "medium_ms_p50": pct(self._med_ms, self._med_i, 50),
+                "medium_ms_p95": pct(self._med_ms, self._med_i, 95), "rhythm_publishes": self._rhythm_pubs,
+                "onsets": self._onsets_total}
 
     # -- state -------------------------------------------------------------------------------------------------------
     def _rebuild(self, fs: int, ch: int) -> None:
@@ -614,7 +877,101 @@ class Features:
             self._r128 = None
         self._lufs_s = LUFS_FLOOR
         self._lufs_s_t = -math.inf
+        self._alloc_medium(T)
         self._reset_state()
+
+    def _alloc_medium(self, T: _Tables) -> None:
+        """The medium lane's rate-dependent buffers (sizes from the rate and the hop); kept when nothing changed."""
+        hps = T.fs / self.hop                                      # hops per second
+        eps = hps / PULSE_HOPS                                     # the pulse envelope's samples per second
+        h1s = max(1, int(round(ONSET_MED_S * hps)))
+        pulse_n = max(16, PULSE_HOPS * int(round(PULSE_S * eps)))  # hops, a whole number of envelope samples
+        lag_lo = max(1, int(round(PULSE_LAG_S[0] * eps)))          # in envelope samples
+        lag_hi = max(lag_lo, int(round(PULSE_LAG_S[1] * eps)))
+        fx_n = _pow2_at_least(max(pulse_n, h1s) + 2 * ONSET_HALF + int(hps) + 64)
+        nf = _pow2_at_least(pulse_n // PULSE_HOPS + lag_hi + 1)   # zero-padded past the largest lag: no wrap
+        key = (T.n_m, T.k_m, T.k_c1 - T.k_c0, fx_n, nf)
+        self._h1s, self._pulse_n, self._lag_lo, self._lag_hi = h1s, pulse_n, lag_lo, lag_hi
+        self._pulse_min = PULSE_HOPS * max(2 * lag_hi, int(round(PULSE_MIN_S * eps)))
+        if key == self._mk:
+            return
+        self._mk = key
+        km, kc = T.k_m, T.k_c1 - T.k_c0
+        self._m_frame = np.zeros(T.n_m)
+        self._m_spec = np.zeros(T.n_m // 2 + 1, dtype=np.complex128)
+        self._m_re, self._m_im = self._m_spec.real[:km], self._m_spec.imag[:km]
+        self._m_pw = np.zeros(km)                     # |X|^2
+        # the time median runs in float32 (half the cache; min/max only pick stored values, each >= HIST_FLOOR,
+        # so nothing goes denormal): the last 9 frames' |X|^2 as [place in its group, group, bin], each group
+        # also kept sorted along the first axis
+        f4 = np.float32
+        self._m_hist = np.zeros((3, 3, km), dtype=f4)
+        self._m_sort = np.zeros((3, 3, km), dtype=f4)
+        self._m_t4 = np.zeros(km, dtype=f4)
+        self._m_lo = np.zeros(km, dtype=f4)
+        self._m_hi = np.zeros(km, dtype=f4)
+        self._m_md = np.zeros(km, dtype=f4)
+        self._m_H4 = np.zeros(km, dtype=f4)
+        self._m_t1 = np.zeros(km)
+        self._m_H = np.zeros(km)                      # median in time (harmonic)
+        self._m_m2 = np.zeros(km)
+        self._m_om = np.zeros(km)
+        self._m_P = np.zeros(km)                      # median in frequency (percussive)
+        self._m_M = np.zeros(km)                      # the soft mask
+        self._m_mag = np.zeros(kc)
+        self._fx_n = fx_n
+        self._fx = np.zeros(2 * fx_n)                 # per-hop flux, double-written
+        self._ft = np.zeros(2 * fx_n)                 # per-hop onset time
+        self._fx_i = 0                                # hops written (never reset; the ring is cleared instead)
+        self._fx_med = np.zeros(fx_n)
+        self._b1 = np.zeros(fx_n, dtype=bool)
+        self._nf = nf
+        self._ac_in = np.zeros(nf)
+        self._ac_spec = np.zeros(nf // 2 + 1, dtype=np.complex128)
+        self._ac_re, self._ac_im = self._ac_spec.real, self._ac_spec.imag
+        self._ac_t = np.zeros(nf // 2 + 1)
+        self._ac_out = np.zeros(nf)
+
+    def _med_reset(self) -> None:
+        if self._mk is not None:
+            self._m_hist.fill(0.0)
+            self._m_sort.fill(0.0)
+            self._fx.fill(0.0)
+            self._ft.fill(0.0)
+        self._fx_rs = self._fx_i if self._mk is not None else 0   # the first hop since the reset
+        self._pp_i = self._fx_rs                       # the next hop to peak-pick
+        self._last_on_j = -(1 << 60)
+        self._med_k = 1                                # the next frame: when n_end * MED_HZ >= k * fs
+        self._med_n = 0                                # frames since the reset
+        self._med_t0 = math.nan                        # the first frame's time
+        self._mel_acc.fill(0.0)
+        self._mel_cnt_acc = 0
+        self._mel_ring.fill(0.0)
+        self._mel_cnt.fill(0.0)
+        self._c_hist.fill(0.0)
+        self._c_ok.fill(False)
+        self._cn_ring.fill(0.0)
+        self._chg_ring.fill(0.0)
+        self._hp_ring.fill(0.0)
+        self._pp_ring.fill(0.0)
+        self._on_t.fill(-math.inf)
+        self._on_s.fill(0.0)
+        self._on_i = 0
+        self._bs_reset()
+        self._m_rate = 0.0
+        self._m_pulse = 0.0
+        self._m_swing: Optional[float] = None
+        self._m_sync: Optional[float] = None
+
+    def _bs_reset(self) -> None:
+        self._bs_k: Optional[int] = None               # the beat being summed
+        self._bs_n = 0
+        self._bs_acc.fill(0.0)
+        self._bs_prev_k: Optional[int] = None
+        self._bs_epoch = None
+        self._bs_t.fill(-math.inf)
+        self._bs_d.fill(0.0)
+        self._bs_i = 0
 
     def _reset_state(self) -> None:
         self._zi_band.fill(0.0)
@@ -637,6 +994,7 @@ class Features:
         self._hops_since_pub = 0
         self._t_hop = math.nan
         self._t_last = getattr(self, "_t_last", math.nan)
+        self._med_reset()
 
     def _clear_history(self) -> None:
         self._q.clear()
@@ -657,7 +1015,8 @@ class Features:
         dt = time.perf_counter() - tp
         self._block_ms[self._block_i % self._block_ms.size] = dt * 1000.0
         self._block_i += 1
-        self._acc_s += dt
+        self._acc_s += dt - self._med_block_s          # a medium frame is timed on its own (medium_ms)
+        self._med_block_s = 0.0
         if hops:
             per = self._acc_s * 1000.0 / hops
             for _ in range(min(hops, self._hop_ms.size)):
@@ -848,6 +1207,363 @@ class Features:
         self._hops_since_pub += 1
         self._t_hop = t_end
         self._hop_rpos = p
+        # the medium lane's per-hop part: the flux and onset-time rings, the log-mel sum; a frame per 100 ms
+        fn = self._fx_n
+        fi = self._fx_i & (fn - 1)
+        self._fx[fi] = self._fx[fi + fn] = flux
+        self._ft[fi] = self._ft[fi + fn] = t_end - T.onset_delay_s
+        self._fx_i += 1
+        np.add(self._mel_acc, mel, out=self._mel_acc)
+        self._mel_cnt_acc += 1
+        if n_end * MED_HZ >= self._med_k * self._fs:
+            self._medium(t_end, n_end)
+
+    # -- the medium lane ------------------------------------------------------------------------------------------------
+    def _med3(self, a: np.ndarray, b: np.ndarray, c: np.ndarray, out: np.ndarray) -> None:
+        """out <- the element-wise median of a, b, c: max(min(a, b), min(max(a, b), c)). out aliases none of them;
+        all float32 (the time median's scratch)."""
+        t = self._m_t4
+        np.minimum(a, b, out=t)
+        np.maximum(a, b, out=out)
+        np.minimum(out, c, out=out)
+        np.maximum(out, t, out=out)
+
+    def _medium(self, t_end: float, n_end: int) -> None:
+        """One medium frame (the module docstring has every formula). Numbers only: tick builds the message."""
+        tp = time.perf_counter()
+        T = self._T
+        self._med_k = n_end * MED_HZ // self._fs + 1
+        i = self._med_n
+        if i == 0:
+            self._med_t0 = t_end
+
+        # the spectrum: |X|^2 up to 8 kHz (at 44.1/48 kHz: [1 3 3 1], every other sample, a 4096-point FFT)
+        p = self._rpos
+        n = T.n_m
+        y = self._m_frame
+        if T.m_dec == 2:
+            r = self._ring[p + RING_N - T.n_raw:p + RING_N]
+            np.add(r[1:2 * n + 1:2], r[2:2 * n + 2:2], out=y)
+            y *= 3.0
+            y += r[0:2 * n:2]
+            y += r[3:2 * n + 3:2]
+            y *= T.hann_m
+        else:
+            np.multiply(self._ring[p + RING_N - n:p + RING_N], T.hann_m, out=y)
+        np.fft.rfft(y, out=self._m_spec)
+        pw = self._m_pw
+        np.multiply(self._m_re, self._m_re, out=pw)
+        np.multiply(self._m_im, self._m_im, out=self._m_t1)
+        pw += self._m_t1
+        if T.m_comp is not None:
+            pw *= T.m_comp
+
+        # HPSS-lite: H = the median of the last 9 frames (3 sorted groups of 3), P = the median over 17 bins
+        slot = i % 9
+        g = slot // 3
+        hist, srt = self._m_hist, self._m_sort
+        np.add(pw, HIST_FLOOR, out=self._m_t1)
+        np.copyto(hist[slot % 3, g], self._m_t1)       # a cast copy (a mixed-type ufunc would buffer)
+        a, b, c = hist[0, g], hist[1, g], hist[2, g]
+        np.minimum(a, b, out=srt[0, g])               # the group sorted: low, middle, high
+        np.minimum(srt[0, g], c, out=srt[0, g])
+        np.maximum(a, b, out=srt[2, g])
+        np.maximum(srt[2, g], c, out=srt[2, g])
+        self._med3(a, b, c, srt[1, g])
+        H, P, M = self._m_H, self._m_P, self._m_M
+        lo, hi, md = self._m_lo, self._m_hi, self._m_md
+        np.maximum(srt[0, 0], srt[0, 1], out=lo)
+        np.maximum(lo, srt[0, 2], out=lo)
+        np.minimum(srt[2, 0], srt[2, 1], out=hi)
+        np.minimum(hi, srt[2, 2], out=hi)
+        self._med3(srt[1, 0], srt[1, 1], srt[1, 2], md)
+        self._med3(lo, md, hi, self._m_H4)
+        np.copyto(H, self._m_H4)
+        _median(pw, HPSS_F, P)
+        np.add(H, P, out=M)
+        M += HPSS_EPS
+        np.divide(H, M, out=M)                        # = H^2 / (H^2 + P^2) on magnitudes
+        m2, om = self._m_m2, self._m_om
+        np.multiply(M, M, out=m2)
+        np.subtract(1.0, M, out=om)
+        np.multiply(om, om, out=om)
+        k0 = T.k_p0
+        sum_h = float(np.dot(pw[k0:], m2[k0:]))       # sum H^2, sum P^2 over 30 Hz-8 kHz
+        sum_p = float(np.dot(pw[k0:], om[k0:]))
+        hdb = max(DBFS_FLOOR, 10.0 * math.log10(sum_h * T.ms_m + 1e-30))
+
+        # chroma12 from the harmonic magnitudes, 55 Hz-5 kHz
+        craw, cn = self._craw, self._cn
+        if hdb < HARM_FLOOR_DB or T.k_c1 <= T.k_c0:
+            craw.fill(0.0)
+        else:
+            mag = self._m_mag
+            np.sqrt(pw[T.k_c0:T.k_c1], out=mag)
+            mag *= M[T.k_c0:T.k_c1]
+            np.dot(T.chroma_w, mag, out=craw)
+        cmax = float(craw.max())
+        ok = cmax > 1e-30
+        if ok:
+            np.divide(craw, cmax, out=cn)              # the max reads exactly 1.0
+        else:
+            craw.fill(0.0)
+            cn.fill(0.0)
+
+        # the rings over 1 s: chroma12_avg, percussive_ratio, mfcc13
+        k = i % AVG_FRAMES
+        n_avg = min(i + 1, AVG_FRAMES)
+        np.copyto(self._cn_ring[k], cn)
+        np.add.reduce(self._cn_ring[:n_avg], axis=0, out=self._cavg)
+        self._cavg *= 1.0 / n_avg
+        self._hp_ring[k] = sum_h
+        self._pp_ring[k] = sum_p
+        sh, sp = float(self._hp_ring.sum()), float(self._pp_ring.sum())
+        perc = sp / (sh + sp) if (sh + sp) * T.ms_m > 1e-12 else 0.0
+        np.copyto(self._mel_ring[k], self._mel_acc)
+        self._mel_cnt[k] = self._mel_cnt_acc
+        self._mel_acc.fill(0.0)
+        self._mel_cnt_acc = 0
+        cnt = float(self._mel_cnt.sum())
+        if cnt > 0.0:
+            np.add.reduce(self._mel_ring, axis=0, out=self._mel_mean)
+            self._mel_mean *= 1.0 / cnt
+            np.dot(_DCT, self._mel_mean, out=self._mfcc)
+
+        # the chord change, time-based: against the frame 0.3 s before, mean over 4 s
+        lag_n = CHANGE_LAG + 1
+        np.copyto(self._c_hist[i % lag_n], craw)
+        self._c_ok[i % lag_n] = ok
+        j = (i - CHANGE_LAG) % lag_n
+        d = 1.0 - _cos(craw, self._c_hist[j]) if i >= CHANGE_LAG and ok and self._c_ok[j] else 0.0
+        self._chg_ring[i % CHANGE_FRAMES] = d
+        n_chg = min(i + 1, CHANGE_FRAMES)
+        harm = float(np.add.reduce(self._chg_ring[:n_chg])) / n_chg
+
+        # onsets, onset_rate; pulse_clarity on even frames (5 Hz: a 6 s window), held on odd ones
+        self._pick_onsets()
+        self._m_rate = self._onset_rate(t_end)
+        if i % 2 == 0:
+            self._m_pulse = self._pulse_clarity()
+
+        # with the clock locked: the beat-synchronous chord change every frame; swing and syncopation on odd
+        # frames (5 Hz: 8 beats, 4 bars), held on even ones; None as soon as the lock goes
+        ck = self._clock()
+        if ck is None:
+            self._m_swing = self._m_sync = None
+            if self._bs_k is not None or self._bs_i:
+                self._bs_reset()
+        else:
+            try:
+                hb = self._beat_change(ck, t_end, craw)
+                if hb is not None:
+                    harm = hb
+                if i % 2 == 1 or self._m_sync is None:
+                    self._m_swing, self._m_sync = self._grid(ck, t_end)
+            except Exception:                          # noqa: BLE001 - a bad clock body: no grid, never a failure
+                self._m_swing = self._m_sync = None
+                self._bs_reset()
+
+        slow = self._slow
+        self._m_low = max(DBFS_FLOOR, 10.0 * math.log10(float(slow[0]) + float(slow[1]) + 1e-30) + DB_SINE)
+        self._m_t = t_end
+        self._m_hdb = hdb
+        self._m_under = not ok
+        self._m_perc = perc
+        self._m_harm = min(1.0, max(0.0, harm))
+        self._med_n += 1
+        self._med_frames += 1
+        self._med_seq += 1
+        dt = time.perf_counter() - tp
+        self._med_block_s += dt
+        self._med_ms[self._med_i % self._med_ms.size] = dt * 1000.0
+        self._med_i += 1
+
+    def _pick_onsets(self) -> None:
+        """Peak-pick the hops that have 3 hops after them and were not picked yet."""
+        fx, ft, n_fx = self._fx, self._ft, self._fx_n
+        last = self._fx_i - 1 - ONSET_HALF
+        j0 = max(self._pp_i, self._fx_rs + ONSET_HALF, self._fx_i - n_fx + 2 * ONSET_HALF + 1)
+        if last < j0:
+            return
+        n = last - j0 + 1
+        self._pp_i = last + 1
+        m1 = min(self._h1s, last + 1 - self._fx_rs)    # the median of the last 1 s of hops (up to `last`)
+        s0 = (last + 1 - m1) % n_fx
+        med = self._fx_med[:m1]
+        np.copyto(med, fx[s0:s0 + m1])
+        kth = m1 // 2
+        med.partition(kth)
+        thr = ONSET_K * float(med[kth]) + ONSET_FLOOR
+        b = (j0 - ONSET_HALF) % n_fx
+        seg = fx[b:b + n + 2 * ONSET_HALF]               # hops j0 - 3 .. last + 3, contiguous
+        above = self._b1[:n]
+        np.greater(seg[ONSET_HALF:ONSET_HALF + n], thr, out=above)
+        if not above.any():
+            return
+        for q in np.flatnonzero(above):                  # a few hops: each checked for the local max over +-3
+            q = int(q)
+            v = seg[q + ONSET_HALF]
+            j = j0 + q
+            if v < seg[q:q + 2 * ONSET_HALF + 1].max() or j - self._last_on_j <= ONSET_HALF:
+                continue
+            self._last_on_j = j
+            ko = self._on_i % ON_N
+            self._on_t[ko] = self._on_t[ko + ON_N] = ft[j % n_fx]
+            self._on_s[ko] = self._on_s[ko + ON_N] = v
+            self._on_i += 1
+            self._onsets_total += 1
+
+    def _recent_onsets(self, t_from: float) -> tuple[np.ndarray, np.ndarray]:
+        """Views of the kept onsets' times and strengths from ``t_from`` on (oldest first)."""
+        m = min(self._on_i, ON_N)
+        e = self._on_i % ON_N + ON_N
+        tv = self._on_t[e - m:e]
+        a = int(np.searchsorted(tv, t_from, side="left"))
+        return tv[a:], self._on_s[e - m + a:e]
+
+    def _onset_rate(self, t_end: float) -> float:
+        tv, _ = self._recent_onsets(t_end - RATE_S)
+        span = min(RATE_S, max(1.0, t_end - self._med_t0 + 1.0 / MED_HZ))
+        return tv.size / span
+
+    def _pulse_clarity(self) -> float:
+        L = min(self._fx_i - self._fx_rs, self._pulse_n) // PULSE_HOPS * PULSE_HOPS
+        if L < self._pulse_min:
+            return 0.0
+        s = (self._fx_i - L) % self._fx_n
+        x = self._fx[s:s + L]
+        m = L // PULSE_HOPS
+        xin = self._ac_in
+        e = xin[:m]
+        np.add(x[0::PULSE_HOPS], x[1::PULSE_HOPS], out=e)    # the 2-hop envelope (PULSE_HOPS = 2)
+        mu = float(np.add.reduce(e)) / m
+        e -= mu
+        xin[m:] = 0.0
+        if float(np.dot(e, e)) < m * PULSE_FLOOR * PULSE_FLOOR:
+            return 0.0                                   # a steady sound's flux is not a pulse
+        np.fft.rfft(xin, out=self._ac_spec)
+        re, im, t = self._ac_re, self._ac_im, self._ac_t
+        np.multiply(re, re, out=t)
+        np.multiply(im, im, out=im)
+        np.add(t, im, out=re)
+        im.fill(0.0)
+        np.fft.irfft(self._ac_spec, n=self._nf, out=self._ac_out)
+        r0 = float(self._ac_out[0])
+        if not r0 > 1e-9:
+            return 0.0
+        return _clamp01(float(self._ac_out[self._lag_lo:self._lag_hi + 1].max()) / r0)
+
+    def _clock(self) -> Optional[ClockData]:
+        """The clock's body when its grid is trusted (gate beat or dmx, a tempo); else None. Never raises."""
+        fn = self.clock_fn
+        if fn is None:
+            return None
+        try:
+            ck = fn()
+            if ck is None or ck.get("gate") not in LOCK_GATES:
+                return None
+            bpm = float(ck["bpm"])
+            return ck if 1.0 <= bpm <= 1000.0 and math.isfinite(float(ck["anchor_ms"])) else None
+        except Exception:                              # noqa: BLE001
+            return None
+
+    def _beat_change(self, ck: ClockData, t_end: float, craw: np.ndarray) -> Optional[float]:
+        """The beat-synchronous chord change: the mean d over the beats that ended in the last 4 s; None with
+        fewer than 2 of them."""
+        ep = ck.get("epoch")
+        if ep != self._bs_epoch:
+            self._bs_reset()
+            self._bs_epoch = ep
+        k = math.floor(float(ck["beat_at_anchor"]) + (t_end * 1000.0 - float(ck["anchor_ms"]))
+                       * float(ck["bpm"]) / 60000.0)
+        if self._bs_k is not None and k != self._bs_k:
+            if self._bs_n > 0:
+                cur, prev = self._bs_acc, self._bs_prev
+                if self._bs_prev_k is not None and self._bs_prev_k == self._bs_k - 1:
+                    d = 1.0 - _cos(cur, prev) if cur.any() and prev.any() else 0.0
+                    slot = self._bs_i % CHANGE_BEATS_N
+                    self._bs_t[slot] = t_end
+                    self._bs_d[slot] = d
+                    self._bs_i += 1
+                np.copyto(prev, cur)
+                self._bs_prev_k = self._bs_k
+            self._bs_acc.fill(0.0)
+            self._bs_n = 0
+        self._bs_k = k
+        self._bs_acc += craw
+        self._bs_n += 1
+        if self._bs_i < CHANGE_MIN_BEATS:
+            return None
+        mk = self._bs_m
+        np.greater_equal(self._bs_t, t_end - CHANGE_S, out=mk)    # unused slots hold -inf
+        n = int(np.count_nonzero(mk))
+        return float(np.add.reduce(self._bs_d, where=mk)) / n if n >= CHANGE_MIN_BEATS else None
+
+    def _grid(self, ck: ClockData, t_end: float) -> tuple[Optional[float], float]:
+        """(swing, syncopation) from the onsets of the last max(8 beats, 4 bars), in one pass. A few dozen
+        onsets: plain Python is cheaper here than numpy's per-call cost."""
+        bpm = float(ck["bpm"])
+        bpb = max(1, int(ck.get("beats_per_bar") or 4))
+        steps = 4 * bpb
+        k = bpm / 60000.0
+        a_ms, b0 = float(ck["anchor_ms"]), float(ck["beat_at_anchor"])
+        bar0 = float(ck.get("bar_anchor_beat") or 0)
+        b_now = b0 + (t_end * 1000.0 - a_ms) * k
+        sw_from, sy_from = b_now - SWING_BEATS, b_now - SYNC_BARS * bpb
+        tv, sv = self._recent_onsets(t_end - max(SWING_BEATS, SYNC_BARS * bpb) * 60.0 / bpm)
+        phases: list[float] = []
+        pat = [0.0] * steps
+        ph_lo, ph_hi = SWING_PHASE
+        for t, st in zip(tv.tolist(), sv.tolist()):
+            b = b0 + (t * 1000.0 - a_ms) * k
+            if b >= sy_from:
+                pat[int(math.floor((b - bar0) * 4.0 + 0.5)) % steps] += st
+            if b >= sw_from:
+                ph = b - math.floor(b)
+                if ph_lo <= ph <= ph_hi:
+                    phases.append(ph)
+        swing = None
+        if len(phases) >= SWING_MIN_N:
+            phases.sort()
+            h = len(phases) // 2
+            m = phases[h] if len(phases) % 2 else 0.5 * (phases[h - 1] + phases[h])
+            swing = min(SWING_RANGE[1], max(SWING_RANGE[0], m / (1.0 - m)))
+        tot = sum(pat)
+        if not tot > 0.0:
+            return swing, 0.0
+        tabs = self._sync.get(steps)
+        if tabs is None:
+            tabs = self._sync[steps] = _sync_tables(steps)
+        syn = 0.0
+        for w, nx in zip(*tabs):
+            if pat[nx] < SYNC_HALF * pat[w]:
+                syn += pat[w]
+        return swing, _clamp01(syn / tot)
+
+    def _publish_rhythm(self, now_s: float) -> None:
+        self._med_pub = self._med_seq
+        q = self._q
+        lo, hi = float(q.lo[Q_RATE]), float(q.hi[Q_RATE])
+        gate = float(self._gate_now)
+        rate = float(self._m_rate)
+        density = _clamp01((rate - lo) / max(1e-6, hi - lo)) * gate
+        sw, sy = self._m_swing, self._m_sync
+        data: RhythmData = {
+            "t_ms": round(self._m_t * 1000.0, 3), "stream": self._stream or "",
+            "chroma12": np.round(self._cn, 4).tolist(), "chroma12_avg": np.round(self._cavg, 4).tolist(),
+            "harmonic_db": round(float(self._m_hdb), 2), "percussive_ratio": round(float(self._m_perc), 4),
+            "harm_change": round(float(self._m_harm), 4), "onset_rate": round(rate, 3),
+            "density": round(density, 4), "pulse_clarity": round(float(self._m_pulse), 4),
+            "swing": None if sw is None else round(float(sw), 3),
+            "syncopation": None if sy is None else round(float(sy), 4),
+            "low_db": round(float(self._m_low), 2), "mfcc13": np.round(self._mfcc, 3).tolist(),
+            "gate": round(gate, 4)}
+        self._rhythm = data
+        self._chroma_out = None if self._m_under else self._cn.copy()
+        self._rhythm_wall = now_s
+        self._rhythm_pubs += 1
+        if self._publish is not None:
+            self._publish({"type": MUSIC_RHYTHM, "data": data})
 
     # -- publish -------------------------------------------------------------------------------------------------------
     def _compose(self) -> FeaturesData:
@@ -910,6 +1626,7 @@ class Features:
         qv[Q_ONSET] = self._onset_acc
         qv[Q_LUFS] = lufs_m
         qv[Q_SPEC] = loudest
+        qv[Q_RATE] = self._m_rate
         q.push(t, qv)
         lo, hi = q.lo, q.hi
 

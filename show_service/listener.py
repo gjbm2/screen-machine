@@ -10,10 +10,24 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 * **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch (persisted; default
   off: nothing is uploaded until the owner turns it on); the mode's own wish (``ctx.target().listening``; no show
   target: no clips); the vibe's ``listener``; sound coming in (fresh features, audio in the ring); the music gate
-  (``classifier``: CED, P1, so never in Stage 3; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``),
+  (``classifier``: CED from the ML worker, below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``),
   skipped only for a stream whose show.yaml sender says ``room_sound: false`` (a music file: no one's speech in it);
   gate >= ``quiet_gate`` over the last 10 s; a usable model in config/llm.yaml. The ring records only while the
   first three allow a clip (``Rings.armed``).
+* **The CED gate** (Stage 4, README S4.8; ``music_gate: classifier``, room-sound streams only): no fresh CED reading
+  for the stream (``ctx.ml``; MLView.stale_s, at least ``ml.results_stale_s``): "the music/speech check isn't
+  running"; the latest reading's speech >= ``listener.ced.speech_max``: "people are talking" (speech is the max over
+  ``ced.speech_words``: speech, conversation, crowd); else the clip is the longest contiguous run of seconds in the
+  last ``clip_s`` whose readings say music >= ``ced.music_min`` and speech < ``ced.speech_max`` (each reading vouches
+  for the last ``ced.speaks_s`` of its window, and the run's last second also needs the next reading, which covers it
+  too, to have passed; the latest run wins a tie), cut with ``rings.clip``; a run shorter than ``min_clip_s`` is
+  skipped: "not enough music without talking".
+* **Sections** (Stage 4, §7.3): structure's events (``on_music_event``) and music.context keep a short section history.
+  A confirmed ``section_change`` makes one extra call due at its boundary + ``section_call_after_s`` (still
+  ``min_gap_s`` after the last call, one in flight, and slowed with the cadence: at least half the current interval
+  after the last call, at most one section call per interval), whose clip ends at that time; every call's text
+  carries the segment map (the sections the clip spans), and ``InsightData.segment_id`` is the section at the clip's
+  end. A ``track_change`` lets the next verdict's genre win at once (the beliefs' track-change rule).
 * **Cadence:** every ``cadence_s``, at least ``min_gap_s`` after the last call ended; ``relaxed_cadence_s`` after
   ``agree_reads`` agreeing, confident verdicts; x3 over the daily budget (never stopped); after failures in a row, x2
   per failure up to ERROR_BACKOFF_MAX_S (no retries: the next window is the retry).
@@ -66,7 +80,15 @@ LOG_ROTATE_BYTES = 1_000_000
 # call (it records only while a clip could go, so a first clip waits this long).
 DEFAULTS: dict[str, Any] = {"cadence_s": 20.0, "clip_s": 24.0, "min_gap_s": 8.0, "relaxed_cadence_s": 45.0,
                             "agree_reads": 3, "music_gate": "classifier", "describe_timeout_s": 8.0,
-                            "quiet_gate": 0.1, "min_clip_s": 10.0}
+                            "quiet_gate": 0.1, "min_clip_s": 10.0, "section_call_after_s": 8.0}
+# Stage 4 (README S4.8, §7.5): the CED gate's thresholds (show.yaml listener.ced; starting points, the same numbers)
+CED_DEFAULTS: dict[str, float] = {"music_min": 0.5, "speech_max": 0.3}
+RESULTS_STALE_S = 3.0         # show.yaml ml.results_stale_s when it is left out (starting point): an older CED reading
+                              # is not "now"
+CED_SPEAKS_S = 1.0            # show.yaml listener.ced.speaks_s (README S4.8): each CED reading vouches for the last
+                              # second of its window
+CONTEXT_STALE_S = 3.0         # music.context comes at 1 Hz
+SECTIONS_KEEP = 64            # the section history (ids, letters, starts) for segment maps
 MUSIC_GATES = ("classifier", "dsp")
 DSP_MIN_GATE = 0.3            # show.yaml situations.music.dsp_min_gate when it is left out (starting point)
 HARMONY_MIN_CONF = 0.3        # "or a clear key" for the dsp music gate (README S3.12)
@@ -100,7 +122,10 @@ VOCALS = ("none", "male", "female", "mixed", "choir", "unknown")
 WHY_OFF = "AI listening is off"
 WHY_MODE = "this mode doesn't listen"
 WHY_VIBE = "this feel doesn't listen"
-WHY_P1 = "waiting for the music/speech check (P1)"
+WHY_NO_CED = "the music/speech check isn't running"        # Stage 4: no fresh CED reading for the stream
+WHY_P1 = WHY_NO_CED                                         # the Stage-3 name, kept for readers of it
+WHY_TALKING = "people are talking"
+WHY_SHORT = "not enough music without talking"
 WHY_NO_MUSIC = "no music heard"
 WHY_QUIET = "too quiet"
 WHY_NO_SOUND = "no sound coming in"
@@ -257,9 +282,15 @@ class BeliefState:
         self.wins = 0
         self.last: Optional[dict] = None          # the last InsightData
         self.last_s: Optional[float] = None       # its arrival (monotonic s)
+        self.track_pending = False                # a DSP track change (structure): the next verdict counts as one
 
     def clear(self) -> None:
         self.__init__()
+
+    def track_changed(self) -> None:
+        """structure heard a new track (§7.1: "or at once on a DSP track change"): the next verdict's genre wins at
+        once, as a verdict that reports track_change itself does."""
+        self.track_pending = True
 
     def _decay(self, now_s: float) -> None:
         if self.t_votes is not None and now_s > self.t_votes:
@@ -274,7 +305,8 @@ class BeliefState:
 
     def add(self, ins: dict, now_s: float) -> None:
         self._decay(now_s)
-        track_change = bool(ins.get("track_change"))
+        track_change = bool(ins.get("track_change")) or self.track_pending
+        self.track_pending = False
         if track_change:
             for table in self.votes.values():
                 table.clear()
@@ -618,6 +650,15 @@ class Listener:
         self._warm = warm
         self.vocab = Vocab(vocab_path)
         self.cfg: dict = dict(DEFAULTS)
+        self.ced_cfg: dict = dict(CED_DEFAULTS)
+        self.speech_words: tuple[str, ...] = contract.SPEECH_WORDS   # listener.ced.speech_words
+        self.speaks_s = CED_SPEAKS_S
+        self.results_stale_s = RESULTS_STALE_S
+        self._ced_state: dict = {"why": None, "run": None, "latest": None}   # the CED gate's last look (snapshot)
+        self._sections: collections.deque = collections.deque(maxlen=SECTIONS_KEEP)   # {"id", "letter", "start_s"}
+        self._section_due: Optional[float] = None    # the section call's clip end (boundary + section_call_after_s)
+        self._section_calls = 0
+        self._last_section_start: Optional[float] = None
         self.dsp_min_gate = DSP_MIN_GATE
         self.no_room_sound: set[str] = set()      # streams whose sender says room_sound: false (show.yaml)
         self.problems: list[str] = []
@@ -648,7 +689,7 @@ class Listener:
 
     # -- Component -----------------------------------------------------------------------------------------------
     def provides(self) -> dict:
-        return {"beliefs": self.beliefs}
+        return {"beliefs": self.beliefs, "on_music_event": self.on_music_event}
 
     def configure(self, settings: dict) -> None:
         src = (settings or {}).get("listener") or {}
@@ -676,6 +717,32 @@ class Listener:
                     cfg[k] = fv
                 else:
                     problems.append(f"listener.{k}: {v!r} is not a positive number")
+        ced, ced_cfg = src.get("ced"), dict(CED_DEFAULTS)
+        speaks = CED_SPEAKS_S
+        if isinstance(ced, dict):
+            for k in CED_DEFAULTS:
+                if k in ced:
+                    fv = _f(ced[k])
+                    if fv is not None and 0.0 <= fv <= 1.0:
+                        ced_cfg[k] = fv
+                    else:
+                        problems.append(f"listener.ced.{k}: {ced[k]!r} is not 0..1")
+            if "speaks_s" in ced:
+                fv = _f(ced["speaks_s"])
+                if fv is not None and 0.0 < fv <= 10.0:
+                    speaks = fv
+                else:
+                    problems.append(f"listener.ced.speaks_s: {ced['speaks_s']!r} is not 0..10 s")
+        elif ced is not None:
+            problems.append("listener.ced: not a mapping")
+        words, prob = contract.speech_words(ced.get("speech_words") if isinstance(ced, dict) else None,
+                                            "listener.ced.speech_words")
+        if prob:
+            problems.append(prob)
+        self.ced_cfg, self.speech_words, self.speaks_s = ced_cfg, words, speaks
+        ml = (settings or {}).get("ml")
+        rs = _f(ml.get("results_stale_s")) if isinstance(ml, dict) else None
+        self.results_stale_s = rs if rs is not None and rs > 0 else RESULTS_STALE_S
         music = ((settings or {}).get("situations") or {}).get("music") or {}
         g = _f(music.get("dsp_min_gate")) if isinstance(music, dict) else None
         self.dsp_min_gate = _clamp(g, 0.0, 1.0) if g is not None else DSP_MIN_GATE
@@ -716,17 +783,33 @@ class Listener:
             except Exception:                     # noqa: BLE001
                 self._status, self._budget_hit = {}, False
         self._beliefs = self.beliefs_state.view(now_s)
+        self._section_tick(now_s)
         self._why, self._stream = self._gate(now_s)
         self._due = self._next_due(now_s)
-        if self._why is None and self._task is None and self._due is not None and now_s >= self._due:
+        if self._why is None and self._task is None and self._section_due is not None and \
+                now_s >= self._section_due and self._section_allowed(now_s):
+            due, self._section_due = self._section_due, None
+            self._section_calls += 1
+            self._last_section_start = now_s
+            self._launch(self._stream, now_s, t_end=due, kind="section")
+        elif self._why is None and self._task is None and self._due is not None and now_s >= self._due:
             self._launch(self._stream, now_s)
+        if self._section_due is not None and now_s > self._section_due + float(self.cfg["cadence_s"]):
+            self._log_event({"kind": "skipped", "call": "section", "why": self._why or "no window for it in time",
+                             "due_age_s": round(now_s - self._section_due, 1)})
+            self._section_due = None              # a stale section call is no use: the regular cadence carries on
         self._refresh(now_s)
 
     def _refresh(self, now_s: float) -> None:
         self._view = self._build_view(now_s)
         self._snap = dict(self._view, beliefs=self._beliefs, in_flight=self._task is not None,
                           agreeing=self._agree, problems=list(self.problems), vocab_error=self.vocab.error,
-                          llm_error=self._llm_error)
+                          llm_error=self._llm_error, ced=dict(self._ced_state, **self.ced_cfg),
+                          sections={"known": len(self._sections), "current": self._sections[-1]["id"]
+                                    if self._sections else None,
+                                    "section_call_in_s": round(self._section_due - now_s, 1)
+                                    if self._section_due is not None else None,
+                                    "section_calls": self._section_calls})
 
     def snapshot(self) -> dict:
         return self._snap
@@ -898,17 +981,16 @@ class Listener:
             return why, stream
         if stream is None or self._features(now_s) is None:
             return WHY_NO_SOUND, stream
+        self._ced_state = {"why": None, "run": None, "latest": None}
         if self.room_sound(stream):
             if self.cfg["music_gate"] == "classifier":
-                return WHY_P1, stream
-            clock = self._call_or_none(self.ctx.clock) or {}
-            harmony = self._call_or_none(self.ctx.harmony) or {}
-            beat = clock.get("gate") in ("beat", "dmx")
-            keyed = (_f(harmony.get("conf"), 0.0) or 0.0) >= HARMONY_MIN_CONF and harmony.get("key") is not None
-            if self._gate_mean(now_s, QUIET_WINDOW_S) < self.dsp_min_gate:
-                return WHY_QUIET, stream
-            if not (beat or keyed):
-                return WHY_NO_MUSIC, stream
+                _run, why = self._ced_run(stream, now_s)
+                if why is not None:
+                    return why, stream
+            else:
+                why = self._dsp_music_gate(now_s)
+                if why is not None:
+                    return why, stream
         if self._gate_mean(now_s, QUIET_WINDOW_S) < float(self.cfg["quiet_gate"]):
             return WHY_QUIET, stream
         rings = self.ctx.rings
@@ -925,6 +1007,167 @@ class Listener:
             return WHY_NO_MODEL, stream
         return None, stream
 
+    def _dsp_music_gate(self, now_s: float) -> Optional[str]:
+        """``music_gate: dsp`` (Stage 3, the owner's choice): a beat or a key over situations.music.dsp_min_gate."""
+        clock = self._call_or_none(self.ctx.clock) or {}
+        harmony = self._call_or_none(self.ctx.harmony) or {}
+        beat = clock.get("gate") in ("beat", "dmx")
+        keyed = (_f(harmony.get("conf"), 0.0) or 0.0) >= HARMONY_MIN_CONF and harmony.get("key") is not None
+        if self._gate_mean(now_s, QUIET_WINDOW_S) < self.dsp_min_gate:
+            return WHY_QUIET
+        if not (beat or keyed):
+            return WHY_NO_MUSIC
+        return None
+
+    # -- the CED gate and sections (Stage 4) -------------------------------------------------------------------------
+    def _ml_view(self) -> Optional[dict]:
+        v = self._call_or_none(getattr(self.ctx, "ml", None))
+        return v if isinstance(v, dict) else None
+
+    def _ced_run(self, stream: str, now_s: float,
+                 t_end: Optional[float] = None) -> tuple[Optional[tuple[float, float]], Optional[str]]:
+        """README S4.8's CED gate for a room-sound stream: ((t0, t1) the clip, None) or (None, why). A reading's
+        speech is the max over listener.ced.speech_words (speech, conversation, crowd: guests talking over music
+        show up as babble and conversation, not only as Speech). The run is the longest contiguous stretch of seconds
+        in the ``clip_s`` that ends at ``t_end`` (None: the latest reading) whose readings say music >= ced.music_min
+        with speech < ced.speech_max; the latest run wins a tie. A reading vouches for the last speaks_s of its
+        window, and every second must be vouched for by each reading that covers it: the run's last second is also in
+        the next reading's window, so it counts only when that reading exists and passed (or doesn't reach back
+        into it); otherwise the run ends speaks_s earlier."""
+        v = self._ml_view()
+        rows = []
+        if v is not None and v.get("stream") == stream:
+            rows = sorted((r for r in v.get("ced_recent") or [] if isinstance(r, dict) and _f(r.get("t")) is not None
+                           and r.get("stream", stream) == stream), key=lambda r: r["t"])
+        latest = rows[-1] if rows else None
+        stale = contract.ml_stale_s(v, "ced", self.results_stale_s)
+        if latest is None or now_s - float(latest["t"]) > stale:
+            self._ced_state = {"why": WHY_NO_CED, "run": None, "latest": None}
+            return None, WHY_NO_CED
+        music_min, speech_max = float(self.ced_cfg["music_min"]), float(self.ced_cfg["speech_max"])
+        words, speaks = self.speech_words, float(self.speaks_s)
+
+        def speech(r: dict, missing: float) -> float:
+            x = contract.speech_of(r, words)
+            return missing if x is None else x
+
+        def ok(r: dict) -> bool:
+            return _f(r.get("music_p"), 0.0) >= music_min and speech(r, 1.0) < speech_max
+
+        lat = {"t": latest["t"], "music": _f(latest.get("music_p"), 0.0), "speech": speech(latest, 0.0)}
+        if lat["speech"] >= speech_max:
+            self._ced_state = {"why": WHY_TALKING, "run": None, "latest": lat}
+            return None, WHY_TALKING
+        end = float(latest["t"]) if t_end is None else float(t_end)
+        start = end - float(self.cfg["clip_s"])
+        runs: list[list] = []                     # [first second's start, the last reading's t, its index]
+        cur: Optional[list] = None
+        prev: Optional[dict] = None
+        for i, r in enumerate(rows):
+            t = float(r["t"])
+            if t <= start or t > end + 1e-6:
+                continue
+            if not ok(r):
+                cur, prev = None, None
+                continue
+            joined = prev is not None and t - float(prev["t"]) <= max(speaks, _f(r.get("window_s"), 0.0)) + 1e-6
+            if cur is None or not joined:
+                cur = [max(start, t - speaks), t, i]
+                runs.append(cur)
+            else:
+                cur[1], cur[2] = t, i
+            prev = r
+        best: Optional[tuple[float, float]] = None
+        for run0, t_last, i in runs:
+            t1 = min(t_last, end)
+            nxt = rows[i + 1] if i + 1 < len(rows) else None
+            vouched = nxt is not None and (ok(nxt) or float(nxt["t"]) - (_f(nxt.get("window_s"), speaks) or speaks)
+                                           >= t_last - 1e-6)
+            if not vouched:
+                t1 = min(t1, t_last - speaks)     # its last second waits for the next reading's word
+            if t1 <= run0 + 1e-9:
+                continue
+            if best is None or t1 - run0 >= best[1] - best[0] - 1e-9:
+                best = (run0, t1)                 # >=: the latest run wins a tie
+        if best is None or best[1] - best[0] < float(self.cfg["min_clip_s"]) - 1e-6:
+            self._ced_state = {"why": WHY_SHORT, "run": [round(best[0], 2), round(best[1], 2)] if best else None,
+                               "latest": lat}
+            return None, WHY_SHORT
+        self._ced_state = {"why": None, "run": [round(best[0], 2), round(best[1], 2)], "latest": lat}
+        return best, None
+
+    def on_music_event(self, ev: dict) -> None:
+        """structure's room.event (show-brain): a confirmed section_change makes one extra call due at its boundary +
+        section_call_after_s (never a predicted one); a track_change lets the next verdict's genre win at once."""
+        if not isinstance(ev, dict):
+            return
+        kind = ev.get("kind")
+        if kind == "section_change":
+            start_ms = _f(ev.get("boundary_ms"), _f(ev.get("at_ms")))
+            sid = ev.get("section_id")
+            if start_ms is not None and isinstance(sid, int) and not isinstance(sid, bool):
+                self._note_section(sid, ev.get("letter") if isinstance(ev.get("letter"), str) else None,
+                                   start_ms / 1000.0)
+            if not ev.get("predicted") and start_ms is not None:
+                self._section_due = start_ms / 1000.0 + float(self.cfg["section_call_after_s"])
+        elif kind == "track_change":
+            self.beliefs_state.track_changed()
+            self._log_event({"kind": "track_change", "via": ev.get("via"), "track_id": ev.get("track_id")})
+
+    def _note_section(self, sid: int, letter: Optional[str], start_s: float) -> None:
+        for sec in self._sections:
+            if sec["id"] == sid:
+                if letter:
+                    sec["letter"] = letter
+                return
+        self._sections.append({"id": sid, "letter": letter, "start_s": start_s})
+        if len(self._sections) > 1 and self._sections[-2]["start_s"] > start_s:
+            ordered = sorted(self._sections, key=lambda x: x["start_s"])
+            self._sections.clear()
+            self._sections.extend(ordered)
+
+    def _context(self, now_s: float) -> Optional[dict]:
+        mc = self._call_or_none(getattr(self.ctx, "music_context", None))
+        if not isinstance(mc, dict) or _f(mc.get("t_ms")) is None or now_s - mc["t_ms"] / 1000.0 > CONTEXT_STALE_S:
+            return None
+        return mc
+
+    def _section_tick(self, now_s: float) -> None:
+        """The current section (and its letter, once structure has named it) from music.context."""
+        mc = self._context(now_s)
+        sec = mc.get("section") if mc is not None and isinstance(mc.get("section"), dict) else None
+        if sec is None or not isinstance(sec.get("id"), int) or _f(sec.get("started_ms")) is None:
+            return
+        self._note_section(sec["id"], sec.get("letter") if isinstance(sec.get("letter"), str) else None,
+                           sec["started_ms"] / 1000.0)
+
+    def _segments(self, t0: float, t1: float) -> list[dict]:
+        """The sections the clip [t0, t1) spans: [{"id", "letter", "from_s", "to_s"}], seconds from the clip's start."""
+        secs = list(self._sections)
+        out = []
+        for i, sec in enumerate(secs):
+            a = sec["start_s"]
+            b = secs[i + 1]["start_s"] if i + 1 < len(secs) else math.inf
+            lo, hi = max(a, t0), min(b, t1)
+            if hi > lo:
+                out.append({"id": sec["id"], "letter": sec["letter"], "from_s": round(lo - t0, 1),
+                            "to_s": round(hi - t0, 1)})
+        return out
+
+    def _segment_at(self, t: float) -> Optional[int]:
+        sid = None
+        for sec in self._sections:
+            if sec["start_s"] <= t + 1e-6:
+                sid = sec["id"]
+        return sid
+
+    @staticmethod
+    def _segment_text(segs: list[dict]) -> str:
+        parts = [f"#{x['id']}{' ' + x['letter'] if x['letter'] else ''} {x['from_s']:.0f}-{x['to_s']:.0f} s" for x in segs]
+        return ("Segment map, from the room's own section detector (seconds from the clip's start; a repeated letter "
+                "is the same section again): " + ", ".join(parts) + ". The section you report is the one at the "
+                "clip's end.")
+
     def _arm(self, on: bool) -> None:
         """The ring records only while a clip could go (switch, mode and vibe allow it): no resampling on show-rx for
         nothing. A first clip then waits for the ring to fill (min_clip_s)."""
@@ -934,6 +1177,18 @@ class Listener:
                 rings.armed = on
             except Exception:                     # noqa: BLE001
                 pass
+
+    def _section_allowed(self, now_s: float) -> bool:
+        """A section call follows the cadence's own slowing (relaxed after agreeing verdicts, x3 over the daily
+        budget, backed off after failures): at least min_gap_s after the last call ended, at least half the current
+        interval after the last call started, and at most one section call per interval. So false boundaries never
+        become a stream of uploads."""
+        iv = self.interval()
+        if self._last_end is not None and now_s < self._last_end + float(self.cfg["min_gap_s"]):
+            return False
+        if self._last_start is not None and now_s < self._last_start + iv / 2.0:
+            return False
+        return self._last_section_start is None or now_s >= self._last_section_start + iv
 
     def interval(self) -> float:
         """Seconds between call starts now (README S3.12's cadence)."""
@@ -953,12 +1208,13 @@ class Listener:
             due = max(due, self._last_end + float(self.cfg["min_gap_s"]))
         return due
 
-    def _launch(self, stream: Optional[str], now_s: float) -> None:
+    def _launch(self, stream: Optional[str], now_s: float, *, t_end: Optional[float] = None,
+                kind: str = "cadence") -> None:
         if stream is None:
             return
         self._last_start = now_s
         self._task_stream = stream
-        coro = self._one_call(stream)
+        coro = self._one_call(stream, t_end, kind)
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -997,9 +1253,9 @@ class Listener:
         except Exception:                         # noqa: BLE001
             pass
 
-    async def _one_call(self, stream: str) -> None:
+    async def _one_call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
         try:
-            await self._call(stream)
+            await self._call(stream, t_end, kind)
         except asyncio.CancelledError:
             self._log_event({"kind": "cancelled", "stream": stream})
             raise
@@ -1009,11 +1265,26 @@ class Listener:
             log.exception("listener call failed")
             self._log_event({"kind": "error", "stream": stream, "error": f"{type(e).__name__}: {e}"[:300]})
 
-    async def _call(self, stream: str) -> None:
+    def _cut_clip(self, stream: str, t_end: Optional[float]) -> tuple[Any, Optional[str]]:
+        """(the ring clip this call sends, None) or (None, why). A room-sound stream under ``music_gate: classifier``
+        sends only its longest music-dominant run (README S4.8); a section call's clip ends at ``t_end``."""
         rings = self.ctx.rings
-        clip = rings.latest(stream, float(self.cfg["clip_s"])) if rings is not None else None
+        if rings is None:
+            return None, WHY_NO_SOUND
+        clip_s = float(self.cfg["clip_s"])
+        if self.room_sound(stream) and self.cfg["music_gate"] == "classifier":
+            run, why = self._ced_run(stream, self._mono(), t_end)
+            if run is None:
+                return None, why
+            return rings.clip(stream, run[0], run[1]), None
+        if t_end is not None:
+            return rings.clip(stream, t_end - clip_s, t_end), None
+        return rings.latest(stream, clip_s), None
+
+    async def _call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
+        clip, why = self._cut_clip(stream, t_end)
         if clip is None or clip.pcm.shape[0] < clip.fs:
-            self._log_event({"kind": "skipped", "stream": stream, "why": WHY_NO_SOUND})
+            self._log_event({"kind": "skipped", "stream": stream, "call": kind, "why": why or WHY_NO_SOUND})
             return
         m = self._llm_mod()
         if m is None:
@@ -1032,6 +1303,9 @@ class Listener:
             return
         t1 = clip.t0_s + clip.pcm.shape[0] / clip.fs
         user = [self._timeline_text(t1, clip, lufs)]
+        segs = self._segments(clip.t0_s, t1)
+        if segs:
+            user.append(self._segment_text(segs))
         if self._prev is not None and self._calls % PREV_EVERY != PREV_EVERY - 1:
             user.append(self._prev_text(self._prev))
         self._calls += 1
@@ -1048,6 +1322,9 @@ class Listener:
         now = self._mono()
         ins = to_insight(res.data or {}, vocab=self.vocab, stream=stream, model=res.model or "",
                          latency_ms=res.latency_ms, window=(clip.t0_s, t1), t_ms=now * 1000.0)
+        seg = self._segment_at(t1)                # README S4.8: the section at the clip's end (structure's id)
+        ins["segment_id"] = seg
+        ins["section"]["segment_id"] = seg
         self._agree_update(ins)
         self._prev = ins
         self.beliefs_state.add(ins, now)
@@ -1063,8 +1340,23 @@ class Listener:
                 pass
         self._log_event({"kind": "verdict", "insight": ins, "lufs": round(lufs, 1) if lufs is not None else None,
                          "gain_db": round(gain, 1), "format": fmt, "bytes": len(audio), "cost_usd": res.cost_usd,
-                         "usage": res.usage})
+                         "usage": res.usage, "call": kind, "segments": segs})
+        self._log_genre_detail(ins, now)
         self._refresh(now)
+
+    def _log_genre_detail(self, ins: dict, now_s: float) -> None:
+        """§7.3: genre.detail values ("bossa nova", "Afro house") are logged to grow vocab.yaml, next to what the
+        local ML heard (music.context's genre and EffNet's top styles) for comparison."""
+        g = ins.get("genre") or {}
+        if not g.get("detail"):
+            return
+        mc = self._context(now_s) or {}
+        mg = mc.get("genre") if isinstance(mc.get("genre"), dict) else {}
+        mml = mc.get("ml") if isinstance(mc.get("ml"), dict) else {}
+        self._log_event({"kind": "genre_detail", "detail": g["detail"], "label": g.get("label"),
+                         "confidence": g.get("confidence"), "segment_id": ins.get("segment_id"),
+                         "ml": {"word": mg.get("word"), "parent": mg.get("parent"), "via": mg.get("via"),
+                                "styles_top3": mml.get("styles_top3")} if mc else None})
 
     def _agree_update(self, ins: dict) -> None:
         g = ins["genre"]

@@ -175,6 +175,19 @@ def test_want_matching_rules():
 
 
 # -- publish from another thread --------------------------------------------------------------------------------------
+def test_stage4_types_and_music_rhythm_only_to_wanters():
+    """README S4.5: music.context goes to every client, music.rhythm (10 Hz) only to one that names it."""
+    assert c.MUSIC_CONTEXT in busmod.TYPES and c.MUSIC_RHYTHM in busmod.TYPES
+    assert set(busmod.WANT_ONLY) == {c.MUSIC_HIT, c.MUSIC_RHYTHM}
+    renderer = busmod._Client(None, "renderer", "x", busmod._parse_want(None))
+    assert renderer.wants(c.MUSIC_CONTEXT) and not renderer.wants(c.MUSIC_RHYTHM)
+    for w in (["music"], ["music.*"], ["*"]):
+        cl = busmod._Client(None, "ui", "x", busmod._parse_want(w))
+        assert cl.wants(c.MUSIC_CONTEXT) and not cl.wants(c.MUSIC_RHYTHM), w
+    asked = busmod._Client(None, "console", "x", busmod._parse_want([c.MUSIC_RHYTHM]))
+    assert asked.wants(c.MUSIC_RHYTHM) and not asked.wants(c.MUSIC_CONTEXT)
+
+
 def test_publish_from_another_thread_in_order(bus):
     n = 200
 

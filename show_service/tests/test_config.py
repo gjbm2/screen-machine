@@ -160,3 +160,15 @@ def test_latency_watch(tmp_path):
     assert w.poll() == {"room-mic": -4.0}
     p.unlink()
     assert w.poll() == {}                            # gone: offsets back to 0
+
+
+def test_beat_thread_flag_over_env_off_by_default():
+    """README S4.5, S4.12: SHOW_BEAT_THREAD / --beat-thread, off by default (measured: the thread cost more than it
+    saved in the real process) and in an Options built in code."""
+    assert config.load_options([], {}).beat_thread is False
+    assert config.Options(config=contract.Config()).beat_thread is False
+    assert config.load_options([], {"SHOW_BEAT_THREAD": "on"}).beat_thread is True
+    assert config.load_options(["--beat-thread", "off"], {"SHOW_BEAT_THREAD": "on"}).beat_thread is False
+    assert config.load_options(["--beat-thread", "on"], {}).beat_thread is True
+    o = config.load_options([], {"SHOW_BEAT_THREAD": "sideways"})
+    assert o.beat_thread is False and any("beat thread" in n for n in o.notes)

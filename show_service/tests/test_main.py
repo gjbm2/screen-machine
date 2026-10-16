@@ -4,6 +4,7 @@ Every bind is 127.0.0.1 on an ephemeral port; no senders, so nothing is sent any
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import signal
@@ -440,8 +441,11 @@ def test_python_m_show_service_with_the_brain(tmp_path):
             assert card["vibe"]["name"] is None and card["auto"]["state"] in ("blind", "off")   # no room: blind
             code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
             assert code == 200 and body["brain"]["running"] is True, body.get("brain")
-            assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "listener",
-                                                        "director"}
+            assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "ml",
+                                                        "structure", "listener", "director"}
+            assert body["ml"]["state"] in ("failed", "backoff"), body["ml"]   # HOME is tmp: no ML venv there
+            assert body["brain"]["components"]["structure"]["context"] is None or isinstance(
+                body["brain"]["components"]["structure"]["context"], dict)
             assert all(v == "ok" for v in body["modules"].values()), body["modules"]
             assert body["brain"]["settings"]["error"] is None and body["brain"]["state_file"]["path"].startswith(
                 str(state_dir))
@@ -498,6 +502,17 @@ class FakeDirector(FakeComp):
         return {"*": (0.1, 0.2, 0.3)}
 
 
+class FakeML(FakeComp):
+    """mllink.MLLink's shape: its stop() is a coroutine (brain.py awaits it)."""
+
+    def stop(self):
+        async def _stop():
+            await asyncio.sleep(0.01)
+            self.stopped = True
+            CALLS.append("stop:" + self.name)
+        return _stop()
+
+
 def install_brain_fakes(monkeypatch) -> dict:
     """ring, situations (NoteTap), autopilot, sources, listener and director as fakes; brain.py and api.py real."""
     made: dict = {}
@@ -548,6 +563,20 @@ def install_brain_fakes(monkeypatch) -> dict:
     module("autopilot", lambda ctx, kw: [FakeComp("room", 0.0, kw, {"room": lambda: {"current": "gallery"}}),
                                          FakeComp("situations", 1.0), FakeComp("autopilot", 1.0, kw)])
     module("sources", lambda ctx, kw: FakeComp("sources", 1.0, kw))
+    module("mllink", lambda ctx, kw: FakeML("ml", 1.0, kw, {"ml": lambda: {"state": "disabled"}}))
+    module("structure", lambda ctx, kw: FakeComp("structure", 10.0, kw, {"music_context": lambda: None,
+                                                                         "on_music_event": "not-a-list-slot"}))
+
+    class MLFeed:                                        # mllink.MLFeed: show-rx's writer
+        def __init__(self):
+            self.writes = []
+
+        def write(self, stream, n0, t0_host_s, pcm, fs, flags):
+            if stream == "boom":
+                raise RuntimeError("feed")
+            self.writes.append((stream, n0, flags))
+            CALLS.append("ml.feed")
+    sys.modules["show_service.mllink"].MLFeed = MLFeed
     module("listener", lambda ctx, kw: FakeComp("listener", 1.0, kw, {"beliefs": lambda: None}))
     module("director", lambda ctx, kw: FakeDirector("director", 10.0, kw, {"vibe": lambda: None}))
     monkeypatch.setitem(sys.modules, "show_service.ring", ring)
@@ -604,13 +633,14 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert all(v == "ok" for v in show.modules.values()), show.modules
         assert {"api", "ring", "situations", "brain", "autopilot", "sources", "listener", "director"} <= set(show.modules)
         assert show.brain.running and list(show.brain.components) == ["room", "situations", "autopilot", "sources",
-                                                                      "listener", "director"]
+                                                                      "ml", "structure", "listener", "director"]
         # files come from the options, test kwargs on top
         sd = tmp_path / "state"
         assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
                                        "patch_path": __import__("pathlib").Path("p.yaml")}
         assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
         assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
+        assert made["mllink"].kw == {"log_path": sd / "ml-worker.log"} and made["structure"].kw == {}
         assert show.brain.store.path == sd / "state.json"
         # the engine side of the context
         assert ctx.features == show.features.latest and ctx.health == show.health and ctx.notes is show.tap
@@ -618,6 +648,10 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert ctx.static_senders == opts.config.senders and ctx.notify == show.api.notify
         assert ctx.set_look_out == vm.set_look and ctx.section_change == vm.section_change
         assert ctx.piano() == main_mod.NEUTRAL_PIANO_VIEW and ctx.room() == {"current": "gallery"}
+        # Stage 4: the feed is the context's, the components' slots are filled (a list slot is appended to)
+        assert ctx.ml_feed is show.mlfeed and ctx.ml() == {"state": "disabled"} and ctx.music_context() is None
+        assert ctx.on_music_event == ["not-a-list-slot"] and show.ml is made["mllink"]
+        assert ctx.rhythm is None and ctx.clock_correct is None          # the fake dsp and clock have neither
         ctx.set_look_out(hue_depth=0.4, beat_lock=False)
         ctx.set_gate_ref(-35.0)
         assert vm.look == (0.4, False, False) and show.features.gate_ref_lufs == -35.0
@@ -628,6 +662,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         rx.on_audio("room-mic", 0, 1.0, pcm, 48000, contract.AUDIO_SEGMENT)
         rx.on_audio("boom", 128, 1.0, pcm, 48000, 0)                    # Features and the ring raise: guarded
         assert show.rings.writes == [("room-mic", 0, contract.AUDIO_SEGMENT)] and show._g["ring.write"].errors == 1
+        assert show.mlfeed.writes == [("room-mic", 0, contract.AUDIO_SEGMENT)] and show._g["ml.feed"].errors == 1
+        assert CALLS.index("ring.write") < CALLS.index("ml.feed")       # the ML feed after the ring
         assert show.clock.blocks[-1] == ("boom", 128, 0)
         rx.on_midi("room-piano", "batch-a", 1.0, lambda t_ns: 2.5)
         assert show.tap.msgs == [("room-piano", "batch-a")] and show.pianos["room-piano"].msgs == [("batch-a", 2.5)]
@@ -643,11 +679,14 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert st["brain"]["ring"] == {"writes": 1} and st["brain"]["notes"] == {"batches": 1}
         assert st["brain"]["modules"]["director"] == "ok"
         assert st["api"]["events"]["clients"] == 0 and "card_errors" in st["api"]["events"]   # the card socket
+        assert set(st["ml"]) == {"ticks"}                                    # the MLLink's snapshot
+        assert st["rx_ms"]["on_audio"]["n"] == 2 and st["rx_ms"]["on_tick"]["n"] >= 1
     finally:
         show.stop()
     assert CALLS.index("stop:director") < CALLS.index("artnet.stop")      # the brain stops before Art-Net
-    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:director", "stop:listener", "stop:sources",
-                                                          "stop:autopilot", "stop:situations", "stop:room"]
+    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:director", "stop:listener", "stop:structure",
+                                                          "stop:ml", "stop:sources", "stop:autopilot",
+                                                          "stop:situations", "stop:room"]   # ml's stop awaited
     assert (tmp_path / "state" / "state.json").exists()
 
 

@@ -10,11 +10,13 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
   SHOW_BRAIN         on (default) | off: Stage 3's brain (director, Auto, the API's routes, test sources, listener)
   SHOW_FILE          config/room/show.yaml       SHOW_VIBES_FILE  config/room/vibes.yaml
   SHOW_STATE_DIR     ~/.local/state/screen-machine/show (state.json, the jsonl logs, the test children's logs)
+  SHOW_BEAT_THREAD   off (default: inline on show-rx) | on: Stage 4's show-beat thread for madmom's activation
 args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
   --artnet-target HOST[:PORT]|off (over SHOW_ARTNET_TARGET; default off)   --stream-priority a,b,c
   --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --vibes-file PATH   --state-dir PATH
+  --beat-thread on|off (over SHOW_BEAT_THREAD; default off)
 ```
 
 * **Sender spec:** ``NAME=HOST[:PORT][/STREAM,STREAM…]``. ``HOST`` is a DNS name in committed config (no literal
@@ -36,6 +38,11 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   (the rollback switch: the process is then exactly as before Stage 3). An ``Options`` built in code (tests) has it
   off unless it says ``brain=True``, so no test reaches the real show.yaml, room or state directory by accident.
   ``show_file``, ``vibes_file`` and ``state_dir`` default to contract's paths.
+* **The beat thread** (README "Stage 4", S4.5, S4.12): ``Options.beat_thread``, ``--beat-thread`` over
+  ``SHOW_BEAT_THREAD``. **Off by default** (and in an ``Options`` built in code): the clock's activation runs inline
+  on show-rx, as in Stage 3. Measured in the real process (16 Oct), the show-beat thread cost +0.14-0.15 of a core
+  in GIL hand-overs and made dsp's hop p95 2-3x worse, which put show_service + the ML worker over the owner's 0.8.
+  ``on`` turns it on (a restart).
 """
 
 from __future__ import annotations
@@ -74,6 +81,7 @@ class Options:
     show_file: pathlib.Path = contract.SHOW_FILE
     vibes_file: pathlib.Path = contract.VIBES_FILE
     state_dir: pathlib.Path = contract.STATE_DIR
+    beat_thread: bool = False                            # Stage 4: clock.Clock(beat_thread=); off (inline) by default
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -166,6 +174,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--vibes-file", metavar="PATH", help="vibes.yaml (default config/room/vibes.yaml)")
     ap.add_argument("--state-dir", metavar="PATH", help="state.json and the logs (default ~/.local/state/"
                                                         "screen-machine/show)")
+    ap.add_argument("--beat-thread", metavar="on|off", help="the clock's activation on its own thread (default off; "
+                                                            "over SHOW_BEAT_THREAD)")
     return ap
 
 
@@ -258,6 +268,15 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
         elif word not in ("on", "1", "true", "yes"):
             notes.append(f"SHOW_BRAIN {env['SHOW_BRAIN']!r} isn't on or off; the brain stays on")
 
+    beat_thread = False
+    bt_text = args.beat_thread if args.beat_thread is not None else env.get("SHOW_BEAT_THREAD")
+    if bt_text is not None and bt_text.strip():
+        word = bt_text.strip().lower()
+        if word in ("on", "1", "true", "yes"):
+            beat_thread = True
+        elif word not in ("off", "0", "false", "no", "none"):
+            notes.append(f"beat thread {bt_text!r} isn't on or off; it stays off")
+
     def path_opt(arg: Optional[str], key: str, default: pathlib.Path) -> pathlib.Path:
         text = arg if arg is not None else env.get(key)
         return _path(text) if text and text.strip() else default
@@ -267,7 +286,7 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
     return Options(config=cfg, stream_priority=priority, artnet_target=artnet, notes=tuple(notes), brain=brain,
                    show_file=path_opt(args.show_file, "SHOW_FILE", contract.SHOW_FILE),
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
-                   state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR))
+                   state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread)
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:

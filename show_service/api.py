@@ -70,6 +70,7 @@ _CODE_RE = re.compile(r"^[a-z][a-z_]{1,40}$")
 # component names (README S3.2)
 DIRECTOR, AUTOPILOT, LISTENER, SITUATIONS, SOURCES, ROOM = ("director", "autopilot", "listener", "situations",
                                                             "sources", "room")
+STRUCTURE = "structure"                              # Stage 4 (README S4.7): music.context for the hearing line
 
 #: page words for a component whose module isn't running
 MISSING: dict[str, str] = {
@@ -241,6 +242,20 @@ def _confident_words(beliefs: dict) -> Optional[str]:
     return f"{word} · {moods[0]}" if moods else word
 
 
+def _context_words(context: dict, beliefs: dict) -> Optional[str]:
+    """README S4.8 (the card's hearing rule 1): music.context's genre word at conf >= CONFIDENT, with the listener's
+    first mood while its beliefs stand ("<genre> · <mood>"), or the genre alone."""
+    g = _d(context.get("genre"))
+    word = g.get("word")
+    if not isinstance(word, str) or not word or word == "unknown" or (_num(g.get("conf")) or 0.0) < CONFIDENT:
+        return None
+    moods = []
+    if beliefs.get("state") in ("fresh", "holding"):
+        moods = [m.get("word") for m in beliefs.get("moods") or []
+                 if isinstance(m, dict) and isinstance(m.get("word"), str)]
+    return f"{word} · {moods[0]}" if moods else word
+
+
 def _palette_choices(director: dict) -> list[dict]:
     pal = _d(director.get("palette"))
     raw = [c for c in pal.get("choices") or [] if isinstance(c, dict) and isinstance(c.get("name"), str)]
@@ -257,8 +272,9 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     """``contract.CardData`` from the brain's snapshot (``{"components": {name: snapshot}}``) and the engine's
     ``{"active_audio", "features": {"energy", "age_ms", "stream"}, "clock"}``. Pure; any missing piece reads neutral.
 
-    hearing.text, first match wins: confident beliefs ("soul · relaxed"), Talking, Quiet, No sound coming in (no
-    active audio, or features older than 5 s), Music, Listening."""
+    hearing.text, first match wins: music.context's confident genre (Stage 4, structure's snapshot; with the
+    listener's first mood), confident beliefs ("soul · relaxed"), Talking, Quiet, No sound coming in (no active audio,
+    or features older than 5 s), Music, Listening."""
     comps = _d(_d(brain_snapshot).get("components"))
     director, ap, sit, src = (_d(comps.get(n)) for n in (DIRECTOR, AUTOPILOT, SITUATIONS, SOURCES))
     lsnap = _d(comps.get(LISTENER))
@@ -271,7 +287,10 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     age_ms = _num(feats.get("age_ms"), None)
     stale = not active or age_ms is None or age_ms > STALE_FEATURES_MS
     beliefs = _d(lsnap.get("beliefs") if "beliefs" in lsnap else lview.get("beliefs"))
-    text = _confident_words(beliefs)
+    context = _d(_d(comps.get(STRUCTURE)).get("context"))
+    text = None if stale else _context_words(context, beliefs)
+    if text is None:
+        text = _confident_words(beliefs)
     if text is None:
         if _reading(readings, "talking"):
             text = "Talking"

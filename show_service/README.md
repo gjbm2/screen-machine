@@ -15,9 +15,12 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
   reached only through `:8700/show/*`. The test sources (Stage 3) are children on `127.0.0.1:6981/udp` (piano) and
   `127.0.0.1:6982/udp` (audio) while they play.
 - **Files it writes:** `~/.local/state/screen-machine/show/` (`--state-dir`): `state.json`, `director.jsonl`,
-  `autopilot.jsonl`, `listener.jsonl`, `test-piano.log`, `test-audio.log`. It reads `config/room/show.yaml`,
+  `autopilot.jsonl`, `listener.jsonl`, `test-piano.log`, `test-audio.log`, `ml-worker.log` (Stage 4: the worker's
+  stderr, appended per run after a "--- ml-worker start ---" line, rotated to `.1` past 1 MB). It reads `config/room/show.yaml`,
   `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml` and `config/live/vocab.yaml`, each re-read when
-  it changes.
+  it changes, and (the worker) `~/.cache/screen-machine/models/` (Stage 4; `tools/show/fetch_models.py`).
+- **The ML worker** (Stage 4) is show_service's child, `python -m show_service.ml.worker` in its own venv
+  `~/.venvs/sm-show-ml`, at nice 19 in its own session, fed over a pipe. No port.
 
 ## Status
 
@@ -44,6 +47,14 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
 | `listener.py`, `ring.py`, `utils/llm/` | the LLM listener (§7) and its 120 s ring | **done**, tested, wired (AI listening off by default) |
 | `tests/test_e2e.py::test_brain_end_to_end` | Stage 3 end to end against a fake room | **done**, passing |
 | `room_service/adapters/show.py` | the room's "Feel" adapter (S3.11) | **done**, tested; live at the next Flask restart |
+| **Stage 4** (below) | | |
+| `ml/` (`worker.py`, `models.py`, `protocol.py`, `supervisor.py`), `tools/show/fetch_models.py`, `export_onnx.py` | the ML worker child in `~/.venvs/sm-show-ml`: CED, Discogs-EffNet + heads, Essentia key, Beat This! (S4.4) | **done**, tested; models fetched |
+| `mllink.py` | `MLFeed` (show-rx → the worker's stdin) and `MLLink` (component `ml`: supervises the worker, `ctx.ml`, Beat This! votes → the clock, CPU) | **done**, tested, wired |
+| `dsp.py` medium lane, `clock.py` show-beat | `music.rhythm` (10 Hz, want-only), the audio chroma; madmom off show-rx | **done**, tested, wired |
+| `structure.py` | `music.context` (1 Hz), sections, phases, track changes, structure's `room.event`s, GOBO on sections while no vibe plays | **done**, tested, wired |
+| director, situations, listener, api card, vibes | Stage 4's consumers (S4.8) | **done**, tested, wired |
+| `tests/test_e2e.py::test_stage4_end_to_end` | three real tracks back to back through the real worker, against a fake room | **done**, passing |
+| Stage 4 review fixes (S4.13) | the 24 review issues of 16 Oct: GOBO ownership, track changes, the CED speech words, hysteresis, the ML genre, the meter, tokens, freshness, the worker's guards, memory, hand-off, budget, the owner's 0.8 | **done**, tested (948 passed); not committed |
 
 **Process split.** §2 has two processes: show_rt (hot, no aiohttp) and show_brain. For now everything runs in one
 process: the brain is a thread (`show-brain`), aiohttp stays on its own thread (`show-bus`), and the hot thread only
@@ -56,23 +67,37 @@ become the IPC seam.
  senders ──VBAN/UDP──► [show-rx]  Receiver.handle(buf, addr, arrival_s)
                           │  vban.parse → registry → SampleClock / CaptureMap / RemoteTimeMap
                           │  gaps (hold, zero-fill), segments, health (2 Hz snapshot)
-                          ├─ on_audio(stream, n0, t0_host_s, pcm, fs, flags) ► Features.process, then Clock.process,
-                          │                                                     then Rings.write (Stage 3; returns at
-                          │                                                     once while the listener hasn't armed
-                          │                                                     it) (active audio stream only, same
-                          │                                                     block)
+                          ├─ on_audio(stream, n0, t0_host_s, pcm, fs, flags) ► Features.process (fast + Stage 4's
+                          │                                                     medium lane), then Clock.process (AGC,
+                          │                                                     soxr, hops → show-beat), then
+                          │                                                     Rings.write (Stage 3; returns at once
+                          │                                                     while the listener hasn't armed it),
+                          │                                                     then MLFeed.write (Stage 4; returns at
+                          │                                                     once while no worker is attached)
+                          │                                                     (active audio stream only, same block)
                           │      Features' music.hit bodies → Clock.observe_hit (sub/bass hits refine the phase)
+                          │      Features.clock_fn = Clock.snapshot (swing, syncopation)
                           ├─ on_midi(stream, msg, arrival_s, to_host) ─────► NoteTap.on_midi (Stage 3), then
                           │                                                   midi.Piano.on_midi
-                          └─ on_tick(now_s) every ≤10 ms ─────────────────► Piano.tick · Features.tick · Harmony.tick
-                                                                              · Clock.tick · (0.5 s) snapshot, PianoView
+                          └─ on_tick(now_s) every ≤10 ms ─────────────────► Piano.tick · Features.tick (music.features
+                                                                              25 Hz, music.rhythm 10 Hz) · Harmony.tick
+                                                                              (the audio chroma when no piano plays)
+                                                                              · Clock.tick (drains show-beat's results)
+                                                                              · (0.5 s) snapshot, PianoView
                                                                               │ publish(msg)  (thread-safe, non-blocking)
+                       [show-beat] (Stage 4, clock.py) madmom's activation per 10 ms hop, off show-rx; results back
+                                   through a deque (SHOW_BEAT_THREAD=off: inline on show-rx, as in Stage 3)
                        [show-dns]  resolves sender hosts every 30 s           ▼
                                    (at once after Receiver.set_senders)
                        [show-bus]  asyncio + aiohttp: WS fan-out, /healthz, /api/v1/state, api.py's routes and
                                    /v1/events (Stage 3: they reach the brain only through Brain.call and snapshots)
-                       [show-brain] (Stage 3) one asyncio loop: room · situations · autopilot · sources · listener
-                                   at 1 Hz, director at 10 Hz; RoomLink's WS, listener calls, art fetches, children
+                       [show-brain] (Stage 3) one asyncio loop: room · situations · autopilot · sources · ml ·
+                                   listener at 1 Hz, structure and director at 10 Hz; RoomLink's WS, listener calls,
+                                   art fetches, children; (Stage 4) mllink's worker supervisor and line reader,
+                                   structure's GOBO steps (loop.call_at)
+                       [child]     (Stage 4) python -m show_service.ml.worker (~/.venvs/sm-show-ml, nice 19, its own
+                                   session): reader · ml-fast (CED, EffNet tags, key) · ml-beats (Beat This!);
+                                   stdin = MLFeed's frames, stdout = one JSON line per result
                        [show-artnet]       deadline loop ≤44 Hz: clock.next_beat + features.latest() +
                                            Director.palette_fn (all by reference)
                                            → ArtDmx → 127.0.0.1:6454 (room's receiver; only when configured)
@@ -86,11 +111,12 @@ become the IPC seam.
   is a snapshot dict, swapped in by reference.
 - **Hot-thread rules** (§2): numpy, scipy.signal and pyebur128 only, plus the stdlib, and for the clock's rhythm lane
   soxr and madmom (aubio-ledfx as the fallback); no logging per packet; reuse arrays where it is cheap; add 1e-9
-  dither before IIR filters (denormals); budget ≤0.45 ms per 256-sample hop for the whole fast lane. A block that
-  carries a madmom frame holds show-rx for about 2.5 ms (p95); see "Measured" under End to end.
+  dither before IIR filters (denormals); budget ≤0.45 ms per 256-sample hop for the whole fast lane. Since Stage 4
+  madmom's activation runs on `show-beat`, so a madmom frame no longer holds show-rx (it held a block about 2.5 ms
+  p95); what is left is the GIL they share (S4.6 "As built: the clock", S4.12 "Measured").
 - Every published time is the time of the **sound**: the timeline's acoustic map, never the arrival time.
 - **Imports:** a module imports `contract`, `vban` and `timeline`, never another builder's module. `__main__`
-  imports everything.
+  imports everything. (Stage 4: `mllink` imports `ml.supervisor` and `ml.protocol`, which it wraps: c8's ruling.)
 
 ## Interfaces
 
@@ -976,6 +1002,9 @@ in tests, so nothing is sent anywhere.
 - **Under the GIL with all threads:** dsp's hop p95 reads 1.0-1.4 ms, against 0.37 ms alone, so the 0.45 ms budget
   is met only without contention (open issue).
 
+**Stage 4 end to end (`test_stage4_end_to_end`, about 2.5 minutes):** three real tracks through the real ML worker;
+see S4.12.
+
 **Stage 3 end to end (`test_brain_end_to_end`, about 30 s).** The same wiring with the brain on, against
 `test_autopilot.FakeRoom` on its own thread and an ephemeral port (modes `gallery`, `piano` with
 `enter_when: {piano_playing: {for_s: 3}}` and a `skip`, `disco`; Auto on in the fake). show.yaml and vibes.yaml are
@@ -1095,6 +1124,8 @@ CUDA_VISIBLE_DEVICES=
 - **Stage 3 lines** (all optional): `SHOW_BRAIN=off` (the rollback: no director, Auto, test sources, listener or
   Stage-3 routes; exactly P0), `SHOW_FILE`, `SHOW_VIBES_FILE`, `SHOW_STATE_DIR` (their defaults are the production
   paths). The exact going-live steps are S3.14.
+- **Stage 4 line** (optional): `SHOW_BEAT_THREAD=on` runs the clock's activation on its own thread (off by default:
+  S4.12). The ML worker needs no line: show.yaml's `ml` section drives it. The going-live steps are S4.11.
 
 **What ca's `scripts/ctl` `show` entry must contain** (the same pattern as `stream`):
 ```
@@ -2774,3 +2805,1586 @@ under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins a
    `hue_depth` and `beat_lock` vary per vibe. (Review, 16 Oct) While a vibe is set, a quiet room or stale features no
    longer stop Art-Net: the director's relaxed look keeps going out, steady, with no pulses (artnet_out "Idle"), so
    room's Hue output keeps following; with no vibe, the P0 idle is as before.
+
+## Stage 4: local ML, the medium lane and sections (P3)
+
+**Interfaces, 16 Oct (c8).** This section defines Stage 4 so that five builders can work in parallel, each in its own
+files. It turns SHOW_ENGINE §4 (the medium lane), §5.3 (Beat This!: integer corrections only), §6 (local ML, sections,
+build/drop, loudness), §7.3 and §7.5 (the CED gate, the section call), §8.5 (section rules, section memory, peak tokens,
+build → drop), §8.9 (situations from CED) and §11.1 (`music.context`) into a build spec.
+- The shared names and the **exact shapes** are contract.py's **"Stage 4" block**, plus the Stage-4 slots at the end of
+  `BrainContext`.
+- The config is show.yaml's Stage-4 keys (S4.9). They are in the file now; nothing reads them until this code ships.
+- Where this section and SHOW_ENGINE.md differ, this section is the build spec.
+
+| Piece | Builder | Status |
+|---|---|---|
+| `show_service/ml/` (the worker), `tools/show/fetch_models.py`, `tools/show/export_onnx.py` | B7 | **built**, tested (S4.4a) |
+| `mllink.py`, and the `__main__` / brain / bus / config seams | B8 → c8 | **built**, tested (S4.5 "As built") |
+| dsp's medium lane and `music.rhythm`; clock's `show-beat` thread | B9 | **built**, tested (S4.6 "As built") |
+| `structure.py` (`music.context`, sections, phases, events, GOBO) | B10 | **built**, tested (S4.7 "As built") |
+| director, situations, listener, vibes, and the card line | B11, c8 | **built**, tested (S4.8 "As built") |
+| integration: wiring, reconciliation, the Stage-4 e2e, the CPU measurement | c8 | **done** 16 Oct (S4.12); not committed, not deployed |
+| the review's 24 issues (every section below now says what the code does) | c8's fixer | **done** 16 Oct (S4.13); not committed, not deployed |
+
+### S4.0 Rulings every builder keeps (owner)
+
+S3.0 still holds. For Stage 4:
+1. **No special cases.** No code branches on a mode, vibe, device, stream or genre name.
+   - A model-label → our-word mapping is config:
+     - Discogs parent → vocab genre (`genre_map`);
+     - AudioSet class → CED word (`ml.ced_groups`);
+     - music.context field → model head (`ml.tasks.tags.heads`).
+   - A model's own facts (labels, which class means "yes", a regression's range) come from its `index.json` entry.
+   - The name scan in test_director.py adds `mllink.py` and `structure.py` (B11 edits that list).
+2. **No invented values in live config.**
+   - Every threshold is a show.yaml key marked "starting point", with the § it comes from. The code keeps the same
+     numbers as fallbacks, marked the same way.
+   - An unknown stays unset. For example, `peak_tokens_per_hour` stays unset in vibes.yaml until the owner sets it.
+3. **Screens are never dimmed.**
+   - Dips, hits, floors and the build grammar reach lamps and DMX only.
+   - A section, build or drop reaches a screen only as a look change (palette, words), an event, or GOBO.
+4. **Degrade, never refuse.**
+   - With no worker, no models, or a failing model, every reader falls back (S4.3 "Without the worker").
+   - Nothing answers an error and no control is disabled because ML is missing.
+5. **No auth. No GPU.**
+   - The worker runs with `CUDA_VISIBLE_DEVICES=` (empty) and CPU onnxruntime only.
+   - torch, CPU wheels only, appears only in a scratch export venv.
+6. **The host renders 4K.**
+   - The worker runs at nice 19 with **two compute threads** (one per lane, intra-op 1 each).
+   - It has a **hard per-cycle budget that skips work, never queues it**.
+   - **show_service and the worker together stay under 0.8 of one core**, measured at go-live (S4.11).
+
+### S4.1 Builders and files
+
+| Builder | Its files (and the tests named for them) | Seams it alone edits |
+|---|---|---|
+| **B7 worker** | `show_service/ml/` (a package: `__init__.py`, `worker.py` for `python -m show_service.ml.worker`, and its other modules), `show_service/ml/requirements.txt`, `show_service/ml/tests/`; `tools/show/fetch_models.py`, `tools/show/export_onnx.py` | none |
+| **B8 link and wiring** | `show_service/mllink.py`; `tests/test_mllink.py` | `__main__.py` (Stage-4 wiring), `config.py` (`SHOW_BEAT_THREAD`), `brain.py` (`add` appends list slots), `bus.py` (`TYPES`, `WANT_ONLY`); additions to `test_main.py`, `test_brain.py`, `test_bus.py`, `test_config.py` |
+| **B9 show-rx lanes** | `dsp.py` (the medium lane), `clock.py` (the `show-beat` thread); additions to `tests/test_dsp.py`, `tests/test_clock.py` | none. harmony.py needs no change: it already takes `features.chroma12()` |
+| **B10 structure** | `show_service/structure.py`; `tests/test_structure.py` | none |
+| **B11 consumers** | `director.py`, `vibes.py`, `situations.py`, `listener.py`; additions to their tests (including the name scan) | `api.py`: only `card()`'s hearing rule 1 (S4.8), with an addition to `test_api.py` |
+
+- c8 owns `contract.py`, `config/room/show.yaml`, `config/room/vibes.yaml` and this README. A builder that needs a change
+  to any of them asks c8.
+- **Parallel seams.** B8 codes against the signatures B9 and B10 are given here and tests with fakes. It reads every
+  new piece with `getattr` (for example `features.rhythm`, `clock.stop`), so a piece that hasn't landed leaves its slot
+  None. c8 integrates and runs the full suite.
+- Builders don't commit; c8 does.
+
+### S4.2 Processes, threads and the CPU budget
+
+```
+[show-rx]    + MLFeed.write (on_audio, after Rings.write): mono -> soxr 16 kHz -> 800-sample frames -> one os.write
+               each to the worker's stdin (O_NONBLOCK; a full pipe drops the frame and counts it)     guard "ml.feed"
+             + dsp's medium lane: a frame per 100 ms of stream time, inside Features.process; music.rhythm from tick
+             + clock: the AGC, soxr 44.1 kHz and the 441-sample hops stay here. Each hop goes to show-beat, and the
+               activations come back through a deque that Clock.process and Clock.tick drain first
+[show-beat]  NEW (clock.py): the activation only (madmom's 2 nets, or aubio). It never touches clock state.
+[show-brain] + ml (mllink.MLLink, 1 Hz): spawns and supervises the worker (asyncio), reads its stdout lines, keeps
+               ctx.ml's view, and turns Beat This! results into Clock.apply_integer_correction
+             + structure (10 Hz; its 1 Hz work on whole seconds): music.context, sections, phases, room.event; GOBO
+               through loop.call_at(at_s)
+[child]      python -m show_service.ml.worker (~/.venvs/sm-show-ml, nice 19, its own session):
+               [reader]    stdin frames -> its 16 kHz ring (I/O only)
+               [ml-fast]   ced -> tags -> key on a 1 s grid, 250 ms per cycle at most
+               [ml-beats]  Beat This! every 10 s on 30 s, 5.5 s at most (an overrun skips its next turn)
+               stdout: one JSON line per result; stderr: <state_dir>/ml-worker.log
+```
+- **Brain add order:** room, situations, autopilot, sources, **ml, structure**, listener, director. In one beat of the
+  10 Hz loop, structure runs before the director. Events reach the director and the listener at once, through
+  `on_music_event`.
+- **Imports:** mllink and structure import `contract` and their own dependencies (numpy; soxr for mllink), never
+  another builder's module. The worker imports only `show_service.contract` from show_service.
+
+**The CPU budget.** One core = 1.0. It is measured at go-live on test music, with the render running.
+
+| Piece | Today (measured in Stage 3) | Stage-4 target |
+|---|---|---|
+| show_service, all threads | 0.37-0.38 | ≤ 0.42. Medium lane ≤ 0.005, MLFeed ≤ 0.01, structure ≤ 0.01, the ml link ≤ 0.005. madmom moves to show-beat at the same cost |
+| the worker | none | ≤ `ml.cpu_max` (0.35). Expected about 0.25: ced ~3 %, tags ~2 %, key < 1 %, Beat This! small0 ~20 % |
+| **total** | | **< 0.8 (owner)** |
+
+Measured at integration (S4.12): show_service 0.43-0.44 with the beat thread off (its default since), the worker
+0.25-0.26, **total 0.68-0.69**. With the thread on, show_service was 0.57-0.58 and the total 0.80-0.84. After the review
+fixes (S4.13): show_service 0.41, the worker 0.23-0.25, **total 0.64-0.67**; over 0.8 for 60 s, mllink now cuts the
+worker's cpu_max to what show_service leaves.
+
+### S4.3 The ML worker protocol (B7 and B8 both build to it)
+
+**The process.**
+- mllink starts `[ml.python, "-m", "show_service.ml.worker", "--models", <ml.models_dir>, "--parent", <our pid>,
+  "--nice", <ml.nice>]` (`contract.ML_WORKER_MODULE`).
+- It runs with `cwd=REPO_ROOT` and `start_new_session=True`.
+- stdin is the read end of a pipe mllink made with `os.pipe()`, grown to 1 MB (`F_SETPIPE_SZ`, Linux's default
+  pipe-max-size: about 16 s of frames, so a starved nice-19 reader drops nothing). The write end stays with us, set
+  O_NONBLOCK.
+- stdout is an asyncio PIPE. stderr is `<state_dir>/ml-worker.log` (`contract.ML_LOG`), appended after a
+  "--- ml-worker start (attempt n) ---" line, so the last run's traceback survives the next start.
+- The environment is ours plus `PYTHONUNBUFFERED=1`, `CUDA_VISIBLE_DEVICES=` (empty), `OMP_NUM_THREADS=1`,
+  `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `NUMEXPR_NUM_THREADS=1` and `MALLOC_ARENA_MAX=2` (S4.13).
+- **At start the worker:**
+  1. sets its niceness to `--nice`;
+  2. dups its stdout for the protocol and points fd 1 at stderr, so a library's stray print can never corrupt a line;
+  3. sets `PR_SET_PDEATHSIG` to SIGTERM (ctypes `prctl`), and exits if `getppid()` isn't `--parent`;
+  4. starts the stdin reader;
+  5. loads the models (lazy imports);
+  6. writes `hello`.
+- **It dies with us,** since no group kill reaches its session:
+  - EOF on stdin: it exits 0 within 1 s;
+  - a failed stdout write (EPIPE): it exits.
+
+**stdin: binary frames.** Each frame is one `os.write` of at most `ML_PIPE_ATOMIC` bytes (4096, Linux PIPE_BUF). Even a
+non-blocking write of that size is all-or-nothing, so no torn frame ever reaches the worker.
+```
+header  ML_HEADER_FMT "<4sBBH16sIqdI", ML_HEADER_SIZE = 48 bytes, little-endian
+  magic    4s  b"SMLA" (ML_AUDIO_MAGIC) | b"SMLC" (ML_CTRL_MAGIC)
+  version  B   ML_PROTOCOL_V (1)
+  flags    B   ML_FLAG_SEGMENT 1 | ML_FLAG_GAP 2 | ML_FLAG_AFTER_DROP 4   (audio; 0 on control)
+  n        H   audio: samples in the payload, 1..ML_FRAME_MAX_SAMPLES (1012); mllink sends ML_FRAME_SAMPLES (800 = 50 ms)
+               control: payload bytes, 1..ML_CTRL_MAX_BYTES (4048)
+  stream   16s the stream's VBAN name, ASCII, NUL-padded (zeros on control)
+  seg      I   the feed's segment: +1 at every ML_FLAG_SEGMENT
+  n0       q   the payload's first sample: its 16 kHz index within the segment (0 at ML_FLAG_SEGMENT)
+  t0       d   that sample's acoustic host seconds (CLOCK_MONOTONIC); sample i sounds at t0 + i / 16000
+  dropped  I   the frames this feed has dropped so far (cumulative)
+payload  audio:   n x float32, little-endian, mono, ML_FS (16000 Hz), -1..1
+         control: n bytes of UTF-8 JSON
+```
+- **Segments.** mllink starts a segment (flag SEGMENT, `n0` 0, `seg` + 1) on:
+  - a new worker (its first frame);
+  - another stream;
+  - another input rate;
+  - `AUDIO_SEGMENT`.
+
+  Within a segment `n0` is continuous. Frames we drop still advance it, so the next written frame carries the jump and
+  `ML_FLAG_AFTER_DROP`.
+- **On a jump, the worker:**
+  - zero-fills a hole of up to 1 s and counts it (`holes`);
+  - starts a new segment in its ring for a longer hole, or for `n0` going backwards.
+
+  A window never spans two segments. A beats window never contains a hole or a GAP frame.
+- **Control frames** are JSON objects with a `cmd`:
+  - `{"cmd": "config", "v": 1, "ml": <the ml keys the worker reads>}` (`ML_CMD_CONFIG`: `cpu_max`, `silence_dbfs`,
+    `fast_lane`, `tasks`, `ced_groups`; `supervisor.WORKER_KEYS`) goes right after spawn, before any audio, and on
+    every change to them. Until one arrives, the worker uses the starting points in S4.9 (the same as show.yaml). A
+    section that can't make a frame (over `ML_CTRL_MAX_BYTES`, a NaN, a value JSON can't carry) isn't sent: mllink
+    keeps the last good one and lists the problem.
+  - `{"cmd": "stop"}` (`ML_CMD_STOP`): the worker finishes the current line and exits 0. EOF does the same.
+  - Unknown commands are counted and ignored.
+
+**stdout: one JSON object per line.**
+- Each line is UTF-8, at most `ML_LINE_MAX`, with no NaN (null instead).
+- The shapes are contract's TypedDicts, exactly.
+- mllink counts and skips any line that isn't one of them (`bad_lines`).
+
+| `type` | When | Shape | Notes |
+|---|---|---|---|
+| `hello` | once, after the models load | `MlHello` | mllink feeds audio only after it |
+| `ced` | every `tasks.ced.every_s` (1 s) | `MlCed` | `t` = the acoustic time of the window's end. Each of the seven `CED_GROUPS` words is the max of its `ml.ced_groups` classes |
+| `tags` | every 1 s | `MlTags` | `genre_parents`, `styles_top3`, `moods_top5`, `instruments_top5` (the models' raw labels); `dance`, `voice_p`, `engagement`, `bright`, `acoustic`, `arousal` (0..1, None when the head isn't loaded); `emb_id`, `emb` (base64 float16 × 1280), `emb_dim` |
+| `key` | every 2 s, over 20 s | `MlKey` | Essentia HPCP + Key (`tasks.key.profile`) |
+| `beats` | every 10 s, over 30 s | `MlBeats` | times only: beats and downbeats in the interior, plus `bpm` and `bar_len`. The worker never sees our clock; mllink makes the vote (S4.5) |
+| `stats` | every 10 s | `MlStats` | `cpu_share`; per task: runs, skipped, over_budget, cost p50/p95, `every_s`; `stretch` |
+| `error` | when a task fails | `MlError` | counted; the task runs again at its next grid point |
+
+**Cadences and budgets** (§6's table; show.yaml `ml.tasks` and `ml.fast_lane`):
+
+| Task | Lane (order) | every_s | window_s | Model (catalogue name) | budget_ms |
+|---|---|---|---|---|---|
+| ced | fast, 1st | 1 | 2.0 | `ced-mini` (CED-mini on AudioSet, Apache-2.0) | 100 |
+| tags | fast, 2nd | 1 | 2.1 (one EffNet patch: 128 frames × 256 samples at 16 kHz) | `discogs-effnet`, plus the heads in `tasks.tags.heads` | 80 |
+| key | fast, 3rd | 2 | 20 | Essentia HPCP + Key (no model file) | 60 |
+| beats | beats | 10 | 30 | `beat-this-small0` (MIT) | 5500 (about 2x its p95 under the render) |
+
+- **A grid, not a queue.**
+  - Each lane runs on a fixed grid of `every_s × stretch`.
+  - A cycle that overruns starts the next one at the next grid point after it: never back to back, never catching up.
+  - A task with no new audio since its last run skips without counting.
+- **A hard budget.**
+  - In the fast lane, the cycle's tasks share `ml.fast_lane.budget_ms`. A task whose p95 cost doesn't fit in what is
+    left is skipped (`skipped`).
+  - Every onnxruntime run takes a `RunOptions`. A watchdog sets its `terminate = True` at the task's `budget_ms`; the
+    run raises and its result is dropped (`over_budget`), and the task's next turn is skipped (counted `skipped`):
+    no retry at full cost.
+  - Three over-budget runs in a row double that task's `every_s`, up to ×8. Ten good runs in a row halve it back.
+- **The CPU guard.**
+  - Over 30 s, a `cpu_share` above `ml.cpu_max` multiplies every interval by 1.5 (`stretch`, up to 4).
+  - Under 0.7 × `cpu_max` for 60 s divides it by 1.5, down to 1.
+- **Silence.** A window under `ml.silence_dbfs` runs no model:
+  - `ced` reports `silence_p` 1, the rest 0, and `skipped: "silence"`;
+  - tags, key and beats skip.
+- **Threads.** Two compute threads, `ml-fast` and `ml-beats`.
+  - Each onnxruntime session has `intra_op_num_threads=1`, `inter_op_num_threads=1` and sequential execution.
+  - essentia is single-threaded.
+  - The stdin reader and the watchdog only wait. No other thread runs model work.
+
+**The restart policy (mllink).**
+- **When:** the worker exits, or sends nothing for `ml.restart.stall_s` (30 s) while it is fed (stats come every 10 s).
+  The worker exits by itself (code 70) when one of its lanes has made no cycle in max(3 x its period, its period +
+  its budget + 5 s): a native call that never returns. Its reader and its stats would otherwise keep it looking alive.
+- **Stop sequence:**
+  1. detach the feed, and wait for a write under way on show-rx to end (`FrameFeeder.busy`, at most 0.5 s; past that
+     `/dev/null` is put over our fd, which is closed only once the write is done, so its number is never reused under
+     it);
+  2. `{"cmd": "stop"}`, then close our pipe end;
+  3. wait 2 s, then SIGTERM its process group;
+  4. wait 2 s, then SIGKILL (and wait 2 s more). At most 6.5 s in all (`supervisor.STOP_MAX_S`); brain.py waits 7.
+- **Backoff:** start again after `ml.restart.backoff_s[n]` (2, 5, 15, 60, 300 s, then 300 s for ever; none under 1 s),
+  where n is the failures in a row. `ml.restart.healthy_s` (600 s) of running resets n. It never gives up for good:
+  a value it can't use takes its starting point, and a fault in the supervisor itself ends that run (state `failed`)
+  and is retried on the same backoff. An exit with a code over 0 keeps its last log line in `last_exit.why`.
+- A change to `ml.python`, `ml.models_dir` or `ml.nice` restarts it. `ml.enabled: false` stops it (`state: disabled`).
+- Only the Popen that mllink made is ever signalled, never with `pkill`.
+
+**Without the worker** (disabled, starting, backoff, failed, or a model missing), each reader degrades:
+
+| Reader | With the worker | Without it |
+|---|---|---|
+| situations `music_audible` | CED music (3 s mean) ≥ `min_prob` | the DSP guess (a beat or a key over the gate), as in Stage 3 |
+| situations `talking` | CED speech (the max over `situations.talking.speech_words`: speech, conversation, crowd) ≥ `min_prob` and music < `music_below` | unknown, as in Stage 3 |
+| situations `quiet` | the gate < `gate_below`, or CED music and speech (the same words) both under their `*_below` | the gate only, as in Stage 3 |
+| listener (`music_gate: classifier`) | room-sound clips of music-dominant seconds only (speech: the max over `listener.ced.speech_words`) | no room-sound clips ("the music/speech check isn't running") |
+| structure | EffNet embeddings (`source: ml`) | chroma + MFCC from music.rhythm (`source: dsp`) |
+| genre (music.context, `genre_in`, the card) | EffNet's parents through `genre_map`, plus the listener's words for Electronic | the listener's genre, as in Stage 3 |
+| key (music.context) | the piano's while it plays, else Essentia's (held: S4.7) | music.harmony's |
+| clock | Beat This! integer corrections | none (the kick votes and the human actions stay) |
+
+### S4.4 The worker, its venv and its models (B7)
+
+**The venv.** `~/.venvs/sm-show-ml` (python3.12), pinned in `show_service/ml/requirements.txt`:
+- `essentia==2.1b6.dev1389` (the last cp312 build);
+- `onnxruntime` (CPU);
+- `soxr`;
+- numpy: the version essentia's wheel imports with (check `python -c "import essentia.standard"`), pinned.
+
+There is no torch in it.
+```
+flock /tmp/claude-1000/sm-build.lock nice -n 19 python3.12 -m venv ~/.venvs/sm-show-ml
+flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show-ml/bin/pip install -r show_service/ml/requirements.txt
+```
+
+**Imports.**
+- `show_service/ml/*` imports `show_service.contract` (stdlib only) and its own venv's packages, never another
+  show_service module.
+- essentia and onnxruntime are imported lazily. So `python -m show_service.ml.worker --fake` also runs under
+  `~/.venvs/sm-show` (numpy only), and the other builders' tests use that.
+
+**`--fake`** is for tests only, never production.
+- It needs no model files.
+- It gives deterministic results from cheap numpy features:
+  - ced from the window's loudness;
+  - tags with an embedding from band energies, so novelty moves with the music;
+  - key from a numpy chroma;
+  - beats from onset autocorrelation.
+- `hello.models` reads `"fake"` for every model. Its exact behaviour goes in B7's "As built".
+
+**Models** come from `tools/show/fetch_models.py`. It needs only the stdlib, like fetch_test_music.py.
+- **The catalogue.** `CATALOGUE = [{"name", "file", "url", "page", "license", "license_url", "sha256", "bytes", "task",
+  "facts"}]`.
+  - `facts` is what the worker needs to read a model:
+    - its input rate and shape;
+    - its labels (or the metadata JSON fetched with it);
+    - which class is "yes" for a binary head (danceable, voice, bright, acoustic);
+    - a regression's range (DEAM's arousal 1..9 → 0..1).
+  - B7 checks every URL, sha256 and licence. No placeholders.
+- **The command:** `python tools/show/fetch_models.py [--dir D] [--only a,b] [--list] [--verify] [--force]`.
+  - It downloads to `D/<file>` (default `contract.MODELS_DIR`) and verifies the sha256. A mismatch is not installed.
+  - It writes `D/index.json` (`contract.MODELS_INDEX`) = `{name: {file, sha256, bytes, license, license_url, page,
+    source: "fetch" | "export", facts, fetched_at}}`.
+  - It writes `D/LICENSES.md`: one entry per model, with its credit line.
+  - It is idempotent. Models never go into git.
+- **Exports**, where no ONNX file is published (Beat This!; CED-mini if it has none). `tools/show/export_onnx.py <name>`
+  runs once:
+  1. in a scratch venv under `/tmp/claude-1000/onnx-export/` (torch CPU from the CPU index, and the model's own code at
+     a pinned tag or commit);
+  2. it exports with a dynamic time axis;
+  3. it checks the ONNX against torch on three clips (max abs difference ≤ 1e-3 on the outputs);
+  4. it writes `D/<file>` and the index entry, with `source: "export"` and the upstream checkpoint's URL and sha256.
+
+  fetch_models.py `--list` shows the exported models and how to make them. torch never goes into `~/.venvs/sm-show-ml`
+  unless an export proves impossible; then CPU wheels only, and c8 is asked first.
+- **Licences** (re-verify at build; §15):
+  - Essentia's models: CC BY-NC-SA 4.0. That is fine for this private install, and is flagged if it is ever sold.
+  - The essentia library the worker runs (not a model): AGPL-3.0. Fine for this private install; flag it before any
+    distribution (also in `ml/requirements.txt` and fetch_models.py's LICENSES.md).
+  - CED: Apache-2.0.
+  - Beat This!: MIT; check the weights' terms on its page.
+- **Catalogue names** that show.yaml uses:
+  - `ced-mini`;
+  - `discogs-effnet`;
+  - `beat-this-small0` (and `beat-this-final0` if B7 measures it inside the budget);
+  - the heads: `genre_discogs400`, `mtg_jamendo_moodtheme`, `mtg_jamendo_instrument`, `danceability`,
+    `voice_instrumental`, `engagement_regression`, `nsynth_bright_dark`, `mood_acoustic`, `deam` (valence/arousal).
+
+  A head with no published ONNX file is exported the same way, or left out; its field then reads null. B7 sends c8
+  any name that differs from these, for show.yaml.
+
+**Genre parents** come from the 400-style head's own labels (`"Parent---Style"`, split on `---`). No parent name is in
+code. `genre_parents[p]` = the max of p's styles' activations, averaged over the window's patches.
+
+**Beat This!** reads 22.05 kHz log-mel, and our feed is 16 kHz (the ring's rate), so it sees nothing above 8 kHz.
+- The worker resamples 16 → 22.05 kHz.
+- B7 measures the cost once, in the scratch venv: `beat-this-small0`'s beat F-measure on the fetched test tracks,
+  limited to 16 kHz, against full-band input.
+- The numbers go in B7's "As built". A large loss is c8's call: feeding 22.05 kHz is a contract change.
+- Post-processing is Beat This!'s "minimal" one (peaks of the logits), reimplemented in numpy and checked once against
+  the reference.
+
+**Tests (B7)** run under `~/.venvs/sm-show-ml`, in `show_service/ml/tests/`:
+- frame parsing: every flag, a hole, a backwards `n0`, a control frame;
+- the ring's time map;
+- the scheduler on a fake clock: the grid, a skip on budget, the over-budget doubling, the CPU stretch;
+- the protocol over real pipes with `--fake`: hello, results, stats, the exit on EOF, stop;
+- when the models are present (skipped otherwise): one real run of each task on a test track, with its cost printed
+  (`-s`).
+
+Tests never use the real models dir: they pass `--models <tmp>` (a symlinked or copied subset is fine).
+
+#### S4.4a As built (B7, 16 Oct)
+
+**Files.**
+- `show_service/ml/`: `protocol.py` (frames, lines, the shape check, the embedding codec; stdlib), `models.py` (the
+  back ends, real and `--fake`), `worker.py` (the process), `supervisor.py` (the show_service side, below) and
+  `requirements.txt`.
+- `tools/show/fetch_models.py` and `tools/show/export_onnx.py`.
+- Tests: `show_service/tests/test_ml_{protocol,worker,supervisor,models}.py` (the job's file list put them there, not
+  in `ml/tests/`). They run under `~/.venvs/sm-show` with numpy only. The real-model test spawns the ML venv's
+  python, and skips when the venv or the models are missing.
+
+**The venv** is `~/.venvs/sm-show-ml`. It pins essentia 2.1b6.dev1389, onnxruntime 1.31.0 (CPU), numpy 2.5.4 (checked
+with `import essentia.standard` and KeyExtractor) and soxr 1.1.0, plus their dependencies. There is no torch in it.
+The export venv is `/tmp/claude-1000/onnx-export/venv`, with torch 2.14.1+cpu and beat-this 1.1.0.
+
+**Models.** They are in `~/.cache/screen-machine/models`, about 50 MB. Every sha256 matched its pin.
+
+| Catalogue name | File | Licence | Note |
+|---|---|---|---|
+| `ced-mini` | `ced-mini.onnx` (HF `mispeech/ced-mini` @ `26c3ebc`) | Apache-2.0 | Published ONNX, int8. Raw 16 kHz in, 527 **probabilities** out (its head applies the sigmoid) |
+| `discogs-effnet` | `discogs-effnet-bsdynamic-1.onnx` | CC BY-NC-SA 4.0 | Mel `[n,128,96]` in; `activations` (400) and `embeddings` (1280) out |
+| `genre_discogs400` | its `.json` only | CC BY-NC-SA 4.0 | The head is published as `.pb` only. EffNet's own 400-style output has the same labels in the same order (checked), so `genre_parents` comes from it |
+| `mtg_jamendo_moodtheme`, `mtg_jamendo_instrument`, `danceability`, `voice_instrumental`, `mood_acoustic`, `engagement_regression` | `*-discogs-effnet-1.onnx` | CC BY-NC-SA 4.0 | |
+| `timbre` | `timbre-discogs-effnet-1.onnx` | CC BY-NC-SA 4.0 | bright/dark, trained on music. Replaces `nsynth_bright_dark` (below) |
+| `approachability_regression` | ONNX | CC BY-NC-SA 4.0 | Fetched; no MlTags field reads it |
+| `msd-musicnn` + `deam` | ONNX | CC BY-NC-SA 4.0 | Arousal (DEAM, range 1..9 → 0..1). MusiCNN shares EffNet's mel front end |
+| `beat-this-small0` | `beat-this-small0.onnx`, exported | MIT (code and weights) | Checkpoint `small0.ckpt`, sha256 `6074be2c…` |
+
+- **Facts** live in each index.json entry: kind, input, outputs, labels, `yes`, `range` and `via`. The worker reads
+  only the kinds. It never names a model or a label.
+- **CED's labels** are AudioSet's short names ("Male speech"), and show.yaml's `ced_groups` uses the full display
+  names. A class therefore matches a label that equals it, or that equals its text before the first comma.
+  - All 16 classes in show.yaml match.
+  - A class the model lacks is logged.
+- **The Beat This! export** used the TorchScript exporter (opset 17, a dynamic batch and time axis). torch.export's
+  decomposition fails on this model.
+  - ONNX against torch on three clips: max |d| 7e-5.
+  - The worker's numpy log-mel against `LogMelSpect`: 8e-5.
+  - The numpy "minimal" post-processing gives exactly the reference's beats and downbeats.
+- **`beat-this-final0`** costs 2.9-3.9 s per 30 s window (about 0.35 core at every 10 s), so it is not used.
+
+**For c8 (show.yaml `ml.tasks.tags.heads`; nothing else changes).** Done at integration (S4.12): `bright: timbre`,
+`arousal` off, `engagement` left null.
+1. `bright: timbre`. `nsynth_bright_dark` (and `nsynth_acoustic_electronic`) have no ONNX file and were trained on
+   single NSynth notes. Until then, `bright` reads null and hello says `nsynth_bright_dark: missing`.
+2. `arousal: deam` is **not cheap**. MSD-MusiCNN costs 47 ms per run, 8× EffNet. With it, tags take 56 ms p50 and
+   75 ms p95 against an 80 ms budget, and the worker uses 0.29-0.36 core. Without it: 11 ms and 18 ms, and
+   0.23-0.30 core.
+   - Recommendation: drop it (arousal reads null), or accept about +0.05 core.
+   - A secondary backbone only ever runs when its own p95 fits what is left of the tags budget, so it can't push
+     EffNet's results over.
+3. `engagement` reads **null**. The regression's output is linear, and Essentia doesn't publish its range. The 9 test
+   tracks gave raw values from -0.01 to 1.01. Setting a range in the catalogue is c8's or the owner's call.
+
+**Costs.** Measured at nice 19 on one thread, with the 4K render running (`python -m show_service.ml.worker --bench
+FILE` reproduces them).
+
+| Task | ms per call | Of which |
+|---|---|---|
+| ced (2 s) | 22-25 p50, 39 p95 | |
+| tags (1 patch) | 11 p50, 17 p95 | Mel 2 ms for a new second (5-7 cold); EffNet 5-7; each head 0.02-0.2 |
+| tags with MusiCNN arousal | 56 p50, 75 p95 | MusiCNN 45-55; DEAM 0.01 |
+| key (20 s) | 13-14 p50, 16-22 p95 | |
+| beats (30 s) | 1900-2400 p50, 2400-2750 p95 | soxr 11 ms, the numpy mel 29 ms; the rest is the model |
+
+- **CPU over 75 s of pop at production cadences**, from the worker's own stats:
+  - 0.04-0.05 core before the first 30 s beats window;
+  - 0.23-0.30 core after it, with the recommended heads;
+  - 0.29-0.36 core with show.yaml as it stands.
+- **RSS** is about 260 MB with every model loaded; load takes 3.3 s. As first built, the first Beat This! runs grew it
+  to about 1.6 GB for the evening (onnxruntime's CPU arena kept the 30 s window's peak). With the arena off for the
+  beat tracker and `MALLOC_ARENA_MAX=2` (S4.13) it stays near 300-335 MB (`stats.rss_mb`, also the snapshot's
+  `rss_mb`), at the same cost per run.
+- **The watchdog** stops a Beat This! run within about 200 ms of its deadline: one attention node is that long. A
+  150 ms budget stopped at 159 ms, and a 600 ms budget at 814 ms.
+
+**Beat This! at 16 kHz.** The 16 kHz-limited input (resampled to 22.05 kHz) was compared with full-band 22.05 kHz
+input, using F-measure at 70 ms over the interior. The test was 27 windows of 30 s across the 9 test tracks
+(`export_onnx.py --measure-16k`).
+- Beats: mean 0.972. The minimum was 0.66, on the orchestral track's opening.
+- Downbeats: mean 0.926, minimum 0.67.
+
+The vote needs `agree_runs` agreeing runs, so isolated misses don't apply. Feeding 22.05 kHz is still c8's call.
+
+**Behaviour the spec left open.**
+- **Silence** is the window's RMS in dBFS, with a full-scale square wave at 0.
+- **Windows.**
+  - Key and beats wait for a full window in the segment: 20 s and 30 s after a new segment.
+  - A beats window waits for clean audio (no hole, no GAP frame).
+  - With a MusiCNN head the tags window is 3.02 s (187 frames plus one hop). `MlTags.window_s` still reports 2.1.
+- **The fast lane.** Its first task in a cycle always runs (its own budget caps it), so a stale p95 can't lock a
+  task out.
+- **The CPU guard** compares the 30 s and 60 s means, one step per window.
+- **`stats.tasks[*]`** also has `silent` and `factor`.
+- **hello** goes out even when stdin closes during the load, so S4.11's `< /dev/null` check prints it, then exits 0.
+- **Config.**
+  - A config frame whose model set changes reloads the models on the lane that sees it first.
+  - A bad value keeps the starting point and is logged.
+  - `DEFAULTS` equals show.yaml's `ml` (test_ml_worker checks this).
+- **`--fake`** behaves exactly as `models.py`'s docstring says. hello reads `fake` for every configured model.
+- **`--stats-every`** is for tests only. **`--bench FILE`** is not for production.
+
+**`supervisor.py`** is in the job's file list. It is a stdlib, numpy, contract and protocol implementation of S4.3's
+show_service side:
+- `FrameFeeder`: 800-sample frames, drops, AFTER_DROP, GAP, segments. It costs 1.6 µs p50 and 6 µs p95 per block.
+- `WorkerSupervisor`: the spawn, the config frame, the shape check, `bad_lines`, the stall, the stop sequence, the
+  backoff and `healthy_s`, `failed` when the venv is missing, and `disabled`.
+
+mllink (B8) can wrap it or follow it; S4.2 says builders don't import each other's modules, so that is c8's choice.
+
+**Go-live check** (S4.11.1): `~/.venvs/sm-show-ml/bin/python -m show_service.ml.worker --models
+~/.cache/screen-machine/models < /dev/null` prints hello, then exits 0.
+- Every model is `ok` except `nsynth_bright_dark: missing`, which is fixed by item 1 above.
+- `tasks` is all true, and nice is 19.
+
+### S4.5 mllink.py and the wiring (B8)
+
+```python
+class MLFeed:                               # made by __main__ (like Rings); written on show-rx
+    def __init__(self, *, fs: int = contract.ML_FS, frame_samples: int = contract.ML_FRAME_SAMPLES) -> None
+    def write(self, stream, n0, t0_host_s, pcm, fs, flags) -> None     # = contract.OnAudio; returns at once while no fd
+    def attach(self, fd: int | None) -> None    # any thread (MLLink): the worker's stdin write end (O_NONBLOCK), or None;
+                                                # taken at the next write; a new fd starts a new segment
+    def stats(self) -> dict                     # any thread: frames, bytes, drops, broken, segments, write_us_p95,
+                                                # block_us_p95, attached (bool)
+class MLLink:                               # Component "ml", tick_hz SLOW_TICK_HZ
+    def view(self) -> contract.MLView           # any thread: swapped by reference
+    def provides(self) -> dict                  # {"ml": self.view}
+    def snapshot(self) -> dict                  # {"state", "why", "pid", "since_s", "restarts", "failures_in_row",
+                                                #  "next_start_in_s", "last_exit", "log_tail": [<= 5 lines], "hello",
+                                                #  "stats": <the last MlStats>, "feed": MLFeed.stats(), "lines": {type: n},
+                                                #  "bad_lines", "votes": [<= 10 BeatVote], "cpu": {"worker", "service",
+                                                #  "total"}, "problems": [show.yaml ml lines]}
+                                                #  (S4.13 adds "cpu_limit", "stale_s", "rss_mb", "config_errors",
+                                                #  "run_errors")
+def attach(ctx: contract.BrainContext, **kw) -> MLLink      # kw: log_path (tests: python, a fake clock)
+def beat_vote(msg: contract.MlBeats, clock: contract.ClockData | None, cfg: dict) -> contract.BeatVote   # pure
+def decode_emb(b64: str, dim: int) -> np.ndarray                                                      # pure: float32
+```
+
+**MLFeed (show-rx: no locks, no waits).**
+- **Resampling.** A mono mix goes through `soxr.ResampleStream(fs, 16000, 1, dtype="float32", quality="MQ")`.
+  - It is rebuilt on a new fs, on `AUDIO_SEGMENT`, or on a new fd; the next frame is then a SEGMENT.
+  - `AUDIO_GAP` blocks go through as zeros, so the index stays continuous, and flag every frame they reach
+    `ML_FLAG_GAP`.
+- **Time.** soxr's output is delay-compensated (ring.py's finding), so output sample m maps to input position
+  `p = n_start + m × fs / 16000` (n_start: the receiver's index of the resampler's first input).
+  - A frame's `t0` = `t0_blk + (p − n0_blk) / fs`, from the newest block.
+  - These are the receiver's skew-tracked times, never a free-running count.
+- **Writing.** A frame of `ML_FRAME_SAMPLES` (800) goes out as soon as it is full: one preallocated buffer,
+  `struct.pack_into` for the header, one `os.write`.
+- **A full pipe** (`BlockingIOError`): drop the frame, count it, and flag the next written frame `AFTER_DROP`; `n0`
+  still advances.
+- **A dead worker** (`BrokenPipeError` or another `OSError`): forget the fd and count `broken`; MLLink sees the exit.
+- It never retries and never blocks.
+- **Budget:** ≤ 40 µs p95 per 128-frame 48 kHz block, frame writes included (`-s` prints it).
+
+**MLLink (show-brain).**
+- **`configure`** resolves the `ml` section over the starting points; a bad value takes the starting point and adds a
+  `problems` line, as the listener does. On a change it either sends a config frame (the same non-blocking write from
+  show-brain; a full pipe retries at the next tick) or restarts the worker (S4.3). The frame carries only the keys
+  the worker reads; one that can't be made keeps the last good section (a `problems` line). It never raises.
+- **`start`:** unless it is disabled, spawn the worker with asyncio's `create_subprocess_exec`. stdin is our pipe's
+  read end, closed in the parent after the spawn. The pipe is grown to 1 MB (about 16 s of audio; S4.13: the default
+  64 KB was 1 s, and a starved nice-19 reader dropped frames). `ctx.ml_feed.attach(fd)` comes only after `hello`.
+- **Lines.** An asyncio task reads stdout:
+  1. `readline()` with limit `ML_LINE_MAX`, then `json.loads`;
+  2. dispatch by `type`;
+  3. swap in a new `MLView`.
+
+  `ced_recent` and `emb_recent` keep 30 s for the view's `stream`; a result for another stream resets them.
+  `decode_emb` runs once per tags line. Each `stats` line sets the view's `stale_s` (S4.13): per task,
+  max(`results_stale_s`, `stale_periods` x its interval now), which every reader uses for freshness.
+- **Beat votes.** Each `beats` line goes through `beat_vote(msg, ctx.clock(), cfg["beat_votes"])`, then the apply rule
+  below. The vote goes into the view and the snapshot.
+  - No clock grid (bpm 0, or gate `none`): `why` "no grid".
+  - **Octave:** r = the clock's period / Beat This!'s period.
+    - r within `octave_tol` of 2 → octave 2;
+    - r within `octave_tol` of 0.5 → octave 0.5;
+    - r within `octave_tol` of 1 → octave 1;
+    - otherwise None ("the tempi don't relate").
+  - **`conf`** = the share of the interior's beats within `match_ms` of the clock's grid at the voted octave
+    (`beat_at(t) × octave` near an integer).
+  - **The one and the bar** (octave 1 only):
+    - each interior downbeat d whose `beat_at(clock, d)` is within `match_ms` of an integer k votes k mod `bar_len`;
+    - when at least `one_agree` of them share one residue, `beat_is_one` = the latest such k;
+    - `bar_len` = the worker's, if it is in `bar_lens`.
+  - **Apply** when all of these hold:
+    - `conf ≥ min_conf`;
+    - the same vote (octave, bar_len, residue) came from `agree_runs` runs in a row; a new bar length (the meter)
+      needs a one and `bar_agree_runs` (4) runs in a row (S4.13), and without a one it never applies;
+    - it differs from the clock now: octave ≠ 1, or `bar_len` ≠ `beats_per_bar`, or
+      `(beat_is_one − bar_anchor_beat) mod bar_len` ≠ 0;
+    - the last apply is at least `cooldown_s` old.
+
+    Then call `ctx.clock_correct(...)` with only the parts that differ. An octave goes alone; bar and one wait for the
+    next run, under the new numbering. Never a phase, never a tempo.
+- **CPU.** Every 10 s it reads `/proc/<worker pid>/stat` and our own: `snapshot()["cpu"]` = `worker`, `service` and
+  `total`, in cores. A total over 0.8 for 60 s is logged (at most every 10 min) and shown. Since S4.13 it is also
+  enforced, by degrading: while the 60 s total is over 0.8, the worker's cpu_max (a config frame) is 0.8 less
+  show_service's 60 s share, within [`ml.cpu_floor`, `ml.cpu_max`], and the worker's own guard stretches its
+  intervals; it goes back once show_service leaves room (`snapshot()["cpu_limit"]`).
+- **`stop()`:** S4.3's stop sequence, then `ml_feed.attach(None)`.
+- **Budgets:** the tick ≤ 3 ms p95; a tags line ≤ 1 ms.
+
+**`__main__`, brain, bus and config (B8's seams).**
+- **`__main__`:**
+  - `self.mlfeed = mllink.MLFeed()`, imported lazily like ring (missing: left out). `on_audio` calls
+    `mlfeed.write(...)` after `rings.write`, under the guard `ml.feed`.
+  - `features.clock_fn = clock.snapshot` (an attribute B9 reads: swing and syncopation).
+  - `Clock(publish=…, beat_thread=opts.beat_thread)`; at stop, `clock.stop()` after `rx.stop()`.
+  - The BrainContext engine-side slots: `rhythm=features.rhythm`, `ml_feed=self.mlfeed`,
+    `clock_correct=clock.apply_integer_correction`.
+  - `BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "director")`.
+    `_component_kw("mllink")` passes `log_path=<state_dir>/ml-worker.log`.
+  - `/api/v1/state` gains `ml` (the MLLink snapshot, also under `brain.components`); `features_stats` gains the
+    medium lane's; the clock's stats gain the beat thread's.
+- **`brain.py` `add`:** a provided key whose ctx slot holds a list is appended, not only `on_mode_change`, so
+  `on_music_event` works the same way.
+- **`bus.py`:**
+  - `TYPES` gains `MUSIC_CONTEXT` and `MUSIC_RHYTHM`;
+  - `WANT_ONLY` becomes `contract.WANT_ONLY + contract.WANT_ONLY_STAGE4`. music.rhythm goes only to clients that ask
+    for it by name, so the renderer's traffic grows by music.context's 1 Hz only.
+- **`config.py`:** `SHOW_BEAT_THREAD` (`on`, the default, or `off`: the activation inline on show-rx, as in Stage 3)
+  and `--beat-thread on|off` → `Options.beat_thread`. An Options built in code has it True. **Changed at
+  integration (S4.12): off is the default**, in load_options and in code, because the thread measured worse in the
+  real process.
+
+**Tests (B8):**
+- MLFeed into an `os.pipe()`, read back by a test parser:
+  - the shapes and segments;
+  - times within 0.1 ms of the blocks' times;
+  - GAP flags;
+  - a full pipe drops and flags AFTER_DROP;
+  - a closed pipe;
+  - the cost.
+- `beat_vote` on synthetic beats: each octave, a 3:2 tempo with no vote, bar and one, the agree and cooldown rules.
+- MLLink against `python -m show_service.ml.worker --fake` (under `sys.executable`, a tmp models dir): hello, the feed
+  attached, the view filled, a killed worker restarted on the backoff, stop.
+- MLLink against a stand-in script that prints junk, then stalls: bad lines counted, then the stall restart.
+- `__main__` with a fake mllink (the wiring, the guard); brain's list slots; bus `TYPES` and want-only.
+
+**As built: mllink and the seams (c8's integration, 16 Oct; B8's piece).** Built to the spec above. Where it differs
+or the spec was open:
+- **It wraps B7's `ml/supervisor.py`** (c8's ruling on B7's open point; S4.2's import rule is waived for this one
+  pair). `MLFeed` = soxr MQ + `supervisor.FrameFeeder`; `MLLink` = `supervisor.WorkerSupervisor` + the view, the
+  votes, the CPU reading and the log rotation. The supervisor gained three things:
+  - a `feeder=` argument (MLLink passes MLFeed's feeder, so the frames come from show-rx);
+  - the log is opened `O_APPEND`, so MLLink rotates it in place (to `.1` past 1 MB); since S4.13 it is appended per
+    run after a header line, never truncated;
+  - between detaching the feed and closing our pipe end, a write already under way on show-rx is waited out
+    (S4.13: `FrameFeeder.busy`, at most `FEED_RELEASE_S` 0.5 s, then `/dev/null` over the fd), so it never lands on
+    a reused fd number. (As first built: a fixed 50 ms sleep.)
+- **Stop.** `MLLink.stop()` returns the supervisor's stop coroutine, and brain.py now awaits a `stop()` that returns an
+  awaitable (`STOP_AWAIT_S` 7 s, the stop sequence's 6.5 s worst case plus a margin; `Brain.stop`'s timeout went from
+  5 to 10 s, `STOP_TIMEOUT_S`; scripts/ctl waits 15). Any other component is as before.
+- **The view goes neutral at once** on any state but `running` (no ced/tags/key, empty `ced_recent`/`emb_recent`, no
+  hello), so every reader degrades the moment the worker goes, and comes back with its first lines.
+- **`beat_vote`** adds two `why`s: "too few beats" (fewer than 4, or no bpm) and, in the apply rule, "no clock here".
+  An octave is matched relative to the ratio (`|r / o − 1| ≤ octave_tol`). A `bar_len` outside `bar_lens` votes with
+  the clock's own bar but reports `bar_len` None.
+- **The apply rule.** A run of `agree_runs` equal votes survives a cooldown (the first vote after it applies); an
+  apply restarts the run. A new bar length carries the one it was voted with, and needs that one and
+  `bar_agree_runs` runs (S4.13: the e2e's jazz track got a wrong 3/4 from two runs). **A vote that agrees with the clock in
+  full** (with a one) is sent as a confirmation, at most every `cooldown_s`: the clock raises its `bar_conf` on an
+  agreeing one, which it otherwise never hears (B9's open point). The snapshot counts `applied` and `confirmed`.
+- **`MLFeed.stats()`**: frames, bytes, drops, broken, segments, attached, blocks, rebuilds, `block_us_p50/p95` (one
+  timing per write call, frames included; no separate `write_us`).
+- **The snapshot** has S4.5's keys plus `applied`, `confirmed`, `over_0_8_for_s`, `stream`, `ages` and `stats_ms` (tick
+  and line p95). The counters refresh at 1 Hz; the log tail and the cost percentiles every 10 s.
+- **`__main__`** as specified, plus `/api/v1/state` gains `rx_ms` (show-rx's own cost per `on_audio` block and per
+  `on_tick`: p50, p95, max, n over the last 6000) and `threads` ({name: native id}, for per-thread CPU from
+  `/proc/<pid>/task/<tid>/stat`). `ml` is the MLLink snapshot (null without the brain or mllink). The MLFeed exists
+  only with the brain: with `--no-brain` there is no worker.
+- **Tests:** `tests/test_mllink.py` (14): the feed into a real pipe (the receiver's skewed times through soxr within
+  0.1 ms, the sine itself, segments on AUDIO_SEGMENT and a new rate, GAP flags, a full pipe, a dead reader, the cost),
+  `beat_vote` (each octave, 3:2, wrong phase, no grid, too few beats, bar 3 and 7), the apply rule (agree_runs,
+  cooldown, only what differs, an octave alone, a new bar length, confirmations), configure's problems, and MLLink
+  against `--fake` (hello, the feed attached, the view filled, the votes, CPU, a SIGKILL restart with the view neutral
+  meanwhile, `enabled: false` and back, the awaited stop) and against a missing venv. test_main (the wiring with a fake
+  mllink and structure, the guard, the feed after the ring, the awaited stop in order, `python -m show_service` with
+  the brain: `ml` failed under a tmp HOME), test_brain (list slots, an awaited stop and one that overruns), test_bus
+  (types, want-only), test_config (`--beat-thread`).
+- **Cost:** `MLFeed.write` 6 µs p50, 27-33 µs p95 per 128-frame 48 kHz block alone (`test_mllink.py -s`, niced, the
+  render running); in the real process (wall, under the GIL) 23 µs p50, 270 µs p95.
+
+### S4.6 The show-rx lanes: dsp's medium lane and the clock's show-beat (B9)
+
+**dsp.py gains:**
+```python
+Features.clock_fn: Callable[[], ClockData | None] | None = None   # set by __main__ (swing, syncopation)
+Features.rhythm() -> contract.RhythmData | None     # any thread: the latest medium frame, swapped by reference
+Features.chroma12() -> np.ndarray | None             # the latest frame's harmonic chroma (12,), max-normalised; None
+                                                     # under the harmonic floor or when older than 0.5 s
+```
+**The medium lane** (§4). One frame per 100 ms of stream time, at the hop that crosses each multiple of fs/10, inside
+`process`, from the analysis ring (`RING_N` grows to fit the frame):
+1. **Spectrum:** an `N_M`-point Hann FFT, N_M being the power of two nearest 0.17 s (8192 at 44.1 and 48 kHz),
+   magnitudes up to 8 kHz.
+2. **HPSS-lite, causal** (Fitzgerald's median filtering, made causal):
+   - H = the median over the last 9 frames per bin (0.9 s, past frames only);
+   - P = the median over 17 bins in this frame;
+   - mask M = H² / (H² + P² + ε); harmonic = |X|·M, percussive = |X|·(1 − M).
+3. **`chroma12`:** the harmonic magnitudes from 55 Hz to 5 kHz, each bin to its nearest semitone (A4 = 440 Hz) and
+   pitch class, summed, max-normalised (C = 0). `chroma12_avg` = its mean over the last 1 s.
+4. **`percussive_ratio`** = ΣP² / Σ(H² + P²) over the last 1 s (30 Hz-8 kHz).
+5. **`harm_change`** = the mean over the last 4 s of 1 − cos(c_t, c_{t−0.3 s}), on the unnormalised harmonic chroma.
+   Frames under the harmonic floor count 0.
+6. **Onsets:** the fast lane's SuperFlux per hop, peak-picked (a local max over ±3 hops, above 1.5 × the median of the
+   last 1 s plus a floor).
+   - `onset_rate` = onsets per second over the last 4 s;
+   - `density` = that rate through the dsp's own p05/p95 normalisation, × gate.
+7. **`pulse_clarity`:** the autocorrelation (by FFT, mean removed) of the per-hop SuperFlux over the last 6 s; the max
+   over lags of 0.25-1.5 s divided by lag 0, clamped 0..1. It needs no clock.
+8. **`swing`**, while `clock_fn()`'s gate is `beat` or `dmx`:
+   - take the onsets of the last 8 beats whose beat phase φ = frac(beat(t)) is in [0.4, 0.8];
+   - with at least 4 of them, swing = median φ / (1 − median φ), clamped 1..3;
+   - otherwise None.
+
+   Beat positions use contract.ClockData's formula; dsp never imports clock.py.
+9. **`syncopation`**, with the gate `beat` or `dmx`:
+   - a 16th grid over the last 4 bars (`beats_per_bar × 4` steps from `bar_anchor_beat`), each step's mean onset
+     strength;
+   - metrical levels: the downbeat 0, other beats 1, 8ths 2, 16ths 3;
+   - syncopation = the share of the pattern's strength on levels 2-3 whose next stronger step carries less than half
+     of it, 0..1;
+   - otherwise None.
+
+   The same 16-step pattern is §9.5's bar pattern, for a later `music.pattern`.
+10. **`low_db`** = 10·log10(slow_sub + slow_bass) + 3.01, from the hit path's envelopes (dB re a full-scale sine,
+    floored at −120): the 20-250 Hz level that structure's build and drop rules read.
+11. **`mfcc13`** = the DCT-II (orthonormal) of the fast lane's 40 log-mel bands, c1..c13, mean over the last 1 s:
+    structure's fallback descriptor.
+- **Publishing.** `tick` publishes `{"type": "music.rhythm", "data": RhythmData}` once per new medium frame (at most
+  10 Hz). When the source stops (the fade), it stops; a consumer treats a frame over 1 s old as stale.
+- **Constants.** Window lengths and floors stay dsp constants, like the rest of dsp: they are DSP internals, not
+  behaviour thresholds. The module docstring gets every formula.
+- **Budget:** a medium frame ≤ 0.5 ms p95 unloaded (≤ 1 ms under the render). The hop's existing p95 must not move.
+  `stats()` gains `medium_ms_p50/p95` and `medium_frames`.
+- **harmony.py needs nothing.** `__main__` already passes `features.chroma12()`, so music.harmony now comes from audio
+  when no piano plays, and show.state's `global.music.chroma12` carries the audio chroma (§11.1).
+
+**dsp's medium lane, as built (B9, 16 Oct; not committed).** dsp.py's docstring has every formula. Where it differs
+from or adds to the spec above:
+- **Spectrum.** At 44.1 and 48 kHz the 0.17 s window is first halved in rate: [1 3 3 1], every other sample, with its
+  gain and droop divided back out of |X|². The FFT is then 4096 points, with the same window and the same 5.9 Hz bins
+  up to 8 kHz. Below 40 kHz there is no decimation. This halves the FFT's cost; the chroma is identical.
+- **HPSS.** As specified. H is computed in float32 (each stored |X|² floored at 1e-30, so nothing goes denormal), as 3
+  groups of 3 kept sorted, with med9 = med3(the groups' max low, med3 of the middles, min high). P comes from scipy's
+  private 1-D rank filter, checked against `median_filter` at import, with the public function as the fallback.
+- **harm_change.** Without a lock it is the specified time-based rule. While the clock's gate is beat or dmx it is
+  beat-synchronous: each beat's chroma is the sum of its frames, d compares a beat with the one before it, and the
+  mean is over the beats that ended in the last 4 s (at least 2, else the time-based value). A clock epoch or a lost
+  lock restarts it. The contract comment on `RhythmData.harm_change` still describes only the time-based rule.
+- **Onsets.** There is one median per frame (the last 1 s), floor `ONSET_FLOOR` = 20 SuperFlux units. Pink noise's
+  flux p99 is about 22, so noise gives no onsets.
+- **pulse_clarity** runs on the flux summed over pairs of hops (94 Hz; lags to 11 ms). It reads 0 when that
+  envelope's RMS is under `PULSE_FLOOR` (2.0): a held chord's beating otherwise read 0.55.
+- **Cadence.** pulse_clarity is computed on even frames, swing and syncopation on odd ones (5 Hz each), and each
+  value is held in between. They are None from the first frame without a lock, and the first locked frame computes
+  them at once. Swing and syncopation share one plain-Python pass over the recent onsets.
+- **swing** follows the spec's formula, so a 16th-note hat at phase 0.75 also falls in [0.4, 0.8]: straight 16ths
+  read above 1, and off-beat 16ths alone read 3.
+- **density** is a new row (onset_rate) in dsp's own rolling percentiles, pushed at 25 Hz.
+- **chroma12()** is stale 0.5 s after the tick that published its frame (tick's clock). It is a new array per
+  frame.
+- **Publishing.** tick builds RhythmData. process only computes numbers, so it allocates no buffers per block.
+- **Cost.** Measured on PC22 under the 4K render at nice 19, in-process A/B on drums + chord + noise:
+  - the medium frame: p50 0.42-0.47 ms, p95 0.68-0.77 ms (0.47-0.50 / 0.75-0.85 with a locked clock);
+  - the whole dsp path: 6.08 % → 6.64 % of a core (6.75 % locked);
+  - hop p50: 0.247 → 0.239 ms; hop p95: 0.403 → 0.432 ms median of 4 runs, while runs spread 0.34-0.50;
+  - the fast lane alone: p95 140-159 µs before, 139-151 µs after.
+  hop_ms leaves out the medium frame's own time (that is in medium_ms); block_ms keeps everything. No unloaded host
+  was available.
+- **Tests** are in `tests/test_dsp_medium.py` (21). The README's B9 row names `tests/test_dsp.py`, so that file was
+  left alone. Its Stage-3 line `assert f.chroma12() is None` (in `test_shapes_are_exactly_the_contract`) now fails
+  and should become a shape check.
+
+**clock.py: the activation on its own thread.**
+```python
+Clock(..., beat_thread: bool = False)         # True: show-beat (SHOW_BEAT_THREAD=on). False, the default since S4.13
+                                              # as config.Options: inline on show-rx, exactly as in Stage 3
+Clock.stop(timeout: float = 1.0) -> None      # joins show-beat (a sentinel); any thread; idempotent
+```
+- **The split.**
+  1. show-rx keeps the AGC, soxr and hop assembly. It copies each full hop and puts it on a `queue.SimpleQueue` (whose
+     `put` never blocks or waits) as `(epoch, seq, hop, <the frame's time inputs>)`.
+  2. **show-beat** (a daemon thread named "show-beat") `get`s it, runs `act.process_hop(hop)`, and appends
+     `(epoch, seq, a, …)` to a `collections.deque`.
+  3. show-rx drains that deque (`popleft` until empty, never waiting) at the start of every `process` and `tick`, and
+     runs the rest of `_frame` (peaks, tempogram, estimator) with each `a`, in `seq` order.
+
+  Clock state never leaves show-rx. The activation object never leaves show-beat.
+- **Resets.** `_lane_reset` bumps `epoch` and puts a reset marker. show-beat calls `act.reset()` when it reaches it, and
+  results from an older epoch are dropped.
+- **Back-pressure.** outstanding = `put_seq − show_beat.done_seq` (each written by one thread only).
+  - Over `BEAT_Q_MAX` (50 frames, 0.5 s), show-rx drops hops (`beat_drops`).
+  - Before the first hop it sends again, it puts a reset marker: madmom never sees a splice.
+  - The tempogram's existing gap fill covers the missing frames by their times.
+- **Times.** Frame times are computed on show-rx at put time (as `_frame` does now), so a result's time is the sound's,
+  however late it comes back (at most a tick).
+- **Measure** (`test_clock.py -s`): show-rx's block cost, p95 and max, with and without the thread, under the render.
+  The e2e must still pass with it on: a lock at 124 ± 2 within 15 s, pulse edges median < 3 ms.
+- `stats()` gains `beat_thread: {"on", "queued", "drops", "lag_ms_p95", "act_ms_p95"}`.
+
+**As built: the clock (B9, 16 Oct).** clock.py's module docstring has the full spec. Built as above, except:
+- **Back-pressure** counts hops put minus hops drained (both counters are show-rx's), so one bound covers the queue and
+  the result deque. A reset marker comes back through the deque in order: at a splice, the peak picker restarts there
+  too. Results of an older epoch are counted (`beat_stale`).
+- **Degrade.** If show-beat dies, or has exited after `stop()`, show-rx runs the activation inline (`beat_thread_died`,
+  `beat_inline_after_stop`). A Clock that is garbage-collected stops its thread.
+- **Extras.**
+  - `Clock.wait_beat(timeout=5.0) -> bool` blocks until show-beat has caught up. It is for tests and offline feeds
+    only; test_clock.py's feeders call it, so every existing test now runs on the thread.
+  - `stats()` adds `block_ms {p50, p95, max}` (show-rx's cost per `process`), `beat_thread.act_ms_p50` and `act_errors`.
+- **Frames.** They are identical either way: test_clock_thread.py checks every count and the published line, inline
+  against threaded, on the lock loop and the breakdown. Threaded, a frame is published at the next `process` or
+  `tick`, a few ms later.
+- **Integer corrections** (§5.3; the clock's side of mllink's votes).
+  - Each call is checked: whole numbers, `bar_len` 2-16, and an octave of exactly 1, 2 or 0.5.
+  - It is gated. It needs a confirmed grid. A one that precedes the last numbering break (a new grid, an octave change
+    or a re-lock), or that lies more than a bar past the upcoming beat, is stale. A break drops a waiting correction,
+    and so does a human "one".
+  - It switches at the upcoming beat that starts a bar under the new hypothesis: `((K − one) × octave) mod bar_len ==
+    0`. For octave 2 with `bar_len` 3, the old code switched mid-bar.
+  - A correction that misses its bar line expires and is never applied off one. An out-of-range octave is refused, and
+    nothing else moves.
+  - Any accepted call holds the clock's own octave check off for `SLOW_OCT_HOLD_S` (30 s).
+  - `stats()["last_correction"]` is `{one, bar_len, octave, result, at_beat}`, and each outcome is counted as
+    `corr_<result>`.
+- **Measured** on PC22 with the 4K render running (load about 3), niced. Each run fed 124 bpm drums in real time:
+  128-frame 48 kHz blocks with 10 ms ticks, madmom 2 nets, skipping the first 1-2 s. All figures are in ms. "Block" is
+  show-rx's work per block: `process` plus the ticks it runs.
+
+  | show-rx block | inline: p95, p99, max | threaded: p95, p99, max |
+  |---|---|---|
+  | clock only (30 s) | 2.39, 3.36, 6.45 | **0.33, 0.75, 2.98** |
+  | dsp + clock, as on_audio/on_tick (20-30 s, 4 runs) | 2.25-2.80, 3.10-3.85, 7.1-10.6 | **1.19-1.52, 2.23-2.74, 3.9-8.4** |
+  | blocks longer than their 2.67 ms (dsp + clock) | 2.1-6.1 % | 0.3-1.1 % |
+
+  - **Per stage** (dsp + clock): `clock.process` p95 fell from 2.05 to 0.22 ms, so a madmom frame no longer rides on
+    show-rx. What is left is the GIL: while a madmom frame runs into the next block, features.process p95 rose from
+    0.61 to 0.79 ms and the ticks' p99 from 0.64 to 1.07 ms. A switch interval of 1 or 0.5 ms didn't change that (p95
+    1.52 and 1.37 ms), so don't set one.
+  - **show-beat:** a frame takes p50 1.0-1.1 ms and p95 2.0-3.4 ms; from put to drained, p95 is 5.1-5.5 ms; no drops.
+  - **CPU:** the thread costs **+0.015-0.025 core**. In alternating runs, the clock went from 0.167 core inline to
+    0.18-0.19 threaded. Pinned to one core the difference is +0.004-0.014, so most of it is cross-core cache and
+    wake-ups. That is against S4.2's "the same cost" (c8's budget).
+  - The e2e was not run here (CLAUDE.md rule 6); c8 runs it at integration.
+- **In the real process (c8's integration, 16 Oct; S4.12) the thread is off by default.** With every thread running
+  (show-bus serving a renderer, show-brain with structure and the director, show-artnet) and the ML worker beside it,
+  show-beat cost **0.17-0.19 of a core** against about 0.05 for the same activation inline on show-rx: every BLAS
+  call in madmom's LSTMs hands the GIL over and back. It also made dsp's hop p95 2-3x worse (1.3-1.5 → 3.5-3.7 ms)
+  and on_tick's p95 2x worse, while `on_audio`'s p95 stayed the same (2.6-3.0 ms either way). With it on,
+  show_service + the worker measured 0.80 and 0.84 of a core, over the owner's 0.8; off, 0.68 and 0.69.
+  `SHOW_BEAT_THREAD=on` still runs it (test_clock_thread.py keeps it tested); a separate process would be the real
+  fix (B9's note), if show-rx's block time ever needs it.
+
+**Tests (B9):**
+- The medium lane on synthetic audio:
+  - a held C major chord: chroma peaks at C, E and G, and harmony finds the key from audio;
+  - drums only: percussive_ratio > 0.7; pads only: < 0.3;
+  - a click track: pulse_clarity > 0.8; noise: < 0.3;
+  - with a fake clock, a swung (2:1) loop reads swing 1.8-2.2, and straight 8ths about 1.0;
+  - a chord change every 2 s: harm_change above a steady chord's;
+  - rhythm at 10 Hz; 44.1 kHz input works; the cost.
+- The clock: the threaded clock locks like the inline one on the existing loops; a reset mid-run; back-pressure drops
+  (a slow fake activation) recover; `stop()`.
+
+### S4.7 structure.py (B10)
+
+```python
+def attach(ctx: contract.BrainContext, **kw) -> Structure
+class Structure:                                  # Component "structure", tick_hz BRAIN_TICK_HZ (10)
+    def context(self) -> contract.MusicContext | None   # any thread: the latest music.context body
+    def provides(self) -> dict                    # {"music_context": self.context}
+    def snapshot(self) -> dict                    # {"context", "source", "sections": [this track's, no vectors],
+                                                  #  "novelty": [[t_s, v], ...] (the last 120 s at 1 Hz), "threshold",
+                                                  #  "boundaries": [<= 20 {t_s, novelty, snapped, kind: confirmed |
+                                                  #  predicted | drop | track, missed}], "build": {...},
+                                                  #  "events": {kind: n}, "gobo": {"steps", "skipped_cut",
+                                                  #  "skipped_bar", "scheduled", "director"},
+                                                  #  "stats": {"tick_ms_p95", "second_ms_p95"}}
+    def persist(self) -> None                     # nothing: sections start cold (§11.2)
+def novelty(vectors: np.ndarray, recent: int, before: int) -> float          # pure (§6.1)
+def genre_reading(parents: dict | None, beliefs: dict | None, ced: dict | None,
+                  cfg: dict, state: dict) -> contract.GenreReading          # pure but for its small hysteresis state
+```
+**Inputs** (each optional):
+- `ctx.ml()`: tags, embeddings, CED, key;
+- `ctx.rhythm()`, `ctx.features()`, `ctx.clock()`, `ctx.harmony()`, `ctx.piano()`;
+- `ctx.room()`: the Sonos now-playing member that show.yaml `situations.sonos.now_playing` names (code knows no member
+  name);
+- `ctx.situations()`: `talking`, `sonos_playing`;
+- `ctx.beliefs()`.
+
+**Every second** (on the tick that crosses a whole second):
+1. **The descriptor.**
+   - With the worker: the newest unseen embedding in `ml.emb_recent` for the measured stream, fresh within the view's
+     `stale_s` for tags (at least `ml.results_stale_s`; S4.13) (`source: ml`).
+   - Otherwise (`source: dsp`): [chroma12_avg L2-normalised × w_chroma, mfcc13 z-scored over the last 60 s × w_mfcc]
+     (`structure.dsp_weights`).
+   - A switch of source or stream clears the novelty history: the vectors are in different spaces.
+2. **Novelty** (§6.1) = 1 − cos(the mean over the last `recent_s`, the mean over the `before_s` before that).
+   - A **candidate boundary** is a local maximum over ±`peak_s` that exceeds both `novelty.min[source]` and
+     median + `k_mad` × MAD of the last `history_s`.
+   - It is **confirmed** once the curve has fallen for one second after the peak: about 5 s after the change (§6.1:
+     3-5 s).
+3. **The boundary's time.**
+   1. τ = the second in [peak − 6 s, peak − 2 s] where 1 − cos(v_s, mean(v[s−4..s−1])) is largest.
+   2. It snaps to the nearest bar line (clock gate `beat` or `dmx`, and bar_conf ≥ `grid_conf` 0.5); else to the
+      nearest beat (gate not `none`); else it stays unsnapped.
+   3. A boundary within `min_section_bars` of the last one (`min_section_s` without a grid) is dropped, unless it is a
+      track change.
+4. **Identity.** `identify_after_s` into a section, its running centroid (leaving out its first and last 2 s) is
+   compared with this track's earlier sections.
+   - The best cosine ≥ `repeat_sim[source]` makes it a repeat: `repeat_of`, and the same `letter`.
+   - Otherwise it gets the next new letter (A, B, …; after Z it stays Z).
+   - `chorus` marks the sections of the letter that maximises count × mean energy, among letters seen at least twice
+     (§6.1: "the most-repeated high-energy cluster").
+5. **Known repeats.** A repeat whose first occurrence had a bar length (`expected_bars`) is predicted to end at its start
+   + `expected_bars` bars.
+   - When that line is at most `predict_lead_bars` ahead (and at least `events.min_lead_s`), a `section_change` goes out
+     with `predicted: true` and `at_ms` = the line.
+   - A confirmed boundary within 2 bars of a predicted one is the same boundary: no second event.
+   - A predicted line with no boundary within 2 bars counts as `missed` in the snapshot.
+6. **Track changes** (§6.1):
+   - (a) the Sonos member's track (its `track_id`, else title + artist) changes while `sonos_playing` is true: at once,
+     `via: sonos`;
+   - (b) a silence (gate < `track.gap_gate`, or the momentary loudness lufs_m ≤ `track.gap_lufs_m`: S4.13) of at least
+     `track.gap_s`, then a boundary within `track.window_s` of the sound's return, with a jump:
+     - the clock's bpm off by more than `tempo_jump` (and not ×2 or ×0.5);
+     - another key (strength ≥ `track.key_min_conf` on both sides) that isn't the same, parallel or relative key
+       (S4.13; music.context's key, itself held);
+     - or another leading genre parent of the last `track.parent_window_s` of tags, leading the next by
+       `track.parent_margin` (S4.13: a near tie is no evidence);
+   - (c) without a gap: a novelty peak of at least `spike_k` × the threshold (`spike_k` null: off), with
+     `track.spike_jumps` (2) of those jumps at once, the genre by genre_reading's smoothed leader (S4.13: an in-song
+     section change can move the key or one window's parent, not two things at once).
+
+   A change clears the section memory, restarts letters at A, adds 1 to `track.id`, sets `track.changed` in the next
+   context only, and starts a new section.
+7. **Genre and the smoothed numbers.**
+   - Genre: `genre_reading`, S4.8's rule.
+   - dance, arousal, engagement, bright, acoustic and vocal (= voice_p) are EMAs with τ `tags_tau_s`, frozen while CED
+     music is under `genre_map.freeze_below_music`; so are the instruments' scores (S4.13: `instruments` is the top 5
+     of them, not one window's top 5).
+   - **Key:**
+     - the piano's (music.harmony, source midi) while it plays: `key_via` midi;
+     - else the worker's, at strength ≥ `key_min_strength`: `ml`;
+     - else music.harmony's: `audio`.
+     - With hysteresis (S4.13; `structure.key_hold`): the worker stays the source until its strength is
+       `strength_margin` under the minimum; another key (or none) shows only after `hold_s`; the piano's, and the
+       first key after none, show at once.
+   - Another ML stream (a test track, then the room) clears the genre, the numbers, the instruments and the key
+     (S4.13).
+8. **Publish** `music.context` (`MusicContext`), 1 Hz.
+
+**Every tick (10 Hz): the phases** (§6.2), from the rhythm frames and features since the last tick. Builds and drops
+need the clock gate `beat` or `dmx`. Music without a grid gets none: that is §6.2's jazz and classical, decided by
+evidence, not by genre.
+- **build:** over the last `build.window_s`, the least-squares slopes of lufs_m (dB/s), brightness (/s) and onset_rate
+  (/s) are all above `build.min_slope`, while low_db's slope stays ≤ `low_max_slope_db_s`.
+  - `build_progress` = the elapsed share from the build's start to the predicted drop line; without a line, the rise in
+    loudness so far / `full_rise_db`.
+  - Event `build` at its start, once per build.
+- **The drop prediction**, while a build holds:
+  - the line: the next 16-bar line (from `bar_anchor_beat`) when phrase_conf ≥ `phrase16_conf` and it is at most 16
+    bars from the build's start; else the next 8-bar line;
+  - `drop_eta_beats` = the beats to it;
+  - `drop_armed` (`at_ms` = the line, with `eta_beats`) goes out once the line is at most `arm_beats` ahead and at least
+    2 beats and `events.min_lead_s` ahead;
+  - if the line moves (a clock epoch), a new `drop_armed` replaces it;
+  - structure schedules a GOBO step at that line;
+  - S4.13: the line is called off with a `drop_armed` whose `eta_beats` is None and `detail` says why: `disarmed` when
+    the build ends more than `drop.disarm_bars` before it (or a new build or track starts; its GOBO is cancelled),
+    `missed` when it passes with no drop.
+- **drop:** within `drop.within_beats` after a build (or of an armed line), low_db rises at least `low_jump_db` and
+  lufs_m at least `lufs_jump_db` above the build's last 2 s mean.
+  - Event `drop` at the time heard, snapped to the nearest beat within `drop.snap_beats` (¼ beat).
+  - A drop starts a new section at once, with no novelty wait. A confirmed boundary within `same_bars` of it later is
+    the same boundary.
+  - A drop at an armed line steps no second GOBO; an unarmed one steps it at the first bar line `events.min_lead_s`
+    ahead (S4.13; it was at once, a second or more off the beat for the screens).
+- **breakdown:** low_db at least `low_drop_db` under its 30 s median and percussive_ratio < `perc_ratio_max`, while the
+  gate stays ≥ `min_gate`, for `for_s`. Event `breakdown` at its start. Left once that has failed for `leave_s`
+  (S4.13: 4 s, never faster out than in; it was 1 s, and the lamps pumped on sparse sections with kick fills).
+- **peak:** energy (EMA 4 s) ≥ `peak.energy_min` for `peak.for_s`, after a drop or in a chorus section; out after
+  `peak.leave_s` of failing (S4.13).
+- **outro:** the slope of lufs_s over `outro.window_s` is at most `max_slope_db_s`, with energy < `energy_max`; in after
+  `outro.for_s`, out after `outro.leave_s` (S4.13).
+- **calm:** otherwise.
+- The phase word goes into `section.phase`. `drop` holds for `drop.hold_bars`, then becomes `peak` or `calm`. The word
+  holds at least `phase_dwell_s` (2 s), but drop, build and breakdown (each announced by an event) show at once
+  (S4.13).
+- B10 ports the detectors from FastLED's audio suite (MIT) to numpy, as §6.2 says. Where that port has its own
+  constants, they replace these starting points, and B10 sends c8 the values for show.yaml.
+
+**Events** (`room.event`, `contract.MusicEventData`, kinds `MUSIC_EVENT_KINDS`). Each is published when it is decided,
+then handed to every `ctx.on_music_event` callback (on show-brain, each guarded).
+
+| kind | at_ms | extra keys |
+|---|---|---|
+| `section_change` | confirmed: the next bar line ≥ now + `events.min_lead_s` (else the next beat, else now + the min lead); predicted: the predicted line | `section_id`, `letter`, `repeat_of`, `predicted`, `boundary_ms`, `bar`, `beat` |
+| `build` | its start (past) | `phase`, `build_progress` |
+| `drop_armed` | the predicted line | `eta_beats` (None: the line is off, `detail` disarmed or missed), `section_id` |
+| `drop` | when heard (past, by up to a beat) | `section_id`, `strength` |
+| `breakdown` | its start (past) | `section_id` |
+| `track_change` | when it changed | `track_id`, `via` |
+
+**GOBO** (artnet_out's `section_change`, the screens' scene change, §9.5). **Since S4.13: structure steps it only while
+the director is neutral** (`ctx.vibe()` None, §9.5's P0 path); while a vibe plays the director owns it and steps it
+with every look that lands (S4.8), so the vibe's change_looks, Keep this look, relaxing, the late rule and the peak
+tokens hold the screens too. A step structure leaves to the director is counted (`gobo.director`). Neutral:
+- Structure steps it once per section change, at `at_ms`, through `ctx.loop.call_at(at_s)` (the loop's clock is
+  time.monotonic). It also steps it at an armed drop line, and for an unarmed drop at the first bar line
+  `events.min_lead_s` ahead.
+- Never while any `RoomView.screens[*].cutting` (§8.6: skipped and counted), and never twice within one bar.
+- `structure.gobo_on_sections: false` turns it off.
+- (As first built, structure stepped it on every section and drop whatever the vibe, and the director skipped the looks
+  structure caused: the screens changed scene mid-piece in Dinner and Notes, and Keep this look didn't hold them.)
+
+**Budget:** a 10 Hz tick ≤ 1 ms p95; the 1 Hz work ≤ 3 ms p95 (1280-d vectors, at most 64 sections).
+
+**Tests (B10):**
+- novelty on synthetic descriptor sequences: an A/B/A/B pattern gives boundaries within 1 s of the truth before
+  snapping, letters A B A B, `repeat_of`, and the chorus;
+- snapping to a fake clock's bar lines; a predicted boundary landing on its line; the minimum section length;
+- a track change by Sonos (a fake RoomView), and by a gap and a tempo jump;
+- the dsp fallback (a chroma change);
+- build and drop on a synthetic riser and drop (loudness, brightness and onsets rising, then a bass jump), with
+  drop_armed at least 2 beats ahead; breakdown; no build without a grid;
+- GOBO timing and the cut rule;
+- the genre rule (S4.8);
+- `music.context`'s shape: every key, JSON-safe.
+
+**As built (B10, 16 Oct).** `show_service/structure.py`, built to the spec above; its module docstring has every
+rule. `tests/test_structure.py` has 45 tests. Where the spec was open, or where testing showed it needed a rule, the
+code does this:
+- **Descriptor source.** It is `ml` whenever the worker runs (`MLView.state` is `running` and its tags task can run),
+  else `dsp`. It does not switch on per-second freshness, which would clear the history across every silence and lose
+  the before-window that a gap's track change needs.
+  - It takes every unseen embedding that is fresh, oldest first, not only the newest, so none is lost to the beat
+    between the two 1 Hz clocks.
+  - Vectors are stamped at their window's centre: ml at t − `ml.tasks.tags.window_s`/2, dsp at t − 0.5 s.
+  - dsp's z-scored mfcc13 is L2-normalised before × `w_mfcc`, so the two weights mean what they say.
+- **Three candidate rules added**, each found by a test:
+  1. **The threshold's background.** The threshold is median + `k_mad` × MAD over the history *before* the peak's
+     rise. Each earlier real boundary's own response is left out: τ to τ + `recent_s` + `before_s`, while the old
+     section is still in the before-window. Without this, sections shorter than about 40 s lifted the threshold above
+     every peak. Until there are 5 background values, `novelty.min` applies alone.
+  2. **Local contrast.** The recent window must also differ from the `recent_s` vectors just before it, by the same
+     threshold. A short blip leaves a 15 s plateau in the before-window; without this rule that plateau made a
+     spurious boundary 8 bars later.
+  3. **Evidence wins.** A confirmed boundary (or a drop, or a track change) cancels a predicted line that is still
+     pending, and its GOBO.
+- **Events.**
+  - section_change carries `detail`: `section` (confirmed), `repeat` (predicted) or `track` (a track change's new
+    section).
+  - A drop starts its section **without** a section_change. The `drop` event carries `section_id`, so the director's
+    token rules alone decide the cut.
+  - A track change sends `track_change`, then `section_change` (detail `track`).
+- **Track changes.**
+  - Sonos counts while `sonos_playing` doesn't read false. situations reads unknown for `own_change_s` after the room
+    itself touches Sonos, and the track id is still the truth then.
+  - A post-gap boundary with no jump yet keeps checking until return + `window_s`. On a jump, that boundary's section
+    becomes the new track's first (its letter is reassigned), with no second section_change.
+- **Genre.**
+  - `genre_reading` takes a keyword `now_s` (default `state["now_s"]`, else `time.monotonic()`).
+  - `conf` is 0 when there is no word.
+  - The jump test's "leading genre parent" was the raw argmax of the fresh tags, not the smoothed leader (τ 30 s is
+    too slow for a 20 s window). S4.13: after a gap it is the clear leader of the last `parent_window_s` of tags (a
+    near tie is no evidence); without a gap it is the smoothed leader, with two jumps needed.
+- **Phases.**
+  - A build starts at the ramp's foot: the last sample within 0.5 dB of the window's quietest `lufs_m`.
+  - A build holds while `lufs_m`'s slope stays above half its start threshold (FastLED BuildupDetector's end rule).
+  - At the drop line, the line is kept while a drop can still be read on it, so progress doesn't jump to the next
+    8-bar line one tick before the drop.
+  - Breakdown's 30 s median is frozen on entry. It was left after 1 s off its rule; S4.13: after `leave_s` (4 s).
+  - Drop `strength` is FastLED DropDetector's impact blend: 0.40 loudness, 0.35 bass, 0.15 band change, 0.10 level,
+    with a flux of twice the threshold = 1. FastLED's 2 s cooldown between drops applies.
+- **No show.yaml change proposed.** FastLED's own thresholds work in per-frame (23 ms) relative-energy units: rise
+  0.3, intensity 0.6, impact 0.75, bass 0.6, flux 0.5. They don't translate to S4.7's dB/s slopes, so show.yaml's
+  starting points stand. The code's fallbacks equal show.yaml's numbers, and a test checks this. Since S4.13 the
+  port's own numbers (the build end 0.5, the drop's impact weights, its band weights, the 2 s cooldown) are show.yaml
+  `structure.fastled`, and the other musical numbers the code held (grid_conf, same_bars, ced_mean_s, tags_hold_s,
+  listener_conf, track.key_min_conf, build.foot_db, drop.snap_beats, breakdown.leave_s) are show.yaml keys too.
+- **ctx.music_context()** refreshes its `section` and `track` at 10 Hz, so the director sees phase, build_progress
+  and drop_eta_beats each tick. Only the 1 Hz body goes on the bus.
+- **Costs** (`-s`, niced, on this host as loaded): the 10 Hz tick p95 is 0.5-0.6 ms; the 1 Hz work p95 is 2.1-2.7 ms
+  with 50-57 sections of 1280-d vectors. On three real test tracks through the dsp fallback (computed offline, with a
+  locked fake clock), the tick p95 is 0.2-0.5 ms and the 1 Hz p95 is 1.3-2.3 ms.
+- **Not run:** a real-music smoke through the worker, which isn't built yet. That is S4.11 step 3's check at go-live.
+
+### S4.8 The consumers (B11)
+
+**The genre rule** (`structure.genre_reading`). It is written here because situations, the card and the director all
+read its result, `music_context.genre`.
+1. The worker's `genre_parents` are smoothed (EMA τ `genre_map.tau_s`), and update only while CED music ≥
+   `freeze_below_music`.
+2. The leading parent changes only when a new one leads by `switch_margin` for `switch_dwell_s`.
+3. **Its word** is `genre_map.parents[parent]`:
+   - a vocab word;
+   - or `{from_listener: [words]}`: the listener's belief genre if it is one of those words (state fresh or holding),
+     else no word;
+   - a parent not in the table gives no word.
+4. **`conf`** = the leader's smoothed activation × the speech scale (1 at speech ≤ `speech_scale_above`, falling
+   linearly to 0 at speech 1; speech is the max over `situations.talking.speech_words`, S4.13).
+   - For `from_listener`, it is also × the listener's conf.
+   - `via` is `ml` or `ml+listener`.
+5. **No worker** (or no fresh tags): the listener's genre and conf (`via: listener`), as in Stage 3. Neither:
+   `{word: None, conf: 0, parent: None, parent_p: 0, via: "none"}`.
+6. When both have a word and they differ, the ML's wins (§8.9: mic classifiers rank above the LLM). `from_listener` is
+   how the LLM's finer words come in. The director's room.direction genre follows this too (S4.13: as first built it
+   read only the listener's word, so with AI listening off the screens never got the local genre).
+
+**situations.py**
+- **The classifier.** `Situations.classifier` is set from `ctx.ml`:
+  `(stream) -> {"music", "speech", "conversation", "singing", "crowd", "applause", "silence"}`.
+  - It is the mean of the `ml.ced_recent` readings for that stream (None: the measured one) with `t` in the last 3 s
+    (S4.13: or the view's `stale_s` for ced, when the worker has stretched its cadence).
+  - It is None when there are none. Its readings' `via` is `classifier`.
+- **`talking`** reads show.yaml's new section `situations.talking` (`stream`, `min_prob`, `music_below`): true when
+  speech ≥ min_prob and music < music_below. `music_below` (0.5) replaces the code's constant. Without a classifier it
+  is unknown, as now. S4.13: "speech" is the max over `situations.talking.speech_words` (speech, conversation, crowd),
+  for talking, quiet and the genre speech scale alike.
+- **`quiet`**, with a classifier, is also true when music < `music_below` and speech < `speech_below`
+  (`situations.quiet`), so a room with only noise above the gate reads quiet. Without one, as now.
+- **`music_audible`** is unchanged: it already takes the classifier first.
+- **`genre_in`** reads `ctx.music_context()["genre"]` first: the word is in `genres` and conf ≥ min_conf; a None word or
+  a low conf reads unknown. Its evidence adds `via` and `parent`. S4.13: once confident it stays so until its conf is
+  `situations.ced.hysteresis` under min_conf.
+  - Without a context: the beliefs, as now.
+  - Its source and rank stay `listener` (3).
+- The vocabulary's descriptions lose "(P1)" and say what each word reads now.
+
+**listener.py**
+- **The CED gate** (`music_gate: classifier`, §7.5), for room-sound streams:
+  - no fresh CED for the stream: "the music/speech check isn't running" (this replaces WHY_P1);
+  - the latest reading's speech ≥ `listener.ced.speech_max`: "people are talking". S4.13: a reading's speech is the
+    max over `listener.ced.speech_words` (speech, conversation, crowd): guests talking over music show up as
+    conversation and babble while "Speech" stays low;
+  - **the clip** is the longest contiguous run of seconds, within the last `clip_s`, whose CED reading says music ≥
+    `ced.music_min` and speech < `ced.speech_max`. Each reading speaks for the last `ced.speaks_s` (1 s) of its window;
+    the latest run wins a tie. S4.13: the run's last second is also in the next reading's window, so it counts only
+    when that reading exists and passed (or doesn't reach back into it); otherwise the run ends a second earlier. It
+    is cut from the ring with `rings.clip(stream, t0, t1)`;
+  - a run shorter than `min_clip_s` is skipped: "not enough music without talking";
+  - the gate is checked again just before the upload, as now.
+
+  `music_gate: dsp` and `room_sound: false` keep their Stage-3 meanings.
+- **The section call** (§7.3). On a confirmed `section_change` event (through `on_music_event`; never a predicted one):
+  - one extra call is due at `boundary + section_call_after_s`;
+  - it still waits at least `min_gap_s` after the last call, with at most one in flight; S4.13: and it slows with the
+    cadence (relaxed, over budget, backed off): at least half the current interval after the last call started, and
+    at most one section call per interval;
+  - its clip ends at that time;
+  - the user text gains the **segment map**: the sections the clip spans (id, letter, and from-to seconds within the
+    clip).
+- `InsightData.segment_id` = the section at the clip's end, from `music_context`, on every call.
+- On `track_change`, the beliefs' two-reads rule lets the next verdict's genre win at once (§7.1).
+
+**director.py** (§8.5). Everything below touches lamps and DMX only; screens get looks, words and events.
+- **Inputs:** `ctx.music_context()` (section, phase, build_progress, drop_eta_beats, track), and the events through
+  `on_music_event` (in `provides()`; brain.add appends it).
+- **Section changes**, for a vibe whose `change_looks` is `phrase` (§8.5's grammar). With `time` or `between_pieces`, a
+  section only shows inside the look.
+  - A predicted `section_change` (a known repeat) lands a look change at its `at_ms`, with that letter's remembered look
+    when there is one. min_bars doesn't apply.
+  - A confirmed one whose `at_ms` falls more than `director.sections.max_late_bars` after `boundary_ms` makes no new
+    look. The section shows inside the look: level, accent density and spread move by `express_gain` × (this section's
+    energy − the last one's), within the vibe's ranges, within one beat.
+  - Any other confirmed one lands a look change at its `at_ms`.
+  - Keep this look, relaxing (quiet, talking) and a pending person's change also keep the look (and so the screens'
+    scene).
+  - Without sections, the Stage-3 rules (phrase lines and min_bars, time, between_pieces) carry on unchanged.
+- **Section memory:** per track, letter → {palette, variation (the allocation), look_id}. A returning letter gets its
+  look back. It is cleared on `track_change`, and starts cold (nothing is persisted).
+- **Song changes.** When structure is present, `track_change` replaces the director's own test (sound back after
+  `new_song_after_s` of silence), which stays as the fallback. The palette may move on at the next look change.
+- **GOBO.** Since S4.13 the director owns it while a vibe plays: every look that lands calls `ctx.section_change()`
+  once, whatever caused it (`section`, `repeat`, `drop`, `track`, or its own), and nothing it holds back does
+  (change_looks time or between_pieces, Keep this look, relaxing, a late section, a drop without a token). structure
+  steps GOBO itself only while the director is neutral (S4.7). (As first built, the looks structure caused didn't step
+  it, because structure stepped it on every section whatever the vibe.)
+- **Peak tokens.** The vibe's `peak_tokens_per_hour` (neutral 0: none) is a sliding 60-minute budget: at most that many
+  spends in any 60 minutes.
+  - Only a drop that comes within `director.peaks.after_build_s` of a build may spend one.
+  - vibes.py drops `x-ui.not_built` from `peak_tokens_per_hour`; strobe keeps it.
+  - S4.13: a line structure calls off (`drop_armed` with `eta_beats` None) releases a reservation (`disarmed`: no dip,
+    no hit, no cut), or refunds the token its line spent (`missed`: the look landed on the line, as §5.4's predictive
+    landing, but no drop came).
+- **The build → drop grammar**, only while a vibe plays, beat_lock holds and the clock's gate is `beat`:
+  - **during a build:**
+    - the accent subdivision steps ½ → ¼ → ⅛ every `build.step_bars` bars (`step_bars_late` once build_progress ≥
+      0.5);
+    - saturation moves toward the vibe's high end by build_progress;
+    - the lamps' roles converge on the accent colour by build_progress × `build.narrow`;
+  - **`drop_armed` with a token available** reserves it:
+    - the lamps dip to `build.dip_level` for the last `dip_bars` before the line;
+    - at the line: a hard cut (transition `cut`) to a new look, and a unison hit on lamps and DMX for `hit_beats`;
+    - the token is spent at the line;
+  - **an unarmed `drop`:**
+    - with a token: the lamps' hit at once, and the look cut (and its GOBO step) at the next bar line at least
+      `structure.events.min_lead_s` away (S4.13: the screens' lead; it was 0.35 s);
+    - without one: no cut and no hit; the drop shows inside the look (accent density and saturation up);
+  - **`breakdown`:** the floor + `breakdown.floor_add`, motion × `motion_scale`, saturation × `saturation_scale` (−20 %),
+    until the phase leaves breakdown.
+- **room.direction:**
+  - `section` = `{id: <structure's section id>, label: <the context's label>, phase: bars_in_section / expected_bars (0
+    when unknown), bars_in_section}`; SectionRef keeps its 0..1 `phase`;
+  - `density` = rhythm.density while it is fresh;
+  - `genre` = music.context's genre (the local ML's: via `ml` or `ml+listener`, fresh, conf ≥ 0.6), else the
+    listener's, else the vibe's (S4.13; the snapshot's `words_from` says which).
+- **Logged:** every section-driven look change, every kept or expressed decision, and every token spend or refusal goes
+  to director.jsonl with the music context.
+
+**api.py** (one seam). `card()`'s hearing rule 1 takes `music_context.genre` first: a word with conf ≥ 0.6 gives
+"<genre> · <the listener's first mood>", or the genre alone. Then the beliefs' rule, as now. The context comes from
+`brain_snapshot["components"]["structure"]["context"]`.
+
+**Tests (B11):**
+- situations with a fake `ml` view: talking true, false and unknown; quiet by CED; music_audible by CED; genre_in from
+  the context, then from the beliefs;
+- the listener with fake CED:
+  - the clip cut (talking in the middle: the longer run goes);
+  - a run under min_clip_s is skipped;
+  - the section call is due at the boundary + 8 s, and min_gap holds;
+  - the segment map's text;
+- the director with a fake context and events:
+  - a predicted repeat restores its letter's look;
+  - a late confirmed boundary keeps the look and moves the level;
+  - GOBO only from the causes that are the director's own;
+  - the token window;
+  - the dip and the hit on lamps, **never on screens** (the screens-rule test is extended);
+  - breakdown;
+- the name scan over the new modules;
+- the card line.
+
+**As built (B11's director, situations, listener and RoomLink.patch; 16 Oct).** Built to the spec above; where it was
+open, this is what the code does. vibes.py's `x-ui.not_built` and api.py's card line were outside this job; c8 did
+both at integration (S4.12).
+- **Two seams c8 must add** (until then the code degrades; **both added at integration**, S4.12):
+  - `contract.BrainContext.room_patch: Optional[Callable[[str, dict], Any]] = None` (async (path, body) -> (status,
+    dict): `RoomLink.patch`). `RoomLink.provides()` already offers it; brain.add ignores it, with a warning, until the
+    slot exists. Until then the director's snapshot says "no room PATCH route here".
+  - B8's brain.add must append to the `on_music_event` list. The director and the listener both provide it; today's
+    brain.add would set the slot to the last one's method.
+- **show.yaml keys the code reads with fallbacks** (c8's file; the same numbers as the code; **in the file since the
+  integration**):
+  ```yaml
+  situations:
+    ced:                                    # Stage 4: the CED classifier that talking, quiet and music_audible read
+      window_s: 3                           # README S4.8: the mean of the readings in the last 3 s
+      hysteresis: 0.05                      # starting point: a CED word that holds keeps holding until its number is
+                                            # back past its threshold by this much
+  director:
+    screens:                                # the screens' palette (agreed with 2f and 04, 16 Oct)
+      send_palette: true                    # false: the director never touches the screens' palette (hot-reloaded)
+      palette_transition_s: 4               # starting point (the renderer's own default, LIVE_V1 §1.11)
+  ```
+- **RoomLink.patch(path, body, timeout)** is `put` with PATCH: (status, JSON object); `0` and `room_unreachable` when
+  the room doesn't answer. It never raises (but for cancellation).
+- **situations.py.**
+  - `Situations.classifier` binds to `ctx.ml` at `start()` (or the first tick). Its reading is the mean of the CED rows
+    for the stream (None: the one the worker measures) whose `t` is in the last `situations.ced.window_s`. It adds
+    `stream` and `n` to the seven words. A test may still set its own classifier.
+  - **Hysteresis.** A reading remembers what it said last (per word and params). While it holds, its thresholds
+    relax by `situations.ced.hysteresis`:
+    - `talking`: speech >= min_prob - h and music < music_below + h;
+    - `quiet`'s CED path: music < music_below + h and speech < speech_below + h;
+    - `music_audible`: music >= min_prob - h.
+  - **`music_audible`.** With a fresh CED reading, CED decides (S4.3's table, §8.9): music, or Sonos playing with the
+    mic over `dsp_min_gate` (`sonos+mic`), else False via `classifier`. Without a reading, the Stage-3 DSP guess runs
+    exactly as before.
+  - **`quiet`.** The gate decides first, as before. Over the gate, with a reading and both `music_below` and
+    `speech_below` set, the CED path decides. With either unset, it reads False via `dsp`, as in Stage 3.
+  - **Test streams.** With `stream` unset, the CED words read unknown when the classifier's stream is a test stream,
+    unless `include_test` is set. Otherwise a test played from another room could switch this one.
+  - **`genre_in`.** It reads music.context's genre while the context is fresh (3 s). The reading's `via` is the
+    genre's (`ml`, `ml+listener`, `listener`); its evidence adds `via` and `parent`. A missing word or a low conf
+    reads unknown. With no fresh context, it reads the beliefs, as before.
+  - **Params.** `talking` gains `music_below` (section `situations.talking`); `quiet` gains `music_below` and
+    `speech_below`. The snapshot gains `classifier` (on, window, hysteresis, the mean now) and `problems`.
+- **listener.py.**
+  - **Reasons.** `WHY_P1` is now `WHY_NO_CED` ("the music/speech check isn't running"; the old name is kept as an
+    alias). New: `WHY_TALKING` ("people are talking") and `WHY_SHORT` ("not enough music without talking").
+  - **The run.** Readings join a run while each is within its window (2 s) of the last, so a CED cadence the
+    worker's CPU guard has stretched still counts as contiguous. The run is (first t - 1, last t], inside the clip_s
+    window (S4.13: last t - 1 unless the next reading passed). The gate's thresholds are `listener.ced`; freshness is
+    the view's `stale_s` for ced, at least show.yaml `ml.results_stale_s` (3).
+  - **Section history.** From the events and from music.context: id, letter (filled in once named), start. Each
+    call's user text gets the segment map when the clip spans a known section: "#12 A 0-9 s, #13 B 9-24 s".
+    `segment_id` (and `section.segment_id`) is the section at the clip's end.
+  - **The section call.** It is due at boundary + `section_call_after_s`, and takes precedence over the cadence call
+    when both are due. One is pending at most (the newest boundary wins). It expires `cadence_s` after it was due.
+  - **`track_change`** sets `BeliefState.track_pending`: the next verdict counts as a track change, so its genre wins
+    at once.
+  - **Logs.** Each verdict with a `genre.detail` also logs `kind: genre_detail`, beside the ML's word, parent and
+    top styles. The snapshot gains `ced` (why, run, latest) and `sections`.
+- **director.py.**
+  - **Events.** They are queued by `on_music_event` and read at the start of the director's own tick, which follows
+    structure's in the same beat. Context older than 3 s counts as "no structure".
+  - **Phases.** An event's phase (build, drop, breakdown) holds for `director.sections.phase_hint_s` (1.5 s), until
+    the 1 Hz context catches up.
+  - **The silence song-test** runs only while there is no fresh context.
+  - **Section changes.**
+    - A confirmed one that isn't late, or a predicted one, is announced at its at_ms as `section` or `repeat`. If
+      at_ms is under 250 ms away, the next bar line is used instead.
+    - It replaces a pending phrase change. It never replaces a person's pending change, a pending `drop` cut or a
+      pending `track` change: then the section is shown inside the look.
+    - Late ones (and every section under `time` or `between_pieces`, Keep this look, or a pending person's change)
+      are expressed: an offset in the vibe's u units, eased over one beat. It moves level, accent density and
+      spread, and resets when a look lands. Nothing is expressed while relaxed.
+    - Section energy is the mean of the smoothed features energy since the boundary, against the previous section's
+      (or the 30 s before).
+    - A confirmed boundary within 2 bars of a `drop` look's or a new song's boundary is that look's own: no second
+      look and no expression. structure's own section for a new song (detail `track`) moves a pending `track` look to
+      its line, where structure steps GOBO, so the look and the scene change land together.
+  - **Memory.** A letter is remembered, the first time it is named, only if the look showing then landed in that
+    section. So a late-expressed section doesn't borrow the previous section's look. On recall, a palette the vibe no
+    longer lists isn't restored (the variation still is).
+  - **Track changes.** One comes from a `track_change` event (its at_ms is the song's start), or a new `track.id` in
+    the context with no event that tick (start = now - track.age_s); repeats of one id are ignored.
+    - It clears the memory and sets the song change, so the palette moves on.
+    - A `phrase` vibe on a clock grid gets a `track` look at the next bar, unless a person's change or a structure
+      change is pending; that one then takes the song change.
+    - A pending repeat loses its recall.
+  - **GOBO.** As built, looks with reason `section`, `repeat`, `drop` or `track` didn't call `ctx.section_change()`
+    (`gobo: false` in the log). S4.13: every look that lands steps it (`gobo: true`; `stats.gobo_steps`).
+  - **Peak tokens.**
+    - A deque of spend times, pruned to the last hour. A reservation counts as used.
+    - Keep this look refuses a token.
+    - A drop heard before its armed line releases the reservation and is treated as unarmed.
+    - A drop within one beat of the armed line, before or after it, does nothing more.
+  - **The grammar** is gated on a known vibe, `beat_lock`, a clock grid and gate `beat`.
+    - The subdivision steps every `step_bars` from the build's start bar, or every `step_bars_late` while
+      build_progress >= 0.5.
+    - Saturation is s + (top - s) x build_progress.
+    - Each lamp's role colour is mixed toward the look's accent by build_progress x `narrow`, before saturation and
+      the role's white, chroma cap and avoided hues, so a key lamp stays a key lamp.
+    - The dip is the lamps' level at min(level, `dip_level`) for the last `dip_bars` (not under House lights or
+      Lights low).
+  - **The hit.**
+    - It is `(t0, t1, {lamp: rgb})`, read by `palette_fn` and overlaid on the lamps only, exactly from the line
+      (show-artnet's frame time), for `hit_beats`.
+    - Each lamp shows the accent at full value through its own role's limits.
+    - Screens are never in it. A test checks the screens at full value through the whole dip, line and hit.
+    - The look cut lands on the first tick at or after the line (`transition: cut`).
+  - **A drop without a token** sets accent density to 1 and saturation to the vibe's top while the phase is `drop`.
+  - **The screens' palette.** The chosen palette (the pick, else the director's) goes to every room screen whose
+    `layer` is `live` and which isn't cutting, when it is a catalog name.
+    - `art`, even while a catalog palette stands in for it on the lamps, sends nothing; the snapshot says why.
+    - One PATCH per screen per change, with a per-screen record. A failure is retried after 15 s.
+    - A screen that leaves live is forgotten, so it gets the palette again when it comes back. A room blip
+      (`reachable: false`) keeps the record.
+    - Entering a vibe clears the record, so a show_service restart with a vibe re-sends the palette once.
+  - **Snapshot.** It gains `sections` (structure, context, phase, track, memory, express, build, drop_inside,
+    armed, tokens, stats) and `screens_palette` (palette, sent, busy, why, error, live, sends).
+  - **The director.jsonl kinds:** `section_look`, `section_kept` (why, express, late_bars), `section_memory`,
+    `track`, `token` (reserved, spent, refused, moved, released, with why), `drop`, and `screens_palette`. Each
+    carries the context brief.
+- **Tests.** Built: `test_director.py` (+18), `test_situations.py` (+7), `test_listener.py` (+6, and one updated for
+  the genre_detail line), `test_autopilot.py` (+1, against the fake room's new PATCH route). The name scan adds
+  mllink.py and structure.py, skipped until they land; a new scan rejects Discogs parent names in code.
+  - Run, niced, with the render running: director, situations, listener and autopilot pass.
+  - Two failures belong to other sessions' uncommitted edits: test_autopilot::test_config_error_is_blind
+    (autopilot.py's Auto line) and test_dsp::test_shapes_are_exactly_the_contract (B9's dsp.py).
+- **Costs** (niced, the render running, `-s`): the director's tick is p50 0.40-0.42 / p95 0.6-0.8 ms without
+  sections, and p50 0.51-0.52 / p95 0.86-0.97 ms with a build and an armed drop (the 1 ms budget holds). The hit's
+  colours are only computed from the dip on. situations and the listener add well under 0.1 ms a second (a mean over
+  at most 30 CED rows per word read).
+
+### S4.9 show.yaml's Stage-4 keys (c8's file; in place since 16 Oct)
+
+| Section | Read by | Keys |
+|---|---|---|
+| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s}`, `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
+| `genre_map` | structure (`genre_reading`) | `parents {Discogs parent: word, or {from_listener: [words]}}`, `tau_s`, `freeze_below_music`, `speech_scale_above`, `switch_margin`, `switch_dwell_s` |
+| `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m, window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps}`, `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
+| `situations.talking` (new; `speech_words` since S4.13, also read by structure); `situations.quiet` gains `music_below`, `speech_below` | situations | S4.8 |
+| `listener` gains `ced {music_min, speech_max, speech_words, speaks_s}`, `section_call_after_s` | listener | S4.8 |
+| `director` gains `sections {max_late_bars, express_gain, phase_hint_s}`, `peaks {after_build_s}`, `build {step_bars, step_bars_late, narrow, dip_level, dip_bars, hit_beats}`, `breakdown {floor_add, motion_scale, saturation_scale}` (it also reads `structure.events.min_lead_s`) | director | S4.8 |
+
+- The file documents every key and where its number comes from. Each is a starting point unless its comment says
+  "owner" or "measured".
+- **Checked on 16 Oct** (show.yaml revision `e2ac1e756a21`):
+  - the running show_service reloaded the file with no settings error;
+  - the Stage-3 readers (listener, situations, director, sources) parse it exactly as before; they ignore keys they
+    don't know;
+  - `genre_map`'s parents are all in `DISCOGS_PARENTS`, and its words are all vocab.yaml genres;
+  - `ml.tasks` matches `ML_TASKS`, and `ml.ced_groups` matches `CED_GROUPS`.
+- **Not in show.yaml** (unknowns stay unset): the vibes' `peak_tokens_per_hour` (vibes.yaml, the owner's call), and
+  every model fact (index.json, from fetch_models.py).
+
+### S4.10 Rules for every builder
+
+S3.13's rules hold. Also:
+- **Venvs.**
+  - The hot venv `~/.venvs/sm-show` gets **no** new package: mllink and structure need numpy and soxr, which it has, and
+    dsp's medians use scipy.
+  - The worker's venv is `~/.venvs/sm-show-ml`. B7 alone installs into it.
+  - Every install, export, model fetch and test run goes under `flock /tmp/claude-1000/sm-build.lock nice -n 19 …`.
+- **Never:**
+  - start a worker against production: tests use `--fake` or a stand-in, a tmp models dir and their own pipe;
+  - write `~/.cache/screen-machine/models` from a test (B7's fetch writes it, by hand, once);
+  - bind 8703, 6980, 6981, 6982 or 6454 (or 8700-8702);
+  - PUT, POST or open a WS to the real room API;
+  - kill a process you didn't start;
+  - restart show_service, Flask or stream_service;
+  - commit.
+- **No GPU:** `CUDA_VISIBLE_DEVICES=` in every command that could see torch or onnxruntime.
+- **Costs** are printed with `-s` and go in each builder's "As built", measured niced with the render running, as in
+  Stage 3.
+
+### S4.11 Going live, and who to tell
+
+The exact steps for c8 (as of 16 Oct the venv, the models and the integration are done; nothing is committed and
+production still runs Stage 3). Every build, fetch and test goes under `flock /tmp/claude-1000/sm-build.lock nice -n 19`.
+
+1. **The ML venv and the models** (B7 built both on PC22; redo only if missing).
+   ```
+   flock /tmp/claude-1000/sm-build.lock nice -n 19 python3.12 -m venv ~/.venvs/sm-show-ml
+   flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show-ml/bin/pip install -r show_service/ml/requirements.txt
+   flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/python tools/show/fetch_models.py
+   flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/python tools/show/fetch_models.py --verify
+   ```
+   Beat This! has no published ONNX: `beat-this-small0.onnx` is exported once from the scratch venv
+   (`/tmp/claude-1000/onnx-export/venv`, recipe in `tools/show/export_onnx.py`'s docstring):
+   `flock … nice -n 19 /tmp/claude-1000/onnx-export/venv/bin/python tools/show/export_onnx.py beat-this-small0`.
+   **The check:** `CUDA_VISIBLE_DEVICES= ~/.venvs/sm-show-ml/bin/python -m show_service.ml.worker --models
+   ~/.cache/screen-machine/models < /dev/null` prints `hello` with every configured model `ok` (11: `timbre` took
+   `nsynth_bright_dark`'s place; `deam` is fetched but not loaded, arousal is off), `tasks` all true and nice 19, then
+   exits 0.
+2. **The suite:** `flock … nice -n 19 ~/.venvs/sm-show/bin/python -m pytest show_service/tests -q` (S4.12: all pass;
+   about 9 minutes, the three end-to-end tests about 4 of them).
+3. **Commit** (c8; builders don't): `show_service/` (the new `mllink.py`, `structure.py`, `ml/`, the tests
+   `test_mllink.py`, `test_structure.py`, `test_dsp_medium.py`, `test_clock_thread.py`, `test_ml_*.py`, and the edits
+   listed in S4.12), `tools/show/fetch_models.py`, `tools/show/export_onnx.py`, `config/room/show.yaml`. Never the
+   models, the venvs or `/tmp`.
+4. **Restart:** `scripts/ctl restart show`. That is show_service's own restart; nothing else restarts.
+   `deploy/sm-show.env` needs no new line: the beat thread is off by default (`SHOW_BEAT_THREAD=on` would turn it on),
+   and `CUDA_VISIBLE_DEVICES=` is already there.
+5. **Check:**
+   - `curl -s 127.0.0.1:8703/api/v1/state | jq '.modules, .ml.state, .ml.hello.models, .ml.cpu,
+     .brain.components.structure.context.section, .rx_ms'`: every module ok, `running`, every model ok.
+   - Then play test audio for 60 s (`curl -s -X POST 127.0.0.1:8703/api/v1/test -H 'Content-Type: application/json'
+     -d '{"source": "audio"}'`, then `curl -s -X DELETE 127.0.0.1:8703/api/v1/test`):
+     - `.ml.cpu.total` stays under 0.8 (rehearsed at 0.68-0.69, S4.12);
+     - `.ml.stats.tasks[]` shows no `over_budget`, `.ml.feed.drops` stays 0, `.ml.bad_lines` 0;
+     - music.context is on the bus, and `.brain.components.structure.sections` fills;
+     - `.errors` stays `{}`.
+6. **What changes at this restart** (in production):
+   - **GOBO** (the screens' scene change, §9.5) with no vibe set: structure steps it once per section change whenever
+     Art-Net is sending, so the renderer's music_direction changes scenes on sections. While a vibe plays, it steps
+     only with a look that lands (S4.13): never in Dinner or Notes mid-piece, never while Keep this look holds.
+   - **Chroma.** show.state's `global.music.chroma12`, and music.harmony, carry the audio chroma when no piano plays.
+   - **On the bus:**
+     - music.context, 1 Hz, to every client;
+     - the room.event kinds `section_change`, `build`, `drop_armed`, `drop`, `breakdown` and `track_change`
+       (structure has its own `seq` beside the director's; no reader dedupes room.event by `seq` today);
+     - music.rhythm, only to clients that `want` it.
+   - **The screens' palette.** While a vibe plays, every live, non-cutting screen gets the director's catalog palette
+     (PATCH `/api/v1/screens/{id}/look` on room_service, once per change, and once again after this restart). That
+     can replace a palette someone picked on a screen's card. `director.screens.send_palette: false` stops it.
+   - **Auto's** `talking`, `quiet` and `music_audible` read CED. No mode's rule uses `talking` yet.
+   - **The listener** can clip room-mic music once the owner turns AI listening on and a mode listens; Stage 3 never
+     could. Test audio is as before.
+   - **The card's hearing line** shows the local genre ("jazz · relaxed") when music.context is confident, and so does
+     room.direction's `genre` (S4.13).
+   - **Peaks:** no drop spends a token until a vibe sets `peak_tokens_per_hour`; unset, drops never cut or hit and
+     only show inside the look. vibes.yaml leaves it unset: the owner's call (§8.5 suggests Party 4-6 an hour). The
+     Feel form shows it as built now ("Big moments per hour"). A line no drop came to gives its token back (S4.13).
+   - **The clock** runs exactly as in Stage 3 (inline: the beat thread is off), plus Beat This!'s integer corrections.
+   - **Rollback** (any one of these):
+     - `ml.enabled: false`: a hot reload; the worker stops and every reader degrades;
+     - `structure.gobo_on_sections: false`: a hot reload;
+     - `director.screens.send_palette: false`: a hot reload;
+     - `SHOW_BRAIN=off`, then a restart: no brain, no worker, no structure (the medium lane and music.rhythm stay).
+7. **Tell:**
+   - **04:** music.context; the audio chroma; GOBO on sections; the new event kinds; music.rhythm on request; the
+     screens' palette PATCH while a vibe plays.
+   - **68:** GOBO steps on sections; lamp dips and hits come only inside a vibe that has tokens.
+   - **2f:** the card's hearing line can show the local genre; Auto's `talking` works; the Feel form's peak tokens are
+     built; the director PATCHes `/api/v1/screens/{id}/look` while a vibe plays.
+   - **aa:** the situations vocabulary's descriptions changed; the adapter's cache refreshes itself.
+   - **ca:** no new port. The worker is show_service's child, shown in the show card's state under `ml` (state, cpu,
+     restarts). `~/.venvs/sm-show-ml` and `~/.cache/screen-machine/models` (about 50 MB) are new on disk.
+   - **98:** nothing.
+
+### S4.12 Integration and measurements (c8, 16 Oct)
+
+**Wired** (S4.5's seams; "As built" under S4.5): mllink (MLFeed on show-rx after the ring, guard `ml.feed`; MLLink
+as the brain's `ml`), structure after it, `features.clock_fn`, `Clock(beat_thread=)`, `clock.stop()` after rx, the
+context's `rhythm` / `ml_feed` / `clock_correct`, brain.add's list slots, the awaited stop, bus `TYPES` and
+`WANT_ONLY`, `--beat-thread`. Brain add order: room, situations, autopilot, sources, ml, structure, listener,
+director.
+
+**Reconciled** (the builders' open points):
+- **B7.** show.yaml `ml.tasks.tags.heads`: `bright: timbre`; `arousal` (deam) off (MSD-MusiCNN is 8x EffNet, +0.05
+  core); `engagement` stays null (Essentia publishes no range; the 0..1 range seen on the test tracks is the owner's
+  call, not set). The worker's `DEFAULTS` match. Beat This! stays at 16 kHz (beat F 0.972, downbeat 0.926 against
+  full band; the vote needs two agreeing runs). mllink wraps `supervisor.py`. B7's tests stay in
+  `show_service/tests/test_ml_*.py`. `approachability_regression`: still no field.
+- **B9.** test_dsp's Stage-3 chroma line is a shape check now; contract's `harm_change` comment names the
+  beat-synchronous rule; music.rhythm is want-only on the bus. Left as built, for c8 later: swing's [0.4, 0.8] phase
+  window (16th hats read above 1), and chroma12() over the harmonic floor in a noisy room (a flat chroma, no key).
+  **The beat thread is off by default** (S4.6's note): measured in the real process it cost more than it saved.
+- **B10.** Its event choices stand (a drop sends no section_change; a track change sends `track_change` then a
+  `section_change` with detail `track`); Sonos counts while `sonos_playing` isn't false (confirmed); its three extra
+  candidate rules are recorded in S4.7's "As built" (for SHOW_ENGINE §6.1 later).
+- **B11.** contract `BrainContext.room_patch` added (the director's screens palette works); brain.add appends to
+  `on_music_event`; show.yaml gains `situations.ced` and `director.screens`; vibes.py's `peak_tokens_per_hour` is no
+  longer `not_built` (label "Big moments per hour", behind More); api.py's card hearing rule 1 reads
+  `music_context.genre` first (test_api).
+- **Others' edits** in show_service's tree: autopilot.py's blind line (another session's wording, "Auto is paused: a
+  mode has a problem; open its editor") is kept and test_autopilot follows it.
+
+**The Stage-4 end to end** (`tests/test_e2e.py::test_stage4_end_to_end`, about 2.5 minutes, skipped without ffmpeg,
+the ML venv, the models or the test tracks). The real wiring in-process on ephemeral ports, a fake room on its own
+thread, a fake LLM, every file in tmp_path; the real worker from `~/.venvs/sm-show-ml` reading the real models through
+a tmp directory of symlinks (never written). Three fetched tracks back to back through the real test-audio child,
+each a 45 s excerpt from 40 s in with 4 s of silence after it: Galería Disco "Memorias" (house, time-stretched with
+ffmpeg atempo to 145.8 bpm), Doxent "1973" (jazz, 145.8 bpm) and Lilly Wolf "Play the Game" (pop, 135.1 bpm). So
+the first change keeps the tempo and the second changes it by 7 %; the genre parents differ across both. A phrase vibe
+plays. It checks, and with `-s` prints:
+- the worker's hello (every task, nice 19, at most 2 compute threads);
+- per track: CED's music median ≥ 0.5, and the leading Discogs parent among the plausible ones (logged with the
+  top styles);
+- no bad lines, no restart, the tasks' runs;
+- music.context's exact shape, sections on the ML embeddings (≥ 80 % of the in-music contexts), at least 3 section
+  ids;
+- at least one track change, each within a real change's window, and structure's `section_change` and `track_change`
+  on the bus; GOBO stepped;
+- music.rhythm only to the client that asked for it;
+- the director reacting: a structure look (`track`, `section`, ...) or a section expressed inside the look;
+- the clock locked on each track within 15 s at its tempo ± 2 %, with no body without a grid through the same-tempo
+  change, and re-locked within 8 s of the second track.
+
+**Measured (16 Oct, flock + nice 19, the 4K render running):**
+- **The Stage-4 e2e** passed (three runs; the numbers are the last, with the beat thread off). Worker: every model
+  ok. CED music medians 0.93 (house), 0.74 (jazz), 0.92 (pop). Leading parents: Electronic 0.71 (Bassline, UK Garage:
+  the stretched house), Jazz 0.20 with Rock 0.19 (Contemporary Jazz, Math Rock; an earlier run of the jazz stretched
+  to 120 bpm led with Rock, hence Rock among the plausible ones for this track), Electronic 0.26 with Pop 0.17
+  (Electro, J-pop). Track changes at 48.8 s and 97.5 s (the real ones at 49 s and 98 s), both `via dsp`. The
+  director made two `track` looks; the confirmed sections, heard about 4 bars late, were expressed inside the look.
+  The clock locked 3.6, 2.2 and 2.9 s after each track's start, at 145.8, 145.9 and 135.0 bpm, with no body without
+  a grid through the first change (1 relock, no cold search). One Beat This! correction applied (bar length 3, on the
+  jazz). Worker tasks over the run: ced 133 runs p95 39 ms, tags 133 p95 19 ms, key 60 p95 16 ms, beats 10 p95
+  2.7 s; nothing skipped or over budget; no feed drops. show-rx (in-process, with the test's own WS clients):
+  `on_audio` p95 2.9 ms, `on_tick` p95 1.2 ms.
+- **The P0 and Stage-3 e2e** pass unchanged (features 25.0 Hz; the clock locked 4.2 s after the first packet at
+  124.00 bpm; Art-Net 41.4 Hz with pulse edges +0.47 ms from the predicted beat, p95 1.35 ms). The Stage-3 one runs
+  with `ml.enabled: false` (it never starts the worker). With the beat thread on, the P0 e2e's Art-Net rate once
+  read 36.7 Hz (its floor is 38): the same GIL contention.
+- **The real process** (scratch harness: `python -m show_service` as a subprocess, niced, HOME and every file in tmp,
+  a fake room, Art-Net to a local sink, one `renderer` WS client, the phrase vibe, the same three tracks through the
+  test-audio child, the real worker). 60 s of /proc after a 45 s warm-up (the first Beat This! window filled):
+
+  | beat thread | ML worker | show_service | worker | **total** (owner: < 0.8) |
+  |---|---|---|---|---|
+  | **off (the default)** | on | 0.430, 0.438, 0.445 | 0.250, 0.255, 0.256 | **0.680, 0.693, 0.702** |
+  | on | on | 0.568, 0.583 | 0.232, 0.259 | 0.800, 0.842 |
+  | on | off | 0.529 | | 0.529 |
+  | off | off | 0.389 | | 0.389 |
+
+  - **Per thread** (off, on): show-rx 0.344-0.360, show-bus 0.041-0.042, show-brain 0.026-0.028, show-artnet 0.016;
+    the worker's beats lane 0.20-0.21, its fast lane 0.044-0.047, its reader 0.003. With the thread on: show-rx 0.29-0.31
+    and show-beat 0.19. The test-audio child and its ffmpeg (show-brain's children) run only while a test plays and
+    were not counted here (Stage 3 measured them at about 0.17).
+  - **show-rx per block** (`/api/v1/state` `rx_ms`; wall time, GIL waits included): `on_audio` p50 0.34-0.41 ms, p95
+    2.6-3.0 ms, max 11-15 ms; `on_tick` p95 1.0-1.1 ms, max 10-13 ms. dsp hop p95 1.3-1.5 ms, the medium frame p95
+    1.05-1.21 ms; MLFeed 18-20 µs p50, 92-98 µs p95 a block. (Thread on: `on_audio` p95 2.6 ms, max 10-11 ms; `on_tick` p95 2.0-2.3 ms; dsp hop p95 3.5-3.7 ms.)
+  - **The worker** over 60 s: ced 93 runs p95 34-38 ms, tags 93 p95 15-20 ms, key 40 p95 17-21 ms, beats 6 p95
+    2.3-2.8 s; nothing skipped or over budget, stretch 1, no feed drops.
+  - **Brain ticks**, CPU p95 (`thread_time`): situations 1.2-1.5 ms, autopilot 0.4, sources 0.4-0.5, ml 0.7 (2.0-2.9
+    before its snapshot's log tail and percentiles went to every 30 s), structure 2.2-2.6 (its 1 Hz seconds),
+    listener 0.4-0.5, director 1.3 (over its 1 ms; B11 measured 0.9-1.0 alone); loop lag p95 2.2 ms.
+  - Art-Net 38.8-39.5 Hz, late p95 1.0-1.4 ms; exit 0 on SIGTERM; no ERROR lines.
+- **The suite:** 910 passed (`flock … nice -n 19 … pytest show_service/tests -q`, 9 minutes). The P0 e2e now starts
+  its Show with `freeze_gc=True`, as main() does: after the whole suite the pytest heap is big, and twice its
+  Art-Net rate read 35-36.7 Hz against the floor of 38 (alone it reads 41.4).
+- The headroom: 0.10-0.12 of a core under the owner's 0.8 with test music. Beat This! is most of the worker
+  (0.2 core at every 10 s, §5.3's slowest end); the worker's own guard (`ml.cpu_max` 0.35) never had to act.
+
+### S4.13 Review fixes (16 Oct; c8's fixer)
+
+The Stage-4 review (24 issues) is applied; none was skipped. The sections above now say what the code does, each
+change marked "S4.13". In short:
+
+| # | Issue | What changed |
+|---|---|---|
+| 1 | GOBO stepped on every section and drop whatever the vibe | structure steps it only while the director is neutral (`ctx.vibe()` None); with a vibe the director steps it with every look that lands, the structure-caused ones included, so change_looks, Keep, relaxing, the late rule and tokens hold the screens (S4.7, S4.8) |
+| 2 | the no-gap track change fired inside a song | keys that are the same, parallel or relative are no jump; music.context's key is held; after a gap the genre is the clear leader of the last 5 s of tags; without a gap it takes two jumps, the genre by the smoothed leader; `spike_k: null` turns it off. Found while testing: the gap test read the gate (3 s loudness), which notices silence only ~3 s in, so 4 s gaps were never gaps; it now also reads lufs_m (`track.gap_lufs_m` -60) |
+| 3 | the privacy gate read only "speech" | a reading's speech is the max over `listener.ced.speech_words` / `situations.talking.speech_words` (speech, conversation, crowd): the upload gate, talking, quiet and the genre speech scale (`contract.speech_words`, `speech_of`) |
+| 4 | categories flickered at 1 Hz | key: a sticky source and `key_hold`; instruments: smoothed like the tag numbers; breakdown, peak, outro: in after for_s, out after leave_s, and the phase word holds `phase_dwell_s` (event phases show at once); genre_in: the CED hysteresis |
+| 5 | room.direction's genre was the LLM's only | music.context's genre (ML, fresh, conf ≥ 0.6) > the listener's > the vibe's; `words_from` in the snapshot |
+| 6 | a meter change from two runs, with no one | a new bar length needs a one and `beat_votes.bar_agree_runs` (4) runs; `bar_lens` stays [3, 4] |
+| 7 | an armed line was never disarmed | `drop_armed` with `eta_beats` None: `disarmed` (the build ended over `drop.disarm_bars` before the line, or a new build or track) releases the reservation; `missed` refunds the spent token |
+| 8 | an unarmed drop stepped GOBO at once | at the first bar line `events.min_lead_s` ahead; the director's drop and track looks use the same lead |
+| 9 | section calls ignored the cadence's slowing | at least half the current interval after the last call, at most one per interval |
+| 10 | a run's last second rode on a failed reading | it counts only when the next reading (which covers it too) passed |
+| 11 | freshness was a fixed 3 s while the worker stretched | MLView `stale_s` per task (max(results_stale_s, `stale_periods` x its interval in the last stats line)); structure, the listener and situations' CED window use it (`contract.ml_stale_s`) |
+| 12 | a test track's genre carried over to the room | another ML stream clears the genre, the tag numbers, the instruments, the parents window and the key |
+| 13 | musical thresholds in code | show.yaml `structure` (grid_conf, same_bars, ced_mean_s, tags_hold_s, listener_conf, phase_dwell_s, key_hold, track.*, build.foot_db, drop.snap_beats/disarm_bars, breakdown/peak/outro leave_s, `fastled`), `director.sections.phase_hint_s`, `listener.ced.speaks_s` |
+| 14 | stale comments | vibes.yaml (tokens are spent; unset = drops never cut or hit), show.yaml's structure header |
+| 15 | essentia's licence unrecorded | AGPL-3.0 in S4.4, `ml/requirements.txt` and fetch_models.py's LICENSES.md |
+| 16 | a bad `ml` section killed the supervisor for good | `resolve_checked` never raises (a 1 s backoff floor); frames carry `WORKER_KEYS` only and one that can't be made isn't sent (mllink keeps the last good); a fault in the loop ends that run and is retried; `stop()` cleans up after a failed loop |
+| 17 | the worker sat at 1.6 GB | the CPU arena off for the beat tracker and `MALLOC_ARENA_MAX=2`: about 300-335 MB at the same cost |
+| 18 | a wedged lane was never restarted | the worker's lane watchdog exits 70 when a lane makes no cycle in max(3 x period, period + budget + 5 s) |
+| 19 | each spawn truncated the last run's traceback | the log is appended per run after a header; an exit code over 0 keeps its last log line in `last_exit.why` |
+| 20 | the feed hand-off relied on timing | attach is a (generation, fd) store, never lost; `FrameFeeder.busy` marks a write, and the stop waits it out (else `/dev/null` over the fd, closed later) |
+| 21 | thin Beat This! headroom; a 1 s pipe | `budget_ms` 5500 (about 2x its p95); an overrun skips the task's next turn; the pipe is 1 MB (16 s) |
+| 22 | nothing enforced the owner's 0.8 | over 0.8 for 60 s, the worker's cpu_max becomes 0.8 less show_service's share, within [`cpu_floor` 0.1, `cpu_max`], and comes back |
+| 23 | the stop could outlast its await | `STOP_AWAIT_S` 7 s (the sequence's 6.5 s worst case), `Brain.stop` 10 s |
+| 24 | docs and config that didn't match | `Clock(beat_thread=False)` by default (test_clock_thread passes True where it means it); `ml.threads` removed; the RSS line fixed |
+
+**Tests** (+38, 910 → 948): test_structure (+14: GOBO with a vibe, the unarmed drop's bar, disarmed and missed lines,
+the relative and parallel keys, path (c) in both directions and `spike_k: null`, the short gap, a stream switch,
+smoothed instruments, a flickering key, stretched freshness, the babble speech scale, peak's leave), test_director
+(+3, and the `time` test extended: Dinner-like `time` and Keep this look give no GOBO, a released and a refunded
+token, the ML genre), test_listener (+4: babble and conversation, the last second, the stretched cadence, section calls
+slowing), test_situations (+3), test_mllink (+4: stale_s, configure's last good section, the 0.8 cut and back, a bar
+length needs a one), test_ml_supervisor (+8: the hand-off, busy, the release wait and `/dev/null`, `resolve_checked`,
+settings it can't send, a loop fault, a crash's reason and log, the stop budget), test_ml_worker (+2: the skipped turn,
+the lane watchdog). Updated: the GOBO counts
+in test_director, the breakdown leave and the key hold in test_structure, the clip ends in test_listener, the 4-run
+bar length in test_mllink, 1 s backoffs in the ML tests, and the e2e's GOBO check (the director's steps count).
+
+**Run** (flock + nice 19, the 4K render running): `pytest show_service/tests -q` **948 passed** (8.7 min), the Stage-4
+e2e included: track changes at 48.8 and 98.0 s, both through the gap path now (the jazz track's key E minor →
+G# minor, then the tempo), no meter applied to the jazz (one confirmation), every model ok, nothing skipped or over
+budget, no feed drops.
+
+**Measured** (the S4.12 real-process harness, beat thread off, 60 s after a 45 s warm-up, two runs): show_service
+0.407 / 0.413, the worker 0.234 / 0.254, **total 0.641 / 0.668** (S4.12: 0.680-0.702); show-rx 0.33, show-bus 0.04,
+show-brain 0.025, show-artnet 0.016; `on_audio` p95 2.5-2.7 ms; MLFeed 17-18 µs p50, 94-95 µs p95 a block (S4.12:
+18-20 / 92-98); brain ticks CPU p95: structure 2.3-2.5 ms, director 1.2-1.3, situations 1.0-1.2; Art-Net 38.7-39.2 Hz;
+the worker's RSS **334 MB** (`rss_mb`), stretch 1, cpu_limit not cut; exit 0, no ERROR lines. Beat This! alone (the
+ML venv, 12 runs, both lanes on threads): p50 1.86-1.94 s, p95 2.1-2.5 s, RSS 303 MB with `MALLOC_ARENA_MAX=2` (574 MB
+with glibc's per-thread arenas, 1.6 GB with onnxruntime's arena as first built).
+
+**Who to tell** (S4.11 step 7 still holds), and in addition:
+- **04:** `drop_armed` can come with `eta_beats` null (`detail` disarmed or missed: the line is off); GOBO steps on
+  sections only with no vibe set (with a vibe, one per look change); room.direction's `genre` can come from the local
+  ML now.
+- **68:** lamp dips and hits stop when a build gives out before its line.
