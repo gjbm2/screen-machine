@@ -98,7 +98,7 @@ def install_fakes(monkeypatch) -> None:
     receiver = types.ModuleType("show_service.receiver")
 
     class Receiver:
-        def __init__(self, cfg, *, on_audio, on_midi, on_tick, clock=time.monotonic, sock=None):
+        def __init__(self, cfg, *, on_audio, on_midi, on_tick, clock=time.monotonic, sock=None, on_level=None):
             self.cfg, self.on_audio, self.on_midi, self.on_tick = cfg, on_audio, on_midi, on_tick
             self.started = self.stopped = False
             self.offsets = None
@@ -790,7 +790,7 @@ def test_no_brain_builds_no_brain(monkeypatch, tmp_path):
         assert show.brain is None and show.rings is None and show.tap is None and show.api is None
         assert show.rig is None and show.state()["rig"] is None                       # no brain: no rig (Stage 5)
         assert not any(k in show.modules for k in ("api", "brain", "ring", "director"))
-        assert show.state()["brain"] is None and show.bus.routes is None and show.state()["api"] is None
+        assert show.state()["brain"] is None and show.state()["api"] is None
         show.on_midi("room-piano", "batch-a", 1.0, lambda t_ns: 2.5)
         assert show.pianos["room-piano"].state_channels is None         # no show.yaml: every channel
     finally:

@@ -60,6 +60,9 @@ TEXT messages (one compact JSON object per packet; readers ignore keys they don'
   SUBSCRIBE   stream ``sub``, receiver -> sender, every 1 s from the receive socket; the sender streams to the
               source address of the latest one and stops 5 s after it:
               {"v":1,"subscribe":["room-mic","room-piano"],"from":"show_rt"}
+                devices    {stream: name}, optional: the capture device the receiver wants for that stream (the
+                           Room page's Mic choice). A sender that can't find the name, or gets no hint, keeps its
+                           default; the heartbeat's ``dev`` says what it really uses.
   heartbeat   stream = the audio stream's own name (its own TEXT counter), sender -> receiver every 500 ms:
               {"v":1,"sess","frame","n","t_cap_ns","in_lat_ms","dev","state","xruns","peak_dbfs","rms_dbfs","clips"}
                 sess       str   the sender's session of this stream: new on a sender restart, a device re-open,
@@ -74,6 +77,9 @@ TEXT messages (one compact JSON object per packet; readers ignore keys they don'
                 xruns      int   input overflows since ``sess`` began
                 peak_dbfs, rms_dbfs  [float per channel] over the last 500 ms, floored at -120 (never -inf)
                 clips      int   samples at or beyond full scale since ``sess`` began
+                devices    [str], optional: the capture devices this sender could use for the stream (the Room
+                                 page's Mic choices), at most DEVICES_MAX names of at most DEVICE_NAME_MAX chars;
+                                 make_heartbeat drops names from the end until the packet fits 1436 B
   MIDI events stream ``room-piano`` (or ``test-piano``), within 2 ms of an event; ``t_ns`` is the sender's clock
               (Clocks: the heartbeat's timebase); ``prev`` repeats the last two batches so one lost packet heals
               at once; at most MIDI_BATCH_MAX events per batch:
@@ -100,7 +106,7 @@ import json
 import math
 import struct
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Sequence
+from typing import Any, Iterable, Literal, Mapping, Sequence
 
 import numpy as np
 
@@ -140,6 +146,8 @@ TXT_UTF8 = 0x10
 
 DEFAULT_FRAMES = 128
 SUBSCRIBE_STREAM = "sub"
+DEVICES_MAX = 32                             # heartbeat ``devices``: names, and each name's length
+DEVICE_NAME_MAX = 128
 SUBSCRIBE_EVERY_S = 1.0
 SUBSCRIBE_TTL_S = 5.0
 HEARTBEAT_EVERY_S = 0.5
@@ -192,6 +200,7 @@ class Heartbeat:
     peak_dbfs: list[float] = field(default_factory=list)
     rms_dbfs: list[float] = field(default_factory=list)
     clips: int = 0
+    devices: list[str] | None = None          # the sender's capture choices (None: it doesn't say)
 
 
 MidiEvent = tuple[int, int, int, int]        # (t_ns, status, d1, d2)
@@ -409,13 +418,30 @@ def _version(o: dict) -> int | None:
 
 
 # -- SUBSCRIBE --------------------------------------------------------------------------------------------------------
-def subscribe_obj(streams: Iterable[str], sender: str = "show_rt") -> dict:
-    return {"v": 1, "subscribe": [str(s) for s in streams], "from": sender}
+def subscribe_obj(streams: Iterable[str], sender: str = "show_rt",
+                  devices: Mapping[str, str] | None = None) -> dict:
+    o: dict[str, Any] = {"v": 1, "subscribe": [str(s) for s in streams], "from": sender}
+    if devices:
+        o["devices"] = {str(k): str(v)[:DEVICE_NAME_MAX] for k, v in devices.items()}
+    return o
 
 
-def subscribe_packet(streams: Iterable[str], counter: int, sender: str = "show_rt") -> bytes:
-    """The SUBSCRIBE TEXT packet (stream ``sub``) asking a sender for ``streams``."""
-    return pack_text(SUBSCRIBE_STREAM, counter, subscribe_obj(streams, sender))
+def subscribe_packet(streams: Iterable[str], counter: int, sender: str = "show_rt",
+                     devices: Mapping[str, str] | None = None) -> bytes:
+    """The SUBSCRIBE TEXT packet (stream ``sub``) asking a sender for ``streams``, with an optional device hint per
+    stream (``devices``)."""
+    return pack_text(SUBSCRIBE_STREAM, counter, subscribe_obj(streams, sender, devices))
+
+
+def subscribed_devices(pkt: TextPacket | dict) -> dict[str, str]:
+    """A SUBSCRIBE's device hints ({stream: device name}); {} for none, a bad value, or not a SUBSCRIBE. Senders use
+    it: an unknown name keeps the default device."""
+    if subscribed_streams(pkt) is None:
+        return {}
+    d = _obj(pkt).get("devices")                         # type: ignore[union-attr]
+    if not isinstance(d, dict):
+        return {}
+    return {k: v for k, v in d.items() if isinstance(k, str) and isinstance(v, str) and 1 <= len(v) <= DEVICE_NAME_MAX}
 
 
 def subscribed_streams(pkt: TextPacket | dict) -> list[str] | None:
@@ -446,14 +472,28 @@ def _dbfs(values: Sequence[float] | None) -> list[float]:
 
 def make_heartbeat(*, sess: str, frame: int | None, n: int | None, t_cap_ns: int | None, in_lat_ms: float = 0.0,
                    dev: str = "", state: str = "ok", xruns: int = 0, peak_dbfs: Sequence[float] = (),
-                   rms_dbfs: Sequence[float] = (), clips: int = 0) -> dict:
-    """The heartbeat object (field meanings in the module docstring); -inf/NaN dBFS are floored at -120."""
+                   rms_dbfs: Sequence[float] = (), clips: int = 0, devices: Sequence[str] | None = None) -> dict:
+    """The heartbeat object (field meanings in the module docstring); -inf/NaN dBFS are floored at -120. ``devices``
+    keeps at most DEVICES_MAX names (each cut to DEVICE_NAME_MAX), then drops names from the end until the packed
+    message fits MAX_DATA."""
     if state not in HEARTBEAT_STATES:
         raise ValueError(f"heartbeat state {state!r} not in {HEARTBEAT_STATES}")
-    return {"v": 1, "sess": str(sess), "frame": None if frame is None else int(frame) % COUNTER_MOD,
-            "n": None if n is None else int(n), "t_cap_ns": None if t_cap_ns is None else int(t_cap_ns),
-            "in_lat_ms": round(float(in_lat_ms), 3), "dev": str(dev), "state": state, "xruns": int(xruns),
-            "peak_dbfs": _dbfs(peak_dbfs), "rms_dbfs": _dbfs(rms_dbfs), "clips": int(clips)}
+    o = {"v": 1, "sess": str(sess), "frame": None if frame is None else int(frame) % COUNTER_MOD,
+         "n": None if n is None else int(n), "t_cap_ns": None if t_cap_ns is None else int(t_cap_ns),
+         "in_lat_ms": round(float(in_lat_ms), 3), "dev": str(dev), "state": state, "xruns": int(xruns),
+         "peak_dbfs": _dbfs(peak_dbfs), "rms_dbfs": _dbfs(rms_dbfs), "clips": int(clips)}
+    if devices is not None:
+        names = [str(d)[:DEVICE_NAME_MAX] for d in devices if str(d)][:DEVICES_MAX]
+        o["devices"] = names
+        while names and len(text_bytes(o)) > MAX_DATA:
+            names.pop()
+    return o
+
+
+def _devices(x: Any) -> list[str] | None:
+    if not isinstance(x, list):
+        return None
+    return [d for d in x[:DEVICES_MAX] if isinstance(d, str) and 1 <= len(d) <= DEVICE_NAME_MAX]
 
 
 def _opt_int(o: dict, key: str, lo: int = 0, hi: int | None = None) -> tuple[bool, int | None]:
@@ -493,7 +533,8 @@ def parse_heartbeat(pkt: TextPacket | dict) -> Heartbeat | None:
         return None
     if not _is_num(lat) or not isinstance(dev, str):
         return None
-    return Heartbeat(v, sess, frame, n, t_cap, float(lat), dev, state, xruns or 0, peak, rms, clips or 0)
+    return Heartbeat(v, sess, frame, n, t_cap, float(lat), dev, state, xruns or 0, peak, rms, clips or 0,
+                     _devices(o.get("devices")))
 
 
 def is_heartbeat(pkt: TextPacket | dict) -> bool:

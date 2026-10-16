@@ -321,7 +321,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     hearing.input is the active stream's raw meter ({peak_dbfs, rms_dbfs} over the last 0.5 s) and hearing.input_trace
     its last 10 closed 100 ms bins ({seq, hz, peak_dbfs: [...], rms_dbfs: [...]}, oldest first; seq numbers the newest,
     so a client appends only bins newer than the last it drew); both None without active audio. hearing.level is
-    energy (loudness against the mode's expected loudness, gated), not a meter.
+    energy (loudness against the mode's expected loudness, gated), not a meter. hearing.mic is inputs.Inputs.mic():
+    {stream, device, chosen} for the active stream (None without one).
 
     hearing.text, first match wins: music.context's confident genre (Stage 4, structure's snapshot; with the
     listener's first mood), confident beliefs ("soul · relaxed"), why nothing arrives (_input_words: no microphone
@@ -363,7 +364,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
                "loose": bool(direction.get("loose")), "stream": stream, "test": _is_test_stream(stream),
                "input": {"peak_dbfs": inp.get("peak_dbfs"), "rms_dbfs": inp.get("rms_dbfs")} if inp else None,
                "input_trace": {"seq": trace.get("seq"), "hz": trace.get("hz"), "peak_dbfs": trace.get("peak_dbfs"),
-                               "rms_dbfs": trace.get("rms_dbfs")} if trace else None}
+                               "rms_dbfs": trace.get("rms_dbfs")} if trace else None,
+               "mic": dict(eng["mic"]) if isinstance(eng.get("mic"), dict) else None}
 
     rb = _d(director.get("readback"))
     name = rb.get("vibe") if isinstance(rb.get("vibe"), str) else None

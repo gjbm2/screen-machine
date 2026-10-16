@@ -6158,3 +6158,15 @@ full suite's one reading of 164 µs was under the host's other load).
 - `HueOut.persist_state` / `restore_state`; `Rig.persist` returns `{"outputs": {...}}`.
 - show.yaml `director.build.hit_swell_ms`. In `__main__`, `ctx.set_look_out` sends artnet_out only `hue_depth`,
   `beat_lock` and `reset`.
+
+### S5.15 The Mic choice (16 Oct; the owner's ask via 05)
+- `inputs.py`: `Inputs` lists the room's sound inputs from receiver health and show.yaml: the permanent senders'
+  streams, less test, MIDI and `room_sound: false`. Each has a `label` (show.yaml `senders.<name>.label`, else the
+  sender's name), its state, its `device` (the heartbeat's `dev`) and its `devices` (the heartbeat's new optional
+  `devices`). `GET /api/v1/inputs`, `PUT /api/v1/input {stream|null, device?}`; persisted in `STATE_DIR/input.json`.
+- `Receiver.set_choice(stream|None)`: a priority layer after `set_priority` (test streams) and before
+  `cfg.stream_priority`, so sources.py resetting its priority never clears the owner's pick.
+  `Receiver.set_device_hints({stream: device})` adds `devices` to that sender's SUBSCRIBEs, sent at once on a change.
+- `vban`: heartbeat `devices` (≤32 × ≤128 chars, trimmed to fit 1436 B); SUBSCRIBE `devices`;
+  `vban.subscribed_devices(pkt)` for senders. Receivers and older senders ignore keys they don't know.
+- The card's `hearing.mic` = `Inputs.mic()`: {stream, device, chosen} for the active stream.

@@ -485,3 +485,29 @@ def test_midi_state_arg_checks():
 def test_classify_unknown():
     assert vban.classify({"v": 1, "hello": 1}) is None
     assert vban.classify([1]) is None  # type: ignore[arg-type]
+
+
+# -- device choices (the Room page's Mic select) ----------------------------------------------------------------------
+def test_heartbeat_devices_round_trip_and_fit_one_packet():
+    hb = vban.make_heartbeat(sess="s", frame=0, n=0, t_cap_ns=0, dev="Dell", devices=["Dell", "Insta360 Link"])
+    got = vban.parse_heartbeat(vban.parse(vban.pack_text("pc22-mic", 0, hb)))
+    assert got is not None and got.dev == "Dell" and got.devices == ["Dell", "Insta360 Link"]
+    big = vban.make_heartbeat(sess="s", frame=0, n=0, t_cap_ns=0, devices=[f"{i:03d}" + "x" * 200 for i in range(40)])
+    assert 0 < len(big["devices"]) < vban.DEVICES_MAX and all(len(d) == vban.DEVICE_NAME_MAX for d in big["devices"])
+    assert len(vban.pack_text("pc22-mic", 0, big)) <= vban.MAX_PACKET            # trimmed from the end until it fits
+    assert vban.parse_heartbeat(vban.make_heartbeat(sess="s", frame=0, n=0, t_cap_ns=0)).devices is None
+
+
+def test_heartbeat_with_bad_devices_still_parses():
+    hb = vban.make_heartbeat(sess="s", frame=0, n=0, t_cap_ns=0)
+    assert vban.parse_heartbeat({**hb, "devices": "Dell"}).devices is None
+    assert vban.parse_heartbeat({**hb, "devices": ["Dell", 3, "", "y" * 129]}).devices == ["Dell"]
+
+
+def test_subscribe_device_hints():
+    pkt = vban.parse(vban.subscribe_packet(["pc22-mic"], 0, devices={"pc22-mic": "Dell"}))
+    assert vban.subscribed_streams(pkt) == ["pc22-mic"] and vban.subscribed_devices(pkt) == {"pc22-mic": "Dell"}
+    assert vban.subscribed_devices(vban.parse(vban.subscribe_packet(["pc22-mic"], 1))) == {}
+    assert "devices" not in vban.subscribe_obj(["pc22-mic"], devices={})
+    assert vban.subscribed_devices({"v": 1, "subscribe": ["a"], "devices": {"a": 3, "b": "B"}}) == {"b": "B"}
+    assert vban.subscribed_devices({"v": 1, "sess": "x"}) == {}
