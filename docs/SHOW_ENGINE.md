@@ -228,7 +228,7 @@ The sender is one Python script (~150 lines) with two capture back ends. It capt
 - **Keeping loopback alive:** WASAPI sends nothing while nothing plays. The agent therefore plays a silent render stream, so the device clock and the sample index never stop.
 - It re-opens the device when the default device changes.
 - It gets a Spectre card from `scripts/windows/audio-agent/*.ps1` (ca).
-- **Built, 16 Oct (05):** `tools/show_sender/pc22_agent.py` sends the Windows default mic (the Insta360 Link) as stream `pc22-mic` on UDP 6984. It runs as a Windows scheduled task under the Spectre card `screen-machine-audio-agent`, and show.yaml's `senders.pc22` subscribes it. Mic only for now; loopback is not built. Windows' microphone privacy setting must allow desktop apps, or the agent sends silence.
+- **Built, 16 Oct (05):** `tools/show_sender/pc22_agent.py` sends a PC22 mic as stream `pc22-mic` on UDP 6984: the first input matching `--mic-match`, else the Windows default. It uses the Dell U3224KB monitor's mic, because the Insta360 Link heard everything 134–148 ms later (05, three runs). It runs as a Windows scheduled task under the Spectre card `screen-machine-audio-agent`, and show.yaml's `senders.pc22` subscribes it. Mic only for now; loopback is not built. Windows' microphone privacy setting must allow desktop apps, or the agent sends silence.
 - WSLg's mic is dead on this box (RDP source returns silence, then unloads), so we don't use it.
 
 **The kiosk mini-PC (owner, 15 Oct):** `screen-machine-drawingroom`, a Beelink N95 on Ubuntu 24.04.
@@ -1336,7 +1336,7 @@ GET    /show/healthz
 
   `hearing.level` stays as energy (loudness against the mode's expected loudness, gated), so it is not a meter. When nothing comes in, `hearing.text` says why: "No microphone connected yet", "The microphone isn't answering", "No microphone plugged in" or "The microphone stopped sending".
 
-  05's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time, for a live trace with measured latency.
+  05's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time. `{"ping"}`/`{"pong", "srv"}` lets the page align clocks and show its delay. *Measured:* it lags a direct read of the same mic by 16–17 ms, at about 57 frames/s in the browser.
 - **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 

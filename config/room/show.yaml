@@ -40,7 +40,7 @@ senders:
   #   hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
   #   port: 6980
   #   streams: [room-mic, room-piano]
-  pc22:                                     # PC22's own mic (Insta360 Link, the Windows default input) until the
+  pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
     hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
     port: 6984                              # Spectre's audio-agent card (05, 16 Oct; SHOW_ENGINE §3.2 "PC22")
     streams: [pc22-mic]
