@@ -1345,7 +1345,7 @@ GET    /show/healthz
   - **Effect of a choice:** the stream ranks after a playing test stream and before show.yaml's order, and its device rides that sender's SUBSCRIBEs. The choice is kept in `input.json`, and each stream keeps its own device.
   - **Labels:** show.yaml `senders.<name>.label` gives the Room page's group label.
   - **On the card:** `hearing.mic` = {stream, device, chosen}.
-  - **Who builds what:** the page and the PC22 agent are 05's; the kiosk sender's `devices` support is 98's.
+  - **Who builds what:** the page and the PC22 agent are 05's. 98's kiosk sender supports both fields (7962bd28): every ALSA capture card is listed, and an exact-name hint reopens arecord on that card. It deploys with the kit.
 - **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 
