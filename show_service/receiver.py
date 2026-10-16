@@ -794,7 +794,7 @@ class Receiver:
             t = None
             if st.capture is not None and st.capture.ready:
                 t = st.capture.to_remote_ns(st.base_n + _signed(vban.counter_delta(st.base_c, pkt.counter)) * st.frames)
-            self._on_level(st.name, pkt.counter, peak, t, arrival)  # type: ignore[misc]
+            self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr)  # type: ignore[misc]
         except Exception:                                # noqa: BLE001
             self._error("audio")
 
