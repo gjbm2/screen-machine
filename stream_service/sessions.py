@@ -67,7 +67,7 @@ from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
-from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext
+from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, why_words
 from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
@@ -1013,7 +1013,8 @@ class Session(EngineListener):
                     break
                 t = d.pick_transition(presets.transitions, prev=prev_t)
                 q.add("scene", {"scene": got[0], "transition": t[0] if t else None, "origin": "auto",
-                                "transition_origin": "auto" if t else None, "why": got[1]})
+                                "transition_origin": "auto" if t else None, "why": got[1],
+                                "why_words": self._why("scene", got[0])})
                 prev_t = t[0] if t else prev_t
         else:
             q.drop_auto("scene")
@@ -1023,9 +1024,18 @@ class Session(EngineListener):
                                self.pixels_ratio(), tuple(e["effect"] for e in q.effects))
                 if got is None:
                     break
-                q.add("effect", {"effect": got[0], "origin": "auto", "why": got[1]})
+                q.add("effect", {"effect": got[0], "origin": "auto", "why": got[1],
+                                 "why_words": self._why("effect", got[0])})
         else:
             q.drop_auto("effect")
+
+    def _why(self, kind: str, name: str) -> str:
+        """The plain-words why for one of the director's entries (upnext.why_words)."""
+        presets = self.mgr.presets
+        p = (presets.scenes if kind == "scene" else presets.effects).get(name) or {}
+        plugin = p.get("source") if kind == "scene" else p.get("effect")
+        return why_words(kind, p.get("tags") or {}, self.director.direction,
+                         self.mgr.rating_weight("source" if kind == "scene" else "effect", plugin), p.get("stage"))
 
     def _upnext_edited(self) -> None:
         """After an edit: a prepared pick that is no longer the head is dropped (the new head is prepared)."""
@@ -1104,12 +1114,13 @@ class Session(EngineListener):
             raise ParamError("bad_request", "at / to must be a position (0 = next)")
         result: dict = {}
         if op == "add":
-            e = q.add(kind, {**self._upnext_entry(kind, body), "origin": "you", "why": None},
-                      0 if at is None else at)
+            e = q.add(kind, {**self._upnext_entry(kind, body), "origin": "you", "why": None,
+                             "why_words": "You queued it"}, 0 if at is None else at)
             result["id"] = e["id"]
         elif op == "set":
             i = q.find(qid)[1]
-            q.items(kind)[i].update(self._upnext_entry(kind, body, partial=True), origin="you")
+            q.items(kind)[i].update(self._upnext_entry(kind, body, partial=True), origin="you",
+                                    why_words="You chose it")
             q.changed()
         elif op == "remove":
             q.remove(qid)
@@ -1117,7 +1128,7 @@ class Session(EngineListener):
             q.move(qid, 0 if at is None else at)
         elif op == "keep":
             e = q.items(kind)[q.find(qid)[1]]
-            e["origin"] = "you"
+            e["origin"], e["why_words"] = "you", "You kept it"
             if e.get("transition_origin") == "auto":
                 e["transition_origin"] = "you"
             q.changed()
@@ -1135,13 +1146,15 @@ class Session(EngineListener):
                                                       prev=items[i - 1].get("transition") if i else None)
                     if got is not None:
                         items[i] = {"id": old["id"], "scene": got[0], "transition": t[0] if t else None,
-                                    "origin": "auto", "transition_origin": "auto" if t else None, "why": got[1]}
+                                    "origin": "auto", "transition_origin": "auto" if t else None, "why": got[1],
+                                    "why_words": self._why("scene", got[0])}
                 else:
                     got = self.fx_director.ahead(now, self.fx.stack, self.mgr.presets.effects,
                                                  lambda n: self.mgr.cost_ms("effect", n), self.pixels_ratio(),
                                                  tuple(x["effect"] for x in items))
                     if got is not None:
-                        items[i] = {"id": old["id"], "effect": got[0], "origin": "auto", "why": got[1]}
+                        items[i] = {"id": old["id"], "effect": got[0], "origin": "auto", "why": got[1],
+                                    "why_words": self._why("effect", got[0])}
                 q.changed()
         elif op == "play":
             q.move(qid, 0)

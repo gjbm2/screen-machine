@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from stream_service.upnext import EFFECTS_AHEAD, SCENES_AHEAD, UpNext
+from stream_service.upnext import EFFECTS_AHEAD, SCENES_AHEAD, UpNext, why_words
 
 from .test_cue import AUTO, cue, live
 from .test_fx_api import client as fx_client  # noqa: F401 (fixture)
@@ -124,3 +124,12 @@ async def test_effects_queue_feeds_next_effect(fx_client):  # noqa: F811
     r = await op(client, sid, op="play", id=mine)
     assert r.status == 200, await r.text()
     assert (await r.json())["fx"]["preset"] == eff
+
+
+def test_why_in_plain_words():
+    d = {"moods": ["calm", "dreamy"], "energy": 0.2, "genre": "jazz", "fx": {"moods": ["warm"]}}
+    assert why_words("scene", {"moods": ["dreamy", "calm"], "energy": [0, 0.4], "genre": ["jazz"]}, d, 4.0) == \
+        "Fits dreamy, calm · fits jazz · suits the calm · you rated it 4★"
+    assert why_words("scene", {}, d) == "For variety"
+    assert why_words("effect", {"moods": ["warm"]}, d, 1.0, "light") == "A light effect · fits warm"
+    assert why_words("effect", {}, d, 1.0, "light") == "A light effect · for variety"

@@ -25,6 +25,39 @@ EFFECTS_AHEAD = 3
 KINDS = ("scene", "effect")
 
 
+def why_words(kind: str, tags: dict, direction: dict, rated: float = 1.0, stage: Optional[str] = None) -> str:
+    """Why the director queued it, in plain words for the pages ("Fits calm, dreamy · you rated it 4★")."""
+    tags = tags or {}
+    want = list(direction.get("moods") or [])
+    if kind == "effect":
+        want = list((direction.get("fx") or {}).get("moods") or []) or want
+    have = tags.get("moods") or []
+    have = [have] if isinstance(have, str) else list(have)
+    out = []
+    hit = [m for m in have if m in set(want)]
+    if hit:
+        out.append("fits " + ", ".join(hit[:2]))
+    g, tg = direction.get("genre"), tags.get("genre")
+    if g and (g == tg or (isinstance(tg, list) and g in tg)):
+        out.append(f"fits {g}")
+    e, rng = direction.get("energy"), tags.get("energy")
+    if isinstance(e, (int, float)) and isinstance(rng, (list, tuple)) and len(rng) == 2 and rng[0] <= e <= rng[1]:
+        if e <= 0.35:
+            out.append("suits the calm")
+        elif e >= 0.65:
+            out.append("suits the energy")
+    if rated >= 8.0:
+        out.append("you rated it 5★")
+    elif rated >= 4.0:
+        out.append("you rated it 4★")
+    if kind == "effect" and stage:
+        out.insert(0, f"a {stage} effect")
+    if not out or out == [f"a {stage} effect"]:
+        out.append("for variety")
+    s = " · ".join(out)
+    return s[:1].upper() + s[1:]
+
+
 class UpNext:
     def __init__(self) -> None:
         self.scenes: list[dict] = []     # {id, scene, transition, origin, transition_origin, why}
