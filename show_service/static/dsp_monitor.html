@@ -1,0 +1,486 @@
+<!doctype html>
+<!--
+  The DSP monitor (owner, 16 Oct: "how can I see evidence that the DSP is working properly, e.g. bpm pulse, real-time
+  analysis/params ... I'm trying to debug the real-time DSP"). Served by show_service at /dev/dsp; reached at
+  :8700/show/dev/dsp (or https://…/rs/show/dev/dsp). Everything is live from show_service's own outputs:
+    - the show bus (WS /v1/show, role "monitor", want music.* incl. music.hit and music.rhythm): music.clock (beat
+      clock), music.hit (per-band onsets), music.features (25 Hz), music.rhythm (10 Hz), music.harmony, music.context…
+    - the live meter (WS /v1/levels): raw peak + FFT per frame, and ping/pong to align this page's clock with
+      show_service's (every t_ms on the bus is show_service's CLOCK_MONOTONIC, acoustic time)
+    - GET /api/v1/state every 2 s: the engine's own timings and the stream's health.
+  Nothing here is computed from the audio itself: what it shows is what the DSP says. Built by screen-machine-05.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSP monitor</title>
+<style>
+  :root { --bg: #fafaf9; --card: #fff; --ink: #1c1917; --mute: #78716c; --line: #e7e5e4; --teal: #0d9488; --amber: #d97706; --rose: #e11d48; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; }
+  header h1 { font-size: 17px; margin: 0; }
+  .pill { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--mute); }
+  .ok { color: var(--teal); } .bad { color: var(--rose); } .warn { color: var(--amber); }
+  main { max-width: 1180px; margin: 0 auto; padding: 12px 16px 40px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+  section { background: var(--card); border: 1px solid var(--line); padding: 12px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--mute); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 8px; }
+  h2 .pill { text-transform: none; letter-spacing: 0; }
+  canvas { display: block; width: 100%; }
+  .row { display: grid; grid-template-columns: 112px 1fr 64px; gap: 8px; align-items: center; margin: 3px 0; }
+  .row .k { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .v { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+  .bar { height: 10px; background: #f5f5f4; position: relative; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); }
+  .big { font: 600 34px/1 ui-sans-serif, system-ui; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kv .k { color: var(--mute); }
+  .kv span { overflow-wrap: anywhere; min-width: 0; }
+  .lamps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .lamp { height: 46px; border: 1px solid var(--line); display: flex; align-items: flex-end; justify-content: center; font-size: 11px; color: var(--mute); padding-bottom: 3px; }
+  .beats { display: flex; gap: 6px; margin-top: 8px; }
+  .beats span { flex: 1; height: 12px; background: #f5f5f4; border: 1px solid var(--line); }
+  .beats span.on { background: var(--teal); }
+  .beats span.one { border-color: var(--amber); }
+  details { margin: 4px 0; } summary { cursor: pointer; color: var(--mute); font-size: 12px; }
+  pre { margin: 4px 0 0; padding: 8px; background: #f5f5f4; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
+  .note { color: var(--mute); font-size: 12px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DSP monitor</h1>
+  <span class="pill" id="conn">connecting…</span>
+  <span class="pill" id="stream">—</span>
+  <span class="pill" id="delay">—</span>
+  <span class="pill" id="rates">—</span>
+</header>
+<main>
+  <section>
+    <h2>Beat clock <span class="pill" id="clockState">—</span></h2>
+    <div style="display:flex; gap:16px; align-items:center">
+      <canvas id="pulse" width="120" height="120" style="width:120px;height:120px"></canvas>
+      <div>
+        <div class="big" id="bpm">—</div>
+        <div class="pill">BPM · music.clock</div>
+        <div class="pill" id="barpos" style="margin-top:6px">—</div>
+      </div>
+    </div>
+    <div class="beats" id="beats"></div>
+    <div id="clockRows" style="margin-top:8px"></div>
+    <p class="note">The circle flashes on the clock's beats (its anchor and BPM, evaluated now on show_service's clock).
+      The small dot flashes on each low-band hit (sub or bass): when the clock is locked they should coincide.</p>
+  </section>
+
+  <section>
+    <h2>Hits (music.hit) <span class="pill" id="hitRate">—</span></h2>
+    <div class="lamps" id="lamps"></div>
+    <canvas id="hitTrail" style="height:150px;margin-top:8px"></canvas>
+    <p class="note">Each band's onsets over the last 5 s (dot size = strength), newest on the right; orange lines are
+      the beat clock's beats on the same axis.</p>
+  </section>
+
+  <section class="wide">
+    <h2>Input: level and spectrum (raw FFT, /v1/levels) <span class="pill" id="lvl">—</span></h2>
+    <canvas id="level" style="height:70px"></canvas>
+    <canvas id="spectro" style="height:110px;margin-top:1px"></canvas>
+  </section>
+
+  <section>
+    <h2>Features (music.features, 25 Hz) <span class="pill" id="featT">—</span></h2>
+    <div id="featRows"></div>
+  </section>
+
+  <section>
+    <h2>Bands <span class="pill">level · presence · hits/frame</span></h2>
+    <div id="bandRows"></div>
+    <canvas id="spec32" style="height:80px;margin-top:8px"></canvas>
+    <p class="note">Bars: spectrum32 as the art sees it (normalised, gated, smoothed 300 ms).</p>
+  </section>
+
+  <section class="wide">
+    <h2>Last 10 s <span class="pill">onset · energy · gate · lufs_m (−70..0) · brightness</span></h2>
+    <canvas id="spark" style="height:140px"></canvas>
+  </section>
+
+  <section>
+    <h2>Rhythm (music.rhythm, 10 Hz) <span class="pill" id="rhyT">—</span></h2>
+    <div id="rhyRows"></div>
+    <canvas id="mfcc" style="height:60px;margin-top:8px"></canvas>
+    <p class="note">mfcc13 c1..c13.</p>
+  </section>
+
+  <section>
+    <h2>Harmony (music.harmony) <span class="pill" id="harT">—</span></h2>
+    <div class="big" id="key">—</div>
+    <canvas id="chroma" style="height:90px;margin-top:8px"></canvas>
+    <div id="harRows" style="margin-top:8px"></div>
+  </section>
+
+  <section>
+    <h2>Engine (GET /api/v1/state, every 2 s) <span class="pill" id="stT">—</span></h2>
+    <div class="kv" id="engine"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Raw: the latest message of each type</h2>
+    <div id="raw"></div>
+  </section>
+</main>
+<script>
+"use strict";
+// -- addresses: this page lives at <base>/dev/dsp; the bus, the meter and the API are under the same base -----------
+const base = location.pathname.replace(/\/dev\/dsp\/?$/, "");
+const wsBase = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + base;
+const BANDS = ["sub", "bass", "low_mid", "mid", "high_mid", "air"];
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const fmt = (v, d = 2) => (v === null || v === undefined) ? "—" : (typeof v === "number" ? (Number.isFinite(v) ? v.toFixed(d) : String(v)) : String(v));
+
+// -- state ------------------------------------------------------------------------------------------------------
+const latest = {};                 // type -> {data, at, n}
+const arrivals = {};               // type -> [client ms]
+let clock = null;                  // music.clock data
+const hits = [];                   // {band, strength, at (client ms), t (srv ms)}
+const lastHit = {};                // band -> {strength, at}
+let lowHitAt = -1e9;
+const series = { onset: [], energy: [], gate: [], lufs: [], bright: [] };   // [client ms, 0..1]
+const levels = [];                 // {at, db, f}
+let range = { lo: 40, hi: 16000 };
+const pongs = [];                  // {rtt, off}: srv_ms = client_ms + off
+let offMs = null;
+
+function bestOff() {
+  let b = null;
+  for (const p of pongs) if (!b || p.rtt < b.rtt) b = p;
+  return b;
+}
+function srvNow() { return offMs === null ? null : performance.now() + offMs; }
+function note(type) {
+  const a = (arrivals[type] ||= []); const now = performance.now();
+  a.push(now); while (a.length && now - a[0] > 2000) a.shift();
+}
+function keep(arr, now, ms) { while (arr.length && now - arr[0][0] > ms) arr.shift(); }
+
+// -- the bus ------------------------------------------------------------------------------------------------------
+function openBus() {
+  const ws = new WebSocket(wsBase + "/v1/show");
+  ws.onopen = () => ws.send(JSON.stringify({ type: "hello", v: 2, role: "monitor", client_id: "dsp-monitor-" + Math.random().toString(36).slice(2, 8),
+                                             want: ["music", "music.hit", "music.rhythm", "show.state"] }));
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    const type = m.type; if (!type) return;
+    const at = performance.now();
+    const data = m.data !== undefined ? m.data : m;
+    latest[type] = { data, at, n: ((latest[type] && latest[type].n) || 0) + 1 };
+    note(type);
+    if (type === "music.clock") clock = data;
+    else if (type === "music.hit") {
+      hits.push({ band: data.band, strength: data.strength || 0, at });
+      lastHit[data.band] = { strength: data.strength || 0, at };
+      if (data.band === "sub" || data.band === "bass") lowHitAt = at;
+      while (hits.length && at - hits[0].at > 6000) hits.shift();
+    } else if (type === "music.features") {
+      series.onset.push([at, clamp01(data.onset || 0)]);
+      series.energy.push([at, clamp01(data.energy || 0)]);
+      series.gate.push([at, clamp01(data.gate || 0)]);
+      series.lufs.push([at, clamp01(((data.lufs_m ?? -70) + 70) / 70)]);
+      series.bright.push([at, clamp01(data.brightness || 0)]);
+      for (const k in series) keep(series[k], at, 10500);
+    }
+  };
+  ws.onclose = () => { $("conn").textContent = "bus closed: retrying"; $("conn").className = "pill bad"; setTimeout(openBus, 1000); };
+  ws.onopen2 = null;
+  ws.addEventListener("open", () => { $("conn").textContent = "bus connected"; $("conn").className = "pill ok"; });
+}
+
+// -- the meter (raw level + FFT, and the clock alignment) ---------------------------------------------------------
+function openLevels() {
+  const ws = new WebSocket(wsBase + "/v1/levels");
+  const ping = () => { if (ws.readyState === 1) ws.send(JSON.stringify({ ping: performance.now() })); };
+  let t; ws.onopen = () => { ping(); t = setInterval(ping, 1000); };
+  ws.onmessage = (ev) => {
+    const at = performance.now();
+    let f; try { f = JSON.parse(ev.data); } catch { return; }
+    if (typeof f.pong === "number") {
+      const rtt = at - f.pong; pongs.push({ rtt, off: f.srv * 1000 - (f.pong + rtt / 2) }); if (pongs.length > 20) pongs.shift();
+      offMs = bestOff().off; return;
+    }
+    if (typeof f.pk !== "number") return;
+    levels.push({ at, db: f.pk, f: f.f, a: f.a, s: f.s });
+    if (typeof f.fl === "number") range = { lo: f.fl, hi: f.fh };
+    while (levels.length && at - levels[0].at > 6000) levels.shift();
+  };
+  ws.onclose = () => { clearInterval(t); setTimeout(openLevels, 1000); };
+}
+
+// -- the engine's own report ---------------------------------------------------------------------------------------
+let engine = null;
+async function pollState() {
+  try {
+    const r = await fetch(base + "/api/v1/state", { cache: "no-store" });
+    engine = await r.json(); engine._at = performance.now();
+  } catch { engine = null; }
+  setTimeout(pollState, 2000);
+}
+
+// -- helpers to draw ----------------------------------------------------------------------------------------------
+function fit(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return [c.getContext("2d"), w, h, dpr];
+}
+function rows(el, list) {
+  // list: [label, value01 or null, text]
+  if (el.childElementCount !== list.length) {
+    el.innerHTML = list.map(() => '<div class="row"><span class="k"></span><div class="bar"><i></i></div><span class="v"></span></div>').join("");
+  }
+  list.forEach(([k, v, txt], i) => {
+    const r = el.children[i];
+    r.children[0].textContent = k; r.children[0].title = k;
+    r.children[1].firstChild.style.width = v === null || v === undefined ? "0%" : (clamp01(v) * 100).toFixed(1) + "%";
+    r.children[1].style.visibility = v === null || v === undefined ? "hidden" : "visible";
+    r.children[2].textContent = txt;
+  });
+}
+const LUT = (() => {
+  const st = [[0, [12, 10, 9]], [0.3, [30, 58, 138]], [0.6, [13, 148, 136]], [0.85, [250, 204, 21]], [1, [255, 251, 235]]];
+  const out = [];
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255; let k = st.findIndex(([p]) => p >= v); k = Math.max(1, k);
+    const [p0, c0] = st[k - 1], [p1, c1] = st[k]; const f = (v - p0) / (p1 - p0 || 1);
+    out.push(`rgb(${c0.map((c, j) => Math.round(c + (c1[j] - c) * f)).join(",")})`);
+  }
+  return out;
+})();
+const col = (db) => LUT[Math.round(clamp01((db + 100) / 80) * 255)];
+
+// -- static bits ----------------------------------------------------------------------------------------------------
+$("lamps").innerHTML = BANDS.map((b) => `<div class="lamp" data-b="${b}">${b}</div>`).join("");
+
+// -- the render loop ------------------------------------------------------------------------------------------------
+let specBuf = null, lastT = 0, acc = 0, lastBeat = null, beatFlashAt = -1e9, lastDom = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  const sn = srvNow();
+
+  // beat pulse
+  {
+    const [g, w, h, dpr] = fit($("pulse"));
+    g.clearRect(0, 0, w, h);
+    let phase = null, beatIdx = null;
+    if (clock && clock.bpm > 0 && sn !== null) {
+      const beat = clock.beat_at_anchor + (sn - clock.anchor_ms) / 1000 * clock.bpm / 60;
+      beatIdx = Math.floor(beat); phase = beat - beatIdx;
+      if (lastBeat !== null && beatIdx !== lastBeat) beatFlashAt = t;
+      lastBeat = beatIdx;
+    }
+    const k = Math.exp(-(t - beatFlashAt) / 120);
+    const locked = clock && (clock.state === "locked" || clock.state === "holding");
+    g.beginPath(); g.arc(w / 2, h / 2, (0.28 + 0.17 * k) * w, 0, Math.PI * 2);
+    g.fillStyle = clock && clock.bpm > 0 ? `rgba(${locked ? "13,148,136" : "217,119,6"},${0.15 + 0.85 * k})` : "#e7e5e4"; g.fill();
+    if (phase !== null) {     // the phase hand
+      g.strokeStyle = "#1c1917"; g.lineWidth = 2 * dpr; g.beginPath();
+      const a = -Math.PI / 2 + phase * Math.PI * 2; g.moveTo(w / 2, h / 2); g.lineTo(w / 2 + Math.cos(a) * 0.47 * w, h / 2 + Math.sin(a) * 0.47 * w); g.stroke();
+    }
+    const lk = Math.exp(-(t - lowHitAt) / 100);
+    g.beginPath(); g.arc(w * 0.88, h * 0.12, 0.09 * w, 0, Math.PI * 2); g.fillStyle = `rgba(225,29,72,${0.12 + 0.88 * lk})`; g.fill();
+    if (clock) {
+      const bpb = clock.beats_per_bar || 4;
+      const inBar = beatIdx === null ? null : (((beatIdx - clock.bar_anchor_beat) % bpb) + bpb) % bpb;
+      const bars = beatIdx === null ? null : Math.floor((beatIdx - clock.bar_anchor_beat) / bpb);
+      const ph = clock.phrase_bars || 4;
+      const inPhrase = bars === null ? null : ((bars % ph) + ph) % ph;
+      const beats = $("beats");
+      if (beats.childElementCount !== bpb) beats.innerHTML = Array.from({ length: bpb }, (_, i) => `<span class="${i === 0 ? "one" : ""}"></span>`).join("");
+      [...beats.children].forEach((s, i) => s.classList.toggle("on", i === inBar));
+      if (t - lastDom > 100) {
+        $("bpm").textContent = clock.bpm > 0 ? clock.bpm.toFixed(1) : "—";
+        $("barpos").textContent = inBar === null ? "no grid yet" : `beat ${inBar + 1} of ${bpb} · bar ${inPhrase + 1} of ${ph}`;
+        $("clockState").textContent = `${clock.state} · gate ${clock.gate}`;
+        $("clockState").className = "pill " + (clock.state === "locked" ? "ok" : clock.state === "searching" ? "warn" : "");
+      }
+    }
+  }
+
+  // hit lamps + trail
+  for (const el of $("lamps").children) {
+    const h = lastHit[el.dataset.b]; const k = h ? h.strength * Math.exp(-(t - h.at) / 150) : 0;
+    el.style.background = `rgba(13,148,136,${k.toFixed(3)})`; el.style.color = k > 0.5 ? "#fff" : "";
+  }
+  {
+    const [g, w, h, dpr] = fit($("hitTrail")); g.clearRect(0, 0, w, h); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    const rowH = h / BANDS.length;
+    g.font = `${10 * dpr}px ui-sans-serif`; g.fillStyle = "#a8a29e";
+    BANDS.forEach((b, i) => g.fillText(b, 3 * dpr, (i + 0.7) * rowH));
+    for (const hh of hits) {
+      const x = w - ((t - hh.at) / 5000) * w; if (x < 0) continue;
+      const i = BANDS.indexOf(hh.band); if (i < 0) continue;
+      g.beginPath(); g.arc(x, (i + 0.5) * rowH, Math.max(1.5 * dpr, hh.strength * rowH * 0.45), 0, Math.PI * 2);
+      g.fillStyle = "#0d9488"; g.fill();
+    }
+    if (clock && clock.bpm > 0 && sn !== null) {     // beat lines on the same axis
+      g.strokeStyle = "rgba(217,119,6,0.6)"; g.lineWidth = dpr;
+      const per = 60000 / clock.bpm; const b0 = clock.beat_at_anchor + (sn - clock.anchor_ms) / per;
+      for (let b = Math.floor(b0); b > b0 - 5000 / per - 1; b--) {
+        const x = w - ((b0 - b) * per / 5000) * w; if (x < 0) break;
+        g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+      }
+    }
+  }
+
+  // level + spectrogram
+  {
+    const [g, w, h, dpr] = fit($("level")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#0d9488";
+    for (let i = levels.length - 1; i >= 0; i--) {
+      const x0 = w - ((t - levels[i].at) / 5000) * w; if (x0 < 0) break;
+      const nx = i + 1 < levels.length ? levels[i + 1].at : t; const x1 = w - ((t - Math.min(nx, levels[i].at + 250)) / 5000) * w;
+      const v = clamp01((levels[i].db + 72) / 72); g.fillRect(x0, h - v * h, Math.max(dpr, x1 - x0), v * h);
+    }
+    const sc = $("spectro"); const [sg, sw, sh] = fit(sc);
+    if (!specBuf || specBuf.width !== sw || specBuf.height !== sh) {
+      specBuf = document.createElement("canvas"); specBuf.width = sw; specBuf.height = sh;
+      const b0 = specBuf.getContext("2d"); b0.fillStyle = "#0c0a09"; b0.fillRect(0, 0, sw, sh); acc = 0;
+    }
+    const bg = specBuf.getContext("2d");
+    acc += lastT ? ((t - lastT) / 5000) * sw : 0; const dx = Math.min(sw, Math.floor(acc)); acc -= dx;
+    if (dx > 0) {
+      bg.drawImage(specBuf, -dx, 0);
+      let last = null; for (let i = levels.length - 1; i >= 0 && !last; i--) if (levels[i].f) last = levels[i];
+      if (last && t - last.at < 250) {
+        const n = last.f.length;
+        for (let i = 0; i < n; i++) { const y0 = Math.round(sh - (i + 1) * sh / n), y1 = Math.round(sh - i * sh / n); bg.fillStyle = col(last.f[i]); bg.fillRect(sw - dx, y0, dx, y1 - y0); }
+      } else { bg.fillStyle = "#0c0a09"; bg.fillRect(sw - dx, 0, dx, sh); }
+    }
+    sg.drawImage(specBuf, 0, 0);
+    sg.font = `${10 * dpr}px ui-sans-serif`; sg.fillStyle = "rgba(255,255,255,.75)";
+    for (const hz of [100, 1000, 10000]) { const yy = sh - Math.log(hz / range.lo) / Math.log(range.hi / range.lo) * sh; sg.fillRect(0, yy, 6 * dpr, dpr); sg.fillText(hz >= 1000 ? hz / 1000 + "k" : hz, 8 * dpr, yy + 4 * dpr); }
+  }
+  lastT = t;
+
+  // sparklines
+  {
+    const [g, w, h, dpr] = fit($("spark")); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+    const cols = { onset: "#e11d48", energy: "#0d9488", gate: "#a8a29e", lufs: "#1e3a8a", bright: "#d97706" };
+    g.lineWidth = 1.5 * dpr;
+    for (const [k, arr] of Object.entries(series)) {
+      g.strokeStyle = cols[k]; g.beginPath(); let first = true;
+      for (const [at, v] of arr) { const x = w - ((t - at) / 10000) * w; if (x < 0) continue; const y = h - v * (h - 4 * dpr) - 2 * dpr; first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; }
+      g.stroke();
+    }
+    g.font = `${10 * dpr}px ui-sans-serif`; let x = 4 * dpr;
+    for (const [k, c] of Object.entries(cols)) { g.fillStyle = c; g.fillText(k, x, 12 * dpr); x += g.measureText(k).width + 10 * dpr; }
+  }
+
+  if (t - lastDom > 100) { lastDom = t; dom(t, sn); }
+}
+
+// -- the slower DOM parts (10 Hz) -------------------------------------------------------------------------------------
+function dom(t, sn) {
+  // header
+  const b = bestOff();
+  const lv = levels[levels.length - 1];
+  $("stream").textContent = lv ? `input ${lv.s}` : "no input";
+  if (b && lv && lv.a) {
+    const lags = levels.filter((x) => t - x.at < 2000 && x.a).map((x) => x.at - (x.a * 1000 - b.off)).sort((a, c) => a - c);
+    $("delay").textContent = lags.length ? `meter delay ${Math.max(0, Math.round(lags[lags.length >> 1]))} ms (show_service → here) · rtt ${b.rtt.toFixed(1)} ms` : "—";
+  }
+  const types = Object.keys(arrivals).sort();
+  $("rates").textContent = types.map((k) => `${k.replace("music.", "")} ${(arrivals[k].length / 2).toFixed(0)}/s`).join(" · ");
+  if (lv) $("lvl").textContent = `${lv.db.toFixed(1)} dBFS peak`;
+
+  // clock rows
+  if (clock) rows($("clockRows"), [
+    ["conf", clock.conf, fmt(clock.conf)], ["bar_conf", clock.bar_conf, fmt(clock.bar_conf)], ["phrase_conf", clock.phrase_conf, fmt(clock.phrase_conf)],
+    ["beats/bar", null, String(clock.beats_per_bar)], ["phrase bars", null, String(clock.phrase_bars)], ["epoch", null, String(clock.epoch)],
+    ["anchor age", null, sn !== null ? `${((sn - clock.anchor_ms) / 1000).toFixed(1)} s` : "—"],
+  ]);
+  else rows($("clockRows"), [["music.clock", null, "none yet"]]);
+
+  const nh = hits.filter((x) => t - x.at < 5000).length;
+  $("hitRate").textContent = `${(nh / 5).toFixed(1)} hits/s`;
+
+  // features
+  const F = latest["music.features"];
+  if (F) {
+    const d = F.data; $("featT").textContent = `${Math.round(t - F.at)} ms ago`;
+    rows($("featRows"), [
+      ["onset", d.onset, fmt(d.onset)], ["energy", d.energy, fmt(d.energy)], ["gate", d.gate, fmt(d.gate)],
+      ["punch", d.punch, fmt(d.punch)], ["drive", d.drive, fmt(d.drive)], ["brightness", d.brightness, fmt(d.brightness)],
+      ["noisiness", d.noisiness, fmt(d.noisiness)], ["lufs_m", clamp01((d.lufs_m + 70) / 70), fmt(d.lufs_m, 1)],
+      ["lufs_s", clamp01((d.lufs_s + 70) / 70), fmt(d.lufs_s, 1)], ["peak_dbfs", clamp01((d.peak_dbfs + 72) / 72), fmt(d.peak_dbfs, 1)],
+      ["rms_dbfs", clamp01((d.rms_dbfs + 72) / 72), fmt(d.rms_dbfs, 1)],
+    ]);
+    const bands = d.bands || {};
+    rows($("bandRows"), BANDS.flatMap((k) => bands[k] ? [[k, bands[k].level, `${fmt(bands[k].level)} · ${fmt(bands[k].presence)} · ${bands[k].hits}`]] : []));
+    const s32 = d.spectrum32 || [];
+    const [g, w, h] = fit($("spec32")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h); g.fillStyle = "#0d9488";
+    s32.forEach((v, i) => { const bw = w / s32.length; g.fillRect(i * bw + 1, h - clamp01(v) * h, bw - 2, clamp01(v) * h); });
+  } else rows($("featRows"), [["music.features", null, "none yet"]]);
+
+  // rhythm
+  const R = latest["music.rhythm"];
+  if (R) {
+    const d = R.data; $("rhyT").textContent = `${Math.round(t - R.at)} ms ago`;
+    rows($("rhyRows"), [
+      ["pulse_clarity", d.pulse_clarity, fmt(d.pulse_clarity)], ["density", d.density, fmt(d.density)], ["onset_rate", clamp01(d.onset_rate / 10), `${fmt(d.onset_rate, 1)}/s`],
+      ["percussive", d.percussive_ratio, fmt(d.percussive_ratio)], ["harm_change", d.harm_change, fmt(d.harm_change)],
+      ["swing", d.swing === null ? null : clamp01((d.swing - 1) / 2), fmt(d.swing)], ["syncopation", d.syncopation, fmt(d.syncopation)],
+      ["low_db", clamp01((d.low_db + 72) / 72), fmt(d.low_db, 1)], ["harmonic_db", clamp01((d.harmonic_db + 100) / 100), fmt(d.harmonic_db, 1)],
+    ]);
+    const m = d.mfcc13 || []; const [g, w, h] = fit($("mfcc")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    const mx = Math.max(1, ...m.map(Math.abs));
+    m.forEach((v, i) => { const bw = w / m.length; const y = (v / mx) * h / 2; g.fillStyle = v >= 0 ? "#0d9488" : "#d97706"; g.fillRect(i * bw + 1, h / 2 - Math.max(0, y), bw - 2, Math.abs(y)); });
+  } else rows($("rhyRows"), [["music.rhythm", null, "none yet"]]);
+
+  // harmony (chroma from harmony, else rhythm)
+  const H = latest["music.harmony"];
+  const chroma = (H && H.data.chroma12) || (R && R.data.chroma12) || [];
+  if (H) {
+    const d = H.data; $("harT").textContent = `${d.source || ""} · ${Math.round(t - H.at)} ms ago`;
+    $("key").textContent = d.key ? `${d.key} ${d.mode || ""}` : "no key";
+    rows($("harRows"), [["conf", d.conf, fmt(d.conf)], ["tension", d.tension, fmt(d.tension)], ["chord_change", d.chord_change, fmt(d.chord_change)], ["register", d.register, fmt(d.register)], ["spread", d.spread, fmt(d.spread)]]);
+  }
+  {
+    const [g, w, h, dpr] = fit($("chroma")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    g.font = `${10 * dpr}px ui-sans-serif`;
+    chroma.forEach((v, i) => { const bw = w / 12; g.fillStyle = "#0d9488"; g.fillRect(i * bw + 2, (h - 14 * dpr) * (1 - clamp01(v)), bw - 4, (h - 14 * dpr) * clamp01(v)); g.fillStyle = "#78716c"; g.fillText(NOTE_NAMES[i], i * bw + 4, h - 2 * dpr); });
+  }
+
+  // engine
+  if (engine) {
+    $("stT").textContent = `${Math.round((performance.now() - engine._at) / 1000)} s ago`;
+    const act = engine.active_audio; const st = (engine.streams || {})[act] || {};
+    const fs = engine.features_stats || {};
+    const kv = [
+      ["active input", act], ["stream state", st.state], ["sender", st.sender && st.sender.dev],
+      ["clock jitter / late", st.clock ? `${fmt(st.clock.jitter_ms)} / ${fmt(st.clock.late_ms)} ms` : "—"],
+      ["skew", st.clock ? `${fmt(st.clock.skew_ppm, 1)} ppm` : "—"],
+      ["dsp hop ms p50/p95", `${fmt(fs.hop_ms_p50, 3)} / ${fmt(fs.hop_ms_p95, 3)}`], ["dsp block ms p95", fmt(fs.block_ms_p95, 3)],
+      ["dsp tick ms p95", fmt(fs.tick_ms_p95, 3)], ["medium ms p50/p95", `${fmt(fs.medium_ms_p50, 2)} / ${fmt(fs.medium_ms_p95, 2)}`],
+      ["hops / gaps", `${fs.hops ?? "—"} / ${fs.gaps ?? "—"}`], ["publishes / fades", `${fs.publishes ?? "—"} / ${fs.fades ?? "—"}`],
+      ["onsets", fs.onsets], ["hits per band", fs.hits ? JSON.stringify(fs.hits) : "—"],
+      ["errors", JSON.stringify(engine.errors || {})],
+    ];
+    $("engine").innerHTML = kv.map(([k, v]) => `<span class="k">${k}</span><span>${v === undefined || v === null ? "—" : String(v).replace(/</g, "&lt;")}</span>`).join("");
+  }
+
+  // raw
+  const raw = $("raw");
+  for (const k of Object.keys(latest).sort()) {
+    let d = raw.querySelector(`details[data-k="${k}"]`);
+    if (!d) { d = document.createElement("details"); d.dataset.k = k; d.innerHTML = "<summary></summary><pre></pre>"; raw.appendChild(d); }
+    d.firstChild.textContent = `${k} · ${latest[k].n} received · ${Math.round(t - latest[k].at)} ms ago`;
+    if (d.open) d.lastChild.textContent = JSON.stringify(latest[k].data, null, 1);
+  }
+}
+
+openBus(); openLevels(); pollState(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

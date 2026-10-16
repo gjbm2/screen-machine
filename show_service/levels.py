@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import math
+import pathlib
 import threading
 import time
 from typing import Any, Optional
@@ -34,6 +35,8 @@ from aiohttp import WSMsgType, web
 log = logging.getLogger("show_service.levels")
 
 PATH = "/v1/levels"
+MONITOR_PATH = "/dev/dsp"                             # the DSP monitor page (static/dsp_monitor.html; 05, 16 Oct)
+MONITOR_FILE = pathlib.Path(__file__).resolve().parent / "static" / "dsp_monitor.html"
 MAX_HZ = 60.0
 QUEUE_MAX = 64
 FLOOR_DBFS = -120.0
@@ -150,6 +153,15 @@ class LevelFeed:
 
     def routes(self, app: web.Application) -> None:
         app.router.add_get(PATH, self._ws)
+        app.router.add_get(MONITOR_PATH, self._monitor)
+
+    async def _monitor(self, request: web.Request) -> web.Response:
+        """The DSP monitor page (static/dsp_monitor.html): read on each request, so an edit needs no restart."""
+        try:
+            body = MONITOR_FILE.read_text(encoding="utf-8")
+        except OSError as e:
+            return web.Response(status=500, text=f"dsp monitor page missing: {e}")
+        return web.Response(text=body, content_type="text/html", headers={"Cache-Control": "no-store"})
 
     async def _ws(self, request: web.Request) -> web.WebSocketResponse:
         self._loop = asyncio.get_running_loop()
