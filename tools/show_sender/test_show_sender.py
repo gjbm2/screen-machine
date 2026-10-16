@@ -108,6 +108,30 @@ def test_card_matching(tmp_path, monkeypatch):
     assert ss.find_card("nothing", "/dev/snd/pcmC{n}D0c") is None
 
 
+def test_device_choices_and_the_receivers_hint(monkeypatch):
+    cards = (" 0 [PCH            ]: HDA-Intel - HDA Intel PCH\n"
+             " 1 [ATR4697USB     ]: USB-Audio - AT2005USB / ATR4697-USB\n"
+             " 2 [Webcam         ]: USB-Audio - USB Webcam ATR4697USB-like\n")
+    real_read = ss.pathlib.Path.read_text
+    monkeypatch.setattr(ss.pathlib.Path, "read_text",
+                        lambda self, *a, **k: cards if str(self) == "/proc/asound/cards" else real_read(self, *a, **k))
+    monkeypatch.setattr(ss.glob, "glob", lambda pat: [pat] if pat in ("/dev/snd/pcmC1D0c", "/dev/snd/pcmC2D0c") else [])
+    node = "/dev/snd/pcmC{n}D0c"
+    assert ss.list_cards(node) == ["ATR4697USB", "Webcam"]
+    assert ss.pick_card("Webcam", None, node) == (2, "Webcam")
+    assert ss.pick_card("Nope", None, node) == (1, "ATR4697USB")      # unknown name: the default (first USB)
+    assert ss.pick_card(None, None, node) == (1, "ATR4697USB")
+    subs = ss.Subscriptions()
+    subs.on_packet(vban.subscribe_packet(["room-mic"], 0, devices={"room-mic": "Webcam"}), ("10.0.0.5", 6980), 1.0)
+    assert subs.device("room-mic") == "Webcam" and subs.device("room-piano") is None
+    sink = Sink()
+    au = ss.AudioStream("room-mic", sink, dev="Webcam")
+    au.devices = ss.list_cards(node)
+    au.heartbeat("ok", 10.0)
+    hb = vban.parse_heartbeat(sink.parsed()[-1])
+    assert hb.devices == ["ATR4697USB", "Webcam"] and hb.dev == "Webcam"
+
+
 def test_test_piano_streams_to_the_subscriber_over_udp():
     rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     rx.bind(("127.0.0.1", 0))
@@ -115,11 +139,13 @@ def test_test_piano_streams_to_the_subscriber_over_udp():
     out = ss.Out(0, "127.0.0.1")
     port = out.sock.getsockname()[1]
     stop = threading.Event()
-    threads = [threading.Thread(target=out.serve, args=(stop,), daemon=True),
-               threading.Thread(target=ss.run_test_piano, args=(out, stop, "scale"), daemon=True)]
-    for t in threads:
-        t.start()
-    got, t_end, counter = [], time.monotonic() + 3.0, 0
+    threading.Thread(target=out.serve, args=(stop,), daemon=True).start()
+    rx.sendto(vban.subscribe_packet(["test-piano"], 0), ("127.0.0.1", port))
+    t_end = time.monotonic() + 2.0
+    while out.subs.target("test-piano", time.monotonic()) is None and time.monotonic() < t_end:
+        time.sleep(0.005)                                 # subscribed before the first note, so seq 1 isn't lost
+    threading.Thread(target=ss.run_test_piano, args=(out, stop, "scale"), daemon=True).start()
+    got, t_end, counter = [], time.monotonic() + 3.0, 1
     try:
         while time.monotonic() < t_end:
             rx.sendto(vban.subscribe_packet(["test-piano"], counter), ("127.0.0.1", port))

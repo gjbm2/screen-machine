@@ -14,8 +14,10 @@ Streams:
               captured by ``arecord`` (alsa-utils) at 48 kHz, mono, INT16, 128 frames a packet.  ``arecord``'s
               "overrun!!! (at least N ms long)" advances the counter and n over the lost packets (xruns +1); over
               250 ms lost starts a new sess (vban.py "Sender rules").  A heartbeat every 500 ms (its own TEXT
-              counter): frame/n/t_cap_ns of the newest packet, levels over the last 500 ms, state ok / no_device.
-              No device: retried every 2 s, heartbeats say no_device.
+              counter): frame/n/t_cap_ns of the newest packet, levels over the last 500 ms, state ok / no_device,
+              and ``devices``: every ALSA capture card's name (the Room page's Mic choices).  A SUBSCRIBE device hint
+              for room-mic that names one of them exactly reopens capture on it (a new sess); an unknown name or
+              none keeps the default.  No device: retried every 2 s, heartbeats say no_device.
   room-piano  USB MIDI from the ALSA raw-MIDI device of the card matching --midi-match (else the first card with a
               midiC*D0 node), re-found by name when the piano box power-cycles.  Every read's events go out at once
               as one batch (<= 32 events, ``prev`` = the last two batches, newest first); note on/off and CC
@@ -80,15 +82,22 @@ class Subscriptions:
         self.addr: Optional[tuple] = None
         self.streams: set = set()
         self.until = 0.0
+        self.devices: dict = {}                           # the receiver's device hints, {stream: name}
 
     def on_packet(self, buf: bytes, addr: tuple, now: float) -> bool:
         pkt = vban.parse(buf)
         if pkt is None or not vban.is_subscribe(pkt):
             return False
         streams = vban.subscribed_streams(pkt) or []
+        devices = vban.subscribed_devices(pkt)
         with self.lock:
-            self.addr, self.streams, self.until = addr, set(streams), now + SUB_TTL_S
+            self.addr, self.streams, self.until, self.devices = addr, set(streams), now + SUB_TTL_S, devices
         return True
+
+    def device(self, stream: str) -> Optional[str]:
+        """The device the receiver last asked for on ``stream`` (the Room page's Mic choice), or None."""
+        with self.lock:
+            return self.devices.get(stream)
 
     def target(self, stream: str, now: float) -> Optional[tuple]:
         with self.lock:
@@ -234,6 +243,29 @@ def find_card(match: Optional[str], node_glob: str) -> Optional[tuple[int, str]]
     return None
 
 
+def _cards(node_glob: str) -> list[tuple[int, str]]:
+    try:
+        text = pathlib.Path("/proc/asound/cards").read_text()
+    except OSError:
+        return []
+    return [(int(m.group(1)), m.group(2).strip()) for m in re.finditer(r"^\s*(\d+)\s+\[([^\]]*)\]:", text, re.M)
+            if glob.glob(node_glob.format(n=int(m.group(1))))]
+
+
+def list_cards(node_glob: str) -> list[str]:
+    """Names of the ALSA cards that have a node matching ``node_glob`` (the heartbeat's ``devices``)."""
+    return [name for _, name in _cards(node_glob)]
+
+
+def pick_card(hint: Optional[str], match: Optional[str], node_glob: str) -> Optional[tuple[int, str]]:
+    """The receiver's hint when it names one of our cards exactly (SUBSCRIBE ``devices``), else ``match`` / the
+    first USB card."""
+    for card in _cards(node_glob) if hint else ():
+        if card[1] == hint:
+            return card
+    return find_card(match, node_glob)
+
+
 def run_rawmidi(out: Out, stop: threading.Event, match: Optional[str]) -> None:
     """The piano's USB MIDI -> room-piano; re-found by name when the box power-cycles."""
     ms: Optional[MidiStream] = None
@@ -312,6 +344,7 @@ class AudioStream:
 
     def __init__(self, stream: str, send: Callable[[str, bytes], bool], channels: int = 1, dev: str = "") -> None:
         self.stream, self.send, self.channels, self.dev = stream, send, channels, dev
+        self.devices: Optional[list[str]] = None          # the capture choices the heartbeat lists
         self.frames = vban.frames_per_packet(channels, vban.INT16)
         self.restart_sess()
         self.text_counter = 0
@@ -356,7 +389,8 @@ class AudioStream:
         frame, n, t_cap = self.last if self.last else (None, None, None)
         obj = vban.make_heartbeat(sess=self.sess, frame=frame, n=n, t_cap_ns=t_cap, in_lat_ms=round(in_lat_ms, 2),
                                   dev=self.dev or "none", state=state, xruns=self.xruns,
-                                  peak_dbfs=db(self._peak), rms_dbfs=db(rms), clips=self.clips)
+                                  peak_dbfs=db(self._peak), rms_dbfs=db(rms), clips=self.clips,
+                                  devices=self.devices)
         self.send(self.stream, vban.pack_text(self.stream, self.text_counter, obj))
         self.text_counter = (self.text_counter + 1) & 0xFFFFFFFF
         self._peak[:] = 0.0
@@ -373,8 +407,10 @@ def run_arecord(out: Out, stop: threading.Event, match: Optional[str], channels:
     period = au.frames
     in_lat_ms = 1000.0 * 4 * period / FS                  # arecord's buffer: 4 periods
     last_hb = 0.0
+    node = "/dev/snd/pcmC{n}D0c"
     while not stop.is_set():
-        card = find_card(match, "/dev/snd/pcmC{n}D0c")
+        au.devices = list_cards(node)
+        card = pick_card(out.subs.device(au.stream), match, node)
         if card is None or not _have("arecord"):
             if time.monotonic() - last_hb >= HEARTBEAT_S:
                 au.dev = "none" if card is None else f"{card[1]} (arecord missing)"
@@ -402,14 +438,22 @@ def run_arecord(out: Out, stop: threading.Event, match: Optional[str], channels:
                 pcm = np.frombuffer(buf, "<i2").reshape(-1, channels).astype(np.float32) / 32768.0
                 au.packet(pcm, t_read - int((period / FS + in_lat_ms / 1000.0) * 1e9))
                 if time.monotonic() - last_hb >= HEARTBEAT_S:
+                    au.devices = list_cards(node)
                     au.heartbeat("xrun" if lost else "ok", in_lat_ms)
                     last_hb = time.monotonic()
+                    want = out.subs.device(au.stream)
+                    if want and want != card[1] and want in au.devices:
+                        log.info("mic: the receiver asks for %s", want)
+                        break                             # reopened on it below, as a new sess
         finally:
             proc.terminate()
             try:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        want = out.subs.device(au.stream)
+        if want and want != card[1] and want in au.devices:
+            continue                                      # switching device: no retry wait
         log.warning("mic: arecord stopped (code %s)", proc.poll())
         stop.wait(RETRY_S)
 
