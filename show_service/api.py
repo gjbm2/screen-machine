@@ -285,11 +285,16 @@ NO_SENDER = "No microphone connected yet"
 NOT_ANSWERING = "The microphone isn't answering"
 NO_DEVICE = "No microphone plugged in"
 STOPPED = "The microphone stopped sending"
+MIC_STARTING = "The microphone is starting"     # the mic is on, its sender hasn't opened it yet (README S5.16)
+#: hearing.text when the mic on demand (mic.py, README S5.16) is why no room sound arrives: these win over the above
+MIC_MUTED = "Mic muted"
+MIC_OFF = "Mic off"
 
 
 def _input_words(inputs: Any) -> Optional[str]:
     """Why no sound arrives, or None while a room stream is up (or nothing is known): nothing configured, the sender
-    not answering, the sender up but with no capture device, or a stream that stopped."""
+    not answering, the sender up but with no capture device, a mic still opening (every room stream "off" while the
+    mic is on), or a stream that stopped."""
     if not isinstance(inputs, dict):
         return None
     states = [s for s in _d(inputs.get("room")).values() if isinstance(s, str)]
@@ -297,9 +302,18 @@ def _input_words(inputs: Any) -> Optional[str]:
         return None
     if "no_device" in states:
         return NO_DEVICE
+    if states and all(s == "off" for s in states):
+        return MIC_STARTING
     if states:
         return STOPPED
     return NO_SENDER if not inputs.get("senders") else NOT_ANSWERING
+
+
+def _mic_words(mic_state: Any) -> Optional[str]:
+    """The words while the mic on demand is off (README S5.16): MIC_MUTED or MIC_OFF; None while it is on or unknown."""
+    if not isinstance(mic_state, dict) or mic_state.get("on") is not False:
+        return None
+    return MIC_MUTED if mic_state.get("muted") else MIC_OFF
 
 
 def _palette_choices(director: dict) -> list[dict]:
@@ -324,10 +338,12 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     energy (loudness against the mode's expected loudness, gated), not a meter. hearing.mic is inputs.Inputs.mic():
     {stream, device, chosen} for the active stream (None without one).
 
-    hearing.text, first match wins: music.context's confident genre (Stage 4, structure's snapshot; with the
-    listener's first mood), confident beliefs ("soul · relaxed"), why nothing arrives (_input_words: no microphone
-    connected / not answering / not plugged in / stopped sending), Talking, Quiet, No sound coming in (no active audio,
-    or features older than 5 s), Music, Listening."""
+    hearing.text, first match wins: why nothing arrives when no sound comes in (the mic on demand first: "Mic muted" /
+    "Mic off", README S5.16; then _input_words: no microphone connected / not answering / not plugged in / starting /
+    stopped sending), music.context's confident genre (Stage 4, structure's snapshot; with the listener's first mood),
+    confident beliefs ("soul · relaxed"), Talking, Quiet, No sound coming in (no active audio, or features older than
+    5 s), Music, Listening. ``mic_state`` is the engine's (mic.Mic.state(): GET /api/v1/mic's body), None without
+    mic.py."""
     comps = _d(_d(brain_snapshot).get("components"))
     director, ap, sit, src = (_d(comps.get(n)) for n in (DIRECTOR, AUTOPILOT, SITUATIONS, SOURCES))
     lsnap = _d(comps.get(LISTENER))
@@ -341,7 +357,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     stale = not active or age_ms is None or age_ms > STALE_FEATURES_MS
     beliefs = _d(lsnap.get("beliefs") if "beliefs" in lsnap else lview.get("beliefs"))
     context = _d(_d(comps.get(STRUCTURE)).get("context"))
-    why = _input_words(eng.get("inputs")) if stale else None
+    mic_state = eng.get("mic_state") if isinstance(eng.get("mic_state"), dict) else None
+    why = (_mic_words(mic_state) or _input_words(eng.get("inputs"))) if stale else None
     text = why or (None if stale else _context_words(context, beliefs))
     if text is None:
         text = _confident_words(beliefs)
@@ -411,7 +428,16 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     return {"hearing": hearing, "vibe": vibe, "steps": steps, "palette": palette, "look": look_out,
             "house": bool(director.get("house")), "low": bool(director.get("low")), "chips": chips,
             "listening": listening, "describe": dict(describe) if isinstance(describe, dict) else dict(DESCRIBE_IDLE),
-            "auto": auto, "tests": tests}
+            "auto": auto, "tests": tests, "mic_state": _plain(mic_state) if mic_state is not None else None}
+
+
+def _plain(o: Any) -> Any:
+    """A JSON-only copy (dicts and lists copied, so the card never shares the mic's own body)."""
+    if isinstance(o, dict):
+        return {str(k): _plain(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_plain(v) for v in o]
+    return o
 
 
 # -- neutral answers for a missing component -------------------------------------------------------------------------------

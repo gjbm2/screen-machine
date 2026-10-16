@@ -47,16 +47,26 @@ Audio (per stream; the receiver's own index ``n`` per segment, from 0; ``fill_ma
     the first heartbeat of each segment).
   * metering on every real packet (500 ms peak/RMS, clips at |x| >= 0.999, a 10 s floor of 100 ms RMS bins).
 
+The mic on demand (README S5.16; mic.py decides). :meth:`Receiver.set_off_streams` (any thread) names the streams to
+keep off: each sender's SUBSCRIBE lists them under ``off`` (device closed, off heartbeats) and the rest under
+``subscribe`` (possibly empty), sent at once on a change. Their audio is dropped on arrival, before the registry's
+meters, ``on_level`` or delivery, so nothing of it reaches DSP, levels, rings or the listener; packets within
+OFF_GRACE_S of going off are expected stragglers, later ones mean the sender ignores the off (both counted in health).
+Privacy at start: a configured stream that could be a mic (not MIDI, not a test stream, not an on-demand sender's)
+is held off until a decision covers it, so nothing captures the room before the mic decision exists (the decision
+is made before the first SUBSCRIBE; a sender added later waits for the next one).
+
 MIDI. The stream's RemoteTimeMap observes the newest ``t_ns`` of a batch (or a state's ``t_ns``) at arrival; it is
 attached to the best-ranked audio stream from the same source IP whose CaptureMap is ready (detached when that one
 goes down), then ``on_midi(stream, msg, arrival_s, tmap.to_host)``; duplicates pass through (midi.py dedupes by
 seq). ``set_offsets`` sets each stream's acoustic_offset_ms (missing = 0) on its SampleClock or RemoteTimeMap.
 
-States (re-evaluated every 0.1 s): no_device (a heartbeat < 2 s old says so), down (no data packet for > 5 s, or
-ever), stale (> 0.5 s), quiet (audio: RMS under -60 dBFS for > 5 s; MIDI: no note or pedal for 30 s), else
-streaming. ``active_audio()``: the best-ranked audio stream that is streaming or quiet; away from the current one
-only after it has been stale/down/no_device for 1 s; up only to one that has been streaming for 3 s; None only when
-no audio stream is live. MIDI is never a fallback. Health (README "Health") is rebuilt at 2 Hz.
+States (re-evaluated every 0.1 s): off (kept off here, or a heartbeat < 2 s old says "off" and no audio came after
+it), no_device (a heartbeat < 2 s old says so), down (no data packet for > 5 s, or ever), stale (> 0.5 s), quiet
+(audio: RMS under -60 dBFS for > 5 s; MIDI: no note or pedal for 30 s), else streaming. ``active_audio()``: the
+best-ranked audio stream that is streaming or quiet; away from the current one at once when it goes off, else only
+after it has been stale/down/no_device for 1 s; up only to one that has been streaming for 3 s; None only when no
+audio stream is live. MIDI is never a fallback. Health (README "Health") is rebuilt at 2 Hz.
 """
 
 from __future__ import annotations
@@ -106,6 +116,7 @@ DBFS_FLOOR = -120.0
 MIDI_TEXT_GAP_MAX = 1000                         # TEXT counter steps up to this count as lost packets
 ERROR_LOG_EVERY_S = 10.0
 ANSWER_FRESH_S = 3.0                             # a host that sent a packet this recently gets the SUBSCRIBEs alone
+OFF_GRACE_S = 1.0                                # audio of a stream this long after it went off: the sender ignores it
 LIVE = ("streaming", "quiet")
 BAD = ("stale", "down", "no_device")
 _HALF = 1 << 31
@@ -193,6 +204,9 @@ class _Stream:
         self.attached: Optional[str] = None
         self.text_c: Optional[int] = None
         self.t_activity: Optional[float] = None
+        # the mic on demand: audio packets dropped while this stream was off (and those past OFF_GRACE_S)
+        self.off_dropped = 0
+        self.off_ignored = 0
 
     def count_loss(self, now: float, received: int, lost: int) -> None:
         sec = int(now)
@@ -251,6 +265,16 @@ class Receiver:
         self._choice: tuple[str, ...] = ()               # set_choice: the Room page's Mic pick, after the test streams
         self._choice_want: Optional[tuple[str, ...]] = None
         self._device_hints: dict[str, str] = {}          # set_device_hints: {stream: device} in each SUBSCRIBE
+        # the mic on demand (README S5.16): set_off_streams (any thread) puts (off, covered) in _off_want; show-rx
+        # applies it at a tick. _off (in effect: decided + held) is swapped whole and read per packet on show-rx.
+        self._off_want: Optional[tuple[frozenset[str], frozenset[str]]] = None
+        self._off_decided: frozenset[str] = frozenset()
+        self._covered: Optional[frozenset[str]] = None   # the streams a decision has covered; None: no decision yet
+        self._held: frozenset[str] = frozenset()
+        self._off: frozenset[str] = frozenset()
+        self._off_since: dict[str, float] = {}
+        self._off_dropped = self._off_ignored = 0
+        self._ignored_logged = -math.inf
         # show-dns writes these two dicts, keyed (sender name, host), swapped by reference; show-rx reads them
         self._resolved: dict[tuple[str, str], tuple[str, int]] = {}
         self._resolve_err: dict[tuple[str, str], Optional[str]] = {}
@@ -274,6 +298,7 @@ class Receiver:
         self._threads: list[threading.Thread] = []
         if sock is not None:
             self._adopt(sock)
+        self._held = self._off = self._hold_now()        # privacy at start: no decision yet
         self._build_health(0.0)
 
     # -- lifecycle --------------------------------------------------------------------------------------------------
@@ -463,6 +488,20 @@ class Receiver:
             self._device_hints = hints
             self._sub_next = -math.inf
 
+    def set_off_streams(self, names: Any, covered: Any = None) -> None:
+        """The mic on demand (mic.py; any thread; README S5.16): ``names`` go in each SUBSCRIBE's ``off`` (device
+        closed, off heartbeats) instead of ``subscribe``, and their audio is dropped on arrival. ``covered``: every
+        stream this decision considered (default: every stream of the senders now); a configured stream that could
+        be a mic and isn't covered stays held off until a decision covers it. Applied at the next tick, which sends
+        the SUBSCRIBEs at once."""
+        if covered is None:
+            covered = [st for s in self._sender_list() for st in s.streams]
+        self._off_want = (frozenset(str(n) for n in names), frozenset(str(n) for n in covered))
+
+    def off_streams(self) -> frozenset[str]:
+        """The streams kept off now: the decision's and the held ones (any thread)."""
+        return self._off
+
     def senders(self) -> tuple[contract.Sender, ...]:
         """The sender list show-rx uses now (any thread)."""
         return self._senders
@@ -518,6 +557,15 @@ class Receiver:
         want = self._senders_want
         if want is not None and want is not self._senders:
             self._apply_senders(want)
+            if self._refresh_off(now_s):                 # a new sender's mic is held until a decision covers it
+                self._update_states(now_s)
+        ow = self._off_want
+        if ow is not None:
+            self._off_want = None
+            self._off_decided, self._covered = ow
+            if self._refresh_off(now_s):
+                self._states_next = now_s + STATES_EVERY_S
+                self._update_states(now_s)               # an active stream that went off is left at once
         cw = self._choice_want
         if cw is not None:
             self._choice_want = None
@@ -535,6 +583,7 @@ class Receiver:
             self._expire_all(now_s)
         if now_s >= self._states_next:
             self._states_next = now_s + STATES_EVERY_S
+            self._refresh_off(now_s)                     # (a held name may have turned out to be MIDI)
             self._update_states(now_s)
         if now_s >= self._health_next:
             self._health_next = now_s + HEALTH_EVERY_S
@@ -579,6 +628,59 @@ class Receiver:
                 idx.setdefault(addr, []).append(key)
         self._addr_index = {a: tuple(ks) for a, ks in idx.items()}
 
+    # -- the mic on demand (show-rx) ----------------------------------------------------------------------------------
+    def _hold_now(self) -> frozenset[str]:
+        """Configured streams that could be a mic (not MIDI by name or by kind, not a test stream, not an on-demand
+        sender's) that no decision has covered yet: held off (privacy at start)."""
+        cov = self._covered
+        out = set()
+        for s in self._senders:
+            if s.on_demand:
+                continue
+            for name in s.streams:
+                if (cov is not None and name in cov) or name in contract.MIDI_STREAMS or is_test_stream(name):
+                    continue
+                st = self._streams.get(name)
+                if st is not None and st.kind == "midi":
+                    continue
+                out.add(name)
+        return frozenset(out)
+
+    def _refresh_off(self, now: float) -> bool:
+        """Recompute the off set in effect (the decision's plus the held); True when it changed (the SUBSCRIBEs then
+        go at once)."""
+        held = self._hold_now()
+        off = self._off_decided | held
+        self._held = held
+        if off == self._off:
+            return False
+        for n in off - self._off:
+            self._off_since[n] = now
+        for n in self._off - off:
+            self._off_since.pop(n, None)
+            st = self._streams.get(n)
+            if st is not None:                           # back on: "quiet" needs 5 s of its new sound, not the old
+                st.first_data_s = st.t_loud = None
+        self._off = off
+        self._sub_next = -math.inf
+        log.info("mic: off %s%s", ",".join(sorted(off)) or "none",
+                 f" (held until a mic decision covers them: {','.join(sorted(held))})" if held else "")
+        return True
+
+    def _drop_off(self, pkt: vban.AudioPacket, addr: tuple[str, int], arrival: float) -> None:
+        """An audio packet of a stream kept off: counted and dropped (no meter, level, delivery or segment)."""
+        st = self._stream(pkt.stream, addr, arrival)
+        st.off_dropped += 1
+        self._off_dropped += 1
+        since = self._off_since.get(pkt.stream)
+        if since is not None and arrival - since > OFF_GRACE_S:
+            st.off_ignored += 1
+            self._off_ignored += 1
+            if arrival - self._ignored_logged >= ERROR_LOG_EVERY_S:
+                self._ignored_logged = arrival
+                log.warning("mic: %s still sends audio %.1f s after it went off (dropped; %d so far)", pkt.stream,
+                            arrival - since, self._off_ignored)
+
     # -- SUBSCRIBE --------------------------------------------------------------------------------------------------
     def _subscribe(self, now: float) -> None:
         self._sub_next = now + SUBSCRIBE_EVERY_S
@@ -586,9 +688,11 @@ class Receiver:
         sock, resolved = self._sock, self._resolved
         if sock is None:
             return
-        hints = self._device_hints
+        hints, off = self._device_hints, self._off
         for s in self._senders:
             devices = {st: hints[st] for st in s.streams if st in hints} or None
+            sub = [st for st in s.streams if st not in off]
+            offl = [st for st in s.streams if st in off]
             cands = [(h, resolved[(s.name, h)]) for h in sender_hosts(s) if (s.name, h) in resolved]
             if not cands:
                 continue
@@ -602,7 +706,7 @@ class Receiver:
             err = None
             for _h, addr in ([using] if using is not None else cands):
                 try:
-                    sock.sendto(vban.subscribe_packet(s.streams, self._sub_counter, devices=devices), addr)
+                    sock.sendto(vban.subscribe_packet(sub, self._sub_counter, devices=devices, off=offl), addr)
                 except OSError as e:
                     err = str(e)
                 self._sub_counter = (self._sub_counter + 1) % _MOD
@@ -630,6 +734,9 @@ class Receiver:
 
     # -- audio ------------------------------------------------------------------------------------------------------
     def _audio(self, pkt: vban.AudioPacket, addr: tuple[str, int], arrival: float, size: int) -> None:
+        if pkt.stream in self._off:                      # the mic is off for it: nothing of it goes anywhere
+            self._drop_off(pkt, addr, arrival)
+            return
         st = self._stream(pkt.stream, addr, arrival)
         if st.kind == "midi":
             self._junk += 1
@@ -822,9 +929,9 @@ class Receiver:
             if st.clock is not None and (prev_s is None or st.seg_t <= prev_s):
                 st.want_seg = ("sess", True)             # (a counter/idle segment since the last heartbeat covers it)
             st.ndiff = None
-            st.hb_idle = hb.state in ("idle", "no_device")
+            st.hb_idle = hb.state in ("idle", "no_device", "off")
             return                                       # its (frame, n) belongs to the new sess: pair from the next
-        if hb.state in ("idle", "no_device"):
+        if hb.state in ("idle", "no_device", "off"):
             st.hb_idle = True
         elif st.hb_idle:
             st.hb_idle = False
@@ -895,8 +1002,9 @@ class Receiver:
             return
         best: Optional[_Stream] = None
         for a in self._streams.values():
-            if (a.kind == "audio" and a.addr[0] == st.addr[0] and a.state != "down" and a.capture is not None
-                    and a.capture.ready and (best is None or (a.rank, a.name) < (best.rank, best.name))):
+            if (a.kind == "audio" and a.addr[0] == st.addr[0] and a.state not in ("down", "off")
+                    and a.capture is not None and a.capture.ready
+                    and (best is None or (a.rank, a.name) < (best.rank, best.name))):
                 best = a
         if best is not None:
             if tmap.audio is not best.clock or tmap.capture is not best.capture:
@@ -904,14 +1012,20 @@ class Receiver:
             st.attached = best.name
         elif st.attached is not None:
             a = self._streams.get(st.attached)
-            if a is None or a.state == "down" or a.addr[0] != st.addr[0]:
+            if a is None or a.state in ("down", "off") or a.addr[0] != st.addr[0]:
                 tmap.detach_audio()
                 st.attached = None
 
     # -- states and the active stream -------------------------------------------------------------------------------
     def _state_of(self, st: _Stream, now: float) -> str:
-        if st.hb is not None and st.hb_s is not None and now - st.hb_s < HB_FRESH_S and st.hb.state == "no_device":
-            return "no_device"
+        if st.name in self._off:
+            return "off"
+        hb, hb_s = st.hb, st.hb_s
+        if hb is not None and hb_s is not None and now - hb_s < HB_FRESH_S:
+            if hb.state == "no_device":
+                return "no_device"
+            if hb.state == "off" and (st.last_data_s is None or hb_s >= st.last_data_s):
+                return "off"                             # (audio after that heartbeat: it is capturing again)
         last = st.last_data_s if st.kind != "unknown" else st.last_s
         if last is None or now - last > DOWN_S:
             return "down"
@@ -942,6 +1056,8 @@ class Receiver:
         cur = self._streams.get(self._active) if self._active is not None else None
         new = cur
         if cur is None:
+            new = live[0] if live else None
+        elif cur.state == "off":                         # switched off on purpose: no waiting
             new = live[0] if live else None
         elif cur.state in BAD:
             if now - cur.state_since >= SWITCH_AWAY_S:
@@ -987,6 +1103,8 @@ class Receiver:
             "errors": dict(self._errors),
             "senders": senders,
             "priority": list(self._priority), "choice": list(self._choice), "device_hints": dict(self._device_hints),
+            "off": sorted(self._off), "off_held": sorted(self._held), "off_decided": self._covered is not None,
+            "off_dropped": self._off_dropped, "off_ignored": self._off_ignored,
             "streams": {st.name: self._stream_health(st, now) for st in self._streams.values()}}
 
     def _stream_health(self, st: _Stream, now: float) -> dict:
@@ -994,7 +1112,8 @@ class Receiver:
         age_ms = _r((now - last) * 1000.0, 1) if last is not None else None
         loss = st.loss_pct(now)
         out: dict[str, Any] = {"kind": st.kind, "rank": st.rank, "test": st.test, "addr": f"{st.addr[0]}:{st.addr[1]}",
-                               "state": st.state, "format": None, "audio": None, "sender": None, "clock": None}
+                               "state": st.state, "format": None, "audio": None, "sender": None, "clock": None,
+                               "off_dropped": st.off_dropped, "off_ignored": st.off_ignored}
         if st.kind == "audio" and st.clock is not None:
             clock = st.clock
             out["format"] = {"sr": st.sr, "channels": st.channels, "fmt": vban.FORMAT_NAMES.get(st.fmt, str(st.fmt)),

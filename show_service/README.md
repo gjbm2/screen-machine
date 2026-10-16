@@ -6159,7 +6159,7 @@ full suite's one reading of 164 µs was under the host's other load).
 - show.yaml `director.build.hit_swell_ms`. In `__main__`, `ctx.set_look_out` sends artnet_out only `hue_depth`,
   `beat_lock` and `reset`.
 
-### S5.15 The Mic choice (16 Oct; the owner's ask via 05)
+### S5.15 The Mic choice (16 Oct; the owner's ask via d4)
 - `inputs.py`: `Inputs` lists the room's sound inputs from receiver health and show.yaml: the permanent senders'
   streams, less test, MIDI and `room_sound: false`. Each has a `label` (show.yaml `senders.<name>.label`, else the
   sender's name), its state, its `device` (the heartbeat's `dev`) and its `devices` (the heartbeat's new optional
@@ -6170,3 +6170,51 @@ full suite's one reading of 164 µs was under the host's other load).
 - `vban`: heartbeat `devices` (≤32 × ≤128 chars, trimmed to fit 1436 B); SUBSCRIBE `devices`;
   `vban.subscribed_devices(pkt)` for senders. Receivers and older senders ignore keys they don't know.
 - The card's `hearing.mic` = `Inputs.mic()`: {stream, device, chosen} for the active stream.
+
+### S5.16 Mic on demand (16 Oct; the owner's rule)
+The room's mic runs only while something needs it: Auto is on, or the mode follows the music. Otherwise it is off,
+with the senders' capture devices actually closed. The Room page's Mute always wins.
+- **`mic.py`** (`Mic`): `wanted` = Auto on (`Autopilot.is_on()`, read live) or the mode claim (room_service's
+  device `show.mic` PUTs `{"mode": true}`, `{"mode": false}` when it puts it back); `on` = wanted and not muted.
+  - Which streams capture while on: the room-sound inputs (`inputs.Inputs`). With a Mic choice, only the chosen
+    stream captures; if it hasn't been live for 10 s (since the mic came on, the choice was made, or it was last
+    live), every room-sound stream captures until it is. With no choice, all of them. Off or muted: none. MIDI and
+    test streams are never the mic.
+  - Re-decided at 2 Hz on thread `show-mic`, at once on a PUT, and on `wake()` (the autopilot calls it on a
+    `set_on` and on a room status that changed Auto). The receiver hears only changes:
+    `rx.set_off_streams(off, covered)`. The ring hears `Rings.set_off(off)`.
+  - Persisted in `STATE_DIR/mic.json` (`{"v": 1, "muted", "mode"}`, tmp + fsync + replace). A bad file starts
+    unmuted with no mode claim and says so in `error`.
+  - `GET /api/v1/mic` → `{on, muted, wanted, why, claims: [{by: auto|mode, label}], mode, streams: {capturing, off},
+    error}`; `PUT /api/v1/mic {muted?, mode?}` (at least one bool, else 400 `{error, detail}`) → the GET body. `why`
+    is page words: "Listening for Auto", "Listening: Party follows the music", "Listening for Auto and Party",
+    "Off: nothing needs it", "Muted", "Muted: Auto can't hear the room", "Muted: Party can't follow the music",
+    "Muted: Auto and Party can't hear the room". The mode's label comes from the room view, else "this mode".
+- **`vban`**: SUBSCRIBE `off: [streams]` (`subscribe_obj`/`subscribe_packet(off=)`, key only when non-empty;
+  `subscribed_off(pkt)` for senders); an empty `subscribe` is still a SUBSCRIBE. Heartbeat state `"off"`: device
+  closed, `frame`/`n`/`t_cap_ns` null, `devices` still sent. A stream in neither list stops, as before.
+- **`receiver.py`**: `set_off_streams(names, covered=None)` (any thread; applied at the next tick, SUBSCRIBEs at
+  once). Every sender still gets a SUBSCRIBE each second: `subscribe` = its streams minus the off ones, `off` = the
+  rest. Privacy at start: a configured stream that could be a mic (not MIDI, not a test stream, not an on-demand
+  sender's) is held off until a decision covers it. `Mic.attach` decides before show-rx starts, and a sender added
+  later waits for the next decision. Audio of an off stream is dropped on arrival: no meter, no `on_level`, no
+  delivery (so no DSP, ring, ML feed or listener). Straggling packets are counted in `off_dropped`, those more than
+  1 s after it went off also in `off_ignored` (logged). Dropping starts at once: there is no grace for the sound
+  itself, only for the counting. State `"off"`: kept off here, or a fresh heartbeat says "off" with no audio after
+  it. An "off" stream is never live; the active stream leaves it at once; MIDI detaches from its map; back on, its
+  "quiet" needs 5 s of new silence (nothing from before the off counts). Health:
+  `off`, `off_held`, `off_decided`, `off_dropped`, `off_ignored`, and per stream `off_dropped`/`off_ignored`.
+- **`ring.py`**: `Rings.set_off(streams)`: an off stream is never written and reads as empty. Going off or coming
+  back marks its ring `forget`: the writer floors it before its next block, so no clip ever holds sound from before
+  the mic went off. `off_gen` steps each time a stream goes off.
+- **`listener.py`**: an off stream gives no clip ("the mic is off"). A clip whose encoding saw `off_gen` move is
+  dropped before the upload ("the mic went off").
+- **`situations.py`**: features and CED readings of an off stream read as missing. So quiet, talking,
+  music_audible and energy_above read unknown while the mic is off ("the mic is off"), a rule on "quiet" never
+  fires because the mic was switched off, and piano_playing's heard_by check is skipped (as when that mic is down).
+- **The card** (`api.card`): top-level `mic_state` (the GET body). `hearing.text` is "Mic muted" or "Mic off"
+  when that is why no room sound comes in, ahead of the connection words, with `hearing.level` 0. "The microphone
+  is starting" covers every room stream still "off" while the mic is on.
+- `GET /api/v1/state` carries `mic`: the GET body plus `receiver` (its `off*` health keys).
+- **Without the brain** (`--no-brain`) there is no Auto: the mode claim alone decides, before the first SUBSCRIBE.
+  If mic.py fails to load, the receiver keeps every room mic held off (privacy first), logged.

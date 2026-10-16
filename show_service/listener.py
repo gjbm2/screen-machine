@@ -28,6 +28,9 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   after the last call, at most one section call per interval), whose clip ends at that time; every call's text
   carries the segment map (the sections the clip spans), and ``InsightData.segment_id`` is the section at the clip's
   end. A ``track_change`` lets the next verdict's genre win at once (the beliefs' track-change rule).
+* **The mic on demand** (README S5.16): a stream the mic keeps off (the ring's ``off``, receiver health's ``off``, or
+  state "off") never gives a clip ("the mic is off"); the ring forgets what it held of it; and a clip cut before a
+  stream went off (the ring's ``off_gen`` moved while it was encoded) is never uploaded.
 * **Cadence:** every ``cadence_s``, at least ``min_gap_s`` after the last call ended; ``relaxed_cadence_s`` after
   ``agree_reads`` agreeing, confident verdicts; x3 over the daily budget (never stopped); after failures in a row, x2
   per failure up to ERROR_BACKOFF_MAX_S (no retries: the next window is the retry).
@@ -130,6 +133,8 @@ WHY_NO_MUSIC = "no music heard"
 WHY_QUIET = "too quiet"
 WHY_NO_SOUND = "no sound coming in"
 WHY_NO_MODEL = "no model configured"
+WHY_MIC_OFF = "the mic is off"                              # the mic on demand (README S5.16)
+WHY_MIC_WENT_OFF = "the mic went off"                       # a clip cut before that is never uploaded
 
 LISTEN_TOOL: dict = {
     "name": "report_music",
@@ -955,6 +960,26 @@ class Listener:
         vals = [row[3] or 0.0 for row in self._timeline if now_s - row[0] < window_s]
         return sum(vals) / len(vals) if vals else 0.0
 
+    def _mic_off(self, stream: Optional[str]) -> bool:
+        """Is ``stream`` kept off by the mic on demand (README S5.16)? The ring's own off set first (it moves the moment
+        mic.py decides), then receiver health's ``off`` and the stream's state."""
+        if not stream:
+            return False
+        rings = self.ctx.rings
+        if rings is not None and stream in (getattr(rings, "off", None) or ()):
+            return True
+        h = None
+        if self.ctx.health is not None:
+            try:
+                h = self.ctx.health()
+            except Exception:                     # noqa: BLE001
+                h = None
+        h = h if isinstance(h, dict) else {}
+        if isinstance(h.get("off"), list) and stream in h["off"]:
+            return True
+        st = (h.get("streams") or {}).get(stream) if isinstance(h.get("streams"), dict) else None
+        return isinstance(st, dict) and st.get("state") == "off"
+
     def room_sound(self, stream: Optional[str]) -> bool:
         """Does ``stream`` carry the room's own sound? True unless its show.yaml sender says ``room_sound: false``
         (a music file played as a test). Unknown streams count as room sound: the strict side."""
@@ -979,6 +1004,8 @@ class Listener:
         self._arm(why is None)
         if why is not None:
             return why, stream
+        if self._mic_off(stream):
+            return WHY_MIC_OFF, stream
         if stream is None or self._features(now_s) is None:
             return WHY_NO_SOUND, stream
         self._ced_state = {"why": None, "run": None, "latest": None}
@@ -1282,6 +1309,7 @@ class Listener:
         return rings.latest(stream, clip_s), None
 
     async def _call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
+        off_gen = getattr(self.ctx.rings, "off_gen", None)    # a stream going off from now on voids this clip
         clip, why = self._cut_clip(stream, t_end)
         if clip is None or clip.pcm.shape[0] < clip.fs:
             self._log_event({"kind": "skipped", "stream": stream, "call": kind, "why": why or WHY_NO_SOUND})
@@ -1298,6 +1326,8 @@ class Listener:
                                         sample_rate=int(aud["sample_rate"]) if aud.get("sample_rate") else None,
                                         bitrate=str(aud.get("bitrate") or "64k"))
         why, now_stream = self._gate(self._mono())   # still allowed, for this stream, right before the upload?
+        if why is None and getattr(self.ctx.rings, "off_gen", None) != off_gen:
+            why = WHY_MIC_WENT_OFF                    # the mic went off while it was encoded: never sent
         if why is not None or now_stream != stream:
             self._log_event({"kind": "skipped", "stream": stream, "why": why or "the stream changed"})
             return

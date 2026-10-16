@@ -32,6 +32,9 @@ version: 1
 #   check for it. Nothing else changes: every upload still needs AI listening on and a mode that listens. Leave it out
 #   (or true) for anything with a microphone.
 # Senders given with --sender / SHOW_SENDERS (deploy/sm-show.env) still apply. This file wins for a name in both.
+# A room mic (a stream of a sender that isn't on_demand or room_sound: false, other than MIDI and test streams)
+#   captures only while something needs it: Auto is on, or the mode follows the music. The Room page's Mute wins.
+#   Otherwise its sender keeps it closed (README S5.16, show_service/mic.py).
 senders:
   # GO-LIVE STEP (not yet: owner's call). Uncommenting kiosk makes show_service subscribe the room's mic and piano;
   # whenever 98's show-sender.service runs on the kiosk, the room's sound then drives the lamps' and screens' Art-Net
@@ -42,7 +45,7 @@ senders:
   #   streams: [room-mic, room-piano]
   pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
     hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
-    port: 6984                              # Spectre's audio-agent card (05, 16 Oct; SHOW_ENGINE §3.2 "PC22")
+    port: 6984                              # Spectre's audio-agent card (d4, 16 Oct; SHOW_ENGINE §3.2 "PC22")
     streams: [pc22-mic]
     label: PC22                             # the Room page's Mic list groups this sender's inputs under it
   test-piano:                               # 98's test piano (tools/show_sender --test-piano), a child of show_service

@@ -1407,3 +1407,31 @@ def test_card_hearing_carries_the_raw_input_meter():
     assert h["input_trace"] == trace
     h = card(None, {"active_audio": None, "features": None, "input": eng["input"]})["hearing"]
     assert h["input"] is None and h["input_trace"] is None
+
+
+def test_card_says_mic_muted_or_off_when_that_is_why_nothing_arrives():
+    """README S5.16: the mic on demand's words win over the connection words; with sound coming in (a test stream)
+    the usual words; the card carries the mic's state as mic_state."""
+    from show_service.api import MIC_MUTED, MIC_OFF, MIC_STARTING, STOPPED
+    off = {"on": False, "muted": False, "wanted": False, "why": "Off: nothing needs it", "claims": [], "mode": False,
+           "streams": {"capturing": [], "off": ["room-mic"]}, "error": None}
+    muted = {**off, "muted": True, "wanted": True, "why": "Muted: Auto can't hear the room",
+             "claims": [{"by": "auto", "label": "Auto"}]}
+    on = {**off, "on": True, "wanted": True, "why": "Listening for Auto", "claims": [{"by": "auto", "label": "Auto"}],
+          "streams": {"capturing": ["room-mic"], "off": []}}
+    inputs = {"senders": 1, "room": {"room-mic": "off"}}
+
+    def hearing(mic_state, active=None, inp=inputs):
+        eng = {"active_audio": active, "features": {"energy": 0.5, "age_ms": 10.0, "stream": active} if active else None,
+               "inputs": inp, "mic_state": mic_state}
+        return card(None, eng)
+
+    cd = hearing(off)
+    assert cd["hearing"]["text"] == MIC_OFF and cd["hearing"]["level"] == 0.0 and cd["mic_state"] == off
+    assert cd["mic_state"] is not off                                  # a copy, never the mic's own body
+    assert hearing(muted)["hearing"]["text"] == MIC_MUTED
+    assert hearing(on)["hearing"]["text"] == MIC_STARTING              # on, the sender hasn't opened it yet
+    assert hearing(on, inp={"senders": 1, "room": {"room-mic": "down"}})["hearing"]["text"] == STOPPED
+    assert hearing(off, active="test-audio")["hearing"]["text"] == "Listening"      # sound comes in: not the mic's words
+    assert hearing(None)["mic_state"] is None and hearing(None)["hearing"]["text"] == MIC_STARTING
+    json.dumps(hearing(muted), allow_nan=False)

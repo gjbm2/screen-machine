@@ -822,3 +822,30 @@ def test_ced_settings(tmp_path):
     assert rig.lis.ced_cfg == {"music_min": 0.7, "speech_max": 0.3} and rig.lis.cfg["section_call_after_s"] == 5.0
     assert rig.lis.results_stale_s == 4.0 and any("listener.ced.speech_max" in p for p in rig.lis.problems)
     assert rig.lis.provides()["on_music_event"] == rig.lis.on_music_event
+
+
+# -- the mic on demand (README S5.16) ----------------------------------------------------------------------------------
+def test_a_stream_the_mic_keeps_off_never_gives_a_clip(tmp_path):
+    for how in ("health", "state", "rings"):
+        rig = Rig(tmp_path, stream="test-audio")
+        rig.fill()
+        if how == "health":
+            rig.health["off"] = ["test-audio"]
+        elif how == "state":
+            rig.health["streams"] = {"test-audio": {"state": "off"}}
+        else:
+            rig.rings.set_off(["test-audio"])
+        run(rig.ticks(3))
+        assert rig.llm.calls == [] and rig.pub == [] and rig.lis.view()["why"] == L.WHY_MIC_OFF, how
+
+
+def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio")
+    rig.fill()
+
+    async def enc(pcm, fs, **kw):
+        rig.rings.set_off(["room-mic"])                    # a mic went off while the clip was being encoded
+        return b"MP3", "mp3"
+    rig.lis._encode = enc
+    run(rig.tick())
+    assert rig.llm.calls == [] and rig.lis.log(1)[0]["why"] == L.WHY_MIC_WENT_OFF

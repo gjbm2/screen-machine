@@ -511,3 +511,34 @@ def test_subscribe_device_hints():
     assert "devices" not in vban.subscribe_obj(["pc22-mic"], devices={})
     assert vban.subscribed_devices({"v": 1, "subscribe": ["a"], "devices": {"a": 3, "b": "B"}}) == {"b": "B"}
     assert vban.subscribed_devices({"v": 1, "sess": "x"}) == {}
+
+
+# -- the mic on demand (README S5.16): SUBSCRIBE "off", heartbeat state "off" ----------------------------------------
+def test_subscribe_off_list_and_its_reader():
+    o = vban.subscribe_obj(["room-piano"], off=["room-mic"])
+    assert o == {"v": 1, "subscribe": ["room-piano"], "off": ["room-mic"], "from": "show_rt"}
+    assert "off" not in vban.subscribe_obj(["room-mic"]) and "off" not in vban.subscribe_obj(["room-mic"], off=[])
+    pkt = vban.parse(vban.subscribe_packet(["room-piano"], 7, devices={"room-mic": "ATR"}, off=["room-mic"]))
+    assert vban.subscribed_streams(pkt) == ["room-piano"] and vban.subscribed_off(pkt) == ["room-mic"]
+    assert vban.subscribed_devices(pkt) == {"room-mic": "ATR"} and vban.classify(pkt) == "subscribe"
+    # an empty "subscribe" is still a SUBSCRIBE (a sender whose only stream is off keeps its off heartbeats)
+    only_off = vban.parse(vban.subscribe_packet([], 8, off=["pc22-mic"]))
+    assert vban.subscribed_streams(only_off) == [] and vban.is_subscribe(only_off)
+    assert vban.subscribed_off(only_off) == ["pc22-mic"]
+    # none, a bad value, or not a SUBSCRIBE: []
+    assert vban.subscribed_off(vban.parse(vban.subscribe_packet(["room-mic"], 9))) == []
+    assert vban.subscribed_off({"v": 1, "subscribe": [], "off": "room-mic"}) == []
+    assert vban.subscribed_off({"v": 1, "subscribe": [], "off": ["x" * 17]}) == []
+    assert vban.subscribed_off({"v": 1, "off": ["room-mic"]}) == []
+    hb = vban.pack_text("room-mic", 0, vban.make_heartbeat(sess="s", frame=None, n=None, t_cap_ns=None))
+    assert vban.subscribed_off(vban.parse(hb)) == []
+
+
+def test_heartbeat_state_off_round_trips():
+    assert "off" in vban.HEARTBEAT_STATES
+    o = vban.make_heartbeat(sess="s1", frame=None, n=None, t_cap_ns=None, dev="", state="off",
+                            devices=["ATR4697", "USB Audio"])
+    hb = vban.parse_heartbeat(vban.parse(vban.pack_text("room-mic", 3, o)))
+    assert hb is not None and hb.state == "off" and hb.frame is None and hb.n is None and hb.t_cap_ns is None
+    assert hb.devices == ["ATR4697", "USB Audio"]
+    assert vban.classify(o) == "heartbeat"

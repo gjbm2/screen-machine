@@ -540,6 +540,7 @@ def test_subscribe_schedule(sender_sock):
         cfg = Config(senders=(Sender("kiosk", "localhost", port, ("room-mic", "room-piano")),),
                      vban_bind=("127.0.0.1", 0))
         rx, rec = make(cfg, sock=rsock)
+        rx.set_off_streams(())                                  # the mic is on (README S5.16): nothing off
         rx.tick(9.0)                                            # not resolved yet: nothing sent
         rx._resolve_all()                                       # (show-dns's job)
         sender_sock.settimeout(1.0)
@@ -599,6 +600,7 @@ def test_set_senders_adds_and_removes_senders():
     pa, pb = a.getsockname()[1], b.getsockname()[1]
     try:
         rx, rec = make(Config(senders=(Sender("one", "localhost", pa, ("room-mic",)),)), sock=rsock)
+        rx.set_off_streams(())                                # the mic is on: nothing off
         rx._resolve_all()
         rx.tick(10.0)
         assert _subs(a) == [["room-mic"]] and _subs(b) == []
@@ -633,6 +635,7 @@ def test_host_fallback_subscribes_all_then_the_host_that_answers():
     try:
         s = Sender("kiosk", "127.0.0.2", port, ("room-mic",), hosts=("127.0.0.2", "127.0.0.1"))
         rx, rec = make(Config(senders=(s,)), sock=rsock)
+        rx.set_off_streams(())                                # the mic is on: nothing off
         rx._resolve_all()
         rx.tick(20.0)                                         # nobody has answered: every host
         assert _subs(first) == [["room-mic"]] and _subs(second) == [["room-mic"]]
@@ -696,6 +699,7 @@ def test_end_to_end_over_localhost_udp(sender_sock):
     cfg = Config(senders=(Sender("kiosk", "localhost", port, ("room-mic", "room-piano")),),
                  vban_bind=("127.0.0.1", 0))
     rx, rec = make(cfg)
+    rx.set_off_streams(())                                      # the mic is on (README S5.16)
     rx.start()
     try:
         sender_sock.settimeout(3.0)
@@ -828,3 +832,138 @@ def test_device_hints_ride_each_senders_subscribe_and_go_at_once():
     finally:
         for x in (a, rsock):
             x.close()
+
+
+# -- the mic on demand (README S5.16) ----------------------------------------------------------------------------------
+def _sub_objs(sock: socket.socket, wait: float = 0.05) -> list[tuple[list[str], list[str]]]:
+    """Every SUBSCRIBE waiting on ``sock`` as (subscribe, off)."""
+    out = []
+    sock.settimeout(wait)
+    while True:
+        try:
+            data, _ = sock.recvfrom(2048)
+        except (socket.timeout, BlockingIOError):
+            return out
+        pkt = vban.parse(data)
+        out.append((vban.subscribed_streams(pkt), vban.subscribed_off(pkt)))
+
+
+def test_privacy_at_start_holds_every_mic_off_until_a_decision_covers_it():
+    k = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    p = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    t = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for x in (k, p, t, rsock):
+        x.bind(("127.0.0.1", 0))
+    try:
+        kiosk = Sender("kiosk", "127.0.0.1", k.getsockname()[1], ("room-mic", "room-piano"))
+        pc22 = Sender("pc22", "127.0.0.1", p.getsockname()[1], ("pc22-mic",))
+        test = Sender("test-audio", "127.0.0.1", t.getsockname()[1], ("test-audio",), on_demand=True)
+        rx, rec = make(Config(senders=(kiosk, pc22, test)), sock=rsock)
+        assert rx.off_streams() == {"room-mic", "pc22-mic"}              # no decision yet: every possible mic held
+        rx._resolve_all()
+        rx.tick(10.0)
+        assert _sub_objs(k) == [(["room-piano"], ["room-mic"])]        # MIDI at once, the mic kept closed
+        assert _sub_objs(p) == [([], ["pc22-mic"])]                    # an empty subscribe keeps its off heartbeats
+        assert _sub_objs(t) == [(["test-audio"], [])]                  # test streams are never the mic
+        rx.tick(10.6)
+        h = rx.health()
+        assert h["off"] == ["pc22-mic", "room-mic"] and h["off_held"] == ["pc22-mic", "room-mic"]
+        assert h["off_decided"] is False
+        rx.set_off_streams(["pc22-mic"])                               # the decision: pc22's mic off, the kiosk's on
+        rx.tick(10.7)                                                  # sent at once, not at 11.0
+        assert _sub_objs(k) == [(["room-mic", "room-piano"], [])] and _sub_objs(p) == [([], ["pc22-mic"])]
+        rx.tick(11.2)
+        h = rx.health()
+        assert h["off"] == ["pc22-mic"] and h["off_held"] == [] and h["off_decided"] is True
+        # a sender added later: its mic waits for a decision that covers it
+        new = Sender("loft", "127.0.0.1", k.getsockname()[1] + 0, ("loft-mic",))
+        rx.set_senders((kiosk, pc22, test, new))
+        rx._resolve_all()
+        rx.tick(11.3)
+        assert "loft-mic" in rx.off_streams()
+        rx.set_off_streams([], covered=["room-mic", "room-piano", "pc22-mic", "test-audio", "loft-mic"])
+        rx.tick(11.4)
+        assert rx.off_streams() == frozenset()
+    finally:
+        for x in (k, p, t, rsock):
+            x.close()
+
+
+def test_audio_of_a_stream_kept_off_is_dropped_and_the_active_stream_leaves_at_once():
+    levels: list = []
+    rx, rec = make(on_level=lambda *a, **kw: levels.append(a[0]))
+    mic = Sim(rx, "room-mic")
+    pc = Sim(rx, "pc22-mic", addr=("192.0.2.11", 40001), t0=T0 + 0.001)
+    end = T0 + 5.0
+    while mic.arrival(mic.i) < end:
+        first = mic if mic.arrival(mic.i) <= pc.arrival(pc.i) else pc
+        first.run(1)
+    assert rx.active_audio() == "room-mic" and levels and set(levels) == {"room-mic"}
+    n_mic, n_lv = len(rec.of("room-mic")), len(levels)
+    rx.set_off_streams(["room-mic"])
+    t_off = mic.arrival(mic.i)
+    end = t_off + 3.0
+    while mic.arrival(mic.i) < end:                                    # a sender that ignores the off
+        first = mic if mic.arrival(mic.i) <= pc.arrival(pc.i) else pc
+        first.run(1)
+    assert len(rec.of("room-mic")) <= n_mic + 1                        # (the tick that applies it: at most one)
+    assert set(levels[n_lv + 1:]) <= {"pc22-mic"}
+    assert rx.active_audio() == "pc22-mic"                             # left at once, no 1 s wait
+    first_pc = next(b for b in rec.of("pc22-mic"))
+    assert first_pc[5] & AUDIO_SEGMENT and first_pc[2] - t_off < 0.2
+    rx.tick(end + 0.01)
+    rx.tick(end + 0.6)
+    h = rx.health()
+    st = h["streams"]["room-mic"]
+    assert st["state"] == "off" and h["off"] == ["room-mic"] and h["active_audio"] == "pc22-mic"
+    assert st["off_dropped"] > 1000 and 0 < st["off_ignored"] < st["off_dropped"]     # past the 1 s grace: ignored
+    assert h["off_dropped"] == st["off_dropped"] and h["off_ignored"] == st["off_ignored"]
+    rx.set_off_streams([])                                             # back on: an idle segment, then live again
+    n_mic = len(rec.of("room-mic"))
+    pc.heartbeats = False
+    t_on = mic.arrival(mic.i)
+    end = t_on + 6.0
+    while mic.arrival(mic.i) < end:
+        first = mic if mic.arrival(mic.i) <= pc.arrival(pc.i) else pc
+        first.run(1)
+    assert rx.health()["streams"]["room-mic"]["state"] == "streaming" and rx.active_audio() == "room-mic"
+    assert rec.of("room-mic")[n_mic][5] & AUDIO_SEGMENT
+
+
+def test_a_stream_back_from_off_needs_5_s_of_new_silence_to_read_quiet():
+    rx, rec = make()
+    mic = Sim(rx, "room-mic", v=0.0)                                  # silence
+    mic.heartbeats = False
+    mic.seconds(7.0)
+    rx.tick(mic.arrival(mic.i))
+    assert rx.health()["streams"]["room-mic"]["state"] == "quiet"
+    rx.set_off_streams(["room-mic"])
+    rx.tick(mic.arrival(mic.i) + 0.01)
+    rx.set_off_streams([])
+    mic.t0 += 3.0
+    t = mic.seconds(1.0)
+    rx.tick(t + 0.2)
+    assert rx.health()["streams"]["room-mic"]["state"] == "streaming"    # not "quiet" from before the off
+    t = mic.seconds(5.5)
+    rx.tick(t + 0.2)
+    assert rx.health()["streams"]["room-mic"]["state"] == "quiet"
+
+
+def test_an_off_heartbeat_reads_off_until_audio_comes_again():
+    rx, rec = make()
+    mic = Sim(rx, "room-mic")
+    mic.seconds(2.0)
+    assert rx.active_audio() == "room-mic"
+    t = mic.arrival(mic.i)
+    rx.handle(hbpkt("room-mic", 900, sess="A", state="off", devices=["ATR4697"]), ADDR, t)   # the sender closed it
+    rx.tick(t + 0.2)
+    h = rx.health()
+    assert h["streams"]["room-mic"]["state"] == "off" and rx.active_audio() is None
+    assert h["streams"]["room-mic"]["sender"]["devices"] == ["ATR4697"]
+    rx.tick(t + 1.0)
+    assert rx.health()["streams"]["room-mic"]["state"] == "off"         # fresh heartbeats keep it off, never "down"
+    mic.t0 += 1.5                                                     # it opens again: audio after that heartbeat
+    mic.heartbeats = False
+    mic.seconds(4.0)
+    assert rx.health()["streams"]["room-mic"]["state"] == "streaming" and rx.active_audio() == "room-mic"

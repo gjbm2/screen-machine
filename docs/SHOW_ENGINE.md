@@ -188,6 +188,8 @@ VBAN is VB-Audio's free UDP audio protocol (spec rev 13). It has a 28-byte heade
   - The packet is a VBAN TEXT packet with stream name `sub` and body `{"v":1,"subscribe":["room-mic","room-piano"],"from":"show_rt"}`.
   - It goes to the sender's UDP 6980, at an address from config (a DNS name, never a literal IP).
   - Optional `"devices": {stream: name}` (16 Oct, the Room page's Mic choice) asks the sender to capture that stream from that device. A sender that can't find the name, or gets no hint, keeps its default.
+  - Optional `"off": [streams]` (16 Oct, the mic on demand): keep these streams' capture devices **closed**. The sender still sends each one's heartbeat every 500 ms, with `state: "off"`, `frame`/`n`/`t_cap_ns` null and its `devices`, so the Room page can still list the mics. Body: `{"v":1,"subscribe":["room-piano"],"off":["room-mic"],"devices"?:{...},"from":"show_rt"}`.
+  - A stream in neither list, or no SUBSCRIBE for 5 s: the sender stops sending it and closes its device. An empty `"subscribe": []` is still a SUBSCRIBE: a sender whose only stream is off keeps getting them, and keeps its off heartbeats.
 - The sender streams audio, MIDI and heartbeats to the source address of the latest SUBSCRIBE. It stops 5 s after the last one.
 - Through WSL's NAT that is exactly the Hue/DTLS pattern that already works.
 - It needs no relay, no inbound rule and no card. Recovery after a WSL restart takes about 1 s.
@@ -198,10 +200,11 @@ VBAN is VB-Audio's free UDP audio protocol (spec rev 13). It has a 28-byte heade
 | Audio | 48 kHz, 128 frames per packet (2.7 ms) for 1–2 channels. For 4 channels: INT16 at 128 frames, or INT24 at ≤96 frames. The payload limit is 1436 B. |
 | Sample index | The running sum of frames per packet, checked for continuity against the packet counter. A new timeline segment starts on any discontinuity, a change of frame size or session, or an idle/device switch. |
 | Stream names | `room-mic` (ATR4697 on the kiosk), `room-piano` (MIDI, §3.5), `pc22-loop`, `pc22-mic`, `test-piano`, `phone-test`; `room-line` reserved if a line feed ever exists. Unknown names are accepted at the lowest priority and shown in health, not dropped. |
-| Heartbeat | Every 500 ms, VBAN TEXT (UTF-8 JSON): `{v, sess, frame, n, t_cap_ns, in_lat_ms, dev, state: ok\|no_device\|idle\|xrun, xruns, peak_dbfs[], rms_dbfs[], clips}` |
+| Heartbeat | Every 500 ms, VBAN TEXT (UTF-8 JSON): `{v, sess, frame, n, t_cap_ns, in_lat_ms, dev, state: ok\|no_device\|idle\|xrun\|off, xruns, peak_dbfs[], rms_dbfs[], clips}` |
 
 **Heartbeat fields** (clarified 16 Oct; the reference is `show_service/vban.py`, which senders can import as-is):
 - It is a TEXT packet carrying **the audio stream's own name**. A sender with two streams sends two heartbeats.
+- `state: "off"` (16 Oct, the mic on demand): the SUBSCRIBE's `off` keeps this stream's device closed. The receiver reads the stream as "off", never live.
 - `devices` (optional, 16 Oct): the capture devices the sender could use for this stream, which feed the Room page's Mic list. There are at most 32 names of at most 128 characters each. `vban.make_heartbeat` drops names from the end until the packet fits 1436 B.
 - `sess`: new on every sender restart or device re-open, and after more than 250 ms of lost capture.
 - `frame`: the VBAN counter of the audio packet whose first sample is `n`.
@@ -230,7 +233,7 @@ The sender is one Python script (~150 lines) with two capture back ends. It capt
 - **Keeping loopback alive:** WASAPI sends nothing while nothing plays. The agent therefore plays a silent render stream, so the device clock and the sample index never stop.
 - It re-opens the device when the default device changes.
 - It gets a Spectre card from `scripts/windows/audio-agent/*.ps1` (ca).
-- **Built, 16 Oct (05):** `tools/show_sender/pc22_agent.py` sends a PC22 mic as stream `pc22-mic` on UDP 6984: the first input matching `--mic-match`, else the Windows default. It uses the Dell U3224KB monitor's mic, because the Insta360 Link heard everything 134–148 ms later (05, three runs). It runs as a Windows scheduled task under the Spectre card `screen-machine-audio-agent`, and show.yaml's `senders.pc22` subscribes it. Mic only for now; loopback is not built. Windows' microphone privacy setting must allow desktop apps, or the agent sends silence.
+- **Built, 16 Oct (d4):** `tools/show_sender/pc22_agent.py` sends a PC22 mic as stream `pc22-mic` on UDP 6984: the first input matching `--mic-match`, else the Windows default. It uses the Dell U3224KB monitor's mic, because the Insta360 Link heard everything 134–148 ms later (d4, three runs). It runs as a Windows scheduled task under the Spectre card `screen-machine-audio-agent`, and show.yaml's `senders.pc22` subscribes it. Mic only for now; loopback is not built. Windows' microphone privacy setting must allow desktop apps, or the agent sends silence.
 - WSLg's mic is dead on this box (RDP source returns silence, then unloads), so we don't use it.
 
 **The kiosk mini-PC (owner, 15 Oct):** `screen-machine-drawingroom`, a Beelink N95 on Ubuntu 24.04.
@@ -1318,7 +1321,7 @@ GET    /show/healthz
 
 | Phase | State |
 |---|---|
-| P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454. Hears PC22's mic (`pc22-mic`, 05's agent) until the kiosk's mic arrives |
+| P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454. Hears PC22's mic (`pc22-mic`, d4's agent) until the kiosk's mic arrives |
 | P1 hearing words | **Built, off.** LLM listener (OpenAI via `utils/llm`) waits for the owner's AI-listening decision; the CED privacy gate is live |
 | P2 director + Music card | **Live.** Director, vibes, nudges, palettes (incl. from the art), room `show` adapter, `/show/*` pass-through, Music card on /room. Neutral until modes get `show` rows (owner) |
 | P3 understanding | **Live.** ML worker (CED, EffNet + heads, key, Beat This!), medium lane, structure (sections, repeats, track change, build/drop/breakdown), `music.context` |
@@ -1338,14 +1341,18 @@ GET    /show/healthz
 
   `hearing.level` stays as energy (loudness against the mode's expected loudness, gated), so it is not a meter. When nothing comes in, `hearing.text` says why: "No microphone connected yet", "The microphone isn't answering", "No microphone plugged in" or "The microphone stopped sending".
 
-  05's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time. `{"ping"}`/`{"pong", "srv"}` lets the page align clocks and show its delay. *Measured:* it lags a direct read of the same mic by 16–17 ms, at about 57 frames/s in the browser.
-- **Mic choice** (the owner's ask via 05, 16 Oct; show_service/inputs.py).
+  d4's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time. `{"ping"}`/`{"pong", "srv"}` lets the page align clocks and show its delay. *Measured:* it lags a direct read of the same mic by 16–17 ms, at about 57 frames/s in the browser.
+- **Mic choice** (the owner's ask via d4, 16 Oct; show_service/inputs.py).
   - **What's listed:** every room-sound input is listed with no names hard-coded. These are the permanent senders' streams, less test, MIDI and `room_sound: false` streams. Each shows the devices its sender reports.
   - **Routes:** `GET /api/v1/inputs` and `PUT /api/v1/input {stream|null, device?}`.
   - **Effect of a choice:** the stream ranks after a playing test stream and before show.yaml's order, and its device rides that sender's SUBSCRIBEs. The choice is kept in `input.json`, and each stream keeps its own device.
   - **Labels:** show.yaml `senders.<name>.label` gives the Room page's group label.
   - **On the card:** `hearing.mic` = {stream, device, chosen}.
-  - **Who builds what:** the page and the PC22 agent are 05's. 98's kiosk sender supports both fields (7962bd28): every ALSA capture card is listed, and an exact-name hint reopens arecord on that card. It deploys with the kit.
+  - **Who builds what:** the page and the PC22 agent are d4's. 98's kiosk sender supports both fields (7962bd28): every ALSA capture card is listed, and an exact-name hint reopens arecord on that card. It deploys with the kit.
+- **Mic on demand** (the owner's rule, 16 Oct; show_service/mic.py, README S5.16). The room's mic runs only while something needs it: Auto is on, or the mode follows the music (a per-mode config row: room's `show.mic` PUTs `{"mode": true}`). Otherwise it is off, with the senders' capture devices closed (SUBSCRIBE `off`), and the Room page's Mute always wins.
+  - **Routes:** `GET /api/v1/mic` → `{on, muted, wanted, why, claims, mode, streams: {capturing, off}, error}`; `PUT /api/v1/mic {muted?, mode?}`. Persisted in `mic.json`. The card carries it as `mic_state`, and `hearing.text` says "Mic muted" or "Mic off" when that is why no room sound comes in.
+  - **Which mic:** with a Mic choice only the chosen stream captures; if it hasn't been live for 10 s, every room mic captures until it is (degrade, never refuse). The piano's MIDI and the test streams are never the mic.
+  - **Privacy:** nothing captures before the decision exists (the receiver holds every possible mic off until a decision covers it). Audio of an off stream is dropped on arrival, the listener's ring forgets it, and a clip cut before the mic went off is never uploaded. Auto's audio words read unknown while the mic is off, so a rule on "quiet" never fires because the mic was switched off.
 - **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 

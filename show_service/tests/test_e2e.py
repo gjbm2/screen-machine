@@ -129,11 +129,14 @@ def test_end_to_end(tmp_path, monkeypatch):
     show = None
     sink = ArtnetSink(lambda: show.clock.snapshot() if show is not None and show.clock is not None else None)
     assert sink.port != artnet_out.PORT and snd.port != contract.BUS_PORT
+    state_dir = tmp_path / "state"                           # the mic on demand (README S5.16): room-mic captures only
+    state_dir.mkdir()                                        # while something needs it, here the mode's claim
+    (state_dir / "mic.json").write_text(json.dumps({"v": 1, "muted": False, "mode": True}))
     opts = config.Options(
         config=contract.Config(senders=(contract.Sender("e2e", "localhost", snd.port, ("room-mic", "test-piano")),),
                                vban_bind=("127.0.0.1", 0), bus_bind=("127.0.0.1", 0),
                                latency_file=tmp_path / "latency.json"),
-        artnet_target=("127.0.0.1", sink.port))
+        artnet_target=("127.0.0.1", sink.port), state_dir=state_dir)
     switch = sys.getswitchinterval()
     sys.setswitchinterval(0.001)                             # as main() does
     try:
