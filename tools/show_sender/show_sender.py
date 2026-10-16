@@ -15,7 +15,9 @@ Streams:
               "overrun!!! (at least N ms long)" advances the counter and n over the lost packets (xruns +1); over
               250 ms lost starts a new sess (vban.py "Sender rules").  A heartbeat every 500 ms (its own TEXT
               counter): frame/n/t_cap_ns of the newest packet, levels over the last 500 ms, state ok / no_device,
-              and ``devices``: every ALSA capture card's name (the Room page's Mic choices).  A SUBSCRIBE device hint
+              and ``devices``: every ALSA capture card's name (the Room page's Mic choices).  It captures only while
+              the latest SUBSCRIBE lists room-mic: listed in its ``off``, arecord is closed and the heartbeats say
+              off (null frame/n/t_cap_ns); in neither list, or no SUBSCRIBE for 5 s, nothing is opened or sent.  A SUBSCRIBE device hint
               for room-mic that names one of them exactly reopens capture on it (a new sess); an unknown name or
               none keeps the default.  No device: retried every 2 s, heartbeats say no_device.
   room-piano  USB MIDI from the ALSA raw-MIDI device of the card matching --midi-match (else the first card with a
@@ -83,6 +85,7 @@ class Subscriptions:
         self.streams: set = set()
         self.until = 0.0
         self.devices: dict = {}                           # the receiver's device hints, {stream: name}
+        self.off: set = set()                             # streams the receiver keeps closed (off heartbeats only)
 
     def on_packet(self, buf: bytes, addr: tuple, now: float) -> bool:
         pkt = vban.parse(buf)
@@ -90,9 +93,18 @@ class Subscriptions:
             return False
         streams = vban.subscribed_streams(pkt) or []
         devices = vban.subscribed_devices(pkt)
+        off = set(vban.subscribed_off(pkt)) - set(streams)
         with self.lock:
             self.addr, self.streams, self.until, self.devices = addr, set(streams), now + SUB_TTL_S, devices
+            self.off = off
         return True
+
+    def mode(self, stream: str, now: float) -> Optional[str]:
+        """"on" (capture and send), "off" (device closed, off heartbeats) or None (nothing: no one asked)."""
+        with self.lock:
+            if self.addr is None or now > self.until:
+                return None
+            return "on" if stream in self.streams else "off" if stream in self.off else None
 
     def device(self, stream: str) -> Optional[str]:
         """The device the receiver last asked for on ``stream`` (the Room page's Mic choice), or None."""
@@ -101,7 +113,7 @@ class Subscriptions:
 
     def target(self, stream: str, now: float) -> Optional[tuple]:
         with self.lock:
-            if self.addr is None or now > self.until or stream not in self.streams:
+            if self.addr is None or now > self.until or (stream not in self.streams and stream not in self.off):
                 return None
             return self.addr
 
@@ -386,7 +398,7 @@ class AudioStream:
         def db(x):
             return [round(max(-120.0, 20.0 * math.log10(v)) if v > 0 else -120.0, 1) for v in x]
         rms = np.sqrt(self._sq / self._cnt) if self._cnt else np.zeros(self.channels)
-        frame, n, t_cap = self.last if self.last else (None, None, None)
+        frame, n, t_cap = self.last if self.last and state != "off" else (None, None, None)
         obj = vban.make_heartbeat(sess=self.sess, frame=frame, n=n, t_cap_ns=t_cap, in_lat_ms=round(in_lat_ms, 2),
                                   dev=self.dev or "none", state=state, xruns=self.xruns,
                                   peak_dbfs=db(self._peak), rms_dbfs=db(rms), clips=self.clips,
@@ -402,13 +414,23 @@ OVERRUN = re.compile(r"overrun.*?at least\s+([\d.]+)\s*ms", re.I)
 
 
 def run_arecord(out: Out, stop: threading.Event, match: Optional[str], channels: int = 1) -> None:
-    """The USB mic through ``arecord`` -> room-mic (retried every 2 s; heartbeats meanwhile say no_device)."""
+    """The USB mic through ``arecord`` -> room-mic, only while the receiver subscribes it (the owner: the mic is never
+    on unless something needs it).  Kept off by the SUBSCRIBE: no arecord, heartbeats say off (and list the
+    devices); asked for by nobody: nothing at all.  No device: retried every 2 s, heartbeats say no_device."""
     au = AudioStream("room-mic", out.send, channels)
     period = au.frames
     in_lat_ms = 1000.0 * 4 * period / FS                  # arecord's buffer: 4 periods
     last_hb = 0.0
     node = "/dev/snd/pcmC{n}D0c"
     while not stop.is_set():
+        mode = out.subs.mode(au.stream, time.monotonic())
+        if mode != "on":
+            if mode == "off" and time.monotonic() - last_hb >= HEARTBEAT_S:
+                au.devices = list_cards(node)
+                au.heartbeat("off", 0.0)
+                last_hb = time.monotonic()
+            stop.wait(0.1)
+            continue
         au.devices = list_cards(node)
         card = pick_card(out.subs.device(au.stream), match, node)
         if card is None or not _have("arecord"):
@@ -429,6 +451,9 @@ def run_arecord(out: Out, stop: threading.Event, match: Optional[str], channels:
         nbytes = period * channels * 2
         try:
             while not stop.is_set():
+                if out.subs.mode(au.stream, time.monotonic()) != "on":
+                    log.info("mic: off (not subscribed)")
+                    break                                 # closes the device below
                 buf = _read_exact(proc.stdout, nbytes)
                 if buf is None:
                     break
@@ -454,6 +479,8 @@ def run_arecord(out: Out, stop: threading.Event, match: Optional[str], channels:
         want = out.subs.device(au.stream)
         if want and want != card[1] and want in au.devices:
             continue                                      # switching device: no retry wait
+        if out.subs.mode(au.stream, time.monotonic()) != "on":
+            continue                                      # turned off: no retry wait
         log.warning("mic: arecord stopped (code %s)", proc.poll())
         stop.wait(RETRY_S)
 
