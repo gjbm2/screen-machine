@@ -1,0 +1,53 @@
+# config/llm.yaml: which model each LLM task uses, what it costs, and the daily budgets (utils/llm; docs/SHOW_ENGINE.md
+# §7.2, §7.6; show_service/README.md "Stage 3 > S3.12").
+# Owner: screen-machine-c8 (written by B6, 16 Oct 2026). utils/llm re-reads it when it changes (mtime, every 2 s); a bad
+# edit keeps the last good file and shows the error in utils.llm.status().
+#
+# Model ids appear ONLY in this file. Keys never do: each provider names the environment variable that holds its key,
+# read from the environment, else from the repo's .env. A model is listed only after it was checked (models.list() with
+# the key, and the price on the provider's pricing page). An empty models list means "no model configured": the
+# listener says so, and Describe it uses its keyword match.
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false.
+
+version: 1
+
+providers:
+  openai:
+    key_env: OPENAI_API_KEY
+    base_url: null                          # null = the SDK's default (api.openai.com)
+  gemini:
+    # Gemini's OpenAI-compatible endpoint, on the same client (§7.2's fallback; paid tier only). Off for now: there is
+    # no GEMINI_API_KEY in .env, so a Gemini model would be skipped ("no key"), and none is listed under tasks until
+    # its id is checked with models.list() and its price with Google's pricing page.
+    key_env: GEMINI_API_KEY
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+
+tasks:
+  listen:                                   # the LLM listener (§7.3): a room clip -> genre, moods, section, trajectory
+    models:                                 # tried in order; the next one only when the one before fails
+      - {provider: openai, model: gpt-audio-1.5}   # checked 16 Oct 2026: in models.list(); the smoke call worked
+      - {provider: openai, model: gpt-audio}       # checked 16 Oct 2026: in models.list()
+    timeout_s: 12                           # §7.3; no retries (the next window is the retry)
+    max_output_tokens: 400
+    audio:                                  # the clip as sent: ffmpeg MP3 (a WAV when ffmpeg fails)
+      format: mp3
+      sample_rate: 24000                    # §7.3
+      bitrate: 64k                          # README S3.12 (§7.3 said 96k; 64k is plenty for a 24 kHz mono clip)
+  describe:                                 # Describe it (§7.4): the guest's words -> the card's own settings
+    models:
+      - {provider: openai, model: gpt-4.1-mini}    # checked 16 Oct 2026: in models.list(); fast, no reasoning tokens
+    timeout_s: 8                            # then the local keyword match answers
+    max_output_tokens: 300
+
+# USD per 1M tokens. Retrieved 16 Oct 2026 from https://developers.openai.com/api/docs/pricing ("Realtime and audio
+# generation models" for the gpt-audio rows, text and audio tokens; Standard tier for gpt-4.1-mini).
+# text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
+prices:
+  gpt-audio-1.5: {text_in: 2.50, text_out: 10.00, audio_in: 32.00}
+  gpt-audio:     {text_in: 2.50, text_out: 10.00, audio_in: 32.00}
+  gpt-4.1-mini:  {text_in: 0.40, text_out: 1.60, cached_in: 0.10}
+
+# USD per local day, per task. Reaching it makes the listener call three times less often; it never stops it.
+budgets:
+  listen: 15.00                             # starting point, the owner's call: §7.2 estimates $10-14 for a 4-hour
+                                            # evening at one call every 20 s

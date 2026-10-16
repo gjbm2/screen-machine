@@ -35,7 +35,8 @@ server -> {"v":1,"type":"show.state","seq":…,"t_ms":…,"feed":"live","input":
   numpy values are cleaned before sending (strict JSON for browsers). The drain yields every 16 messages, so a
   burst after a stall on our side never closes a renderer that is keeping up.
 * **Routes:** ``GET /v1/show`` (WS), ``GET /healthz``, ``GET /api/v1/state`` (``state_fn()``, or 503 while it is
-  None), and the later §11.2 routes as 501 stubs with a plain message.
+  None), then ``routes(app)`` (api.py's §11.2 routes and ``/v1/events``; a ``routes`` that raises is logged and the
+  stubs stay), then a 501 stub with a plain message for every STUBS pair nobody registered.
 
 Threads: one ``show-bus`` thread owns the asyncio loop and every client; ``publish`` and ``stats`` are safe from any
 thread; ``state_fn`` and ``health_fn`` are called on ``show-bus`` and must only read snapshots.
@@ -55,9 +56,10 @@ from typing import Any, Callable, Optional
 from aiohttp import WSMsgType, web
 
 from . import __version__
-from .contract import (BUS_HOST, BUS_PATH, BUS_PORT, BUS_SCHEMA, CLOSE_BEHIND, HELLO_TIMEOUT_S, MUSIC_CLOCK,
-                       MUSIC_FEATURES, MUSIC_HARMONY, MUSIC_HIT, MUSIC_NOTE, MUSIC_NOTES, MUSIC_PEDAL, OTHER_QUEUE,
-                       RENDERER_QUEUE, SPEC_BANDS, WANT_ONLY)
+from .contract import (BUS_HOST, BUS_PATH, BUS_PORT, BUS_SCHEMA, CLOSE_BEHIND, HELLO_TIMEOUT_S,
+                       LATEST_ON_CONNECT_BRAIN, MUSIC_CLOCK, MUSIC_FEATURES, MUSIC_HARMONY, MUSIC_HIT, MUSIC_INSIGHT,
+                       MUSIC_NOTE, MUSIC_NOTES, MUSIC_PEDAL, OTHER_QUEUE, RENDERER_QUEUE, ROOM_DIRECTION, ROOM_EVENT,
+                       ROOM_LOOK, SPEC_BANDS, WANT_ONLY)
 
 log = logging.getLogger("show_service.bus")
 
@@ -66,15 +68,15 @@ STATE_HZ = 25.0
 STALE_AFTER_MS = 500                 # welcome: a client may call the feed stale after this long without a frame
 MUSIC_STALE_S = 1.0                  # global.music reads silent when features/harmony are older than this
 TYPES: tuple[str, ...] = (SHOW_STATE, MUSIC_NOTE, MUSIC_PEDAL, MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_HIT,
-                          MUSIC_CLOCK)
-LATEST_ON_CONNECT: tuple[str, ...] = (MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_CLOCK)
+                          MUSIC_CLOCK, ROOM_DIRECTION, ROOM_LOOK, ROOM_EVENT, MUSIC_INSIGHT)   # the last 4: the brain's
+LATEST_ON_CONNECT: tuple[str, ...] = (MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_CLOCK) + LATEST_ON_CONNECT_BRAIN
 INBOX_MAX = 4096                     # publish() backlog if show-bus stalls; the oldest go first
 DRAIN_YIELD = 16                     # the drain lets the senders run after this many messages
 BIND_RETRY_S = 2.0
 CLOSE_TIMEOUT_S = 2.0
 MAX_IN_MSG = 64 << 10
 
-# §11.2 routes not built yet: 501 with a plain message (the console and director land later).
+# §11.2 routes: 501 with a plain message, only where ``routes`` (api.py) registered nothing (it replaces them all).
 STUBS: tuple[tuple[str, str], ...] = (
     ("GET", "/v1/events"), ("POST", "/api/v1/step"), ("PUT", "/api/v1/palette"), ("POST", "/api/v1/action"),
     ("DELETE", "/api/v1/nudge/{id}"), ("PUT", "/api/v1/vibe"), ("POST", "/api/v1/describe"),
@@ -190,12 +192,17 @@ class Bus:
     """The show bus and the show API on one aiohttp app, on its own thread (``show-bus``)."""
 
     def __init__(self, host: str = BUS_HOST, port: int = BUS_PORT, *, state_fn: Callable[[], Optional[dict]] | None = None,
-                 health_fn: Callable[[], dict] | None = None) -> None:
+                 health_fn: Callable[[], dict] | None = None,
+                 routes: Callable[[web.Application], None] | None = None) -> None:
         """``state_fn``: the body of /api/v1/state (None: 503 "starting"). ``health_fn``: Receiver.health, for
         show.state's ``audio`` and /healthz's ``streams``. Both run on show-bus and must only read snapshots.
-        ``port`` 0 binds an ephemeral port (tests); ``.port`` is the bound one after start()."""
+        ``routes(app)``: called once on show-bus at startup to add more routes (api.py); if it raises, the error is
+        logged (``routes_error``) and the stubs stay. ``port`` 0 binds an ephemeral port (tests); ``.port`` is the
+        bound one after start()."""
         self.host, self.port = host, int(port)
         self.state_fn, self.health_fn = state_fn, health_fn
+        self.routes = routes
+        self.routes_error: Optional[str] = None
         self.bind_error: Optional[str] = None
         self.t0 = time.monotonic()
         self._inbox: collections.deque = collections.deque(maxlen=INBOX_MAX)
@@ -268,7 +275,8 @@ class Bus:
             clients.append({"role": c.role, "client_id": c.client_id, "want": list(c.want) if c.want else None,
                             "queued": len(c.queue), "dropped": c.dropped, "sent": c.sent,
                             "age_s": round(time.monotonic() - c.since, 1)})
-        return {"url": self.url, "bind_error": self.bind_error, "clients": clients, "published": dict(self._published),
+        return {"url": self.url, "bind_error": self.bind_error, "routes_error": self.routes_error, "clients": clients,
+                "published": dict(self._published),
                 "state_frames": self.state_frames, "kicked": self.kicked, "bad": self.bad,
                 "inbox_dropped": self.inbox_dropped}
 
@@ -305,8 +313,16 @@ class Bus:
         app.router.add_get(BUS_PATH, self._ws)
         app.router.add_get("/healthz", self._healthz)
         app.router.add_get("/api/v1/state", self._state)
+        if self.routes is not None:
+            try:
+                self.routes(app)
+            except Exception as e:
+                self.routes_error = f"{type(e).__name__}: {e}"
+                log.exception("show bus: the API routes failed to mount; the 501 stubs stay")
+        taken = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
         for method, path in STUBS:
-            app.router.add_route(method, path, self._stub)
+            if (method, path) not in taken:
+                app.router.add_route(method, path, self._stub)
         self._runner = web.AppRunner(app, access_log=None, shutdown_timeout=1.0)
         await self._runner.setup()
         if not await self._bind():

@@ -12,7 +12,12 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
 - **Run:** `~/.venvs/sm-show/bin/python -m show_service` (from the repo root). In production it is started by
   `scripts/ctl show` (owned by ca), with `deploy/sm-show.env`: see **Deploy (P0)** at the end.
 - **Ports:** VBAN on `0.0.0.0:6980/udp` (receiver-initiated, §3.1). The bus and API are on `127.0.0.1:8703`, and are
-  reached only through `:8700/show/*`.
+  reached only through `:8700/show/*`. The test sources (Stage 3) are children on `127.0.0.1:6981/udp` (piano) and
+  `127.0.0.1:6982/udp` (audio) while they play.
+- **Files it writes:** `~/.local/state/screen-machine/show/` (`--state-dir`): `state.json`, `director.jsonl`,
+  `autopilot.jsonl`, `listener.jsonl`, `test-piano.log`, `test-audio.log`. It reads `config/room/show.yaml`,
+  `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml` and `config/live/vocab.yaml`, each re-read when
+  it changes.
 
 ## Status
 
@@ -30,11 +35,20 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
 | `artnet_out.py` | P0 virtual Maestro: ArtDmx in patch.yaml's layout, beat-phased frames, yield | **done**, tested |
 | `clock.py` | beat clock §5.3 → `music.clock`; `next_beat` for Art-Net | **done**, tested, wired |
 | `tests/test_e2e.py`, `tests/synth_sender.py` | all modules end to end over localhost (below) | **done**, passing |
-| later | `ring.py` (120 s shared-memory ring), show_brain (§2) | — |
+| **Stage 3** (below) | | |
+| `brain.py` | the show-brain thread: components, ticks, `Brain.call`, show.yaml reloads, state.json | **done**, tested, wired |
+| `director.py`, `palette.py`, `vibes.py` | the art director (§8): vibes, looks, lamps and screens, `palette_fn` | **done**, tested, wired |
+| `situations.py`, `autopilot.py` | Auto (§8.9): the situation vocabulary, `NoteTap`, `RoomLink`, the supervisor | **done**, tested, wired |
+| `api.py`, `state_store.py` | the Music card's API and `/v1/events` (§10, §11.2); state.json | **done**, tested, wired |
+| `sources.py`, `test_audio.py`; the receiver seam | test piano and test audio as children; `set_senders`, `set_priority`, host fallback | **done**, tested, wired |
+| `listener.py`, `ring.py`, `utils/llm/` | the LLM listener (§7) and its 120 s ring | **done**, tested, wired (AI listening off by default) |
+| `tests/test_e2e.py::test_brain_end_to_end` | Stage 3 end to end against a fake room | **done**, passing |
+| `room_service/adapters/show.py` | the room's "Feel" adapter (S3.11) | **done**, tested; live at the next Flask restart |
 
-**Process split.** §2 has two processes: show_rt (hot, no aiohttp) and show_brain. Until show_brain exists, everything
-runs in one process. aiohttp stays on its own thread (`show-bus`), and the hot thread only ever calls
-`publish()`. When the split happens, `publish()` becomes the IPC seam and `bus.py` moves to show_brain.
+**Process split.** §2 has two processes: show_rt (hot, no aiohttp) and show_brain. For now everything runs in one
+process: the brain is a thread (`show-brain`), aiohttp stays on its own thread (`show-bus`), and the hot thread only
+ever calls `publish()` and the two taps. When the split happens, `publish()` and BrainContext's engine-side slots
+become the IPC seam.
 
 ## Threads and data flow
 
@@ -42,16 +56,25 @@ runs in one process. aiohttp stays on its own thread (`show-bus`), and the hot t
  senders ──VBAN/UDP──► [show-rx]  Receiver.handle(buf, addr, arrival_s)
                           │  vban.parse → registry → SampleClock / CaptureMap / RemoteTimeMap
                           │  gaps (hold, zero-fill), segments, health (2 Hz snapshot)
-                          ├─ on_audio(stream, n0, t0_host_s, pcm, fs, flags) ► Features.process, then Clock.process
-                          │                                                     (active audio stream only, same block)
+                          ├─ on_audio(stream, n0, t0_host_s, pcm, fs, flags) ► Features.process, then Clock.process,
+                          │                                                     then Rings.write (Stage 3; returns at
+                          │                                                     once while the listener hasn't armed
+                          │                                                     it) (active audio stream only, same
+                          │                                                     block)
                           │      Features' music.hit bodies → Clock.observe_hit (sub/bass hits refine the phase)
-                          ├─ on_midi(stream, msg, arrival_s, to_host) ─────► midi.Piano.on_midi
+                          ├─ on_midi(stream, msg, arrival_s, to_host) ─────► NoteTap.on_midi (Stage 3), then
+                          │                                                   midi.Piano.on_midi
                           └─ on_tick(now_s) every ≤10 ms ─────────────────► Piano.tick · Features.tick · Harmony.tick
-                                                                              · Clock.tick
+                                                                              · Clock.tick · (0.5 s) snapshot, PianoView
                                                                               │ publish(msg)  (thread-safe, non-blocking)
-                       [show-dns]  resolves sender names every 30 s           ▼
-                       [show-bus]  asyncio + aiohttp: WS fan-out, /healthz, /api/v1/state
-                       [show-artnet]       deadline loop ≤44 Hz: clock.next_beat + features.latest() (by reference)
+                       [show-dns]  resolves sender hosts every 30 s           ▼
+                                   (at once after Receiver.set_senders)
+                       [show-bus]  asyncio + aiohttp: WS fan-out, /healthz, /api/v1/state, api.py's routes and
+                                   /v1/events (Stage 3: they reach the brain only through Brain.call and snapshots)
+                       [show-brain] (Stage 3) one asyncio loop: room · situations · autopilot · sources · listener
+                                   at 1 Hz, director at 10 Hz; RoomLink's WS, listener calls, art fetches, children
+                       [show-artnet]       deadline loop ≤44 Hz: clock.next_beat + features.latest() +
+                                           Director.palette_fn (all by reference)
                                            → ArtDmx → 127.0.0.1:6454 (room's receiver; only when configured)
                        [show-artnet-poll]  room's /api/v1/dmx every 5 s (yield), patch.yaml mtime every 2 s
                        [main]      signals, latency.json reload every 2 s → Receiver.set_offsets
@@ -149,6 +172,10 @@ class Receiver:
     def health(self) -> dict                 # latest 2 Hz snapshot; any thread
     def active_audio(self) -> str | None     # show-rx
     def set_offsets(self, offsets: dict[str, float]) -> None   # any thread; applied at the next tick
+    # Stage 3 (S3.10, built 16 Oct by the integrator):
+    def set_senders(self, senders: tuple[contract.Sender, ...]) -> None   # any thread; the whole list, next tick
+    def set_priority(self, names: tuple[str, ...]) -> None     # any thread; ranked before cfg.stream_priority
+    def senders(self) -> tuple[contract.Sender, ...]           # the list show-rx uses now
 ```
 **Socket and SUBSCRIBE**
 - One UDP socket bound to `cfg.vban_bind` (`0.0.0.0:6980`). Ask for `SO_RCVBUF` 4 MB, then read it back with
@@ -160,6 +187,9 @@ class Receiver:
   `(addr, port)`. Use one counter for the `sub` stream.
 - `show-dns` resolves each sender's host every 30 s into a dict that `show-rx` reads. DNS never blocks
   `show-rx`. A failed lookup shows in health, and the last good address is kept.
+- **Stage 3:** the list starts as `cfg.senders` and `set_senders` replaces it (sources.py, from show.yaml). Each of a
+  sender's `hosts` is resolved, and SUBSCRIBE goes to the first host that has answered within 3 s, else to all of them
+  (S3.10 "The receiver seam").
 
 **Registry**
 - Each stream name has its own entry, created on its first valid packet. That includes names we never subscribed
@@ -233,7 +263,10 @@ counts as 0. It is applied to `SampleClock.acoustic_offset_ms`, and for MIDI to 
 {"t_ms", "active_audio": str|None,
  "socket": {"bind", "error", "rx", "junk", "subscribe_rx", "bytes", "rcvbuf"},   # rcvbuf as read back
  "errors": {"audio", "midi", "tick", "handle"},                                  # callback exceptions (logged, never fatal)
- "senders": {name: {"host", "port", "addr", "resolve_error", "send_error", "streams": [...], "last_subscribe_ms"}},
+ "senders": {name: {"host", "port", "addr", "resolve_error", "send_error", "streams": [...], "last_subscribe_ms",
+                    "hosts": [{"host", "addr", "resolve_error", "answered_age_ms"}], "using": host|None,
+                    "on_demand": bool}},                                         # host: "using", else hosts[0]
+ "priority": [...],                                                              # set_priority's, then --stream-priority
  "streams": {name: {
     "kind": "audio"|"midi"|"unknown", "rank", "test": bool, "addr": "ip:port",
     "state": "streaming"|"quiet"|"stale"|"down"|"no_device",
@@ -376,7 +409,8 @@ quiet). Choices the spec left open:
   "replay" value, so replayed notes can't be marked.
 - **`state_channels`** (integration, 16 Oct): 98's sender (tools/show_sender) puts only channel 1's keys and pedals
   in a state, so with the default (`None`, every channel) each state released the playback's notes within 0.5 s.
-  `__main__` passes `state_channels=(1,)`. A state then releases or resets only keys and pedals last set on
+  `__main__` passes show.yaml's `situations.midi.channels` (`[1]`; review, 16 Oct: it was a code constant). A state
+  then releases or resets only keys and pedals last set on
   channel 1, or by a state. Notes struck on channel 2 are released by their own note-off, by a restart or by the
   5 s silence rule.
 - A state heals pedals first, then keys. Synthesised note-ons go through the hot-note cap like any strike.
@@ -590,7 +624,9 @@ VirtualMaestro(*, target=None,                       # (host, port); None = OFF 
   .section_change()                                  # any thread: GOBO steps (+1, raw, mod 256)
   .set_hue_latency_ms(ms)                            # any thread
   .status() -> dict                                  # any thread: state off|stopped|no_patch|idle|sending|yielded,
-                                                     #   idle_reason (no_features|quiet), target, universe, packets, seq,
+                                                     #   idle_reason (no_features|quiet), held (the same words while
+                                                     #   the director's look goes out through them), target, universe,
+                                                     #   packets, seq,
                                                      #   rate_hz, late_ms p50/p95, frame_errors, rgb, beats, period_ms,
                                                      #   gobo, yield {from, since_s, count}, poll, patch
   .plan(t_last) -> float; .compose(t) -> bool; .channels() -> bytes; .check_foreign()   # loop steps (tests)
@@ -624,11 +660,16 @@ parse_palette(spec) -> (r, g, b) | None              # PALETTES name or "r,g,b" 
 - **Bad values.** A NaN or inf reaching a channel sends the channel's default, and the inputs' clamps read NaN as 0,
   so it never sticks in a smoother. A failing frame is counted (`frame_errors`) and logged once, then at most every
   30 s.
-- **Idle.** Nothing is sent (room's input goes stale and holds, as before show_service; its test show can start,
-  and after 10 s room's Hue output hands the lamps back to the house) when:
+- **Idle.** While the director is neutral (`palette_fn` gives no dict: P0's fixed colour), nothing is sent (room's
+  input goes stale and holds, as before show_service; its test show can start, and after 10 s room's Hue output hands
+  the lamps back to the house) when:
   - there are no fresh `features` (5 s): `idle_reason` `no_features`;
   - the room is quiet: `features.gate` under 0.02 for 10 s, until it is back over 0.05: `idle_reason` `quiet`. The
     mic streams in silence too, so without this a silent room held every lamp at 30 % (1 − depth) of the colour.
+  **While the director plays a vibe** (`palette_fn` returns a dict; review, 16 Oct) neither idles: its colours keep
+  going out, so its relaxed base look, Lights low and House lights reach the lamps in a quiet room too (§8.5 "never
+  black"). Through such a stretch (`status()["held"]`: `quiet` or `no_features`) the frame is steady: `hue_depth` 0,
+  no DIMMER pulses, no beat edges or PRISM flips; PAN, TILT and ZOOM hold, ACTIVITY is 0.
   While we send, room's test show yields to us (fake_artnet treats any other sender as real Art-Net).
 - **Yield.** Every 5 s it polls `GET :8700/api/v1/dmx` (`input`: last_from, age_ms, pps, source). With the input
   fresh (≤ 1500 ms), it pauses and logs when:
@@ -641,20 +682,22 @@ parse_palette(spec) -> (r, g, b) | None              # PALETTES name or "r,g,b" 
 - **patch.yaml** is read-only for us. It is re-read on an mtime change, and a bad edit keeps the last good layout.
   It needs PyYAML (pinned in requirements.txt).
 - **Wired in `__main__`:** `vm = VirtualMaestro(**vars(artnet_out.config_from_env()), target=<--artnet-target>,
-  clock=<the Clock>, features_fn=features.latest, palette_fn=None)`, then `vm.start()`. It is stopped before rx on
+  clock=<the Clock>, features_fn=features.latest, palette_fn=<the Director's palette_fn, None without a director>)`,
+  then `vm.start()`; `ctx.set_look_out = vm.set_look` and `ctx.section_change = vm.section_change` (Stage 3). It is stopped before rx on
   SIGTERM, and `vm.status()` is the state's `artnet`. Env: `SHOW_ARTNET_TARGET` (`127.0.0.1:6454` in production; empty or
   `off` = off), `SHOW_PATCH_FILE`, `SHOW_HUE_LATENCY_MS` (0 until P6), `SHOW_ROOM_DMX_URL` (empty = no yield
   check), `SHOW_PALETTE` (the P0 colour; a bad value is logged and amber used).
 - *Measured* (niced, under the 4K render): plan + compose 36 µs p50, 58 µs p95; over a real socket, edges land
   0.2-0.4 ms after the beat at 41 Hz (124 bpm).
 
-**Tests** (`tests/test_artnet_out.py`, 37): packet bytes (header, OpCode 0x5000 LE, ProtVer 14, Length BE even ≤ 512),
+**Tests** (`tests/test_artnet_out.py`, 42): packet bytes (header, OpCode 0x5000 LE, ProtVer 14, Length BE even ≤ 512),
 Port-Address split, seq 1..255 wrapping 255 → 1; the layout against patch.yaml (screen.north 1-10,
 screen.south 17-26, hue.ne/nw/se/sw at 33/37/41/45, MASTER DIMMER 255), a reordered profile, layout errors, and
 reload. The frame grid: `grid_tick` (≥ 0.5 ms over the minimum gap), edges exactly on the beat at 60-174 bpm,
 re-phase (never early, < 1 frame late, no double edge), no lock (no pulse, 44 Hz), and the deadline loop on a
 simulated clock with late sends (gaps ≥ 22.7 ms as sent, a 0.3 ms late frame costs no grid point). GOBO, PRISM
-(fallback count, and the clock's own bar numbering), hue at `t − L_hue`, the hue swell, idle, the quiet room,
+(fallback count, and the clock's own bar numbering), hue at `t − L_hue`, the hue swell, idle, the quiet room (and the
+director's look held through it and through stale features, steady and without pulses; idle again when neutral),
 palette (env and constructor), NaN inputs, failing callbacks, a failing frame (counted, logged once), and slow
 stand-ins. The yield rule (pure: address, rate, while yielded; paused then resumed, by address over UDP and by rate).
 Off by default. End to end against an ephemeral local UDP socket: never 6454, and never room's API.
@@ -776,13 +819,19 @@ class LatencyWatch(path): .poll(force=False) -> dict | None     # offsets when m
   - `SHOW_LATENCY_FILE`, `SHOW_LOG_LEVEL`;
   - `SHOW_ARTNET_TARGET` (`host[:port]`, empty or `off` = off, the default). artnet_out's other keys
     (`SHOW_PATCH_FILE`, `SHOW_HUE_LATENCY_MS`, `SHOW_ROOM_DMX_URL`) are read by `artnet_out.config_from_env()`;
-  - `SHOW_STREAM_PRIORITY` (`a,b,c`).
+  - `SHOW_STREAM_PRIORITY` (`a,b,c`);
+  - Stage 3: `SHOW_BRAIN` (`on`, the default, or `off`: the rollback switch), `SHOW_FILE` (show.yaml),
+    `SHOW_VIBES_FILE` (vibes.yaml), `SHOW_STATE_DIR` (state.json and the logs).
 - **Args** override env: `--sender` (repeatable; any replaces `SHOW_SENDERS`), `--vban-bind`, `--bus-bind`,
   `--host` and `--port` (the bus, over `--bus-bind`: **scripts/ctl always passes `--port $SHOW_PORT`**),
   `--latency-file` (relative = from the repo root), `--log-level`, `--artnet-target` (over `SHOW_ARTNET_TARGET`),
   `--stream-priority a,b,c` (over `SHOW_STREAM_PRIORITY`; into `Config.stream_priority`: those audio streams rank
-  first, in that order, then `contract.AUDIO_PRIORITY`; names over 16 characters are skipped with a note). Unknown
-  arguments are logged and ignored.
+  first, in that order, then `contract.AUDIO_PRIORITY`; names over 16 characters are skipped with a note),
+  `--no-brain` / `--brain` (over `SHOW_BRAIN`), `--show-file`, `--vibes-file`, `--state-dir`. Unknown arguments are
+  logged and ignored.
+- `Options` gains `brain`, `show_file`, `vibes_file` and `state_dir`. `load_options` turns the brain on unless told
+  otherwise; an `Options` built in code (the tests) has `brain=False` unless it says so, so no test can reach the real
+  show.yaml, room or state directory by accident.
 - Sender hosts are DNS names, never literal IPs, in committed config (no hardcoded IPs).
 
 `__main__.py` builds (each module imported lazily; a missing or failing one is logged, shown in the state's
@@ -793,11 +842,14 @@ class LatencyWatch(path): .poll(force=False) -> dict | None     # offsets when m
 - `Receiver(cfg, on_audio, on_midi, on_tick)`; `on_audio` = `features.process`, then `clock.process` (the same block).
   The receiver delivers the active stream's blocks only, and flags the first after a switch `AUDIO_SEGMENT`, so
   `__main__` never rebuilds or resets Features or the Clock;
-- `Piano(stream, publish, state_channels=(1,))` per MIDI stream (lazily; the kiosk sender's states are channel
-  1's, see midi.py), muted (`set_voice(False)`) until it is the voice;
+- `Piano(stream, publish, state_channels=<show.yaml situations.midi.channels>)` per MIDI stream (lazily; the keys'
+  channel, [1] for the adsilent, whose own playback on channel 2 then stays held; see midi.py; read from the brain's
+  settings, or with `--no-brain` from show.yaml once at start; unset: every channel), muted (`set_voice(False)`)
+  until it is the voice. No channel is a code constant (review, 16 Oct);
 - one `Harmony`;
 - `VirtualMaestro(**vars(config_from_env()), target=Options.artnet_target, clock=<the Clock>,
-  features_fn=features.latest, palette_fn=None)`, started after rx and stopped before it.
+  features_fn=features.latest, palette_fn=<Director.palette_fn | None>)`, started after rx and stopped before it
+  (Stage 3: the brain is built before it, so the director's `palette_fn` exists; see "Stage 3 wiring" below).
 
 Then:
 - **One piano voice** (midi.py "Publishing"): only the voice Piano publishes music.note/pedal/notes. The voice is the
@@ -826,7 +878,34 @@ Then:
   at 10 s it landed on the live hot threads (one late Art-Net frame, late receive stamps). After 10 s only
   `gc.freeze()` (no collection: cheap) moves the warm-up's objects out of later collections.
 
-**Tests** (`tests/test_config.py`, 24; `tests/test_main.py`, 6): sender specs and rejects, binds, env then args,
+**Stage 3 wiring** (README S3.4 "`__main__`", as built): with the brain on, `Show.__init__` builds `api.routes(lambda:
+self.brain, self._engine, log_files=...)` and hands it to `Bus(routes=...)`; `Show.start` then builds clock, dsp,
+midi, harmony and the receiver, then `ring.Rings()` and `situations.NoteTap()`, the `BrainContext` (engine side below),
+`brain.Brain(ctx, show_file=, state_file=<state_dir>/state.json)`, then `attach(ctx, **kw)` for autopilot, sources,
+listener and director (each `brain.add`ed), then Art-Net with `palette_fn=<Director>.palette_fn`, and finally fills
+`ctx.section_change = vm.section_change` and `ctx.set_look_out = vm.set_look` (the method itself, so the director's
+`reset=True` reaches it). Then gc freeze, `rx.start()`, `artnet.start()`, `brain.start()`. Stop: brain (children and
+state.json), then Art-Net, rx, bus.
+- **Paths per component** (from the options): director `log_path=<state_dir>/director.jsonl`,
+  `vibes_path=<vibes_file>`, `patch_path=<artnet_out's SHOW_PATCH_FILE>`; autopilot `log_path=<state_dir>/autopilot.jsonl`;
+  listener `log_path=<state_dir>/listener.jsonl`; sources `log_dir=<state_dir>`. `Show(opts, brain_kw={name: {...}})`
+  adds keyword args per module (tests only: a fake LLM, fake clocks). Every `attach` takes `**kw` for this.
+- **Engine-side slots:** `features=Features.latest`, `clock=Clock.snapshot`, `harmony=lambda: Harmony.latest`,
+  `health=Show.health`, `rings`, `notes` (the NoteTap), `piano` (the PianoView below), `clock_action` (tap → `clock.tap(t)`,
+  half, double, one → `clock.one(t)`), `set_gate_ref` (`Features.gate_ref_lufs`), `set_senders`/`set_priority` (the
+  receiver's), `static_senders=cfg.senders`, `notify=api.notify`.
+- **PianoView** (built on show-rx with the 0.5 s snapshot): the voice piano's `present`, `stream`, `source`,
+  `keys_down`, `damper`, `last_note_age_s` (its table's newest T_ON, or the NoteTap's newest strike), `velocity` (EMA,
+  τ 2 s, of the strikes since the last view, from the NoteTap) and `notes_per_s` (the voice stream's NoteTap strikes in
+  the last 4 s, / 4).
+- **Guards** gain `ring.write`, `notetap` and `piano.view`.
+- **`GET /api/v1/state`** gains `brain`: `Brain.snapshot()` plus `ring` (`Rings.info()`), `notes` (`NoteTap.stats()`)
+  and `piano_view`; null with `--no-brain`. It also gains `api` (`api.stats()`: the card socket's `clients`,
+  `patches`, `refreshes`, `card_errors`, `refused`, `notified`, `overflows`, and `mounted`), null with `--no-brain`, so
+  the Spectre card sees a card that fails to build without reading the log. `modules` lists the Stage-3 modules too (`api`, `ring`, `situations`,
+  `brain`, `autopilot`, `sources`, `listener`, `director`).
+
+**Tests** (`tests/test_config.py`, 24; `tests/test_main.py`, 11; `tests/test_brain.py`, 12): sender specs and rejects, binds, env then args,
 ctl's `--port`, bad values degrade with notes, the Art-Net target (off by default, flag over env), the stream
 priority (env, flag, bad names), latency.json offsets and the watch (torn write keeps the last). The wiring with fake
 modules (callbacks, guards, the clock after Features on the same block, `music.hit` to `observe_hit`,
@@ -835,6 +914,19 @@ sess on the bus while live plays, the strike that hands over published, an idle 
 the reviewer's case that gave sound_view 15 onsets in 3 s now gives 2), every module missing, a constructor failing, and
 `python -m show_service` on an ephemeral port: up, /healthz, SIGTERM → exit 0. No senders and no Art-Net target
 in tests, so nothing is sent anywhere.
+- **Stage 3 (test_main.py):** the brain's wiring with fake components and the real brain.py and api.py (the paths
+  each component gets, every engine-side slot, Art-Net's palette is the director's, the ring after the clock and the
+  note tap before the piano, the card and the state answering, the brain stopping before Art-Net); a missing Stage-3
+  module left out (Art-Net keeps the fixed colour without a director); `--no-brain` builds nothing and writes nothing;
+  the PianoView from the real midi.py and NoteTap; `python -m show_service --no-brain` has no Stage-3 routes (bus.py's
+  501 stubs), and `python -m show_service` with the brain on, with HOME, show.yaml (a dead room port) and the state
+  directory all in tmp, answers the card and writes state.json at SIGTERM.
+- **brain.py (test_brain.py):** provides into ctx, duplicates refused; restore → configure → start on show-brain;
+  ticks at their rates in add order, guarded (a raising tick is counted, the rest carry on); `Brain.call` from another
+  loop (the result, an awaited coroutine, fn's own ValueError, a timeout that cancels, 20 at once); `dirty()` writes
+  state.json within a second and the next start restores it; a torn state.json starts cold (`.bad-<epoch>`); show.yaml
+  hot reload, a bad edit keeps the last good, a missing or bad file at start is neutral (`{}`); stop in reverse order
+  with a final state.json.
 
 ## End to end (`tests/test_e2e.py`, `tests/synth_sender.py`)
 
@@ -883,6 +975,41 @@ in tests, so nothing is sent anywhere.
   - receiver, VBAN parse and ticks about 4 %.
 - **Under the GIL with all threads:** dsp's hop p95 reads 1.0-1.4 ms, against 0.37 ms alone, so the 0.45 ms budget
   is met only without contention (open issue).
+
+**Stage 3 end to end (`test_brain_end_to_end`, about 30 s).** The same wiring with the brain on, against
+`test_autopilot.FakeRoom` on its own thread and an ephemeral port (modes `gallery`, `piano` with
+`enter_when: {piano_playing: {for_s: 3}}` and a `skip`, `disco`; Auto on in the fake). show.yaml and vibes.yaml are
+written to tmp (c8's `lamps` and `director` sections copied from config/room/show.yaml; two test vibes), the state
+directory is tmp, and the listener gets a fake LLM with no usable model, so nothing is ever uploaded.
+1. `POST /api/v1/test {audio}` plays a fetched track through the real test-audio child (a steady-beat genre, copied
+   into tmp; a synthetic loop when nothing is fetched). The receiver subscribes it (`set_senders`) and ranks it first
+   (`rank_first` → `set_priority`), so `test-audio` becomes the active stream; features and the clock follow it.
+2. Neutral first: room.look with `vibe: null`, `palette_fn` None. `PUT /api/v1/vibe` → the readback; an unknown vibe
+   → 400 with choices; room.look for the vibe, and Art-Net's screen RGB leaves the fixed amber.
+3. Nudges: Wilder (steps 1), a palette pick (a look_change room.event, then room.look with that palette), Next look,
+   two clock words. The card shows them.
+4. A restart of the in-process service: the vibe comes back `restored`, with the steps and the palette pick; the test
+   source is off.
+5. `POST /api/v1/test {piano}` plays a .mid through 98's show_sender as a child; music.note arrives (source test).
+   Auto PUTs `/api/v1/mode {mode: piano, source: autopilot, reason: "the piano is playing (piano/enter_when)",
+   expect: {current: gallery, last_transition_id: null}, skip}`; the nudges clear with the mode; a person's switch to
+   Disco puts Auto in `holding`, and no further PUT comes in 4 s while the piano still plays.
+
+**Measured, Stage 3** (16 Oct, flock + nice 19, host rendering 4K):
+- **e2e:** the techno track ("Storm", Mr.Dee): the clock locked at 128.3 bpm; 248 features from test-audio in ~10 s;
+  brain tick p95: director 1.19 ms, listener 2.7 ms, sources 0.9 ms, situations 1.0 ms, autopilot 0.5 ms; loop lag
+  p95 2.0 ms.
+- **The real process** (`python -m show_service`, brain on, HOME and every file in tmp, a fake room, Art-Net to a local
+  sink, one `renderer` WS client, the `party` vibe with listening off), over 30 s after a 12 s warm-up while the test
+  audio played:
+  - **show_service 37-38 % of one core** (two runs; P0 was 33 %): per thread (an in-process run, same load) show-rx
+    31.4 % (with the ring copy), show-bus 3.5 %, show-artnet 1.4 %, **show-brain 1.2 %**; RSS 152-156 MB, 7 threads.
+  - The test-audio child 13.5-14.3 % and its ffmpeg 3.3 % (only while a test plays).
+  - Brain tick p95: director 1.7-2.0 ms (over its 1 ms budget under the GIL; 0.6-0.8 ms alone, see S3.7),
+    situations 0.6-0.8 ms, autopilot 0.3-0.5 ms, sources 0.6-1.1 ms, listener 0.1-0.6 ms; loop lag p95 2.1-2.2 ms.
+  - Art-Net 39-39.5 Hz with the director's colours (`palette: director`), frames late p50 0.19 ms, p95 0.86 ms, none
+    late by a frame; dsp hop p95 1.2-1.3 ms (as P0 under the GIL); exit 0 on SIGTERM; no ERROR lines. At exit nanobind
+    prints "leaked 2 instances" for soxr's two resamplers (the clock's and the ring's) after "stopped": harmless.
 
 ## Contract decisions taken in this foundation (16 Oct)
 
@@ -945,10 +1072,12 @@ CUDA_VISIBLE_DEVICES=
   - With it, nothing is sent while there is no audio (5 s without features), or while the room is quiet (the
     loudness gate under 0.02 for 10 s; back over 0.05 resumes), so room's test show still runs and, 10 s later,
     room's Hue output hands the lamps back to the house.
-  - **While it sends, every screen's RGB and all four Hue lamps take one fixed colour** (P0 has no palette until
-    the director, P2): `SHOW_PALETTE` (amber, warm, white, cool, red, blue, green, violet, or `r,g,b`), default
-    warm amber `(1.0, 0.62, 0.32)`. The lamps swell on the beat between 30 % and 100 % of it (energy without a
-    beat). Room's own test show, which this displaces, cycles section colours.
+  - **While no vibe is set, every screen's RGB and all four Hue lamps take one fixed colour**: `SHOW_PALETTE`
+    (amber, warm, white, cool, red, blue, green, violet, or `r,g,b`), default warm amber `(1.0, 0.62, 0.32)`. The
+    lamps swell on the beat between 30 % and 100 % of it (energy without a beat). Room's own test show, which this
+    displaces, cycles section colours. **Stage 3:** once a mode (or `PUT /api/v1/vibe`) sets a vibe, the director's
+    `palette_fn` gives every screen and lamp its colour, and `set_look` sets the swell depth and beat lock per vibe;
+    `status()["palette"]` says which (`fixed` | `director`).
   - It yields to a real Maestro: room's `:8700/api/v1/dmx` is polled every 5 s (its `last_from`, and its `pps`
     against our own rate, so a Maestro relayed from 127.0.0.1 is seen too).
 - **Before the kiosk sender exists:** `SHOW_ARGS="--log-level INFO"`. With no senders it listens and serves
@@ -963,6 +1092,9 @@ CUDA_VISIBLE_DEVICES=
   - `SHOW_ROOM_DMX_URL=` (empty means no yield check; the default is room's);
   - `SHOW_LATENCY_FILE` (the default is config/room/latency.json, read-only for us).
 - `CUDA_VISIBLE_DEVICES=` (empty) follows §11.3: show_service is CPU only.
+- **Stage 3 lines** (all optional): `SHOW_BRAIN=off` (the rollback: no director, Auto, test sources, listener or
+  Stage-3 routes; exactly P0), `SHOW_FILE`, `SHOW_VIBES_FILE`, `SHOW_STATE_DIR` (their defaults are the production
+  paths). The exact going-live steps are S3.14.
 
 **What ca's `scripts/ctl` `show` entry must contain** (the same pattern as `stream`):
 ```
@@ -999,3 +1131,1646 @@ CUDA_VISIBLE_DEVICES=
     --sender synth=localhost:6990/room-mic,test-piano
 curl -s 127.0.0.1:<free port>/api/v1/state
 ```
+
+## Stage 3: the brain (director, vibes, Auto, API, test sources, listener)
+
+**Interfaces, 16 Oct (c8).** This section defines Stage 3 so that six builders can work in parallel, each in its own
+files.
+- The shared names and the **exact dict shapes** are the TypedDicts in **contract.py's "Stage 3" block**.
+- This section covers the files and threads, every signature, the HTTP and WS bodies, the config schemas and the rules.
+- It supersedes the Status table's "later" row for `ring.py` and show_brain.
+- SHOW_ENGINE.md is the design (§7, §8, §10, §11.2). Where the two differ, this section is the build spec.
+
+### S3.0 Rulings every builder keeps (owner, 15-16 Oct)
+
+1. **No special cases; everything is config.** No code branches on a mode name, a vibe name, a device name or
+   "piano".
+   - Behaviours are fields (`contract.VIBE_FIELDS`, §8.1's table).
+   - Situations are a fixed vocabulary; which mode uses which is config.
+   - Lamp roles come from patch.yaml's `placement`, through show.yaml.
+2. **No invented values in live config.** Offer real choices, and leave unknowns unset. An unset field takes its
+   documented **neutral** value (S3.5).
+   - Design defaults are marked "starting point" where they are written (vibes.yaml, show.yaml), or listed as Auto's
+     design defaults (S3.8).
+   - The GET answers say which values are defaults.
+3. **The show never dims a screen.**
+   - `level`, `floor`, Lights low, House lights and dips go to lamps and DMX only.
+   - `palette_fn`'s screen entries and `LookData.screens` are never scaled by any of them. A test proves it (B1).
+4. **Degrade, never refuse.**
+   - A missing module, file or service gives a quieter behaviour, never an error page, and no control is ever
+     disabled.
+   - **No auth.**
+   - **No hard-coded IPs:** device addresses live in `config/room/*` (show.yaml, sonos.json). The loopback URLs in
+     contract are defaults that show.yaml overrides.
+5. **Auto** acts only through room `PUT /api/v1/mode {mode, source: "autopilot", reason, expect, skip}`.
+   - It is off by default.
+   - It holds after a person's choice.
+   - It treats Undo as a correction.
+   - It never re-requests the current mode.
+   - It announces every switch.
+6. **Put-back belongs to the room:** the generic per-row `{"set": v, "restore": true}`. show_service never stores or
+   restores device state. The director reads the room's stored house state to colour lamps during House lights; that
+   is read-only.
+
+### S3.1 Builders and files
+
+Each builder edits only its own files, plus the seams listed in the last column. Nobody else edits those seams.
+
+| Builder | Its files (and tests named for them) | Seams it alone edits |
+|---|---|---|
+| **B1 director** | `director.py`, `palette.py`, `vibes.py`; `tests/test_director.py`, `test_palette.py`, `test_vibes.py` | `artnet_out.py`: `VirtualMaestro.set_look()`, with tests in `test_artnet_out.py`; `requirements.txt` (Pillow) |
+| **B2 auto** | `situations.py`, `autopilot.py`; `tests/test_situations.py`, `test_autopilot.py` | none |
+| **B3 api and wiring** | `api.py`, `brain.py`; `tests/test_api.py`, `test_brain.py` | `bus.py` (the `routes` seam and `LATEST_ON_CONNECT`); `__main__.py` (Stage-3 wiring); `config.py` (`--no-brain` / `SHOW_BRAIN`); additions to `test_bus.py`, `test_main.py` and `test_config.py` |
+| **B4 sources** | `sources.py`, `tools/show/fetch_test_music.py`; `tests/test_sources.py` | `receiver.py`: `set_senders`, `set_priority` and `Sender.hosts` fallback, with additions to `test_receiver.py` |
+| **B5 room adapter** | `room_service/adapters/show.py`; `room_service/tests/roomstate/test_show_adapter.py` | `room_service/adapters/__init__.py`: one `show` parameter in `build_adapters` (tell aa) |
+| **B6 listener** | `listener.py`, `ring.py`, `utils/llm/` (package, its tests in `utils/llm/tests/`), `config/llm.yaml`; `tests/test_listener.py`, `test_ring.py` | `requirements.txt` (openai 1.77 and its pins) |
+
+c8 owns `contract.py`, `config/room/show.yaml`, `config/room/vibes.yaml` and this README.
+- A builder that needs a contract change asks c8; it never edits contract.py itself.
+- `requirements.txt` is append-only: one commented block per builder.
+- Builders don't commit; c8 does.
+
+### S3.2 Module map and imports
+
+- **Imports.** A Stage-3 module imports `contract` (plus `vban` or `timeline` if needed), the stdlib and its own
+  pinned dependencies. It never imports another builder's module.
+  - Within one builder, imports are fine: director → vibes and palette; autopilot → situations.
+  - Only listener imports `utils.llm`, and lazily.
+- **Components.** Each component module exposes `attach(ctx: contract.BrainContext) -> Component | list[Component]`
+  (`contract.Component`: `name`, `tick_hz`, `provides`, `configure`, `restore`, `start`, `tick`, `snapshot`,
+  `persist`, `stop`).
+- **Calls between components** go through `ctx` slots (filled from `provides()`) and through the component methods
+  that api.py calls on `brain.components[name]`, with the signatures below.
+
+| Module | `attach(ctx)` returns | Component names | tick_hz | Also exports (made by `__main__`) |
+|---|---|---|---|---|
+| autopilot.py | `[RoomLink, Situations, Autopilot]` | `room`, `situations`, `autopilot` | 0, 1, 1 | none |
+| situations.py | none (autopilot builds `Situations`) | none | none | `NoteTap` (show-rx writer) |
+| sources.py | `Sources` | `sources` | 1 | `main()`: the test-audio child |
+| listener.py | `Listener` | `listener` | 1 | none |
+| director.py | `Director` | `director` | 10 | `Director.palette_fn` (artnet_out) |
+| ring.py | none | none | none | `Rings` (show-rx writer) |
+
+Brain add order (ticks within one beat run in this order): `room`, `situations`, `autopilot`, `sources`, `listener`,
+`director`.
+
+### S3.3 Threads
+
+```
+[show-rx]      unchanged, plus two guarded taps:
+               on_midi  -> NoteTap.on_midi (before the Piano)          guard "notetap"
+               on_audio -> Features, Clock, then Rings.write            guard "ring.write" (a no-op while the
+                                                                        listener hasn't armed the ring)
+[show-bus]     plus api.py's routes and the /v1/events hub. Handlers never touch brain state: they
+               `await brain.call(fn, ...)` and read snapshots.
+[show-brain]   NEW (brain.py): one thread with one asyncio loop.
+               Ticks:  director 10 Hz; room/situations/autopilot/sources/listener 1 Hz; reloads every RELOAD_S;
+                       state.json at most 1/s.
+               Tasks:  RoomLink (WS /api/v1/events, GETs, PUTs); listener calls (AsyncOpenAI); Describe it;
+                       art-still fetches; child-process waits.
+[show-artnet]  Director.palette_fn(t) at <= 44 Hz: a dict swapped by reference; only a crossfade's lerp runs in the call
+children       test piano (tools/show_sender/show_sender.py --test-piano) and test audio
+               (python -m show_service.sources audio): separate processes, started and killed only by sources.py
+```
+- **Ownership.** Everything a component owns lives on show-brain. Other threads read `snapshot()` (a dict built on
+  show-brain, swapped by reference, never mutated afterwards), or call the few any-thread methods named below:
+  - `palette_fn`;
+  - the readers of `NoteTap` and `Rings`;
+  - `Brain.call`, `dirty` and `snapshot`.
+- **Nothing on show-brain blocks.**
+  - HTTP and WS go through aiohttp on `ctx.loop`, and subprocesses through asyncio.
+  - File writes are small: state.json and the jsonl appends.
+  - OpenAI goes through `AsyncOpenAI`.
+- **Budgets** (p95, niced, under the 4K render), reported by `brain.snapshot()`. Each tick is timed twice:
+  `cpu_p95_ms` (`time.thread_time()`: show-brain's own work, what the tick budgets apply to) and `wall_p95_ms` (=
+  `p95_ms`, `perf_counter`: includes waiting for the GIL behind show-rx, the lag signal). A wall figure over budget
+  with a small CPU figure is contention, not the component (review, 16 Oct: the director's own tick is 0.25 ms p50,
+  0.5 ms p95 unloaded, while wall read 1.7-2.0 ms).
+
+  | What | p95 |
+  |---|---|
+  | director tick | ≤ 1 ms |
+  | each 1 Hz tick | ≤ 3 ms |
+  | brain loop lag | ≤ 20 ms |
+  | `NoteTap.on_midi` (show-rx) | ≤ 20 µs a batch |
+  | `Rings.write` (show-rx) | ≤ 60 µs a 128-frame block |
+
+  The two show-rx figures are measured in their own tests (`-s` prints them).
+- **The two-process split.** §2's later split turns BrainContext's engine-side slots into IPC, so keep them as
+  "latest value" reads.
+
+### S3.4 brain.py, `__main__`, the bus seam (B3)
+
+```python
+class Brain:
+    def __init__(self, ctx: contract.BrainContext, *, show_file: Path = contract.SHOW_FILE,
+                 state_file: Path = contract.STATE_FILE, wall: Callable[[], float] = time.time) -> None
+    def add(self, comp: contract.Component) -> None    # main thread, before start(); a duplicate name raises ValueError;
+                                                       # applies comp.provides() to ctx (on_mode_change appended)
+    components: dict[str, contract.Component]          # add order; read-only after start()
+    def start(self) -> None                            # thread "show-brain"; returns once the loop runs
+    def stop(self, timeout: float = 3.0) -> None       # comp.stop() in reverse order, a final state.json, loop stopped
+    async def call(self, fn, *args, timeout: float = contract.BRAIN_CALL_TIMEOUT_S) -> Any
+        # from another loop (show-bus): fn(*args) on show-brain, awaited there if it returns an awaitable;
+        # raises asyncio.TimeoutError, or fn's own exception (api: ValueError/LookupError -> 4xx)
+    def dirty(self) -> None                            # any thread (= ctx.persist): state.json within PERSIST_MIN_S
+    def snapshot(self) -> dict                         # any thread:
+        # {"components": {name: comp.snapshot()}, "ticks": {name: {"hz", "p95_ms" (= wall_p95_ms), "wall_p95_ms",
+        #  "cpu_p95_ms", "late", "errors"}},
+        #  "loop_lag_ms_p95", "settings": {"path", "revision", "error"},
+        #  "state_file": {"path", "saved_age_s", "error"}, "modules": {name: "ok" | "missing: …" | "failed: …"}}
+```
+**Start** (on show-brain), in this order:
+1. Set `ctx.loop` and `ctx.persist = self.dirty`.
+2. Read state.json.
+   - Missing: `{}`.
+   - Unreadable or invalid: rename it to `state.json.bad-<epoch>`, start cold, and show the error.
+3. `comp.restore(saved.get(name) or {})` for each component.
+4. Parse show.yaml into `ctx.settings`, then `comp.configure(settings)` for each.
+   - A bad file at start gives `{}` and an error, and the components use neutral values.
+5. `comp.start()` for each.
+6. Start the tick schedules: one fixed-rate loop per rate, components in add order.
+   - Every call is guarded: an exception is counted and logged at most every 30 s, like `__main__._Guard`.
+7. Re-read show.yaml every `RELOAD_S` (mtime or size changed).
+   - Valid: swap `ctx.settings`, then `configure()` every component.
+   - Invalid: keep the last good settings and show the error.
+
+**state.json** (`contract.STATE_FILE`):
+- **Written** atomically: `state.json.tmp` in the same directory (created with mode 0700), write, flush, fsync,
+  `os.replace`.
+- **Shape:** `{"v": 1, "saved_at": <epoch s>, "version": <show_service version>, "<component name>": comp.persist(),
+  ...}`.
+- **What persists** (§11.2: vibe, steps, palette pick, chips with absolute expiry, listening; plus Auto's runtime):
+
+  | Key | Shape |
+  |---|---|
+  | `director` | `{"target": VibeTarget \| null, "target_source": "mode" \| "api", "target_set_at": epoch \| null, "mode": str \| null, "nudges": {"steps": int, "palette": "auto" \| "art" \| <name>, "moods": [str] \| null, "keep_until": epoch \| null, "house": bool, "low": bool}}`. Chips are rebuilt from the nudges. At restore, a passed `keep_until` is dropped, and the first RoomView whose mode differs from `mode` clears every nudge. |
+  | `listener` | `{"on": bool, "set_at": epoch}`. With nothing saved: `{"on": false}`. |
+  | `autopilot` | `{"entered": {"mode", "previous", "rule", "at", "transition_id", "by": "auto" \| "person"} \| null, "hold": {"mode", "by": "person" \| "undo" \| "correction", "since", "until"} \| null, "pause": {"why": "flap", "until"} \| null, "backoff_until": epoch \| null, "suppressed": [{"mode", "rule", "since", "until"}], "switches": [epoch, ...], "last": {"at", "from", "to", "reason", "rule", "transition_id", "status"} \| null}` |
+  | `sources` | Nothing: tests stop on restart. |
+
+- **Starts cold, deliberately:** the clock, sections, LLM beliefs, situation timers and the RoomView.
+
+**`__main__` (Show.start), in order:**
+1. `bus` (with `routes=api.routes(brain_ref, engine_ref)`).
+2. clock, dsp, midi, harmony, receiver.
+3. `rings = ring.Rings()` and `tap = situations.NoteTap()`.
+4. `ctx = BrainContext(...)` with the engine-side slots filled, then `brain = Brain(ctx)`.
+5. `mod.attach(ctx)` for `autopilot`, `sources`, `listener`, `director`, each passed to `brain.add`.
+6. artnet, with `palette_fn = <the Director>.palette_fn` (None without one).
+7. gc freeze, `rx.start()`, `artnet.start()`, `brain.start()`.
+
+**Stop:** `brain.stop()` (this stops the test children and writes state.json), then artnet, rx, bus.
+- Every Stage-3 module is imported lazily through `_import`, so a missing one shows in `modules` and is left out.
+- `--no-brain` (or `SHOW_BRAIN=off`) builds no brain, no taps and no Stage-3 routes. The process is then exactly as
+  before Stage 3, which makes it the rollback switch.
+
+**Engine-side slots** (B3 fills them; S3.4's names are `contract.BrainContext`'s):
+- `features=features.latest`, `clock=clock.snapshot`, `harmony=lambda: harmony.latest`, `health=self.health`.
+- `rings`, `notes=tap`.
+- `piano=self._piano_view`: the PianoView built in `_snapshot` on show-rx every 0.5 s:
+  - the voice piano's `present`, `stream` and `source`;
+  - `keys_down = len(held())`;
+  - `damper = pedals["damper"]`;
+  - `last_note_age_s` from the table's newest T_ON;
+  - `velocity`: EMA (τ 2 s) of VEL_ON/127 for strikes since the last snapshot;
+  - `notes_per_s`: strikes with T_ON in the last 4 s, divided by 4.
+- `clock_action`: maps `tap` → `clock.tap(t)`, `half` → `half()`, `double` → `double()`, `one` → `one(t)`.
+- `section_change=vm.section_change`, `set_look_out=vm.set_look`,
+  `set_gate_ref=lambda l: setattr(features, "gate_ref_lufs", float(l))`.
+- `set_senders=rx.set_senders`, `set_priority=rx.set_priority`, `static_senders=cfg.senders`.
+- `Show.state()` gains `"brain": brain.snapshot()` and `"api": api.stats()` (the card socket's health).
+
+**bus.py seam:**
+- `Bus(host, port, *, state_fn=None, health_fn=None, routes: Callable[[web.Application], None] | None = None)`.
+- `_startup` registers the existing routes, then calls `routes(app)` under a guard: if it raises, that is logged and
+  the stubs stay.
+- Then it adds `STUBS` only for (method, path) pairs not already registered. aiohttp raises on a duplicate route.
+- `LATEST_ON_CONNECT` gains `contract.LATEST_ON_CONNECT_BRAIN` (`room.direction`, `room.look`).
+- Tests go in `test_bus.py`: a route replaces its stub, a failing `routes` keeps the stubs, and latest-on-connect
+  includes room.look.
+
+**As built (integration, 16 Oct): `brain.py` and the `__main__` wiring.** Built to the spec above (details in
+"config.py and `__main__.py`"); where it was open:
+- **Brain** uses state_store.StateStore for state.json (`ctx.persist = Brain.dirty`; a housekeeping task every 0.25 s
+  writes it when due, at most once per `PERSIST_MIN_S`, and once more at stop). Extra constructor keyword: `mono`,
+  `reload_s` (tests).
+- **`running`** (bool) is what api.py reads: False until every component has started, False again at stop. `call()`
+  refuses with `RuntimeError("brain_not_running")` before that, runs `fn` directly when already on show-brain, and on
+  a timeout cancels the call on show-brain before raising `asyncio.TimeoutError`.
+- **Ticks:** one asyncio task per rate (10 Hz, 1 Hz), components in add order, each call timed and guarded; a loop
+  that falls a whole period behind skips ahead (no burst) and counts `late`. Every tick round ends with a yield, so a
+  slow tick never starves the API's calls.
+- **show.yaml:** compared by (mtime, size) every `RELOAD_S`; `settings.revision` is the first 12 hex of its SHA-1. A
+  missing or bad file at start gives `{}` (every component's neutral values) and the error; later, the last good
+  settings stay and the error says "keeping the last good".
+- **`snapshot()`** adds `running`, per-tick `ticks` and `last_error`, and `errors` (restore/configure/start/persist/
+  stop/settings guard counts).
+- **Start-up failure** of a component (restore, configure or start raising) is counted and logged; it still ticks.
+- **Paths** come from the options (`--show-file`, `--vibes-file`, `--state-dir`), so the tests never touch production
+  files; `Options()` built in code has the brain off.
+- **The readback's listening** (S3.7's open point): api.py's `GET`/`PUT /api/v1/vibe` overlay the listener's own gate
+  (`effective`, `why`, from its last 1 Hz snapshot) when the director's part allows listening.
+- **contract.TEST_STREAMS** gains `test-audio`, so it ranks with the test streams (after every room stream, before
+  unknown names) and sources.py lifts it with `set_priority` while it plays. That list is about ranking and the
+  receiver's `test` mark only: no privacy decision reads a stream's name (S3.12).
+
+### S3.5 vibes.yaml (schema; c8's file, read by vibes.py)
+
+`version: 1`, `order: [names]` (vibes missing from it are appended alphabetically), `vibes: {name: {field: value}}`.
+- **Names** match `^[a-z0-9][a-z0-9_-]{0,31}$`.
+- **Flat:** nothing inherits.
+- **Load rules:**
+  - A YAML error keeps the last good file, with `error` set.
+  - A bad value drops that field to neutral and adds a line to `problems` (`vibes.party.level: [0.9, 0.2] is not a
+    range`).
+  - An unknown field is ignored, with a problem line.
+  - An unknown palette name or vocab word is dropped from its list, with a problem line.
+
+| Field | Type | Neutral (unset) | Meaning |
+|---|---|---|---|
+| `label` | str | the name | Feel card word |
+| `description` | str | `""` | |
+| `energy` | [lo, hi] in 0..1 | [0, 1] | direction.energy bounds (§8.2 clamp_to_vibe) |
+| `energy_centre` | 0..1 | middle of `energy` | where the vibe rests with the music neutral |
+| `loudness_ref_lufs` | -60..-5 or null | null (Features keeps its -30) | §6.3 gate reference → `ctx.set_gate_ref` |
+| `follow` | list from `FOLLOW_INPUTS` | `[energy]` | what steers numbers inside a look |
+| `follow_amount` | 0..1 | 0.5 | gain in `f = clamp(centre + follow·conf·liveness·(music − 0.5) + steps·step_size)` |
+| `beat_lock` | bool | true (the clock's gate still decides) | false: no pulses, no beat accents, no beat swell |
+| `change_looks` | `phrase` \| `between_pieces` \| `time` | `phrase` (falls back to time while the clock is unsure) | §8.1, §8.5 |
+| `change_rate` | 0..1 | 0.5 | min_bars 32/16/8 at 0/0.5/1; direction.change_rate |
+| `dwell_s` | [min, max] s | [45, 180] | changing by time |
+| `relax_on_talk` | bool | true | |
+| `listener` | bool | true | the vibe lets the listener run (S3.12) |
+| `palettes` | ranked list of catalog names and/or `art` | `[]`: the neutral palette (key white in every role) | |
+| `key_cct` | 1500..6500 K | 2700 | key lamps' white |
+| `lamp_chroma_max` | 0..0.37 | 0.05 | key lamps' tint cap (OKLCh C) |
+| `chroma_max` | 0..0.37 | 0.37 | every other lamp's cap |
+| `saturation` | [lo, hi] | [0.5, 1] | moved by arousal and energy |
+| `contrast` | [lo, hi] | [0.3, 0.7] | |
+| `level` | [lo, hi] | [0.5, 1] | **lamps/DMX only** |
+| `floor` | 0..1 | 0.1 | **lamps/DMX only** |
+| `motion` | [lo, hi] | [0.1, 0.5] | |
+| `accents` | `ACCENT_STYLES` | `none` | today only the depth of the lamps' beat swell (show.yaml `director.accent_depth`); the form says so ("Lamps' beat swell": None, Gentle, Medium, Strong, Full) |
+| `strobe` | bool | false | L5 cap (default off). **Not built yet:** only published; the form keeps it behind More, "(not built yet)" |
+| `peak_tokens_per_hour` | int ≥ 0 | 0 | **Not built yet:** nothing spends them; behind More, "(not built yet)"; vibes.yaml leaves it unset |
+| `moods` | vocab moods | `[]` | lowest-priority words |
+| `genre` | vocab genre, `auto` or null | null | `auto` = null ("the music decides"), a real choice in the form |
+| `transition_style` | vocab, `auto` or null | null (the music's band decides) | as genre |
+| `palette_family` | vocab, `auto` or null | null | as genre ("Any") |
+| `step_size` | 0..0.5 | 0.1 | one Calmer/Wilder step |
+| `max_steps` | 0..6 | 3 | |
+| `persona` | str | `""` | **Describe it only** (§7.1: the listener never sees direction) |
+
+**The mode's show target** is `contract.VibeTarget`: `{"vibe": str, "listening": bool, "overrides"?: {field: value}}`.
+- Canonical form: `listening` is always present (false when left out), and `overrides` appears only when non-empty.
+  `label`, `description` and `persona` can't be overridden.
+- **Degrade, never refuse** (review, 16 Oct). A target is kept **as asked**, so the room adapter's comparison holds:
+  - a vibe vibes.yaml doesn't have plays the neutral look (`known: false`), so the previous mode's feel never
+    lingers;
+  - an override vibes.py can't use (an unknown field, a bad value, a word vocab.yaml lacks, `label`) is dropped at
+    run time, as at load;
+  - the read-back's `problems` lists both in page words (`"the feel 'x' isn't in vibes.yaml: the neutral look
+    plays"`, `"overrides.level: [1, 0] is not a range [low, high]: the vibe's own value plays"`).
+- **No feel** is `{"vibe": null}` (or `DELETE /api/v1/vibe`): the director goes neutral. The room adapter reads it as
+  the value `{"vibe": null, "listening": false}`, so the room's generic put-back can restore "no feel" when a mode
+  with a show row is left for one without.
+- **Null in overrides** means unset (the vibe's own value), in show_service and in the adapter alike, as the room's
+  form means it. A field's neutral is offered as a real choice instead: `auto` for a word field, and the gate's own
+  -30 LUFS (preset "The usual") for `loudness_ref_lufs`. Lists keep the first of each item, in both.
+- In modes.json (2f's file) it is the row
+  `"show": {"set": <VibeTarget>, "restore": true, "policy": "ignore"}`.
+  `ignore` means the value is applied on arrival and retried until it lands; after that it belongs to the user, so
+  nudges never show as drift.
+- Proposed rows, for the owner and 2f to decide; nothing in Stage 3 writes them:
+
+  | Mode | Row |
+  |---|---|
+  | gallery | `{"vibe": "home", "listening": true}` |
+  | lights-only | `{"vibe": "dinner", "listening": false}` |
+  | ambient | `{"vibe": "chill", "listening": true}` |
+  | piano | `{"vibe": "notes", "listening": false}` |
+  | party | `{"vibe": "party", "listening": true}` |
+  | disco | `{"vibe": "disco", "listening": true}` |
+  | live-test, off | no row |
+
+  Nothing is uploaded until the owner turns AI listening on (S3.12): test streams included, with no exception.
+
+### S3.6 show.yaml (schema; c8's file, read by brain.py and handed to every component)
+
+The file itself documents every key. Its sections:
+
+| Section | Read by | Keys |
+|---|---|---|
+| `senders` | sources (→ `Receiver.set_senders`); listener (`room_sound`) | `<name>: {hosts: [str, ...], port, streams: [...], on_demand?: bool, room_sound?: bool}`. `room_sound: false`: its audio can't carry anyone in the room (a music file), so the listener skips only the music/speech check for its streams. Unset or bad = room sound. `kiosk` ships commented out (the go-live step, S3.14) |
+| `tests` | sources | `piano: {sender, pieces}`; `audio: {sender, music, rank_first}` |
+| `room` | RoomLink | `url` (default `contract.ROOM_URL`) |
+| `situations` | Situations; `__main__` (`midi.channels`: the MIDI state channels) | `midi` (renamed from `piano`, 16 Oct: no code reads a key called piano), `music`, `sonos`, `quiet`: each situation's default params (S3.8) |
+| `lamps` | director | `placement_roles: {placement: role}`, `default_role`, `roles: {role: {palette_role, follow_screen?, white_k?, chroma_max?, avoid_hues?, motion}}`. A value that is a string names a vibe field. |
+| `director` | director | `steps.size_from`, `steps.max_from`, `keep_s`, `low {level, fade_s}`, `house {white_k, level}`, `next_max_wait_s`, `art {poll_s, colours}`, `republish_s`, `between_pieces {pause_s, damper_up}`, `new_song_after_s`, `novelty`, `variation_bars`, `entry_fade_s`, `emphasis_edges [lo, hi]`, `accent_depth {style: 0..1}`, `bands {edges, hysteresis, split {band, by, up, down}, words {band: {moods, fx_moods, transition_style}}}`, `transitions {style word: {style: cut \| crossfade, beats, seconds}}`, `listener_bias {trajectory word: energy nudge}` |
+| `listener` | listener | `cadence_s`, `clip_s`, `min_gap_s`, `relaxed_cadence_s`, `agree_reads`, `quiet_gate`, `min_clip_s`, `music_gate` (`classifier` \| `dsp`), `describe_timeout_s` |
+
+**Starting points.** Every number in show.yaml is a design default to be tuned by ear, unless its comment says
+"measured" or "owner"; each says where it comes from. The behaviour thresholds that used to live only in code are
+keys now (review, 16 Oct): the director's pause, new-song silence, novelty, variation bars, entry fade and emphasis
+edges; the listener's quiet gate and first-clip length; `situations.midi.idle_note_s`. The code keeps the same numbers
+as its fallbacks, marked "starting point" where they are defined.
+
+These live elsewhere, never here:
+- Auto's globals and per-mode rules: modes.json.
+- Auto on/off: room target `autopilot.main`.
+- Put-back.
+- Model ids: llm.yaml.
+- Latency.
+
+### S3.7 director.py, palette.py, vibes.py, and the artnet seam (B1)
+
+**vibes.py**
+```python
+FIELD_SCHEMAS: dict[str, dict]       # VIBE_FIELDS -> JSON schema (room's catalog subset: type, minimum, maximum, enum,
+                                     # items, default; x-ui {label, widget, unit, labels}); served in VibesCatalog.fields
+NEUTRAL: contract.VibeSettings       # S3.5's neutral column, every field
+NAME_RE = r"^[a-z0-9][a-z0-9_-]{0,31}$"
+class Vibes:
+    def __init__(self, path: Path = contract.VIBES_FILE, *, vocab_path: Path = contract.VOCAB_FILE,
+                 palette_names: Callable[[], Collection[str]] = lambda: ()) -> None
+    def poll(self, force: bool = False) -> bool        # show-brain, every RELOAD_S; True when it reloaded
+    revision: str; error: str | None; problems: list[str]; order: list[str]
+    def names(self) -> list[str]
+    def get(self, name: str) -> contract.VibeSettings | None            # NEUTRAL + the vibe's valid fields
+    def effective(self, target: contract.VibeTarget | None) -> tuple[contract.VibeSettings, bool]   # (settings, known)
+    def check_target(self, body: Any) -> contract.VibeTarget | None
+        # canonical, AS ASKED; accepts {"vibe", "listening"?, "overrides"?}, §11.2's {"name"}, a bare name;
+        # None / {"vibe": null} -> None (no feel); null overrides left out (unset);
+        # ValueError("bad_target: <why>") only for a body that isn't a target (not a name, a bad shape)
+    def target_problems(self, target) -> list[str]   # page words: an unknown vibe, each dropped or trimmed override
+    def catalog(self, palettes: list[contract.PaletteChoice]) -> contract.VibesCatalog
+```
+
+**palette.py** (pure functions, plus a catalog). OKLab/OKLCh is implemented here (Ottosson's matrices, about 30 lines),
+with no colour library.
+```python
+Rgb = tuple[float, float, float]                       # sRGB 0..1
+def to_oklab(rgb: Rgb) -> tuple[float, float, float];  def from_oklab(lab) -> Rgb          # from_oklab clips
+def to_oklch(rgb: Rgb) -> tuple[float, float, float]   # (L, C, h degrees)
+def from_oklch(L: float, C: float, h: float) -> Rgb    # in gamut by reducing C (bisection), never shifting h
+def hex_of(rgb: Rgb) -> str;  def rgb_of(hex_: str) -> Rgb
+def mix(a: Rgb, b: Rgb, t: float) -> Rgb               # in OKLab
+def white(kelvin: float) -> Rgb                        # CCT -> sRGB, max channel 1
+def limit_chroma(rgb: Rgb, c_max: float) -> Rgb
+def avoid_hues(rgb: Rgb, ranges: list[list[float]]) -> Rgb   # a hue inside a range moves to its nearer edge
+def scale_saturation(rgb: Rgb, s: float) -> Rgb        # OKLCh C x s
+def role(rgb: Rgb) -> contract.ColourRole
+def roles_from(colours: list[Rgb]) -> contract.PaletteRoles
+    # base = the median-L colour; accent = the highest-C colour at least 60° from base (else the highest C);
+    # highlight = the lightest
+class Catalog:                                         # stream_service/palettes.py, loaded by FILE PATH
+    def __init__(self, path: Path = contract.PALETTES_FILE) -> None   # (importlib spec), never `import stream_service`
+    def poll(self) -> bool;  error: str | None
+    def names(self) -> list[str];  def choice(self, name: str) -> contract.PaletteChoice
+    def colours(self, name: str, n: int = 5) -> list[Rgb]   # the cosine palette at t = 0, 1/n, ...
+    def roles(self, name: str) -> contract.PaletteRoles
+def from_image(data: bytes, k: int = 5) -> list[Rgb] | None
+    # Pillow decode, 64 px wide, k-means in OKLab (8 iterations, fixed seed), largest cluster first; None on any failure
+```
+
+**director.py**
+```python
+def attach(ctx: contract.BrainContext) -> Director
+class Director:                                        # Component "director", tick_hz BRAIN_TICK_HZ
+    def palette_fn(self, t_s: float) -> dict[str, tuple[float, float, float]] | None   # show-artnet (any thread)
+    def provides(self) -> dict    # {"vibe": <effective VibeSettings now | None>, "target": <VibeTarget | None>,
+                                  #  "engaged": <a nudge is active>, "on_mode_change": self.on_mode_change}
+    # show-brain, called by api.py through brain.call:
+    def set_target(self, body: Any, source: str = "api") -> contract.VibeReadback       # kept as asked (degrade);
+                                                       # None = no feel; ValueError (bad_target) -> 400
+    def readback(self) -> contract.VibeReadback
+    def catalog(self) -> contract.VibesCatalog
+    def step(self, direction: str) -> dict             # {"steps": StepsView, "chips": [ChipData]}; at a limit: at_limit
+    def set_palette(self, name: str) -> dict           # {"palette": {"pick", "current"}, "chips"}; ValueError("unknown_palette")
+    def action(self, do: str) -> dict                  # next|keep|house|low -> {"done", "chips", "look": {"id", "next_pending"}}
+    def clear(self, nudge_id: str) -> list[str]        # the ids cleared; "all" = Back to auto; unknown id -> []
+    def apply_describe(self, intent: contract.DescribeIntent) -> list[contract.ChipData]
+    def release_hue(self) -> dict                      # {"released": True, "via": "room"} until P5 (room streams Hue)
+    def on_mode_change(self, old: str | None, new: str) -> None    # clears every nudge (§8.4)
+    def log(self, n: int = 50) -> list[dict]
+    def snapshot(self) -> dict
+        # {"target", "readback": VibeReadback, "direction": DirectionData | None, "look": LookData | None,
+        #  "steps": StepsView, "palette": {"pick", "current", "choices": [PaletteChoice]}, "chips": [ChipData],
+        #  "house", "low", "next_pending", "keep_in_s", "engaged", "vibes": {"revision", "error", "problems"},
+        #  "art": {"age_s", "screens": {screen: [hex]}}, "stats": {"tick_ms_p95", "looks", "events", "published"}}
+```
+**The tick (10 Hz).** This follows §8.2-§8.6. A builder reads those sections for the musical rules.
+1. **Reload** vibes, the palette catalog and patch.yaml (lamps: `profile: hue` devices with `screen` and `placement`)
+   every `RELOAD_S`.
+2. **Inputs**, each of which may be None: `ctx.features()`, `ctx.clock()`, `ctx.harmony()`, `ctx.piano()`,
+   `ctx.room()`, `ctx.beliefs()`, `ctx.situations()`.
+3. **The vibe:** `vibes.effective(target)`. With no target, or an unknown vibe, the director is **neutral and
+   hands-off**:
+   - `palette_fn` returns None, so artnet_out keeps today's fixed colour;
+   - no `set_look_out` and no `set_gate_ref`;
+   - room.direction and room.look are still published, with `vibe: null`.
+4. **L1 music.** The `follow` inputs:
+   - `energy`: features.energy;
+   - `onsets`: onset and band-hit density;
+   - `dynamics`: PianoView.velocity while the piano plays, else energy;
+   - `register`: harmony.register;
+   - `harmony`: tension and chord_change.
+
+   They feed music_direction.py-style numbers (energy, pace, change_rate, fx.density, fx.rate). Liveness: hold 10 s
+   after features go stale, then fade over 20 s (§8.5 "No audio").
+5. **Numbers:** §8.2's formula, clamped to the vibe. `intensity` stays 1.0.
+6. **Words**, highest priority first:
+   1. a human's moods (nudge or Describe);
+   2. the LLM's beliefs (two agreeing reads at ≥ 0.6);
+   3. show.yaml `director.bands`;
+   4. the vibe's `moods`.
+
+   `transition_style` and `genre` follow the same order.
+7. **The look.**
+   - Palette: the pick (human), else the vibe's ranked list. `art` uses the latest stills, fetched through
+     `ctx.room_get("/api/v1/screens/<screen>/snapshots/anchor.png")` every `art.poll_s` while art is in play, then
+     `from_image`.
+   - The roles, and the emphasis by arousal.
+   - Saturation, contrast, level and motion inside the vibe's ranges.
+   - The accent style, with density from energy.
+   - L5 caps: no strobe unless `strobe`.
+8. **When looks change** (§8.5).
+   - `phrase`: on phrase lines from the clock body (`bar_anchor_beat`, `beats_per_bar`, `phrase_bars`; gate `beat` or
+     `dmx` and `bar_conf` ≥ 0.5), at least `min_bars` apart.
+   - `time`: inside `dwell_s`, at energy-novelty points.
+   - `between_pieces`: no strike for ≥ 2 s with the damper < 0.1 (PianoView), once per pause.
+   - Next look lands on the next bar (≤ `next_max_wait_s`).
+   - Keep this look stops changes (variations go on).
+   - Each change is announced as `room.event {kind: "look_change", at_ms}`, as early as the clock allows (≥ lead +
+     250 ms when it can be). At `at_ms` comes the new room.look, `ctx.section_change()` (GOBO +1), and the
+     crossfade.
+9. **Lamps.** For each lamp: placement → role (show.yaml `lamps`) → the role's fields.
+   - `extend`: the palette role of the screen it hangs above (that screen's art roles under `art`), limited to
+     `chroma_max`.
+   - `key`: `white(key_cct)` mixed toward base, limited to `lamp_chroma_max`, kept out of `avoid_hues`.
+   - Then × level, with floor applied.
+   - **House:** the room's stored put-back value for that lamp (`RoomView.stored_restore["hue.<x>"]`:
+     `{on, bri, xy|mirek}` → rgb), else `director.house`.
+   - **Low:** `low.level` over `low.fade_s`.
+   - **Screens:** the palette's colour, **unscaled**.
+10. **Outputs.**
+    - room.direction and room.look on change (≥ 0.02 in a number, or any word or role change) or every
+      `republish_s`.
+    - `ctx.set_look_out(hue_depth=…, beat_lock=…)`:
+      - `beat_lock` = the vibe's `beat_lock` and the clock gate is `beat`;
+      - `hue_depth` = `director.accent_depth[accents]` while beat_lock holds and one phrase has passed since the vibe
+        was entered (§8.6), else 0.
+    - `ctx.set_gate_ref(loudness_ref_lufs)` when it changes.
+    - Every look change and nudge, with the music context, is logged to `contract.DIRECTOR_LOG`.
+11. **Silence and talk** (§8.5).
+    - `quiet` or `talking` true: relax to the base look (the energy centre, the first palette), unless `relax_on_talk`
+      is false.
+    - No audio: hold 10 s, then drift to the base over 20 s; then relaxed (whatever `relax_on_talk` says) until sound
+      comes back, so an empty room stops changing looks (review, 16 Oct).
+    - Never black.
+12. **Around screen cuts** (§8.6): while any `RoomView.screens[*].cutting`, no look_change events and no GOBO steps.
+
+**palette_fn(t_s)** returns the current dict, keyed by patch.yaml device id (`hue.ne`, `screen.north`, ...). During a
+crossfade it computes `mix(from, to, (t_s − t0) / dur)` per device (≤ 6 devices, ≤ 30 µs). It returns None while
+neutral.
+
+**artnet seam:** `VirtualMaestro.set_look(*, hue_depth: float | None = None, beat_lock: bool | None = None) -> None`.
+- It can be called from any thread; each value is swapped by reference and read once per frame.
+- `beat_lock=False` means:
+  - no DIMMER pulse edges;
+  - no PRISM flips;
+  - the hue swell follows energy only.
+
+  The clock stays wired.
+- `hue_depth` (0..1) replaces the constructor's.
+- `status()` gains `"look": {"hue_depth", "beat_lock"}`.
+
+**Tests (B1):**
+- OKLab round trip; gamut mapping keeps hue; `avoid_hues`; `roles_from` on catalog palettes; `from_image` on a
+  synthetic two-colour PNG.
+- vibes: load, bad file (keeps the last good), bad field (falls to neutral), `check_target` cases, hot reload.
+- director with a fake ctx at 10 Hz:
+  - steps clamp in range;
+  - a mode change clears nudges;
+  - **House, Low and level change lamp colours and never `screens`** (the screens rule);
+  - neutral → `palette_fn` None;
+  - looks change only on phrase lines (fake clock body);
+  - `beat_lock` false → `set_look_out(beat_lock=False)`.
+- artnet `set_look` (real tests: no pulses with beat_lock false; depth applied).
+
+**As built (B1, 16 Oct).** Built to the spec above; where it was open, this is what the code does.
+- **Names.** `Director.palettes` is the `palette.Catalog`, because `Director.catalog()` is the GET /vibes method.
+  `Director.chips()` exists (api.py's `_chips_after` uses it). `step()` also answers `"done": bool`.
+- **Nothing knows a name.** Lamps are the patch.yaml devices whose profile carries r/g/b and whose kind isn't
+  `screen`; the screens are `kind: screen`. A device's kind is its `kind:` or its id's prefix, which is
+  room_service/dmx/patch.py's own rule. Lamp behaviour comes only from the role's fields.
+  `tests/test_director.py` checks this with an AST scan of director, palette and vibes, and (since the review, 16 Oct)
+  of api, autopilot, situations, listener, sources and brain too. Any string constant that equals a vibe,
+  mode, device, screen, role or band name from the live config, or `piano`, fails the test. The fixed vocabularies
+  (contract tuples, vocab.yaml, contract keys) are allowed.
+- **The palette catalog.**
+  - The API: `ctx.room_get("/renderer/api/catalog")`, through the room's one front door, at start and every 300 s.
+    Only the `palettes` object is decoded (`palette.block_from_catalog`, about 4 ms). The whole 2.5 MB document
+    would hold the GIL for about 45 ms, and the audio thread shares it.
+  - Until the API answers, and whenever it can't be reached: palettes.py, loaded by file path.
+  - A usable API block wins from then on.
+- **The art.** For each screen, `GET /api/v1/screens/<screen>/art` is tried first: the live art feed, the TV's art
+  now, mask included. `.../snapshots/anchor.png`, the still from the last cut, is the fallback.
+  - The image is decoded in an executor thread (Pillow; a JPEG decodes in draft mode).
+  - Near-black pixels are dropped unless they are at least 90 % of the picture.
+  - Each screen keeps its own roles. Lamps with `follow_screen` take their screen's; screens take their own.
+  - Until a still arrives, `art` uses the vibe's next catalog palette, and the lamps glide over to the art when it
+    lands.
+- **Roles.** A "far from base" accent must carry chroma ≥ max(0.03, half the most colourful sample's). Without this,
+  Ember's only far colour was a near-black whose hue is noise, and it made the lamps grey-green.
+- **Lamps**, at full value (largest channel 1), from the role's fields, in this order:
+  1. the palette role, moved on by the look's variation when the role has `motion`;
+  2. a slow drift toward the next role (a 120..15 s cycle by motion speed, depth up to half the motion amount);
+  3. × saturation;
+  4. `white_k`: white first, tinted toward the colour by the saturation;
+  5. the `chroma_max` cap;
+  6. `avoid_hues`.
+
+  Then the level: × max(floor, level), so a lamp's brightness is its largest channel, as room's Hue output reads it.
+  `hue_depth` is capped at 1 − floor/level, so the swell's trough never goes under the floor. Colours are cached on
+  quantised inputs (0.005 steps).
+- **Screens** get the emphasised role (arousal 0.4 / 0.75, ± 0.05) at full value, with its chromaticity kept. Level,
+  floor, Lights low and House lights never touch them; a test proves it.
+- **House lights** use `stored_restore[<device id>]`: the room's target for a lamp is `<kind>.<member>`, which is the
+  patch id. The value is `{on, bri, xy|mirek}`, or `{"value": ...}`. `dmx` or `taken_over` gives house white; any
+  other word means off.
+  - House is a toggle (0.3 s glide), and Lights low fades over `low.fade_s`. Turning one on turns the other off.
+  - Both set `hue_depth` 0.
+- **Entering a vibe.**
+  - From neutral, the lamps fade from that house colour over 8 s.
+  - From another vibe, they cross over from what shows now.
+- **Words.** The first non-empty source wins: a person's moods; then the listener's at ≥ 0.6 (fresh or holding);
+  then the band (only while liveness ≥ 0.5); then the vibe's. `transition_style` follows the same order, band
+  before vibe.
+- **Three more show.yaml keys** (in config/room/show.yaml since the integration, 16 Oct, with the code's own values,
+  marked starting points; the code keeps the same fallbacks, marked "starting point" in director.py):
+  - `director.bands.split.band`: which band splits (default 1, as in music_direction.py);
+  - `director.transitions` `{style: {style: cut|crossfade, beats, seconds}}`: gentle 4 beats, lively 1 beat,
+    wild a cut;
+  - `director.listener_bias` `{trajectory word: energy nudge}`.
+- **When looks change.**
+  - A phrase line is decided when it is at most min(4 s, one bar) away and at least 0.35 s ahead.
+  - The director's own changes keep the palette and give the moving roles a new allocation (`variation`).
+  - The palette moves through the vibe's list only on a song change (sound back after ≥ 8 s of silence), on Next look
+    (with pick `auto`), or on a pick.
+  - `between_pieces`: once per pause, once the look is `dwell_s[0]` old. With no notes ever seen, it changes by time.
+  - Relax (`quiet` or `talking`, with `relax_on_talk`):
+    - the follow term fades out (τ 3 s);
+    - there is one change to the vibe's first palette;
+    - nothing else changes until the relax ends.
+  - A director's change that would land during a screen cut is dropped. A person's change waits for the cut to end.
+- **No audio** (review, 16 Oct): once liveness has run down (features stale for the 10 s hold and the 20 s fade) and
+  nobody is playing (no note in 4 s), the director relaxes as for a quiet room: one change to the base palette, then
+  no look changes, no new allocations and no GOBO steps until sound comes back (`music.no_audio`). Before this,
+  `change_looks: time` (and phrase or between_pieces falling back to time) changed the look at every `dwell_s[1]` in
+  an empty room. Art-Net keeps sending the relaxed look (artnet_out "Idle").
+- **Targets degrade** (review, 16 Oct; S3.5): `set_target` keeps any target as asked; an unknown vibe is neutral at
+  once (the previous mode's feel never lingers), and `readback()["problems"]` (cached with `effective`) says what.
+  `set_target(None)` (or `{"vibe": null}`) is no feel: `source` "none". api.py adds `boot_id`.
+- **Thresholds from show.yaml** (S3.6): `between_pieces {pause_s, damper_up}`, `new_song_after_s`, `novelty`,
+  `variation_bars`, `entry_fade_s`, `emphasis_edges`, with the module constants as fallbacks.
+- **Neutral again.** If we had moved them, `set_look_out(reset=True)` and `set_gate_ref(-30)` are each sent once.
+  - The seam is `VirtualMaestro.set_look(*, hue_depth=None, beat_lock=None, reset=False)`. None leaves a value;
+    `reset` restores the constructor's depth and beat_lock True.
+  - `status()["look"]` shows both.
+  - With beat_lock off, the clock stays wired, so frames stay on the beat grid.
+- **Readback.** `listening_effective`/`listening_why` hold only the director's part: the target's `listening` and the
+  vibe's `listener`. api.py overlays the listener's own `effective` and `why` when those allow it (S3.4 "As built").
+- **Not built** (no detectors yet): section memory, builds and drops, peak tokens. `strobe` is only published. The
+  Fine-tune form says so: `strobe` and `peak_tokens_per_hour` carry `x-ui.not_built` and "(not built yet)" and sit
+  behind More (the room adapter honours `not_built`); `accents` is labelled as what it does today, the lamps' beat
+  swell depth.
+- **Measured** (4 lamps, 2 screens, not under the render; `pytest -s -k "budget or cheap"` prints them):
+  - the tick: p50 0.38-0.45 ms, p95 0.61-0.77 ms;
+  - `palette_fn` mid-crossfade: 10-17 µs;
+  - `palette_fn` otherwise: 0.2 µs.
+- **Tests:** test_palette 20, test_vibes 26, test_director 42 (the name scan runs over nine modules now), and 4 in
+  test_artnet_out (42 there in all). The review's (16 Oct): a target kept as asked (an unknown vibe neutral, bad
+  overrides dropped and listed, no feel), `auto` as a word's neutral, no audio stops the look changes, the thresholds
+  from show.yaml, and Art-Net holding the director's look in a quiet room. A beat_lock
+  that comes back on mid-beat never starts a pulse partway down (only an edge seen while locked pulses).
+- **requirements.txt:** `Pillow==12.3.0`, as in sm-room.
+
+### S3.8 situations.py and autopilot.py (B2)
+
+**NoteTap** (situations.py; made by `__main__`, written on show-rx):
+```python
+class NoteTap:
+    def __init__(self, size: int = 4096) -> None
+    def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None
+        # = contract.OnMidi. Batches only (states never count). Per stream, vban.midi_seq_verdict:
+        # "old" dropped; "new" and "restart" taken (prev not replayed). Each 0x9n with d2 > 0 ->
+        # contract.NoteOn(t_s=arrival_s, stream, channel=n+1, pitch=d1, vel=d2).
+    def since(self, t_s: float) -> list[contract.NoteOn]
+        # any thread: a fixed ring plus a write counter, copied and re-checked (never iterate a deque show-rx appends to)
+    def stats(self) -> dict                            # {"batches", "notes", "old", "restarts", "streams": {name: n}}
+```
+
+**The situation vocabulary.**
+- Every word takes `for_s`.
+- Params come from show.yaml's section, then the rule's own params.
+- A reading is a `contract.SituationReading`; `null` (unknown) is never acted on.
+- A stream counts as "up" when its health state is `streaming` or `quiet`.
+
+| id (label) | source, rank | params | true | false | unknown |
+|---|---|---|---|---|---|
+| `piano_playing` ("the piano is playing") | midi, 0 | `situations.midi`: `streams`, `channels`, `include_test` (false), `window_s`, `min_notes`, `min_span_s`, `min_pitches`, `heard_by`, `heard_min_lufs` | In the last `window_s`, NoteTap shows ≥ `min_notes` note-ons on `streams` × `channels`, spanning ≥ `min_span_s`, on ≥ `min_pitches` distinct pitches. While `heard_by` is up and is the features' stream, the window's max `lufs_s` must also be ≥ `heard_min_lufs`. | otherwise, with a listed stream up | no listed stream up |
+| `piano_idle` ("the piano has stopped") | midi, 0 | `streams`, `channels`, `include_test`, `idle_note_s` (1) | No note-on on them in the last `idle_note_s`, and no key or damper down (PianoView, when the voice is a listed stream). `for_s` is the idle length. | a note-on in the last `idle_note_s` | no listed stream up |
+| `music_audible` ("music is playing") | audio, 2 | `situations.music`: `stream`, `min_prob`, `dsp_min_gate`, `include_test`; plus `situations.sonos` | With a classifier (P1): music ≥ `min_prob` on `stream`. Without one: `stream` is the features' stream, gate ≥ `dsp_min_gate`, and the clock gate is `beat` or `dmx` (or harmony conf ≥ 0.3). Or: `sonos_playing` and the mic agrees (gate ≥ `dsp_min_gate`). | stream up and neither | stream down and Sonos unknown |
+| `sonos_playing` ("Sonos is playing") | sonos, 1 | `situations.sonos`: `now_playing`, `volume`, `own_change_s` | RoomView member `now_playing.state` is PLAYING or TRANSITIONING, not muted, and the `volume` member > 0 | otherwise | room unreachable, a member unknown, or `sent_age_s` < `own_change_s` on either |
+| `genre_in` ("the music is jazz or soul") | listener, 3 | `genres` (vocab genres, required), `min_conf` (0.6), `include_test` | `beliefs.genre.word` ∈ genres with conf ≥ min_conf | a confident other genre | beliefs `none` or `fading` |
+| `energy_above` ("the music is lively") | audio, 2 | `value` (0..1, required), `stream`, `include_test` | features.energy EMA (τ 10 s) > value | ≤ value | features stale (> 5 s) |
+| `talking` ("people are talking") | audio, 2 | `stream`, `min_prob` (0.5), `include_test` | classifier: speech ≥ min_prob and music < 0.5 | classifier: otherwise | no classifier (**always unknown in Stage 3**) |
+| `quiet` ("the room is quiet") | audio, 2 | `situations.quiet`: `stream`, `gate_below`, `include_test` | stream up and gate < `gate_below` (or no fresh features while it is up) | gate ≥ gate_below | stream down |
+| `between` ("it's 18:00-23:00") | time, 4 | `from`, `to` ("HH:MM", local; wraps midnight) | local time in [from, to) | otherwise | never |
+
+**Test sound never switches the room** (review, 16 Oct). While the sound being measured (the features' stream,
+else the receiver's active audio) is a test stream (the receiver's `test` mark), the audio words (`music_audible`,
+`energy_above`, `talking`, `quiet` with no `stream` set) and the listener word (`genre_in`) read unknown, unless the
+rule sets `include_test: true`, as the piano words already did. A test played "from another room" (rank_first) can't
+change this room's mode.
+
+**Conditions (the grammar of `enter_when`, `otherwise_suggest_when`, `leave_when` and `hold.until`):**
+```
+cond   := {word: params, ...}                 several words in one object: all must hold
+        | {"all": [cond, ...], "for_s"?: s} | {"any": [cond, ...], "for_s"?: s} | {"not": cond, "for_s"?: s}
+params := {} | true | {"for_s"?: s, <param>: value, ...}       overrides show.yaml's params for this rule only
+```
+- **Three-valued logic (Kleene):**
+  - `all` is false if any child is false, else unknown if any is unknown, else true.
+  - `any` is true if any child is true, else unknown if any is unknown, else false.
+  - `not` swaps true and false and keeps unknown.
+- **Holding.** A node holds when it has been **true** continuously for its `for_s` (a leaf's sits in its params).
+  False or unknown resets the timer.
+- **Timers** are keyed by rule path (`"piano/enter_when/all/0/piano_playing"`). A rule whose text changes in a new
+  config revision is reset.
+- **Bad rules.** An unknown word or param means the rule never holds. The problem is logged and shown in
+  `AutopilotState.candidates[].blocked`.
+```python
+class Situations:                                     # Component "situations", tick_hz 1
+    def vocabulary(self) -> list[contract.SituationDef]
+    def read(self, sid: str, params: dict | None, now_s: float) -> contract.SituationReading
+    def snapshot(self) -> dict                        # {"readings": {id: SituationReading (show.yaml params)},
+                                                      #  "vocabulary": [SituationDef]}
+    def provides(self) -> dict                        # {"situations": lambda: self.snapshot()["readings"]}
+class Conditions:
+    def __init__(self, situations: Situations) -> None
+    def check(self, cond: Any) -> list[str]           # problems; never raises
+    def holds(self, cond: Any, path: str, now_s: float) -> tuple[bool, dict]
+        # (held long enough, {"value": True|False|None, "held_s", "needs_s", "words": {word: SituationReading}})
+    def reset(self, prefix: str = "") -> None
+```
+
+**Per-mode Auto config in modes.json** (exactly aa's keys, `room_service/roomstate/schema.py` `MODE_AUTOPILOT_KEYS`).
+aa checks the mode names in `from` and `leave_to` and that the `skip` selectors are real; it does not check
+conditions.
+```json
+"<mode>": {"autopilot": {
+  "enter_when": <cond>,                        // Auto switches to this mode when it holds
+  "otherwise_suggest_when": <cond>,            // else offer a one-tap "Switch to <label>?" while this holds
+  "from": "<mode>" | ["<mode>", ...],          // only from these (unset: any)
+  "leave_when": <cond>,                        // leave it (only a mode Auto entered) when this holds
+  "leave_to": "previous" | "<mode>",           // unset: "previous"
+  "skip": ["<selector>", {"<selector>": {"from": <pattern> | [<patterns>]}}]   // passed to PUT /mode as is
+}}
+```
+**Globals:** the top-level `autopilot` in modes.json (aa's `AUTOPILOT_KEYS`; only `on` is type-checked there).
+- A key that is **absent** takes its design default below, a starting point.
+- A **bad** value takes the default too, and is reported (`settings[key].source = "default (bad value)"`).
+
+| Key | Shape | Design default when absent |
+|---|---|---|
+| `on` | bool | false. At run time the room target `autopilot.main` wins (aa's adapter seeds itself from this). |
+| `quiet_hours` | `{"from": "HH:MM", "to": "HH:MM"}` or `null` (none) | `{"from": "23:00", "to": "08:00"}` (§8.9) |
+| `min_dwell_s` | s | 300 |
+| `max_switches` | `{"count", "per_s", "pause_s"}` | `{"count": 4, "per_s": 1800, "pause_s": 1800}` |
+| `backoff_s` | s | 1800 |
+| `hold` | `{"until": <cond>, "max_s", "correction_s", "suppress_s"}` | `{"until": {"all": [{"piano_idle": {}}, {"not": {"music_audible": {}}}], "for_s": 600}, "max_s": 7200, "correction_s": 60, "suppress_s": 14400}` |
+| `chips` | `{"switch_s", "suggest_s"}` | `{"switch_s": 45, "suggest_s": 120}` |
+
+**RoomLink (autopilot.py).** It is the only room client in show_service.
+```python
+class RoomLink:                                       # Component "room", tick_hz 0 (asyncio tasks)
+    def view(self) -> contract.RoomView                # any thread
+    async def get(self, path: str, *, timeout: float = 3.0) -> tuple[int, bytes]      # (0, b"") when unreachable
+    async def put(self, path: str, body: dict, *, timeout: float = contract.ROOM_PUT_TIMEOUT_S) -> tuple[int, dict]
+                                                       # (0, {"error": "room_unreachable"}) when unreachable
+    def provides(self) -> dict    # {"room": self.view, "room_get": self.get, "room_put": self.put}
+```
+| Call | When | Answer used |
+|---|---|---|
+| WS `ws://<room.url host>/api/v1/events` | always (reconnect after 1, 2, then every 5 s) | `{"type": "status", "data": <status>}` (on connect and on change, ≤ 4/s) → RoomView; `{"type": "mode.transition", "data": {id, phase, from, to, source, reason, skip}}` → person detection |
+| `GET /api/v1/status` | every 5 s while the WS is down | the same status |
+| `GET /api/v1/room/config` | at start, and whenever `status.config.revision` changes | `{config, revision, error}`: modes' `autopilot` blocks, `label`s, the top-level `autopilot`, file order |
+| `PUT /api/v1/mode` | Auto's switch, or Undo | 202 `{transition_id, reapply}`; 409 `stale`; 404 `unknown_mode`; 400 `bad_skip` / `bad_request` |
+| `PUT /api/v1/room/targets` | `set_on` (Auto on/off) | `{"values": {"autopilot.main": "on" \| "off"}, "source": "show"}` → 202 `{accepted}` |
+| `GET /api/v1/screens/{id}/art`, then `GET /api/v1/screens/{id}/snapshots/anchor.png` | the director's art (through `room_get`), every `director.art.poll_s` while a vibe uses `art` | an image, or 404 |
+| `GET /renderer/api/catalog` | the director's palette catalog (through `room_get`): at start and every 300 s | the renderer's catalog (only its `palettes` block is decoded); on failure, stream_service/palettes.py by file path |
+
+- `on_mode_change(old, new)` callbacks run on show-brain whenever `mode.current` changes.
+- `RoomView.screens[id].cutting` = the room's `observed.phase` is not `idle`, `live` or `failed`.
+- `RoomView.autopilot_on` = `subsystems.autopilot.believed == "on"`.
+- `stored_restore` = `stored["_restore"]`, as `{target: value}`.
+
+**The supervisor**
+```python
+class Autopilot:                                      # Component "autopilot", tick_hz 1
+    async def set_on(self, on: bool) -> contract.AutopilotState   # RuntimeError("room_unreachable"); ValueError(room's error)
+    async def undo(self) -> dict          # {"undone": True, "mode", "transition_id"}; LookupError("nothing_to_undo")
+    def resume(self) -> contract.AutopilotState
+    def state(self) -> contract.AutopilotState        # = snapshot()
+    def log(self, n: int = 50) -> list[dict]
+```
+**States** (`contract.AUTOPILOT_STATES`; the /room Auto line is in brackets):
+
+| State | Meaning | Leaves for |
+|---|---|---|
+| `off` ("Auto is off") | `autopilot.main` isn't "on" | watching when it turns on (suppressions are kept) |
+| `watching` ("Auto · watching") | it evaluates rules | acting, holding, paused, backoff, blind |
+| `acting` ("Auto → Piano…") | its PUT got 202 and the transition runs | watching (done); backoff (partial, failed or rolled back); holding (cancelled by someone else's request) |
+| `holding` ("Auto paused · you chose Disco · Resume") | a person picked a mode | watching when `hold.until` holds, at `hold.max_s`, or on Resume |
+| `paused`, why `quiet_hours` ("Auto paused · quiet hours") | inside quiet hours: it may **leave** a mode it entered, never enter one | watching at the end of quiet hours |
+| `paused`, why `flap` ("Auto paused · too many changes · Resume") | `max_switches.count` switches within `per_s` | watching after `pause_s`, or on Resume |
+| `backoff` ("Auto waiting · the last switch didn't finish · Resume") | after a partial, failed or rolled-back switch | watching after `backoff_s`, or on Resume |
+| `blind` ("Auto · not listening" / "Auto · modes.json has an error") | room unreachable, or `status.config.error` | the previous state when it comes back |
+
+**Each tick (1 Hz):**
+1. Room unreachable or a config error: `blind`. `autopilot_on` not true: `off`.
+2. Expire holds, pauses, backoff and suppressions, and compute the quiet-hours flag.
+3. If a transition is running (`transition` or `target` not null), only wait. In `acting`, the outcome comes from the
+   transition with Auto's own id.
+4. Evaluate candidates for every mode that has an `autopilot` block (no code knows any mode):
+   - **enter:** mode ≠ current; `from` allows the current mode; not suppressed; `enter_when` holds.
+   - **suggest:** `otherwise_suggest_when` holds and enter doesn't.
+   - **leave:** `current == entered.mode`, `leave_when` holds, and `ctx.engaged()` is false (nudges stop Auto
+     leaving).
+5. **In `watching`:**
+   1. a leave first;
+   2. else the best enter candidate: lowest situation rank in its rule (§8.9: MIDI > Sonos > mic > LLM), then file
+      order. It also needs: the current mode's `since_age_s` ≥ `min_dwell_s`, under the flap limit, and outside quiet
+      hours;
+   3. else a suggestion, announced once per episode per mode.
+
+   In `paused` (quiet hours): leave only. In every other state: nothing.
+6. **The request:**
+   ```json
+   PUT /api/v1/mode {"mode": M, "source": "autopilot", "reason": "<the rule's situation labels> (<rule path>)",
+                     "expect": {"current": <current>, "last_transition_id": <RoomView.last_transition_id>},
+                     "skip": <M's own autopilot.skip, or []; for a leave, the union with the left mode's skip>}
+   ```
+   - It never names the current mode.
+   - 202 → `acting`.
+   - 409 `stale` → stay `watching` (timers kept; no backoff).
+   - 404 or 400 → log, and block that rule until the config revision changes.
+   - Unreachable → `blind`.
+7. **When Auto's transition ends:**
+   - `done` → `watching`. An enter sets `entered = {mode, previous, rule, at, transition_id, by: "auto"}`; a leave
+     clears it. Announce `switch` (a chip with Undo for `chips.switch_s`) and record the switch time for the flap
+     guard.
+   - `partial`, `failed` or rolled back → `backoff`, and announce `failed`.
+   - `cancelled` → `holding` (`by: "person"`).
+
+**People win** (a `mode.transition` `started` whose source isn't `autopilot`, `auto-undo`, `boot`, `resume` or
+`rollback`):
+- **Straight back to the mode Auto just left, within `hold.correction_s`:** always a correction (checked first, so a
+  rule that holds for that mode can't make it "agreeing"; review, 16 Oct).
+- **It picks the mode Auto would enter now** (an enter candidate that holds): not an override. Auto records `entered`
+  with `by: "person"`, so it can still go back when the activity ends (§8.9 flow, step 3).
+- **Within `hold.correction_s` of Auto's last switch:** a **correction**. That (rule, mode) pair is suppressed until
+  its `enter_when` has been false for `hold.until`'s `for_s` (the episode ends), capped at `suppress_s`. Then
+  `holding`.
+- **Otherwise:** `holding` (`{mode: to, by: "person"}`).
+
+**Undo** (`POST /api/v1/autopilot/undo`). It needs the last switch's target to be current, and no transition running.
+- It sends `PUT /api/v1/mode {mode: last.from, source: "auto-undo", reason: "Undo Auto", expect}`. There is no
+  `skip`: a person's undo applies the mode fully.
+- Then a correction, as above, and `holding` (`by: "undo"`).
+
+**Resume** clears any hold, pause or backoff. The state goes to `watching`, with timers restarted.
+
+**Announcements:** every switch, suggestion, hold, undo, pause, backoff and failure goes to
+`ctx.notify("auto", AutoAnnouncement)`, to `AutopilotState.chip`/`suggest`, and to `contract.AUTOPILOT_LOG` (one
+JSON line: `{at, kind, mode, rule, reason, evidence: {word: SituationReading}, room: {current, revision}}`).
+
+**Exposed:** `contract.AutopilotState`.
+
+**Tests (B2)**, against a fake room (an aiohttp test server on an ephemeral port: status, room/config, mode,
+room/targets, and a WS that pushes status and `mode.transition`):
+- NoteTap: dedupe (new, old, restart), the channel filter, test streams excluded.
+- `piano_playing` thresholds, and the heard-by check.
+- The grammar: all/any/not, `for_s`, unknown.
+- The supervisor:
+  - enter after `for_s`, sending `expect` and `skip`;
+  - 409 → no backoff;
+  - a person → holding; undo → suppressed;
+  - the flap guard; quiet hours (leave only);
+  - `leave_to` previous;
+  - it never re-requests the current mode;
+  - Auto off → no PUT.
+
+**Built (B2, 16 Oct):** `situations.py`, `autopilot.py`, `tests/test_situations.py` (25) and `tests/test_autopilot.py`
+(23, against a fake room on an ephemeral port). The review's additions (16 Oct): test sound ignored by the audio and
+listener words unless `include_test`; `merge_skips`; straight back within `correction_s` is a correction even when a
+rule agrees; a room whose PUT answer comes after Auto's timeout (the fake room's `answer_delay`): the switch is adopted
+from its events (announced, entered, counted, undoable) and so is a slow Undo.
+- **Measured:** `NoteTap.on_midi` takes 2.9 µs per 4-note batch. With a full 4096-note ring and 8 modes carrying
+  distinct rules, the p95 tick is 0.6 ms for situations and 1.6 ms for autopilot.
+- **Additions to the spec'd signatures:**
+  - `attach(ctx, **kw)`: `wall`, `mono`, `local` and `log_path` are for tests; the brain passes none of them.
+  - NoteTap also has `raw_since(t)` (tuples) and `last_note_times()` (per stream and channel).
+  - RoomLink also has `add_listener(fn)` (transition notices, once per id and phase), `status_count()` and
+    `rules_error()`.
+  - Situations has a `classifier` attribute, a hook for P1's CED: `(stream) -> {"music", "speech"}`. With None,
+    `talking` is unknown and `music_audible` uses the DSP guess.
+- **Situation params** resolve in this order: `situations.DESIGN_DEFAULTS` (marked "design default (starting point)"
+  in the vocabulary's x-ui `source`), then show.yaml's section, then the rule. Null means unset: any stream, every
+  channel, or no check. No device or stream name is ever a default.
+- **Self-cause:** while the room changed `situations.sonos`' targets within `own_change_s`, `sonos_playing`,
+  `music_audible` and `quiet` read unknown.
+- **Decisions where the table was open:**
+  - `music_audible`:
+    - mic down and Sonos stopped → false;
+    - mic down and Sonos playing → unknown (the mic can't confirm it);
+    - the stream is up but another stream is being measured → unknown, or false if Sonos says stopped.
+  - `quiet` with another stream measured: the health state `quiet` → true, else unknown.
+  - `between` with from == to → never true.
+  - `genre_in` below `min_conf` → unknown.
+- **Conditions:**
+  - A node that is true but not yet held for its `for_s` counts as false for its parent.
+  - More than 3 s without evaluation resets a timer.
+  - A word object may carry its own `for_s`.
+  - Params may be `{}`, `true` or `null`.
+  - Readings are memoised per `now_s`, so rules that share a leaf share its reading.
+- **The supervisor:**
+  - **State precedence:** blind > off > acting > holding > paused (flap) > backoff > paused (quiet hours) > watching.
+  - **`on`:** the room's `autopilot.main`. While the room has no such target, modes.json's `autopilot.on` (default
+    false). Turning Auto on clears a hold, pause or backoff, but keeps suppressions.
+  - **Agreeing:** a person who picks a mode whose `enter_when` or `otherwise_suggest_when` holds (taking the tile
+    counts), or who re-picks the mode Auto entered, is agreeing. That is not a hold, and `entered.by` becomes
+    "person". Except: a pick of `last.from` within `correction_s` is a correction first (review, 16 Oct).
+  - **A leave's skip** is the union (`merge_skips`) of the left mode's `autopilot.skip` (the mode whose rule entered
+    it) and the destination's: one entry per selector, a plain selector wins over `{selector: {"from": ...}}`, two
+    conditional ones join their patterns. So leaving Party never lowers the blinds or spins the ball (§8.9: automation
+    never moves them), even when the mode it goes back to has no skip of its own (review, 16 Oct).
+  - **Slow room answers** (review, 16 Oct). The room answers PUT /api/v1/mode only after its request lock, and a
+    `skip` with `{"from": ...}` first reads the devices (Sonos 4 s, blinds and Hue 5 s). So:
+    - every room PUT waits `contract.ROOM_PUT_TIMEOUT_S` (10 s);
+    - a PUT with no answer (or one cancelled mid-way) leaves a **maybe**: `{source, to, rule, reason, sent_at}`. The
+      room's next `started` with Auto's source (or Undo's, for an Undo) and the same `to`, within `MAYBE_S` (30 s),
+      is adopted as Auto's own (also when it came before the PUT gave up): `acting`, `last`, then on `done` the
+      announcement, `entered`, the flap count and Undo, exactly as after a 202 (the log's `request` says
+      `adopted`). An adopted Undo records the correction and the hold. An Undo whose PUT got no answer still answers
+      502 `room_unreachable` (the room may or may not have done it; if it did, the card shows "Undone" from the
+      announcement);
+    - api.py's `brain.call` for `set_on` and `undo` waits `contract.AUTO_CALL_TIMEOUT_S` (12 s), longer than that
+      PUT: a slow room no longer gives a 503 `busy` with the PUT cut off mid-way and Undo's correction lost.
+  - **A cancelled Auto switch:** the person's own `started` decides between agreeing, a correction (within
+    `correction_s` of Auto's request) and a hold.
+  - **Corrections and undo:** a correction or Undo after a leave suppresses that `leave_when`. Undo of a leave puts
+    `entered` back.
+  - **A partial switch:** it still sets `entered` and counts as a switch, then backs off.
+  - **The flap guard:** checked at the next attempt. Leaves count too.
+  - **Announcements:**
+    - the quiet-hours pause, once per night;
+    - a hold's end, as `resume` ("Auto · watching again");
+    - a 5xx or no answer from PUT /mode: `blind` for 5 s, then it tries again;
+    - an Auto switch with no word from the room for 60 s: given up (`last.status` "unknown").
+  - **Event order:** room_service sends `mode.transition` at once but coalesces `status` (up to 250 ms later), so
+    after any event Auto waits for the next status, at most 10 s, before it decides. It drops `entered` only on a
+    status received after it set it. A test covers this with a lagging status.
+  - **Extra keys:** `AutopilotState.entered.by`, `candidates[].holds` and `room.rules_error` (the GET
+    /api/v1/room/config problem: "Auto has no rules").
+
+### S3.9 api.py: every route (B3)
+
+- **Mounting.** `api.routes(brain_ref, engine_ref) -> Callable[[web.Application], None]` is handed to `Bus(routes=…)`.
+  `engine_ref()` returns `{"active_audio", "features": {"energy", "age_ms", "stream"}, "clock": ClockData | None}`
+  for the card.
+- **Bodies.** Every body is JSON. Errors are `{"error": <code>, "detail": str, ...}`, like room's.
+- **Before the brain runs,** every route below answers 503 `{"error": "starting"}`.
+- **Busy.** A `brain.call` timeout gives 503 `{"error": "busy"}`.
+- **Paths.** No `/show` prefix: room's pass-through strips it. Relative URLs only. No auth.
+
+| Method and path | Body | 200 answer | Errors |
+|---|---|---|---|
+| `GET /api/v1/state` (bus.py, existing) | none | the engine state, plus `"brain": brain.snapshot()` | 503 starting |
+| `GET /api/v1/card` | none | `CardData` | none |
+| `WS /v1/events` | see below | | 503 `too_many_clients` (more than 64) |
+| `POST /api/v1/step` | `{"dir": "calmer" \| "wilder"}` | `{"steps": StepsView, "chips": [ChipData]}` (at a limit: `at_limit` true) | 400 `bad_request` |
+| `PUT /api/v1/palette` | `{"name": "auto" \| "art" \| <catalog name>}` | `{"palette": {"pick", "current"}, "chips"}` | 400 `unknown_palette` `{choices}` |
+| `POST /api/v1/action` | `{"do": next \| keep \| house \| low \| tap \| half \| double \| one}` | director words: `{"done", "chips", "look": {"id", "next_pending"}}`; clock words (stamped on arrival): `{"done", "clock": ClockData \| null}` | 400 `unknown_action` |
+| `DELETE /api/v1/nudge/{id}` (`all` = Back to auto) | none | `{"cleared": [ids], "chips"}` (an unknown id clears nothing) | none |
+| `GET /api/v1/vibes` | none | `VibesCatalog` | none |
+| `GET /api/v1/vibe` | none | `VibeReadback` (with `problems` and `boot_id`) | none |
+| `PUT /api/v1/vibe` (the show adapter; modes) | `VibeTarget` (also `{"name"}`); `{"vibe": null}` = no feel | `VibeReadback`, the target as asked: an unknown vibe plays neutral (`known: false`), a bad override is dropped; `problems` says what | 400 `bad_target` `{choices}` only for a body that isn't a target |
+| `DELETE /api/v1/vibe` | none | `VibeReadback` with `vibe: null` (no feel: the director neutral) | none |
+| `POST /api/v1/describe` | `{"text": str}` (up to 300 chars; longer is cut) | `DescribeResult`, also sent as EV_DESCRIBE; within `describe_timeout_s` + 1 s. Empty text: 200 with a hint in `reply` | 400 `bad_request` only when the body isn't JSON or `text` isn't a string |
+| `GET /api/v1/listening` | none | `ListenerView` | none |
+| `PUT /api/v1/listening` | `{"on": bool}` | `ListenerView` | 400 `bad_request` |
+| `POST /api/v1/hue/release` | none | `{"released": true, "via": "room", "detail": "room_service streams Hue until P5"}` | none |
+| `GET /api/v1/autopilot` | none | `AutopilotState` | none |
+| `PUT /api/v1/autopilot` | `{"on": bool}` | `AutopilotState` once the room accepts (the room target `autopilot.main` is the truth) | 502 `room_unreachable`; the room's own 4xx passed through as `{error, detail}`. Its `brain.call` waits `AUTO_CALL_TIMEOUT_S` (12 s), as Undo's does |
+| `POST /api/v1/autopilot/undo` | none | `{"undone": true, "mode", "transition_id"}`; nothing to undo: 200 `{"undone": false, "why": "nothing_to_undo", "detail"}` | 502 `room_unreachable` (no answer from the room: S3.8 "maybe") |
+| `POST /api/v1/autopilot/resume` | none | `AutopilotState` | none |
+| `GET /api/v1/situations` | none | `{"vocabulary": [SituationDef], "readings": {id: SituationReading}, "combinators": ["all", "any", "not"]}` | none |
+| `GET /api/v1/test` | none | `{"sources": {"piano": SourceStatus, "audio": SourceStatus}, "pieces": {"piano": [PieceInfo], "audio": [PieceInfo]}}` | none |
+| `POST /api/v1/test` (98's API) | `{"source": "piano" \| "audio", "piece"?: id}` (no piece: the first); a running source switches piece | `SourceStatus` (`state` `starting`) | 400 `unknown_source` \| `unknown_piece` `{choices}` |
+| `DELETE /api/v1/test`, `DELETE /api/v1/test/{source}` | optional `{"source"}` (none: all) | `{"stopped": [sources]}` | none |
+| `GET /api/v1/look` (console) | none | `{"direction": DirectionData \| null, "look": LookData \| null}` | none |
+| `GET /api/v1/log?kind=director\|autopilot\|listener&n=50` (console) | none | `{"entries": [...]}`, newest last | none |
+
+**Describe it, end to end:**
+1. `intent, via = await brain.call(listener.describe, text, context)`. The context is built from the director snapshot
+   and the RoomView: `{"vibe", "persona", "palettes", "moods", "modes": [{"name", "label"}], "current_mode"}`.
+2. `chips = await brain.call(director.apply_describe, intent)`.
+3. The answer is `DescribeResult(ok=True, via, text, reply, applied=chips, suggest={"mode", "label"} if intent.switch_mode else None)`.
+   It never switches a mode itself (§7.4).
+
+**WS /v1/events (the card's socket):**
+- No handshake. The first message is `{"type": "welcome", "v": 1, "seq", "t_ms", "card": CardData}`.
+- Then:
+  - `{"type": "card", "seq", "patch"}`: an RFC 7386 merge patch against the last card sent, at most `CARD_HZ`, and
+    at once on `notify("card")` (chip changes);
+  - `{"type": "auto", "seq", "event": AutoAnnouncement}`;
+  - `{"type": "describe", "seq", "result": DescribeResult}`.
+- `seq` goes up by 1 per message, per client. Lists (chips) are replaced whole; null deletes a key.
+- From the client: `{"type": "ping"}` → `{"type": "pong", "seq"}`, and `{"type": "resync"}` → a fresh welcome.
+  Anything else is ignored.
+- Each client has a queue of 256. When it is full, the queued patches are dropped and a welcome is sent next.
+- The hub lives on show-bus. `notify(kind, payload)` is thread-safe (`call_soon_threadsafe`).
+
+**Card rules** (a pure `api.card(brain_snapshot, engine) -> CardData`):
+- `hearing.text`, first match wins:
+  1. confident beliefs (`fresh`/`holding`, genre conf ≥ 0.6) → `"<genre> · <first mood>"`;
+  2. `talking` → "Talking";
+  3. `quiet` → "Quiet";
+  4. no active audio, or features older than 5 s → "No sound coming in";
+  5. `music_audible` → "Music";
+  6. else "Listening".
+- `hearing.level` is energy (0 when stale). `hearing.loose` is `direction.loose`, shown as "following loosely".
+- `palette.choices` = Auto, From the art, then the vibe's first 5.
+- The rest maps straight from the director, listener, autopilot and sources snapshots.
+- **"More: lamp brightness" (§10.1 item 6) is Lights low** (c8's decision, 16 Oct): `POST /api/v1/action {"do":
+  "low"}` toggles it, `CardData.low` shows it, and its chip "Lights low" clears it. It dims the lamps to
+  `director.low.level` over `low.fade_s`, never the screens, and reaches the lamps in a quiet room too. No separate
+  brightness route or slider: a level nudge can follow if the owner wants finer steps (2f: draw the More unroll's
+  "Lamp brightness" as the Lights low toggle).
+
+**Tests (B3):**
+- Every route, against fake components.
+- `/v1/events`: welcome, patch, ping, resync, overflow.
+- `brain.call` across loops; ticks guarded.
+- state.json: atomic, torn file → `.bad`, and a restore round trip.
+- show.yaml: hot reload, and a bad edit keeps the last good.
+- The bus seam.
+- `--no-brain`.
+- `__main__` with fake Stage-3 modules (the existing `test_main.py` pattern), on ephemeral ports.
+
+**As built (16 Oct): `api.py`, `state_store.py` and the bus seam.** Tested in `tests/test_api.py` (every route
+against fake components, `/v1/events`, the card, merge patches, the bus seam) and `tests/test_state_store.py`. Both
+were also smoke-run against the real Director and Listener.
+- **Wiring (for `__main__`):**
+  - `self.api = api.routes(lambda: self.brain, self._engine)` and `Bus(..., routes=self.api)`; `Show.state()["api"]` is
+    `self.api.stats()`.
+  - `ctx.notify = self.api.notify` (any thread).
+  - Clock words use `routes(..., clock_action=)` when it is given, else `brain.ctx.clock_action`.
+  - api.py needs only `brain.components`, `brain.call(fn, *args, timeout=)`, `brain.snapshot()` and `brain.ctx`.
+  - The brain counts as running when it has an explicit `running`/`started`/`ready` bool; without one, when
+    `ctx.loop` is set.
+- **state_store.py (for brain.py):**
+  - At start: `store = StateStore(contract.STATE_FILE)`, then `saved = store.load()`. A torn file is renamed
+    `.bad-<epoch>`, and keys of the wrong type are dropped and listed in `problems`.
+  - `ctx.persist = store.dirty`.
+  - Each tick: `store.flush(lambda: {n: c.persist() for n, c in comps.items()})`. It writes at most once per
+    `PERSIST_MIN_S`.
+  - At stop: `flush(..., force=True)`.
+  - `store.status()` is the snapshot's `state_file`.
+  - It also provides `append_jsonl`/`tail_jsonl` (1 MB rotation).
+- **Where it differs from the table (degrade, never refuse).** A normal tap never gets a 4xx; 400 only for a body the
+  route can't take, with `choices`.
+  - Undo with nothing to undo: 200 `{"undone": false, "why": "nothing_to_undo", "detail"}` (the table above says the
+    same).
+  - Describe:
+    - empty text: a 200 `DescribeResult` with a hint;
+    - over 300 chars: cut, not refused;
+    - a slow listener: a "took too long" reply.
+  - A missing component: 200 with a neutral body and plain words (`detail`, `why` or `line`).
+    `PUT /api/v1/vibe` answers 503 `unavailable` instead, so the adapter retries.
+  - `PUT /api/v1/vibe` (review, 16 Oct): an unknown vibe or a bad override is 200, kept as asked and played as well as
+    it can be; the read-back's `known` and `problems` say what. `{"vibe": null}` and `DELETE /api/v1/vibe` are no
+    feel. Every read-back carries `boot_id` (this process; the room adapter's cold-start check, S3.11).
+  - `POST /api/v1/hue/release` answers `released` even before the brain runs.
+  - `PUT /api/v1/autopilot` when the room refuses: 502 `{error: <room's code>, detail, room_status}`.
+  - `DELETE /api/v1/test/<unknown>`: 200 `{"stopped": []}`.
+- **Other details:**
+  - `PUT /api/v1/vibe` passes `source="mode"`; `?source=api` marks other callers.
+  - Describe's context adds `palette_labels`.
+  - An unknown palette's `choices` are auto, art and the whole catalog.
+  - bus.py: `TYPES` lists the brain's four types, and `stats()` has `routes_error`.
+
+### S3.10 sources.py, the receiver seam, fetch_test_music.py (B4)
+
+```python
+def attach(ctx: contract.BrainContext) -> Sources
+class Sources:                                         # Component "sources", tick_hz 1
+    def pieces(self) -> dict[str, list[contract.PieceInfo]]          # {"piano": [...], "audio": [...]}
+    def start_test(self, source: str, piece: str | None = None) -> contract.SourceStatus
+                                                       # ValueError("unknown_source" | "unknown_piece")
+    def stop_test(self, source: str | None = None) -> list[str]
+    def status(self) -> dict[str, contract.SourceStatus]
+    def snapshot(self) -> dict    # {"senders": [{"name", "hosts", "port", "streams", "on_demand", "subscribed"}],
+                                  #  "tests": {source: SourceStatus}, "priority": [...], "errors": [...]}
+def senders_from_settings(settings: dict, static: tuple[contract.Sender, ...],
+                          running: Collection[str]) -> tuple[contract.Sender, ...]      # pure
+def main(argv: list[str] | None = None) -> int         # "audio ...": the test-audio child (test_audio.main)
+```
+**Senders, hot-reloaded.**
+- On `configure()`, and on every test start or stop, the effective list is built, and `ctx.set_senders` is called
+  when it changed. The effective list is:
+  - the static senders whose names aren't in show.yaml;
+  - plus show.yaml's senders that are not `on_demand`;
+  - plus the `on_demand` senders whose test is running.
+- Each becomes `Sender(name, host=hosts[0], port, streams, hosts=tuple(hosts), on_demand)`.
+- A bad entry is skipped and listed in `errors`.
+- While test audio plays with `tests.audio.rank_first`, `ctx.set_priority(("test-audio",))`; otherwise `()`.
+
+**Children** (each started with `start_new_session=True`, `cwd=REPO_ROOT`, `PYTHONUNBUFFERED=1`):
+
+| Source | argv | Log |
+|---|---|---|
+| piano | `[sys.executable, contract.TEST_PIANO_SCRIPT, "--test-piano", piece, "--port", <its sender's port>, "--bind", "127.0.0.1"]` | `STATE_DIR/test-piano.log`, truncated at each start |
+| audio | `[sys.executable, "-m", "show_service.test_audio", "--file", <path>, "--port", <port>, "--bind", "127.0.0.1", "--stream", <its sender's first stream>]` (`-m show_service.sources audio …` is the same program) | `STATE_DIR/test-audio.log` |
+
+**Child states:**
+- `starting` until the stream shows `streaming` in `ctx.health()`, then `playing`.
+- `stopping`: SIGTERM sent; SIGKILL to the child's whole process group after 2 s (`os.killpg`: it leads one, so test
+  audio's ffmpeg goes too).
+- `failed`: it exited by itself (`error` = the last 5 log lines).
+- `off`.
+
+Only the `Popen` objects sources.py made are ever signalled (never `pkill`). `stop()` ends them all.
+
+**Pieces:**
+- **piano:** every `.mid` or `.midi` in `tests.piano.pieces` → `{"id": "file:<name>", "label": <stem, "_" → space,
+  capitalised>, "kind": "file"}`, then the built-in phrases (`PHRASE_LABELS`, loaded from
+  stream_service/piano_replay.py by file path; on failure, none). These ids match `piano_replay.library()`.
+- **audio:** `mp3`, `ogg`, `opus`, `flac`, `wav` and `m4a` files in `tests.audio.music` → `{"id": "file:<name>",
+  "label", "kind": "file", "genre", "artist", "license", "duration_s"}` (from `index.json`, else the file stem).
+- An id not in the list → `ValueError("unknown_piece")`.
+
+**The test-audio child** (`show_service/test_audio.py`: `python -m show_service.test_audio --file F --port P
+[--bind 127.0.0.1] [--stream test-audio] [--channels 1|2]`). At module level it imports only the stdlib, numpy and
+vban.
+- It binds UDP on (bind, port) and streams only to the source address of the latest SUBSCRIBE that names its stream,
+  with a TTL of 5 s (show_sender's rule).
+- **Decode:** `ffmpeg -nostdin -v error -i F -map 0:a:0 -f f32le -ac C -ar 48000 -` through a pipe, looping. A new
+  ffmpeg runs at EOF; counters, `n` and `sess` carry on.
+- **Send:** `vban.pack_audio(stream, counter, pcm, 48000, INT16)`, 128 frames a packet, paced on `time.monotonic`: 4
+  packets every 10.67 ms, never more than 4 packets ahead of real time. With no subscriber, decoding pauses where it
+  is.
+- **Heartbeat** every 0.5 s while subscribed: `vban.make_heartbeat(sess, frame, n, t_cap_ns=<the monotonic_ns when
+  sample n was due>, in_lat_ms=0, dev="file:<name>", state="ok", xruns=0, peak/rms, clips)`.
+- **SIGTERM:** kill ffmpeg, exit 0.
+
+**The receiver seam (receiver.py):**
+```python
+Receiver.set_senders(senders: tuple[contract.Sender, ...]) -> None
+    # any thread; applied at the next tick. show-dns resolves new hosts at once (then every 30 s). A removed sender
+    # gets no more SUBSCRIBEs; its streams stay in the registry and go down by the usual rules.
+Receiver.set_priority(names: tuple[str, ...]) -> None
+    # any thread; these rank before Config.stream_priority (which stays); the usual 3 s switch-up rule applies
+```
+- **Host fallback.** For a sender with `hosts`, each host is resolved.
+  - A host "answers" when a packet arrives from its resolved address.
+  - While some host has answered within 3 s, SUBSCRIBE goes to the first such host in list order only. Otherwise it
+    goes to every resolved host.
+- **Health:** `senders.<name>` gains `"hosts": [{"host", "addr", "resolve_error", "answered_age_ms"}]` and
+  `"using": host | None`. `host` keeps its old meaning: the host in use, else `hosts[0]`.
+
+**tools/show/fetch_test_music.py.**
+- `SOURCES = [{"id", "title", "artist", "genre" (a vocab genre), "license" (CC0 | CC BY | CC BY-SA | public domain),
+  "url" (the audio file), "page" (where the licence is stated), "sha256" | None}]`. There must be at least one track
+  per vocab genre: pop, techno, house, jazz, ambient, classical, rock, soul.
+- Every URL and licence is checked by the builder: no placeholders.
+- `python tools/show/fetch_test_music.py [--dir D] [--only id,...] [--list] [--force]` downloads to
+  `D/<id>.<ext>` (default `contract.TEST_MUSIC_DIR`) with stdlib `urllib`, then writes
+  `D/index.json` = `{id: {title, artist, genre, license, page, file, bytes, sha256, fetched_at}}`.
+- Idempotent: a present file with a matching sha256 is skipped.
+
+**Tests (B4):**
+- `senders_from_settings`.
+- The receiver: fallback (subscribe-all, then the answering host), `set_senders` (add, remove), `set_priority` (a test
+  stream takes over after 3 s).
+- A child: a small stand-in script, or the real show_sender on an ephemeral port; stopped cleanly; a failure reported.
+- The test-audio child: an ffmpeg-made WAV in tmp, a SUBSCRIBE from a test socket, VBAN audio and a heartbeat back.
+- fetch: `--list` and a local `file://` URL (no network).
+
+**As built (16 Oct, B4): `sources.py`, `test_audio.py`, `tools/show/fetch_test_music.py`,
+`config/live/test-music/SOURCES.md`.** Tested in `tests/test_sources.py` (27 tests, about 8 s). They cover:
+- the sender parsing, the shipped show.yaml, and the hot reload;
+- stand-in children: start, play, stop, a failure, a piece switch, SIGKILL after an ignored SIGTERM, `rank_first`,
+  fast polling on a brain loop, and `stop()`;
+- the decoder, prefetch and pacing on a fake clock (subscribe, pause, resume, stall, underrun);
+- the real test-audio child into the real `Receiver` over ephemeral localhost ports;
+- fetch with `file://` URLs.
+
+Since the review (16 Oct), also: the shim execs the real argv and a child's grandchild dies with its group's SIGKILL;
+the shim exits at once when its parent is already gone; the shipped show.yaml subscribes no room sender (the go-live
+step) and marks test-audio `room_sound: false`.
+
+It was also smoke-run by hand: Sources drove the real `show_sender --test-piano` and the test-audio child (a fetched
+track) into a real Receiver, through a switch and a stop. The library is fetched: 9 tracks, 39 MB, in
+`~/.cache/screen-machine/test-music/`.
+- **The receiver seam: built by the integrator (16 Oct)** in `receiver.py`, wired by `__main__`
+  (`ctx.set_senders=rx.set_senders`, `ctx.set_priority=rx.set_priority`). Tests in `test_receiver.py`: a sender added
+  and removed (SUBSCRIBEs start at once and stop), the host fallback (every host until one answers; then that host
+  alone; the first in list order when two answer; every host again after 3 s of silence; a packet from another port
+  doesn't count as an answer), and `set_priority` lifting a test stream by the usual 3 s switch-up rule and dropping it
+  again. As built:
+  - "Answers" means a packet whose source (address **and** port) is a host's resolved address; a sender that sends
+    from another port is simply never "using" one host, and every host keeps getting SUBSCRIBEs (still works).
+  - DNS results are keyed (sender, host); a host that stops resolving keeps its last good address; hosts no longer
+    listed are dropped.
+  - Health: `senders.<name>` adds `hosts`, `using` and `on_demand`; the top level adds `priority`.
+  - Without sources.py (or with `--no-brain`) the receiver keeps `cfg.senders`, as in P0.
+- **Senders.**
+  - `parse_senders(settings) -> (senders, problems)` is the validating half of `senders_from_settings`.
+  - It accepts `hosts:` as a list or a single string (`host:` too), and `streams:` as a list or a string.
+  - A static sender is shadowed only by a *valid* show.yaml entry of the same name, so a typo falls back to the CLI's.
+  - A test whose `tests.<source>.sender` names no valid entry plays as a localhost sender on the contract's default
+    port (`TEST_PIANO_PORT`/`TEST_AUDIO_PORT`), and is added while it runs.
+  - The child's stream is the sender's first stream.
+  - `rank_first: true` works for either source.
+- **No name branching.** `contract.TEST_SOURCE_PLAYERS` maps each test source (98's API words) to its player kind
+  (`midi` → show_sender, `audio` → test_audio) and documented defaults (stream, port, sender); `sources.PLAYERS` joins
+  that with the kind's folder key and files (`KINDS`). api.py's `neutral_source` reads the same table. Nothing looks at
+  a source's name (review, 16 Oct).
+- **Children die with show_service** (review, 16 Oct). A child runs in its own session, so `scripts/ctl`'s
+  `kill -KILL -- -$pid` never reaches it. Each is started as `python -c PDEATH_SHIM <show_service pid> <argv>`: the
+  shim sets `PR_SET_PDEATHSIG` (SIGKILL; it survives the exec), checks its parent is still the one it was given, and
+  execs the real program, so a crash, a SIGKILL or a stop slower than ctl's 15 s never leaves a child holding UDP
+  6981/6982. The log's first line shows the real argv. test_audio also stops by itself when its parent changes
+  (`_watch_parent`, every second), for a start by hand.
+- **Children.**
+  - A piece switch SIGTERMs the old child and spawns the new one only once the old has exited, so the port is free.
+    Meanwhile the status is `starting` with `pid: null`.
+  - `playing` needs `ctx.health()` to show the stream `streaming` or `quiet`, with a packet newer than this child's
+    start (`t_ms - age_ms`), so a restart isn't fooled by the previous run. With no `ctx.health`, 2 s alive counts as
+    playing.
+  - While anything is starting or stopping, `_poll` also runs every 0.1 s via `ctx.loop.call_later`, but only when
+    called on that loop. Otherwise the 1 Hz tick does it.
+  - The log's first line is `# show_service starts: <argv>`, which is left out of `error`.
+  - A piano file from a folder other than `contract.TEST_PIANO_DIR` is passed to show_sender as an absolute path
+    (`file:` ids resolve only in its own library).
+- **The test-audio child.**
+  - A `Prefetch` thread keeps 0.5 s decoded ahead, so an ffmpeg restart at EOF never delays the pacing. If it ever
+    runs dry, the packet goes out as silence, on time, and counts as an underrun in the log.
+  - With no subscriber it sends nothing, and decoding blocks where it is.
+  - The next subscriber gets a **new sess** with the counter and `n` from 0, as does a stall of more than 250 ms
+    (`xruns` +1). Both follow vban's sender rule (> 250 ms of capture lost).
+  - The first packet is decoded before the loop, so a file that won't decode exits 1 with ffmpeg's last lines in the
+    log; a missing file or ffmpeg exits 2.
+  - It logs `test-audio on udp <ip>:<port>`; `--port 0` binds any free port (the tests use that).
+  - SUBSCRIBEs naming other streams are ignored.
+- **fetch_test_music.py.**
+  - Each `SOURCES` entry also has `license_url`, `credit`, `note` and `bytes`; all nine `sha256` are pinned.
+  - Every download sends its `page` as the Referer (ccMixter refuses hotlinks) and a descriptive User-Agent
+    (Wikimedia).
+  - A checksum mismatch is not installed (`--no-verify` takes it). `--timeout` is also accepted.
+  - `index.json` adds `license_url`, `credit` and `duration_s` (from ffprobe).
+  - It needs only the stdlib (`python3 tools/show/fetch_test_music.py`, any venv).
+  - The licences were checked on each page on 16 Oct, and the list with credit lines is in
+    `config/live/test-music/SOURCES.md`:
+    - CC BY: ccMixter (3), Internet Archive netlabels (Shoki, Lee Rosevere) and Jamendo mirrors (Josh Woodward,
+      Lilly Wolf). Since the review (16 Oct) the evidence for Josh Woodward is the artist's own page (CC BY 4.0); Lilly
+      Wolf's Jamendo page (track 1093616) draws its licence in the browser only and is still to be read by a person
+      (SOURCES.md says how);
+    - CC BY-SA: Monofónicos;
+    - public domain: Musopen via Wikimedia Commons;
+    - nothing NonCommercial.
+
+### S3.11 room_service/adapters/show.py (B5; aa's contract, room venv)
+
+```python
+class ShowAdapter(Adapter):           # room_service.roomstate.contract.Adapter
+    subsystem = "show"; subsystem_label = "Feel"; category = "setting"; kind = "level"; members = ["main"]
+    change_time_s = 2.0; poll_s = 5.0; read_timeout_s = 2.0
+    def __init__(self, url: str = "http://127.0.0.1:8703", vibes_file: Path = <repo>/config/room/vibes.yaml) -> None
+    def label(self, member: str) -> str                 # "Feel"
+    def value_schema(self, member: str) -> dict         # the Feel card's form (below)
+    def normalize(self, member: str, value: Any) -> dict   # canonical VibeTarget; ValueError
+    def show(self, member: str, value: Any) -> str      # "Party · listening", "Dinner"
+    async def read(self, members: list[str]) -> dict[str, Reading]
+    async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome
+    def situations(self) -> list[dict]                  # cached SituationDef list ([] before the first fetch)
+```
+- **read:** `GET {url}/api/v1/vibe` within `read_timeout_s`.
+  - It returns `Reading({vibe, listening[, overrides]})`: only those keys, in canonical form.
+  - `vibe: null` gives `Reading({"vibe": null, "listening": false})`: no feel, a fact (it was `Reading(None)`,
+    unknown, until the review of 16 Oct, which left the room unable to store and put back "no feel").
+  - It **raises** when show_service is unreachable or answers non-200, so the belief goes stale.
+  - It also refreshes its caches, at most every 60 s, best effort: `GET /api/v1/vibes` (names, labels, `fields`) and
+    `GET /api/v1/situations`.
+- **apply:** `PUT {url}/api/v1/vibe` with `desired["main"]`, then compare the read-back's `{vibe, listening,
+  overrides}`.
+  - Equal → `Outcome("ok", members={"main": Outcome("ok")})`.
+  - 400 → `Outcome("failed", detail, retry=False)`: since the review only a body that isn't a target at all (an
+    unknown vibe is 200 and plays neutral).
+  - Connection error, timeout or 5xx → `Outcome("failed", "show_service unreachable")` (retry allowed).
+  - It never raises, except `CancelledError` (contract rule 6).
+- **normalize** (pure and offline):
+  - Accepts `"party"`, `{"vibe", "listening"?, "overrides"?}` and `{"name"}`.
+  - `vibe` must match `NAME_RE`. When names are known (the cache, else the names parsed from vibes.yaml, mtime-cached)
+    it must be one of them.
+  - `listening` defaults to false.
+  - `overrides` must be an object; its keys are checked against the cached `fields` when present (offline: shape
+    only, and apply resolves the rest). An empty one is dropped.
+- **value_schema** (the Feel card; enums from the `GET /api/v1/vibes` cache, empty before it):
+  ```json
+  {"type": "object", "required": ["vibe"], "x-ui": {"label": "Feel", "default_policy": "ignore"},
+   "properties": {
+     "vibe": {"type": "string", "enum": [<order>], "x-ui": {"label": "Feel", "widget": "select", "labels": {<name>: <label>}}},
+     "listening": {"type": "boolean", "default": false, "x-ui": {"label": "Listen with AI", "widget": "checkbox",
+                   "description": "Short music clips go to OpenAI while this mode is on (only with AI listening on)"}},
+     "overrides": {"type": "object", "x-ui": {"label": "Fine-tune", "advanced": true},
+                   "properties": {<field>: <VibesCatalog.fields[field]>}}}}
+  ```
+- **Registration:** `build_adapters(..., show: Adapter | bool | None = None)`.
+  - None → `ShowAdapter()`.
+  - False → `Placeholder("show", ["main"])` (tests).
+  - It is live only at the next announced Flask restart, which no builder does.
+- **The Auto card:** aa is asked to surface `ShowAdapter.situations()` in `GET /api/v1/room/describe` (under
+  `subsystems.show.situations`) and as `x-ui.situations` on `mode_autopilot_schema`'s conditions.
+- **Tests:** a fake show_service (an aiohttp test server on an ephemeral port).
+  - read: canonical value; `Reading(None)`; raises when down.
+  - apply: ok, a 400 → no retry, down → retry.
+  - normalize cases.
+  - value_schema enums from the fake `/vibes`, and the vibes.yaml fallback.
+
+**As built (B5, 16 Oct).** `room_service/adapters/show.py`, registered in `build_adapters(..., show=...)`; tests in
+`room_service/tests/test_show_adapter.py` (18, against a fake show_service on an ephemeral port).
+- **Where it differs from the spec above:**
+  - `normalize` checks the shape only. It does **not** refuse a vibe name that vibes.yaml lacks. A normalize error
+    fails the whole modes.json load, and at a Flask restart that means the fallback config, so renaming a vibe would
+    take the room's modes down. The editor offers only real names (the schema's `enum`), and show_service plays an
+    unknown name neutral and says so in its read-back (review, 16 Oct: it used to answer 400 and the previous feel
+    lingered). Override keys are likewise checked for shape only, plus `label`, `description` and `persona` being
+    refused.
+  - **No feel** (review, 16 Oct): `{"vibe": null}` canonicalises to `{"vibe": null, "listening": false}` (`NO_FEEL`),
+    read and applied like any value (`show()` says "No feel"). The room stores it before a mode with a show row and
+    puts it back on leaving, so the feel never sticks. A value with no `vibe` key at all is still refused.
+  - **The same rules as show_service** (review, 16 Oct): a null override is unset and left out (show_service drops
+    it too); a list override keeps the first of each item, in order (show_service's rule), so the read-back always
+    compares equal.
+  - **A cold show_service** (review, 16 Oct): every read-back carries `boot_id`. After an apply lands, the adapter
+    keeps the value and that boot id. A read with a new boot id and no feel (show_service started with no state.json:
+    a first enable, a wiped or torn state dir) re-applies that value once per boot, in the background: the room never
+    retries an "ignore" row that already landed. A normal restart restores its own target from state.json, and a
+    deliberate "no feel" is never re-applied over.
+  - **The Fine-tune form:** `BASIC_FIELDS` (up front) are `beat_lock`, `change_looks`, `follow`, `relax_on_talk`,
+    `listener` and `accents`; a field whose schema carries `x-ui.not_built` (strobe, peak tokens) goes behind More with
+    every other field.
+  - `__init__` takes an extra `cache_file`. `build_adapters` passes `<state_dir>/show_catalog.json`, which holds the
+    last good catalog (names, labels, fields) and the situations, so the Feel form and the Auto vocabulary survive a
+    restart while show_service is down.
+  - Names come from show_service's live catalog, else vibes.yaml (mtime-cached; a bad edit keeps the last good), else
+    that saved file. The fields and situations come from the live catalog, else the saved file.
+- **The Feel form:** the overrides object is "Fine-tune" (behind More), with `unset_label: "As the feel"`. It also
+  carries `unset_label_by: {"vibe": {name: "As the <label> feel"}}` for the page to name the chosen vibe (2f: a new
+  hint, optional to read). Within it, §8.1's behaviour fields that do something today (`beat_lock`, `change_looks`,
+  `follow`, `relax_on_talk`, `listener`, `accents`) are up front, and every other field is `advanced` (strobe and peak
+  tokens: "(not built yet)").
+  `listening` carries `x-ui.help` (the page reads it), as well as the `description`.
+- **apply:** a 200 whose read-back differs is re-read for `change_time_s`, then `unconfirmed`. A 404 (show_service
+  without its Stage-3 API) is `failed` and retried.
+- **The Auto vocabulary, in aa's modules** (three minimal, generic edits; nothing names `show`):
+  - `roomstate/contract.py`: `Adapter.vocabulary() -> dict[str, list]` (default `{}`);
+  - `roomstate/schema.py`: `mode_schema(modes, situations=None)` → `mode_autopilot_schema(modes, situations)` puts the
+    list on each condition as `x-ui.situations`;
+  - `roomstate/coordinator.py` `describe()`: each adapter's vocabulary is merged into `subsystems.<sub>` (so
+    `subsystems.show.situations`), and the situations go to `mode_schema`.
+- **Until show_service serves `/api/v1/vibe`,** the `show` subsystem reads as unavailable ("show_service answered 404").
+  That is harmless: no mode names `show` yet.
+- **Room tests** (review, 16 Oct): `room_service/tests/roomstate/test_adapters.py` and `test_rooms.py` pass
+  `show=False` to `build_adapters`, so they never build a real ShowAdapter against the production :8703 (aa to be
+  told: S3.14).
+
+### S3.12 listener.py, ring.py, utils/llm/, config/llm.yaml (B6)
+
+**ring.py** (made by `__main__`, written on show-rx):
+```python
+class Rings:
+    def __init__(self, *, seconds: float = contract.RING_SECONDS, fs: int = contract.RING_FS,
+                 max_streams: int = contract.RING_MAX_STREAMS) -> None
+    armed: bool       # any thread (the listener sets it): False -> write returns at once; True again forgets what was
+                      # held before, so a clip never spans the pause
+    def write(self, stream: str, n0: int, t0_host_s: float, pcm: np.ndarray, fs: int, flags: int) -> None
+        # = contract.OnAudio (show-rx): mono mix -> soxr ResampleStream to 16 kHz (rebuilt on a new fs or AUDIO_SEGMENT)
+        # -> int16 into a preallocated ring. AUDIO_GAP blocks write zeros and record a gap; a segment adds a time
+        # anchor (index, t_host). Over max_streams, the ring written longest ago is dropped.
+    def clip(self, stream: str | None, t0_s: float, t1_s: float) -> Clip | None    # any thread; None if not held
+    def latest(self, stream: str | None = None, seconds: float = 24.0) -> Clip | None   # None stream = last written
+    def info(self) -> dict      # {stream: {"fs", "held_s", "t_first_s", "t_last_s", "writes", "gaps", "lapped_reads"}}
+class Clip(NamedTuple):
+    stream: str; fs: int; t0_s: float; pcm: np.ndarray; gaps: list[tuple[float, float]]
+    # t0_s = acoustic host s of pcm[0]; pcm int16 mono
+```
+Readers use a seqlock: they read the write count before and after the copy, and cut off any lapped part.
+
+**listener.py**
+```python
+def attach(ctx: contract.BrainContext) -> Listener
+class Listener:                                        # Component "listener", tick_hz 1
+    def set_on(self, on: bool) -> contract.ListenerView    # the AI listening switch (persisted; default False)
+    def view(self) -> contract.ListenerView
+    def beliefs(self) -> contract.Beliefs | None       # any thread (snapshot)
+    async def describe(self, text: str, context: dict) -> tuple[contract.DescribeIntent, str]   # (intent, "llm" | "keywords")
+                                                       # never raises; LLM within describe_timeout_s, else keywords
+    def provides(self) -> dict                         # {"beliefs": self.beliefs}
+    def log(self, n: int = 50) -> list[dict]
+```
+**Gating** (§7.3, §7.5). Clips go only when all of these hold, **for every stream, test streams included** (review,
+16 Oct: privacy was decided by a stream's name, so `phone-test` or any `test-*` stream would have uploaded clips with
+AI listening off):
+- the AI listening switch is on (the switch stops every upload; nothing is uploaded until the owner turns it on);
+- `ctx.target().listening` (the mode's own wish; no show target set: no clips);
+- `ctx.vibe().listener`;
+- the music gate passes, except for a stream whose show.yaml sender says `room_sound: false` (a music file: no one's
+  speech can be in it; shipped on `test-audio` only):
+  - `music_gate: classifier` needs CED (P1). There is none in Stage 3, so room-mic clips never go;
+  - `dsp`: the clock gate is `beat` or `dmx` (or harmony conf ≥ 0.3), and gate ≥ `situations.music.dsp_min_gate`;
+- features are fresh, with gate ≥ `listener.quiet_gate` (0.1) over the clip's last 10 s;
+- the ring holds at least min(`clip_s`, `listener.min_clip_s`) of the stream.
+
+**The ring records only while a clip could go** (review, 16 Oct). The listener sets `Rings.armed` each tick to
+whether the first three gates pass (switch, mode, vibe), so with AI listening off (the default) show-rx does no
+resampling for nothing. Recording resumes from nothing (what was held before the pause is forgotten), so a first
+clip waits `min_clip_s` (10 s).
+
+`why` holds the first failing reason, in page words:
+- "AI listening is off"
+- "this mode doesn't listen"
+- "this feel doesn't listen"
+- "waiting for the music/speech check (P1)"
+- "too quiet"
+- "no sound coming in"
+- "no model configured"
+
+**Cadence.**
+- A call is due every `cadence_s`, at least `min_gap_s` after the last one, with one in flight at most.
+- After `agree_reads` agreeing, confident (≥ 0.6) verdicts, it moves to `relaxed_cadence_s`.
+- Over the daily budget (`utils.llm.over_budget("listen")`), the cadence is ×3. The budget never stops it.
+
+**One call:**
+1. `rings.latest(<active stream>, clip_s)`.
+2. Normalise to −16 LUFS (pyebur128 integrated loudness; the gain is clamped to ±24 dB). The true LUFS goes in the
+   text.
+3. MP3 at 64 kbps through `ffmpeg -f s16le -ar 16000 -ac 1 -i - -b:a 64k -f mp3 -` (asyncio, 5 s timeout), else WAV.
+4. `utils.llm.acall_json("listen", system=<static prompt: field definitions, vocab words, the rules>,
+   user=[<120 s DSP timeline at 2 s resolution from its own 1 Hz samples, < 600 tokens>, <the previous verdict,
+   marked "hypothesis, may be wrong", left out every 5th call>], tool=<§7.3's output schema>, audio=…,
+   audio_format="mp3")`.
+5. Check it against vocab: an unknown genre becomes "unknown"; unknown moods are dropped.
+6. Publish `InsightData` as `music.insight`, and fuse it into the beliefs.
+
+**Beliefs** (§7.1):
+- Votes decay with half-lives: genre 120 s, mood 45 s, instruments 60 s.
+- A word changes only when a new leader wins two reads in a row by 0.15 of vote weight, or at once on `track_change`.
+- After the last verdict, the beliefs hold for 60 s, then fade to neutral over 60 s: `fresh` → `holding` → `fading`
+  → `none`.
+
+**Describe it's keyword fallback:**
+- Calmer words (calm, quiet, soft, gentle, relax, mellow, dim…) give −1 step each; wilder words (wild, loud,
+  energy, more, bright, dance…) give +1. The total is clamped to ±3. No step word is a mode or vibe name (review,
+  16 Oct: "party" and "rave" were wilder words, "chill" a calmer one), and at run time a word that names a mode in
+  the context is never a step, so naming a mode only offers the switch.
+- A palette name or label in the text sets the palette ("art", "painting" and "picture" → art).
+- Vocab moods in the text, up to 3.
+- keep, stay or hold → `keep`.
+- A mode's name or label that isn't the current mode → `switch_mode` (offered only).
+- `reply` says what changed, or "I didn't catch that: try a mood like 'mellow' or a palette like 'ember'."
+
+**utils/llm/** (openai 1.x SDK; it must import under both Flask's `.venv` and `~/.venvs/sm-show`):
+```python
+def call_json(task: str, *, system: str, user: str | list[dict], tool: dict, audio: bytes | None = None,
+              audio_format: str = "mp3", timeout_s: float | None = None) -> LLMResult          # sync; never raises
+async def acall_json(task: str, *, ...same...) -> LLMResult                                     # AsyncOpenAI
+def status() -> dict      # {"config": {"path", "revision", "error"}, "tasks": {task: {"models", "probed": {id: "ok" |
+                          #  "missing" | "no_tools"}}}, "breakers": {id: {"failures", "open_for_s"}},
+                          #  "spend_today_usd": {task: x}, "budgets": {task: x}}
+def over_budget(task: str) -> bool
+def reload(force: bool = False) -> None
+@dataclass
+class LLMResult:
+    ok: bool; data: dict | None; error: str | None; task: str; provider: str | None; model: str | None
+    latency_ms: float; usage: dict; cost_usd: float; attempts: list[dict]    # [{"model", "error"}]
+```
+- **The forced tool.** `tool` is `{"name", "description", "parameters": <JSON schema>}`. It is sent as
+  `tools=[{"type": "function", "function": tool}]` with
+  `tool_choice={"type": "function", "function": {"name": tool["name"]}}` and `store=False`. The output-token limit
+  comes from the task.
+  - With audio: `modalities=["text"]`, and the user content is `[{"type": "text", …},
+    {"type": "input_audio", "input_audio": {"data": <b64>, "format": audio_format}}]`.
+- **Validation.** The tool call's arguments are parsed and checked by a small local validator (type, required, enum,
+  properties, items, maxItems, minimum/maximum; no new dependency). A failure counts as that model failing.
+- **Fallback.** It walks down the task's model list.
+  - A breaker per model: 3 failures in a row skip that model for 60 s.
+  - `models.list()` is probed at first use, then hourly. A missing id is skipped and logged once.
+  - No retries: the next window is the retry. The timeout is the task's `timeout_s`.
+- **The key.** `OPENAI_API_KEY` from the environment, else from the repo's `.env` (KEY=VALUE lines).
+  - It is never logged, and never put in an exception, the ledger or a status.
+  - Error strings are redacted (`sk-…` becomes `sk-***`).
+- **The ledger.** One JSON line per call to `contract.LLM_LEDGER`: `{at, task, provider, model, ok, latency_ms,
+  usage, cost_usd, error}`. Spend = usage × llm.yaml's prices.
+
+**config/llm.yaml** (B6 writes it):
+```yaml
+version: 1
+providers:
+  openai: {key_env: OPENAI_API_KEY, base_url: null}          # null = the SDK's default
+tasks:
+  listen:   {models: [{provider: openai, model: <id>}], timeout_s: 12, max_output_tokens: 400, audio: true}
+  describe: {models: [{provider: openai, model: <id>}], timeout_s: 8, max_output_tokens: 300}
+prices:     # USD per 1M tokens, with a "retrieved <date>" comment; model ids appear ONLY in this file
+  <id>: {text_in: <x>, text_out: <y>, audio_in: <z>}
+budgets:    # USD per day per task: reaching it slows the cadence, never stops it
+  listen: <n>
+```
+- Real ids and prices go in only after B6 has checked them (`models.list()` with the key, and the pricing page).
+- An id or price it can't verify stays out. An empty `models` list means "no model configured": the listener says
+  so, and Describe it uses keywords.
+
+**Tests (B6):**
+- Rings: write and read across segments, gaps, a lapped read, `latest`, and the cost per block.
+- Listener gating:
+  - the switch off → no clip, for every stream (room-mic, test-audio, phone-test, any test-*);
+  - no show target, or the mode's listening false → no clip, for every stream;
+  - `room_sound: false` skips only the music check; a name never does;
+  - no classifier → no room-mic clip;
+  - the vibe's listening false;
+  - the ring armed only while a clip could go.
+- Cadence and backoff, with a fake clock.
+- Beliefs: the two-reads rule, decay.
+- The keyword fallback.
+- utils/llm, against a fake OpenAI-compatible server on an ephemeral port (`base_url`):
+  - forced-tool parsing;
+  - a validation failure → the next model;
+  - the breaker;
+  - the ledger;
+  - **the key never appears in logs** (caplog).
+
+**As built (B6, 16 Oct).** `ring.py`, `listener.py`, `utils/llm/` (`core.py`, `__init__.py`, `pytest.ini`, `tests/`),
+`config/llm.yaml`; `tests/test_ring.py` (12), `tests/test_listener.py` (40), `utils/llm/tests/test_llm.py` (19, passing
+under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins are in `requirements.txt` and installed.
+- **Smoke call** (one real call, 16 Oct): gpt-audio-1.5, a 5 s synthetic clip as 24 kHz MP3, with the forced tool,
+  `store: false` and `modalities: ["text"]`. It answered valid JSON in 3.5 s; 50 audio tokens (10/s) and $0.0056.
+  - A 24 s clip with the 120 s timeline comes to about $0.013 a call, so about $9-10 for 4 h at one call every 20 s.
+  - The model ids in llm.yaml are checked against `models.list()`; the prices were retrieved 16 Oct from OpenAI's
+    pricing page.
+- **Rings.**
+  - soxr runs at MQ.
+  - soxr's output is delay-compensated, so the anchors are exact. The newest ~30 ms stays inside the resampler until
+    the next block, and is dropped at a segment switch.
+  - Measured on this box under `nice 19`: p50 24 µs, p95 63 µs per 128-frame 48 kHz stereo block. The threaded
+    seqlock test saw no torn reads.
+  - Extras for readers: `Rings.last_stream` and `Rings.streams()`.
+- **Gating decisions.**
+  - With no show target, no stream is allowed: "this mode doesn't listen" (the target's neutral `listening` is
+    false). Since the review (16 Oct) that holds for test streams too.
+  - "no sound coming in" is checked before the music gate.
+  - With `music_gate: dsp`, a loud sound that has no beat and no key gets one extra page word: "no music heard".
+  - The gate is checked again right before the upload. Turning the switch off cancels any call in flight.
+  - A call reads only the ring of the stream it was gated for, so room sound can never go out under a test.
+- **Cadence extras.**
+  - Failures in a row stretch the interval to `cadence_s × 2^n`, capped at 300 s.
+  - The previous verdict is left out of every 5th call.
+- **Encoding.** llm.yaml's `tasks.listen.audio` holds `{format: mp3, sample_rate: 24000, bitrate: 64k}`.
+  - ffmpeg runs under `nice -n 10` with `-threads 1`, and has 5 s.
+  - If ffmpeg fails, the clip goes as a WAV, resampled by soxr.
+  - The loudness measurement runs in the loop's executor, in 0.5 s pyebur128 pieces.
+- **Beliefs.**
+  - Genre confidence is `share × min(1, total votes / 2)`, so one read gives 0.5 and two agreeing reads give 1.0.
+  - Mood confidence is `min(1, weight / 2)`.
+  - `fresh` is under 30 s.
+  - A section label lapses 30 s after its clip's end.
+  - The trajectory's `eta_s` counts down from the clip's end.
+- **Listener log.** Every verdict, failure, skip, Describe it and switch goes to `STATE_DIR/listener.jsonl` (rotated at
+  1 MB) and to `log(n)`. contract has no constant for that path; c8 may add one.
+- **`utils.llm` extras** (additive):
+  - functions: `configure(config_path=, env_file=, ledger_path=)` (tests and tools), `task_settings(task)`,
+    `validate`, `redact`;
+  - new `status()` keys: `tasks[t].usable`, `calls_today`, `probes`, and `providers` (with key presence only);
+  - per-model `options` (extra request fields), and per-provider `omit` (request fields that provider rejects).
+- **Wiring (done by the integrator, 16 Oct):**
+  - `Listener.start()` starts a daemon thread, `show-llm-warm`. It imports utils.llm and openai and reads today's
+    ledger, all off show-brain.
+  - `describe` gets `describe_timeout_s + 1` on its `brain.call` (api.py).
+  - In `__main__`, `rings.write` runs after Features and the Clock, under the guard `ring.write`. `attach(ctx, **kw)`
+    passes `log_path=<state_dir>/listener.jsonl`; the e2e test passes a fake `llm`.
+
+### S3.13 Rules for every builder
+
+- **Venvs:** `~/.venvs/sm-show` (the room adapter: `~/.venvs/sm-room`).
+  - Every install and test run goes under
+    `flock /tmp/claude-1000/sm-build.lock nice -n 19 …`.
+  - Pins are appended to `show_service/requirements.txt` in a commented block per builder:
+    - B1: `Pillow`.
+    - B6: `openai==1.77.0` (as Flask has), and its dependencies as installed.
+
+    Nothing else without asking c8.
+- **Tests** are at the "does it work" level. Shared plumbing gets real tests: the bus seam, `Brain.call` and
+  persistence, the receiver seam, NoteTap, Rings, utils/llm, the condition evaluator, palette maths, and artnet's
+  `set_look`.
+- **Never:**
+  - bind 8703, 6980, 6981, 6982, 6454 (or 8700-8702) in a test: use ephemeral 127.0.0.1 ports;
+  - send to a real device;
+  - PUT, POST or open a WS to the real room API (:8700): use fakes;
+  - call OpenAI;
+  - read or write the real state dir or test-music dir: tests pass tmp paths;
+  - restart Flask, stream_service or show_service;
+  - kill a process you didn't start;
+  - commit to git.
+
+### S3.14 Going live, and who to tell
+
+1. **show_service (c8).** The integration is done (16 Oct); deploy it with `scripts/ctl restart show`. Steps, in order:
+   1. The venv already has the Stage-3 pins (Pillow, openai and its dependencies). To be sure:
+      `flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/pip install -r show_service/requirements.txt`.
+   2. The suite: `flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/python -m pytest show_service/tests -q`
+      (710 passed on 16 Oct after the review's fixes, about 3.5 min).
+   3. **`senders.kiosk` ships commented out** (review, 16 Oct). This restart subscribes no room sender from
+      show.yaml (only the CLI's `testpiano`, until step 4), so nothing in the room drives Art-Net. **Uncommenting
+      `kiosk` in show.yaml is the go-live step** for the room's own mic and piano: announce it first. From then
+      (show.yaml hot-reloads; no restart) show_service SUBSCRIBEs the kiosk's two addresses on udp 6980 every second,
+      and whenever 98's show-sender.service runs there the room's sound drives the screens' and lamps' Art-Net (the
+      fixed amber while no vibe is set; the director's look once a mode sets one).
+   4. `deploy/sm-show.env` (c8 with ca; tell 98): drop `--sender testpiano=localhost:6981/test-piano` from
+      `SHOW_ARGS`. The test piano is now show_service's child (`POST /show/api/v1/test`) and show.yaml's on_demand
+      `test-piano` sender subscribes it while it plays. Keeping the flag is harmless (the same socket asks, so it
+      streams once), but it also keeps subscribing a test piano started by hand. Leave `SHOW_BRAIN` unset (on).
+   5. `scripts/ctl restart show`.
+   6. Check: `curl -s 127.0.0.1:8703/healthz` says version `0.2.0`; `curl -s 127.0.0.1:8703/api/v1/state | jq
+      '.modules, .brain.running, .brain.settings, .brain.state_file, .artnet.palette'`: every module `ok`, `running` true, settings `error` null, state.json under
+      `~/.local/state/screen-machine/show/`, palette `fixed`. `curl -s 127.0.0.1:8703/api/v1/card`: vibe null, Auto
+      off, listening off.
+
+   What changes at this restart:
+   - Nothing visible: no room sender is subscribed from show.yaml (step 3); with no `show` rows in modes.json and no
+     `PUT /vibe` the director stays neutral (`palette_fn` None: today's fixed colour, and today's idle in a quiet
+     room). Auto has no rules (no mode has an `autopilot` block), so it does nothing even if the room's
+     `autopilot.main` is on. AI listening is off.
+   - New traffic to room_service: RoomLink's WS on `:8700/api/v1/events`, `GET /api/v1/room/config` on each config
+     revision, and the director's `GET /renderer/api/catalog` (about 2.5 MB through :8700) at start and every 300 s.
+   - The renderer gets `room.direction`, `room.look` and `room.event` on the bus (sound_view ignores them).
+   - **The LLM.** Nothing is uploaded while AI listening is off, test audio included (review, 16 Oct: test streams
+     no longer pass the switch, and no show target means no clips). With the switch on, a mode that listens and a
+     vibe that allows it, test audio (`room_sound: false`) is clipped every 20 s (about $0.013 a call, about $2.30 an
+     hour); the room mic waits for the music/speech check (P1).
+   - Rollback: `SHOW_BRAIN=off` in `deploy/sm-show.env`, then `scripts/ctl restart show` (exactly P0 again).
+2. **The room adapter (B5): one announced Flask restart, after step 1.**
+   1. Tell aa: `build_adapters` gained a `show` parameter (room_service/adapters/__init__.py), and the roomstate edits
+      (`contract.Adapter.vocabulary()`, `schema.mode_schema`/`mode_autopilot_schema` with `situations`,
+      `coordinator.describe()` merging vocabularies; S3.11 "As built" has the places). Also (review, 16 Oct):
+      `show.main` now reads `{"vibe": null, "listening": false}` ("No feel") as a value, so the generic put-back stores
+      and restores it; the adapter re-applies its last value itself after a cold show_service (a settled "ignore" row
+      is never retried by the room); and `tests/roomstate/test_adapters.py` and `test_rooms.py` pass `show=False` to
+      `build_adapters` (two call sites, so those tests never touch :8703).
+   2. Ask the owner of `room_service/tests/conftest.py` to add `self.extra_adapters = [Placeholder("show", ["main"])]`
+      in `Harness.__init__`; until then the full room suite reads the production show_service (GETs only).
+   3. Tests: `cd room_service && flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-room/bin/python -m pytest
+      tests/test_show_adapter.py tests/roomstate -q -m "not browser"` (283 passed, 3 skipped on 16 Oct, after the review's fixes).
+   4. With 2f: their `/show/*` and `/rs/show/*` pass-through ships in the same restart. Tell the other sessions, then
+      restart Flask (`start.sh`; CLAUDE.md: room_service runs inside Flask).
+   5. Check: `curl -s 127.0.0.1:8700/api/v1/room/describe | jq '.subsystems.show.situations | length'` (9), the room's
+      `show.main` belief (`{"vibe": null, "listening": false}`, "No feel", until a mode sets one), and `curl -s
+      127.0.0.1:8700/show/api/v1/card`.
+   6. Only then do modes.json `show` rows (2f, as the owner decides) take the director out of neutral.
+3. **2f:**
+   - the `/show/*` pass-through on :8700 (prefix stripped) and `/rs/show/*`;
+   - the Music card from `GET /show/api/v1/card` and `WS /show/v1/events`;
+   - the Auto line and chips;
+   - modes.json `show` rows (S3.5's proposal) and `autopilot` blocks, as the owner decides;
+   - (review, 16 Oct) the card's "More: lamp brightness" is the Lights low toggle (S3.9 card rules); `PUT
+     /api/v1/vibe` never refuses a name now: the console can show `known: false` and the read-back's `problems`
+     ("the feel 'x' isn't in vibes.yaml"); `DELETE /api/v1/vibe` is no feel; the Fine-tune form's strobe and peak
+     tokens say "(not built yet)" (`x-ui.not_built`) and accents read "Lamps' beat swell".
+
+   The show adapter and the pass-through go live together, at one announced Flask restart (never a builder's).
+4. **aa:** review `build_adapters`' `show` line; surface `situations` in describe (S3.11). `reason`, `expect`, `skip`
+   and `sent_age_s` are already done.
+5. **98:** `POST`/`DELETE`/`GET /show/api/v1/test` (S3.9) is the promised API. The test piano runs as a child of
+   show_service on localhost:6981. (Review, 16 Oct) Each child now runs through `sources.PDEATH_SHIM`, so it dies
+   with show_service; a stop SIGKILLs its process group. Test audio reaches the LLM listener only with AI listening on
+   and a mode that listens, like the room mic.
+6. **04:** room.direction, room.look and room.event are on our bus now. sound_view ignores unknown types; P4 reads
+   them.
+7. **68:** the Art-Net layout is unchanged. Once a vibe is set, screens and lamps take the director's colours, and
+   `hue_depth` and `beat_lock` vary per vibe. (Review, 16 Oct) While a vibe is set, a quiet room or stale features no
+   longer stop Art-Net: the director's relaxed look keeps going out, steady, with no pulses (artnet_out "Idle"), so
+   room's Hue output keeps following; with no vibe, the P0 idle is as before.

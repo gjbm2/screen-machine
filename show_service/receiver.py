@@ -10,8 +10,17 @@ and logged (rate-limited), never fatal. :meth:`health` and :meth:`set_offsets` a
 
 Socket. One UDP socket on ``cfg.vban_bind``, SO_RCVBUF asked for 4 MB and read back (Linux caps it at
 net.core.rmem_max; never SO_RCVBUFFORCE). A failed bind shows in health and is retried every 2 s. Every 1 s (and
-at once when an address first resolves or changes) it sends ``vban.subscribe_packet(sender.streams, counter)``
-from that socket to each sender's resolved address: the sender streams to the source of the latest one (NAT-safe).
+at once when an address first resolves or changes, or the sender list changes) it sends
+``vban.subscribe_packet(sender.streams, counter)`` from that socket to each sender's resolved address: the sender
+streams to the source of the latest one (NAT-safe).
+
+Senders (Stage 3, README S3.10 "the receiver seam"). The list starts as ``cfg.senders``; :meth:`set_senders` (any
+thread; sources.py, from config/room/show.yaml) replaces it at the next tick, and show-dns resolves the new hosts at
+once. A removed sender gets no more SUBSCRIBEs; its streams stay in the registry and go down by the usual rules. A
+sender's ``hosts`` (else ``(host,)``) is an ordered fallback list: every host is resolved; a host "answers" when a
+packet arrives from its resolved address and port; while some host has answered within ANSWER_FRESH_S, SUBSCRIBE
+goes to the first such host in list order only, otherwise to every resolved host. :meth:`set_priority` (any thread)
+ranks those streams before ``cfg.stream_priority`` (which stays); the usual switch-up rule (3 s) applies.
 
 Registry. One entry per stream name, made on its first valid packet, subscribed or not; ranked by
 contract.stream_rank(name, cfg.stream_priority) (``--stream-priority`` names first, unknown names last), and
@@ -95,6 +104,7 @@ CLIP_LEVEL = 0.999
 DBFS_FLOOR = -120.0
 MIDI_TEXT_GAP_MAX = 1000                         # TEXT counter steps up to this count as lost packets
 ERROR_LOG_EVERY_S = 10.0
+ANSWER_FRESH_S = 3.0                             # a host that sent a packet this recently gets the SUBSCRIBEs alone
 LIVE = ("streaming", "quiet")
 BAD = ("stale", "down", "no_device")
 _HALF = 1 << 31
@@ -104,6 +114,11 @@ _PEDAL_CCS = frozenset(contract.PEDAL_CC)
 
 def is_test_stream(name: str) -> bool:
     return name in contract.TEST_STREAMS or name.startswith("test-")
+
+
+def sender_hosts(s: contract.Sender) -> tuple[str, ...]:
+    """The sender's ordered host list: ``hosts`` when given, else ``(host,)``."""
+    return tuple(s.hosts) if s.hosts else (s.host,)
 
 
 def _signed(d: int) -> int:
@@ -216,10 +231,25 @@ class Receiver:
         self._active: Optional[str] = None
         self._offsets: dict[str, float] = {}
         self._offsets_new: Optional[dict[str, float]] = None
-        # senders: show-dns writes these two dicts (swapped by reference), show-rx reads them
-        self._resolved: dict[str, tuple[str, int]] = {}
-        self._resolve_err: dict[str, Optional[str]] = {}
+        # senders: show-rx's list; set_senders (any thread) puts the next one in _senders_want (applied at a tick)
+        self._senders: tuple[contract.Sender, ...] = tuple(cfg.senders)
+        self._senders_want: Optional[tuple[contract.Sender, ...]] = None
+        self._senders_gen = 0
+        # priority: set_priority's names first, then cfg.stream_priority (show-rx applies it at a tick)
+        self._priority_base: tuple[str, ...] = tuple(getattr(cfg, "stream_priority", ()) or ())
+        self._priority: tuple[str, ...] = self._priority_base
+        self._priority_want: Optional[tuple[str, ...]] = None
+        self._priority_src: Optional[tuple[str, ...]] = None
+        # show-dns writes these two dicts, keyed (sender name, host), swapped by reference; show-rx reads them
+        self._resolved: dict[tuple[str, str], tuple[str, int]] = {}
+        self._resolve_err: dict[tuple[str, str], Optional[str]] = {}
+        self._dns_wake = threading.Event()
         self._dns_gen = 0
+        # host fallback (show-rx): resolved (ip, port) -> the (sender, host) keys it belongs to; when each last answered
+        self._addr_index: dict[tuple[str, int], tuple[tuple[str, str], ...]] = {}
+        self._index_key: Any = None
+        self._answered: dict[tuple[str, str], float] = {}
+        self._using: dict[str, Optional[str]] = {}
         self._sub_gen = -1
         self._sub_counter = 0
         self._sub_next = -math.inf
@@ -250,6 +280,7 @@ class Receiver:
 
     def stop(self, timeout: float = 2.0) -> None:
         self._stop.set()
+        self._dns_wake.set()
         for t in self._threads:
             t.join(timeout)
         self._threads = []
@@ -339,25 +370,44 @@ class Receiver:
 
     def _run_dns(self) -> None:
         while not self._stop.is_set():
+            self._dns_wake.clear()                       # a set_senders during the pass wakes the next one at once
             self._resolve_all()
-            ok = all(self._resolve_err.get(s.name) is None for s in self.cfg.senders)
-            self._stop.wait(DNS_EVERY_S if ok else DNS_RETRY_S)
+            ok = all(self._resolve_err.get(k) is None for k in self._host_keys(self._sender_list()))
+            self._dns_wake.wait(DNS_EVERY_S if ok else DNS_RETRY_S)
+
+    def _sender_list(self) -> tuple[contract.Sender, ...]:
+        """The newest list: set_senders' (not yet applied by show-rx) else show-rx's (any thread)."""
+        want = self._senders_want
+        return want if want is not None else self._senders
+
+    @staticmethod
+    def _host_keys(senders: tuple[contract.Sender, ...]) -> list[tuple[str, str]]:
+        return [(s.name, h) for s in senders for h in sender_hosts(s)]
 
     def _resolve_all(self) -> None:
-        """Resolve every sender's host (show-dns; blocking). Swaps the dicts show-rx reads."""
-        resolved, errs = dict(self._resolved), dict(self._resolve_err)
+        """Resolve every sender's every host (show-dns; blocking). Swaps the dicts show-rx reads. A host that stops
+        resolving keeps its last good address; hosts no longer listed are dropped."""
+        old_r, old_e = self._resolved, self._resolve_err
+        resolved: dict[tuple[str, str], tuple[str, int]] = {}
+        errs: dict[tuple[str, str], Optional[str]] = {}
         changed = False
-        for s in self.cfg.senders:
-            try:
-                info = socket.getaddrinfo(s.host, s.port, socket.AF_INET, socket.SOCK_DGRAM)
-                addr = (str(info[0][4][0]), int(info[0][4][1]))
-                changed |= resolved.get(s.name) != addr
-                resolved[s.name], errs[s.name] = addr, None
-            except (OSError, UnicodeError, IndexError) as e:
-                if errs.get(s.name) != str(e):
-                    log.warning("sender %s: can't resolve %s: %s (keeping %s)", s.name, s.host, e,
-                                resolved.get(s.name))
-                errs[s.name] = str(e)
+        for s in self._sender_list():
+            for h in sender_hosts(s):
+                key = (s.name, h)
+                if key in errs:                          # a host listed twice
+                    continue
+                try:
+                    info = socket.getaddrinfo(h, s.port, socket.AF_INET, socket.SOCK_DGRAM)
+                    addr = (str(info[0][4][0]), int(info[0][4][1]))
+                    changed |= old_r.get(key) != addr
+                    resolved[key], errs[key] = addr, None
+                except (OSError, UnicodeError, IndexError) as e:
+                    if old_e.get(key) != str(e):
+                        log.warning("sender %s: can't resolve %s: %s (keeping %s)", s.name, h, e, old_r.get(key))
+                    errs[key] = str(e)
+                    if key in old_r:
+                        resolved[key] = old_r[key]
+        changed |= resolved.keys() != old_r.keys()
         self._resolved, self._resolve_err = resolved, errs
         if changed:
             self._dns_gen += 1                           # show-rx subscribes at once
@@ -378,6 +428,21 @@ class Receiver:
         """acoustic_offset_ms per stream (latency.json ``sources``); applied at the next tick."""
         self._offsets_new = {str(k): float(v) for k, v in dict(offsets).items()}
 
+    def set_senders(self, senders: tuple[contract.Sender, ...]) -> None:
+        """The whole sender list (sources.py; any thread). Applied at the next tick; show-dns resolves new hosts at
+        once. A removed sender gets no more SUBSCRIBEs; its streams go down by the usual rules."""
+        self._senders_want = tuple(senders)
+        self._dns_wake.set()
+
+    def set_priority(self, names: tuple[str, ...]) -> None:
+        """Streams ranked before ``cfg.stream_priority`` (sources.py: a test stream while it plays; any thread).
+        Applied at the next tick; the usual switch-up rule (SWITCH_UP_S) applies."""
+        self._priority_want = tuple(str(n) for n in names)
+
+    def senders(self) -> tuple[contract.Sender, ...]:
+        """The sender list show-rx uses now (any thread)."""
+        return self._senders
+
     # -- show-rx ----------------------------------------------------------------------------------------------------
     def active_audio(self) -> Optional[str]:
         return self._active
@@ -390,6 +455,10 @@ class Receiver:
         if pkt is None:
             self._junk += 1
             return
+        keys = self._addr_index.get((addr[0], addr[1])) if self._addr_index else None
+        if keys:                                         # a configured host answered (the host fallback)
+            for k in keys:
+                self._answered[k] = arrival_s
         if isinstance(pkt, vban.AudioPacket):
             self._audio(pkt, addr, arrival_s, len(buf))
             return
@@ -422,7 +491,15 @@ class Receiver:
             self._offsets, self._offsets_new = self._offsets_new, None
             for st in self._streams.values():
                 self._apply_offset(st)
-        if self.cfg.senders and (now_s >= self._sub_next or self._sub_gen != self._dns_gen):
+        want = self._senders_want
+        if want is not None and want is not self._senders:
+            self._apply_senders(want)
+        pw = self._priority_want
+        if pw is not None and pw is not self._priority_src:
+            self._apply_priority(pw)
+        if self._index_key != (self._dns_gen, self._senders_gen):
+            self._rebuild_index()
+        if self._senders and (now_s >= self._sub_next or self._sub_gen != self._dns_gen):
             self._subscribe(now_s)
         if self._holding:
             self._expire_all(now_s)
@@ -437,6 +514,41 @@ class Receiver:
         except Exception:                                # noqa: BLE001
             self._error("tick")
 
+    # -- the sender list and priority (show-rx) ----------------------------------------------------------------------
+    def _apply_senders(self, senders: tuple[contract.Sender, ...]) -> None:
+        old = {s.name for s in self._senders}
+        self._senders = senders
+        self._senders_gen += 1
+        names = {s.name for s in senders}
+        for gone in old - names:
+            for d in (self._sub_last, self._send_err, self._using):
+                d.pop(gone, None)
+        keep = set(self._host_keys(senders))
+        self._answered = {k: v for k, v in self._answered.items() if k in keep}
+        self._sub_next = -math.inf                       # subscribe the (already resolved) ones at once
+        log.info("senders: %s", ", ".join(f"{s.name}={'|'.join(sender_hosts(s))}:{s.port}/{','.join(s.streams)}"
+                                          for s in senders) or "none")
+
+    def _apply_priority(self, names: tuple[str, ...]) -> None:
+        self._priority_src = names
+        prio = tuple(dict.fromkeys(names + self._priority_base))
+        if prio == self._priority:
+            return
+        self._priority = prio
+        for st in self._streams.values():
+            st.rank = contract.stream_rank(st.name, prio)
+        log.info("stream priority: %s", ",".join(prio) or "none")
+
+    def _rebuild_index(self) -> None:
+        self._index_key = (self._dns_gen, self._senders_gen)
+        idx: dict[tuple[str, int], list[tuple[str, str]]] = {}
+        resolved = self._resolved
+        for key in self._host_keys(self._senders):
+            addr = resolved.get(key)
+            if addr is not None:
+                idx.setdefault(addr, []).append(key)
+        self._addr_index = {a: tuple(ks) for a, ks in idx.items()}
+
     # -- SUBSCRIBE --------------------------------------------------------------------------------------------------
     def _subscribe(self, now: float) -> None:
         self._sub_next = now + SUBSCRIBE_EVERY_S
@@ -444,24 +556,32 @@ class Receiver:
         sock, resolved = self._sock, self._resolved
         if sock is None:
             return
-        for s in self.cfg.senders:
-            addr = resolved.get(s.name)
-            if addr is None:
+        for s in self._senders:
+            cands = [(h, resolved[(s.name, h)]) for h in sender_hosts(s) if (s.name, h) in resolved]
+            if not cands:
                 continue
-            try:
-                sock.sendto(vban.subscribe_packet(s.streams, self._sub_counter), addr)
-                self._sub_last[s.name] = now
-                self._send_err[s.name] = None
-            except OSError as e:
-                self._send_err[s.name] = str(e)
-            self._sub_counter = (self._sub_counter + 1) % _MOD
+            using = None
+            for h, a in cands:
+                t = self._answered.get((s.name, h))
+                if t is not None and now - t <= ANSWER_FRESH_S:
+                    using = (h, a)
+                    break
+            self._using[s.name] = using[0] if using is not None else None
+            err = None
+            for _h, addr in ([using] if using is not None else cands):
+                try:
+                    sock.sendto(vban.subscribe_packet(s.streams, self._sub_counter), addr)
+                except OSError as e:
+                    err = str(e)
+                self._sub_counter = (self._sub_counter + 1) % _MOD
+            self._sub_last[s.name] = now
+            self._send_err[s.name] = err
 
     # -- registry ---------------------------------------------------------------------------------------------------
     def _stream(self, name: str, addr: tuple[str, int], now: float) -> _Stream:
         st = self._streams.get(name)
         if st is None:
-            st = self._streams[name] = _Stream(name, (str(addr[0]), int(addr[1])), now,
-                                               tuple(getattr(self.cfg, "stream_priority", ()) or ()))
+            st = self._streams[name] = _Stream(name, (str(addr[0]), int(addr[1])), now, self._priority)
             log.info("stream %s from %s:%s%s", name, addr[0], addr[1],
                      "" if name in contract.KNOWN_STREAMS else " (unknown name: lowest priority)")
         elif st.addr[0] != addr[0] or st.addr[1] != addr[1]:
@@ -795,12 +915,23 @@ class Receiver:
     # -- health -----------------------------------------------------------------------------------------------------
     def _build_health(self, now: float) -> None:
         senders = {}
-        for s in self.cfg.senders:
-            addr = self._resolved.get(s.name)
+        resolved, rerr = self._resolved, self._resolve_err
+        for s in self._senders:
+            hosts = sender_hosts(s)
+            using = self._using.get(s.name)
+            main = using or hosts[0]
+            addr = resolved.get((s.name, main))
             last = self._sub_last.get(s.name)
-            senders[s.name] = {"host": s.host, "port": s.port, "addr": f"{addr[0]}:{addr[1]}" if addr else None,
-                               "resolve_error": self._resolve_err.get(s.name), "send_error": self._send_err.get(s.name),
-                               "streams": list(s.streams), "last_subscribe_ms": _r(last * 1000.0) if last else None}
+            rows = []
+            for h in hosts:
+                a = resolved.get((s.name, h))
+                t = self._answered.get((s.name, h))
+                rows.append({"host": h, "addr": f"{a[0]}:{a[1]}" if a else None, "resolve_error": rerr.get((s.name, h)),
+                             "answered_age_ms": _r((now - t) * 1000.0, 1) if t is not None else None})
+            senders[s.name] = {"host": main, "port": s.port, "addr": f"{addr[0]}:{addr[1]}" if addr else None,
+                               "resolve_error": rerr.get((s.name, main)), "send_error": self._send_err.get(s.name),
+                               "streams": list(s.streams), "last_subscribe_ms": _r(last * 1000.0) if last else None,
+                               "hosts": rows, "using": using, "on_demand": bool(s.on_demand)}
         self._health = {
             "t_ms": round(now * 1000.0, 3), "active_audio": self._active,
             "socket": {"bind": self._bound or "{}:{}".format(*self.cfg.vban_bind), "error": self._sock_error,
@@ -808,6 +939,7 @@ class Receiver:
                        "rcvbuf": self._rcvbuf},
             "errors": dict(self._errors),
             "senders": senders,
+            "priority": list(self._priority),
             "streams": {st.name: self._stream_health(st, now) for st in self._streams.values()}}
 
     def _stream_health(self, st: _Stream, now: float) -> dict:

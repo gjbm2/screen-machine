@@ -564,14 +564,129 @@ def test_subscribe_schedule(sender_sock):
         rsock.close()
 
 
-def test_resolve_failure_keeps_the_last_address():
+def test_resolve_failure_keeps_the_last_address(monkeypatch):
     cfg = Config(senders=(Sender("kiosk", "localhost", 6980, ("room-mic",)),))
     rx, rec = make(cfg)
     rx._resolve_all()
-    good = rx._resolved["kiosk"]
-    rx.cfg = Config(senders=(Sender("kiosk", "no-such-host.invalid", 6980, ("room-mic",)),))
+    good = rx._resolved[("kiosk", "localhost")]
+
+    def fail(*a, **kw):
+        raise OSError("lookup timed out")
+    monkeypatch.setattr(socket, "getaddrinfo", fail)
     rx._resolve_all()
-    assert rx._resolved["kiosk"] == good and rx._resolve_err["kiosk"]
+    assert rx._resolved[("kiosk", "localhost")] == good and rx._resolve_err[("kiosk", "localhost")]
+
+
+# -- the Stage-3 seam: set_senders, set_priority, the host fallback (README S3.10) ----------------------------------
+def _subs(sock: socket.socket, wait: float = 0.05) -> list[list[str]]:
+    """Every SUBSCRIBE waiting on ``sock`` (the streams each asks for)."""
+    out = []
+    sock.settimeout(wait)
+    while True:
+        try:
+            data, _ = sock.recvfrom(2048)
+        except (socket.timeout, BlockingIOError):
+            return out
+        out.append(vban.subscribed_streams(vban.parse(data)))
+
+
+def test_set_senders_adds_and_removes_senders():
+    a = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    b = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for x in (a, b, rsock):
+        x.bind(("127.0.0.1", 0))
+    pa, pb = a.getsockname()[1], b.getsockname()[1]
+    try:
+        rx, rec = make(Config(senders=(Sender("one", "localhost", pa, ("room-mic",)),)), sock=rsock)
+        rx._resolve_all()
+        rx.tick(10.0)
+        assert _subs(a) == [["room-mic"]] and _subs(b) == []
+        two = Sender("two", "127.0.0.1", pb, ("test-audio",), hosts=("127.0.0.1",), on_demand=True)
+        rx.set_senders((Sender("one", "localhost", pa, ("room-mic",)), two))
+        assert rx.senders()[0].name == "one" and len(rx.senders()) == 1    # applied at the next tick
+        rx._resolve_all()                                     # (show-dns, woken by set_senders)
+        rx.tick(10.1)                                         # a new list: subscribed at once, not at 11.0
+        assert _subs(a) == [["room-mic"]] and _subs(b) == [["test-audio"]]
+        rx.tick(10.6)
+        h = rx.health()["senders"]
+        assert set(h) == {"one", "two"} and h["two"]["on_demand"] is True and h["two"]["hosts"][0]["host"] == "127.0.0.1"
+        rx.set_senders((two,))                                # "one" removed: no more SUBSCRIBEs to it
+        rx._resolve_all()
+        rx.tick(11.7)
+        rx.tick(12.8)
+        assert _subs(a) == [] and len(_subs(b)) == 2
+        assert set(rx.health()["senders"]) == {"two"}
+    finally:
+        for x in (a, b, rsock):
+            x.close()
+
+
+def test_host_fallback_subscribes_all_then_the_host_that_answers():
+    first = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    first.bind(("127.0.0.2", 0))                              # loopback, another address (Linux: all of 127/8)
+    port = first.getsockname()[1]
+    second = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    second.bind(("127.0.0.1", port))
+    rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rsock.bind(("127.0.0.1", 0))
+    try:
+        s = Sender("kiosk", "127.0.0.2", port, ("room-mic",), hosts=("127.0.0.2", "127.0.0.1"))
+        rx, rec = make(Config(senders=(s,)), sock=rsock)
+        rx._resolve_all()
+        rx.tick(20.0)                                         # nobody has answered: every host
+        assert _subs(first) == [["room-mic"]] and _subs(second) == [["room-mic"]]
+        h = rx.health()["senders"]["kiosk"]
+        assert h["using"] is None and [r["host"] for r in h["hosts"]] == ["127.0.0.2", "127.0.0.1"]
+        rx.handle(apkt(0), ("127.0.0.1", port), 20.5)          # the second host answers (Wi-Fi, say)
+        rx.tick(21.0)
+        assert _subs(first) == [] and _subs(second) == [["room-mic"]]
+        rx.tick(21.5)
+        h = rx.health()["senders"]["kiosk"]
+        assert h["using"] == "127.0.0.1" and h["host"] == "127.0.0.1" and h["addr"] == f"127.0.0.1:{port}"
+        assert h["hosts"][1]["answered_age_ms"] == 1000.0 and h["hosts"][0]["answered_age_ms"] is None
+        rx.handle(apkt(1), ("127.0.0.2", port), 21.6)          # the first host answers too: it is first in the list
+        rx.tick(22.0)
+        assert _subs(first) == [["room-mic"]] and _subs(second) == []
+        rx.tick(26.0)                                         # silence for > 3 s: every host again
+        assert _subs(first) == [["room-mic"]] and _subs(second) == [["room-mic"]]
+        rx.handle(apkt(2), ("127.0.0.1", port + 1 if port < 65535 else port - 1), 26.5)   # another port: no answer
+        rx.tick(27.0)
+        assert len(_subs(first)) == 1 and len(_subs(second)) == 1
+    finally:
+        for x in (first, second, rsock):
+            x.close()
+
+
+def test_set_priority_lifts_a_test_stream_after_the_switch_up_time():
+    rx, rec = make(Config(stream_priority=("pc22-loop",)))
+    mic = Sim(rx, "room-mic")
+    test = Sim(rx, "test-audio", addr=("127.0.0.1", 6999), t0=T0 + 0.25)
+    mic.heartbeats = test.heartbeats = False
+    end = T0 + 2.0
+    while mic.arrival(mic.i) < end:
+        first = mic if mic.arrival(mic.i) <= test.arrival(test.i) else test
+        first.run(1)
+    assert rx.active_audio() == "room-mic"
+    assert rx.health()["streams"]["test-audio"]["rank"] == contract.stream_rank("test-audio") > 0
+    rx.set_priority(("test-audio",))
+    t_set = mic.arrival(mic.i)
+    end = T0 + 8.0
+    while mic.arrival(mic.i) < end:
+        first = mic if mic.arrival(mic.i) <= test.arrival(test.i) else test
+        first.run(1)
+    assert rx.active_audio() == "test-audio"
+    blocks = rec.of("test-audio")
+    assert blocks and blocks[0][5] & AUDIO_SEGMENT                    # streaming 3 s by then: the usual rule
+    assert 0.0 <= blocks[0][2] - t_set <= 1.6, blocks[0][2] - t_set
+    h = rx.health()
+    assert h["priority"] == ["test-audio", "pc22-loop"] and h["streams"]["test-audio"]["rank"] < 0
+    rx.set_priority(())                                       # the test stops: room-mic outranks it again
+    end = T0 + 13.0
+    while mic.arrival(mic.i) < end:
+        first = mic if mic.arrival(mic.i) <= test.arrival(test.i) else test
+        first.run(1)
+    assert rx.active_audio() == "room-mic" and rx.health()["priority"] == ["pc22-loop"]
 
 
 def test_end_to_end_over_localhost_udp(sender_sock):

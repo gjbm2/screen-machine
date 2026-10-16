@@ -51,12 +51,16 @@ Encoding is room_service/dmx/patch.py's: a field with ``range: [lo, hi]`` -> rou
 ``raw`` field -> the integer, clamped to 0..255. A value that isn't a finite number (a NaN from upstream) is sent as
 the channel's default; the inputs' clamps read NaN as 0, so it never sticks in a smoother.
 
-**Idle.** Nothing is sent, room's input goes stale and holds (as before show_service; its own test show can run, and
-after 10 s room's Hue output hands the lamps back to the house) when:
+**Idle.** While the director is neutral (``palette_fn`` gives no dict), nothing is sent, room's input goes stale and
+holds (as before show_service; its own test show can run, and after 10 s room's Hue output hands the lamps back to the
+house) when:
   * there is no fresh feature snapshot (t_ms older than ``idle_after_s``, 5 s): ``idle_reason`` "no_features";
   * the room is quiet: ``features.gate`` under QUIET_GATE_OFF (0.02) for ``quiet_after_s`` (10 s; None = never),
     until it is back over QUIET_GATE_ON (0.05): ``idle_reason`` "quiet". The mic streams in silence too, so
     without this a silent room would hold the lamps at the hue floor (1 - depth = 30 %) of the P0 colour.
+While the director plays a vibe (``palette_fn`` returns a dict), neither idles: its colours keep going out (its relaxed
+base look, Lights low, House lights; §8.5 "never black") with hue_depth 0, no DIMMER pulses and no beat edges, and the
+features are not followed (``status()["held"]``: the reason).
 
 **Yield** (§9.4, as fake_artnet yields to Maestro). Every 5 s ``GET http://127.0.0.1:8700/api/v1/dmx`` (its
 ``input``: last_from, age_ms, pps, source), and pause (log it, ``yield.from``) when the input is fresh (``age_ms`` <=
@@ -81,9 +85,16 @@ Inputs (all optional; each is called from show-artnet and must be safe there):
                music.clock body, for PRISM's bar parity) and ``clock.beats_per_bar`` (the fallback's bar).
   features_fn  ``() -> contract.FeaturesData | None``: dsp.Features.latest (the snapshot, by reference).
   palette_fn   ``(t_s) -> (r, g, b) | {key: (r, g, b)} | None``, 0..1: one colour for all, or keyed by device id,
-               then the device's ``screen:`` (north-screen), then ``"*"``. Missing: ``palette`` (the constructor's
-               fixed colour: config_from_env's SHOW_PALETTE, a PALETTES name or r,g,b), else DEFAULT_RGB (amber).
+               then the device's ``screen:`` (north-screen), then ``"*"``. Missing, or None (Stage 3: __main__ passes
+               Director.palette_fn, which is None while no vibe is set): ``palette`` (the constructor's fixed colour:
+               config_from_env's SHOW_PALETTE, a PALETTES name or r,g,b), else DEFAULT_RGB (amber). ``status()``
+               says which one the last frame used (``palette``: "fixed" | "director").
 A callback that raises is counted and treated as None; it never stops the loop.
+
+**The director's look** (Stage 3, README "Stage 3 > the artnet seam"): ``set_look(hue_depth=, beat_lock=)`` from any
+thread, each value swapped by reference and read once per frame. ``hue_depth`` (0..1) replaces the constructor's.
+``beat_lock`` False: no DIMMER pulse edges, no PRISM flips, and the hue swell follows the energy only; the clock stays
+wired (the frame grid keeps its phase). ``reset=True`` puts both back to the constructor's (the director gone neutral).
 """
 
 from __future__ import annotations
@@ -426,11 +437,15 @@ class VirtualMaestro:
         self.clock = clock
         self.features_fn = features_fn
         self.palette_fn = palette_fn
+        self.palette_used = "fixed"                  # the last frame's screen colours: "fixed" | "director"
         self.default_rgb: tuple[float, float, float] = (tuple(float(c) for c in palette)  # type: ignore[assignment]
                                                         if palette is not None and len(palette) == 3 else DEFAULT_RGB)
         self.quiet_after_s = quiet_after_s
         self.hue_latency_s = hue_latency_ms / 1000.0
         self.hue_depth = hue_depth
+        self._hue_depth0 = hue_depth
+        self.beat_lock = True                        # set_look: False = nothing beat-locked (pulses, PRISM, swell)
+        self._edge_locked = True                     # the last edge happened while beat-locked (else no pulse for it)
         self.poll_fn = poll_fn if poll_fn is not None else (
             (lambda: _http_json(room_dmx_url)) if room_dmx_url else None)
         self.room_dmx_url = room_dmx_url if poll_fn is None else "(injected)"
@@ -460,6 +475,7 @@ class VirtualMaestro:
         self._quiet_since: Optional[float] = None
         self.active = False
         self.idle_reason: Optional[str] = "starting"  # no_features | quiet | None (sending)
+        self.held: Optional[str] = None              # sending the director's look through no_features | quiet
         # cross-thread (plain attributes, swapped whole)
         self._sections = 0
         self.yielded_to: Optional[str] = None
@@ -494,6 +510,22 @@ class VirtualMaestro:
     def set_hue_latency_ms(self, ms: float) -> None:
         self.hue_latency_s = float(ms) / 1000.0
 
+    def set_look(self, *, hue_depth: Optional[float] = None, beat_lock: Optional[bool] = None,
+                 reset: bool = False) -> None:
+        """The director's look (any thread; module docstring). A None argument leaves that value; a hue_depth that
+        isn't a finite number is ignored; ``reset`` restores the constructor's depth and beat_lock True first."""
+        if reset:
+            self.hue_depth, self.beat_lock = self._hue_depth0, True
+        if hue_depth is not None:
+            try:
+                d = float(hue_depth)
+            except (TypeError, ValueError):
+                d = math.nan
+            if math.isfinite(d):
+                self.hue_depth = _c01(d)
+        if beat_lock is not None:
+            self.beat_lock = bool(beat_lock)
+
     @property
     def gobo(self) -> int:
         return self._sections % 256
@@ -513,7 +545,9 @@ class VirtualMaestro:
                 "late_frames": self.late, "send_errors": self.send_errors, "last_send_error": self.last_send_error,
                 "frame_errors": self.frame_errors,
                 "idle_reason": self.idle_reason if state == "idle" else None,
-                "rgb": [round(c, 3) for c in self.default_rgb] if self.palette_fn is None else "palette_fn",
+                "held": self.held if state == "sending" else None,
+                "rgb": [round(c, 3) for c in self.default_rgb] if self.palette_used == "fixed" else "director",
+                "palette": self.palette_used,
                 "beats": self._beats, "period_ms": round(self._period * 1000, 1) if self._period else None,
                 "gobo": self.gobo, "hue_latency_ms": round(self.hue_latency_s * 1000, 1),
                 "yield": {"from": self.yielded_to, "since_s": None if self.yielded_since is None
@@ -522,7 +556,8 @@ class VirtualMaestro:
                          "last_error": self.last_poll_error},
                 "patch": {"path": str(self.patch_path), "error": self.patch_error,
                           "devices": [d.id for d in lay.devices] if lay else []},
-                "callback_errors": self.callback_errors}
+                "callback_errors": self.callback_errors,
+                "look": {"hue_depth": round(self.hue_depth, 3), "beat_lock": self.beat_lock}}
 
     # -- lifecycle ----------------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -727,22 +762,36 @@ class VirtualMaestro:
         if lay is None:
             return False
         feats = self._features()
+        pal_t = self._palette(t)
+        directed = isinstance(pal_t, Mapping)                    # the director is playing a vibe
+        why = None
         if self.features_fn is not None and self.idle_after_s is not None:
             ft = feats.get("t_ms") if feats else None
             if not isinstance(ft, (int, float)) or t - ft / 1000.0 > self.idle_after_s:
-                if self.active:
-                    log.info("Art-Net out: no fresh features, idle (room's input goes stale and holds)")
-                self.active, self.idle_reason = False, "no_features"
-                return False
-        if self._quiet_room(feats, t):
-            self.active, self.idle_reason = False, "quiet"
+                why = "no_features"
+        if why is None and self._quiet_room(feats, t):
+            why = "quiet"
+        if why is not None and not directed:                     # neutral: today's P0 idle
+            if self.active:
+                log.info("Art-Net out: %s, idle (room's input goes stale and holds)",
+                         "no fresh features" if why == "no_features" else "a quiet room")
+            self.active, self.idle_reason, self.held = False, why, None
             return False
+        if why is not None and self.held != why:                 # the director's relaxed look keeps going out
+            log.info("Art-Net out: %s, holding the director's colours (no pulses, no swell)",
+                     "no fresh features" if why == "no_features" else "a quiet room")
+        self.held = why
         if not self.active:
             if self.features_fn is not None:
-                log.info("Art-Net out: features fresh, sending")
+                log.info("Art-Net out: %s, sending", "the director's look" if why else "features fresh")
             self.active, self.idle_reason = True, None
+        if why is not None:
+            feats = None                                         # stale or silent: nothing follows the sound
         dt = 0.0 if self._t_prev is None else min(1.0, max(0.0, t - self._t_prev))
         self._t_prev = t
+        depth, locked = self.hue_depth, self.beat_lock          # the director's look, read once a frame
+        if why is not None:
+            depth, locked = 0.0, False                           # held: steady colour, no pulses, no beat edges
 
         # features -> smoothed stand-ins
         f = feats or {}
@@ -758,7 +807,9 @@ class VirtualMaestro:
                 self._onset_rate = _flush(self._onset_rate + (hits / span - self._onset_rate)
                                           * (1.0 - math.exp(-span / TAU_ZOOM_S)))
             self._feat_t = ft
-        if not self._seeded:
+        if why is not None:
+            pass                                     # held: PAN, TILT and ZOOM stay where they were; ACTIVITY 0
+        elif not self._seeded:
             self._pan, self._tilt, self._energy, self._seeded = 2 * bright - 1, 2 * bass - 1, energy, True
         else:
             a = 1.0 - math.exp(-dt / TAU_MOVE_S)
@@ -772,13 +823,15 @@ class VirtualMaestro:
             self._last_beat = b
             self._beats += 1
             self._pulse_amp = PULSE_LO + PULSE_SPAN * _c01(float(f.get("punch", 0.0) or 0.0))
-            v = self._bar_parity(b)
-            if v is None:                            # no clock numbering: our own edge count
-                bpb = getattr(self.clock, "beats_per_bar", 4) or 4
-                v = (max(0, self._beats - 1) // int(bpb)) % 2
-            self._variant = v
+            self._edge_locked = locked
+            if locked:                               # beat_lock off: PRISM holds
+                v = self._bar_parity(b)
+                if v is None:                        # no clock numbering: our own edge count
+                    bpb = getattr(self.clock, "beats_per_bar", 4) or 4
+                    v = (max(0, self._beats - 1) // int(bpb)) % 2
+                self._variant = v
         pulse = 0.0
-        if self._last_beat is not None:
+        if self._last_beat is not None and locked and self._edge_locked:   # beat_lock off: no DIMMER pulse edges
             age = t - self._last_beat
             width = min(0.5 * self._period, PULSE_MAX_S) if self._period else PULSE_MAX_S
             if 0.0 <= age < width:
@@ -789,10 +842,10 @@ class VirtualMaestro:
 
         # hue: the look for t + L_hue
         th = t + self.hue_latency_s
-        env = self._soft_beat(th)
-        k = 1.0 - self.hue_depth + self.hue_depth * (self._energy if env is None else env)
-        pal_t = self._palette(t)
+        env = self._soft_beat(th) if locked else None   # beat_lock off: the swell follows the energy only
+        k = 1.0 - depth + depth * (self._energy if env is None else env)
         pal_h = pal_t if th == t else self._palette(th)
+        self.palette_used = "fixed" if pal_t is None else "director"
 
         data = self.frame.data
         data[:] = _ZEROS
