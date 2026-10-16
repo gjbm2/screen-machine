@@ -259,3 +259,52 @@ async def test_session_summary_shows_panel_effective_and_music_fields(client):
     s.tick(1e9)
     j = await (await client.get(f"/api/sessions/{sid}", headers=AUTH)).json()
     assert j["direction_effective"] == j["direction"] and j["music_fields"] == []
+
+
+# -- the room's director (show_service room.direction, §8.7) takes the proposal slot ------------------------------
+def room_dir(energy=0.7, vibe="party", section=1, moods=("bright",), genre="house", groove=0.6, t=0.0):
+    data = {"energy": energy, "pace": 0.6, "intensity": 1.0, "change_rate": 0.5, "moods": list(moods),
+            "genre": genre, "transition_style": None, "palette_family": None,
+            "fx": {"density": 0.5, "rate": 0.4, "stages": None, "moods": ["bright"]},
+            "arousal": 0.6, "tension": 0.2, "section": {"id": section}, "density": 0.3, "groove": groove}
+    return {"direction": validate_direction(data), "vibe": vibe, "section": data["section"], "groove": groove, "t": t}
+
+
+def test_room_direction_takes_the_slot_and_maestro_returns_when_it_goes():
+    md = M.MusicDirection(dict(AUTO_MUSIC_DEFAULTS))
+    causes = [md.update(t / 10, None, False, (), True, room=room_dir()) for t in range(40)]
+    assert md.source == "room" and md.m == 1.0 and "online" in causes          # after RECOVER_S, as for Maestro
+    assert md.proposal["energy"] == 0.7 and md.proposal["genre"] == "house" and md.proposal["moods"] == ["bright"]
+    panel = validate_direction({})
+    eff = M.effective_direction(panel, md.proposal, md.m)
+    assert eff["genre"] == "house" and eff["moods"] == ["bright"] and eff["energy"] == 0.7
+    assert "genre" in M.music_fields(panel, md.proposal, md.m)
+    sig = md.signals(4.0)
+    assert sig["energy"] == 0.7 and sig["drive"] == 0.6
+    # a new section bumps the epoch; new words publish at once
+    ep = md.epoch
+    assert md.update(4.1, None, False, (), True, room=room_dir(section=2)) == "section" and md.epoch == ep + 1
+    assert md.update(4.2, None, False, (), True, room=room_dir(section=2, moods=("calm",))) == "band"
+    # the room goes quiet: the proposal is dropped at once (no Maestro features): the panel's direction
+    assert md.update(4.3, None, False, (), True, room=None) == "band"
+    assert md.source == "maestro" and md.proposal is None
+    assert M.effective_direction(panel, md.proposal, md.m) == panel
+
+
+def test_manager_keeps_only_a_speaking_valid_room_direction():
+    from types import SimpleNamespace
+
+    from stream_service.sessions import SessionManager
+    mgr = SimpleNamespace(room_direction=None, presets=SimpleNamespace(vocab=SimpleNamespace(words={})))
+    on, now = SessionManager.on_room_message, SessionManager.room_direction_now
+    body = {"energy": 0.4, "moods": ["calm"], "vibe": "dinner", "groove": 0.1, "section": {"id": 3}, "arousal": 0.2}
+    on(mgr, {"type": "room.look", "data": {"palette": "x"}})
+    assert mgr.room_direction is None
+    on(mgr, {"type": "room.direction", "data": body})
+    r = mgr.room_direction
+    assert r["vibe"] == "dinner" and r["direction"]["energy"] == 0.4 and now(mgr, r["t"] + 1) is r
+    assert now(mgr, r["t"] + M.ROOM_STALE_S + 1) is None                 # stale
+    on(mgr, {"type": "room.direction", "data": {**body, "vibe": None}})
+    assert now(mgr, mgr.room_direction["t"]) is None                     # neutral: Maestro proposes
+    on(mgr, {"type": "room.direction", "data": {**body, "energy": "loud"}})
+    assert mgr.room_direction["vibe"] is None                            # a bad one is dropped, the last kept

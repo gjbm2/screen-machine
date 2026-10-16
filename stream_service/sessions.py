@@ -67,7 +67,7 @@ from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
-from .music_direction import MusicDirection, effective_direction, music_fields, pick_key
+from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
 from .plugins.base import ParamError
@@ -1161,7 +1161,8 @@ class Session(EngineListener):
                 d.scene_done(now)
             self._emit_director()
         d.observe(snap, fresh)
-        cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed)
+        cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
+                                  room=self.mgr.room_direction_now(now))
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
         self.runtime.extra = {**self.music.signals(now),
                               **self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)}
@@ -1609,6 +1610,7 @@ class SessionManager:
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
+        self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
@@ -1821,6 +1823,31 @@ class SessionManager:
         return [s for s in self.sessions.values() if s.state != "ended"]
 
     # -- sound (sound.py): every music.* / show.state message to each session's view; a test piano -------------
+    def on_room_message(self, msg: dict) -> None:
+        """Loop thread (the music bus): show_service's room.direction, validated, for MusicDirection (§8.7).
+        room.look (the palette) goes through room_service, the one palette writer; room.event is not read yet."""
+        if msg.get("type") != "room.direction" or not isinstance(msg.get("data"), dict):
+            return
+        data = msg["data"]
+        try:
+            d = validate_direction(data, self.presets.vocab.words)
+        except ParamError as e:
+            if not getattr(self, "_room_dir_warned", False):
+                log.warning("room.direction ignored: %s", e.detail)
+                self._room_dir_warned = True
+            return
+        groove = data.get("groove")
+        self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
+                               "groove": float(groove) if isinstance(groove, (int, float)) else None,
+                               "seq": data.get("seq"), "t": time.monotonic()}
+
+    def room_direction_now(self, now: float) -> Optional[dict]:
+        """The room director's direction while it speaks (a vibe, fresh), else None (the Maestro features propose)."""
+        r = self.room_direction
+        if r is None or r["vibe"] is None or now - r["t"] > ROOM_STALE_S:
+            return None
+        return r
+
     def broadcast_sound(self, msg: dict) -> None:
         """Any thread (the bus loop): append-only on each view."""
         for s in list(self.sessions.values()):
