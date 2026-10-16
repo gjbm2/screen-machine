@@ -42,35 +42,102 @@ now_ns = time.perf_counter_ns
 ss.now_ns = now_ns                                           # one clock for everything this process stamps
 
 
-def find_input(sd, match: Optional[str]) -> Optional[tuple[int, str]]:
-    """(index, name) of the WASAPI input to use: the first whose name contains ``match``, else the default input
-    (found again under WASAPI by name, so the format is 48 kHz shared mode)."""
+def wasapi_inputs(sd) -> list[tuple[int, str]]:
+    """Every WASAPI capture device: (index, name). The names are what the Room page offers (heartbeat ``devices``)."""
     devs = sd.query_devices()
     wasapi = next((i for i, h in enumerate(sd.query_hostapis()) if "WASAPI" in h["name"]), None)
-    ins = [(i, d["name"]) for i, d in enumerate(devs) if d["max_input_channels"] > 0 and d["hostapi"] == wasapi]
+    return [(i, d["name"]) for i, d in enumerate(devs) if d["max_input_channels"] > 0 and d["hostapi"] == wasapi]
+
+
+def find_input(sd, want: Optional[str], match: Optional[str]) -> Optional[tuple[int, str]]:
+    """(index, name) of the WASAPI input to use: the one named ``want`` exactly (the Room page's choice, from the
+    SUBSCRIBE), else the first whose name contains ``match`` (--mic-match), else the Windows default input (found
+    again under WASAPI by name, so the format is 48 kHz shared mode)."""
+    ins = wasapi_inputs(sd)
+    if want:
+        hit = next(((i, n) for i, n in ins if n == want), None)
+        if hit:
+            return hit
     if match:
         hit = next(((i, n) for i, n in ins if match.lower() in n.lower()), None)
         if hit:
             return hit
     try:
-        default = devs[sd.default.device[0]]["name"]
+        default = sd.query_devices()[sd.default.device[0]]["name"]
     except Exception:                                       # no default input at all
         return ins[0] if ins else None
     # MME names are cut to 31 characters: match on the start.
     return next(((i, n) for i, n in ins if n.startswith(default) or default.startswith(n)), ins[0] if ins else None)
 
 
+class Choice:
+    """The device the latest SUBSCRIBE asks for, per stream (``devices: {stream: name}``; show_service sends the Room
+    page's choice), read off the same socket as the subscription itself."""
+
+    def __init__(self, out: Out) -> None:
+        self.lock = threading.Lock()
+        self.devices: dict[str, str] = {}
+        orig = out.subs.on_packet
+
+        def on_packet(buf: bytes, addr: tuple, now: float) -> bool:
+            ok = orig(buf, addr, now)
+            if ok:
+                pkt = vban.parse(buf)
+                d = vban.subscribed_devices(pkt) if pkt is not None else None
+                with self.lock:
+                    self.devices = dict(d) if isinstance(d, dict) else {}
+            return ok
+        out.subs.on_packet = on_packet                      # type: ignore[method-assign]
+
+    def want(self, stream: str) -> Optional[str]:
+        with self.lock:
+            return self.devices.get(stream)
+
+
+class ListedStream(AudioStream):
+    """AudioStream whose heartbeats also list the devices this sender can capture (``devices``)."""
+
+    devices: list[str] = []
+
+    def heartbeat(self, state: str, in_lat_ms: float) -> None:
+        def db(x):
+            return [round(max(-120.0, 20.0 * np.log10(v)) if v > 0 else -120.0, 1) for v in x]
+        rms = np.sqrt(self._sq / self._cnt) if self._cnt else np.zeros(self.channels)
+        frame, n, t_cap = self.last if self.last else (None, None, None)
+        obj = vban.make_heartbeat(sess=self.sess, frame=frame, n=n, t_cap_ns=t_cap, in_lat_ms=round(in_lat_ms, 2),
+                                  dev=self.dev or "none", state=state, xruns=self.xruns,
+                                  peak_dbfs=db(self._peak), rms_dbfs=db(rms), clips=self.clips,
+                                  devices=self.devices)              # vban trims the list to fit one packet
+        self.send(self.stream, vban.pack_text(self.stream, self.text_counter, obj))
+        self.text_counter = (self.text_counter + 1) & 0xFFFFFFFF
+        self._peak[:] = 0.0
+        self._sq[:] = 0.0
+        self._cnt = 0
+
+
 def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str) -> None:
+    """The capture thread, restarted on any error (logged): it must never die and leave the agent silent."""
+    while not stop.is_set():
+        try:
+            _run_wasapi(out, stop, match, stream)
+        except Exception:                                   # noqa: BLE001
+            log.exception("mic: capture failed; restarting in %.0f s", RETRY_S)
+            stop.wait(RETRY_S)
+
+
+def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str) -> None:
     import sounddevice as sd
 
-    au = AudioStream(stream, out.send, 1)
+    choice = Choice(out)
+    au = ListedStream(stream, out.send, 1)
     period = au.frames
     last_hb = 0.0
     while not stop.is_set():
         try:
             sd._terminate()                                  # re-scan devices (a replug, a new default)
             sd._initialize()
-            dev = find_input(sd, match)
+            au.devices = [n for _, n in wasapi_inputs(sd)]
+            dev = find_input(sd, choice.want(stream), match)
         except Exception as e:                              # PortAudio itself failing: retry
             log.warning("devices: %s", e)
             dev = None
@@ -122,11 +189,18 @@ def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: st
                         pcm = pcm.mean(axis=1, keepdims=True)
                     au.packet(np.ascontiguousarray(pcm, dtype=np.float32), t_cap)
                 if time.monotonic() - last_hb >= HEARTBEAT_S:
-                    au.heartbeat("ok" if pcm is not None else "stalled", in_lat_ms)
+                    au.heartbeat("ok", in_lat_ms)                 # (a state vban knows: an unknown one raises)
                     last_hb = time.monotonic()
                 if time.monotonic() >= next_check:
                     next_check = time.monotonic() + CHECK_S
-                    if _device_changed(sd, match, name):
+                    # The device it should be on: the SUBSCRIBE's choice, else the --mic-match one, else the default.
+                    want = choice.want(stream)
+                    target = want if want in au.devices else next(
+                        (d for d in au.devices if match and match.lower() in d.lower()), None)
+                    if target and target != name:
+                        log.info("mic: %s %s; reopening", target, "chosen" if target == want else "(the default)")
+                        break
+                    if not target and _device_changed(sd, match, name):
                         log.info("mic: the input changed; reopening")
                         break
                     if not st.active:
