@@ -432,7 +432,7 @@ def test_health_shape_and_states():
     assert set(m["net"]) >= {"packets", "loss_pct", "late", "dup", "gaps", "jitter_ms", "hold_ms", "drift_ppm",
                              "skew_alarm", "age_ms", "segments"}
     assert set(m["audio"]) == {"peak_dbfs", "rms_dbfs", "clips", "silent", "floor_dbfs", "trace"}
-    assert set(m["sender"]) == {"sess", "dev", "state", "xruns", "in_lat_ms", "age_ms"}
+    assert set(m["sender"]) == {"sess", "dev", "state", "xruns", "in_lat_ms", "age_ms", "devices"}
     assert m["state"] == "streaming" and m["addr"] == "192.0.2.10:40000" and m["sender"]["dev"] == "test mic"
     assert m["line"].startswith("room-mic · 48k/1ch · −") and "% loss" in m["line"] and "ms jitter" in m["line"]
     assert -60.0 < m["audio"]["rms_dbfs"] < 0.0 and m["net"]["hold_ms"] == 4.0
@@ -788,3 +788,43 @@ def test_a_transient_socket_error_clears_on_the_next_packet(sender_sock):
     finally:
         rx.stop()
         rsock.close()
+
+
+# -- the Room page's Mic choice (inputs.py) ---------------------------------------------------------------------------
+def test_set_choice_ranks_after_a_test_stream_and_before_the_config():
+    rx, rec = make(Config(stream_priority=("pc22-loop",)))
+    rx.set_choice("pc22-mic")
+    rx.tick(10.0)
+    assert rx._priority == ("pc22-mic", "pc22-loop")
+    rx.set_priority(("test-audio",))                          # a test plays: it still comes first
+    rx.tick(10.1)
+    assert rx._priority == ("test-audio", "pc22-mic", "pc22-loop")
+    rx.set_priority(())                                       # the test stops: the choice stays
+    rx.tick(10.2)
+    assert rx._priority == ("pc22-mic", "pc22-loop")
+    rx.set_choice(None)                                       # automatic
+    rx.tick(10.3)
+    assert rx._priority == ("pc22-loop",)
+    rx.tick(10.6)
+    assert rx.health()["choice"] == []
+
+
+def test_device_hints_ride_each_senders_subscribe_and_go_at_once():
+    a = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for x in (a, rsock):
+        x.bind(("127.0.0.1", 0))
+    try:
+        rx, rec = make(Config(senders=(Sender("pc22", "localhost", a.getsockname()[1], ("pc22-mic",)),)), sock=rsock)
+        rx._resolve_all()
+        rx.tick(10.0)
+        a.settimeout(0.5)
+        assert vban.subscribed_devices(vban.parse(a.recvfrom(2048)[0])) == {}
+        rx.set_device_hints({"pc22-mic": "Dell", "room-mic": "elsewhere"})
+        rx.tick(10.2)                                         # sent at once, not at 11.0
+        assert vban.subscribed_devices(vban.parse(a.recvfrom(2048)[0])) == {"pc22-mic": "Dell"}
+        rx.tick(10.6)
+        assert rx.health()["device_hints"] == {"pc22-mic": "Dell", "room-mic": "elsewhere"}
+    finally:
+        for x in (a, rsock):
+            x.close()

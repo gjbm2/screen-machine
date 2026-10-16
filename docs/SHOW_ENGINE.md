@@ -187,6 +187,7 @@ VBAN is VB-Audio's free UDP audio protocol (spec rev 13). It has a 28-byte heade
 - show_rt sends `SUBSCRIBE {stream}` from its receive socket to each configured sender every second.
   - The packet is a VBAN TEXT packet with stream name `sub` and body `{"v":1,"subscribe":["room-mic","room-piano"],"from":"show_rt"}`.
   - It goes to the sender's UDP 6980, at an address from config (a DNS name, never a literal IP).
+  - Optional `"devices": {stream: name}` (16 Oct, the Room page's Mic choice) asks the sender to capture that stream from that device. A sender that can't find the name, or gets no hint, keeps its default.
 - The sender streams audio, MIDI and heartbeats to the source address of the latest SUBSCRIBE. It stops 5 s after the last one.
 - Through WSL's NAT that is exactly the Hue/DTLS pattern that already works.
 - It needs no relay, no inbound rule and no card. Recovery after a WSL restart takes about 1 s.
@@ -201,6 +202,7 @@ VBAN is VB-Audio's free UDP audio protocol (spec rev 13). It has a 28-byte heade
 
 **Heartbeat fields** (clarified 16 Oct; the reference is `show_service/vban.py`, which senders can import as-is):
 - It is a TEXT packet carrying **the audio stream's own name**. A sender with two streams sends two heartbeats.
+- `devices` (optional, 16 Oct): the capture devices the sender could use for this stream, which feed the Room page's Mic list. There are at most 32 names of at most 128 characters each. `vban.make_heartbeat` drops names from the end until the packet fits 1436 B.
 - `sess`: new on every sender restart or device re-open, and after more than 250 ms of lost capture.
 - `frame`: the VBAN counter of the audio packet whose first sample is `n`.
 - `n`: that sample's index, counting frames since `sess` began, including the packets skipped over an overflow.
@@ -1337,6 +1339,13 @@ GET    /show/healthz
   `hearing.level` stays as energy (loudness against the mode's expected loudness, gated), so it is not a meter. When nothing comes in, `hearing.text` says why: "No microphone connected yet", "The microphone isn't answering", "No microphone plugged in" or "The microphone stopped sending".
 
   05's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time. `{"ping"}`/`{"pong", "srv"}` lets the page align clocks and show its delay. *Measured:* it lags a direct read of the same mic by 16–17 ms, at about 57 frames/s in the browser.
+- **Mic choice** (the owner's ask via 05, 16 Oct; show_service/inputs.py).
+  - **What's listed:** every room-sound input is listed with no names hard-coded. These are the permanent senders' streams, less test, MIDI and `room_sound: false` streams. Each shows the devices its sender reports.
+  - **Routes:** `GET /api/v1/inputs` and `PUT /api/v1/input {stream|null, device?}`.
+  - **Effect of a choice:** the stream ranks after a playing test stream and before show.yaml's order, and its device rides that sender's SUBSCRIBEs. The choice is kept in `input.json`, and each stream keeps its own device.
+  - **Labels:** show.yaml `senders.<name>.label` gives the Room page's group label.
+  - **On the card:** `hearing.mic` = {stream, device, chosen}.
+  - **Who builds what:** the page and the PC22 agent are 05's; the kiosk sender's `devices` support is 98's.
 - **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 

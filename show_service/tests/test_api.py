@@ -841,7 +841,8 @@ def test_card_maps_every_component(brain):
     cd = card(snap_of(brain), ENGINE)
     assert set(cd) == set(c.CardData.__annotations__)
     assert cd["hearing"] == {"text": "soul · relaxed", "level": 0.42, "loose": True, "stream": "room-mic",
-                             "test": False, "input": None, "input_trace": None}
+                             "test": False, "input": None, "input_trace": None,
+                             "mic": None}
     assert cd["vibe"] == {"name": None, "label": "", "known": False}
     assert [x["name"] for x in cd["palette"]["choices"]] == ["auto", "art", "ember", "sea", "dusk", "moss", "rose"]
     assert cd["palette"]["choices"][0] == apimod.AUTO_CHOICE

@@ -67,7 +67,7 @@ import socket
 import threading
 import time
 from collections import deque
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import numpy as np
 
@@ -248,6 +248,9 @@ class Receiver:
         self._priority: tuple[str, ...] = self._priority_base
         self._priority_want: Optional[tuple[str, ...]] = None
         self._priority_src: Optional[tuple[str, ...]] = None
+        self._choice: tuple[str, ...] = ()               # set_choice: the Room page's Mic pick, after the test streams
+        self._choice_want: Optional[tuple[str, ...]] = None
+        self._device_hints: dict[str, str] = {}          # set_device_hints: {stream: device} in each SUBSCRIBE
         # show-dns writes these two dicts, keyed (sender name, host), swapped by reference; show-rx reads them
         self._resolved: dict[tuple[str, str], tuple[str, int]] = {}
         self._resolve_err: dict[tuple[str, str], Optional[str]] = {}
@@ -447,6 +450,19 @@ class Receiver:
         Applied at the next tick; the usual switch-up rule (SWITCH_UP_S) applies."""
         self._priority_want = tuple(str(n) for n in names)
 
+    def set_choice(self, stream: Optional[str]) -> None:
+        """The Room page's Mic pick (inputs.py; any thread): ranked after set_priority's test streams and before
+        ``cfg.stream_priority``; None for automatic. Applied at the next tick; the switch-up rule applies."""
+        self._choice_want = (str(stream),) if stream else ()
+
+    def set_device_hints(self, hints: Mapping[str, str]) -> None:
+        """{stream: capture device} sent in each SUBSCRIBE to the sender of that stream (inputs.py; any thread). A
+        change is sent at once."""
+        hints = {str(k): str(v) for k, v in dict(hints).items() if v}
+        if hints != self._device_hints:
+            self._device_hints = hints
+            self._sub_next = -math.inf
+
     def senders(self) -> tuple[contract.Sender, ...]:
         """The sender list show-rx uses now (any thread)."""
         return self._senders
@@ -502,6 +518,12 @@ class Receiver:
         want = self._senders_want
         if want is not None and want is not self._senders:
             self._apply_senders(want)
+        cw = self._choice_want
+        if cw is not None:
+            self._choice_want = None
+            if cw != self._choice:
+                self._choice = cw
+                self._apply_priority(self._priority_src if self._priority_src is not None else ())
         pw = self._priority_want
         if pw is not None and pw is not self._priority_src:
             self._apply_priority(pw)
@@ -539,7 +561,7 @@ class Receiver:
 
     def _apply_priority(self, names: tuple[str, ...]) -> None:
         self._priority_src = names
-        prio = tuple(dict.fromkeys(names + self._priority_base))
+        prio = tuple(dict.fromkeys(names + self._choice + self._priority_base))
         if prio == self._priority:
             return
         self._priority = prio
@@ -564,7 +586,9 @@ class Receiver:
         sock, resolved = self._sock, self._resolved
         if sock is None:
             return
+        hints = self._device_hints
         for s in self._senders:
+            devices = {st: hints[st] for st in s.streams if st in hints} or None
             cands = [(h, resolved[(s.name, h)]) for h in sender_hosts(s) if (s.name, h) in resolved]
             if not cands:
                 continue
@@ -578,7 +602,7 @@ class Receiver:
             err = None
             for _h, addr in ([using] if using is not None else cands):
                 try:
-                    sock.sendto(vban.subscribe_packet(s.streams, self._sub_counter), addr)
+                    sock.sendto(vban.subscribe_packet(s.streams, self._sub_counter, devices=devices), addr)
                 except OSError as e:
                     err = str(e)
                 self._sub_counter = (self._sub_counter + 1) % _MOD
@@ -962,7 +986,7 @@ class Receiver:
                        "rcvbuf": self._rcvbuf},
             "errors": dict(self._errors),
             "senders": senders,
-            "priority": list(self._priority),
+            "priority": list(self._priority), "choice": list(self._choice), "device_hints": dict(self._device_hints),
             "streams": {st.name: self._stream_health(st, now) for st in self._streams.values()}}
 
     def _stream_health(self, st: _Stream, now: float) -> dict:
@@ -1001,7 +1025,8 @@ class Receiver:
         if st.hb is not None and st.hb_s is not None:
             hb = st.hb
             out["sender"] = {"sess": hb.sess, "dev": hb.dev, "state": hb.state, "xruns": hb.xruns,
-                             "in_lat_ms": hb.in_lat_ms, "age_ms": _r((now - st.hb_s) * 1000.0, 1)}
+                             "in_lat_ms": hb.in_lat_ms, "age_ms": _r((now - st.hb_s) * 1000.0, 1),
+                             "devices": list(hb.devices) if hb.devices is not None else None}
         return out
 
     def _audio_health(self, st: _Stream, now: float) -> dict:

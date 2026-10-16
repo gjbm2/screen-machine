@@ -220,9 +220,13 @@ class Show:
                                                                  log_files=self._log_files()))
         from . import levels as levels_mod             # the live input meter, WS /v1/levels (05, 16 Oct)
         self.levels = levels_mod.LevelFeed()
+        from . import inputs as inputs_mod             # the Room page's Mic choice, GET/PUT /api/v1/input(s)
+        self.inputs = inputs_mod.Inputs(self.health, show_file=self.opts.show_file,
+                                        state_file=pathlib.Path(self.opts.state_dir) / "input.json")
 
-        def _routes(app: Any, api: Any = self.api, lv: Any = self.levels) -> None:
+        def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs) -> None:
             lv.routes(app)
+            inp.routes(app)
             if api is not None:
                 api(app)
         self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
@@ -302,6 +306,8 @@ class Show:
             self.rx = self._make("receiver", lambda: rmod.Receiver(self.cfg, on_audio=self.on_audio,
                                                                     on_midi=self.on_midi, on_tick=self.on_tick,
                                                                     on_level=self.levels.push))
+        if self.rx is not None:
+            self.inputs.attach(self.rx)
         amod = self._import("artnet_out")
         out_cfg: dict = {}
         if amod is not None:
@@ -537,7 +543,7 @@ class Show:
             except Exception:
                 clock = None
         return {"active_audio": h.get("active_audio"), "features": feats, "clock": clock, "inputs": _inputs(h),
-                "input": _input(h)}
+                "input": _input(h), "mic": self.inputs.mic(h)}
 
     def stop(self) -> None:
         if self.brain is not None:
