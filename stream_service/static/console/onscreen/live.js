@@ -98,6 +98,21 @@ export function renderLive(host, target, { openPicker }) {
   const upCtl = mountUpNext(upHost, target, { openPicker });
   // auto + next
   const autoSw = switchEl("Auto picks scenes", true, (on) => patchLook(target, { auto: { enabled: on } }), { tid: "auto-switch", sub: "" });
+  // what Auto picks from: every scene, or one set (the presets' set words and the owner's Library tags, from the
+  // catalog: nothing hard-coded). A set goes to the session as its scenes' names, so only those are picked.
+  let setWord = "";
+  const inSet = (p, word) => { const m = p?.tags?.modes; return (Array.isArray(m) ? m : m ? [m] : []).includes(word); };
+  const setNames = (word, skip) => Object.entries(catalog.get()?.presets?.scenes || {})
+    .filter(([, p]) => inSet(p, word) && !(skip && p?.tags?.heavy === true)).map(([n]) => n);
+  const sendPool = (skip) => patchLook(target, { auto: { pool: setWord ? setNames(setWord, skip) : skip ? { tags: { heavy: false } } : "all" } });
+  const setSel = select([["", "All scenes"]], "", (x) => { setWord = x; sendPool(skipHeavy.sw.get()); }, { tid: "auto-set", aria: "Auto picks from" });
+  const fillSets = () => {
+    const keep = setSel.value;
+    put(setSel, [["", "All scenes"], ...(catalog.get()?.scene_tags || []).filter((t) => t.facet === "modes")
+      .map((t) => [t.tag, `${friendly(t.tag)} set (${t.count})`])].map(([v, l]) => h("option", { value: v }, l)));
+    setSel.value = keep;
+  };
+  catalog.ready().then(() => { fillSets(); if (L.target === target && L.data) fromLook(); });
   const autoNext = button("Next", { kind: "outline", icon: "skip", tid: "auto-next", onClick: async () => {
     const r = await room.cue(target, { to: "auto", at: L.data?.auto?.snap || "beat" });
     if (!r.ok) toastErr(errorWords(r, { screen: name, target: "the room service" })); else toast("Changing to the director's next pick");
@@ -133,7 +148,7 @@ export function renderLive(host, target, { openPicker }) {
   const followVar = switchEl("Follows the lighting desk's variant", true, () => sendFollow(), { tid: "follow-variant" });
   const sendFollow = () => patchLook(target, { auto: { follow_dmx: [followFx.sw.get() ? "effect" : null, followVar.sw.get() ? "variant" : null].filter(Boolean) } });
   const heavyNote = lib.items.some((i) => i.heavy === true) ? "" : "no scene is marked heavy yet";
-  const skipHeavy = switchEl("Skip heavy scenes", true, (on) => patchLook(target, { auto: { pool: on ? { tags: { heavy: false } } : "all" } }), { tid: "skip-heavy", sub: heavyNote });
+  const skipHeavy = switchEl("Skip heavy scenes", true, (on) => sendPool(on), { tid: "skip-heavy", sub: heavyNote });
   const snap = h("div", { class: "seg", role: "group", "aria-label": "Changes happen" },
     ["beat", "now"].map((s) => { const b = h("button", { type: "button", tid: `snap-${s}`, "aria-pressed": "false" }, s === "beat" ? "On the beat" : "At once"); b.addEventListener("click", () => patchLook(target, { auto: { snap: s } })); return b; }));
   const wander = switchEl("Wander", wanderOn, (on) => { wanderOn = on; scheduleWander(target); }, { tid: "wander-switch", sub: "Nudges the feel every 10–30 s while this page is open" });
@@ -219,7 +234,7 @@ export function renderLive(host, target, { openPicker }) {
 
   put(host, acts, probEl, didU,
     h("div", { class: "os-section", style: { marginTop: "16px" } }, h("span", { class: "lab" }, "Next change"), next),
-    h("div", { class: "row", style: { marginTop: "8px" } }, h("div", { class: "grow" }, autoSw), autoNext), upHost,
+    h("div", { class: "row", style: { marginTop: "8px" } }, h("div", { class: "grow" }, autoSw), setSel, autoNext), upHost,
     h("div", { class: "os-section", style: { marginTop: "16px" } }, h("span", { class: "lab" }, "Feel"), feel), more,
     h("div", { class: "os-section", style: { marginTop: "12px" } }, h("span", { class: "lab" }, "Colours"), pals),
     h("div", { style: { marginTop: "12px" } }, fxHost), ssU, wU);
@@ -253,7 +268,17 @@ export function renderLive(host, target, { openPicker }) {
     }
     const fol = Array.isArray(a.follow_dmx) ? a.follow_dmx : [];
     followFx.sw.set(fol.includes("effect")); followVar.sw.set(fol.includes("variant"));
-    skipHeavy.sw.set(!!(a.pool && typeof a.pool === "object" && a.pool.tags?.heavy === false));
+    if (Array.isArray(a.pool)) {                 // names: the set they are (or none of ours)
+      const sc = catalog.get()?.presets?.scenes || {};
+      const word = [...setSel.options].map((o) => o.value).find((w) => w && a.pool.length
+        && a.pool.every((n) => inSet(sc[n], w)) && setNames(w, true).every((n) => a.pool.includes(n)));
+      setWord = word || "";
+      if (document.activeElement !== setSel) setSel.value = setWord;
+    } else {
+      setWord = "";
+      if (document.activeElement !== setSel) setSel.value = "";
+      skipHeavy.sw.set(!!(a.pool && typeof a.pool === "object" && a.pool.tags?.heavy === false));
+    }
     for (const b of snap.children) b.setAttribute("aria-pressed", String(b.dataset.testid === `snap-${a.snap || "beat"}`));
     drawPals();
     drawScene();

@@ -3,16 +3,20 @@
 Source: Original.  Engraving by Verovio (https://www.verovio.org, LGPL-3.0-or-later, used as an unmodified library
         in a separate worker process, nothing ported) rasterised by resvg (resvg-py, MPL-2.0 / Apache-2.0); the
         Leipzig music font (SIL OFL 1.1).  Prior art for the score side: PM2S (MIT, cheriell/PM2S) is the planned
-        upgrade for beats, metre, key and hands.
+        upgrade for beats, metre, key and hands: its networks (MIT, ported in stream_service/score/pm2s_net.py with
+        the authors' weights) run in the analysis worker, with our metre model (score/metre.py) on top.
 Author: smfx
 License: MIT (this file)
 license_class: permissive
 
-Listens to the piano (``listens = ("notes",)``, CONVENTIONS §2b).  stream_service/score does the music: a beat clock
-that follows the playing, light quantisation (16ths, swing read straight, hands split at middle C), 4/4 bars
-committed one beat after they end.  Each bar is engraved on its own (no clefs or signatures, mei.bar_doc) and each
-line's start once (brace, clefs, key, and the time signature when a phrase starts: mei.header_doc), all at one fixed
-staff size, by a worker process (Verovio -> SVG -> resvg), so the render thread never waits.
+Listens to the piano (``listens = ("notes",)``, CONVENTIONS §2b).  stream_service/score does the music: the analysis
+worker (score/analyse.py, its own venv and process) finds the beats, the metre (2/4 3/4 4/4 6/8 9/8 12/8 and where
+the bar lines fall), the key signature and each note's hand from the last 24 s of playing; the quantiser writes
+bars on those beats (16ths, swing read straight) once they're a little behind the newest notes.  A phrase's first
+bar waits for the metre (6-12 s); without the worker it writes 4/4 on a beat clock of its own, hands split at
+middle C.  Each bar is engraved on its own (no clefs or signatures, mei.bar_doc) and each
+line's start once, when its first bar is ready (brace, clefs, key, and the time signature when a phrase starts:
+mei.header_doc), all at one fixed staff size, by a worker process (Verovio -> SVG -> resvg), so the render thread never waits.
 
 On screen, like a page being written: lines of grand staff, the one being written at the bottom and the one before
 above it.  Each engraved bar is composited once into its line's canvas on the GPU (aligned on the treble staff's top
@@ -149,6 +153,12 @@ void score(uchar4* __restrict__ out, const float* __restrict__ P, const unsigned
 """
 
 
+def _own(render):
+    """A render kept for later (its line's header hasn't come): its own copy, as the staging area is reused."""
+    img, m = render
+    return img.copy(), m
+
+
 class _Line:
     _ids = 0
 
@@ -161,6 +171,7 @@ class _Line:
         self.bars = 0                               # bars assigned here (requested)
         self.cursor = 0.0                           # canvas x where the next bar goes
         self.header = False
+        self.header_sent = False                    # asked for with the line's first bar (the metre and key known)
         self.pending: list = []                     # bar renders waiting for the header
         self.widths: list[float] = []
         self.full = False
@@ -210,6 +221,7 @@ class LiveScore(Source):
         self._pinned = cp.cuda.alloc_pinned_memory(self.stage_bytes)
         self.stage = np.frombuffer(self._pinned, np.uint8, self.stage_bytes)
         self.gstage = cp.zeros(self.stage_bytes, cp.uint8)
+        self._stage_done = None                 # the last uploads' event: pinned memory is reused only after it
         self.P = cp.zeros(32, cp.float32)
         self.Ph = np.zeros(32, np.float32)
         self.R = cp.zeros(NROW * 10, cp.float32)
@@ -220,8 +232,18 @@ class LiveScore(Source):
         self.Lh = np.zeros(MAX_LIVE * 6, np.float32)
         from stream_service.score.quantize import ScoreBuilder
         self.builder = ScoreBuilder()
-        self.clock_bar = 0
+        self.analyser = None
+        try:
+            from stream_service.score.client import Analyser
+            if Analyser.available():
+                self.analyser = Analyser()
+                self.builder.use_analysis(self.analyser.ok)
+            else:
+                log.warning("live_score: no analysis venv or PM2S weights; writing 4/4 on the beat clock")
+        except Exception as e:
+            log.warning("live_score: no analysis (%s); writing 4/4 on the beat clock", e)
         self.lines: list[_Line] = []
+        self.phrase_line = 0                    # the id of the current phrase's first line (a rewrite drops from it)
         self.free = list(range(NROW))
         self.engraver = None
         try:
@@ -251,18 +273,29 @@ class LiveScore(Source):
         off = ln.slot * self.ch * self.cw
         self.canvas[off:off + self.ch * self.cw].fill(0)
         self.lines.append(ln)
-        if self.engraver is not None:
-            from stream_service.score import mei
-            self.engraver.submit(f"h:{ln.id}", mei.header_doc(fifths, meter=meter), margin_left=int(3 * self.sp))
-        else:
+        if meter:
+            self.phrase_line = ln.id
+        if self.engraver is None:
             ln.header = True
+        elif not meter:                                               # mid-phrase: the metre is known now
+            b = self.builder
+            self._send_header(ln, (b.beats * 3, 8) if b.unit == 6 else (b.beats, 4))
         return ln
+
+    def _send_header(self, ln: _Line, sig: tuple[int, int]) -> None:
+        from stream_service.score import mei
+        ln.header_sent = True
+        ln.fifths = self.builder.key()[2]
+        self.engraver.submit(f"h:{ln.id}", mei.header_doc(ln.fifths, meter=ln.meter, sig=sig),
+                             margin_left=int(3 * self.sp))
 
     def _request_bar(self, ln: _Line, bar) -> None:
         ln.bars += 1
         if self.engraver is None:
             return
         from stream_service.score import mei
+        if not ln.header_sent:                                        # a phrase's first line: metre and key known now
+            self._send_header(ln, bar.meter)
         self.engraver.submit(f"b:{ln.id}:{bar.index}", mei.bar_doc(bar, ln.fifths))
 
     def _layout(self) -> None:
@@ -284,8 +317,15 @@ class LiveScore(Source):
     def _take_renders(self) -> None:
         if self.engraver is None:
             return
+        results = self.engraver.results(RESULTS_PER_FRAME)
+        if not results:
+            return
+        cp = self.ctx.cp
+        if self._stage_done is not None:
+            self._stage_done.synchronize()      # the last frame's async copies may still be reading the pinned area
+            self._stage_done = None
         stage_off = 0
-        for key, meta, ink in self.engraver.results(RESULTS_PER_FRAME):
+        for key, meta, ink in results:
             if not key or not meta.get("ok") or not meta.get("measures"):
                 continue
             parts = key.split(":")
@@ -300,6 +340,8 @@ class LiveScore(Source):
             g.set(self.stage[stage_off:stage_off + w * h], stream=self.ctx.cp.cuda.get_current_stream())
             render = (g.reshape(h, w), meta["measures"][0])
             stage_off += w * h
+            if self._stage_done is None:
+                self._stage_done = cp.cuda.Event(block=False, disable_timing=True)
             if parts[0] == "h":
                 self._place(ln, render, 0.0, render[1]["x1"] + 1, header=True)
                 ln.header = True
@@ -309,7 +351,9 @@ class LiveScore(Source):
             elif ln.header:
                 self._place_bar(ln, render)
             else:
-                ln.pending.append(render)
+                ln.pending.append(_own(render))
+        if self._stage_done is not None:
+            self._stage_done.record(cp.cuda.get_current_stream())
 
     def _place_bar(self, ln: _Line, render) -> None:
         m = render[1]
@@ -320,7 +364,7 @@ class LiveScore(Source):
             if nxt.header:
                 self._place_bar(nxt, render)
             else:
-                nxt.pending.append(render)
+                nxt.pending.append(_own(render))
             return
         self._place(ln, render, crop, m["x1"] + 1)
         ln.widths.append(width)
@@ -369,16 +413,38 @@ class LiveScore(Source):
         for p, _vo, age in f.releases:
             b.note_off(p, t - age)
         b.pedal(float(f.pedals[0]), t)
+        an = self.analyser
+        if an is not None:
+            if an.ok:
+                req = b.analysis_request(t)
+                if req is not None:
+                    an.submit("a", req)
+                for _key, meta, _blob in an.results():
+                    b.on_analysis(meta)
+            elif b.analysed:
+                b.use_analysis(False)                         # the worker died: the beat clock from the next phrase
         for bar in b.poll(t):
             cur = self.lines[-1]
+            if bar.rewrite:                                   # the metre changed: the phrase is written again
+                self._drop_phrase()
+                continue
             if bar.marker:                                    # the phrase ended: the next one starts a line
-                self.clock_bar = 0
                 if cur.bars:
                     self._new_line(meter=True)
                 continue
-            self.clock_bar += 1
             self._request_bar(cur, bar)
         return f
+
+    def _drop_phrase(self) -> None:
+        """Take the current phrase's lines off the page (their renders still coming are dropped: no line) and open
+        a fresh first line."""
+        keep = [ln for ln in self.lines if ln.id < self.phrase_line]
+        for ln in self.lines:
+            if ln.id >= self.phrase_line:
+                self.free.append(ln.slot)
+        self.free.sort()
+        self.lines = keep
+        self._new_line(meter=True)
 
     def _live_notes(self, f) -> int:
         """Glowing noteheads for notes not yet in a finished bar, at their pitch where the bar will be written."""
@@ -392,24 +458,23 @@ class LiveScore(Source):
         typical = sorted(widths)[len(widths) // 2] if widths else 0.22 * self.cw
         start = ln.cursor if ln.header else 8 * self.sp
         x_off = 0.5 * (self.w - self.cw)
-        committed_beat = self.clock_bar * 4
-        clk = b.clock
         lv = f.notes[:, 0]
         sp = self.sp
-        t0 = b.notes[0].t_on
         k = 0
         bx0 = by0 = 1e9
         bx1 = by1 = -1e9
         for n in b.notes[-MAX_LIVE:]:
-            if clk.running:
-                beat = clk.beat(n.t_on)
-                if beat < committed_beat - 0.01:
+            pos = b.bars_ahead(n.t_on)                         # bars ahead of the last written one
+            if pos is None:                                    # no bars yet (the metre's being found): the last
+                age = self.t_sound - n.t_on                    # few seconds drift right to left
+                if age > 2.6:
                     continue
-                pos = (beat - committed_beat) / 4.0            # bars ahead of the last written one
-            else:
-                pos = min(0.95, (n.t_on - t0) / 2.4)
+                pos = 0.95 - 0.95 * age / 2.6
+            elif pos < -0.003:
+                continue
+            pos = min(pos, 0.95)
             x = min(self.cw - 2 * sp, start + typical * (0.08 + 0.84 * pos))
-            staff = 0 if n.pitch >= 60 else 1
+            staff = b._staff(n)
             letter, _alt, octave = spell(n.pitch, ln.fifths, sig)
             d = "cdefgab".index(letter) + 7 * octave
             bottom = (ln.t1 if staff == 0 else ln.t2) + 4 * sp
@@ -484,5 +549,8 @@ class LiveScore(Source):
         if self.engraver is not None:
             self.engraver.close()
             self.engraver = None
+        if self.analyser is not None:
+            self.analyser.close()
+            self.analyser = None
         self.buf = self.canvas = self.P = self.R = self.RI = self.L = self.page = self.gstage = None
         self.stage = self._pinned = None
