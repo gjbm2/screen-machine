@@ -14,7 +14,8 @@ shared by notes and pedals within a ``sess``):
                   the keys held down at t_ms (2-10 Hz): heals a lost note-on or note-off
   music.harmony   {chroma12, key, mode, tension, chord_change, register, spread}   (10 Hz, passed through)
   music.features  {..., spectrum32}                                                (25 Hz; smoothed, tau >= 300 ms)
-  show.state      global.music.chroma12 / spectrum32, used only when the music.* types are absent
+  show.state      global.music.chroma12 / spectrum32 (K3: global at the frame's top level), used only when
+                  the music.* types are absent
 Anything else is ignored; a malformed message is dropped and counted (``frame.bad``).
 
 The note model (per MIDI pitch; evaluated at the time ``update`` is given, the photon time):
@@ -259,8 +260,8 @@ class SoundView:
     def _apply(self, msg: dict) -> None:
         mtype = msg.get("type")
         data = msg.get("data")
-        if mtype == "show.state":
-            self._show_state(data or {})
+        if mtype == "show.state":                     # K3: global at the top level (data.global also read)
+            self._show_state(data if isinstance(data, dict) and "global" in data else msg)
             return
         if mtype == "music.harmony":
             self._harmony(data)

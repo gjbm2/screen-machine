@@ -1,0 +1,21 @@
+# The kiosk unit: the room mic and the Steinway's MIDI to show_service (docs/SHOW_ENGINE.md §3.2, §3.5).
+# Installed by tools/show_sender/deploy.sh as /etc/systemd/system/show-sender.service.  Separate from
+# light-relay.service on purpose: an audio or MIDI fault never takes the gallery light mask down.
+[Unit]
+Description=Screen Machine show sender (room mic + piano MIDI -> show_service, VBAN udp 6980)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=gjbm2
+# the ALSA devices without changing the user's groups (the seat ACL goes away when the kiosk session restarts)
+SupplementaryGroups=audio
+WorkingDirectory=/home/gjbm2/show-sender
+ExecStart=/home/gjbm2/show-sender/venv/bin/python /home/gjbm2/show-sender/show_sender.py --port 6980
+Restart=always
+RestartSec=2
+Nice=-5
+IOSchedulingClass=realtime
+
+[Install]
+WantedBy=multi-user.target
