@@ -93,12 +93,21 @@ def _artifacts(name: str) -> dict:
     return out
 
 
+BENCH_TTL_S = 30.0           # harness numbers change only when the harness reruns; the directors ask per candidate
+_bench_cache: dict[str, tuple[float, Optional[float]]] = {}
+
+
 def _bench_ms(name: str) -> Optional[float]:
+    now = time.monotonic()
+    hit = _bench_cache.get(name)
+    if hit is not None and now - hit[0] < BENCH_TTL_S:
+        return hit[1]
     try:
-        s = json.loads((FXTEST_OUT / name / "summary.json").read_text())
+        v = _bench_of(json.loads((FXTEST_OUT / name / "summary.json").read_text()))
     except (OSError, ValueError):
-        return None
-    return _bench_of(s)
+        v = None
+    _bench_cache[name] = (now, v)
+    return v
 
 
 def _bench_of(s: Any) -> Optional[float]:

@@ -18,6 +18,7 @@ import math
 import pathlib
 import re
 import threading
+import time
 from typing import Any
 
 from .plugins.base import ParamError
@@ -34,6 +35,7 @@ LOOK_NAME_RE = re.compile(r"^[^<>\x00-\x1f]{1,40}$")
 # rare, and a reject is never auto-picked (the vetted pool drops it).  Manual cues and pushes ignore ratings.
 STAR_WEIGHT = {0: 1.0, 1: 0.05, 2: 0.3, 3: 1.5, 4: 4.0, 5: 8.0}
 KIND_KEY = {"source": "scene", "scene": "scene", "transition": "transition", "effect": "effect"}
+CHECK_S = 1.0       # look at the file's mtime at most this often (the directors ask per candidate, hundreds a pass)
 
 
 class Ratings:
@@ -44,9 +46,14 @@ class Ratings:
         self.mtime = None
         self._weights: dict[str, float] = {}
         self._weights_at = None             # the mtime the weights were built from
+        self._checked = None                # monotonic time of the last mtime check
         self._load()
 
-    def _load(self) -> None:
+    def _load(self, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and self._checked is not None and now - self._checked < CHECK_S:
+            return
+        self._checked = now
         try:
             m = self.path.stat().st_mtime
         except OSError:
@@ -89,7 +96,7 @@ class Ratings:
         if not isinstance(key, str) or not KEY_RE.match(key):
             raise ParamError("bad_request", "key must be a Library item key like 'scene/<name>'")
         with self.lock:
-            self._load()
+            self._load(force=True)
             e = dict(self.data.get(key) or {})
             if "stars" in body:
                 s = body["stars"]
@@ -131,6 +138,11 @@ class Ratings:
             else:
                 self.data.pop(key, None)
             self._write()
+            self._weights_at = None                    # rebuilt from the new data on the next weight()
+            try:
+                self.mtime = self.path.stat().st_mtime
+            except OSError:
+                pass
             return {"key": key, "entry": self.data.get(key)}
 
     def _write(self) -> None:
