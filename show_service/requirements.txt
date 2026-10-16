@@ -5,6 +5,12 @@ scipy==1.18.1
 aiohttp==3.14.5
 pyebur128==0.1.1
 soxr==1.1.0
+PyYAML==6.0.3          # artnet_out.py reads config/room/patch.yaml (same pin as ~/.venvs/sm-room)
+# clock.py (beat clock): madmom's online LSTM is the activation, built from git main (works on numpy 2.x);
+# aubio-ledfx is the fallback. madmom builds from source (Cython) in ~2 min under flock+nice.
+madmom @ git+https://github.com/CPJKU/madmom@27f032e8947204902c675e5e341a3faf5dc86dae
+mido==1.3.3            # madmom's dependency; tests/synth_sender.py reads the test-piano .mid files with it
+aubio-ledfx==0.4.12
 pytest==9.1.1
 # aiohttp's own dependencies, pinned so a rebuild matches
 aiohappyeyeballs==2.7.1
