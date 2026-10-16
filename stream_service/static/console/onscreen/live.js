@@ -17,6 +17,7 @@ import { errorWords, directorWords, pluginErrorWords, friendly, specName } from 
 import { L, onLook, patch as patchLook, refresh as refreshLook } from "./look.js";
 import { renderStrip, cueBody } from "./compose.js";
 import { mountEffects } from "./fx.js";
+import { mountUpNext } from "./upnext.js";
 import { FEEL } from "./golive.js";
 import { backToArt } from "./push.js";
 
@@ -92,6 +93,9 @@ export function renderLive(host, target, { openPicker }) {
   // next change
   const next = h("div", { class: "strip" });
   const drawNext = () => renderStrip(next, { target, tid: "next-change", showName: false, label: false });
+  // up next: the director's plan, editable
+  const upHost = h("div", { style: { marginTop: "16px" } });
+  const upCtl = mountUpNext(upHost, target, { openPicker });
   // auto + next
   const autoSw = switchEl("Auto picks scenes", true, (on) => patchLook(target, { auto: { enabled: on } }), { tid: "auto-switch", sub: "" });
   const autoNext = button("Next", { kind: "outline", icon: "skip", tid: "auto-next", onClick: async () => {
@@ -215,7 +219,7 @@ export function renderLive(host, target, { openPicker }) {
 
   put(host, acts, probEl, didU,
     h("div", { class: "os-section", style: { marginTop: "16px" } }, h("span", { class: "lab" }, "Next change"), next),
-    h("div", { class: "row", style: { marginTop: "8px" } }, h("div", { class: "grow" }, autoSw), autoNext),
+    h("div", { class: "row", style: { marginTop: "8px" } }, h("div", { class: "grow" }, autoSw), autoNext), upHost,
     h("div", { class: "os-section", style: { marginTop: "16px" } }, h("span", { class: "lab" }, "Feel"), feel), more,
     h("div", { class: "os-section", style: { marginTop: "12px" } }, h("span", { class: "lab" }, "Colours"), pals),
     h("div", { style: { marginTop: "12px" } }, fxHost), ssU, wU);
@@ -263,7 +267,7 @@ export function renderLive(host, target, { openPicker }) {
   refreshLook(target);
   fxCtl.refresh();
   return {
-    destroy() { offs.forEach((f) => f()); fxCtl.destroy(); wPlayer?.stop(); clearInterval(wStats); },
+    destroy() { offs.forEach((f) => f()); fxCtl.destroy(); upCtl.destroy(); wPlayer?.stop(); clearInterval(wStats); },
     dirStatus: (inp) => {
       const a = inp?.auto;
       if (!a) return;

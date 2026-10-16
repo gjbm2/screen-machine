@@ -409,17 +409,27 @@ class Director:
     def blacklist_transition(self, name: str) -> None:
         self.bad_transitions.add(name)
 
-    def pick_scene(self, scenes: dict[str, dict], current: Optional[str], now: float) -> Optional[tuple[str, str]]:
+    def pick_scene(self, scenes: dict[str, dict], current: Optional[str], now: float,
+                   ahead: tuple = ()) -> Optional[tuple[str, str]]:
+        """``ahead``: the scenes already queued before this one (upnext.py), avoided like the recent ones."""
         auto = self.auto or AUTO_DEFAULTS
         q = self._quarantined(now)
         names = [n for n in resolve_pool(auto["pool"], scenes)
                  if n not in q and self._vetted("source", scenes[n].get("source"))]
         n_avoid = auto["avoid_repeat"]
+        prev = ahead[-1] if ahead else current          # the scene this one follows
         if len(names) <= n_avoid:
-            avoid = {current} if current else set()
+            avoid = {prev} if prev else set()
+        elif n_avoid:
+            recent = list(self.recent_scenes)
+            if current and (not recent or recent[-1] != current):
+                recent.append(current)
+            recent += list(ahead)
+            avoid = set(recent[-(n_avoid + len(ahead)):])
+            if not set(names) - avoid:              # a small pool: at least never the same scene twice running
+                avoid = {prev} if prev else set()
         else:
-            avoid = set(list(self.recent_scenes)[-n_avoid:]) | ({current} if current else set()) if n_avoid else \
-                ({current} if current else set())
+            avoid = {prev} if prev else set()
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction)
                             * self._rated("source", scenes[n].get("source")), self.rng_scene, avoid)
         if got is None:
@@ -427,11 +437,12 @@ class Director:
         name, p, n = got
         return name, f"{name} (p {p:.2f} of {n})"
 
-    def pick_transition(self, transitions: dict[str, dict]) -> Optional[tuple[str, str]]:
+    def pick_transition(self, transitions: dict[str, dict], prev: Optional[str] = None) -> Optional[tuple[str, str]]:
+        """``prev``: the transition queued just before this one (upnext.py), else the last one played."""
         auto = self.auto or AUTO_DEFAULTS
         names = [n for n in resolve_pool(auto["transitions"], transitions)
                  if n not in self.bad_transitions and self._vetted("transition", transitions[n].get("transition"))]
-        avoid = set(list(self.recent_transitions)[-1:])
+        avoid = {prev} if prev else set(list(self.recent_transitions)[-1:])
         got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction)
                             * self._rated("transition", transitions[n].get("transition")), self.rng_transition, avoid)
         if got is None:

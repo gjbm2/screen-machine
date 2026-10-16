@@ -184,9 +184,26 @@ class FxDirector:
         p = w[names.index(name)] / sum(w)
         return name, f"{name} (p {p:.2f} of {len(names)}, {presets[name].get('stage')})"
 
+    def _choose(self, names: list[str], presets: dict[str, dict], prefer: tuple) -> Optional[tuple[str, str]]:
+        """The first queued effect (upnext.py) that fits now, else a weighted pick."""
+        for n in prefer:
+            if n in names:
+                return n, f"{n} (up next, {presets[n].get('stage')})"
+        return self._pick(names, presets)
+
+    def ahead(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
+              pixels_ratio: float, queued: tuple) -> Optional[tuple[str, str]]:
+        """One more effect for the queue: what could come in at the next move (the oldest auto effect freed),
+        not already queued.  None when nothing else fits."""
+        autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
+        names = [n for n in self.candidates(now, stack, presets, cost, pixels_ratio, freed=autos[0] if autos else None)
+                 if n not in queued]
+        return self._pick(names, presets)
+
     def plan(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
-             pixels_ratio: float = 1.0) -> Optional[FxMove]:
-        """One move (or None).  ``stack``: the session's SlotStates (id, spec, stage, origin, added order)."""
+             pixels_ratio: float = 1.0, prefer: tuple = ()) -> Optional[FxMove]:
+        """One move (or None).  ``stack``: the session's SlotStates (id, spec, stage, origin, added order).
+        ``prefer``: the queued effects, in order (an add or a swap takes the first that fits)."""
         if not self.enabled:
             return None
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
@@ -197,27 +214,27 @@ class FxDirector:
         if len(autos) < k:
             if len(stack) >= MAX_BUS_SLOTS:
                 return None
-            got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio), presets)
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer)
             return None if got is None else FxMove("add", got[0], None, f"add: {got[1]}")
         if k > 0 and self.rng.random() < SWAP_P:
             old = autos[0]
-            got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets)
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer)
             if got is not None:
                 return FxMove("swap", got[0], old.id, f"swap: {got[1]} for {old.spec.name}")
         return None
 
     def next_move(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
-                  pixels_ratio: float = 1.0) -> Optional[FxMove]:
+                  pixels_ratio: float = 1.0, prefer: tuple = ()) -> Optional[FxMove]:
         """The owner's "next effect" (16 Oct): a change now, whatever the schedule or auto.fx says.  Swaps the oldest
         auto effect for a new pick, or adds one when there is none; manual (hand-placed) effects are never touched."""
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         if autos:
             old = autos[0]
-            got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets)
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer)
             return None if got is None else FxMove("swap", got[0], old.id, f"next: {got[1]} for {old.spec.name}")
         if len(stack) >= MAX_BUS_SLOTS:
             return None
-        got = self._pick(self.candidates(now, stack, presets, cost, pixels_ratio), presets)
+        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer)
         return None if got is None else FxMove("add", got[0], None, f"next: {got[1]}")
 
     def status(self, now: float) -> dict:

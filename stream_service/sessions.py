@@ -67,6 +67,7 @@ from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
+from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext
 from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
@@ -231,6 +232,8 @@ class Session(EngineListener):
         self._auto_task: Optional[asyncio.Task] = None
         self._pick_task: Optional[asyncio.Task] = None
         self.prepared_pick: Optional[dict] = None
+        self.upnext = UpNext()                    # the director's forward plan, editable (upnext.py)
+        self._upnext_sent = -1
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -904,7 +907,8 @@ class Session(EngineListener):
     def _take_prepared(self) -> Optional[dict]:
         pk, self.prepared_pick = self.prepared_pick, None
         if pk is not None and (pk["scene"] == self.current_name          # stale: the screen moved on by hand
-                               or not self.auto_ok("source", pk["spec"].source)       # tripped meanwhile
+                               or not self._is_head(pk)                  # Up next was edited meanwhile
+                               or (pk.get("origin") != "you" and not self.auto_ok("source", pk["spec"].source))
                                or not self.auto_ok("transition", pk["trans_spec"].transition)):
             self._retire(pk["src"], pk["trans"])
             return None
@@ -913,54 +917,245 @@ class Session(EngineListener):
     PICK_TRIES = 4
 
     async def _pick_and_prepare(self, via: Optional[TransitionSpec] = None) -> dict:
-        """The director's pick (scene and transition), prepared off the lock.  A pick that fails to prepare (a
-        shader that does not compile, a plug-in that raises in setup) is blacklisted for the session and the
-        director picks again (up to PICK_TRIES); a failing transition falls back to the session's in transition.
-        Raises SessionError."""
+        """Up next's head (the director's pick, or the owner's), prepared off the lock.  A scene that fails to
+        prepare (a shader that does not compile, a plug-in that raises in setup) is blacklisted for the session,
+        leaves the queue and the next one is tried (up to PICK_TRIES); a failing transition falls back to the
+        session's in transition.  Raises SessionError."""
         presets = self.mgr.presets
-        src = spec = name = why_scene = None
+        src = spec = e = None
         for _ in range(self.PICK_TRIES):
             now = time.monotonic()
-            scene = self.director.pick_scene(presets.scenes, self.current_name, now)
-            if scene is None:
+            self._upnext_fill(now, need=1)
+            e = self.upnext.head("scene")
+            if e is None:
                 self.emit("session.warning", detail="auto: the scene pool is empty")
                 raise SessionError(409, "auto_unavailable", "the auto pool has no scenes")
-            name, why_scene = scene
+            if e["scene"] == self.current_name and e.get("origin") != "you":
+                self.upnext.remove(e["id"])                 # it came up by hand meanwhile
+                continue
             try:
-                spec = self._fit(presets.resolve_scene(name), False)
+                spec = self._fit(presets.resolve_scene(e.get("spec") or e["scene"]), False)
                 src = await self._make_scene(spec)
                 break
-            except Exception as e:
-                self.director.quarantine_preset(name, now, session=True)
-                log.warning("[%s] auto: preset %s failed to prepare (%s); skipped for this session", self.id, name,
-                            getattr(e, "detail", None) or f"{type(e).__name__}: {e}")
-                self.emit("session.warning", detail=f"auto: preset {name} failed to prepare "
-                                                    f"({type(e).__name__}); skipped for this session")
+            except Exception as ex:
+                self.director.quarantine_preset(e["scene"], now, session=True)
+                self.upnext.remove(e["id"])
+                log.warning("[%s] auto: preset %s failed to prepare (%s); skipped for this session", self.id,
+                            e["scene"], getattr(ex, "detail", None) or f"{type(ex).__name__}: {ex}")
+                self.emit("session.warning", detail=f"auto: preset {e['scene']} failed to prepare "
+                                                    f"({type(ex).__name__}); skipped for this session")
         if src is None:
             raise SessionError(500, "prepare_failed", f"auto: {self.PICK_TRIES} picks failed to prepare")
+        why_scene = e.get("why") or f"{e['scene']} (up next, yours)"
         if via is None:
-            t = self.director.pick_transition(presets.transitions)
-            trans_spec = presets.resolve_transition(t[0]) if t else self.t_in
-            why_trans = t[1] if t else f"{self.t_in.name} (session in: empty transition pool)"
+            tname = e.get("transition")
+            if tname is None or tname not in presets.transitions:
+                t = self.director.pick_transition(presets.transitions)
+                tname, why_trans = (t[0], t[1]) if t else (None, None)
+            else:
+                why_trans = f"{tname} (up next)"
+            trans_spec = presets.resolve_transition(tname) if tname else self.t_in
+            why_trans = why_trans or f"{self.t_in.name} (session in: empty transition pool)"
         else:
             trans_spec, why_trans = via, f"{via.name} (given)"
         try:
             trans = await self._transition_ready(trans_spec)
-        except Exception as e:
+        except Exception as ex:
             if via is not None or trans_spec is self.t_in:
                 self._retire(src)
                 raise
             self.director.blacklist_transition(trans_spec.name)
             self.emit("session.warning", detail=f"auto: transition {trans_spec.name} failed to prepare "
-                                                f"({type(e).__name__}); skipped for this session")
+                                                f"({type(ex).__name__}); skipped for this session")
             try:
                 trans_spec, why_trans = self.t_in, f"{self.t_in.name} (fallback: {trans_spec.name} failed)"
                 trans = await self._transition_ready(trans_spec)
             except Exception:
                 self._retire(src)
                 raise
-        return {"scene": name, "spec": spec, "src": src, "trans_spec": trans_spec, "trans": trans,
-                "why": f"{why_scene} via {why_trans}"}
+            if e.get("transition") is not None:
+                e["transition"] = self.t_in.name             # the queue says what will really play
+                self.upnext.changed()
+        return {"scene": e["scene"], "spec": spec, "src": src, "trans_spec": trans_spec, "trans": trans,
+                "why": f"{why_scene} via {why_trans}", "qid": e["id"], "origin": e.get("origin")}
+
+    # -- Up next (upnext.py): the director's forward plan, which the owner can edit ------------------------
+    def _is_head(self, pk: dict) -> bool:
+        e = self.upnext.head("scene")
+        return e is not None and pk.get("qid") == e["id"] and pk["scene"] == e["scene"] and \
+            (e.get("transition") is None or pk["trans_spec"].name == e["transition"])
+
+    def _replan(self) -> None:
+        """The direction or the pool moved: the director picks its own entries again (the owner's stay)."""
+        self.upnext.drop_auto("scene")
+        self.upnext.drop_auto("effect")
+
+    def _upnext_fill(self, now: float, need: int = 0) -> None:
+        """Top the queue up with the director's picks (``need``: at least that many scenes even with scene
+        picking off, for Next).  Loop thread, no awaits."""
+        q, d, fd, presets = self.upnext, self.director, self.fx_director, self.mgr.presets
+        if d.auto is None:
+            q.clear()
+            return
+        if d.enabled or need:
+            prev_t = d.recent_transitions[-1] if d.recent_transitions else None
+            for e in q.scenes:                            # the owner's entries: the director picks the way in
+                if e.get("transition") is None and d.enabled:
+                    t = d.pick_transition(presets.transitions, prev=prev_t)
+                    if t is not None:
+                        e["transition"], e["transition_origin"] = t[0], "auto"
+                        q.changed()
+                prev_t = e.get("transition") or prev_t
+            want = SCENES_AHEAD if d.enabled else need
+            while len(q.scenes) < want:
+                got = d.pick_scene(presets.scenes, self.current_name, now, tuple(e["scene"] for e in q.scenes))
+                if got is None:
+                    break
+                t = d.pick_transition(presets.transitions, prev=prev_t)
+                q.add("scene", {"scene": got[0], "transition": t[0] if t else None, "origin": "auto",
+                                "transition_origin": "auto" if t else None, "why": got[1]})
+                prev_t = t[0] if t else prev_t
+        else:
+            q.drop_auto("scene")
+        if fd.enabled:
+            while len(q.effects) < EFFECTS_AHEAD:
+                got = fd.ahead(now, self.fx.stack, presets.effects, lambda n: self.mgr.cost_ms("effect", n),
+                               self.pixels_ratio(), tuple(e["effect"] for e in q.effects))
+                if got is None:
+                    break
+                q.add("effect", {"effect": got[0], "origin": "auto", "why": got[1]})
+        else:
+            q.drop_auto("effect")
+
+    def _upnext_edited(self) -> None:
+        """After an edit: a prepared pick that is no longer the head is dropped (the new head is prepared)."""
+        if self.prepared_pick is not None and not self._is_head(self.prepared_pick):
+            self._drop_prepared()
+
+    def upnext_view(self, now: Optional[float] = None) -> dict:
+        """Up next for GET and session.upnext; a room's followers show their leader's."""
+        ld = self.following()
+        if ld is not None:
+            return ld.upnext_view(now)
+        now = time.monotonic() if now is None else now
+        d, fd = self.director, self.fx_director
+        nx = d.next_eligible(now)
+        lo, hi, _ = d.window()
+        scene_eta = (nx["eligible_in_s"], nx["max_in_s"]) \
+            if d.armed and d.enabled and nx["eligible_in_s"] is not None else None
+        fx_in = None if fd.next_at is None or not (fd.enabled and fd.armed) else max(0.0, fd.next_at - now)
+        return {**self.upnext.view(scene_eta, (lo, hi), fx_in, fd.interval()), "planned_by": self.screen}
+
+    def _upnext_emit(self) -> None:
+        if self.upnext.rev == self._upnext_sent:
+            return
+        self._upnext_sent = self.upnext.rev
+        v = self.upnext_view()
+        self.emit("session.upnext", **v)
+        for f in self.followers():
+            f.emit("session.upnext", **v)
+
+    def _upnext_entry(self, kind: str, body: dict, partial: bool = False) -> dict:
+        """The owner's entry from a request body (validated: 400 on an unknown scene, transition or effect)."""
+        presets, out = self.mgr.presets, {}
+        if kind == "scene":
+            if "scene" in body or not partial:
+                sp = body.get("scene")
+                if sp is None:
+                    raise ParamError("bad_request", "scene is required")
+                presets.resolve_scene(sp)                   # 400 when unknown
+                name = sp if isinstance(sp, str) else (sp.get("preset") or sp.get("source"))
+                out.update(scene=name, spec=None if isinstance(sp, str) else sp)
+            if "transition" in body:
+                t = body["transition"]
+                if t is not None:
+                    if not isinstance(t, str) or t not in presets.transitions:
+                        raise ParamError("unknown_preset", f"unknown transition preset {t!r}")
+                out.update(transition=t, transition_origin="you" if t else None)
+        else:
+            ef = body.get("effect")
+            if not isinstance(ef, str) or ef not in presets.effects:
+                raise ParamError("unknown_preset", f"unknown effect preset {ef!r}")
+            out["effect"] = ef
+        return out
+
+    async def upnext_op(self, body: Any) -> dict:
+        """POST /api/sessions/{sid}/upnext: the owner edits the plan.  {op: add|set|remove|move|keep|reroll|play,
+        kind?: scene|effect, id?, scene?, transition?, effect?, at?, to?}.  In a room the leader's plan."""
+        ld = self.following()
+        if ld is not None:
+            return await ld.upnext_op(body)
+        if not isinstance(body, dict):
+            raise ParamError("bad_request", "body must be a JSON object")
+        if self.director.auto is None:
+            raise SessionError(409, "auto_unavailable", "the session has no auto block")
+        if self.state in ("ended", "failed"):
+            raise SessionError(409, "bad_state", f"session is {self.state}")
+        op, q, now = body.get("op"), self.upnext, time.monotonic()
+        qid = body.get("id")
+        kind = q.find(qid)[0] if qid is not None else body.get("kind", "scene")
+        if kind not in UPNEXT_KINDS:
+            raise ParamError("bad_request", f"kind must be one of {list(UPNEXT_KINDS)}" if qid is None
+                             else f"nothing up next has id {qid!r}")
+        if op in ("set", "remove", "move", "keep", "play") and qid is None:
+            raise ParamError("bad_request", f"{op} needs the entry's id")
+        at = body.get("at", body.get("to"))
+        if at is not None and (isinstance(at, bool) or not isinstance(at, int)):
+            raise ParamError("bad_request", "at / to must be a position (0 = next)")
+        result: dict = {}
+        if op == "add":
+            e = q.add(kind, {**self._upnext_entry(kind, body), "origin": "you", "why": None},
+                      0 if at is None else at)
+            result["id"] = e["id"]
+        elif op == "set":
+            i = q.find(qid)[1]
+            q.items(kind)[i].update(self._upnext_entry(kind, body, partial=True), origin="you")
+            q.changed()
+        elif op == "remove":
+            q.remove(qid)
+        elif op == "move":
+            q.move(qid, 0 if at is None else at)
+        elif op == "keep":
+            e = q.items(kind)[q.find(qid)[1]]
+            e["origin"] = "you"
+            if e.get("transition_origin") == "auto":
+                e["transition_origin"] = "you"
+            q.changed()
+        elif op == "reroll":
+            if qid is None:
+                q.drop_auto(kind)
+            else:
+                items = q.items(kind)
+                i = q.find(qid)[1]
+                old = items[i]
+                if kind == "scene":
+                    prior = tuple(x["scene"] for x in items[:i]) + (old["scene"],)
+                    got = self.director.pick_scene(self.mgr.presets.scenes, self.current_name, now, prior)
+                    t = self.director.pick_transition(self.mgr.presets.transitions,
+                                                      prev=items[i - 1].get("transition") if i else None)
+                    if got is not None:
+                        items[i] = {"id": old["id"], "scene": got[0], "transition": t[0] if t else None,
+                                    "origin": "auto", "transition_origin": "auto" if t else None, "why": got[1]}
+                else:
+                    got = self.fx_director.ahead(now, self.fx.stack, self.mgr.presets.effects,
+                                                 lambda n: self.mgr.cost_ms("effect", n), self.pixels_ratio(),
+                                                 tuple(x["effect"] for x in items))
+                    if got is not None:
+                        items[i] = {"id": old["id"], "effect": got[0], "origin": "auto", "why": got[1]}
+                q.changed()
+        elif op == "play":
+            q.move(qid, 0)
+            self._upnext_edited()
+            if kind == "scene":
+                result["cue"] = await self.cue({"to": "auto", "at": body.get("when") or "now"})
+            else:
+                result["fx"] = await self.fx_next()
+        else:
+            raise ParamError("bad_request", "op must be add, set, remove, move, keep, reroll or play")
+        self._upnext_edited()
+        self._upnext_fill(time.monotonic())
+        self._upnext_emit()
+        return {**result, "upnext": self.upnext_view()}
 
     async def cue(self, body: Any, *, cause: str = "manual", reason: Optional[str] = None,
                   detail: Optional[str] = None) -> dict:
@@ -1007,6 +1202,8 @@ class Session(EngineListener):
             if pk is None:
                 pk = await self._pick_and_prepare(via)
                 self._room_prepare(pk)
+            if self.upnext.remove(pk.get("qid")) is not None:   # it plays: off the queue
+                self._upnext_fill(time.monotonic())
             await self._room_ready()                     # the room's other screens cut with this one
             spec, trans_spec, src, trans = pk["spec"], pk["trans_spec"], pk["src"], pk["trans"]
             detail = f"{detail}; {pk['why']}" if detail else pk["why"]
@@ -1115,8 +1312,10 @@ class Session(EngineListener):
         if key != self._dir_key and (cause in ("panel", "auto") or now - self._dir_drop_t >= self.DIR_DROP_MIN_S):
             self._dir_key, self._dir_gen, self._dir_drop_t = key, self._dir_gen + 1, now
             self._drop_prepared()                       # it was picked for the old direction
+            self._replan()
         elif cause == "auto":
             self._drop_prepared()                       # a new pool / transitions / dwell
+            self._replan()
         self.director.direction = eff
         self.runtime.speed_target = speed_for(eff["pace"])     # eased over direction_ease_s
         self.runtime.depth_target = eff["intensity"]
@@ -1168,6 +1367,7 @@ class Session(EngineListener):
                               **self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
+            self.upnext.clear()     # the leader's plan is the room's
             self._following = True
             self._follow_tick(now, ld)
             self._inputs_tick(now)
@@ -1177,6 +1377,9 @@ class Session(EngineListener):
             cause = cause or "room"
         if cause is not None:
             self._apply_direction(cause)
+        if self.state == "live" and not self.exited:
+            self._upnext_fill(now)
+            self._upnext_emit()
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
@@ -1202,12 +1405,13 @@ class Session(EngineListener):
         try:
             presets = self.mgr.presets.effects
             move = fd.plan(now, self.fx.stack, presets, lambda n: self.mgr.cost_ms("effect", n),
-                           self.pixels_ratio())
+                           self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
             if move is not None:
                 res = await self.fx.auto_move(move, fd.fade_s())
                 if res is not None:
                     fd.last = {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why,
                                "at_pts": round(self._pts_now(), 3)}
+                    self._upnext_took(move.add)
                     if move.add and res.get("rejected"):      # failed to prepare: never again this session
                         fd.quarantine(move.add, now, session=True)
                     self._room_fx()
@@ -1225,6 +1429,13 @@ class Session(EngineListener):
             fd.done(time.monotonic(), move)
             self._fx_task = None
 
+    def _upnext_took(self, effect: Optional[str]) -> None:
+        """An effect move added ``effect``: its queue entry (the first with that preset) is done."""
+        for e in self.upnext.effects:
+            if e["effect"] == effect:
+                self.upnext.remove(e["id"])
+                break
+
     async def fx_next(self) -> dict:
         """POST /api/sessions/{sid}/fx/next: change the effect now (the owner's Next for effects).  In a room the
         leader moves and the followers mirror it, like Next for scenes."""
@@ -1236,7 +1447,7 @@ class Session(EngineListener):
             await asyncio.shield(self._fx_task)
         fd, now = self.fx_director, time.monotonic()
         move = fd.next_move(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
-                            self.pixels_ratio())
+                            self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
         if move is None:
             raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
         res = await self.fx.auto_move(move, fd.fade_s())
@@ -1245,6 +1456,7 @@ class Session(EngineListener):
         fd.last = {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why,
                    "at_pts": round(self._pts_now(), 3)}
         fd.done(time.monotonic(), move)                  # a full interval before the director's own next move
+        self._upnext_took(move.add)
         self._room_fx()
         return {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why}
 
@@ -1253,7 +1465,7 @@ class Session(EngineListener):
         try:
             pk = await self._pick_and_prepare()
             if (self._epoch != epoch or self._dir_gen != gen or self.state != "live"
-                    or self.prepared_pick is not None):
+                    or self.prepared_pick is not None or not self._is_head(pk)):
                 self._retire(pk["src"], pk["trans"])
             else:
                 self.prepared_pick = pk
@@ -1560,6 +1772,7 @@ class Session(EngineListener):
                 "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": ds.fx_director.armed},
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
+            "upnext": self.upnext_view(),
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
             "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
             "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
