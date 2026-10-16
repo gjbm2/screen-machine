@@ -46,3 +46,13 @@ tqdm==4.70.1
 # B1 (director, palette from the art): Pillow decodes the on-glass stills (palette.from_image); no dependencies of its
 # own. Same version as ~/.venvs/sm-room. Installed 16 Oct 2026 under flock + nice.
 Pillow==12.3.0
+# B14 (hue_out.py, Stage 5): Hue Entertainment streaming (DTLS-PSK), the same pin as ~/.venvs/sm-room, with its
+# dependencies as installed there. Installed 16 Oct 2026 under flock + nice. Imported lazily (only when a hue output
+# streams), so show_service starts without it. hue_out imports room_service.hue.{stream,client,colour} (68's contract,
+# README S5.6b): they need only the stdlib, aiohttp (above) and this pin.
+hue-entertainment==0.1.2
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.11
+zeroconf==0.151.5
+ifaddr==0.2.0

@@ -5,6 +5,8 @@
 - ``RoomLink`` ("room"): show_service's only room_service client. It follows WS /api/v1/events (status and
   mode.transition), falls back to GET /api/v1/status every 5 s while that socket is down, and reads the modes'
   ``autopilot`` blocks from GET /api/v1/room/config whenever status.config.revision changes. It serves ``RoomView``.
+  Stage 5 (README S5.8): every other WS event (``screen.look``, ...) goes to ``ctx.on_room_event`` as (type, data),
+  and ``room_boot()`` is status.service.started_at (it changes when room_service restarts).
 - ``Situations`` ("situations", situations.py): the vocabulary.
 - ``Autopilot`` ("autopilot"): the supervisor. It evaluates every mode's own ``autopilot`` block (config only, so no
   code knows any mode) and acts only through room PUT /api/v1/mode {mode, source: "autopilot", reason, expect, skip}.
@@ -135,6 +137,7 @@ class RoomLink:
     STALE_S = 12.0                   # without the WS, the room counts as reachable this long after a good status
     EVENT_FRESH_S = 60.0             # a transition first seen in a status older than this is not news
     CONFIG_RETRY_S = 5.0
+    EVENT_TYPES_MAX = 64             # room event types counted in stats["room_events"] (the rest still fan out)
 
     def __init__(self, ctx: contract.BrainContext, *, mono: Callable[[], float] = time.monotonic) -> None:
         self.ctx = ctx
@@ -160,13 +163,16 @@ class RoomLink:
         self._baselined = False
         self._last_current: Any = _BAD
         self._listeners: list[Callable[[dict], None]] = []
-        self.stats = {"statuses": 0, "events": 0, "ws_connects": 0, "config_fetches": 0, "errors": 0}
+        # room_events (Stage 5): every other room WS event type -> how many came (fanned out to ctx.on_room_event)
+        self.stats = {"statuses": 0, "events": 0, "ws_connects": 0, "config_fetches": 0, "errors": 0,
+                      "room_events": {}}
 
     # -- Component ------------------------------------------------------------------------------------------------------
     def provides(self) -> dict:
         # room_patch: Stage 4 (the director's screens palette); brain.add sets it once contract.BrainContext has
-        # the slot (c8), and ignores it until then
-        return {"room": self.view, "room_get": self.get, "room_put": self.put, "room_patch": self.patch}
+        # the slot (c8), and ignores it until then. room_boot: Stage 5 (README S5.8, the director's source probe).
+        return {"room": self.view, "room_get": self.get, "room_put": self.put, "room_patch": self.patch,
+                "room_boot": self.room_boot}
 
     def configure(self, settings: dict) -> None:
         r = settings.get("room") if isinstance(settings, dict) else None
@@ -220,7 +226,8 @@ class RoomLink:
         return {"url": self.url, "ws": self._ws_up, "reachable": v["reachable"], "age_s": v["age_s"],
                 "error": self._error, "revision": v["revision"], "rules": {"revision": self._cfg["revision"],
                                                                            "error": self._cfg["error"]},
-                "stats": dict(self.stats)}
+                "boot": self.room_boot(),
+                "stats": {**self.stats, "room_events": dict(self.stats["room_events"])}}
 
     # -- any thread -----------------------------------------------------------------------------------------------------
     def add_listener(self, fn: Callable[[dict], None]) -> None:
@@ -236,6 +243,14 @@ class RoomLink:
         """Statuses received so far. room_service sends mode.transition at once but coalesces status (<= 4/s), so a
         reader that just heard an event waits for the next status before trusting ``current``."""
         return self.stats["statuses"]
+
+    def room_boot(self) -> Optional[str]:
+        """ctx.room_boot (Stage 5, README S5.8): the last status's ``service.started_at`` as a string, None until a
+        status says one. It changes when room_service restarts (the director probes ``source`` again)."""
+        st = self._status
+        svc = st.get("service") if isinstance(st, dict) else None
+        v = svc.get("started_at") if isinstance(svc, dict) else None
+        return None if v is None else str(v)
 
     def view(self) -> contract.RoomView:
         v, t, now = self._view, self._status_at, self._mono()
@@ -373,6 +388,14 @@ class RoomLink:
         elif t == "mode.transition" and isinstance(d, dict):
             self.stats["events"] += 1
             self._on_event(d)
+        elif isinstance(t, str) and isinstance(d, dict):
+            # Stage 5 (README S5.8): every other event (screen.look, ...) goes to ctx.on_room_event, each callback
+            # guarded, counted per type
+            counts = self.stats["room_events"]
+            if t in counts or len(counts) < self.EVENT_TYPES_MAX:
+                counts[t] = counts.get(t, 0) + 1
+            for cb in list(getattr(self.ctx, "on_room_event", None) or []):
+                _guard("on_room_event", cb, t, d)
 
     # -- status -> RoomView ---------------------------------------------------------------------------------------------
     def _on_status(self, d: dict) -> None:

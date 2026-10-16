@@ -13,12 +13,19 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
   `scripts/ctl show` (owned by ca), with `deploy/sm-show.env`: see **Deploy (P0)** at the end.
 - **Ports:** VBAN on `0.0.0.0:6980/udp` (receiver-initiated, §3.1). The bus and API are on `127.0.0.1:8703`, and are
   reached only through `:8700/show/*`. The test sources (Stage 3) are children on `127.0.0.1:6981/udp` (piano) and
-  `127.0.0.1:6982/udp` (audio) while they play.
+  `127.0.0.1:6982/udp` (audio) while they play. Stage 5 opens **no listening port**: Art-Net goes unicast from one
+  ephemeral socket to the nodes fixtures.yaml names (none yet), and Hue Entertainment (DTLS) goes to the bridge in its
+  pairing file, both only once fixtures.yaml enables that output (`rig.artnet.reply_bind`, ca's relay port, stays
+  unset until ca registers one).
 - **Files it writes:** `~/.local/state/screen-machine/show/` (`--state-dir`): `state.json`, `director.jsonl`,
   `autopilot.jsonl`, `listener.jsonl`, `test-piano.log`, `test-audio.log`, `ml-worker.log` (Stage 4: the worker's
-  stderr, appended per run after a "--- ml-worker start ---" line, rotated to `.1` past 1 MB). It reads `config/room/show.yaml`,
-  `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml` and `config/live/vocab.yaml`, each re-read when
-  it changes, and (the worker) `~/.cache/screen-machine/models/` (Stage 4; `tools/show/fetch_models.py`).
+  stderr, appended per run after a "--- ml-worker start ---" line, rotated to `.1` past 1 MB), `nodes.json` (Stage 5:
+  where artnet_lan's discovery last found each node; written only when a node answers from a new address). It reads
+  `config/room/show.yaml`, `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml`,
+  `config/live/vocab.yaml` and (Stage 5) `config/room/fixtures.yaml`, `config/room/fixture-types/` and
+  `config/room/latency.json`, each re-read when it changes; (the worker) `~/.cache/screen-machine/models/` (Stage 4;
+  `tools/show/fetch_models.py`); and (Stage 5, only once the Hue output streams) the bridge's pairing file
+  `~/.config/screen-machine/hue/<bridge>.json`.
 - **The ML worker** (Stage 4) is show_service's child, `python -m show_service.ml.worker` in its own venv
   `~/.venvs/sm-show-ml`, at nice 19 in its own session, fed over a pipe. No port.
 
@@ -55,6 +62,16 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
 | director, situations, listener, api card, vibes | Stage 4's consumers (S4.8) | **done**, tested, wired |
 | `tests/test_e2e.py::test_stage4_end_to_end` | three real tracks back to back through the real worker, against a fake room | **done**, passing |
 | Stage 4 review fixes (S4.13) | the 24 review issues of 16 Oct: GOBO ownership, track changes, the CED speech words, hysteresis, the ML genre, the meter, tokens, freshness, the worker's guards, memory, hand-off, budget, the owner's 0.8 | **done**, tested (948 passed); not committed |
+| **Stage 5** (below) | every output **off** in config/room/fixtures.yaml: the restart that ships it changes nothing anyone can see | |
+| `fixtures.py`, `ofl.py`, `tools/show/add_fixture.py` | the fixture registry (fixtures.yaml, OFL types, selectors, groups, latency), hot-reloaded | **done**, tested, wired |
+| `looks.py`, `colour_mix.py` | the look engine (layers, hits, caps, latency per fixture, the screens rule) and colour to emitters | **done**, tested, wired |
+| `outputs.py` | the `rig` component: registry, engine, drivers, one runner thread per enabled output | **done**, tested, wired (c8) |
+| `hue_out.py` | Hue Entertainment from show_service (off until fixtures.yaml **and** patch.yaml `hue.streamer: show`) | **done**, tested with a fake bridge, wired; aligned with 68's hand-over contract (S5.6b: room's Hue code imported, the four route states); live at the Hue cut-over (S5.12) |
+| `artnet_lan.py` | ArtDmx to LAN nodes on the beat grid, ArtPoll, failsafe, the virtual node | **done**, tested against local sinks, wired; live when a node is bought |
+| director, RoomLink | the screens' hand-pick hold, the `source` probe, room events, the lamps from the registry, `look_fn` | **done**, tested, wired |
+| `api.py` | `/api/v1/rig`, `/rig/frame`, `/rig/dmx`, `/rig/nodes/{id}/record-failsafe`, `/hue/stream`, `/hue/release`, `/hue/status` (68's contract: `state` is `idle`, `armed`, `streaming` or `taken_over`, with `lights` and `boot_id` for room's re-sync; S5.6b, S5.6c) | **done**, tested, wired |
+| `tests/test_e2e.py::test_stage5_end_to_end` | test music -> director -> engine -> DMX on the beat grid and Hue at 50 Hz (fakes and sinks), the screens rule, the hold | **done**, passing |
+| Stage 5 review fixes (S5.14) | the 20 review issues of 16 Oct: the drop hit per output's caps, the key light's white, no vibe on DMX, the wheel, House for DMX fixtures, Hue's rise limit and min period, the DMX confidence policy, House/Low/dip steady, the hold, measured emitters, the persisted Hue set, the grid's tolerance, the rate cap, the debounce, per-output hit wakes, the build-ahead, the CPU caveats | **done**, tested; two owner calls open (S5.14); not committed |
 
 **Process split.** §2 has two processes: show_rt (hot, no aiohttp) and show_brain. For now everything runs in one
 process: the brain is a thread (`show-brain`), aiohttp stays on its own thread (`show-bus`), and the hot thread only
@@ -102,6 +119,15 @@ become the IPC seam.
                                            Director.palette_fn (all by reference)
                                            → ArtDmx → 127.0.0.1:6454 (room's receiver; only when configured)
                        [show-artnet-poll]  room's /api/v1/dmx every 5 s (yield), patch.yaml mtime every 2 s
+                       (Stage 5, the rig: S5.3)
+                       [show-brain]  + rig (1 Hz): fixtures.Registry.poll, LookEngine.configure on a change, drivers
+                                       built/started/stopped as fixtures.yaml enables outputs; HueOut's control task
+                       [show-out-<id>] one per enabled output (none until fixtures.yaml enables one): driver.plan ->
+                                       wait (an Event: a hit or a reconfigure re-plans) -> LookEngine.evaluate(<id>, t)
+                                       -> sleep to t -> driver.set_frame (HueOut: send_colors; ArtNetLan: sendto)
+                       [hue-dtls-sender] hue-entertainment's own, while the Hue output streams
+                       show-rx's music.hit bodies → Clock.observe_hit, then Rig.on_hit (the engine's ring; the hit
+                       outputs' runners woken only for a hit the look would flash)
                        [main]      signals, latency.json reload every 2 s → Receiver.set_offsets
 ```
 
@@ -4388,3 +4414,1747 @@ with glibc's per-thread arenas, 1.6 GB with onnxruntime's arena as first built).
   sections only with no vibe set (with a vibe, one per look change); room.direction's `genre` can come from the local
   ML now.
 - **68:** lamp dips and hits stop when a build gives out before its line.
+
+## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
+
+**Interfaces, 16 Oct (c8).** This section defines Stage 5 so that five builders can work in parallel, each in its own
+files. It turns SHOW_ENGINE §5.4 (rules per output, the DMX frame grid, Hue's rules), §8.2-§8.3 (the look; screens never
+dimmed), §8.8 (colour, lamp roles), §9 (the look engine, fixtures.yaml, Art-Net out, Hue) and §11 into a build spec.
+- The shared names and the **exact shapes** are contract.py's **"Stage 5" block**, plus the Stage-5 slots at the end
+  of `BrainContext` (`rig`, `room_boot`, `on_room_event`).
+- The config is **`config/room/fixtures.yaml`** (new, S5.2) and show.yaml's Stage-5 keys (S5.10: `rig`, `looks`, and
+  two `director.screens` keys). Both are in place now; nothing reads them until this code ships.
+- **Every output is off** (`enabled: false`) in fixtures.yaml, so the restart that ships Stage 5 changes nothing anyone
+  can see (S5.0 rule 6). Each output is switched on later, in config, with the session that owns the other side.
+- Where this section and SHOW_ENGINE.md differ, this section is the build spec.
+
+| Piece | Builder | Status |
+|---|---|---|
+| `fixtures.py` (the registry), `ofl.py`, `tools/show/add_fixture.py` | B12 | **done** (S5.4a) |
+| `outputs.py` (the `rig` component, drivers' runners), the `__main__` and `api.py` seams | c8 (B12's spec) | **done** (S5.4b) |
+| `looks.py` (the look engine), `colour_mix.py` (S5.5's emitters.py: colour to emitters, encoding) | B13 | **done** (S5.5a) |
+| `hue_out.py` (Entertainment streaming from show_service) | B14 | **done** (S5.6a) |
+| `artnet_lan.py` (ArtDmx to LAN nodes, ArtPoll, the virtual node) | B15 | **done** (S5.7a) |
+| the screens' hand-pick hold, RoomLink's room events | B16 | **done** (S5.8) |
+| the director's lamps from the registry, `look_fn`, the name scan's Stage-5 additions | c8 (B16's spec) | **done** (S5.8) |
+| integration, the Stage-5 e2e, the CPU measurement | c8 | **done** (S5.13); not committed |
+| the review fixes | c8's fixer | **done** (S5.14); not committed |
+| going live | c8, with 68 and 2f | S5.12 |
+
+### S5.0 Rulings every builder keeps (owner)
+
+S3.0 and S4.0 still hold. For Stage 5:
+1. **No special cases.** No code branches on a mode, vibe, device, fixture, output, node, group, zone or screen name.
+   - A fixture's behaviour comes from its **type** (kind, attributes, channels, emitters), its **role** (placement →
+     show.yaml `lamps`), its output's **driver kind and caps**, and show.yaml's `looks` layers.
+   - A driver kind (`hue`, `artnet`) is a fixed vocabulary word (`contract.DRIVERS`), like a band name; an output's *id*
+     is config.
+   - The name scan in test_director.py adds the Stage-5 modules and fixtures.yaml's ids, groups, zones, outputs and
+     nodes (B16).
+2. **No invented values in live config.**
+   - fixtures.yaml holds exactly the six existing devices, copied from patch.yaml; nodes and DMX are empty, with
+     commented examples. Roles stay unset (placement decides). Latency stays unset unless measured (latency.json).
+   - Every Stage-5 number in show.yaml is a starting point with its §; the code keeps the same numbers as fallbacks,
+     marked the same way.
+   - Code defaults that are physics, not taste (an LED emitter's typical chromaticity), are listed in the code as
+     "starting point (typical datasheet value); measure", and a type in fixtures.yaml overrides them.
+3. **Screens are never dimmed.** A fixture whose type's kind is `screen` never gets a level, floor, master, cap, dip,
+   hit or intensity layer. In Stage 5 the look engine doesn't evaluate screens at all (their drivers are `showbus`,
+   not built); a test proves a screen fixture never appears in a Frame (B13).
+4. **Degrade, never refuse.**
+   - A bad fixtures.yaml keeps the last good registry, with the error shown.
+   - A fixture, type, group or layer that can't be used as written is left out with a problem line; the rest works.
+   - A missing driver module reads `not_built`; a bridge or node that doesn't answer reads `error` or `silent` and is
+     retried. No mode transition ever fails because of the rig: room's hue adapter reads `unconfirmed`, never `failed`
+     (except `taken_over`, which is the truth).
+   - No control is disabled.
+5. **No auth. No hard-coded IPs.**
+   - An Art-Net node is matched by MAC or short name, with `last_ip` in fixtures.yaml.
+   - The Hue bridge's address is its pairing file's (`~/.config/screen-machine/hue/<bridge>.json`), found by the bridge
+     id that patch.yaml (or fixtures.yaml) names.
+   - Loopback is used only for a test's ephemeral sink. **A loopback address on port 6454 is never sent to**: it is
+     room_service's receiver, and DMX meant for the LAN must never land in the virtual Maestro's universe.
+6. **Off by default.** Every output is `enabled: false` until fixtures.yaml says otherwise. At the restart that ships
+   Stage 5 the only behaviour changes are the director's (S5.8): the `source` probe on its next screens-palette PATCH
+   (one extra request per room boot against the old room code), and the hold, which reacts only to a person's pick.
+   The review fixes (S5.14) add two director changes that reach today's lamps through the virtual Maestro (room
+   streams its hue channels): a key lamp's colour (warm white at the feel's `key_cct`, tinted at most
+   `lamp_chroma_max`, where it used to be cut to ~5000 K, lavender or lime), and an unforeseen drop's hit, which
+   swells over 300 ms instead of stepping (§5.4). Both are the design's own rules, fixed.
+7. **The host renders 4K.** With every output on, Stage 5 adds at most 0.03 of a core (measured at go-live; S5.12).
+   Runner threads run at nice 0, like show-artnet; nothing new uses a GPU; nothing new spawns a process.
+
+### S5.1 Builders and files
+
+| Builder | Its files (and tests named for them) | Seams it alone edits |
+|---|---|---|
+| **B12 rig and wiring** | `fixtures.py`, `outputs.py`; `tests/test_fixtures.py`, `tests/test_outputs.py`; `tests/data/ofl/` (test OFL types, never config/) | `__main__.py` (Stage-5 wiring), `api.py` (every Stage-5 route, S5.4), additions to `test_main.py` and `test_api.py` |
+| **B13 look engine** | `looks.py`, `emitters.py`; `tests/test_looks.py`, `tests/test_emitters.py` | none |
+| **B14 Hue** | `hue_out.py`; `tests/test_hue_out.py` | `requirements.txt` (one block: `hue-entertainment==0.1.2` and its pins as installed in `~/.venvs/sm-room`) |
+| **B15 Art-Net on the LAN** | `artnet_lan.py`; `tests/test_artnet_lan.py` | none |
+| **B16 director and room seams** | none of its own | `director.py` (S5.8: the hold, the source probe, lamps from the registry, `look_fn`), `autopilot.py` (`RoomLink`: `on_room_event`, `room_boot`); additions to `test_director.py` (the hold, the probe, the name scan) and `test_autopilot.py` |
+
+- c8 owns `contract.py`, `config/room/show.yaml`, `config/room/fixtures.yaml`, `config/room/fixture-types/` and this
+  README. A builder that needs a change to any of them asks c8; it never edits them.
+- **Imports.** A Stage-5 module imports `contract`, the stdlib and its pinned dependencies, plus these c8 rulings:
+  - `looks.py` may import `emitters.py` (same builder), `clock.py`'s pure consumer helpers (`beat_at`, `next_beat`,
+    `position_at`), `palette.py`'s pure functions (`to_oklab`, `mix`) and artnet_out's P0 constants (`HUE_ATTACK_S`,
+    `HUE_DECAY_S`, `HUE_DEPTH`, `TAU_ENERGY_S`, `QUIET_GATE_OFF`, `QUIET_GATE_ON`, `QUIET_AFTER_S`, `IDLE_AFTER_S`,
+    `DEFAULT_RGB`), so the parity with the virtual Maestro can't drift;
+  - `emitters.py` may import `palette.py`'s pure functions;
+  - `artnet_lan.py` imports `artnet_out.py`'s wire helpers (`build_artdmx`, `next_seq`, `grid_tick`, `MIN_GAP_S`,
+    `GRID_HZ`, `PORT`): one copy of the ArtDmx wire in show_service (§9.3);
+  - `hue_out.py` imports `room_service.hue.stream` (`xy_bri`, `xy_streamer`) and `room_service.hue.client`
+    (`HueClient`, `BridgeSecrets`, `resolve_area`, `HueError`) **lazily, in its default factories only**. stream.py was
+    written for this ("shared by room_service's HueOutput and show_service's driver"), so both streamers encode alike.
+    68 owns those files: tell 68 before relying on anything else in them;
+  - `outputs.py` imports `fixtures.py` (same builder) and loads the look engine and the drivers by import path, lazily
+    (S5.4), so a missing one reads `not_built` instead of failing the rig.
+- **Parallel seams.** B12 codes against the signatures in S5.5-S5.7 and tests with fakes; B13, B14 and B15 test their
+  classes alone (a fake engine, a fake clock, fake frames). B16 tests with a fake room. Every seam is read with
+  `getattr`, so a piece that hasn't landed leaves its slot None. c8 integrates and runs the full suite.
+- `requirements.txt` stays append-only. Builders don't commit; c8 does.
+
+### S5.2 fixtures.yaml (schema; c8's file, read by fixtures.py)
+
+`version: 1`, then `outputs`, `nodes`, `types`, `fixtures`, `groups`. The file itself documents every key.
+- **Ids** match `^[a-z0-9][a-z0-9_.-]{0,63}$` (`hue.ne` has a dot). The fixture ids are the existing ones, which
+  rooms.json, room's hue adapter, the renderer and the Room page use.
+- **Load rules** (fixtures.py, as vibes.py's):
+  - a YAML error keeps the last good registry, with `error` set;
+  - a value it can't use drops that thing (or that key, to its unset value) with a page-words line in `problems`
+    (`"fixtures.spot.ball1: address 510 + footprint 4 runs past 512: left out"`);
+  - an unknown key is ignored with a problem line, except under `outputs.<id>`, where every key the schema doesn't
+    name goes to `settings` for the driver;
+  - reloaded on any mtime change of fixtures.yaml, a used type file, latency.json or patch.yaml (every `RELOAD_S`).
+
+**`outputs.<id>`** (one per driver instance: the Hue area, or one Art-Net universe):
+
+| Key | Type | Unset | Meaning |
+|---|---|---|---|
+| `driver` | `showbus` \| `hue` \| `artnet` \| `ddp` | required (else left out) | `contract.DRIVERS`; only `hue` and `artnet` are built in Stage 5 |
+| `enabled` | bool | **false** | the output's on switch (hot-reloaded); a non-bool is false, with a problem line |
+| `node` | node id | none | artnet: its node |
+| `port_address` | 1..32767 | none | artnet: the 15-bit Port-Address. **0 is refused** (room_service's virtual universe), with a problem line; the output then can't start (`no_config`) |
+| `latency_key` | str | the output id | latency.json `outputs.<key>` for the output as a whole |
+| `latency` | `{intensity: {rise_ms, fall_ms}, colour_ms, position_ms}` | `{}` | hand-set ms, used only where latency.json has nothing |
+| `hits` | bool | the driver's (hue false, artnet true) | takes `music.hit` flashes. It can only turn them off: `true` on a driver whose caps say false (Hue, §5.4) is a problem line |
+| `min_attack_ms` | ms | the driver's (hue 80, §5.4; artnet 0) | no intensity rise is faster. It can only raise the driver's floor |
+| `rate_hz` | Hz | the driver's (hue 50; artnet: the beat grid) | |
+| anything else | | | `settings`, the driver's own. **hue:** `bridge`, `area`, `gamma`, `stop_after_s`; each one left out is read from patch.yaml's `hue` block (68's, the one truth until P5 moves it here). `streamer` is room's switch and is always read from patch.yaml (a `streamer` here is a problem line) |
+
+**`nodes.<id>`** (Art-Net nodes; empty until one is bought):
+
+| Key | Type | Unset | Meaning |
+|---|---|---|---|
+| `match` | `{mac: "aa:bb:cc:dd:ee:ff"}` or `{short_name: str}` | `{}` (no check) | what an ArtPollReply must say for the node to count as found |
+| `last_ip` | IPv4 | none (nothing is sent, `no_config`) | where frames and ArtPolls go. Discovery confirms it; a matching reply from another address is kept in `nodes.json` (state dir) and used, and the status says "moved: update last_ip". **Code never writes fixtures.yaml.** |
+| `port` | int | 6454 | only tests set it (an ephemeral sink) |
+| `full_512` | bool | false | always 512 channels; otherwise up to the highest patched channel, even (§5.4) |
+| `failsafe` | `hold` \| `zero` \| `full` \| `scene` | none (the node's own) | sent once as ArtAddress (S5.7) |
+| `virtual` | bool | false | previz: frames stay in memory, served by `GET /api/v1/rig/frame`; never on a socket |
+
+**`types.<id>`:**
+
+| Key | Meaning |
+|---|---|
+| `source: builtin` | one of fixtures.py's `BUILTIN_TYPES` (below) |
+| `source: ofl`, `file`, `mode` | an Open Fixture Library JSON (MIT) under `config/room/fixture-types/`, and the mode by `name` or `shortName` |
+| `emitters` | optional `{<emitter>: {xy: [x, y], Y: <relative luminance>}}`: overrides the starting points (S5.5) |
+| `curve` | optional: `srgb` (neutral: the palette's values go straight across), `linear`, or `gamma:<g>` |
+
+The builtin types:
+
+| Type | kind | attrs | Driven by |
+|---|---|---|---|
+| `sm-screen` | screen | colour | `showbus` (P4). Never evaluated in Stage 5 |
+| `sm-hue` | lamp | intensity, colour | `hue`: `FixtureFrame.rgb` → room_service.hue.stream's `xy_bri(rgb, gamma)` |
+
+**OFL → channels** (`fixtures.load_ofl`; OFL's schema: `availableChannels`, `modes[].channels`, `wheels`):
+- Each mode channel becomes an `AttrChannel` by its first capability:
+  - `Intensity` → `intensity`;
+  - `ColorIntensity` → `emitter`, named from its `color` (`Red` → `red`, `Warm White` → `warm_white`; `contract.EMITTERS`;
+    any other colour → `other`);
+  - `WheelSlot` on a wheel whose slots carry `colors` → `wheel` (each colour slot's DMX value is the middle of its
+    range; `Open` counts as white);
+  - `ShutterStrobe` → `shutter`;
+  - `Pan`, `Tilt` → `pan`, `tilt` (position: not driven in Stage 5);
+  - anything else → `other`.
+- `fineChannelAliases` in the mode give the coarse channel its `fine` offset (16-bit values, MSB first). A `null` in a
+  mode's channel list is a gap.
+- **Defaults** (what an undriven channel sends): OFL's `defaultValue` (a number, or a percentage string); for a shutter
+  without one, the start of its `shutterEffect: "Open"` capability (§9.2: a shutter left at 0 is dark); otherwise 0.
+  A fixture's `pin` overrides any of them by channel name.
+- Strobe is never driven in Stage 5: a shutter stays at its default (open). `LookData.accents.strobe` is published
+  only, as before.
+- Matrix fixtures (`matrix`, `templateChannels`) aren't built: the type reads a problem line and its fixtures are inert.
+- `attrs` is `intensity` when it has an intensity channel or any emitter; `colour` when it has emitters or a colour
+  wheel. A type with neither drives nothing (its defaults still go out).
+
+**`fixtures.<id>`:**
+
+| Key | Type | Unset | Meaning |
+|---|---|---|---|
+| `type` | type id | required (else inert, problem line) | |
+| `label` | str | the id | |
+| `output` | output id | none (registered, unrouted) | |
+| `address` | 1..512 | required on an artnet output | 1-based start channel. `address + footprint - 1 > 512` leaves it out; an overlap with another fixture is a problem line (both kept; the later address wins on the shared channels) |
+| `light` | str | required on a hue output | the bridge's light id |
+| `screen` | screen id | none | the screen it belongs to, or hangs above (lamps with `follow_screen` take that screen's colours) |
+| `zone`, `placement` | str | none | `placement` → role through show.yaml `lamps.placement_roles` |
+| `role` | a show.yaml `lamps.roles` name | from placement, else `lamps.default_role` | |
+| `tags` | [str] | `[]` | for selectors |
+| `order` | number | none | position in ordered groups without an explicit order |
+| `wb` | `{<emitter>: gain}` | 1.0 each | white balance (S5.5) |
+| `curve` | as the type's | the type's | |
+| `pin` | `{<OFL channel name>: 0..255}` | `{}` | holds an undriven channel |
+| `house` | `{intensity: 0..1, hex: "#rrggbb"}` | none (dark) | what a DMX fixture shows while the rig has no look (S5.7 idle) |
+
+**`groups.<id>`** = `{select: <selector>, order?: [fixture ids]}`. The ordered result is the group's member list (for
+phase spread). `order` lists first, in its order (ids not selected are skipped); the rest follow by `order`, then id.
+
+**Selectors** (LX-style tag selectors; `fixtures.parse_selector`, `fixtures.select`):
+- clauses separated by `|` (OR); within a clause, terms separated by spaces (AND); `!` before a term negates it;
+- a term is `key:value` with key one of `id`, `kind`, `type`, `output`, `driver`, `zone`, `placement`, `role`,
+  `screen`, `tag`, `group`; a bare word means `tag:<word>`; `*` matches every fixture;
+- a value ending in `*` is a prefix (`id:hue.*`);
+- examples: `"kind:lamp"`, `"zone:north kind:lamp"`, `"kind:lamp !role:key"`, `"group:around"`, `"ball | role:ball-spot"`.
+- A selector that doesn't parse is a problem line, and whatever used it selects nothing.
+
+**Latency** (`fixtures.resolve_latency` → each fixture's `LatencyView`; §5.4, §5.5). For each edge or kind, the first
+of these that has it:
+1. latency.json `outputs.<fixture id>.<attr>` (per lamp: §9.4's "the lamps' measured lead");
+2. latency.json `outputs.<the output's latency_key>.<attr>`;
+3. fixtures.yaml `outputs.<id>.latency` (hand-set ms);
+4. 0, with source `unset`.
+
+`<attr>` is `contract.LATENCY_ATTRS[kind]`, the first present (intensity reads `intensity`, then `brightness`, the TV
+routine's name). A measured edge's value is its perceived onset: `t10 + (t50 - t10) x (align_pct - 10) / 40`
+(show.yaml `looks.align_pct`, 25: §5.5's ~t20-t30), plus its `trim_ms`. `colour` with nothing measured takes the
+intensity rise. `min_pulse_ms = max(min_visible_ms, rise - fall + min_visible_ms)`.
+
+### S5.3 Threads and the frame path
+
+```
+[show-rx]        + Rig.on_hit(music.hit body): appended to each hits-capable output's deque, that runner woken (<= 5 µs)
+[show-brain]     + rig (1 Hz): Registry.poll (fixtures.yaml, types, latency.json, patch.yaml), Program compile on a
+                   change, driver.configure / tick (hue: start, stop, takeover, release; artnet: ArtPoll, replies,
+                   failsafe), runners started and stopped as outputs are enabled or disabled; HueOut's control task
+[show-out-<id>]  one per enabled, built output: the deadline loop
+                     t = driver.plan(t_last, now, active)
+                     wait until t (an Event, so a hit can wake it)
+                     frame = engine.evaluate(<id>, t, driver.caps)     # every input read by reference
+                     driver.set_frame(frame)                           # encode, sendto / send_colors
+[hue-dtls-sender] hue-entertainment's own thread, one per streaming hue output (send_colors only queues)
+[show-bus]       + api.py's Stage-5 routes (S5.4), through brain.call and snapshots
+```
+- **Ownership.** The Program (layers compiled from show.yaml `looks` and the registry), the `RigView` and the drivers'
+  send maps are built on show-brain and swapped by reference. A runner owns its output's engine state (smoothers, the
+  hit deque's cursor, the last frame) and touches nothing else. `evaluate` never locks and never calls into show-rx.
+- **Inputs, by reference:** `palette_fn(t)` (the director's: per-fixture colour × level, crossfades, House, Low and
+  dips; **not** the drop's hit since S5.14), `look_fn()` (the director's latest `LookData`, with the drop's hit in
+  `hit` and the pre-drop dip in `dip`: each output takes the hit by its caps), the `set_look_out` values (`hue_depth`,
+  `beat_lock`, fanned out to artnet_out's and the rig's; `beat_depth` to the rig's only), `clock.snapshot()` /
+  `next_beat`, and `features.latest()`.
+- **Budgets** (p95, niced, under the 4K render; each module's tests print them with `-s`):
+
+  | What | p95 |
+  |---|---|
+  | `evaluate`, 4 Hue lamps | ≤ 150 µs |
+  | `evaluate`, 32 DMX fixtures with emitters | ≤ 600 µs |
+  | `set_frame`, hue (4 lamps) | ≤ 100 µs |
+  | `set_frame`, artnet (a universe) | ≤ 100 µs |
+  | rig tick (1 Hz, show-brain) | ≤ 3 ms |
+  | `Rig.on_hit` (show-rx) | ≤ 5 µs |
+  | a runner's lateness against its plan | ≤ 1.5 ms |
+
+- **The two-process split.** The runners belong to show_rt (§2's output thread). Keep their inputs "latest value"
+  reads, so they become IPC reads later.
+
+### S5.4 fixtures.py and outputs.py, the wiring and the routes (B12)
+
+**fixtures.py** (pure; no threads, no network):
+```python
+BUILTIN_TYPES: dict[str, contract.TypeInfo]            # sm-screen, sm-hue (S5.2's table)
+def load(path: Path = contract.FIXTURES_FILE, *, types_dir: Path = contract.FIXTURE_TYPES_DIR,
+         latency: dict | None = None, patch: dict | None = None, looks: dict | None = None) -> contract.RigView
+    # never raises: a bad file gives error + problems and empty maps (Registry keeps the last good one)
+def load_ofl(path: Path, mode: str) -> contract.TypeInfo     # problems inside, never raises
+def parse_selector(expr: str) -> Selector                   # ValueError("bad_selector: <why>")
+def select(expr: str | Selector, rig: contract.RigView) -> list[str]   # ordered fixture ids
+def resolve_latency(fixture_id: str, out: contract.OutputConfig | None, latency_doc: dict | None, *,
+                    align_pct: float, min_visible_ms: float) -> contract.LatencyView
+def hue_settings(out: contract.OutputConfig, patch: dict | None) -> dict
+    # {bridge, area, gamma, stop_after_s, streamer}: fixtures.yaml's settings over patch.yaml's hue block
+class Registry:
+    def __init__(self, path=contract.FIXTURES_FILE, *, types_dir=..., latency_path=contract.LATENCY_FILE,
+                 patch_path=contract.PATCH_FILE) -> None
+    def poll(self, looks: dict | None = None, force: bool = False) -> bool   # show-brain, every RELOAD_S; True: new view
+    def view(self) -> contract.RigView | None                                # any thread
+```
+
+**outputs.py:**
+```python
+DRIVER_MODULES = {"hue": "show_service.hue_out:HueOut", "artnet": "show_service.artnet_lan:ArtNetLan"}
+ENGINE_MODULE = "show_service.looks:LookEngine"
+def attach(ctx: contract.BrainContext, *, palette_fn=None, look_fn=None, clock=None, features_fn=None,
+           neutral: tuple[tuple[float, float, float], float] | None = None,   # artnet_out's P0 colour and hue depth
+           registry=None, engine=None, driver_factories=None, mono=time.monotonic, **kw) -> Rig
+class Rig:                                                 # Component "rig", tick_hz SLOW_TICK_HZ
+    def provides(self) -> dict                             # {"rig": self.view}
+    def configure(self, settings: dict) -> None            # show.yaml rig + looks -> enabled, engine.configure, drivers
+    def start(self) -> None;  def tick(self, now_s: float) -> None;  def stop(self) -> None   # runners, then drivers
+    def view(self) -> contract.RigView | None              # any thread
+    def set_look(self, *, hue_depth: float | None = None, beat_lock: bool | None = None, reset: bool = False) -> None
+                                                           # any thread: artnet_out's set_look signature
+    def on_hit(self, d: contract.HitData) -> None          # show-rx
+    def drivers_of(self, kind: str) -> list[contract.Driver]
+    def frame_view(self, output_id: str) -> dict | None    # any thread: GET /api/v1/rig/frame's body
+    def record_failsafe(self, node_id: str) -> dict        # show-brain: {"recorded": bool, "why"}
+    def snapshot(self) -> dict                             # any thread (below)
+    def persist(self) -> dict | None                       # S5.14: {"outputs": {id: driver.persist_state()}} (hue:
+                                                           # what room asked to follow); everything else from config
+```
+- **Drivers** are built from `DRIVER_MODULES` by import path, lazily: `cls(output_id, *, ctx, clock, settings, shared,
+  **kw)`. `settings` is show.yaml `rig.<kind>`. `shared` is one dict per Rig in which a driver module keeps
+  cross-output objects (artnet_lan keeps its `Nodes` under `"artnet.nodes"`). A kind not in `DRIVERS_BUILT`, or a
+  module that fails to import or construct: state `not_built`, with the reason, and the rest runs.
+- **Runners.** One thread `show-out-<id>` per output that is enabled and built (and the rig enabled). The deadline loop
+  of S5.3:
+  - It sleeps on an `Event` with a timeout, so `on_hit` and a reconfigure wake it.
+  - It records lateness (sent − planned) and the rate.
+  - A raising `plan`, `evaluate` or `set_frame` is counted and logged at most every 30 s; three in a row within 10 s
+    put the output in `error` for `RUNNER_BACKOFF_S` (5 s, a starting point: room's own error backoff), then it
+    carries on.
+  - It stops within 0.5 s of `stop` (the Event).
+  - An output switched off, or whose driver kind changes, stops its runner and its driver (`driver.stop`); switched on,
+    a new runner starts after `driver.start`.
+- **The engine** is built once (`ENGINE_MODULE`), with the inputs above; `neutral` is artnet_out's
+  `(OutConfig.palette or DEFAULT_RGB, HUE_DEPTH)` so a rig with no vibe looks exactly like the virtual Maestro.
+- **`snapshot()`** (also `GET /api/v1/rig`): `{"enabled", "registry": {"revision", "path", "error", "problems",
+  "counts": {outputs, nodes, types, fixtures, groups}}, "outputs": {id: OutputStatus}, "nodes": {id: NodeStatus},
+  "engine": engine.stats(), "errors": {guard: n}}`. It is in `brain.components.rig` too.
+
+**`__main__` (the Stage-5 wiring).** The modules are imported lazily through `_import`, so a missing one shows in
+`modules` and is left out (no rig: exactly Stage 4).
+1. After the director: `rig = outputs.attach(ctx, palette_fn=director.palette_fn, look_fn=getattr(director, "look_fn",
+   None), clock=clock, features_fn=features.latest, neutral=...)`, `brain.add(rig)`. Brain add order: room, situations,
+   autopilot, sources, ml, structure, listener, director, **rig**.
+2. `ctx.set_look_out` becomes a fan-out: `vm.set_look(**kw)`, then `rig.set_look(**kw)`, each under its own guard.
+3. The publish that already hands `music.hit` bodies to `Clock.observe_hit` also hands them to `rig.on_hit` (guard
+   `rig.hit`).
+4. Stop: `brain.stop()` stops the rig (runners, then drivers: Hue stops its area so the bridge gives the lamps back;
+   Art-Net stops sending, so each node's failsafe takes over), then Art-Net out, rx, bus.
+5. `--no-brain` / `SHOW_BRAIN=off` builds no rig.
+6. `GET /api/v1/state` gains `rig` (`rig.snapshot()`, null without one).
+
+**api.py's Stage-5 routes** (B12 alone edits api.py; paths have no `/show` prefix; no auth):
+
+| Method and path | Body | 200 answer | Errors |
+|---|---|---|---|
+| `GET /api/v1/rig` | none | `rig.snapshot()` plus `"registry_view": RigView` | none (no rig: `{"enabled": false, "why": "..."}`) |
+| `GET /api/v1/rig/frame?output=<id>` | none | the output's last frame as JSON: `{output, seq, t_send_ms, age_s, active, why, fixtures: {id: {intensity, hex, rgb, dmx: [int] \| null, t_eval_ms}}, universe: {port_address, length, channels: [int], to, virtual} \| null}` | 404 `unknown_output` `{choices}`; no frame yet: 200 with `fixtures: {}` |
+| `POST /api/v1/rig/nodes/{id}/record-failsafe` | none | `{"recorded": bool, "why": str \| null}` (S5.7) | 404 `unknown_node` |
+| `POST /api/v1/hue/stream` (room's hue adapter, mode show) | `{"lights": [fixture ids], "on": bool}` | `HueStatus` at once (it doesn't wait for streaming) | 400 `bad_request` when `lights` isn't a list of strings |
+| `POST /api/v1/hue/release` | `{"lights"?: [fixture ids]}` (none: all) | `HueRelease`, once the lamps are writable (≤ `rig.hue.release_timeout_s` + 1) | none |
+| `GET /api/v1/hue/status` | none | `HueStatus` | none |
+
+- The hue routes go to the first enabled `hue` driver (`rig.drivers_of("hue")`; more than one hue output is a problem
+  line in Stage 5). Their `brain.call` waits `release_timeout_s + 2` for release, the usual timeout otherwise.
+- **With no hue output on** (no rig, `enabled: false`, or `not_built`): `stream` and `status` answer `HueStatus` with
+  `state: "off"`, `enabled: false` and a `detail` naming the switch (`outputs.hue.enabled is false in
+  config/room/fixtures.yaml`); `release` answers exactly as Stage 3 did: `{"released": true, "via": "room", ...}`.
+- **Before the brain runs:** the rig routes answer 503 `starting`; `hue/release` answers as with no hue output (nothing
+  can be streaming yet), as it does today.
+
+**Tests (B12):**
+- fixtures: the real fixtures.yaml loads with no problems and exactly patch.yaml's six devices (ids, labels, lights,
+  screens, placements); every output off; the `around` group's order. A test OFL type (`tests/data/ofl/`: an RGBW
+  par with dimmer, fine dimmer and a strobe channel with an Open range; a colour-wheel spot) maps to the right
+  `AttrChannel`s and defaults; a bad mode, a matrix type, an unknown capability. Selectors: AND, OR, `!`, prefixes,
+  `group:`, bad grammar. Latency: per-fixture over per-output over hand-set over unset, `align_pct`, `trim_ms`, the
+  colour fallback, `min_pulse_ms`. Problems: Port-Address 0, a footprint past 512, an overlap, an unknown type, output
+  or node, a `streamer` key. A bad edit keeps the last good view; hot reload on a type file's change. `hue_settings`
+  over a fake patch.yaml.
+- outputs: with fake drivers and a fake engine: runners only for enabled, built outputs; switching on and off at
+  reload; a driver kind that isn't built; a driver that raises (counted, `error`, backoff, carries on); `on_hit`
+  wakes only hits-capable runners; `plan` honoured (a fake clock); stop order; `set_look` reaches the engine; the
+  snapshot's shape. Nothing is sent anywhere.
+- main and api: the wiring with fakes (add order, the fan-out, the hit tap, stop order, `--no-brain`); every route's
+  shape, the no-hue answers, 404s, 503 before the brain.
+
+#### S5.4a As built: the registry (fixtures.py, ofl.py, tools/show/add_fixture.py; 16 Oct)
+
+`show_service/fixtures.py` (the registry), `show_service/ofl.py` (the OFL reader; `fixtures.load_ofl` is
+`ofl.load_ofl`), `tools/show/add_fixture.py`, `tests/test_fixtures.py` and `tests/test_ofl.py` (59 tests, under 1 s
+niced, plus one network test that runs only with `SM_OFL_NET=1`). The test OFL types are trimmed copies of two real
+fixtures (MIT), embedded in test_ofl.py instead of `tests/data/ofl/`: an RGBW par with a dimmer, a fine dimmer, a
+strobe with an Open range, switching channels and a null gap, and a colour-wheel spot. On 16 Oct the tool fetched
+three real fixtures from open-fixture-library.org into a scratch directory, and they loaded through the registry with
+no problems.
+
+**The S5.4 signatures, plus these optional additions:**
+- `load(..., lamps=None)`, `Registry.poll(looks=None, force=False, lamps=None)` and `select(expr, rig, *, lamps=None)`
+  take show.yaml's `lamps`.
+  - With them, `role:` follows the director's rule: the fixture's own role, else `placement_roles[placement]`, else
+    `default_role`, for lamps only. A written `role` that isn't in `lamps.roles` is a problem line.
+  - Without them, `role:` matches written roles only.
+  - **outputs.py and looks.py should pass show.yaml's `lamps`**, so that `"kind:lamp !role:key"` works by placement.
+- `select` on a string that doesn't parse raises `ValueError("bad_selector: ...")`, as `parse_selector` does.
+  looks.py writes the problem line, and the layer selects nothing (checked against looks.py on 16 Oct).
+- `summary(view)` gives the Rig snapshot's `registry` block: `{revision, path, error, problems, counts}`.
+- `Registry.hue_settings(out)` is `hue_settings` over the patch.yaml it last read. `Registry` also exposes `patch`,
+  `latency` and `generation`.
+- Also public: `parse_curve`, `Selector`, `Term`, and in ofl.py `parse(doc, mode, *, type_id, file) -> (TypeInfo,
+  usable)`, `modes(doc)`, `find_mode` and `read`.
+
+**Rulings where S5.2 left room:**
+- **Selector order.** Members of the selector's positive `group:` terms come first, in the group's order, then the rest
+  by `order`, then id. So `group:around` keeps its clockwise order for phase spread.
+- **Left out:** a fixture with no type, or a type that can't be read (no file, no such mode, a file outside
+  fixture-types/); an artnet fixture with no `address`; a hue fixture with no `light`; a fixture running past
+  channel 512.
+- **Kept unrouted:** a fixture naming an unknown output.
+- **Kept inert:** a matrix type, with footprint 0. A matrix fixture's plain modes do work.
+- **Not driven.** A channel's attribute comes from its first capability that isn't `NoFunction`. An intensity or
+  emitter channel that mixes in another function (a Dimmer/Strobe) or runs backwards reads `other`, because driving it
+  to full would strobe. It holds OFL's default, else its brightest intensity value, with a problem line saying to pin
+  it.
+- **Fine bytes.** A fine channel holds its byte of the coarse default, and 0 under `dmxValueResolution: 8bit`. On a
+  24-bit channel only the first fine is driven.
+- **Switching channels** are `other`. They hold the default of the channel that their controller's default selects.
+- **`channels` leaves out null gaps** (and unknown names, with a problem line). The encoder starts from footprint
+  zero bytes, as colour_mix does.
+- **`TypeInfo.emitters` holds only fixtures.yaml's overrides** (`source: "type"`), and colour_mix fills the rest from
+  its starting points. An override for an emitter the type doesn't have is a problem line.
+- **`OutputConfig.settings` is as written.** patch.yaml's values aren't merged in; `hue_settings` merges them (B14
+  calls it).
+- **`built`** is `driver in DRIVERS_BUILT`; outputs.py refines it with the import.
+- **The caps checks belong to outputs.py.** `hits: true` on a driver that takes no hits, and `min_attack_ms` only
+  raising the driver's floor, need the driver's caps, which fixtures.py doesn't have.
+- **A node at a loopback address on 6454** reads `virtual: true`, with a problem line, as artnet_lan treats it.
+- **Latency.** Colour with nothing measured takes the intensity rise, with the source "<rise's source> (the intensity
+  rise)". latency.json's colour and position entries are read from their `rise` edge, else from their own t10/t50.
+- **`house`** needs `hex`; `intensity` defaults to 1.0.
+- **`revision`** is the sha1 of fixtures.yaml, as the contract says. A change to a type file, latency.json or
+  patch.yaml gives a new view (`poll` returns True) under the same revision. **Consumers key on `poll()`'s True, or on
+  the view's identity, never on the revision.**
+- **YAML loader.** YAML goes through libyaml's `CSafeLoader` when it is there: the same result, about 10x faster.
+
+**The name scan (B16).** fixtures.py names the builtin type ids (`BUILTIN_TYPES`'s keys) in code; they are fixed
+vocabulary, like `DRIVERS`. When the scan adds fixtures.yaml's type ids, it should subtract `fixtures.BUILTIN_TYPES`,
+as test_fixtures.py's own scan of fixtures.py and ofl.py does.
+
+**Costs** (niced, under the host's load):
+
+| What | Cost |
+|---|---|
+| `poll` with no change (the 1 Hz rig tick) | p95 ~40-60 µs |
+| a reload of the real file | p50 2.2 ms, p95 3.9 ms (about 20 ms with PyYAML's pure-Python loader) |
+| a reload, 5 fixtures and 2 OFL types | p50 2.6 ms |
+| `select("group:around")` | p50 28 µs |
+
+**tools/show/add_fixture.py** (stdlib urllib, like fetch_models.py):
+- `add_fixture.py <maker>/<model>` (or the fixture's site URL) saves `ofl/<maker>/<model>.json` under
+  `--dest`, which defaults to `config/room/fixture-types/`. The JSON is re-serialised with indent 2.
+- It lists every mode with show_service's own channel map (attribute, emitter, fine channel, default, colour wheel,
+  problem lines), and prints the `types:` entry to paste.
+- `--mode` shows one mode only. `--file` reads a local file and writes nothing. A saved copy that differs is kept
+  unless `--force` is given.
+- **It never edits fixtures.yaml.**
+- Exit codes: 0 done; 2 bad arguments; 3 the fetch failed or the file isn't an OFL fixture; 4 a saved copy differs.
+
+#### S5.4b As built: outputs.py, the wiring and the routes (c8, 16 Oct)
+
+B12's `outputs.py` hadn't landed when the builders finished, so c8 built it to S5.4, with `tests/test_outputs.py` (13
+tests: fake registry, engine and drivers, plus one test with the real registry, engine and Art-Net driver against an
+ephemeral sink and a virtual node).
+- **`Rig`** (component `rig`, 1 Hz): `attach(ctx, palette_fn, look_fn, clock, features_fn, neutral, registry,
+  engine, driver_factories, driver_kw, fixtures_path, types_dir, latency_path, patch_path, mono, sleep)`. The registry,
+  the engine and the drivers are imported lazily (`REGISTRY_MODULE`, `ENGINE_MODULE`, `DRIVER_MODULES`); a missing one
+  reads `not_built` with its reason in the output's status, and `snapshot().modules` lists them.
+- **Each tick** (and at once on a show.yaml change): `Registry.poll(looks, lamps=)`, `LookEngine.configure(looks,
+  view, lamps=)` when the view or show.yaml's `looks`/`lamps` changed, then the outputs are reconciled: an enabled
+  output whose kind is in `DRIVERS_BUILT` gets its driver (`cls(output_id, ctx=, clock=, settings=<show.yaml
+  rig.<kind>>, shared=, mono=, **driver_kw[kind]`), `configure`, `start`, then its runner; one switched off, or whose
+  kind changed, stops its runner, then its driver; a new view or new `rig.<kind>` settings reconfigure the running
+  drivers (`set_settings` first where a driver has it) and wake their runners; then each driver's `tick`.
+- **show.yaml `rig.enabled: false`** (or a value that isn't a bool, with a problem line) stops every output and
+  makes `view()` None, so `ctx.rig()` is None and the director falls back to patch.yaml: the rollback.
+- **The runner** (`show-out-<id>`): plan (a woken hit: `driver.plan_hit`, else `driver.on_hit` + `plan`), wait on
+  its Event until `t - ahead`, `evaluate(<id>, t, driver.caps)`, sleep to `t`, `set_frame`. `ahead` (S5.14) is
+  `max(BUILD_AHEAD_S, the runner's own evaluate p95 + sys.getswitchinterval())`, at most `BUILD_AHEAD_MAX_S` (4 ms, a
+  starting point), re-read every 64 frames (`extra.runner.build_ahead_ms`): BUILD_AHEAD_S (1 ms, artnet_out's) alone
+  made 16 pars late (p95 2.2 ms against the 1.5 ms budget). A plan more than 1 s in the past is re-anchored on now; a plan never repeats the last time
+  (`MIN_STEP_S`). Three failures within 10 s: `error` for `RUNNER_BACKOFF_S` (5 s), then on. Stats per runner:
+  frames, rate, lateness p50/p95 (sent − planned), hits, errors, under `OutputStatus.extra.runner`.
+- **Hits:** `Rig.on_hit` (show-rx) hands every body to the engine's ring, and wakes a hits-capable runner only when
+  `LookEngine.takes_hit(d, output)` says the look would flash it now **on that output** (S5.5a, c8's addition; per
+  output since S5.14: an output with no fixture in `looks.hits.select` stays on its beat grid).
+- **State across a restart** (S5.14): `persist` keeps each running driver's `persist_state()` by output id in
+  state.json's `rig` (and the last one of an output switched off since); `restore` hands it to the driver's
+  `restore_state` when that output is built again. Only hue_out has one (what room asked to follow).
+- **`snapshot()`** is built on show-brain after each tick (any thread reads it); `snapshot_now()` builds one for
+  `GET /api/v1/rig`. Keys: `enabled`, `registry` (`fixtures.summary`), `outputs` (an `OutputStatus` per configured
+  output: `off` with the switch's words, `not_built` with the reason, else the driver's own with the runner's stats),
+  `nodes`, `engine` (`LookEngine.stats()`), `errors`, `problems` (show.yaml, two hue outputs), `modules`,
+  `tick_ms_p95`, `hue` (the HueStatus the routes answer).
+- **Stop** returns an awaitable when a driver's stop is still running on show-brain (HueOut's PUT stop): brain.py
+  awaits it (STOP_AWAIT_S), then the Art-Net socket is closed.
+- **More than one enabled hue output** is a problem line; the Hue routes use the first by id.
+
+**`__main__`** (S5.4's six steps, as specified):
+1. `outputs` is the last of `BRAIN_MODULES`: brain add order room, situations, autopilot, sources, ml, structure,
+   listener, director, **rig**. Its inputs: the director's `palette_fn` and `look_fn`, the Clock (it has `snapshot` and
+   `next_beat(t, lead_s, gate)`), `Features.latest`, `neutral` = (artnet_out's `SHOW_PALETTE` or `DEFAULT_RGB`,
+   `HUE_DEPTH`), `latency_path` = `--latency-file`, `patch_path` = artnet_out's (`SHOW_PATCH_FILE`), `driver_kw` =
+   `{artnet: {state_file: <state dir>/nodes.json}, hue: {patch_path}}`. Tests add `brain_kw["outputs"]` on top
+   (`driver_kw` merged per kind).
+2. `ctx.set_look_out` is `Show._set_look_out`: Art-Net out's `set_look`, then the rig's, each guarded
+   (`artnet.set_look`, `rig.set_look`).
+3. The music.hit bodies that reach `Clock.observe_hit` reach `Rig.on_hit` (guard `rig.hit`).
+4. Stop: the brain stops the rig first (reverse add order), then Art-Net out, rx, the clock, the bus.
+5. `--no-brain` builds no rig; a missing `outputs.py` is exactly Stage 4.
+6. `GET /api/v1/state` gains `rig`.
+
+**api.py** (S5.4's table, plus one route): `GET /api/v1/rig`, `GET /api/v1/rig/frame?output=<id>` (404
+`unknown_output` with `choices`; `?output=` missing names it), **`GET /api/v1/rig/dmx`** (c8's addition: the virtual
+nodes' universes decoded from the packets the drivers kept, `{nodes: {node: {port_address: {seq, length, channels,
+age_s}}}}`, the previz feed), `POST /api/v1/rig/nodes/{id}/record-failsafe` (404 `unknown_node` with `choices`),
+`POST /api/v1/hue/stream`, `POST /api/v1/hue/release`, `GET /api/v1/hue/status`. With no hue output running, stream
+and status answer HueStatus `off` (detail: `outputs.<id>.enabled is false in config/room/fixtures.yaml`, or the rig's
+own switch, or the driver's `not_built` reason) and release answers as Stage 3 (`released: true, via: room`). A
+running hue output's release goes through `brain.call` with `rig.hue.release_timeout_s + 2` (a timeout answers
+`released: false, why: timeout`). Without a rig component, `GET /api/v1/rig` answers `{"enabled": false, "why"}`.
+
+### S5.5 looks.py and emitters.py (B13)
+
+**looks.py:**
+```python
+class LookEngine:
+    def __init__(self, *, palette_fn=None, look_fn=None, clock=None, features_fn=None,
+                 neutral: tuple[tuple[float, float, float], float] = ((1.0, 0.62, 0.32), 0.7),
+                 mono=time.monotonic) -> None
+    def configure(self, looks: dict, rig: contract.RigView) -> list[str]   # show-brain: compile the Program; problems
+    def set_look(self, *, hue_depth=None, beat_lock=None, reset=False) -> None   # any thread (VirtualMaestro.set_look's)
+    def on_hit(self, d: contract.HitData) -> None          # any thread (a deque per hits-capable output)
+    def evaluate(self, output_id: str, t_send_s: float, caps: contract.DriverCaps) -> contract.Frame
+                                                           # only ever from that output's runner
+    def active(self, t_s: float) -> tuple[bool, str | None]   # any thread: the activity rule below
+    def stats(self) -> dict                                # {"program": {revision, layers, problems}, "per_output":
+                                                           #  {id: {"eval_us": {p50, p95}, "frames", "hits"}}}
+```
+
+**`evaluate(output, t)`**, per fixture of that output (kind `screen` never: rule 3):
+1. **Times.** `ti = t + rise_ms/1000`, `tc = t + colour_ms/1000` (the fixture's `LatencyView`). `palette_fn` is called
+   once per distinct time in this frame (uncalibrated: once).
+2. **Base.** `rgb = palette(t)[fixture id]`, else `palette(t)["*"]`. With no vibe (`palette_fn` returns no dict): the
+   neutral colour at full value. With a vibe but no entry (a fixture the director doesn't know): the fixture's `house`,
+   else dark. `level = max(rgb at ti)`, `colour = rgb at tc / max(rgb at tc)` (or zeros). **S5.14:** the drop's
+   unison hit (`look_fn().hit`) is laid over the director's colours here, per output: at once on an output whose caps
+   take hits; on one that doesn't (Hue) at once only for a predicted drop line, else as a swell (§5.4).
+3. **Activity** (`active`), exactly artnet_out's P0 idle rule: with a vibe, always active (its relaxed look, House and
+   Low go out in a quiet room: §8.5 "never black"). With no vibe: inactive (`why`) when the features are older than 5 s
+   (`no_features`), or the room is quiet (gate under 0.02 for 10 s, until it is back over 0.05: `quiet`): artnet_out's
+   own constants (S5.1). **S5.14:** on an output whose caps say `idle_without_vibe` (artnet), no vibe is inactive
+   whatever the sound (`no_vibe`): nothing room-side decides which DMX fixtures follow (§8.6). An inactive frame carries every fixture at its `house` look (or dark, intensity 0), with no
+   layers or hits: that is what DMX shows idle (S5.7). The hue driver ignores an inactive frame's colours and holds
+   the last active ones until it stops the area (S5.6).
+4. **Layers** (show.yaml `looks.layers`, compiled; S5.10). For each layer whose `select` holds the fixture and that is
+   `enabled`:
+   - `attr: intensity` (the only one built in Stage 5; `colour` layers are kept for later and skipped with a problem
+     line): `intensity *= 1 - d + d x shape(p)`;
+   - `p` is the layer's phase at `ti`: `beat` (× 1/subdivision when `subdivide`), `bar`, `phrase` (the clock body via
+     clock.py's helpers), or `time` (seconds over its period). Phase spread: member `i` of `n` in the layer's ordered
+     selection adds `spread x i / n` cycles;
+   - `d` is the layer's `depth`: a number, or a `contract.LOOK_INPUTS` word (`swell` = the `set_look_out` depth, or
+     the neutral depth with no vibe; `motion.amount`, `accents.density`, `look.spread` from `look_fn()`; `energy` from
+     the features), × `depth_scale` (default 1);
+   - **`needs`** and the clock's gate (§5.4's confidence policy): `beat` runs at full depth on gate `beat`; on gate
+     `dmx` only on outputs whose `caps.hits`, × `looks.middle_depth`; on `none`, or with `beat_lock` false, it uses
+     `without_beat` (`energy`: d × the energy smoothed with τ 1 s, as artnet_out does; `none`: d = 0). `grid` needs
+     any grid; `none` free-runs on time at the last tempo when there is none. **S5.14:** `beat_lock` is the vibe's own
+     (the engine reads the gate itself), and `swell` reads `beat_depth` (the accent depth before the gate) while the
+     layer runs beat-locked, so the gate-`dmx` branch has a depth; every oscillator on an output with
+     `caps.min_period_ms` (hue: 2 × attack) runs no faster than that;
+   - **parameter changes** (depth, subdivision, motion speed and amount, spread) glide to their new values over the
+     look's `transition` (its `beats` at the clock's tempo, else its `seconds`; `cut`: at once), so a look change
+     crossfades in beats. The base colour's crossfade is the director's (`palette_fn`).
+5. **Shapes** (`p` in [0, 1), 1 at the beat): `sine` 0.5 + 0.5 cos 2πp; `saw` 1 − p; `square` 1 for p < 0.5; `triangle`
+   1 − 2 min(p, 1 − p); `swell`: artnet_out's envelope, max(smoothstep(1 − (b − ti)/attack) while the next beat `b` is
+   within `attack`, exp(−(ti − b_prev)/decay)), with `attack = max(layer attack_ms, caps.min_attack_ms)`. On an output
+   whose period at the current subdivision is under 2 × attack, the next coarser subdivision is used.
+6. **Hits** (only when `caps.hits`; §5.4: DMX yes, Hue never). For each hit in the output's deque with `strength ≥
+   min_strength`, a band in `bands` (unset: any), while the look's `accents.style` is in `looks.hits.styles` and the
+   gate isn't `none`: `flash = depth x strength`, held for `min_pulse_ms` from the hit's time, then decaying with
+   `decay_ms`. `intensity = max(intensity, min(1, level + flash))` (HTP). A hit arrives 8-20 ms after the sound
+   (§5.1); it is shown at once, never delayed to its own latency.
+7. **Master and caps** (kind `lamp` only): × `looks.master`; `caps.flash_hz_max` (unset: off) lets an intensity rise
+   of more than 0.5 happen at most that often per fixture. Then each output's rise limit: an intensity rise is never
+   faster than `caps.min_attack_ms` (a slew limit per fixture, on the runner's own state).
+8. **Encode.** `FixtureFrame{intensity, colour, rgb = colour x intensity, t_eval_ms}`, and for a type with channels
+   `dmx = emitters.encode(fixture, type, intensity, colour)`.
+
+**emitters.py** (pure):
+```python
+EMITTER_DEFAULTS: dict[str, dict]          # emitter -> {"xy": [x, y], "Y": relative luminance}: typical LED datasheet
+                                           # values, "starting point; measure" (a type's emitters override them)
+def srgb_to_linear(c: float) -> float; def linear_to_srgb(c: float) -> float
+def solve(colour: Rgb, t: contract.TypeInfo, wb: dict[str, float]) -> tuple[dict[str, float], float]
+    # emitter -> 0..1 (linear light), and the scale the solve lost (folded into intensity when the type has no dimmer)
+def wheel_slot(colour: Rgb, slots: list[dict]) -> int      # the nearest colour slot's DMX value (OKLab distance)
+def curve_out(v: float, curve: str) -> float               # linear light -> DMX fraction: srgb | linear | gamma:<g>
+def encode(f: contract.FixtureInfo, t: contract.TypeInfo, intensity: float, colour: Rgb) -> bytes
+```
+- **Colour to emitters** (§9.2), in linear light (sRGB decoded):
+  - **RGB** (red, green, blue only): straight across.
+  - **RGBW:** white = min(r, g, b), subtracted from each.
+  - **Any other set** (amber, lime, cyan, the whites...): non-negative least squares on the emitters' XYZ (from `xy`,
+    `Y`) against the colour's XYZ, bounded to [0, 1] (`scipy.optimize.lsq_linear`, scipy is in the venv), scaled so
+    the largest is 1 with the chromaticity kept. `uv` never takes part (it is pinned to its default).
+  - **A colour wheel:** the nearest colour slot in OKLab; the wheel's channel takes that slot's value.
+  - Then the fixture's `wb` gains, then the curve (the fixture's, else the type's, else `srgb`: with it, RGB values
+    reach DMX exactly as the palette has them).
+- **Intensity.** A type with an intensity channel gets it there (16-bit when it has a fine channel; linear) and its
+  emitters at full colour. A type without one gets the emitters × intensity (before the curve).
+- **The bytes.** Start from every channel's default, apply the fixture's `pin`s, then the driven channels. The result
+  is always `footprint` bytes.
+- Solves are cached on the colour quantised to 0.005 (a fixture's colour moves slowly).
+
+**Tests (B13)** (fake palette_fn, look_fn, clock and features; `-s` prints the budgets):
+- **The screens rule:** a `screen` fixture never appears in a Frame, whatever the layers, master, caps and hits.
+- **Parity with the virtual Maestro:** with no vibe and the neutral colour, Hue lamps' `rgb` equals artnet_out's hue
+  channels (÷ 255) for the same clock, features and depth, within 1/255, through a beat, energy without a beat, and
+  the quiet and no-features idles.
+- Latency: a lamp with `rise_ms` 100 is evaluated 100 ms ahead (its swell peaks 100 ms before the beat in send time);
+  per-lamp leads differ within one frame.
+- The gate policy: `beat` everywhere; `dmx` only on hits outputs at `middle_depth`; `none` and `beat_lock` false →
+  `without_beat`.
+- Shapes, subdivision, the 2 × attack rule, phase spread across `group:around` (each lamp a quarter cycle apart at
+  spread 1), glides over a transition in beats and a cut.
+- Hits: none on an output without `caps.hits`; HTP over the base; `min_pulse_ms`; styles and strength filters.
+- Caps and the slew limit (`min_attack_ms` 80: no rise faster).
+- emitters: RGB identity through `srgb`; RGBW white extraction; RGBA/RGBAW NNLS hits the target chromaticity within
+  0.005 xy for in-gamut colours and is non-negative; the wheel's nearest slot; wb; curves; 16-bit fine channels; pins
+  and defaults (a shutter's Open value); the footprint length.
+
+#### S5.5a As built (B13, 16 Oct)
+
+`show_service/looks.py` (the engine) and **`show_service/colour_mix.py`**, which is S5.5's emitters.py under the name
+the build assigned, with the same API (`EMITTER_DEFAULTS`, `srgb_to_linear`, `linear_to_srgb`, `solve`, `wheel_slot`,
+`curve_out`, `encode`). Tests: `tests/test_looks.py` (37) and `tests/test_colour_mix.py` (18). Nothing is committed.
+- **The S5.5 signatures, plus:**
+  - `LookEngine.configure(looks, rig, *, lamps=None)`. Pass show.yaml's `lamps`, so that `role:` selectors (through
+    `fixtures.select(..., lamps=)`) and the allocation fallback below follow placements as the director does.
+  - `stats()` also carries `errors` (per failing input), and each output's `held` and `why`.
+  - Public helpers: `looks.shape(fx, cycles, period_s, attack_s, decay_s)`, `looks.role_of(fixture, lamps)` and
+    `looks.DEFAULT_LAYERS`.
+- **Selectors** go through `fixtures.select` only (one copy of the grammar). If fixtures.py can't be imported, every
+  layer and the hits select nothing, each with a problem line, and the rest runs.
+- **Rulings where S5.5 left room:**
+  - **Allocation.** A fixture the director's `palette_fn` doesn't name takes, in order: a lamp the director gives the
+    same role (`look_fn().lamps[*].role`), then a registry lamp with the same written role or placement, then the same
+    decided role (same screen first, then zone, then id), then `"*"`, then its `house`, else dark. The six existing
+    devices are all named by the director, so nothing changes for them.
+  - **Held.** With a vibe but stale or silent features, frames stay active with no layers and no hits, as artnet_out
+    sends `hue_depth` 0 then.
+  - **Resolve.** Oscillators multiply in file order, as S5.5 step 4 says. Hits are HTP over that. Colour is the base's
+    only (LTP, for later colour layers).
+  - **Phase spread** is a lag: member `i` runs `spread x i / n` cycles behind member 0, so the wave walks the group in
+    its order (clockwise round `group:around`).
+  - **The rise limit** is a smoothstep's peak slope, 1.5 / `min_attack_ms` (`contract.SLEW_PEAK`, hue_out's own limit
+    too since S5.14). So the swell itself (attack ≥ `min_attack_ms`) is never clipped, and parity holds exactly. A
+    full 0→1 step takes at least 53 ms on Hue.
+  - **The 2 x attack rule** applies to every subdivided beat layer, with attack = max(layer `attack_ms`,
+    `caps.min_attack_ms`).
+  - **Glides.** Depth and spread glide linearly over the look's transition. Subdivision and a period picked from a
+    `[slow, fast]` pair crossfade the old wave into the new, so a wave never jumps phase. That period moves in
+    halvings of the slow one (a power of two), so `[8, 1]` gives 8, 4, 2 or 1 bars and stays on bar lines.
+  - **`needs: grid`** without a grid uses `without_beat`. **`needs: none`** free-runs on the clock's last body
+    (FREE_RUN_BPM 120 before any). `needs` defaults to `beat` on phase beat, else `none`; `without_beat` to `none`.
+  - **No `looks.layers` key at all** gives artnet_out's swell (`DEFAULT_LAYERS`); an empty list gives no layers. No
+    `hits` block: no hits.
+  - **Hits** are evaluated at the send time, from the hit's own time (a hit 20 ms late is held 20 ms less). Flashes
+    are dropped 8 decay constants after their hold.
+  - **`flash_hz_max`** counts a rise of more than 0.5 above the fixture's low since its last counted rise.
+  - **Inactive frames** carry the house look and leave the slew memory alone. So a Hue lamp coming back from an idle
+    isn't ramped from the house look the bridge never showed.
+- **colour_mix:**
+  - **NNLS** uses `scipy.optimize.nnls` with a 1e-4 ridge, normalised so the largest emitter is 1. The ridge gives a
+    unique answer that moves smoothly with the colour (no metameric jumps). Measured chromaticity error is ≤ 0.001 xy.
+  - **`solve`'s scale** is the factor the raw solve was multiplied by (1.0 for RGB and RGBW). It is informational, not
+    folded into intensity: a dimmer-less type already gets emitters × intensity, which gives the same light as a
+    dimmer.
+  - **A dimmer-less RGB or RGBW type** encodes the frame's `rgb` (colour × intensity) straight across, so through
+    `srgb` an RGB par shows exactly what the palette has. A dimmer-less least-squares type takes its emitters ×
+    intensity in linear light.
+  - **The wheel:** the nearest slot of all in OKLab, white (Open) slots included (S5.14: whites used to be compared
+    only under the threshold, so 4000 K took yellow and a pale pink orange). Two thresholds force the white slot: a
+    colour under OKLCh chroma 0.05 (`WHEEL_WHITE_C`), and one whose nearest slot is a coloured one more than 60° away
+    in hue (`WHEEL_MAX_HUE_DEG`), when there is a white slot. Both are starting points.
+  - **Measured emitters** (S5.14): a type that declares any emitter's `xy` or `Y` goes through the least-squares
+    solve, RGB and RGBW sets included (a warm-white W at xy 0.437, 0.404 turned a 6500 K request into ~3000 K
+    through white = min(r, g, b)). The solve is in linear light and `curve` encodes it, so the result is right only
+    when the type's `curve` matches the fixture's response: `srgb` fits one that dims like sRGB; a linear-dimming RGBA
+    misses #ff8040 by ~0.1 xy under it. fixtures.yaml says to measure each type's curve.
+  - **`EMITTER_DEFAULTS`** are starting points (typical datasheet values; measure). A type's `emitters` override them
+    per emitter, and an override that doesn't read is ignored.
+  - **Caches.** The plan per type, the template per fixture (defaults, then pins) and the colour part per fixture
+    (the emitters at full colour and the wheel, keyed on the exact colour) are all cached by identity. So a frame with
+    an unchanged colour only rewrites the dimmer. The NNLS solves are cached on the colour quantised to 0.005.
+- **Parity, checked** (test_looks): the real `VirtualMaestro` and the engine are driven at the same planned send times
+  with the same fake clock and features, using show.yaml's `pulse` layer and the patch.yaml hue devices. Through beat
+  lock, gate dmx and gate none (energy), the quiet idle, the return and the no-features idle, every Hue `rgb` equals
+  artnet_out's hue channels ÷ 255 within ½/255 (byte rounding), and the active flags and `why` agree.
+- **Costs** (`-s`; niced, load average ~2 on 20 threads; I couldn't confirm the render was running):
+
+  | What | p50 | p95 | Budget |
+  |---|---|---|---|
+  | `evaluate`, 4 Hue lamps, show.yaml's looks | 42-47 µs | 85-103 µs | 150 µs |
+  | `evaluate`, 32 RGBW pars with dimmers, a hit every 230 ms | 259-326 µs | 413-643 µs | 600 µs |
+  | an uncached NNLS solve (RGBA, RGBAW, RGBLWw) | 83-94 µs | | |
+
+  The 32-par p95 went over 600 µs in one run of four, under load.
+- **For c8:**
+  - The name scan (B16, S5.8) lists `emitters.py`; it should list `colour_mix.py`. (Done: S5.8, c8's part.)
+  - The scan with fixtures.yaml's ids, outputs, groups, zones, screens and placements, plus show.yaml's layer ids,
+    finds nothing in looks.py or colour_mix.py.
+- **c8's integration rulings (16 Oct), found by the Stage-5 e2e:**
+  - **No hits under House lights or Lights low.** A `music.hit` flashes only while the look (LookData) has neither
+    `house` nor `low`: they are steady, as the director's own drop hit and its swell depth (0 under House and Low)
+    already are. Before this, DMX flashed up to level + 0.5 over Lights low. `test_no_hits_under_house_lights_or_lights_low`.
+    Since S5.14 House and Low also run **no layer** (like a held frame), and no hit flashes over the pre-drop dip
+    (LookData `dip`).
+  - **`LookEngine.takes_hit(d)`** (any thread, a few µs): would this hit flash now (the hits block's strength and
+    bands, the look's style, House and Low, the clock's gate)? `Rig.on_hit` wakes the hit outputs' runners only for
+    these, so the many hits a look doesn't show (every band's onsets reach show-rx) never pull DMX frames off the beat
+    grid. `test_takes_hit_follows_the_hits_block_the_look_and_the_gate`.
+
+### S5.6 hue_out.py (B14)
+
+Entertainment streaming from show_service (§9.4, P5), following room_service/hue/output.py's rules exactly where they
+apply. The room side is built (68, 16 Oct; S5.6b is its hand-over contract, which wins over anything below): room's hue
+adapter, with patch.yaml `hue.streamer: show`, sends `POST /api/v1/hue/stream {lights, on}` (the complete set of `hue.*`
+lamps that follow, every time), calls `POST /api/v1/hue/release {lights}` before writing a lamp, polls `GET
+/api/v1/hue/status` (2 s timeout) while any lamp follows, and reads our `state`: exactly `idle`, `armed`, `streaming`
+or `taken_over` (`taken_over` matters to it).
+```python
+class HueOut:                                              # contract.Driver, kind "hue"
+    caps = {"hits": False, "min_attack_ms": 80.0, "grid": "fixed", "rate_hz": 50.0, "keepalive_s": None}   # §5.4, §9.4
+    def __init__(self, output_id: str, *, ctx, clock=None, settings: dict | None = None, shared: dict | None = None,
+                 client_factory=None,                      # (BridgeSecrets) -> a HueClient-like (async get/put, and
+                                                           #  inventory for room's resolve_area)
+                 streamer_factory=None,                    # () -> an xy_streamer-like (connect/send_colors/disconnect,
+                                                           #  is_connected)
+                 secrets_loader=None,                      # (bridge id, host) -> BridgeSecrets | None (S5.6b, S5.6c)
+                 patch_path: Path = contract.PATCH_FILE,
+                 mono=time.monotonic) -> None
+    # Driver: configure, start, stop, plan, set_frame, tick, status (contract.Driver)
+    def request(self, lights: list[str], on: bool) -> contract.HueStatus     # show-brain (POST /api/v1/hue/stream)
+    async def release(self, lights: list[str] | None) -> contract.HueRelease # show-brain (POST /api/v1/hue/release)
+    def hue_status(self) -> contract.HueStatus                              # any thread
+```
+- **Defaults are room's own** (S5.6b). `client_factory` and `streamer_factory` default to room_service.hue.client's
+  `HueClient` and room_service.hue.stream's `xy_streamer` (hue-entertainment 0.1.2's `HueDtlsStreamer` in the
+  xy+brightness colour space, imported when the area first starts). Secrets: room's `BridgeSecrets.load(<patch.yaml
+  hue.bridge>, <patch.yaml hue.host>)`, read-only, as room's DmxStack calls it (S5.6c). No secrets for the bridge: state `no_config`, detail "the bridge … isn't paired (python -m
+  room_service.hue.pair)".
+- **Settings.** `fixtures.hue_settings` gives `bridge`, `area`, `gamma`, `stop_after_s` and `streamer`; show.yaml
+  `rig.hue` gives `takeover_check_s`, `start_wait_s`, `release_settle_s`, `release_timeout_s`, `error_backoff_s`.
+- **The control task** (an asyncio task on `ctx.loop`, started by `start()`, woken by `request`, `release`, a
+  reconfigure, or every 0.5 s) decides the state (`contract.OUTPUT_STATES`):
+  1. `enabled` false → `off` (stop the area if we hold it).
+  2. patch.yaml `hue.streamer` isn't `show` → `waiting_room`: room_service streams the area; we never start (and stop
+     within one reload if we were streaming: the flip back is the rollback).
+  3. No wanted lamp → `idle` (stop the area if we hold it).
+  4. Wanted, but the engine has been inactive (frames with `active` false) for `stop_after_s` (patch.yaml's 10 s) →
+     stop the area, `waiting_input`: the bridge gives the lamps back to the house, exactly as room's P0 path did.
+     Wanted lamps start only while frames are active (room's output started only on fresh Art-Net); active again →
+     start.
+  5. Otherwise start, if not streaming: `starting` → resolve the area's channels (`resolve_area`) → GET the area: if it
+     is already active (someone else, or room's output still stopping after the switch), wait up to `start_wait_s`
+     for it to go inactive, else `taken_over` → PUT `{"action": "start"}` → `connect` in an executor (the DTLS
+     handshake blocks) → note the area's `active_streamer` → `streaming`. (S5.6c: patch.yaml is read again on each
+     start-wait poll and right after the handshake; flipped back to room meanwhile, the area is stopped before a frame.)
+  6. While streaming, every `takeover_check_s`: the area's status isn't `active`, or its `active_streamer` changed →
+     disconnect, `taken_over`. Nothing restarts until the wanted set changes (room re-applying the mode). **Never
+     fight**: we never stop or take an area someone else holds.
+  7. Any exception: `error`, the stream stopped, retried after `error_backoff_s`.
+- **Frames** (the runner thread; `plan` = every 1/rate_hz while `starting` or `streaming`, else every 0.1 s, which is
+  enough to track activity): `set_frame` sends `(channel, *xy_bri(rgb,
+  gamma))` for every wanted lamp the area has a channel for, **every frame, changed or not** (§5.4: a lost packet heals
+  at the next one). Only while `streaming`; otherwise it returns at once. Inactive frames keep sending the last active
+  colours until step 4 stops the area (room's input held its last values the same way). The send map (light →
+  channel, wanted) is swapped by reference by the control task. No hits ever reach Hue (`caps.hits` false); the
+  engine's slew limit keeps every rise ≥ 80 ms (§5.4).
+- **`request(lights, on)`**: `lights` is the complete set that follows (not a delta); wanted = the given ids that are hue
+  fixtures on this output (others listed in `unknown`), or none when `on` is false or the list is empty. It answers at
+  once (the route: `HueAnswer`, S5.6b); the state follows.
+- **`release(lights)`** (§9.4 step 3): remove them from wanted. `released: true` only once the lamps are writable
+  (S5.6b): our stream is over, the bridge reads the area inactive, and `release_settle_s` (1 s, the bridge's
+  post-entertainment write) has passed since.
+  - No stop of ours pending (none since our last start, or one already seen inactive) → the area is still read once,
+    whenever a client and an area are known (S5.6c): inactive → `released: true` at once; active (we don't hold it)
+    → `why: "taken_over"`. Before our first start (no client or area yet) → `released: true` with no read.
+  - Wanted now empty → the control task disconnects and PUTs `{"action": "stop"}` (`releasing`); the area is read every
+    0.25 s until it reads inactive, then `release_settle_s` → `released: true`. The same when the control task stopped
+    the area a moment before the release arrived (room's order: the new set first, then the release).
+  - Other lamps still follow → `{"released": false, "why": "shared_area", "still_following": [...]}`: the bridge holds
+    every lamp of an area while it streams, so one lamp can't be given back alone. room's own HueOutput has the same
+    limit; room's adapter then reads the lamp's mode from the bridge and says `unconfirmed`.
+  - Another app holds the area → `why: "taken_over"`; the bridge doesn't answer → `why: "bridge_unreachable"`; past
+    `release_timeout_s` (at most `contract.HUE_RELEASE_MAX_S`, 17 s) → `why: "timeout"`.
+- **Stop** (show_service stopping, or the output switched off): disconnect and PUT stop, so the bridge gives the lamps
+  back.
+- **Status** (`OutputStatus.extra` = `HueStatus`, `/api/v1/rig` `.hue`): state, detail, enabled, wanted, `asked`
+  (what room asked, unfiltered; S5.6c), streaming, area, channels, frames, dtls, unknown, and (S5.6b) `room_state` (the
+  four-word state the routes answer) and `words`.
+
+**Tests (B14)**, only with fakes (rule: **never the real bridge, never an Entertainment stream**): a fake client
+(aiohttp-free: `get`, `put` recording calls, an area whose status and `active_streamer` the test sets), a fake
+streamer (records `connect` and every `send_colors`), and secrets in `tmp_path`. A guard in the test module makes any
+default factory raise.
+- the state machine: off, waiting_room (and stopping when the switch flips back), idle, starting → streaming,
+  waiting_input after `stop_after_s` of inactive frames and back, an area already active (waited, then taken_over),
+  takeover while streaming (disconnect; no restart until the wanted set changes), error and backoff;
+- frames: 50 Hz continuous with unchanged colours, only wanted lamps with channels, `xy_bri`'s values, nothing while
+  not streaming;
+- release: none streaming, all (stop, inactive, settle, released), shared area, unreachable, timeout;
+- request: unknown ids; `on` false;
+- stop gives the area back.
+
+**requirements.txt** (B14's block): `hue-entertainment==0.1.2` and its pins as installed in `~/.venvs/sm-room`
+(cryptography, cffi, pycparser, zeroconf, ifaddr), installed under `flock … nice -n 19`.
+
+#### S5.6a As built (B14, 16 Oct)
+
+`show_service/hue_out.py`, `tests/test_hue_out.py` (47 tests, fakes only; ~10 s niced). The requirements block is
+appended and installed in `~/.venvs/sm-show` (hue-entertainment 0.1.2, cryptography 50.0.2, cffi 2.1.1, pycparser 3.11,
+zeroconf 0.151.5, ifaddr 0.2.0; aiohttp was already pinned).
+
+Where it differs from the spec above (the first three bullets are superseded by S5.6b, kept here as history):
+- ~~**Copied, not imported**~~ (B14's brief). Since S5.6b hue_out **imports** room's `room_service.hue.{stream, client,
+  colour}`; the copies and their two parity tests are gone.
+- ~~**The area resolve has no name fallback**~~. Since S5.6b it is room's `resolve_area`, unchanged: the configured
+  `area` when the bridge has it, else the area named "Screen Machine", else the only one (the detail says when the
+  streamed area isn't patch.yaml's). No area found, or none of the asked lamps having a channel in the area, reads
+  `no_config` and is retried after `error_backoff_s`.
+- **Secrets** follow room's rule (since S5.6b, room's own `BridgeSecrets.load`): the file for the bridge id, else the
+  only file. ~~The bridge's address is the pairing file's; patch.yaml's `host` is never read.~~ Since S5.6c,
+  patch.yaml's `hue.host` wins over the file's address, as in room. A file that doesn't read is `no_config` ("the
+  pairing file … doesn't read"); no key ever reaches a log or a detail.
+- **Constructor:** it also takes `patch_path` (default `contract.PATCH_FILE`) and `secrets_loader` (S5.6b; it
+  replaced `secrets_dir`), and ignores any other `**kw`.
+  - The driver reads patch.yaml itself (an mtime poll on each control step, 0.5 s), because `RigView` doesn't
+    carry it. So the switch back to `streamer: room` stops the area within about 0.5 s.
+  - It calls `fixtures.hue_settings(out, patch)` when that is importable, else its own copy of the same rule.
+    `streamer` always comes from patch.yaml; unset means `room`.
+  - show.yaml `rig.hue` is read from `ctx.settings` at `configure` and on every `tick`, else from the constructor's
+    `settings`. Each bad or missing number falls back to show.yaml's own starting point.
+- **`stop()`:** the DTLS session closes at once, synchronously. The PUT stop is async.
+  - On show-brain, `stop()` returns the `asyncio.Task` that finishes the PUT. **B12: `Rig.stop` should return or
+    gather it** so that `brain._shutdown` awaits it, as it already awaits an awaitable stop. Otherwise the loop
+    teardown may cancel the PUT, and the bridge then ends the unfed area by itself.
+  - From another thread, `stop()` waits up to `timeout`.
+  - A DTLS handshake still in its executor is waited for (`CONNECT_WAIT_S`), then closed.
+- **The driver keeps its own rise limit.** `max(rgb)` never rises faster than `contract.SLEW_PEAK` (1.5) × full scale
+  per `caps.min_attack_ms` (80 ms, or the output's higher value): the engine's own limit, one shared constant, so it
+  changes nothing when the engine complies. Falls are never slowed. (Until S5.14 it was 1 × full scale per attack,
+  which clipped the engine's own swell whenever depth × level > 2/3: Disco's 0.9 by up to 0.11 mid-attack.
+  `test_sent_brightness_matches_the_virtual_maestros_hue_channels` now checks what set_frame sends.)
+- **Caps** (S5.14): `min_period_ms` = 2 × the attack (no oscillator on a Hue output cycles faster: "never strobes",
+  §5.4) and `idle_without_vibe` false (room's hue adapter decides which lamps follow).
+- **What room asked survives a restart** (S5.14): `persist_state()` / `restore_state(saved)` through the Rig and
+  state.json, taken back only while patch.yaml says `hue.streamer: show`. `request` and `release` call
+  `ctx.persist`. So `scripts/ctl restart show`, a crash, or the output switched off and on comes back `streaming`
+  without room's next mode apply (room re-sends only then). Room's side of the re-sync is 68's (S5.12 step 7), now
+  built against `lights` and `boot_id` (S5.6c).
+- **Never fight, extended.** Before every PUT stop the area is read: an area that another `active_streamer` holds is
+  never stopped.
+  - A dropped DTLS session is handled three ways: if the bridge already ended the area, it restarts (room's rule); if
+    the area is still ours, it is stopped and restarted; if someone else holds it, the output goes `taken_over`.
+  - **Limit:** room_service and show_service pair with the same application key, so `active_streamer` is the same
+    `auth_v1` rid for both. The check sees other apps (the Hue app), not room. The exclusive `hue.streamer` switch is
+    what keeps the two apart (S5.9).
+- **Release.** A release whose stop fails answers `bridge_unreachable`, but only after the driver's own retry has also
+  failed. The stop is then retried after the backoff (`error` until it succeeds). (S5.6b: the inactive check and the
+  settle now apply to every release after our stop, however the stop started.)
+- **`request` and `release`** raise `ValueError("bad_request: ...")` when `lights` isn't a list of strings.
+- A `kind: screen` fixture never joins the stream: it reads as `unknown` (the screens rule).
+
+**Costs** (`-s`, niced, under the host's load):
+
+| What | p50 | p95 | Budget (p95) |
+|---|---|---|---|
+| `set_frame`, 4 lamps, beat pulse (the xy is cached on the full-level colour, so a pulse computes only the brightness) | ~30 µs | 70-92 µs | 100 µs |
+| `set_frame`, 4 lamps, colour moving every frame (worst case) | ~45 µs | 85-125 µs | 100 µs |
+| a real-time 50 Hz runner (test thread) | lateness 0.15 ms | lateness 0.2 ms | 1.5 ms |
+
+- The worst case's p95 is scheduling jitter under nice 19; production runners run at nice 0.
+- The real-time runner measured 50.0 Hz.
+
+#### S5.6b Aligned with room: 68's hand-over contract (16 Oct)
+
+68 built room's side (517 room tests; it loads at the announced Flask restart, S5.12 step 4; `hue.streamer: room`, the
+default, changes nothing). Its contract, and what hue_out does for each point:
+
+1. **Room's Hue code is imported, not copied.**
+   - From `room_service.hue.stream`: `xy_bri`, `xy_streamer`, `GAMMA` and `COLOR_SPACE_BYTE`.
+   - From `room_service.hue.client`: `BridgeSecrets`, `HueClient`, `HueError` and `resolve_area`.
+   - From `room_service.hue.colour`: `rgb_to_xy`, which the xy cache in `set_frame` uses.
+   - These modules need only the stdlib, aiohttp and hue-entertainment 0.1.2. All three are pinned in
+     requirements.txt and installed in `~/.venvs/sm-show`; nothing new was needed.
+   - Importing hue_out loads `room_service`, `room_service.hue` and `.client`, `.colour`, `.pair` and `.stream`, and
+     nothing else of room_service. A test checks this in a fresh interpreter. `scripts/ctl` runs `python -m
+     show_service` from the repo root, so `room_service` is importable there.
+   - hue_out is still loaded lazily, only when a hue output is enabled. If it can't import, the output reads
+     `not_built` with the reason, and everything else runs.
+2. **The pairing is room's, read-only.**
+   - hue_out reads it with `BridgeSecrets.load(<patch.yaml hue.bridge>, <patch.yaml hue.host>)`, which uses the file
+     `~/.config/screen-machine/hue/fc268cfffe106fa2.json` with patch.yaml's host over the file's (S5.6c: exactly
+     room's call).
+   - `HueOut(secrets_loader=…)` replaces `secrets_dir`.
+   - Tests point `room_service.hue.client.SECRETS_DIR` at `tmp_path` and never read the real files.
+3. **The route states** (`contract.hue_answer`, `contract.HUE_ROOM_STATES`).
+   - `POST /api/v1/hue/stream` and `GET /api/v1/hue/status` answer `HueAnswer`: `{state, lights, boot_id, words,
+     detail, wanted, unknown}` (`lights` and `boot_id`: 68's addendum, S5.6c). `state` is always exactly one of these:
+
+     | `state` | driver states | words |
+     |---|---|---|
+     | `streaming` | `streaming` | "Following the music" |
+     | `armed` (following but silent) | `waiting_input` (no sound yet), `starting`, `idle` a step after a request, `error` (retried) | "Ready: waiting for the music" |
+     | `taken_over` | `taken_over` | "Taken over by another app" |
+     | `idle` (following nothing) | nothing asked, or `off`, `waiting_room`, `no_config`, `not_built` | "Not following" |
+
+   - The richer driver state stays in `GET /api/v1/rig` `.hue`, the HueStatus. It also carries `room_state` and
+     `words`, for the console and the card.
+   - `HueRelease.state` uses the same four words.
+   - With no rig, or no hue output running, the routes answer `idle` with a `detail` naming the switch.
+4. **Release.**
+   - `{released: true, state}` only once the bridge reads the area inactive, plus `release_settle_s` (1 s).
+   - This holds whichever came first: room's order is the new set first, then the release, so the control task often
+     stops the area before the release arrives. The race this fixes: before, such a release answered `released` at
+     once, before the bridge's own post-entertainment write.
+   - A stop first seen inactive more than `OLD_STOP_S` (5 s) after it was made counts as inactive since the stop. So a
+     release long after the music stopped answers after a single GET.
+   - Otherwise `released: false` with `why`: `shared_area`, `taken_over` (new: another app holds the area, so the lamps
+     aren't writable; since S5.6c also read from the bridge when no stop of ours is pending), `bridge_unreachable`,
+     `timeout`, or (S5.6c) `starting` before the brain runs under `hue.streamer: show`.
+   - Never longer than `release_timeout_s`, capped at `contract.HUE_RELEASE_MAX_S` (17 s). The route adds 2 s, which
+     is at most 19 s against room's 20 s.
+5. **Takeover.**
+   - `active_streamer.rid` is captured right after our own `action: start`, before the DTLS handshake, as output.py
+     does. If it is missing then, it is captured after the handshake.
+   - The area is read again after the handshake. If it isn't active, or another streamer holds it, the output goes
+     `taken_over` at once and is never fought: no stop, and nothing restarts until room asks for a different set.
+   - Then every `takeover_check_s` (2 s), as before.
+6. **Stops.**
+   - **Output switched off** (fixtures.yaml `outputs.hue.enabled: false`): `configure` stops the frames at once, and
+     the control task stops the area. In production the Rig's reconcile stops the driver at the hot reload, within
+     about 2 s of the edit.
+     - A release in the next moments waits for that stop plus `rig.hue.release_settle_s`
+       (`Rig._released_after_stop`).
+     - What room asks while the output is off is kept, so turning it on again follows room's latest set.
+   - **Flip back to `hue.streamer: room`** (the rollback; room sends no release, and its HueOutput simply takes over):
+     - the frames stop at once;
+     - the area is stopped within about 0.5 s;
+     - what room asked is forgotten and persisted that way. A later flip to `show` therefore never resumes a stale set;
+       room's reconcile re-applies its `dmx` members then.
+   - A request polls patch.yaml first, so a set room POSTs right after its own flip to `show` answers `armed`, not
+     a stale `idle`.
+7. **Restore** of the persisted set happens only while patch.yaml `hue.streamer` is `show`. This is unchanged from
+   S5.14.
+
+Tests (fakes only):
+- `test_hue_out.py`: 65 tests. They cover the imports, the fresh-interpreter import check, room's pairing by bridge
+  id, room's area rule, the four states and their words, a release right after room empties the set (stop first, and
+  release first), an old stop, a release while taken over, the cap, takeover during the handshake, the output
+  switched off, the flip back forgetting the set, and a request seeing a fresh switch.
+- `test_outputs.py`: the clamp, a set kept while the output is off, and a release right after the switch-off.
+- `test_api.py`: every driver state onto the four words.
+- `test_e2e.py`: the Stage-5 end to end, through room's `BridgeSecrets.load` and `resolve_area` on the fake bridge.
+
+#### S5.6c Hand-over review fixes (16 Oct; c8's fixer)
+
+The review of the hand-over against room's actual code (68's `room_service/adapters/hue.py`, `hue/output.py`,
+`hue/client.py`, `dmx/__init__.py`, and 68's addendum) raised five issues. All five are fixed here; nothing is
+deployed, every output is still off.
+
+1. **`lights` and `boot_id` on the Hue routes** (blocker; 68's addendum).
+   - Room's `_sync_show` reads `GET /api/v1/hue/status` on every read under `show`. On first contact after a room
+     restart it adopts our `lights`. After that, a new `boot_id`, `lights` unlike its set, or `idle` while it wants
+     lamps makes it re-send its full set. Without the two fields, room's `show_wanted` stayed empty after a room
+     restart:
+     - lamps we still streamed read `taken_over`;
+     - a later state write sent no release and was overwritten (unconfirmed) until a mode change.
+   - `HueAnswer` now carries:
+     - `lights`: `HueStatus.asked`, what room asked, **unfiltered**. That is the driver's `_asked`; while the hue output
+       is off, the Rig's saved set (`Rig._saved[oid]["asked"]`, kept for on again); with no rig, `[]`. It is never
+       `wanted`: an id that isn't a hue fixture here would otherwise make room re-send on every read.
+     - `boot_id`: the API's own (`api.Api.boot_id`, this process), the same one the vibe read-back carries.
+   - Both are on the stream and status replies. `contract.hue_answer(status, boot_id)`; `contract.hue_off_status(…,
+     asked)`.
+   - Note for 68: while the hue output is off (or `waiting_room`, `no_config`, `not_built`), status reads `idle`, so
+     room's rule 3 re-POSTs its set on each read. That is harmless, and the Rig keeps the set for on again.
+2. **A release never answers a false `released: true` during a takeover** (major).
+   - In room's order (the new set first, which clears our `taken_over`, then the release) a release found no stop of
+     ours pending and answered `released: true` at once, while another app's streamer still held the area. The same
+     happened after a start-wait `taken_over` (an area already active that we never started).
+   - `_given_back` now reads the area once whenever a client and an area are known, whatever `_stop_t` is. If it is
+     active and we don't hold it, the answer is `released: false`, `why: "taken_over"`, and room checks the bridge
+     itself. If it is inactive, the answer is released (after the settle, when a stop of ours is the reason).
+   - Not taken: keeping the `taken_over` state until the bridge reads inactive. The area read covers the release,
+     and the control task's start wait already handles a new set while the other app still holds the area.
+   - Left open: a release before our first start has resolved the area (no client or area yet: under a second after a
+     start) still answers released with no read.
+3. **No frame after a flip back during the DTLS handshake** (minor).
+   - `_start` re-reads patch.yaml (`_still_ours`: poll, then `_should_stream`) on each start-wait poll, before the PUT
+     start, and right after the handshake. Flipped back to room (or the output switched off) during the handshake:
+     the area is stopped before a single frame is sent.
+   - Why it matters: room and show_service pair with the same application key, so the bridge names both as the same
+     `active_streamer` and neither side's takeover check can tell the other apart (S5.6a). Had we streamed until our
+     next step (up to 0.5 s), room's 2 s patch watch could have started its HueOutput in that window. Our following
+     PUT stop would then have ended room's fresh stream, and room's `_check_takeover` would have parked it in
+     `taken_over`, so neither side would stream.
+4. **The bridge's address follows patch.yaml, as room's does** (minor).
+   - Room loads the pairing with `BridgeSecrets.load(hue.bridge, hue.host)`, so patch.yaml's `host` overrides the
+     file's. hue_out passed only the bridge id.
+   - `hue_settings` (fixtures.py, and hue_out's own copy) now gives `host`: patch.yaml's `hue.host`, only while the
+     bridge is patch.yaml's own. A fixtures.yaml output naming another bridge uses its pairing file's address.
+   - `default_secrets_loader(bridge_id, host)` is room's call, and a `secrets_loader` now takes `(bridge, host)`.
+   - A host change in patch.yaml while streaming stops the area and starts it again at the new address, as a bridge
+     or area change does.
+   - (Room reads `host` only at its own start. We follow it at the reload.)
+   - config/room/fixtures.yaml's header still says the address is the pairing file's. That is c8's file, outside
+     show_service/: fix the wording at the next fixtures.yaml edit.
+5. **No release answers `released: true` while show_service is starting under `show`** (minor).
+   - Before the brain runs, `POST /api/v1/hue/release` reads patch.yaml and fixtures.yaml (`Api(patch_path=,
+     fixtures_path=)`, defaulting to contract's):
+     - `hue.streamer: show` with a hue output `enabled: true` → `{released: false, why: "starting", via: "show"}`. A
+       predecessor that crashed while streaming may still hold the area, and room then checks the bridge itself;
+     - a file that's there but doesn't read counts as show, which is always safe;
+     - otherwise (`room`, no hue output on, or a missing file) → `released: true` at once, as before.
+
+Tests (fakes and tmp files only):
+- `test_hue_out.py`:
+  - `test_release_in_rooms_order_while_another_app_holds_the_area_is_not_released` (taken while streaming, and active
+    at start);
+  - `test_release_while_waiting_to_start_never_starts`, now `taken_over`;
+  - `test_a_flip_back_to_room_during_the_handshake_gives_the_area_back_before_a_frame`;
+  - `test_the_start_wait_reads_a_fresh_switch`;
+  - the pairing test's `host_in_patch` case;
+  - `test_a_new_bridge_address_in_patch_yaml_restarts_the_stream_there`;
+  - the `hue_answer` shape.
+  The release, handshake and start-wait tests fail with the old logic patched back in (checked).
+- `test_api.py`:
+  - `test_rooms_hue_adapter_adopts_our_set_then_re_sends_after_a_new_boot_or_a_stale_set` drives **room's real
+    `HueAdapter`** (a read-only import of `room_service.adapters.hue`, with a fake bridge client) against these routes.
+    It checks the adoption on first contact (no POST; the lamps read `dmx`), a re-send after a new `boot_id`, and a
+    re-send over a stale set;
+  - `test_a_hue_release_before_the_brain_runs` (six patch and fixtures cases);
+  - `lights` and `boot_id` with no rig, and with the output off.
+- `test_outputs.py`: the Rig reports the saved set as `asked` while the output is off.
+- `test_fixtures.py`: `host` in `hue_settings`.
+- `test_e2e.py`: its tmp patch.yaml copy sets `hue.host` to the test address (the real one names the bridge's).
+
+The suite (16 Oct, `flock … nice -n 19 … pytest show_service/tests -q`): **1279 passed, 1 skipped** (the network OFL
+test) in 9 min 15 s; `test_hue_out.py` now has 71 tests.
+
+### S5.7 artnet_lan.py (B15)
+
+Our own Art-Net sender to LAN nodes (§9.3), with the frame grid of §5.4.
+```python
+class Nodes:                                               # one per Rig (shared["artnet.nodes"])
+    def __init__(self, *, settings: dict, state_file: Path = contract.NODES_STATE_FILE, sock=None,
+                 mono=time.monotonic) -> None              # sock: a test's own; else one UDP socket bound 0.0.0.0:0
+    def configure(self, nodes: dict[str, contract.NodeConfig], used: set[str]) -> None   # show-brain
+    def dest(self, node_id: str) -> tuple[str, int] | None # any thread: where frames go now; None: virtual or unknown
+    def send(self, node_id: str, packet: bytes) -> bool    # runner: sendto, or kept (virtual); never to loopback:6454
+    def tick(self, now_s: float) -> None                   # show-brain 1 Hz: ArtPolls due, drain replies, failsafe
+    def on_reply(self, data: bytes, addr: tuple[str, int]) -> None   # the reply hook (any source of OpPollReply)
+    def record_failsafe(self, node_id: str, frames: list[bytes]) -> dict
+    def status(self, node_id: str) -> contract.NodeStatus
+class ArtNetLan:                                           # contract.Driver, kind "artnet": one universe on one node
+    caps = {"hits": True, "min_attack_ms": 0.0, "grid": "beat", "rate_hz": 44.0, "keepalive_s": 1.0}
+    def __init__(self, output_id: str, *, ctx=None, clock=None, settings: dict | None = None,
+                 shared: dict | None = None, mono=time.monotonic) -> None
+def build_artpoll() -> bytes;  def parse_artpollreply(data: bytes) -> dict | None;  def build_artaddress(cmd: int) -> bytes
+```
+- **The wire.** ArtDmx from artnet_out's `build_artdmx` (seq 1..255, never 0, OpCode 0x5000, ProtVer 14). ArtPoll
+  (OpCode 0x2000): `Art-Net\0`, opcode LE, ProtVer 14, Flags 0, DiagPriority 0. ArtPollReply (0x2100): IP, port,
+  short name (18 bytes), long name (64), the ports' good-output bytes (merge), Status3 (failsafe), MAC, and, from Art-Net
+  4, RefreshRate: offsets as the Art-Net 4 spec (verify against it; tests check packet bytes). ArtAddress (0x6000)
+  `Command`: AcFailHold 0x08, AcFailZero 0x09, AcFailFull 0x0a, AcFailScene 0x0b, AcFailRecord 0x0c.
+- **Unicast only** (WSL can't broadcast; there is no ArtSync with one universe). Port-Address ≥ 1, from the output.
+- **The frame grid** (`plan`, §5.4), when the frame is active and the clock predicts beats:
+  - `L` = the output's intensity rise latency (its `latency_key`'s, else hand-set, else 0).
+  - The next beat `b` from `clock.next_beat(now, lead_s=L)`; tick = `grid_tick(P)` (P / m, m the largest multiple of 4
+    keeping ≤ 43 Hz); grid points `b − L − j·tick`, so **a frame leaves exactly at t_beat − L_dmx and on every 16th**.
+  - Never closer than `MIN_GAP_S` (22.7 ms) to when the last frame actually left. A beat re-phased into that gap goes
+    one gap later (never early, under a frame late): artnet_out's rule. A grid point at most 1 ms inside the gap goes
+    at the gap's end rather than a tick later (S5.14).
+  - No beat (gate none, or no clock): free-run at 43 Hz while active.
+  - **Hits pull the next frame forward:** a runner woken by `on_hit` plans `max(now, t_last + MIN_GAP_S)`.
+  - **Idle** (an inactive frame): plan every `1 / rig.artnet.idle_eval_hz`; `set_frame` sends only when the universe
+    changed or `keepalive_s` (1 s) passed. What it sends idle: each fixture's `house` (or dark), with the defaults and
+    pins: the engine already gives that, since inactive frames carry the house look for DMX fixtures.
+- **Short frames.** The universe runs up to its highest patched channel, rounded up to even (at least 2), unless the
+  node's `full_512`. Channels no fixture covers are 0.
+- **`set_frame`** builds the universe in a preallocated buffer (defaults, then each fixture's `dmx` at `address − 1`),
+  stamps the sequence and sends through `Nodes.send`. A send error is counted and logged at most every 30 s.
+- **Discovery and health** (`Nodes.tick`, 1 Hz on show-brain, only for nodes an enabled output uses):
+  - a unicast ArtPoll to the node every `rig.artnet.poll_s` (3 s);
+  - drain the socket (non-blocking) and, when `rig.artnet.reply_bind` is set, that socket too; each OpPollReply goes
+    to `on_reply`;
+  - match by the node's `match` (MAC, else short name). A match from another address: use that address (kept in
+    `nodes.json`, written atomically; "moved: update last_ip"). A reply at `last_ip` that doesn't match: status
+    `matched: false` and a detail; frames keep going (no stop gates);
+  - no reply for `silent_after_s`: detail "silent". **Replies need ca's relay** (below) until proved otherwise:
+    detail "no replies yet: nodes answer on PC22's udp 6454, which ca's relay forwards to room_service (README S5.7)".
+    Frames go out regardless.
+- **Why replies may not arrive.** Art-Net nodes answer ArtPoll on udp 6454 of the poller's address, not its source
+  port. From WSL that address is PC22's, where ca's Art-Net relay (`artnet-relay`, Spectre) forwards 6454 to WSL:6454,
+  which is room_service's receiver; show_service can't bind 6454 (room has it). Some nodes reply to the source port,
+  which WSL's NAT carries back to our socket; those work today. For the rest, ca's relay must also forward
+  OpPollReply packets (OpCode 0x2100) to a show_service port: ca picks it, registers it in docs/PORTS.md, and its
+  `host:port` goes into show.yaml `rig.artnet.reply_bind`. Room's receiver ignores non-ArtDmx packets, so nothing
+  breaks meanwhile.
+- **Failsafe** (§9.3). For a node with `failsafe` set, one ArtAddress with that mode's command goes out when an enabled
+  output first uses the node (and again when the setting changes). `record_failsafe` (route `POST
+  /api/v1/rig/nodes/{id}/record-failsafe`) sends the node's current universes once more, then AcFailRecord, so the node
+  stores what shows now as its scene. Nothing records on its own.
+- **The virtual node** (`virtual: true`): frames are built and kept, never sent; `GET /api/v1/rig/frame` serves them
+  (previz in the console, or a later BlenderDMX bridge on another PC as a normal node).
+- **Stop:** nothing more is sent; each node's failsafe takes over after its own timeout.
+
+**Tests (B15)** (rule: **Art-Net never to the LAN or to 127.0.0.1:6454**; nodes at `127.0.0.1` with `port` = an
+ephemeral sink socket the test binds; no test binds 6454):
+- packet bytes: ArtDmx (short lengths, even, Port-Address split, seq 1..255 wrapping 255 → 1), ArtPoll, ArtAddress;
+  `parse_artpollreply` on hand-built replies (names, MAC, IP, Status3, RefreshRate) and on junk (None);
+- the grid on a fake clock: edges exactly at `t_beat − L` at 60-180 bpm, the minimum gap, re-phase never early, the
+  free run, a hit pulling a frame forward but never under 22.7 ms;
+- short frames and `full_512`; keepalive (1 s idle, on change at once); the universe assembled from fixtures, defaults
+  and pins;
+- discovery: polls every 3 s only for used nodes, a match by MAC and by short name, a moved node (nodes.json), a
+  mismatch keeps sending, silent;
+- failsafe ArtAddress once per node and setting; record;
+- loopback:6454 refused (a node configured there is treated as virtual, with a problem line); virtual frames kept.
+
+#### S5.7a As built (B15, 16 Oct)
+
+`artnet_lan.py` and `tests/test_artnet_lan.py` (58 tests). The spec above is built as written. Below are the additions
+and the choices it left open.
+- **Imports.** From artnet_out: `build_artdmx`, `next_seq`, `grid_tick`, `MIN_GAP_S`, `GRID_HZ`, `PORT`, plus its wire
+  constants (`ARTNET_ID`, `OP_DMX`, `PROT_VER`, `HEADER`, `UNIVERSE_SIZE`, `MAX_HZ`) and `REPHASE_SKIP`. A beat that
+  the last frame already carried isn't taken again when the clock nudges it.
+- **Extra driver methods, for B12** (each read with `getattr`):
+  - `on_hit(d=None)` (any thread) makes the next `plan` (while active) answer `max(now, last send + gap)`.
+    `plan_hit(t_last, now)` does the same for a runner that plans the hit itself. **The Rig must call one of them**
+    when it wakes a runner for a hit; `plan` alone can't know about the hit.
+  - `universe_view()` is `/rig/frame`'s `universe`: `{port_address, length, channels, to, virtual, seq, age_s}`.
+  - `last_packet()`, `record_failsafe()` (this output's node), and `set_settings(rig.artnet)` for a show.yaml reload.
+- **Extra Nodes methods:**
+  - `claim(output, node, packet_fn)` and `unclaim(output)`: drivers register, so `record_failsafe(node)` with no
+    `frames` resends every universe on that node.
+  - `snapshot()`, `dmx_view()` (the virtual nodes' universes decoded from our own packets: the previz JSON, for
+    whichever route B12 serves it on), `kept(node, pa)`, `is_virtual(node)`, `close()`.
+- **Pure helpers:** `decode_artdmx`, `parse_settings`, `output_lead`, `norm_mac`, `unicast_ip`, `is_room_receiver`.
+- **`L` for the grid.** `output_lead(out, fixtures)` uses the rise of any fixture on the output whose LatencyView
+  source is `latency.json outputs.<latency_key>.*` (fixtures.py already applied `align_pct` to it). Otherwise it uses
+  the hand-set `latency.intensity.rise_ms`, else 0 (`unset`). An output whose fixtures all have their own measurements
+  falls through to hand-set, which is a small gap until OutputConfig carries its own LatencyView.
+- **The clock.** `next_beat(t, lead_s=L, gate="dmx")`, so DMX stays beat-locked at §5.4's middle confidence. A clock
+  with artnet_out's `next_beat(t)` signature gets `next_beat(t + L) - L`.
+- **Spacing in `set_frame` too.** A frame due inside the gap by ≤ 1 ms waits it out. A frame due earlier than that
+  isn't sent, and the next `plan` answers "as soon as allowed". An idle `plan` counts from the last `set_frame`, so a
+  runner passing a stale `t_last` never spins.
+- **The wire, where the spec left a choice:**
+  - ArtAddress uses BindIndex 1 (the root) and AcnPriority 255 (no change).
+  - A Status3 failsafe is reported only when bit 5 says the node supports one.
+  - `refresh_hz` is RefreshRate as given (0 = None).
+  - `merging` is any GoodOutputA bit 3.
+  - A reply's address is its own IP field, else the UDP source.
+- **Status.** The state is `off`, `no_config` (with the reason), `error` (3 failed sends in a row; frames keep being
+  tried), `sending` (a frame in the last keepalive + 1.5 s) or `idle`. `extra` carries the node status, length, seq,
+  lead and where it came from, period, keepalives, too_soon, problems and caps.
+- **Costs** (niced, `-s`): `set_frame` on 32 fixtures × 16 channels (512) p50 24.5 µs, p95 51.5 µs (budget 100);
+  `plan` on the beat grid p95 5.4 µs.
+- **The grid's tolerance (S5.14).** A frame must be a gap (22.7 ms) after the last one's actual send, and at 128 bpm
+  the tick is 23.44 ms: 0.74 ms of slack. Any runner lateness above that (sleep overshoot, a GIL hand-over,
+  evaluate) put the next grid point inside the gap, and the frame moved a whole tick on (simulated: 0.8 ms of
+  lateness gave 30.6 Hz; the e2e read 32.5 Hz with intervals p95 47 ms, so 16ths were skipped). `_grid` now takes the
+  first grid point at or after `earliest - SPACING_WAIT_S` (1 ms) and answers `max(that, earliest)`; set_frame's wait
+  of up to 1 ms keeps the gap exact. Simulated: 0.3 ms lateness 39.4 → 42.7 Hz, 0.8 ms 30.6 → 37 Hz, every beat
+  carried, no gap under 22.7 ms. artnet_out's `plan` has the same tolerance (`GRID_TOLERANCE_S`), so the virtual
+  Maestro (the screens' feed) keeps its 42.7 Hz. `test_a_little_lateness_doesnt_skip_grid_ticks`,
+  `test_a_little_lateness_keeps_the_screens_feed_on_its_grid`.
+- **A rate cap keeps the grid's slack (S5.14).** With `outputs.<id>.rate_hz`, the grid's ceiling is
+  `1 / (1/rate + GRID_SLACK_S)` (GRID_SLACK_S = 1/GRID_HZ − MIN_GAP_S, 0.53 ms), not `rate` itself: `rate_hz: 40` at
+  120 bpm used to tick at exactly its 25 ms gap, and any lateness at all ran it at 20.1 Hz; now it ticks at 31.25 ms
+  (32 Hz) and holds. `test_a_rate_cap_keeps_the_grids_slack`.
+- **c8's integration ruling (16 Oct): a hit never pushes the beat frame.** A hit pulls the next frame forward to
+  `max(now, last + gap)` (S5.7) **unless the next beat frame is less than a gap after that**: pulling would push the
+  beat frame late (one gap after the pulled frame), so the flash rides the beat frame instead, at most one gap
+  (22.7 ms) later. Found by the e2e: with test music the hats' and kicks' hits re-planned nearly every frame, and the
+  beat frame stopped leaving at `t_beat − L`. `test_a_hit_just_before_a_beat_rides_the_beat_frame`.
+
+### S5.8 The screens' hand-pick hold (B16; agreed with 2f, 16 Oct)
+
+Since Stage 4 the director PATCHes `/api/v1/screens/{id}/look {palette, palette_transition_s}` on every live screen
+while a vibe plays, which can replace a palette someone picked on a screen's card. Agreed with 2f: a person's pick now
+holds.
+
+**Room's side** (2f, on disk; live at the next Flask restart): `PATCH /api/v1/screens/{id}/look` takes an optional
+`source` (1-64 characters; never sent on to the renderer), and room emits `screen.look {screen, session, source
+(default "web"), changed: [keys], palette (only when the PATCH carried one)}` on `WS /api/v1/events`. Until that
+restart, the old code answers a PATCH with an unknown key `400 {"error": "bad_request"}`, and may emit no `screen.look`
+at all.
+
+**RoomLink** (autopilot.py):
+- `_on_message`: every event type other than `status` and `mode.transition` with a dict body goes to each
+  `ctx.on_room_event` callback as `(type, data)`, guarded and counted per type (`stats["room_events"]`).
+- `provides()` adds `room_boot`: `status.service.started_at` as a string (None until a status). It changes when
+  room_service restarts.
+
+**The director** (`provides()` adds `on_room_event`):
+- **Sending, with the probe.** `look_source` is `unknown`, `yes` or `no` (`contract.LOOK_SOURCE_STATES`), for the
+  current `room_boot`:
+  - the body gains `"source": "show_service"` (`contract.SHOW_SOURCE`) unless `look_source` is `no`;
+  - a 2xx with `source` → `yes`;
+  - a 400 whose `error` is `bad_request` with `source` in the body → `no` (the old room), and the same PATCH again at
+    once without it;
+  - any `screen.look` event that carries a `source` key → `yes` (the new room);
+  - a new `room_boot` → `unknown` (probe again).
+  Each result is logged once (`director.jsonl` kind `look_source`).
+- **Our own echo.** For each screen the director remembers the palette it last sent there and when (`sent`,
+  `sent_at`).
+- **A hand pick** is a `screen.look` with `palette` in it (any type: a catalog name, the renderer's own shape, or null)
+  that is not ours. It is ours when its `source` is `show_service`, or when its palette equals what we last sent that
+  screen within `director.screens.own_echo_s` (3 s, agreed with 2f: this covers the old room, whose events carry no
+  source, and a new room that got our PATCH without one). Anything else is a person's.
+- **The hold** (`ScreenPick`, while `director.screens.hold_hand_picks` is true, and (S5.14) only while a vibe plays
+  and `send_palette` is on, i.e. while the director is sending the screens' palette at all; otherwise the pick is
+  only logged, with why):
+  - the director stops sending the screens' palette, to every screen (`screens_palette.why`: "held: <label> was
+    picked on a screen");
+  - the card shows a chip `{"id": "screen_pick", "kind": "screen_pick", "label": "Colours: <label> (picked on a
+    screen)", "value": ScreenPick, "expires_in_s": null}`; `<label>` is the catalog's label for a name, else the name;
+    `palette: null` (the screen card's "The scene's own colours", LivePanel) reads "the scene's own" (S5.14, the
+    Room page's own words; 2f to confirm); anything else "custom colours";
+  - a newer pick replaces it (the chip follows);
+  - it counts as a nudge for `engaged()` (Auto won't leave the mode under it);
+  - the lamps are unchanged (they keep the director's palette).
+- **It ends** at the next mode change (`on_mode_change` clears every nudge), Back to auto (`clear("all")`), or the
+  chip's × (`clear("screen_pick")`, through the existing `DELETE /api/v1/nudge/{id}`). Then the record of what was sent
+  is cleared, so the director's palette goes back to every live screen at once.
+- **Persisted** in state.json as `director.nudges.screen_pick` (`ScreenPick | null`), with the usual rule: a restored
+  hold ends at the first RoomView whose mode differs from the saved mode.
+- `hold_hand_picks: false` (hot-reloaded): picks are only logged, and the director sends as in Stage 4.
+- **Snapshot:** `screens_palette` gains `hold` (ScreenPick or null), `look_source`, `boot`. Logs: `screen_pick`
+  (`picked`, with the event; `cleared`, with why).
+- api.py needs no change: the card's chips come from `director.chips()`, and `DELETE /api/v1/nudge/{id}` calls
+  `director.clear(id)`. The Room page's Music card shows chips as they come (2f).
+
+**The director's lamps from the registry** (so a DMX fixture added to fixtures.yaml gets the director's colours):
+with `ctx.rig()` giving a view with fixtures, the lamps are its `lamp` fixtures that have `colour` in their type's
+attrs, and the screens its `screen` fixtures, each with its `screen`, `placement` and `role` (a fixture's own `role`
+wins over its placement). Without a view (no rig, an error with no fixtures), patch.yaml as now. The ids are the same
+for the six existing devices, so nothing changes for them. `palette_fn` and `LookData.lamps` are keyed by fixture id.
+
+**`Director.look_fn() -> LookData | None`**: any thread, the latest look swapped by reference (the engine's
+`look_fn`).
+
+**Tests (B16)** (a fake room with the PATCH route and a WS that pushes `screen.look`; no real room):
+- the probe: a new room (2xx, `yes`); an old room (400 `bad_request`, the PATCH again without `source`, `no`, the
+  next PATCH without it); a `screen.look` with `source` → `yes`; a new boot → `unknown`;
+- our echo (with `source`; without it within 3 s) is not a pick; a different palette, or ours after 3 s, is;
+- the hold: no more PATCHes to any screen; the chip's label (a catalog name, an unknown name, an object); a newer pick;
+  `engaged()`;
+- ends: a mode change, Back to auto, the chip's × (each re-sends at once); persisted and restored; `hold_hand_picks`
+  false;
+- the lamps from a fake registry view (a lamp fixture with a role, one by placement; screens), and patch.yaml without
+  one; `look_fn`;
+- RoomLink: events fanned out by type, guarded; `room_boot` from status;
+- the name scan adds `fixtures.py`, `outputs.py`, `looks.py`, `emitters.py`, `hue_out.py`, `artnet_lan.py`, and to
+  `_names_from_config()` fixtures.yaml's fixture, output, node, type and group ids, zones and screens.
+
+**As built (B16, part 1: the hold, the probe and RoomLink's events; 16 Oct).** Nothing is committed.
+- **Built as above.** In `director.py`: `on_room_event` (provided), the `source` probe, the echo and the hold,
+  `screen_pick` in `chips()`, `engaged`, `persist`/`restore`, and `clear(id, why=None)` (an optional `why`, for the
+  log only; api.py calls it unchanged). In `autopilot.py`: the fan-out in `RoomLink._on_message`, and `room_boot()` in
+  `provides()`.
+- **Details the spec left open:**
+  - The echo record is set **before** each PATCH, because room's WS event can arrive before the HTTP answer. It is
+    kept per screen, so a screen leaving live doesn't lose it.
+  - A 400 `bad_request` gets the same PATCH again at once without `source`. Our echo of that PATCH (no source,
+    within `own_echo_s`) is not a pick.
+  - A probe answer for a boot that has since changed is dropped. A new boot resets to `unknown` (logged, via
+    `room_boot`).
+  - Turning `hold_hand_picks` off (hot-reloaded) also ends an active hold, at the next tick (why: "…hold_hand_picks
+    is off"), and the director's palette goes back out. So does turning `send_palette` off (S5.14).
+  - A pick's `palette` object reads "custom colours", null "the scene's own" (S5.14). A name the catalog doesn't know
+    reads as the name.
+  - An in-flight PATCH run stops before its next screen once a hold starts.
+- **Snapshot.** `screens_palette` gains `hold`, `look_source`, `boot`, `sent_at` (screen → epoch s), `picks` and
+  `own_echoes`. RoomLink's snapshot gains `boot` and `stats.room_events` ({type: count}, at most 64 types counted;
+  every type is still fanned out).
+- **Logs** (director.jsonl):
+  - `look_source` {state, boot, via: patch | event | room_boot};
+  - `screen_pick` {what: picked, event, held} or {what: cleared, why: "the chip's ×" | "back to auto" | "the mode
+    changed" | the settings line, pick};
+  - `screens_palette` gains `source` (bool).
+- **Tests** (niced): test_director gains the probe (new room, old room), the echo, the hold (chip labels, a newer
+  pick, `engaged`, the lamps carrying on), its three ends (each re-sends at once), persist/restore, `hold_hand_picks`
+  false and the settings. It also gains one wired test: the real RoomLink against an aiohttp fake room on an ephemeral
+  port, whose PATCH emits `screen.look` on its events WS, including a "restart" into the old room. test_autopilot
+  gains the fan-out (by type, guarded, junk dropped, status and mode.transition not fanned out) and `room_boot`. Two
+  Stage-4 assertions were updated for the new `source` key and the two new `director.screens` keys.
+  - test_director, test_autopilot, test_api, test_brain, test_main, test_contract, test_config and test_situations:
+    241 passed, with DeprecationWarnings as errors.
+  - test_e2e: 3 passed.
+- **Cost:** one `ctx.room_boot()` read per director tick, and O(1) work per room event. test_tick_budget still
+  passes.
+- **Not built here** (B16's other items): the director's lamps from the registry (`ctx.rig()`), `look_fn`, and the
+  name scan's Stage-5 additions.
+- **Open:** if a person's PATCH and one of ours that is already in flight reach room at the same moment, room
+  decides which lands last. The hold still starts, but that screen may show our palette until the hold ends. The
+  window is one PATCH round trip.
+
+**As built (c8, part 2: B16's other items; 16 Oct).**
+- **The lamps from the registry.** `director.layout_from_rig(view)` gives `(lamps, screens)`: the `lamp` fixtures
+  whose type has `colour` in its attrs and the `screen` fixtures, each `{kind, screen, placement, label, role,
+  house}` (S5.14: `house` is fixtures.yaml's; House lights and an entry fade's start use it, hex × intensity, for a
+  lamp room has no stored state for, before show.yaml's `director.house`: so a DMX pinspot whose house is
+  `{intensity: 0}` stays dark under House lights instead of going to 80 % warm white). The
+  director reads `ctx.rig()` each tick (a reference; recomputed only when the view object changes) and uses it while it
+  has fixtures; without one (no rig, the rig off, an error with no last good registry) it uses patch.yaml's layout, as
+  before. A fixture's own `role` (when it is one of show.yaml's `lamps.roles`) wins over its placement. The snapshot's
+  `patch.from` says which (`fixtures.yaml` | `patch.yaml`). The six existing devices have the same ids, screens and
+  placements in both, so nothing changes for them; a DMX fixture added to fixtures.yaml gets the director's colours.
+- **`Director.look_fn()`**: the latest LookData (`self.look`, swapped each compose); the engine's `look_fn`.
+- **The name scan** now covers `fixtures.py`, `ofl.py`, `outputs.py`, `looks.py`, `colour_mix.py`, `hue_out.py` and
+  `artnet_lan.py`, and its names include fixtures.yaml's fixture, output, node, type and group ids, zones, screens,
+  placements, roles and tags, and show.yaml's layer ids, minus `fixtures.BUILTIN_TYPES` (fixed vocabulary). All clean.
+- Tests: `test_the_lamps_and_screens_come_from_the_registry`, `test_look_fn_is_none_until_the_first_compose`.
+
+### S5.9 How the virtual Maestro coexists
+
+| What | Until | Stage 5 | Switch, and rollback |
+|---|---|---|---|
+| **Screens** (RGB, the DIMMER pulse, ACTIVITY, PAN/TILT/ZOOM, GOBO, PRISM) | P4 | **Unchanged.** artnet_out's virtual Maestro → room_service's receiver (`127.0.0.1:6454`, universe 0, patch.yaml's layout); the renderer's BeatFollower and music_direction read it. The `screens` output (`showbus`) stays off and isn't built. Screens' palette PATCHes as in Stage 4, plus the hold (S5.8) | P4: the renderer reads our bus directly (§9.5) |
+| **Hue lamps** | the hue cut-over | Room streams them, from the virtual Maestro's hue channels, while patch.yaml says `hue.streamer: room` (today). With `outputs.hue.enabled: true` **and** `hue.streamer: show`, hue_out streams them from the look engine at 50 Hz with the lamps' own leads; room's HueOutput is idle (`show`). artnet_out keeps writing the hue channels; room ignores them under `show` | 68's `hue.streamer` in patch.yaml decides who streams (both sides read it; one streamer per area). Rollback: `streamer: room` (hue_out stops within one reload), and/or `enabled: false` |
+| **DMX fixtures** | a node is bought | Only artnet_lan, unicast to the node at Port-Address ≥ 1. Never to room's receiver: a loopback destination on 6454 is refused | `outputs.<id>.enabled`; rollback `false` |
+
+- The two paths never write the same thing: the screens are only on the virtual Maestro, the lamps only on one
+  streamer (patch.yaml's switch), and DMX only on artnet_lan.
+- artnet_out needs no change in Stage 5. It goes on yielding to a real Maestro on universe 0, as before; artnet_lan has
+  no yield (it never shares room's universe).
+- **Order at the Hue cut-over** (no gap and no fight): `outputs.hue.enabled: true` first (hot-reloaded; hue_out sits in
+  `waiting_room`), then 68 sets `hue.streamer: show`: room's HueOutput stops its area; room's adapter sends `POST
+  /api/v1/hue/stream` for the lamps that follow; hue_out waits up to `start_wait_s` for room's area to go inactive and
+  starts. Back: `streamer: room` → hue_out stops at its next reload (≤ 2 s); room starts. If both overlap for a moment,
+  the bridge keeps one DTLS session: whichever loses sees its area taken and goes `taken_over` (no fight).
+
+### S5.10 show.yaml's Stage-5 keys (c8's file; in place since 16 Oct)
+
+| Section | Read by | Keys |
+|---|---|---|
+| `rig` | outputs (Rig) | `enabled` (the rollback; hot-reloaded), `artnet {poll_s, keepalive_s, idle_eval_hz, silent_after_s, reply_bind}` → artnet_lan, `hue {takeover_check_s, start_wait_s, release_settle_s, release_timeout_s, error_backoff_s}` → hue_out |
+| `looks` | looks (LookEngine.configure); fixtures (`align_pct`, `min_visible_ms`) | `align_pct`, `min_visible_ms`, `middle_depth`, `master`, `caps {flash_hz_max}`, `layers [ {id, enabled?, attr, fx, phase, subdivide?, period_bars? \| period_s?, depth, depth_scale?, spread?, needs, without_beat?, attack_ms?, decay_ms?, select} ]`, `hits {select, styles, bands?, min_strength, depth, decay_ms}` |
+| `director.screens` gains `hold_hand_picks`, `own_echo_s` | director | S5.8 |
+| `director.build` gains `hit_swell_ms` (300, §5.4; 300..10000) | director (LookData.hit, maestro_palette_fn), looks | S5.14: a drop nobody predicted swells this slowly on an output without hits (Hue) |
+
+- **Layer rules** (looks.py's compile): `id` unique; `attr` intensity (colour reserved); `fx` in `FX_SHAPES`; `phase` in
+  `FX_PHASES`; `needs` in `FX_NEEDS`; `depth` and `spread` a number or a `LOOK_INPUTS` word; `select` a selector. A
+  layer with a bad key is left out with a problem line; the others run. Layers run in file order.
+- The two layers shipped: `pulse` (on): artnet_out's beat swell, so a lamp moved to hue_out looks as it does through
+  room today; `motion` (**off**): a bar-phase wave round `group:around`, for tuning by ear before it goes on.
+- Every number is a starting point with its §, except `own_echo_s` (agreed with 2f). The running Stage-4 readers ignore
+  every new key: checked on 16 Oct, the running show_service reloaded revision `06ea9643fdc7` with no settings error
+  and no director problem line.
+
+### S5.11 Rules for every builder
+
+S3.13 and S4.10 hold. Also:
+- **Never, in a test or an experiment:**
+  - talk to the real Hue bridge (192.168.1.72), read the real pairing files, or start an Entertainment stream: fake
+    clients and streamers only, secrets in `tmp_path`;
+  - send Art-Net to the LAN, or to `127.0.0.1:6454`: ephemeral local sockets only;
+  - bind 8703, 6980, 6981, 6982 or 6454 (or 8700-8702);
+  - PUT, POST or PATCH the real room API, or open its WS: a fake room;
+  - read or write the real state dir: `nodes.json` and state.json in `tmp_path`;
+  - touch Flask, the renderer, or a production service; kill a process you didn't start; commit.
+- **No new process, no GPU.** Every install and test run goes under `flock /tmp/claude-1000/sm-build.lock nice -n 19`
+  with `~/.venvs/sm-show`. Only B14 installs (its requirements block).
+- **Costs** are printed with `-s` and go in each builder's "As built", measured niced with the render running.
+- Every module carries the name scan's rule: config names live in config.
+
+### S5.12 Going live, and who to tell
+
+The steps, in order (c8's; integration done 16 Oct, S5.13). Nothing visible changes until step 5.
+1. **The suite**, niced: `flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/python -m pytest
+   show_service/tests -q` (S5.13: green). It includes `test_stage5_end_to_end`.
+2. **Commit** (c8; own paths only, no `add -A`): `show_service/{fixtures,ofl,outputs,looks,colour_mix,hue_out,
+   artnet_lan}.py`, the edited `show_service/{__main__,api,director,autopilot,contract,artnet_out}.py` (artnet_out:
+   S5.14's grid tolerance), the new and edited tests (`test_{fixtures,ofl,outputs,looks,colour_mix,hue_out,
+   artnet_lan}.py`; `test_{main,api,director,autopilot,e2e,artnet_out}.py`),
+   `show_service/README.md`, `show_service/requirements.txt` (B14's block), `tools/show/add_fixture.py`,
+   `config/room/fixtures.yaml`, `config/room/show.yaml`. The hue-entertainment block is already installed in
+   `~/.venvs/sm-show`.
+3. **Restart show_service:** `scripts/ctl restart show`. **No output changes**: every output is off. Two director
+   fixes (S5.14) do show on today's lamps, through the virtual Maestro: the key lamps (`opposite`) go warm white at
+   the feel's key_cct (Home, Dinner, Chill, Notes), and an unforeseen drop with a token swells on the lamps instead of
+   a one-beat step (Party, Disco). Say so when announcing the restart.
+   - Check (from WSL): `curl -s http://127.0.0.1:8700/show/api/v1/rig | jq '{enabled, registry, o: (.outputs |
+     map_values(.state))}'` reads 6 fixtures, no problems, every output `off`; `/show/api/v1/hue/status` reads `idle`
+     ("outputs.hue.enabled is false in config/room/fixtures.yaml"; the four route words, S5.6b); `/show/api/v1/state`
+     `.brain.components.director.patch.from` is `fixtures.yaml`; no `show-out-*` thread in `.threads`.
+   - The director's next screens-palette PATCH carries `source`. Until step 4 the running room code refuses it once
+     per room boot (400) and the director sends it again without (`screens_palette.look_source: "no"`); a hand pick
+     can't be told apart until step 4 (the old room emits no `screen.look`).
+   - CPU (S5.13): with every output off, Stage 5 adds nothing measurable.
+4. **An announced Flask restart** (room_service lives in Flask, CLAUDE.md §3): tell 2f, 68 and the sessions editing
+   room_service first; 2f owns the room side. The running Flask dates from 07:03 on 16 Oct, before room's Stage-5 code
+   (2f's `source` on `PATCH /api/v1/screens/{id}/look` and the `screen.look` event; 68's hue adapter and HueOutput
+   reading `hue.streamer`). After it: `look_source` reads `yes`, and a palette picked on a screen's card holds (the
+   chip "Colours: <label> (picked on a screen)" on the Music card) until ×, Back to auto or a mode change.
+5. **The Hue cut-over** (the owner's call, with 68; S5.9's order, no gap and no fight):
+   1. c8 sets `outputs.hue.enabled: true` in `config/room/fixtures.yaml` (hot-reloaded within 2 s). `GET
+      /show/api/v1/rig` `.hue.state` reads `waiting_room` (patch.yaml still says room); `/show/api/v1/hue/status`
+      reads `idle`.
+   2. 68 sets `hue.streamer: show` in `config/room/patch.yaml` (room and show_service both hot-reload it): room's
+      HueOutput stops its area; room's hue adapter sends `POST /show/api/v1/hue/stream` for the lamps that follow;
+      hue_out waits up to `start_wait_s` (3 s) for the area to go inactive, then starts.
+   3. Check: `/show/api/v1/hue/status` `streaming` ("Following the music"; `armed`, "Ready: waiting for the music",
+      until sound comes); `/show/api/v1/rig` `.hue`: `dtls: true`, 4 channels; `.outputs.hue` `rate_hz` about 50,
+      `extra.runner.late_ms.p95` under 1.5 ms; the Room page's lamp rows read "Following the music"; a mode exit
+      releases (room's adapter: `POST /show/api/v1/hue/stream` with the new set, `POST /show/api/v1/hue/release`,
+      answered once the area reads inactive + 1 s, then the lamps' put-back).
+   4. Measure (S5.14: S5.13's +0.020 is a floor, not the answer): over 60 s before and after, with ML on and the 4K
+      render running, take **per-thread** CPU (`/proc/<pid>/task/*/stat`), and state the Hue figure as
+      `show-out-hue` plus `hue-dtls-sender` (hue-entertainment's sender: 50 wake-ups a second, a queue hand-over,
+      AES-GCM), not the process delta (run-to-run noise about ±0.01). Also compare the virtual Maestro's rate
+      (`/show/api/v1/state` `.artnet`) and show-rx's `rx_audio_ms` p95 (hit latency, §5.1) before and after. Budget:
+      at most +0.03 of a core (S5.0 rule 7); expect about 0.028-0.03, at the line.
+   5. **Rollback:** 68 sets `hue.streamer: room` (room sends no release: hue_out stops the frames at once and the
+      area within about 0.5 s, and forgets the set; room's HueOutput starts), and/or `outputs.hue.enabled: false` (the
+      frames and the area stop at the reload). Both hot-reloaded (S5.6b point 6).
+      - **The ordering is a race we win, not a handshake.** Room and show_service pair with the same application
+        key, so the bridge names both as the same `active_streamer`, and neither side's takeover check can see the
+        other. The rollback works only because show_service's 0.5 s patch.yaml poll (and its re-read right after a
+        DTLS handshake, S5.6c) stops our stream before room's 2 s patch watch starts room's own. If room's HueOutput
+        ever started first, our PUT stop would end room's stream and park it in `taken_over` until the set changes.
+6. **DMX**, when a node is bought. **Two owner calls first** (S5.14):
+   - **Hit rate.** With `looks.hits.bands` unset and `looks.caps.flash_hz_max` off (caps default off by ruling), every
+     band's onset at strength ≥ 0.3 flashes DMX: about 13 a second on techno, so Disco's DMX would flicker at up to
+     ~13 Hz on hats. Options: `bands: [sub, bass]` (the commented example), a `flash_hz_max`, or accept it.
+   - **Onsets at low confidence.** §5.4's "Low: DMX follows onsets" isn't built: hits need the clock's gate above
+     `none`, so at low confidence DMX holds steady. Build it (hits at gate `none` too), or keep it and record the
+     ruling here.
+   Then: its OFL file (`tools/show/add_fixture.py <maker>/<model>` into
+   `config/room/fixture-types/ofl/`), a `nodes` entry (`match` by MAC or short name, `last_ip`), a `types` entry, the
+   fixtures, and an output with `enabled: true`. Check `GET /show/api/v1/rig/frame?output=<id>`, `/show/api/v1/rig`
+   `.nodes` (replies, or "no replies yet" until ca's relay forwards them), and the node's own lights. A `virtual: true`
+   node first (previz: `GET /show/api/v1/rig/dmx`) costs nothing on the LAN.
+7. **Tell:**
+   - **68:** done to your hand-over contract (S5.6b): room's `stream`, `client` and `colour` imported (so a change
+     there reaches show_service at its next restart: tell c8 if a signature changes); the pairing via
+     `BridgeSecrets.load(<hue.bridge>, <hue.host>)` (S5.6c: patch.yaml's host, as room's); the routes answer exactly
+     `idle | armed | streaming | taken_over`, with `lights` (what room asked, unfiltered) and `boot_id` (S5.6c, your
+     addendum) (the driver's
+     own word stays in `/show/api/v1/rig` `.hue`); release answers `released: true` only once the area reads inactive
+     + 1 s, else `shared_area` (other lamps still follow), `taken_over`, `bridge_unreachable` or `timeout`, within
+     19 s; takeover captured right after our `action: start`; streaming stops at once on `outputs.hue.enabled: false`
+     and on the flip back (which also forgets the set); the cut-over order in step 5. fixtures.yaml reads patch.yaml's
+     hue block (`bridge`, `area`, `gamma`, `stop_after_s`) and `streamer` until P5. **Re-sync (S5.14):** show_service now persists what room asked and takes
+     it back after a restart (only while patch.yaml says `show`). Room's side is done (68's addendum, `_sync_show`):
+     each read under `show` GETs `/show/api/v1/hue/status`, which carries `lights` (what room asked, unfiltered, never
+     `wanted`) and `boot_id` (S5.6c); first contact adopts `lights`; a new `boot_id`, a set unlike room's, or `idle`
+     while room wants lamps re-sends room's set. Tested against your real `HueAdapter` (S5.6c). One note: while our hue
+     output is off, status reads `idle`, so your rule 3 re-POSTs the set on every read (harmless).
+   - **2f:** `source: "show_service"` on our look PATCHes (probed per room boot); the `screen.look` event is read; a
+     hand pick holds with the chip id/kind `screen_pick` ("Colours: <label> (picked on a screen)"), cleared by ×
+     (`DELETE /api/v1/nudge/screen_pick`), Back to auto or a mode change. Room's hue row could say "show_service's Hue
+     output is off" when patch.yaml says `show` and HueStatus reads `off`: their call. S5.14: a hold starts only while
+     a feel plays with `send_palette` on (else the pick is only logged), and a pick of `palette: null` (the card's
+     "The scene's own colours") reads "Colours: the scene's own (picked on a screen)": 2f to confirm the words.
+   - **ca:** ArtPollReplies reach PC22's udp 6454, which the relay sends to room_service: please also forward OpCode
+     0x2100 packets to a show_service port (registered in PORTS.md; its `host:port` goes in show.yaml
+     `rig.artnet.reply_bind`). Art-Net out to LAN nodes is unicast from WSL (no new listening port). The show card's
+     state gains `rig`; the Spectre card could show `rig.outputs.*.state`.
+   - **10:** latency.json keys we read: `outputs.<fixture id>.<attr>` per lamp (`hue.ne` …) and `outputs.<output
+     id>.<attr>` per output (`hue`, `dmx-a` …), attrs `intensity` (or `brightness`), `colour`, `position`; zero is
+     "frame sent" for Hue and DMX.
+   - **04:** nothing changes on the screens (the virtual Maestro still carries them until P4); the director no longer
+     overwrites a palette a person picked on a screen (after step 4).
+   - **aa:** nothing.
+
+### S5.13 Integration and measurements (c8, 16 Oct)
+
+**Built by c8** (the builders' unlanded items): `outputs.py` and `tests/test_outputs.py` (S5.4b), the `__main__` and
+api.py seams (S5.4b), the director's lamps from the registry, `look_fn` and the name scan's Stage-5 additions (S5.8).
+
+**Reconciled** (the builders' open points):
+- **B12:** `lamps` is passed to `Registry.poll` and `LookEngine.configure`; the Rig keys on `poll()`'s True and the
+  view's identity, never the revision; the hits/`min_attack_ms` caps checks live in the drivers' `configure` (both
+  enforce "only off" and "only raise"). The test OFL types stay embedded in test_ofl.py.
+- **B13:** the module is `colour_mix.py` (S5.5's emitters.py); the name scan lists it. Its six S5.5a decisions stand.
+- **B14:** `Rig.stop` gathers the task `HueOut.stop()` returns on show-brain, and brain.py awaits it; the copied (not
+  imported) Hue code stands, pinned by its parity tests; `fixtures.hue_settings` is the one rule (hue_out calls it).
+- **B15:** the runner calls `plan_hit` for a hit wake (S5.7a), and `set_settings(rig.artnet)` reaches the drivers on a
+  show.yaml change; `/api/v1/rig/frame` serves `universe_view()`, and the new `GET /api/v1/rig/dmx` serves
+  `Nodes.dmx_view()` (previz). The grid's latency gap (an output whose fixtures all have their own measurement)
+  stays as B15 noted.
+- **B16:** chip id/kind `screen_pick` and `DELETE /api/v1/nudge/screen_pick` unchanged (api.py needed nothing).
+
+**Three integration rulings**, each found by the Stage-5 e2e on real test music and pinned by a unit test:
+1. **No hits under House lights or Lights low** (looks.py; S5.5a). DMX flashed up to level + 0.5 over Lights low.
+2. **Only the hits a look would flash wake a runner** (`LookEngine.takes_hit`, `Rig.on_hit`; S5.4b, S5.5a). Every
+   band's onsets reach show-rx (13 a second on techno); each re-planned a DMX frame.
+3. **A hit never pushes the beat frame** (artnet_lan.py; S5.7a). With dense hits the frame at `t_beat − L` was
+   being replaced by pulled frames, so the beat itself was never carried.
+
+**The Stage-5 end to end** (`tests/test_e2e.py::test_stage5_end_to_end`, about 30 s; skipped without ffmpeg). The real
+wiring in-process on ephemeral ports; a fake room on its own thread (both screens live; it emits `screen.look` on
+every look PATCH, as 2f's room code does); a FAKE Hue bridge (CLIP and DTLS streamer faked at the factory edge; the
+module's default factories raise; the pairing file in tmp names a TEST-NET address); Art-Net to a local sink node and
+a virtual node; tmp copies of fixtures.yaml (the six devices, Hue on, three RGB pars on two universes), patch.yaml
+(`hue.streamer: show`) and show.yaml (the real `lamps`, `director`, `rig`, `looks`). Test audio: a fetched techno
+track through the real test-audio child. It checks, and with `-s` prints (one run, niced, 16 Oct):
+- room's hue adapter's `POST /api/v1/hue/stream` (the four lamps and a screen: the screen comes back `unknown`), then
+  `streaming` with a DTLS session to the fake bridge's area;
+- **Hue at 50 Hz:** 300 frames in 6.0 s, 50.00 Hz, gap p50 20.0 ms, p99 20.7 ms; every lamp every frame; each lamp's
+  xy equals the director's colour for it at that moment (p95 error 0.0000 xy); colour parity with the virtual
+  Maestro's hue channels p50 0.0007, p95 0.0013 xy; the lamps' roles (above: extend, opposite: key) reach Hue;
+- **DMX on the beat grid:** every beat in the window had its beat frame (13 of ~13 at 128.1 bpm), leaving +1.03 ms
+  after the beat (p95 2.28 ms; niced, under the test's own load), and each was the clock's beat at that moment (|err|
+  p50 0.00 ms); 180/190 frames on the 16th grid at the sink; the dimmer follows the engine; hits wake the runner
+  (`extra.runner.hits` > 0); no rig or engine errors;
+- **the virtual node:** `GET /api/v1/rig/dmx` decodes its universe; `/rig/frame?output=dmx-v` reads `virtual: true`,
+  `to: null`;
+- **the screens rule:** no screen in any output's frame; at Lights low the Hue brightness is exactly 0.1^0.6 of full
+  (16467), the DMX dimmer 26, and the virtual Maestro's screen RGB stays 255 (never scaled);
+- **the hold:** the director's palette PATCHes carry `source` (`look_source: yes`); a fake hand pick (`screen.look`,
+  source web, palette `ice`) shows the chip and stops every screen PATCH through a Next look (4 s, none sent); Back to
+  auto (`DELETE /api/v1/nudge/all`) clears it and the director's palette goes back to both screens at once;
+- **release:** `POST /api/v1/hue/release` with the four lamps answers `released: true, via: show` after the fake
+  area reads inactive; the brain's ticks have no errors (rig tick CPU p95 1.9 ms, director 1.4 ms).
+
+**The suite** (16 Oct, `flock … nice -n 19 … pytest show_service/tests -q`): **1211 passed, 1 skipped** (the network
+OFL test) in 9 min 34 s.
+
+**CPU of the real process** (scratch harness, not in the repo: the real `main()` as a niced subprocess, HOME and every
+file in tmp, the Hue bridge faked at the factory edge with each frame encoded as HueStream and sent to a local UDP
+sink (no DTLS), Art-Net to local sinks, a fake room with live screens, the techno track through the real test-audio
+child, the e2e's lively vibe, one `renderer` WS client, **ML off in every run**; 60 s of `/proc/<pid>/stat` after a
+30 s warm-up; load average about 2 on 20 threads; the 4K render was not running):
+
+| Rig | show_service, core | Δ vs shipped | runner threads | Art-Net sinks |
+|---|---|---|---|---|
+| **shipped** (fixtures.yaml as is: 6 devices, every output off) | 0.410, 0.395 | | none | the virtual Maestro 40 Hz |
+| **Hue on** (the cut-over, S5.12 step 5) | 0.428, 0.418 | **+0.020** | show-out-hue 0.024-0.025 | Hue 50.0 Hz; the virtual Maestro 40 Hz |
+| Hue + 2 RGB pinspots on one universe (§9.3's first DMX) | 0.461, 0.454 | +0.055 | hue 0.025, dmx 0.022 | DMX 38.5 Hz; the virtual Maestro 37.5-38 Hz |
+| 24 RGB pars registered, every output off | 0.413 | +0.011 (the director colours 24 more lamps: its tick p95 2.4 ms) | none | |
+| Hue + 16 pars (sink) + 8 pars (virtual node) | 0.493, 0.520 | +0.10 | dmx-a 0.030-0.032, hue 0.027-0.030, dmx-v 0.024-0.026 | DMX 32-33 Hz; the virtual Maestro **32 Hz** |
+
+- show-rx 0.32-0.34 in every run (Stage 4's 0.34-0.36 with the worker); show-bus 0.04; show-brain 0.022 shipped,
+  0.032 with 24 more lamps; show-artnet 0.015. Rig tick CPU p95 0.4 ms (off) to 1.9 ms (three outputs). Every run
+  exited 0 on SIGTERM with no ERROR line, and no rig, engine or guard error.
+- **Per runner:** a bare runner loop (fake engine and driver, 50 Hz) costs 0.007 of a core; the rest is
+  `evaluate` (p50 145 µs for 4 Hue lamps, 233-250 µs for 2 pars, 400-540 µs for 8-16 pars; wall time, GIL waits
+  included) and GIL hand-overs with show-rx. Runner lateness p95 1.0-1.1 ms (Hue), 1.1-1.6 ms (2 pinspots), 2.2 ms
+  (16 pars).
+- **Against S5.0 rule 7 (≤ +0.03 with every output on):** **met for the Hue cut-over** (+0.020), **as a floor**
+  (S5.14's review): the harness's fake streamer sent each frame inline on the runner thread, so the real
+  `hue-dtls-sender` thread (50 wake-ups a second, a queue hand-over, AES-GCM, one more GIL contender) wasn't measured;
+  ML was off and the 4K render wasn't running; and the process delta (0.020) is smaller than `show-out-hue`'s own
+  CPU (0.024-0.025), so the run-to-run noise is about ±0.01. With the sender, Hue is more likely about 0.028-0.03:
+  at the budget line, not under it. How long show-rx takes per packet with the runners on (hit latency, §5.1) wasn't
+  measured. S5.12 step 5.4 measures all of it. DMX costs about
+  0.022 of a core per universe even for two fixtures, so Hue plus the first pinspots is +0.055, and the synthetic
+  24-par rig +0.10, where the extra GIL traffic also slows the virtual Maestro (the screens' feed) from 40 to 32 Hz.
+  Both are for c8 and the owner before a DMX output goes on (S5.12 step 6); nothing is bought yet.
+- **DMX frame rate:** 31-38 Hz at the sink, not the grid's 43, because a frame that leaves more than the grid's 0.5 ms
+  of slack late pushed the next 16th a whole tick on (the spacing measured from the actual send). Beat frames were
+  unaffected (the e2e above). At nice 0 the virtual Maestro reads 38.8-39.5 Hz in production (S4.12). **Fixed in
+  S5.14** (both artnet_lan and artnet_out): a grid point up to 1 ms inside the gap goes at the gap's end.
+
+### S5.14 Review fixes (16 Oct; c8's fixer)
+
+The Stage-5 review raised 20 issues (7 major; two of the minor ones are the same fix). 19 are fixed here, three of them
+with something left for someone else: room's side of the Hue re-sync (68), the low-confidence onsets on DMX (the
+owner), and a coloured key light within ±200 K (the owner, vibes.yaml). One, hits on every band, is the owner's call
+and unchanged (recorded in S5.12 step 6). Nothing is committed; every output is still off.
+SHOW_ENGINE §5.4, §8.6 and §8.8 are the rules each fix follows. Nothing branches on a name: the new behaviour comes
+from driver caps, LookData fields and show.yaml keys.
+
+**The drop's unison hit, per output** (major; §5.4: Hue never gets a reactive hit).
+- It used to be laid into `palette_fn`, so every lamp, Hue included, got a one-beat full step 60-170 ms late, and a
+  Hue output's `caps.hits: false` couldn't stop it.
+- Now the director puts it in `LookData.hit` (`contract.LookHit`: `t0_ms`, `t1_ms`, `predicted`, `swell_ms`,
+  `lamps`), never in `palette_fn`. The engine lays it over the director's colours per output, from caps alone
+  (`contract.hit_weight`, the one rule):
+  - an output that takes hits (DMX) shows it at once for [t0, t1);
+  - one that doesn't (Hue) shows it at once only for a predicted (armed) drop line;
+  - an unforeseen drop on such an output swells: a smoothstep up over `swell_ms`, then back down after t1, mixed in
+    OKLab so the colour glides with the level.
+- `swell_ms` is the new show.yaml `director.build.hit_swell_ms` (300, §5.4's ≥ 300 ms; allowed 300..10000).
+- **The virtual Maestro** (room streams its hue channels to the lamps until the Hue cut-over) now reads
+  `Director.maestro_palette_fn`: `palette_fn` plus the hit by the same rule, as Hue takes it. So the lamps change
+  today too: an unforeseen drop swells on them instead of stepping.
+- The director keeps an unforeseen drop's hit until its swell has fallen back (t1 + swell).
+- Tests: `test_the_drop_hit_follows_each_outputs_caps` (Hue's level takes ≥ 300 ms to rise, its xy never steps; DMX
+  at once; a predicted line on time on both), `test_an_unforeseen_drop_is_lookdatas_and_swells_on_the_virtual_maestros_lamps`.
+  The armed-drop test now checks `LookData.hit` and `maestro_palette_fn`.
+
+**The key light's white** (major; §8.8: warm white, 2400-3000 K, in the quiet feels).
+- A role with `white_k` capped the mixed colour's **absolute** OKLCh chroma at its `chroma_max`. A 2700 K white alone
+  is C ≈ 0.138, so `lamp_chroma_max: 0.04` dragged the key to about 4900-5000 K, a blue base to lavender and teal to
+  lime.
+- `director.white_tint` now caps the tint's OKLab (a, b) **distance from white(key_cct)**. A colour's neutral axis is
+  re-anchored on the white in proportion to how achromatic it is. So a grey or white palette leaves the white
+  exactly as it is (2706 K for 2700). A coloured one moves toward the colour at most `chroma_max` away. With no cap,
+  it is the old mix (Party and Disco, 0.3, keep their full colour). A role without a white keeps the absolute cap.
+- Test: `test_the_key_light_stays_at_key_cct_in_the_warm_white_feels`, on the real vibes.yaml (every feel whose
+  `lamp_chroma_max` ≤ 0.06) and show.yaml roles, at three saturations and ten palettes:
+  - a neutral palette lands within 200 K of key_cct;
+  - a coloured one is within `chroma_max` of the white, outside `avoid_hues`, and under 4000 K.
+- **Not as asked** (the reviewer's "within about 200 K for a coloured palette"): a tint of 0.04 in OKLab, the cap
+  vibes.yaml sets, moves a 2700 K white by up to about −560 / +750 K along the locus (red art → ~2140 K, teal →
+  ~3450 K). The test bounds it at 20000 K × the cap. If the owner wants ±200 K whatever the art, the quiet feels'
+  `lamp_chroma_max` would be about 0.012 (c8's vibes.yaml call).
+
+**No vibe on DMX is the house look** (major; §8.6: on exit DMX falls to its house or failsafe scene).
+- With no vibe, the engine marked frames active whenever the features were fresh and the room wasn't quiet. Every
+  fixture then got artnet_out's neutral amber with the 0.7 swell, so pinspots would pulse to TV audio or talk.
+- New driver cap `idle_without_vibe` (`contract.DriverCaps`; artnet `True`, hue `False`): on such an output no vibe
+  is inactive (`why: "no_vibe"`), i.e. each fixture's `house`. Hue keeps the neutral look, because room's hue adapter
+  decides which lamps follow.
+- Test: `test_no_vibe_is_the_house_look_where_nothing_room_side_gates_the_output`.
+
+**The colour wheel** (major; S5.5 "the nearest colour slot in OKLab").
+- Above `WHEEL_WHITE_C`, Open was never compared, so 4000 K took yellow and #ffd0e0 took orange.
+- Now the nearest slot of all wins, whites included. The two thresholds still force Open.
+- Test: `test_wheel_the_white_slot_competes_on_distance`.
+
+**House lights for DMX fixtures** (major).
+- A lamp room has no stored state for (every DMX fixture) got show.yaml's 2700 K × 0.8 under House lights and as the
+  start of every entry fade. fixtures.yaml's own `house` was ignored, so the ball pinspots would have lit at 80 %.
+- `layout_from_rig` now carries `house`, and `Director._house_rgb` uses it (hex × intensity, as the engine reads it)
+  before `director.house`. Room's stored state still wins.
+- Test: `test_house_lights_use_the_fixtures_own_house_when_room_has_none`.
+
+**Hue's rise limit** (two minor issues, one fix).
+- hue_out capped a rise at 1/attack per second; the engine allows `SLEW_PEAK`/attack (1.5/attack). So the driver
+  clipped the engine's own swell whenever depth × level > 2/3: Disco's 0.9 lost up to 0.11 mid-attack.
+- `contract.SLEW_PEAK` is now the one constant (looks.py and hue_out.py).
+- Test: `test_sent_brightness_matches_the_virtual_maestros_hue_channels` checks what `set_frame` actually sends
+  against artnet_out's hue channels, at depths 0.7 and 0.9, within 1/255.
+
+**The DMX confidence policy** (minor; §5.4 Middle: beat-locked on DMX only, at reduced depth).
+- The director sent `beat_lock = (gate == beat)` and `hue_depth` 0 otherwise, so the engine's gate-`dmx` branch never
+  ran (`looks.middle_depth` was dead) and DMX went steady at middle confidence.
+- Now `set_look_out` carries:
+  - `beat_lock`: the vibe's own;
+  - `hue_depth`: unchanged, 0 off gate `beat`, so the virtual Maestro's Hue and the engine's Hue parity hold;
+  - **`beat_depth`**: the same accent depth before the gate. It goes to the rig only; `__main__` filters it out for
+    artnet_out, whose clock is gated at `beat` by itself, so nothing changes there.
+- The engine's `swell` input reads `beat_depth` while a layer runs beat-locked, so DMX runs × `middle_depth` at gate
+  `dmx`.
+- §8.6's "one phrase passed" now counts at gate `dmx` too (DMX is locked from there).
+- Tests: `test_beat_depth_keeps_dmx_beat_locked_at_middle_confidence`; the director's look tests are updated.
+- **Open, the owner's call:** §5.4's "Low: DMX follows onsets" is not built (hits need the gate above `none`). It is
+  recorded in S5.12 step 6.
+
+**House lights, Lights low and the dip are steady** (minor).
+- They stopped hits and zeroed the swell depth, but any other layer kept moving the lamps (the `motion` layer would
+  wave the house light), and hits flashed DMX over the pre-drop dip.
+- Now the engine treats `house`/`low` like a held frame (no layer, no hit). The new `LookData.dip` stops hits (and
+  `takes_hit`) while the dip is on.
+- Test: `test_house_low_and_the_dip_are_steady`.
+
+**The screens' hold** (minor).
+- A hold started on any palette pick, even with no feel playing or `send_palette` off. The Music card then said
+  "picked on a screen" with no show running, and `engaged()` blocked Auto.
+- Now a hold starts only while a vibe plays and `send_palette` is on; otherwise the pick is only logged, with why.
+  Turning `send_palette` off ends a hold, as `hold_hand_picks` off does.
+- `palette: null` (the card's "The scene's own colours") now reads "Colours: the scene's own (picked on a screen)",
+  the Room page's own words. 2f to confirm them.
+
+**Measured emitters, and the curve** (minor).
+- The RGBW path (white = min(r, g, b)) ignored a type's `emitters` overrides. A warm-white W turned 6500 K into
+  ~3000 K.
+- A type that declares any usable `xy` or `Y` now goes through the least-squares solve, RGB and RGBW included.
+- fixtures.yaml's `types` example now says to measure each type's `curve` (`linear` or `gamma:<g>`). Under `srgb` a
+  linear-dimming RGBA misses #ff8040 by ~0.1 xy.
+- Tests: `test_declared_emitters_send_rgb_and_rgbw_through_the_solve`, `test_chromaticity_through_the_curve` (bytes
+  decoded through the matching response land within 0.01 xy; `srgb` on a linear fixture misses by > 0.05).
+
+**Hits on every band** (minor): **not changed: the owner's call** (caps default off by ruling). With `bands` unset
+and no `flash_hz_max`, Disco's DMX would flicker at up to ~13 Hz on hats. It is recorded in S5.12 step 6, with the
+options.
+
+**Hue never strobes** (minor).
+- Only the rise slew enforced it: falls are instant, and the 2 × attack rule covered only subdivided beat layers. A
+  `square`, `saw` or `phase: time` layer selecting Hue lamps could flicker them at 6-10 Hz.
+- New driver cap `min_period_ms` (hue: 2 × `min_attack_ms`, 160 ms; artnet 0). The engine runs any oscillator whose
+  cycle is shorter at double its period, again until it isn't, so it stays on its own grid. The layer is listed in
+  `stats().per_output.<id>.coarsened`.
+- Test: `test_a_hue_output_never_runs_an_oscillator_faster_than_its_min_period`.
+
+**What room asked Hue to follow, across a restart** (major).
+- `_asked` lived only in memory. A restart, a crash or the output switched off and on came back `idle` and stopped the
+  area, while room still read "Following the music" until the next mode change.
+- show_service's side:
+  - `HueOut.persist_state()` / `restore_state()`; `Rig.persist()` keeps each driver's state by output id in
+    state.json's `rig`, also for an output switched off since, and hands it back when the output is built again;
+  - restored only while patch.yaml still says `hue.streamer: show`;
+  - `request` and `release` mark state.json dirty.
+  - S5.6b: forgotten (and persisted so) on the flip from `show` to `room`; kept and updated while the output is off.
+- Room's side (in `read()`, POST `/hue/stream` again when our set differs from `show_wanted` or our boot changed) is
+  68's, now built (`_sync_show`). It reads `lights` (`HueStatus.asked`, unfiltered) and `boot_id` from `GET
+  /api/v1/hue/status` (S5.6c).
+- Tests: `test_what_room_asked_comes_back_after_a_restart` (a new HueOut takes the set back and streams with no
+  request; not under `streamer: room`), `test_driver_state_survives_a_restart_and_off_and_on` (the Rig's plumbing,
+  through `persist` → `restore`).
+
+**The DMX grid's tolerance, and the rate cap's slack** (major and minor): S5.7a.
+- Tests: `test_a_little_lateness_doesnt_skip_grid_ticks`, `test_a_rate_cap_keeps_the_grids_slack`, and
+  `test_a_little_lateness_keeps_the_screens_feed_on_its_grid` (artnet_out).
+- With the old `_grid`, the lateness test reads 21 Hz at 0.8 ms of lateness (checked).
+
+**fixtures.yaml half-written** (minor).
+- A poll mid-way through an in-place save could load a truncated file that is still valid YAML (an output on, its
+  fixtures cut off). The Hue lamps would then blip for a few seconds.
+- `Registry.poll` now applies a file change only when the next poll sees the same files (about a second later). The
+  first load, `force`, and show.yaml's own inputs still apply at once.
+- Test: `test_a_half_written_file_is_never_loaded`; the registry tests poll twice after an edit.
+
+**A hit wakes only its own outputs** (minor).
+- `LookEngine.takes_hit(d, output_id)` also asks whether that output has a fixture in `looks.hits.select` (compiled
+  per output). `Rig.on_hit` wakes only those runners, so a universe whose fixtures never flash stays on its beat grid.
+- Tests: `test_takes_hit_per_output_follows_the_hits_selection`,
+  `test_a_hit_wakes_only_the_outputs_whose_fixtures_it_would_flash`.
+
+**The build-ahead** (minor): S5.4b (`max(1 ms, the runner's own evaluate p95 + the GIL switch interval)`, at most
+4 ms). Test: `test_a_runner_builds_ahead_by_its_own_evaluate_cost`.
+
+**The CPU figure** (minor): S5.13 now calls +0.020 a floor and says why; S5.12 step 5.4 measures per thread, with the
+DTLS sender, ML and the render on.
+
+**The suite** (16 Oct, `flock … nice -n 19 … pytest show_service/tests -q`): **1242 passed, 1 skipped** (the network
+OFL test) in 9 min 40 s. The Stage-5 e2e (`-s`, niced): Hue 50.00 Hz, xy against the director's colour p95 0.0000,
+against the virtual Maestro's hue channels p95 0.0012; DMX beat frames 13 of ~13, +1.29 ms after the beat (p95 3.48);
+**DMX at the sink 39.3 Hz** (32.5 Hz before the grid's tolerance), 223/236 frames on the 16th grid; runner lateness p50
+0.58, p95 1.89 ms; rig tick p95 1.93 ms. Isolated, `evaluate` for 4 Hue lamps is p50 37-47 µs, p95 72-80 µs (the
+full suite's one reading of 164 µs was under the host's other load).
+
+**Interfaces changed** (all additive; old callers keep working):
+- `contract.LookData` gains `dip`, `hit` (`LookHit`); `DriverCaps` gains `min_period_ms`, `idle_without_vibe`
+  (NotRequired); `contract.SLEW_PEAK` and `contract.hit_weight`; `Frame.why` gains `no_vibe`.
+- `LookEngine.set_look(..., beat_depth=)`, `LookEngine.takes_hit(d, output_id=None)`, `Rig.set_look(...,
+  beat_depth=)`.
+- `Director.maestro_palette_fn` (`__main__` gives it to the virtual Maestro), `director.white_tint`.
+- `HueOut.persist_state` / `restore_state`; `Rig.persist` returns `{"outputs": {...}}`.
+- show.yaml `director.build.hit_swell_ms`. In `__main__`, `ctx.set_look_out` sends artnet_out only `hue_depth`,
+  `beat_lock` and `reset`.

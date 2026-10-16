@@ -1,6 +1,7 @@
 # config/room/show.yaml: show_service's own settings (docs/SHOW_ENGINE.md; show_service/README.md, "Stage 3" and
 # "Stage 4"; S4.9 lists the Stage-4 keys: ml, genre_map, structure, and new keys under situations, listener and
-# director. Nothing reads a Stage-4 key until the Stage-4 code is deployed).
+# director. Nothing reads a Stage-4 key until the Stage-4 code is deployed). Stage 5 (README S5.10) adds rig, looks
+# and two director.screens keys; nothing reads them until the Stage-5 code is deployed.
 # Owner: screen-machine-c8. show_service re-reads this file when it changes (mtime, every 2 s). A bad edit keeps the
 # last good settings, and GET /show/api/v1/state shows the error under brain.settings.error.
 #
@@ -11,7 +12,8 @@
 #   - Put-back: the room's per-row {"set": v, "restore": true}.
 #   - Model ids, prices and budgets: config/llm.yaml.
 #   - Latency trims: config/room/latency.json.
-#   - The fixtures' layout: config/room/patch.yaml (68's).
+#   - The fixtures' layout: config/room/patch.yaml (68's: the virtual Maestro's universe and room's Hue block) and,
+#     from Stage 5, config/room/fixtures.yaml (c8's: the registry, the outputs and their on/off switches).
 #
 # Device addresses live here, in config/room/, like sonos.json (owner ruling, 16 Oct). Code never holds one.
 # EVERY NUMBER IN THIS FILE IS A DESIGN DEFAULT, a starting point to be tuned by ear (the § says where it comes from),
@@ -188,11 +190,19 @@ director:
     dip_level: 0.25                         # pre-drop: lamps dip to this (§8.5: 20-30 %)...
     dip_bars: 1                             # ...for the last bar before the drop line
     hit_beats: 1                            # §8.5: the drop is a unison hit on lamps and DMX, one beat long
+    hit_swell_ms: 300                       # §5.4: a drop nobody predicted reaches an output that takes no hits (Hue)
+                                            # as a swell this slow (up, then down after the hit); a predicted drop
+                                            # line's hit lands on time everywhere. 300..10000 (README S5.14)
   breakdown: {floor_add: 0.1, motion_scale: 0.5, saturation_scale: 0.8}   # §8.5: floor up, motion slower, -20 % saturation
   screens:                                  # the screens' palette (agreed with 2f and 04, 16 Oct): while a vibe plays,
     send_palette: true                      # live screens get the director's catalog palette (PATCH /screens/{id}/look,
                                             # once per change); false: the director never touches it (hot-reloaded)
     palette_transition_s: 4                 # starting point (the renderer's own default, LIVE_V1 §1.11)
+    # Stage 5 (README S5.8, agreed with 2f, 16 Oct): a palette a person picks on a screen holds the screens' palette
+    # (the director stops sending) until the next mode change, Back to auto, or the chip's x.
+    hold_hand_picks: true                   # false: the director sends over a hand pick, as in Stage 4 (hot-reloaded)
+    own_echo_s: 3                           # agreed with 2f: a screen.look without a source whose palette is what we
+                                            # sent that screen this recently is our own change coming back
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
   cadence_s: 20                             # a clip every 20 s...
@@ -395,3 +405,77 @@ structure:
     drop_weights: [0.40, 0.35, 0.15, 0.10]  # DropDetector's impact blend: loudness flux, bass flux, band change, level
     band_weights: [0.5, 0.3, 0.2]           # its band change: bass, mid, treble
     drop_cooldown_s: 2                      # mMinTimeBetweenDrops
+
+# ---- Stage 5 (README "Stage 5"; S5.10 lists these keys) ---------------------------------------------------------------
+# The rig: the fixture registry (config/room/fixtures.yaml), the look engine (looks.py) and the output drivers
+# (hue_out.py, artnet_lan.py). Every output is OFF until fixtures.yaml enables it; these keys only say how the engine
+# and the drivers behave once one is on. The screens stay on the virtual Maestro until P4 (README S5.9).
+rig:
+  enabled: true                             # false: no registry, look engine or outputs at all (the rollback;
+                                            # hot-reloaded). Every output is also off until fixtures.yaml enables it.
+  artnet:                                   # artnet_lan.py (§9.3)
+    poll_s: 3                               # §9.3: a unicast ArtPoll every 3 s to each node an enabled output uses
+    keepalive_s: 1                          # §9.3: an unchanged universe goes out again at least this often
+    idle_eval_hz: 10                        # starting point: how often an idle output's look is checked for a change
+    silent_after_s: 10                      # starting point: a node with no ArtPollReply this long reads "silent"
+                                            # (health only: frames keep going)
+    reply_bind: null                        # unset: ArtPollReplies only through our own socket (WSL NAT). Nodes answer
+                                            # on PC22's udp 6454, which ca's relay forwards to room_service's receiver;
+                                            # once ca also forwards OpPollReply to a show_service port, its "host:port"
+                                            # goes here (registered in docs/PORTS.md first; README S5.7)
+  hue:                                      # hue_out.py (§9.4)
+    takeover_check_s: 2                     # room's own rule (room_service/hue/output.py): who holds the area, every 2 s
+    start_wait_s: 3                         # starting point: an area another streamer holds is waited for this long,
+                                            # then taken_over (never fight)
+    release_settle_s: 1.0                   # §9.4: the bridge's own post-entertainment write lands before "released"
+    release_timeout_s: 15                   # starting point (room's hue adapter waits 20 s for the answer)
+    error_backoff_s: 5                      # room's own rule (room_service/hue/output.py)
+
+looks:                                      # the look engine (looks.py; §9.1). Lamps and DMX only: a kind-screen
+                                            # fixture never gets a level, layer, hit, master or cap (the screens rule).
+  align_pct: 25                             # §5.5: aim at the perceived onset (~t20-t30) of each measured edge,
+                                            # interpolated between latency.json's t10 and t50
+  min_visible_ms: 40                        # starting point: a pulse's visible width; §5.4: a pulse lasts at least
+                                            # L_rise - L_fall + this
+  middle_depth: 0.5                         # starting point (§5.4 "Middle"): with the clock's gate at dmx, beat layers
+                                            # run only on outputs that take hits, at this x their depth
+  master: 1.0                               # lamps and DMX only, never screens
+  caps:                                     # §8.2 L5: optional, off unless set
+    flash_hz_max: null                      # an intensity rise of more than 0.5 at most this often per fixture
+  # Layers on top of the director's colours (palette_fn), each fixture evaluated at t_send + its own latency.
+  # Intensity: the highest wins (HTP); colour: the latest layer that sets it (LTP). An oscillator multiplies its
+  # fixtures' intensity by 1 - depth + depth x shape.
+  layers:
+    - id: pulse                             # the lamps' beat swell, exactly the virtual Maestro's (artnet_out.py)
+      attr: intensity
+      fx: swell                             # attack up to the beat, then decay
+      phase: beat
+      subdivide: true                       # x the look's accents.subdivision (1, 1/2, 1/4 or 1/8 of a beat)
+      depth: swell                          # the director's set_look_out depth (director.accent_depth by the accents
+                                            # style; 0 while relaxed, House or Low); with no vibe, artnet_out's 0.7
+      needs: beat
+      without_beat: energy                  # no beat, or beat_lock false: the depth follows the smoothed energy, as
+                                            # artnet_out's swell does ("none": steady)
+      attack_ms: 80                         # §5.4 (artnet_out's HUE_ATTACK_S); an output's min_attack_ms raises it
+      decay_ms: 250                         # starting point (artnet_out's HUE_DECAY_S)
+      select: "kind:lamp"
+    - id: motion                            # slow movement inside a look: a wave round an ordered group
+      enabled: false                        # off: the lamps look as they do through the virtual Maestro today. Tune by
+                                            # ear, then turn on (hot-reloaded)
+      attr: intensity
+      fx: sine
+      phase: bar
+      period_bars: [8, 1]                   # starting point: the look's motion.speed 0 -> 8 bars, 1 -> 1 bar
+      depth: motion.amount
+      depth_scale: 0.3                      # starting point
+      spread: look.spread                   # 0: unison .. 1: one whole cycle across the group
+      needs: none                           # on the clock's bars when it has a grid, else on time
+      select: "group:around"
+  hits:                                     # music.hit -> a short flash, only on outputs whose driver takes hits (DMX,
+                                            # never Hue: §5.4)
+    select: "kind:lamp"
+    styles: [beat, full]                    # starting point: only while the look's accents style is one of these
+    # bands: [sub, bass]                    # unset: every band
+    min_strength: 0.3                       # starting point
+    depth: 0.5                              # starting point: the flash reaches level + this x strength (HTP)
+    decay_ms: 120                           # starting point

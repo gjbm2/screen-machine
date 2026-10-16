@@ -631,6 +631,26 @@ def test_frames_keep_the_minimum_gap_from_when_they_actually_left(beat):
             assert g <= 2 * tick + 0.0041
 
 
+def test_a_little_lateness_keeps_the_screens_feed_on_its_grid():
+    """README S5.14: at 128 bpm the tick is 23.44 ms, 0.74 ms over the gap. A frame that leaves 0.8 ms late used to
+    push the next 16th a whole tick on (the screens' feed read 40 Hz, then 32 Hz under the rig's GIL load). A grid
+    point within GRID_TOLERANCE_S inside the gap now goes at the gap's end."""
+    sim = _SimTime(100.0)
+    period = 60.0 / 128.0
+    clk = FakeClock(anchor=100.5, period=period)
+    vm = ao.VirtualMaestro(layout=layout(), clock=clk, idle_after_s=None, time_fn=sim)
+    vm._sleep = sim.sleep
+    sock = _LateSock(sim, vm, [0.0008], 600)
+    vm._sock = sock
+    vm._run()
+    gaps = [b - a for a, b in zip(sock.sent, sock.sent[1:])]
+    assert min(gaps) >= ao.MIN_GAP_S - 1e-9
+    hz = (len(sock.sent) - 1) / (sock.sent[-1] - sock.sent[0])
+    assert hz > 36.0, hz
+    for b in clk.beats(100.5, sock.sent[-1] - 0.05):              # every edge still leaves with its beat
+        assert any(0.0 <= t - b <= 2 * 0.0008 + ao.GRID_TOLERANCE_S + 1e-6 for t in sock.sent), b
+
+
 def test_foreign_sender_by_rate_and_while_yielded():
     ours = frozenset({"127.0.0.1"})
 

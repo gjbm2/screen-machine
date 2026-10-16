@@ -442,8 +442,17 @@ def test_python_m_show_service_with_the_brain(tmp_path):
             code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
             assert code == 200 and body["brain"]["running"] is True, body.get("brain")
             assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "ml",
-                                                        "structure", "listener", "director"}
+                                                        "structure", "listener", "director", "rig"}
             assert body["ml"]["state"] in ("failed", "backoff"), body["ml"]   # HOME is tmp: no ML venv there
+            # Stage 5: the rig reads the real fixtures.yaml (read only): six fixtures, every output off, no problems
+            rig = body["rig"]
+            assert rig["enabled"] is True and rig["registry"]["counts"]["fixtures"] == 6, rig["registry"]
+            assert rig["registry"]["problems"] == [] and rig["registry"]["error"] is None, rig["registry"]
+            assert {o["state"] for o in rig["outputs"].values()} == {"off"}, rig["outputs"]
+            assert rig["hue"]["state"] == "off" and not [t for t in body["threads"] if t.startswith("show-out-")]
+            code, hs = _get(f"http://127.0.0.1:{port}/api/v1/hue/status")
+            assert code == 200 and hs["state"] == "idle" and "fixtures.yaml" in hs["detail"], hs   # 68's four words
+            assert body["brain"]["components"]["director"]["patch"]["from"] == "fixtures.yaml"
             assert body["brain"]["components"]["structure"]["context"] is None or isinstance(
                 body["brain"]["components"]["structure"]["context"], dict)
             assert all(v == "ok" for v in body["modules"].values()), body["modules"]
@@ -500,6 +509,26 @@ class FakeComp:
 class FakeDirector(FakeComp):
     def palette_fn(self, t_s):
         return {"*": (0.1, 0.2, 0.3)}
+
+
+class FakeRig(FakeComp):
+    """outputs.Rig's seams (Stage 5): set_look (ctx.set_look_out's fan-out) and on_hit (show-rx's hit tap)."""
+
+    def __init__(self, *a, **k) -> None:
+        super().__init__(*a, **k)
+        self.looks, self.hits = [], []
+        self.fail_hit = False
+
+    def set_look(self, *, hue_depth=None, beat_lock=None, reset=False):
+        self.looks.append((hue_depth, beat_lock, reset))
+
+    def on_hit(self, d):
+        if self.fail_hit:
+            raise RuntimeError("rig hit")
+        self.hits.append(d)
+
+    def snapshot(self):
+        return {"enabled": True, "outputs": {}}
 
 
 class FakeML(FakeComp):
@@ -579,6 +608,7 @@ def install_brain_fakes(monkeypatch) -> dict:
     sys.modules["show_service.mllink"].MLFeed = MLFeed
     module("listener", lambda ctx, kw: FakeComp("listener", 1.0, kw, {"beliefs": lambda: None}))
     module("director", lambda ctx, kw: FakeDirector("director", 10.0, kw, {"vibe": lambda: None}))
+    module("outputs", lambda ctx, kw: FakeRig("rig", 1.0, kw, {"rig": lambda: None}))
     monkeypatch.setitem(sys.modules, "show_service.ring", ring)
     monkeypatch.setitem(sys.modules, "show_service.situations", sit)
     return made
@@ -633,7 +663,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert all(v == "ok" for v in show.modules.values()), show.modules
         assert {"api", "ring", "situations", "brain", "autopilot", "sources", "listener", "director"} <= set(show.modules)
         assert show.brain.running and list(show.brain.components) == ["room", "situations", "autopilot", "sources",
-                                                                      "ml", "structure", "listener", "director"]
+                                                                      "ml", "structure", "listener", "director",
+                                                                      "rig"]
         # files come from the options, test kwargs on top
         sd = tmp_path / "state"
         assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
@@ -641,12 +672,20 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
         assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
         assert made["mllink"].kw == {"log_path": sd / "ml-worker.log"} and made["structure"].kw == {}
+        # Stage 5: the rig, after the director, fed by reference (the fake clock has no snapshot: no clock)
+        rk = made["outputs"].kw
+        assert rk["palette_fn"] == show.director.palette_fn and rk["look_fn"] is None and rk["clock"] is None
+        assert rk["features_fn"] == show.features.latest and rk["neutral"] is None        # the fake artnet_out
+        assert rk["latency_path"] == opts.config.latency_file and rk["patch_path"] == __import__("pathlib").Path("p.yaml")
+        assert rk["driver_kw"] == {"artnet": {"state_file": sd / "nodes.json"},
+                                   "hue": {"patch_path": __import__("pathlib").Path("p.yaml")}}
+        assert show.rig is made["outputs"] and ctx.rig() is None
         assert show.brain.store.path == sd / "state.json"
         # the engine side of the context
         assert ctx.features == show.features.latest and ctx.health == show.health and ctx.notes is show.tap
         assert ctx.rings is show.rings and ctx.set_senders == rx.set_senders and ctx.set_priority == rx.set_priority
         assert ctx.static_senders == opts.config.senders and ctx.notify == show.api.notify
-        assert ctx.set_look_out == vm.set_look and ctx.section_change == vm.section_change
+        assert ctx.set_look_out == show._set_look_out and ctx.section_change == vm.section_change
         assert ctx.piano() == main_mod.NEUTRAL_PIANO_VIEW and ctx.room() == {"current": "gallery"}
         # Stage 4: the feed is the context's, the components' slots are filled (a list slot is appended to)
         assert ctx.ml_feed is show.mlfeed and ctx.ml() == {"state": "disabled"} and ctx.music_context() is None
@@ -655,6 +694,17 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         ctx.set_look_out(hue_depth=0.4, beat_lock=False)
         ctx.set_gate_ref(-35.0)
         assert vm.look == (0.4, False, False) and show.features.gate_ref_lufs == -35.0
+        assert show.rig.looks == [(0.4, False, False)]                    # the fan-out: Art-Net out, then the rig
+        ctx.set_look_out(reset=True)
+        assert vm.look == (None, None, True) and show.rig.looks[-1] == (None, None, True)
+        # the hit tap: the clock, then the rig; a raising rig is guarded
+        hit = {"type": contract.MUSIC_HIT, "data": {"t_ms": 1000.0, "band": "sub", "strength": 0.8}}
+        show._features_publish(hit)
+        assert show.clock.hits[-1] == (1.0, "sub", 0.8) and show.rig.hits == [hit["data"]]
+        show.rig.fail_hit = True
+        show._features_publish(hit)
+        assert show._g["rig.hit"].errors == 1 and len(show.clock.hits) == 2
+        show.rig.fail_hit = False
         # Art-Net's palette is the director's
         assert vm.kw["palette_fn"] == show.director.palette_fn and vm.kw["palette_fn"](1.0) == {"*": (0.1, 0.2, 0.3)}
         # show-rx taps: the ring after Features and the Clock; the note tap before the piano
@@ -680,11 +730,13 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert st["brain"]["modules"]["director"] == "ok"
         assert st["api"]["events"]["clients"] == 0 and "card_errors" in st["api"]["events"]   # the card socket
         assert set(st["ml"]) == {"ticks"}                                    # the MLLink's snapshot
+        assert st["rig"] == {"enabled": True, "outputs": {}}                 # the Rig's snapshot
         assert st["rx_ms"]["on_audio"]["n"] == 2 and st["rx_ms"]["on_tick"]["n"] >= 1
     finally:
         show.stop()
     assert CALLS.index("stop:director") < CALLS.index("artnet.stop")      # the brain stops before Art-Net
-    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:director", "stop:listener", "stop:structure",
+    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:rig", "stop:director", "stop:listener",
+                                                          "stop:structure",
                                                           "stop:ml", "stop:sources", "stop:autopilot",
                                                           "stop:situations", "stop:room"]   # ml's stop awaited
     assert (tmp_path / "state" / "state.json").exists()
@@ -701,9 +753,28 @@ def test_a_missing_stage3_module_is_left_out(monkeypatch, tmp_path):
     try:
         assert show.modules["listener"].startswith("missing") and show.modules["director"].startswith("missing")
         assert show.director is None and show.artnet.kw["palette_fn"] is None        # Art-Net: the fixed colour
+        assert show.rig is not None and show.rig.kw["palette_fn"] is None and show.rig.kw["look_fn"] is None
         assert show.brain.running and "listener" not in show.brain.components
         code, card = _get(f"http://127.0.0.1:{show.bus.port}/api/v1/card")
         assert code == 200 and card["listening"]["why"] == "The listener isn't running."
+    finally:
+        show.stop()
+
+
+def test_a_missing_outputs_module_is_exactly_stage4(monkeypatch, tmp_path):
+    install_fakes(monkeypatch)
+    _with_seams(monkeypatch)
+    install_brain_fakes(monkeypatch)
+    monkeypatch.setitem(sys.modules, "show_service.outputs", None)
+    show = main_mod.Show(_brain_opts(tmp_path))
+    show.start()
+    try:
+        assert show.modules["outputs"].startswith("missing") and show.rig is None
+        assert "rig" not in show.brain.components and show.ctx.rig is None
+        show.ctx.set_look_out(hue_depth=0.2, beat_lock=True)
+        assert show.artnet.look == (0.2, True, False)                              # Art-Net out alone
+        show._features_publish({"type": contract.MUSIC_HIT, "data": {"t_ms": 5.0, "band": "sub", "strength": 1.0}})
+        assert show._g["rig.hit"].errors == 0 and show.state()["rig"] is None
     finally:
         show.stop()
 
@@ -717,6 +788,7 @@ def test_no_brain_builds_no_brain(monkeypatch, tmp_path):
     show.start()
     try:
         assert show.brain is None and show.rings is None and show.tap is None and show.api is None
+        assert show.rig is None and show.state()["rig"] is None                       # no brain: no rig (Stage 5)
         assert not any(k in show.modules for k in ("api", "brain", "ring", "director"))
         assert show.state()["brain"] is None and show.bus.routes is None and show.state()["api"] is None
         show.on_midi("room-piano", "batch-a", 1.0, lambda t_ns: 2.5)

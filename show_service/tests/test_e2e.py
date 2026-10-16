@@ -21,6 +21,13 @@ gets a fake LLM with no usable model, so nothing is ever uploaded.
 tracks): three fetched tracks back to back through the test-audio child, with the real ML worker reading the real
 models through a tmp directory of symlinks: CED, genre parents, music.context's sections, track changes, structure's
 events on the bus, the director's reaction and the clock across a same-tempo and a tempo change (README S4.12).
+
+``test_stage5_end_to_end`` (Stage 5, about 30 s; skipped without ffmpeg): the rig in the same wiring (README S5.12
+step 1). Test music through the test-audio child -> the director's look -> the look engine -> artnet_lan's frames on
+the beat grid to an ephemeral local sink and a virtual node, and hue_out's 50 Hz frames to a FAKE Hue bridge (a fake
+CLIP client and DTLS streamer: never the real bridge). Lamp roles reach Hue, the screens are never scaled (Lights low),
+and a hand pick on a screen holds the screens' palette until Back to auto. Every file in tmp_path; the real
+fixtures.yaml, show.yaml and patch.yaml are read only, copied and edited in tmp.
 """
 
 from __future__ import annotations
@@ -949,3 +956,467 @@ def _stage4_checks(report, sched, settings, t0, ced_rows, tag_rows, mlsnap, even
     check(all(lk is not None for lk in lock), ("clock lock", lock))
     check(not dropped and (lock[1] or 99.0) <= 8.0, ("the grid through the same-tempo change", lock, dropped[:3]))
     assert not fails, fails
+
+
+# =====================================================================================================================
+# Stage 5, end to end (README "Stage 5", S5.12 step 1): the rig in the real process wiring. Test music through the
+# real test-audio child -> features and clock -> the director's look -> the look engine -> artnet_lan's frames on the
+# beat grid to an ephemeral local sink (and a virtual node's kept universe), and hue_out's 50 Hz frames to a FAKE Hue
+# bridge (a fake CLIP client and a fake DTLS streamer: never the real bridge, never an Entertainment stream). The
+# screens are never scaled; a hand pick on a screen holds the screens' palette until Back to auto.
+# =====================================================================================================================
+from show_service import hue_out as hue_mod  # noqa: E402
+
+E2E_PAR = {"name": "E2E RGB par", "availableChannels": {
+    "Dimmer": {"capability": {"type": "Intensity"}},
+    "Red": {"capability": {"type": "ColorIntensity", "color": "Red"}},
+    "Green": {"capability": {"type": "ColorIntensity", "color": "Green"}},
+    "Blue": {"capability": {"type": "ColorIntensity", "color": "Blue"}}},
+    "modes": [{"name": "4ch", "channels": ["Dimmer", "Red", "Green", "Blue"]}]}
+HUE_TEST_HOST = "198.51.100.7"        # TEST-NET-2: only ever handed to the fake streamer
+
+
+class LiveRoom(FakeRoom):
+    """test_autopilot's FakeRoom with both screens live, emitting room's new ``screen.look`` event on every look PATCH
+    (2f's room code: ``source`` echoed, default "web")."""
+
+    def __init__(self, *a, screens=(), **kw) -> None:
+        super().__init__(*a, **kw)
+        self.live_screens = tuple(screens)
+
+    def status(self) -> dict:
+        st = super().status()
+        st["screens"] = {s: {"observed": {"layer": "live", "phase": "live"}} for s in self.live_screens}
+        return st
+
+    async def h_look(self, r):
+        resp = await super().h_look(r)
+        sid, b = self.look_patches[-1]
+        await self.send({"type": contract.ROOM_SCREEN_LOOK, "data": {
+            "screen": sid, "session": "e2e", "source": b.get("source", "web"),
+            "changed": sorted(k for k in b if k != "source"), **({"palette": b["palette"]} if "palette" in b else {})}})
+        return resp
+
+
+class LiveRoomThread(RoomThread):
+    """RoomThread with a LiveRoom (both screens live)."""
+
+    def __init__(self, modes: dict, auto: dict, screens: list[str]) -> None:
+        self.loop = asyncio.new_event_loop()
+        self.t = threading.Thread(target=self.loop.run_forever, name="e2e-fake-room", daemon=True)
+        self.t.start()
+        self.room = LiveRoom(RealClock(), modes, auto, on="off", screens=screens)
+        self.room.since = time.monotonic() - 3600
+        self.run(self.room.start())
+
+
+class NodeSink(ArtnetSink):
+    """An Art-Net node standing in on an ephemeral port: ArtDmx kept as ArtnetSink keeps them, ArtPolls counted."""
+
+    def __init__(self, snapshot_fn) -> None:
+        self.polls = 0
+        super().__init__(snapshot_fn)
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                data = self.sock.recv(1024)
+            except (socket.timeout, OSError):
+                continue
+            t = time.monotonic()
+            if data[:8] == artnet_out.ARTNET_ID and int.from_bytes(data[8:10], "little") == 0x2000:
+                self.polls += 1                                   # ArtPoll (artnet_lan's discovery)
+                continue
+            if (data[:8] != artnet_out.ARTNET_ID or int.from_bytes(data[8:10], "little") != artnet_out.OP_DMX
+                    or len(data) < artnet_out.HEADER + 2):
+                self.bad += 1
+                continue
+            self.frames.append((t, data[artnet_out.HEADER:], self.snapshot_fn()))
+
+
+class FakeHueBridge:
+    """CLIP v2, aiohttp-free (test_hue_out's FakeClient, on the registry's own light ids): every call recorded.
+    ``inventory`` is room's own (HueClient.inventory over these GETs), so room's resolve_area runs unchanged."""
+
+    from room_service.hue.client import HueClient as _RoomHueClient
+    inventory = _RoomHueClient.inventory
+
+    def __init__(self, area_id: str, lights: list[str]) -> None:
+        self.calls: list[tuple] = []
+        self.area = {"id": area_id, "status": "inactive", "active_streamer": None,
+                     "channels": [{"channel_id": i, "members": [{"service": {"rid": f"ent-{li}"}}]}
+                                  for i, li in enumerate(lights)]}
+        self.lights = [{"id": li, "owner": {"rid": f"dev-{li}"}} for li in lights]
+        self.ents = [{"id": f"ent-{li}", "owner": {"rid": f"dev-{li}"}} for li in lights]
+
+    async def get(self, rtype, rid=None):
+        await asyncio.sleep(0)
+        self.calls.append(("GET", rtype, rid))
+        if rtype == "light":
+            return [dict(x) for x in self.lights]
+        if rtype == "entertainment":
+            return [dict(x) for x in self.ents]
+        if rtype == "entertainment_configuration":
+            return [dict(self.area)] if rid in (None, self.area["id"]) else []
+        return []
+
+    async def put(self, rtype, rid, body):
+        await asyncio.sleep(0)
+        self.calls.append(("PUT", rtype, rid, body.get("action")))
+        if body.get("action") == "start":
+            self.area.update(status="active", active_streamer={"rid": "auth-e2e", "rtype": "auth_v1"})
+        elif body.get("action") == "stop":
+            self.area.update(status="inactive", active_streamer=None)
+        return {"data": []}
+
+    def puts(self, action: str) -> list:
+        return [x for x in self.calls if x[0] == "PUT" and x[3] == action]
+
+
+class FakeHueStreamer:
+    """The DTLS streamer's surface: records each send_colors (monotonic s, commands, the director's palette then)."""
+
+    def __init__(self) -> None:
+        self.is_connected = False
+        self.connects: list[tuple] = []
+        self.sent: list[tuple[float, list, object]] = []
+        self.probe = None                                    # () -> the director's palette now (set by the test)
+
+    def connect(self, host, app_key, clientkey, area_id):
+        assert host == HUE_TEST_HOST
+        self.connects.append((host, area_id))
+        self.is_connected = True
+
+    def disconnect(self):
+        self.is_connected = False
+
+    def send_colors(self, cmds):
+        t = time.monotonic()
+        p = self.probe
+        self.sent.append((t, list(cmds), p(t) if p is not None else None))
+
+
+def _xy_of(rgb) -> tuple[int, int]:
+    """hue_out's xy for an rgb (the full-level colour; black -> the white point), 16-bit."""
+    lvl = max(rgb)
+    n = tuple(c / lvl for c in rgb) if lvl > 0 else (0.0, 0.0, 0.0)
+    x, y = hue_mod.rgb_to_xy(*n)
+    return round(x * 0xFFFF), round(y * 0xFFFF)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg decodes the test audio")
+def test_stage5_end_to_end(tmp_path, monkeypatch):
+    """README S5.12 step 1. Ephemeral ports, a fake room (live screens, the screen.look event), a FAKE Hue bridge, a
+    local Art-Net sink and a virtual node; every file in tmp_path; the real fixtures.yaml, show.yaml and patch.yaml
+    read only (copied and edited in tmp)."""
+    # -- guards: never the real bridge, never the real pairing files --------------------------------------------------
+    def refuse(*_a, **_k):
+        raise AssertionError("a default Hue factory was called: the e2e uses fakes only")
+    monkeypatch.setattr(hue_mod, "default_client_factory", refuse)
+    monkeypatch.setattr(hue_mod, "default_streamer_factory", refuse)
+    from room_service.hue import client as room_client, pair as room_pair
+    for mod in (room_client, room_pair):                       # room's BridgeSecrets.load (hue_out's) reads tmp only
+        monkeypatch.setattr(mod, "SECRETS_DIR", tmp_path / "hue")
+    monkeypatch.setattr(contract, "HUE_SECRETS_DIR", tmp_path / "hue")
+    monkeypatch.setattr(hue_mod, "CONTROL_WAKE_S", 0.1)
+    monkeypatch.setenv("SHOW_ROOM_DMX_URL", "")                 # no yield poll: never room's API
+    report: list[str] = []
+
+    # -- the room's files, copied into tmp and edited -------------------------------------------------------------------
+    patch = yaml.safe_load(contract.PATCH_FILE.read_text())
+    patch["hue"]["streamer"] = "show"                           # 68's switch, flipped in the copy only
+    patch["hue"]["host"] = HUE_TEST_HOST                        # room's rule: patch.yaml's host over the file's
+    patch_file = tmp_path / "patch.yaml"
+    patch_file.write_text(yaml.safe_dump(patch, sort_keys=False))
+    monkeypatch.setenv("SHOW_PATCH_FILE", str(patch_file))      # artnet_out, the director and the rig all read it
+    secrets = tmp_path / "hue"
+    secrets.mkdir()
+    (secrets / f"{patch['hue']['bridge']}.json").write_text(json.dumps({
+        "host": HUE_TEST_HOST, "bridge_id": patch["hue"]["bridge"], "name": "fake", "model": "fake",
+        "app_key": "e2e-app-key", "clientkey": "00112233445566778899aabbccddeeff"}))
+    show = None
+    dmx_sink = NodeSink(lambda: show.clock.snapshot() if show is not None and show.clock is not None else None)
+    vm_sink = ArtnetSink(lambda: None)                          # the virtual Maestro's (room's receiver stand-in)
+    assert artnet_out.PORT not in (dmx_sink.port, vm_sink.port)
+    fx = yaml.safe_load(contract.FIXTURES_FILE.read_text())
+    fx["outputs"]["hue"]["enabled"] = True
+    fx["outputs"]["dmx-a"] = {"driver": "artnet", "enabled": True, "node": "sink", "port_address": 1}
+    fx["outputs"]["dmx-v"] = {"driver": "artnet", "enabled": True, "node": "previz", "port_address": 2}
+    fx["nodes"] = {"sink": {"last_ip": "127.0.0.1", "port": dmx_sink.port}, "previz": {"virtual": True}}
+    fx["types"]["par"] = {"source": "ofl", "file": "ofl/e2e/par.json", "mode": "4ch"}
+    fx["fixtures"]["par.a"] = {"type": "par", "output": "dmx-a", "address": 1, "screen": "north-screen",
+                               "zone": "north", "placement": "above"}
+    fx["fixtures"]["par.b"] = {"type": "par", "output": "dmx-a", "address": 5, "screen": "south-screen",
+                               "zone": "south", "placement": "opposite"}
+    fx["fixtures"]["par.v"] = {"type": "par", "output": "dmx-v", "address": 1, "screen": "north-screen",
+                               "placement": "above"}
+    fx_file = tmp_path / "fixtures.yaml"
+    fx_file.write_text(yaml.safe_dump(fx, sort_keys=False))
+    types_dir = tmp_path / "fixture-types"
+    (types_dir / "ofl" / "e2e").mkdir(parents=True)
+    (types_dir / "ofl" / "e2e" / "par.json").write_text(json.dumps(E2E_PAR))
+    lamps = sorted(f for f, d in fx["fixtures"].items() if d.get("output") == "hue")
+    light_of = {f: fx["fixtures"][f]["light"] for f in lamps}
+    screens = sorted(f for f, d in fx["fixtures"].items() if d.get("type") == "sm-screen")
+    bridge = FakeHueBridge(patch["hue"]["area"], [light_of[f] for f in lamps])
+    streamer = FakeHueStreamer()
+
+    # -- the fake room, show.yaml, vibes --------------------------------------------------------------------------------
+    room = LiveRoomThread(STAGE3_MODES, AUTO, sorted({fx["fixtures"][s]["screen"] for s in screens}))
+    music_dir = tmp_path / "music"
+    piece, how = pick_music(music_dir)
+    report.append(f"test audio: {how}")
+    p_audio = udp_port()
+    real = yaml.safe_load(contract.SHOW_FILE.read_text())       # c8's lamps, director, rig and looks: read only
+    settings = {"version": 1,
+                "senders": {"test-audio": {"hosts": ["localhost"], "port": p_audio, "streams": ["test-audio"],
+                                           "on_demand": True, "room_sound": False}},
+                "tests": {"audio": {"sender": "test-audio", "music": str(music_dir), "rank_first": True}},
+                "room": {"url": room.room.url},
+                "situations": {"music": {"stream": "test-audio", "dsp_min_gate": 0.3},
+                               "quiet": {"stream": "test-audio", "gate_below": 0.05}},
+                "lamps": real.get("lamps"), "director": real.get("director"), "rig": real.get("rig"),
+                "looks": real.get("looks"), "listener": {"music_gate": "dsp"}, "ml": {"enabled": False}}
+    show_file = tmp_path / "show.yaml"
+    show_file.write_text(yaml.safe_dump(settings, sort_keys=False))
+    vibes_file = tmp_path / "vibes.yaml"
+    vibes_file.write_text(E2E_VIBES)
+    opts = config.Options(config=contract.Config(vban_bind=("127.0.0.1", 0), bus_bind=("127.0.0.1", 0),
+                                                 latency_file=tmp_path / "latency.json"),
+                          artnet_target=("127.0.0.1", vm_sink.port), brain=True, show_file=show_file,
+                          vibes_file=vibes_file, state_dir=tmp_path / "state")
+    brain_kw = {"listener": {"llm": FakeLLM(), "warm": False},
+                "outputs": {"fixtures_path": fx_file, "types_dir": types_dir,
+                            "driver_kw": {"hue": {"client_factory": lambda s: bridge,
+                                                  "streamer_factory": lambda: streamer}}}}
+    lay = artnet_out.load_layout(patch_file)
+    vm_dev = {d.id: d for d in lay.devices}
+    tap = None
+    switch = sys.getswitchinterval()
+    sys.setswitchinterval(0.001)
+    try:
+        show = main_mod.Show(opts, brain_kw=brain_kw)
+        show.start()
+        base = f"http://127.0.0.1:{show.bus.port}"
+        assert show.bus.port not in (0, contract.BUS_PORT)
+        tap = BusTap(show.bus.url)
+        assert all(v == "ok" for v in show.modules.values()), show.modules
+        streamer.probe = show.director.palette_fn
+        # white box: what artnet_lan's dmx-a driver targeted for each frame (the plan, the beat it carries, when it
+        # left) and the clock's body then
+        lan = next(d for d in show.rig.drivers_of("artnet") if d.output_id == "dmx-a")
+        lan_rec: list[tuple] = []
+
+        def rec_set_frame(frame, _orig=lan.set_frame, _d=lan):
+            t0, up, planned, body = time.monotonic(), _d._upcoming, _d._planned, show.clock.snapshot()
+            _orig(frame)
+            lan_rec.append((t0, planned, up, _d._sent_at, body))
+        lan.set_frame = rec_set_frame
+        snap = http("GET", base + "/api/v1/rig")[1]
+        assert snap["registry"]["problems"] == [] and snap["registry"]["counts"]["fixtures"] == 9, snap["registry"]
+        assert snap["outputs"]["screens"]["state"] == "off" and set(snap["outputs"]) == {"screens", "hue", "dmx-a",
+                                                                                        "dmx-v"}
+        assert sorted(t for t in show.state()["threads"] if t.startswith("show-out-")) == [
+            "show-out-dmx-a", "show-out-dmx-v", "show-out-hue"]
+        # room's hue adapter asks for the lamps (and a screen, which is never a lamp of the stream)
+        code, hs = http("POST", base + "/api/v1/hue/stream", {"lights": lamps + [screens[0]], "on": True})
+        assert code == 200 and hs["wanted"] == lamps and hs["unknown"] == [screens[0]], hs
+        assert hs["state"] in ("armed", "streaming") and set(hs) == set(contract.HueAnswer.__annotations__), hs
+        code, st = http("POST", base + "/api/v1/test", {"source": "audio", "piece": piece})
+        assert code == 200 and st["stream"] == "test-audio", st
+        wait_for(lambda: http("GET", base + "/api/v1/test")[1]["sources"]["audio"]["state"] == "playing", 15,
+                 "test audio playing")
+        wait_for(lambda: show.health().get("active_audio") == "test-audio", 10, "test-audio active")
+        t_active = time.monotonic()
+        hs = wait_for(lambda: (lambda s: s if s["state"] == "streaming" else None)(
+            http("GET", base + "/api/v1/hue/status")[1]), 15, "hue streaming")
+        assert hs["words"] == "Following the music", hs
+        hs = http("GET", base + "/api/v1/rig")[1]["hue"]               # the driver's own view
+        assert hs["dtls"] is True and sorted(hs["channels"]) == sorted(light_of.values()), hs
+        assert bridge.puts("start") and streamer.connects == [(HUE_TEST_HOST, patch["hue"]["area"])]
+        time.sleep(max(0.0, t_active + 8.0 - time.monotonic()))     # let the clock find the beat
+        code, rb = http("PUT", base + "/api/v1/vibe", {"vibe": "e2e-lively", "listening": False})
+        assert code == 200 and rb["known"] is True, rb
+        look = wait_for(lambda: next((d for d in reversed(tap.of(contract.ROOM_LOOK)) if d["vibe"] == "e2e-lively"),
+                                     None), 5, "room.look for the vibe")
+        time.sleep(3.0)                                             # the entry fade settles (crossfades still fine)
+
+        # -- a measured window: Hue, DMX, the virtual node ------------------------------------------------------------
+        t_a = time.monotonic()
+        time.sleep(6.0)
+        t_b = time.monotonic()
+        look = show.director.look_fn()
+        roles = {f: look["lamps"][f]["role"] for f in lamps + ["par.a", "par.b", "par.v"]}
+        place_roles = real["lamps"]["placement_roles"]
+        assert roles == {f: place_roles[fx["fixtures"][f]["placement"]] for f in roles}, roles
+        assert all(max(s["rgb"]) == pytest.approx(1.0, abs=1e-3) for s in look["screens"].values()), look["screens"]
+        # Hue: 50 Hz, every lamp every frame, each lamp in its own colour from the director (its role's)
+        sends = [s for s in streamer.sent if t_a <= s[0] <= t_b]
+        ts = np.array([s[0] for s in sends])
+        rate = (len(ts) - 1) / (ts[-1] - ts[0])
+        gaps = np.diff(ts)
+        report.append(f"hue {len(sends)} frames in {t_b - t_a:.1f} s: {rate:.2f} Hz, gap p50 "
+                      f"{np.median(gaps) * 1000:.1f} ms p99 {np.percentile(gaps, 99) * 1000:.1f} ms")
+        assert 48.0 <= rate <= 51.0 and np.percentile(gaps, 99) < 0.045, (rate, np.percentile(gaps, 99))
+        chan = {i: f for i, f in enumerate(lamps)}                 # FakeHueBridge: channel i = lamps[i]
+        xy_err, bri = [], {f: [] for f in lamps}
+        for t, cmds, pal_t in sends:
+            assert sorted(c[0] for c in cmds) == list(range(len(lamps))), cmds
+            for ch, x, y, b in cmds:
+                f = chan[ch]
+                bri[f].append(b)
+                if isinstance(pal_t, dict) and f in pal_t:
+                    ex, ey = _xy_of(pal_t[f])
+                    xy_err.append(max(abs(x - ex), abs(y - ey)) / 0xFFFF)
+        report.append(f"hue xy vs the director's colour: p50 {np.median(xy_err):.4f} p95 "
+                      f"{np.percentile(xy_err, 95):.4f} (xy units); bri range " + ", ".join(
+                          f"{f} {min(v)}..{max(v)}" for f, v in bri.items()))
+        assert len(xy_err) > 0.9 * len(sends) * len(lamps) and np.percentile(xy_err, 95) < 0.01
+        key = [f for f in lamps if roles[f] != roles[lamps[0]]]
+        last = {chan[ch]: (x, y) for ch, x, y, _ in sends[-1][1]}
+        assert len({last[f] for f in lamps}) >= 2 and key, last  # the roles differ on the lamps (extend vs key)
+        # parity of colour with the virtual Maestro's hue channels (its frames from the same palette_fn)
+        vm = [(t, d) for t, d, _ in vm_sink.frames if t_a <= t <= t_b]
+        par = []
+        for t, d in vm[::5]:
+            j = int(np.searchsorted(ts, t))
+            if 0 < j < len(ts) and isinstance(sends[j][2], dict):
+                for f in lamps:
+                    rgbi = [next(ch.index for ch in vm_dev[f].channels if ch.field == k) for k in ("r", "g", "b")]
+                    rgb = [d[i] / 255.0 for i in rgbi]
+                    if max(rgb) > 0.1:
+                        hx = next(c for c in sends[j][1] if chan[c[0]] == f)
+                        par.append(max(abs(hx[1] - _xy_of(rgb)[0]), abs(hx[2] - _xy_of(rgb)[1])) / 0xFFFF)
+        report.append(f"hue vs the virtual Maestro's hue channels (colour): {len(par)} pairs, p50 "
+                      f"{np.median(par):.4f} p95 {np.percentile(par, 95):.4f}")
+        assert par and np.median(par) < 0.01
+        # DMX: frames to the sink on the beat grid (a frame leaves at t_beat - L, L unset = 0, and on every 16th)
+        frames = [(t, d, b) for t, d, b in dmx_sink.frames if t_a <= t <= t_b]
+        assert dmx_sink.bad == 0 and dmx_sink.polls >= 1 and len(frames) > 10, (dmx_sink.bad, len(frames))
+        # the driver's beat frames: planned exactly on the beat it carries (t_k - L, L unset = 0), left on time, and
+        # that beat is the clock's
+        recs = [r for r in lan_rec if t_a <= r[0] <= t_b]
+        beat_frames = [r for r in recs if r[2] is not None and r[1] is not None and r[1] >= r[2] - 1e-9
+                       and r[3] is not None and r[3] >= r[0]]
+        late = np.array([(r[3] - r[2]) * 1000.0 for r in beat_frames])
+        assert beat_frames, "no beat frames"
+        vs_clock = []
+        for _, _, up, _, body in beat_frames:
+            if body and body.get("bpm"):
+                b = clockmod.beat_at(body, up)
+                vs_clock.append((b - round(b)) * 60.0 / body["bpm"] * 1000.0)
+        vs_clock = np.array(vs_clock)
+        bpm = next((b["bpm"] for _, _, b in reversed(frames) if b and b.get("bpm")), 0.0)
+        n_beats = (t_b - t_a) * bpm / 60.0
+        report.append(f"dmx beat frames {len(beat_frames)} of ~{n_beats:.0f} beats ({bpm:.1f} bpm): left "
+                      f"{np.median(late):+.2f} ms after the beat (p95 {np.percentile(late, 95):.2f}); the beat vs the "
+                      f"clock's at that moment |err| p50 {np.median(np.abs(vs_clock)):.2f} p90 "
+                      f"{np.percentile(np.abs(vs_clock), 90):.2f} ms")
+        assert len(beat_frames) >= 0.8 * n_beats and np.median(late) < 2.0 and np.percentile(late, 95) < 5.0, (
+            len(beat_frames), late)                                 # niced, under the test's own load
+        assert np.median(np.abs(vs_clock)) < 1.0 and np.percentile(np.abs(vs_clock), 90) < 5.0, vs_clock
+        # the 16th grid, at the sink (arrival time against the clock's body then: re-anchors add their own error)
+        on_grid, n_grid = 0, 0
+        for t, d, body in frames:
+            if not body or body.get("gate") not in ("beat", "dmx") or not body.get("bpm"):
+                continue
+            n_grid += 1
+            beat_s = 60.0 / body["bpm"]
+            e = (clockmod.beat_at(body, t) % 1.0) * beat_s
+            tick = artnet_out.grid_tick(beat_s)
+            on_grid += abs((e / tick - round(e / tick)) * tick) < 0.003
+        dbg = {k: v for k, v in http("GET", base + "/api/v1/rig")[1]["outputs"]["dmx-a"]["extra"].items()
+               if k not in ("node", "caps", "problems")}
+        iv = np.diff([t for t, _, _ in frames]) * 1000.0
+        report.append(f"dmx {len(frames)} frames at the sink ({len(frames) / (t_b - t_a):.1f} Hz: a tick is skipped "
+                      f"only when the last frame left over the grid's slack + 1 ms late, README S5.14, or a hit "
+                      f"pulled one); on the 16th grid {on_grid}/"
+                      f"{n_grid}; intervals p50 {np.median(iv):.1f} p95 {np.percentile(iv, 95):.1f} ms; driver period "
+                      f"{dbg.get('period_ms')} ms, too_soon {dbg.get('too_soon')}")
+        assert n_grid > 0.8 * len(frames) and on_grid >= 0.6 * n_grid, (on_grid, n_grid, dbg)
+        dim = [d[0] for _, d, _ in frames]                         # par.a's dimmer: the look engine's intensity
+        assert max(dim) - min(dim) > 20 and all(len(d) == 8 for _, d, _ in frames), (min(dim), max(dim))
+        rs = http("GET", base + "/api/v1/rig")[1]
+        runner = rs["outputs"]["dmx-a"]["extra"]["runner"]
+        report.append(f"dmx-a: state {rs['outputs']['dmx-a']['state']}, runner hits {runner['hits']}, late p50 "
+                      f"{runner['late_ms']['p50']} p95 {runner['late_ms']['p95']} ms; engine eval p95 "
+                      + ", ".join(f"{o} {v['eval_us']['p95']} µs" for o, v in rs["engine"]["per_output"].items()))
+        assert rs["outputs"]["hue"]["state"] == "streaming" and rs["outputs"]["dmx-a"]["state"] == "sending"
+        assert runner["hits"] > 0 and rs["errors"] == {} and rs["engine"]["errors"] == {}, (runner, rs["errors"])
+        # the virtual node: kept, decoded, never sent
+        v = http("GET", base + "/api/v1/rig/dmx")[1]["nodes"]["previz"]["2"]
+        fv = http("GET", base + "/api/v1/rig/frame?output=dmx-v")[1]
+        assert v["length"] == 4 and fv["universe"]["virtual"] is True and fv["universe"]["to"] is None
+        assert fv["fixtures"]["par.v"]["dmx"] is not None and set(fv["fixtures"]) == {"par.v"}
+        # the screens rule: no screen in any output's frame
+        for oid in ("hue", "dmx-a", "dmx-v"):
+            got = set(http("GET", base + f"/api/v1/rig/frame?output={oid}")[1]["fixtures"])
+            assert got and not got & set(screens), (oid, got)
+
+        # -- screens are never scaled: Lights low dims lamps and DMX, never the screens -----------------------------
+        code, out = http("POST", base + "/api/v1/action", {"do": "low"})
+        assert code == 200 and out["done"] is True
+        low_level = float(real["director"]["low"]["level"])
+        wait_for(lambda: all(max(show.director.palette_fn(time.monotonic())[f]) <= low_level + 1e-3 for f in lamps),
+                 10, "the director's lamps at Lights low")
+        t_l = time.monotonic() + 0.1
+        time.sleep(1.2)
+        low_bri = [b for t, cmds, _ in streamer.sent if t >= t_l for _, _, _, b in cmds]
+        scr = vm_dev[screens[0]]
+        scr_rgb = [next(ch.index for ch in scr.channels if ch.field == k) for k in ("r", "g", "b")]
+        vm_low = [max(d[i] for i in scr_rgb) for t, d, _ in vm_sink.frames if t >= t_l]
+        dmx_low = [d[0] for t, d, _ in dmx_sink.frames if t >= t_l]
+        report.append(f"lights low: hue bri max {max(low_bri)} (full {0xFFFF}), DMX dimmer p50 "
+                      f"{np.median(dmx_low):.0f} max {max(dmx_low)} (no hits under Lights low), the virtual "
+                      f"Maestro's {screens[0]} RGB max {min(vm_low)}..{max(vm_low)}")
+        assert max(low_bri) <= (low_level + 0.005) ** float(patch["hue"]["gamma"]) * 0xFFFF, max(low_bri)
+        assert max(dmx_low) <= 255 * (low_level + 0.01) and vm_low and min(vm_low) >= 254
+        http("POST", base + "/api/v1/action", {"do": "low"})
+
+        # -- the hand-pick hold: a person's pick on a screen holds the screens' palette until Back to auto ----------
+        wait_for(lambda: any(b.get("source") == contract.SHOW_SOURCE for _, b in room.room.look_patches), 10,
+                 "the director's screens palette PATCH, with source")
+        sp = http("GET", base + "/api/v1/state")[1]["brain"]["components"]["director"]["screens_palette"]
+        assert sp["look_source"] == "yes" and sp["hold"] is None, sp
+        pick = next(p for p in ("ice", "ocean", "ember") if p != look["palette"]["name"])
+        room.run(room.room.send({"type": contract.ROOM_SCREEN_LOOK, "data": {
+            "screen": room.room.live_screens[0], "session": "phone", "source": "web", "changed": ["palette"],
+            "palette": pick}}))
+        chip = wait_for(lambda: next((c for c in http("GET", base + "/api/v1/card")[1]["chips"]
+                                      if c["id"] == contract.SCREEN_PICK), None), 5, "the screen_pick chip")
+        assert chip["value"]["palette"] == pick and "picked on a screen" in chip["label"], chip
+        n_patch = len(room.room.look_patches)
+        http("POST", base + "/api/v1/action", {"do": "next"})        # a new look: the screens still hold
+        time.sleep(4.0)
+        assert len(room.room.look_patches) == n_patch, room.room.look_patches[n_patch:]
+        sp = http("GET", base + "/api/v1/state")[1]["brain"]["components"]["director"]["screens_palette"]
+        assert sp["hold"]["palette"] == pick and sp["why"].startswith("held"), sp
+        code, out = http("DELETE", base + "/api/v1/nudge/all")     # Back to auto
+        assert code == 200, out
+        wait_for(lambda: len(room.room.look_patches) > n_patch, 5, "the director's palette back on the screens")
+        assert not [c for c in http("GET", base + "/api/v1/card")[1]["chips"] if c["id"] == contract.SCREEN_PICK]
+        report.append(f"hold: pick {pick!r} on {room.room.live_screens[0]} held {len(room.room.look_patches) - n_patch}"
+                      f" PATCHes back after Back to auto; the lamps carried on ({len(streamer.sent)} hue frames)")
+
+        # -- release: room's adapter takes the lamps back --------------------------------------------------------------
+        code, rel = http("POST", base + "/api/v1/hue/stream", {"lights": [], "on": False})   # room's order
+        assert code == 200 and rel["state"] == "idle", rel
+        code, rel = http("POST", base + "/api/v1/hue/release", {"lights": lamps})
+        assert code == 200 and rel["released"] is True and rel["via"] == "show" and rel["state"] == "idle", rel
+        assert bridge.puts("stop") and bridge.area["status"] == "inactive"
+        st = http("GET", base + "/api/v1/state")[1]
+        assert st["errors"] == {} and all(t["errors"] == 0 for t in st["brain"]["ticks"].values()), st["errors"]
+        report.append("rig tick p95 " + str(st["brain"]["ticks"]["rig"]["cpu_p95_ms"]) + " ms CPU; director "
+                      + str(st["brain"]["ticks"]["director"]["cpu_p95_ms"]) + " ms")
+    finally:
+        sys.setswitchinterval(switch)
+        if tap is not None:
+            tap.stop()
+        if show is not None:
+            show.stop()
+        dmx_sink.stop()
+        vm_sink.stop()
+        room.stop()
+    assert not [t for t in threading.enumerate() if t.name.startswith("show-out-") and t.is_alive()]
+    assert not (tmp_path / "never-the-real-secrets").exists()
+    print("\n[e2e stage5] " + "\n[e2e stage5] ".join(report))

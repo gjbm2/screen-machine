@@ -14,7 +14,21 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
   - 400 only for a body that isn't what the route takes (not JSON, a word not on offer), always with ``choices``
     where there are some, so a stale page can recover;
   - 503 ``starting`` before the brain runs, 503 ``busy`` when ``brain.call`` times out, 502 ``room_unreachable`` when
-    Auto can't reach the room. ``POST /api/v1/hue/release`` always answers ``released`` (nothing holds Hue until P5).
+    Auto can't reach the room. ``POST /api/v1/hue/release`` answers ``released`` at once while no hue output runs here
+    (room_service streams), and before the brain runs unless patch.yaml says ``hue.streamer: show`` with a hue output
+    enabled in fixtures.yaml: then ``released: false``, ``why: "starting"`` (a crashed predecessor may still hold the
+    area), so room checks the bridge itself.
+* **Stage 5** (README S5.4, the rig): ``GET /api/v1/rig`` (the Rig snapshot plus ``registry_view``), ``GET
+  /api/v1/rig/frame?output=<id>`` (the output's last frame; 404 ``unknown_output`` with ``choices``), ``GET
+  /api/v1/rig/dmx`` (the virtual nodes' universes, decoded: previz), ``POST /api/v1/rig/nodes/{id}/record-failsafe``
+  (404 ``unknown_node``), and room's hue adapter's routes (68's contract, 16 Oct): ``POST /api/v1/hue/stream
+  {lights, on}`` (the full set each time; HueAnswer at once), ``POST /api/v1/hue/release {lights?}`` (HueRelease,
+  ``released`` true once the lamps are writable; the call waits ``rig.hue.release_timeout_s`` + 2, at most 19 s) and
+  ``GET /api/v1/hue/status`` (HueAnswer). Their ``state`` is exactly one of ``idle | armed | streaming | taken_over``
+  (contract.hue_answer), with ``lights`` (what room asked, unfiltered) and ``boot_id`` (this process) for room's
+  re-sync; the driver's own word and the rest stay in ``GET /api/v1/rig`` ``.hue``. With no hue output
+  on, stream and status answer ``idle`` with a ``detail`` naming the switch, and release answers as Stage 3 did.
+  Without a rig component: ``GET /api/v1/rig`` answers ``{"enabled": false, "why"}``.
   - Machine routes (``PUT``/``DELETE /api/v1/vibe``, the room adapter's) answer 503 ``unavailable`` without a
     director, so the adapter retries. ``PUT /api/v1/vibe`` keeps any target as asked (an unknown vibe plays neutral, a
     bad override is dropped; the read-back's ``known`` and ``problems`` say so) and 400s only a body that isn't a
@@ -71,6 +85,14 @@ _CODE_RE = re.compile(r"^[a-z][a-z_]{1,40}$")
 DIRECTOR, AUTOPILOT, LISTENER, SITUATIONS, SOURCES, ROOM = ("director", "autopilot", "listener", "situations",
                                                             "sources", "room")
 STRUCTURE = "structure"                              # Stage 4 (README S4.7): music.context for the hearing line
+RIG = "rig"                                          # Stage 5 (README S5.4): outputs.Rig
+NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
+HUE_ROOM = {"released": True, "state": "idle", "via": "room",                  # no hue output runs here
+            "detail": "nothing streams Hue from show_service (room_service streams, or the hue output is off)"}
+HUE_STARTING = {"released": False, "state": "idle", "why": "starting", "still_following": [], "waited_ms": 0.0,
+                "via": "show", "detail": "show_service is starting with patch.yaml hue.streamer: show and a hue output "
+                                         "on: it can't tell yet whether the area is still streaming, so check the "
+                                         "bridge"}
 
 #: page words for a component whose module isn't running
 MISSING: dict[str, str] = {
@@ -93,7 +115,9 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/vibes"), ("GET", "/api/v1/vibe"), ("PUT", "/api/v1/vibe"), ("DELETE", "/api/v1/vibe"),
     ("POST", "/api/v1/describe"),
     ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"),
-    ("POST", "/api/v1/hue/release"),
+    ("POST", "/api/v1/hue/release"), ("POST", "/api/v1/hue/stream"), ("GET", "/api/v1/hue/status"),
+    ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
+    ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"),
     ("GET", "/api/v1/situations"),
@@ -605,8 +629,12 @@ class Api:
     def __init__(self, brain_ref: Callable[[], Any], engine_ref: Optional[Callable[[], Optional[dict]]] = None, *,
                  clock_action: Optional[contract.ClockAction] = None, log_files: Optional[Mapping[str, Path]] = None,
                  max_clients: int = MAX_EVENT_CLIENTS, queue_max: int = CLIENT_QUEUE, card_hz: float = CARD_HZ,
-                 late_refresh_s: float = LATE_REFRESH_S) -> None:
+                 late_refresh_s: float = LATE_REFRESH_S, patch_path: Optional[Path] = None,
+                 fixtures_path: Optional[Path] = None) -> None:
         self.brain_ref, self.engine_ref = brain_ref, engine_ref
+        # read only by a Hue release before the brain runs (_hue_handed_to_show)
+        self.patch_path = Path(patch_path) if patch_path is not None else contract.PATCH_FILE
+        self.fixtures_path = Path(fixtures_path) if fixtures_path is not None else contract.FIXTURES_FILE
         self.clock_action = clock_action
         self.log_files = dict(LOG_FILES if log_files is None else log_files)
         self.late_refresh_s = float(late_refresh_s)
@@ -643,6 +671,12 @@ class Api:
             ("DELETE", "/api/v1/test/{source}", self._test_delete),
             ("GET", "/api/v1/look", self._look),
             ("GET", "/api/v1/log", self._log),
+            ("GET", "/api/v1/rig", self._rig),
+            ("GET", "/api/v1/rig/frame", self._rig_frame),
+            ("GET", "/api/v1/rig/dmx", self._rig_dmx),
+            ("POST", "/api/v1/rig/nodes/{id}/record-failsafe", self._record_failsafe),
+            ("POST", "/api/v1/hue/stream", self._hue_stream),
+            ("GET", "/api/v1/hue/status", self._hue_status),
         ]
         for method, path, fn in table:
             r.add_route(method, path, self._guard(fn))
@@ -1069,18 +1103,134 @@ class Api:
         self._changed()
         return _json(out)
 
+    # -- the rig (Stage 5) -------------------------------------------------------------------------------------------------------
+    async def _rig(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        if rig is None:
+            return _json({"enabled": False, "why": NO_RIG})
+        fn = getattr(rig, "snapshot_now", None) or getattr(rig, "snapshot", None)
+        snap = dict(fn()) if callable(fn) else {}
+        view = getattr(rig, "view", None)
+        snap["registry_view"] = view() if callable(view) else None
+        return _json(snap)
+
+    async def _rig_frame(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        oid = request.query.get("output", "")
+        view = rig.view() if rig is not None and callable(getattr(rig, "view", None)) else None
+        choices = sorted((view or {}).get("outputs") or {})
+        body = rig.frame_view(oid) if rig is not None and oid else None
+        if body is None:
+            return _err(404, "unknown_output", f"No output {oid!r} in config/room/fixtures.yaml." if oid else
+                        "Say which output: ?output=<id>.", choices=choices)
+        return _json(body)
+
+    async def _rig_dmx(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "dmx_view", None) if rig is not None else None
+        return _json({"nodes": fn() if callable(fn) else {}})
+
+    async def _record_failsafe(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        nid = request.match_info["id"]
+        if rig is None or not rig.has_node(nid):
+            view = rig.view() if rig is not None else None
+            return _err(404, "unknown_node", f"No node {nid!r} in config/room/fixtures.yaml.",
+                        choices=sorted((view or {}).get("nodes") or {}))
+        return _json(await self._call(brain, rig.record_failsafe, nid))
+
+    async def _hue_stream(self, request: web.Request, brain: Any) -> web.Response:
+        """room's hue adapter (mode show): ``{lights, on}``, the complete set of hue.* lamps that follow the show (not a
+        delta; ``[]`` or ``on: false`` is none) -> HueAnswer at once (it doesn't wait for streaming)."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        body = body if isinstance(body, dict) else {}
+        lights, on = body.get("lights"), body.get("on", True)
+        if not isinstance(lights, list) or not all(isinstance(x, str) for x in lights) or not isinstance(on, bool):
+            return _err(400, "bad_request", "The body is {\"lights\": [fixture ids], \"on\": true or false}.")
+        rig = _components(brain).get(RIG)
+        if rig is None:
+            return _json(contract.hue_answer(self._hue_off(NO_RIG), self.boot_id))
+        return _json(contract.hue_answer(await self._call(brain, rig.hue_request, lights, on), self.boot_id))
+
+    async def _hue_status(self, request: web.Request, brain: Any) -> web.Response:
+        """room's hue adapter (each read while a lamp follows the show, 2 s timeout): HueAnswer, with ``lights`` (what
+        room asked, unfiltered) and ``boot_id`` for its re-sync (68's addendum)."""
+        rig = _components(brain).get(RIG)
+        if rig is None:
+            return _json(contract.hue_answer(self._hue_off(NO_RIG), self.boot_id))
+        return _json(contract.hue_answer(rig.hue_status(), self.boot_id))
+
+    @staticmethod
+    def _hue_off(detail: str) -> dict:
+        return dict(contract.hue_off_status(None, detail))
+
     # -- Hue ----------------------------------------------------------------------------------------------------------------------
+    def _hue_handed_to_show(self) -> bool:
+        """Before the brain runs: patch.yaml says ``hue.streamer: show`` and fixtures.yaml enables a hue output, so a
+        predecessor that crashed while streaming may still hold the area. A file that's there but doesn't read counts
+        as yes (room then checks the bridge itself, always safe); a missing one as no (room's own defaults)."""
+        import yaml
+        try:
+            patch = yaml.safe_load(self.patch_path.read_text()) or {}
+        except FileNotFoundError:
+            return False
+        except Exception:                                   # noqa: BLE001
+            return True
+        hue = patch.get("hue") if isinstance(patch, dict) else None
+        if not isinstance(hue, dict) or hue.get("streamer") != "show":
+            return False
+        try:
+            fx = yaml.safe_load(self.fixtures_path.read_text()) or {}
+        except FileNotFoundError:
+            return False
+        except Exception:                                   # noqa: BLE001
+            return True
+        outs = fx.get("outputs") if isinstance(fx, dict) else None
+        return isinstance(outs, dict) and any(isinstance(o, dict) and o.get("driver") == "hue"
+                                              and o.get("enabled") is True for o in outs.values())
+
     async def _hue_release(self, request: web.Request) -> web.Response:
-        """Always ``released``: room_service streams Hue until P5, so nothing here holds it. Answers before the brain
-        runs too, so a mode's exit never waits on show_service."""
-        out = {"released": True, "via": "room", "detail": "room_service streams Hue until P5"}
+        """Stage 5: with a hue output running here, its release (HueRelease once the lamps are writable). Otherwise
+        ``released`` at once, as Stage 3 did: room_service streams Hue. Answers before the brain runs too, so a mode's
+        exit never waits on show_service: ``released`` at once, unless patch.yaml hands the area to show_service with a
+        hue output on (``HUE_STARTING``: released false, why ``starting``; room checks the bridge itself)."""
+        out = dict(HUE_ROOM)
         brain = self.brain()
+        if brain is None and await asyncio.to_thread(self._hue_handed_to_show):
+            return _json(dict(HUE_STARTING))
+        rig = _components(brain).get(RIG) if brain is not None else None
+        if rig is not None and callable(getattr(rig, "hue_running", None)) and rig.hue_running():
+            body, bad = await self._body(request)
+            if bad is not None:
+                return bad
+            lights = body.get("lights") if isinstance(body, dict) else None
+            if lights is not None and (not isinstance(lights, list) or not all(isinstance(x, str) for x in lights)):
+                return _err(400, "bad_request", "lights must be a list of fixture ids (or left out: every lamp).")
+            try:
+                got = await self._call(brain, rig.hue_release, lights, timeout=rig.hue_release_timeout_s() + 2.0)
+            except asyncio.TimeoutError:
+                return _json({"released": False, "state": contract.hue_room_state(rig.hue_status()),
+                              "why": "timeout", "still_following": [], "waited_ms": None, "via": "show"})
+            except ValueError as e:
+                code, detail = _code(e, "bad_request")
+                return _err(400, code, detail or "That request wasn't understood.")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.exception("api: hue release failed")
+                return _err(500, "failed", f"The release failed ({type(e).__name__}); the lamps may still stream.")
+            if isinstance(got, dict):
+                if got.get("state") not in contract.HUE_ROOM_STATES:
+                    got = {**got, "state": contract.hue_room_state(rig.hue_status())}
+                return _json(got)
         director = _components(brain).get(DIRECTOR) if brain is not None else None
         if director is not None:
             try:
                 got = await self._call(brain, director.release_hue)
                 if isinstance(got, dict):
-                    out = {**out, **got, "released": True}
+                    out = {**out, **got, "released": True, "state": "idle"}
             except Exception as e:
                 log.warning("api: release_hue failed (answered released anyway): %s", e)
         return _json(out)
@@ -1274,5 +1424,6 @@ def routes(brain_ref: Callable[[], Any], engine_ref: Optional[Callable[[], Optio
     """``Bus(routes=api.routes(brain_ref, engine_ref))``. ``brain_ref()``: the Brain, or None until it runs.
     ``engine_ref()``: ``{"active_audio", "features": {"energy", "age_ms", "stream"}, "clock": ClockData | None}``.
     Keywords: ``clock_action`` (else ``brain.ctx.clock_action``), ``log_files``, ``max_clients``, ``queue_max``,
-    ``card_hz``. The result mounts with ``api_obj(app)`` and its ``notify`` goes in ``BrainContext.notify``."""
+    ``card_hz``, ``patch_path`` and ``fixtures_path`` (a Hue release before the brain runs reads them; tests: tmp
+    files). The result mounts with ``api_obj(app)`` and its ``notify`` goes in ``BrainContext.notify``."""
     return Api(brain_ref, engine_ref, **kw)
