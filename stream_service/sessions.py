@@ -312,7 +312,7 @@ class Session(EngineListener):
         if not spec.bindings:
             return spec
         cls = self.mgr.registry.transition(spec.transition)
-        grid = self.sampler.beat_grid(time.monotonic())
+        grid = self._beat_grid(time.monotonic())
         vals = binding.sample_cue(cls.param_props(), spec.bindings, spec.params, self._cue_signals(), None,
                                   self.runtime.depth, f"transition/{spec.transition}", grid[1] if grid else None)
         if not vals:
@@ -322,6 +322,13 @@ class Session(EngineListener):
         except ParamError:
             params = spec.params
         return dataclasses.replace(spec, params=params, bindings={})
+
+    def _beat_grid(self, now: float) -> Optional[tuple[float, float]]:
+        """(anchor, period) of the beat in host monotonic seconds (acoustic): show_service's music.clock while it
+        is sure (SessionManager.music_grid), else the lighting desk's pulse follower; None when not following."""
+        if self.sampler.follow != "extrapolate":
+            return None
+        return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
 
     async def _transition_ready(self, spec: TransitionSpec, mapped: bool = True):
         """A transition instance, set up on a worker thread when the engine supports it (R20).  ``mapped``: sample
@@ -862,7 +869,7 @@ class Session(EngineListener):
         now = time.monotonic()
         at_mono = None
         if cue["at"] == "beat":
-            grid = self.sampler.beat_grid(now)
+            grid = self._beat_grid(now)
             if grid is None:
                 cue["at"], cue["fallback"] = "now", "no_beat"
             else:                 # the next predicted beat that can still land on glass on time
@@ -1549,7 +1556,7 @@ class Session(EngineListener):
         if now - self._lead_t >= 1.0:
             self._update_lead(now)
         online = self.sampler.freshness(now, self.sampler.snapshot()) is None
-        locked = self.sampler.beat_grid(now) is not None
+        locked = self._beat_grid(now) is not None
         state = (online, locked)
         if state != self._inputs_state and now - self._inputs_t >= INPUTS_EVENT_MIN_S:
             self._inputs_state, self._inputs_t = state, now
@@ -1585,6 +1592,10 @@ class Session(EngineListener):
         out["derived"].update(bpm=r3(sig["bpm"]), beat_confidence=r3(sig["beat_confidence"]),
                               beat_phase=r3(sig["beat_phase"]), beat=r3(sig["beat"]),
                               beat_locked=sig["beat_locked"], beat_follow=self.beat_follow)
+        mg = self.mgr.music_grid(now)
+        out["cuts_on"] = None if self._beat_grid(now) is None else "show_service clock" if mg is not None \
+            else "lighting desk pulse"
+        out["clock"] = None if mg is None else {"bpm": round(60.0 / mg[1], 2)}
         ex = self.runtime.extra or {}
         sig = {**sig, **{k: (None if v is None else 0.5 + self.sampler.w * (v - 0.5))
                          for k, v in ex.items() if k in MUSIC_SIGNALS},
@@ -1837,6 +1848,7 @@ class SessionManager:
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
+        self.music_clock: Optional[tuple[dict, float]] = None   # show_service's last music.clock, arrival
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
@@ -2074,8 +2086,27 @@ class SessionManager:
             return None
         return r
 
+    CLOCK_FRESH_S = 1.5        # music.clock comes at 10 Hz and on every re-anchor
+
+    def music_grid(self, now: float) -> Optional[tuple[float, float]]:
+        """show_service's beat clock as (anchor, period) seconds on CLOCK_MONOTONIC (time.monotonic's clock), while
+        it is fresh, has a tempo and its gate is "beat" (conf >= 0.70 to lock, 0.60 to let go, there); else None."""
+        c = self.music_clock
+        if c is None or now - c[1] > self.CLOCK_FRESH_S:
+            return None
+        d = c[0]
+        try:
+            bpm, anchor = float(d["bpm"]), float(d["anchor_ms"]) / 1000.0
+        except (KeyError, TypeError, ValueError):
+            return None
+        if bpm <= 0.0 or d.get("gate") != "beat" or d.get("state") not in ("locked", "holding"):
+            return None
+        return anchor, 60.0 / bpm
+
     def broadcast_sound(self, msg: dict) -> None:
         """Any thread (the bus loop): append-only on each view."""
+        if msg.get("type") == "music.clock" and isinstance(msg.get("data"), dict):
+            self.music_clock = (msg["data"], time.monotonic())
         for s in list(self.sessions.values()):
             if s.sound is not None and s.state not in ("ended", "failed"):
                 s.sound.on_message(msg)
