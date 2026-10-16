@@ -786,7 +786,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
             from . import showbus
 
             app[TASKS].append(asyncio.create_task(showbus.run(url, None, sound_sink=mgr.broadcast_sound,
-                                                               name="music bus")))
+                                                               name="music bus", room_sink=mgr.on_room_message)))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:

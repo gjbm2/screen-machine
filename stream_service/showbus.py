@@ -43,8 +43,10 @@ def read_token(path: Optional[str]) -> Optional[str]:
 
 
 async def run(url: str, inputs: Optional[ShowInputs], token_file: Optional[str] = None,
-              sound_sink: Optional[Callable[[dict], None]] = None, name: str = "show bus") -> None:
+              sound_sink: Optional[Callable[[dict], None]] = None, name: str = "show bus",
+              room_sink: Optional[Callable[[dict], None]] = None) -> None:
     """``sound_sink``: every music.* and show.state message, for the sessions' sound views (sound.py).
+    ``room_sink``: every room.* message (show_service's director: room.direction / look / event).
     ``inputs`` None: a sound-only bus (--music-bus)."""
     token = read_token(token_file)
     reread = False
@@ -87,6 +89,11 @@ async def run(url: str, inputs: Optional[ShowInputs], token_file: Optional[str] 
                                     sound_sink(frame)
                                 except Exception:
                                     log.exception("sound sink failed")
+                            elif room_sink is not None and kind.startswith("room."):
+                                try:
+                                    room_sink(frame)
+                                except Exception:
+                                    log.exception("room sink failed")
                         elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                             break
                     reason = f"closed ({ws.close_code})"

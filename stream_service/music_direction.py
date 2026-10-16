@@ -32,6 +32,13 @@ palette_family, fx.stages, source and note always come from the panel.  ``m = au
 0.25 steps: a stale bus holds 10 s then fades to 0 over 20 s; recovery needs 3 s of fresh frames then ramps up over
 10 s (from cold: 3 s then on at once).  m = 0 is exactly the panel's direction: the behaviour before this module.
 
+The room's director (show_service's ``room.direction`` on --music-bus, docs/SHOW_ENGINE.md §8.7) takes this slot when
+it speaks: while a validated room.direction with a vibe is under ROOM_STALE_S old (it republishes every 5 s; a
+null vibe is the room's neutral), its numbers and words are the proposal (genre included, filling an empty panel
+genre like the moods), liveness counts it as fresh, a new section id bumps ``epoch``, and the mapping signals take
+its energy and groove (as drive).  Otherwise the Maestro features above propose, as before.  Switching source
+drops the proposal and publishes at once.
+
 Pure state and arithmetic, no I/O: sessions.py calls ``update`` from its 10 Hz tick.
 """
 from __future__ import annotations
@@ -65,6 +72,7 @@ BANDS = {   # band -> (scene moods, fx moods, transition_style); words from conf
     "lively": (["bright", "playful", "geometric", "hypnotic"], ["playful", "retro", "hypnotic", "geometric"], "lively"),
     "peak": (["euphoric", "hypnotic", "bright", "aggressive"], ["euphoric", "hypnotic", "glitchy", "bright"], "wild"),
 }
+ROOM_STALE_S = 12.0             # room.direction republishes every 5 s
 NUMERIC = ("energy", "pace", "intensity", "change_rate")
 FX_NUMERIC = ("density", "rate")
 
@@ -87,6 +95,8 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
             out["moods"] = list(music["moods"])
         if panel.get("transition_style") is None:
             out["transition_style"] = music["transition_style"]
+        if panel.get("genre") is None and music.get("genre"):
+            out["genre"] = music["genre"]
         if not out["fx"].get("moods"):
             out["fx"]["moods"] = list(music["fx"]["moods"])
     return out
@@ -102,6 +112,8 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
             out.append("moods")
         if panel.get("transition_style") is None:
             out.append("transition_style")
+        if panel.get("genre") is None and music.get("genre"):
+            out.append("genre")
         if not (panel.get("fx") or {}).get("moods"):
             out.append("fx.moods")
     return out
@@ -146,6 +158,9 @@ class MusicDirection:
         self._signals_t: Optional[float] = None
         self._drive_seen = False
         self._tempo: Optional[float] = None
+        self.source: Optional[str] = None    # who proposes: "room" (show_service) | "maestro" | None
+        self.room: Optional[dict] = None     # the room.direction in use (SessionManager.room_direction_now)
+        self._room_section = None
         self.configure(cfg)
 
     def configure(self, cfg: Optional[dict]) -> None:
@@ -157,25 +172,69 @@ class MusicDirection:
         return self.m > 0.0 and self._settle_at is not None
 
     # ------------------------------------------------------------------ the 10 Hz step
-    def update(self, now: float, snap: Any, fresh: bool, follow: Any, active: bool) -> Optional[str]:
+    def update(self, now: float, snap: Any, fresh: bool, follow: Any, active: bool,
+               room: Optional[dict] = None) -> Optional[str]:
         """Step the features; -> a cause ("music", "band", "section", "online", "offline", "off", "m") when the
-        effective direction should be recomputed, else None."""
+        effective direction should be recomputed, else None.  ``room``: the room director's live direction, or None."""
         m_was = self.m
         reseeded = False
         if snap is not None and fresh:      # every tick, director or not: the per-item mappings read the features
             reseeded = self._features(now, snap, tuple(follow or ()))
+        self.room = room
+        if room is not None:
+            sec = (room.get("section") or {}).get("id") if isinstance(room.get("section"), dict) else None
+            if self._room_section is not None and sec != self._room_section:
+                self.epoch += 1             # the room's new section: section-mode mappings re-sample
+                reseeded = True
+            self._room_section = sec
+        else:
+            self._room_section = None
         if not (active and self.enabled):
             self.m, self.lv = 0.0, 0.0
             self._fresh_since = self._stale_since = None
             self._cold = True
+            self.source = None
             return "off" if m_was > 0.0 else None
-        self._liveness(now, snap is not None and fresh)
+        src = "room" if room is not None else "maestro"
+        switched = self.source is not None and src != self.source
+        if src != self.source:
+            self.source, self.proposal, self.band = src, None, None
+        self._liveness(now, room is not None or (snap is not None and fresh))
         cause = None
-        if snap is not None and fresh:
+        if room is not None:
+            cause = self._propose_room(now, room, reseeded)
+        elif snap is not None and fresh:
             cause = self._propose(now, reseeded)
         if self.m != m_was:
             return "online" if m_was == 0.0 else "offline" if self.m == 0.0 else "m"
+        if switched and cause is None:
+            cause = "band"
         return cause if self.m > 0.0 else None
+
+    def _propose_room(self, now: float, room: dict, reseeded: bool) -> Optional[str]:
+        d = room["direction"]
+        target = {k: d[k] for k in NUMERIC}
+        target.update(moods=list(d.get("moods") or []), transition_style=d.get("transition_style"),
+                      genre=d.get("genre"), fx={"density": d["fx"]["density"], "rate": d["fx"]["rate"],
+                                                "moods": list(d["fx"].get("moods") or [])})
+        band = self._band_of(target["energy"], float(room.get("groove") or 0.0))
+        p = self.proposal
+        cause = None
+        if p is None:
+            cause = "music"
+        elif any(target[k] != p.get(k) for k in ("moods", "transition_style", "genre")) \
+                or target["fx"]["moods"] != p["fx"]["moods"]:
+            cause = "band"
+        elif reseeded:
+            cause = "section"
+        elif any(abs(target[k] - p[k]) >= DEADBAND for k in NUMERIC) \
+                or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC):
+            cause = "music"
+        self.band = band
+        if cause is not None:
+            self.proposal, self._last_apply = target, now
+            self.last_change = {"cause": cause, "at": now}
+        return cause
 
     def _liveness(self, now: float, fresh: bool) -> None:
         dt = 0.0 if self._lv_t is None else max(0.0, now - self._lv_t)
@@ -310,12 +369,21 @@ class MusicDirection:
     def signals(self, now: float) -> dict:
         """The music features as mapping signals (binding.py): {energy, drive, punch, tempo, epoch}; None = n/a."""
         f = self.features
-        if not f or self._signals_t is None or now - self._signals_t > self.SIGNALS_STALE_S:
+        stale = not f or self._signals_t is None or now - self._signals_t > self.SIGNALS_STALE_S
+        r = self.room
+        if r is not None:                   # the room's director: its energy, its groove as drive
+            return {"energy": r["direction"]["energy"], "drive": r.get("groove"),
+                    "punch": None if stale or not self._drive_seen else f["punch"],
+                    "tempo": None if stale else self._tempo, "epoch": self.epoch}
+        if stale:
             return {"energy": None, "drive": None, "punch": None, "tempo": None, "epoch": self.epoch}
         return {"energy": f["energy"], "drive": f["D"] if self._drive_seen else None,
                 "punch": f["punch"] if self._drive_seen else None, "tempo": self._tempo, "epoch": self.epoch}
 
     def status(self, now: float) -> dict:
+        r = self.room
         return {"enabled": self.enabled, "online": self.m > 0.0, "m": self.m, "band": self.band,
                 "proposal": self.proposal, "features": self.features, "settling": self.settling(now),
-                "last_change": self.last_change}
+                "last_change": self.last_change, "source": self.source,
+                "room": None if r is None else {"vibe": r.get("vibe"), "section": r.get("section"),
+                                                "groove": r.get("groove"), "age_s": round(now - r["t"], 1)}}
