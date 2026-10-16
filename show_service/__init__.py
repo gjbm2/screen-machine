@@ -7,4 +7,4 @@ and the director. Module map and the interfaces between modules: show_service/RE
 screen-machine-c8.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"          # 0.2: Stage 3 (the brain: director, Auto, the API, test sources, listener)

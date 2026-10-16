@@ -7,10 +7,14 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
   SHOW_LATENCY_FILE  config/room/latency.json                  SHOW_LOG_LEVEL  INFO
   SHOW_ARTNET_TARGET host:port | off (artnet_out.py; its other SHOW_* keys are read by artnet_out.config_from_env)
   SHOW_STREAM_PRIORITY a,b,c (audio streams ranked first, best first)
+  SHOW_BRAIN         on (default) | off: Stage 3's brain (director, Auto, the API's routes, test sources, listener)
+  SHOW_FILE          config/room/show.yaml       SHOW_VIBES_FILE  config/room/vibes.yaml
+  SHOW_STATE_DIR     ~/.local/state/screen-machine/show (state.json, the jsonl logs, the test children's logs)
 args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
   --artnet-target HOST[:PORT]|off (over SHOW_ARTNET_TARGET; default off)   --stream-priority a,b,c
+  --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --vibes-file PATH   --state-dir PATH
 ```
 
 * **Sender spec:** ``NAME=HOST[:PORT][/STREAM,STREAM…]``. ``HOST`` is a DNS name in committed config (no literal
@@ -28,6 +32,10 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   ``__main__`` passes it to artnet_out.VirtualMaestro over ``config_from_env()``'s.
 * ``--stream-priority`` (or ``SHOW_STREAM_PRIORITY``) fills ``Config.stream_priority``: the receiver ranks those
   audio streams first, in that order, then ``contract.AUDIO_PRIORITY`` (``contract.stream_rank``).
+* **The brain** (README "Stage 3", S3.4): ``load_options`` turns it on unless ``--no-brain`` or ``SHOW_BRAIN=off``
+  (the rollback switch: the process is then exactly as before Stage 3). An ``Options`` built in code (tests) has it
+  off unless it says ``brain=True``, so no test reaches the real show.yaml, room or state directory by accident.
+  ``show_file``, ``vibes_file`` and ``state_dir`` default to contract's paths.
 """
 
 from __future__ import annotations
@@ -62,6 +70,10 @@ class Options:
     stream_priority: Optional[tuple[str, ...]] = None    # also config.stream_priority (kept for callers)
     artnet_target: Optional[tuple[str, int]] = None      # None = off
     notes: tuple[str, ...] = ()
+    brain: bool = False                                  # load_options: on unless --no-brain / SHOW_BRAIN=off
+    show_file: pathlib.Path = contract.SHOW_FILE
+    vibes_file: pathlib.Path = contract.VIBES_FILE
+    state_dir: pathlib.Path = contract.STATE_DIR
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -147,6 +159,13 @@ def _parser() -> argparse.ArgumentParser:
                     help="audio streams ranked first, best first (over SHOW_STREAM_PRIORITY)")
     ap.add_argument("--artnet-target", metavar="HOST[:PORT]|off",
                     help="ArtDmx out (over SHOW_ARTNET_TARGET; default off)")
+    ap.add_argument("--no-brain", dest="brain", action="store_false", default=None,
+                    help="no Stage-3 brain (director, Auto, API routes, test sources, listener): the rollback switch")
+    ap.add_argument("--brain", dest="brain", action="store_true", default=None, help="the brain on (the default)")
+    ap.add_argument("--show-file", metavar="PATH", help="show.yaml (default config/room/show.yaml)")
+    ap.add_argument("--vibes-file", metavar="PATH", help="vibes.yaml (default config/room/vibes.yaml)")
+    ap.add_argument("--state-dir", metavar="PATH", help="state.json and the logs (default ~/.local/state/"
+                                                        "screen-machine/show)")
     return ap
 
 
@@ -229,9 +248,26 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
             notes.append(f"artnet target {artnet_text!r}: {e}; Art-Net out off")
             artnet = None
 
+    brain = True
+    if args.brain is not None:
+        brain = bool(args.brain)
+    elif env.get("SHOW_BRAIN") is not None and env.get("SHOW_BRAIN", "").strip():
+        word = env["SHOW_BRAIN"].strip().lower()
+        if word in ("off", "0", "false", "no", "none"):
+            brain = False
+        elif word not in ("on", "1", "true", "yes"):
+            notes.append(f"SHOW_BRAIN {env['SHOW_BRAIN']!r} isn't on or off; the brain stays on")
+
+    def path_opt(arg: Optional[str], key: str, default: pathlib.Path) -> pathlib.Path:
+        text = arg if arg is not None else env.get(key)
+        return _path(text) if text and text.strip() else default
+
     cfg = Config(senders=tuple(senders.values()), vban_bind=vban_bind, bus_bind=bus_bind,
                  latency_file=latency_file, log_level=level, stream_priority=priority or ())
-    return Options(config=cfg, stream_priority=priority, artnet_target=artnet, notes=tuple(notes))
+    return Options(config=cfg, stream_priority=priority, artnet_target=artnet, notes=tuple(notes), brain=brain,
+                   show_file=path_opt(args.show_file, "SHOW_FILE", contract.SHOW_FILE),
+                   vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
+                   state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR))
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:

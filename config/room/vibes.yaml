@@ -1,0 +1,246 @@
+# config/room/vibes.yaml: the show's vibes (docs/SHOW_ENGINE.md §8.1). Owner: screen-machine-c8.
+# show_service re-reads this file when it changes (mtime, every 2 s). A bad edit keeps the last good file, and
+# GET /show/api/v1/vibes shows the error. The schema and every field's meaning are in show_service/README.md, under
+# "Stage 3 > vibes.yaml".
+#
+# STARTING POINTS. Every vibe, number and word below is a design default, to be tuned by ear with the owner. Edit,
+# add, rename, duplicate or delete them freely. Nothing in code knows these names: a mode that names a missing vibe
+# gets the neutral look, and the Feel card says so (the read-back's known: false and problems).
+#
+# Not built yet: strobe is only published (false everywhere, its neutral) and nothing spends peak_tokens_per_hour
+# (left unset). accents today sets only how deep the lamps' beat swell goes (show.yaml director.accent_depth).
+#
+# Flat, like the modes: nothing inherits from anything. A field a vibe leaves out takes its NEUTRAL value (listed in
+# the README), never a hidden default.
+#
+# Modes choose a vibe in config/room/modes.json (2f's file), for example:
+#   "show": {"set": {"vibe": "dinner", "listening": false}, "restore": true, "policy": "ignore"}
+# A mode can also override fields inline:
+#   "show": {"set": {"vibe": "party", "listening": true, "overrides": {"follow_amount": 0.8}}, ...}
+# Put-back is the room's own per-row "restore". show_service never stores or restores anything itself.
+#
+# The screens are never dimmed by the show. level, floor, Lights low, House lights and dips reach the lamps (and later
+# DMX) only. On a screen, "calmer" means other words, palette or scenes, never a gain.
+#
+# Words come from config/live/vocab.yaml:
+#   moods: calm mellow dreamy warm cool bright dark euphoric tense playful hypnotic aggressive cosmic organic geometric
+#          retro glitchy elegant liquid fiery icy
+#   genre: pop techno house jazz ambient classical rock soul
+#   transition_style: gentle lively wild
+#   palette_family: warm cool vivid neutral
+# Palettes are names from stream_service/palettes.py: ember gold dusk ice ocean aurora neon rainbow acid mono.
+# "art" means the colours of the art on the glass.
+#
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false. accents "none" is a word, not null.
+# A word field set to "auto" (genre, transition_style, palette_family) means "the music decides", the same as leaving
+# it out; a mode's fine-tune uses it to put a vibe's word back to neutral.
+
+version: 1
+order: [home, dinner, chill, notes, party, disco]      # the Feel card's order
+
+vibes:
+  home:
+    label: Home
+    description: Everyday. The room listens; the screens' words follow the music gently; nothing pulses or flashes.
+    energy: [0.2, 0.5]
+    loudness_ref_lufs: -35          # quiet background music should not read as "wild" (§6.3)
+    follow: [energy, harmony]
+    follow_amount: 0.5
+    beat_lock: false
+    change_looks: time
+    change_rate: 0.2
+    dwell_s: [120, 300]
+    relax_on_talk: true
+    listener: true                  # still needs the AI listening switch and the mode's "listening"
+    palettes: [art, ember, gold, dusk]
+    key_cct: 2700
+    lamp_chroma_max: 0.04
+    chroma_max: 0.12
+    saturation: [0.3, 0.6]
+    contrast: [0.3, 0.5]
+    level: [0.4, 0.7]
+    floor: 0.3
+    motion: [0.05, 0.2]
+    accents: none
+    strobe: false
+    peak_tokens_per_hour: 0
+    moods: [warm, mellow, calm]
+    transition_style: gentle
+    palette_family: warm
+    step_size: 0.1
+    max_steps: 3
+    persona: >-
+      A lived-in drawing room on an ordinary day. Light should feel like the room itself: warm, steady and unhurried.
+      Requests lean towards comfort, never spectacle.
+
+  dinner:
+    label: Dinner
+    description: Candle-light. The lamps above the screens take the art's colours, the key lamps stay warm white, and
+      everything moves slowly.
+    energy: [0.15, 0.45]
+    loudness_ref_lufs: -35          # §6.3: dinner around -35 LUFS
+    follow: [energy, harmony]
+    follow_amount: 0.4
+    beat_lock: false
+    change_looks: time
+    change_rate: 0.15
+    dwell_s: [180, 420]
+    relax_on_talk: true
+    listener: true
+    palettes: [art, ember, dusk, gold]
+    key_cct: 2400
+    lamp_chroma_max: 0.04
+    chroma_max: 0.15
+    saturation: [0.3, 0.55]
+    contrast: [0.2, 0.4]
+    level: [0.35, 0.6]
+    floor: 0.25
+    motion: [0.02, 0.12]
+    accents: none
+    strobe: false
+    peak_tokens_per_hour: 0
+    moods: [warm, mellow, elegant]
+    transition_style: gentle
+    palette_family: warm
+    step_size: 0.08
+    max_steps: 3
+    persona: >-
+      A dinner party: conversation comes first. The room glows rather than performs. Warm, low and kind to faces;
+      colour lives on the walls near the art, never on the table.
+
+  chill:
+    label: Chill
+    description: Slow washes drawn from the art; a soft breath on the beat when there is one.
+    energy: [0.2, 0.55]
+    loudness_ref_lufs: -30
+    follow: [energy, harmony, dynamics]
+    follow_amount: 0.6
+    beat_lock: true
+    change_looks: phrase
+    change_rate: 0.3
+    dwell_s: [90, 240]
+    relax_on_talk: true
+    listener: true
+    palettes: [art, ocean, aurora, dusk, ice]
+    key_cct: 2700
+    lamp_chroma_max: 0.06
+    chroma_max: 0.2
+    saturation: [0.4, 0.7]
+    contrast: [0.3, 0.55]
+    level: [0.4, 0.8]
+    floor: 0.2
+    motion: [0.1, 0.35]
+    accents: soft
+    strobe: false
+    peak_tokens_per_hour: 0
+    moods: [dreamy, calm, liquid]
+    transition_style: gentle
+    palette_family: cool
+    step_size: 0.1
+    max_steps: 3
+    persona: >-
+      Late evening, people lounging. Long, slow washes of colour that seem to come out of the art, with a gentle
+      breath when the music has a beat. Never busy.
+
+  notes:
+    label: Notes
+    description: For live playing. It follows the player's dynamics, register and harmony, with no beat lock. Looks
+      change only between pieces, and talking doesn't relax it.
+    energy: [0.25, 0.6]
+    loudness_ref_lufs: -32
+    follow: [dynamics, register, harmony]
+    follow_amount: 0.8
+    beat_lock: false
+    change_looks: between_pieces
+    change_rate: 0.2
+    dwell_s: [120, 600]
+    relax_on_talk: false
+    listener: false                 # MIDI already gives the harmony and the dynamics (§7.5)
+    palettes: [art, ember, gold, dusk]
+    key_cct: 2700
+    lamp_chroma_max: 0.05
+    chroma_max: 0.18
+    saturation: [0.35, 0.65]
+    contrast: [0.3, 0.6]
+    level: [0.45, 0.8]
+    floor: 0.3
+    motion: [0.05, 0.3]
+    accents: none
+    strobe: false
+    peak_tokens_per_hour: 0
+    moods: [elegant, dreamy, calm]  # the Piano mode's own direction words today (modes.json)
+    transition_style: gentle
+    palette_family: warm
+    step_size: 0.1
+    max_steps: 3
+    persona: >-
+      Someone is playing the piano. The room listens to them, not to a beat: louder playing glows brighter, high
+      passages lift, rich chords deepen the colour. Stay out of the way between phrases.
+
+  party:
+    label: Party
+    description: Full colour on every lamp; accents on the downbeat; peaks saved for real drops.
+    energy: [0.5, 0.95]
+    loudness_ref_lufs: -20          # §6.3: a party around -20 LUFS
+    follow: [energy, onsets, harmony]
+    follow_amount: 1.0
+    beat_lock: true
+    change_looks: phrase
+    change_rate: 0.6
+    dwell_s: [45, 150]
+    relax_on_talk: true
+    listener: true
+    palettes: [neon, rainbow, gold, acid, art]
+    key_cct: 3000
+    lamp_chroma_max: 0.3            # §8.8: full colour on the key lamps only in Party and Disco
+    chroma_max: 0.37
+    saturation: [0.6, 1.0]
+    contrast: [0.5, 0.9]
+    level: [0.6, 1.0]
+    floor: 0.15
+    motion: [0.4, 0.9]
+    accents: downbeat
+    strobe: false                   # caps are off by default (§1); only allow strobes in a mode that lowers the blinds
+    # peak_tokens_per_hour: 5       # §8.5: Party 4-6 an hour. Not built yet (nothing spends them), so left unset
+    moods: [euphoric, playful, bright]   # the Party mode's own direction words today (modes.json)
+    transition_style: wild
+    palette_family: vivid
+    step_size: 0.1
+    max_steps: 3
+    persona: >-
+      A party in full swing. Bold, saturated colour, energy that tracks the dance floor, and big moments saved for
+      when the music earns them.
+
+  disco:
+    label: Disco
+    description: As Party, but hotter. Accents on every beat, and faster looks.
+    energy: [0.6, 1.0]
+    loudness_ref_lufs: -18
+    follow: [energy, onsets, harmony]
+    follow_amount: 1.0
+    beat_lock: true
+    change_looks: phrase
+    change_rate: 0.8
+    dwell_s: [30, 120]
+    relax_on_talk: true
+    listener: true
+    palettes: [rainbow, neon, acid, gold]
+    key_cct: 3000
+    lamp_chroma_max: 0.3
+    chroma_max: 0.37
+    saturation: [0.7, 1.0]
+    contrast: [0.6, 1.0]
+    level: [0.65, 1.0]
+    floor: 0.1
+    motion: [0.5, 1.0]
+    accents: beat
+    strobe: false
+    # peak_tokens_per_hour: 6       # not built yet (nothing spends them), so left unset
+    moods: [euphoric, geometric]    # the Disco mode's own direction words today (modes.json)
+    transition_style: lively
+    palette_family: vivid
+    step_size: 0.1
+    max_steps: 3
+    persona: >-
+      A disco: glitterball, four-on-the-floor, everyone dancing. Bright, rhythmic and playful, with colour that moves
+      on every beat.

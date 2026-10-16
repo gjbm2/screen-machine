@@ -1,20 +1,31 @@
-"""``python -m show_service``: wire the receiver, DSP, beat clock, piano, harmony, Art-Net out and the bus, then keep
-them running.
+"""``python -m show_service``: wire the receiver, DSP, beat clock, piano, harmony, Art-Net out, the bus and (Stage 3)
+the brain, then keep them running.
 
 ```
- [show-rx]   Receiver (receiver.py): recv -> on_audio -> Features.process, then Clock.process (the active stream's
-                                                         blocks only, the same block, each under its own guard)
-                                            on_midi  -> Piano(stream).on_midi (one Piano per MIDI stream, lazily;
-                                                        state_channels=(1,): the kiosk sender's states)
+ [show-rx]   Receiver (receiver.py): recv -> on_audio -> Features.process, then Clock.process, then Rings.write (the
+                                                         active stream's blocks only, the same block, each under its
+                                                         own guard)
+                                            on_midi  -> NoteTap.on_midi, then Piano(stream).on_midi (one Piano per
+                                                        MIDI stream, lazily; state_channels: show.yaml
+                                                        situations.midi.channels, the keys' channel)
                                             on_tick  -> Piano.tick, the voice, Features.tick, Harmony.tick,
-                                                        Clock.tick, snapshot
+                                                        Clock.tick, snapshot (+ the PianoView the brain reads)
              Features' music.hit bodies also go to Clock.observe_hit (sub/bass hits refine the beat phase)
- [show-dns]  started by Receiver.start(): sender names re-resolved every 30 s
- [show-bus]  Bus (bus.py): WS fan-out, show.state 25 Hz, /healthz, /api/v1/state (state() below, from snapshots)
+ [show-dns]  started by Receiver.start(): sender names re-resolved every 30 s (at once after set_senders)
+ [show-bus]  Bus (bus.py): WS fan-out, show.state 25 Hz, /healthz, /api/v1/state (state() below, from snapshots),
+             and api.py's routes and /v1/events (they reach the brain only through Brain.call and snapshots)
+ [show-brain] Brain (brain.py): room, situations, autopilot, sources, listener (1 Hz) and director (10 Hz)
  [show-artnet], [show-artnet-poll]  artnet_out.VirtualMaestro, only with a target (off by default): reads
-             Features.latest and the clock by reference
+             Features.latest, the clock and Director.palette_fn by reference
  [main]      signals; latency.json polled every 2 s -> Receiver.set_offsets; gc.freeze() (no collect) after warm-up
 ```
+
+* **The brain** (README "Stage 3", S3.4) is on unless ``--no-brain`` / ``SHOW_BRAIN=off``; off, the process is exactly
+  as before Stage 3 (no taps, no ring, no Stage-3 routes: the rollback switch). Its files come from the options:
+  ``show_file``, ``vibes_file``, and ``state_dir`` (state.json, director/autopilot/listener jsonl, the test children's
+  logs). The engine side of ``contract.BrainContext`` is filled here (README S3.4 "Engine-side slots"); the
+  components fill the rest through ``Brain.add``. The director's ``palette_fn`` is Art-Net's palette (None while
+  neutral: Art-Net keeps its fixed colour), and ``set_look`` / ``section_change`` go back to the director.
 
 * **One piano voice on the bus.** Every Piano keeps its table, but only one publishes music.note/pedal/notes (midi.py
   "Voice"): the present one, live before test (the same pick as harmony's). A new Piano starts muted. The packet that
@@ -53,11 +64,13 @@ for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUME
 import gc  # noqa: E402
 import importlib  # noqa: E402
 import logging  # noqa: E402
+import math  # noqa: E402
+import pathlib  # noqa: E402
 import signal  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
-from typing import Any, Callable, Optional  # noqa: E402
+from typing import Any, Callable, Mapping, Optional  # noqa: E402
 
 from . import __version__, config, contract  # noqa: E402
 from .bus import Bus  # noqa: E402
@@ -68,8 +81,13 @@ RELOAD_S = 2.0          # latency.json mtime poll
 WARMUP_S = 10.0         # then gc.freeze()
 SNAPSHOT_S = 0.5        # show-rx -> API snapshot
 GUARD_LOG_S = 30.0
-PIANO_STATE_CHANNELS = (1,)   # tools/show_sender's MIDI state carries channel 1's keys (the keys physically down);
-                              # the adsilent's own playback (ch 2) still feeds the keyboard, and a state leaves it be
+PIANO_VEL_TAU_S = 2.0         # PianoView.velocity: EMA of strike velocities (README S3.4)
+PIANO_RATE_WINDOW_S = 4.0     # PianoView.notes_per_s: strikes in the last 4 s / 4
+#: Stage-3 component modules, in brain add order (README S3.2: room, situations, autopilot, sources, listener,
+#: director; autopilot.attach returns the first three)
+BRAIN_MODULES = ("autopilot", "sources", "listener", "director")
+NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
+                                          "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
 
 class _Guard:
@@ -115,13 +133,36 @@ def _present_at(piano: Any, now_s: float) -> bool:
 class Show:
     """The wiring. Construct, ``start()``, then the main thread calls ``set_offsets`` and finally ``stop()``."""
 
-    def __init__(self, opts: config.Options) -> None:
+    def __init__(self, opts: config.Options, *, brain_kw: Optional[Mapping[str, Mapping[str, Any]]] = None) -> None:
+        """``brain_kw``: extra keyword arguments per Stage-3 module's ``attach`` (tests: a fake LLM for the listener,
+        fake clocks); production passes none."""
         self.opts, self.cfg = opts, opts.config
         self.t0 = time.monotonic()
         self.modules: dict[str, str] = {}
         self.offsets: dict[str, float] = {}
         self.ready = False
-        self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health)
+        # Stage 3 (None with --no-brain, or when its module is missing)
+        self.brain: Any = None
+        self.ctx: Optional[contract.BrainContext] = None
+        self.rings: Any = None
+        self.tap: Any = None
+        self.director: Any = None
+        self.api: Any = None
+        self._brain_kw = {k: dict(v) for k, v in (brain_kw or {}).items()}
+        self._pview: contract.PianoView = dict(NEUTRAL_PIANO_VIEW)        # type: ignore[assignment]
+        self._vel_ema: Optional[float] = None
+        self._vel_t: Optional[float] = None
+        self._pv_last = 0.0
+        self._static_settings: dict = {}             # show.yaml read once, for --no-brain (the brain re-reads it)
+        if not opts.brain:
+            self._static_settings = self._read_show_file()
+        if opts.brain:
+            amod = self._import("api")
+            if amod is not None:
+                self.api = self._make("api", lambda: amod.routes(lambda: self.brain, self._engine,
+                                                                 log_files=self._log_files()))
+        self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
+                       routes=self.api)
         self.publish: contract.Publish = self.bus.publish
         self.rx: Any = None
         self.features: Any = None
@@ -134,9 +175,20 @@ class Show:
         self._snap: dict = {}
         self._snap_due = 0.0
         self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
-                                          "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot")}
+                                          "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot",
+                                          "ring.write", "notetap", "piano.view")}
 
     # -- building (main thread) ----------------------------------------------------------------------------------
+    def _read_show_file(self) -> dict:
+        """show.yaml, best effort (--no-brain only: the MIDI state channels). Missing or bad: {} (all channels)."""
+        try:
+            import yaml
+            data = yaml.safe_load(pathlib.Path(self.opts.show_file).read_text())
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            log.warning("show.yaml not read (%s): MIDI states describe every channel", e)
+            return {}
+
     def _import(self, name: str) -> Any:
         try:
             mod = importlib.import_module(f"{__package__ or 'show_service'}.{name}")
@@ -177,8 +229,20 @@ class Show:
             self.rx = self._make("receiver", lambda: rmod.Receiver(self.cfg, on_audio=self.on_audio,
                                                                     on_midi=self.on_midi, on_tick=self.on_tick))
         amod = self._import("artnet_out")
+        out_cfg: dict = {}
         if amod is not None:
-            self.artnet = self._make("artnet_out", lambda: self._virtual_maestro(amod))
+            try:
+                out_cfg = dict(vars(amod.config_from_env()))
+            except Exception as e:           # a bad SHOW_PATCH_FILE / SHOW_HUE_LATENCY_MS: its defaults
+                log.error("Art-Net out env: %s: using its defaults", e)
+                out_cfg = {}
+        if self.opts.brain:
+            self._build_brain(out_cfg.get("patch_path"))
+        if amod is not None:
+            self.artnet = self._make("artnet_out", lambda: self._virtual_maestro(amod, out_cfg))
+        if self.ctx is not None and self.artnet is not None:
+            self.ctx.section_change = getattr(self.artnet, "section_change", None)
+            self.ctx.set_look_out = getattr(self.artnet, "set_look", None)   # the method itself: reset= reaches it
         if freeze_gc:
             t = time.perf_counter()
             gc.collect()
@@ -197,6 +261,12 @@ class Show:
             except Exception as e:
                 self.modules["artnet_out"] = f"failed: {type(e).__name__}: {e}"
                 log.exception("Art-Net out did not start: running without it")
+        if self.brain is not None:
+            try:
+                self.brain.start()
+            except Exception as e:
+                self.modules["brain"] = f"failed: {type(e).__name__}: {e}"
+                log.exception("the brain did not start: running without it")
         self.ready = True
         log.info("show_service %s up: bus %s, vban %s:%d, senders %s, modules %s, beat activation %s", __version__,
                  self.bus.url, self.cfg.vban_bind[0], self.cfg.vban_bind[1],
@@ -204,18 +274,144 @@ class Show:
                  ", ".join(f"{k} {v}" for k, v in self.modules.items()),
                  _attr(getattr(self.clock, "act", None), "name", "none"))
 
-    def _virtual_maestro(self, amod: Any) -> Any:
-        try:
-            kw = dict(vars(amod.config_from_env()))
-        except Exception as e:               # a bad SHOW_PATCH_FILE / SHOW_HUE_LATENCY_MS: its defaults
-            log.error("Art-Net out env: %s: using its defaults", e)
-            kw = {}
+    def _virtual_maestro(self, amod: Any, out_cfg: dict) -> Any:
+        kw = dict(out_cfg)
         kw["target"] = self.opts.artnet_target          # config.py: --artnet-target over SHOW_ARTNET_TARGET
         clock = self.clock if hasattr(self.clock, "next_beat") else None
         features_fn = self.features.latest if self.features is not None else None
-        return amod.VirtualMaestro(**kw, clock=clock, features_fn=features_fn, palette_fn=None)
+        palette_fn = getattr(self.director, "palette_fn", None)    # the director's look (None: the fixed colour)
+        return amod.VirtualMaestro(**kw, clock=clock, features_fn=features_fn, palette_fn=palette_fn)
+
+    # -- Stage 3: the brain (main thread, before rx and the brain start) ------------------------------------------
+    def _log_files(self) -> dict:
+        d = pathlib.Path(self.opts.state_dir)
+        return {"director": d / "director.jsonl", "autopilot": d / "autopilot.jsonl",
+                "listener": d / "listener.jsonl"}
+
+    def _component_kw(self, name: str, patch_path: Any) -> dict:
+        logs = self._log_files()
+        kw: dict[str, Any] = {
+            "autopilot": {"log_path": logs["autopilot"]},
+            "sources": {"log_dir": pathlib.Path(self.opts.state_dir)},
+            "listener": {"log_path": logs["listener"]},
+            "director": {"log_path": logs["director"], "vibes_path": pathlib.Path(self.opts.vibes_file),
+                         **({"patch_path": pathlib.Path(patch_path)} if patch_path else {})},
+        }.get(name, {})
+        kw.update(self._brain_kw.get(name, {}))
+        return kw
+
+    def _build_brain(self, patch_path: Any) -> None:
+        """README S3.4 steps 3-5: the ring and the note tap (show-rx writers), the context, the Brain and its
+        components. Each module is imported lazily: a missing one is in ``modules`` and left out."""
+        rmod = self._import("ring")
+        if rmod is not None:
+            self.rings = self._make("ring", lambda: rmod.Rings())
+        smod = self._import("situations")
+        if smod is not None:
+            self.tap = self._make("situations", lambda: smod.NoteTap())
+        bmod = self._import("brain")
+        if bmod is None:
+            return
+        f, c, h, rx = self.features, self.clock, self.harmony, self.rx
+        ctx = contract.BrainContext(
+            publish=self.publish,
+            features=f.latest if f is not None else None,
+            clock=c.snapshot if c is not None and hasattr(c, "snapshot") else None,
+            harmony=(lambda: getattr(h, "latest", None)) if h is not None else None,
+            piano=self._piano_view, health=self.health, rings=self.rings, notes=self.tap,
+            clock_action=self._clock_action if c is not None else None,
+            set_gate_ref=self._set_gate_ref if f is not None else None,
+            set_senders=getattr(rx, "set_senders", None), set_priority=getattr(rx, "set_priority", None),
+            static_senders=tuple(self.cfg.senders),
+            notify=getattr(self.api, "notify", None))
+        self.ctx = ctx
+        sd = pathlib.Path(self.opts.state_dir)
+        self.brain = self._make("brain", lambda: bmod.Brain(ctx, show_file=pathlib.Path(self.opts.show_file),
+                                                            state_file=sd / "state.json"))
+        if self.brain is None:
+            return
+        for name in BRAIN_MODULES:
+            mod = self._import(name)
+            if mod is None:
+                continue
+            kw = self._component_kw(name, patch_path)
+            got = self._make(name, lambda: mod.attach(ctx, **kw))
+            if got is None:
+                continue
+            for comp in (got if isinstance(got, (list, tuple)) else [got]):
+                try:
+                    self.brain.add(comp)
+                except Exception as e:
+                    self.modules[name] = f"failed: {type(e).__name__}: {e}"
+                    log.exception("%s could not join the brain: running without it", name)
+            if name == "director" and not isinstance(got, (list, tuple)):
+                self.director = got
+        stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
+        self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
+
+    def _clock_action(self, word: str, t_s: float) -> None:
+        """contract.ClockAction (any thread; the clock queues it for show-rx)."""
+        c = self.clock
+        if word == "tap":
+            c.tap(t_s)
+        elif word == "half":
+            c.half()
+        elif word == "double":
+            c.double()
+        elif word == "one":
+            c.one(t_s)
+        else:
+            raise ValueError(f"unknown clock action {word!r}")
+
+    def _set_gate_ref(self, lufs: float) -> None:
+        """The vibe's loudness reference (§6.3) into Features (any thread: one attribute, read per hop)."""
+        v = float(lufs)
+        if math.isfinite(v):
+            self.features.gate_ref_lufs = v
+
+    def _piano_view(self) -> contract.PianoView:
+        return self._pview
+
+    def _state_channels(self) -> Optional[tuple[int, ...]]:
+        """The MIDI channels a sender's state message describes (midi.Piano's ``state_channels``): show.yaml's
+        ``situations.midi.channels`` (the keys' channel; a player's own playback channel stays held), read when a MIDI
+        stream first appears (show-rx: a dict read, no I/O). Unset: every channel (midi.Piano's own default)."""
+        settings = self.ctx.settings if self.ctx is not None else self._static_settings
+        sec = ((settings or {}).get("situations") or {}).get("midi") if isinstance(settings, dict) else None
+        ch = sec.get("channels") if isinstance(sec, dict) else None
+        if isinstance(ch, list):
+            got = tuple(int(c) for c in ch if isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 16)
+            return got or None
+        return None
+
+    def _engine(self) -> dict:
+        """api.py's engine_ref (show-bus): what the card reads from the engine side."""
+        h = self.health()
+        f = None
+        if self.features is not None:
+            try:
+                f = self.features.latest()
+            except Exception:
+                f = None
+        feats = None
+        if isinstance(f, dict):
+            t = f.get("t_ms")
+            feats = {"energy": f.get("energy"), "stream": f.get("stream"),
+                     "age_ms": round(time.monotonic() * 1000.0 - t, 1) if isinstance(t, (int, float)) else None}
+        clock = None
+        if self.clock is not None and hasattr(self.clock, "snapshot"):
+            try:
+                clock = self.clock.snapshot()
+            except Exception:
+                clock = None
+        return {"active_audio": h.get("active_audio"), "features": feats, "clock": clock}
 
     def stop(self) -> None:
+        if self.brain is not None:
+            try:
+                self.brain.stop()            # stops the test children and writes state.json
+            except Exception:
+                log.exception("brain stop failed")
         if self.artnet is not None:
             try:
                 self.artnet.stop()
@@ -238,7 +434,8 @@ class Show:
 
     # -- show-rx callbacks (the hot thread: no I/O, no locks) ---------------------------------------------------
     def on_audio(self, stream: str, n0: int, t0_host_s: float, pcm: Any, fs: int, flags: int) -> None:
-        """contract.OnAudio: the active stream's block to Features, then the same block to the Clock."""
+        """contract.OnAudio: the active stream's block to Features, then the same block to the Clock, then (Stage 3)
+        a 16 kHz mono copy into the listener's ring."""
         f = self.features
         if f is not None:
             try:
@@ -251,6 +448,12 @@ class Show:
                 c.process(stream, n0, t0_host_s, pcm, fs, flags)
             except Exception:
                 self._g["clock.process"].failed()
+        r = self.rings
+        if r is not None:
+            try:
+                r.write(stream, n0, t0_host_s, pcm, fs, flags)
+            except Exception:
+                self._g["ring.write"].failed()
 
     def _features_publish(self, msg: dict) -> None:
         """The publish Features gets: everything to the bus; music.hit bodies also to Clock.observe_hit (show-rx)."""
@@ -263,12 +466,18 @@ class Show:
         self.publish(msg)
 
     def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
+        tap = self.tap
+        if tap is not None:                  # Auto's note-ons (situations), before the piano
+            try:
+                tap.on_midi(stream, msg, arrival_s, to_host)
+            except Exception:
+                self._g["notetap"].failed()
         piano = self.pianos.get(stream)
         if piano is None:
             if self._midi_mod is None:
                 return
             try:
-                piano = self._midi_mod.Piano(stream, self.publish, state_channels=PIANO_STATE_CHANNELS)
+                piano = self._midi_mod.Piano(stream, self.publish, state_channels=self._state_channels())
                 _set_voice(piano, False, arrival_s)          # muted until it is the voice (on_tick / below)
             except Exception:
                 self._g["on_midi"].failed()
@@ -345,6 +554,49 @@ class Show:
                 self._snap = self._snapshot(now_s)
             except Exception:
                 g["snapshot"].failed()
+            if self.ctx is not None:
+                try:
+                    self._pview = self._build_piano_view(now_s)
+                except Exception:
+                    g["piano.view"].failed()
+
+    def _build_piano_view(self, now_s: float) -> contract.PianoView:
+        """README S3.4 "Engine-side slots": the voice piano, for the director (between_pieces, dynamics) and Auto
+        (piano_idle). Built on show-rx every SNAPSHOT_S; strikes come from the NoteTap (every note-on, by arrival)."""
+        v = self._voice
+        strikes: list = []
+        if self.tap is not None and v is not None:
+            stream = getattr(v, "stream", None)
+            strikes = [e for e in self.tap.raw_since(now_s - PIANO_RATE_WINDOW_S) if e[1] == stream]
+        new = [e for e in strikes if e[0] > self._pv_last]
+        self._pv_last = now_s
+        if new:
+            mean = sum(e[4] for e in new) / (127.0 * len(new))
+            if self._vel_ema is None:
+                self._vel_ema = mean
+            else:
+                dt = max(0.0, now_s - (self._vel_t or now_s)) or SNAPSHOT_S
+                self._vel_ema += (mean - self._vel_ema) * (1.0 - math.exp(-dt / PIANO_VEL_TAU_S))
+            self._vel_t = now_s
+        if v is None:
+            return {**NEUTRAL_PIANO_VIEW, "velocity": round(self._vel_ema or 0.0, 3)}   # type: ignore[typeddict-item]
+        last_age = None
+        mmod = self._midi_mod
+        table = getattr(v, "table", None)
+        if mmod is not None and table is not None and hasattr(mmod, "T_ON"):
+            col = table[:, mmod.T_ON]
+            finite = col[col == col]                     # drop NaN (never struck)
+            if finite.size:
+                last_age = round(max(0.0, now_s - float(finite.max())), 3)
+        if strikes and (last_age is None or now_s - strikes[-1][0] < last_age):
+            last_age = round(max(0.0, now_s - strikes[-1][0]), 3)
+        held = v.held() if hasattr(v, "held") else ()
+        pedals = getattr(v, "pedals", None) or {}
+        return {"present": bool(getattr(v, "present", False)), "stream": getattr(v, "stream", None),
+                "source": getattr(v, "source", None), "keys_down": int(len(held)),
+                "damper": round(float(pedals.get("damper", 0.0)), 3), "last_note_age_s": last_age,
+                "velocity": round(self._vel_ema or 0.0, 3),
+                "notes_per_s": round(len(strikes) / PIANO_RATE_WINDOW_S, 3)}
 
     def _snapshot(self, now_s: float) -> dict:
         """Built on show-rx (it owns these objects), read by the API on show-bus."""
@@ -408,7 +660,28 @@ class Show:
             "artnet": _attr(self.artnet, "status") if self.artnet is not None else {"state": "off"},
             "bus": bus.stats(),
             "errors": {k: g.errors for k, g in self._g.items() if g.errors},
+            "brain": self._brain_state(),
+            "api": _attr(self.api, "stats") if self.api is not None else None,
         }
+
+    def _brain_state(self) -> Optional[dict]:
+        """``Brain.snapshot()``, plus the ring's and the note tap's stats; None with --no-brain."""
+        if not self.opts.brain:
+            return None
+        b = self.brain
+        out: dict = {}
+        if b is not None:
+            try:
+                out = dict(b.snapshot())
+            except Exception as e:
+                out = {"error": f"snapshot failed: {type(e).__name__}: {e}"}
+        else:
+            out = {"running": False, "modules": {k: v for k, v in self.modules.items()
+                                                 if k in ("api", "ring", "situations", "brain") + BRAIN_MODULES}}
+        out["ring"] = _attr(self.rings, "info") if self.rings is not None else None
+        out["notes"] = _attr(self.tap, "stats") if self.tap is not None else None
+        out["piano_view"] = self._pview
+        return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -434,6 +707,8 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _signal)
     signal.signal(signal.SIGINT, _signal)
 
+    if not opts.brain:
+        log.info("the brain is off (--no-brain / SHOW_BRAIN=off): no director, Auto, test sources or listener")
     show = Show(opts)
     show.start(freeze_gc=True)
     watch = config.LatencyWatch(cfg.latency_file)

@@ -708,6 +708,24 @@ def test_palette_from_env_and_constructor():
     assert vm.status()["rgb"] == [0.0, 0.0, 1.0]
 
 
+def test_a_palette_fn_that_returns_none_keeps_the_fixed_colour():
+    """Stage 3: __main__ passes Director.palette_fn, None while no vibe is set; then the fixed colour, and status says
+    which one the last frame used."""
+    lay = layout()
+    look: dict = {"pal": None}
+    vm = ao.VirtualMaestro(layout=lay, palette=(0.0, 0.0, 1.0), idle_after_s=None, hue_depth=0.0,
+                           palette_fn=lambda t: look["pal"])
+    assert vm.compose(1.0)
+    d = vm.channels()
+    assert (d[ch(lay, "screen.north", "r")], d[ch(lay, "screen.north", "b")]) == (0, 255)
+    assert vm.status()["rgb"] == [0.0, 0.0, 1.0] and vm.status()["palette"] == "fixed"
+    look["pal"] = {"screen.north": (1.0, 0.0, 0.0), "*": (0.0, 1.0, 0.0)}
+    assert vm.compose(1.1)
+    d = vm.channels()
+    assert (d[ch(lay, "screen.north", "r")], d[ch(lay, "screen.south", "g")]) == (255, 255)
+    assert vm.status()["rgb"] == "director" and vm.status()["palette"] == "director"
+
+
 def test_a_quiet_room_idles_and_sound_resumes():
     lay = layout()
     box = {"gate": 0.0}
@@ -735,3 +753,93 @@ def test_a_quiet_room_idles_and_sound_resumes():
     for i in range(30):
         box["t"] = i * 0.5
         assert vm2.compose(i * 0.5)
+
+
+def test_the_director_s_look_keeps_going_out_in_a_quiet_room_or_with_no_features():
+    """While palette_fn gives a dict (the director plays a vibe), a quiet room or stale features don't idle: the
+    director's colours (its relaxed base look, Lights low) keep going out, steady (hue_depth 0), with no pulses. A
+    neutral director (None) idles as before."""
+    lay = layout()
+    clk = FakeClock(anchor=0.0, period=0.5)
+    box = {"gate": 0.0, "pal": {"*": (0.2, 0.4, 0.8)}, "fresh": True}
+
+    def f():
+        d = feats(box["t"] if box["fresh"] else 0.0, punch=1.0)
+        d["gate"], d["energy"] = box["gate"], 0.0
+        return d
+
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, features_fn=f, palette_fn=lambda t: box["pal"])
+    pulse, r, b = ch(lay, "screen.north", "pulse"), ch(lay, "hue.ne", "r"), ch(lay, "hue.ne", "b")
+    frames = []
+    for i in range(int(14 / 0.025)):                              # 14 s of a silent room, director playing
+        box["t"] = t = i * 0.025
+        vm._upcoming = clk.next_beat(t)
+        assert vm.compose(t)
+        frames.append((t, vm.channels()))
+    held = [d for t, d in frames if t > 10.5]
+    assert vm.active and vm.held == "quiet" and vm.idle_reason is None
+    assert all(d[pulse] == 0 for d in held)                       # no DIMMER pulses
+    assert {d[r] for d in held} == {round(255 * 0.2)} and {d[b] for d in held} == {round(255 * 0.8)}   # steady
+    box["pal"] = {"*": (0.05, 0.05, 0.05)}                        # Lights low reaches the lamps in the quiet
+    box["t"] = 14.1
+    assert vm.compose(14.1) and vm.channels()[r] == round(255 * 0.05)
+    box["fresh"] = False                                          # the stream went away: still the director's look
+    box["t"] = 30.0
+    assert vm.compose(30.0) and vm.held == "no_features"
+    box["pal"] = None                                             # neutral again: today's P0 idle
+    assert not vm.compose(30.1) and vm.idle_reason == "no_features" and vm.held is None
+
+
+# -- the director's look (Stage 3: set_look) --------------------------------------------------------------------------
+def test_set_look_beat_lock_off_no_pulses_no_prism_and_energy_swell():
+    lay = layout()
+    clk = FakeClock(anchor=20.0, period=0.5)
+    box = {"e": 0.2}
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, palette_fn=lambda t: (1, 1, 1), idle_after_s=None,
+                           features_fn=lambda: feats(0.0, energy=box["e"], punch=1.0))
+    pulse, prism, r = ch(lay, "screen.north", "pulse"), ch(lay, "screen.north", "variant"), ch(lay, "hue.ne", "r")
+    on = run(vm, 19.9, 22.2)
+    assert edges(on, pulse) and {d[prism] for _, d in on} == {0, 1}
+    vm.set_look(beat_lock=False)
+    off = run(vm, 22.25, 26.2)                                    # 8 beats on the same clock
+    assert all(d[pulse] == 0 for _, d in off)                     # no DIMMER pulse edges
+    assert len({d[prism] for _, d in off}) == 1                   # PRISM holds
+    hue = [d[r] for _, d in off]
+    assert max(hue) - min(hue) <= 3                               # no beat swell: steady at the (smoothed) energy
+    times = [t for t, _ in off]                                   # the clock stays wired: frames still on the beat
+    assert any(abs(t - 24.0) < 1e-9 for t in times)
+    assert vm.status()["look"] == {"hue_depth": 0.7, "beat_lock": False}
+
+
+def test_set_look_depth_and_reset():
+    lay = layout()
+    clk = FakeClock(anchor=40.0, period=0.5)
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, palette_fn=lambda t: (1, 1, 1), idle_after_s=None)
+    r = ch(lay, "hue.ne", "r")
+    vm.set_look(hue_depth=0.0)
+    steady = run(vm, 39.5, 41.0)
+    assert {d[r] for _, d in steady} == {255}                     # depth 0: the palette alone
+    vm.set_look(hue_depth=0.4)
+    swell = run(vm, 41.0, 42.5)
+    mid = [d[r] for t, d in swell if any(abs(t - b) < 0.02 for b in (41.25, 41.75))]
+    assert mid and min(mid) >= round(255 * 0.6) - 1 and max(d[r] for _, d in swell) == 255
+    vm.set_look(hue_depth=float("nan"), beat_lock=None)          # junk is ignored, None leaves it
+    assert vm.status()["look"] == {"hue_depth": 0.4, "beat_lock": True}
+    vm.set_look(hue_depth=7)                                      # clamped
+    assert vm.hue_depth == 1.0
+    vm.set_look(beat_lock=False)
+    vm.set_look(reset=True)
+    assert vm.status()["look"] == {"hue_depth": 0.7, "beat_lock": True}
+
+
+def test_set_look_beat_lock_back_on_never_starts_mid_pulse():
+    lay = layout()
+    clk = FakeClock(anchor=20.0, period=0.5)
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, idle_after_s=None, features_fn=lambda: feats(0.0, punch=1.0))
+    pulse = ch(lay, "screen.north", "pulse")
+    vm.set_look(beat_lock=False)
+    run(vm, 19.9, 20.02)                                          # the edge at 20.0 passes unlocked
+    vm.set_look(beat_lock=True)
+    frames = run(vm, 20.03, 20.6)
+    assert all(d[pulse] == 0 for t, d in frames if t < 20.5 - 1e-9)   # no tail of the unlocked beat's pulse
+    assert edges(frames, pulse) and abs(edges(frames, pulse)[0] - 20.5) < 1e-9

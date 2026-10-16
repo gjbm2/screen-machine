@@ -1,0 +1,170 @@
+# config/room/show.yaml: show_service's own settings (docs/SHOW_ENGINE.md; show_service/README.md, "Stage 3").
+# Owner: screen-machine-c8. show_service re-reads this file when it changes (mtime, every 2 s). A bad edit keeps the
+# last good settings, and GET /show/api/v1/state shows the error under brain.settings.error.
+#
+# Not in this file:
+#   - Auto's globals and per-mode rules: config/room/modes.json ("autopilot"; aa validates the keys).
+#   - Auto on/off: the room target autopilot.main.
+#   - The vibes: config/room/vibes.yaml.
+#   - Put-back: the room's per-row {"set": v, "restore": true}.
+#   - Model ids, prices and budgets: config/llm.yaml.
+#   - Latency trims: config/room/latency.json.
+#   - The fixtures' layout: config/room/patch.yaml (68's).
+#
+# Device addresses live here, in config/room/, like sonos.json (owner ruling, 16 Oct). Code never holds one.
+# EVERY NUMBER IN THIS FILE IS A DESIGN DEFAULT, a starting point to be tuned by ear (the § says where it comes from),
+# unless its comment says "measured" or "owner". Names (streams, targets, hosts) are this room's facts. Anything left
+# out takes the neutral value listed in the README, or the code's own starting point (the same numbers as here).
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false.
+
+version: 1
+
+# VBAN senders that show_service subscribes to. It sends a SUBSCRIBE every second; the sender streams back to that
+# address (§3.1). hosts are tried in order. A host that has answered within 3 s gets the SUBSCRIBEs alone; until one
+# answers, every host gets them. One box with two addresses still streams once, because a sender replies to the
+# latest SUBSCRIBE.
+# on_demand: true means the sender is subscribed only while POST /show/api/v1/test runs that source.
+# room_sound: false means its audio can't carry anyone in the room (a music file): the listener skips the music/speech
+#   check for it. Nothing else changes: every upload still needs AI listening on and a mode that listens. Leave it out
+#   (or true) for anything with a microphone.
+# Senders given with --sender / SHOW_SENDERS (deploy/sm-show.env) still apply. This file wins for a name in both.
+senders:
+  # GO-LIVE STEP (not yet: owner's call). Uncommenting kiosk makes show_service subscribe the room's mic and piano;
+  # whenever 98's show-sender.service runs on the kiosk, the room's sound then drives the lamps' and screens' Art-Net
+  # (on in production). Announce it, then uncomment (README S3.14).
+  # kiosk:                                    # screen-machine-drawingroom, 98's show-sender.service
+  #   hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
+  #   port: 6980
+  #   streams: [room-mic, room-piano]
+  test-piano:                               # 98's test piano (tools/show_sender --test-piano), a child of show_service
+    hosts: [localhost]
+    port: 6981
+    streams: [test-piano]
+    on_demand: true
+  test-audio:                               # a music file as VBAN (python -m show_service.sources audio), a child
+    hosts: [localhost]
+    port: 6982
+    streams: [test-audio]
+    on_demand: true
+    room_sound: false                       # a Creative Commons track, never the room
+
+# The two test sources: POST/DELETE/GET /show/api/v1/test {source: piano | audio, piece}. They exercise the room
+# from another room (§10.1). A restart stops them; they are never persisted. Auto's words ignore them (include_test).
+tests:
+  piano:
+    sender: test-piano                      # the senders entry above
+    pieces: config/live/test-piano          # .mid files, plus stream_service/piano_replay.py's built-in patterns
+  audio:
+    sender: test-audio
+    music: ~/.cache/screen-machine/test-music   # filled by tools/show/fetch_test_music.py (Creative Commons tracks)
+    rank_first: true                        # while it plays, test-audio outranks the room mic (Receiver.set_priority)
+
+room:
+  url: http://127.0.0.1:8700                # room_service (in the Flask process) over loopback; its /api/v1/* only
+
+# What each Auto situation reads (§8.9). These name show_service's inputs, never a mode. A mode's condition may
+# override any of them for one rule, e.g. {"piano_playing": {"for_s": 10, "min_notes": 20}}.
+situations:
+  midi:                                     # piano_playing, piano_idle; also the MIDI state channels (__main__)
+    streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
+                                            # unless they are listed here or a rule sets include_test: true.
+    channels: [1]                           # the adsilent: channel 1 is the keys; 2 is its own playback (ignored)
+    heard_by: room-mic                      # while this audio stream is up, the mic must hear the piano too, so silent
+                                            # headphone practice never switches; null turns that check off
+    window_s: 10                            # starting point (§8.9)
+    min_notes: 12                           # starting point
+    min_span_s: 6                           # starting point
+    min_pitches: 4                          # starting point
+    heard_min_lufs: -45                     # starting point: the short-term loudness the mic must reach in the window
+    idle_note_s: 1.0                        # starting point: piano_idle needs no note-on for this long
+  music:                                    # music_audible
+    stream: room-mic
+    min_prob: 0.5                           # starting point: the classifier's music probability (CED, P1). Until it
+                                            # exists, a DSP guess: a steady beat or a clear key, over the gate.
+    dsp_min_gate: 0.3                       # starting point
+  sonos:                                    # sonos_playing; music_audible's Sonos path
+    now_playing: sonos.drawing-room.now_playing     # room targets (sonos.json zone "drawing-room")
+    volume: sonos.drawing-room.volume
+    own_change_s: 60                        # starting point: ignore Sonos this long after the room itself sent it
+                                            # anything (sent_age_s)
+  quiet:                                    # quiet
+    stream: room-mic
+    gate_below: 0.05                        # starting point
+
+# Lamp roles (§8.8). The role comes from each lamp's patch.yaml placement; the role's behaviour is the fields below.
+# Every value is a number, or the name of a vibe field to take it from.
+lamps:
+  placement_roles:
+    above: extend                           # above a screen: it extends that screen's colours
+    opposite: key                           # opposite: the room's key light
+  default_role: extend                      # a lamp with no placement
+  roles:
+    extend:
+      palette_role: accent                  # base | accent | highlight
+      follow_screen: true                   # the colours of the screen it hangs above (that screen's art, with "art")
+      chroma_max: chroma_max                # the vibe's chroma_max
+      motion: true
+    key:
+      palette_role: base
+      white_k: key_cct                      # the vibe's key_cct: white first...
+      chroma_max: lamp_chroma_max           # ...tinted at most this much (about 0.05 is a faint tint)
+      avoid_hues: [[140, 230]]              # starting point (§8.8): OKLCh hue degrees, never green or cyan on a key
+      motion: false
+
+director:
+  steps:
+    size_from: step_size                    # one Calmer/Wilder step: the vibe's step_size, within its energy range
+    max_from: max_steps
+  keep_s: 900                               # starting point (§8.4): Keep this look, 15 minutes
+  low: {level: 0.10, fade_s: 2.0}           # starting point (§8.4): Lights low
+  house: {white_k: 2700, level: 0.8}        # starting point (§8.4): House lights when the room has no stored house
+                                            # state for a lamp
+  next_max_wait_s: 4.0                      # starting point (§8.4): Next look lands on the next bar, at most this long
+  art:
+    poll_s: 60                              # starting point: the on-glass stills (room's /api/v1/screens/{id}/art)
+    colours: 5                              # starting point (§8.8): OKLCh clusters per still
+  republish_s: 5                            # starting point: room.direction / room.look again even when nothing changed
+  # When looks change (§8.5). Starting points.
+  between_pieces: {pause_s: 2.0, damper_up: 0.1}   # a pause: no strike for pause_s, no key down, damper under damper_up
+  new_song_after_s: 8.0                     # sound back after this much silence: a new song (the palette moves on)
+  novelty: 0.12                             # |fast - slow| energy that counts as a change point when changing by time
+  variation_bars: 64                        # while Keep this look holds: a new allocation after this many bars
+  entry_fade_s: 8.0                         # entering a vibe: the lamps fade in from the house light (§8.6)
+  emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)
+  # How deep the lamps' beat swell goes for each of the vibe's accent styles (artnet_out's hue_depth: 0 = steady
+  # colour, 1 = the full swell). Starting points. With beat_lock false or an unsure clock, there is no beat swell.
+  accent_depth: {none: 0.0, soft: 0.3, downbeat: 0.5, beat: 0.7, full: 0.9}
+  # How a look change crosses over for each transition_style word (config/live/vocab.yaml): a crossfade over this many
+  # beats (or seconds while the clock is unsure), or a cut. A word with no entry crossfades over 3 s. Starting points.
+  transitions:
+    gentle: {style: crossfade, beats: 4, seconds: 4}
+    lively: {style: crossfade, beats: 1, seconds: 1}
+    wild:   {style: cut, seconds: 0.05}
+  # The listener's trajectory word nudges the energy by this much (times its confidence; §8.2's L2). Starting points.
+  listener_bias: {building: 0.05, peak: 0.1, sustaining: 0.0, steady: 0.0, releasing: -0.05, winding_down: -0.1}
+  # The L1 music table (§8.2): energy bands and the words they bring. Copied as a starting point from
+  # stream_service/music_direction.py BANDS (the renderer's own table today), so screens read the same words.
+  bands:
+    edges: [0.30, 0.55, 0.80]               # still | groove-or-pulse | lively | peak
+    hysteresis: 0.04
+    split: {band: 1, by: drive, up: 0.65, down: 0.55}   # band 1 (0.30-0.55): groove below, pulse above
+    words:
+      still:  {moods: [calm, mellow, elegant, dreamy],    fx_moods: [calm, mellow, elegant, dreamy],    transition_style: gentle}
+      groove: {moods: [mellow, elegant, warm, organic],   fx_moods: [mellow, warm, elegant, liquid],    transition_style: gentle}
+      pulse:  {moods: [dreamy, hypnotic, liquid, organic], fx_moods: [dreamy, hypnotic, liquid, mellow], transition_style: lively}
+      lively: {moods: [bright, playful, geometric, hypnotic], fx_moods: [playful, retro, hypnotic, geometric], transition_style: lively}
+      peak:   {moods: [euphoric, hypnotic, bright, aggressive], fx_moods: [euphoric, hypnotic, glitchy, bright], transition_style: wild}
+
+listener:                                   # §7.3, §7.5. Starting points, all of them.
+  cadence_s: 20                             # a clip every 20 s...
+  clip_s: 24                                # ...of the last 24 s (16 kHz mono from the ring)
+  min_gap_s: 8
+  relaxed_cadence_s: 45                     # after agree_reads agreeing, confident verdicts
+  agree_reads: 3
+  quiet_gate: 0.1                           # the loudness gate's mean over the last 10 s must reach this
+  min_clip_s: 10                            # the ring records only while a clip could go: a first clip waits this long
+  music_gate: classifier                    # room-mic clips go only while a music/speech classifier says music, with
+                                            # speech under 0.3. The classifier is CED, in P1. "dsp" would allow a DSP
+                                            # guess instead (a steady beat over the loudness gate): that is the owner's
+                                            # choice. A sender with room_sound: false skips this check, nothing else.
+  describe_timeout_s: 8                     # then the local keyword match answers (§7.4)

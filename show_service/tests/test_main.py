@@ -165,9 +165,11 @@ def install_fakes(monkeypatch) -> None:
         monkeypatch.setitem(sys.modules, f"show_service.{name}", mod)
 
 
-def test_wiring_with_fake_modules(monkeypatch):
+def test_wiring_with_fake_modules(monkeypatch, tmp_path):
     install_fakes(monkeypatch)
-    show = main_mod.Show(OPTS)
+    show_file = tmp_path / "show.yaml"                    # the MIDI state channels come from show.yaml (--no-brain:
+    show_file.write_text("situations:\n  midi: {channels: [1]}\n")   # read once at start), never a code constant
+    show = main_mod.Show(config.Options(config=OPTS.config, show_file=show_file))
     show.start()
     rx = show.rx
     try:
@@ -194,7 +196,7 @@ def test_wiring_with_fake_modules(monkeypatch):
         rx.on_midi("broken-piano", "batch-c", 1.0, lambda t_ns: 2.5)
         assert set(show.pianos) == {"test-piano", "room-piano", "broken-piano"}
         assert show.pianos["room-piano"].msgs == [("batch-b", 2.5)]
-        assert show.pianos["room-piano"].state_channels == (1,)          # the kiosk sender's states: channel 1
+        assert show.pianos["room-piano"].state_channels == (1,)          # show.yaml situations.midi.channels
         rx.on_tick(10.0)
         assert show.harmony.calls[-1] is show.pianos["room-piano"]           # live before test
         assert show._g["piano.tick"].errors == 1                            # the broken piano didn't stop the tick
@@ -370,7 +372,8 @@ def test_python_m_show_service_starts_and_stops(tmp_path):
     log_path = tmp_path / "show.log"
     with open(log_path, "wb") as log:
         p = subprocess.Popen([sys.executable, "-m", "show_service", "--port", str(port), "--host", "127.0.0.1",
-                              "--vban-bind", "127.0.0.1:0", "--latency-file", str(tmp_path / "latency.json")],
+                              "--vban-bind", "127.0.0.1:0", "--latency-file", str(tmp_path / "latency.json"),
+                              "--no-brain"],
                              cwd=str(contract.REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 60
@@ -387,6 +390,15 @@ def test_python_m_show_service_starts_and_stops(tmp_path):
             assert up, log_path.read_text()
             code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
             assert code in (200, 503), body
+            if code == 200:
+                assert body["brain"] is None and "api" not in body["modules"]       # --no-brain: as before Stage 3
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/v1/vibe", data=b"{}", method="PUT")
+            try:
+                urllib.request.urlopen(req, timeout=2)
+                code = 200
+            except urllib.error.HTTPError as e:
+                code = e.code
+            assert code == 501                                                       # bus.py's stub: no routes
             p.send_signal(signal.SIGTERM)
             assert p.wait(timeout=20) == 0, log_path.read_text()
         finally:
@@ -394,3 +406,315 @@ def test_python_m_show_service_starts_and_stops(tmp_path):
                 p.kill()
                 p.wait()
     assert "stopped" in log_path.read_text()
+
+
+def test_python_m_show_service_with_the_brain(tmp_path):
+    """The real process with the brain on, every path a tmp one: HOME is tmp_path (so contract's state, LLM ledger and
+    test-music paths are too), show.yaml names a room on a dead ephemeral port and no senders. Up, the Stage-3 routes
+    answer, state.json is written in --state-dir at SIGTERM, exit 0."""
+    port, dead = _free_port(), _free_port()
+    assert contract.BUS_PORT not in (port, dead) and 8700 not in (port, dead)
+    show_yaml = tmp_path / "show.yaml"
+    show_yaml.write_text(f"version: 1\nroom:\n  url: http://127.0.0.1:{dead}\n")
+    state_dir = tmp_path / "state"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SHOW_")}
+    env.update(PYTHONUNBUFFERED="1", HOME=str(tmp_path), OPENAI_API_KEY="")
+    log_path = tmp_path / "show.log"
+    with open(log_path, "wb") as log:
+        p = subprocess.Popen([sys.executable, "-m", "show_service", "--port", str(port), "--host", "127.0.0.1",
+                              "--vban-bind", "127.0.0.1:0", "--latency-file", str(tmp_path / "latency.json"),
+                              "--show-file", str(show_yaml), "--state-dir", str(state_dir)],
+                             cwd=str(contract.REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 60
+            card = None
+            while time.monotonic() < deadline and p.poll() is None:
+                try:
+                    code, card = _get(f"http://127.0.0.1:{port}/api/v1/card", timeout=1)
+                    if code == 200:
+                        break
+                except OSError:
+                    pass
+                time.sleep(0.2)
+            assert card and "hearing" in card, log_path.read_text()
+            assert card["vibe"]["name"] is None and card["auto"]["state"] in ("blind", "off")   # no room: blind
+            code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
+            assert code == 200 and body["brain"]["running"] is True, body.get("brain")
+            assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "listener",
+                                                        "director"}
+            assert all(v == "ok" for v in body["modules"].values()), body["modules"]
+            assert body["brain"]["settings"]["error"] is None and body["brain"]["state_file"]["path"].startswith(
+                str(state_dir))
+            p.send_signal(signal.SIGTERM)
+            assert p.wait(timeout=20) == 0, log_path.read_text()
+        finally:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+    saved = json.loads((state_dir / "state.json").read_text())
+    assert saved["v"] == 1 and saved["director"]["target"] is None and saved["listener"] == {"on": False,
+                                                                                             "set_at": None}
+    assert "stopped" in log_path.read_text() and "Traceback" not in log_path.read_text(), log_path.read_text()
+
+
+# -- Stage 3: the brain's wiring (README S3.4), with fake components and the real brain.py and api.py ---------------
+CALLS: list[str] = []
+
+
+class FakeComp:
+    def __init__(self, name: str, hz: float = 0.0, kw: dict | None = None, provides: dict | None = None) -> None:
+        self.name, self.tick_hz, self.kw, self._prov = name, hz, kw or {}, provides or {}
+        self.ticks = 0
+        self.stopped = False
+
+    def provides(self):
+        return self._prov
+
+    def configure(self, settings):
+        self.settings = settings
+
+    def restore(self, saved):
+        pass
+
+    def start(self):
+        pass
+
+    def tick(self, now_s):
+        self.ticks += 1
+
+    def snapshot(self):
+        return {"ticks": self.ticks}
+
+    def persist(self):
+        return None
+
+    def stop(self):
+        self.stopped = True
+        CALLS.append("stop:" + self.name)
+
+
+class FakeDirector(FakeComp):
+    def palette_fn(self, t_s):
+        return {"*": (0.1, 0.2, 0.3)}
+
+
+def install_brain_fakes(monkeypatch) -> dict:
+    """ring, situations (NoteTap), autopilot, sources, listener and director as fakes; brain.py and api.py real."""
+    made: dict = {}
+    ring = types.ModuleType("show_service.ring")
+
+    class Rings:
+        def __init__(self):
+            self.writes = []
+
+        def write(self, stream, n0, t0_host_s, pcm, fs, flags):
+            if stream == "boom":
+                raise RuntimeError("ring")
+            self.writes.append((stream, n0, flags))
+            CALLS.append("ring.write")
+
+        def info(self):
+            return {"writes": len(self.writes)}
+
+    ring.Rings = Rings
+    sit = types.ModuleType("show_service.situations")
+
+    class NoteTap:
+        def __init__(self):
+            self.msgs = []
+
+        def on_midi(self, stream, msg, arrival_s, to_host):
+            self.msgs.append((stream, msg))
+            CALLS.append("notetap")
+
+        def raw_since(self, t_s):
+            return []
+
+        def stats(self):
+            return {"batches": len(self.msgs)}
+
+    sit.NoteTap = NoteTap
+
+    def module(name, build):
+        m = types.ModuleType(f"show_service.{name}")
+
+        def attach(ctx, **kw):
+            got = build(ctx, kw)
+            made[name] = got
+            return got
+        m.attach = attach
+        monkeypatch.setitem(sys.modules, f"show_service.{name}", m)
+
+    module("autopilot", lambda ctx, kw: [FakeComp("room", 0.0, kw, {"room": lambda: {"current": "gallery"}}),
+                                         FakeComp("situations", 1.0), FakeComp("autopilot", 1.0, kw)])
+    module("sources", lambda ctx, kw: FakeComp("sources", 1.0, kw))
+    module("listener", lambda ctx, kw: FakeComp("listener", 1.0, kw, {"beliefs": lambda: None}))
+    module("director", lambda ctx, kw: FakeDirector("director", 10.0, kw, {"vibe": lambda: None}))
+    monkeypatch.setitem(sys.modules, "show_service.ring", ring)
+    monkeypatch.setitem(sys.modules, "show_service.situations", sit)
+    return made
+
+
+def _brain_opts(tmp_path, **kw) -> config.Options:
+    show = tmp_path / "show.yaml"
+    show.write_text("version: 1\n")
+    return config.Options(config=contract.Config(bus_bind=("127.0.0.1", 0), vban_bind=("127.0.0.1", 0),
+                                                 senders=(contract.Sender("cli", "localhost", 7000, ("x",)),)),
+                          brain=True, show_file=show, state_dir=tmp_path / "state",
+                          vibes_file=tmp_path / "vibes.yaml", **kw)
+
+
+def _with_seams(monkeypatch) -> None:
+    """The fake Receiver and VirtualMaestro gain the Stage-3 seams (set_senders/set_priority, set_look,
+    section_change), recording what they get."""
+    rx_mod, vm_mod = sys.modules["show_service.receiver"], sys.modules["show_service.artnet_out"]
+
+    class Receiver(rx_mod.Receiver):
+        def set_senders(self, senders):
+            self.senders = senders
+
+        def set_priority(self, names):
+            self.priority = names
+
+    class VirtualMaestro(vm_mod.VirtualMaestro):
+        def set_look(self, *, hue_depth=None, beat_lock=None, reset=False):
+            self.look = (hue_depth, beat_lock, reset)
+
+        def section_change(self):
+            self.sections = getattr(self, "sections", 0) + 1
+
+        def stop(self, timeout=2.0):
+            CALLS.append("artnet.stop")
+            super().stop(timeout)
+
+    monkeypatch.setattr(rx_mod, "Receiver", Receiver)
+    monkeypatch.setattr(vm_mod, "VirtualMaestro", VirtualMaestro)
+
+
+def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
+    install_fakes(monkeypatch)
+    _with_seams(monkeypatch)
+    made = install_brain_fakes(monkeypatch)
+    CALLS.clear()
+    opts = _brain_opts(tmp_path)
+    show = main_mod.Show(opts, brain_kw={"listener": {"llm": "fake-llm"}})
+    show.start()
+    rx, vm, ctx = show.rx, show.artnet, show.ctx
+    try:
+        assert all(v == "ok" for v in show.modules.values()), show.modules
+        assert {"api", "ring", "situations", "brain", "autopilot", "sources", "listener", "director"} <= set(show.modules)
+        assert show.brain.running and list(show.brain.components) == ["room", "situations", "autopilot", "sources",
+                                                                      "listener", "director"]
+        # files come from the options, test kwargs on top
+        sd = tmp_path / "state"
+        assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
+                                       "patch_path": __import__("pathlib").Path("p.yaml")}
+        assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
+        assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
+        assert show.brain.store.path == sd / "state.json"
+        # the engine side of the context
+        assert ctx.features == show.features.latest and ctx.health == show.health and ctx.notes is show.tap
+        assert ctx.rings is show.rings and ctx.set_senders == rx.set_senders and ctx.set_priority == rx.set_priority
+        assert ctx.static_senders == opts.config.senders and ctx.notify == show.api.notify
+        assert ctx.set_look_out == vm.set_look and ctx.section_change == vm.section_change
+        assert ctx.piano() == main_mod.NEUTRAL_PIANO_VIEW and ctx.room() == {"current": "gallery"}
+        ctx.set_look_out(hue_depth=0.4, beat_lock=False)
+        ctx.set_gate_ref(-35.0)
+        assert vm.look == (0.4, False, False) and show.features.gate_ref_lufs == -35.0
+        # Art-Net's palette is the director's
+        assert vm.kw["palette_fn"] == show.director.palette_fn and vm.kw["palette_fn"](1.0) == {"*": (0.1, 0.2, 0.3)}
+        # show-rx taps: the ring after Features and the Clock; the note tap before the piano
+        pcm = np.zeros((128, 1), np.float32)
+        rx.on_audio("room-mic", 0, 1.0, pcm, 48000, contract.AUDIO_SEGMENT)
+        rx.on_audio("boom", 128, 1.0, pcm, 48000, 0)                    # Features and the ring raise: guarded
+        assert show.rings.writes == [("room-mic", 0, contract.AUDIO_SEGMENT)] and show._g["ring.write"].errors == 1
+        assert show.clock.blocks[-1] == ("boom", 128, 0)
+        rx.on_midi("room-piano", "batch-a", 1.0, lambda t_ns: 2.5)
+        assert show.tap.msgs == [("room-piano", "batch-a")] and show.pianos["room-piano"].msgs == [("batch-a", 2.5)]
+        rx.on_tick(10.0)
+        assert show._pview["present"] is True and show._pview["stream"] == "room-piano"
+        # the API answers once the brain runs; the state carries the brain
+        base = f"http://127.0.0.1:{show.bus.port}"
+        code, card = _get(base + "/api/v1/card")
+        assert code == 200 and card["vibe"] == {"name": None, "label": "", "known": False}
+        code, st = _get(base + "/api/v1/state")
+        assert code == 200 and st["brain"]["running"] is True and set(st["brain"]["components"]) == set(
+            show.brain.components)
+        assert st["brain"]["ring"] == {"writes": 1} and st["brain"]["notes"] == {"batches": 1}
+        assert st["brain"]["modules"]["director"] == "ok"
+        assert st["api"]["events"]["clients"] == 0 and "card_errors" in st["api"]["events"]   # the card socket
+    finally:
+        show.stop()
+    assert CALLS.index("stop:director") < CALLS.index("artnet.stop")      # the brain stops before Art-Net
+    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:director", "stop:listener", "stop:sources",
+                                                          "stop:autopilot", "stop:situations", "stop:room"]
+    assert (tmp_path / "state" / "state.json").exists()
+
+
+def test_a_missing_stage3_module_is_left_out(monkeypatch, tmp_path):
+    install_fakes(monkeypatch)
+    _with_seams(monkeypatch)
+    install_brain_fakes(monkeypatch)
+    monkeypatch.setitem(sys.modules, "show_service.listener", None)
+    monkeypatch.setitem(sys.modules, "show_service.director", None)
+    show = main_mod.Show(_brain_opts(tmp_path))
+    show.start()
+    try:
+        assert show.modules["listener"].startswith("missing") and show.modules["director"].startswith("missing")
+        assert show.director is None and show.artnet.kw["palette_fn"] is None        # Art-Net: the fixed colour
+        assert show.brain.running and "listener" not in show.brain.components
+        code, card = _get(f"http://127.0.0.1:{show.bus.port}/api/v1/card")
+        assert code == 200 and card["listening"]["why"] == "The listener isn't running."
+    finally:
+        show.stop()
+
+
+def test_no_brain_builds_no_brain(monkeypatch, tmp_path):
+    install_fakes(monkeypatch)
+    install_brain_fakes(monkeypatch)
+    opts = _brain_opts(tmp_path)
+    show = main_mod.Show(config.Options(config=opts.config, brain=False, state_dir=tmp_path / "state",
+                                        show_file=tmp_path / "missing.yaml"))
+    show.start()
+    try:
+        assert show.brain is None and show.rings is None and show.tap is None and show.api is None
+        assert not any(k in show.modules for k in ("api", "brain", "ring", "director"))
+        assert show.state()["brain"] is None and show.bus.routes is None and show.state()["api"] is None
+        show.on_midi("room-piano", "batch-a", 1.0, lambda t_ns: 2.5)
+        assert show.pianos["room-piano"].state_channels is None         # no show.yaml: every channel
+    finally:
+        show.stop()
+    assert not (tmp_path / "state").exists()
+
+
+def test_piano_view_from_the_voice_piano_and_the_note_tap(monkeypatch, tmp_path):
+    """The real midi.Piano and situations.NoteTap: PianoView's present, keys, damper, rate and velocity."""
+    import importlib
+    real_situations = importlib.import_module("show_service.situations")      # before the fakes replace it
+    install_fakes(monkeypatch)
+    _with_seams(monkeypatch)
+    install_brain_fakes(monkeypatch)
+    monkeypatch.setitem(sys.modules, "show_service.midi", real_midi)
+    monkeypatch.setitem(sys.modules, "show_service.situations", real_situations)
+    show = main_mod.Show(_brain_opts(tmp_path))
+    show.start()
+    show.publish = lambda m: None
+    to_host = lambda t_ns: t_ns / 1e9                # noqa: E731
+    try:
+        seq = 0
+        for k in range(8):                           # 8 strikes, 0.25 s apart, velocity 64 then 127
+            seq += 1
+            t = 1.0 + 0.25 * k
+            show.on_midi("test-piano", _batch(seq, [[int(t * 1e9), 0x90, 60 + k, 64 if k < 4 else 127]], "s1"),
+                         t, to_host)
+            show.on_tick(t)
+        seq += 1
+        show.on_midi("test-piano", _batch(seq, [[int(3.0e9), 0xB0, 64, 127]], "s1"), 3.0, to_host)   # damper down
+        show.on_tick(3.0)
+        pv = show.ctx.piano()
+        assert pv["present"] is True and pv["stream"] == "test-piano" and pv["source"] == "test"
+        assert pv["keys_down"] == 8 and pv["damper"] == 1.0 and 0.2 <= pv["last_note_age_s"] <= 0.3
+        assert pv["notes_per_s"] == 2.0 and 0.5 < pv["velocity"] <= 1.0
+        assert show.tap.stats()["notes"] == 8
+    finally:
+        show.stop()
