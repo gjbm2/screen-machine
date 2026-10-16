@@ -215,8 +215,9 @@ def test_a_room_sound_false_stream_is_listened_to_with_the_switch_on(tmp_path):
     v = rig.lis.view()
     assert v["last"] == ins and v["model"] == "gpt-x" and v["budget_usd"] == 15.0
     lines = [json.loads(x) for x in rig.log_path.read_text().splitlines()]
-    assert lines[-1]["kind"] == "verdict" and lines[-1]["insight"]["genre"]["detail"] == "neo soul"
-    assert rig.lis.log(1)[0]["kind"] == "verdict"
+    assert lines[-2]["kind"] == "verdict" and lines[-2]["insight"]["genre"]["detail"] == "neo soul"
+    assert lines[-1]["kind"] == "genre_detail" and lines[-1]["detail"] == "neo soul"   # §7.3: grows the vocabulary
+    assert rig.lis.log(2)[0]["kind"] == "verdict"
 
 
 def test_a_bad_room_sound_flag_counts_as_room_sound(tmp_path):
@@ -595,3 +596,229 @@ def test_attach_builds_the_component():
     assert lis.name == "listener" and lis.tick_hz == 1.0
     assert set(lis.view()) == set(c.ListenerView.__annotations__)
     assert lis.beliefs()["state"] == "none" and not math.isnan(lis.interval())
+
+
+# -- Stage 4: the CED gate, section calls, segments (README S4.8) -----------------------------------------------------
+def ced(t, music=0.8, speech=0.1, stream="room-mic"):
+    return {"type": "ced", "t": t, "window_s": 2.0, "stream": stream, "seg": 1, "music_p": music, "speech_p": speech,
+            "conversation_p": 0.0, "singing_p": 0.0, "crowd_p": 0.0, "applause_p": 0.0, "silence_p": 0.0,
+            "cost_ms": 20.0}
+
+
+def ml_view(rows, stream="room-mic"):
+    return {"state": "running", "why": None, "stream": stream, "ced": rows[-1] if rows else None,
+            "ced_recent": rows, "tags": None, "emb_recent": [], "key": None, "beats": None, "vote": None,
+            "ages": {}, "hello": None}
+
+
+def stage4_rig(tmp_path, stream="room-mic") -> Rig:
+    rig = Rig(tmp_path, stream=stream)
+    rig.ml = None
+    rig.mc = None
+    rig.lis.ctx.ml = lambda: rig.ml
+    rig.lis.ctx.music_context = lambda: rig.mc
+    return rig
+
+
+def readings(rig, spans):
+    """CED readings one a second, ending now: spans = [(seconds, music, speech), ...] oldest first."""
+    total = sum(n for n, _, _ in spans)
+    rows, t = [], rig.now - total + 1
+    for n, m, sp in spans:
+        for _ in range(n):
+            rows.append(ced(t, m, sp))
+            t += 1
+    return rows
+
+
+def test_ced_gate_reasons(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill()
+
+    async def go():
+        await rig.tick()
+        assert rig.lis.view()["why"] == L.WHY_NO_CED                  # no worker
+        rig.ml = ml_view([ced(rig.now - 10)])                         # stale
+        await rig.tick()
+        assert rig.lis.view()["why"] == L.WHY_NO_CED
+        rig.ml = ml_view(readings(rig, [(20, 0.8, 0.1), (1, 0.8, 0.4)]))
+        await rig.tick(0.0)
+        assert rig.lis.view()["why"] == L.WHY_TALKING                 # the latest reading: people are talking
+        rig.ml = ml_view(readings(rig, [(20, 0.8, 0.5), (6, 0.9, 0.1)]))
+        await rig.tick(0.0)
+        assert rig.lis.view()["why"] == L.WHY_SHORT                   # 6 s of music without talking: too short
+        assert rig.lis.snapshot()["ced"]["run"] is not None
+        assert rig.llm.calls == []
+    run(go())
+
+
+def test_the_clip_is_the_longest_music_run_talking_in_the_middle(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    rig.ml = ml_view(readings(rig, [(12, 0.8, 0.1), (3, 0.7, 0.6), (9, 0.9, 0.05)]))
+    t_first = rig.now - 24 + 1
+
+    async def go():
+        await rig.tick(0.0)
+    run(go())
+    assert len(rig.llm.calls) == 1
+    pcm, fs, _ = rig.encoded[0]
+    # the 12 s run before the talking, not the 9 s; its last second is also in the first talking reading's window,
+    # so it ends a second early (11 s): no speech rides along at the clip's end
+    assert len(pcm) == pytest.approx(11 * 16000, abs=2)
+    ins = rig.pub[0]["data"]
+    assert ins["window"]["t0_ms"] == pytest.approx((t_first - 1.0) * 1000.0, abs=1.0)
+    assert ins["window"]["t1_ms"] == pytest.approx((t_first + 10) * 1000.0, abs=1.0)
+
+
+def test_a_tie_goes_to_the_latest_run(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    rig.ml = ml_view(readings(rig, [(11, 0.8, 0.1), (2, 0.1, 0.6), (11, 0.8, 0.1)]))
+    run(rig.tick(0.0))
+    ins = rig.pub[0]["data"]
+    # both runs lose their last second (the next reading failed, or hasn't come yet): a tie, the latest wins
+    assert ins["window"]["t1_ms"] == pytest.approx((rig.now - 1.0) * 1000.0, abs=1.0)
+
+
+def test_babble_and_conversation_under_music_count_as_talking(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    rows = readings(rig, [(20, 0.8, 0.1)])
+    for r in rows:
+        r["conversation_p"] = 0.6                                     # guests talking over the music
+    rig.ml = ml_view(rows)
+    run(rig.tick(0.0))
+    assert rig.lis.view()["why"] == L.WHY_TALKING and rig.llm.calls == []
+    for r in rows[:-1]:                                               # only the latest is clear: still no clip
+        r["conversation_p"] = 0.0
+    rows[-1]["conversation_p"] = 0.0
+    for r in rows[5:9]:
+        r["crowd_p"] = 0.5                                            # chatter in the middle splits the run
+    rig.ml = ml_view(rows)
+    run(rig.tick(0.0))
+    assert len(rig.llm.calls) == 1
+    pcm, fs, _ = rig.encoded[0]
+    assert len(pcm) == pytest.approx(10 * 16000, abs=2)               # 11 readings after the chatter, less the last
+    rig2 = Rig(tmp_path, settings={"listener": {"ced": {"speech_words": ["speech"]}}})   # config, not code
+    assert rig2.lis.speech_words == ("speech",) and rig2.lis.problems == []
+
+
+def test_a_run_ending_before_the_latest_reading_keeps_its_last_second(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    rig.ml = ml_view(readings(rig, [(20, 0.8, 0.1)]))
+    run_, why = rig.lis._ced_run("room-mic", rig.now, t_end=rig.now - 3.0)   # a section call's clip end
+    assert why is None and run_[1] == pytest.approx(rig.now - 3.0)         # the next reading passed: vouched for
+
+
+def test_a_stretched_ced_cadence_is_still_fresh(tmp_path):
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    rows = [ced(rig.now - 5.0 - 3.0 * k) for k in range(8)][::-1]         # every 3 s, the newest 5 s old
+    rig.ml = ml_view(rows)
+    run(rig.tick(0.0))
+    assert rig.lis.view()["why"] == L.WHY_NO_CED                       # stale at results_stale_s
+    rig.ml = {**ml_view(rows), "stale_s": {"ced": 9.0, "tags": 9.0, "key": 9.0, "beats": 30.0}}
+    run(rig.tick(0.0))
+    assert rig.lis.view()["why"] != L.WHY_NO_CED                       # the worker says CED comes every 6 s now
+
+
+def fill_until(rig, t_end, seconds=38.0):
+    """Audio in the ring for the ``seconds`` that end at ``t_end`` (it may run ahead of the fake clock)."""
+    now = rig.now
+    rig.now = t_end
+    rig.fill(seconds=seconds)
+    rig.now = now
+
+
+def test_section_call_at_the_boundary_plus_8_s_with_min_gap_and_the_segment_map(tmp_path):
+    rig = stage4_rig(tmp_path, stream="test-audio")                    # room_sound false: no CED gate here
+    fill_until(rig, rig.now + 14.0)
+    rig.mc = {"t_ms": rig.now * 1000.0, "section": {"id": 2, "letter": "A", "started_ms": (rig.now - 20) * 1000.0}}
+
+    async def go():
+        await rig.tick()                                               # the regular call (t = 1001)
+        assert len(rig.llm.calls) == 1
+        first_end = rig.lis._last_end
+        rig.mc["t_ms"] = rig.now * 1000.0
+        boundary = rig.now + 3.0
+        rig.lis.on_music_event({"kind": "section_change", "at_ms": (boundary + 1.5) * 1000.0, "t_ms": rig.now * 1e3,
+                                "seq": 1, "section_id": 3, "letter": None, "predicted": False,
+                                "boundary_ms": boundary * 1000.0})
+        rig.lis.on_music_event({"kind": "section_change", "at_ms": (boundary + 60) * 1000.0, "t_ms": rig.now * 1e3,
+                                "seq": 2, "section_id": 9, "letter": "A", "predicted": True,
+                                "boundary_ms": (boundary + 60) * 1000.0})   # a predicted one: no call
+        assert rig.lis._section_due == pytest.approx(boundary + 8.0)
+        rig.lis._sections.pop()                                        # (forget the predicted one's history entry)
+        while rig.now < boundary + 8.0 - 1.0:
+            await rig.tick()
+        assert len(rig.llm.calls) == 1                                 # not before it is due
+        await rig.tick()
+        assert len(rig.llm.calls) == 2 and rig.now - first_end >= 8.0
+        user = rig.llm.calls[1][1]["user"]
+        seg = next(u for u in user if u.startswith("Segment map"))
+        assert "#2 A 0-" in seg and "#3 " in seg
+        ins = rig.pub[-1]["data"]
+        assert ins["window"]["t1_ms"] == pytest.approx((boundary + 8.0) * 1000.0, abs=1.0)
+        assert ins["segment_id"] == 3 and ins["section"]["segment_id"] == 3
+        assert rig.lis.snapshot()["sections"]["section_calls"] == 1
+        # min_gap: a boundary right after a call waits for min_gap_s after that call ended
+        rig.rings = Rings(seconds=40.0)                               # (a fresh ring: times only move forward)
+        rig.lis.ctx.rings = rig.rings
+        fill_until(rig, rig.now + 12.0)
+        end = rig.lis._last_end
+        rig.lis.on_music_event({"kind": "section_change", "at_ms": rig.now * 1e3, "t_ms": rig.now * 1e3, "seq": 3,
+                                "section_id": 4, "letter": None, "predicted": False,
+                                "boundary_ms": (rig.now - 7.5) * 1000.0})
+        due = rig.lis._section_due
+        assert due < end + 8.0
+        n = len(rig.llm.calls)
+        while len(rig.llm.calls) == n and rig.now < end + 20.0:
+            await rig.tick()
+        assert len(rig.llm.calls) == n + 1 and rig.now >= end + 8.0
+        assert rig.lis.snapshot()["sections"]["section_calls"] == 2
+    run(go())
+
+
+def test_section_calls_slow_down_with_the_cadence(tmp_path):
+    """Relaxed after agreeing verdicts (45 s) or over the daily budget (x3): a section call waits at least half the
+    interval after the last call, and there is at most one per interval, so false boundaries don't become uploads."""
+    lis = stage4_rig(tmp_path, stream="test-audio").lis
+    lis._last_start, lis._last_end = 1000.0, 1004.0
+    assert lis.interval() == 20.0
+    assert not lis._section_allowed(1011.0)                            # min_gap_s (8) after the call ended
+    assert lis._section_allowed(1012.0)                                # >= 20 / 2 after it started
+    lis._agree = int(lis.cfg["agree_reads"])                           # relaxed: every 45 s
+    assert not lis._section_allowed(1012.0) and lis._section_allowed(1022.5)
+    lis._last_section_start = 1022.5
+    lis._last_start = 1022.5
+    assert not lis._section_allowed(1060.0)                            # one section call per interval at most
+    assert lis._section_allowed(1067.5)
+    lis._budget_hit = True                                             # over budget: x3
+    assert lis.interval() == 135.0 and not lis._section_allowed(1080.0)
+
+
+def test_track_change_lets_the_next_verdict_win_at_once(tmp_path):
+    rig = stage4_rig(tmp_path, stream="test-audio")
+    rig.lis.vocab.poll(0.0)
+    b = rig.lis.beliefs_state
+    b.add(_ins(rig, genre="soul"), 0.0)
+    b.add(_ins(rig, genre="soul"), 20.0)
+    b.add(_ins(rig, genre="jazz"), 40.0)
+    assert b.view(40.0)["genre"]["word"] == "soul"
+    rig.lis.on_music_event({"kind": "track_change", "at_ms": 41000.0, "t_ms": 41000.0, "seq": 1, "track_id": 2,
+                            "via": "dsp"})
+    b.add(_ins(rig, genre="jazz"), 60.0)                   # one read, no track_change of its own
+    assert b.view(60.0)["genre"]["word"] == "jazz"
+    b.add(_ins(rig, genre="soul"), 80.0)                   # the flag is used once: back to two reads
+    assert b.view(80.0)["genre"]["word"] == "jazz"
+    assert rig.lis.log(1)[0]["kind"] == "track_change"
+
+
+def test_ced_settings(tmp_path):
+    rig = Rig(tmp_path, settings={"listener": {"ced": {"music_min": 0.7, "speech_max": 2}, "section_call_after_s": 5},
+                                  "ml": {"results_stale_s": 4}})
+    assert rig.lis.ced_cfg == {"music_min": 0.7, "speech_max": 0.3} and rig.lis.cfg["section_call_after_s"] == 5.0
+    assert rig.lis.results_stale_s == 4.0 and any("listener.ced.speech_max" in p for p in rig.lis.problems)
+    assert rig.lis.provides()["on_music_event"] == rig.lis.on_music_event

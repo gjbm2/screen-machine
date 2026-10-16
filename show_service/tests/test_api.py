@@ -1114,3 +1114,19 @@ def test_bus_latest_on_connect_includes_the_brains_look():
         run(go())
     finally:
         b.stop()
+
+
+def test_card_hearing_reads_music_context_genre_first():
+    """README S4.8: music.context's genre (structure's snapshot) at conf >= 0.6 leads, with the listener's first mood
+    while its beliefs stand; a low conf, no word or no sound falls back to the beliefs' rule."""
+    beliefs = {"state": "fresh", "genre": {"word": "soul", "conf": 0.9}, "moods": [{"word": "relaxed", "conf": 0.8}]}
+
+    def snap(word, conf, b=beliefs):
+        return {"components": {"listener": {"on": True, "beliefs": b},
+                               "structure": {"context": {"genre": {"word": word, "conf": conf, "parent": "Jazz",
+                                                                   "parent_p": 0.4, "via": "ml"}}}}}
+    assert card(snap("jazz", 0.7), ENGINE)["hearing"]["text"] == "jazz · relaxed"
+    assert card(snap("jazz", 0.7, {"state": "cold"}), ENGINE)["hearing"]["text"] == "jazz"
+    assert card(snap("jazz", 0.5), ENGINE)["hearing"]["text"] == "soul · relaxed"      # low conf: the beliefs
+    assert card(snap(None, 0.0), ENGINE)["hearing"]["text"] == "soul · relaxed"
+    assert card(snap("jazz", 0.9), None)["hearing"]["text"] == "soul · relaxed"        # no sound: not from it

@@ -164,7 +164,9 @@ class RoomLink:
 
     # -- Component ------------------------------------------------------------------------------------------------------
     def provides(self) -> dict:
-        return {"room": self.view, "room_get": self.get, "room_put": self.put}
+        # room_patch: Stage 4 (the director's screens palette); brain.add sets it once contract.BrainContext has
+        # the slot (c8), and ignores it until then
+        return {"room": self.view, "room_get": self.get, "room_put": self.put, "room_patch": self.patch}
 
     def configure(self, settings: dict) -> None:
         r = settings.get("room") if isinstance(settings, dict) else None
@@ -284,6 +286,25 @@ class RoomLink:
             raise
         except Exception as e:
             self._error = f"PUT {path}: {type(e).__name__}: {e}"
+            return 0, {"error": "room_unreachable", "detail": self._error}
+
+    async def patch(self, path: str, body: dict, *, timeout: float = contract.ROOM_PUT_TIMEOUT_S) -> tuple[int, dict]:
+        """PATCH ``path`` with a JSON body, as ``put`` (Stage 4: the director's screens palette, PATCH
+        /api/v1/screens/{id}/look). (status, the answer's JSON object); 0 and room_unreachable when the room didn't
+        answer. Never raises but for cancellation."""
+        try:
+            s = await self._sess()
+            async with s.patch(self.url + path, json=body, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+                raw = await r.read()
+                try:
+                    obj = json.loads(raw) if raw else {}
+                except ValueError:
+                    obj = {"error": "bad_response", "detail": raw[:200].decode("utf-8", "replace")}
+                return r.status, obj if isinstance(obj, dict) else {"value": obj}
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._error = f"PATCH {path}: {type(e).__name__}: {e}"
             return 0, {"error": "room_unreachable", "detail": self._error}
 
     # -- the socket and the poll ----------------------------------------------------------------------------------------
@@ -1330,7 +1351,7 @@ class Autopilot:
             until = (self.backoff_until or wall) - wall
             line = "Auto waiting · the last switch didn't finish · Resume"
         else:
-            line = "Auto · not listening" if why == "room_unreachable" else "Auto · modes.json has an error"
+            line = "Auto · not listening" if why == "room_unreachable" else "Auto is paused: a mode has a problem; open its editor"
 
         def chip(c: Optional[tuple]) -> Optional[dict]:
             if not c:

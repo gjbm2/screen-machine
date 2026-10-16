@@ -16,9 +16,9 @@ server -> {"v":1,"type":"show.state","seq":…,"t_ms":…,"feed":"live","input":
 * **No auth** (CLAUDE.md rule 5): ``hello.token`` is ignored. It binds 127.0.0.1; the LAN reaches it only through
   room_service's ``:8700/show/*`` pass-through.
 * **Hello** within 5 s (HELLO_TIMEOUT_S), else close 4400. The welcome is always the first message.
-* **Filter:** no ``want`` (or an empty one): every type except ``contract.WANT_ONLY`` (``music.hit``). With
-  ``want``: an entry matches a type exactly, or as a prefix (``"music"``, ``"music."``, ``"music.*"``, ``"*"``);
-  a WANT_ONLY type only by its exact name.
+* **Filter:** no ``want`` (or an empty one): every type except WANT_ONLY (``music.hit``; Stage 4's
+  ``music.rhythm``). With ``want``: an entry matches a type exactly, or as a prefix (``"music"``, ``"music."``,
+  ``"music.*"``, ``"*"``); a WANT_ONLY type only by its exact name.
 * **Queues:** role ``renderer``: 64 (RENDERER_QUEUE) then close 4008 (CLOSE_BEHIND; it reconnects and heals). Other
   roles: 256 (OTHER_QUEUE), dropping the oldest when full (counted per client).
 * **show.state** at 25 Hz in K3 shape with ``global`` at the top level, for v1 clients and sound_view's fallback.
@@ -59,7 +59,8 @@ from . import __version__
 from .contract import (BUS_HOST, BUS_PATH, BUS_PORT, BUS_SCHEMA, CLOSE_BEHIND, HELLO_TIMEOUT_S,
                        LATEST_ON_CONNECT_BRAIN, MUSIC_CLOCK, MUSIC_FEATURES, MUSIC_HARMONY, MUSIC_HIT, MUSIC_INSIGHT,
                        MUSIC_NOTE, MUSIC_NOTES, MUSIC_PEDAL, OTHER_QUEUE, RENDERER_QUEUE, ROOM_DIRECTION, ROOM_EVENT,
-                       ROOM_LOOK, SPEC_BANDS, WANT_ONLY)
+                       ROOM_LOOK, SPEC_BANDS, WANT_ONLY as _WANT_ONLY_P0)
+from .contract import MUSIC_CONTEXT, MUSIC_RHYTHM, WANT_ONLY_STAGE4
 
 log = logging.getLogger("show_service.bus")
 
@@ -68,7 +69,11 @@ STATE_HZ = 25.0
 STALE_AFTER_MS = 500                 # welcome: a client may call the feed stale after this long without a frame
 MUSIC_STALE_S = 1.0                  # global.music reads silent when features/harmony are older than this
 TYPES: tuple[str, ...] = (SHOW_STATE, MUSIC_NOTE, MUSIC_PEDAL, MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_HIT,
-                          MUSIC_CLOCK, ROOM_DIRECTION, ROOM_LOOK, ROOM_EVENT, MUSIC_INSIGHT)   # the last 4: the brain's
+                          MUSIC_CLOCK, ROOM_DIRECTION, ROOM_LOOK, ROOM_EVENT, MUSIC_INSIGHT,  # these 4: the brain's
+                          MUSIC_CONTEXT, MUSIC_RHYTHM)                                        # Stage 4
+#: only to clients whose hello ``want`` names them exactly: music.hit (lights) and Stage 4's music.rhythm (10 Hz,
+#: about 1 KB each), so the renderer's traffic grows by music.context's 1 Hz only (README S4.5)
+WANT_ONLY: tuple[str, ...] = _WANT_ONLY_P0 + WANT_ONLY_STAGE4
 LATEST_ON_CONNECT: tuple[str, ...] = (MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_CLOCK) + LATEST_ON_CONNECT_BRAIN
 INBOX_MAX = 4096                     # publish() backlog if show-bus stalls; the oldest go first
 DRAIN_YIELD = 16                     # the drain lets the senders run after this many messages

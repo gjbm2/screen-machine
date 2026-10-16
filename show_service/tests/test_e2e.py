@@ -16,15 +16,22 @@ none is fetched) -> features and clock -> the director's room.direction/look/eve
 look and Art-Net's colours; nudges through the API, a restart of the in-process service (state.json in tmp), the
 test piano child and Auto's switch (source autopilot, expect, skip) and its hold after a person's switch. The listener
 gets a fake LLM with no usable model, so nothing is ever uploaded.
+
+``test_stage4_end_to_end`` (Stage 4, about 2.5 minutes; skipped without ffmpeg, the ML venv, the models or the test
+tracks): three fetched tracks back to back through the test-audio child, with the real ML worker reading the real
+models through a tmp directory of symlinks: CED, genre parents, music.context's sections, track changes, structure's
+events on the bus, the director's reaction and the clock across a same-tempo and a tempo change (README S4.12).
 """
 
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import pathlib
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -124,8 +131,8 @@ def test_end_to_end(tmp_path, monkeypatch):
     sys.setswitchinterval(0.001)                             # as main() does
     try:
         show = main_mod.Show(opts)
-        show.start()
-        assert show.bus.port not in (0, contract.BUS_PORT)
+        show.start(freeze_gc=True)          # as main() does: after the whole suite the heap is big, and a full
+        assert show.bus.port not in (0, contract.BUS_PORT)       # collection held the GIL long enough to slow Art-Net
         base = f"http://127.0.0.1:{show.bus.port}"
         mid = {}
 
@@ -146,6 +153,7 @@ def test_end_to_end(tmp_path, monkeypatch):
             show.stop()
         snd.stop()
         sink.stop()
+        gc.unfreeze()                       # the rest of the suite collects as usual
 
     t_start = snd.t_start
     assert t_start is not None and snd.subscribes >= 1, "no SUBSCRIBE reached the sender"
@@ -333,10 +341,11 @@ class RoomThread:
 
 
 class BusTap:
-    """A WS client on /v1/show (role e2e) in its own thread: every message with its arrival time."""
+    """A WS client on /v1/show (role e2e) in its own thread: every message with its arrival time. ``want``: the
+    hello's want list (None: everything but the want-only types)."""
 
-    def __init__(self, url: str) -> None:
-        self.url, self.msgs = url, []
+    def __init__(self, url: str, want: list | None = None) -> None:
+        self.url, self.msgs, self.want = url, [], want
         self._stop = threading.Event()
         self.t = threading.Thread(target=lambda: asyncio.run(self._run()), name="e2e-bus-tap", daemon=True)
         self.t.start()
@@ -344,7 +353,10 @@ class BusTap:
     async def _run(self) -> None:
         async with aiohttp.ClientSession() as s:
             ws = await s.ws_connect(self.url, max_msg_size=0)
-            await ws.send_json({"type": "hello", "v": 2, "role": "e2e", "client_id": "test_e2e_brain"})
+            hello = {"type": "hello", "v": 2, "role": "e2e", "client_id": "test_e2e_brain"}
+            if self.want is not None:
+                hello["want"] = self.want
+            await ws.send_json(hello)
             while not self._stop.is_set():
                 try:
                     msg = await ws.receive(timeout=0.2)
@@ -467,7 +479,8 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
                                "music": {"stream": "test-audio", "dsp_min_gate": 0.3},
                                "quiet": {"stream": "test-audio", "gate_below": 0.05}},
                 "lamps": real.get("lamps"), "director": real.get("director"),
-                "listener": {"music_gate": "dsp"}}
+                "listener": {"music_gate": "dsp"},
+                "ml": {"enabled": False}}                    # Stage 4's worker: test_stage4_end_to_end runs it
     show_file = tmp_path / "show.yaml"
     show_file.write_text(yaml.safe_dump(settings, sort_keys=False))
     vibes_file = tmp_path / "vibes.yaml"
@@ -622,3 +635,317 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
         room.stop()
     assert all(p["source"] != contract.AUTOPILOT_SOURCE or p["mode"] != p["_current"] for p in room.room.puts)
     print("\n[e2e brain] " + "\n[e2e brain] ".join(report))
+
+
+# =====================================================================================================================
+# Stage 4, end to end (README "Stage 4"): the ML worker (its own venv, the real models through a tmp symlinked
+# directory), dsp's medium lane, the clock's show-beat thread, structure and the consumers, on real music.
+# =====================================================================================================================
+#: Three fetched tracks back to back, each EXCERPT_S from OFFSET_S, with GAP_S of silence after each (structure's
+#: track rule needs track.gap_s = 3 s of silence). Tempos measured with show_service's own clock on these excerpts
+#: (16 Oct): house 120.0, jazz 145.8, pop 135.1. The house is time-stretched (ffmpeg atempo, pitch kept) to the
+#: jazz's tempo, so the first change keeps the tempo (the clock stays locked through it) and the second changes it by
+#: 7 % (the clock re-locks). The genre parents differ across both changes (Electronic, then Jazz/Rock, then Pop or
+#: Electronic). (id, bpm as fetched, atempo factor)
+STAGE4_TRACKS = (("house-galeria-disco-memorias", 120.0, 145.8 / 120.0),
+                 ("jazz-doxent-1973", 145.8, 1.0),
+                 ("pop-lilly-wolf-play-the-game", 135.1, 1.0))
+STAGE4_OFFSET_S, STAGE4_EXCERPT_S, STAGE4_GAP_S = 40.0, 45.0, 4.0
+#: Discogs parents a listener would accept for each track (the model's own labels; a test, not config)
+PLAUSIBLE_PARENTS = {"house": {"Electronic"}, "techno": {"Electronic"},
+                     "jazz": {"Jazz", "Funk / Soul", "Blues", "Latin", "Rock"},   # "1973" reads as jazz-rock
+                     "pop": {"Pop", "Electronic", "Rock", "Funk / Soul", "Hip Hop"},
+                     "rock": {"Rock", "Pop"}, "classical": {"Classical", "Stage & Screen"}}
+STAGE4_VIBES = E2E_VIBES + """  e2e-phrase:
+    label: E2E phrase
+    beat_lock: true
+    change_looks: phrase
+    change_rate: 0.5
+    listener: false
+    palettes: [ember, ocean, neon]
+"""
+
+
+def _decode(path: pathlib.Path, offset: float, seconds: float, tempo: float) -> np.ndarray:
+    af = ["-af", f"atempo={tempo:.6f}"] if abs(tempo - 1.0) > 1e-6 else []
+    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-ss", str(offset), "-t", f"{seconds * tempo:.3f}",
+                          "-i", str(path), *af, "-f", "f32le", "-ac", "1", "-ar", "48000", "-"],
+                         capture_output=True, check=True).stdout
+    x = np.frombuffer(raw, np.float32).copy()[: int(seconds * 48000)]
+    ramp = np.linspace(0.0, 1.0, 2400, dtype=np.float32)          # 50 ms fades: no clicks at the cuts
+    x[:2400] *= ramp
+    x[-2400:] *= ramp[::-1]
+    return x
+
+
+def stage4_music(dest: pathlib.Path) -> tuple[str, list[dict]]:
+    """(piece id, the schedule): the three excerpts and their gaps as one WAV in ``dest`` (the fetched files are only
+    read). Each schedule entry: id, genre, title, start_s and end_s within the file, bpm (after the stretch)."""
+    dest.mkdir(parents=True, exist_ok=True)
+    index = json.loads((contract.TEST_MUSIC_DIR / "index.json").read_text())
+    parts, sched, pos = [], [], 0.0
+    gap = np.zeros(int(STAGE4_GAP_S * 48000), np.float32)
+    for tid, bpm, tempo in STAGE4_TRACKS:
+        e = index[tid]
+        x = _decode(contract.TEST_MUSIC_DIR / e["file"], STAGE4_OFFSET_S, STAGE4_EXCERPT_S, tempo)
+        sched.append({"id": tid, "genre": e["genre"], "title": e["title"], "start_s": pos,
+                      "end_s": pos + x.size / 48000.0, "bpm": bpm * tempo})
+        parts += [x, gap]
+        pos += (x.size + gap.size) / 48000.0
+    pcm = np.concatenate(parts)
+    with wave.open(str(dest / "stage4.wav"), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(48000)
+        w.writeframes((np.clip(pcm, -1, 1) * 32767).astype("<i2").tobytes())
+    (dest / "index.json").write_text(json.dumps({"stage4": {"file": "stage4.wav", "genre": "mixed",
+                                                            "title": " / ".join(e["title"] for e in sched),
+                                                            "artist": "test-music excerpts"}}))
+    return "file:stage4.wav", sched
+
+
+def _stage4_ready() -> str | None:
+    if shutil.which("ffmpeg") is None:
+        return "ffmpeg decodes the test audio"
+    if not contract.ML_PYTHON.exists():
+        return f"the ML venv ({contract.ML_PYTHON}) isn't built"
+    if not contract.MODELS_INDEX.exists():
+        return "the models aren't fetched (tools/show/fetch_models.py)"
+    try:
+        index = json.loads((contract.TEST_MUSIC_DIR / "index.json").read_text())
+    except (OSError, ValueError):
+        return "no test music (tools/show/fetch_test_music.py)"
+    missing = [t for t, _, _ in STAGE4_TRACKS if t not in index or not (contract.TEST_MUSIC_DIR /
+                                                                         index[t]["file"]).is_file()]
+    return f"test tracks missing: {missing}" if missing else None
+
+
+@pytest.mark.skipif(_stage4_ready() is not None, reason=str(_stage4_ready()))
+def test_stage4_end_to_end(tmp_path, monkeypatch):
+    """Three tracks of different genres back to back through the real test-audio child, with the real ML worker
+    (~/.venvs/sm-show-ml; the real models through a tmp directory of symlinks, never written): CED hears music, the
+    genre parents are plausible for each track, music.context carries sections, a track change is detected between
+    tracks, structure's room.events reach the bus, the director reacts with structure's looks, and the clock stays
+    locked through the same-tempo change and re-locks at the new tempo. Fake room, ephemeral ports, every file in
+    tmp_path, a fake LLM. About 2.5 minutes (the music is real time); ``-s`` prints what it heard."""
+    monkeypatch.setenv("SHOW_ROOM_DMX_URL", "")
+    report: list[str] = []
+    room = RoomThread(STAGE3_MODES, {**AUTO, "on": False})
+    piece, sched = stage4_music(tmp_path / "music")
+    models = tmp_path / "models"
+    models.mkdir()
+    for f in contract.MODELS_DIR.iterdir():                       # read through symlinks; the real dir is never written
+        (models / f.name).symlink_to(f)
+    p_audio = udp_port()
+    real = yaml.safe_load(contract.SHOW_FILE.read_text())          # c8's sections, read only
+    ml = json.loads(json.dumps(real["ml"]))
+    ml.update(python=str(contract.ML_PYTHON), models_dir=str(models))
+    settings = {"version": 1,
+                "senders": {"test-audio": {"hosts": ["localhost"], "port": p_audio, "streams": ["test-audio"],
+                                           "on_demand": True, "room_sound": False}},
+                "tests": {"audio": {"sender": "test-audio", "music": str(tmp_path / "music"), "rank_first": True}},
+                "room": {"url": room.room.url},
+                "situations": {**real["situations"], "music": {**real["situations"]["music"], "stream": "test-audio"},
+                               "quiet": {**real["situations"]["quiet"], "stream": "test-audio"},
+                               "talking": {**real["situations"]["talking"], "stream": "test-audio"},
+                               "midi": {**real["situations"]["midi"], "heard_by": None}},
+                "lamps": real["lamps"], "director": real["director"], "listener": real["listener"], "ml": ml,
+                "genre_map": real["genre_map"], "structure": real["structure"]}
+    show_file = tmp_path / "show.yaml"
+    show_file.write_text(yaml.safe_dump(settings, sort_keys=False))
+    vibes_file = tmp_path / "vibes.yaml"
+    vibes_file.write_text(STAGE4_VIBES)
+    sink = ArtnetSink(lambda: None)
+    opts = config.Options(config=contract.Config(vban_bind=("127.0.0.1", 0), bus_bind=("127.0.0.1", 0),
+                                                 latency_file=tmp_path / "latency.json"),
+                          artnet_target=("127.0.0.1", sink.port), brain=True, show_file=show_file,
+                          vibes_file=vibes_file, state_dir=tmp_path / "state")
+    show = tap = rtap = None
+    switch = sys.getswitchinterval()
+    sys.setswitchinterval(0.001)
+    ced_rows: dict[float, dict] = {}
+    tag_rows: dict[float, dict] = {}
+    try:
+        show = main_mod.Show(opts, brain_kw={"listener": {"llm": FakeLLM(), "warm": False}})
+        show.start()
+        base = f"http://127.0.0.1:{show.bus.port}"
+        tap = BusTap(show.bus.url)
+        rtap = BusTap(show.bus.url, want=[contract.MUSIC_RHYTHM])
+        assert all(v == "ok" for v in show.modules.values()), show.modules
+        assert show.ml is not None and show.mlfeed is not None
+        wait_for(lambda: show.ml.view()["state"] == "running", 40, "the ML worker's hello")
+        hello = show.ml.view()["hello"]
+        assert hello["tasks"] == {"ced": True, "tags": True, "key": True, "beats": True}, hello
+        assert hello["nice"] == 19 and hello["threads"]["compute"] <= 2
+        report.append("worker: " + ", ".join(f"{k} {v}" for k, v in sorted(hello["models"].items())))
+        code, rb = http("PUT", base + "/api/v1/vibe", {"vibe": "e2e-phrase", "listening": False})
+        assert code == 200 and rb["known"] is True, rb
+        code, st = http("POST", base + "/api/v1/test", {"source": "audio", "piece": piece})
+        assert code == 200 and st["stream"] == "test-audio", st
+
+        def first_sound():
+            return next((f["t_ms"] / 1000.0 for f in tap.of(contract.MUSIC_FEATURES)
+                         if f["stream"] == "test-audio" and f["rms_dbfs"] > -50.0), None)
+        t0 = wait_for(first_sound, 20, "the first test-audio sound")    # the file's start, within a publish
+        end = t0 + sched[-1]["end_s"] + 1.0
+        while time.monotonic() < end:                              # the ML view, read as another thread would
+            v = show.ml.view()
+            for c in v["ced_recent"]:
+                ced_rows[c["t"]] = c
+            if v["tags"] is not None:
+                tag_rows[v["tags"]["t"]] = v["tags"]
+            time.sleep(0.5)
+        st = http("GET", base + "/api/v1/state")[1]
+        mlsnap, events = st["ml"], tap.of(contract.ROOM_EVENT)
+        contexts, clocks = tap.of(contract.MUSIC_CONTEXT), tap.of(contract.MUSIC_CLOCK)
+        structure = st["brain"]["components"]["structure"]
+        director = st["brain"]["components"]["director"]
+        cst = (st.get("clock") or {}).get("stats") or {}
+        clock_counts = {k: cst.get(k, 0) for k in ("relocks", "cold_searches", "cold_alt", "octave_changes",
+                                                    "corr_accepted", "corr_applied", "corr_stale", "corr_expired")}
+        clock_counts["last_correction"] = cst.get("last_correction")
+        clock_counts["beat_thread"] = cst.get("beat_thread")
+        report.append(f"Beat This! votes: applied {mlsnap['applied']}, confirmed {mlsnap['confirmed']}; last "
+                      + ", ".join(f"{v['octave']}/{v['bar_len']}/{v['beat_is_one']} conf {v['conf']} {v['why']}"
+                                  for v in mlsnap["votes"][-4:]))
+        report.append(f"show-rx per block: on_audio {st['rx_ms']['on_audio']}, on_tick {st['rx_ms']['on_tick']}; "
+                      f"clock block {cst.get('block_ms')}")
+    finally:
+        sys.setswitchinterval(switch)
+        for t in (tap, rtap):
+            if t is not None:
+                t.stop()
+        if show is not None:
+            show.stop()
+        sink.stop()
+        room.stop()
+
+    (tmp_path / "stage4.json").write_text(json.dumps(          # what it heard, for a look afterwards
+        {"t0": t0, "sched": sched, "clocks": clocks, "contexts": contexts, "events": events,
+         "ced": list(ced_rows.values()), "tags": [{k: v for k, v in g.items() if k != "emb"} for g in tag_rows.values()],
+         "ml": mlsnap, "structure": structure, "director_sections": director.get("sections")}, default=str))
+    try:
+        _stage4_checks(report, sched, settings, t0, ced_rows, tag_rows, mlsnap, events, contexts, clocks, structure,
+                       director, clock_counts, rtap, tap)
+    finally:
+        print("\n[e2e stage 4] " + "\n[e2e stage 4] ".join(report))
+
+
+def _stage4_checks(report, sched, settings, t0, ced_rows, tag_rows, mlsnap, events, contexts, clocks, structure,
+                   director, clock_counts, rtap, tap) -> None:
+    """Every check is made and reported before the first failure is raised (a 2.5-minute run says everything)."""
+    fails: list[str] = []
+
+    def check(ok: object, what: object) -> None:
+        if not ok:
+            fails.append(str(what))
+
+    def within(t: float, e: dict, lo: float = 3.0, hi: float = 1.0) -> bool:
+        return t0 + e["start_s"] + lo <= t <= t0 + e["end_s"] - hi
+
+    # -- what the worker heard, per track -------------------------------------------------------------------------
+    leaders = []
+    for e in sched:
+        ced = [c["music_p"] for t, c in ced_rows.items() if within(t, e)]
+        tags = [g for t, g in tag_rows.items() if within(t, e)]
+        check(len(ced) >= 20 and len(tags) >= 20, (e["id"], len(ced), len(tags)))
+        if not ced or not tags:
+            continue
+        parents: dict[str, float] = {}
+        for g in tags:
+            for k, val in g["genre_parents"].items():
+                parents[k] = parents.get(k, 0.0) + val / len(tags)
+        top = sorted(parents.items(), key=lambda kv: -kv[1])[:3]
+        styles = {}
+        for g in tags:
+            for lab, val in g["styles_top3"]:
+                styles[lab] = styles.get(lab, 0.0) + val / len(tags)
+        leaders.append((e, top, float(np.median(ced))))
+        report.append(f"{e['genre']} ({e['title']}, {e['bpm']:.1f} bpm): CED music median {np.median(ced):.2f} "
+                      f"(n {len(ced)}); parents " + ", ".join(f"{k} {val:.2f}" for k, val in top) + "; styles "
+                      + ", ".join(f"{k} {val:.2f}" for k, val in sorted(styles.items(), key=lambda kv: -kv[1])[:3]))
+    tasks = mlsnap["stats"]["tasks"]
+    report.append("worker tasks: " + "; ".join(f"{k} runs {t['runs']} skipped {t['skipped']} over {t['over_budget']} "
+                                               f"p95 {t['cost_ms_p95']} ms" for k, t in tasks.items())
+                  + f"; cpu {mlsnap['cpu']}; feed drops {mlsnap['feed']['drops']}; bad lines {mlsnap['bad_lines']}")
+    for e, top, ced_med in leaders:
+        check(ced_med >= 0.5, ("CED music", e["id"], ced_med))
+        check(top[0][0] in PLAUSIBLE_PARENTS[e["genre"]], ("genre parent", e["genre"], top))
+    check(mlsnap["bad_lines"] == 0 and mlsnap["restarts"] == 0, ("worker", mlsnap["bad_lines"], mlsnap["restarts"]))
+    check(tasks["ced"]["runs"] >= 100 and tasks["tags"]["runs"] >= 100 and tasks["beats"]["runs"] >= 5, tasks)
+
+    # -- music.context: sections and the track changes ------------------------------------------------------------
+    check(contexts and all(set(c) == set(contract.MusicContext.__annotations__) for c in contexts), "context shape")
+    in_music = [c for c in contexts if any(within(c["t_ms"] / 1000.0, e) for e in sched)]
+    check(sum(c["source"] == "ml" for c in in_music) >= 0.8 * len(in_music), "sections on the ML embeddings")
+    sec_ids = sorted({c["section"]["id"] for c in contexts})
+    letters = sorted({c["section"]["letter"] for c in contexts if c["section"]["letter"]})
+    check(len(sec_ids) >= 3, ("sections", sec_ids))
+    kinds: dict[str, int] = {}
+    for ev in events:
+        kinds[ev["kind"]] = kinds.get(ev["kind"], 0) + 1
+    changes = [ev for ev in events if ev["kind"] == "track_change"]
+    report.append(f"music.context {len(contexts)} (source ml {sum(c['source'] == 'ml' for c in contexts)}); "
+                  f"sections {sec_ids[:12]}{'...' if len(sec_ids) > 12 else ''} letters {letters}; track changes "
+                  + ", ".join(f"{ev['at_ms'] / 1000.0 - t0:.1f} s via {ev['via']}" for ev in changes)
+                  + "; real changes at " + ", ".join("%.0f s" % e["start_s"] for e in sched[1:]) + "; room.event "
+                  + ", ".join(f"{k} {n}" for k, n in sorted(kinds.items())))
+    check(changes, "no track change detected")
+    win = settings["structure"]["track"]["window_s"]
+    for ev in changes:                                             # each one in a real change's window
+        at = ev["at_ms"] / 1000.0 - t0
+        check(any(e["start_s"] - STAGE4_GAP_S - 1.0 <= at <= e["start_s"] + win + 6.0 for e in sched[1:]),
+              ("a track change away from a real one", at))
+    check(contexts and max(c["track"]["id"] for c in contexts) >= len(changes), "music.context track ids")
+    for kind in ("section_change", "track_change"):                # structure's events on the bus
+        check(kinds.get(kind, 0) >= 1, ("room.event", kind, kinds))
+    rhythm = rtap.of(contract.MUSIC_RHYTHM)
+    check(len(rhythm) > 500 and not tap.of(contract.MUSIC_RHYTHM), ("music.rhythm want-only", len(rhythm)))
+    # GOBO: with a vibe playing the director owns it (a step per look that lands); structure steps it only neutral
+    check(structure["gobo"]["steps"] + director["stats"]["gobo_steps"] >= 1,
+          ("GOBO", structure["gobo"], director["stats"]["gobo_steps"]))
+
+    # -- the director reacts to structure ---------------------------------------------------------------------------
+    looks = [ev for ev in events if ev["kind"] == "look_change" and ev.get("detail") in ("section", "repeat", "drop",
+                                                                                          "track")]
+    # §8.5: a confirmed boundary is heard ~5 s late (more than max_late_bars), so it shows inside the look (kept and
+    # expressed); a new song on a sure grid makes a "track" look. Either is the director reacting.
+    sstats = director["sections"]["stats"]
+    report.append(f"director: structure looks {[ev['detail'] for ev in looks]}; section stats looks "
+                  f"{sstats['looks']} kept {sstats['kept']} expressed {sstats['expressed']}; events seen "
+                  f"{sstats['events']}")
+    check(looks or sstats["expressed"] >= 1, "the director didn't react to structure (no look, nothing expressed)")
+    check(director["sections"]["structure"] is True and sum(sstats["events"].values()) >= 2, sstats["events"])
+
+    # -- the clock: locked through the same-tempo change, re-locked at the new tempo ------------------------------
+    def clock_in(a: float, b: float) -> list[dict]:
+        return [c for c in clocks if a <= c["t_ms"] / 1000.0 - t0 < b]
+
+    def locked_at(e: dict, within_s: float) -> float | None:
+        for c in clock_in(e["start_s"], e["start_s"] + within_s):
+            if c["state"] == "locked" and abs(c["bpm"] / e["bpm"] - 1.0) <= 0.02:
+                rest = clock_in(c["t_ms"] / 1000.0 - t0, e["end_s"] - 1.0)
+                good = [r for r in rest if r["state"] in ("locked", "holding")
+                        and abs(r["bpm"] / e["bpm"] - 1.0) <= 0.02]
+                if len(good) >= 0.8 * len(rest):
+                    return c["t_ms"] / 1000.0 - t0 - e["start_s"]
+        return None
+    lock = [locked_at(e, 15.0) for e in sched]
+    a, b = sched[0], sched[1]
+    across = clock_in(a["end_s"] - 5.0, b["start_s"] + (lock[1] or 15.0))
+    dropped = [c for c in across if c["bpm"] == 0.0 or c["state"] in ("searching", "free")]
+    medians = [round(float(np.median([c["bpm"] for c in clock_in(e["start_s"] + 15, e["end_s"])] or [0.0])), 1)
+               for e in sched]
+    for e in sched:
+        cs = clock_in(e["start_s"], e["end_s"])
+        states = {k: sum(c["state"] == k for c in cs) for k in ("locked", "holding", "searching", "free")}
+        gates = {k: sum(c["gate"] == k for c in cs) for k in ("beat", "dmx", "none")}
+        report.append(f"clock on {e['genre']}: {len(cs)} bodies, states {states}, gates {gates}, conf median "
+                      f"{float(np.median([c['conf'] for c in cs] or [0.0])):.2f}")
+    report.append("clock: locked " + ", ".join(f"{e['genre']} {lk:.1f} s after its start" if lk is not None else
+                                                f"{e['genre']} never" for e, lk in zip(sched, lock))
+                  + f"; across the same-tempo change {len(dropped)} of {len(across)} bodies without a grid; "
+                  f"medians {medians} bpm; counts {clock_counts}")
+    check(all(lk is not None for lk in lock), ("clock lock", lock))
+    check(not dropped and (lock[1] or 99.0) <= 8.0, ("the grid through the same-tempo change", lock, dropped[:3]))
+    assert not fails, fails

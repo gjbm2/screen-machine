@@ -107,7 +107,7 @@ SETTINGS = {"situations": {
 
 
 class Env:
-    def __init__(self) -> None:
+    def __init__(self, ml: bool = False) -> None:
         self.now = 1000.0
         self.health = {"active_audio": "room-mic", "streams": {
             "room-piano": {"kind": "midi", "state": "streaming", "test": False},
@@ -127,8 +127,14 @@ class Env:
                              notes=self.tap)
         ctx.room = lambda: self.room
         ctx.beliefs = lambda: self.beliefs
+        self.ml: dict | None = None                       # Stage 4: the ML worker's view (MLView)
+        self.mc: dict | None = None                       # Stage 4: structure's music.context
+        if ml:
+            ctx.ml = lambda: self.ml
+        ctx.music_context = lambda: self.mc
         self.sit = Situations(ctx, local=lambda: self.local)
         self.sit.configure(SETTINGS)
+        self.sit.start()
 
     def note(self, t: float, pitch: int, stream: str = "room-piano", ch: int = 1) -> None:
         self.seq[stream] = self.seq.get(stream, 0) + 1
@@ -477,3 +483,211 @@ def test_readings_are_memoised_within_one_tick_only():
     e.now += 1
     e.feat(gate=0.5)
     assert e.sit.read("quiet", None, e.now)["value"] is False
+
+
+# -- Stage 4: CED and music.context (README S4.8) ---------------------------------------------------------------------
+STAGE4 = {"situations": {**SETTINGS["situations"],
+                         "quiet": {"stream": "room-mic", "gate_below": 0.05, "music_below": 0.2, "speech_below": 0.2},
+                         "talking": {"stream": "room-mic", "min_prob": 0.5, "music_below": 0.5},
+                         "ced": {"window_s": 3, "hysteresis": 0.05}}}
+
+
+def ced(t: float, music: float = 0.0, speech: float = 0.0, stream: str = "room-mic", **kw) -> dict:
+    row = {"type": "ced", "t": t, "window_s": 2.0, "stream": stream, "seg": 1, "music_p": music, "speech_p": speech,
+           "conversation_p": 0.0, "singing_p": 0.0, "crowd_p": 0.0, "applause_p": 0.0, "silence_p": 0.0,
+           "cost_ms": 20.0}
+    row.update({f"{k}_p": v for k, v in kw.items()})
+    return row
+
+
+def ml_view(rows: list[dict], stream: str = "room-mic") -> dict:
+    return {"state": "running", "why": None, "stream": stream, "ced": rows[-1] if rows else None, "ced_recent": rows,
+            "tags": None, "emb_recent": [], "key": None, "beats": None, "vote": None, "ages": {}, "hello": None}
+
+
+def stage4_env() -> Env:
+    e = Env(ml=True)
+    e.sit.configure(STAGE4)
+    return e
+
+
+def say(e: Env, music: float, speech: float, stream: str = "room-mic") -> None:
+    """Three fresh CED readings (one a second) with these numbers."""
+    e.ml = ml_view([ced(e.now - 2 + i, music, speech, stream) for i in range(3)], stream)
+
+
+def test_the_classifier_is_the_mean_of_the_last_3_s_for_its_stream():
+    e = stage4_env()
+    assert e.sit.classifier is not None                      # bound to ctx.ml at start
+    e.ml = ml_view([ced(e.now - 6, 1.0, 1.0), ced(e.now - 2, 0.2, 0.6), ced(e.now - 1, 0.4, 0.8), ced(e.now, 0.6, 0.7)])
+    got = e.sit._ced("room-mic", e.now)
+    assert got["n"] == 3 and got["music"] == pytest.approx(0.4) and got["speech"] == pytest.approx(0.7)
+    assert set(c.CED_GROUPS) <= set(got) and got["stream"] == "room-mic"
+    assert e.sit._ced("other-mic", e.now) is None             # another stream's results: none for this one
+    assert e.sit._ced(None, e.now)["n"] == 3                  # None: the measured stream
+    e.ml = ml_view([])
+    assert e.sit._ced(None, e.now) is None
+    e.ml = None
+    assert e.sit._ced(None, e.now) is None
+    assert Env().sit.classifier is None                       # no ML slot: Stage 3 as before
+
+
+def test_talking_true_false_unknown_and_hysteresis():
+    e = Env()
+    assert e.read("talking")["value"] is None                 # no worker: unknown
+    e = stage4_env()
+    r = e.read("talking")
+    assert r["value"] is None and "no fresh" in r["evidence"]["why"]
+    say(e, music=0.2, speech=0.7)
+    r = e.read("talking")
+    assert r["value"] is True and r["via"] == "classifier" and r["evidence"]["speech"] == pytest.approx(0.7)
+    say(e, music=0.47, speech=0.47)                           # holding: back past each threshold by 0.05 to let go
+    assert e.read("talking")["value"] is True
+    say(e, music=0.2, speech=0.44)
+    assert e.read("talking")["value"] is False
+    say(e, music=0.2, speech=0.48)                            # not holding: the plain threshold again
+    assert e.read("talking")["value"] is False
+    say(e, music=0.6, speech=0.9)                             # speech over music: not "talking"
+    assert e.read("talking")["value"] is False
+    assert e.read("talking", {"music_below": 0.7})["value"] is True    # a rule's own params win
+
+
+def test_quiet_by_ced_only_noise_over_the_gate():
+    e = stage4_env()
+    e.feat(gate=0.3)                                          # over the gate...
+    say(e, music=0.05, speech=0.1)                            # ...but neither music nor speech
+    r = e.read("quiet")
+    assert r["value"] is True and r["via"] == "classifier" and r["evidence"]["music"] == pytest.approx(0.05)
+    say(e, music=0.6, speech=0.1)
+    assert e.read("quiet")["value"] is False
+    e.feat(gate=0.01)
+    assert e.read("quiet")["via"] == "dsp" and e.read("quiet")["value"] is True       # the gate first, as before
+    e2 = Env(ml=True)                                         # no music_below/speech_below: the gate alone
+    e2.feat(gate=0.3)
+    say(e2, music=0.05, speech=0.1)
+    r = e2.read("quiet")
+    assert r["value"] is False and r["via"] == "dsp"
+
+
+def test_music_audible_by_ced():
+    e = stage4_env()
+    e.feat(gate=0.6)
+    e.clock = {"gate": "beat"}                                # the DSP guess would say yes...
+    say(e, music=0.2, speech=0.7)
+    r = e.read("music_audible")
+    assert r["value"] is False and r["via"] == "classifier"   # ...CED decides
+    say(e, music=0.8, speech=0.1)
+    e.clock = {"gate": "none"}
+    r = e.read("music_audible")
+    assert r["value"] is True and r["via"] == "classifier" and r["evidence"]["music_prob"] == 0.8
+    say(e, music=0.47, speech=0.1)                            # holding
+    assert e.read("music_audible")["value"] is True
+    say(e, music=0.3, speech=0.1)
+    assert e.read("music_audible")["value"] is False
+    e.room = sonos_room("PLAYING")                            # Sonos plays and the mic hears it (§8.9)
+    r = e.read("music_audible")
+    assert r["value"] is True and r["via"] == "sonos+mic"
+    e.ml = ml_view([])                                        # no fresh reading: the Stage-3 DSP guess
+    e.room = None
+    e.clock = {"gate": "beat"}
+    assert e.read("music_audible")["via"] == "dsp"
+
+
+def test_ced_words_ignore_a_test_stream_unless_asked():
+    e = stage4_env()
+    e.health["active_audio"] = "test-audio"
+    e.health["streams"]["test-audio"] = {"kind": "audio", "state": "streaming", "test": True}
+    e.feat(gate=0.6, stream="test-audio")
+    say(e, music=0.1, speech=0.9, stream="test-audio")
+    assert e.read("talking")["value"] is None                 # show.yaml's room-mic: not this stream's results
+    r = e.read("talking", {"stream": None})
+    assert r["value"] is None and "test stream" in r["evidence"]["why"]
+    assert e.read("talking", {"stream": None, "include_test": True})["value"] is True
+    say(e, music=0.9, speech=0.0, stream="test-audio")
+    assert e.read("music_audible", {"stream": None})["value"] is None
+    assert e.read("music_audible", {"stream": None, "include_test": True})["value"] is True
+
+
+def context(e: Env, word, conf, via="ml", parent="Jazz", age_s=0.5) -> dict:
+    return {"t_ms": (e.now - age_s) * 1000.0, "genre": {"word": word, "conf": conf, "parent": parent,
+                                                        "parent_p": conf, "via": via}}
+
+
+def test_genre_in_reads_the_context_first_then_the_beliefs():
+    e = Env()
+    e.beliefs = {"state": "fresh", "genre": {"word": "soul", "conf": 0.9}}
+    e.mc = context(e, "jazz", 0.8)
+    r = e.read("genre_in", {"genres": ["jazz"]})
+    assert r["value"] is True and r["via"] == "ml" and r["evidence"]["parent"] == "Jazz"
+    assert r["evidence"]["via"] == "ml"
+    assert e.read("genre_in", {"genres": ["soul"]})["value"] is False     # the ML's word wins (§8.9)
+    e.mc = context(e, "jazz", 0.4)
+    r = e.read("genre_in", {"genres": ["jazz"]})
+    assert r["value"] is None and r["evidence"]["why"] == "not confident"
+    e.mc = context(e, None, 0.0, via="none", parent="Electronic")         # a family genre_map gives no word for
+    r = e.read("genre_in", {"genres": ["soul"]})
+    assert r["value"] is None and r["evidence"]["why"] == "no genre word yet"
+    e.mc = context(e, "house", 0.7, via="ml+listener", parent="Electronic")
+    r = e.read("genre_in", {"genres": ["house"]})
+    assert r["value"] is True and r["via"] == "ml+listener"
+    e.mc = context(e, "jazz", 0.9, age_s=10.0)                # a stale context: the listener's beliefs
+    r = e.read("genre_in", {"genres": ["soul"]})
+    assert r["value"] is True and r["via"] == "listener" and r["evidence"]["via"] == "listener"
+    e.mc = None
+    assert e.read("genre_in", {"genres": ["soul"]})["value"] is True
+    voc = {d["id"]: d for d in e.sit.vocabulary()}
+    assert voc["genre_in"]["rank"] == c.SITUATION_RANK["listener"]
+
+
+def test_stage4_vocabulary_and_settings():
+    e = stage4_env()
+    e.sit.tick(e.now)
+    voc = {d["id"]: d for d in e.sit.snapshot()["vocabulary"]}
+    assert voc["talking"]["available"] is True
+    assert voc["talking"]["params"]["music_below"]["default"] == 0.5
+    assert voc["talking"]["params"]["music_below"]["x-ui"]["source"] == "show.yaml situations.talking"
+    assert voc["quiet"]["params"]["speech_below"]["default"] == 0.2
+    assert all("(P1)" not in d["description"] for d in voc.values())
+    assert e.sit.snapshot()["classifier"]["on"] is True and e.sit.problems == []
+    e.sit.configure({"situations": {"ced": {"window_s": -1, "hysteresis": 0.9}}})
+    assert len(e.sit.problems) == 2 and e.sit._ced_cfg == {"window_s": 3.0, "hysteresis": 0.05}
+    cond = Conditions(e.sit)
+    assert cond.check({"talking": {"music_below": 0.3, "for_s": 5}}) == []
+    assert cond.check({"quiet": {"speech_below": 2}}) != []
+
+
+def test_babble_and_conversation_count_as_speech():
+    """README S4.8, §7.5: guests talking over music read as conversation and babble, not only Speech
+    (situations.talking.speech_words: talking, quiet and the genre's speech scale read the same list)."""
+    e = stage4_env()
+    e.ml = ml_view([ced(e.now - 2 + i, 0.2, 0.1, conversation=0.7) for i in range(3)])
+    r = e.read("talking")
+    assert r["value"] is True and r["evidence"]["speech"] == pytest.approx(0.7)
+    e.feat(gate=0.3)
+    e.ml = ml_view([ced(e.now - 2 + i, 0.05, 0.05, crowd=0.4) for i in range(3)])
+    r = e.read("quiet")
+    assert r["value"] is False and r["evidence"]["speech"] == pytest.approx(0.4)    # chatter: not only noise
+    e.sit.configure({"situations": {**STAGE4["situations"], "talking": {**STAGE4["situations"]["talking"],
+                                                                         "speech_words": ["speech"]}}})
+    assert e.read("quiet")["value"] is True and e.sit.problems == []                 # config, not code
+    e.sit.configure({"situations": {**STAGE4["situations"], "talking": {"speech_words": "speech"}}})
+    assert len(e.sit.problems) == 1 and e.sit._speech_words == c.SPEECH_WORDS
+
+
+def test_genre_in_holds_its_confidence_with_the_ced_hysteresis():
+    e = Env()
+    e.mc = context(e, "jazz", 0.62)
+    assert e.read("genre_in", {"genres": ["jazz"]})["value"] is True
+    for conf, want in ((0.57, True), (0.62, True), (0.54, None), (0.57, None), (0.61, True)):
+        e.mc = context(e, "jazz", conf)
+        assert e.read("genre_in", {"genres": ["jazz"]})["value"] is want, conf
+
+
+def test_the_ced_window_follows_the_workers_stretched_cadence():
+    e = stage4_env()
+    rows = [ced(e.now - 5.0 - 6.0 * k, 0.8, 0.0) for k in range(3)][::-1]     # every 6 s, the newest 5 s old
+    e.ml = ml_view(rows)
+    assert e.sit._ced(None, e.now) is None                                     # not in the last 3 s
+    e.ml = {**ml_view(rows), "stale_s": {"ced": 9.0, "tags": 9.0, "key": 9.0, "beats": 30.0}}
+    got = e.sit._ced(None, e.now)
+    assert got is not None and got["n"] == 1 and got["music"] == pytest.approx(0.8)

@@ -178,8 +178,9 @@ FIELD_SCHEMAS: dict[str, dict] = {
     "strobe": {**_bool_schema("strobe", "Strobe allowed (not built yet)"),
                "x-ui": _ui("Strobe allowed (not built yet)", "checkbox", advanced=True, not_built=True)},
     "peak_tokens_per_hour": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0,
-                             "x-ui": _ui("Big moments per hour (not built yet)", "number", advanced=True,
-                                         not_built=True)},
+                             "x-ui": _ui("Big moments per hour", "number", advanced=True,
+                                         help="Drops after a build that may cut the look and hit the lamps, at most "
+                                              "this many in any hour (0: none; a drop then shows inside the look)")},
     "moods": {"type": "array", "items": {"type": "string"}, "default": [], "x-ui": _ui("Moods", "select")},
     "genre": {"type": "string", "x-ui": _ui("Genre", "select", unset_label="the music decides",
                                             labels={WORD_AUTO: "The music decides"})},

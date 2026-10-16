@@ -4,7 +4,8 @@ component on it.
 ```
 [show-brain]  Brain.start(): ctx.loop, ctx.persist = dirty; state.json -> comp.restore(); show.yaml -> ctx.settings
               -> comp.configure(); comp.start(); then
-              ticks      one fixed-rate loop per rate (director 10 Hz; room/situations/autopilot/sources/listener 1 Hz),
+              ticks      one fixed-rate loop per rate (structure, director 10 Hz; room/situations/autopilot/sources/
+                         ml/listener 1 Hz),
                          components in add order, each call guarded and timed twice: wall (perf_counter, which
                          includes waiting for the GIL behind show-rx: the lag signal) and CPU (thread_time: the
                          component's own work, what the S3.3 budgets apply to)
@@ -20,6 +21,9 @@ component on it.
   logged (at most every 30 s per call site), and everything else carries on. A missing or bad show.yaml at start
   gives ``{}`` (every component's neutral values) and an error in ``snapshot()["settings"]``; a bad edit later keeps
   the last good settings. A torn state.json is moved aside by state_store and the brain starts cold.
+* **Slots.** ``add`` sets each key a component ``provides()`` into ctx; a slot that holds a list (``on_mode_change``,
+  Stage 4's ``on_music_event``) is appended to, so every provider is called. A ``stop()`` that returns an awaitable
+  (Stage 4: mllink's worker stop sequence) is awaited, at most STOP_AWAIT_S.
 * **Persistence** is state_store.StateStore: ``ctx.persist`` = ``dirty()``; written on show-brain at most once a
   second after a change, and once more at stop.
 """
@@ -49,6 +53,11 @@ LAG_SAMPLES = 600
 TICK_SAMPLES = 600
 VIEW_EVERY_S = 1.0                  # tick stats (p95) recomputed this often for snapshot()
 SHUTDOWN_WAIT_S = 1.0               # cancelled tasks get this long to finish (RoomLink closes its session)
+STOP_AWAIT_S = 7.0                  # a component whose stop() returns an awaitable gets this long: mllink's worker
+                                    # stop sequence is at most 6.5 s (ml/supervisor.STOP_MAX_S: the feed's release,
+                                    # then stop, 2 s, SIGTERM, 2 s, SIGKILL, 2 s), plus a margin
+STOP_TIMEOUT_S = 10.0               # Brain.stop's own wait: every stop() (STOP_AWAIT_S at most) and the final
+                                    # state.json flush (scripts/ctl waits 15 s before it kills show_service)
 
 
 class _Guard:
@@ -133,7 +142,8 @@ class Brain:
 
     # -- building (main thread) ------------------------------------------------------------------------------------
     def add(self, comp: Any) -> None:
-        """Before start(): register ``comp`` and put its ``provides()`` into ctx (``on_mode_change`` is appended)."""
+        """Before start(): register ``comp`` and put its ``provides()`` into ctx. A slot that holds a list
+        (``on_mode_change``, ``on_music_event``) is appended to; any other slot is set."""
         if self._thread is not None:
             raise RuntimeError("Brain.add after start()")
         name = getattr(comp, "name", None)
@@ -150,8 +160,9 @@ class Brain:
             self.modules.setdefault(name, f"failed: provides: {type(e).__name__}: {e}")
             provided = {}
         for k, v in provided.items():
-            if k == "on_mode_change":
-                self.ctx.on_mode_change.append(v)
+            slot = getattr(self.ctx, k, None)
+            if isinstance(slot, list):                  # on_mode_change, on_music_event: every provider is called
+                slot.append(v)
             elif hasattr(self.ctx, k):
                 setattr(self.ctx, k, v)
             else:
@@ -225,7 +236,7 @@ class Brain:
                                                              for n in self.components) or "no components",
                  self.show_file, f" ({self.settings_error})" if self.settings_error else "")
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float = STOP_TIMEOUT_S) -> None:
         """comp.stop() in reverse add order (on show-brain), a final state.json, then the loop and the thread."""
         loop, th = self._loop, self._thread
         if th is None:
@@ -251,7 +262,13 @@ class Brain:
             t.cancel()
         self._tasks = []
         for name, comp in reversed(list(self.components.items())):
-            self._guarded("stop", name, comp.stop)
+            got = self._guarded("stop", name, comp.stop)
+            if inspect.isawaitable(got):               # Stage 4: mllink's stop sequence (the worker's own stop)
+                try:
+                    await asyncio.wait_for(got, STOP_AWAIT_S)
+                except Exception as e:                  # noqa: BLE001  a slow or failing stop is counted
+                    self._g["stop"].failed(e)
+                    log.warning("%s.stop() didn't finish within %.0f s", name, STOP_AWAIT_S)
         self.store.flush(self._collect, force=True)
         await asyncio.sleep(0.05)                          # cancelled component tasks run their cleanup
 

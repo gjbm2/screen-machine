@@ -1,4 +1,6 @@
-# config/room/show.yaml: show_service's own settings (docs/SHOW_ENGINE.md; show_service/README.md, "Stage 3").
+# config/room/show.yaml: show_service's own settings (docs/SHOW_ENGINE.md; show_service/README.md, "Stage 3" and
+# "Stage 4"; S4.9 lists the Stage-4 keys: ml, genre_map, structure, and new keys under situations, listener and
+# director. Nothing reads a Stage-4 key until the Stage-4 code is deployed).
 # Owner: screen-machine-c8. show_service re-reads this file when it changes (mtime, every 2 s). A bad edit keeps the
 # last good settings, and GET /show/api/v1/state shows the error under brain.settings.error.
 #
@@ -79,8 +81,8 @@ situations:
     idle_note_s: 1.0                        # starting point: piano_idle needs no note-on for this long
   music:                                    # music_audible
     stream: room-mic
-    min_prob: 0.5                           # starting point: the classifier's music probability (CED, P1). Until it
-                                            # exists, a DSP guess: a steady beat or a clear key, over the gate.
+    min_prob: 0.5                           # starting point: CED's music (the ML worker, Stage 4). Without the
+                                            # worker, a DSP guess: a steady beat or a clear key, over the gate.
     dsp_min_gate: 0.3                       # starting point
   sonos:                                    # sonos_playing; music_audible's Sonos path
     now_playing: sonos.drawing-room.now_playing     # room targets (sonos.json zone "drawing-room")
@@ -90,6 +92,19 @@ situations:
   quiet:                                    # quiet
     stream: room-mic
     gate_below: 0.05                        # starting point
+    music_below: 0.2                        # starting point (Stage 4): with the ML worker's CED, the room is also quiet
+    speech_below: 0.2                       # when music and speech are both under these (only noise over the gate)
+  talking:                                  # talking (Stage 4: CED in the ML worker; unknown without it)
+    stream: room-mic
+    min_prob: 0.5                           # starting point (§8.9): CED speech at least this...
+    music_below: 0.5                        # ...with music under this (§8.9: speech with no music)
+    speech_words: [speech, conversation, crowd]   # starting point: "speech" is the max of these CED words (babble
+                                            # and chatter count, not only Speech); talking, quiet and the genre's
+                                            # speech scale read this list
+  ced:                                      # Stage 4: the CED classifier that talking, quiet and music_audible read
+    window_s: 3                             # README S4.8: the mean of the readings in the last 3 s
+    hysteresis: 0.05                        # starting point: a CED word that holds keeps holding until its number is
+                                            # back past its threshold by this much
 
 # Lamp roles (§8.8). The role comes from each lamp's patch.yaml placement; the role's behaviour is the fields below.
 # Every value is a number, or the name of a vibe field to take it from.
@@ -154,6 +169,30 @@ director:
       pulse:  {moods: [dreamy, hypnotic, liquid, organic], fx_moods: [dreamy, hypnotic, liquid, mellow], transition_style: lively}
       lively: {moods: [bright, playful, geometric, hypnotic], fx_moods: [playful, retro, hypnotic, geometric], transition_style: lively}
       peak:   {moods: [euphoric, hypnotic, bright, aggressive], fx_moods: [euphoric, hypnotic, glitchy, bright], transition_style: wild}
+  # Stage 4 (§8.5, with structure.py's sections, builds and drops). Lamps and DMX only: screens get looks, words and
+  # events, never a dip, a hit or a floor. Starting points, all of them.
+  sections:
+    max_late_bars: 1                        # §8.5: a section change landing later than this into its section makes no
+                                            # new look...
+    express_gain: 0.5                       # ...the section shows inside the look instead: level, accent density and
+                                            # spread move by this x the energy step from the last section
+    phase_hint_s: 1.5                       # an event's phase (build, drop, breakdown) holds this long, until
+                                            # music.context (1 Hz) has caught up
+  peaks:
+    after_build_s: 30                       # only a drop this soon after a build spends a peak token (the vibe's
+                                            # peak_tokens_per_hour, at most that many in any 60 minutes; unset = 0)
+  build:                                    # §8.5 build -> drop
+    step_bars: 4                            # the accent subdivision steps 1/2 -> 1/4 -> 1/8 every 4 bars...
+    step_bars_late: 2                       # ...every 2 once build_progress reaches 0.5 (§8.5: every 2-4 bars)
+    narrow: 0.6                             # lamps converge on the accent (tension) colour by build_progress x this
+    dip_level: 0.25                         # pre-drop: lamps dip to this (§8.5: 20-30 %)...
+    dip_bars: 1                             # ...for the last bar before the drop line
+    hit_beats: 1                            # §8.5: the drop is a unison hit on lamps and DMX, one beat long
+  breakdown: {floor_add: 0.1, motion_scale: 0.5, saturation_scale: 0.8}   # §8.5: floor up, motion slower, -20 % saturation
+  screens:                                  # the screens' palette (agreed with 2f and 04, 16 Oct): while a vibe plays,
+    send_palette: true                      # live screens get the director's catalog palette (PATCH /screens/{id}/look,
+                                            # once per change); false: the director never touches it (hot-reloaded)
+    palette_transition_s: 4                 # starting point (the renderer's own default, LIVE_V1 §1.11)
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
   cadence_s: 20                             # a clip every 20 s...
@@ -168,3 +207,191 @@ listener:                                   # §7.3, §7.5. Starting points, all
                                             # guess instead (a steady beat over the loudness gate): that is the owner's
                                             # choice. A sender with room_sound: false skips this check, nothing else.
   describe_timeout_s: 8                     # then the local keyword match answers (§7.4)
+  ced:                                      # Stage 4 (§7.5): with music_gate classifier, a room-sound clip is the
+    music_min: 0.5                          # longest run of seconds CED calls music (at least this; starting point)...
+    speech_max: 0.3                         # ...with speech under this (§7.5)...
+    speech_words: [speech, conversation, crowd]   # ...speech being the max of these CED words (starting point: guests
+                                            # talking over music show as conversation and babble, not only Speech)
+    speaks_s: 1.0                           # README S4.8: each CED reading vouches for the last second of its window
+  section_call_after_s: 8                   # Stage 4 (§7.3): one extra call this long after a section boundary
+
+# ---- Stage 4 (README "Stage 4") ------------------------------------------------------------------------------------
+# The local ML worker (§6): a child of show_service in its own venv, fed the measured stream at 16 kHz over a pipe,
+# answering one JSON line per result (README S4.3). Without it (disabled, missing, failing) every reader degrades to
+# its Stage-3 behaviour (S4.3 "Without the worker"). Read by mllink, which hands this whole section to the worker.
+ml:
+  enabled: true                             # false: no worker (the rollback; hot-reloaded)
+  python: ~/.venvs/sm-show-ml/bin/python    # the worker's own venv, never show_service's
+  models_dir: ~/.cache/screen-machine/models   # tools/show/fetch_models.py fills it (never git)
+  nice: 19                                  # owner: the host renders 4K
+  cpu_max: 0.35                             # starting point: the worker's share of one core; owner: show_service and
+                                            # the worker together stay under 0.8 of a core (the worker has two compute
+                                            # threads, its fast lane and its beats lane: owner, at most 2)...
+  cpu_floor: 0.1                            # ...so while the two of them are over 0.8 for 60 s, the worker's cpu_max
+                                            # becomes 0.8 less show_service's share, never under this (starting point)
+  silence_dbfs: -70                         # starting point: a quieter window runs no model (CED reports silence)
+  results_stale_s: 3                        # starting point: a CED/tags result older than this is not "now"...
+  stale_periods: 1.5                        # ...nor older than this many of its task's intervals now (starting point;
+                                            # the worker stretches them under load, and every reader follows)
+  fast_lane:
+    every_s: 1                              # §6: CED and EffNet every second
+    budget_ms: 250                          # starting point: one cycle's hard budget; a task that won't fit is skipped,
+                                            # never queued
+  tasks:                                    # §6's table: window_s is the audio a run sees, budget_ms its hard cap
+    ced:
+      every_s: 1
+      window_s: 2.0                         # §6: 22 ms per 2 s (measured, 15 Oct)
+      model: ced-mini                       # fetch_models.py catalogue names
+      budget_ms: 100                        # starting point
+    tags:
+      every_s: 1
+      window_s: 2.1                         # one EffNet patch: 128 frames x 256 samples at 16 kHz
+      model: discogs-effnet
+      budget_ms: 80                         # starting point (§6: 6-9 ms + under 1 ms a head, measured)
+      heads:                                # music.context field -> catalogue head (index.json says which class is "yes")
+        genre: genre_discogs400             # also gives genre_parents and styles_top3
+        moods: mtg_jamendo_moodtheme
+        instruments: mtg_jamendo_instrument
+        dance: danceability
+        voice_p: voice_instrumental
+        engagement: engagement_regression   # reads null: Essentia doesn't publish its output range (index.json
+                                            # facts.range unset; measured -0.01..1.01 on the test tracks, B7 16 Oct)
+        bright: timbre                      # Essentia's bright/dark head, trained on music (nsynth_bright_dark has no
+                                            # ONNX and was trained on single notes; B7 16 Oct)
+        acoustic: mood_acoustic
+        # arousal: deam                     # off (measured 16 Oct, B7): MSD-MusiCNN costs 45-55 ms a run, 8x EffNet,
+                                            # +0.05 core and tags' p95 near its 80 ms budget; arousal reads null
+    key:
+      every_s: 2
+      window_s: 20                          # §6: Essentia HPCP + Key over 20 s, every 2 s
+      profile: bgate                        # Essentia Key's own default profile
+      budget_ms: 60                         # starting point
+    beats:
+      every_s: 10                           # §5.3, §6: every 5-10 s
+      window_s: 30                          # §5.3: the interior of a 30 s window
+      interior_margin_s: 3                  # starting point: the window's edges are left out
+      model: beat-this-small0               # measured 15 Oct: 0.75-0.8 s per 20 s on 2 cores
+      budget_ms: 5500                       # starting point: about 2x its p95 under the 4K render (2.3-2.8 s, 16 Oct);
+                                            # an overrun skips the task's next turn
+  ced_groups:                               # CED's AudioSet classes -> the seven words; a word is the max of its classes
+    music: [Music]                          # (design choices, starting points; a class the model lacks is logged)
+    speech: [Speech, "Male speech, man speaking", "Female speech, woman speaking", "Child speech, kid speaking",
+             "Narration, monologue"]
+    conversation: [Conversation]
+    singing: [Singing, Choir]
+    crowd: [Crowd, Chatter, "Hubbub, speech noise, speech babble"]
+    applause: [Applause, Clapping, Cheering]
+    silence: [Silence]
+  beat_votes:                               # §5.3: Beat This! gives integer corrections only (the one, the bar length,
+    match_ms: 70                            # the octave). A beat this close to a clock beat agrees (starting point)
+    octave_tol: 0.06                        # tempo ratios within 6 % of 1/2, 1 or 2 (starting point)
+    min_conf: 0.6                           # starting point: the share of the window's beats that must agree
+    one_agree: 0.6                          # starting point: the share of downbeats that must fall on one beat of the bar
+    agree_runs: 2                           # starting point: the same vote this many runs in a row before it applies
+    bar_agree_runs: 4                       # starting point: a new bar length (the meter) needs this many, each with a
+                                            # one (§5.3: stronger evidence for what moves every bar line)
+    bar_lens: [3, 4]                        # starting point: the bar lengths it may set
+    cooldown_s: 30                          # starting point
+  restart:
+    backoff_s: [2, 5, 15, 60, 300]          # starting point: the wait after each failure in a row; then 300 s for ever
+                                            # (each at least 1 s)
+    healthy_s: 600                          # starting point: running this long resets the backoff
+    stall_s: 30                             # starting point: no line from the worker this long while fed: restart it
+
+# Genre words (§6): Discogs-EffNet's parent genres -> config/live/vocab.yaml genre words. §6's table, as written; a
+# parent not listed gives no word (unknown). Extending vocab.yaml is 04's call. Read by structure (music.context's
+# genre), which situations' genre_in, the card and the director read.
+genre_map:
+  parents:
+    "Jazz": jazz
+    "Funk / Soul": soul
+    "Blues": soul
+    "Pop": pop
+    "Latin": pop
+    "Rock": rock
+    "Classical": classical
+    "Electronic": {from_listener: [house, techno, ambient]}   # fine styles are unreliable (§6): the word comes only
+                                                              # from the AI listener's genre, when it is one of these
+  tau_s: 30                                 # starting point (§6: smooth over 10-60 s)
+  freeze_below_music: 0.5                   # §6: genre and the other tags hold while CED music is under this
+  speech_scale_above: 0.3                   # §6: confidence scales down while CED speech is above this
+  switch_margin: 0.1                        # starting point: a new leading parent must lead by this...
+  switch_dwell_s: 20                        # ...for this long (§6: hysteresis and a minimum dwell)
+
+# Sections, builds and drops (§6.1, §6.2; structure.py). Starting points, all of them: README S4.7's. B10 checked
+# FastLED's own detector thresholds (per-frame relative-energy units) and they don't translate to these dB/s slopes, so
+# these stand; FastLED's own numbers are under fastled, where the port uses them as they are.
+structure:
+  gobo_on_sections: true                    # §9.5: GOBO steps once per section change (the screens' scene change)
+                                            # while no vibe plays; with a vibe the director steps it when a look lands
+  novelty:
+    recent_s: 4                             # §6.1: 1 - cos(mean(the last 4 s), mean(the 15 s before))
+    before_s: 15
+    k_mad: 3.0                              # a boundary is a peak over the median + k x MAD of the last history_s...
+    history_s: 120
+    min: {ml: 0.05, dsp: 0.10}              # ...and over this, per descriptor (embeddings or chroma + MFCC)
+    peak_s: 3                               # a local maximum over +-3 s
+  dsp_weights: {chroma: 0.5, mfcc: 0.5}     # the descriptor without the worker
+  min_section_bars: 8                       # boundaries closer than this are one
+  min_section_s: 12                         # ...the same without a bar grid
+  identify_after_s: 8                       # a new section is named (a repeat, or a new letter) after this long
+  repeat_sim: {ml: 0.85, dsp: 0.80}         # centroid cosine that makes "A again"
+  max_sections: 64                          # remembered per track
+  predict_lead_bars: 1                      # a known repeat's end is announced this far ahead (§8.5)
+  grid_conf: 0.5                            # README S4.7: the clock's bar_conf at which its bar lines are used
+  same_bars: 2                              # a confirmed boundary this close to a predicted line, a drop or a new track
+                                            # is the same boundary
+  phase_dwell_s: 2                          # the phase word holds at least this long (drop, build and breakdown show
+                                            # at once: an event announces each)
+  tags_tau_s: 20                            # §6: music.context's numbers and instruments smoothed (10-60 s)
+  tags_hold_s: 30                           # ...and read null once the tags are this old
+  ced_mean_s: 3                             # README S4.8: music.context's CED is the mean of the last 3 s
+  listener_conf: 0.6                        # the AI listener's moods and section label count at this confidence
+  key_min_strength: 0.3                     # Essentia's key is used at this strength or more...
+  key_hold:                                 # ...and music.context's key doesn't flicker:
+    strength_margin: 0.05                   # the worker's key stays the source until its strength is this far under
+    hold_s: 4                               # another key (or none) shows after holding this long (the piano's at once)
+  events:
+    min_lead_s: 1.1                         # §5.4: events lead the screens' live lead (0.55-0.85 s) + 250 ms
+  track:                                    # §6.1 track changes (Sonos now-playing is the truth when it plays)
+    gap_s: 3                                # a silence this long...
+    gap_gate: 0.05                          # ...(the loudness gate under this, or...
+    gap_lufs_m: -60                         # ...the momentary loudness at or under this: a line at rest. The gate
+                                            # follows the 3 s loudness, so alone it missed gaps under ~6 s)...
+    window_s: 20                            # ...then a boundary this soon after the sound returns, with a jump in:
+    tempo_jump: 0.04                        # tempo (over 4 %, not x2 or x0.5),
+    key_min_conf: 0.3                       # key (at this strength both sides; the same, parallel or relative key is
+                                            # no jump),
+    parent_window_s: 5                      # or the genre parent: the leader of the last 5 s of tags...
+    parent_margin: 0.05                     # ...leading the next by this (a near tie is no evidence)
+    spike_k: 2.0                            # without a gap: a novelty peak this many times the threshold (null: off)...
+    spike_jumps: 2                          # ...with this many of the jumps at once (the genre by its smoothed leader)
+  build:                                    # §6.2 (needs a clock grid: no builds or drops without one)
+    window_s: 12                            # §6.2: over 8-16 s...
+    min_slope: {lufs_db_s: 0.15, brightness_s: 0.004, onset_rate_s: 0.05}   # ...loudness, centroid, onsets rising...
+    low_max_slope_db_s: 0.05                # ...while 20-250 Hz is held or falling
+    full_rise_db: 6                         # build_progress without a predicted line: the rise so far / this
+    phrase16_conf: 0.5                      # §6.2: the drop line is the next 16-bar line at this phrase_conf, else 8
+    arm_beats: 8                            # drop_armed goes out this far ahead (and at least 2 beats, min_lead_s)
+    foot_db: 0.5                            # a build starts at the last sample within this of its window's quietest
+  drop:
+    low_jump_db: 6                          # §6.2: the bass band jumps more than ~6 dB...
+    lufs_jump_db: 3                         # ...with a loudness jump...
+    within_beats: 1                         # ...within one beat after a build (or of the armed line)
+    hold_bars: 8                            # phase "drop" this long, then peak or calm
+    snap_beats: 0.25                        # README S4.7: a drop is snapped to the nearest beat within this
+    disarm_bars: 1                          # a build that ends more than this before its armed line calls the line off
+                                            # (closer: a pre-drop break; the line lands; the same as director dip_bars)
+  breakdown:
+    low_drop_db: 9                          # §6.2: bass and percussion collapse...
+    perc_ratio_max: 0.25
+    min_gate: 0.3                           # ...while the music carries on...
+    for_s: 4                                # ...for this long
+    leave_s: 4                              # left once that has failed this long (never faster out than in)
+  peak: {energy_min: 0.75, for_s: 4, leave_s: 4}     # after a drop, or in the chorus; in after for_s, out after leave_s
+  outro: {window_s: 16, max_slope_db_s: -0.25, energy_max: 0.4, for_s: 2, leave_s: 2}
+  fastled:                                  # FastLED's audio detectors (MIT; fl/audio/detector), their own numbers
+    build_end: 0.5                          # BuildupDetector: a build ends under this x its start slope
+    drop_weights: [0.40, 0.35, 0.15, 0.10]  # DropDetector's impact blend: loudness flux, bass flux, band change, level
+    band_weights: [0.5, 0.3, 0.2]           # its band change: bass, mid, treble
+    drop_cooldown_s: 2                      # mMinTimeBetweenDrops

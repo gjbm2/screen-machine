@@ -325,7 +325,7 @@ ROOM_DIRECTION = "room.direction"   # DirectionData, on change (<= BRAIN_TICK_HZ
 ROOM_LOOK = "room.look"             # LookData, on change and every 5 s
 ROOM_EVENT = "room.event"           # EventData, when decided (>= lead + 250 ms before at_ms where it can be)
 MUSIC_INSIGHT = "music.insight"     # InsightData, on each listener verdict
-MUSIC_CONTEXT = "music.context"     # reserved for P3 (local ML, sections); nothing publishes it in Stage 3
+MUSIC_CONTEXT = "music.context"     # MusicContext, 1 Hz (Stage 4: structure.py; to every client)
 LATEST_ON_CONNECT_BRAIN: tuple[str, ...] = (ROOM_DIRECTION, ROOM_LOOK)   # bus.py adds these to LATEST_ON_CONNECT
 
 # -- /v1/events (the card's WebSocket; api.py) --------------------------------------------------------------------------
@@ -906,6 +906,8 @@ class BrainContext:
     room: Optional[Callable[[], RoomView]] = None                     # autopilot.RoomLink.view
     room_get: Optional[Callable[[str], Any]] = None                   # async (path) -> (status, bytes): RoomLink.get
     room_put: Optional[Callable[[str, dict], Any]] = None             # async (path, body) -> (status, dict): RoomLink.put
+    room_patch: Optional[Callable[[str, dict], Any]] = None           # async (path, body) -> (status, dict): RoomLink.patch
+                                                                       # (Stage 4: the director's screens palette)
     situations: Optional[Callable[[], dict[str, SituationReading]]] = None   # situations' snapshot (default params)
     beliefs: Optional[Callable[[], Optional[Beliefs]]] = None         # listener.beliefs
     vibe: Optional[Callable[[], Optional[VibeSettings]]] = None       # director: the effective vibe now
@@ -915,6 +917,19 @@ class BrainContext:
                                                                        # (old, new) on show-brain when mode.current changes
     notify: Optional[Notify] = None                                   # api.py
     persist: Optional[Callable[[], None]] = None                      # brain.dirty(): write state.json soon
+    # Stage 4 additions (README "Stage 4"; the shapes are in the Stage-4 block below). None or empty: that piece is
+    # missing, and its readers degrade (README S4.3 "Without the worker").
+    # engine side (__main__)
+    rhythm: Optional[Callable[[], Optional["RhythmData"]]] = None     # dsp.Features.rhythm: the 10 Hz medium lane
+    ml_feed: Any = None                                                # mllink.MLFeed (show-rx writer; MLLink attaches
+                                                                       # the worker's stdin to it)
+    clock_correct: Optional[Callable[..., None]] = None                # clock.Clock.apply_integer_correction (any thread)
+    # brain side (provided by components)
+    ml: Optional[Callable[[], "MLView"]] = None                        # mllink.MLLink.view
+    music_context: Optional[Callable[[], Optional["MusicContext"]]] = None   # structure.Structure.context
+    on_music_event: list[Callable[[dict], None]] = field(default_factory=list)   # structure calls each with every
+                                                                       # MusicEventData it publishes (show-brain, guarded);
+                                                                       # brain.add appends what components provide
 
 
 class Component(Protocol):
@@ -932,3 +947,374 @@ class Component(Protocol):
     def snapshot(self) -> dict: ...                    # ANY thread: the last dict swapped in by reference
     def persist(self) -> Optional[dict]: ...           # what state.json keeps under ``name`` (None: nothing)
     def stop(self) -> None: ...                        # stop tasks, kill children it started, then return
+
+
+# =====================================================================================================================
+# Stage 4 (README "Stage 4"): local ML in a child worker (its own venv), dsp's medium lane, sections and phases
+# (structure.py), and their wiring into the clock, situations, the listener and the director. Additions only: the
+# names the five Stage-4 builders share (B7 the worker, B8 mllink and the wiring, B9 the show-rx lanes, B10 structure,
+# B11 the consumers). The worker imports this file too (``python -m show_service.ml.worker`` under
+# ~/.venvs/sm-show-ml), so it stays stdlib-only at import. BrainContext's Stage-4 slots are at the end of BrainContext.
+# =====================================================================================================================
+import struct  # noqa: E402
+
+# -- files -------------------------------------------------------------------------------------------------------------
+MODELS_DIR = pathlib.Path.home() / ".cache" / "screen-machine" / "models"   # tools/show/fetch_models.py; never git
+MODELS_INDEX = MODELS_DIR / "index.json"           # fetch_models.py: {name: {file, sha256, license, ..., facts}}; the
+                                                   # worker reads each model's facts (labels, "yes" class, ranges) here
+ML_PYTHON = pathlib.Path.home() / ".venvs" / "sm-show-ml" / "bin" / "python"   # show.yaml ml.python's default
+ML_WORKER_MODULE = "show_service.ml.worker"        # [ml.python, "-m", ML_WORKER_MODULE, "--models", <dir>,
+                                                   #  "--parent", <show_service pid>, "--nice", <ml.nice>]
+ML_LOG = STATE_DIR / "ml-worker.log"               # the worker's stderr (truncated at each start; mllink rotates at 1 MB)
+
+# -- the worker's stdin: binary frames (README S4.3) -------------------------------------------------------------------
+ML_PROTOCOL_V = 1
+ML_FS = 16000                      # the feed: mono float32 at 16 kHz (the ring's rate, contract.RING_FS)
+ML_AUDIO_MAGIC = b"SMLA"
+ML_CTRL_MAGIC = b"SMLC"
+#: magic 4s | version B | flags B | n H (audio: samples; control: payload bytes) | stream 16s (VBAN name, ASCII,
+#: NUL-padded; zeros on control) | seg I (the feed's segment) | n0 q (16 kHz index of the payload's first sample in the
+#: segment) | t0 d (acoustic host s of that sample; sample i at t0 + i / ML_FS) | dropped I (frames dropped so far)
+ML_HEADER_FMT = "<4sBBH16sIqdI"
+ML_HEADER_SIZE = struct.calcsize(ML_HEADER_FMT)                      # 48
+ML_PIPE_ATOMIC = 4096              # Linux PIPE_BUF: a write of at most this is all-or-nothing, even with O_NONBLOCK
+ML_FRAME_SAMPLES = 800             # what mllink sends: 50 ms per frame (48 + 3200 bytes)
+ML_FRAME_MAX_SAMPLES = (ML_PIPE_ATOMIC - ML_HEADER_SIZE) // 4       # 1012: every frame is one atomic write
+ML_CTRL_MAX_BYTES = ML_PIPE_ATOMIC - ML_HEADER_SIZE                  # 4048 bytes of UTF-8 JSON
+ML_FLAG_SEGMENT = 1                # the first frame of a feed segment (a new worker, stream, rate, AUDIO_SEGMENT): n0 0
+ML_FLAG_GAP = 2                    # the frame holds zero-fill (contract.AUDIO_GAP blocks)
+ML_FLAG_AFTER_DROP = 4             # frames were dropped since the last one written (n0 still counts them)
+ML_CMD_CONFIG = "config"           # {"cmd": "config", "v": 1, "ml": <show.yaml ml, resolved>}: after spawn and on change
+ML_CMD_STOP = "stop"               # {"cmd": "stop"}: finish the current line, exit 0 (EOF on stdin does the same)
+ML_LINE_MAX = 256 * 1024           # the longest stdout line mllink reads (asyncio StreamReader limit)
+
+# -- the worker's stdout: one JSON object per line ---------------------------------------------------------------------
+ML_HELLO = "hello"
+ML_CED = "ced"
+ML_TAGS = "tags"
+ML_KEY = "key"
+ML_BEATS = "beats"
+ML_STATS = "stats"
+ML_ERROR = "error"
+ML_TYPES: tuple[str, ...] = (ML_HELLO, ML_CED, ML_TAGS, ML_KEY, ML_BEATS, ML_STATS, ML_ERROR)
+ML_TASKS: tuple[str, ...] = ("ced", "tags", "key", "beats")   # show.yaml ml.tasks
+ML_STATES: tuple[str, ...] = ("disabled", "starting", "running", "backoff", "failed")   # MLLink (MLView.state)
+#: CED-mini's seven words: each the max of the AudioSet classes show.yaml ml.ced_groups lists for it.
+CED_GROUPS: tuple[str, ...] = ("music", "speech", "conversation", "singing", "crowd", "applause", "silence")
+#: Discogs' 15 top-level genres (Discogs-EffNet's style labels are "<parent>---<style>"). The worker takes the parents
+#: from the model's own labels; this list is for checking show.yaml genre_map's keys. Code never compares against one.
+DISCOGS_PARENTS: tuple[str, ...] = ("Blues", "Brass & Military", "Children's", "Classical", "Electronic",
+                                    "Folk, World, & Country", "Funk / Soul", "Hip Hop", "Jazz", "Latin", "Non-Music",
+                                    "Pop", "Reggae", "Rock", "Stage & Screen")
+EMB_DIM = 1280                     # Discogs-EffNet's embedding
+
+
+class MlHello(TypedDict):
+    """{type: "hello"}: the first line, once the models are loaded. mllink attaches the feed only after it."""
+    type: str
+    v: int                         # ML_PROTOCOL_V
+    pid: int
+    t: float                       # time.monotonic(): one CLOCK_MONOTONIC per host, comparable with ours
+    models: dict[str, str]         # catalogue name -> "ok" | "missing" | "failed: <why>" | "fake"
+    tasks: dict[str, bool]         # ML_TASKS -> it can run (its model loaded)
+    versions: dict[str, str]       # {"python", "numpy", "onnxruntime", "essentia"}: as imported ("" when absent)
+    threads: dict[str, int]        # {"compute": 2, "intra_op": 1}
+    nice: int
+
+
+class MlCed(TypedDict):
+    """{type: "ced"}: CED-mini over the window that ends at ``t``. Each ``*_p`` is a CED_GROUPS word, 0..1. A window
+    under ml.silence_dbfs runs no model: silence_p 1, the rest 0, ``skipped`` "silence"."""
+    type: str
+    t: float                       # acoustic host s of the window's last sample
+    window_s: float
+    stream: str
+    seg: int
+    music_p: float
+    speech_p: float
+    conversation_p: float
+    singing_p: float
+    crowd_p: float
+    applause_p: float
+    silence_p: float
+    skipped: NotRequired[str]
+    cost_ms: float
+
+
+class MlTags(TypedDict):
+    """{type: "tags"}: Discogs-EffNet and its heads (show.yaml ml.tasks.tags.heads) over the window that ends at ``t``.
+    A head that isn't loaded gives None (lists: []). Labels are the models' own, never vocab words."""
+    type: str
+    t: float
+    window_s: float
+    stream: str
+    seg: int
+    genre_parents: dict[str, float]    # every parent in the model's labels -> the max of its styles' activations,
+                                       # mean over the window's patches, 0..1 (multi-label sigmoids: not a distribution)
+    styles_top3: list[list[Any]]       # [["Electronic---House", 0.61], ...]: the 400-style head's three highest
+    moods_top5: list[list[Any]]        # [[label, p], ...]: the mood/theme head's raw labels
+    instruments_top5: list[list[Any]]  # [[label, p], ...]
+    dance: Optional[float]             # 0..1: the head's "yes" class (index.json facts say which)
+    voice_p: Optional[float]           # 0..1: voice (vs instrumental)
+    engagement: Optional[float]        # 0..1
+    bright: Optional[float]            # 0..1: bright (vs dark)
+    acoustic: Optional[float]          # 0..1: acoustic (vs not)
+    arousal: Optional[float]           # 0..1: the regression's range (index.json facts) mapped onto 0..1
+    emb_id: int                        # +1 per embedding in this worker run
+    emb: str                           # base64 of emb_dim little-endian float16: the embedding, mean over the window's
+                                       # patches, L2-normalised (mllink.decode_emb -> float32)
+    emb_dim: int                       # EMB_DIM
+    cost_ms: float
+
+
+class MlKey(TypedDict):
+    """{type: "key"}: Essentia HPCP + Key (show.yaml ml.tasks.key.profile) over the window that ends at ``t``."""
+    type: str
+    t: float
+    window_s: float
+    stream: str
+    seg: int
+    key: Optional[str]                 # KEY_NAMES (sharps); None without tonal content
+    mode: Optional[str]                # "major" | "minor" | None
+    strength: float                    # 0..1, Essentia's key strength
+    cost_ms: float
+
+
+class MlBeats(TypedDict):
+    """{type: "beats"}: Beat This! over [window_t0, window_t1], acoustic host s. Only the interior (the window less
+    ml.tasks.beats.interior_margin_s at each end) is reported. The worker never sees our clock: mllink turns this into a
+    BeatVote."""
+    type: str
+    window_t0: float
+    window_t1: float
+    interior: list[float]              # [t0, t1]
+    stream: str
+    seg: int
+    beats: list[float]                 # beat times in the interior, ascending
+    downbeats: list[float]             # the subset that start a bar
+    bpm: Optional[float]               # 60 / the median inter-beat interval; None with fewer than 4 beats
+    bar_len: Optional[int]             # the median beats per bar between downbeats; None with fewer than 2 downbeats
+    model: str                         # catalogue name
+    cost_ms: float
+
+
+class MlStats(TypedDict):
+    """{type: "stats"}: every 10 s."""
+    type: str
+    t: float
+    cpu_share: float                   # the worker's CPU (every thread) / wall over the last 10 s, in cores
+    cpu_s: float                       # process CPU seconds since start
+    rss_mb: float
+    frames: int                        # audio frames read
+    bytes: int
+    gaps: int                          # frames flagged ML_FLAG_GAP
+    holes: int                         # n0 jumps zero-filled (<= 1 s); longer ones start a segment
+    drops_seen: int                    # the latest header's ``dropped``
+    ring_s: float                      # audio held for the current segment
+    stretch: float                     # 1..4: every interval x this (the ml.cpu_max guard)
+    tasks: dict[str, dict]             # task -> {"runs", "skipped", "over_budget", "errors", "cost_ms_p50",
+                                       #          "cost_ms_p95", "every_s" (now, after doubling and stretch)}
+    errors: int
+    last_error: Optional[str]
+
+
+class MlError(TypedDict):
+    """{type: "error"}: a task failed (counted; it runs again at its next grid point)."""
+    type: str
+    t: float
+    task: Optional[str]
+    error: str                         # <= 300 chars
+
+
+class BeatVote(TypedDict):
+    """mllink.beat_vote: one MlBeats read against the clock (§5.3: integer corrections only, never a phase or a
+    tempo). The three values are Clock.apply_integer_correction's arguments."""
+    window_t0: float
+    window_t1: float
+    beat_is_one: Optional[int]         # a beat index in the clock's published numbering that starts a bar; None: no vote
+    bar_len: Optional[int]
+    octave: Optional[float]            # 1 | 2 (the beat is twice as fast) | 0.5; None: the tempi don't relate
+    conf: float                        # share of the interior's beats within match_ms of the clock's grid at ``octave``
+    applied: bool                      # this vote went to clock_correct
+    why: Optional[str]                 # page words when not: "no grid", "too few beats", "low agreement", "waiting
+                                       # for a second run", "the clock agrees", "cooldown", "the tempi don't relate",
+                                       # "no clock here"
+
+
+class MLView(TypedDict):
+    """ctx.ml(): mllink's latest results for the measured stream, swapped by reference on show-brain (any thread
+    reads; nothing is mutated after the swap)."""
+    state: str                         # ML_STATES
+    why: Optional[str]                 # page words when not running ("the ML venv is missing", "restarting in 15 s")
+    stream: Optional[str]              # the stream the results are for
+    ced: Optional[MlCed]               # the latest
+    ced_recent: list[MlCed]            # the last 30 s for ``stream``, oldest first
+    tags: Optional[MlTags]             # the latest (``emb`` as sent)
+    emb_recent: list[tuple[int, float, Any]]   # [(emb_id, t, float32 ndarray (EMB_DIM,))], the last 30 s, oldest first
+    key: Optional[MlKey]
+    beats: Optional[MlBeats]
+    vote: Optional[BeatVote]           # the latest
+    ages: dict[str, Optional[float]]   # ML_TASKS -> seconds since that result's t (None: never)
+    hello: Optional[MlHello]
+    stale_s: NotRequired[dict[str, float]]   # ML_TASKS -> how old that result may be and still be "now": max(show.yaml
+                                       # ml.results_stale_s, ml.stale_periods x the task's interval in the last stats
+                                       # line, which the worker's CPU guard and over-budget doubling stretch). Every
+                                       # reader uses it (``ml_stale_s``), so none flaps while the worker degrades
+
+
+def ml_stale_s(view: Any, task: str, default: float) -> float:
+    """How old ``task``'s result may be and still count as now: the MLView's ``stale_s`` for it, never under
+    ``default`` (show.yaml ml.results_stale_s); ``default`` when the view has none."""
+    s = view.get("stale_s") if isinstance(view, dict) else None
+    v = s.get(task) if isinstance(s, dict) else None
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v > default:
+        return float(v)
+    return default
+
+
+#: CED words that count as people talking (README S4.8, §7.5): a reading's speech is the max over them, so babble and
+#: conversation under music count, not only "Speech". Starting point; show.yaml listener.ced.speech_words (the
+#: listener's upload gate) and situations.talking.speech_words (talking, quiet and the genre speech scale) override it.
+SPEECH_WORDS: tuple[str, ...] = ("speech", "conversation", "crowd")
+
+
+def speech_words(raw: Any, where: str) -> tuple[tuple[str, ...], Optional[str]]:
+    """A show.yaml ``speech_words`` list -> (its CED_GROUPS words, a problem line or None). Left out: SPEECH_WORDS.
+    Not a list, or no known word in it: SPEECH_WORDS and a problem line. Unknown words are left out and named."""
+    if raw is None:
+        return SPEECH_WORDS, None
+    if not isinstance(raw, list):
+        return SPEECH_WORDS, f"{where}: {raw!r} is not a list of CED words: {list(SPEECH_WORDS)} used"
+    ok = tuple(dict.fromkeys(w for w in raw if isinstance(w, str) and w in CED_GROUPS))
+    bad = [w for w in raw if not (isinstance(w, str) and w in CED_GROUPS)]
+    if not ok:
+        return SPEECH_WORDS, f"{where}: no CED word in {raw!r} ({', '.join(CED_GROUPS)}): {list(SPEECH_WORDS)} used"
+    return ok, (f"{where}: {bad!r} not CED words: left out" if bad else None)
+
+
+def speech_of(reading: Any, words: tuple[str, ...]) -> Optional[float]:
+    """The max of a CED reading's numbers for ``words`` (keys ``<word>`` or MlCed's ``<word>_p``); None when it has
+    none of them."""
+    if not isinstance(reading, dict):
+        return None
+    vals = []
+    for w in words:
+        v = reading.get(w, reading.get(f"{w}_p"))
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v:
+            vals.append(float(v))
+    return max(vals) if vals else None
+
+
+# -- the medium lane (dsp.py; §4) ---------------------------------------------------------------------------------------
+MUSIC_RHYTHM = "music.rhythm"      # RhythmData, one per medium frame (10 Hz); want-only (bus: WANT_ONLY + this tuple)
+WANT_ONLY_STAGE4: tuple[str, ...] = (MUSIC_RHYTHM,)
+RHYTHM_HZ = 10.0
+CONTEXT_HZ = 1.0                   # music.context
+
+
+class RhythmData(TypedDict):
+    """music.rhythm and dsp.Features.rhythm(): the medium lane, one frame per 100 ms of stream time (README S4.6 has
+    every formula). Gated values are x the loudness gate; the rest are raw."""
+    t_ms: float                        # acoustic time of the frame's last sample
+    stream: str
+    chroma12: list[float]              # C..B: the harmonic part's chroma this frame, max-normalised (all 0 when silent)
+    chroma12_avg: list[float]          # the same, mean over the last 1 s (structure's fallback descriptor)
+    harmonic_db: float                 # the harmonic part's power, dBFS (floored -120)
+    percussive_ratio: float            # 0..1: P^2 / (H^2 + P^2) over the last 1 s, 30 Hz-8 kHz
+    harm_change: float                 # 0..1: mean over 4 s of 1 - cos(chroma now, chroma 0.3 s before); while the
+                                       # clock's gate is beat|dmx, beat-synchronous (each beat against the one before)
+    onset_rate: float                  # onsets per second over the last 4 s (ungated)
+    density: float                     # 0..1: onset_rate, rolling-percentile normalised, x gate
+    pulse_clarity: float               # 0..1: the onset envelope's autocorrelation peak (0.25-1.5 s lags)
+    swing: Optional[float]             # 1 (straight) .. 3; None unless the clock gate is beat|dmx with >= 4 off-beats
+    syncopation: Optional[float]       # 0..1; None unless the clock gate is beat|dmx
+    low_db: float                      # 20-250 Hz (the sub and bass bands' slow envelopes), dB re a full-scale sine
+    mfcc13: list[float]                # c1..c13 of the 40-band log-mel, mean over the last 1 s
+    gate: float                        # the loudness gate now (FeaturesData.gate)
+
+
+# -- sections and the context (structure.py; §6.1, §6.2, §11.1) ---------------------------------------------------------
+SECTION_PHASES: tuple[str, ...] = ("calm", "build", "peak", "drop", "breakdown", "outro")
+MUSIC_EVENT_KINDS: tuple[str, ...] = ("section_change", "build", "drop_armed", "drop", "breakdown", "track_change")
+EVENT_KINDS_STAGE4: tuple[str, ...] = ("breakdown", "track_change")    # room.event kinds beyond EVENT_KINDS
+GENRE_VIA: tuple[str, ...] = ("ml", "ml+listener", "listener", "none")
+
+
+class GenreReading(TypedDict):
+    """music.context's genre (structure.genre_reading; README S4.8 "The genre rule")."""
+    word: Optional[str]                # a vocab.yaml genre word, or None (unknown, or a parent genre_map doesn't map)
+    conf: float                        # 0..1
+    parent: Optional[str]              # the leading Discogs parent (smoothed, with hysteresis), or None
+    parent_p: float                    # its smoothed activation
+    via: str                           # GENRE_VIA
+
+
+class SectionInfo(TypedDict):
+    """music.context's section. ``phase`` is a SECTION_PHASES word (room.direction's SectionRef.phase stays its 0..1
+    position)."""
+    id: int                            # +1 per section in this process (a confirmed or predicted boundary, a drop, a
+                                       # track change); 0 is the first
+    letter: Optional[str]              # "A", "B", ... per track; a repeat gets its first time's letter; None until
+                                       # identified (structure.identify_after_s)
+    repeat_of: Optional[int]           # the id of the section it repeats, or None
+    novelty: float                     # the boundary detector's curve now (1 - cos), >= 0
+    phase: str                         # SECTION_PHASES
+    build_progress: float              # 0..1 (0 outside a build)
+    drop_eta_beats: Optional[float]    # beats to the predicted drop line (a build with a grid), else None
+    bars_in_section: Optional[int]     # bars since the section began (None without a bar grid)
+    started_ms: float                  # acoustic ms the section began (the snapped boundary)
+    expected_bars: Optional[int]       # a known repeat's length, from its first time through
+    chorus: bool                       # its letter is the probable chorus (most repeated x most energetic)
+    label: Optional[str]               # the listener's SECTION_LABELS word when its verdict for this section agrees
+
+
+class TrackInfo(TypedDict):
+    id: int                            # +1 per track change (0: since start)
+    changed: bool                      # True only in the first music.context after a change (compare ids)
+    age_s: Optional[float]             # since this track began
+    via: Optional[str]                 # "sonos" | "dsp" | None (the first track)
+
+
+class MusicContext(TypedDict):
+    """music.context, 1 Hz (§11.1), and ctx.music_context(). Numbers are smoothed (structure.tags_tau_s) and frozen
+    while CED music is under genre_map.freeze_below_music; None where no source has them."""
+    t_ms: float
+    stream: Optional[str]
+    source: str                        # what sections run on: "ml" (embeddings) | "dsp" (chroma + MFCC) | "none"
+    genre: GenreReading
+    moods: list[str]                   # vocab moods: the listener's (conf >= 0.6), else []
+    instruments: list[str]             # the ML's top labels while fresh, else the listener's
+    vocal: Optional[float]             # voice_p
+    dance: Optional[float]
+    arousal: Optional[float]
+    engagement: Optional[float]
+    bright: Optional[float]
+    acoustic: Optional[float]
+    key: Optional[str]                 # KEY_NAMES
+    mode: Optional[str]
+    key_strength: float
+    key_via: Optional[str]             # "midi" (the piano) | "ml" (Essentia) | "audio" (music.harmony) | None
+    talking: Optional[bool]            # situations' talking reading
+    ced: Optional[dict[str, float]]    # CED_GROUPS -> the mean of the last 3 s, or None
+    section: SectionInfo
+    track: TrackInfo
+    ml: dict[str, Any]                 # for the console and logs: {"state", "styles_top3", "moods_top5",
+                                       #  "instruments_top5", "ages"}
+
+
+class MusicEventData(EventData):
+    """room.event from structure.py (MUSIC_EVENT_KINDS), also handed to every ctx.on_music_event. ``at_ms`` is when
+    outputs act: a confirmed section_change's next bar line (>= structure.events.min_lead_s ahead), a predicted one's
+    or drop_armed's line; build, drop, breakdown and track_change report what was heard (at_ms in the past)."""
+    section_id: NotRequired[int]
+    letter: NotRequired[Optional[str]]
+    repeat_of: NotRequired[Optional[int]]
+    predicted: NotRequired[bool]       # section_change: a known repeat's predicted line
+    boundary_ms: NotRequired[float]    # section_change: acoustic ms the section actually began
+    phase: NotRequired[str]            # SECTION_PHASES
+    build_progress: NotRequired[float]
+    eta_beats: NotRequired[Optional[float]]   # drop_armed: beats from t_ms to at_ms; None: the line is off (``detail``
+                                       # "disarmed": the build ended over drop.disarm_bars before it, or a new
+                                       # track; "missed": the line passed with no drop), at_ms = that line
+    track_id: NotRequired[int]
+    via: NotRequired[str]              # track_change: "sonos" | "dsp"

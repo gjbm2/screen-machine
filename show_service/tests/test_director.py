@@ -46,6 +46,7 @@ vibes:
     level: [0.5, 1.0]
     floor: 0.1
     accents: downbeat
+    peak_tokens_per_hour: 2
     chroma_max: 0.37
     lamp_chroma_max: 0.05
     key_cct: 2700
@@ -141,9 +142,13 @@ class Rig:
         self.piano: dict | None = None
         self.room: dict | None = None
         self.situations: dict | None = None
+        self.sec: dict | None = None                       # Stage 4: structure's section (None: no structure)
+        self.rhythm: dict | None = None
         self.persisted = 0
         self.notified = 0
         ctx = contract.BrainContext(publish=self.pubs.append)
+        ctx.music_context = lambda: music_context(self.t, self.sec) if self.sec is not None else None
+        ctx.rhythm = lambda: self.rhythm
         ctx.features = lambda: feats(self.t, self.energy) if self.feat is None else self.feat
         ctx.clock = lambda: clock_body(self.t, gate=self.gate) if self.clock_on else None
         ctx.piano = lambda: self.piano
@@ -182,6 +187,40 @@ class Rig:
 
     def colours(self) -> dict:
         return self.d.palette_fn(self.t + 100.0)                   # after any glide
+
+    def event(self, kind: str, at_s: float, **kw) -> None:
+        """structure's room.event, handed over as structure does (ctx.on_music_event)."""
+        self.d.on_music_event({"kind": kind, "at_ms": at_s * 1000.0, "t_ms": self.t * 1000.0, "seq": 1, **kw})
+
+    def run_to(self, t_s: float, each=None) -> None:
+        self.run(max(0.0, t_s - self.t), each)
+
+    def gobos(self) -> int:
+        return len([c for c in self.calls if c[0] == "gobo"])
+
+    def looks(self) -> list[dict]:
+        return [e for e in self.of(contract.ROOM_EVENT) if e["kind"] == "look_change"]
+
+    def next_bar(self, lead: float = 1.1) -> float:
+        bar = 4 * BEAT
+        return math.ceil((self.t + lead) / bar - 1e-9) * bar
+
+
+def music_context(t_s: float, sec: dict) -> dict:
+    """A contract.MusicContext with ``sec``'s section fields (id, letter, phase, bp, bars, expected, started_s, label,
+    track)."""
+    return {"t_ms": t_s * 1000.0, "stream": "test", "source": "ml",
+            "genre": sec.get("genre") or {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none"},
+            "moods": [], "instruments": [], "vocal": None, "dance": None, "arousal": None, "engagement": None,
+            "bright": None, "acoustic": None, "key": None, "mode": None, "key_strength": 0.0, "key_via": None,
+            "talking": False, "ced": None,
+            "section": {"id": sec.get("id", 0), "letter": sec.get("letter"), "repeat_of": None, "novelty": 0.1,
+                        "phase": sec.get("phase", "calm"), "build_progress": sec.get("bp", 0.0),
+                        "drop_eta_beats": None, "bars_in_section": sec.get("bars"),
+                        "started_ms": sec.get("started_s", t_s) * 1000.0, "expected_bars": sec.get("expected"),
+                        "chorus": False, "label": sec.get("label")},
+            "track": {"id": sec.get("track", 0), "changed": False, "age_s": 10.0, "via": None},
+            "ml": {"state": "running", "styles_top3": [], "moods_top5": [], "instruments_top5": [], "ages": {}}}
 
 
 @pytest.fixture
@@ -776,8 +815,10 @@ def _names_from_config() -> set[str]:
 
 
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
-                                    "listener.py", "sources.py", "brain.py"])
+                                    "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
+    if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
+        pytest.skip(f"{module} isn't there yet")
     names = _names_from_config()
     tree = ast.parse((SRC / module).read_text())
     doc_nodes = set()
@@ -829,3 +870,526 @@ def test_snapshot_has_the_readme_keys_and_serialises(tmp_path):
     json.dumps(r.d.persist())
     json.dumps(r.d.catalog())
     assert set(r.d.catalog()) == set(contract.VibesCatalog.__annotations__)
+
+
+@pytest.mark.parametrize("module", ["director.py", "situations.py", "listener.py", "api.py", "mllink.py",
+                                    "structure.py"])
+def test_no_genre_family_names_in_code(module):
+    """README S4.0: Discogs parent -> vocab genre is config (show.yaml genre_map); no code names a parent."""
+    if not (SRC / module).exists():
+        pytest.skip(f"{module} isn't there yet")
+    sh = yaml.safe_load(contract.SHOW_FILE.read_text())
+    parents = set(contract.DISCOGS_PARENTS) | set(((sh.get("genre_map") or {}).get("parents") or {}).keys())
+    hits = [n.value for n in ast.walk(ast.parse((SRC / module).read_text()))
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in parents]
+    assert hits == [], f"{module} names genre families in code: {sorted(set(hits))}"
+
+
+# -- Stage 4: sections, builds, drops, peak tokens (README S4.8) ---------------------------------------------------------
+LATE_OK = {"director": {**SETTINGS["director"], "sections": {"max_late_bars": 4, "express_gain": 0.5}}}
+
+
+def stage4_rig(tmp_path, settings_extra: dict | None = None, vibe: str = "alpha") -> Rig:
+    settings = json.loads(json.dumps(SETTINGS))
+    for k, v in (settings_extra or {}).items():
+        settings[k] = json.loads(json.dumps(v))
+    r = Rig(tmp_path, clock=True, settings=settings)
+    r.sec = {"id": 0, "letter": None, "phase": "calm", "track": 0, "started_s": r.t}
+    r.d.set_target(vibe)
+    r.run(10.0)                                                       # past the entry fade
+    return r
+
+
+def test_sections_land_looks_and_a_predicted_repeat_restores_its_letters_look(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    g0, n0 = r.gobos(), len(r.looks())
+    # section 1, confirmed 5 s after it began: within max_late_bars (4 bars = 8 s here), so it lands at its at_ms
+    at = r.next_bar()
+    r.sec.update(id=1, started_s=r.t - 5.0)
+    r.event("section_change", at, section_id=1, letter=None, repeat_of=None, predicted=False,
+            boundary_ms=(r.t - 5.0) * 1000.0)
+    r.run_to(at + 0.15)
+    ev = r.looks()[-1]
+    assert len(r.looks()) == n0 + 1 and ev["detail"] == "section" and ev["at_ms"] == pytest.approx(at * 1000.0)
+    assert r.gobos() == g0 + 1                                        # a vibe plays: the director steps GOBO
+    look_a = r.d.look["look_id"]
+    r.sec["letter"] = "A"                                             # structure names it: remembered
+    r.run(1.0)
+    mem = r.d.snapshot()["sections"]["memory"]
+    assert mem["A"] == {"palette": "neon", "variation": r.d.variation, "look_id": look_a}
+    var_a = r.d.variation
+    r.d.action("next")                                                # a person's look: the palette moves on
+    r.run(3.0)
+    assert r.d.look["palette"]["name"] == "rainbow" and r.gobos() == g0 + 2   # the director's own: GOBO
+    # section 2 (B)
+    at = r.next_bar()
+    r.sec.update(id=2, letter=None, started_s=r.t - 4.0)
+    r.event("section_change", at, section_id=2, letter=None, predicted=False, boundary_ms=(r.t - 4.0) * 1000.0)
+    r.run_to(at + 0.15)
+    r.sec["letter"] = "B"
+    r.run(1.0)
+    assert r.d.snapshot()["sections"]["memory"]["B"]["palette"] == "rainbow"
+    assert r.d.variation != var_a
+    # a known repeat of A, predicted on its line: A's look comes back
+    line = r.next_bar(2.0)
+    r.event("section_change", line, section_id=3, letter="A", repeat_of=1, predicted=True, boundary_ms=line * 1000.0)
+    r.run(0.1)
+    assert r.d.pending["reason"] == "repeat" and r.d.pending["recall"]["palette"] == "neon"
+    r.run_to(line + 0.15)
+    assert r.d.look["palette"]["name"] == "neon" and r.d.variation == var_a
+    assert r.looks()[-1]["detail"] == "repeat" and r.gobos() == g0 + 4      # one per look that landed
+    st = r.d.snapshot()["sections"]["stats"]
+    assert st["looks"] == 3 and st["recalled"] == 1 and st["events"]["section_change"] == 3
+    logged = [json.loads(x) for x in r.log_path.read_text().splitlines()]
+    assert [x["reason"] for x in logged if x["kind"] == "look_change" and x.get("section")] == ["section", "section",
+                                                                                              "repeat"]
+    assert all(x["context"]["track"] == 0 for x in logged if x["kind"] == "look_change" and x.get("section"))
+
+
+def test_a_late_confirmed_boundary_keeps_the_look_and_moves_the_level(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.energy = 0.3
+    r.run(30.0)
+    switch = r.t
+    r.energy = 0.55                                                   # (the level stays inside the vibe's range)
+    r.run(6.0)
+    n0, look0 = len(r.looks()), r.d.look["look_id"]
+    at = r.next_bar()                                                 # >= 6 s after the boundary: 3 bars late
+    r.event("section_change", at, section_id=1, letter=None, predicted=False, boundary_ms=switch * 1000.0)
+    r.run(0.1)
+    assert r.d.pending is None
+    r.run(0.2)
+    x_part = r.d._express_now(r.t)
+    r.run(1.0)                                                        # within one beat (0.5 s) it is all there
+    x = r.d._express_now(r.t)
+    assert 0.0 < x_part <= x and x == pytest.approx(0.5 * (r.d._mean_e(switch, r.t - 1.0) - r.d._mean_e(
+        switch - 30.0, switch)), abs=0.1)
+    r.run_to(at + 1.0)
+    assert len(r.looks()) == n0 and r.d.look["look_id"] == look0      # the look is kept
+    u = r.d.music["u"]
+    look = r.d.look
+    assert look["level"] == pytest.approx(round(dmod._lerp([0.5, 1.0], dmod._c01(u + x)), 3), abs=2e-3)
+    assert look["level"] > dmod._lerp([0.5, 1.0], u) and look["accents"]["density"] > round(u, 3)
+    assert look["level"] <= 1.0                                       # within the vibe's range
+    kept = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"section_kept"' in z]
+    assert kept and kept[-1]["why"].startswith("late") and kept[-1]["express"] > 0
+    assert r.d.snapshot()["sections"]["stats"]["expressed"] == 1
+
+
+def test_time_vibes_show_a_section_inside_the_look(tmp_path):
+    """A Dinner-like vibe (change_looks time) and a confirmed section: no look and no GOBO step (the screens keep
+    their scene: structure leaves GOBO to the director while a vibe plays)."""
+    r = stage4_rig(tmp_path, LATE_OK, vibe="gamma")
+    n0, g0 = len(r.looks()), r.gobos()
+    at = r.next_bar()
+    r.event("section_change", at, section_id=1, letter=None, predicted=False,
+            boundary_ms=(r.t - 1.0) * 1000.0)
+    r.run(1.0)
+    assert r.d.pending is None and len(r.looks()) == n0
+    r.run_to(at + 1.0)
+    assert r.gobos() == g0
+    kept = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"section_kept"' in z]
+    assert "by time" in kept[-1]["why"]
+
+
+def test_keep_this_look_holds_the_screens_through_a_section(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.d.action("keep")
+    r.run(0.5)
+    n0, g0 = len(r.looks()), r.gobos()
+    at = r.next_bar()
+    r.event("section_change", at, section_id=1, letter=None, predicted=False, boundary_ms=(r.t - 1.0) * 1000.0)
+    r.run_to(at + 1.0)
+    assert len(r.looks()) == n0 and r.gobos() == g0                  # no look, no scene change
+    kept = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"section_kept"' in z]
+    assert kept[-1]["why"] == "Keep this look holds"
+
+
+def test_track_change_clears_the_memory_and_moves_the_palette_on(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.d._sec_mem["A"] = {"palette": "neon", "variation": 0, "look_id": "L1"}
+    g0 = r.gobos()
+    r.sec.update(track=1, id=5, letter=None, started_s=r.t)
+    r.event("track_change", r.t, track_id=1, via="sonos")
+    r.run(0.1)
+    assert r.d.snapshot()["sections"]["memory"] == {} and r.d.pending["reason"] == "track"
+    r.run(3.0)
+    assert r.d.look["palette"]["name"] == "rainbow" and r.gobos() == g0 + 1
+    assert r.d.snapshot()["sections"]["stats"]["events"]["track_change"] == 1
+    r.event("track_change", r.t, track_id=1, via="sonos")          # the same track again: nothing
+    r.run(3.0)
+    assert r.d.look["palette"]["name"] == "rainbow"
+
+
+def test_the_silence_test_stands_down_while_structure_runs(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.feat = {"t_ms": r.t * 1000.0, "energy": 0.6, "gate": 0.01}       # silence...
+    r.run(9.0)
+    r.feat = None                                                     # ...then sound: no song change from us
+    r.run(1.0)
+    assert r.d._song_change is False
+    r.sec = None                                                      # no structure: the fallback test is back
+    r.feat = {"t_ms": r.t * 1000.0, "energy": 0.6, "gate": 0.01}
+    r.run(9.0)
+    r.feat = None
+    r.run(1.0)
+    assert r.d._song_change is True
+
+
+def test_build_steps_the_subdivision_raises_saturation_and_narrows_the_lamps(tmp_path):
+    r = stage4_rig(tmp_path)
+    sat0 = r.d.look["saturation"]
+    assert r.d.look["accents"]["subdivision"] == 1.0
+    r.sec.update(phase="build", bp=0.0)
+    r.event("build", r.t, section_id=0, phase="build", build_progress=0.0)
+    r.run(0.2)
+    assert r.d.look["accents"]["subdivision"] == 0.5
+    r.run(8.0)                                                        # 4 bars
+    assert r.d.look["accents"]["subdivision"] == 0.25
+    r.sec["bp"] = 0.8                                                 # past half way: every 2 bars
+    r.run(4.2)
+    assert r.d.look["accents"]["subdivision"] == 0.125
+    assert r.d.look["saturation"] > sat0 and r.d.look["saturation"] == pytest.approx(
+        sat0 + (1.0 - sat0) * 0.8, abs=0.02)
+    r.sec.update(phase="calm", bp=0.0)
+    r.run(2.0)
+    assert r.d.look["accents"]["subdivision"] == 1.0
+    # narrowing: a base-role lamp moves toward the accent colour
+    look_pal = r.d.look["palette"]
+    vs = r.d.vs
+    dev = {"placement": None, "screen": None}
+    rc = {"palette_role": "base", "follow_screen": False, "chroma_max": "chroma_max", "motion": False}
+    acc = pal.to_oklab(pal.full(pal.rgb_of(look_pal["roles"]["accent"]["hex"])))
+    c0 = r.d._lamp_colour(dev, rc, look_pal, {}, vs, 1.0, 0.0, 0.0, 0, r.t, 0.0)
+    c1 = r.d._lamp_colour(dev, rc, look_pal, {}, vs, 1.0, 0.0, 0.0, 0, r.t, 0.6)
+    assert math.dist(pal.to_oklab(c1), acc) < math.dist(pal.to_oklab(c0), acc)
+
+
+def test_no_grammar_without_beat_lock_or_a_beat(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.gate = "dmx"
+    r.sec.update(phase="build", bp=0.5)
+    r.run(1.0)
+    assert r.d.look["accents"]["subdivision"] == 1.0
+    r.event("drop_armed", r.next_bar(3.0), section_id=0, eta_beats=8)
+    r.run(0.1)
+    assert r.d._armed is None and r.d.pending is None
+
+
+def test_an_armed_drop_dips_then_cuts_and_hits_the_lamps_never_the_screens(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.sec.update(phase="build", bp=0.5)
+    r.event("build", r.t - 4.0, section_id=0, phase="build", build_progress=0.3)
+    r.run(0.5)
+    line = r.next_bar(5.0)                                            # 8+ beats ahead
+    g0, n0 = r.gobos(), len(r.looks())
+    r.event("drop_armed", line, section_id=0, eta_beats=(line - r.t) / BEAT)
+    r.run(0.1)
+    assert r.d.pending["reason"] == "drop" and r.d.pending["transition"]["style"] == "cut"
+    assert r.d.snapshot()["sections"]["tokens"] == {"per_hour": 2, "left": 1, "spent_last_hour": 0}   # reserved
+    level0 = r.d.look["level"]
+    screens_ok = []
+
+    def check_screens(rig):
+        pf = rig.d.palette_fn(rig.t)
+        if pf:
+            screens_ok.append(all(max(pf[k]) == pytest.approx(1.0) for k in ("tv.left", "tv.right")))
+
+    r.run_to(line - 2 * BEAT * 4 / 2 - 0.3, check_screens)            # before the last bar: no dip yet
+    assert all(x["level"] == pytest.approx(max(0.1, level0), abs=0.06) for x in r.d.look["lamps"].values())
+    r.run_to(line - 0.3, check_screens)                               # the last bar: the lamps dip
+    assert all(x["level"] == 0.25 for x in r.d.look["lamps"].values())
+    assert all(max(r.d.palette_fn(r.t)[k]) == pytest.approx(0.25, abs=1e-3) for k in r.d.look["lamps"])
+    hit = r.d._hit
+    assert hit is not None and hit[0] == pytest.approx(line) and set(hit[2]) == set(r.d.look["lamps"])
+    r.sec.update(phase="drop", bp=0.0)
+    r.run_to(line + 0.05, check_screens)
+    pf = r.d.palette_fn(line + 0.01)
+    for did in r.d.look["lamps"]:
+        assert pf[did] == pytest.approx(hit[2][did]) and max(pf[did]) == pytest.approx(1.0)   # the unison hit, full
+    washes = {tuple(round(v, 3) for v in pf[d]) for d in ("lamp.one", "lamp.three", "lamp.four")}
+    assert len(washes) == 1                                           # one colour across a role
+    for k in ("tv.left", "tv.right"):                                 # screens: the look's colour, never the hit
+        assert k not in hit[2] and max(pf[k]) == pytest.approx(1.0)
+    assert r.looks()[-1]["detail"] == "drop" and r.looks()[-1]["at_ms"] == pytest.approx(line * 1000.0)
+    assert len(r.looks()) == n0 + 1 and r.gobos() == g0 + 1 and r.d.look["transition"]["style"] == "cut"
+    assert r.d.snapshot()["sections"]["tokens"] == {"per_hour": 2, "left": 1, "spent_last_hour": 1}
+    r.event("drop", line + 0.1, section_id=1, strength=0.9)          # the drop heard at the line: nothing more
+    r.run(1.5, check_screens)
+    assert r.d.snapshot()["sections"]["stats"]["tokens_spent"] == 1
+    after = r.d.palette_fn(r.t + 0.5)
+    assert all(after[d] != pytest.approx(hit[2][d]) or max(after[d]) < 1.0 for d in ("lamp.two",))
+    assert all(x["level"] > 0.25 for x in r.d.look["lamps"].values())
+    assert screens_ok and all(screens_ok)
+    spent = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"token"' in z]
+    assert [x["decision"] for x in spent] == ["reserved", "spent"]
+
+
+def test_peak_tokens_are_a_sliding_hour_and_only_a_drop_after_a_build_spends_one(tmp_path):
+    r = stage4_rig(tmp_path)
+
+    def drop(after_build: bool) -> None:
+        if after_build:
+            r.event("build", r.t - 8.0, section_id=0, phase="build", build_progress=0.5)
+            r.run(0.2)
+        r.sec["phase"] = "drop"
+        r.event("drop", r.t - 0.1, section_id=1, strength=0.8)
+        r.run(0.1)
+
+    drop(after_build=False)                                           # no build before it: shows inside the look
+    assert r.d._drop_inside_s is not None and r.d.look["accents"]["density"] == 1.0
+    assert r.d.look["saturation"] == pytest.approx(1.0)               # the vibe's top (neutral [0.5, 1.0])
+    r.sec["phase"] = "calm"
+    r.run(3.0)
+    assert r.d._drop_inside_s is None
+    n0 = len(r.looks())
+    drop(after_build=True)                                            # spent: a hit at once, a cut at the next bar
+    assert r.d._hit is not None and r.d._hit[0] == pytest.approx(r.t - 0.1, abs=0.11)
+    assert r.d.pending["reason"] == "drop"
+    r.sec["phase"] = "calm"
+    r.run(3.0)
+    assert len(r.looks()) == n0 + 1
+    drop(after_build=True)
+    r.sec["phase"] = "calm"
+    r.run(3.0)
+    drop(after_build=True)                                            # the third in the hour: refused
+    assert r.d.snapshot()["sections"]["tokens"] == {"per_hour": 2, "left": 0, "spent_last_hour": 2}
+    assert r.d.pending is None and r.d._drop_inside_s is not None
+    r.sec["phase"] = "calm"
+    r.run(1.0)
+    r.t += 3600.0                                                     # an hour on: the first spends have aged out
+    r.wall += 3600.0
+    r.run(1.0)
+    assert r.d.snapshot()["sections"]["tokens"]["left"] == 2
+    drop(after_build=True)
+    assert r.d.pending["reason"] == "drop"
+    tok = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"token"' in z]
+    assert [x["decision"] for x in tok] == ["refused", "spent", "spent", "refused", "spent"]
+    assert tok[0]["why"].startswith("no build") and tok[3]["why"] == "no token left this hour"
+
+
+def test_a_feel_without_tokens_never_cuts_on_a_drop(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.d.set_target({"vibe": "alpha", "overrides": {"peak_tokens_per_hour": 0}})
+    r.run(1.0)
+    r.event("build", r.t - 5.0, section_id=0)
+    r.event("drop_armed", r.next_bar(4.0), section_id=0, eta_beats=8)
+    r.run(0.2)
+    assert r.d._armed is None and r.d.pending is None
+    tok = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"token"' in z]
+    assert tok[-1]["decision"] == "refused" and "unset" in tok[-1]["why"]
+
+
+def test_a_line_called_off_releases_its_token_and_a_missed_one_refunds_it(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.event("build", r.t - 4.0, section_id=0, phase="build", build_progress=0.3)
+    r.run(0.5)
+    line = r.next_bar(5.0)
+    r.event("drop_armed", line, section_id=0, eta_beats=(line - r.t) / BEAT)
+    r.run(0.1)
+    assert r.d._armed is not None and r.d.pending["reason"] == "drop"
+    n0, g0 = len(r.looks()), r.gobos()
+    r.event("drop_armed", line, section_id=0, eta_beats=None, detail="disarmed")   # the build gave out
+    r.run(0.1)
+    assert r.d._armed is None and r.d.pending is None and r.d._hit is None
+    assert r.d.snapshot()["sections"]["tokens"]["left"] == 2               # the reservation is back
+    r.run_to(line + 0.5)
+    assert len(r.looks()) == n0 and r.gobos() == g0                        # no dip, no cut, no scene change
+    # armed again; this time the line lands (the predictive landing) but no drop comes: the token comes back
+    line = r.next_bar(5.0)
+    r.event("drop_armed", line, section_id=0, eta_beats=(line - r.t) / BEAT)
+    r.run_to(line + 0.2)
+    assert r.looks()[-1]["detail"] == "drop" and r.gobos() == g0 + 1
+    assert r.d.snapshot()["sections"]["tokens"]["spent_last_hour"] == 1
+    r.run(1.0)
+    r.event("drop_armed", line, section_id=0, eta_beats=None, detail="missed")
+    r.run(0.1)
+    toks = r.d.snapshot()["sections"]
+    assert toks["tokens"]["spent_last_hour"] == 0 and toks["stats"]["tokens_refunded"] == 1
+    tok = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"token"' in z]
+    assert [x["decision"] for x in tok] == ["reserved", "released", "reserved", "spent", "refunded"]
+
+
+def test_room_direction_takes_the_local_mls_genre_over_the_listeners(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.sec["genre"] = {"word": "jazz", "conf": 0.8, "parent": "Jazz", "parent_p": 0.8, "via": "ml"}
+    r.run(1.0)
+    assert r.d.direction["genre"] == "jazz" and r.d.snapshot()["words_from"]["genre"] == "ml"
+    r.sec["genre"] = {"word": "jazz", "conf": 0.3, "parent": "Jazz", "parent_p": 0.3, "via": "ml"}   # not sure yet
+    r.run(1.0)
+    assert r.d.direction["genre"] != "jazz" or r.d.snapshot()["words_from"]["genre"] != "ml"
+    r.sec = None                                                      # no structure: Stage 3's words
+    r.run(4.0)
+    assert r.d.snapshot()["words_from"]["genre"] != "ml"
+
+
+def test_breakdown_lifts_the_floor_slows_and_desaturates_the_lamps(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.run(5.0)
+    before = r.d.look
+    r.sec["phase"] = "breakdown"
+    r.event("breakdown", r.t - 4.0, section_id=0)
+    r.run(0.2)
+    now = r.d.look
+    assert now["floor"] == pytest.approx(before["floor"] + 0.1)
+    assert now["motion"]["speed"] == pytest.approx(before["motion"]["speed"] * 0.5, abs=0.01)
+    assert now["saturation"] == pytest.approx(before["saturation"] * 0.8, abs=0.01)
+    assert now["screens"] == before["screens"]                       # screens untouched
+    r.sec["phase"] = "calm"
+    r.run(2.0)
+    assert r.d.look["floor"] == pytest.approx(before["floor"])
+
+
+def test_direction_carries_structures_section_and_the_medium_lanes_density(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.sec.update(id=7, bars=3, expected=8, label="chorus")
+    r.rhythm = {"t_ms": r.t * 1000.0, "density": 0.77}
+    r.run(0.2)
+    r.rhythm["t_ms"] = r.t * 1000.0
+    r.run(0.1)
+    d = r.d.direction
+    assert d["section"] == {"id": 7, "label": "chorus", "phase": 0.375, "bars_in_section": 3}
+    assert d["density"] == 0.77
+    r.run(2.0)                                                        # the rhythm frame goes stale: onsets again
+    assert r.d.direction["density"] != 0.77
+    r.sec = None                                                      # no structure: Stage 3's section ref
+    r.run(4.0)
+    assert r.d.direction["section"]["id"] == r.d.look_n
+
+
+def test_stage4_settings_and_bad_values(tmp_path):
+    settings = json.loads(json.dumps(SETTINGS))
+    settings["director"].update({"sections": {"max_late_bars": 2, "express_gain": 9}, "peaks": {"after_build_s": 12},
+                                 "build": {"dip_level": 0.3, "narrow": "lots"}, "breakdown": "no",
+                                 "screens": {"send_palette": "yes", "palette_transition_s": 2}})
+    r = Rig(tmp_path, settings=settings)
+    cfg = r.d.cfg
+    assert cfg["sections"] == {"max_late_bars": 2.0, "express_gain": 0.5, "phase_hint_s": 1.5}
+    assert cfg["peaks"] == {"after_build_s": 12.0} and cfg["build"]["dip_level"] == 0.3
+    assert cfg["build"]["narrow"] == 0.6 and cfg["screens"] == {"send_palette": True, "palette_transition_s": 2.0}
+    probs = "\n".join(r.d.settings_problems)
+    for frag in ("director.sections.express_gain", "director.build.narrow", "director.breakdown",
+                 "director.screens.send_palette"):
+        assert frag in probs, frag
+
+
+def test_the_screens_get_the_directors_palette_once_per_change(tmp_path):
+    r = Rig(tmp_path, clock=True)
+    patches: list[tuple[str, dict]] = []
+    answers: dict[str, int] = {}
+
+    async def room_patch(path: str, body: dict, timeout: float = 5.0):
+        patches.append((path, body))
+        return answers.get(path, 200), {"error": "not_live"} if answers.get(path, 200) >= 400 else {}
+
+    async def main():
+        r.ctx.loop = asyncio.get_running_loop()
+        r.ctx.room_patch = room_patch
+        r.room = {"current": "x", "stored_restore": {},
+                  "screens": {"wall-left": {"layer": "live", "phase": "live", "cutting": False},
+                              "wall-right": {"layer": "art", "phase": "idle", "cutting": False}}}
+
+        async def run(seconds):
+            for _ in range(int(round(seconds * 10))):
+                r.t = round(r.t + 0.1, 6)
+                r.d.tick(r.t)
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+
+        await run(1.0)
+        assert patches == []                                           # no feel: nothing
+        r.d.set_target("alpha")
+        await run(1.0)
+        assert patches == [("/api/v1/screens/wall-left/look", {"palette": "neon", "palette_transition_s": 4.0})]
+        await run(2.0)
+        assert len(patches) == 1                                       # only on change
+        r.d.set_palette("rainbow")
+        await run(1.0)
+        assert patches[-1][1]["palette"] == "rainbow" and len(patches) == 2
+        answers["/api/v1/screens/wall-right/look"] = 409               # wall-right goes live, but answers not_live
+        r.room["screens"]["wall-right"] = {"layer": "live", "phase": "live", "cutting": False}
+        await run(1.0)
+        assert patches[-1][0] == "/api/v1/screens/wall-right/look" and len(patches) == 3
+        assert "409" in r.d.snapshot()["screens_palette"]["error"]
+        await run(2.0)
+        assert len(patches) == 3                                       # retried only after SCREENS_RETRY_S
+        answers.clear()
+        await run(dmod.SCREENS_RETRY_S)
+        assert patches[-1] == ("/api/v1/screens/wall-right/look", {"palette": "rainbow", "palette_transition_s": 4.0})
+        n = len(patches)
+        r.d.set_palette("art")                                         # an art palette: the screens keep their own
+        await run(1.0)
+        assert len(patches) == n
+        assert "art palette" in r.d.snapshot()["screens_palette"]["why"]
+        r.d.set_palette("rainbow")                                     # back to the palette they have: no resend
+        await run(1.0)
+        assert len(patches) == n
+        r.room["screens"]["wall-left"] = {"layer": "art", "phase": "idle", "cutting": False}
+        await run(0.5)
+        r.room["screens"]["wall-left"] = {"layer": "live", "phase": "entering", "cutting": True}
+        await run(0.5)
+        assert len(patches) == n                                       # never while it cuts
+        r.room["screens"]["wall-left"] = {"layer": "live", "phase": "live", "cutting": False}
+        await run(0.5)
+        assert patches[-1][0] == "/api/v1/screens/wall-left/look"      # back live: it gets the palette again
+        r.d.stop()
+
+    asyncio.run(main())
+    lines = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"screens_palette"' in z]
+    assert lines and all(x["palette"] in ("neon", "rainbow") for x in lines)
+
+
+def test_tick_budget_with_sections_a_build_and_an_armed_drop(tmp_path):
+    r = stage4_rig(tmp_path)
+    r.sec.update(phase="build", bp=0.4, letter="A")
+    r.event("build", r.t, section_id=0)
+    r.event("drop_armed", r.t + 120.0, section_id=0, eta_beats=240)   # armed for the whole run: hit colours each tick
+    r.run(1.0)
+    samples = []
+    for i in range(600):
+        r.t = round(r.t + 0.1, 6)
+        r.sec["bp"] = min(1.0, 0.4 + i / 1000.0)
+        r.energy = 0.3 + 0.6 * ((i // 40) % 2)
+        t0 = time.perf_counter()
+        r.d.tick(r.t)
+        samples.append((time.perf_counter() - t0) * 1000.0)
+    p95 = sorted(samples)[int(0.95 * len(samples))]
+    print(f"\ndirector tick (Stage 4: a build, an armed drop): p50 {statistics.median(samples):.3f} ms, "
+          f"p95 {p95:.3f} ms")
+    assert r.d._armed is not None and r.d.look["accents"]["subdivision"] < 1.0
+    assert p95 < 10.0                                                  # README: <= 1 ms (unloaded)
+
+
+def test_a_section_boundary_at_a_drops_cut_is_the_same_boundary(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.event("build", r.t - 6.0, section_id=0)
+    r.run(0.2)
+    r.sec["phase"] = "drop"
+    r.event("drop", r.t - 0.1, section_id=1, strength=0.9)       # spent: a cut at the next bar
+    r.run(0.1)
+    cut_at = r.d.pending["at_s"]
+    r.run_to(cut_at + 0.2)
+    n = len(r.looks())
+    r.event("section_change", r.next_bar(), section_id=1, letter=None, predicted=False,
+            boundary_ms=(cut_at - 1.0) * 1000.0)
+    r.run(3.0)
+    assert len(r.looks()) == n and r.d.pending is None             # no second look for the same boundary
+    kept = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"section_kept"' in z]
+    assert kept[-1]["why"] == "the same boundary as the drop look"
+
+
+def test_a_new_songs_own_section_boundary_lands_with_the_track_look(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    g0, n0 = r.gobos(), len(r.looks())
+    t_change = r.t
+    r.sec.update(track=1, id=4, letter=None, started_s=t_change)
+    r.event("track_change", t_change, track_id=1, via="sonos")
+    line = r.next_bar(1.1) + 4 * BEAT                                 # structure's GOBO line, a bar after ours
+    r.event("section_change", line, section_id=4, letter=None, predicted=False, boundary_ms=t_change * 1000.0,
+            detail="track")
+    r.run(0.1)
+    assert r.d.pending["reason"] == "track" and r.d.pending["at_s"] == pytest.approx(line)
+    r.run_to(line + 0.2)
+    assert len(r.looks()) - n0 == 2 and r.looks()[-1]["at_ms"] == pytest.approx(line * 1000.0)   # re-announced
+    assert r.d.look["palette"]["name"] == "rainbow" and r.gobos() == g0 + 1     # with the look, on its line
+    assert r.d.snapshot()["sections"]["stats"]["looks"] == 1

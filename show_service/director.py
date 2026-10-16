@@ -29,11 +29,38 @@ Nothing here knows a mode, vibe, lamp or screen by name. Looks change by the vib
 Quiet or talking (with ``relax_on_talk``), and no audio at all (liveness run down after the 10 s hold and the 20 s
 fade, nobody playing): relax to the base look once, then no changes until the sound comes back (§8.5). The behaviour
 thresholds are show.yaml ``director`` keys (DIRECTOR_FALLBACK: the starting points).
-There is no section detector yet (P3), so a confirmed section boundary is never seen: the phrase counter and energy
-novelty stand in. Each change is announced (``room.event`` look_change, at_ms >= 350 ms ahead where it can be); at
-at_ms the new ``room.look``, ``ctx.section_change()`` (GOBO +1, the screens' scene change) and the crossfade. The
-director's own changes keep the palette and move the lamps' roles on (a new allocation); a song change (sound again
-after >= 8 s of silence) or a tap (Next look, a palette pick) moves through the vibe's ranked palettes.
+Each change is announced (``room.event`` look_change, at_ms >= 350 ms ahead where it can be); at at_ms the new
+``room.look``, ``ctx.section_change()`` (GOBO +1, the screens' scene change) and the crossfade. The director's own
+changes keep the palette and move the lamps' roles on (a new allocation); a song change (sound again after >= 8 s of
+silence) or a tap (Next look, a palette pick) moves through the vibe's ranked palettes.
+
+**Sections, builds and drops** (Stage 4, §8.5; README S4.8), from structure's ``ctx.music_context()`` and its events
+(``on_music_event``). Without structure, everything above carries on unchanged.
+  * ``phrase`` vibes: a predicted section_change (a known repeat) lands a look at its at_ms, with that letter's
+    remembered look; a confirmed one lands at its at_ms unless that is more than ``director.sections.max_late_bars``
+    after the boundary, when the section shows inside the look instead (level, accent density and spread move by
+    ``express_gain`` x the energy step from the last section, within the vibe's ranges, over one beat). min_bars
+    doesn't apply. ``time`` and ``between_pieces`` vibes: a section only shows inside the look.
+  * Section memory: per track, letter -> {palette, variation, look_id}; cleared on track_change (which also lets the
+    palette move on, and replaces the silence test as the song-change signal while structure runs).
+  * GOBO: while a vibe plays the director owns it: every look that lands steps it once, whatever caused it
+    (section, repeat, drop, track, its own), and nothing the vibe holds back does (change_looks time or
+    between_pieces, Keep this look, relaxing, a late section, no token). structure steps it only while we are neutral.
+  * Peak tokens: the vibe's ``peak_tokens_per_hour``, a sliding 60-minute budget; only a drop within
+    ``director.peaks.after_build_s`` of a build spends one. A line structure calls off (drop_armed with eta_beats
+    None) releases a reservation ("disarmed") or refunds the token its line spent ("missed": no drop came).
+  * Genre on room.direction: music.context's (the local ML's, fresh, at LLM_CONF), then the listener's, then the
+    vibe's (``words_from`` in the snapshot).
+  * The build -> drop grammar (only with a vibe, beat_lock and the clock's gate ``beat``), lamps and DMX ONLY: during
+    a build the accent subdivision steps 1/2 -> 1/4 -> 1/8, saturation rises toward the vibe's top and the lamps
+    narrow toward the accent colour; an armed drop with a token dips the lamps for the last ``dip_bars``, then cuts
+    to a new look with a unison hit on the lamps at the line; an unarmed drop with a token hits at once and cuts at
+    the first bar line structure.events.min_lead_s ahead (the screens' lead, §5.4); without a token the drop shows
+    inside the look; a breakdown lifts the floor and slows and
+    desaturates the lamps. Screens are never dipped or hit (palette_fn's hit only carries lamps).
+  * Screens' palette (agreed with 2f and 04, 16 Oct): when the look's palette changes to a renderer catalog name, it
+    goes to every live screen through the room (PATCH /api/v1/screens/{id}/look {palette, palette_transition_s});
+    an art palette has no renderer name, so the screens keep their own (the snapshot says so).
 
 **Neutral.** No target, or a vibe that isn't in vibes.yaml: ``palette_fn`` returns None (artnet_out keeps its fixed
 colour), ``set_look_out`` and ``set_gate_ref`` are left alone (put back to their defaults once, if we had moved them),
@@ -111,6 +138,19 @@ TRANSITIONS = {"gentle": {"style": "crossfade", "beats": 4.0, "seconds": 4.0},
                "wild": {"style": "cut", "beats": None, "seconds": 0.05}}
 NEUTRAL_TRANSITION = {"style": "crossfade", "beats": None, "seconds": 3.0}
 SLOW_TRANSITION = {"style": "crossfade", "beats": None, "seconds": 4.0}     # relaxing to the base look
+DROP_CUT = {"style": "cut", "beats": None, "seconds": 0.05}                  # §8.5: a drop is a hard look cut
+# Stage 4 (README S4.8)
+CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
+RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
+E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
+SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
+TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
+STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
+EVENTS_LEAD_S = 1.1                 # show.yaml structure.events.min_lead_s (starting point, §5.4): a drop's or a new
+                                    # song's look (with its GOBO step) lands on a bar at least this far ahead
+SCREEN_LOOK_PATH = "/api/v1/screens/{id}/look"               # room's live look route (PATCH: palette)
+SCREENS_RETRY_S = 15.0              # a screen whose PATCH failed is tried again after this
+MUSIC_EVENTS_MAX = 64
 NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "chroma_max", "motion": False}
 
 #: show.yaml ``director`` keys the code falls back to when the file leaves one out: the design's own numbers (§8.4,
@@ -123,7 +163,24 @@ DIRECTOR_FALLBACK = {
     "transitions": TRANSITIONS, "listener_bias": LLM_TRAJECTORY_BIAS,
     "between_pieces": {"pause_s": PAUSE_S, "damper_up": DAMPER_UP}, "new_song_after_s": SILENCE_SONG_S,
     "novelty": NOVELTY, "variation_bars": float(VARIATION_BARS), "entry_fade_s": ENTRY_FADE_S,
-    "emphasis_edges": list(EMPHASIS_EDGES)}
+    "emphasis_edges": list(EMPHASIS_EDGES),
+    # Stage 4 (§8.5; show.yaml director.sections/peaks/build/breakdown, starting points, the same numbers)
+    "sections": {"max_late_bars": 1.0, "express_gain": 0.5, "phase_hint_s": 1.5},
+    "peaks": {"after_build_s": 30.0},
+    "build": {"step_bars": 4.0, "step_bars_late": 2.0, "narrow": 0.6, "dip_level": 0.25, "dip_bars": 1.0,
+              "hit_beats": 1.0},
+    "breakdown": {"floor_add": 0.1, "motion_scale": 0.5, "saturation_scale": 0.8},
+    # the screens' palette (agreed with 2f and 04, 16 Oct): palette_transition_s is a starting point (the renderer's
+    # own default, LIVE_V1 §1.11); send_palette false turns it off (hot-reloaded)
+    "screens": {"send_palette": True, "palette_transition_s": 4.0}}
+#: Stage 4's show.yaml director keys: section -> key -> (lowest, highest) allowed, or bool
+STAGE4_KEYS: dict[str, dict[str, Any]] = {
+    "sections": {"max_late_bars": (0.0, 64.0), "express_gain": (0.0, 2.0), "phase_hint_s": (0.0, 10.0)},
+    "peaks": {"after_build_s": (0.0, 600.0)},
+    "build": {"step_bars": (0.25, 64.0), "step_bars_late": (0.25, 64.0), "narrow": (0.0, 1.0), "dip_level": (0.0, 1.0),
+              "dip_bars": (0.0, 16.0), "hit_beats": (0.0, 16.0)},
+    "breakdown": {"floor_add": (0.0, 1.0), "motion_scale": (0.0, 1.0), "saturation_scale": (0.0, 1.0)},
+    "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0)}}
 
 
 def _c01(x: float) -> float:
@@ -353,6 +410,35 @@ class Director:
         self._p95_next = 0.0
         self._pview_key: Optional[tuple] = None
         self._pview: dict = {}
+        self._pal_chosen: Optional[str] = None
+        # Stage 4: sections, builds, drops and peak tokens (README S4.8), all on show-brain
+        self._mev: collections.deque = collections.deque(maxlen=MUSIC_EVENTS_MAX)   # structure's events, not yet read
+        self._mc: Optional[dict] = None                  # music.context while fresh
+        self._phase_ctx = contract.SECTION_PHASES[0]     # its section.phase
+        self._phase_hint: Optional[tuple[str, float]] = None   # (phase, since): an event's phase, until the context
+        self._track_id: Optional[int] = None
+        self._ctx_track: Optional[tuple] = None          # (id, via, at_s): a new track id seen in the context
+        self._sec_mem: dict[str, dict] = {}              # letter -> {"palette", "variation", "look_id"} (this track)
+        self._last_boundary_s: Optional[float] = None
+        self._e_hist: collections.deque = collections.deque(maxlen=E_HIST_N)   # (t_s, smoothed energy)
+        self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
+        self._tokens: collections.deque = collections.deque()   # peak-token spends (monotonic s), the last hour
+        self._armed: Optional[dict] = None               # a reserved token at a drop line: {"at_s", "section_id"}
+        self._last_line_s: Optional[float] = None        # the last armed line that spent its token
+        self._hit: Optional[tuple] = None                # (t0, t1, {lamp: rgb}): the unison hit, read by palette_fn
+        self._hit_want: Optional[tuple[float, float]] = None   # an unarmed drop's hit, coloured at the next compose
+        self._build: Optional[dict] = None               # {"start_bar", "idx", "step_bar"}: the subdivision steps
+        self._build_last_s: Optional[float] = None       # the last moment a build was heard
+        self._drop_inside_s: Optional[float] = None      # a drop with no token: it shows inside the look
+        self._cut_mark: Optional[tuple[float, str]] = None   # (at_s, reason) of the last drop/track look: a section
+                                                         # boundary within 2 bars of it is the same boundary
+        self._ev_lead = EVENTS_LEAD_S                    # show.yaml structure.events.min_lead_s
+        self.gobo_steps = 0                              # GOBO steps (ctx.section_change): one per look that lands
+        self.sec_stats: dict[str, Any] = {"events": {k: 0 for k in contract.MUSIC_EVENT_KINDS}, "looks": 0,
+                                          "recalled": 0, "kept": 0, "expressed": 0, "tokens_spent": 0,
+                                          "tokens_refused": 0, "tokens_refunded": 0}
+        self._scr: dict[str, Any] = {"palette": None, "sent": {}, "retry": {}, "busy": False, "why": "no feel is set",
+                                     "error": None, "live": [], "sends": 0}
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -360,7 +446,13 @@ class Director:
     # ================================================================================================================
     def provides(self) -> dict:
         return {"vibe": self._vibe_now, "target": self._target_now, "engaged": self._engaged_now,
-                "on_mode_change": self.on_mode_change}
+                "on_mode_change": self.on_mode_change, "on_music_event": self.on_music_event}
+
+    def on_music_event(self, ev: dict) -> None:
+        """structure's room.event (contract.MusicEventData), on show-brain: queued for this tick (structure ticks
+        first in the same 10 Hz beat)."""
+        if isinstance(ev, dict) and ev.get("kind") in contract.MUSIC_EVENT_KINDS:
+            self._mev.append(ev)
 
     def _vibe_now(self) -> Optional[contract.VibeSettings]:
         return self._vs_pub
@@ -444,7 +536,31 @@ class Director:
                                         if _num(v) is not None}
             else:
                 probs.append("director.listener_bias: not a mapping")
+        for key, spec in STAGE4_KEYS.items():
+            got = d.get(key)
+            if got is None:
+                continue
+            if not isinstance(got, dict):
+                probs.append(f"director.{key}: not a mapping")
+                continue
+            for k2, lim in spec.items():
+                if k2 not in got:
+                    continue
+                v = got[k2]
+                if lim is bool:
+                    if isinstance(v, bool):
+                        cfg[key][k2] = v
+                    else:
+                        probs.append(f"director.{key}.{k2}: {v!r} is not true/false")
+                elif _num(v) is not None and lim[0] <= v <= lim[1]:
+                    cfg[key][k2] = float(v)
+                else:
+                    probs.append(f"director.{key}.{k2}: {v!r} is not a number in {lim[0]:g}..{lim[1]:g}")
         self.cfg = cfg
+        stc = s.get("structure") if isinstance(s.get("structure"), dict) else {}
+        evc = stc.get("events") if isinstance(stc.get("events"), dict) else {}
+        lead = _num(evc.get("min_lead_s"))
+        self._ev_lead = lead if lead is not None and lead > 0 else EVENTS_LEAD_S
         lam = s.get("lamps") if isinstance(s.get("lamps"), dict) else {}
         pr = lam.get("placement_roles") if isinstance(lam.get("placement_roles"), dict) else {}
         roles = lam.get("roles") if isinstance(lam.get("roles"), dict) else {}
@@ -604,11 +720,16 @@ class Director:
             self._dirty()
 
         grid = self._grid(now_s)
+        self._read_context(now_s, vs, grid)
         self._music(now_s, dt, vs, grid)
         cutting = self._cutting(room)
+        self._music_events(now_s, vs, grid)
+        self._armed_tick(now_s, vs, grid)
         self._changes(now_s, vs, grid, cutting)
+        self._phase_tick(now_s, vs, grid)
         self._compose(now_s, vs, known, grid, room)
         self._outputs(now_s, vs, known, grid)
+        self._screens_palette(now_s, room)
         self._tick_ms.append((time.perf_counter() - t0) * 1000.0)
         self._build_snapshot(now_s)
 
@@ -648,6 +769,7 @@ class Director:
                 self.lv = min(1.0, self.lv + dt / RECOVER_S)
             e = _c01(_num(f.get("energy"), 0.0))
             self._e = _ema(self._e, e, dt, TAU_E_S)
+            self._e_hist.append((now_s, self._e))
             self._onset = _ema(self._onset, _c01(_num(f.get("onset"), 0.0)), dt, TAU_ONSET_S)
             self._nov_fast = _ema(self._nov_fast, e, dt, TAU_NOVELTY_FAST_S)
             self._nov_slow = _ema(self._nov_slow, e, dt, TAU_NOVELTY_SLOW_S)
@@ -666,7 +788,8 @@ class Director:
             if self._silent_since is None:
                 self._silent_since = now_s
         else:
-            if self._silent_since is not None and now_s - self._silent_since >= float(self.cfg["new_song_after_s"]):
+            if self._silent_since is not None and now_s - self._silent_since >= float(self.cfg["new_song_after_s"]) \
+                    and self._mc is None:                # with structure, its track_change says it (README S4.8)
                 self._song_change = True
             self._silent_since = None
         h = _call(self.ctx.harmony)
@@ -750,6 +873,7 @@ class Director:
             self._pal = None                              # neutral: artnet_out keeps its fixed colour
             self.pending = None
             self.next_pending = False
+            self._stage4_reset()
             if self._look_out is not None:
                 _call(self.ctx.set_look_out, reset=True)
                 self._look_out = None
@@ -774,6 +898,7 @@ class Director:
         self._look_transition = None
         self._entry_fade = True
         self._art_next = 0.0                               # the first look may come from the art: fetch now
+        self._stage4_reset()
         self._log_event("vibe", {"from": old, "to": name})
 
     # -- when looks change (§8.5) ----------------------------------------------------------------------------------------
@@ -865,9 +990,18 @@ class Director:
 
     def _announce(self, now_s: float, reason: str, by: str, grid: Grid, *, at_s: float,
                   bar: Optional[int] = None, transition: Optional[dict] = None, advance: bool = False,
-                  palette: Optional[str] = None) -> None:
+                  palette: Optional[str] = None, recall: Optional[dict] = None,
+                  section: Optional[dict] = None) -> None:
+        """Announce a look change at ``at_s`` (room.event look_change) and hold it as ``pending``. ``recall``: a
+        remembered look (palette, variation) to bring back; ``section``: the structure event that caused it (its
+        reason is then one of STRUCTURE_REASONS). Whatever the cause, the landing steps GOBO."""
         self.pending = {"at_s": at_s, "reason": reason, "by": by, "advance": advance, "transition": transition,
-                        "palette": palette, "bar": bar}
+                        "palette": palette, "bar": bar, "recall": dict(recall) if recall else None,
+                        "section": dict(section) if section else None,
+                        "structure": reason in STRUCTURE_REASONS and section is not None}
+        if self.pending["structure"] and reason in ("drop", "track"):
+            b = _num((section or {}).get("boundary_ms")) or _num((section or {}).get("at_ms"))
+            self._cut_mark = ((b / 1000.0) if b is not None else at_s, reason)
         ev: contract.EventData = {"kind": "look_change", "at_ms": round(at_s * 1000.0, 1),
                                   "t_ms": round(now_s * 1000.0, 1), "seq": self._next_ev(),
                                   "look_id": f"L{self.look_n + 1}", "detail": reason}
@@ -894,20 +1028,36 @@ class Director:
         self.look_started_s = now_s
         self.look_bar = grid.bar_at(now_s + 1e-6) if grid.ok else None
         self._var_mark_bar, self._var_mark_s = self.look_bar, now_s
+        rec = pd.get("recall")
         if pd.get("palette"):
             self.palette_name = pd["palette"]
+        elif rec is not None and rec.get("palette") in self._candidates(vs):
+            self.palette_name = rec["palette"]           # a returning section gets its look back (§8.5)
         elif pd["advance"] or self._song_change:
             self._advance_palette(vs)
         self._song_change = False
-        if not pd.get("palette") and not pd["advance"]:
+        if rec is not None:
+            self.variation = int(_num(rec.get("variation"), self.variation) or 0)
+        elif not pd.get("palette") and not pd["advance"]:
             self.variation += 1                          # the director's own change: a new allocation of roles
         tr = pd.get("transition") or self._transition(vs)
         self._look_transition = tr
-        _call(self.ctx.section_change)                   # GOBO +1: the screens' scene change
+        # GOBO +1, the screens' scene change: while a vibe plays the director owns it (structure steps it only while
+        # we are neutral), so it comes with every look that actually lands, and with nothing the vibe holds back
+        _call(self.ctx.section_change)
+        self.gobo_steps += 1
         self._fade_s = self._transition_s(tr, grid)
         self._force_look = True
-        self._log_event("look_change", {"look_id": f"L{self.look_n}", "reason": pd["reason"], "by": pd["by"],
-                                        "palette": self.palette_name, "transition": tr})
+        self._express_set(0.0, now_s, 0.0)              # a new look starts without the last section's expression
+        detail = {"look_id": f"L{self.look_n}", "reason": pd["reason"], "by": pd["by"], "palette": self.palette_name,
+                  "transition": tr, "gobo": True}
+        if pd.get("section"):
+            detail["section"] = pd["section"]
+            detail["recalled"] = rec is not None
+            detail["context"] = self._ctx_brief()
+            self.sec_stats["looks"] += 1
+            self.sec_stats["recalled"] += 1 if rec is not None else 0
+        self._log_event("look_change", detail)
 
     def _transition(self, vs: dict) -> dict:
         style = self._words(vs)["transition_style"]
@@ -920,6 +1070,462 @@ class Director:
         if tr.get("beats") and grid.ok and grid.beat_s:
             return float(tr["beats"]) * grid.beat_s
         return float(tr.get("seconds") or TIME_FADE_S)
+
+    # -- Stage 4: sections, builds, drops and peak tokens (§8.5; README S4.8) ---------------------------------------
+    def _stage4_reset(self) -> None:
+        """A vibe entered or left: the section memory, the expression, a reserved token, a build's steps, the
+        screens' palette record all start again (spent tokens stay spent: the budget is per hour, not per vibe)."""
+        if self._armed is not None and self.pending is not None and self.pending.get("reason") == "drop":
+            self.pending = None
+        self._armed = None
+        self._hit = None
+        self._hit_want = None
+        self._build = None
+        self._drop_inside_s = None
+        self._sec_mem.clear()
+        self._x = (0.0, 0.0, 0.0, 0.0)
+        self._cut_mark = None
+        self._scr["sent"].clear()
+        self._scr["retry"].clear()
+
+    def _read_context(self, now_s: float, vs: dict, grid: Grid) -> None:
+        """structure's music.context: fresh (or None), its phase, a new track id, and the section memory's fill."""
+        mc = _call(getattr(self.ctx, "music_context", None))
+        t = _num(mc.get("t_ms")) if isinstance(mc, dict) else None
+        if t is None or now_s - t / 1000.0 > CONTEXT_STALE_S:
+            self._mc = None
+            return
+        self._mc = mc
+        sec = mc.get("section") if isinstance(mc.get("section"), dict) else {}
+        ph = sec.get("phase")
+        self._phase_ctx = ph if ph in contract.SECTION_PHASES else contract.SECTION_PHASES[0]
+        if self._phase_ctx == "build":
+            self._build_last_s = now_s
+        tr = mc.get("track") if isinstance(mc.get("track"), dict) else {}
+        tid = tr.get("id")
+        if isinstance(tid, int) and not isinstance(tid, bool):
+            if self._track_id is None:
+                self._track_id = tid
+            elif tid != self._track_id:                   # handled after this tick's events (theirs is exact)
+                age = _num(tr.get("age_s"))
+                self._ctx_track = (tid, tr.get("via"), now_s - age if age is not None else now_s)
+        # memory: a section, once structure has named it, keeps the look that landed in it (first time through)
+        letter, started = sec.get("letter"), _num(sec.get("started_ms"))
+        if (self._vibe_name is not None and isinstance(letter, str) and letter and letter not in self._sec_mem
+                and started is not None and self.look_started_s is not None
+                and self.look_started_s >= started / 1000.0 - 0.5):
+            self._sec_mem[letter] = {"palette": self.palette_name, "variation": self.variation,
+                                     "look_id": f"L{self.look_n}"}
+            self._log_event("section_memory", {"letter": letter, **self._sec_mem[letter],
+                                               "context": self._ctx_brief()})
+
+    def _ctx_brief(self) -> Optional[dict]:
+        mc = self._mc
+        if mc is None:
+            return None
+        sec = mc.get("section") if isinstance(mc.get("section"), dict) else {}
+        tr = mc.get("track") if isinstance(mc.get("track"), dict) else {}
+        g = mc.get("genre") if isinstance(mc.get("genre"), dict) else {}
+        return {"section": sec.get("id"), "letter": sec.get("letter"), "phase": sec.get("phase"),
+                "build_progress": sec.get("build_progress"), "bars": sec.get("bars_in_section"),
+                "track": tr.get("id"), "genre": g.get("word"), "source": mc.get("source")}
+
+    def _phase_eff(self, now_s: float) -> str:
+        """The music's phase now: an event's (until music.context, at 1 Hz, has caught up), else the context's."""
+        h = self._phase_hint
+        if h is not None and now_s - h[1] < float(self.cfg["sections"]["phase_hint_s"]):
+            return h[0]
+        return self._phase_ctx if self._mc is not None else contract.SECTION_PHASES[0]
+
+    def _grammar(self, vs: dict, grid: Grid) -> bool:
+        """The build -> drop grammar plays only with a vibe, beat_lock and the clock's gate at beat (README S4.8)."""
+        return self._vibe_name is not None and bool(vs["beat_lock"]) and grid.has_grid and grid.gate == "beat"
+
+    def _music_events(self, now_s: float, vs: dict, grid: Grid) -> None:
+        while self._mev:
+            ev = self._mev.popleft()
+            try:
+                self._on_event(ev, now_s, vs, grid)
+            except Exception:                                # a bad event never fails the tick
+                log.debug("music event %r failed", ev.get("kind"), exc_info=True)
+        ct, self._ctx_track = self._ctx_track, None
+        if ct is not None and ct[0] != self._track_id:      # a new track id with no event for it (a missed one)
+            self._on_track(ct[0], ct[1], now_s, vs, grid, at_s=ct[2])
+
+    def _on_event(self, ev: dict, now_s: float, vs: dict, grid: Grid) -> None:
+        kind = ev.get("kind")
+        at_ms = _num(ev.get("at_ms"))
+        if at_ms is None:
+            return
+        self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
+        if kind == "track_change":
+            self._on_track(ev.get("track_id"), ev.get("via"), now_s, vs, grid, at_s=at_ms / 1000.0)
+        elif kind == "section_change":
+            self._on_section(ev, at_ms / 1000.0, now_s, vs, grid)
+        elif kind == "build":
+            self._phase_hint = ("build", now_s)
+            self._build_last_s = now_s
+            if self._build is None and grid.has_grid:
+                self._build_begin(at_ms / 1000.0, grid)
+        elif kind == "breakdown":
+            self._phase_hint = ("breakdown", now_s)
+        elif kind == "drop_armed":
+            self._on_drop_armed(ev, at_ms / 1000.0, now_s, vs, grid)
+        elif kind == "drop":
+            self._phase_hint = ("drop", now_s)
+            self._on_drop(ev, at_ms / 1000.0, now_s, vs, grid)
+
+    def _section_info(self, ev: dict) -> dict:
+        return {k: ev.get(k) for k in ("kind", "section_id", "letter", "repeat_of", "predicted", "at_ms", "boundary_ms",
+                                       "eta_beats", "track_id", "via") if k in ev}
+
+    def _on_track(self, tid: Any, via: Any, now_s: float, vs: dict, grid: Grid, *, at_s: float) -> None:
+        """A song change (structure's track_change, or a new track id in the context): the section memory clears and
+        the palette may move on at the next look change; a phrase vibe changes the look at the next bar."""
+        if isinstance(tid, int) and not isinstance(tid, bool):
+            if tid == self._track_id:
+                return
+            self._track_id = tid
+        n = len(self._sec_mem)
+        self._sec_mem.clear()
+        self._song_change = True
+        info = {"kind": "track_change", "track_id": tid, "via": via, "at_ms": round(at_s * 1000.0, 1)}
+        self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "context": self._ctx_brief()})
+        if self._vibe_name is None or vs["change_looks"] != "phrase" or not grid.ok or self._relaxed \
+                or self.keep_until is not None:
+            return                                        # the palette moves on at the next look change
+        pd = self.pending
+        if pd is not None and pd.get("recall"):
+            pd["recall"] = None                           # the last track's look doesn't come back in this one
+        if pd is not None and (pd["by"] == "human" or pd.get("structure")):
+            return                                        # a pending change takes the song change's palette
+        at, bar = grid.next_line(now_s + max(LOOK_MIN_LEAD_S, self._ev_lead), 1)   # the screens' lead (§5.4)
+        self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info)
+
+    def _on_section(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
+        """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
+        at its at_ms unless that is more than max_late_bars into the section: then it shows inside the look."""
+        info = self._section_info(ev)
+        predicted = bool(ev.get("predicted"))
+        boundary_s = (_num(ev.get("boundary_ms"), at_s * 1000.0) or at_s * 1000.0) / 1000.0
+        prev_b = self._last_boundary_s
+        self._last_boundary_s = boundary_s
+        if self._vibe_name is None:
+            return
+        letter = ev.get("letter") if isinstance(ev.get("letter"), str) and ev.get("letter") else None
+        mode = vs["change_looks"]
+        if mode == "phrase" and not grid.ok:
+            mode = "time"                                 # the clock unsure: as time (§8.5)
+        pd = self.pending
+        cm = self._cut_mark
+        if not predicted and cm is not None and abs(boundary_s - cm[0]) <= 2.0 * (grid.bar_s or 2.0):
+            # the drop's (or the new song's) own boundary: its look already shows it. A pending track look moves to
+            # this section's line (the bar structure announced to the screens), and its GOBO step with it.
+            if pd is not None and pd.get("structure") and pd["reason"] == "track" and at_s > pd["at_s"] \
+                    and at_s - pd["at_s"] <= 2.0 * (grid.bar_s or 2.0):
+                self._announce(now_s, "track", "director", grid, at_s=at_s, bar=pd.get("bar"),
+                               section=pd.get("section"))
+            self.sec_stats["kept"] += 1
+            self._log_event("section_kept", {"section": info, "why": f"the same boundary as the {cm[1]} look",
+                                             "express": None, "context": self._ctx_brief()})
+            return
+        why = None
+        if self._relaxed:
+            why = "relaxed (quiet, talking or no sound)"
+        elif mode != "phrase":
+            why = f"the feel changes looks by {mode}: the section shows inside the look"
+        elif self.keep_until is not None:
+            why = "Keep this look holds"
+        elif pd is not None and pd["by"] == "human":
+            why = "a person's change is pending"
+        elif pd is not None and pd.get("structure") and pd["reason"] in ("drop", "track"):
+            why = f"a {pd['reason']} change is pending"
+        elif not predicted and grid.bar_s and \
+                at_s - boundary_s > float(self.cfg["sections"]["max_late_bars"]) * grid.bar_s + 1e-6:
+            why = "late: more than max_late_bars into the section"
+        if why is not None:
+            x = None if self._relaxed else self._express_section(now_s, boundary_s, prev_b, grid)
+            self.sec_stats["kept"] += 1
+            self.sec_stats["expressed"] += 1 if x is not None else 0
+            self._log_event("section_kept", {"section": info, "why": why, "express": x,
+                                             "late_bars": round((at_s - boundary_s) / grid.bar_s, 2)
+                                             if grid.bar_s else None, "context": self._ctx_brief()})
+            return
+        recall = self._sec_mem.get(letter) if letter else None
+        at = at_s
+        if at < now_s + 0.25:                             # too close to announce: the next bar line
+            at = grid.next_line(now_s + LOOK_MIN_LEAD_S, 1)[0]
+        self._announce(now_s, "repeat" if predicted else "section", "director", grid, at_s=at,
+                       bar=grid.bar_at(at + 1e-6), recall=recall, section=info)
+        self._log_event("section_look", {"section": info, "at_ms": round(at * 1000.0, 1), "recall": recall,
+                                         "context": self._ctx_brief()})
+
+    def _mean_e(self, t0: float, t1: float) -> Optional[float]:
+        vals = [e for t, e in self._e_hist if t0 <= t < t1]
+        return sum(vals) / len(vals) if vals else None
+
+    def _express_section(self, now_s: float, boundary_s: float, prev_b: Optional[float], grid: Grid) -> Optional[float]:
+        """§8.5: the section shows inside the look: level, accent density and spread move by express_gain x (this
+        section's energy - the last one's), over one beat. Returns the new offset (u units), or None (no energy)."""
+        cur = self._mean_e(boundary_s, now_s + 1e-6)
+        start = prev_b if prev_b is not None and prev_b < boundary_s else boundary_s - 30.0
+        last = self._mean_e(start, boundary_s)
+        if cur is None or last is None:
+            return None
+        x = max(-1.0, min(1.0, float(self.cfg["sections"]["express_gain"]) * (cur - last)))
+        self._express_set(x, now_s, grid.beat_s if grid.has_grid and grid.beat_s else 0.5)
+        return round(x, 3)
+
+    def _express_set(self, to: float, now_s: float, dur: float) -> None:
+        self._x = (self._express_now(now_s), float(to), now_s, now_s + max(0.0, dur))
+
+    def _express_now(self, now_s: float) -> float:
+        frm, to, t0, t1 = self._x
+        if now_s >= t1 or t1 <= t0:
+            return to
+        return frm + (to - frm) * (now_s - t0) / (t1 - t0)
+
+    # peak tokens
+    def _tokens_left(self, vs: dict, now_s: float) -> tuple[int, int]:
+        """(the vibe's peak_tokens_per_hour, how many may still be spent in the 60 minutes ending now)."""
+        n = max(0, int(_num(vs.get("peak_tokens_per_hour"), 0) or 0))
+        while self._tokens and now_s - self._tokens[0] >= TOKEN_WINDOW_S:
+            self._tokens.popleft()
+        used = len(self._tokens) + (1 if self._armed is not None else 0)
+        return n, max(0, n - used)
+
+    def _token_refused(self, why: str, info: dict) -> None:
+        self.sec_stats["tokens_refused"] += 1
+        self._log_event("token", {"decision": "refused", "why": why, "event": info, "context": self._ctx_brief()})
+
+    def _no_token_why(self, n: int) -> str:
+        return "the feel has no peak tokens (peak_tokens_per_hour unset)" if n == 0 else "no token left this hour"
+
+    def _on_drop_armed(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
+        """A predicted drop line: with a token, reserve it, dip the lamps before the line, then at the line a hard cut
+        to a new look and a unison hit on the lamps; the token is spent at the line. ``eta_beats`` None: structure
+        called the line off (``_line_off``)."""
+        info = self._section_info(ev)
+        if "eta_beats" in ev and ev["eta_beats"] is None:
+            self._line_off(ev, at_s, info)
+            return
+        if not self._grammar(vs, grid):
+            return
+        if self._armed is not None:                       # the line moved (a clock epoch): the reservation follows
+            self._armed.update(at_s=at_s, section_id=ev.get("section_id"))
+            if self.pending is not None and self.pending.get("reason") == "drop":
+                self._announce(now_s, "drop", "director", grid, at_s=at_s, bar=grid.bar_at(at_s + 1e-6),
+                               transition=dict(DROP_CUT), section=info)
+            self._log_event("token", {"decision": "moved", "event": info})
+            return
+        n, left = self._tokens_left(vs, now_s)
+        if self.keep_until is not None:
+            self._token_refused("Keep this look holds", info)
+            return
+        if left <= 0:
+            self._token_refused(self._no_token_why(n), info)
+            return
+        self._armed = {"at_s": at_s, "section_id": ev.get("section_id"), "since_s": now_s}
+        if self.pending is None or self.pending["by"] != "human":
+            self._announce(now_s, "drop", "director", grid, at_s=at_s, bar=grid.bar_at(at_s + 1e-6),
+                           transition=dict(DROP_CUT), section=info)
+        self._log_event("token", {"decision": "reserved", "event": info, "left": left - 1, "per_hour": n,
+                                  "context": self._ctx_brief()})
+
+    def _line_off(self, ev: dict, at_s: float, info: dict) -> None:
+        """structure called an armed line off (§8.5: only a drop that follows a build spends a token). "disarmed"
+        (the build ended well before it): a reservation is released, with its dip, hit and cut. "missed" (the line
+        passed with no drop): the look already landed on the line (the predictive landing, §5.4), but the token it
+        spent comes back."""
+        why = ev.get("detail") if ev.get("detail") in ("disarmed", "missed") else "disarmed"
+        a = self._armed
+        if a is not None and abs(a["at_s"] - at_s) <= 0.01:
+            self._armed = None
+            self._hit = None
+            if self.pending is not None and self.pending.get("reason") == "drop":
+                self.pending = None
+            self._log_event("token", {"decision": "released", "why": "the build ended before its line"
+                                      if why == "disarmed" else "no drop came at its line", "event": info,
+                                      "context": self._ctx_brief()})
+            return
+        if why == "missed" and self._last_line_s is not None and abs(self._last_line_s - at_s) <= 0.01:
+            spent = self._last_line_s
+            self._last_line_s = None
+            for t in list(self._tokens):
+                if abs(t - spent) <= 1e-6:
+                    self._tokens.remove(t)
+                    self.sec_stats["tokens_refunded"] += 1
+                    self._log_event("token", {"decision": "refunded", "why": "no drop came at the armed line",
+                                              "event": info, "context": self._ctx_brief()})
+                    break
+
+    def _armed_tick(self, now_s: float, vs: dict, grid: Grid) -> None:
+        a = self._armed
+        if a is None:
+            return
+        if not self._grammar(vs, grid):                   # the beat is gone: no dip, no hit, no cut
+            self._armed = None
+            self._hit = None
+            if self.pending is not None and self.pending.get("reason") == "drop":
+                self.pending = None
+            self._log_event("token", {"decision": "released", "why": "the clock lost the beat"})
+            return
+        if now_s >= a["at_s"] - 1e-6:
+            self._tokens.append(a["at_s"])
+            self._last_line_s = a["at_s"]
+            self._armed = None
+            self.sec_stats["tokens_spent"] += 1
+            self._log_event("token", {"decision": "spent", "at": "the armed line", "section_id": a["section_id"],
+                                      "context": self._ctx_brief()})
+
+    def _on_drop(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
+        """A drop heard: at an armed line, nothing more; else with a token (and a build just before) the lamps hit
+        at once and the look cuts at the next bar; without one it shows inside the look."""
+        info = self._section_info(ev)
+        beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
+        if (self._last_line_s is not None and abs(at_s - self._last_line_s) <= beat + 0.05) or \
+                (self._armed is not None and at_s >= self._armed["at_s"] - beat):
+            self._log_event("drop", {"at": "the armed line", "event": info})
+            return
+        if not self._grammar(vs, grid):
+            return
+        if self._armed is not None:                       # it came before its predicted line: the reservation is
+            self._armed = None                            # released, and this drop may spend the token now
+            self._hit = None
+            if self.pending is not None and self.pending.get("reason") == "drop":
+                self.pending = None
+            self._log_event("token", {"decision": "released", "why": "the drop came before its line", "event": info})
+        after = float(self.cfg["peaks"]["after_build_s"])
+        n, left = self._tokens_left(vs, now_s)
+        why = None
+        if self._build_last_s is None or now_s - self._build_last_s > after:
+            why = "no build just before it"
+        elif self.keep_until is not None:
+            why = "Keep this look holds"
+        elif left <= 0:
+            why = self._no_token_why(n)
+        if why is not None:
+            self._drop_inside_s = now_s                    # accent density and saturation up, inside the look
+            self._token_refused(why, info)
+            return
+        self._tokens.append(now_s)
+        self.sec_stats["tokens_spent"] += 1
+        hb = float(self.cfg["build"]["hit_beats"]) * beat
+        self._hit_want = (now_s, now_s + hb) if hb > 0 else None
+        if self.pending is None or self.pending["by"] != "human":
+            at, bar = grid.next_line(now_s + max(LOOK_MIN_LEAD_S, self._ev_lead), 1)   # the screens' lead (§5.4)
+            self._announce(now_s, "drop", "director", grid, at_s=at, bar=bar, transition=dict(DROP_CUT),
+                           section=info)
+        self._log_event("token", {"decision": "spent", "at": "an unarmed drop", "event": info, "left": left - 1,
+                                  "per_hour": n, "context": self._ctx_brief()})
+
+    def _build_begin(self, start_s: float, grid: Grid) -> None:
+        bar = grid.bar_at(start_s)
+        self._build = {"start_bar": bar, "idx": 0, "step_bar": float(bar)}
+
+    def _build_progress(self) -> float:
+        sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else {}
+        return _c01(_num(sec.get("build_progress"), 0.0) or 0.0)
+
+    def _phase_tick(self, now_s: float, vs: dict, grid: Grid) -> None:
+        """The build's subdivision steps (every step_bars, step_bars_late from half way); a drop shown inside the look
+        lasts while the phase is drop."""
+        phase = self._phase_eff(now_s)
+        if phase == "build" and self._grammar(vs, grid):
+            if self._build is None:
+                self._build_begin(now_s, grid)
+            b = self._build
+            bar = grid.bar_at(now_s)
+            bc = self.cfg["build"]
+            need = bc["step_bars_late"] if self._build_progress() >= 0.5 else bc["step_bars"]
+            while b["idx"] < len(SUBDIVISIONS) - 1 and bar >= b["step_bar"] + need:
+                b["idx"] += 1
+                b["step_bar"] += need
+        elif self._armed is None:
+            self._build = None
+        if self._drop_inside_s is not None and phase != "drop":
+            self._drop_inside_s = None
+        if self._hit is not None and now_s >= self._hit[1]:
+            self._hit = None
+
+    def _hit_colours(self, look_pal: dict, vs: dict, now_s: float) -> dict[str, tuple]:
+        """The unison hit: every lamp in the look's accent at full value, through its own role's limits (a key lamp's
+        white and chroma cap still hold). Lamps only: never a screen."""
+        out: dict[str, tuple] = {}
+        hi_sat = float(vs["saturation"][1])
+        for i, (did, dev) in enumerate(sorted(self.lamps.items())):
+            _rn, rc = self._lamp_role(dev)
+            rc2 = dict(rc, palette_role="accent", follow_screen=False, motion=False)
+            out[did] = tuple(self._lamp_colour(dev, rc2, look_pal, {}, vs, hi_sat, 0.0, 0.0, i, now_s))
+        return out
+
+    # -- the screens' palette (agreed with 2f and 04, 16 Oct) ----------------------------------------------------------
+    def _screens_palette(self, now_s: float, room: Any) -> None:
+        """A renderer catalog palette goes to every live screen once per change (PATCH /api/v1/screens/{id}/look,
+        idempotent); an art palette has no renderer name, so the screens keep their own. A screen that leaves live is
+        forgotten, so it gets the palette again when it comes back."""
+        sc = self._scr
+        cfg = self.cfg["screens"]
+        if isinstance(room, dict) and room.get("reachable") is False:
+            sc["why"] = "the room isn't answering"         # keep what was sent: a blip is not a screen leaving live
+            return
+        screens = room.get("screens") if isinstance(room, dict) and isinstance(room.get("screens"), dict) else {}
+        live = sorted(sid for sid, x in screens.items() if isinstance(x, dict) and x.get("layer") == "live")
+        for sid in [x for x in sc["sent"] if x not in live]:
+            del sc["sent"][sid]
+        sc["live"] = live
+        name = ((self.look or {}).get("palette") or {}).get("name") if self.known else None
+        if self._pal_chosen == contract.PALETTE_ART:      # art not on hand yet: the lamps' stand-in stays theirs
+            name = contract.PALETTE_ART
+        sc["palette"] = name
+        if not cfg["send_palette"]:
+            sc["why"] = "off (show.yaml director.screens.send_palette)"
+            return
+        if not self.known or not name:
+            sc["why"] = "no feel is set"
+            return
+        if name == contract.PALETTE_ART:
+            sc["why"] = "an art palette has no renderer name: the screens keep their own"
+            return
+        if not self.palettes.has(name):
+            sc["why"] = "no renderer palette in this look"
+            return
+        patch = getattr(self.ctx, "room_patch", None)
+        if patch is None or self.ctx.loop is None:
+            sc["why"] = "no room PATCH route here (BrainContext.room_patch)"
+            return
+        sc["why"] = None if live else "no screen is live"
+        if sc["busy"]:
+            return
+        todo = [sid for sid in live if sc["sent"].get(sid) != name and not screens[sid].get("cutting")
+                and now_s >= sc["retry"].get(sid, -math.inf)]
+        if todo:
+            sc["busy"] = True
+            self._spawn(self.ctx.loop, self._patch_screens(todo, name, float(cfg["palette_transition_s"])),
+                        busy="screens")
+
+    async def _patch_screens(self, sids: list[str], name: str, tr_s: float) -> None:
+        sc = self._scr
+        try:
+            for sid in sids:
+                path = SCREEN_LOOK_PATH.format(id=urllib.parse.quote(sid, safe=""))
+                st, body = await self.ctx.room_patch(path, {"palette": name, "palette_transition_s": tr_s})
+                if isinstance(st, int) and 200 <= st < 300:
+                    sc["sent"][sid] = name
+                    sc["retry"].pop(sid, None)
+                    sc["error"] = None
+                    sc["sends"] += 1
+                    self._log_event("screens_palette", {"screen": sid, "palette": name, "transition_s": tr_s})
+                else:
+                    sc["retry"][sid] = self._mono() + SCREENS_RETRY_S
+                    err = body.get("error") if isinstance(body, dict) else None
+                    sc["error"] = f"PATCH {path}: {st or 'no answer'}" + (f" {err}" if err else "")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            sc["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            sc["busy"] = False
 
     # -- palettes -------------------------------------------------------------------------------------------------------
     def _art_ready(self) -> bool:
@@ -1028,6 +1634,15 @@ class Director:
             g = b.get("genre") if isinstance(b.get("genre"), dict) else {}
             if isinstance(g.get("word"), str) and g["word"] != "unknown" and (_num(g.get("conf"), 0) or 0) >= LLM_CONF:
                 llm_genre = g["word"]
+        # the genre: the local ML's (music.context, fresh, confident: README S4.8 rule 6, §8.9: mic classifiers rank
+        # above the LLM), then the listener's, then the vibe's. No one picks a genre by hand on the card.
+        ml_genre = None
+        mg = (self._mc or {}).get("genre") if isinstance((self._mc or {}).get("genre"), dict) else None
+        if (mg is not None and mg.get("via") in ("ml", "ml+listener") and isinstance(mg.get("word"), str)
+                and mg["word"] and (_num(mg.get("conf"), 0.0) or 0.0) >= LLM_CONF):
+            ml_genre = mg["word"]
+        genre, genre_from = ((ml_genre, "ml") if ml_genre else (llm_genre, "listener") if llm_genre
+                             else (vs["genre"], "vibe") if vs["genre"] else (None, None))
         band = self._band_words(self.music.get("energy", vs["energy_centre"])) if self.music else None
         if self.moods:
             moods, src = list(self.moods), "human"
@@ -1038,7 +1653,7 @@ class Director:
         else:
             moods, src = list(vs["moods"]), "vibe"
         style = (band or {}).get("transition_style") or vs["transition_style"]
-        return {"moods": moods, "moods_from": src, "genre": llm_genre or vs["genre"],
+        return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from,
                 "transition_style": style, "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
                 "band": band["name"] if band else None}
 
@@ -1109,16 +1724,43 @@ class Director:
         e, u, arousal = m["energy"], m["u"], m["arousal"]
         words = self._words(vs)
         name, source = self._resolve_palette(vs) if known else (None, "neutral")
+        self._pal_chosen = name                           # the screens' palette follows the choice, not a stand-in
         look_pal, screen_roles = self._roles_for(name, source, vs)
         emphasis = self._emphasis_of(arousal)
         look_pal["emphasis"] = emphasis
+        xpr = self._express_now(now_s) if known else 0.0    # a section shown inside the look (§8.5)
+        ux = _c01(u + xpr)
         sat = _lerp(vs["saturation"], 0.5 * u + 0.5 * arousal)
         contrast = _lerp(vs["contrast"], u)
-        level = _lerp(vs["level"], u)
+        level = _lerp(vs["level"], ux)
         floor = vs["floor"]
         speed = _lerp(vs["motion"], arousal)
         amount = _lerp(vs["motion"], u)
+        density = ux
+        spread = _c01(amount + xpr)
         beat_lock = bool(vs["beat_lock"]) and grid.gate == "beat"
+        # the build -> drop grammar (§8.5): lamps and DMX only; the screens below never read any of it
+        sub, narrow, dip = 1.0, 0.0, None
+        gram = known and self._grammar(vs, grid)
+        mphase = self._phase_eff(now_s) if gram else contract.SECTION_PHASES[0]
+        if gram:
+            if mphase == "build" and self._build is not None:
+                bp = self._build_progress()
+                sat += (float(vs["saturation"][1]) - sat) * bp
+                narrow = _c01(bp * float(self.cfg["build"]["narrow"]))
+                sub = SUBDIVISIONS[self._build["idx"]]
+            elif mphase == "drop" and self._drop_inside_s is not None:
+                sat, density = float(vs["saturation"][1]), 1.0
+            elif mphase == "breakdown":
+                bd = self.cfg["breakdown"]
+                floor = min(1.0, floor + bd["floor_add"])
+                speed *= bd["motion_scale"]
+                amount *= bd["motion_scale"]
+                spread = _c01(amount + xpr)
+                sat *= bd["saturation_scale"]
+            a = self._armed
+            if a is not None and grid.bar_s and now_s >= a["at_s"] - float(self.cfg["build"]["dip_bars"]) * grid.bar_s:
+                dip = float(self.cfg["build"]["dip_level"])
         roles_key = (look_pal["name"], emphasis, tuple(r["hex"] for r in look_pal["roles"].values()),
                      tuple((sid, tuple(r["hex"] for r in sr.values())) for sid, sr in sorted(screen_roles.items())))
         roles_changed = self._roles_key is not None and roles_key != self._roles_key
@@ -1129,12 +1771,14 @@ class Director:
         colours: dict[str, pal.Rgb] = {}
         if known:
             lamp_level = max(floor, level)
+            if dip is not None:
+                lamp_level = min(lamp_level, dip)        # pre-drop: the lamps dip (screens never do)
             for i, (did, dev) in enumerate(sorted(self.lamps.items())):
                 rname, rc = self._lamp_role(dev)
                 if self.house:
                     rgb, lv_out = self._house_rgb(did, room), None
                 else:
-                    c = self._lamp_colour(dev, rc, look_pal, screen_roles, vs, sat, speed, amount, i, now_s)
+                    c = self._lamp_colour(dev, rc, look_pal, screen_roles, vs, sat, speed, amount, i, now_s, narrow)
                     lv_out = self.cfg["low"]["level"] if self.low else lamp_level
                     rgb = pal.scale_level(c, lv_out)
                 lv_rep = lv_out if lv_out is not None else max(rgb)
@@ -1146,7 +1790,20 @@ class Director:
                 c = pal.full(pal.rgb_of(roles[emphasis]["hex"]))          # the screens rule: never scaled
                 colours[did] = c
                 screens[did] = {"hex": pal.hex_of(c), "rgb": [round(x, 4) for x in c]}
-        accents = {"style": vs["accents"], "density": round(_c01(u), 3), "subdivision": 1.0,
+            # the unison hit: an armed line's (from the line), or an unarmed drop's (now); lamps only, never under
+            # House lights or Lights low
+            if self.house or self.low or not gram:
+                self._hit = self._hit_want = None
+            elif self._armed is not None:
+                hb = float(self.cfg["build"]["hit_beats"]) * (grid.beat_s or 0.5)
+                a_s = self._armed["at_s"]
+                if now_s >= a_s - max(1.0, float(self.cfg["build"]["dip_bars"]) * (grid.bar_s or 2.0)):
+                    # coloured from the dip on (palette_fn starts it exactly at the line)
+                    self._hit = (a_s, a_s + hb, self._hit_colours(look_pal, vs, now_s)) if hb > 0 else None
+            elif self._hit_want is not None:
+                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s))
+                self._hit_want = None
+        accents = {"style": vs["accents"], "density": round(_c01(density), 3), "subdivision": sub,
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
         tr = self._look_transition or self._transition(vs)
         self.look = {"t_ms": round(now_s * 1000.0, 1), "seq": self._look_seq, "look_id": f"L{self.look_n}",
@@ -1155,7 +1812,7 @@ class Director:
                      "chroma_max": vs["chroma_max"], "lamp_chroma_max": vs["lamp_chroma_max"],
                      "saturation": round(sat, 3), "contrast": round(contrast, 3),
                      "motion": {"speed": round(speed, 3), "amount": round(amount, 3)}, "accents": accents,
-                     "spread": round(_c01(amount), 3), "change_rate": vs["change_rate"], "transition": tr,
+                     "spread": round(spread, 3), "change_rate": vs["change_rate"], "transition": tr,
                      "lamps": lamps, "screens": screens}
         bars = 0
         if grid.ok and self.look_bar is not None:
@@ -1169,6 +1826,19 @@ class Director:
         if isinstance(b, dict) and isinstance(b.get("section"), dict) and \
                 (_num(b["section"].get("conf"), 0) or 0) >= LLM_CONF and isinstance(b["section"].get("label"), str):
             sec_label = b["section"]["label"]
+        section_ref = {"id": self.look_n, "label": sec_label, "phase": round(phase, 3), "bars_in_section": int(bars)}
+        msec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else None
+        if msec is not None and isinstance(msec.get("id"), int):      # structure's section (README S4.8)
+            bis, exp = _num(msec.get("bars_in_section")), _num(msec.get("expected_bars"))
+            section_ref = {"id": int(msec["id"]),
+                           "label": msec.get("label") if isinstance(msec.get("label"), str) else None,
+                           "phase": round(_c01(bis / exp), 3) if bis is not None and exp else 0.0,
+                           "bars_in_section": int(bis or 0)}
+        dens = _c01(m["onsets"])
+        r = _call(getattr(self.ctx, "rhythm", None))
+        if isinstance(r, dict) and _num(r.get("t_ms")) is not None and _num(r.get("density")) is not None \
+                and now_s - r["t_ms"] / 1000.0 <= RHYTHM_STALE_S:
+            dens = _c01(r["density"])                    # the medium lane's onset density while it is fresh
         fam = vs["palette_family"] or (self.palettes.family(look_pal["name"]) if look_pal["name"] else None)
         self.direction = {"t_ms": round(now_s * 1000.0, 1), "seq": self._dir_seq, "source": "show_service",
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
@@ -1179,9 +1849,8 @@ class Director:
                           "fx": {"density": round(_c01(0.1 + 0.8 * e), 3), "rate": round(_c01(0.05 + 0.85 * e), 3),
                                  "stages": None, "moods": words["fx_moods"]},
                           "arousal": round(arousal, 3), "tension": round(_c01(m["tension"]), 3),
-                          "section": {"id": self.look_n, "label": sec_label, "phase": round(phase, 3),
-                                      "bars_in_section": int(bars)},
-                          "density": round(_c01(m["onsets"]), 3),
+                          "section": section_ref,
+                          "density": round(dens, 3),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat"}
         self._words_now = words
@@ -1207,10 +1876,11 @@ class Director:
             self._set_colours(colours, now_s, ROLE_GLIDE_S if roles_changed else GLIDE_S)
 
     def _lamp_colour(self, dev: dict, rc: dict, look_pal: dict, screen_roles: dict, vs: dict, sat: float,
-                     speed: float, amount: float, idx: int, now_s: float) -> pal.Rgb:
+                     speed: float, amount: float, idx: int, now_s: float, narrow: float = 0.0) -> pal.Rgb:
         """One lamp at full value from its role's fields (no role is known by name): the palette role (moved on by the
-        look's variation when the role moves), a slow drift toward the next role, x saturation, white first where
-        the role has a white, the chroma cap, the hues to avoid."""
+        look's variation when the role moves), a slow drift toward the next role, a build's narrowing toward the
+        accent (``narrow``, §8.5), x saturation, white first where the role has a white, the chroma cap, the hues to
+        avoid."""
         pr = rc.get("palette_role") if rc.get("palette_role") in contract.PALETTE_ROLES else "base"
         moving = bool(rc.get("motion"))
         if moving and self.variation:
@@ -1227,8 +1897,10 @@ class Director:
         wk = self._role_value(rc.get("white_k"), vs)
         cm = self._role_value(rc.get("chroma_max"), vs)
         ah = rc.get("avoid_hues")
+        nq = round(_c01(narrow) / QUANT)
         key = (roles[pr]["hex"], roles[nb]["hex"] if depth else None, round(depth / QUANT),
-               round(sat / QUANT), wk, cm, tuple(tuple(x) for x in ah) if ah else None)
+               round(sat / QUANT), wk, cm, tuple(tuple(x) for x in ah) if ah else None,
+               (roles["accent"]["hex"], nq) if nq else None)
         hit = self._colour_cache.get(key)
         if hit is not None:
             self._colour_cache.move_to_end(key)
@@ -1237,6 +1909,8 @@ class Director:
         c = pal.full(pal.rgb_of(roles[pr]["hex"]))
         if q_depth > 0.0:
             c = pal.full(pal.mix(c, pal.full(pal.rgb_of(roles[nb]["hex"])), q_depth))
+        if nq:
+            c = pal.full(pal.mix(c, pal.full(pal.rgb_of(roles["accent"]["hex"])), nq * QUANT))
         c = pal.scale_saturation(c, q_sat)
         if wk is not None:
             c = pal.mix(pal.white(wk), c, q_sat)                     # white first, tinted toward the colour
@@ -1257,13 +1931,18 @@ class Director:
             return None
         t0, t1, frm, to, frm_lab, to_lab = p
         if t_s >= t1:
-            return to
-        if t_s <= t0:
-            return frm
-        x = (t_s - t0) / (t1 - t0)
-        out = dict(to)
-        for k, la in frm_lab.items():                       # only the devices that move
-            out[k] = pal.mix_lab(la, to_lab[k], x)
+            out = to
+        elif t_s <= t0:
+            out = frm
+        else:
+            x = (t_s - t0) / (t1 - t0)
+            out = dict(to)
+            for k, la in frm_lab.items():                   # only the devices that move
+                out[k] = pal.mix_lab(la, to_lab[k], x)
+        h = self._hit                                       # a drop's unison hit: lamps only, timed to the line
+        if h is not None and h[0] <= t_s < h[1]:
+            out = dict(out)
+            out.update(h[2])
         return out
 
     def _set_colours(self, new: dict[str, pal.Rgb], now_s: float, dur: float,
@@ -1418,12 +2097,15 @@ class Director:
                 self._art_busy = True
                 self._spawn(loop, self._fetch_art(sids))
 
-    def _spawn(self, loop: Any, coro: Any) -> None:
+    def _spawn(self, loop: Any, coro: Any, busy: Optional[str] = None) -> None:
         try:
             task = loop.create_task(coro)
         except Exception:
             coro.close()
-            self._cat_busy = self._art_busy = False
+            if busy == "screens":
+                self._scr["busy"] = False
+            else:
+                self._cat_busy = self._art_busy = False
             return
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -1771,6 +2453,19 @@ class Director:
         choices += [self.palettes.choice(n) for n in names[:5]]
         return {"pick": self.palette_pick, "current": self._current_palette_name(), "choices": choices}
 
+    def _sections_view(self, now_s: float) -> dict:
+        n, left = self._tokens_left(self.vs, now_s)
+        return {"structure": self._mc is not None, "context": self._ctx_brief(), "phase": self._phase_eff(now_s),
+                "track": self._track_id, "memory": {k: dict(v) for k, v in self._sec_mem.items()},
+                "express": round(self._express_now(now_s), 3),
+                "build": ({"subdivision": SUBDIVISIONS[self._build["idx"]], "start_bar": self._build["start_bar"],
+                           "last_step_bar": self._build["step_bar"]} if self._build else None),
+                "drop_inside": self._drop_inside_s is not None,
+                "armed": ({"in_s": round(self._armed["at_s"] - now_s, 2), "section_id": self._armed["section_id"]}
+                          if self._armed else None),
+                "tokens": {"per_hour": n, "left": left, "spent_last_hour": len(self._tokens)},
+                "stats": {**self.sec_stats, "events": dict(self.sec_stats["events"])}}
+
     def _build_snapshot(self, now_s: float) -> None:
         if self._tick_ms and (now_s >= self._p95_next or self._p95 is None):
             self._p95_next = now_s + 1.0
@@ -1797,10 +2492,14 @@ class Director:
             "settings_problems": list(self.settings_problems),
             "music": {k: v for k, v in self.music.items() if k not in ("pv", "beliefs")},
             "band": self._words_now.get("band"),
+            "words_from": {"moods": self._words_now.get("moods_from"), "genre": self._words_now.get("genre_from")},
             "relaxed": self._relaxed, "pending": dict(self.pending) if self.pending else None,
             "neutral": not self.known,
+            "sections": self._sections_view(now_s),
+            "screens_palette": {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
+                                for k, v in self._scr.items() if k != "retry"},
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
-                      "log_error": self._log_error}}
+                      "gobo_steps": self.gobo_steps, "log_error": self._log_error}}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Director:

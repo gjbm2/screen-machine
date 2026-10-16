@@ -58,6 +58,8 @@ class FakeRoom:
         self.n = 0
         self.puts: list[dict] = []
         self.target_puts: list[dict] = []
+        self.look_patches: list[tuple[str, dict]] = []     # Stage 4: the director's screens palette
+        self.look_answer = 200
         self.refuse: tuple[int, str] | None = None     # the next autopilot PUT /mode answers this
         self.answer_delay = 0.0                          # PUT /mode answers this long after the transition started
         self.auto_finish = True
@@ -74,6 +76,7 @@ class FakeRoom:
         app.router.add_put("/api/v1/mode", self.h_mode)
         app.router.add_put("/api/v1/room/targets", self.h_targets)
         app.router.add_get("/api/v1/events", self.h_events)
+        app.router.add_patch("/api/v1/screens/{id}/look", self.h_look)
         self.runner = web.AppRunner(app, shutdown_timeout=0.2)
         await self.runner.setup()
         site = web.TCPSite(self.runner, "127.0.0.1", 0)
@@ -119,6 +122,12 @@ class FakeRoom:
         self.on = b["values"]["autopilot.main"]
         await self.push()
         return web.json_response({"accepted": list(b["values"])}, status=202)
+
+    async def h_look(self, r: web.Request) -> web.Response:
+        self.look_patches.append((r.match_info["id"], await r.json()))
+        if self.look_answer != 200:
+            return web.json_response({"error": "not_live", "detail": "test"}, status=self.look_answer)
+        return web.json_response({"screen": r.match_info["id"], "palette": self.look_patches[-1][1].get("palette")})
 
     async def h_mode(self, r: web.Request) -> web.Response:
         b = await r.json()
@@ -588,7 +597,8 @@ def test_config_error_is_blind(tmp_path):
         await h.room.push()
         await h.until(lambda: h.link.view()["error"])
         await h.step()
-        assert h.state()["state"] == "blind" and h.state()["line"] == "Auto · modes.json has an error"
+        assert h.state()["state"] == "blind" and h.state()["line"] == ("Auto is paused: a mode has a problem; open "
+                                                                        "its editor")
     run(tmp_path, body)
 
 
@@ -707,4 +717,23 @@ def test_a_slow_room_answer_is_adopted_from_its_events(tmp_path):
         s = h.state()
         assert h.room.current == "gallery" and s["state"] == "holding" and s["hold"]["by"] == "undo"
         assert [x["rule"] for x in s["suppressed"]] == ["piano/enter_when"] and s["chip"]["kind"] == "undo"
+    run(tmp_path, body)
+
+
+def test_roomlink_patch_for_the_screens_palette(tmp_path):
+    async def body(h: H) -> None:
+        assert h.link.provides()["room_patch"] == h.link.patch
+        st, out = await h.link.patch("/api/v1/screens/wall-left/look", {"palette": "ember", "palette_transition_s": 4})
+        assert st == 200 and out == {"screen": "wall-left", "palette": "ember"}
+        assert h.room.look_patches == [("wall-left", {"palette": "ember", "palette_transition_s": 4})]
+        h.room.look_answer = 409
+        st, out = await h.link.patch("/api/v1/screens/wall-left/look", {"palette": "ember"})
+        assert st == 409 and out["error"] == "not_live"
+        st, out = await h.link.patch("/api/v1/nowhere", {"palette": "ember"})
+        assert st == 405 or st == 404
+        url = h.link.url
+        h.link.url = "http://127.0.0.1:9"                      # nothing listens there: never raises
+        st, out = await h.link.patch("/api/v1/screens/wall-left/look", {"palette": "ember"}, timeout=2.0)
+        assert st == 0 and out["error"] == "room_unreachable"
+        h.link.url = url
     run(tmp_path, body)

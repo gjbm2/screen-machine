@@ -5,12 +5,37 @@ at its own ``now + lead`` (``beat_at``, ``next_beat`` and ``position_at`` below 
 
 Thread and wiring
 -----------------
-Everything runs on ``show-rx``. ``process`` is a ``contract.OnAudio``. ``__main__`` fans the active stream's blocks
+Clock state lives on ``show-rx``. ``process`` is a ``contract.OnAudio``. ``__main__`` fans the active stream's blocks
 out to ``features.process`` first, then ``clock.process`` (the same block, untouched), and calls
 ``clock.tick(now_s)`` from ``on_tick``. ``observe_hit`` (optional) takes dsp's low-band hits for phase refinement:
 ``__main__`` wraps the publish it gives Features, so that ``music.hit`` bodies also reach
 ``clock.observe_hit(t_ms / 1000, band, strength)``.
 Methods marked *any thread* only append to a deque, which show-rx drains at its next ``process`` or ``tick``.
+
+**show-beat** (README S4.6; ``Clock(beat_thread=True)``, ``SHOW_BEAT_THREAD=on``; off by default since the
+integration measured it at 0.17-0.19 of a core in the real process, S4.12). The activation (madmom's 2 LSTMs, 1-6 ms
+a frame) runs on its own daemon thread, so a madmom frame no longer holds show-rx:
+- show-rx keeps the AGC, soxr and hop assembly. For each full hop it computes the frame's time (the sound's, from the
+  block's ``t0_host_s``/``n0``, as inline) and puts ``(hop, epoch, seq, hop copy, time, put time)`` on a
+  ``queue.SimpleQueue`` (``put`` never blocks), then returns.
+- show-beat ``get``s it, runs ``act.process_hop`` and appends ``(epoch, seq, a, time, put time)`` to a deque (an
+  activation error comes back as ``a = None`` and is counted).
+- show-rx drains that deque (``popleft`` until empty, never waiting) at the start of every ``process`` and ``tick``
+  and runs peaks, tempogram and estimator on each ``a``, in ``seq`` order. So clock state never leaves show-rx and
+  the activation object never leaves show-beat (show-rx only reads its constant ``name``, ``lag_s``, ``floor``).
+- **Resets.** A new segment (``_lane_reset``) bumps the epoch and queues a reset marker: show-beat resets the
+  activation when it reaches it, and results of an older epoch are dropped (``beat_stale``; at most the hops in
+  flight, about one).
+- **Back-pressure.** At most BEAT_Q_MAX hops (0.5 s) may be in flight (put by show-rx and not yet drained by it; both
+  counters are show-rx's). Beyond that a hop is dropped (``beat_drops``), and a reset marker goes before the next one
+  that is sent, so madmom never sees a splice; the reset comes back through the result deque in order and resets
+  the peak picker there. The tempogram's gap fill covers the missing frames by their times.
+- **Degrade.** If show-beat ever dies, or after ``stop()`` once it has exited, show-rx runs the activation inline.
+- ``beat_thread=False`` (the default, as config.Options) runs the activation inline on show-rx, exactly as in Stage 3.
+  The frames, and so every count and the published line, are the same either way; threaded, a frame's results are
+  published at the next ``process`` or ``tick`` (a few ms later) rather than in the same ``process``.
+- ``stop()`` (any thread, idempotent) ends show-beat; ``wait_beat()`` blocks until show-beat has caught up, for
+  offline runs and tests only (never on show-rx live).
 
 Pipeline
 --------
@@ -101,16 +126,34 @@ half-time 0.9, random onsets and rubato <= 0.3.
 
 Corrections (*any thread*)
 --------------------------
-- ``apply_integer_correction(beat_is_one, bar_len, octave)`` is for the slow lane (Beat This!). ``beat_is_one`` is a
-  beat index in this clock's published numbering (carry window times over with ``beat_at``), and ``octave`` is
-  1, 2 (the beat is twice as fast) or 0.5. It is applied at the next bar line under the new hypothesis, and never
-  used as a phase observation.
+- ``apply_integer_correction(beat_is_one, bar_len, octave)`` is for the slow lane (Beat This!, through mllink's
+  ``beat_vote``, which reads only the window's interior and gates on its agreement with this clock). ``beat_is_one``
+  is a beat index in this clock's published numbering (carry window times over with ``beat_at``), and ``octave`` is
+  1, 2 (the beat is twice as fast) or 0.5. Integer corrections only: never a phase observation, never a tempo.
+  On show-rx:
+  - **Checked.** ``beat_is_one`` must be a whole number, ``bar_len`` a whole number in BAR_LEN_MIN..BAR_LEN_MAX and
+    ``octave`` exactly 1, 2 or 0.5, or the call is ignored (``corr_bad``).
+  - **Gated.** It needs a confirmed grid (``corr_no_grid`` otherwise). Its one must not precede the last numbering
+    break (a new grid, an octave change, a re-lock: the count before it was another grid's) nor lie more than a bar
+    past the upcoming beat (``corr_stale``). A break while it waits drops it (``corr_stale``); so does a human "one"
+    (``corr_superseded``). A later call replaces a waiting one.
+  - **At a bar line.** It waits for the upcoming beat K that starts a bar under the new hypothesis:
+    ``((K - one) x octave) mod bar_len == 0`` (the one defaults to the bar anchor, the length to the current one). The
+    octave switches there (that beat keeps its time and number), the bar length and one take effect there, and the
+    bar's place in the phrase is kept. An octave out of 45-200 bpm is refused there and nothing moves
+    (``corr_refused``). One that has not met its bar line after twice the longest wait (2 x bar_len beats, x2 for
+    octave 0.5: the count moved under it) is dropped (``corr_expired``), never applied off a bar line.
+  - Every accepted call (it agrees on the octave, or sets one) holds the clock's own octave check off for
+    SLOW_OCT_HOLD_S. ``stats()["last_correction"]`` = ``{one, bar_len, octave, result, at_beat}`` for the latest
+    (result ``accepted``, ``applied``, ``bad``, ``no_grid``, ``stale``, ``superseded``, ``refused`` or
+    ``expired``, each also counted as ``corr_<result>``).
 - ``tap(t_s)``, ``half()``, ``double()`` and ``one(t_s)`` are the show console's human actions: high-confidence
   observations, not overrides.
 
 Costs and hot-thread rules: numpy buffers are preallocated where it is cheap, there is no I/O, and an exception
 inside ``process``/``tick`` is counted and never propagates. ``stats()["cost_ms_per_10ms"]`` reports the measured
-cost.
+cost of show-rx's part per 10 ms of audio, ``stats()["block_ms"]`` show-rx's cost per ``process`` call, and
+``stats()["beat_thread"]`` show-beat's (``act_ms`` a frame, ``lag_ms`` from put to drain).
 """
 
 from __future__ import annotations
@@ -118,8 +161,11 @@ from __future__ import annotations
 import collections
 import logging
 import math
+import queue
+import threading
 import time
 import warnings
+import weakref
 from typing import Literal, Optional, Protocol
 
 import numpy as np
@@ -178,6 +224,11 @@ LOW_WIN_S = 6.0
 LOW_MIN_HITS = 4            # on-beat low hits in the window before they count as evidence
 LOW_MERGE_S = 0.06          # a sub and a bass hit this close are one kick
 LOW_TOL = 0.15              # a hit within 15 % of a period of a beat lands on it
+# show-beat (README S4.6)
+BEAT_Q_MAX = 50             # hops in flight to show-beat (0.5 s of frames); beyond this show-rx drops hops
+# integer corrections (the slow lane, Beat This!)
+BAR_LEN_MIN, BAR_LEN_MAX = 2, 16   # a bar length outside this is not a bar: the correction is ignored
+SLOW_OCT_HOLD_S = 30.0      # after a slow-lane or human octave word, the clock's own octave check waits this long
 
 ClockState = Literal["searching", "locked", "holding", "free"]
 Gate = Literal["beat", "dmx", "none"]
@@ -326,6 +377,63 @@ def make_activation(prefer: str = "auto", nets: int = 2) -> Activation:
     return AubioActivation()
 
 
+class _BeatThread:
+    """show-beat: the activation on its own daemon thread (see the module docstring). It holds no reference to the
+    Clock (a dropped Clock's finalizer stops it). Items in ``q`` (put by show-rx):
+    ``("hop", epoch, seq, hop, t_raw, t_put)``, ``("reset", epoch)``, or None (stop). Items in ``out`` (popped by
+    show-rx): ``("a", epoch, seq, a | None, t_raw, t_put)``, and each reset marker as it was reached."""
+
+    def __init__(self, act: Activation) -> None:
+        self.act = act
+        self.q: queue.SimpleQueue = queue.SimpleQueue()
+        self.out: collections.deque = collections.deque()
+        self.done = 0                                   # hops computed (written here only)
+        self.errors = 0
+        self.cost: collections.deque = collections.deque(maxlen=2000)     # ms per process_hop (written here only)
+        self.idle = threading.Event()                   # set when the queue runs dry (wait_beat only)
+        self._err_logged = -1e9
+        self.thread = threading.Thread(target=self._run, name="show-beat", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        q, out, act = self.q, self.out, self.act
+        perf = time.perf_counter
+        while True:
+            item = q.get()
+            if item is None:
+                self.idle.set()
+                return
+            try:
+                if item[0] == "hop":
+                    _, ep, seq, hop, t_raw, t_put = item
+                    c0 = perf()
+                    try:
+                        a: Optional[float] = float(act.process_hop(hop))
+                    except Exception:
+                        a = None
+                        self._error()
+                    self.cost.append((perf() - c0) * 1000.0)
+                    out.append(("a", ep, seq, a, t_raw, t_put))
+                    self.done += 1
+                else:
+                    try:
+                        act.reset()
+                    except Exception:
+                        self._error()
+                    out.append(item)
+            except Exception:                           # never let show-beat die
+                self._error()
+            if q.empty():
+                self.idle.set()
+
+    def _error(self) -> None:
+        self.errors += 1
+        now = time.monotonic()
+        if now - self._err_logged > 10.0:
+            self._err_logged = now
+            log.exception("show-beat: activation error (%d so far)", self.errors)
+
+
 # -- tempogram ---------------------------------------------------------------------------------------------------------
 class Tempogram:
     """A sliding-DFT Fourier tempogram over the last ``win_s`` of activation, one bin per ``step_bpm``.
@@ -463,15 +571,56 @@ def _smoothstep(e0: float, e1: float, x: float) -> float:
     return u * u * (3.0 - 2.0 * u)
 
 
+def _arr(dq: collections.deque) -> np.ndarray:
+    """A deque another thread may append to, as an array (``list`` copies it in one C call, under the GIL)."""
+    for _ in range(3):
+        try:
+            return np.asarray(list(dq), float)
+        except RuntimeError:                            # mutated during the copy: try again
+            continue
+    return np.zeros(0)
+
+
+def _pct(a: np.ndarray, q: float, nd: int = 4) -> float:
+    return round(float(np.percentile(a, q)), nd) if a.size else 0.0
+
+
+def _whole(v: object) -> Optional[int]:
+    """``v`` as an int if it is a whole number (int, numpy integer, or an integral float); else None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, np.integer)):
+        return int(v)
+    if isinstance(v, (float, np.floating)) and math.isfinite(v) and float(v).is_integer():
+        return int(v)
+    return None
+
+
 # -- the clock ---------------------------------------------------------------------------------------------------------
 class Clock:
-    """One room's beat clock. ``process`` = contract.OnAudio, ``tick`` from on_tick, both on show-rx."""
+    """One room's beat clock. ``process`` = contract.OnAudio, ``tick`` from on_tick, both on show-rx. With
+    ``beat_thread`` the activation runs on show-beat; False (the default, as show_service runs) runs it inline on
+    show-rx (Stage 3)."""
 
     def __init__(self, publish: Optional[Publish] = None, *, activation: "Activation | str" = "auto", nets: int = 2,
                  beats_per_bar: int = 4, phrase_bars: int = 8, prior_bpm: float = PRIOR_BPM,
-                 publish_hz: float = PUBLISH_HZ, resample_quality: str = "HQ") -> None:
+                 publish_hz: float = PUBLISH_HZ, resample_quality: str = "HQ", beat_thread: bool = False) -> None:
         self._publish = publish
         self.act: Activation = make_activation(activation, nets) if isinstance(activation, str) else activation
+        # show-beat (all of these but the thread's own fields are show-rx's)
+        self._bt: Optional[_BeatThread] = None
+        self._bt_epoch = 0
+        self._bt_put = 0                                # hops put (their seq), show-rx
+        self._bt_got = 0                                # hop results drained (any epoch), show-rx
+        self._bt_seq_next = 1
+        self._bt_splice = False                         # hops were dropped: reset the activation before the next
+        self._bt_stopped = False
+        self._bt_lag: collections.deque = collections.deque(maxlen=2000)    # ms from put to drain
+        self._blk: collections.deque = collections.deque(maxlen=2000)       # ms per process() call
+        self._corr_last: Optional[dict] = None
+        if beat_thread:
+            self._bt = _BeatThread(self.act)
+            weakref.finalize(self, self._bt.q.put, None)
         self._prior_bpm = float(prior_bpm)
         self._pub_period = 1.0 / publish_hz
         self._rs_quality = resample_quality
@@ -523,6 +672,7 @@ class Clock:
         self._oct_lock_k = -10**9
         self._oct_lock_t = -1e9
         self._pending: Optional[dict] = None
+        self._break_k = -(1 << 62)                  # published beat of the last numbering break (corrections)
         self._pending_oct: Optional[float] = None
         self._pending_kick: Optional[int] = None   # with a kick-voted halving: an estimator beat that carries kicks
         self._seed_prev: Optional[float] = None
@@ -579,12 +729,16 @@ class Clock:
             self._error()
         frames = pcm.shape[0] if pcm.ndim else 0
         if frames and fs:
-            self._cost.append((time.perf_counter() - c0) * 1000.0 / (frames / fs / 0.01))
+            ms = (time.perf_counter() - c0) * 1000.0
+            self._blk.append(ms)
+            self._cost.append(ms / (frames / fs / 0.01))
 
     def tick(self, now_s: float) -> None:
-        """on_tick: coasting without audio, corrections, and the 10 Hz music.clock."""
+        """on_tick: show-beat's results, coasting without audio, corrections, and the 10 Hz music.clock."""
         try:
             self._drain()
+            if self._drain_beats():
+                self._emit(now_s)
             if self._t_known != self._t_known_seen:
                 self._t_known_seen = self._t_known
                 self._w_known = now_s
@@ -601,6 +755,33 @@ class Clock:
                 self._emit(now_s)
         except Exception:
             self._error()
+
+    def stop(self, timeout: float = 1.0) -> None:
+        """Ends show-beat (a sentinel, then a join of at most ``timeout``); any thread, idempotent. Audio that still
+        arrives runs the activation inline once show-beat has exited (degrade, never refuse)."""
+        bt = self._bt
+        if bt is None:
+            return
+        if not self._bt_stopped:
+            self._bt_stopped = True
+            bt.q.put(None)
+        if bt.thread is not threading.current_thread():
+            bt.thread.join(max(0.0, float(timeout)))
+
+    def wait_beat(self, timeout: float = 5.0) -> bool:
+        """Blocks until show-beat has computed every hop put so far (their results then wait for the next ``process``
+        or ``tick``). For offline runs and tests only: it waits, so never call it on show-rx live. False on timeout
+        or with show-beat gone; True at once when the activation runs inline."""
+        bt = self._bt
+        if bt is None:
+            return True
+        end = time.monotonic() + timeout
+        while bt.done < self._bt_put:
+            if not bt.thread.is_alive() or time.monotonic() > end:
+                return False
+            bt.idle.wait(0.002)
+            bt.idle.clear()
+        return True
 
     # ---- public: any thread (reads the last published body, swapped by reference; never a lock) ---------------------
     def snapshot(self) -> Optional[ClockData]:
@@ -638,8 +819,9 @@ class Clock:
     def apply_integer_correction(self, beat_is_one: Optional[int] = None, bar_len: Optional[int] = None,
                                  octave: float = 1.0) -> None:
         """The slow lane's vote (Beat This!): which published beat is a one, the bar length, the tempo octave
-        (1, 2 = the beat is twice as fast, 0.5). Applied at the next bar line; any thread."""
-        self._inbox.append(("corr", beat_is_one, bar_len, float(octave)))
+        (1, 2 = the beat is twice as fast, 0.5). Integers only; checked, gated and applied at the next bar line under
+        the new hypothesis on show-rx (module docstring, "Corrections"); any thread."""
+        self._inbox.append(("corr", beat_is_one, bar_len, octave))
 
     def observe_hit(self, t_s: float, band: str, strength: float = 1.0) -> None:
         """A dsp hit (``music.hit``): low-band hits near an activation peak refine its time and the lag; any thread."""
@@ -661,13 +843,20 @@ class Clock:
         self._inbox.append(("one", float(t_s)))
 
     def stats(self) -> dict:
-        c = np.fromiter(self._cost, float, len(self._cost)) if self._cost else np.zeros(1)
+        c = _arr(self._cost)
+        b = _arr(self._blk)
+        bt = self._bt
+        beat = {"on": bt is not None and bt.thread.is_alive(), "queued": self._bt_put - self._bt_got,
+                "drops": self._counts.get("beat_drops", 0), "lag_ms_p95": _pct(_arr(self._bt_lag), 95, 3),
+                "act_ms_p50": _pct(_arr(bt.cost), 50, 3) if bt is not None else 0.0,
+                "act_ms_p95": _pct(_arr(bt.cost), 95, 3) if bt is not None else 0.0,
+                "act_errors": bt.errors if bt is not None else 0}
         return {"source": self.act.name, "state": self._state, "gate": self._gate, "conf": round(self._conf, 3),
                 "bpm": round(60.0 / self._T, 3) if self._grid else 0.0, "epoch": self._epoch,
                 "lag_adj_ms": round(self._lag_adj * 1000.0, 2), "agc_db": round(self._agc_db, 1),
-                "cost_ms_per_10ms": {"p50": round(float(np.percentile(c, 50)), 4),
-                                     "p95": round(float(np.percentile(c, 95)), 4),
-                                     "max": round(float(c.max()), 4)},
+                "cost_ms_per_10ms": {"p50": _pct(c, 50), "p95": _pct(c, 95), "max": _pct(c, 100)},
+                "block_ms": {"p50": _pct(b, 50), "p95": _pct(b, 95), "max": _pct(b, 100)},
+                "beat_thread": beat, "last_correction": self._corr_last,
                 "errors": self._err_n, **dict(self._counts)}
 
     # ---- rhythm lane -------------------------------------------------------------------------------------------------
@@ -688,13 +877,21 @@ class Clock:
         self._last_n0 = n0
         self._last_t0 = t0 if t0 is not None else 0.0
         self._suppress_until = (t0 + SUPPRESS_S) if t0 is not None else -1e9
-        self.act.reset()
+        if self._bt is not None:                        # show-beat resets the activation when it gets there; the
+            self._bt_epoch += 1                         # results still in flight belong to the old segment
+            self._bt_splice = False
+            self._bt.q.put(("reset", self._bt_epoch))
+        else:
+            self.act.reset()
         self._pk.reset()
 
     def _process(self, n0: int, t0: float, pcm: np.ndarray, fs: int, flags: int) -> None:
         self._drain()
+        changed = self._drain_beats()                   # before a segment reset: those frames are the old segment's
         frames = pcm.shape[0]
         if frames == 0 or fs <= 0:
+            if changed:
+                self._emit(t0)
             return
         if (flags & AUDIO_SEGMENT) or fs != self._lane_fs or n0 != self._n_expect:
             self._counts["segments"] += 1
@@ -710,7 +907,6 @@ class Clock:
         g = 10.0 ** (self._agc_db / 20.0)
         x = x * np.float32(g)
         y = self._rs.resample_chunk(x) if self._rs else x
-        changed = False
         pos, ny = 0, y.shape[0]
         hb = self._hopbuf
         while pos < ny:
@@ -720,7 +916,7 @@ class Clock:
             pos += take
             if self._hopfill == HOP:
                 self._hopfill = 0
-                changed |= self._frame(hb)
+                changed |= self._hop(hb)
         if changed:
             self._emit(t0 + frames / fs)
 
@@ -747,12 +943,88 @@ class Clock:
         err = want - self._agc_db
         self._agc_db += err * (1.0 - math.exp(-dt / (10.0 if err > 0 else 3.0)))
 
-    def _frame(self, hop: np.ndarray) -> bool:
-        a = self.act.process_hop(hop)
+    def _hop(self, hop: np.ndarray) -> bool:
+        """One full hop (``hop`` is the reused buffer). Its time is fixed here, from the newest block's times: the
+        input position of its last sample, as host seconds (before the activation's lag). Inline, the frame runs at
+        once; threaded, a copy goes to show-beat (or is dropped under back-pressure)."""
         self._m_done += HOP
         fs = self._lane_fs
         n_in = self._n_origin + self._m_done * fs / FS
-        t = self._last_t0 + (n_in - self._last_n0) / fs - self.act.lag_s - self._lag_adj
+        t_raw = self._last_t0 + (n_in - self._last_n0) / fs
+        bt = self._bt
+        changed = False
+        if bt is not None and self._bt_stopped and not bt.thread.is_alive():
+            changed = self._inline_again()
+            bt = None
+        if bt is None:
+            return self._frame(self.act.process_hop(hop), t_raw) or changed
+        if self._bt_put - self._bt_got >= BEAT_Q_MAX:
+            changed = self._drain_beats()               # whatever came back since this process() began
+            if self._bt_put - self._bt_got >= BEAT_Q_MAX:
+                if not bt.thread.is_alive():            # show-beat is gone: run inline from here (degrade)
+                    changed |= self._inline_again()
+                    return self._frame(self.act.process_hop(hop), t_raw) or changed
+                self._counts["beat_drops"] += 1
+                self._bt_splice = True
+                return changed
+        if self._bt_splice:                             # dropped hops before this one: madmom never sees a splice
+            self._bt_splice = False
+            bt.q.put(("reset", self._bt_epoch))
+        self._bt_put += 1
+        bt.q.put(("hop", self._bt_epoch, self._bt_put, hop.copy(), t_raw, time.perf_counter()))
+        return changed
+
+    def _inline_again(self) -> bool:
+        """show-beat has exited (``stop()``, or it died): drain what it left, then run the activation on show-rx."""
+        changed = self._drain_beats()
+        self._bt = None
+        self._bt_put = self._bt_got = 0
+        self._bt_seq_next = 1
+        self.act.reset()                                # a splice either way
+        self._pk.reset()
+        if self._bt_stopped:
+            self._counts["beat_inline_after_stop"] += 1
+        else:
+            self._counts["beat_thread_died"] += 1
+            log.warning("show-beat has died: the beat activation runs on show-rx from now on")
+        return changed
+
+    def _drain_beats(self) -> bool:
+        """show-rx: run the rest of each frame show-beat has finished, in order (never waits). True if the published
+        line was re-anchored."""
+        bt = self._bt
+        if bt is None:
+            return False
+        out = bt.out
+        changed = False
+        perf = time.perf_counter
+        while out:
+            item = out.popleft()
+            if item[0] != "a":                          # a reset marker, reached: the peak picker starts over too
+                if item[1] == self._bt_epoch:
+                    self._pk.reset()
+                continue
+            _, ep, seq, a, t_raw, t_put = item
+            self._bt_got += 1
+            self._bt_lag.append((perf() - t_put) * 1000.0)
+            if seq != self._bt_seq_next:                # never expected: SimpleQueue and the deque are FIFO
+                self._counts["beat_order"] += 1
+            self._bt_seq_next = seq + 1
+            if ep != self._bt_epoch:
+                self._counts["beat_stale"] += 1
+                continue
+            if a is None:                               # the activation failed (show-beat logged it)
+                self._err_n += 1
+                continue
+            try:
+                changed |= self._frame(a, t_raw)
+            except Exception:                           # never take show-rx down; the next frame goes on
+                self._error()
+        return changed
+
+    def _frame(self, a: float, t_raw: float) -> bool:
+        """The rest of a frame, on show-rx: activation ``a`` of the hop whose last sample sounds at ``t_raw``."""
+        t = t_raw - self.act.lag_s - self._lag_adj
         tg = self.tg
         if tg.filled and not math.isnan(tg.t_last):     # keep the tempogram on one time axis across segments
             gap = t - tg.t_last
@@ -964,6 +1236,7 @@ class Clock:
         self._seed_prev = None
         self._counts["seeds"] += 1
         self._jump_published()
+        self._numbering_break(self._pub_k)               # a new grid: the count before it was another grid's
 
     def _drop_grid(self) -> None:
         self._grid = False
@@ -979,6 +1252,7 @@ class Clock:
         if hs:
             self._pk.L = min(self._pk.L, max(hs))
         self._counts["cold_searches"] += 1
+        self._numbering_break(None)
 
     def _run_beats(self, t_known: float) -> bool:
         changed = False
@@ -1068,6 +1342,7 @@ class Clock:
                     self._acq = 4
                     self._counts["relocks"] += 1
                     kind = "relock"
+                    self._numbering_break(k + self._off)
         else:
             if not (self._no_audio and self._tap_mode):  # a tap tempo with no audio coasts without decaying
                 self._hits.append(0.0)
@@ -1362,15 +1637,10 @@ class Clock:
             item = q.popleft()
             kind = item[0]
             if kind == "corr":
-                _, one, L, octv = item
-                if octv not in (0.5, 1.0, 2.0):
-                    octv = 1.0
-                self._pending = {"one": one, "L": int(L) if L else None, "oct": octv, "age": 0}
-                if octv != 1.0:
-                    self._oct_lock_t = self._t_known + 30.0
+                self._on_correction(*item[1:])
             elif kind == "oct":
                 self._pending_oct, self._pending_kick = item[1], None
-                self._oct_lock_t = self._t_known + 30.0
+                self._oct_lock_t = self._t_known + SLOW_OCT_HOLD_S
                 self._counts["human_octave"] += 1
             elif kind == "one":
                 if self._pub_ok:
@@ -1378,8 +1648,59 @@ class Clock:
                     self._bar_anchor = K
                     self._bar_conf = max(self._bar_conf, 0.8)
                     self._counts["human_one"] += 1
+                    if self._pending is not None and self._pending["one"] is not None:
+                        self._pending = None                # the human said where the one is
+                        self._corr_done("superseded")
             elif kind == "tap":
                 self._on_tap(item[1])
+
+    def _on_correction(self, one_in: object, L_in: object, oct_in: object) -> None:
+        """A slow-lane vote, on show-rx: checked, gated, then waiting for its bar line (``_apply_pending``)."""
+        one = None if one_in is None else _whole(one_in)
+        L = None if L_in is None else _whole(L_in)
+        try:
+            octv = float(oct_in) if oct_in is not None else 1.0
+        except (TypeError, ValueError):
+            octv = math.nan
+        if ((one_in is not None and one is None) or (L_in is not None and (L is None or
+                                                                           not BAR_LEN_MIN <= L <= BAR_LEN_MAX))
+                or octv not in (0.5, 1.0, 2.0)):
+            self._corr_done("bad", {"one": None, "L": None, "oct": None})
+            return
+        p = {"one": one, "L": L, "oct": octv, "age": 0}
+        if not (self._grid and self._confirmed):
+            self._corr_done("no_grid", p)
+            return
+        K = self._k_next + self._off                    # the upcoming beat, published numbering
+        if one is not None and not self._break_k <= one <= K + (L or self._bpb):
+            self._corr_done("stale", p)                 # another grid's count, or not from the window (the past)
+            return
+        if self._pending is not None:
+            self._counts["corr_replaced"] += 1
+        self._pending = p
+        self._corr_done("accepted", p)
+        # the slow lane agrees with this octave (or sets it): the clock's own octave check holds off
+        self._oct_lock_t = max(self._oct_lock_t, self._t_known + SLOW_OCT_HOLD_S)
+
+    def _corr_done(self, result: str, p: Optional[dict] = None, at: Optional[int] = None) -> None:
+        """Count a correction's fate and keep it for ``stats()["last_correction"]`` (swapped by reference):
+        ``{one, bar_len, octave, result, at_beat}``, ``at_beat`` being the published beat it switched at."""
+        self._counts[f"corr_{result}"] += 1
+        last = self._corr_last
+        if p is not None:
+            last = {"one": p["one"], "bar_len": p["L"], "octave": p["oct"]}
+        elif last is None:
+            last = {"one": None, "bar_len": None, "octave": None}
+        self._corr_last = {**last, "result": result, "at_beat": at}
+
+    def _numbering_break(self, K: Optional[int]) -> None:
+        """The count before published beat ``K`` is not this grid's (a new grid, an octave change, a re-lock; None:
+        the grid is gone): a waiting slow-lane correction, and any that refers to an earlier beat, is stale."""
+        if K is not None:
+            self._break_k = int(K)
+        if self._pending is not None:
+            self._pending = None
+            self._corr_done("stale")
 
     def _on_tap(self, t: float) -> None:
         taps = self._taps
@@ -1434,12 +1755,18 @@ class Clock:
         if p is not None:
             p["age"] += 1
             L = p["L"] or self._bpb
-            per = max(1, int(round(L / p["oct"])))      # beats per new bar, in today's numbering
             ref = p["one"] if p["one"] is not None else self._bar_anchor
-            if (K - ref) % per == 0 or p["age"] > 2 * per + 4:
+            # does the upcoming beat K start a bar under the new hypothesis? Old beat K is new beat (K - ref) x octave
+            # counted from the one; it starts a bar when that is a whole multiple of L. With octave = num / den:
+            # (K - ref) x num = 0 mod (L x den)
+            num, den = (2, 1) if p["oct"] == 2.0 else ((1, 2) if p["oct"] == 0.5 else (1, 1))
+            if ((K - ref) * num) % (L * den) == 0:
                 self._pending = None
                 into = ((K - self._bar_anchor) // self._bpb) % self._phrase_bars
-                if p["oct"] != 1.0 and self._apply_octave(p["oct"]):
+                if p["oct"] != 1.0:
+                    if not self._apply_octave(p["oct"]):    # out of 45-200 bpm (counted): nothing else moves
+                        self._corr_done("refused", p)
+                        return changed
                     changed = True
                     self._counts["octave_votes"] += 1
                 if p["one"] is not None:
@@ -1447,10 +1774,14 @@ class Clock:
                     self._bar_conf = (self._bar_conf + 0.35 * (0.95 - self._bar_conf)) if (
                         agree and self._bar_votes) else 0.6
                     self._bar_votes += 1
+                if p["one"] is not None or p["oct"] != 1.0 or L != self._bpb:
+                    self._bar_anchor = K - into * L             # K starts a bar; its place in the phrase is kept
                 self._bpb = L
-                if p["one"] is not None or p["oct"] != 1.0:
-                    self._bar_anchor = K - into * self._bpb
                 self._counts["bar_votes"] += 1
+                self._corr_done("applied", p, K)
+            elif p["age"] > 2 * L * den:                # the count moved under it (a published jump): never off a bar
+                self._pending = None
+                self._corr_done("expired", p)
         return changed
 
     def _apply_octave(self, f: float, kick: Optional[int] = None) -> bool:
@@ -1472,6 +1803,7 @@ class Clock:
         self._oct_streak = 0
         self._set_pub(K, self._t_next, 60.0 / self._T)
         self._epoch += 1
+        self._numbering_break(K)                        # beats from K on are the new octave's
         return True
 
     # ---- the published line ------------------------------------------------------------------------------------------

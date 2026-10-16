@@ -7,12 +7,24 @@
   per-mode rules use.
 
 Nothing here knows a mode, a vibe or a device. The words are a fixed vocabulary, and their inputs are NoteTap,
-PianoView, features, clock, harmony, receiver health, the listener's beliefs and RoomView. Which stream, channel or
-room target a word reads is config: show.yaml's ``situations`` section (``midi``, ``music``, ``sonos``, ``quiet``),
-then the rule's own params, then the design defaults below (starting points, marked as such in GET
-/api/v1/situations). Test streams never count unless a rule sets ``include_test``: the piano words leave them out, and
-the audio and listener words read unknown while a test stream is the one measured (a test played from another room
-never switches this one).
+PianoView, features, clock, harmony, receiver health, the listener's beliefs, RoomView and (Stage 4) the ML worker's
+CED readings (``ctx.ml``) and structure's music.context (``ctx.music_context``). Which stream, channel or room target
+a word reads is config: show.yaml's ``situations`` section (``midi``, ``music``, ``sonos``, ``quiet``, ``talking``;
+``ced`` for the classifier's window and hysteresis), then the rule's own params, then the design defaults below
+(starting points, marked as such in GET /api/v1/situations). Test streams never count unless a rule sets
+``include_test``: the piano words leave them out, and the audio and listener words read unknown while a test stream is
+the one measured (a test played from another room never switches this one).
+
+Stage 4 (README S4.8). ``Situations.classifier`` is CED, from ``ctx.ml``: ``(stream) -> {"music", "speech",
+"conversation", "singing", "crowd", "applause", "silence", "stream", "n"}``, the mean of the worker's readings for that
+stream (None: the measured one) whose ``t`` is in the last ``situations.ced.window_s`` (3 s; longer while the worker
+stretches its cadence: MLView.stale_s), or None when there are none (no worker, a missing model, another stream).
+With it, ``talking``, ``quiet`` and ``music_audible`` read CED with hysteresis (a word that holds keeps holding until
+its number is back past the threshold by ``situations.ced.hysteresis``); "speech" there is the max over
+``situations.talking.speech_words`` (speech, conversation, crowd: babble counts). Without it they read exactly as in
+Stage 3. ``genre_in`` reads music.context's genre (the ML's parents through show.yaml ``genre_map``, or the listener's
+words) first, then the listener's beliefs; once confident it stays so until its conf is the CED hysteresis under
+min_conf.
 """
 
 from __future__ import annotations
@@ -42,6 +54,11 @@ HISTORY_S = 660.0                       # features samples kept (covers any wind
 NOTES_KEEP_S = 600.0                    # how far back a tick's note copy reaches
 SINCE_FORGET_S = 60.0                   # a since_s tracker not read for this long is dropped
 SONOS_PLAYING = ("PLAYING", "TRANSITIONING")
+# Stage 4: the CED classifier (show.yaml situations.ced; README S4.8)
+CED_WINDOW_S = 3.0                      # README S4.8: the mean of the CED readings whose t is in the last 3 s
+CED_HYSTERESIS = 0.05                   # starting point (show.yaml situations.ced.hysteresis): a CED word that holds
+                                        # keeps holding until its number is back past its threshold by this much
+CONTEXT_STALE_S = 3.0                   # music.context comes at 1 Hz: older than this, genre_in reads the beliefs
 
 # -- the vocabulary ---------------------------------------------------------------------------------------------------
 # Param JSON schemas (the room's catalog subset plus x-ui; "nullable" means null is allowed: "unset").
@@ -66,6 +83,10 @@ PARAM_SCHEMAS: dict[str, dict] = {
                        "x-ui": {"label": "Mic loudness at least", "unit": "LUFS"}},
     "stream": {"type": "string", "nullable": True, "x-ui": {"label": "Audio stream", "unset_label": "Whichever plays"}},
     "min_prob": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Classifier probability"}},
+    "music_below": {"type": "number", "minimum": 0, "maximum": 1, "nullable": True,
+                    "x-ui": {"label": "Music probability under", "unset_label": "The starting point"}},
+    "speech_below": {"type": "number", "minimum": 0, "maximum": 1, "nullable": True,
+                     "x-ui": {"label": "Speech probability under", "unset_label": "The starting point"}},
     "dsp_min_gate": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Loud enough (gate)"}},
     "now_playing": {"type": "string", "nullable": True,
                     "x-ui": {"label": "Now-playing target", "unset_label": "No Sonos"}},
@@ -87,7 +108,10 @@ DESIGN_DEFAULTS: dict[str, Any] = {
     "min_pitches": 4, "idle_note_s": IDLE_NOTE_S, "heard_by": None, "heard_min_lufs": -45, "stream": None,
     "min_prob": 0.5, "dsp_min_gate": 0.3,
     "now_playing": None, "volume": None, "own_change_s": 60, "min_conf": 0.6, "gate_below": 0.05,
+    "music_below": None, "speech_below": None,       # quiet: unset = the gate alone; talking: TALKING_MUSIC_BELOW
 }
+TALKING_MUSIC_BELOW = 0.5               # starting point (show.yaml situations.talking.music_below; §8.9: speech with
+                                        # no music): talking's music threshold when show.yaml and the rule leave it out
 
 _PIANO = ("streams", "channels", "include_test")
 _SONOS = ("now_playing", "volume", "own_change_s")
@@ -104,8 +128,9 @@ WORDS: dict[str, dict] = {
     "music_audible": {
         "label": "music is playing", "source": "audio", "sections": ("music", "sonos"),
         "params": ("stream", "min_prob", "dsp_min_gate", "include_test") + _SONOS,
-        "description": "The room mic hears music: a music/speech classifier when there is one (P1), until then a "
-                       "steady beat or a clear key over the loudness gate. Or Sonos is playing and the mic agrees."},
+        "description": "The room mic hears music: the ML worker's music/speech classifier (CED, its last 3 s) says "
+                       "music at min_prob or more. Without the worker, a steady beat or a clear key over the loudness "
+                       "gate. Or Sonos is playing and the mic hears it (over the gate)."},
     "sonos_playing": {
         "label": "Sonos is playing", "source": "sonos", "sections": ("sonos",), "params": _SONOS,
         "description": "The room's now-playing target says playing, not muted, with the volume above 0. Unknown for "
@@ -113,21 +138,24 @@ WORDS: dict[str, dict] = {
     "genre_in": {
         "label": "the music is one of these genres", "source": "listener", "sections": (),
         "params": ("genres", "min_conf", "include_test"), "required": ("genres",),
-        "description": "The AI listener's genre is one of these, confidently. Unknown while it isn't listening, and "
-                       "while a test stream is the one heard (unless include_test)."},
+        "description": "The music's genre is one of these, confidently: the ML worker's genre family (through "
+                       "show.yaml genre_map) or the AI listener's word. Unknown while neither has one, and while a "
+                       "test stream is the one heard (unless include_test)."},
     "energy_above": {
         "label": "the music is lively", "source": "audio", "sections": (),
         "params": ("value", "stream", "include_test"), "required": ("value",),
         "description": "The music's energy, averaged over about 10 s, is above this value. Unknown while a test "
                        "stream is the one measured (unless include_test)."},
     "talking": {
-        "label": "people are talking", "source": "audio", "sections": (),
-        "params": ("stream", "min_prob", "include_test"),
-        "description": "Speech and no music, from a music/speech classifier (P1). Always unknown until it exists."},
+        "label": "people are talking", "source": "audio", "sections": ("talking",),
+        "params": ("stream", "min_prob", "music_below", "include_test"),
+        "description": "The ML worker's music/speech classifier (CED, its last 3 s) hears speech at min_prob or more "
+                       "with music under music_below. Unknown without the worker."},
     "quiet": {
         "label": "the room is quiet", "source": "audio", "sections": ("quiet",),
-        "params": ("stream", "gate_below", "include_test"),
-        "description": "The mic stream is up and below the loudness gate."},
+        "params": ("stream", "gate_below", "music_below", "speech_below", "include_test"),
+        "description": "The mic stream is up and below the loudness gate. With the ML worker, also when the "
+                       "classifier hears neither music nor speech (both under their limits): only noise."},
     "between": {
         "label": "it's between these times", "source": "time", "sections": (), "params": ("from", "to"),
         "required": ("from", "to"),
@@ -322,7 +350,14 @@ class Situations:
         self.ctx = ctx
         self._local = local or datetime.now
         self._mono = mono
-        self.classifier: Optional[Callable[[Optional[str]], Optional[dict]]] = None   # P1 (CED): {"music", "speech"}
+        # CED (Stage 4): (stream) -> {CED_GROUPS word: 0..1, "stream", "n"} | None. Bound to ctx.ml at start (or the
+        # first tick); a test may set its own.
+        self.classifier: Optional[Callable[[Optional[str]], Optional[dict]]] = None
+        self._ced_cfg: dict = {"window_s": CED_WINDOW_S, "hysteresis": CED_HYSTERESIS}
+        self._speech_words: tuple[str, ...] = contract.SPEECH_WORDS   # situations.talking.speech_words
+        self._results_stale_s = CED_WINDOW_S              # show.yaml ml.results_stale_s (the CED window's floor too)
+        self._prev: Optional[bool] = None                 # the reading's previous value while a reader runs (hysteresis)
+        self.problems: list[str] = []
         self._section: dict = {}
         self.revision = 0                                 # +1 per configure (Conditions re-checks rules)
         self._hist: deque = deque()                       # (t_s, stream, lufs_s, gate)
@@ -340,6 +375,31 @@ class Situations:
     def configure(self, settings: dict) -> None:
         s = (settings or {}).get("situations") if isinstance(settings, dict) else None
         self._section = s if isinstance(s, dict) else {}
+        ced = self._section.get("ced")
+        cfg, probs = {"window_s": CED_WINDOW_S, "hysteresis": CED_HYSTERESIS}, []
+        if isinstance(ced, dict):
+            w, h = ced.get("window_s"), ced.get("hysteresis")
+            if w is not None:
+                if _num(w, -1.0) > 0:
+                    cfg["window_s"] = float(w)
+                else:
+                    probs.append(f"situations.ced.window_s: {w!r} is not a positive number: {CED_WINDOW_S} used")
+            if h is not None:
+                if 0.0 <= _num(h, -1.0) <= 0.5:
+                    cfg["hysteresis"] = float(h)
+                else:
+                    probs.append(f"situations.ced.hysteresis: {h!r} is not 0..0.5: {CED_HYSTERESIS} used")
+        elif ced is not None:
+            probs.append("situations.ced: not a mapping")
+        talk = self._section.get("talking") if isinstance(self._section.get("talking"), dict) else {}
+        words, prob = contract.speech_words(talk.get("speech_words"), "situations.talking.speech_words")
+        if prob:
+            probs.append(prob)
+        ml = (settings or {}).get("ml") if isinstance(settings, dict) else None
+        rs = _num(ml.get("results_stale_s"), -1.0) if isinstance(ml, dict) else -1.0
+        self._results_stale_s = rs if rs > 0 else CED_WINDOW_S
+        self._speech_words = words
+        self._ced_cfg, self.problems = cfg, probs
         self.revision += 1
         self._memo.clear()
 
@@ -347,7 +407,7 @@ class Situations:
         pass                                              # situation timers start cold (README S3.4)
 
     def start(self) -> None:
-        pass
+        self._bind_classifier()
 
     def stop(self) -> None:
         pass
@@ -355,7 +415,13 @@ class Situations:
     def persist(self) -> None:
         return None
 
+    def _bind_classifier(self) -> None:
+        """README S4.8: the classifier comes from ctx.ml (the ML worker's view) when that slot is filled."""
+        if self.classifier is None and getattr(self.ctx, "ml", None) is not None:
+            self.classifier = self._ced
+
     def tick(self, now_s: float) -> None:
+        self._bind_classifier()
         self._sample(now_s)
         readings = {}
         for sid in WORDS:
@@ -366,10 +432,59 @@ class Situations:
         cut = now_s - SINCE_FORGET_S
         for k in [k for k, v in self._since.items() if v[2] < cut]:
             del self._since[k]
-        self._snap = {"readings": readings, "vocabulary": self.vocabulary()}
+        self._snap = {"readings": readings, "vocabulary": self.vocabulary(), "classifier": self._ced_view(now_s),
+                      "problems": list(self.problems)}
 
     def snapshot(self) -> dict:
         return self._snap
+
+    # -- the CED classifier (Stage 4) -------------------------------------------------------------------------------------
+    def _ced(self, stream: Optional[str], now_s: Optional[float] = None) -> Optional[dict]:
+        """The mean of ctx.ml's CED readings for ``stream`` (None: the stream the worker measures) with ``t`` in the
+        last ``situations.ced.window_s``; None when there are none."""
+        v = self._call(getattr(self.ctx, "ml", None))
+        if not isinstance(v, dict):
+            return None
+        vstream = v.get("stream")
+        if stream and vstream != stream:
+            return None
+        now = self._mono() if now_s is None else now_s
+        # the window follows the worker's own freshness (MLView.stale_s): while its CPU guard stretches CED's cadence
+        # to 3-8 s, a fixed 3 s would often hold no reading and the words would flap between CED and the DSP guess
+        window = max(float(self._ced_cfg["window_s"]), contract.ml_stale_s(v, "ced", self._results_stale_s))
+        t_min = now - window
+        rows = [r for r in (v.get("ced_recent") or []) if isinstance(r, dict) and _num(r.get("t"), -math.inf) >= t_min
+                and r.get("stream", vstream) == vstream]
+        if not rows:
+            return None
+        out: dict[str, Any] = {w: sum(_num(r.get(f"{w}_p"), 0.0) for r in rows) / len(rows)
+                               for w in contract.CED_GROUPS}
+        out["stream"] = vstream
+        out["n"] = len(rows)
+        return out
+
+    def _speech(self, c: Any) -> Optional[float]:
+        """A classifier reading's speech: the max over situations.talking.speech_words (babble and conversation
+        count, not only Speech)."""
+        return contract.speech_of(c, self._speech_words)
+
+    def _classify(self, stream: Optional[str], now_s: float) -> Optional[dict]:
+        fn = self.classifier
+        if fn is None:
+            return None
+        if fn == self._ced:                               # ours: read at the reading's own now_s
+            return self._call(lambda: self._ced(stream, now_s))
+        return self._call(lambda: fn(stream))
+
+    def _ced_view(self, now_s: float) -> dict:
+        c = self._classify(None, now_s) if self.classifier is not None else None
+        return {"on": self.classifier is not None, "window_s": self._ced_cfg["window_s"],
+                "hysteresis": self._ced_cfg["hysteresis"], "speech_words": list(self._speech_words),
+                "now": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in c.items()} if c else None}
+
+    def _hyst(self) -> float:
+        """The hysteresis margin for the reading being made: the CED margin while it holds (it was True), else 0."""
+        return float(self._ced_cfg["hysteresis"]) if self._prev is True else 0.0
 
     # -- the vocabulary -------------------------------------------------------------------------------------------------
     def params(self, sid: str, override: Optional[dict] = None) -> dict:
@@ -421,7 +536,7 @@ class Situations:
         if sid == "music_audible":
             return c.features is not None or bool(p.get("now_playing"))
         if sid == "genre_in":
-            return c.beliefs is not None
+            return c.beliefs is not None or getattr(c, "music_context", None) is not None
         if sid in ("energy_above", "quiet"):
             return c.features is not None
         if sid == "talking":
@@ -439,12 +554,15 @@ class Situations:
         if hit is not None:
             return hit
         p = self.params(sid, params)
+        t = self._since.get(key)
+        self._prev = t[0] if t is not None else None      # what this reading said last (the CED words' hysteresis)
         try:
             value, via, ev = getattr(self, "_r_" + sid)(p, now_s)
         except Exception as e:                            # a reader bug reads unknown, never breaks Auto
             log.debug("situation %s failed", sid, exc_info=True)
             value, via, ev = None, "error", {"error": f"{type(e).__name__}: {e}"}
-        t = self._since.get(key)
+        finally:
+            self._prev = None
         if t is None or t[0] != value:
             t = self._since[key] = [value, now_s, now_s]
         t[2] = now_s
@@ -577,6 +695,24 @@ class Situations:
         playing = state in SONOS_PLAYING and not mute and vol > 0
         return playing, {"state": state.lower(), "mute": mute, "volume": vol}
 
+    def _context(self, now_s: float) -> Optional[dict]:
+        """structure's music.context while it is fresh, else None."""
+        mc = self._call(getattr(self.ctx, "music_context", None))
+        if not isinstance(mc, dict):
+            return None
+        t = mc.get("t_ms")
+        if not isinstance(t, (int, float)) or isinstance(t, bool) or now_s - t / 1000.0 > CONTEXT_STALE_S:
+            return None
+        return mc
+
+    def _test_stream_evidence(self, name: Any) -> Optional[dict]:
+        """Evidence when the classifier's stream is a test stream (the caller checks include_test), else None."""
+        if isinstance(name, str) and name:
+            streams, _ = self._health()
+            if _is_test(name, streams.get(name)):
+                return {"why": f"{name} is a test stream (include_test is off)", "stream": name}
+        return None
+
     # readers: (params, now_s) -> (value, via, evidence)
     def _r_piano_playing(self, p: dict, now_s: float):
         streams, _ = self._health()
@@ -647,12 +783,21 @@ class Situations:
         ev: dict = {"stream": stream or (f or {}).get("stream"), "sonos": sonos, "sonos_detail": sev}
         if not up:
             return (False if sonos is False else None), "sonos", ev
-        if self.classifier is not None:
-            c = self._call(lambda: self.classifier(stream))
-            if isinstance(c, dict) and isinstance(c.get("music"), (int, float)):
-                ev["music_prob"] = c["music"]
-                if c["music"] >= _num(p.get("min_prob"), DESIGN_DEFAULTS["min_prob"]):
-                    return True, "classifier", ev
+        c = self._classify(stream, now_s)
+        if isinstance(c, dict) and isinstance(c.get("music"), (int, float)):
+            # CED decides (README S4.3): music at min_prob (less the hysteresis while it holds), or Sonos playing and
+            # the mic hearing it over the gate (§8.9). Without a reading: the Stage-3 DSP guess below.
+            test = None if stream or p.get("include_test") else self._test_stream_evidence(c.get("stream"))
+            if test is not None:
+                return (False if sonos is False else None), "classifier", {**ev, **test}
+            need = _num(p.get("min_prob"), DESIGN_DEFAULTS["min_prob"])
+            ev.update(music_prob=round(c["music"], 3), min_prob=need, ced_n=c.get("n"))
+            if c["music"] >= need - self._hyst():
+                return True, "classifier", ev
+            if sonos is True and f is not None and (not stream or f.get("stream") == stream) and \
+                    _num(f.get("gate"), 0.0) >= _num(p.get("dsp_min_gate"), DESIGN_DEFAULTS["dsp_min_gate"]):
+                return True, "sonos+mic", {**ev, "gate": round(_num(f.get("gate"), 0.0), 3)}
+            return False, "classifier", ev
         if f is None or (stream and f.get("stream") != stream):
             return (False if sonos is False else None), "dsp", {**ev, "why": "its sound isn't measured now"}
         test = self._test_measured(p, f)
@@ -681,14 +826,29 @@ class Situations:
         test = self._test_measured(p, self._features(now_s))
         if test is not None:
             return None, "listener", test
+        need = _num(p.get("min_conf"), DESIGN_DEFAULTS["min_conf"])
+        if self._prev is not None:                        # it was confident (true or false): it stays so until its
+            need -= float(self._ced_cfg["hysteresis"])    # conf is the CED hysteresis under min_conf (no flapping)
+        mc = self._context(now_s)
+        g = mc.get("genre") if mc is not None and isinstance(mc.get("genre"), dict) else None
+        if g is not None:                                 # structure's genre (README S4.8's rule) comes first
+            via = g.get("via") if g.get("via") in contract.GENRE_VIA else "listener"
+            conf = _num(g.get("conf"), 0.0)
+            ev = {"genre": g.get("word"), "conf": round(conf, 2), "genres": genres, "via": via,
+                  "parent": g.get("parent")}
+            if not isinstance(g.get("word"), str) or not g["word"]:
+                return None, via, {**ev, "why": "no genre word yet"}
+            if conf < need:
+                return None, via, {**ev, "why": "not confident"}
+            return g["word"] in genres, via, ev
         b = self._call(self.ctx.beliefs)
         if not isinstance(b, dict) or b.get("state") in (None, "none", "fading"):
             return None, "listener", {"why": "the listener has no confident view", "state": (b or {}).get("state")}
         g = b.get("genre") if isinstance(b.get("genre"), dict) else None
         if not g or not g.get("word"):
             return None, "listener", {"why": "no genre yet"}
-        conf, need = _num(g.get("conf"), 0.0), _num(p.get("min_conf"), DESIGN_DEFAULTS["min_conf"])
-        ev = {"genre": g["word"], "conf": round(conf, 2), "genres": genres}
+        conf = _num(g.get("conf"), 0.0)
+        ev = {"genre": g["word"], "conf": round(conf, 2), "genres": genres, "via": "listener", "parent": None}
         if conf < need:
             return None, "listener", {**ev, "why": "not confident"}
         return g["word"] in genres, "listener", ev
@@ -711,16 +871,26 @@ class Situations:
 
     def _r_talking(self, p: dict, now_s: float):
         if self.classifier is None:
-            return None, "classifier", {"why": "no music/speech classifier yet (P1)"}
+            return None, "classifier", {"why": "the music/speech check isn't running (no ML worker)"}
         stream = p.get("stream") if isinstance(p.get("stream"), str) and p.get("stream") else None
         test = None if stream else self._test_measured(p, self._features(now_s))
         if test is not None:
             return None, "classifier", test
-        c = self._call(lambda: self.classifier(stream))
-        if not isinstance(c, dict) or not isinstance(c.get("speech"), (int, float)):
-            return None, "classifier", {"why": "no classifier reading"}
-        talk = c["speech"] >= _num(p.get("min_prob"), 0.5) and _num(c.get("music"), 0.0) < 0.5
-        return talk, "classifier", {"speech": c["speech"], "music": c.get("music")}
+        c = self._classify(stream, now_s)
+        speech = self._speech(c)
+        if not isinstance(c, dict) or speech is None:
+            return None, "classifier", {"why": "no fresh music/speech reading", "stream": stream}
+        test = None if stream or p.get("include_test") else self._test_stream_evidence(c.get("stream"))
+        if test is not None:
+            return None, "classifier", test
+        min_prob = _num(p.get("min_prob"), DESIGN_DEFAULTS["min_prob"])
+        music_below = _num(p.get("music_below"), TALKING_MUSIC_BELOW)
+        h = self._hyst()
+        talk = speech >= min_prob - h and _num(c.get("music"), 0.0) < music_below + h
+        return talk, "classifier", {"speech": round(speech, 3), "music": round(_num(c.get("music"), 0.0), 3),
+                                    "speech_words": list(self._speech_words),
+                                    "min_prob": min_prob, "music_below": music_below, "hysteresis": h,
+                                    "ced_n": c.get("n"), "stream": c.get("stream")}
 
     def _r_quiet(self, p: dict, now_s: float):
         own = self._own_change(self.params("sonos_playing"))      # the room's own Sonos change isn't the room's quiet
@@ -742,7 +912,18 @@ class Situations:
             state = (streams.get(stream) or {}).get("state")
             return (True if state == "quiet" else None), "health", {"stream": stream, "state": state}
         gate, below = _num(f.get("gate"), 0.0), _num(p.get("gate_below"), DESIGN_DEFAULTS["gate_below"])
-        return gate < below, "dsp", {"gate": round(gate, 3), "gate_below": below, "stream": f.get("stream")}
+        ev = {"gate": round(gate, 3), "gate_below": below, "stream": f.get("stream")}
+        if gate < below:
+            return True, "dsp", ev
+        mb, sb = p.get("music_below"), p.get("speech_below")
+        c = self._classify(stream, now_s) if isinstance(mb, (int, float)) and isinstance(sb, (int, float)) else None
+        speech = self._speech(c)
+        if isinstance(c, dict) and isinstance(c.get("music"), (int, float)) and speech is not None:
+            h = self._hyst()                              # over the gate, but neither music nor speech: only noise
+            ev.update(music=round(c["music"], 3), speech=round(speech, 3), music_below=mb, speech_below=sb,
+                      hysteresis=h, ced_n=c.get("n"))
+            return (c["music"] < float(mb) + h and speech < float(sb) + h), "classifier", ev
+        return False, "dsp", ev
 
     def _r_between(self, p: dict, now_s: float):
         a, b = _hhmm(p.get("from")), _hhmm(p.get("to"))

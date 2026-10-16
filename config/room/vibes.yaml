@@ -7,8 +7,10 @@
 # add, rename, duplicate or delete them freely. Nothing in code knows these names: a mode that names a missing vibe
 # gets the neutral look, and the Feel card says so (the read-back's known: false and problems).
 #
-# Not built yet: strobe is only published (false everywhere, its neutral) and nothing spends peak_tokens_per_hour
-# (left unset). accents today sets only how deep the lamps' beat swell goes (show.yaml director.accent_depth).
+# Not built yet: strobe is only published (false everywhere, its neutral). accents today sets only how deep the
+# lamps' beat swell goes (show.yaml director.accent_depth). peak_tokens_per_hour IS spent (Stage 4): a drop after a
+# build costs one token (a lamp dip, a hard look cut and a unison hit); left unset (0), drops never cut or hit and only
+# show inside the look. The owner sets it (§8.5 suggests Party 4-6 an hour).
 #
 # Flat, like the modes: nothing inherits from anything. A field a vibe leaves out takes its NEUTRAL value (listed in
 # the README), never a hidden default.
@@ -201,7 +203,8 @@ vibes:
     motion: [0.4, 0.9]
     accents: downbeat
     strobe: false                   # caps are off by default (§1); only allow strobes in a mode that lowers the blinds
-    # peak_tokens_per_hour: 5       # §8.5: Party 4-6 an hour. Not built yet (nothing spends them), so left unset
+    # peak_tokens_per_hour: 5       # §8.5: Party 4-6 an hour. Spent since Stage 4; unset (the owner's call) = drops
+                                    # never cut or hit, they show inside the look
     moods: [euphoric, playful, bright]   # the Party mode's own direction words today (modes.json)
     transition_style: wild
     palette_family: vivid
@@ -235,7 +238,7 @@ vibes:
     motion: [0.5, 1.0]
     accents: beat
     strobe: false
-    # peak_tokens_per_hour: 6       # not built yet (nothing spends them), so left unset
+    # peak_tokens_per_hour: 6       # spent since Stage 4; unset (the owner's call) = drops never cut or hit
     moods: [euphoric, geometric]    # the Disco mode's own direction words today (modes.json)
     transition_style: lively
     palette_family: vivid
