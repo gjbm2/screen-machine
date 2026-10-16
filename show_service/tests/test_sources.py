@@ -175,9 +175,10 @@ def test_the_shipped_show_yaml_gives_valid_senders():
         assert by[name].on_demand
     always = names(sources.senders_from_settings(settings, (), ()))
     assert not any(by[n].on_demand for n in always)
-    # the room's own senders are the owner's go-live step (README S3.14): shipped commented out, so a restart
-    # subscribes nothing in the room; the test senders carry no room sound
-    assert always == [] and settings["senders"]["test-audio"]["room_sound"] is False
+    # the always-on senders are the room's own (pc22 since 16 Oct; the kiosk is the owner's go-live step, README
+    # S3.14), never the test senders; test audio carries no room sound
+    assert not set(always) & {settings["tests"]["piano"]["sender"], settings["tests"]["audio"]["sender"]}
+    assert settings["senders"]["test-audio"]["room_sound"] is False
 
 
 # -- pieces -----------------------------------------------------------------------------------------------------------

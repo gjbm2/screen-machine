@@ -111,6 +111,27 @@ NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "sou
                                           "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
 
+def _inputs(h: dict) -> dict:
+    """The card's connection words (api.card): permanent (not on-demand) senders configured, and each room sound
+    stream's state (not MIDI, not test streams)."""
+    senders = h.get("senders") if isinstance(h.get("senders"), dict) else {}
+    streams = h.get("streams") if isinstance(h.get("streams"), dict) else {}
+    return {"senders": sum(1 for v in senders.values() if isinstance(v, dict) and not v.get("on_demand")),
+            "room": {n: v.get("state") for n, v in streams.items()
+                     if isinstance(v, dict) and v.get("kind") != "midi" and not v.get("test")}}
+
+
+def _input(h: dict) -> Optional[dict]:
+    """The active stream's raw meter for the card (api.card's hearing.input / input_trace): receiver health's audio
+    peak/rms over the last METER_S and its 10 Hz trace; None without an active stream."""
+    streams = h.get("streams") if isinstance(h.get("streams"), dict) else {}
+    st = streams.get(h.get("active_audio")) if isinstance(h.get("active_audio"), str) else None
+    audio = st.get("audio") if isinstance(st, dict) else None
+    if not isinstance(audio, dict):
+        return None
+    return {"peak_dbfs": audio.get("peak_dbfs"), "rms_dbfs": audio.get("rms_dbfs"), "trace": audio.get("trace")}
+
+
 class _Guard:
     """Counts a callback's exceptions and logs the first, then at most one a GUARD_LOG_S."""
     __slots__ = ("name", "errors", "_next")
@@ -197,8 +218,15 @@ class Show:
             if amod is not None:
                 self.api = self._make("api", lambda: amod.routes(lambda: self.brain, self._engine,
                                                                  log_files=self._log_files()))
+        from . import levels as levels_mod             # the live input meter, WS /v1/levels (05, 16 Oct)
+        self.levels = levels_mod.LevelFeed()
+
+        def _routes(app: Any, api: Any = self.api, lv: Any = self.levels) -> None:
+            lv.routes(app)
+            if api is not None:
+                api(app)
         self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
-                       routes=self.api)
+                       routes=_routes)
         self.publish: contract.Publish = self.bus.publish
         self.rx: Any = None
         self.features: Any = None
@@ -272,7 +300,8 @@ class Show:
         rmod = self._import("receiver")
         if rmod is not None:
             self.rx = self._make("receiver", lambda: rmod.Receiver(self.cfg, on_audio=self.on_audio,
-                                                                    on_midi=self.on_midi, on_tick=self.on_tick))
+                                                                    on_midi=self.on_midi, on_tick=self.on_tick,
+                                                                    on_level=self.levels.push))
         amod = self._import("artnet_out")
         out_cfg: dict = {}
         if amod is not None:
@@ -507,7 +536,8 @@ class Show:
                 clock = self.clock.snapshot()
             except Exception:
                 clock = None
-        return {"active_audio": h.get("active_audio"), "features": feats, "clock": clock}
+        return {"active_audio": h.get("active_audio"), "features": feats, "clock": clock, "inputs": _inputs(h),
+                "input": _input(h)}
 
     def stop(self) -> None:
         if self.brain is not None:

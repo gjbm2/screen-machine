@@ -841,7 +841,7 @@ def test_card_maps_every_component(brain):
     cd = card(snap_of(brain), ENGINE)
     assert set(cd) == set(c.CardData.__annotations__)
     assert cd["hearing"] == {"text": "soul · relaxed", "level": 0.42, "loose": True, "stream": "room-mic",
-                             "test": False}
+                             "test": False, "input": None, "input_trace": None}
     assert cd["vibe"] == {"name": None, "label": "", "known": False}
     assert [x["name"] for x in cd["palette"]["choices"]] == ["auto", "art", "ember", "sea", "dusk", "moss", "rose"]
     assert cd["palette"]["choices"][0] == apimod.AUTO_CHOICE
@@ -1379,3 +1379,30 @@ def test_rooms_hue_adapter_adopts_our_set_then_re_sends_after_a_new_boot_or_a_st
         run(go())
     finally:
         rig.stop()
+
+
+def test_card_hearing_says_why_nothing_arrives():
+    from show_service.api import NO_DEVICE, NO_SENDER, NOT_ANSWERING, STOPPED
+
+    def words(inputs, active=None):
+        return card(None, {"active_audio": active, "features": None, "inputs": inputs})["hearing"]["text"]
+
+    assert words({"senders": 0, "room": {}}) == NO_SENDER
+    assert words({"senders": 1, "room": {}}) == NOT_ANSWERING
+    assert words({"senders": 1, "room": {"room-mic": "no_device"}}) == NO_DEVICE
+    assert words({"senders": 1, "room": {"room-mic": "down"}}) == STOPPED
+    assert words({"senders": 1, "room": {"room-mic": "stale"}}) == STOPPED
+    assert words(None) == "No sound coming in"                  # an engine without inputs reads as before
+    live = {"senders": 1, "room": {"room-mic": "quiet"}}
+    assert words(live) == "No sound coming in"                  # a room stream is up: the old words
+
+
+def test_card_hearing_carries_the_raw_input_meter():
+    trace = {"seq": 42, "hz": 10.0, "peak_dbfs": [-20.0, -12.5], "rms_dbfs": [-40.0, -33.0]}
+    eng = {"active_audio": "pc22-mic", "features": {"energy": 0.5, "age_ms": 10.0, "stream": "pc22-mic"},
+           "input": {"peak_dbfs": -12.5, "rms_dbfs": -33.0, "trace": trace}}
+    h = card(None, eng)["hearing"]
+    assert h["input"] == {"peak_dbfs": -12.5, "rms_dbfs": -33.0}
+    assert h["input_trace"] == trace
+    h = card(None, {"active_audio": None, "features": None, "input": eng["input"]})["hearing"]
+    assert h["input"] is None and h["input_trace"] is None

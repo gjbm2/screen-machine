@@ -99,6 +99,7 @@ SWITCH_UP_S = 3.0
 LOSS_WINDOW_S = 10.0
 METER_BIN_S = 0.1
 METER_S = 0.5
+TRACE_BINS = 10            # the card's input trace: the last 10 closed METER_BIN_S bins (1 s at 10 Hz), with their seq
 FLOOR_BINS = 100                                 # 10 s of 100 ms bins
 CLIP_LEVEL = 0.999
 DBFS_FLOOR = -120.0
@@ -127,6 +128,10 @@ def _signed(d: int) -> int:
 
 def _dbfs(power: float) -> float:
     return DBFS_FLOOR if power <= 1e-12 else max(DBFS_FLOOR, 10.0 * math.log10(power))
+
+
+def _peak_dbfs(peak: float) -> float:
+    return round(DBFS_FLOOR if peak <= 1e-6 else max(DBFS_FLOOR, 20.0 * math.log10(peak)), 1)
 
 
 def _r(x: Any, nd: int = 3) -> Any:
@@ -182,6 +187,7 @@ class _Stream:
         self.bin_ss = 0.0
         self.bin_n = 0
         self.bins: deque[tuple[float, float, int]] = deque(maxlen=FLOOR_BINS)   # (peak, sumsq, samples)
+        self.bin_seq = 0                       # closed bins so far: the trace's seq (the newest bin's number)
         # midi
         self.tmap: Optional[RemoteTimeMap] = None
         self.attached: Optional[str] = None
@@ -215,9 +221,11 @@ class Receiver:
     """The VBAN receiver (module docstring; README "receiver.py")."""
 
     def __init__(self, cfg: Config, *, on_audio: OnAudio, on_midi: OnMidi, on_tick: OnTick,
-                 clock: Callable[[], float] = time.monotonic, sock: Optional[socket.socket] = None) -> None:
+                 clock: Callable[[], float] = time.monotonic, sock: Optional[socket.socket] = None,
+                 on_level: Optional[Callable[[str, int, float, Optional[float], float], None]] = None) -> None:
         self.cfg = cfg
         self._on_audio, self._on_midi, self._on_tick = on_audio, on_midi, on_tick
+        self._on_level = on_level                        # levels.LevelFeed.push: each live packet's peak, at arrival
         self._clock = clock
         self._sock = sock
         self._own_sock = sock is None
@@ -610,6 +618,8 @@ class Receiver:
         if st.first_data_s is None:
             st.first_data_s = arrival
         self._meter(st, pkt.pcm, arrival)
+        if self._on_level is not None and st.clock is not None and st.name == self._active:
+            self._level(st, pkt, arrival)
         if self._active is None:                         # nothing live: take this one now, not at the next 0.1 s
             self._update_states(arrival)
         if st.clock is None:
@@ -752,6 +762,18 @@ class Receiver:
         except Exception:                                # noqa: BLE001
             self._error("audio")
 
+    def _level(self, st: _Stream, pkt: vban.AudioPacket, arrival: float) -> None:
+        """The live meter (levels.py): this packet's peak and its capture time on the sender's clock, at arrival."""
+        try:
+            pcm = pkt.pcm
+            peak = max(float(pcm.max()), -float(pcm.min())) if pcm.size else 0.0
+            t = None
+            if st.capture is not None and st.capture.ready:
+                t = st.capture.to_remote_ns(st.base_n + _signed(vban.counter_delta(st.base_c, pkt.counter)) * st.frames)
+            self._on_level(st.name, pkt.counter, peak, t, arrival)  # type: ignore[misc]
+        except Exception:                                # noqa: BLE001
+            self._error("audio")
+
     def _meter(self, st: _Stream, pcm: np.ndarray, arrival: float) -> None:
         peak = max(float(pcm.max()), -float(pcm.min()))
         ss = float(np.vdot(pcm, pcm))
@@ -762,6 +784,7 @@ class Receiver:
         if arrival - st.bin_t >= METER_BIN_S:
             if st.bin_n:
                 st.bins.append((st.bin_peak, st.bin_ss, st.bin_n))
+                st.bin_seq += 1
             st.bin_t, st.bin_peak, st.bin_ss, st.bin_n = arrival, 0.0, 0.0, 0
         st.bin_peak = max(st.bin_peak, peak)
         st.bin_ss += ss
@@ -990,6 +1013,9 @@ class Receiver:
         ss, n = sum(s for _, s, _ in recent), sum(c for _, _, c in recent)
         rms_db = _dbfs(ss / n) if n else DBFS_FLOOR
         floor = min((_dbfs(s / c) for _, s, c in st.bins if c), default=rms_db)
-        return {"peak_dbfs": round(DBFS_FLOOR if peak <= 1e-6 else max(DBFS_FLOOR, 20.0 * math.log10(peak)), 1),
-                "rms_dbfs": round(rms_db, 1), "clips": st.clips, "silent": rms_db < -60.0,
-                "floor_dbfs": round(floor, 1)}
+        last = list(st.bins)[-TRACE_BINS:]
+        return {"peak_dbfs": _peak_dbfs(peak), "rms_dbfs": round(rms_db, 1), "clips": st.clips, "silent": rms_db < -60.0,
+                "floor_dbfs": round(floor, 1),
+                "trace": {"seq": st.bin_seq, "hz": round(1.0 / METER_BIN_S, 3),
+                          "peak_dbfs": [_peak_dbfs(p) for p, _, _ in last],
+                          "rms_dbfs": [round(_dbfs(ss_ / c), 1) if c else DBFS_FLOOR for _, ss_, c in last]}}
