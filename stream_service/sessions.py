@@ -338,7 +338,7 @@ class Session(EngineListener):
         if self.sampler.follow != "extrapolate":
             return None
         r = self.mgr.room_direction_now(now)
-        if r is not None and r.get("beat_lock") is False:     # the room's vibe doesn't want changes on the beat
+        if r is not None and r["vibe"] is not None and r.get("beat_lock") is False:   # the vibe wants no beat lock
             return None
         return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
 
@@ -2114,9 +2114,11 @@ class SessionManager:
                                "beat_lock": data.get("beat_lock"), "seq": data.get("seq"), "t": time.monotonic()}
 
     def room_direction_now(self, now: float) -> Optional[dict]:
-        """The room director's direction while it speaks (a vibe, fresh), else None (the Maestro features propose)."""
+        """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
+        propose).  With no vibe it still follows the music (show_service's director: band moods, energy, pace), so
+        it fills the slot then too (d4's G3, owner 17 Oct)."""
         r = self.room_direction
-        if r is None or r["vibe"] is None or now - r["t"] > ROOM_STALE_S:
+        if r is None or now - r["t"] > ROOM_STALE_S:
             return None
         return r
 
