@@ -1496,7 +1496,7 @@ class Brain:
   form means it. A field's neutral is offered as a real choice instead: `auto` for a word field, and the gate's own
   -30 LUFS (preset "The usual") for `loudness_ref_lufs`. Lists keep the first of each item, in both.
 - In modes.json (2f's file) it is the row
-  `"show": {"set": <VibeTarget>, "restore": true, "policy": "ignore"}`.
+  `"show.main": {"set": <VibeTarget>, "restore": true, "policy": "ignore"}`.
   `ignore` means the value is applied on arrival and retried until it lands; after that it belongs to the user, so
   nudges never show as drift.
 - Proposed rows, for the owner and 2f to decide; nothing in Stage 3 writes them:

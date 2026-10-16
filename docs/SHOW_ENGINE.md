@@ -737,7 +737,7 @@ Each mode in modes.json gets a `show` entry, applied by a new `show` room adapte
   - Unless a rule lists `show` under `abort_on`, a failed row only makes the transition `partial`, so a mode never blocks.
   - Reconcile retries with backoff, and health recovery re-applies when show_service is back.
 - **modes.json:**
-  - Modes are flat. A mode that uses the show has `"show": {"set": {"vibe": "…", "listening": true}, "restore": true, "policy": "ignore"}`. A mode that doesn't mention `show` leaves it alone, and a restore puts back what was there before.
+  - Modes are flat. A mode that uses the show has `"show.main": {"set": {"vibe": "…", "listening": true}, "restore": true, "policy": "ignore"}`. A mode that doesn't mention `show.main` leaves it alone. `"show.mic": {"set": true, "restore": true}` makes the mode follow the music, so the mic listens while it is on, and a restore puts back what was there before.
   - With `ignore`, the vibe applies on arrival and retries until it lands. After that it's the user's, so nudges never show as drift and are never undone.
 - It is registered in `build_adapters()` and tested at "doesn't crash" level with a fake HTTP server.
 - **Going live** needs the P2 Flask restart. Any modes.json that names `show` must wait for that restart: modes.json hot-reloads, the code doesn't.
