@@ -314,7 +314,7 @@ The sender is one Python script (~150 lines) with two capture back ends. It capt
 - `prev` is newest first. The sender drops `prev` entries, oldest first, if a packet would not fit.
 - A state packet's `seq` is the last batch sent before it. A state does not use up a `seq`.
 - `keys[0]` is A0 (MIDI 21). `keys` lists the keys physically down, with their strike velocities.
-- **`"sess"` is mandatory** from our senders (the kiosk unit and the test piano), on batches and states alike. It is new on every sender start, and is the heartbeat's value when one process sends both. Receivers still accept MIDI without it, from third parties.
+- **`"sess"` is mandatory** from our senders (the kiosk unit and the test piano), on batches and states alike. There is one `sess` per stream (its device session): new on a sender start or a MIDI device re-open, and independent of the audio stream's heartbeat `sess`, so an audio hiccup never restarts the note table (agreed with 98, 16 Oct). Receivers still accept MIDI without it, from third parties.
 - **The receiver's rule** (`vban.midi_seq_verdict`). The wire has restarted when `sess` changes, or when a batch or state has a `seq` more than 8 behind the last (a reorder window wider than `prev`). Otherwise a batch with `seq` ≤ the last is a duplicate, and a state with `seq` < the last is stale.
 
 **The unit** survives the piano box being switched off and on, re-opening the port by name. Every live session is also saved as a `.mid` file on PC22.

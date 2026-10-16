@@ -84,7 +84,8 @@ TEXT messages (one compact JSON object per packet; readers ignore keys they don'
               {"v":1,"seq":1240,"state":{"keys":[...88...],"cc64":0,"cc66":0,"cc67":0},"t_ns":...,"sess":"..."}
   ``seq`` counts event batches, +1 each, from 1 per sender session. ``sess`` is mandatory from our senders (the
   kiosk unit, the test piano: :func:`midi_events_obj` and :func:`midi_state_obj` require it, 1-64 characters): new
-  on every sender start, the heartbeat's value when one process sends both. Readers still accept MIDI without it
+  one per STREAM (its device session: new on a sender start or a MIDI device re-open; independent of any audio
+  stream's heartbeat sess, so an audio hiccup never restarts the note table). Readers still accept MIDI without it
   (third parties).
   Receiving (:func:`midi_seq_verdict`, the one rule midi.py applies): the wire restarted when ``sess`` changed, or
   when a batch or state's ``seq`` is more than MIDI_REORDER (8, wider than MIDI_PREV) behind the last; otherwise a
