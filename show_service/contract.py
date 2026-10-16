@@ -869,7 +869,7 @@ RING_MAX_STREAMS = 3               # the delivered (active) streams; the oldest-
 # -- the card (§10.1; api.py builds it from the components' snapshots) ---------------------------------------------------------
 class CardData(TypedDict):
     """GET /api/v1/card, EV_WELCOME's card, and what EV_CARD patches. Everything the Music card draws, in page words."""
-    hearing: dict[str, Any]        # {"text": "soul · relaxed" | "Quiet" | "Talking" | "No sound coming in",
+    hearing: dict[str, Any]        # {"text": "soul · relaxed" | "Quiet" | "Talking" | "No sound coming in" | api._input_words,
                                    #  "level": 0..1, "loose": bool, "stream": str | None, "test": bool}
     vibe: dict[str, Any]           # {"name": str | None, "label": str, "known": bool}
     steps: StepsView

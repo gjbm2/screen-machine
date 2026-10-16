@@ -56,7 +56,7 @@ LOG_MAX_BYTES = 1 << 20
 #: Auto's globals when modes.json's top-level "autopilot" leaves a key out: design defaults (starting points, §8.9).
 AP_DEFAULTS: dict[str, Any] = {
     "on": False,
-    "quiet_hours": {"from": "23:00", "to": "08:00"},
+    "quiet_hours": None,                                 # none unless modes.json sets them (owner, 16 Oct: never invented)
     "min_dwell_s": 300.0,
     "max_switches": {"count": 4, "per_s": 1800.0, "pause_s": 1800.0},
     "backoff_s": 1800.0,

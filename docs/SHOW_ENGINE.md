@@ -228,6 +228,7 @@ The sender is one Python script (~150 lines) with two capture back ends. It capt
 - **Keeping loopback alive:** WASAPI sends nothing while nothing plays. The agent therefore plays a silent render stream, so the device clock and the sample index never stop.
 - It re-opens the device when the default device changes.
 - It gets a Spectre card from `scripts/windows/audio-agent/*.ps1` (ca).
+- **Built, 16 Oct (05):** `tools/show_sender/pc22_agent.py` sends the Windows default mic (the Insta360 Link) as stream `pc22-mic` on UDP 6984. It runs as a Windows scheduled task under the Spectre card `screen-machine-audio-agent`, and show.yaml's `senders.pc22` subscribes it. Mic only for now; loopback is not built. Windows' microphone privacy setting must allow desktop apps, or the agent sends silence.
 - WSLg's mic is dead on this box (RDP source returns silence, then unloads), so we don't use it.
 
 **The kiosk mini-PC (owner, 15 Oct):** `screen-machine-drawingroom`, a Beelink N95 on Ubuntu 24.04.
@@ -1315,7 +1316,7 @@ GET    /show/healthz
 
 | Phase | State |
 |---|---|
-| P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454 |
+| P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454. Hears PC22's mic (`pc22-mic`, 05's agent) until the kiosk's mic arrives |
 | P1 hearing words | **Built, off.** LLM listener (OpenAI via `utils/llm`) waits for the owner's AI-listening decision; the CED privacy gate is live |
 | P2 director + Music card | **Live.** Director, vibes, nudges, palettes (incl. from the art), room `show` adapter, `/show/*` pass-through, Music card on /room. Neutral until modes get `show` rows (owner) |
 | P3 understanding | **Live.** ML worker (CED, EffNet + heads, key, Beat This!), medium lane, structure (sections, repeats, track change, build/drop/breakdown), `music.context` |
@@ -1329,6 +1330,13 @@ GET    /show/healthz
 - **Song changes.** Detected from a loudness gap (momentary LUFS) plus a genre/key/tempo jump, or two independent jumps without a gap. Relative and parallel keys don't count as a jump.
 - **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
 - **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
+- **Input meter.** The card's `hearing` carries:
+  - `input`: the active stream's raw peak and RMS dBFS over 0.5 s;
+  - `input_trace`: its last ten 100 ms bins, with a `seq` so the page appends only new ones.
+
+  `hearing.level` stays as energy (loudness against the mode's expected loudness, gated), so it is not a meter. When nothing comes in, `hearing.text` says why: "No microphone connected yet", "The microphone isn't answering", "No microphone plugged in" or "The microphone stopped sending".
+
+  05's fast path, WS `/v1/levels` (show_service/levels.py), sends at most 60 frames a second, only while someone is watching. Each frame has the peak since the last frame and the sender's capture time, for a live trace with measured latency.
 - **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 

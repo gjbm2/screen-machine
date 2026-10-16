@@ -431,7 +431,7 @@ def test_health_shape_and_states():
     assert m["format"] == {"sr": 48000, "channels": 1, "fmt": "INT16", "frames": 128}
     assert set(m["net"]) >= {"packets", "loss_pct", "late", "dup", "gaps", "jitter_ms", "hold_ms", "drift_ppm",
                              "skew_alarm", "age_ms", "segments"}
-    assert set(m["audio"]) == {"peak_dbfs", "rms_dbfs", "clips", "silent", "floor_dbfs"}
+    assert set(m["audio"]) == {"peak_dbfs", "rms_dbfs", "clips", "silent", "floor_dbfs", "trace"}
     assert set(m["sender"]) == {"sess", "dev", "state", "xruns", "in_lat_ms", "age_ms"}
     assert m["state"] == "streaming" and m["addr"] == "192.0.2.10:40000" and m["sender"]["dev"] == "test mic"
     assert m["line"].startswith("room-mic · 48k/1ch · −") and "% loss" in m["line"] and "ms jitter" in m["line"]

@@ -280,6 +280,28 @@ def _context_words(context: dict, beliefs: dict) -> Optional[str]:
     return f"{word} · {moods[0]}" if moods else word
 
 
+#: hearing.text when no sound arrives, by what's connected (engine "inputs": permanent senders, room streams' states).
+NO_SENDER = "No microphone connected yet"
+NOT_ANSWERING = "The microphone isn't answering"
+NO_DEVICE = "No microphone plugged in"
+STOPPED = "The microphone stopped sending"
+
+
+def _input_words(inputs: Any) -> Optional[str]:
+    """Why no sound arrives, or None while a room stream is up (or nothing is known): nothing configured, the sender
+    not answering, the sender up but with no capture device, or a stream that stopped."""
+    if not isinstance(inputs, dict):
+        return None
+    states = [s for s in _d(inputs.get("room")).values() if isinstance(s, str)]
+    if any(s in ("streaming", "quiet") for s in states):
+        return None
+    if "no_device" in states:
+        return NO_DEVICE
+    if states:
+        return STOPPED
+    return NO_SENDER if not inputs.get("senders") else NOT_ANSWERING
+
+
 def _palette_choices(director: dict) -> list[dict]:
     pal = _d(director.get("palette"))
     raw = [c for c in pal.get("choices") or [] if isinstance(c, dict) and isinstance(c.get("name"), str)]
@@ -296,8 +318,14 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     """``contract.CardData`` from the brain's snapshot (``{"components": {name: snapshot}}``) and the engine's
     ``{"active_audio", "features": {"energy", "age_ms", "stream"}, "clock"}``. Pure; any missing piece reads neutral.
 
+    hearing.input is the active stream's raw meter ({peak_dbfs, rms_dbfs} over the last 0.5 s) and hearing.input_trace
+    its last 10 closed 100 ms bins ({seq, hz, peak_dbfs: [...], rms_dbfs: [...]}, oldest first; seq numbers the newest,
+    so a client appends only bins newer than the last it drew); both None without active audio. hearing.level is
+    energy (loudness against the mode's expected loudness, gated), not a meter.
+
     hearing.text, first match wins: music.context's confident genre (Stage 4, structure's snapshot; with the
-    listener's first mood), confident beliefs ("soul · relaxed"), Talking, Quiet, No sound coming in (no active audio,
+    listener's first mood), confident beliefs ("soul · relaxed"), why nothing arrives (_input_words: no microphone
+    connected / not answering / not plugged in / stopped sending), Talking, Quiet, No sound coming in (no active audio,
     or features older than 5 s), Music, Listening."""
     comps = _d(_d(brain_snapshot).get("components"))
     director, ap, sit, src = (_d(comps.get(n)) for n in (DIRECTOR, AUTOPILOT, SITUATIONS, SOURCES))
@@ -312,7 +340,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     stale = not active or age_ms is None or age_ms > STALE_FEATURES_MS
     beliefs = _d(lsnap.get("beliefs") if "beliefs" in lsnap else lview.get("beliefs"))
     context = _d(_d(comps.get(STRUCTURE)).get("context"))
-    text = None if stale else _context_words(context, beliefs)
+    why = _input_words(eng.get("inputs")) if stale else None
+    text = why or (None if stale else _context_words(context, beliefs))
     if text is None:
         text = _confident_words(beliefs)
     if text is None:
@@ -328,8 +357,13 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
             text = "Listening"
     direction = _d(director.get("direction"))
     stream = active if isinstance(active, str) else feats.get("stream") if isinstance(feats.get("stream"), str) else None
+    inp = _d(eng.get("input")) if eng.get("active_audio") else {}
+    trace = _d(inp.get("trace"))
     hearing = {"text": text, "level": 0.0 if stale else round(_clamp01(_num(feats.get("energy"))), 2),
-               "loose": bool(direction.get("loose")), "stream": stream, "test": _is_test_stream(stream)}
+               "loose": bool(direction.get("loose")), "stream": stream, "test": _is_test_stream(stream),
+               "input": {"peak_dbfs": inp.get("peak_dbfs"), "rms_dbfs": inp.get("rms_dbfs")} if inp else None,
+               "input_trace": {"seq": trace.get("seq"), "hz": trace.get("hz"), "peak_dbfs": trace.get("peak_dbfs"),
+                               "rms_dbfs": trace.get("rms_dbfs")} if trace else None}
 
     rb = _d(director.get("readback"))
     name = rb.get("vibe") if isinstance(rb.get("vibe"), str) else None
