@@ -189,8 +189,8 @@ def test_harmony_features_and_fallbacks():
     f = v.update(T0 + 10)
     assert f.key == "C" and f.chroma[0] == 1.0 and f.tension == pytest.approx(0.2)
     assert f.history_row == 0 and f.history[0, 31] == pytest.approx(1.0)
-    feed(v, {"type": "show.state", "data": {"global": {"music": {"chroma12": [0, 1] + [0] * 10,
-                                                                 "spectrum32": [0.0] * 32}}}})
+    feed(v, {"type": "show.state", "seq": 1, "global": {"music": {"chroma12": [0, 1] + [0] * 10,   # K3 shape
+                                                                   "spectrum32": [0.0] * 32}}})
     f = v.update(T0 + 20)
     assert f.chroma[0] == 1.0 and f.history_row == 0          # fresh music.* types win
     f = run(v, T0 + 20, T0 + (STALE_S + 1) * 1000, step=200)
@@ -324,3 +324,12 @@ def test_owner_library_tags_put_scenes_in_sets():
     assert out["scenes"]["c-1"]["tags"] == {"moods": ["calm"]}
     assert cat["scenes"]["b-1"]["tags"] is None                    # the presets themselves are untouched
     assert with_owner_sets(cat, {}) is cat
+
+
+def test_show_state_fallback_reads_the_k3_top_level():
+    v = SoundView()
+    v.update(T0)
+    feed(v, {"type": "show.state", "seq": 3, "fixtures": {}, "global": {"activity": 0.4, "music": {
+        "chroma12": [0.5] * 12, "spectrum32": [0.25] * 32}}})
+    f = v.update(T0 + 10)
+    assert f.chroma[3] == pytest.approx(0.5) and f.history_row == 0 and f.spectrum[0] == pytest.approx(0.25)
