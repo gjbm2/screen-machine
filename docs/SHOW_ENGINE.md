@@ -1182,7 +1182,7 @@ It sits directly under the mode tiles. Phone first, light and warm, primary acti
 3. **Palette:** Auto · **From the art** · 5 swatches from the mode's list.
 4. **Next look** · **Keep this look** · **House lights**.
 5. **Active chips**, each with an ×, plus **Back to auto**. Shown only when there are any.
-6. **More** (an unroll): lamp brightness · Describe it.
+6. **More** (an unroll): Lights low (the lamp-brightness control) · Describe it.
 
 **AI listening** goes in the page's menu. Nothing is ever disabled. When the beat is unsure the card says "following loosely". The lamp rows read "Follow the music".
 
@@ -1310,6 +1310,27 @@ GET    /show/healthz
 ---
 
 ## 13. Build order and cut-over
+
+**Status, 16 Oct (as built; details in show_service/README.md):**
+
+| Phase | State |
+|---|---|
+| P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454 |
+| P1 hearing words | **Built, off.** LLM listener (OpenAI via `utils/llm`) waits for the owner's AI-listening decision; the CED privacy gate is live |
+| P2 director + Music card | **Live.** Director, vibes, nudges, palettes (incl. from the art), room `show` adapter, `/show/*` pass-through, Music card on /room. Neutral until modes get `show` rows (owner) |
+| P3 understanding | **Live.** ML worker (CED, EffNet + heads, key, Beat This!), medium lane, structure (sections, repeats, track change, build/drop/breakdown), `music.context` |
+| P3b piano | **Built.** 98's kiosk sender + test piano; the kiosk deploy waits for the kit and the owner's OK (alsa-utils, audio group). Test piano runs through production |
+| P3c Auto | **Built, off.** Supervisor live; no mode has an `autopilot` block yet (owner) |
+| P4 native clock | **Partly.** 04 consumes `room.direction`; `music.clock` and `room.event` cueing next (04) |
+| P5 lights | Next: fixture registry, Hue streamer in show_service, Art-Net LAN sender (node not bought) |
+| P6 calibration | Waits for the photodiode kit |
+
+**As-built differences from §6–§9:**
+- **Song changes.** Detected from a loudness gap (momentary LUFS) plus a genre/key/tempo jump, or two independent jumps without a gap. Relative and parallel keys don't count as a jump.
+- **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
+- **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
+- **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
+
 
 **Phases are ordered by what the owner sees.** Each one ships to production when it works (CLAUDE.md). Sizes are for one session.
 
