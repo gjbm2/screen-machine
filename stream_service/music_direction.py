@@ -33,8 +33,8 @@ palette_family, fx.stages, source and note always come from the panel.  ``m = au
 10 s (from cold: 3 s then on at once).  m = 0 is exactly the panel's direction: the behaviour before this module.
 
 The room's director (show_service's ``room.direction`` on --music-bus, docs/SHOW_ENGINE.md §8.7) takes this slot when
-it speaks: while a validated room.direction with a vibe is under ROOM_STALE_S old (it republishes every 5 s; a
-null vibe is the room's neutral), its numbers and words are the proposal (genre included, filling an empty panel
+it speaks: while a validated room.direction is under ROOM_STALE_S old (it republishes every 5 s; with no vibe it
+still follows the music), its numbers and words are the proposal (genre included, filling an empty panel
 genre like the moods), liveness counts it as fresh, a new section id bumps ``epoch``, and the mapping signals take
 its energy and groove (as drive).  Otherwise the Maestro features above propose, as before.  Switching source
 drops the proposal and publishes at once.
@@ -426,6 +426,9 @@ class MusicDirection:
         """The music features as mapping signals (binding.py): {energy, drive, punch, tempo, epoch}; None = n/a."""
         f = self.features
         stale = not f or self._signals_t is None or now - self._signals_t > self.SIGNALS_STALE_S
+        if self._feeding and not stale:     # show_service's own features: the direct values (the room's director
+            return {"energy": f["energy"], "drive": f["D"], "punch": f["punch"], "tempo": self._tempo,
+                    "epoch": self.epoch}      # steers the picks; its numbers are made from these same features)
         r = self.room
         if r is not None:                   # the room's director: its energy, its groove as drive
             return {"energy": r["direction"]["energy"], "drive": r.get("groove"),

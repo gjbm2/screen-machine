@@ -305,6 +305,6 @@ def test_manager_keeps_only_a_speaking_valid_room_direction():
     assert r["vibe"] == "dinner" and r["direction"]["energy"] == 0.4 and now(mgr, r["t"] + 1) is r
     assert now(mgr, r["t"] + M.ROOM_STALE_S + 1) is None                 # stale
     on(mgr, {"type": "room.direction", "data": {**body, "vibe": None}})
-    assert now(mgr, mgr.room_direction["t"]) is None                     # neutral: Maestro proposes
+    assert now(mgr, mgr.room_direction["t"]) is mgr.room_direction       # no vibe: it still follows the music
     on(mgr, {"type": "room.direction", "data": {**body, "energy": "loud"}})
     assert mgr.room_direction["vibe"] is None                            # a bad one is dropped, the last kept
