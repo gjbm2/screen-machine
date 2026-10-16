@@ -16,9 +16,9 @@
 # the README), never a hidden default.
 #
 # Modes choose a vibe in config/room/modes.json (2f's file), for example:
-#   "show": {"set": {"vibe": "dinner", "listening": false}, "restore": true, "policy": "ignore"}
+#   "show.main": {"set": {"vibe": "dinner", "listening": false}, "restore": true, "policy": "ignore"}
 # A mode can also override fields inline:
-#   "show": {"set": {"vibe": "party", "listening": true, "overrides": {"follow_amount": 0.8}}, ...}
+#   "show.main": {"set": {"vibe": "party", "listening": true, "overrides": {"follow_amount": 0.8}}, ...}
 # Put-back is the room's own per-row "restore". show_service never stores or restores anything itself.
 #
 # The screens are never dimmed by the show. level, floor, Lights low, House lights and dips reach the lamps (and later
