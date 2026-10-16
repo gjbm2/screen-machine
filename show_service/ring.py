@@ -20,6 +20,11 @@ guard); read from any thread (``clip``, ``latest``, ``info``) without a lock.
 * **Armed.** ``armed`` (the listener sets it each tick) False: ``write`` returns at once, so nothing is resampled on
   show-rx while no clip could go. When it comes back, everything held before is forgotten (``floor``) and a first clip
   waits for the ring to fill again.
+* **Off** (the mic on demand, README S5.16; mic.py calls ``set_off`` from any thread). A stream that is off is never
+  written and reads as empty. Going off or coming back marks its ring ``forget``: readers see nothing while it is
+  marked, and the writer drops everything held (``floor``) before its next block. So no clip ever holds sound from
+  before the mic went off, and ``off_gen`` (+1 each time a stream goes off) lets the listener drop a clip it cut
+  before that.
 * **Streams.** Only the active stream is delivered, so normally one ring fills. Over ``max_streams`` the ring written
   longest ago is dropped and its buffer reused (a reader still holding it sees it as lapped).
 """
@@ -64,7 +69,7 @@ class _Seg:
 
 class _Ring:
     __slots__ = ("stream", "fs", "size", "buf", "w", "w_pending", "writes", "gap_count", "lapped_reads", "segs",
-                 "seg", "rs", "rs_fs", "gaps", "t_last", "mono", "out", "floor")
+                 "seg", "rs", "rs_fs", "gaps", "t_last", "mono", "out", "floor", "forget")
 
     def __init__(self, stream: str, fs: int, size: int, buf: Optional[np.ndarray] = None) -> None:
         self.stream, self.fs, self.size = stream, fs, size
@@ -83,6 +88,7 @@ class _Ring:
         self.mono = np.zeros(SCRATCH_FRAMES, np.float32)
         self.out = np.zeros(SCRATCH_FRAMES, np.float32)
         self.floor = 0                       # nothing below this index is held (set when recording resumes)
+        self.forget = False                  # set_off marked it: empty to readers; the writer floors it first
 
 
 class Rings:
@@ -100,6 +106,28 @@ class Rings:
         #: held before the pause is forgotten, so a clip never spans it.
         self.armed = True
         self._paused = False
+        self._off: frozenset[str] = frozenset()  # set_off: streams the mic keeps off (never written, read as empty)
+        self.off_gen = 0                         # +1 whenever a stream goes off (the listener's in-flight check)
+
+    # -- any thread: the mic on demand -----------------------------------------------------------------------------
+    def set_off(self, streams: Any) -> None:
+        """The streams that are off now (mic.py; any thread; the whole set each time). A stream going off or coming
+        back has its ring marked ``forget``; a stream going off steps ``off_gen``."""
+        new = frozenset(str(x) for x in streams)
+        old = self._off
+        if new == old:
+            return
+        self._off = new
+        for name in new ^ old:
+            r = self._rings.get(name)
+            if r is not None:
+                r.forget = True
+        if new - old:
+            self.off_gen += 1
+
+    @property
+    def off(self) -> frozenset[str]:
+        return self._off
 
     # -- show-rx ---------------------------------------------------------------------------------------------------
     def write(self, stream: str, n0: int, t0_host_s: float, pcm: np.ndarray, fs: int, flags: int) -> None:
@@ -111,12 +139,17 @@ class Rings:
             self._paused = False
             for old in list(self._rings.values()):
                 old.floor, old.seg = old.w, None
+        if stream in self._off:              # the mic is off for it: nothing is kept
+            return
         frames = int(pcm.shape[0])
         if frames <= 0 or fs <= 0:
             return
         r = self._rings.get(stream)
         if r is None:
             r = self._new(stream)
+        if r.forget:                         # it went off (or came back) since: forget what was held before
+            r.forget = False
+            r.floor, r.seg = r.w, None
         self._last = stream
         seg = r.seg
         if seg is None or (flags & contract.AUDIO_SEGMENT) or fs != seg.fs or n0 != seg.n_expect:
@@ -205,7 +238,10 @@ class Rings:
         return self._rings.get(name) if name is not None else None
 
     def _pieces(self, r: _Ring, w: int) -> list[tuple[int, int, float]]:
-        """The held content in order: [(abs_lo, abs_hi, t_lo)], each piece time-linear."""
+        """The held content in order: [(abs_lo, abs_hi, t_lo)], each piece time-linear; none while the stream is off
+        or its ring is marked forget."""
+        if r.forget or r.stream in self._off:
+            return []
         oldest = max(0, w - r.size, r.floor)
         segs = list(r.segs)
         out = []

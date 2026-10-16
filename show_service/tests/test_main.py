@@ -176,7 +176,7 @@ def test_wiring_with_fake_modules(monkeypatch, tmp_path):
     try:
         assert rx.started and rx.cfg is OPTS.config
         assert show.modules == {"dsp": "ok", "midi": "ok", "harmony": "ok", "receiver": "ok",
-                                "artnet_out": "ok", "clock": "ok"}
+                                "artnet_out": "ok", "clock": "ok", "mic": "ok"}
         vm = show.artnet
         assert vm.started and vm.kw["target"] is None                     # config's target (off) over the env's
         assert vm.kw["features_fn"] == show.features.latest and vm.kw["clock"] is show.clock
@@ -327,7 +327,9 @@ def test_degrades_when_every_module_is_missing(monkeypatch):
     show.start()
     try:
         assert show.rx is None and show.features is None and show.harmony is None and show.artnet is None
-        assert all(v.startswith("missing") for v in show.modules.values()) and len(show.modules) == 6
+        assert show.modules.get("mic") == "ok"                               # (mic.py itself is there)
+        missing = {k: v for k, v in show.modules.items() if k != "mic"}
+        assert all(v.startswith("missing") for v in missing.values()) and len(missing) == 6
         show.on_midi("room-piano", "x", 1.0, lambda t: 0.0)                 # no midi module: ignored
         show.on_tick(1.0)
         show.on_audio("room-mic", 0, 1.0, np.zeros((4, 1), np.float32), 48000, 0)
@@ -732,6 +734,9 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert set(st["ml"]) == {"ticks"}                                    # the MLLink's snapshot
         assert st["rig"] == {"enabled": True, "outputs": {}}                 # the Rig's snapshot
         assert st["rx_ms"]["on_audio"]["n"] == 2 and st["rx_ms"]["on_tick"]["n"] >= 1
+        # the mic on demand (README S5.16): the ring, the card's refresh and the room view reach it
+        assert show.mic._rings is show.rings and show.mic._notify == show.api.notify
+        assert show.mic._mode_label() is None and card["mic_state"]["on"] is False
     finally:
         show.stop()
     assert CALLS.index("stop:director") < CALLS.index("artnet.stop")      # the brain stops before Art-Net
@@ -829,3 +834,44 @@ def test_piano_view_from_the_voice_piano_and_the_note_tap(monkeypatch, tmp_path)
         assert show.tap.stats()["notes"] == 8
     finally:
         show.stop()
+
+
+def test_the_mic_decides_before_the_receiver_starts_and_its_routes_answer(monkeypatch, tmp_path):
+    """README S5.16 without the brain: the mode claim alone decides, before show-rx's first SUBSCRIBE."""
+    install_fakes(monkeypatch)
+    rx_mod = sys.modules["show_service.receiver"]
+    seen: list = []
+    health = {"active_audio": None, "senders": {"kiosk": {"streams": ["room-mic", "room-piano"], "on_demand": False}},
+              "streams": {}}
+
+    class Receiver(rx_mod.Receiver):
+        def health(self):
+            return health
+
+        def set_off_streams(self, names, covered=None):
+            seen.append((sorted(names), self.started, sorted(covered or ())))
+
+    monkeypatch.setattr(rx_mod, "Receiver", Receiver)
+    show_file = tmp_path / "show.yaml"
+    show_file.write_text("senders:\n  kiosk: {hosts: [k], streams: [room-mic, room-piano]}\n")
+    sd = tmp_path / "state"
+    show = main_mod.Show(config.Options(config=OPTS.config, show_file=show_file, state_dir=sd))
+    show.start()
+    try:
+        assert seen[0] == (["room-mic"], False, ["room-mic", "room-piano"])   # off, decided before show-rx started
+        assert show._engine()["mic_state"]["why"] == "Off: nothing needs it" and show.modules["mic"] == "ok"
+        base = f"http://127.0.0.1:{show.bus.port}"
+        code, b = _get(base + "/api/v1/mic")
+        assert code == 200 and b["on"] is False and b["streams"] == {"capturing": [], "off": ["room-mic"]}
+        req = urllib.request.Request(base + "/api/v1/mic", data=json.dumps({"mode": True}).encode(), method="PUT",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=2) as r:
+            b = json.loads(r.read())
+        assert b["on"] is True and b["why"] == "Listening: this mode follows the music" and seen[-1][:2] == ([], True)
+        assert json.loads((sd / "mic.json").read_text()) == {"v": 1, "muted": False, "mode": True}
+        code, st = _get(base + "/api/v1/state")
+        assert code == 200 and st["mic"]["on"] is True and set(st["mic"]["receiver"]) >= {"off", "off_held"}
+        assert {t.name for t in __import__("threading").enumerate()} >= {"show-mic"}
+    finally:
+        show.stop()
+    assert not show.mic._thread

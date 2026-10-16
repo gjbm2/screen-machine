@@ -41,7 +41,8 @@ def stream_rank(name: str, priority: tuple[str, ...] = ()) -> int:
 
 
 StreamKind = Literal["audio", "midi", "unknown"]
-StreamStateName = Literal["streaming", "quiet", "stale", "down", "no_device"]
+StreamStateName = Literal["streaming", "quiet", "stale", "down", "no_device", "off"]   # off: the mic on demand
+#: keeps it closed (README S5.16): never live, never the active audio
 
 # -- config (fields only: config.py parses args/env into these; the receiver takes them) ------------------------------
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -885,6 +886,8 @@ class CardData(TypedDict):
     auto: dict[str, Any]           # {"on": bool | None, "state", "line", "chip": AutoAnnouncement | None,
                                    #  "suggest": AutoAnnouncement | None}
     tests: dict[str, SourceStatus]   # by source (the console's; the card ignores it)
+    mic_state: Optional[dict[str, Any]]   # README S5.16: GET /api/v1/mic's body ({on, muted, wanted, why, claims, mode,
+                                          #  streams: {capturing, off}, error}); None without mic.py
 
 
 # -- the brain's wiring (fields only; brain.py and __main__ fill it; components read it) -------------------------------------

@@ -1,4 +1,4 @@
-"""The live input meter: ``WS /v1/levels`` (owner, 16 Oct: a moving level, near real time; built by 05).
+"""The live input meter: ``WS /v1/levels`` (owner, 16 Oct: a moving level, near real time; built by screen-machine-d4).
 
 The receive path only stores: :meth:`push` (show-rx, per audio packet of the active stream) folds the packet's peak
 into a slot. A frame goes out as soon as 1/MAX_HZ has passed since the last one (so at most ~60 a second, one per
@@ -35,7 +35,7 @@ from aiohttp import WSMsgType, web
 log = logging.getLogger("show_service.levels")
 
 PATH = "/v1/levels"
-MONITOR_PATH = "/dev/dsp"                             # the DSP monitor page (static/dsp_monitor.html; 05, 16 Oct)
+MONITOR_PATH = "/dev/dsp"                             # the DSP monitor page (static/dsp_monitor.html; d4, 16 Oct)
 MONITOR_FILE = pathlib.Path(__file__).resolve().parent / "static" / "dsp_monitor.html"
 MAX_HZ = 60.0
 QUEUE_MAX = 64

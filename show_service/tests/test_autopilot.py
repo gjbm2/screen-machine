@@ -782,3 +782,26 @@ def test_roomlink_room_boot_is_none_until_a_status_says_one():
     assert link.room_boot() == "1760600000"
     link._on_message({"type": c.ROOM_SCREEN_LOOK, "data": {"screen": "x"}})     # no listeners: just counted
     assert link.stats["room_events"] == {c.ROOM_SCREEN_LOOK: 1}
+
+
+# -- the mic on demand (README S5.16): Auto's live on/off and its listeners -------------------------------------------
+def test_is_on_and_the_on_listeners_for_the_mic(tmp_path):
+    async def body(h: H):
+        woke: list[bool | None] = []
+        h.ap.add_on_listener(lambda: woke.append(h.ap.is_on()))
+        assert h.ap.is_on() is False and woke == []
+        await h.ap.set_on(True)                          # show's own toggle: heard at once (the override)
+        assert h.ap.is_on() is True and woke == [True]
+        await h.until(lambda: h.link.view()["autopilot_on"] is True)
+        assert woke == [True]                            # the room agreeing changes nothing: no second call
+        h.room.on = "off"                                # the room's own toggle (the Room page, another session)
+        await h.room.push()
+        await h.until(lambda: woke[-1] is False)
+        assert h.ap.is_on() is False and woke == [True, False]
+        h.ap.add_on_listener(lambda: 1 / 0)              # a failing listener is guarded
+        h.room.on = "on"
+        await h.room.push()
+        await h.until(lambda: woke[-1] is True)
+        await h.step()
+        assert h.state()["on"] is True
+    run(tmp_path, body, on="off")

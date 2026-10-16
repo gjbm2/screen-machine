@@ -8,6 +8,7 @@ import threading
 import time
 
 import numpy as np
+import pytest
 
 from show_service import contract as c
 from show_service.ring import Rings
@@ -216,3 +217,43 @@ def test_cost_per_block():
     p50, p95 = np.percentile(ts, 50) * 1e6, np.percentile(ts, 95) * 1e6
     print(f"\nRings.write 128 frames 48k stereo: p50 {p50:.1f} us, p95 {p95:.1f} us, max {max(ts) * 1e6:.0f} us")
     assert p50 < 60.0
+
+
+def test_a_stream_the_mic_keeps_off_is_never_kept_and_its_past_is_forgotten():
+    """README S5.16: off = nothing written, nothing readable; back on = nothing from before the off."""
+    r = Rings(seconds=10.0)
+    n = feed(r, "room-mic", 3.0, t0=100.0)
+    feed(r, "test-audio", 2.0, t0=100.0)
+    assert r.info()["room-mic"]["held_s"] > 2.9 and r.off_gen == 0
+    r.set_off(["room-mic"])
+    assert r.off == {"room-mic"} and r.off_gen == 1
+    assert r.latest("room-mic", 2.0) is None and r.clip("room-mic", 100.0, 103.0) is None
+    assert r.info()["room-mic"]["held_s"] == 0.0
+    assert r.latest("test-audio", 1.0) is not None                    # the test stream is not the mic
+    n = feed(r, "room-mic", 1.0, t0=103.0, n0=n, flags0=0)             # a straggler: not kept
+    assert r.latest("room-mic", 2.0) is None
+    r.set_off(["room-mic"])                                           # the same set: no step
+    assert r.off_gen == 1
+    r.set_off([])                                                     # back on: marked to forget, still empty
+    assert r.off_gen == 1 and r.latest("room-mic", 2.0) is None
+    feed(r, "room-mic", 1.0, t0=110.0, n0=n + 48000 * 6)
+    clip = r.latest("room-mic", 10.0)
+    assert clip is not None and clip.t0_s >= 110.0 - 1e-6 and len(clip.pcm) <= c.RING_FS + 2   # only what came after
+    assert r.info()["room-mic"]["held_s"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_going_off_while_a_block_is_written_still_forgets_it():
+    """A block written after set_off passed the writer's check (the race): readers see nothing until the writer's
+    next block after the stream is back, which floors everything before it."""
+    r = Rings(seconds=10.0)
+    n = feed(r, "room-mic", 2.0, t0=100.0)
+    ring = r._rings["room-mic"]
+    r._off = frozenset()                                              # the writer saw "not off" ...
+    ring.forget = True                                                # ... then set_off marked it (simulated)
+    r._off = frozenset({"room-mic"})
+    assert r.latest("room-mic", 1.0) is None
+    r._off = frozenset()
+    assert r.latest("room-mic", 1.0) is None                          # still marked: nothing readable
+    feed(r, "room-mic", 0.5, t0=105.0, n0=n + 48000 * 3)
+    clip = r.latest("room-mic", 10.0)
+    assert clip is not None and clip.t0_s >= 105.0 - 1e-6

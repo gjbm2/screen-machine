@@ -59,7 +59,13 @@ one clock for heartbeats and MIDI:
 TEXT messages (one compact JSON object per packet; readers ignore keys they don't know; ``v`` is 1):
   SUBSCRIBE   stream ``sub``, receiver -> sender, every 1 s from the receive socket; the sender streams to the
               source address of the latest one and stops 5 s after it:
-              {"v":1,"subscribe":["room-mic","room-piano"],"from":"show_rt"}
+              {"v":1,"subscribe":["room-piano"],"off":["room-mic"],"from":"show_rt"}
+                subscribe  [stream]: capture and send these (an empty list is still a SUBSCRIBE: a sender whose
+                           only stream is off keeps getting them, so it keeps its off heartbeats)
+                off        [stream], optional (16 Oct, the mic on demand; README S5.16): keep these CLOSED (the
+                           capture device shut), but go on sending each one's heartbeat every 500 ms with state
+                           "off", ``frame``/``n``/``t_cap_ns`` null and ``devices`` (so the Room page still lists
+                           the mics). A stream in neither list, or no SUBSCRIBE for 5 s: stop sending, close it.
                 devices    {stream: name}, optional: the capture device the receiver wants for that stream (the
                            Room page's Mic choice). A sender that can't find the name, or gets no hint, keeps its
                            default; the heartbeat's ``dev`` says what it really uses.
@@ -73,7 +79,7 @@ TEXT messages (one compact JSON object per packet; readers ignore keys they don'
                 t_cap_ns   int   the sender's clock (Clocks), ns, when sample ``n`` reached the ADC
                 in_lat_ms  float the input latency between the ADC and the callback (reported for health)
                 dev        str   capture device name
-                state      str   ok | no_device | idle | xrun
+                state      str   ok | no_device | idle | xrun | off (the SUBSCRIBE's ``off``: device closed)
                 xruns      int   input overflows since ``sess`` began
                 peak_dbfs, rms_dbfs  [float per channel] over the last 500 ms, floored at -120 (never -inf)
                 clips      int   samples at or beyond full scale since ``sess`` began
@@ -151,7 +157,7 @@ DEVICE_NAME_MAX = 128
 SUBSCRIBE_EVERY_S = 1.0
 SUBSCRIBE_TTL_S = 5.0
 HEARTBEAT_EVERY_S = 0.5
-HEARTBEAT_STATES = ("ok", "no_device", "idle", "xrun")
+HEARTBEAT_STATES = ("ok", "no_device", "idle", "xrun", "off")   # "off": the SUBSCRIBE keeps it closed (S5.16)
 DBFS_FLOOR = -120.0
 
 MIDI_STATE_EVERY_S = 0.5
@@ -419,18 +425,35 @@ def _version(o: dict) -> int | None:
 
 # -- SUBSCRIBE --------------------------------------------------------------------------------------------------------
 def subscribe_obj(streams: Iterable[str], sender: str = "show_rt",
-                  devices: Mapping[str, str] | None = None) -> dict:
-    o: dict[str, Any] = {"v": 1, "subscribe": [str(s) for s in streams], "from": sender}
+                  devices: Mapping[str, str] | None = None, off: Iterable[str] | None = None) -> dict:
+    """The SUBSCRIBE object: ``streams`` to capture and send (may be empty), ``off`` to keep closed with their off
+    heartbeats (the key only when there are some), ``devices`` hints (only when there are some)."""
+    o: dict[str, Any] = {"v": 1, "subscribe": [str(s) for s in streams]}
+    off_l = [str(s) for s in off or ()]
+    if off_l:
+        o["off"] = off_l
     if devices:
         o["devices"] = {str(k): str(v)[:DEVICE_NAME_MAX] for k, v in devices.items()}
+    o["from"] = sender
     return o
 
 
 def subscribe_packet(streams: Iterable[str], counter: int, sender: str = "show_rt",
-                     devices: Mapping[str, str] | None = None) -> bytes:
-    """The SUBSCRIBE TEXT packet (stream ``sub``) asking a sender for ``streams``, with an optional device hint per
-    stream (``devices``)."""
-    return pack_text(SUBSCRIBE_STREAM, counter, subscribe_obj(streams, sender, devices))
+                     devices: Mapping[str, str] | None = None, off: Iterable[str] | None = None) -> bytes:
+    """The SUBSCRIBE TEXT packet (stream ``sub``) asking a sender for ``streams``, keeping ``off`` closed (their off
+    heartbeats only), with an optional device hint per stream (``devices``)."""
+    return pack_text(SUBSCRIBE_STREAM, counter, subscribe_obj(streams, sender, devices, off))
+
+
+def subscribed_off(pkt: TextPacket | dict) -> list[str]:
+    """The streams a SUBSCRIBE keeps off (device closed, heartbeats with state "off"); [] for none, a bad value, or
+    not a SUBSCRIBE. Senders use it with :func:`subscribed_streams`: a stream in neither list stops."""
+    if subscribed_streams(pkt) is None:
+        return []
+    off = _obj(pkt).get("off")                           # type: ignore[union-attr]
+    if not isinstance(off, list) or not all(isinstance(s, str) and 1 <= len(s) <= STREAM_NAME_MAX for s in off):
+        return []
+    return list(off)
 
 
 def subscribed_devices(pkt: TextPacket | dict) -> dict[str, str]:

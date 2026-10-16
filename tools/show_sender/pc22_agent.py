@@ -38,8 +38,40 @@ log = logging.getLogger("pc22_agent")
 
 PORT = 6984
 CHECK_S = 2.0
+SCAN_S = 5.0                                                 # device list refresh while the mic is off
+MISSING_RESCAN_S = 10.0                                      # the chosen mic isn't listed yet: rescan this often
 now_ns = time.perf_counter_ns
 ss.now_ns = now_ns                                           # one clock for everything this process stamps
+
+
+def capture_endpoints() -> Optional[frozenset]:
+    """The ids of Windows' active capture endpoints, read from the registry (microseconds; no PortAudio, so it can run
+    while a stream is open). A change means a mic was plugged in or out: the agent then reopens with a fresh scan,
+    because PortAudio only sees new devices after a re-initialise. None off Windows or if unreadable."""
+    try:
+        import winreg
+    except ImportError:
+        return None
+    path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
+    out = set()
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as k:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(k, i)
+                except OSError:
+                    break
+                i += 1
+                try:
+                    with winreg.OpenKey(k, sub) as s:
+                        if winreg.QueryValueEx(s, "DeviceState")[0] == 1:      # DEVICE_STATE_ACTIVE
+                            out.add(sub)
+                except OSError:
+                    continue
+    except OSError:
+        return None
+    return frozenset(out)
 
 
 def wasapi_inputs(sd) -> list[tuple[int, str]]:
@@ -71,12 +103,18 @@ def find_input(sd, want: Optional[str], match: Optional[str]) -> Optional[tuple[
 
 
 class Choice:
-    """The device the latest SUBSCRIBE asks for, per stream (``devices: {stream: name}``; show_service sends the Room
-    page's choice), read off the same socket as the subscription itself."""
+    """What the latest SUBSCRIBE asks of this sender, read off the same socket as the subscription itself: the device
+    per stream (``devices: {stream: name}``, the Room page's Mic choice) and the streams it wants OFF (``off``: owner,
+    16 Oct, the mic runs only while something needs it; their heartbeats go on, saying "off", so the Mic list
+    stays, while the device is closed)."""
 
     def __init__(self, out: Out) -> None:
+        self.out = out
         self.lock = threading.Lock()
         self.devices: dict[str, str] = {}
+        self.off: set[str] = set()
+        self.addr: Optional[tuple] = None
+        self.until = 0.0
         orig = out.subs.on_packet
 
         def on_packet(buf: bytes, addr: tuple, now: float) -> bool:
@@ -84,14 +122,49 @@ class Choice:
             if ok:
                 pkt = vban.parse(buf)
                 d = vban.subscribed_devices(pkt) if pkt is not None else None
+                if hasattr(vban, "subscribed_off"):
+                    off = vban.subscribed_off(pkt) if pkt is not None else []
+                else:                                       # an older vban.py: read the key itself
+                    o = getattr(pkt, "obj", None)
+                    off = o.get("off") if isinstance(o, dict) and isinstance(o.get("off"), list) else []
                 with self.lock:
                     self.devices = dict(d) if isinstance(d, dict) else {}
+                    self.off = {x for x in off if isinstance(x, str)}
+                    self.addr, self.until = addr, now + ss.SUB_TTL_S
             return ok
         out.subs.on_packet = on_packet                      # type: ignore[method-assign]
 
     def want(self, stream: str) -> Optional[str]:
         with self.lock:
             return self.devices.get(stream)
+
+    def mode(self, stream: str) -> str:
+        """"on" (subscribed: capture and send), "off" (listed off: device closed, "off" heartbeats) or "none" (not
+        asked, or no SUBSCRIBE for 5 s: device closed, silent)."""
+        now = time.monotonic()
+        sub_mode = getattr(self.out.subs, "mode", None)
+        if sub_mode is not None:                            # show_sender's own answer: target() is also set for
+            return sub_mode(stream, now) or "none"          # "off" streams (their heartbeats), so it can't mean "on"
+        if self.out.subs.target(stream, now) is not None:
+            return "on"
+        with self.lock:
+            return "off" if stream in self.off and now <= self.until else "none"
+
+    def send_off(self, au: "ListedStream") -> None:
+        """An "off" heartbeat for ``au``'s stream to the subscriber (Out.send only sends subscribed streams)."""
+        if "off" not in vban.HEARTBEAT_STATES:              # an older vban.py can't say it: stay quiet
+            return
+        with self.lock:
+            addr = self.addr
+        if addr is None:
+            return
+        obj = vban.make_heartbeat(sess=au.sess, frame=None, n=None, t_cap_ns=None, dev=au.dev or "none", state="off",
+                                  devices=au.devices)
+        try:
+            self.out.sock.sendto(vban.pack_text(au.stream, au.text_counter, obj), addr)
+        except OSError:
+            return
+        au.text_counter = (au.text_counter + 1) & 0xFFFFFFFF
 
 
 class ListedStream(AudioStream):
@@ -132,7 +205,33 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
     au = ListedStream(stream, out.send, 1)
     period = au.frames
     last_hb = 0.0
+    last_scan = 0.0
+    last_eps: Optional[frozenset] = None
+    was = None
     while not stop.is_set():
+        mode = choice.mode(stream)
+        if mode != was:
+            log.info("mic: %s", {"on": "on (subscribed)", "off": "off (show_service: nothing needs it)",
+                                 "none": "off (not subscribed)"}[mode])
+            was = mode
+        if mode != "on":
+            # Nothing captures unless asked: the device stays closed (Windows' mic-in-use light goes out). The device
+            # list is kept fresh for the Room page's Mic choice, and "off" heartbeats carry it while listed off.
+            eps = capture_endpoints()
+            if time.monotonic() - last_scan >= SCAN_S or (eps is not None and eps != last_eps):
+                last_eps = eps
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                    au.devices = [n for _, n in wasapi_inputs(sd)]
+                except Exception as e:                      # noqa: BLE001
+                    log.warning("devices: %s", e)
+                last_scan = time.monotonic()
+            if mode == "off" and time.monotonic() - last_hb >= HEARTBEAT_S:
+                choice.send_off(au)
+                last_hb = time.monotonic()
+            stop.wait(0.1)
+            continue
         try:
             sd._terminate()                                  # re-scan devices (a replug, a new default)
             sd._initialize()
@@ -174,12 +273,17 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
             stop.wait(RETRY_S)
             continue
         in_lat_ms = 1000.0 * float(st.latency)
-        log.info("mic: %s (WASAPI #%d, %d ch, %.1f ms in)", name, idx, chans, in_lat_ms)
+        endpoints = capture_endpoints()
+        opened_at = time.monotonic()
+        log.info("mic: %s (WASAPI #%d, %d ch, %.1f ms in; %d inputs)", name, idx, chans, in_lat_ms, len(au.devices))
         next_check = time.monotonic() + CHECK_S
         with st:
             while not stop.is_set():
+                if choice.mode(stream) != "on":                 # not wanted any more: close the device now
+                    log.info("mic: closing %s", name)
+                    break
                 try:
-                    pcm, t_cap, over = q.get(timeout=0.25)
+                    pcm, t_cap, over = q.get(timeout=0.1)
                 except queue.Empty:
                     pcm = None
                 if pcm is not None:
@@ -197,6 +301,9 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                     want = choice.want(stream)
                     target = want if want in au.devices else next(
                         (d for d in au.devices if match and match.lower() in d.lower()), None)
+                    if want and want not in au.devices and time.monotonic() - opened_at >= MISSING_RESCAN_S:
+                        log.info("mic: %s chosen but not in Windows' list yet; reopening to rescan", want)
+                        break
                     if target and target != name:
                         log.info("mic: %s %s; reopening", target, "chosen" if target == want else "(the default)")
                         break
@@ -205,6 +312,10 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                         break
                     if not st.active:
                         log.warning("mic: the stream stopped; reopening")
+                        break
+                    now_eps = capture_endpoints()
+                    if now_eps is not None and endpoints is not None and now_eps != endpoints:
+                        log.info("mic: Windows' inputs changed (%d -> %d); reopening to rescan", len(endpoints), len(now_eps))
                         break
         stop.wait(0.2)
 

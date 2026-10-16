@@ -163,6 +163,7 @@ class RoomLink:
         self._baselined = False
         self._last_current: Any = _BAD
         self._listeners: list[Callable[[dict], None]] = []
+        self._status_listeners: list[Callable[[], None]] = []
         # room_events (Stage 5): every other room WS event type -> how many came (fanned out to ctx.on_room_event)
         self.stats = {"statuses": 0, "events": 0, "ws_connects": 0, "config_fetches": 0, "errors": 0,
                       "room_events": {}}
@@ -235,6 +236,11 @@ class RoomLink:
         done | cancelled, "from", "to", "source", "reason", "skip", "status" (done/cancelled), "detail", "via": "event" |
         "status" (seen first in a status rather than as a WS event)}."""
         self._listeners.append(fn)
+
+    def add_status_listener(self, fn: Callable[[], None]) -> None:
+        """fn() on show-brain after each status (WS or GET), once the view has it (Autopilot: Auto's on/off may have
+        changed). It must not block."""
+        self._status_listeners.append(fn)
 
     def rules_error(self) -> Optional[str]:
         return self._cfg["error"]
@@ -415,6 +421,8 @@ class RoomLink:
                 _guard("on_mode_change", cb, old, cur)
         self._last_current = cur
         self._baselined = True
+        for fn in list(self._status_listeners):
+            _guard("status listener", fn)
 
     def _build(self, d: dict) -> contract.RoomView:
         mode = d.get("mode") if isinstance(d.get("mode"), dict) else {}
@@ -607,6 +615,8 @@ class Autopilot:
         self._settings_key: Any = _BAD
         self._on_prev: Optional[bool] = None
         self._on_override: Optional[tuple[bool, float]] = None
+        self._on_listeners: list[Callable[[], None]] = []      # add_on_listener (mic.py's wake)
+        self._on_told: Optional[bool] = None
         self._unreachable_until = 0.0
         self._finished: OrderedDict[str, dict] = OrderedDict()
         self._started: OrderedDict[str, dict] = OrderedDict()   # recent started notices with Auto's or Undo's source
@@ -622,6 +632,9 @@ class Autopilot:
         self.log_errors = 0
         self._snap: dict = {}
         link.add_listener(self._on_transition)
+        add = getattr(link, "add_status_listener", None)
+        if add is not None:
+            add(self._on_maybe_changed)
         self._snap = self._build()
 
     # -- Component ------------------------------------------------------------------------------------------------------
@@ -757,17 +770,40 @@ class Autopilot:
         self._publish()
 
     def _on(self, view: contract.RoomView) -> Optional[bool]:
-        if self._on_override is not None:
-            v, t = self._on_override
-            if view.get("autopilot_on") == v or self._mono() - t > 15.0:
-                self._on_override = None
-            else:
-                return v
+        ov = self._on_override
+        if ov is not None and (view.get("autopilot_on") == ov[0] or self._mono() - ov[1] > 15.0):
+            self._on_override = None                   # the room has it (or it never will): its word from now on
+        return self._on_value(view)
+
+    def _on_value(self, view: contract.RoomView) -> Optional[bool]:
+        """Auto on/off for ``view`` with no side effects (any thread): a set_on's own word for up to 15 s until the
+        room says the same, else the room's ``autopilot.main``, else modes.json's while the room has no such target;
+        None before the room is known."""
+        ov = self._on_override
+        if ov is not None and view.get("autopilot_on") != ov[0] and self._mono() - ov[1] <= 15.0:
+            return ov[0]
         if view.get("autopilot_on") is not None:
             return view["autopilot_on"]
         if not view.get("reachable"):
             return None
         return bool(self._settings.get("on"))         # the room has no autopilot target: modes.json's, default off
+
+    def is_on(self) -> Optional[bool]:
+        """Auto on/off now (any thread, no side effects): mic.py reads it (README S5.16)."""
+        return self._on_value(self.link.view())
+
+    def add_on_listener(self, fn: Callable[[], None]) -> None:
+        """fn() (it must not block; any thread may run it) whenever Auto's on/off may have changed: a set_on, or a room
+        status that changed it. mic.py's wake (README S5.16)."""
+        self._on_listeners.append(fn)
+
+    def _on_maybe_changed(self) -> None:
+        v = self.is_on()
+        if v == self._on_told:
+            return
+        self._on_told = v
+        for fn in list(self._on_listeners):
+            _guard("on listener", fn)
 
     def _quiet(self) -> bool:
         q = self._settings.get("quiet_hours")
@@ -1236,6 +1272,7 @@ class Autopilot:
             e.detail, e.status = resp.get("detail") or "", st  # type: ignore[attr-defined]
             raise e
         self._on_override = (bool(on), self._mono())
+        self._on_maybe_changed()                       # mic.py hears it at once (README S5.16)
         self._note("on" if on else "off", None, None, "Auto turned " + ("on" if on else "off"))
         return self._publish()
 

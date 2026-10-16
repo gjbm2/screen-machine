@@ -1,11 +1,12 @@
-"""The Room page's Mic choice (the owner's ask via 05, 16 Oct): every room sound input the senders offer, and which
+"""The Room page's Mic choice (the owner's ask via d4, 16 Oct): every room sound input the senders offer, and which
 one the room listens to. Nothing is hard-coded: the inputs are show.yaml's senders and what their heartbeats report.
 
 * **Inputs** are the streams of the receiver's permanent senders (show.yaml, not ``on_demand``), less a sender with
   ``room_sound: false``, test streams, and MIDI (health kind ``midi``, or ``contract.MIDI_STREAMS`` before any data).
-  Each carries its sender's ``label`` (show.yaml ``senders.<name>.label``, else the sender's name), its health state,
-  the device in use (the heartbeat's ``dev``) and the devices it could use (the heartbeat's ``devices``; [] when the
-  sender doesn't say).
+  Each carries its sender's ``label`` (show.yaml ``senders.<name>.label``, else the sender's name), its health state
+  ("off" also before its first packet while the receiver keeps it off: the mic on demand, mic.py), the device in use
+  (the heartbeat's ``dev``) and the devices it could use (the heartbeat's ``devices``; [] when the sender doesn't
+  say).
 * **The choice** ``{stream, device}`` ranks that stream after a playing test stream and before show.yaml's order
   (``Receiver.set_choice``; the usual 3 s switch-up rule applies), and puts the device in that sender's SUBSCRIBEs
   (``Receiver.set_device_hints``; a sender that can't find the name keeps its default). No choice = automatic.
@@ -98,6 +99,7 @@ class Inputs:
         h = self._h() if h is None else h
         spec = _d(self._settings().get("senders"))
         streams = _d(h.get("streams"))
+        off = {x for x in h.get("off") or () if isinstance(x, str)} if isinstance(h.get("off"), list) else set()
         out = []
         for name, s in _d(h.get("senders")).items():
             if not isinstance(s, dict) or s.get("on_demand"):
@@ -116,7 +118,8 @@ class Inputs:
                     continue
                 snd = _d(m.get("sender"))
                 devs = snd.get("devices")
-                out.append({"stream": st, "sender": name, "label": label, "state": m.get("state") or "down",
+                out.append({"stream": st, "sender": name, "label": label,
+                            "state": m.get("state") or ("off" if st in off else "down"),
                             "device": snd.get("dev") or None,
                             "devices": [x for x in devs if isinstance(x, str)] if isinstance(devs, list) else []})
         return out

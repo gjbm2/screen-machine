@@ -61,6 +61,12 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
 * **Stage 4** (README S4.5): with the brain, ``mllink.MLFeed`` (show-rx, guard "ml.feed") and the context's engine
   slots ``rhythm`` (Features.rhythm), ``ml_feed`` and ``clock_correct`` (Clock.apply_integer_correction);
   ``/api/v1/state`` gains ``ml`` (the MLLink snapshot, also under brain.components.ml).
+* **The mic on demand** (README S5.16, mic.py): ``Mic`` decides which room-sound streams capture (Auto on, or the
+  mode's ``show.mic`` claim; the Room page's Mute wins). ``attach(rx)`` decides before show-rx starts, so the first
+  SUBSCRIBE carries it; with the brain it also gets the ring (``Rings.set_off``), Auto's live on/off
+  (``Autopilot.is_on``, which wakes it on a toggle), the room view (the mode's label) and the card's refresh. Its
+  routes ride ``_routes`` like inputs.py's; the card's ``mic_state`` is ``Mic.state()``. A mic.py that fails to load
+  leaves the receiver holding every room mic off (privacy first), logged.
 * **Stage 5** (README S5.4): with the brain, the rig (``outputs.attach``: the fixture registry, the look engine and
   the drivers, every output off until config/room/fixtures.yaml enables it) joins the brain last, after the
   director, fed by reference: ``palette_fn`` and ``look_fn`` (the director's), the clock, ``Features.latest`` and
@@ -223,10 +229,20 @@ class Show:
         from . import inputs as inputs_mod             # the Room page's Mic choice, GET/PUT /api/v1/input(s)
         self.inputs = inputs_mod.Inputs(self.health, show_file=self.opts.show_file,
                                         state_file=pathlib.Path(self.opts.state_dir) / "input.json")
+        self.mic: Any = None                           # the mic on demand, GET/PUT /api/v1/mic (README S5.16)
+        mic_mod = self._import("mic")
+        if mic_mod is not None:
+            self.mic = self._make("mic", lambda: mic_mod.Mic(self.inputs, self.health,
+                                                             state_file=pathlib.Path(self.opts.state_dir) / "mic.json"))
+        if self.mic is None:
+            log.error("no mic.py: the receiver keeps every room mic off (privacy first); MIDI and tests as usual")
 
-        def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs) -> None:
+        def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
+                    mc: Any = self.mic) -> None:
             lv.routes(app)
             inp.routes(app)
+            if mc is not None:
+                mc.routes(app)
             if api is not None:
                 api(app)
         self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
@@ -308,6 +324,8 @@ class Show:
                                                                     on_level=self.levels.push))
         if self.rx is not None:
             self.inputs.attach(self.rx)
+            if self.mic is not None:
+                self.mic.attach(self.rx)                 # decided before show-rx starts: the first SUBSCRIBE has it
         amod = self._import("artnet_out")
         out_cfg: dict = {}
         if amod is not None:
@@ -319,6 +337,7 @@ class Show:
         self._out_cfg, self._amod = dict(out_cfg), amod
         if self.opts.brain:
             self._build_brain(out_cfg.get("patch_path"))
+            self._wire_mic()
         if amod is not None:
             self.artnet = self._make("artnet_out", lambda: self._virtual_maestro(amod, out_cfg))
         if self.ctx is not None and self.artnet is not None:
@@ -344,6 +363,8 @@ class Show:
             except Exception as e:
                 self.modules["artnet_out"] = f"failed: {type(e).__name__}: {e}"
                 log.exception("Art-Net out did not start: running without it")
+        if self.mic is not None:
+            self.mic.start()                             # show-mic: re-decides at 2 Hz and on a wake
         if self.brain is not None:
             try:
                 self.brain.start()
@@ -471,6 +492,28 @@ class Show:
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
 
+    def _wire_mic(self) -> None:
+        """README S5.16: the mic's brain-side inputs (each optional): the ring, Auto's live on/off (and its wake on a
+        toggle), the room view for the mode's label, the card's refresh."""
+        mic = self.mic
+        if mic is None:
+            return
+        try:
+            if self.rings is not None:
+                mic.set_rings(self.rings)
+            comps = getattr(self.brain, "components", None) or {}
+            ap = comps.get("autopilot") if isinstance(comps, dict) else None
+            if callable(getattr(ap, "is_on", None)):
+                mic.set_auto(ap.is_on)
+            add = getattr(ap, "add_on_listener", None)
+            if callable(add):
+                add(mic.wake)
+            ctx = self.ctx
+            mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
+            mic.set_notify(getattr(self.api, "notify", None))
+        except Exception:
+            log.exception("mic: brain wiring failed: the mode claim alone decides")
+
     def _set_look_out(self, **kw: Any) -> None:
         """``ctx.set_look_out`` (Stage 5): Art-Net out's set_look, then the rig's (the look engine's), each under its
         own guard, so one failing never stops the other."""
@@ -543,9 +586,15 @@ class Show:
             except Exception:
                 clock = None
         return {"active_audio": h.get("active_audio"), "features": feats, "clock": clock, "inputs": _inputs(h),
-                "input": _input(h), "mic": self.inputs.mic(h)}
+                "input": _input(h), "mic": self.inputs.mic(h),
+                "mic_state": self.mic.state() if self.mic is not None else None}
 
     def stop(self) -> None:
+        if self.mic is not None:
+            try:
+                self.mic.stop()
+            except Exception:
+                log.exception("mic stop failed")
         if self.brain is not None:
             try:
                 self.brain.stop()            # stops the test children and writes state.json
@@ -828,6 +877,9 @@ class Show:
             "api": _attr(self.api, "stats") if self.api is not None else None,
             "ml": _attr(self.ml, "snapshot") if self.ml is not None else None,
             "rig": _attr(self.rig, "snapshot") if self.rig is not None else None,
+            "mic": None if self.mic is None else {   # README S5.16: the decision and what the receiver keeps off
+                **self.mic.state(), "receiver": {k: h.get(k) for k in ("off", "off_held", "off_decided", "off_dropped",
+                                                                       "off_ignored")}},
         }
 
     def _brain_state(self) -> Optional[dict]:

@@ -15,6 +15,11 @@ a word reads is config: show.yaml's ``situations`` section (``midi``, ``music``,
 ``include_test``: the piano words leave them out, and the audio and listener words read unknown while a test stream is
 the one measured (a test played from another room never switches this one).
 
+The mic on demand (README S5.16). A stream the receiver keeps off (health ``off``, or state "off") is never measured:
+features and CED readings of it read as missing, so the audio words (quiet, talking, music_audible, energy_above) read
+unknown while the mic is off, never "quiet" because it was switched off; piano_playing skips heard_by (as when it is
+down).
+
 Stage 4 (README S4.8). ``Situations.classifier`` is CED, from ``ctx.ml``: ``(stream) -> {"music", "speech",
 "conversation", "singing", "crowd", "applause", "silence", "stream", "n"}``, the mean of the worker's readings for that
 stream (None: the measured one) whose ``t`` is in the last ``situations.ced.window_s`` (3 s; longer while the worker
@@ -473,8 +478,12 @@ class Situations:
         if fn is None:
             return None
         if fn == self._ced:                               # ours: read at the reading's own now_s
-            return self._call(lambda: self._ced(stream, now_s))
-        return self._call(lambda: fn(stream))
+            c = self._call(lambda: self._ced(stream, now_s))
+        else:
+            c = self._call(lambda: fn(stream))
+        if isinstance(c, dict) and (c.get("stream") in self._off() or (stream and stream in self._off())):
+            return None                                   # the mic went off: what it heard is not now
+        return c
 
     def _ced_view(self, now_s: float) -> dict:
         c = self._classify(None, now_s) if self.classifier is not None else None
@@ -583,15 +592,30 @@ class Situations:
     def _up(streams: dict, name: Optional[str]) -> bool:
         return bool(name) and (streams.get(name) or {}).get("state") in UP_STATES
 
+    def _off(self) -> set[str]:
+        """The streams the mic on demand keeps off now (README S5.16): receiver health's ``off`` and any stream whose
+        state is "off". Never measured."""
+        try:
+            h = self.ctx.health() if self.ctx.health else None
+        except Exception:
+            h = None
+        h = h if isinstance(h, dict) else {}
+        out = {x for x in h.get("off") or () if isinstance(x, str)} if isinstance(h.get("off"), list) else set()
+        streams = h.get("streams") if isinstance(h.get("streams"), dict) else {}
+        out.update(n for n, i in streams.items() if isinstance(i, dict) and i.get("state") == "off")
+        return out
+
     def _features(self, now_s: float) -> Optional[dict]:
-        """The latest features if fresh (<= 5 s), else None."""
+        """The latest features if fresh (<= 5 s) and not from a stream the mic keeps off, else None."""
         try:
             f = self.ctx.features() if self.ctx.features else None
         except Exception:
             return None
         if not isinstance(f, dict) or not isinstance(f.get("t_ms"), (int, float)):
             return None
-        return f if now_s - f["t_ms"] / 1000.0 <= FEATURES_FRESH_S else None
+        if now_s - f["t_ms"] / 1000.0 > FEATURES_FRESH_S:
+            return None
+        return None if f.get("stream") in self._off() else f
 
     def _call(self, slot: Optional[Callable[[], Any]]) -> Any:
         try:
@@ -779,9 +803,12 @@ class Situations:
         streams, active = self._health()
         stream = p.get("stream") if isinstance(p.get("stream"), str) and p.get("stream") else None
         f = self._features(now_s)
-        up = self._up(streams, stream) if stream else (active is not None or f is not None)
+        off = self._off()
+        up = self._up(streams, stream) if stream else ((active is not None and active not in off) or f is not None)
         ev: dict = {"stream": stream or (f or {}).get("stream"), "sonos": sonos, "sonos_detail": sev}
         if not up:
+            if (stream in off) if stream else bool(off):
+                ev["why"] = "the mic is off"
             return (False if sonos is False else None), "sonos", ev
         c = self._classify(stream, now_s)
         if isinstance(c, dict) and isinstance(c.get("music"), (int, float)):
@@ -898,11 +925,16 @@ class Situations:
             return None, "dsp", own
         streams, active = self._health()
         stream = p.get("stream") if isinstance(p.get("stream"), str) and p.get("stream") else None
-        up = self._up(streams, stream) if stream else active is not None
-        if not up:
-            return None, "dsp", {"why": "the stream is down", "stream": stream}
+        off = self._off()
+        up = self._up(streams, stream) if stream else (active is not None and active not in off)
+        if not up:                                        # the mic switched off is never "quiet" (README S5.16)
+            mic_off = (stream in off) if stream else bool(off)
+            return None, "dsp", {"why": "the mic is off" if mic_off else "the stream is down", "stream": stream}
         f = self._features(now_s)
         if f is None:
+            raw = self._call(self.ctx.features)
+            if isinstance(raw, dict) and raw.get("stream") in off:   # the last sound is a mic that went off
+                return None, "dsp", {"why": "the mic is off", "stream": raw.get("stream")}
             return True, "dsp", {"why": "no fresh features while it is up", "stream": stream or active}
         if not stream:
             test = self._test_measured(p, f)

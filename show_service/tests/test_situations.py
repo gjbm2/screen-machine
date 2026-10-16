@@ -691,3 +691,48 @@ def test_the_ced_window_follows_the_workers_stretched_cadence():
     e.ml = {**ml_view(rows), "stale_s": {"ced": 9.0, "tags": 9.0, "key": 9.0, "beats": 30.0}}
     got = e.sit._ced(None, e.now)
     assert got is not None and got["n"] == 1 and got["music"] == pytest.approx(0.8)
+
+
+# -- the mic on demand (README S5.16) ----------------------------------------------------------------------------------
+def _mic_off(e: Env, *, state: bool = True) -> None:
+    """The receiver keeps room-mic off: its health says so (and, once the state pass ran, its state and the active)."""
+    e.health["off"] = ["room-mic"]
+    if state:
+        e.health["streams"]["room-mic"]["state"] = "off"
+        e.health["active_audio"] = None
+
+
+@pytest.mark.parametrize("ml", [False, True])
+def test_the_mic_switched_off_is_never_quiet_and_its_past_is_not_now(ml):
+    e = stage4_env() if ml else Env()
+    e.feat(gate=0.01, energy=0.9)                             # a quiet room, just measured
+    if ml:
+        say(e, music=0.05, speech=0.8)
+    assert e.read("quiet")["value"] is True
+    assert e.read("quiet", {"stream": None})["value"] is True
+    _mic_off(e, state=False)                                  # health has the off set, the state pass not yet run
+    for params in (None, {"stream": None}):
+        r = e.read("quiet", params)
+        assert r["value"] is None and r["evidence"]["why"] == "the mic is off", (params, r)
+    _mic_off(e)
+    for params in (None, {"stream": None}, {"for_s": 0}):
+        r = e.read("quiet", params)
+        assert r["value"] is None and r["evidence"]["why"] == "the mic is off", (params, r)
+    assert e.read("talking")["value"] is None
+    assert e.read("music_audible")["value"] is not True
+    assert e.read("energy_above", {"value": 0.5})["value"] is None
+    e.features = None                                         # the features age out too: still unknown, never quiet
+    e.now += 10
+    assert e.read("quiet")["value"] is None and e.read("quiet", {"stream": None})["value"] is None
+
+
+def test_a_rule_on_quiet_never_holds_because_the_mic_went_off():
+    e = Env()
+    cond = Conditions(e.sit)
+    e.feat(gate=0.2)                                          # loud: not quiet
+    assert cond.holds({"quiet": {"for_s": 5}}, "r", e.now)[0] is False
+    _mic_off(e)
+    for _ in range(30):
+        e.now += 1
+        assert cond.holds({"quiet": {"for_s": 5}}, "r", e.now)[0] is False
+        assert cond.holds({"not": {"music_audible": {}}}, "m", e.now)[0] is False
