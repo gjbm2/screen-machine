@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import io
+import json
 import logging
 import pathlib
 import time
@@ -350,12 +351,33 @@ def scene_tag_index(presets: dict) -> list[dict]:
     return [{"tag": w, "facet": f, "count": n} for (f, w), n in sorted(counts.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1]))]
 
 
+_catalog_cache: dict = {"key": None, "body": None}
+
+
 async def catalog(request: web.Request) -> web.Response:
-    presets = request.app[PRESETS]
+    """2.5 MB built from every plug-in's schema (~0.5 s of Python): built on a worker thread and kept until something
+    it is made of changes, so the loop (and every session's media sender) never stalls on it."""
+    presets, reg, ratings = request.app[PRESETS], request.app[REGISTRY], request.app[RATINGS]
     presets.reload_if_changed()
-    out = request.app[REGISTRY].catalog()
+    with ratings.lock:
+        ratings._load()
+        r_mtime = ratings.mtime
+    slow = request.app[MANAGER].slow_list()
+    key = (id(request.app), reg.rev, presets.rev, presets.maps.rev, r_mtime, repr(slow))
+    if _catalog_cache["key"] != key:
+        body = await asyncio.get_running_loop().run_in_executor(None, _catalog_body, request.app, slow)
+        _catalog_cache.update(key=key, body=body)
+    resp = web.Response(body=_catalog_cache["body"], content_type="application/json")
+    resp.enable_compression()
+    return resp
+
+
+def _catalog_body(app: web.Application, slow: list) -> bytes:
+    """Worker thread: the catalog's JSON (the tables it reads are swapped whole on reload, never edited in place)."""
+    presets = app[PRESETS]
+    out = app[REGISTRY].catalog()
     out["profiles"] = {name: p.describe() for name, p in PROFILES.items()}
-    out["presets"] = with_owner_sets(presets.catalog(), request.app[RATINGS].all())
+    out["presets"] = with_owner_sets(presets.catalog(), app[RATINGS].all())
     out["scene_tags"] = scene_tag_index(out["presets"])
     # additive (LIVE_V1 1.1): feature discovery, vocabulary, palettes, bindable signals, tag problems
     out["api"] = {"contract": "LIVE_V1", "rev": "1.1", "features": list(FEATURES)}
@@ -365,17 +387,15 @@ async def catalog(request: web.Request) -> web.Response:
     out["errors"] = presets.catalog_errors()
     # effects layer (EFFECTS_LAYER_DESIGN D.5) and live plug-in discovery
     out["stages"] = list(STAGES)
-    reg = request.app[REGISTRY]
+    reg = app[REGISTRY]
     out["errors"] += [f"plug-in {b['module']} broken: {b['error']}" for b in out["broken"]]
     out["plugins"] = {"rev": reg.rev, "rescanned_at": reg.rescanned_at, "rescan_s": RESCAN_S,
                       "counts": {"sources": len(out["sources"]), "transitions": len(out["transitions"]),
                                  "effects": len(out["effects"]), "broken": len(out["broken"])}}
     # GPU frame-time guard: plug-ins tripped at runtime (process-wide) and calibration entries that are not ok;
     # the directors never pick these on their own
-    out["slow"] = request.app[MANAGER].slow_list()
-    resp = web.json_response(out)
-    resp.enable_compression()
-    return resp
+    out["slow"] = slow
+    return json.dumps(out).encode()
 
 
 # -- dev library: every plug-in with thumbnails, live rescans --------------------------------------------------

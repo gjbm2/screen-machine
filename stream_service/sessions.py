@@ -234,6 +234,7 @@ class Session(EngineListener):
         self.prepared_pick: Optional[dict] = None
         self.upnext = UpNext()                    # the director's forward plan, editable (upnext.py)
         self._upnext_sent = -1
+        self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -992,10 +993,13 @@ class Session(EngineListener):
         return e is not None and pk.get("qid") == e["id"] and pk["scene"] == e["scene"] and \
             (e.get("transition") is None or pk["trans_spec"].name == e["transition"])
 
+    FILL_RETRY_S = 5.0
+
     def _replan(self) -> None:
         """The direction or the pool moved: the director picks its own entries again (the owner's stay)."""
         self.upnext.drop_auto("scene")
         self.upnext.drop_auto("effect")
+        self._fill_retry = {"scene": 0.0, "effect": 0.0}
 
     def _upnext_fill(self, now: float, need: int = 0) -> None:
         """Top the queue up with the director's picks (``need``: at least that many scenes even with scene
@@ -1014,9 +1018,10 @@ class Session(EngineListener):
                         q.changed()
                 prev_t = e.get("transition") or prev_t
             want = SCENES_AHEAD if d.enabled else need
-            while len(q.scenes) < want:
+            while len(q.scenes) < want and (need or now >= self._fill_retry["scene"]):
                 got = d.pick_scene(presets.scenes, self.current_name, now, tuple(e["scene"] for e in q.scenes))
                 if got is None:
+                    self._fill_retry["scene"] = now + self.FILL_RETRY_S
                     break
                 t = d.pick_transition(presets.transitions, prev=prev_t)
                 q.add("scene", {"scene": got[0], "transition": t[0] if t else None, "origin": "auto",
@@ -1026,10 +1031,11 @@ class Session(EngineListener):
         else:
             q.drop_auto("scene")
         if fd.enabled:
-            while len(q.effects) < EFFECTS_AHEAD:
+            while len(q.effects) < EFFECTS_AHEAD and now >= self._fill_retry["effect"]:
                 got = fd.ahead(now, self.fx.stack, presets.effects, lambda n: self.mgr.cost_ms("effect", n),
                                self.pixels_ratio(), tuple(e["effect"] for e in q.effects))
-                if got is None:
+                if got is None:         # nothing else fits the bus now: look again later, not every tick
+                    self._fill_retry["effect"] = now + self.FILL_RETRY_S
                     break
                 q.add("effect", {"effect": got[0], "origin": "auto", "why": got[1],
                                  "why_words": self._why("effect", got[0])})
