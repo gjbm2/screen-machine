@@ -1,0 +1,463 @@
+"""``python -m show_service``: wire the receiver, DSP, beat clock, piano, harmony, Art-Net out and the bus, then keep
+them running.
+
+```
+ [show-rx]   Receiver (receiver.py): recv -> on_audio -> Features.process, then Clock.process (the active stream's
+                                                         blocks only, the same block, each under its own guard)
+                                            on_midi  -> Piano(stream).on_midi (one Piano per MIDI stream, lazily;
+                                                        state_channels=(1,): the kiosk sender's states)
+                                            on_tick  -> Piano.tick, the voice, Features.tick, Harmony.tick,
+                                                        Clock.tick, snapshot
+             Features' music.hit bodies also go to Clock.observe_hit (sub/bass hits refine the beat phase)
+ [show-dns]  started by Receiver.start(): sender names re-resolved every 30 s
+ [show-bus]  Bus (bus.py): WS fan-out, show.state 25 Hz, /healthz, /api/v1/state (state() below, from snapshots)
+ [show-artnet], [show-artnet-poll]  artnet_out.VirtualMaestro, only with a target (off by default): reads
+             Features.latest and the clock by reference
+ [main]      signals; latency.json polled every 2 s -> Receiver.set_offsets; gc.freeze() (no collect) after warm-up
+```
+
+* **One piano voice on the bus.** Every Piano keeps its table, but only one publishes music.note/pedal/notes (midi.py
+  "Voice"): the present one, live before test (the same pick as harmony's). A new Piano starts muted. The packet that
+  makes a better piano present hands it the voice at once (``on_midi``); otherwise ``on_tick`` re-picks after the
+  pianos tick. With no piano present the last voice keeps it (quiet after its present=False frame). So the renderer
+  (sound_view: one sess at a time) sees one sess, and a hand-over is one clean session change.
+
+* Modules are used only through show_service/README.md's interfaces and imported lazily: one that is missing or
+  fails to import or construct is logged and left out (degrade, never refuse). The bus and /healthz always come
+  up, so scripts/ctl and the Spectre card can see it.
+* Every callback into dsp/midi/harmony/clock runs under a guard (``features.process``, ``clock.process``,
+  ``clock.observe_hit``, ``on_midi``, ``piano.tick``, ``features.tick``, ``harmony.tick``, ``clock.tick``,
+  ``snapshot``): an exception is counted and logged at most every 30 s per callback, and show-rx carries on.
+* Rates live in the modules: music.features 25 Hz (Features.tick), music.harmony 10 Hz (Harmony.tick, from the
+  present piano, live before test, else the audio chroma), music.notes 2-10 Hz (Piano.tick), music.note/pedal at
+  once, music.clock on every re-anchor + 10 Hz (Clock.tick; clock.py, the §5.3 beat clock).
+* Snapshots: show-rx swaps a dict (pianos, Features/Harmony stats, clock) in by reference every 0.5 s; the API reads
+  only that, Receiver.health() and the bus's latest messages.
+* Art-Net out (README "artnet_out.py"): ``VirtualMaestro(**vars(config_from_env()), target=<config's
+  --artnet-target over SHOW_ARTNET_TARGET>, clock=<clock if it has next_beat>, features_fn=Features.latest,
+  palette_fn=None)``; its status() is in the state as ``artnet``.
+* Process: BLAS at one thread (set before numpy loads), ``sys.setswitchinterval(0.001)``. ``Show.start(freeze_gc=
+  True)`` runs one ``gc.collect(); gc.freeze()`` after building every module and before show-rx and show-artnet
+  start (a full collection holds the GIL for about 50 ms); ``gc.freeze()`` alone (cheap, no collection) after
+  WARMUP_S. Logs go to stderr (scripts/ctl owns the log file). SIGTERM/SIGINT: stop Art-Net out, then rx, then the
+  bus; exit 0.
+"""
+
+from __future__ import annotations
+
+import os
+
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")    # BLAS at one thread (§2), before anything imports numpy
+
+import gc  # noqa: E402
+import importlib  # noqa: E402
+import logging  # noqa: E402
+import signal  # noqa: E402
+import sys  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from typing import Any, Callable, Optional  # noqa: E402
+
+from . import __version__, config, contract  # noqa: E402
+from .bus import Bus  # noqa: E402
+
+log = logging.getLogger("show_service")
+
+RELOAD_S = 2.0          # latency.json mtime poll
+WARMUP_S = 10.0         # then gc.freeze()
+SNAPSHOT_S = 0.5        # show-rx -> API snapshot
+GUARD_LOG_S = 30.0
+PIANO_STATE_CHANNELS = (1,)   # tools/show_sender's MIDI state carries channel 1's keys (the keys physically down);
+                              # the adsilent's own playback (ch 2) still feeds the keyboard, and a state leaves it be
+
+
+class _Guard:
+    """Counts a callback's exceptions and logs the first, then at most one a GUARD_LOG_S."""
+    __slots__ = ("name", "errors", "_next")
+
+    def __init__(self, name: str) -> None:
+        self.name, self.errors, self._next = name, 0, 0.0
+
+    def failed(self) -> None:
+        self.errors += 1
+        now = time.monotonic()
+        if now >= self._next:
+            self._next = now + GUARD_LOG_S
+            log.error("%s failed (%d so far; logged at most every %.0f s)", self.name, self.errors, GUARD_LOG_S,
+                      exc_info=True)
+
+
+def _attr(obj: Any, name: str, default: Any = None) -> Any:
+    try:
+        v = getattr(obj, name)
+        return v() if callable(v) else v
+    except Exception:
+        return default
+
+
+def _is_test(stream: str) -> bool:
+    return stream in contract.TEST_STREAMS or stream.startswith("test-")
+
+
+def _set_voice(piano: Any, on: bool, now_s: float) -> None:
+    """midi.Piano.set_voice; a Piano without one (an older midi.py) always publishes."""
+    fn = getattr(piano, "set_voice", None)
+    if fn is not None:
+        fn(on, now_s)
+
+
+def _present_at(piano: Any, now_s: float) -> bool:
+    fn = getattr(piano, "present_at", None)
+    return bool(fn(now_s)) if fn is not None else bool(getattr(piano, "present", False))
+
+
+class Show:
+    """The wiring. Construct, ``start()``, then the main thread calls ``set_offsets`` and finally ``stop()``."""
+
+    def __init__(self, opts: config.Options) -> None:
+        self.opts, self.cfg = opts, opts.config
+        self.t0 = time.monotonic()
+        self.modules: dict[str, str] = {}
+        self.offsets: dict[str, float] = {}
+        self.ready = False
+        self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health)
+        self.publish: contract.Publish = self.bus.publish
+        self.rx: Any = None
+        self.features: Any = None
+        self.harmony: Any = None
+        self.clock: Any = None
+        self.artnet: Any = None
+        self.pianos: dict[str, Any] = {}
+        self._voice: Any = None              # the one Piano that publishes (on_tick / on_midi)
+        self._midi_mod: Any = None
+        self._snap: dict = {}
+        self._snap_due = 0.0
+        self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
+                                          "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot")}
+
+    # -- building (main thread) ----------------------------------------------------------------------------------
+    def _import(self, name: str) -> Any:
+        try:
+            mod = importlib.import_module(f"{__package__ or 'show_service'}.{name}")
+        except Exception as e:
+            self.modules[name] = f"missing: {type(e).__name__}: {e}"
+            log.error("%s.py not loaded (%s): running without it", name, e)
+            return None
+        self.modules[name] = "ok"
+        return mod
+
+    def _make(self, name: str, fn: Callable[[], Any]) -> Any:
+        try:
+            return fn()
+        except Exception as e:
+            self.modules[name] = f"failed: {type(e).__name__}: {e}"
+            log.exception("%s could not be built: running without it", name)
+            return None
+
+    def start(self, *, freeze_gc: bool = False) -> None:
+        """Build every module, then start rx and Art-Net out. ``freeze_gc`` (main() passes True): one full
+        ``gc.collect()`` + ``gc.freeze()`` after building, before show-rx and show-artnet exist, so the collection's
+        GIL hold (about 50 ms with madmom and aiohttp loaded) never lands on the hot path."""
+        self.bus.start()
+        if self.bus.bind_error:
+            log.error("bus not bound yet (%s): it keeps retrying", self.bus.bind_error)
+        cmod = self._import("clock")         # before dsp: Features' hits feed the clock
+        if cmod is not None:
+            self.clock = self._make("clock", lambda: cmod.Clock(publish=self.publish))
+        dsp = self._import("dsp")
+        if dsp is not None:
+            self.features = self._make("dsp", lambda: dsp.Features(publish=self._features_publish))
+        self._midi_mod = self._import("midi")
+        hmod = self._import("harmony")
+        if hmod is not None:
+            self.harmony = self._make("harmony", lambda: hmod.Harmony(self.publish))
+        rmod = self._import("receiver")
+        if rmod is not None:
+            self.rx = self._make("receiver", lambda: rmod.Receiver(self.cfg, on_audio=self.on_audio,
+                                                                    on_midi=self.on_midi, on_tick=self.on_tick))
+        amod = self._import("artnet_out")
+        if amod is not None:
+            self.artnet = self._make("artnet_out", lambda: self._virtual_maestro(amod))
+        if freeze_gc:
+            t = time.perf_counter()
+            gc.collect()
+            gc.freeze()                      # the built modules out of every later collection (§2)
+            log.info("gc: collected and froze %d objects in %.0f ms, before the hot threads start",
+                     gc.get_freeze_count(), (time.perf_counter() - t) * 1000.0)
+        if self.rx is not None:
+            try:
+                self.rx.start()
+            except Exception as e:
+                self.modules["receiver"] = f"failed: {type(e).__name__}: {e}"
+                log.exception("receiver did not start: running without it")
+        if self.artnet is not None:
+            try:
+                self.artnet.start()
+            except Exception as e:
+                self.modules["artnet_out"] = f"failed: {type(e).__name__}: {e}"
+                log.exception("Art-Net out did not start: running without it")
+        self.ready = True
+        log.info("show_service %s up: bus %s, vban %s:%d, senders %s, modules %s, beat activation %s", __version__,
+                 self.bus.url, self.cfg.vban_bind[0], self.cfg.vban_bind[1],
+                 ", ".join(f"{s.name}={s.host}:{s.port}/{','.join(s.streams)}" for s in self.cfg.senders) or "none",
+                 ", ".join(f"{k} {v}" for k, v in self.modules.items()),
+                 _attr(getattr(self.clock, "act", None), "name", "none"))
+
+    def _virtual_maestro(self, amod: Any) -> Any:
+        try:
+            kw = dict(vars(amod.config_from_env()))
+        except Exception as e:               # a bad SHOW_PATCH_FILE / SHOW_HUE_LATENCY_MS: its defaults
+            log.error("Art-Net out env: %s: using its defaults", e)
+            kw = {}
+        kw["target"] = self.opts.artnet_target          # config.py: --artnet-target over SHOW_ARTNET_TARGET
+        clock = self.clock if hasattr(self.clock, "next_beat") else None
+        features_fn = self.features.latest if self.features is not None else None
+        return amod.VirtualMaestro(**kw, clock=clock, features_fn=features_fn, palette_fn=None)
+
+    def stop(self) -> None:
+        if self.artnet is not None:
+            try:
+                self.artnet.stop()
+            except Exception:
+                log.exception("Art-Net out stop failed")
+        if self.rx is not None:
+            try:
+                self.rx.stop()
+            except Exception:
+                log.exception("receiver stop failed")
+        self.bus.stop()
+
+    def set_offsets(self, offsets: dict[str, float]) -> None:
+        self.offsets = dict(offsets)
+        if self.rx is not None:
+            try:
+                self.rx.set_offsets(dict(offsets))
+            except Exception:
+                log.exception("set_offsets failed")
+
+    # -- show-rx callbacks (the hot thread: no I/O, no locks) ---------------------------------------------------
+    def on_audio(self, stream: str, n0: int, t0_host_s: float, pcm: Any, fs: int, flags: int) -> None:
+        """contract.OnAudio: the active stream's block to Features, then the same block to the Clock."""
+        f = self.features
+        if f is not None:
+            try:
+                f.process(stream, n0, t0_host_s, pcm, fs, flags)
+            except Exception:
+                self._g["features.process"].failed()
+        c = self.clock
+        if c is not None:
+            try:
+                c.process(stream, n0, t0_host_s, pcm, fs, flags)
+            except Exception:
+                self._g["clock.process"].failed()
+
+    def _features_publish(self, msg: dict) -> None:
+        """The publish Features gets: everything to the bus; music.hit bodies also to Clock.observe_hit (show-rx)."""
+        if msg.get("type") == contract.MUSIC_HIT and self.clock is not None:
+            try:
+                d = msg["data"]
+                self.clock.observe_hit(d["t_ms"] / 1000.0, d["band"], d["strength"])
+            except Exception:
+                self._g["clock.observe_hit"].failed()
+        self.publish(msg)
+
+    def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
+        piano = self.pianos.get(stream)
+        if piano is None:
+            if self._midi_mod is None:
+                return
+            try:
+                piano = self._midi_mod.Piano(stream, self.publish, state_channels=PIANO_STATE_CHANNELS)
+                _set_voice(piano, False, arrival_s)          # muted until it is the voice (on_tick / below)
+            except Exception:
+                self._g["on_midi"].failed()
+                return
+            self.pianos[stream] = piano
+        try:
+            piano.on_midi(msg, arrival_s, to_host)
+            # the packet that makes a live piano present takes the voice at once (its snapshot carries the keys it
+            # struck, at their own t_on_ms), rather than at the next tick
+            if piano is not self._voice and _present_at(piano, arrival_s) and self._outranks(stream, piano):
+                self._give_voice(piano, arrival_s)
+        except Exception:
+            self._g["on_midi"].failed()
+
+    def _present_piano(self) -> Any:
+        best = None
+        for stream, p in self.pianos.items():
+            if getattr(p, "present", False):
+                if not _is_test(stream):
+                    return p                 # live before test
+                best = best or p
+        return best
+
+    def _outranks(self, stream: str, piano: Any) -> bool:
+        """Should ``piano`` (present now) take the voice from the current one? Yes unless the current voice is
+        present and as good (live, or test against test)."""
+        v = self._voice
+        if v is None or not getattr(v, "present", False):
+            return True
+        return _is_test(getattr(v, "stream", "")) and not _is_test(stream)
+
+    def _give_voice(self, piano: Any, now_s: float) -> None:
+        old = self._voice
+        self._voice = piano
+        if old is not None:
+            _set_voice(old, False, now_s)
+        _set_voice(piano, True, now_s)
+
+    def on_tick(self, now_s: float) -> None:
+        g = self._g
+        for p in self.pianos.values():
+            try:
+                p.tick(now_s)
+            except Exception:
+                g["piano.tick"].failed()
+        # one voice on the bus: the present piano, live before test; with none present the last voice keeps it
+        # (it has sent its flip frame and is quiet), so a piano coming back needs no hand-over
+        if self.pianos:
+            try:
+                want = self._present_piano()
+                if want is not None and want is not self._voice:
+                    self._give_voice(want, now_s)
+            except Exception:
+                g["piano.tick"].failed()
+        f = self.features
+        if f is not None:
+            try:
+                f.tick(now_s)
+            except Exception:
+                g["features.tick"].failed()
+        if self.harmony is not None:
+            try:
+                self.harmony.tick(now_s, self._present_piano(), f.chroma12() if f is not None else None)
+            except Exception:
+                g["harmony.tick"].failed()
+        if self.clock is not None:
+            try:
+                self.clock.tick(now_s)
+            except Exception:
+                g["clock.tick"].failed()
+        if now_s >= self._snap_due:
+            self._snap_due = now_s + SNAPSHOT_S
+            try:
+                self._snap = self._snapshot(now_s)
+            except Exception:
+                g["snapshot"].failed()
+
+    def _snapshot(self, now_s: float) -> dict:
+        """Built on show-rx (it owns these objects), read by the API on show-bus."""
+        pianos = {}
+        for stream, p in self.pianos.items():
+            pianos[stream] = {"present": bool(_attr(p, "present", False)), "voice": p is self._voice,
+                              "sess": _attr(p, "sess"), "seq": _attr(p, "seq"),
+                              "pedals": dict(_attr(p, "pedals", {}) or {}), "stats": _attr(p, "stats")}
+        return {"t_ms": round(now_s * 1000.0, 1), "pianos": pianos,
+                "features": _attr(self.features, "stats") if self.features is not None else None,
+                "clock": _attr(self.clock, "state") if self.clock is not None else None}
+
+    # -- read from show-bus ------------------------------------------------------------------------------------
+    def health(self) -> dict:
+        rx = self.rx
+        if rx is None:
+            return {}
+        try:
+            h = rx.health()
+        except Exception:
+            return {}
+        return h if isinstance(h, dict) else {}
+
+    def state(self) -> Optional[dict]:
+        """GET /api/v1/state: what it hears, from snapshots only. None until start() is done (503)."""
+        if not self.ready:
+            return None
+        h, snap, bus = self.health(), self._snap, self.bus
+        pianos = snap.get("pianos") or {}
+        feats = bus.latest(contract.MUSIC_FEATURES)
+        harm = bus.latest(contract.MUSIC_HARMONY)
+        now_ms = time.monotonic() * 1000.0
+        fdata = feats.get("data") if isinstance(feats, dict) else None
+        hdata = harm.get("data") if isinstance(harm, dict) else None
+        features = None
+        if isinstance(fdata, dict):
+            features = {k: fdata.get(k) for k in ("t_ms", "stream", "energy", "gate", "lufs_m", "lufs_s", "peak_dbfs",
+                                                  "rms_dbfs", "onset", "brightness", "noisiness", "punch", "drive")}
+            features["levels"] = {k: (v or {}).get("level") for k, v in (fdata.get("bands") or {}).items()
+                                  if isinstance(v, dict)}
+            t = fdata.get("t_ms")
+            features["age_ms"] = round(now_ms - t, 1) if isinstance(t, (int, float)) else None
+        return {
+            "service": "show_service", "version": __version__, "t_ms": round(now_ms, 1),
+            "uptime_s": round(time.monotonic() - self.t0, 1),
+            "modules": dict(self.modules),
+            "config": {"senders": [{"name": s.name, "host": s.host, "port": s.port, "streams": list(s.streams)}
+                                   for s in self.cfg.senders],
+                       "vban_bind": list(self.cfg.vban_bind), "bus_bind": list(self.cfg.bus_bind),
+                       "latency_file": str(self.cfg.latency_file), "offsets_ms": dict(self.offsets)},
+            "active_audio": h.get("active_audio"),
+            "streams": h.get("streams") or {},
+            "socket": h.get("socket"),
+            "senders": h.get("senders"),
+            "piano": {"present": any(p.get("present") for p in pianos.values()),
+                      "voice": next((s for s, p in pianos.items() if p.get("voice")), None), "streams": pianos},
+            "clock": snap.get("clock"),
+            "features": features,
+            "features_stats": snap.get("features"),
+            "harmony": hdata,
+            "artnet": _attr(self.artnet, "status") if self.artnet is not None else {"state": "off"},
+            "bus": bus.stats(),
+            "errors": {k: g.errors for k, g in self._g.items() if g.errors},
+        }
+
+
+def main(argv: list[str] | None = None) -> int:
+    opts = config.load_options(argv)
+    cfg = opts.config
+    logging.basicConfig(stream=sys.stderr, level=getattr(logging, cfg.log_level, logging.INFO),
+                        format="%(asctime)s %(levelname)s %(threadName)s %(name)s: %(message)s")
+    for note in opts.notes:
+        log.warning("config: %s", note)
+    if cfg.stream_priority:
+        log.info("audio streams ranked first: %s (then %s)", ",".join(cfg.stream_priority),
+                 ",".join(contract.AUDIO_PRIORITY))
+    if not cfg.senders:
+        log.warning("no senders configured (SHOW_SENDERS / --sender): listening for push-only senders only")
+    sys.setswitchinterval(0.001)
+
+    stop = threading.Event()
+
+    def _signal(signum: int, _frame: Any) -> None:
+        log.info("signal %d: stopping", signum)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _signal)
+    signal.signal(signal.SIGINT, _signal)
+
+    show = Show(opts)
+    show.start(freeze_gc=True)
+    watch = config.LatencyWatch(cfg.latency_file)
+    offsets = watch.poll(force=True)
+    show.set_offsets(offsets or {})
+    if offsets:
+        log.info("acoustic offsets from %s: %s", cfg.latency_file, offsets)
+    t_start, frozen, errors_seen = time.monotonic(), False, 0
+    while not stop.wait(RELOAD_S):
+        offsets = watch.poll()
+        if offsets is not None:
+            log.info("latency.json changed: acoustic offsets %s", offsets or "none (all 0)")
+            show.set_offsets(offsets)
+        if watch.errors != errors_seen:
+            errors_seen = watch.errors
+            if errors_seen == 1 or errors_seen % 30 == 0:
+                log.warning("latency.json unreadable (%d polls): keeping the last offsets", errors_seen)
+        if not frozen and time.monotonic() - t_start >= WARMUP_S:
+            gc.freeze()                      # warm-up objects (first packets, madmom's caches) out of later
+            frozen = True                    # collections. No collect here: show-rx is live (Show.start collected)
+    show.stop()
+    log.info("stopped")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

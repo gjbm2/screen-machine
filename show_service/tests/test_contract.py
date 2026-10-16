@@ -18,6 +18,14 @@ def test_stream_priority():
     ranks = [c.stream_rank(s) for s in ("room-line", "room-mic", "pc22-loop", "pc22-mic", "test-piano", "whatever")]
     assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
     assert c.stream_rank("phone-test") == c.stream_rank("test-piano")
+    pri = ("pc22-loop", "room-mic")                     # Config.stream_priority: those first, in that order
+    ranks = [c.stream_rank(s, pri) for s in ("pc22-loop", "room-mic", "room-line", "pc22-mic", "whatever")]
+    assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
+
+
+def test_clock_body_lives_here():
+    assert {"bpm", "anchor_ms", "beat_at_anchor", "beats_per_bar", "bar_anchor_beat", "phrase_bars", "conf",
+            "bar_conf", "phrase_conf", "state"} <= set(c.ClockData.__annotations__)        # §5.3's fields
 
 
 def test_flags_are_distinct_bits():

@@ -30,8 +30,11 @@ KNOWN_STREAMS: tuple[str, ...] = AUDIO_PRIORITY + MIDI_STREAMS + ("phone-test",)
 UNKNOWN_RANK = 1000                                 # unknown names: accepted, shown in health, chosen last
 
 
-def stream_rank(name: str) -> int:
-    """Lower is better: the AUDIO_PRIORITY index, then known test streams, then unknown names."""
+def stream_rank(name: str, priority: tuple[str, ...] = ()) -> int:
+    """Lower is better: a name in ``priority`` (Config.stream_priority, ``--stream-priority``) first, in that order
+    (negative ranks), then the AUDIO_PRIORITY index, then known test streams, then unknown names."""
+    if name in priority:
+        return priority.index(name) - len(priority)
     if name in AUDIO_PRIORITY:
         return AUDIO_PRIORITY.index(name)
     return UNKNOWN_RANK - 1 if name in TEST_STREAMS else UNKNOWN_RANK
@@ -63,6 +66,7 @@ class Config:
     bus_bind: tuple[str, int] = ("127.0.0.1", 8703)
     latency_file: pathlib.Path = REPO_ROOT / "config" / "room" / "latency.json"   # read-only for us (10's schema v2)
     log_level: str = "INFO"
+    stream_priority: tuple[str, ...] = ()           # audio streams ranked before AUDIO_PRIORITY (stream_rank)
 
 # -- receiver -> consumers (all called on the receive thread, "show-rx", in order) ------------------------------------
 AUDIO_GAP = 1           # pcm is zero-fill for packets that never came: don't detect onsets in it
@@ -101,7 +105,7 @@ MUSIC_NOTES = "music.notes"
 MUSIC_HARMONY = "music.harmony"
 MUSIC_FEATURES = "music.features"
 MUSIC_HIT = "music.hit"           # only to clients whose hello ``want`` lists it (lights, never the renderer)
-MUSIC_CLOCK = "music.clock"       # later (§5.3)
+MUSIC_CLOCK = "music.clock"       # the beat clock (§5.3; clock.py): on re-anchor + 10 Hz
 WANT_ONLY: tuple[str, ...] = (MUSIC_HIT,)
 
 Source = Literal["live", "test"]
@@ -210,6 +214,27 @@ class HitData(TypedDict):
     band: str
     strength: float       # 0..1
     stream: str
+
+
+class ClockData(TypedDict):
+    """music.clock (§5.3, §11.1), on every re-anchor and at 10 Hz: a shared clock, not triggers. A consumer computes
+    ``beat(t) = beat_at_anchor + (t_ms - anchor_ms) / 1000 * bpm / 60`` at its own ``now + lead`` (clock.beat_at,
+    clock.next_beat, clock.position_at do exactly that from a body)."""
+    bpm: float            # 0.0 before the first grid
+    anchor_ms: float      # CLOCK_MONOTONIC ms (acoustic) of integer beat ``beat_at_anchor``
+    beat_at_anchor: int
+    beats_per_bar: int
+    bar_anchor_beat: int  # a beat that starts a bar and a phrase
+    phrase_bars: int      # 4 | 8 | 16
+    conf: float           # 0..1 ~P(the next beat lands within 25 ms)
+    bar_conf: float
+    phrase_conf: float    # <= bar_conf
+    state: str            # searching | locked | holding | free
+    gate: str             # beat (conf on 0.70 / off 0.60) | dmx (0.45 / 0.35) | none; 2-bar dwell
+    epoch: int            # +1 per published jump
+    stability: float      # tempogram clarity at the clock's tempo
+    source: str           # the activation: madmom | aubio
+    t_ms: float           # publish time
 
 
 # spectrum32 (§11.1, agreed with b8; stream_service/plugins/_lib/glsl/runtime.py SPEC_LO_HZ/SPEC_HI_HZ)
