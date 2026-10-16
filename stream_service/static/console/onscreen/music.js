@@ -4,7 +4,9 @@
 // small beat lamp.  Plus the test piano (the renderer's GET / POST /api/sound/test): a piece played into every
 // screen's sound view the way the Steinway's MIDI arrives, so scenes that listen follow it on whatever screen shows
 // them (Show on devtest; no room mode needed).  One test music at a time: the piano stops the band and vice versa.
-import { h, put, visibleInterval } from "../kit.js";
+// When show_service's test API answers (room's /show pass-through: GET / POST / DELETE /show/api/v1/test), the piano
+// plays through it instead, so the lamps and beat clock hear it too.
+import { h, put, visibleInterval, http, ROOM_BASE } from "../kit.js";
 import { S } from "../store.js";
 import * as room from "../data/room.js";
 import * as renderer from "../data/renderer.js";
@@ -14,7 +16,7 @@ import { errorWords, inputsWords, beatWords } from "../words.js";
 
 const QUICK = [90, 110, 124, 128, 140, 174];
 export const M = { view: null, err: null, hidden: false, inputs: null, inputsAt: 0 };
-export const P = { view: null };   // the test piano: GET /api/sound/test
+export const P = { view: null, show: false };   // the test piano: show_service's, else the renderer's
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
 
 export function mountMusic(host, { visible = () => true, onInputs = () => {} } = {}) {
@@ -63,10 +65,18 @@ export function mountMusic(host, { visible = () => true, onInputs = () => {} } =
   put(host, card, pcard);
 
   const pieceLabel = (id) => (P.view?.pieces || []).find((x) => x.id === id)?.label || id || "";
+  const SHOW = `${location.origin}${ROOM_BASE}/show/api/v1/test`;            // absolute: past kit's renderer base
   async function pianoSend(body, what) {
-    const r = await renderer.api("POST", "/api/sound/test", body);
-    if (r.ok) { P.view = r.data; pdraw(); return true; }
-    toastErr(errorWords(r, { what: `Test piano: ${what}`, target: "the renderer" }));
+    let r;
+    if (P.show) {                                                            // through show_service
+      r = body.on ? await http("POST", SHOW, { source: "piano", piece: body.piece })
+                  : await http("DELETE", `${SHOW}/piano`);
+      if (r.ok) { await ppoll(); return true; }
+    } else {
+      r = await renderer.api("POST", "/api/sound/test", body);
+      if (r.ok) { P.view = r.data; pdraw(); return true; }
+    }
+    toastErr(errorWords(r, { what: `Test piano: ${what}`, target: P.show ? "the show engine" : "the renderer" }));
     return false;
   }
   async function playPiece(id) {
@@ -88,6 +98,16 @@ export function mountMusic(host, { visible = () => true, onInputs = () => {} } =
     pState.className = v.running ? "" : "muted";
   }
   async function ppoll() {
+    const sh = await http("GET", SHOW);
+    if (sh.ok && sh.data?.sources?.piano) {                                  // show_service: the piano plays there
+      const st = sh.data.sources.piano;
+      P.show = true;
+      P.view = { available: true, running: ["starting", "playing"].includes(st.state), piece: st.piece,
+                 pieces: sh.data.pieces?.piano || [] };
+      pdraw();
+      return;
+    }
+    P.show = false;
     const r = await renderer.api("GET", "/api/sound/test");
     if (r.ok) { P.view = r.data; pdraw(); }
     else if (r.status === 404 || r.status === 405) { P.view = { available: false }; pdraw(); }   // an older renderer
