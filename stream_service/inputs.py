@@ -50,12 +50,15 @@ log = logging.getLogger("stream_service.inputs")
 
 from .piano import PIANO_LEVELS, PIANO_SIGNALS, PIANO_TRIGGERS
 
-TRIGGERS = ("pulse", "beat", "section") + PIANO_TRIGGERS
+TRIGGERS = ("pulse", "beat", "section", "downbeat") + PIANO_TRIGGERS
 MUSIC_SIGNALS = ("energy", "drive", "punch", "tempo")       # from music_direction.py (the session merges them)
+CLOCK_SIGNALS = ("bar_phase", "phrase_phase", "downbeat")   # show_service's music.clock only (music_feed.py)
+PHASES = ("beat_phase", "bar_phase", "phrase_phase")
 DERIVED_SIGNALS = ("pan_slow", "tilt_slow", "zoom_slow", "motion", "sat", "warmth", "section")
 BIND_SIGNALS = ("level", "pulse", "pan", "tilt", "zoom", "activity", "activity_slow", "level_slow",
-                "beat", "beat_phase", "beat_confidence") + DERIVED_SIGNALS + MUSIC_SIGNALS + PIANO_SIGNALS
-NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS + PIANO_LEVELS   # may be None (n/a)
+                "beat", "beat_phase", "beat_confidence") + DERIVED_SIGNALS + MUSIC_SIGNALS + PIANO_SIGNALS \
+    + CLOCK_SIGNALS
+NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS + PIANO_LEVELS + CLOCK_SIGNALS   # may be None
 FOLLOW_ATTRS = ("effect", "variant")      # discrete attributes whose changes the director can follow
 BEAT_FOLLOW = ("extrapolate", "off")
 
@@ -85,13 +88,14 @@ DEFAULT_FIXTURES = {"north-screen": "screen.north", "south-screen": "screen.sout
 
 
 def signal_kind(s: str) -> str:
-    return "trigger" if s in TRIGGERS else "phase" if s == "beat_phase" else "level"
+    return "trigger" if s in TRIGGERS else "phase" if s in PHASES else "level"
 
 
 def signal_catalog() -> dict:
     """The catalog's ``signals`` block: {name: {kind, idle, na?}}."""
-    return {s: {"kind": signal_kind(s), "idle": 0.0 if s in TRIGGERS else None if s == "beat_phase" else 0.5,
+    return {s: {"kind": signal_kind(s), "idle": 0.0 if s in TRIGGERS else None if s in PHASES else 0.5,
                 **({"na": True} if s in NA_SIGNALS else {}), **({"from": "music"} if s in MUSIC_SIGNALS else {}),
+                **({"from": "clock"} if s in CLOCK_SIGNALS else {}),
                 **({"from": "piano"} if s in PIANO_SIGNALS else {})}
             for s in BIND_SIGNALS}
 
@@ -593,7 +597,7 @@ class Sampler:
         snap = self.snapshot()
         self._liveness(now, snap)
         if snap is None:
-            return {s: idle_value(s) for s in BIND_SIGNALS if s != "beat_phase"} | {
+            return {s: idle_value(s) for s in BIND_SIGNALS if s != "beat_phase" and s not in CLOCK_SIGNALS} | {
                 "beat_phase": self.held_phase, "bpm": None, "beat_locked": False}
         out, self.held_phase = self._values(now, snap, self.w, self.held_phase)
         return out
@@ -602,6 +606,6 @@ class Sampler:
         """The API's view (loop thread): like sample(), without advancing any state."""
         snap = self.snapshot()
         if snap is None:
-            return {s: idle_value(s) for s in BIND_SIGNALS if s != "beat_phase"} | {
+            return {s: idle_value(s) for s in BIND_SIGNALS if s != "beat_phase" and s not in CLOCK_SIGNALS} | {
                 "beat_phase": self.held_phase, "bpm": None, "beat_locked": False}
         return self._values(now, snap, self.w, self.held_phase)[0]

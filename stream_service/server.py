@@ -815,8 +815,10 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
         if inputs is not None:
             from . import showbus
 
-            app[TASKS].append(asyncio.create_task(showbus.run(show_bus, inputs, show_bus_token_file,
-                                                               sound_sink=mgr.broadcast_sound)))
+            # room's bus: its music.* only (its show.state carries fixtures, no global.music: nothing for the views)
+            app[TASKS].append(asyncio.create_task(showbus.run(
+                show_bus, inputs, show_bus_token_file,
+                sound_sink=lambda m: None if m.get("type") == "show.state" else mgr.broadcast_sound(m))))
         for url in music_bus:                      # --music-bus: sound only (show_service), never the fixtures
             from . import showbus
 

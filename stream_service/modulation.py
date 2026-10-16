@@ -40,7 +40,7 @@ import numpy as np
 
 import logging
 
-from . import binding, palettes, piano
+from . import binding, music_feed, palettes, piano
 from .inputs import BIND_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
 from .plugins.base import ParamError, is_bindable
 
@@ -151,7 +151,9 @@ class SessionRuntime:
         self._pal_t = 0.0
         self._t: Optional[float] = None
         # bindings v2: written by the loop (whole dict), merged here
-        self.extra: dict = {}                     # music features {energy, drive, punch, tempo, epoch}
+        self.extra: dict = {}                     # music features {energy, drive, punch, tempo, epoch, music_w}
+        self.feed = None                          # show_service's music (music_feed.MusicFeed), set by the session
+        self.clock_sig = music_feed.ClockSignals()
         self.now = 0.0
         self.dt = 0.0
         self.avail: dict[str, float] = {}         # n/a-able signals' eased availability 0-1
@@ -187,10 +189,18 @@ class SessionRuntime:
                 self._pal_from = None
         sig = self.sampler.sample(now) if self.sampler is not None else {}
         w = self.sampler.w if self.sampler is not None else 0.0
+        wf = 0.0
+        if self.feed is not None:               # the room's sound and beat clock (music_feed.py) over the desk's
+            wf = self.feed.liveness(now)
+            lead = self.sampler.lead if self.sampler is not None else 0.0
+            music_feed.blend(sig, self.feed.snapshot(), wf,
+                             self.clock_sig.sample(self.feed.clock(now), now + lead))
         ex = self.extra
-        for k in MUSIC_SIGNALS:                 # the music features, eased to idle with the bus's liveness
+        wm = ex.get("music_w")
+        wm = w if wm is None else wm
+        for k in MUSIC_SIGNALS:                 # the music features, eased to idle with their source's liveness
             v = ex.get(k)
-            sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+            sig[k] = None if v is None else 0.5 + wm * (v - 0.5)
         for k in piano.PIANO_LEVELS:            # the piano's: n/a when it is silent or not connected
             sig[k] = ex.get(k)
         sig.update(piano.envelopes(ex, now))    # note_on / chord_change, sharp at the frame rate
@@ -203,7 +213,7 @@ class SessionRuntime:
             a += ((1.0 if v is not None else 0.0) - a) * av
             self.avail[k] = a
             sig[k] = self._lastv.get(k) if a > 1e-3 else None
-        hi = w >= 0.5
+        hi = max(w, wf) >= 0.5
         live_ep = self.epoch[1] + (1 if hi != self._live_hi else 0)
         self._live_hi = hi
         self.epoch = (int(ex.get("epoch") or 0), live_ep)

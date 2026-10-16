@@ -40,7 +40,7 @@ MODES = ("live", "section", "cue")
 OPS = ("mean", "max", "mul")
 CURVES = {"linear": lambda x: x, "ease": lambda x: x * x * (3.0 - 2.0 * x), "in": lambda x: x * x,
           "out": lambda x: 1.0 - (1.0 - x) * (1.0 - x)}
-INPUT_SIGNALS = tuple(s for s in BIND_SIGNALS if s != "beat_phase") + ("gobo",)
+INPUT_SIGNALS = BIND_SIGNALS + ("gobo",)        # phases too (17 Oct): a sawtooth, for mappings that want one
 KEYS = {"at", "in", "op", "curve", "map", "kick", "steps", "quant", "ease_s", "live_ok", "on", "fam", "src", "why"}
 COLOUR_KEYS = {"colour", "mix", "at", "ease_s", "on", "fam", "src", "why"}
 MAX_INPUTS = 4
