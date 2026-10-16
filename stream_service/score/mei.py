@@ -1,6 +1,7 @@
 """Bars (quantize.py) -> one grand-staff system as MEI 4 for Verovio.
 
-Spelling follows the key signature: diatonic notes take the key's letters, chromatic ones sharps in sharp keys
+A note tied into a bar engraved as another document (live_score engraves bar by bar) gets a short let-ring tie arc
+(<lv>) off the bar line.  Spelling follows the key signature: diatonic notes take the key's letters, chromatic ones sharps in sharp keys
 and flats in flat keys; accidentals are shown once per letter and octave in a bar (later ones are gestural) and a
 natural cancels.  Notes are tied across pieces and bar lines, eighths and shorter are beamed within each beat,
 dynamics go above the treble staff and pedal marks below the bass.  Unfilled slots in the system are invisible
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from .quantize import BAR, GRID, Bar, Event
+from .quantize import GRID, Bar, Event
 
 SHARPS = ("c", "c", "d", "d", "e", "f", "f", "g", "g", "a", "a", "b")
 SHARP_ALT = (0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0)
@@ -20,7 +21,8 @@ FLAT_ALT = (0, -1, 0, -1, 0, 0, -1, 0, -1, 0, -1, 0)
 ORDER_SHARP = "fcgdaeb"
 ORDER_FLAT = "beadgcf"
 LETTER_PC = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
-DUR = {1: ("16", 0), 2: ("8", 0), 3: ("8", 1), 4: ("4", 0), 6: ("4", 1), 8: ("2", 0), 12: ("2", 1), 16: ("1", 0)}
+DUR = {1: ("16", 0), 2: ("8", 0), 3: ("8", 1), 4: ("4", 0), 6: ("4", 1), 8: ("2", 0), 12: ("2", 1), 16: ("1", 0),
+       24: ("1", 1)}
 
 
 def signature(fifths: int) -> dict[str, int]:
@@ -81,7 +83,7 @@ def _tie(tin: bool, tout: bool) -> str:
 
 
 def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[int, int], *, open_in: bool = True,
-           open_out: bool = True) -> str:
+           open_out: bool = True, units: int = 16, unit: int = GRID, lvs: list | None = None) -> str:
     state = _BarState(sig)
     items: list[tuple[Event, str]] = []
     for ev in events:
@@ -93,9 +95,12 @@ def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[i
         for p, i, tin, tout in sorted(zip(ev.pitches, ev.ids, ev.tie_in, ev.tie_out)):
             # a tie can't reach outside this system's document: drop the ends that would
             tin = tin and (open_in or ev.start > 0 or pieces.get(i, 0) > 0)
-            tout = tout and (open_out or ev.start + ev.dur < BAR)
+            lv = tout and not open_out and ev.start + ev.dur >= units     # tied into the next document: a short
+            tout = tout and not lv                                         # tie arc off the bar line instead
             k = pieces.get(i, 0)
             pieces[i] = k + 1
+            if lv and lvs is not None:
+                lvs.append(f"n{i}-{k}")
             notes.append(_note_xml(p, f"n{i}-{k}", dur, dots, _tie(tin, tout), fifths, state, len(ev.pitches) > 1))
         if len(notes) == 1:
             items.append((ev, notes[0]))
@@ -114,7 +119,7 @@ def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[i
 
     for ev, xml in items:
         beamable = ev.pitches and ev.dur in (1, 2, 3)
-        if beamable and run and run[-1][0].start // GRID != ev.start // GRID:
+        if beamable and run and run[-1][0].start // unit != ev.start // unit:
             flush()
         if beamable:
             run.append((ev, xml))
@@ -123,6 +128,16 @@ def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[i
             out.append(xml)
     flush()
     return "".join(out)
+
+
+def _tstamp(bar: Bar, pos: int) -> float:
+    """A position (16ths) as an MEI tstamp: 1 + position in the time signature's unit."""
+    return 1 + pos * bar.meter[1] / 16
+
+
+def _meter(bar: Bar | None) -> str:
+    count, unit = bar.meter if bar is not None else (4, 4)
+    return f'meter.count="{count}" meter.unit="{unit}"'
 
 
 def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: bool = True,
@@ -134,13 +149,14 @@ def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: 
     pieces: dict[int, int] = {}
     measures = []
     for j, b in enumerate(bars):
-        lay = lambda n: _layer(b.staves[n], fifths, sig, pieces, open_in=j > 0, open_out=j < len(bars) - 1)  # noqa: E731
+        lay = lambda n: _layer(b.staves[n], fifths, sig, pieces, open_in=j > 0, open_out=j < len(bars) - 1,  # noqa: E731
+                               units=b.units, unit=b.unit)
         staves = "".join(f'<staff n="{n + 1}"><layer n="1">{lay(n)}</layer></staff>' for n in (0, 1))
         ctrl = ""
         if b.dynamic:
             ctrl += f'<dynam staff="1" tstamp="1" place="below">{b.dynamic}</dynam>'
         for pos, what in (b.pedal if pedal else ()):
-            ctrl += f'<pedal staff="2" tstamp="{1 + pos / GRID:.3f}" dir="{what}" place="below"/>'
+            ctrl += f'<pedal staff="2" tstamp="{_tstamp(b, pos):.3f}" dir="{what}" place="below"/>'
         measures.append(f'<measure xml:id="m{j}" n="{b.index}">{staves}{ctrl}</measure>')
     n0 = bars[-1].index + 1 if bars else 1
     for j in range(len(bars), slots):
@@ -148,7 +164,7 @@ def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: 
                         + "".join(f'<staff n="{n}"><layer n="1"><space dur="1"/></layer></staff>' for n in (1, 2))
                         + "</measure>")
     form = "" if meter else ' meter.form="invis"'
-    head = (f'<scoreDef meter.count="4" meter.unit="4"{form} key.sig="{key}">'
+    head = (f'<scoreDef {_meter(bars[0] if bars else None)}{form} key.sig="{key}">'
             '<staffGrp symbol="brace" bar.thru="true">'
             '<staffDef n="1" lines="5" clef.shape="G" clef.line="2"/>'
             '<staffDef n="2" lines="5" clef.shape="F" clef.line="4"/>'
@@ -158,9 +174,6 @@ def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: 
             '<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.1">'
             f"<meiHead><fileDesc><titleStmt>{t}</titleStmt><pubStmt/></fileDesc></meiHead>"
             f"<music><body><mdiv><score>{head}<section>{''.join(measures)}</section></score></mdiv></body></music></mei>")
-
-
-assert BAR == 16
 
 
 # -- per-bar engraving (live_score v2): every bar its own document at one staff size, never re-laid out ---------------
@@ -180,13 +193,17 @@ def bar_doc(bar: Bar, fifths: int, *, pedal: bool = False) -> str:
     Spelling and accidentals still follow the key; ties reaching other bars are dropped (separate documents)."""
     sig = signature(fifths)
     pieces: dict[int, int] = {}
+    lvs: list[str] = []
     staves = "".join(f'<staff n="{n + 1}"><layer n="1">'
-                     f"{_layer(bar.staves[n], fifths, sig, pieces, open_in=False, open_out=False)}</layer></staff>"
+                     f"{_layer(bar.staves[n], fifths, sig, pieces, open_in=False, open_out=False, units=bar.units, unit=bar.unit, lvs=lvs)}"
+                     "</layer></staff>"
                      for n in (0, 1))
     ctrl = f'<dynam staff="1" tstamp="1" place="below">{bar.dynamic}</dynam>' if bar.dynamic else ""
+    end = bar.meter[0] + 0.9                                       # just short of the bar line
+    ctrl += "".join(f'<lv startid="#{nid}" tstamp2="0m+{end:g}"/>' for nid in lvs)
     for pos, what in (bar.pedal if pedal else ()):
-        ctrl += f'<pedal staff="2" tstamp="{1 + pos / GRID:.3f}" dir="{what}" place="below"/>'
-    head = (f'<scoreDef meter.count="4" meter.unit="4" meter.form="invis" keysig="{_keysig(fifths)}" '
+        ctrl += f'<pedal staff="2" tstamp="{_tstamp(bar, pos):.3f}" dir="{what}" place="below"/>'
+    head = (f'<scoreDef {_meter(bar)} meter.form="invis" keysig="{_keysig(fifths)}" '
             'keysig.show="false"><staffGrp symbol="none" bar.thru="true">'
             '<staffDef n="1" lines="5" clef.shape="G" clef.line="2" clef.visible="false"/>'
             '<staffDef n="2" lines="5" clef.shape="F" clef.line="4" clef.visible="false"/>'
@@ -194,10 +211,11 @@ def bar_doc(bar: Bar, fifths: int, *, pedal: bool = False) -> str:
     return _doc(head, f'<measure xml:id="m0" n="{bar.index}">{staves}{ctrl}</measure>')
 
 
-def header_doc(fifths: int, *, meter: bool) -> str:
-    """A line's start: brace, clefs, key signature (and the time signature when a phrase starts), no music."""
+def header_doc(fifths: int, *, meter: bool, sig: tuple[int, int] = (4, 4)) -> str:
+    """A line's start: brace, clefs, key signature (and the time signature ``sig`` when a phrase starts), no
+    music."""
     form = "" if meter else ' meter.form="invis"'
-    head = (f'<scoreDef meter.count="4" meter.unit="4"{form} keysig="{_keysig(fifths)}">'
+    head = (f'<scoreDef meter.count="{sig[0]}" meter.unit="{sig[1]}"{form} keysig="{_keysig(fifths)}">'
             '<staffGrp symbol="brace" bar.thru="true">'
             '<staffDef n="1" lines="5" clef.shape="G" clef.line="2"/>'
             '<staffDef n="2" lines="5" clef.shape="F" clef.line="4"/>'

@@ -1,9 +1,13 @@
-"""The scene's side of the engraving worker (engrave.py): one subprocess per scene, requests and replies on pipes.
+"""The scene's side of its workers: one subprocess each, requests and replies on pipes (4-byte length + JSON, then a
+length-prefixed blob).
 
-``submit(key, mei, **extra)`` queues a request; only the newest per key is sent (a part re-engraved before the last
-render came back skips the stale one).  With ``space_px`` every render is at one fixed staff size (engrave.py).  ``results()`` returns finished renders without blocking: [(key, meta,
-ink bytes)].  If the worker can't start (Verovio / resvg not installed) or dies, ``ok`` turns False and the scene
-draws without engraving; it is never restarted more than once a minute.
+* Engraver (engrave.py): ``submit(key, mei, **extra)`` queues a render; only the newest per key is sent (a part
+  re-engraved before the last render came back skips the stale one).  With ``space_px`` every render is at one
+  fixed staff size.  ``results()`` returns finished renders without blocking: [(key, meta, ink bytes)].
+* Analyser (analyse.py, PM2S + metre, run by ~/.venvs/sm-score-ml's python at nice 19): ``submit("a", request)``,
+  replies the same way with an empty blob.  ``available()`` says whether its venv and weights are there at all.
+If a worker can't start or dies, ``ok`` turns False (the scene goes on without it); it is never restarted more than
+once a minute.
 """
 from __future__ import annotations
 
@@ -24,9 +28,16 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 RESTART_S = 60.0
 
 
-class Engraver:
-    def __init__(self, width: int, page_width: int = 3800, scale: int = 50, space_px: float | None = None) -> None:
-        self.width, self.page_width, self.scale, self.space_px = width, page_width, scale, space_px
+ANALYSE_PYTHON = pathlib.Path.home() / ".venvs" / "sm-score-ml" / "bin" / "python"
+PM2S_WEIGHTS = pathlib.Path.home() / ".local" / "share" / "screen-machine" / "pm2s"
+
+
+class _Worker:
+    module = ""
+    python = sys.executable
+    nice = 0
+
+    def __init__(self) -> None:
         self.proc: Optional[subprocess.Popen] = None
         self.out: "queue.Queue" = queue.Queue()
         self.pending: dict = {}                 # key -> newest mei not yet sent
@@ -42,13 +53,16 @@ class Engraver:
         self.started_at = time.monotonic()
         try:
             env = {**os.environ, "PYTHONPATH": str(REPO)}
-            self.proc = subprocess.Popen([sys.executable, "-m", "stream_service.score.engrave"], cwd=str(REPO),
-                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                         env=env, start_new_session=True)
-            threading.Thread(target=self._reader, args=(self.proc,), daemon=True, name="engrave-reader").start()
+            cmd = [str(self.python), "-m", self.module]
+            if self.nice:
+                cmd = ["nice", "-n", str(self.nice)] + cmd
+            self.proc = subprocess.Popen(cmd, cwd=str(REPO), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+            threading.Thread(target=self._reader, args=(self.proc,), daemon=True,
+                             name=f"{self.module.rsplit('.', 1)[-1]}-reader").start()
             self.ok = True
         except OSError as e:
-            log.warning("engraving worker failed to start: %s", e)
+            log.warning("%s worker failed to start: %s", self.module, e)
             self.proc, self.ok = None, False
 
     def _reader(self, proc: subprocess.Popen) -> None:
@@ -64,20 +78,22 @@ class Engraver:
                 key = self.inflight.pop(meta.get("id"), None)
                 self.busy = False
             if not meta.get("ok"):
-                log.warning("engraving failed: %s", str(meta.get("error"))[:300])
+                log.warning("%s failed: %s", self.module, str(meta.get("error"))[:300])
             self.out.put((key, meta, ink))
             self._pump()
         with self.lock:
             self.busy = False
         if self.proc is proc:
-            log.warning("engraving worker exited (code %s)", proc.poll())
+            log.warning("%s worker exited (code %s)", self.module, proc.poll())
             self.ok = False
 
-    def submit(self, key: str, mei: str, **extra) -> None:
-        """Queue a render; ``extra`` goes into the request (e.g. margin_left)."""
+    def _send(self, key: str, payload) -> None:
         with self.lock:
-            self.pending[key] = (mei, extra)
+            self.pending[key] = payload
         self._pump()
+
+    def _request(self, rid: int, payload) -> dict:
+        raise NotImplementedError
 
     def _pump(self) -> None:
         with self.lock:
@@ -85,7 +101,7 @@ class Engraver:
                 return
             alive = self.proc is not None and self.proc.poll() is None
             if alive:
-                key, (mei, extra) = next(iter(self.pending.items()))
+                key, payload = next(iter(self.pending.items()))
                 del self.pending[key]
                 self.next_id += 1
                 rid = self.next_id
@@ -97,8 +113,7 @@ class Engraver:
                 if self.proc is not None:
                     self._pump()
             return
-        req = json.dumps({"id": rid, "mei": mei, "width": self.width, "page_width": self.page_width,
-                          "scale": self.scale, "space_px": self.space_px, **extra}).encode()
+        req = json.dumps(self._request(rid, payload)).encode()
         try:
             self.proc.stdin.write(struct.pack(">I", len(req)) + req)
             self.proc.stdin.flush()
@@ -129,3 +144,36 @@ class Engraver:
                     p.kill()
                 except Exception:
                     pass
+
+
+class Engraver(_Worker):
+    module = "stream_service.score.engrave"
+
+    def __init__(self, width: int, page_width: int = 3800, scale: int = 50, space_px: float | None = None) -> None:
+        self.width, self.page_width, self.scale, self.space_px = width, page_width, scale, space_px
+        super().__init__()
+
+    def submit(self, key: str, mei: str, **extra) -> None:
+        """Queue a render; ``extra`` goes into the request (e.g. margin_left)."""
+        self._send(key, (mei, extra))
+
+    def _request(self, rid: int, payload) -> dict:
+        mei, extra = payload
+        return {"id": rid, "mei": mei, "width": self.width, "page_width": self.page_width, "scale": self.scale,
+                "space_px": self.space_px, **extra}
+
+
+class Analyser(_Worker):
+    module = "stream_service.score.analyse"
+    python = ANALYSE_PYTHON
+    nice = 19
+
+    @staticmethod
+    def available() -> bool:
+        return ANALYSE_PYTHON.exists() and (PM2S_WEIGHTS / "RNNJointBeatModel.pth").exists()
+
+    def submit(self, key: str, request: dict) -> None:
+        self._send(key, request)
+
+    def _request(self, rid: int, payload) -> dict:
+        return {"id": rid, **payload}

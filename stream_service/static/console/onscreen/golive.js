@@ -1,6 +1,8 @@
 // Go live (the art state's primary): what to start with (Surprise me, or a scene from the Picker or the Viewer's
-// "Start the live show with this"), the transitions in and out, and a "Start with this feel" draft sent to room's
-// look once live.  room PUT {desired: {live: {scene, transitions: {in, out}}}}; progress in Room's words with seconds.
+// "Start the live show with this"), which scenes Auto picks from (every scene, or one set: the catalog's set words,
+// the owner's Library tags included), the transitions in and out, and a "Start with this feel" draft sent to room's
+// look once live.  room PUT {desired: {live: {scene?, scene_tags?, transitions: {in, out}}}} (a set and no start
+// scene: the director's first pick from the set); progress in Room's words with seconds.
 import { h, put, store as ls } from "../kit.js";
 import { S } from "../store.js";
 import * as room from "../data/room.js";
@@ -9,7 +11,7 @@ import { lib } from "../data/library.js";
 import { labelForSpec } from "../data/query.js";
 import { button, chip, select, switchEl, unroll, busy, statusRow, setLabel } from "../ui/controls.js";
 import { toastErr } from "../ui/toast.js";
-import { errorWords, stuckAdvice, roomErrorWords } from "../words.js";
+import { errorWords, stuckAdvice, roomErrorWords, friendly } from "../words.js";
 import { patch as patchLook } from "./look.js";
 import { transitionOptions } from "./picker.js";
 
@@ -39,6 +41,12 @@ export function renderArt(host, target, { openPicker }) {
   // the button names the choice, whether it came from the Picker or the Viewer's "Start the live show with this"
   const off = S.on(["golive"], () => { if (!startBtn.isConnected) { off(); return; } setLabel(startBtn, G().entry ? G().entry.label : "Surprise me"); });
   const go = button(`Go live on ${name}${real ? " (the real TV)" : ""}`, { kind: "primary", big: true, tid: "golive-btn", cls: "btn-block" });
+  const setSel = select([["", "All scenes"]], "", (v) => setG({ set: v || null }), { tid: "golive-set", aria: "Auto picks from" });
+  catalog.ready().then((c) => {
+    put(setSel, [["", "All scenes"], ...(c?.scene_tags || []).filter((t) => t.facet === "modes")
+      .map((t) => [t.tag, `${friendly(t.tag)} set (${t.count})`])].map(([v, l]) => h("option", { value: v }, l)));
+    setSel.value = G().set || "";
+  });
   const steps = h("div", { class: "steps", tid: "golive-steps", "aria-live": "polite" });
   const tOpts = transitionOptions().filter(([v]) => v);
   const tin = select(tOpts, g.in || (tOpts.some(([v]) => v === "melt-2s") ? "melt-2s" : "crossfade-3s"), (v) => setG({ in: v }), { tid: "tin-select", aria: "Going live" });
@@ -58,6 +66,7 @@ export function renderArt(host, target, { openPicker }) {
   put(fU.body, h("div", { class: "stack" }, autoSw, h("div", {}, h("span", { class: "lab" }, "Feel"), chips), h("label", { class: "field" }, h("span", { class: "lab" }, "Colours"), pal)));
   go.addEventListener("click", () => goLive(target, go, steps, tin.value, tout.value));
   put(host, h("div", { class: "row", style: { marginTop: "16px" } }, h("span", { class: "lab", style: { fontWeight: 600 } }, "Start with"), startBtn),
+    h("div", { class: "row", style: { marginTop: "8px" } }, h("span", { class: "lab", style: { fontWeight: 600 } }, "Scenes from"), setSel),
     h("div", { style: { marginTop: "12px" } }, go), steps, tU, fU);
   drawSteps(steps, target);
 }
@@ -89,10 +98,13 @@ export function whyLine(sum) {
 export async function goLive(target, btn, stepsEl, tin, tout) {
   const g = G();
   let entry = g.entry?.spec;
-  if (!entry) entry = await surprise();
-  if (!entry) { toastErr("Couldn't pick a scene to start with"); return; }
+  if (!entry && !g.set) entry = await surprise();
+  if (!entry && !g.set) { toastErr("Couldn't pick a scene to start with"); return; }
   busy(btn, true, "Going live…");
-  const body = { desired: { live: { scene: entry, transitions: { in: tin, out: tout } } } };
+  const live = { transitions: { in: tin, out: tout } };
+  if (entry) live.scene = entry;
+  if (g.set) live.scene_tags = [g.set];         // the director picks only from this set (and the first scene, unnamed)
+  const body = { desired: { live } };
   const r = await room.putDesired(target, body.desired);
   if (!r.ok) {
     busy(btn, false);
