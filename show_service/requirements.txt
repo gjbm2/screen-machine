@@ -1,0 +1,23 @@
+# show_service venv: ~/.venvs/sm-show (python3.12). Pinned as installed 16 Oct 2026.
+# Build under: flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/pip install -r show_service/requirements.txt
+numpy==2.5.4
+scipy==1.18.1
+aiohttp==3.14.5
+pyebur128==0.1.1
+soxr==1.1.0
+pytest==9.1.1
+# aiohttp's own dependencies, pinned so a rebuild matches
+aiohappyeyeballs==2.7.1
+aiosignal==1.4.0
+attrs==26.1.0
+frozenlist==1.8.0
+idna==3.20
+multidict==7.1.0
+propcache==0.5.4
+yarl==1.25.1
+typing_extensions==4.16.0
+# pytest's
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+Pygments==2.21.0
