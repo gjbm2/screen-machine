@@ -2,6 +2,7 @@
 test piano, every packet checked with show_service/vban.py's own parser."""
 from __future__ import annotations
 
+import io
 import socket
 import sys
 import threading
@@ -162,3 +163,57 @@ def test_test_piano_streams_to_the_subscriber_over_udp():
     assert "midi_events" in kinds and "midi_state" in kinds and all(p.stream == "test-piano" for p in got)
     seqs = [vban.parse_midi_events(p).seq for p in got if vban.classify(p) == "midi_events"]
     assert seqs == list(range(1, len(seqs) + 1)) and len(seqs) >= 4
+
+
+def test_mic_captures_only_while_subscribed(monkeypatch):
+    """Off in the SUBSCRIBE: no arecord, off heartbeats with the devices; on: arecord opens; off again: it closes."""
+    opened, closed = [], []
+
+    class FakeProc:
+        def __init__(self, cmd, **kw):
+            opened.append(cmd)
+            self.stdout = self
+            self.stderr = io.BytesIO(b"")
+
+        def read(self, n):
+            time.sleep(0.002)
+            return b"\0" * n
+
+        def terminate(self):
+            closed.append(1)
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(ss.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr(ss, "pick_card", lambda hint, match, node: (1, "ATR4697USB"))
+    monkeypatch.setattr(ss, "list_cards", lambda node: ["ATR4697USB"])
+    monkeypatch.setattr(ss, "_have", lambda cmd: True)
+    out = ss.Out(0, "127.0.0.1")
+    sent = []
+    monkeypatch.setattr(out, "send", lambda stream, pkt: (sent.append(vban.parse(pkt)), True)[1])
+    stop = threading.Event()
+    th = threading.Thread(target=ss.run_arecord, args=(out, stop, None), daemon=True)
+    addr = ("127.0.0.1", 9)
+    try:
+        out.subs.on_packet(vban.subscribe_packet(["room-piano"], 0, off=["room-mic"]), addr, time.monotonic())
+        th.start()
+        time.sleep(0.8)
+        assert not opened
+        hbs = [vban.parse_heartbeat(p) for p in sent if vban.classify(p) == "heartbeat"]
+        assert hbs and all(h.state == "off" and h.frame is None and h.devices == ["ATR4697USB"] for h in hbs)
+        out.subs.on_packet(vban.subscribe_packet(["room-piano", "room-mic"], 1), addr, time.monotonic())
+        time.sleep(0.5)
+        assert len(opened) == 1 and not closed
+        out.subs.on_packet(vban.subscribe_packet(["room-piano"], 2, off=["room-mic"]), addr, time.monotonic())
+        time.sleep(0.5)
+        assert closed and len(opened) == 1
+    finally:
+        stop.set()
+        th.join(timeout=2)
