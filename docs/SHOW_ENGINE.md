@@ -1322,7 +1322,7 @@ GET    /show/healthz
 | P3b piano | **Built.** 98's kiosk sender + test piano; the kiosk deploy waits for the kit and the owner's OK (alsa-utils, audio group). Test piano runs through production |
 | P3c Auto | **Built, off.** Supervisor live; no mode has an `autopilot` block yet (owner) |
 | P4 native clock | **Partly.** 04 consumes `room.direction`; `music.clock` and `room.event` cueing next (04) |
-| P5 lights | Next: fixture registry, Hue streamer in show_service, Art-Net LAN sender (node not bought) |
+| P5 lights | **Built, outputs off.** Fixture registry (+ OFL import), look engine, Hue Entertainment driver (68's hand-over contract; flip `hue.streamer: show` + `outputs.hue.enabled` is the owner's go), Art-Net LAN sender + virtual node (no node bought; ArtPollReply needs ca's relay), screen-palette hand-pick hold |
 | P6 calibration | Waits for the photodiode kit |
 
 **As-built differences from §6–§9:**
