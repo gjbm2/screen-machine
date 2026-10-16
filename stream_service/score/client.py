@@ -16,6 +16,7 @@ import logging
 import os
 import pathlib
 import queue
+import shutil
 import struct
 import subprocess
 import sys
@@ -36,6 +37,8 @@ class _Worker:
     module = ""
     python = sys.executable
     nice = 0
+    pin_last = 0                                # run on the host's last N CPUs (nice ranks only within WSL: the
+                                                # Windows side, Chrome and the encoder, still starve without it)
 
     def __init__(self) -> None:
         self.proc: Optional[subprocess.Popen] = None
@@ -56,6 +59,9 @@ class _Worker:
             cmd = [str(self.python), "-m", self.module]
             if self.nice:
                 cmd = ["nice", "-n", str(self.nice)] + cmd
+            n = os.cpu_count() or 0
+            if self.pin_last and n > self.pin_last and shutil.which("taskset"):
+                cmd = ["taskset", "-c", f"{n - self.pin_last}-{n - 1}"] + cmd
             self.proc = subprocess.Popen(cmd, cwd=str(REPO), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.DEVNULL, env=env, start_new_session=True)
             threading.Thread(target=self._reader, args=(self.proc,), daemon=True,
@@ -167,6 +173,7 @@ class Analyser(_Worker):
     module = "stream_service.score.analyse"
     python = ANALYSE_PYTHON
     nice = 19
+    pin_last = 4
 
     @staticmethod
     def available() -> bool:
