@@ -10,7 +10,9 @@ display refresh, as c8 asked to spare room_service's pass-through), carrying the
 capture time on the SENDER's clock in ns (the heartbeats' capture map; null until it has a fit), so a client on the
 sender's own clock (PC22: QPC = Python's perf_counter_ns) measures capture -> client exactly. ``a``: show_service's
 arrival time of that packet (time.monotonic). Pages reach it through room_service's pass-through at /show/v1/levels.
-Nothing is sent while no client is connected.
+Nothing is sent while no client is connected. A client may send ``{"ping": x}`` (any number of its own clock); the
+reply ``{"pong": x, "srv": <time.monotonic()>}`` lets it align clocks and show how far behind the room each sample
+reaches it (``a`` is on the same clock as ``srv``).
 """
 
 from __future__ import annotations
@@ -94,10 +96,17 @@ class LevelFeed:
         q: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX)
         self._clients.add(q)
 
-        async def reader() -> None:                       # notice the close; anything sent to us is ignored
+        async def reader() -> None:                       # pings (clock alignment); notice the close
             async for msg in ws:
                 if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        x = json.loads(msg.data).get("ping")
+                    except (ValueError, AttributeError):
+                        continue
+                    if isinstance(x, (int, float)) and not q.full():
+                        q.put_nowait(json.dumps({"pong": x, "srv": time.monotonic()}))
 
         rd = asyncio.ensure_future(reader())
         try:
