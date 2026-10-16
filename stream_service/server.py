@@ -620,6 +620,19 @@ async def fx_next(request: web.Request) -> web.Response:
     return web.json_response(await _session(request).fx_next())
 
 
+async def upnext_get(request: web.Request) -> web.Response:
+    """GET /api/sessions/{sid}/upnext: the director's forward plan (upnext.py); a follower shows its leader's."""
+    return web.json_response(_session(request).upnext_view())
+
+
+async def upnext_post(request: web.Request) -> web.Response:
+    """POST /api/sessions/{sid}/upnext: edit the plan ({op: add|set|remove|move|keep|reroll|play, ...})."""
+    s = _session(request)
+    body = await read_json(request, allow_empty=False)
+    request.app[PRESETS].reload_if_changed()
+    return web.json_response(await s.upnext_op(body))
+
+
 async def renew(request: web.Request) -> web.Response:
     s = _session(request)
     return web.json_response({"session": s.id, "state": s.state,
@@ -761,6 +774,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_get("/api/sessions/{sid}/fx", get_fx)
     r.add_put("/api/sessions/{sid}/fx", put_fx)
     r.add_post("/api/sessions/{sid}/fx/next", fx_next)
+    r.add_get("/api/sessions/{sid}/upnext", upnext_get)
+    r.add_post("/api/sessions/{sid}/upnext", upnext_post)
     r.add_get("/api/sessions/{sid}/frames", session_frames)
     r.add_get("/api/state", state)
     r.add_get("/api/diag", diag)
