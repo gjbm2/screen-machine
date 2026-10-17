@@ -39,6 +39,7 @@ from .modulation import parse_binding, split_bindings
 from .piano import PIANO_SIGNALS
 from .plugins import Registry
 from .plugins.base import ParamError, is_bindable
+from .tag_overlay import TagOverlay
 from .tags import TagError, Vocab, unknown_words, validate_tags
 
 log = logging.getLogger("stream_service.presets")
@@ -141,6 +142,8 @@ class Presets:
         self.vocab = Vocab(self.dir)
         self.maps = Mappings(self.dir)           # per-item music mappings (mappings.py)
         self.music_response = ResponseFile(self.dir)   # how hard the room's sound drives them (music_feed.py)
+        self.overlay = TagOverlay(self.dir)       # reviewed tags over the plug-ins' own (tag_overlay.py)
+        self.overlay_errors: list[str] = []
         self.reload_if_changed(force=True)
 
     # -- loading ------------------------------------------------------------
@@ -166,6 +169,8 @@ class Presets:
         self.maps.reload_if_changed(force)        # its own rev: the preset tables do not depend on it
         self.music_response.reload_if_changed(force)   # read where it is used (MusicFeed.response)
         changed = self.vocab.reload_if_changed()
+        if self.overlay.reload_if_changed(force):
+            changed = True
         sig = self._plugin_sig() if plugin_files or force else (self.registry.rev,) + self._plugin_mtimes[1:]
         plugins_moved = sig != self._plugin_mtimes
         reload_files = force or changed or self.registry.rev != self._reg_rev   # file presets name plug-ins
@@ -189,14 +194,22 @@ class Presets:
         return changed
 
     def _rebuild(self) -> None:
-        merged, errs = {}, []
+        merged, errs, probs = {}, [], []
         for kind in KINDS:
             out = self._plugin_entries(kind, errs) if self.plugin_presets else {}
             out.update(self._file[kind])           # a config/live preset wins a name clash
-            merged[kind] = out
+            merged[kind] = {n: self._overlaid(kind, n, e, n in self._file[kind], probs) for n, e in out.items()}
         self.scenes, self.transitions, self.effects = merged["scene"], merged["transition"], merged["effect"]
         self.plugin_errors = errs
+        self.overlay_errors = self.overlay.errors + probs
         self.rev += 1
+
+    def _overlaid(self, kind: str, name: str, entry: dict, authored: bool, probs: list[str]) -> dict:
+        """A preset with the reviewed tags layered on (tag_overlay.py; a config/live preset's own fields win)."""
+        tags, p = self.overlay.apply(kind, name, entry.get(KIND_KEY[kind]), entry.get("tags"), self.vocab.words,
+                                     authored)
+        probs += p
+        return entry if tags is entry.get("tags") else {**entry, "tags": tags}
 
     # -- plug-in presets: <id>.presets.yaml next to the plug-in, else an automatic one ----------------------
     _SIG_MAP = {"energy": "activity_slow", "activity": "activity", "beat": "beat", "pulse": "pulse", "level": "level",
@@ -414,8 +427,10 @@ class Presets:
                 "effects": {k: dict(v) for k, v in self.effects.items()}}
 
     def catalog_errors(self) -> list[str]:
+        ov = self.overlay_errors
+        ov = ov[:40] + [f"... and {len(ov) - 40} more tag overlay problems"] if len(ov) > 40 else ov
         return self.tag_errors["scene"] + self.tag_errors["transition"] + self.tag_errors["effect"] + \
-            list(self.plugin_errors)
+            list(self.plugin_errors) + list(ov)
 
     def scene_restore(self, spec: SceneSpec) -> tuple[dict, dict]:
         """(plain params, bindings) a scene's preset gives, for PATCH {k: null} (R13); ({}, {}) for a plug-in."""
