@@ -146,8 +146,14 @@ director:
                                             # state for a lamp
   next_max_wait_s: 4.0                      # starting point (§8.4): Next look lands on the next bar, at most this long
   art:
-    poll_s: 60                              # starting point: the on-glass stills (room's /api/v1/screens/{id}/art)
+    poll_s: 60                              # starting point: how often the art palette's stills are read
     colours: 5                              # starting point (§8.8): OKLCh clusters per still
+    sources:                                # first that gives colours wins: the UNMASKED art first (the light mask
+      - "http://127.0.0.1:5000/output/{id}.jpg"          # is display dimming, not the art's colour: 75, 17 Oct)
+      - "/api/v1/screens/{id}/art"                       # room: the art as on the glass
+      - "/api/v1/screens/{id}/snapshots/anchor.png"      # room: the still at the last cut
+    min_lightness: 0.3                      # starting point: the art qualifies only if its lightest colour (OKLab L)
+    min_chroma: 0.03                        # ...and its most colourful (OKLab chroma) clear these; else the next palette
   republish_s: 5                            # starting point: room.direction / room.look again even when nothing changed
   # When looks change (§8.5). Starting points.
   between_pieces: {pause_s: 2.0, damper_up: 0.1}   # a pause: no strike for pause_s, no key down, damper under damper_up
@@ -156,7 +162,7 @@ director:
   variation_bars: 64                        # while Keep this look holds: a new allocation after this many bars
   entry_fade_s: 8.0                         # entering a vibe: the lamps fade in from the house light (§8.6)
   no_feel:                                  # owner, 17 Oct: the director always resolves a palette. With no feel set
-    palettes: [art]                         # it picks from these (art = the screens' own stills); [] = the old neutral
+    palettes: [art, ember, gold, dusk]      # it picks from these (the home feel's list; art = the screens' own art); [] = the old neutral
   emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)
   # How deep the lamps' beat swell goes for each of the vibe's accent styles (artnet_out's hue_depth: 0 = steady
   # colour, 1 = the full swell). Starting points. With beat_lock false or an unsure clock, there is no beat swell.

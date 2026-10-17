@@ -131,6 +131,10 @@ RGB_FIELDS = ("r", "g", "b")
 RENDERER_CATALOG_PATH = "/renderer/api/catalog"      # stream_service's catalog through room's one front door
 ART_PATHS = ("/api/v1/screens/{id}/art",                 # the live art feed: the TV's art now, as on the glass
              "/api/v1/screens/{id}/snapshots/anchor.png")  # else the still room took at the last cut
+# The art palette's sources, first that gives colours wins (show.yaml director.art.sources): the UNMASKED art first
+# (75 / owner, 17 Oct: the light mask is display dimming, not the art's colour, so the glass reads near-black at
+# night). An http(s) template is fetched as is; a path goes to room (ctx.room_get).
+ART_SOURCES = ("http://127.0.0.1:5000/output/{id}.jpg",) + ART_PATHS
 HOUSE_FOLLOWING = ("dmx", "taken_over")                 # room hue values that are not a stored house light state
 GATE_REF_DEFAULT_LUFS = -30.0       # dsp.Features.gate_ref_lufs's own default: put back when a vibe stops setting it
 STALE_S = 2.0                       # features older than this are stale (they come at 25 Hz)
@@ -214,7 +218,8 @@ TRACK_CUT = {"style": "cut", "beats": None, "seconds": 0.05}   # the director's 
 DIRECTOR_FALLBACK = {
     "steps": {"size_from": "step_size", "max_from": "max_steps"}, "keep_s": 900.0,
     "low": {"level": 0.10, "fade_s": 2.0}, "house": {"white_k": 2700.0, "level": 0.8}, "next_max_wait_s": 4.0,
-    "art": {"poll_s": 60.0, "colours": 5}, "republish_s": 5.0, "accent_depth": {}, "bands": None,
+    "art": {"poll_s": 60.0, "colours": 5, "sources": list(ART_SOURCES), "min_chroma": 0.03, "min_lightness": 0.3},
+    "republish_s": 5.0, "accent_depth": {}, "bands": None,
     "transitions": TRANSITIONS, "listener_bias": LLM_TRAJECTORY_BIAS,
     "between_pieces": {"pause_s": PAUSE_S, "damper_up": DAMPER_UP}, "new_song_after_s": SILENCE_SONG_S,
     "novelty": NOVELTY, "variation_bars": float(VARIATION_BARS), "entry_fade_s": ENTRY_FADE_S,
@@ -888,6 +893,20 @@ class Director:
                     cfg[key] = v
                 else:
                     probs.append(f"director.{key}: {d[key]!r} is not a positive number")
+        ad = d.get("art") if isinstance(d.get("art"), dict) else {}
+        if "sources" in ad:
+            src = ad["sources"]
+            if isinstance(src, list) and src and all(isinstance(x, str) and "{id}" in x for x in src):
+                cfg["art"]["sources"] = list(src)
+            else:
+                probs.append(f"director.art.sources: {src!r} is not a list of templates with {{id}}")
+        for key in ("min_chroma", "min_lightness"):
+            if key in ad:
+                v = _num(ad[key])
+                if v is not None and v >= 0:
+                    cfg["art"][key] = v
+                else:
+                    probs.append(f"director.art.{key}: {ad[key]!r} is not a number >= 0")
         nf = d.get("no_feel")
         if nf is not None:
             pl = nf.get("palettes") if isinstance(nf, dict) else None
@@ -2058,6 +2077,17 @@ class Director:
     def _art_ready(self) -> bool:
         return any(a.get("colours") for a in self.art.values())
 
+    def _art_ok(self) -> bool:
+        """The art qualifies as a palette (75, 17 Oct: a rule, not a special case): its lightest colour clears
+        director.art.min_lightness (OKLab L) and its most colourful clears min_chroma (OKLab chroma); else the next
+        palette in the list takes over (a near-black or grey still has no colour to give)."""
+        cols = [c for a in self.art.values() for c in (a.get("colours") or [])]
+        if not cols:
+            return False
+        labs = [pal.to_oklab(c) for c in cols]
+        return (max(L for L, _, _ in labs) >= float(self.cfg["art"]["min_lightness"])
+                and max(math.hypot(a, b) for _, a, b in labs) >= float(self.cfg["art"]["min_chroma"]))
+
     def _candidates(self, vs: dict) -> list[str]:
         return [p for p in vs["palettes"] if p == contract.PALETTE_ART or self.palettes.has(p)]
 
@@ -2095,7 +2125,7 @@ class Director:
         """The look's palette (with roles) and per-screen roles (the art's, where a screen has its own still)."""
         screen_roles: dict[str, contract.PaletteRoles] = {}
         if name == contract.PALETTE_ART:
-            if self._art_ready():
+            if self._art_ready() and self._art_ok():
                 cols: list = []
                 for sid, a in self.art.items():
                     if a.get("colours"):
@@ -2104,7 +2134,7 @@ class Director:
                 roles = pal.roles_from(cols)
                 return {"name": contract.PALETTE_ART, "source": "art" if source == "vibe" else source,
                         "roles": roles, "emphasis": "base"}, screen_roles
-            # no still yet: the vibe's next catalog palette stands in until one arrives
+            # no still yet, or one with no colour to give: the vibe's next catalog palette stands in
             alt = next((p for p in self._candidates(vs) if p != contract.PALETTE_ART), None)
             if alt is None:
                 name = None
@@ -2277,6 +2307,8 @@ class Director:
         name, source = self._resolve_palette(vp) if pal_on else (None, "neutral")
         self._pal_chosen = name                           # the screens' palette follows the choice, not a stand-in
         look_pal, screen_roles = self._roles_for(name, source, vp)
+        if name == contract.PALETTE_ART and self._art_ready() and not self._art_ok():
+            self._pal_chosen = look_pal.get("name")       # the art has no colour to give: the next entry is the choice
         emphasis = self._emphasis_of(arousal)
         look_pal["emphasis"] = emphasis
         xpr = self._express_now(now_s) if known else 0.0    # a section shown inside the look (§8.5)
@@ -2752,6 +2784,18 @@ class Director:
         finally:
             self._cat_busy = False
 
+    async def _http_get(self, url: str) -> tuple[int, bytes]:
+        """An art source outside room (director.art.sources): (status, body); (0, b"") on any failure."""
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as s:
+                async with s.get(url) as r:
+                    return r.status, (await r.read() if r.status == 200 else b"")
+        except asyncio.CancelledError:
+            raise
+        except Exception:                                # noqa: BLE001
+            return 0, b""
+
     async def _fetch_art(self, sids: list[str]) -> None:
         try:
             loop = asyncio.get_running_loop()
@@ -2759,9 +2803,12 @@ class Director:
             errors = []
             for sid in sids:
                 got = None
-                for tmpl in ART_PATHS:
+                for tmpl in self.cfg["art"]["sources"]:
                     path = tmpl.format(id=urllib.parse.quote(sid, safe=""))
-                    st, body = await self.ctx.room_get(path)
+                    if path.startswith(("http://", "https://")):
+                        st, body = await self._http_get(path)
+                    else:
+                        st, body = await self.ctx.room_get(path)
                     if st == 200 and body:
                         got = await loop.run_in_executor(None, pal.from_image, body, k)
                         if got:
