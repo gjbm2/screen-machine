@@ -640,7 +640,16 @@ async def sound_test_status(request: web.Request) -> web.Response:
 
 async def fx_next(request: web.Request) -> web.Response:
     """POST /api/sessions/{sid}/fx/next: change the effect now (swap the oldest auto effect, or add one)."""
-    return web.json_response(await _session(request).fx_next())
+    s = _session(request)
+    body = await read_json(request) if request.can_read_body else None
+    return web.json_response(await s.fx_next(body))
+
+
+async def fx_clear(request: web.Request) -> web.Response:
+    """POST /api/sessions/{sid}/fx/clear: take effects off the room's screens (all, or {"effect": preset | slot})."""
+    s = _session(request)
+    body = await read_json(request) if request.can_read_body else None
+    return web.json_response(await s.fx_clear(body))
 
 
 async def upnext_get(request: web.Request) -> web.Response:
@@ -797,6 +806,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_get("/api/sessions/{sid}/fx", get_fx)
     r.add_put("/api/sessions/{sid}/fx", put_fx)
     r.add_post("/api/sessions/{sid}/fx/next", fx_next)
+    r.add_post("/api/sessions/{sid}/fx/clear", fx_clear)
     r.add_get("/api/sessions/{sid}/upnext", upnext_get)
     r.add_post("/api/sessions/{sid}/upnext", upnext_post)
     r.add_get("/api/sessions/{sid}/frames", session_frames)

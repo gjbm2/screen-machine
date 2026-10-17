@@ -201,13 +201,27 @@ class SessionFx:
                 raise SessionError(409, "fx_conflict", f"the FX stack is at rev {self.rev}, not {parsed['if_rev']}")
             return await self._apply(parsed["items"], parsed["fade_s"], parsed["master"], cause, detail)
 
+    async def remove(self, keep: Any, fade_s: float, detail: Optional[str] = None) -> Optional[dict]:
+        """Take slots off the bus (loop thread): every slot for which ``keep(slot)`` is false.  None when the state
+        no longer allows it."""
+        if self.s.state != "live" or self.s.exited:
+            return None
+        async with self.lock:
+            items = [_Item(st.id, st.spec, st.level, st.bypass, index=i)
+                     for i, st in enumerate(st for st in self.stack if keep(st))]
+            if len(items) == len(self.stack):
+                return self.summary()
+            return await self._apply(items, fade_s, None, "manual", detail)
+
     async def auto_move(self, move: Any, fade_s: float) -> Optional[dict]:
         """Apply an FX director move (loop thread).  None when the state no longer allows it."""
         if self.s.state != "live" or self.s.exited:
             return None
         async with self.lock:
-            items = [_Item(st.id, st.spec, st.level, st.bypass, index=i) for i, st in enumerate(self.stack)
-                     if st.id != move.remove]
+            # index = the position in the new list (a swap of any slot but the last left two items on one index:
+            # the added effect then took the kept slot's place and the bus showed one effect twice)
+            items = [_Item(st.id, st.spec, st.level, st.bypass, index=i)
+                     for i, st in enumerate(st for st in self.stack if st.id != move.remove)]
             if move.add is not None:
                 if len(items) >= MAX_BUS_SLOTS:
                     return None
