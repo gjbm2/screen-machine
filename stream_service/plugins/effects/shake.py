@@ -17,6 +17,7 @@ import numpy as np
 
 from ...gpu import raw_module
 from .._cuda import HELPERS, launch_2d
+from .._lib.beat import advance, paced
 from ..base import Effect, effect_params
 
 _SRC = HELPERS + r"""
@@ -57,8 +58,8 @@ class Shake(Effect):
                  "x-ui": {"label": "Idle sway", "step": 0.01, "widget": "slider"}},
         "punch": {"type": "number", "minimum": 0.0, "maximum": 3.0, "default": 1.0, "x-tier": "regional",
                   "x-ui": {"label": "Beat punch", "step": 0.05, "widget": "slider"}},
-        "frequency": {"type": "number", "minimum": 0.2, "maximum": 12.0, "default": 3.0, "x-tier": "regional",
-                      "x-ui": {"label": "Shake rate", "unit": "Hz", "step": 0.1, "widget": "slider"}},
+        "frequency": paced({"type": "number", "minimum": 0.2, "maximum": 12.0, "default": 3.0, "x-tier": "regional",
+                            "x-ui": {"label": "Shake rate", "unit": "Hz", "step": 0.1, "widget": "slider"}}),
     }
 
     def setup(self, ctx, params: dict) -> None:
@@ -69,8 +70,10 @@ class Shake(Effect):
     def render(self, t_local: float, dt: float, src, out) -> None:
         p = self.step_params(dt)
         drive = p["amount"] * min(1.5, p["sway"] + p["punch"] * p["pulse"])
-        # the rate rises with the kick, so a beat reads as a jolt without the position jumping
-        self._phase += dt * p["frequency"] * (1.0 + 0.6 * p["pulse"])
+        # the rate rises with the kick, so a beat reads as a jolt without the position jumping; on the beat grid
+        # while the clock is sure (the sway's main swing on the beat)
+        self._phase = advance(self._phase, p["frequency"] * (1.0 + 0.6 * p["pulse"]), dt,
+                              getattr(self, "beat_clock", None), "frequency")
         w, h = self.ctx.width, self.ctx.height
         shift = drive * p["max_shift"] * w
         ox, oy = shift * _wobble(self._phase, 0), shift * 0.75 * _wobble(self._phase, 1)

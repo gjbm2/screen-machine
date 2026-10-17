@@ -11,6 +11,13 @@ director: tags.weight x energy match x mood match x style match (each mismatch x
 picks (novelty).  It is armed only while the session is live with the bus open, never after exit, and the
 session never applies a move while a scene transition is in flight.  ``vet(kind, plug-in)`` (the session's vetted
 pool) drops effects that are unvetted, slow or broken.
+
+On the music (owner, 17 Oct): while the session's beat clock is sure (``clock``, set by the session: (beat s, beats
+per bar)), the cadence is whole phrases (FX_BARS bars, FX_MIN_BARS .. FX_MAX_BARS) and fades are whole beats
+(FX_FADE_BEATS); the session lands each move on the next downbeat.  show_service's room.events steer it
+(:meth:`on_event`, by ``direction.fx.follow``, 0 = never): a drop or a new track brings a move at once (a drop's
+effect fades in over a beat, and a drop always has at least one), a section change sometimes, and a breakdown
+thins the bus by one auto effect until the music lifts again (a drop, a section change or a new track).
 """
 from __future__ import annotations
 
@@ -33,6 +40,16 @@ NOVELTY_WEIGHT = 0.25
 SWAP_P = 0.6
 QUARANTINE_S = 600.0
 FX_DESCRIPTORS = ("energy", "moods", "style")
+FX_BARS = 4                    # on the clock: a scheduled move comes after whole phrases of this many bars ...
+FX_MIN_BARS, FX_MAX_BARS = 4, 64
+FX_FADE_BEATS = (1, 2, 4, 8, 16)   # ... and a fade lasts whole beats (the nearest to the rate's seconds)
+FX_FADE_MAX_S = 8.0
+FX_FOLLOW_DEFAULT = 0.8        # direction.fx.follow when unset: how much the room's events move the bus
+FX_EVENT_P = {"drop": 1.0, "track_change": 1.0, "section_change": 0.5, "breakdown": 0.6}   # x follow
+FX_LIFTS = ("drop", "section_change", "track_change")   # the music lifts: a breakdown's thinning ends
+FX_EVENT_GAP_S = 8.0           # no event move this soon after the last move
+FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
+FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
 
 
 @dataclass
@@ -65,6 +82,11 @@ class FxDirector:
         self.last: Optional[dict] = None
         self.vet: Optional[Callable[[str, Optional[str]], bool]] = None   # (kind, plug-in) -> auto may add it
         self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
+        self.clock: Optional[Callable[[float], Any]] = None   # now -> (beat s, beats per bar) while sure, else None
+        self.grid: Optional[tuple[float, int]] = None         # the clock at the last tick (arm)
+        self.event: Optional[str] = None                      # the room.event the pending move answers
+        self.thin_until: Optional[float] = None               # a breakdown thins the bus until a lift or then
+        self.last_move_at: Optional[float] = None
 
     # -- configuration -------------------------------------------------------------
     def configure(self, auto_fx: Optional[dict], direction: dict) -> None:
@@ -79,20 +101,79 @@ class FxDirector:
     def fxd(self) -> dict:
         return {**FX_DIRECTION_DEFAULTS, **(self.direction.get("fx") or {})}
 
+    @property
+    def follow(self) -> float:
+        try:
+            return max(0.0, min(1.0, float(self.fxd.get("follow", FX_FOLLOW_DEFAULT))))
+        except (TypeError, ValueError):
+            return FX_FOLLOW_DEFAULT
+
+    def _read_clock(self, now: float) -> Optional[tuple[float, int]]:
+        if self.clock is None:
+            return None
+        try:
+            g = self.clock(now)
+            if not g:
+                return None
+            beat_s, bpb = float(g[0]), max(1, int(g[1]))
+        except Exception:
+            return None
+        return (beat_s, bpb) if 0.0 < beat_s < 5.0 else None
+
+    def _bars(self, s: float) -> float:
+        """Seconds -> whole phrases on the clock (self.grid), else as they are."""
+        if self.grid is None:
+            return s
+        bar = self.grid[0] * self.grid[1]
+        return bar * min(FX_MAX_BARS, max(FX_MIN_BARS, FX_BARS * round(s / bar / FX_BARS)))
+
     def interval(self) -> float:
-        return interval_for(self.fxd["rate"])
+        return self._bars(interval_for(self.fxd["rate"]))
+
+    def _gap(self, share: float = 1.0) -> float:
+        return self._bars(share * interval_for(self.fxd["rate"]) * self.rng.uniform(0.75, 1.25))
 
     def fade_s(self) -> float:
-        return fade_for(self.fxd["rate"])
+        s = fade_for(self.fxd["rate"])
+        drop = self.event == "drop"
+        if self.grid is None:
+            return min(s, FX_DROP_FADE_S) if drop else s
+        beat = self.grid[0]
+        if drop:
+            return beat
+        n = min(FX_FADE_BEATS, key=lambda b: abs(math.log2(b * beat / s)))
+        while n > 1 and n * beat > FX_FADE_MAX_S:
+            n //= 2
+        return n * beat
 
     # -- when ----------------------------------------------------------------------
     def arm(self, armed: bool, now: float) -> bool:
-        """Armed only in live with the bus open, not exited, auto.fx enabled.  -> changed?"""
+        """Armed only in live with the bus open, not exited, auto.fx enabled (every tick: the clock is read here).
+        -> changed?"""
+        self.grid = self._read_clock(now)
         if armed == self.armed:
             return False
         self.armed = armed
+        self.event = None
         # the first move comes half an interval after arming (the bus has just opened)
-        self.next_at = now + 0.5 * self.interval() * self.rng.uniform(0.75, 1.25) if armed else None
+        self.next_at = now + self._gap(0.5) if armed else None
+        return True
+
+    def on_event(self, kind: str, now: float) -> bool:
+        """show_service's room.event (loop thread), by ``follow``: a drop or a new track makes a move due now, a
+        section change sometimes; a breakdown thins the bus by one auto effect (a move due now when that leaves one
+        too many) until the music lifts.  Never this soon after the last move (FX_EVENT_GAP_S).  -> a move is due"""
+        if kind in FX_LIFTS:
+            self.thin_until = None
+        p = FX_EVENT_P.get(kind, 0.0) * self.follow
+        if not (self.armed and self.enabled) or p <= 0.0 or self.rng.random() >= p:
+            return False
+        if kind == "breakdown":
+            self.thin_until = now + FX_THIN_S
+        if self.last_move_at is not None and now - self.last_move_at < FX_EVENT_GAP_S:
+            return False
+        self.event = kind
+        self.next_at = now
         return True
 
     def due(self, now: float) -> bool:
@@ -101,7 +182,10 @@ class FxDirector:
     def done(self, now: float, move: Optional[FxMove]) -> None:
         if move is not None and move.add:
             self.recent.append(move.add)
-        self.next_at = now + self.interval() * self.rng.uniform(0.75, 1.25)
+        if move is not None:
+            self.last_move_at = now
+        self.event = None
+        self.next_at = now + self._gap()
 
     def quarantine(self, preset: str, now: float, *, session: bool = False) -> None:
         """Out of the auto pool for 10 min, or for the rest of the session (``session``: it failed to prepare or
@@ -207,20 +291,29 @@ class FxDirector:
         if not self.enabled:
             return None
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
+        ev = self.event
+        on = f" (on the {ev.replace('_', ' ')})" if ev else ""
         k = self.target_count()
+        if ev == "drop":
+            k = max(k, min(1, int(self.auto_fx.get("max", 2))))      # a drop always brings an effect
+        if self.thin_until is not None:
+            if now < self.thin_until:
+                k = max(0, k - 1)                                    # a breakdown: one fewer
+            else:
+                self.thin_until = None
         if len(autos) > k:
             old = autos[0]
-            return FxMove("remove", None, old.id, f"remove {old.spec.name} (density: {len(autos)} > {k})")
+            return FxMove("remove", None, old.id, f"remove {old.spec.name} (density: {len(autos)} > {k}){on}")
         if len(autos) < k:
             if len(stack) >= MAX_BUS_SLOTS:
                 return None
             got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer)
-            return None if got is None else FxMove("add", got[0], None, f"add: {got[1]}")
-        if k > 0 and self.rng.random() < SWAP_P:
+            return None if got is None else FxMove("add", got[0], None, f"add: {got[1]}{on}")
+        if k > 0 and (ev in FX_LIFTS or self.rng.random() < SWAP_P):   # the music's events always change
             old = autos[0]
             got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer)
             if got is not None:
-                return FxMove("swap", got[0], old.id, f"swap: {got[1]} for {old.spec.name}")
+                return FxMove("swap", got[0], old.id, f"swap: {got[1]} for {old.spec.name}{on}")
         return None
 
     def next_move(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
@@ -239,6 +332,8 @@ class FxDirector:
 
     def status(self, now: float) -> dict:
         fxd = self.fxd
-        return {**self.auto_fx, "density": fxd["density"], "rate": fxd["rate"], "armed": self.armed,
+        return {**self.auto_fx, "density": fxd["density"], "rate": fxd["rate"], "follow": self.follow,
+                "armed": self.armed,
                 "next_in_s": None if self.next_at is None or not self.enabled else round(max(0.0, self.next_at - now), 1),
-                "last": self.last}
+                "on_the_bar": self.grid is not None, "event": self.event,
+                "thinned": self.thin_until is not None and now < self.thin_until, "last": self.last}

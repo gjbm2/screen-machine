@@ -29,6 +29,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -192,7 +193,7 @@ class Dither(Effect):
         "pixel_scale": num(1.0, 8.0, 3.0, "Pixel size", step=0.5, unit="px", tier="regional", basic=True),
         "matrix": num(0.0, 3.0, 1.0, "Pattern (Bayer 2 -> 4 -> 8 -> blue noise)", step=0.05, tier="regional"),
         "palette_mix": num(0.0, 1.0, 0.65, "Colours (source -> palette)", tier="regional"),
-        "cycle_speed": num(-2.0, 2.0, 0.12, "Colour cycling", unit="/s", tier="realtime", bind="rate"),
+        "cycle_speed": paced(num(-2.0, 2.0, 0.12, "Colour cycling", unit="/s", tier="realtime", bind="rate")),
         "contrast": num(0.5, 2.5, 1.25, "Contrast", tier="regional"),
         "luma_lock": num(0.0, 1.0, 0.6, "Palette keeps picture brightness", tier="regional"),
         "beat_kick": num(0.0, 2.0, 1.0, "Beat crunch / cycle kick", step=0.05, tier="regional"),

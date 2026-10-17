@@ -28,6 +28,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -221,7 +222,7 @@ class Halftone(Effect):
         **palette_params("ember", 0.6, 0.02),
         "cell_size": num(4.0, 48.0, 14.0, "Cell size", step=0.5, unit="px", tier="regional", basic=True),
         "grid_angle_deg": num(0.0, 90.0, 0.0, "Screen angle", step=0.5, unit="deg", tier="regional"),
-        "rotate_speed": num(-20.0, 20.0, 1.5, "Screen rotation speed", step=0.1, unit="deg/s", tier="regional"),
+        "rotate_speed": paced(num(-20.0, 20.0, 1.5, "Screen rotation speed", step=0.1, unit="deg/s", tier="regional"), 360),
         "shape": num(0.0, 1.0, 0.0, "Dot shape (dot -> diamond -> square)", tier="regional"),
         "colour_mode": num(0.0, 1.0, 1.0, "Colour (mono -> RGB -> CMYK)", tier="regional"),
         "ink_paper": num(0.0, 1.0, 0.0, "Ink / paper palette stop", tier="regional"),

@@ -31,6 +31,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import advance, paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -202,7 +203,7 @@ class BlockGlitch(Effect):
         "displacement": num(0.0, 1.0, 0.5, "Displacement", tier="regional"),
         "rgb_split": num(0.0, 1.0, 0.5, "RGB jitter split", tier="regional"),
         "hold_share": num(0.0, 1.0, 0.3, "Frozen / smeared block share", tier="regional"),
-        "tempo": num(0.5, 16.0, 4.0, "Glitch tempo (reseeds per second)", step=0.1, unit="/s", tier="regional"),
+        "tempo": paced(num(0.5, 16.0, 4.0, "Glitch tempo (reseeds per second)", step=0.1, unit="/s", tier="regional")),
         "subdivide": num(0.0, 1.0, 0.55, "Multi-scale (block subdivision)", tier="regional"),
         "stretch": num(0.0, 1.0, 0.35, "Block stretch (wide macroblocks)", tier="regional"),
         "sparkle": num(0.0, 1.0, 0.4, "Digital sparkle", tier="regional"),
@@ -252,7 +253,8 @@ class BlockGlitch(Effect):
         tempo = float(p["tempo"]) * (1.0 + 1.5 * env)
         if kick:
             self._tphase = math.floor(self._tphase) + 1.0
-        self._tphase += tempo * dt
+        # on the beat grid while the clock is sure (steps on the 1/16, 1/8 ...: beat_clock, plugins/_lib/beat.py)
+        self._tphase = advance(self._tphase, tempo, dt, getattr(self, "beat_clock", None), "tempo")
         if self._tphase > 1.0e6:
             self._tphase -= 1.0e6
         self._drift = (self._drift + float(p["drift_speed"]) * dt) % 1.0

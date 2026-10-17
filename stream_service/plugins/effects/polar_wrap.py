@@ -30,6 +30,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.frame3d import FRAME3D, FRAME3D_OPTIONS, FrameMips
@@ -196,7 +197,7 @@ class PolarWrap(Effect):
         "tunnel": num(0.0, 1.0, 0.0, "Linear ↔ tunnel (log) radius", tier="regional"),
         "glow": num(0.0, 1.0, 0.35, "Crease glow", tier="regional"),
         "kick": num(0.0, 3.0, 1.0, "Beat kick", step=0.05, tier="regional"),
-        "spin_rate": num(-0.5, 0.5, 0.03, "Ring rotation", unit="turns/s", step=0.005, tier="realtime", bind="rate"),
+        "spin_rate": paced(num(-0.5, 0.5, 0.03, "Ring rotation", unit="turns/s", step=0.005, tier="realtime", bind="rate")),
         "scroll_rate": num(-1.0, 1.0, 0.06, "Radial scroll", unit="/s", step=0.01, tier="realtime", bind="rate"),
         **palette_params("neon", 1.0, 0.04),
     }

@@ -30,6 +30,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, PALETTES, palette_coeffs
@@ -137,11 +138,11 @@ class FeedbackEcho(Effect):
         **standard_effect_params(),
         "trail_length": num(0.0, 1.0, 0.62, "Trail length", tier="regional", basic=True),
         "zoom_speed": num(-1.5, 1.5, 0.45, "Zoom", unit="/s", tier="realtime", bind="rate", basic=True),
-        "rotate_speed": num(-90.0, 90.0, 7.0, "Rotate", unit="°/s", step=0.5, tier="realtime", bind="rate"),
+        "rotate_speed": paced(num(-90.0, 90.0, 7.0, "Rotate", unit="°/s", step=0.5, tier="realtime", bind="rate"), 360),
         "warp_amount": num(0.0, 0.05, 0.006, "Warp", step=0.001, tier="regional"),
         "blend": num(0.0, 1.0, 0.2, "Blend (max / lerp / add)", tier="regional"),
         "rgb_spread": num(0.0, 1.0, 0.4, "RGB spread", tier="regional"),
-        "hue_drift": num(-0.5, 0.5, 0.05, "Echo hue drift", unit="turns/s", step=0.005, tier="regional"),
+        "hue_drift": paced(num(-0.5, 0.5, 0.05, "Echo hue drift", unit="turns/s", step=0.005, tier="regional")),
         "echo_tint": num(0.0, 1.0, 0.45, "Echo palette tint", tier="regional"),
         "zoom_kick": num(0.0, 2.0, 1.0, "Beat zoom/warp kick", tier="regional"),
         "palette": enum(list(PALETTES), "neon", "Palette", tier="regional"),

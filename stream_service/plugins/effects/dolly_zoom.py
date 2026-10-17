@@ -27,6 +27,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import advance, paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -193,7 +194,7 @@ class DollyZoom(Effect):
         # the beat drives a spring and a rate kick on the host: keep the envelope raw
         "pulse": {**standard_effect_params()["pulse"], "x-ease": False},
         "fov_range": num(0.05, 0.8, 0.45, "FOV swing", step=0.01, tier="regional", basic=True),
-        "rate": num(0.01, 1.0, 0.12, "Dolly rate", unit="Hz", step=0.01, tier="realtime", bind="rate"),
+        "rate": paced(num(0.01, 1.0, 0.12, "Dolly rate", unit="Hz", step=0.01, tier="realtime", bind="rate")),
         "bias": num(-1.0, 1.0, 0.0, "Loom ↔ recede", step=0.01, tier="regional"),
         "depth_source": num(0.0, 1.0, 0.25, "Depth: radial ↔ luma", tier="regional"),
         "subject_radius": num(0.05, 0.9, 0.35, "Subject radius", unit="× half-height", tier="regional"),
@@ -258,7 +259,9 @@ class DollyZoom(Effect):
         dts = min(max(dt, 0.0), 0.1)
         self._spring(pulse, dt)
         rate = max(float(p["rate"]), 0.0) * (1.0 + 3.0 * m * pulse)
-        self._phase = (self._phase + 2.0 * math.pi * rate * dts) % (2.0 * math.pi)
+        # on the beat grid while the clock is sure: the push-pull's peak (sin = 1, a quarter cycle in) on the bar line
+        q = advance(self._phase / (2.0 * math.pi) - 0.25, rate, dts, getattr(self, "beat_clock", None), "rate")
+        self._phase = (2.0 * math.pi * (q + 0.25)) % (2.0 * math.pi)
         self._drift = (self._drift + float(p["drift_speed"]) * dts) % 1.0
         tgt = np.array(palette_coeffs(p["palette"]), dtype=np.float64)
         if dt > 0 and not np.array_equal(tgt, self._pal):

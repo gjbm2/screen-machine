@@ -22,6 +22,7 @@ import numpy as np
 
 from stream_service.gpu import raw_module
 
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.frame3d import (FRAME3D, FRAME3D_OPTIONS, FrameMips, HomingAngle, box_support_y, camera_orbit,
@@ -175,7 +176,7 @@ class FrameCube(Effect):
     params = {
         **standard_effect_params(),
         "size": num(0.3, 0.95, 0.6, "Cube size", tier="regional", basic=True),
-        "spin": num(-0.5, 0.5, 0.05, "Spin", unit="turns/s", step=0.005, tier="regional", basic=True),
+        "spin": paced(num(-0.5, 0.5, 0.05, "Spin", unit="turns/s", step=0.005, tier="regional", basic=True)),
         "kick": num(0.0, 1.5, 0.45, "Beat spin kick", unit="turns/s", step=0.01, tier="regional"),
         "elevation": num(0.0, 35.0, 14.0, "Camera elevation", unit="°", step=0.5, tier="regional"),
         "tumble": num(0.0, 1.0, 0.3, "Tumble", tier="regional"),

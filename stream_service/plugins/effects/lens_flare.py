@@ -28,6 +28,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -281,8 +282,8 @@ class LensFlare(Effect):
         "glow": num(0.0, 1.0, 0.5, "Glow", tier="regional"),
         "dirt": num(0.0, 1.0, 0.5, "Lens dirt", tier="regional"),
         "starburst": num(0.0, 1.0, 0.6, "Starburst", tier="regional"),
-        "starburst_speed": num(-0.3, 0.3, 0.02, "Starburst spin", unit="rev/s", step=0.005, tier="realtime",
-                               bind="rate"),
+        "starburst_speed": paced(num(-0.3, 0.3, 0.02, "Starburst spin", unit="rev/s", step=0.005, tier="realtime",
+                                     bind="rate")),
         "beat_kick": num(0.0, 2.0, 1.0, "Beat kick", step=0.05, tier="regional"),
         "seed": num(0, 2**31 - 1, 1, "Seed (dirt pattern)", tier="structural", integer=True),
     }

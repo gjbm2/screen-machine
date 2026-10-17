@@ -37,6 +37,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -231,7 +232,7 @@ class RotateWobble(Effect):
         "energy": num(0.0, 1.0, 0.5, "Energy", tier="realtime", bind="level"),
         "roll_max": num(0.0, 25.0, 7.0, "Max roll", unit="°", step=0.1, tier="regional", basic=True),
         "tilt3d": num(0.0, 1.0, 0.45, "3D tilt (flat roll .. full 3D)", tier="regional"),
-        "period": num(0.6, 6.0, 1.7, "Pendulum period", unit="s", step=0.05, tier="regional"),
+        "period": paced(num(0.6, 6.0, 1.7, "Pendulum period", unit="s", step=0.05, tier="regional"), "period"),
         "damping": num(0.02, 0.8, 0.16, "Damping", step=0.01, tier="regional"),
         "idle_sway": num(0.0, 1.0, 0.45, "Idle sway", tier="regional"),
         "kick": num(0.0, 3.0, 1.0, "Beat push", step=0.05, tier="regional"),

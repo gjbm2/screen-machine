@@ -365,6 +365,7 @@ class Effect(Plugin):
     internal: ClassVar[bool] = False
     default_bindings: ClassVar[dict] = {"pulse": {"bind": "beat", "range": [0.0, 1.0], "rest": 0.0}}
     listens: ClassVar[tuple] = ()      # what it reads from self.sound: "notes", "spectrum", "chroma" (sound.py)
+    beat_clock: Any = None             # the session's beat clock this frame (plugins/_lib/beat.py; EffectSlot)
 
     def __init__(self) -> None:
         self.ctx = None

@@ -159,3 +159,85 @@ def test_quarantine_and_disarm():
     off.arm(True, 0)
     off.next_at = 0
     assert not off.due(5) and off.plan(0, [], PRESETS, cost) is None
+
+
+# -- on the music (owner, 17 Oct) ------------------------------------------------------------------------------------
+
+def on_clock(d, beat_s=0.5, bpb=4):
+    d.clock = lambda now: (beat_s, bpb)
+    return d
+
+
+def test_on_the_clock_the_cadence_is_whole_phrases_and_fades_whole_beats():
+    d = on_clock(director(rate=1.0))                                    # 15 s at 120 bpm: 7.5 bars -> 8
+    d.arm(True, 0.0)
+    assert d.grid == (0.5, 4) and d.status(0.0)["on_the_bar"]
+    for _ in range(30):
+        d.done(100.0, None)
+        assert (d.next_at - 100.0) / 2.0 in (4, 8)                      # 15 s x jitter -> 4 or 8 bars
+    assert d.interval() == 16.0
+    assert d.fade_s() == 2.0                                            # rate 1: 2 s -> 4 beats
+    assert director(rate=0.0).fade_s() == 6.0 and on_clock(director(rate=0.0)).fade_s() == 6.0
+    d = on_clock(director(rate=0.0))
+    d.arm(True, 0.0)
+    assert d.fade_s() == 8.0                                            # 6 s -> 16 beats (8 s), the nearest
+    d.clock = lambda now: None                                          # the clock goes: seconds again
+    d.arm(True, 1.0)
+    assert d.grid is None and d.fade_s() == 6.0
+
+
+def test_a_drop_brings_an_effect_at_once_fading_in_on_a_beat():
+    d = on_clock(director(density=0.0, mx=2))
+    d.arm(True, 0.0)
+    assert d.on_event("drop", 50.0) and d.due(50.0) and d.event == "drop"
+    move = d.plan(50.0, [], PRESETS, cost)
+    assert move.op == "add" and "on the drop" in move.why            # density 0, but a drop always brings one
+    assert d.fade_s() == 0.5                                            # one beat
+    d.done(51.0, move)
+    assert d.event is None and d.last_move_at == 51.0 and not d.due(52.0)
+    assert not d.on_event("drop", 55.0)                                 # too soon after the last move
+
+
+def test_a_section_change_swaps_and_follow_zero_ignores_the_room():
+    d = director(density=1.0, mx=1)
+    d.arm(True, 0.0)
+    stack = [St("e1", "warm")]
+    hits = 0
+    for i in range(40):
+        d.last_move_at = None
+        if d.on_event("section_change", 100.0 + i):
+            hits += 1
+            move = d.plan(100.0 + i, stack, PRESETS, cost)
+            assert move is not None and move.op == "swap"                # an event always changes something
+            d.event = None
+    assert 5 < hits < 30                                                # 0.5 x follow 0.8
+    off = director(density=1.0, mx=1)
+    off.direction["fx"]["follow"] = 0.0                                 # direction.fx.follow (config)
+    off.arm(True, 0.0)
+    assert not any(off.on_event(k, 10.0) for k in ("drop", "section_change", "breakdown", "track_change"))
+
+
+def test_a_breakdown_thins_the_bus_until_the_music_lifts():
+    d = director(density=1.0, mx=2, seed=3)
+    d.arm(True, 0.0)
+    while not d.on_event("breakdown", 10.0):
+        d.last_move_at = None
+    stack = [St("e1", "warm"), St("e2", "split")]
+    move = d.plan(10.0, stack, PRESETS, cost)
+    assert move.op == "remove" and move.remove == "e1" and d.status(10.0)["thinned"]
+    d.event = None
+    for _ in range(10):                                                 # thinned to 1: never adds a second
+        move = d.plan(20.0, stack[1:], PRESETS, cost)
+        assert move is None or move.op == "swap"
+    d.on_event("drop", 30.0)                                            # a lift ends the thinning
+    assert d.thin_until is None
+    d.event = None
+    assert d.plan(40.0, stack[1:], PRESETS, cost).op == "add"
+    d.thin_until = 60.0                                                 # a thinning also runs out
+    d.plan(61.0, stack, PRESETS, cost)
+    assert d.thin_until is None
+
+
+def test_events_only_while_armed_and_enabled():
+    d = director()
+    assert not d.on_event("drop", 1.0) and d.next_at is None

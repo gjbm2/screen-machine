@@ -26,6 +26,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.params import enum, num, standard_effect_params
@@ -112,7 +113,7 @@ class WaveWarp(Effect):
         "depth": num(0.005, 0.08, 0.03, "Depth at amount 1", unit="× height", step=0.001, tier="regional"),
         "sheen": num(0.0, 1.0, 0.25, "Fold sheen", tier="regional"),
         "kick": num(0.0, 2.0, 1.0, "Beat kick", step=0.05, tier="regional"),
-        "travel_speed": num(0.0, 2.0, 0.3, "Travel speed", unit="waves/s", tier="realtime", bind="rate"),
+        "travel_speed": paced(num(0.0, 2.0, 0.3, "Travel speed", unit="waves/s", tier="realtime", bind="rate")),
         "edge_mode": enum(["mirror", "clamp"], "mirror", "Edges", tier="structural"),
     }
 
