@@ -950,7 +950,7 @@ Rules are hot-reloaded config, so tuning them never needs a Flask restart. The i
   "autopilot": {
     "enter_when": {"piano_playing": {"for_s": 10}},
     "from": ["gallery", "lights-only"],
-    "leave_when": {"piano_idle": {"for_s": 120}},
+    "leave_when": {"piano_idle": {"for_s": 30}},
     "leave_to": "previous",
     "skip": ["drawing-room:blinds", "mirror_ball", {"drawing-room:tv": {"from": "standby"}}]
   },
@@ -979,7 +979,7 @@ How the pieces make it work. This is all generic mode machinery, nothing piano-s
   - It uses the room's own volume, so a grouped room elsewhere isn't faded along with it.
 - **Auto** only picks modes. Restoring is the mode system's job, so Auto never starts music the mode system wasn't putting back.
 
-**Idle time before leaving.** The default is **2 minutes**, a setting. Pianists often pause 30–60 s between pieces, and 30 s would bring the music back mid-recital.
+**Idle time before leaving.** Owner, 17 Oct: **30 s** (2 minutes was too long), in Piano's own `leave_when` (`piano_idle` for_s). **Minimum stay** in a mode before Auto switches again: **60 s** (modes.json top-level `autopilot.min_dwell_s`; 5 minutes was longer than a track). Switching Auto on waives the stay in the current mode. Both are config.
 
 **Manual choice wins.** If someone wants to play along *with* the music, they pick Normal by hand and Auto holds.
 
