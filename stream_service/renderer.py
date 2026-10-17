@@ -51,7 +51,8 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from .effects import BUS_CLOSE_S, POOL_RESERVE, EffectLayer, FxUpdate, MasterBus, SlotUpdate, close_with_effects
+from .effects import BUS_CLOSE_S, POOL_RESERVE, EffectLayer, FxUpdate, MasterBus, SlotUpdate, close_with_effects, \
+    smoothstep
 from .encode.bitstream import StreamConfig
 from .encode.encoder import NvencPipeline
 from .encode.fmp4 import TIMESCALE, init_segment, media_fragment
@@ -213,6 +214,7 @@ class Engine:
         self._scratch: Optional[list] = None
         self._closer_q: "queue.SimpleQueue[Any]" = queue.SimpleQueue()
         self._closer_thread: Optional[threading.Thread] = None
+        self.hud = None                       # hud.HudDraw: the live diagnostics panel (made at start)
         # -- GPU frame-time guard (guard.py) --
         self.timer: Optional[GpuTimer] = None
         self._fc: Optional[FrameCtx] = None
@@ -326,6 +328,12 @@ class Engine:
                 host = np.frombuffer(pinned, np.uint8, self.nv12_bytes)
                 self.slots.append(_Slot(i, host, pinned, cp.cuda.Event(), cp.cuda.Event(),
                                         cp.cuda.Event(block=True)))
+            try:                                # the details panel: everything made now, toggling allocates nothing
+                from .hud import HudDraw
+                self.hud = HudDraw(cp, ctx.kernels.k_hud, self.w, self.h, self.fps)
+            except Exception:
+                log.exception("[%s] details panel unavailable", self.name)
+                self.hud = None
         self.root = SourceLayer(anchor, 0.0)
         p = self.profile
         self.pipeline = NvencPipeline(
@@ -671,6 +679,13 @@ class Engine:
             if retired and not self.stop_evt.is_set():
                 self.post(self.listener.on_fx, {"retired": retired})
         self.ctx.kernels.rgba_to_nv12(self.frame, self.d_nv12, self.w, self.h)
+        hud = self.hud
+        if hud is not None and hud.failed is None and (hud.on or hud.fade > 0.0):
+            try:                                # on the encoded copy only: self.frame (the frozen exit) stays clean
+                hud.draw(self.d_nv12, 0.0 if self.bus.sealed else smoothstep(self.bus.level), fc.n, stream)
+            except Exception:
+                hud._fail("stopped after an error")
+                log.exception("[%s] details panel stopped", self.name)
         slot.ev_rendered.record(stream)
         if timer is not None and self.timer is timer:
             timer.frame_end()

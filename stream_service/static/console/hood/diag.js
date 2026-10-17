@@ -1,9 +1,11 @@
 // Diagnostics for the "Looking at" session (/api/diag?session=…, 2 Hz only while open): a verdict in words (rose
 // only for a TV session over budget for at least 10 s, otherwise amber "Brief slow frames"), host and GPU bars,
 // three sparklines and a text summary.
-import { h, put, visibleInterval, fmt } from "../kit.js";
+import { h, put, visibleInterval, fmt, http } from "../kit.js";
 import { diag as getDiag } from "../data/renderer.js";
 import { meter, spark } from "../ui/charts.js";
+import { switchEl } from "../ui/controls.js";
+import { toastErr } from "../ui/toast.js";
 import { diagWords } from "../words.js";
 
 const HIST = 120;
@@ -14,7 +16,17 @@ export function mountDiag(host, ctx) {
   const c1 = h("canvas", { class: "spark", tid: "diag-spark" }), c2 = h("canvas", { class: "spark", tid: "diag-spark" }), c3 = h("canvas", { class: "spark", tid: "diag-spark" });
   const lg = (items) => h("div", { class: "legend" }, items.map(([c, t]) => h("span", {}, h("i", { style: { background: `var(${c})` } }), t)));
   const text = h("pre", { class: "mono", style: { whiteSpace: "pre-wrap", margin: "8px 0 0" } });
-  put(host, h("div", { class: "stack" }, verdict, which, bars,
+  // the TV's details panel (docs/LIVE_DIAGNOSTICS.md): the room's diag.<screen> setting, the same one as the Room
+  // page's switch, so the two never disagree.  Shown for a room screen only; never disabled.
+  let hudScreen = null;
+  const hudLine = h("span", {});
+  const hudSw = switchEl("Show details on the TV", false, async (on) => {
+    if (!hudScreen) return;
+    const r = await http("PUT", "/api/v1/room/targets", { values: { [`diag.${hudScreen}`]: on }, source: "console" });
+    if (!r.ok) { toastErr(`Couldn't switch the details: ${r.detail || r.error}`); hudSw.sw.set(!on); }
+  }, { tid: "hud-switch", sub: hudLine });
+  hudSw.hidden = true;
+  put(host, h("div", { class: "stack" }, hudSw, verdict, which, bars,
     lg([["--series-2", "render p95"], ["--series-3", "write p95"], ["--series-1", "encode p50"], ["--series-4", "budget"]]), c1,
     lg([["--series-4", "late %"], ["--series-2", "dropped by the client /s (×10)"]]), c2,
     lg([["--series-3", "client buffer (ms)"], ["--series-1", "Mbit/s (×10)"]]), c3, text));
@@ -45,6 +57,16 @@ export function mountDiag(host, ctx) {
     }
     if (histSid !== s.session) { for (const k in hist) hist[k] = []; histSid = s.session; badSince = null; }
     const tv = !!ctx.roomScreenOf(s.session);
+    hudScreen = tv ? s.screen : null;
+    hudSw.hidden = !tv;
+    if (tv) {
+      const hs = await http("GET", `/api/sessions/${s.session}`);
+      const hd = hs.ok ? hs.data?.hud : null;
+      if (hd) {
+        hudSw.sw.set(!!hd.on);
+        hudLine.textContent = hd.failed ? `Details stopped (${hd.failed})` : hd.on ? "On the TV now" : "";
+      }
+    }
     const lvl = d.verdict?.level || "ok";
     if (lvl === "bad") badSince = badSince ?? Date.now(); else badSince = null;
     const w0 = diagWords(lvl, d.verdict?.text || "", tv && badSince && Date.now() - badSince >= 10000);

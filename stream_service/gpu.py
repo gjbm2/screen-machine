@@ -50,6 +50,60 @@ void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y
     *reinterpret_cast<uchar2*>(UV + by * W + x) = make_uchar2(u8(cb), u8(cr));
 }
 
+// The live diagnostics panel (hud.py; docs/LIVE_DIAGNOSTICS.md): blended into the NV12 frame over a fixed, clamped
+// rectangle, one thread per 2x2 block.  Luma: near-black panel, greyscale text from the glyph atlas; chroma pulled to
+// neutral (amber on warning lines' text).  Row 0's last 7 cells show the frame number and its last cell the beat lamp
+// (both scalars, so they change every frame without an upload).  No data-dependent loops; codes are clamped.
+extern "C" __global__
+void hud_nv12(unsigned char* __restrict__ Y, unsigned char* __restrict__ UV, const int W, const int H,
+              const int x0, const int y0, const int pw, const int ph,
+              const unsigned char* __restrict__ atlas, const int cw, const int ch, const int nglyph,
+              const unsigned char* __restrict__ grid, const unsigned char* __restrict__ tone, const int cols,
+              const int rows, const int pad, const float a, const float lamp, const int frame_no)
+{
+    const int bx = blockIdx.x * blockDim.x + threadIdx.x, by = blockIdx.y * blockDim.y + threadIdx.y;
+    if (bx >= (pw >> 1) || by >= (ph >> 1)) return;
+    const int px = x0 + (bx << 1), py = y0 + (by << 1);
+    if (px + 1 >= W || py + 1 >= H || px < 0 || py < 0) return;
+    float cov_sum = 0.f;
+    int warn = 0;
+    #pragma unroll
+    for (int dy = 0; dy < 2; ++dy) {
+        #pragma unroll
+        for (int dx = 0; dx < 2; ++dx) {
+            const int x = px + dx, y = py + dy;
+            const int lx = x - x0 - pad, ly = y - y0 - pad;
+            float cov = 0.f;
+            if (lx >= 0 && ly >= 0) {
+                const int cx = lx / cw, cy = ly / ch;
+                if (cx < cols && cy < rows) {
+                    int g = grid[cy * cols + cx];
+                    if (cy == 0 && cx >= cols - 8 && cx < cols - 1) {      // the frame number, right-aligned
+                        int v = frame_no;
+                        const int d = cols - 2 - cx;
+                        #pragma unroll
+                        for (int i = 0; i < 6; ++i) { if (i < d) v /= 10; }
+                        g = 16 + (v % 10);                                   // '0' - 32
+                    }
+                    if (g < 0 || g >= nglyph) g = 0;
+                    cov = atlas[(g * ch + (ly - cy * ch)) * cw + (lx - cx * cw)] * (1.f / 255.f);
+                    if (cy == 0 && cx == cols - 1) cov = fminf(fmaxf(lamp, 0.f), 1.f);   // the beat lamp
+                    if (tone[cy]) warn = 1;
+                }
+            }
+            const float yv = 22.f + (232.f - 22.f) * cov;
+            unsigned char* q = Y + y * W + x;
+            *q = u8((float)*q + (yv - (float)*q) * a);
+            cov_sum += cov;
+        }
+    }
+    const float k = cov_sum * 0.25f;
+    const float cb = warn ? 128.f - 70.f * k : 128.f, cr = warn ? 128.f + 45.f * k : 128.f;
+    unsigned char* c = UV + (py >> 1) * W + px;
+    c[0] = u8((float)c[0] + (cb - (float)c[0]) * a);
+    c[1] = u8((float)c[1] + (cr - (float)c[1]) * a);
+}
+
 // out = a + (b - a) * p, per channel, in sRGB-encoded space (what CSS opacity does).  Two pixels per thread.
 __device__ __forceinline__ unsigned int mix_px(const unsigned int a, const unsigned int b,
                                                const float p, const float q) {
@@ -112,6 +166,7 @@ class CoreKernels:
         self.k_crossfade = mod.get_function("crossfade")
         self.k_fill = mod.get_function("fill_u32")
         self.k_rgb_to_rgba = mod.get_function("rgb_to_rgba")
+        self.k_hud = mod.get_function("hud_nv12")
 
     def rgba_to_nv12(self, rgba, nv12, w: int, h: int) -> None:
         y = nv12[: w * h]

@@ -265,6 +265,10 @@ class Session(EngineListener):
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
         self._building = False                     # a build is on: the next scene is the peak one, prepared (G10)
         self._dark: Optional[dict] = None          # fade-dark between songs: {since, in_s, prev, task}
+        self.hud_wanted = False                    # the details panel on this screen's stream (hud.py)
+        self._hud_t = -1e9
+        self._hud_period = 0.5
+        self._hud_lines: tuple[float, list, list] = (-1e9, [], [])
         self.own: set[str] = set()                 # look parts this screen set for itself (scope "screen"): never
                                                    # mirrored from the room; a room-scope change of the part clears it
         self._track_arm: Optional[dict] = None     # track_end_armed: {id, at, transition}
@@ -802,6 +806,17 @@ class Session(EngineListener):
         return spec
 
     async def patch(self, body: dict) -> None:
+        if "hud" in body:                          # the details panel: its own branch, this screen only
+            v = body["hud"]
+            if not isinstance(v, bool):
+                raise ParamError("bad_request", "hud must be true or false")
+            if self.state in ("ended", "failed"):
+                raise SessionError(409, "bad_state", f"session is {self.state}")
+            self.hud_wanted = v
+            self._hud_sync(time.monotonic())
+            body = {k: x for k, x in body.items() if k != "hud"}
+            if not body:
+                return
         unknown = set(body) - {"scene", "params", "transition", "scope", *LOOK_FIELDS}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1574,6 +1589,7 @@ class Session(EngineListener):
             cause = cause or "room"
         if cause is not None:
             self._apply_direction(cause)
+        self._hud_sync(now)
         if self.state == "live" and not self.exited:
             self._build_tick(now)
             self._upnext_fill(now)
@@ -1782,6 +1798,63 @@ class Session(EngineListener):
             log.warning("[%s] song-end cue failed: %s", self.id, e.detail)
         except Exception:
             log.exception("[%s] song-end cue failed", self.id)
+
+    # -- the details panel (hud.py; docs/LIVE_DIAGNOSTICS.md) -------------------------------------------------------
+    def _hud_suppressed(self) -> bool:
+        """A plug-in with ``hud = False`` (cal_flash: latency calibration stays clean) turns it off while it shows."""
+        spec = self.current_spec or self.scene_spec
+        try:
+            cls = self.mgr.registry.source(spec.source) if spec is not None else None
+        except Exception:
+            cls = None
+        return cls is not None and getattr(cls, "hud", True) is False
+
+    def _hud_sync(self, now: float) -> None:
+        """Loop thread (the tick, ~10 Hz): the panel on / off, and its text at 2 Hz (1 Hz when a build is slow)."""
+        h = getattr(self.engine, "hud", None)
+        if h is None:
+            return
+        if h.lamp is None:
+            h.lamp = lambda: (self.runtime.signals or {}).get("beat", 0.0)
+        h.on = bool(self.hud_wanted) and not self._hud_suppressed() and self.state not in ("ended", "failed")
+        if not (h.on or h.fade > 0.0) or now - self._hud_t < self._hud_period:
+            return
+        self._hud_t = now
+        lines, warn = self.hud_lines(now)
+        from .hud import encode
+        h.set(*encode(lines, warn))
+
+    def hud_lines(self, now: Optional[float] = None, max_age: float = 0.0) -> tuple[list, list]:
+        """The panel's lines (built now, or the last ones when younger than ``max_age``)."""
+        now = time.monotonic() if now is None else now
+        t, lines, warn = self._hud_lines
+        if max_age > 0.0 and now - t < max_age:
+            return lines, warn
+        from .hud import BUILD_SLOW_MS, build_lines
+        h = getattr(self.engine, "hud", None)
+        t0 = time.perf_counter()
+        try:
+            lines, warn = build_lines(self, now, getattr(h, "ema_ms", None))
+        except Exception as e:                       # the panel never takes anything down
+            log.warning("[%s] details lines failed: %s", self.id, e)
+            lines, warn = [f"{self.screen}: details unavailable ({type(e).__name__})"], [0]
+        ms = (time.perf_counter() - t0) * 1000.0
+        self._hud_period = 1.0 if ms > BUILD_SLOW_MS else 0.5
+        self._hud_lines = (now, lines, warn)
+        return lines, warn
+
+    def hud_view(self) -> dict:
+        """GET /api/sessions/{sid}/hud: the same lines, panel on or off (built at most once a second when off)."""
+        h = getattr(self.engine, "hud", None)
+        on = bool(h is not None and h.on)
+        lines, warn = self.hud_lines(max_age=0.5 if on else 1.0)
+        return {"on": on, "failed": getattr(h, "failed", None), "at": _iso(time.time()), "lines": lines,
+                "warn": warn}
+
+    def hud_summary(self) -> dict:
+        h = getattr(self.engine, "hud", None)
+        return {"on": bool(h is not None and h.on), "failed": getattr(h, "failed", None),
+                "rate_hz": round(1.0 / self._hud_period, 1) if h is not None and h.on else 0.0}
 
     BUILD_ON, BUILD_OFF = 0.5, 0.15
 
@@ -2261,7 +2334,7 @@ class Session(EngineListener):
                 "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": ds.fx_director.armed},
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
-            "upnext": self.upnext_view(), "own": sorted(self.own),
+            "upnext": self.upnext_view(), "own": sorted(self.own), "hud": self.hud_summary(),
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
             "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
             "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
@@ -2316,6 +2389,8 @@ class SessionManager:
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
+        self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)
+        self.room_why: Optional[tuple[dict, float]] = None    # show_service's room.why (data, arrival)
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
@@ -2552,6 +2627,9 @@ class SessionManager:
         if msg.get("type") == "room.event" and isinstance(msg.get("data"), dict):
             self._room_event(msg["data"])
             return
+        if msg.get("type") == "room.why" and isinstance(msg.get("data"), dict):
+            self.room_why = (msg["data"], time.monotonic())      # show_service's reasons, for the details panel
+            return
         if msg.get("type") != "room.direction" or not isinstance(msg.get("data"), dict):
             return
         data = msg["data"]
@@ -2587,6 +2665,7 @@ class SessionManager:
             return
         seen.append(key)
         detail = str(data.get("detail") or "")[:80]
+        self.room_events_ring.append((time.time(), kind, detail))
         for s in list(self.sessions.values()):
             s.room_event(kind, at_s, detail, data)
 
@@ -2687,7 +2766,7 @@ class SessionManager:
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         known = {"screen", "gpu", "profile", "anchor", "scene", "transitions", "ttl_s", "idempotency_key",
-                 "color_trc", "fixture", "width", "height", "room", *LOOK_FIELDS}
+                 "color_trc", "fixture", "width", "height", "room", "hud", *LOOK_FIELDS}
         unknown = set(body) - known
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -2764,8 +2843,11 @@ class SessionManager:
         if room is not None and (not isinstance(room, str) or not rooms.ROOM_RE.match(room)):
             raise ParamError("bad_request", "room must be an id like 'drawing-room'")
         look_room = room or self.rooms.room_of(screen)
+        hud = body.get("hud", False)
+        if not isinstance(hud, bool):
+            raise ParamError("bad_request", "hud must be true or false")
         return dict(screen=screen, gpu=gpu, profile=profile, scene=scene, t_in=t_in, t_out=t_out, ttl_s=ttl,
-                    idempotency_key=key, png=png, rgb=rgb, look=look, room=look_room)
+                    idempotency_key=key, png=png, rgb=rgb, look=look, room=look_room, hud=hud)
 
     def attach_for(self, s: Session, host: str) -> dict:
         base = self.public_base or f"ws://{host}"
@@ -2803,6 +2885,7 @@ class SessionManager:
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
             s.room = p["room"]
+            s.hud_wanted = p["hud"]
             s.attach = self.attach_for(s, host)
             anchor = await s.decode(p["png"], p["rgb"])   # ParamError (400) before the session exists
             self.sessions[sid] = s
