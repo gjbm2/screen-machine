@@ -103,6 +103,8 @@ log = logging.getLogger("stream_service.plugins.glsl")
 # the GPU.
 SCENE_SLOW_MS, EFFECT_SLOW_MS, TRANSITION_SLOW_MS, HARD_MS = 20.0, 12.0, 25.0, 200.0
 SCENE_MIN_SCALE, EFFECT_MIN_SCALE = 0.25, 0.35
+SLOW_RUN = 3          # slow samples in a row before the render scale shrinks (one spike is a busy host, not the shader)
+GOOD_RUN = 90         # samples under half the budget in a row before it steps back up (x 1/0.85, to the asked scale)
 
 
 class GpuTooSlow(RuntimeError):
@@ -117,6 +119,8 @@ class _Watch:
         self.cp, self.name, self.slow_ms = cp, name, slow_ms
         self.pending = None
         self.strikes = 0
+        self.slow_run = 0
+        self.good_run = 0
 
     def begin(self):
         e = self.cp.cuda.Event()
@@ -135,14 +139,30 @@ class _Watch:
         self.pending = None
         return ms
 
-    def judge(self, scale: float, min_scale: float) -> Optional[float]:
-        """None = fine; a smaller scale to switch to; raises GpuTooSlow when shrinking cannot help."""
+    def judge(self, scale: float, min_scale: float, max_scale: Optional[float] = None) -> Optional[float]:
+        """None = fine; a smaller scale to switch to (after SLOW_RUN slow samples in a row), or a larger one back
+        towards ``max_scale`` (after GOOD_RUN cheap ones); raises GpuTooSlow when shrinking cannot help."""
         ms = self.poll()
-        if ms is None or ms <= self.slow_ms:
-            if ms is not None:
-                self.strikes = 0
+        if ms is None:
             return None
+        if ms <= self.slow_ms:
+            self.strikes = self.slow_run = 0
+            if max_scale is not None and scale < max_scale - 1e-3 and ms <= 0.5 * self.slow_ms:
+                self.good_run += 1
+                if self.good_run >= GOOD_RUN:
+                    self.good_run = 0
+                    new = min(max_scale, round(scale / 0.85, 2))
+                    log.info("%s: %.1f ms on the GPU, render scale %.2f -> %.2f (back up)", self.name, ms, scale, new)
+                    return new
+            else:
+                self.good_run = 0
+            return None
+        self.good_run = 0
+        self.slow_run += 1
         if scale > min_scale + 1e-3:
+            if self.slow_run < SLOW_RUN:
+                return None
+            self.slow_run = 0
             new = max(min_scale, round(scale * (self.slow_ms / ms) ** 0.5 * 0.9, 2))
             log.warning("%s: %.1f ms on the GPU, render scale %.2f -> %.2f", self.name, ms, scale, new)
             return new
@@ -247,13 +267,12 @@ class GlslSource(Source):
 
     def render(self, t_local: float, dt: float, out) -> None:
         p = self.step_params(dt)
-        shrink = self._watch.judge(self.scale, SCENE_MIN_SCALE)
+        shrink = self._watch.judge(self.scale, SCENE_MIN_SCALE, float(p["render_scale"]))
         if shrink is not None:
             self.scale_cap = shrink
         scale = min(p["render_scale"], self.scale_cap)
         if abs(scale - self.scale) > 0.02:
             self._alloc(scale)
-        e0 = self._watch.begin()
         energy, pulse = p["energy"], p["pulse"]
         rate = p["speed"] * (0.35 + 1.3 * energy) * (1.0 + 0.8 * pulse)
         step = dt * rate
@@ -262,6 +281,7 @@ class GlslSource(Source):
         k = self.prog
         apply_params(k, self.param_props(), p)
         self.tex.update(self.t, energy, pulse, sound_frame(self))
+        e0 = self._watch.begin()                  # after the host-side texture uploads: the shader's own cost
         if self.dialect == "st":
             k.set("iTime", self.t)
             k.set("iTimeDelta", step)
@@ -363,7 +383,7 @@ class GlslEffect(Effect):
 
     def render(self, t_local: float, dt: float, src, out) -> None:
         cp = self.ctx.cp
-        shrink = self._watch.judge(self.cur_scale, EFFECT_MIN_SCALE)
+        shrink = self._watch.judge(self.cur_scale, EFFECT_MIN_SCALE, type(self).scale)
         if shrink is not None:
             self._alloc(shrink)
         p = self.step_params(dt)

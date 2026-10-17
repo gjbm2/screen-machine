@@ -128,6 +128,7 @@ class SourceLayer(Layer):
         self.hold: Any = None
         self.n_rendered: Optional[int] = None
         self.cost_ema: Optional[float] = None
+        self._prev_ms: Optional[float] = None       # the sample before: one spike alone never demotes
         self._samples_seen = 0
         self._low_since: Optional[float] = None
 
@@ -137,8 +138,8 @@ class SourceLayer(Layer):
         if st is None or st.samples == self._samples_seen:
             return
         self._samples_seen = st.samples
-        ms = st.last_ms
-        # up at once on a costly render, down smoothly
+        ms, self._prev_ms = (st.last_ms if self._prev_ms is None else min(st.last_ms, self._prev_ms)), st.last_ms
+        # up at once on a costly render (two in a row: a lone spike is a busy host, not the scene), down smoothly
         self.cost_ema = ms if self.cost_ema is None else max(ms, self.cost_ema + RATE_EMA * (ms - self.cost_ema))
         per = RATE_TARGET * 1000.0 / fc.fps
         want = min(RATE_MAX_DIV, max(1, math.ceil(self.cost_ema / per)))

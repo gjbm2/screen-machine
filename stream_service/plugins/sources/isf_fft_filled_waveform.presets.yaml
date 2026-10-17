@@ -1,7 +1,9 @@
 isf-fft-filled-waveform:
   label: FFT Filled Waveform
   source: isf_fft_filled_waveform
-  params: {}
+  # 73 / owner 17 Oct ("reacts far too late"): the x-axis is linear to 11 kHz, so everything under 1 kHz sat in
+  # the leftmost 9 %; max_range 0.25 spreads 0-2.76 kHz over the width.
+  params: {max_range: 0.25}
   bindings:
     energy:
       bind: energy
