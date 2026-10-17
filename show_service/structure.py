@@ -176,7 +176,7 @@ STRUCTURE_FALLBACK: dict = {
     "min_section_bars": 8, "min_section_s": 12, "identify_after_s": 8,
     "repeat_sim": {"ml": 0.85, "dsp": 0.80}, "max_sections": 64, "predict_lead_bars": 1,
     "grid_conf": 0.5, "same_bars": 2, "phase_dwell_s": 2,
-    "tags_tau_s": 20, "tags_hold_s": 30, "ced_mean_s": 3, "listener_conf": 0.6, "valence": {},
+    "tags_tau_s": 20, "tags_hold_s": 30, "ced_mean_s": 3, "listener_conf": 0.6, "valence": {}, "mood_energy": {},
     "key_min_strength": 0.3, "key_hold": {"strength_margin": 0.05, "hold_s": 4},
     "events": {"min_lead_s": 1.1},
     "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": -60, "window_s": 20, "tempo_jump": 0.04,
@@ -218,8 +218,10 @@ T, LUFS_M, LUFS_S, BRIGHT, GATE, ENERGY, LOW, PERC, ONSET, HARM, B_LO, B_MID, B_
 NCOL = 13
 TAG_FIELDS = (("dance", "dance"), ("arousal", "arousal"), ("engagement", "engagement"), ("bright", "bright"),
               ("acoustic", "acoustic"), ("vocal", "voice_p"))      # music.context field <- MlTags field
-#: the smoothed numbers: TAG_FIELDS plus valence (structure.valence's weights over the tags line's moods_top5)
-TAG_EMA_KEYS: tuple[str, ...] = tuple(k for k, _ in TAG_FIELDS) + ("valence",)
+#: the smoothed numbers: TAG_FIELDS plus valence and mood_energy (structure.valence's and structure.mood_energy's
+#: weights over the tags line's moods_top5)
+MOOD_SCORES: tuple[str, ...] = ("valence", "mood_energy")
+TAG_EMA_KEYS: tuple[str, ...] = tuple(k for k, _ in TAG_FIELDS) + MOOD_SCORES
 
 
 # -- small helpers --------------------------------------------------------------------------------------------------------
@@ -607,9 +609,9 @@ def _resolve(fallback: dict, given: Any, path: str, probs: list[str]) -> dict:
     return out
 
 
-def valence_of(moods_top: Any, weights: Any) -> Optional[float]:
-    """0 (sad, dark) .. 1 (happy, uplifting): the mood head's top labels' structure.valence weights, averaged by their
-    activations; None when none of them has a weight (no label is named in code)."""
+def mood_score(moods_top: Any, weights: Any) -> Optional[float]:
+    """0..1: the mood head's top labels' weights (structure.valence: sad .. happy; structure.mood_energy: calm ..
+    energetic), averaged by their activations; None when none of them has a weight (no label is named in code)."""
     if not isinstance(weights, dict) or not isinstance(moods_top, list):
         return None
     num = den = 0.0
@@ -2270,7 +2272,8 @@ class Structure:
             if not frozen:
                 a = 1.0 if dt is None else 1.0 - math.exp(-max(0.0, dt) / self.cfg["tags_tau_s"])
                 vals = {out: _f(tags.get(src)) for out, src in TAG_FIELDS}
-                vals["valence"] = valence_of(tags.get("moods_top5"), self.cfg["valence"])
+                for k in MOOD_SCORES:
+                    vals[k] = mood_score(tags.get("moods_top5"), self.cfg[k])
                 for out, x in vals.items():
                     if x is None:
                         continue
@@ -2382,7 +2385,7 @@ class Structure:
                 "instruments": list(p.get("instruments") or []),
                 "vocal": tags.get("vocal"), "dance": tags.get("dance"), "arousal": tags.get("arousal"),
                 "engagement": tags.get("engagement"), "bright": tags.get("bright"), "acoustic": tags.get("acoustic"),
-                "valence": tags.get("valence"),
+                "valence": tags.get("valence"), "mood_energy": tags.get("mood_energy"),
                 "key": key["key"], "mode": key["mode"], "key_strength": key["key_strength"],
                 "key_via": key["key_via"], "talking": p.get("talking"), "ced": p.get("ced"),
                 "section": self._section_info(now_s, grid),

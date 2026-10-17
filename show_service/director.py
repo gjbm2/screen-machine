@@ -169,6 +169,7 @@ TAU_NOVELTY_FAST_S, TAU_NOVELTY_SLOW_S = 3.0, 30.0
 NOVELTY = 0.12                      # starting point (show.yaml director.novelty): |fast - slow| energy, a change point
 RELAX_TAU_S = 3.0
 LLM_CONF = 0.6                      # a listener word counts at this confidence (§8.2)
+BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
 LLM_SLEW_PER_S = 0.1                # §8.2: numbers slewed <= 0.1 per update
@@ -1155,9 +1156,12 @@ class Director:
         w = raw.get("weights") if isinstance(raw.get("weights"), dict) else {}
         out = {"genre_energy": {str(k): _c01(float(v)) for k, v in ge.items() if _num(v) is not None},
                "rate_full": _num(raw.get("rate_full"), 0.0) or 0.0,
-               "weights": {k: max(0.0, _num(w.get(k), 0.0) or 0.0) for k in ("genre", "rate", "clarity")},
+               "weights": {k: max(0.0, _num(w.get(k), 0.0) or 0.0) for k in BAND_BASE_TERMS},
                "swing": max(0.0, _num(raw.get("swing"), 0.0) or 0.0),
-               "swing_window_s": max(1.0, _num(raw.get("swing_window_s"), 60.0) or 60.0)}
+               "swing_max": max(0.0, _num(raw.get("swing_max"), 1.0) or 0.0),
+               "swing_window_s": max(1.0, _num(raw.get("swing_window_s"), 60.0) or 60.0),
+               "phase_lift": {str(k): float(v) for k, v in (raw.get("phase_lift") or {}).items()
+                              if _num(v) is not None} if isinstance(raw.get("phase_lift"), dict) else {}}
         if out["rate_full"] <= 0 or not any(out["weights"].values()):
             probs.append("director.bands.base: needs rate_full > 0 and a weight: off")
             return None
@@ -2263,8 +2267,9 @@ class Director:
         """The band words' energy as heard (2b's audit, 17 Oct: normalised loudness has no absolute level, so mastered
         dance and pop read peak throughout and an ambient pad read lively). With director.bands.base: an absolute base
         (the weighted genre_energy of music.context's genre words, the medium lane's onset rate / rate_full, its pulse
-        clarity: the terms present, their weights renormalised) plus swing x (music - its median over
-        swing_window_s), so a drop still lifts a track and a breakdown drops it. Without a base, or with none of
+        clarity, music.context's mood_energy: the terms present, their weights renormalised) plus swing x (music -
+        its median over swing_window_s), at most swing_max either way, plus phase_lift for structure's phase (a drop
+        or a peak lands where the song drops: mastered house barely moves in normalised loudness). Without a base, or with none of
         its terms: 0.5 + conf x (music - 0.5)."""
         heard = 0.5 + conf * (music - 0.5)
         bc = (self.cfg.get("bands") or {}).get("base")
@@ -2289,6 +2294,8 @@ class Director:
                 terms["rate"] = _c01(r["onset_rate"] / bc["rate_full"])
             if _num(r.get("pulse_clarity")) is not None:
                 terms["clarity"] = _c01(r["pulse_clarity"])
+        if _num((self._mc or {}).get("mood_energy")) is not None:
+            terms["moods"] = _c01(self._mc["mood_energy"])
         wsum = sum(bc["weights"][k] for k in terms)
         if wsum <= 0:
             self._band_base = None
@@ -2296,7 +2303,10 @@ class Director:
         base = sum(bc["weights"][k] * v for k, v in terms.items()) / wsum
         self._band_base = round(base, 3)
         med = statistics.median(m for _, m in h) if h else music
-        return _c01(base + bc["swing"] * conf * (music - med))
+        sw = max(-bc["swing_max"], min(bc["swing_max"], bc["swing"] * conf * (music - med)))
+        sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else {}
+        lift = bc["phase_lift"].get(sec.get("phase"), 0.0) if isinstance(sec.get("phase"), str) else 0.0
+        return _c01(base + sw + lift)
 
     def _band_words(self, e: float) -> Optional[dict]:
         b = self.cfg.get("bands")

@@ -1461,6 +1461,8 @@ class MusicContext(TypedDict):
     bright: Optional[float]
     acoustic: Optional[float]
     valence: Optional[float]           # 0 (sad, dark) .. 1 (happy): structure.valence's weights over the mood head
+    mood_energy: Optional[float]       # 0 (calm) .. 1 (energetic): structure.mood_energy's, the same way (the band
+                                       # words' base hears a presto in legato strings by it)
     key: Optional[str]                 # KEY_NAMES
     mode: Optional[str]
     key_strength: float

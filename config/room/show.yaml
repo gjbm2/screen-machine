@@ -219,26 +219,30 @@ director:
         rnb: 0.5
         reggae: 0.5
         world: 0.5
-        indie: 0.55
+        indie: 0.6
         latin: 0.6
         pop: 0.65
         hip-hop: 0.6
         electronic: 0.6
         funk: 0.65
         afrobeat: 0.65
-        rock: 0.65
+        rock: 0.8                           # 2b, 17 Oct: rock sat on pulse's dreamy words
         disco: 0.7
         house: 0.7
         techno: 0.7
         trance: 0.75
-        punk: 0.8
+        punk: 0.85
         drum-and-bass: 0.8
         dubstep: 0.8
-        metal: 0.85
+        metal: 0.9
       rate_full: 12                         # onsets a second that read 1 (measured 17 Oct: techno 10.75, house 7,
                                             # soul 6.5, rock 5.75, pop 5, jazz 4, ambient 1.75, Saltarello 0.5)
-      weights: {genre: 0.5, rate: 0.3, clarity: 0.2}   # clarity: the pulse clarity
-      swing: 0.5                            # a drop lifts a track, a breakdown drops it, by this x the heard change
+      weights: {genre: 0.4, rate: 0.2, clarity: 0.15, moods: 0.25}   # clarity: the pulse clarity; moods: music.context
+                                            # mood_energy (hears a presto in legato strings: onsets miss it)
+      swing: 0.5                            # a drop lifts a track, a breakdown drops it, by this x the heard change...
+      swing_max: 0.2                        # ...at most this far from the base (2b: a quiet passage fell to 0)
+      phase_lift: {drop: 0.15, peak: 0.15}  # structure's phase: the band rises where the song drops (mastered house
+                                            # barely moves in normalised loudness)
       swing_window_s: 60
     words:
       still:  {moods: [calm, mellow, elegant, dreamy],    fx_moods: [calm, mellow, elegant, dreamy],    transition_style: gentle}
@@ -669,6 +673,65 @@ structure:
   tags_hold_s: 30                           # ...and read null once the tags are this old
   ced_mean_s: 3                             # README S4.8: music.context's CED is the mean of the last 3 s
   listener_conf: 0.6                        # the AI listener's moods and section label count at this confidence
+  mood_energy:                              # music.context mood_energy, 0 (calm) .. 1 (energetic): the mood head's top
+                                            # labels' weights averaged by activation, as valence (starting points;
+                                            # director.bands.base's moods term)
+    energetic: 1.0
+    fast: 0.95
+    action: 0.9
+    party: 0.9
+    sport: 0.9
+    heavy: 0.85
+    powerful: 0.85
+    epic: 0.8
+    trailer: 0.8
+    upbeat: 0.8
+    adventure: 0.75
+    fun: 0.75
+    game: 0.7
+    motivational: 0.7
+    dramatic: 0.65
+    groovy: 0.65
+    happy: 0.65
+    funny: 0.65
+    summer: 0.65
+    uplifting: 0.65
+    drama: 0.6
+    positive: 0.6
+    holiday: 0.6
+    advertising: 0.6
+    commercial: 0.6
+    inspiring: 0.55
+    retro: 0.55
+    movie: 0.5
+    children: 0.5
+    christmas: 0.5
+    cool: 0.5
+    corporate: 0.5
+    hopeful: 0.5
+    sexy: 0.5
+    travel: 0.5
+    film: 0.45
+    melodic: 0.45
+    dark: 0.45
+    deep: 0.4
+    emotional: 0.4
+    love: 0.4
+    documentary: 0.35
+    space: 0.35
+    background: 0.3
+    romantic: 0.3
+    ballad: 0.2
+    dream: 0.2
+    melancholic: 0.2
+    nature: 0.2
+    soundscape: 0.2
+    sad: 0.15
+    soft: 0.15
+    calm: 0.1
+    relaxing: 0.1
+    slow: 0.1
+    meditative: 0.05
   valence:                                  # music.context valence, 0 (sad, dark) .. 1 (happy): the mood head's top
                                             # labels' weights averaged by activation (starting points, from the
                                             # labels' meaning; labels with no feel either way are left out)
