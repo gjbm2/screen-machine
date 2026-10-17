@@ -504,3 +504,33 @@ def test_a_404_skips_a_discovered_id_until_a_fresh_list_has_it_again(server, lay
     core._layer()._probes["g"]["at"] -= core.PROBE_S + 1        # the hourly re-read is due
     llm.probe("t")
     assert llm.status()["tasks"]["t"]["usable"][0] == "gemini-3.8-flash"
+
+
+# -- chat(): the caller's own request, the task's models (routes/openai.py openai_prompt) ------------------------
+def test_chat_passes_the_request_through_and_checks_the_answer(server, layer):
+    req = {"messages": [{"role": "user", "content": "u"}], "response_format": {"type": "json_object"}}
+    value, label = llm.chat("t", check=lambda r: json.loads(r.choices[0].message.tool_calls[0].function.arguments),
+                            **req)
+    assert value == {"word": "a", "n": 2} and label == "openai/m1"
+    sent = server.requests[-1]
+    assert sent["response_format"] == {"type": "json_object"} and sent["model"] == "m1" and sent["store"] is False
+    assert sent["max_completion_tokens"] == 50
+    assert [r["ok"] for r in _ledger(layer.ledger)] == [True]
+
+
+def test_chat_moves_on_after_an_error_or_a_bad_answer(server, layer):
+    server.behaviour["m1"] = "no_tool"                # answers, but check() refuses it
+    value, label = llm.chat("t", check=lambda r: r.choices[0].message.tool_calls[0].function.arguments,
+                            messages=[{"role": "user", "content": "u"}])
+    assert label == "openai/m2" and json.loads(value) == {"word": "a", "n": 2}
+    rows = _ledger(layer.ledger)
+    assert [r["ok"] for r in rows] == [False, True] and "bad answer" in rows[0]["error"]
+
+
+def test_chat_raises_when_every_model_fails(server, layer):
+    server.behaviour.update({"m1": "500", "m2": "500"})
+    with pytest.raises(llm.LLMError) as ei:
+        llm.chat("t", messages=[{"role": "user", "content": "u"}])
+    assert [a["model"] for a in ei.value.attempts] == ["m1", "m2"]
+    with pytest.raises(llm.LLMError):
+        llm.chat("no-such-task", messages=[])

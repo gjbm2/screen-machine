@@ -980,6 +980,77 @@ def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, aud
         return _fail_result(task, t0, redact(f"internal: {type(e).__name__}: {e}"), attempts, total)
 
 
+class LLMError(RuntimeError):
+    """chat(): every model of the task failed.  ``attempts``: [{"model", "error"}] in order."""
+
+    def __init__(self, task: str, error: str, attempts: list):
+        super().__init__(f"{task}: {error}")
+        self.task, self.error, self.attempts = task, error, attempts
+
+
+def chat(task: str, *, check: Optional[Any] = None, timeout_s: Optional[float] = None, **request: Any) -> tuple:
+    """A pass-through Chat Completions call for ``task`` (sync; Flask threads): the caller's own request (messages,
+    tools, tool_choice, response_format ...) on each of the task's models in turn, with call_json's rules (skips,
+    discovery, breakers, the ledger, the day's spend; the provider's ``omit`` fields dropped, an entry's ``options``
+    added).  ``check(resp)`` turns the response into the caller's value or raises (a bad answer: the next model is
+    tried).  -> (value, "provider/model"); the value is the response itself without ``check``.  Raises LLMError when
+    every model failed (the caller keeps its own fallback)."""
+    L, tcfg, tmo = _start(task, timeout_s)
+    if not tcfg or not tcfg["models"]:
+        raise LLMError(task, "no model configured", [])
+    attempts: list[dict] = []
+    for entry in tcfg["models"]:
+        prov = entry["provider"]
+        model, why = L.plan(entry)
+        if why is None and L.probe_due(prov):
+            _probe_sync(L, prov)
+            model, why = L.plan(entry)
+        if why is None and model is None:
+            why = NO_LIST
+        if why is not None:
+            attempts.append({"model": model or _label(entry), "error": why})
+            continue
+        kw: dict[str, Any] = {"store": False, "max_completion_tokens": tcfg["max_output_tokens"], **request,
+                              "model": model, "timeout": tmo}
+        kw.update(entry.get("options") or {})
+        for k in L.cfg["providers"][prov].get("omit") or ():
+            kw.pop(k, None)
+        if L.cfg["providers"][prov].get("schema") == "openapi" and kw.get("tools"):
+            kw["tools"] = [dict(tl, function={**tl["function"], "parameters": openapi_schema(tl["function"]["parameters"])})
+                           if isinstance(tl, dict) and "parameters" in (tl.get("function") or {}) else tl
+                           for tl in kw["tools"]]
+        t = time.perf_counter()
+        try:
+            resp = L.client(prov, L.key(prov)).chat.completions.create(**kw)
+        except Exception as e:                        # noqa: BLE001
+            err, status = _error_of(e, L._keys_seen)
+            ms = (time.perf_counter() - t) * 1000.0
+            L.failed(prov, model, err, status)
+            L.account(task, None)
+            L.ledger(task, prov, model, False, ms, {}, None, err)
+            log.warning("%s: %s failed in %.0f ms: %s", task, model, ms, err)
+            attempts.append({"model": model, "error": err})
+            continue
+        ms = (time.perf_counter() - t) * 1000.0
+        usage = _usage(resp)
+        cost = L.cost(model, usage)
+        L.account(task, cost)
+        try:
+            value = check(resp) if check is not None else resp
+        except Exception as e:                        # noqa: BLE001 - a bad answer: the next model
+            err = redact(f"bad answer: {type(e).__name__}: {e}", L._keys_seen)[:300]
+            L.failed(prov, model, err)
+            L.ledger(task, prov, model, False, ms, usage, cost, err)
+            log.warning("%s: %s answered in %.0f ms but %s", task, model, ms, err)
+            attempts.append({"model": model, "error": err})
+            continue
+        L.succeeded(prov, model)
+        L.ledger(task, prov, model, True, ms, usage, cost, None)
+        L.remember(task, model, cost)
+        return value, f"{prov}/{model}"
+    raise LLMError(task, attempts[-1]["error"] if attempts else "no model configured", attempts)
+
+
 def _finish(L: _Layer, task: str, entry: dict, resp: Any, tool: dict, t: float, attempts: list,
             lenient: bool = False) -> LLMResult:
     prov, model = entry["provider"], entry["model"]
