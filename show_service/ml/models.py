@@ -393,9 +393,10 @@ class TagsTask:
     """Backbones (EffNet, and MusiCNN when a head is ``via`` it) on the window's mel patches, then the heads."""
 
     def __init__(self, backbone: Model, heads: dict[str, Model], backbones: dict[str, Model], mel: MusicnnMel,
-                 window_s: float) -> None:
+                 window_s: float, styles_top: int = 5) -> None:
         self.backbone, self.heads, self.backbones, self.mel = backbone, heads, backbones, mel
         self.window_s = window_s
+        self.styles_top = max(3, int(styles_top))      # show.yaml ml.tasks.tags.styles_top (structure's genre words)
         # the audio a run needs: the tags window, or a backbone's whole patch when that is longer (MusiCNN: 187
         # frames), plus one hop: frames sit on the segment's 256-sample grid, so the newest whole one ends up to 255
         # samples before the window's end
@@ -443,7 +444,8 @@ class TagsTask:
         outs = {self.backbone.name: self._bb_out(self.backbone, pcm, n_start, n_end, gen, budget, self.window_s)}
         if outs[self.backbone.name] is None:
             return None
-        res: dict[str, Any] = {"genre_parents": {}, "styles_top3": [], "moods_top5": [], "instruments_top5": []}
+        res: dict[str, Any] = {"genre_parents": {}, "styles_top3": [], "styles_top": [], "moods_top5": [],
+                               "instruments_top5": []}
         for f in SCALAR_FIELDS:
             res[f] = None
         for field, m in self.heads.items():
@@ -468,7 +470,8 @@ class TagsTask:
                 mean_par = per.mean(axis=0)
                 res["genre_parents"] = {p: float(mean_par[j]) for j, p in enumerate(uniq)}
                 mean_act = act.mean(axis=0)
-                res["styles_top3"] = [[m.labels[i], float(mean_act[i])] for i in np.argsort(-mean_act)[:3]]
+                res["styles_top"] = [[m.labels[i], float(mean_act[i])] for i in np.argsort(-mean_act)[:self.styles_top]]
+                res["styles_top3"] = res["styles_top"][:3]
                 continue
             emb_key = m.facts.get("input_output", "embeddings")
             emb_out = self.backbones.get(via, self.backbone).facts.get("outputs", {}).get(emb_key, emb_key)
@@ -606,6 +609,8 @@ class FakeTags:
         self.emb_id += 1
         return {"genre_parents": {p: float(par[i]) for i, p in enumerate(C.DISCOGS_PARENTS)},
                 "styles_top3": [[f"{C.DISCOGS_PARENTS[i]}---{C.DISCOGS_PARENTS[i]}", float(par[i])] for i in top],
+                "styles_top": [[f"{C.DISCOGS_PARENTS[i]}---{C.DISCOGS_PARENTS[i]}", float(par[i])]
+                               for i in np.argsort(-par)[:5]],
                 "moods_top5": [[_FAKE_MOODS[i], float(moods[i])] for i in np.argsort(-moods)[:5]],
                 "instruments_top5": [[_FAKE_INSTR[i], float(inst[i])] for i in np.argsort(-inst)[:5]],
                 "dance": dance, "voice_p": _clamp(float(mag[(freqs >= 300) & (freqs < 3000)].sum()) / tot),
@@ -771,7 +776,8 @@ def load(cfg: dict, models_dir: pathlib.Path, *, fake: bool = False,
                         b.models[hname] = f"failed: {e}"[:200]
                         continue
                 heads[str(field)] = hm
-            b.tasks["tags"] = TagsTask(backbone, heads, backbones, mel, float(t.get("tags", {}).get("window_s", 2.1)))
+            b.tasks["tags"] = TagsTask(backbone, heads, backbones, mel, float(t.get("tags", {}).get("window_s", 2.1)),
+                                       int(t.get("tags", {}).get("styles_top", 5)))
     except Exception as e:                            # noqa: BLE001
         b.models[str(t.get("tags", {}).get("model"))] = f"failed: {type(e).__name__}: {e}"[:200]
 

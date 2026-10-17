@@ -180,9 +180,10 @@ class FakeListener:
         self._beliefs = {"state": "fresh", "age_s": 3.0, "genre": {"word": "soul", "conf": 0.8},
                          "moods": [{"word": "relaxed", "conf": 0.7}], "instruments": [], "vocals": None,
                          "section": None, "trajectory": None, "content": "music"}
+        self.extra: dict = {}                           # README S5.20: spend, provider, estimate
 
     def view(self) -> dict:
-        return {**apimod.neutral_listener(None if self.on else "AI listening is off"), "on": self.on}
+        return {**apimod.neutral_listener(None if self.on else "AI listening is off"), "on": self.on, **self.extra}
 
     def set_on(self, on: bool) -> dict:
         self.on = on
@@ -953,7 +954,8 @@ def test_card_maps_every_component(brain):
     assert cd["palette"]["choices"][0] == apimod.AUTO_CHOICE
     assert cd["palette"]["choices"][1]["label"] == "From the art" and cd["palette"]["pick"] == "auto"
     assert cd["look"] == {"id": "L3", "keep_in_s": None, "next_pending": False}
-    assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off"}
+    assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off", "spend_today_usd": 0.0,
+                               "est_evening_usd": None, "provider": None}
     assert cd["auto"]["state"] == "off" and cd["auto"]["line"] == "Auto is off"
     assert set(cd["tests"]) == {"piano", "audio"} and cd["describe"]["state"] == "idle"
 
@@ -982,6 +984,30 @@ def test_card_with_nothing_is_neutral_and_json_safe():
     json.dumps(cd, allow_nan=False)
     assert cd["hearing"]["text"] == "No sound coming in" and cd["steps"] == apimod.NEUTRAL_STEPS
     assert cd["listening"]["why"] == apimod.MISSING["listener"]
+    assert cd["listening"]["est_evening_usd"] is None and cd["listening"]["spend_today_usd"] == 0.0
+
+
+ESTIMATE = {"per_call_usd": 0.00403, "per_hour_usd": 0.725, "per_evening_usd": 2.9, "evening_h": 4.0,
+            "cadence_s": 20.0, "model": "gemini-3.8-flash", "provider": "Google", "basis": "price table"}
+
+
+def test_card_and_listening_show_the_cost_even_while_off(brain):
+    """README S5.20: the Music card shows today's spend, the evening's estimate and the provider before the switch
+    is on; GET /api/v1/listening carries the whole estimate."""
+    lis = brain.components["listener"]
+    lis.extra = {"spend_today_usd": 0.12345, "est_evening_usd": 2.9, "provider": "Google", "estimate": ESTIMATE,
+                 "model": "gemini-3.8-flash"}
+    cd = card(snap_of(brain), ENGINE)
+    assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off",
+                               "spend_today_usd": 0.1235, "est_evening_usd": 2.9, "provider": "Google"}
+
+    async def go():
+        async with served(make_api(brain)) as cl:
+            b = await body(await cl.get("/api/v1/listening"))
+            assert b["on"] is False and b["estimate"] == ESTIMATE and b["provider"] == "Google"
+            assert b["est_evening_usd"] == 2.9
+    run(go())
+    assert set(apimod.neutral_listener("x")) == set(c.ListenerView.__annotations__)
 
 
 def test_card_keeps_the_directors_auto_swatch():

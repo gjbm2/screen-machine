@@ -708,10 +708,67 @@ def fresh(word: str, conf: float = 0.8) -> dict:
     return {"state": "fresh", "genre": {"word": word, "conf": conf}}
 
 
+
+SCFG = dict(GCFG, parents={"Jazz": "jazz", "Rock": "rock", "Non-Music": None},
+            styles={"Rock---Math Rock": "indie", "Electronic---Deep House": "house", "Electronic---Techno": "techno",
+                    "Electronic---Experimental": None}, weight_power=2, words_top=3)
+
+
+def test_genre_style_rule_words_and_shares():
+    """genre_map.styles: each style's word (its own, else its family's), shares from activation ** 2, the leader's
+    share is the conf, the top words sum to 1."""
+    state: dict = {}
+    sty = [["Jazz---Contemporary Jazz", 0.6], ["Rock---Math Rock", 0.3], ["Jazz---Fusion", 0.2]]
+    g = st.genre_reading({"Jazz": 0.6}, None, {"music": 0.9, "speech": 0.0}, SCFG, state, now_s=0.0, styles=sty)
+    tot = 0.36 + 0.09 + 0.04
+    assert g["word"] == "jazz" and g["via"] == "ml" and g["style"] == "Jazz---Contemporary Jazz"
+    assert g["conf"] == round(0.40 / tot, 3)
+    assert set(g["words"]) == {"jazz", "indie"} and abs(sum(g["words"].values()) - 1.0) < 0.002
+
+
+def test_genre_style_rule_no_word_counts_against_the_leader():
+    state: dict = {}
+    sty = [["Electronic---Techno", 0.6], ["Electronic---Experimental", 0.4]]
+    g = st.genre_reading(None, None, None, SCFG, state, now_s=0.0, styles=sty)
+    assert g["word"] == "techno" and g["conf"] == round(0.36 / 0.52, 3) and g["words"] == {"techno": 1.0}
+    g = st.genre_reading(None, None, None, SCFG, {}, now_s=0.0, styles=[["Non-Music---Dialogue", 0.9]])
+    assert g["word"] is None and g["conf"] == 0.0 and g["words"] == {}
+
+
+def test_genre_style_rule_switches_with_hysteresis_and_freezes():
+    state: dict = {}
+    house = [["Electronic---Deep House", 0.8]]
+    techno = [["Electronic---Techno", 0.8]]
+    for k in range(60):
+        g = st.genre_reading(None, None, {"music": 0.9}, SCFG, state, now_s=float(k), styles=house)
+    assert g["word"] == "house"
+    for k in range(60, 75):                           # techno now leads, but not for switch_dwell_s yet
+        g = st.genre_reading(None, None, {"music": 0.9}, SCFG, state, now_s=float(k), styles=techno)
+    assert g["word"] == "house"
+    for k in range(75, 120):
+        g = st.genre_reading(None, None, {"music": 0.9}, SCFG, state, now_s=float(k), styles=techno)
+    assert g["word"] == "techno"
+    before = dict(g["words"])
+    g = st.genre_reading(None, None, {"music": 0.1}, SCFG, state, now_s=121.0, styles=house)   # talk: frozen
+    assert g["words"] == before
+
+
+def test_genre_without_a_styles_table_keeps_the_parent_rule():
+    g = st.genre_reading({"Jazz": 0.8}, None, None, GCFG, {}, now_s=0.0, styles=[["Rock---Math Rock", 0.9]])
+    assert g["word"] == "jazz" and g["parent"] == "Jazz"
+
+
+def test_valence_weights_the_mood_labels():
+    w = {"happy": 1.0, "sad": 0.0}
+    assert st.valence_of([["happy", 0.6], ["sad", 0.2], ["film", 0.9]], w) == 0.75
+    assert st.valence_of([["film", 0.9]], w) is None
+    assert st.valence_of(None, w) is None
+
 def test_genre_maps_the_leading_parent_through_the_table():
     state: dict = {}
     g = st.genre_reading({"Jazz": 0.8, "Rock": 0.2}, None, {"music": 0.9, "speech": 0.0}, GCFG, state, now_s=0.0)
-    assert g == {"word": "jazz", "conf": 0.8, "parent": "Jazz", "parent_p": 0.8, "via": "ml"}
+    assert g == {"word": "jazz", "conf": 0.8, "parent": "Jazz", "parent_p": 0.8, "via": "ml", "words": {"jazz": 1.0},
+                 "style": None}
 
 
 def test_genre_switches_only_after_the_margin_and_the_dwell():
@@ -754,9 +811,11 @@ def test_genre_speech_scales_conf_and_low_music_freezes_it():
 
 def test_genre_without_the_worker_is_the_listener_then_nothing():
     g = st.genre_reading(None, fresh("soul", 0.7), None, GCFG, {}, now_s=0.0)
-    assert g == {"word": "soul", "conf": 0.7, "parent": None, "parent_p": 0.0, "via": "listener"}
+    assert g == {"word": "soul", "conf": 0.7, "parent": None, "parent_p": 0.0, "via": "listener",
+                 "words": {"soul": 1.0}, "style": None}
     g = st.genre_reading(None, None, None, GCFG, {}, now_s=0.0)
-    assert g == {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none"}
+    assert g == {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none", "words": {},
+                 "style": None}
     assert set(g) == set(c.GenreReading.__annotations__)
 
 
@@ -1220,9 +1279,12 @@ def test_the_fallbacks_are_show_yaml_s_starting_points():
                 same(a[k], b[k], f"{path}.{k}")
             else:
                 assert a[k] == b[k], f"{path}.{k}: code {a[k]} vs show.yaml {b[k]}"
-    same(st.STRUCTURE_FALLBACK, sy["structure"], "structure")
+    tables = ("valence",)                         # config-only tables (no labels in code), like genre_map's
+    same({k: v for k, v in st.STRUCTURE_FALLBACK.items() if k not in tables},
+         {k: v for k, v in sy["structure"].items() if k not in tables}, "structure")
+    assert all(isinstance(sy["structure"][k], dict) and sy["structure"][k] for k in tables)
     for k, v in st.GENRE_FALLBACK.items():
-        if k != "parents":
+        if k not in ("parents", "styles"):
             assert sy["genre_map"][k] == v, k
 
 

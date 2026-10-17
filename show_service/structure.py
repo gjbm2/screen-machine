@@ -176,7 +176,7 @@ STRUCTURE_FALLBACK: dict = {
     "min_section_bars": 8, "min_section_s": 12, "identify_after_s": 8,
     "repeat_sim": {"ml": 0.85, "dsp": 0.80}, "max_sections": 64, "predict_lead_bars": 1,
     "grid_conf": 0.5, "same_bars": 2, "phase_dwell_s": 2,
-    "tags_tau_s": 20, "tags_hold_s": 30, "ced_mean_s": 3, "listener_conf": 0.6,
+    "tags_tau_s": 20, "tags_hold_s": 30, "ced_mean_s": 3, "listener_conf": 0.6, "valence": {},
     "key_min_strength": 0.3, "key_hold": {"strength_margin": 0.05, "hold_s": 4},
     "events": {"min_lead_s": 1.1},
     "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": -60, "window_s": 20, "tempo_jump": 0.04,
@@ -193,8 +193,9 @@ STRUCTURE_FALLBACK: dict = {
                 "drop_cooldown_s": 2},
 }
 #: show.yaml ``genre_map``: starting points. ``parents`` is config only (no genre name in code): empty = no words.
-GENRE_FALLBACK: dict = {"parents": {}, "tau_s": 30, "freeze_below_music": 0.5, "speech_scale_above": 0.3,
-                        "switch_margin": 0.1, "switch_dwell_s": 20}
+GENRE_FALLBACK: dict = {"parents": {}, "styles": {}, "weight_power": 2, "words_top": 3, "tau_s": 30,
+                        "freeze_below_music": 0.5, "speech_scale_above": 0.3, "switch_margin": 0.1, "switch_dwell_s": 20}
+NO_WORD = ""                 # a style whose word is null (genre_map), in the word shares: it counts against the leader
 #: what structure reads from show.yaml ``ml``: the same starting points.
 ML_FALLBACK: dict = {"results_stale_s": 3.0, "tags_window_s": 2.1, "key_every_s": 2.0}
 #: paths whose value may be negative (slopes); every other number must be >= 0, and these must be > 0:
@@ -217,6 +218,8 @@ T, LUFS_M, LUFS_S, BRIGHT, GATE, ENERGY, LOW, PERC, ONSET, HARM, B_LO, B_MID, B_
 NCOL = 13
 TAG_FIELDS = (("dance", "dance"), ("arousal", "arousal"), ("engagement", "engagement"), ("bright", "bright"),
               ("acoustic", "acoustic"), ("vocal", "voice_p"))      # music.context field <- MlTags field
+#: the smoothed numbers: TAG_FIELDS plus valence (structure.valence's weights over the tags line's moods_top5)
+TAG_EMA_KEYS: tuple[str, ...] = tuple(k for k, _ in TAG_FIELDS) + ("valence",)
 
 
 # -- small helpers --------------------------------------------------------------------------------------------------------
@@ -315,8 +318,99 @@ def _listener_genre(beliefs: Any) -> tuple[Optional[str], float]:
     return w, _c01(_f(g.get("conf"), 0.0) or 0.0)
 
 
+def _style_word(label: str, cfg: dict, beliefs: Any) -> tuple[str, bool]:
+    """A Discogs "Parent---Style" label's genre word: genre_map.styles[label], else genre_map.parents[parent] (a word,
+    null, or {from_listener: [words]}: the listener's genre when it is one of them). (NO_WORD, False) for none; the
+    bool says the listener gave it."""
+    styles = cfg.get("styles") if isinstance(cfg.get("styles"), dict) else {}
+    parents = cfg.get("parents") if isinstance(cfg.get("parents"), dict) else {}
+    entry = styles[label] if label in styles else parents.get(label.split("---", 1)[0])
+    if isinstance(entry, str) and entry:
+        return entry, False
+    if isinstance(entry, dict) and isinstance(entry.get("from_listener"), list):
+        lw, _ = _listener_genre(beliefs)
+        if lw is not None and lw in entry["from_listener"]:
+            return lw, True
+    return NO_WORD, False
+
+
+def _genre_from_styles(styles: list, beliefs: Optional[dict], ced: Optional[dict], cfg: dict, state: dict,
+                       now: float) -> contract.GenreReading:
+    """The style rule (show.yaml genre_map.styles; 17 Oct, measured on the 9 test tracks): each tags line's top
+    styles, weighted by activation ** weight_power and normalised, give word shares (styles with no word count as
+    NO_WORD); the shares are smoothed (EMA tau_s, frozen while CED music < freeze_below_music); the leading word
+    changes with genre_map's switch_margin / switch_dwell_s; conf = the leader's share x the speech scale (a share is
+    calibrated: one style family dominating reads 0.6-0.95, a mixed one 0.25-0.35); words = the top words_top shares,
+    normalised to sum 1 (room.direction's genres)."""
+    st = state.setdefault("words", {})
+    tau = max(1e-3, _f(cfg.get("tau_s"), GENRE_FALLBACK["tau_s"]))
+    freeze = _f(cfg.get("freeze_below_music"), GENRE_FALLBACK["freeze_below_music"])
+    above = _f(cfg.get("speech_scale_above"), GENRE_FALLBACK["speech_scale_above"])
+    margin = _f(cfg.get("switch_margin"), GENRE_FALLBACK["switch_margin"])
+    dwell = _f(cfg.get("switch_dwell_s"), GENRE_FALLBACK["switch_dwell_s"])
+    power = max(0.0, _f(cfg.get("weight_power"), GENRE_FALLBACK["weight_power"]))
+    top_n = max(1, int(_f(cfg.get("words_top"), GENRE_FALLBACK["words_top"])))
+    music = _f((ced or {}).get("music")) if isinstance(ced, dict) else None
+    words_cfg = cfg.get("speech_words") or contract.SPEECH_WORDS
+    speech = contract.speech_of(ced, tuple(words_cfg)) if isinstance(ced, dict) else None
+    q: dict[str, float] = {}
+    lis: set = set()
+    top_style, top_p = None, 0.0
+    for x in styles:
+        if not (isinstance(x, (list, tuple)) and len(x) >= 2 and isinstance(x[0], str)):
+            continue
+        a = _c01(_f(x[1], 0.0) or 0.0)
+        if top_style is None:
+            top_style, top_p = x[0], a
+        w, by_listener = _style_word(x[0], cfg, beliefs)
+        q[w] = q.get(w, 0.0) + a ** power
+        if by_listener:
+            lis.add(w)
+    tot = sum(q.values())
+    ema: dict = st.setdefault("ema", {})
+    last_t = _f(st.get("t"))
+    if tot > 0 and not (music is not None and music < freeze):
+        a = 1.0 if (last_t is None or not ema) else 1.0 - math.exp(-max(0.0, now - last_t) / tau)
+        for w in set(ema) | set(q):
+            e0 = ema.get(w, 0.0)
+            ema[w] = e0 + (q.get(w, 0.0) / tot - e0) * a
+    st["t"] = now
+    if top_style is not None:
+        st["style"], st["style_p"] = top_style, top_p
+    none = {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none", "words": {}, "style": None}
+    if not ema:
+        return none
+    best = max(sorted(ema), key=lambda w: ema[w])
+    leader = st.get("leader")
+    if leader not in ema:
+        st["leader"], st["challenger"], st["since"] = best, None, None
+    elif best != leader and ema[best] >= ema[leader] + margin:
+        if st.get("challenger") != best:
+            st["challenger"], st["since"] = best, now
+        elif now - (_f(st.get("since"), now) or now) >= dwell:
+            st["leader"], st["challenger"], st["since"] = best, None, None
+    else:
+        st["challenger"], st["since"] = None, None
+    leader = st["leader"]
+    scale = 1.0
+    if speech is not None and speech > above:
+        scale = _c01((1.0 - speech) / max(1e-6, 1.0 - above))
+    ranked = sorted(((w, p) for w, p in ema.items() if w != NO_WORD and p > 0), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    rs = sum(p for _, p in ranked)
+    words = {w: round(p / rs, 3) for w, p in ranked} if rs > 0 else {}
+    style = st.get("style")
+    word = leader if leader != NO_WORD else None
+    conf = ema[leader] * scale
+    if word is not None and word in lis:
+        conf *= _listener_genre(beliefs)[1]
+    return {"word": word, "conf": round(_c01(conf), 3) if word else 0.0,
+            "parent": style.split("---", 1)[0] if isinstance(style, str) else None,
+            "parent_p": round(_f(st.get("style_p"), 0.0) or 0.0, 3), "via": "ml+listener" if word in lis else "ml",
+            "words": words, "style": style}
+
+
 def genre_reading(parents: Optional[dict], beliefs: Optional[dict], ced: Optional[dict], cfg: dict, state: dict,
-                  *, now_s: Optional[float] = None) -> contract.GenreReading:
+                  *, now_s: Optional[float] = None, styles: Optional[list] = None) -> contract.GenreReading:
     """README S4.8's genre rule. ``parents``: fresh tags' genre_parents (None: no worker or no fresh tags);
     ``ced``: {CED word: p} (the 3 s mean) or None; ``cfg``: show.yaml genre_map (resolved); ``state``: this function's
     own hysteresis state (a dict it keeps; ``now_s`` defaults to state["now_s"], else time.monotonic()).
@@ -327,17 +421,22 @@ def genre_reading(parents: Optional[dict], beliefs: Optional[dict], ced: Optiona
       4. conf = the leader's activation x the speech scale (1 at speech <= speech_scale_above, 0 at speech 1; speech
          is the max over ``cfg["speech_words"]``, contract.SPEECH_WORDS by default: babble counts, not only Speech),
          x the listener's conf for from_listener; 0 when there is no word;
-      5. no parents: the listener's genre (via listener), else nothing (via none)."""
+      5. no parents: the listener's genre (via listener), else nothing (via none).
+    ``styles`` (fresh tags' styles_top) replaces 1-4 with the style rule (_genre_from_styles) while genre_map has a
+    ``styles`` table. ``words`` (word -> share, the top few summing to 1) and ``style`` (the top style) ride along."""
     now = now_s if now_s is not None else _f(state.get("now_s"))
     if now is None:
         now = time.monotonic()
+    if isinstance(cfg.get("styles"), dict) and cfg["styles"] and isinstance(styles, list) and styles:
+        return _genre_from_styles(styles, beliefs, ced, cfg, state, now)
     clean = {str(k): _c01(v) for k, v in (parents or {}).items() if _f(v) is not None} if isinstance(parents, dict) \
         else {}
     if not clean:
         w, c = _listener_genre(beliefs)
         if w is not None:
-            return {"word": w, "conf": round(c, 3), "parent": None, "parent_p": 0.0, "via": "listener"}
-        return {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none"}
+            return {"word": w, "conf": round(c, 3), "parent": None, "parent_p": 0.0, "via": "listener",
+                    "words": {w: 1.0}, "style": None}
+        return {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none", "words": {}, "style": None}
     tau = max(1e-3, _f(cfg.get("tau_s"), GENRE_FALLBACK["tau_s"]))
     freeze = _f(cfg.get("freeze_below_music"), GENRE_FALLBACK["freeze_below_music"])
     above = _f(cfg.get("speech_scale_above"), GENRE_FALLBACK["speech_scale_above"])
@@ -355,7 +454,7 @@ def genre_reading(parents: Optional[dict], beliefs: Optional[dict], ced: Optiona
             ema[p] = x if p not in ema else ema[p] + (x - ema[p]) * a
     state["t"] = now
     if not ema:
-        return {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none"}
+        return {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0, "via": "none", "words": {}, "style": None}
     best = max(sorted(ema), key=lambda p: ema[p])
     leader = state.get("leader")
     if leader not in ema:
@@ -383,7 +482,7 @@ def genre_reading(parents: Optional[dict], beliefs: Optional[dict], ced: Optiona
         if lw is not None and lw in entry["from_listener"]:
             word, conf, via = lw, lp * scale * lc, "ml+listener"
     return {"word": word, "conf": round(_c01(conf), 3) if word else 0.0, "parent": leader,
-            "parent_p": round(lp, 3), "via": via}
+            "parent_p": round(lp, 3), "via": via, "words": {word: 1.0} if word else {}, "style": None}
 
 
 # -- the clock grid (the Link formula, as clock.py's consumer helpers; no import of another builder's module) -------------
@@ -508,6 +607,21 @@ def _resolve(fallback: dict, given: Any, path: str, probs: list[str]) -> dict:
     return out
 
 
+def valence_of(moods_top: Any, weights: Any) -> Optional[float]:
+    """0 (sad, dark) .. 1 (happy, uplifting): the mood head's top labels' structure.valence weights, averaged by their
+    activations; None when none of them has a weight (no label is named in code)."""
+    if not isinstance(weights, dict) or not isinstance(moods_top, list):
+        return None
+    num = den = 0.0
+    for x in moods_top:
+        if isinstance(x, (list, tuple)) and len(x) >= 2 and isinstance(x[0], str):
+            w, a = _f(weights.get(x[0])), _f(x[1])
+            if w is not None and a is not None and a > 0:
+                num += _c01(w) * a
+                den += a
+    return round(num / den, 3) if den > 0 else None
+
+
 def _parents_table(raw: Any, probs: list[str]) -> dict:
     out: dict = {}
     if raw is None:
@@ -516,6 +630,8 @@ def _parents_table(raw: Any, probs: list[str]) -> dict:
         probs.append("genre_map.parents: not a mapping: no genre words")
         return out
     for parent, v in raw.items():
+        if v is None:                                    # said outright: this family has no word
+            continue
         if isinstance(v, str) and v:
             out[str(parent)] = v
         elif (isinstance(v, dict) and isinstance(v.get("from_listener"), list)
@@ -523,6 +639,22 @@ def _parents_table(raw: Any, probs: list[str]) -> dict:
             out[str(parent)] = {"from_listener": list(v["from_listener"])}
         else:
             probs.append(f"genre_map.parents.{parent}: {v!r} is not a word or {{from_listener: [words]}}: ignored")
+    return out
+
+
+def _styles_table(raw: Any, probs: list[str]) -> dict:
+    """genre_map.styles: "Parent---Style" -> a word, or null (no word: its share counts against the leader)."""
+    out: dict = {}
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        probs.append("genre_map.styles: not a mapping: the parents' words only")
+        return out
+    for style, v in raw.items():
+        if v is None or (isinstance(v, str) and v):
+            out[str(style)] = v if v else NO_WORD
+        else:
+            probs.append(f"genre_map.styles.{style}: {v!r} is not a word or null: ignored")
     return out
 
 
@@ -587,9 +719,9 @@ class Structure:
         """The genre (EMA, leader), the smoothed tag numbers and instruments, the parents window and the key's
         hysteresis: per measured stream, so a test track's genre never carries over to the room's (README S4.7)."""
         self.genre: contract.GenreReading = {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0,
-                                             "via": "none"}
+                                             "via": "none", "words": {}, "style": None}
         self._gstate: dict = {}
-        self._tag_ema: dict[str, Optional[float]] = {k: None for k, _ in TAG_FIELDS}
+        self._tag_ema: dict[str, Optional[float]] = {k: None for k in TAG_EMA_KEYS}
         self._inst_ema: dict[str, float] = {}           # instrument label -> smoothed score (tags_tau_s)
         self._parents: collections.deque = collections.deque(maxlen=64)   # (t, {parent: p}) of fresh tags lines
         self._tags_t: Optional[float] = None             # the last tags line taken (acoustic t)
@@ -665,10 +797,12 @@ class Structure:
         s = settings if isinstance(settings, dict) else {}
         self.cfg = _resolve(STRUCTURE_FALLBACK, s.get("structure"), "structure", probs)
         gm = s.get("genre_map")
-        g = _resolve({k: v for k, v in GENRE_FALLBACK.items() if k != "parents"},
-                     {k: v for k, v in gm.items() if k != "parents"} if isinstance(gm, dict) else gm,
+        tables = ("parents", "styles")
+        g = _resolve({k: v for k, v in GENRE_FALLBACK.items() if k not in tables},
+                     {k: v for k, v in gm.items() if k not in tables} if isinstance(gm, dict) else gm,
                      "genre_map", probs)
         g["parents"] = _parents_table(gm.get("parents") if isinstance(gm, dict) else None, probs)
+        g["styles"] = _styles_table(gm.get("styles") if isinstance(gm, dict) else None, probs)
         self.gcfg = g
         ml = s.get("ml") if isinstance(s.get("ml"), dict) else {}
         tasks = ml.get("tasks") if isinstance(ml.get("tasks"), dict) else {}
@@ -2135,18 +2269,20 @@ class Structure:
                 self._parents.append((now_s, {str(k): float(v) for k, v in gp.items() if _f(v) is not None}))
             if not frozen:
                 a = 1.0 if dt is None else 1.0 - math.exp(-max(0.0, dt) / self.cfg["tags_tau_s"])
-                for out, src in TAG_FIELDS:
-                    x = _f(tags.get(src))
+                vals = {out: _f(tags.get(src)) for out, src in TAG_FIELDS}
+                vals["valence"] = valence_of(tags.get("moods_top5"), self.cfg["valence"])
+                for out, x in vals.items():
                     if x is None:
                         continue
                     prev = self._tag_ema.get(out)
                     self._tag_ema[out] = x if prev is None else prev + (x - prev) * a
                 self._instruments_update(tags.get("instruments_top5"), a)
-            self.genre = genre_reading(gp, beliefs, ced, self.gcfg, self._gstate, now_s=now_s)
+            sty = tags.get("styles_top") if isinstance(tags.get("styles_top"), list) else None
+            self.genre = genre_reading(gp, beliefs, ced, self.gcfg, self._gstate, now_s=now_s, styles=sty)
         elif not fresh:
             self.genre = genre_reading(None, beliefs, ced, self.gcfg, self._gstate, now_s=now_s)
         if self._tags_seen_s is not None and now_s - self._tags_seen_s > self.cfg["tags_hold_s"]:
-            self._tag_ema = {k: None for k, _ in TAG_FIELDS}
+            self._tag_ema = {k: None for k in TAG_EMA_KEYS}
             self._inst_ema = {}
             self._tags_seen_s = None
             self._tags_t = None
@@ -2246,6 +2382,7 @@ class Structure:
                 "instruments": list(p.get("instruments") or []),
                 "vocal": tags.get("vocal"), "dance": tags.get("dance"), "arousal": tags.get("arousal"),
                 "engagement": tags.get("engagement"), "bright": tags.get("bright"), "acoustic": tags.get("acoustic"),
+                "valence": tags.get("valence"),
                 "key": key["key"], "mode": key["mode"], "key_strength": key["key_strength"],
                 "key_via": key["key_via"], "talking": p.get("talking"), "ced": p.get("ced"),
                 "section": self._section_info(now_s, grid),

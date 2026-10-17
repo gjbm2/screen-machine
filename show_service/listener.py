@@ -7,13 +7,15 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 * **Each tick:** sample the DSP (features, clock, harmony) into a 120 s timeline; age the beliefs; decide whether a
   clip may go (``why``: the first failing reason, in page words); when one is due, start one call (one in flight at
   most).
-* **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch (persisted; default
-  off: nothing is uploaded until the owner turns it on); the mode's own wish (``ctx.target().listening``; no show
-  target: no clips); the vibe's ``listener``; sound coming in (fresh features, audio in the ring); the music gate
-  (``classifier``: CED from the ML worker, below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``),
-  skipped only for a stream whose show.yaml sender says ``room_sound: false`` (a music file: no one's speech in it);
-  gate >= ``quiet_gate`` over the last 10 s; a usable model in config/llm.yaml. The ring records only while the
-  first three allow a clip (``Rings.armed``).
+* **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch ("Identify the
+  music"; persisted; default off: nothing is uploaded until the owner turns it on); Auto on and the room's mic on
+  (owner, 17 Oct; ``requires_auto`` / ``requires_mic``; unknown = off); the vibe's own ``listener`` (a feel can say
+  off); sound coming in (fresh features, audio in the ring); the music gate (``classifier``: CED from the ML worker,
+  below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``), skipped only for a stream whose show.yaml
+  sender says ``room_sound: false`` (a music file: no one's speech in it); gate >= ``quiet_gate`` over the last 10 s; a
+  usable model in config/llm.yaml. The mode's show target no longer gates (owner, 17 Oct: its ``listening`` stays in
+  the API for readers). The ring records only while the switch, Auto, the mic and the vibe allow a clip
+  (``Rings.armed``).
 * **The CED gate** (Stage 4, README S4.8; ``music_gate: classifier``, room-sound streams only): no fresh CED reading
   for the stream (``ctx.ml``; MLView.stale_s, at least ``ml.results_stale_s``): "the music/speech check isn't
   running"; the latest reading's speech >= ``listener.ced.speech_max``: "people are talking" (speech is the max over
@@ -36,9 +38,17 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   per failure up to ERROR_BACKOFF_MAX_S (no retries: the next window is the retry).
 * **One call:** ``rings.latest(stream, clip_s)`` -> normalised to -16 LUFS (pyebur128, gain clamped to +-24 dB, in a
   worker thread, in short chunks) -> ffmpeg MP3 at llm.yaml's rate and bitrate (asyncio, 5 s), else WAV ->
-  ``utils.llm.acall_json("listen", ...)`` with a static system prompt, the DSP timeline and (except every 5th call)
-  the previous verdict as a hypothesis -> checked against vocab.yaml -> ``music.insight`` on the bus, fused into the
-  beliefs, logged (memory and LISTENER_LOG).
+  ``utils.llm.acall_json("listen", ..., lenient=True)`` with a static system prompt, the DSP timeline and (except
+  every 5th call) the previous verdict as a hypothesis -> checked against vocab.yaml -> ``music.insight`` on the bus,
+  fused into the beliefs, logged (memory and LISTENER_LOG). The tool's words (content, vocals, section, trajectory)
+  are plain strings and ``lenient`` keeps an answer whose only misses are soft (a word, a range, a count):
+  ``to_insight`` cleans them, so a usable answer is never sent again to the fallback at a second charge.
+* **Which model, what it costs** (README S5.20): llm.yaml's listen list (Gemini Flash first, gpt-audio-1.5 the
+  fallback; a provider without its key is skipped). The warm-up thread runs ``utils.llm.probe("listen")``, so a
+  discovered id is known before the first call; the snapshot's ``llm`` shows what each entry resolved to. The view's
+  ``estimate`` (``utils.llm.estimate``: the ledger's recent mean for the model that would be used, else llm.yaml's
+  ``typical`` x prices) gives per hour and per evening (``evening_h`` x 3600 / ``cadence_s`` calls), shown even
+  while the switch is off.
 * **Beliefs** (§7.1): votes decay (half-lives genre 120 s, mood 45 s, instruments 60 s); the genre word changes only
   when a new leader leads two reads in a row by LEADER_MARGIN of the vote weight, or at once on a track change;
   confidence comes from agreement over time, not the model's own number. Section and trajectory are anchored to the
@@ -84,9 +94,12 @@ LOG_ROTATE_BYTES = 1_000_000
 DEFAULTS: dict[str, Any] = {"cadence_s": 20.0, "clip_s": 24.0, "min_gap_s": 8.0, "relaxed_cadence_s": 45.0,
                             "agree_reads": 3, "music_gate": "classifier", "describe_timeout_s": 8.0,
                             "quiet_gate": 0.1, "min_clip_s": 10.0, "section_call_after_s": 8.0,
-                            # owner, 17 Oct: nothing goes to OpenAI unless Auto is on and the room's mic is on (cost,
-                            # and it's intrusive); unknown reads as off. show.yaml listener.requires_auto / requires_mic
-                            "requires_auto": True, "requires_mic": True}
+                            # owner, 17 Oct: nothing goes to any provider unless Auto is on and the room's mic is
+                            # on (cost, and it's intrusive); unknown reads as off. show.yaml listener.requires_auto /
+                            # requires_mic
+                            "requires_auto": True, "requires_mic": True,
+                            # README S5.20: the evening the Music card's estimate covers (hours; starting point)
+                            "evening_h": 4.0}
 # Stage 4 (README S4.8, §7.5): the CED gate's thresholds (show.yaml listener.ced; starting points, the same numbers)
 CED_DEFAULTS: dict[str, float] = {"music_min": 0.5, "speech_max": 0.3}
 RESULTS_STALE_S = 3.0         # show.yaml ml.results_stale_s when it is left out (starting point): an older CED reading
@@ -126,7 +139,6 @@ MUSICAL = ("music", "mixed")
 VOCALS = ("none", "male", "female", "mixed", "choir", "unknown")
 
 WHY_OFF = "AI listening is off"
-WHY_MODE = "this mode doesn't listen"
 WHY_VIBE = "this feel doesn't listen"
 WHY_NO_CED = "the music/speech check isn't running"        # Stage 4: no fresh CED reading for the stream
 WHY_P1 = WHY_NO_CED                                         # the Stage-3 name, kept for readers of it
@@ -140,29 +152,36 @@ WHY_MIC_OFF = "the mic is off"                              # the mic on demand 
 WHY_MIC_WENT_OFF = "the mic went off"                       # a clip cut before that is never uploaded
 WHY_AUTO_OFF = "Auto is off"                                  # owner, 17 Oct: no uploads unless Auto is on
 
+def _one_of(words: Any) -> str:
+    return "One of: " + ", ".join(words) + "."
+
+
+# The words are plain strings (README S5.20): an enum fails the whole answer on one stray word ("sustaining" as a
+# section) and the same clip then goes to the fallback at a second charge. to_insight maps every word to its list.
 LISTEN_TOOL: dict = {
     "name": "report_music",
     "description": "Report what the clip sounds like, for the room's lighting and visuals director.",
     "parameters": {
         "type": "object",
         "properties": {
-            "content": {"type": "string", "enum": list(contract.INSIGHT_CONTENT)},
+            "content": {"type": "string", "description": _one_of(contract.INSIGHT_CONTENT)},
             "genre": {"type": "object",
                       "properties": {"label": {"type": "string"}, "detail": {"type": "string"},
                                      "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
                       "required": ["label", "detail", "confidence"]},
             "instrumentation": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
-            "vocals": {"type": "string", "enum": list(VOCALS)},
+            "vocals": {"type": "string", "description": _one_of(VOCALS)},
             "mood": {"type": "object",
                      "properties": {"words": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
                                     "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
                      "required": ["words", "confidence"]},
             "section": {"type": "object",
-                        "properties": {"label": {"type": "string", "enum": list(contract.SECTION_LABELS)},
+                        "properties": {"label": {"type": "string", "description": _one_of(contract.SECTION_LABELS)},
                                        "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
                         "required": ["label", "confidence"]},
             "trajectory": {"type": "object",
-                           "properties": {"state": {"type": "string", "enum": list(contract.TRAJECTORY_STATES)},
+                           "properties": {"state": {"type": "string",
+                                                    "description": _one_of(contract.TRAJECTORY_STATES)},
                                           "eta_to_change_s": {"type": ["number", "null"]},
                                           "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
                            "required": ["state", "eta_to_change_s", "confidence"]},
@@ -398,11 +417,30 @@ class BeliefState:
 
 
 # -- verdict -> InsightData ----------------------------------------------------------------------------------------------
+def word_of(v: Any, allowed: Any, default: str) -> str:
+    """A model's word in one of ``allowed``: case, spaces and hyphens don't matter ("Pre-chorus" -> "pre_chorus",
+    "winding down" -> "winding_down"); anything else is ``default``."""
+    if not isinstance(v, str):
+        return default
+    w = re.sub(r"[\s\-]+", "_", v.strip().lower())
+    return w if w in allowed else default
+
+
+def _obj(v: Any) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+def _items(v: Any) -> list:
+    return v if isinstance(v, list) else []
+
+
 def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms: float, window: tuple[float, float],
                t_ms: float) -> dict:
-    """The model's tool arguments, checked against vocab.yaml and the fixed vocabularies (contract.InsightData)."""
+    """The model's tool arguments, checked against vocab.yaml and the fixed vocabularies (contract.InsightData). Any
+    word outside its list, a number out of range or too many items is cleaned here (the call is lenient)."""
     genres, moods_ok = set(vocab.genre), set(vocab.moods)
-    g = data.get("genre") or {}
+    data = _obj(data)
+    g = _obj(data.get("genre"))
     label = str(g.get("label") or "").strip().lower()
     detail = str(g.get("detail") or "").strip()
     if label not in genres:
@@ -410,22 +448,22 @@ def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms:
             detail = label
         label = "unknown"
     words: list[str] = []
-    for w in (data.get("mood") or {}).get("words") or []:
+    for w in _items(_obj(data.get("mood")).get("words")):
         w = str(w).strip().lower()
         if w in moods_ok and w not in words:
             words.append(w)
     instruments: list[str] = []
-    for w in data.get("instrumentation") or []:
+    for w in _items(data.get("instrumentation")):
         w = re.sub(r"\s+", " ", str(w).strip().lower())[:40]
         if w and w not in instruments:
             instruments.append(w)
-    sec = data.get("section") or {}
-    sec_label = sec.get("label") if sec.get("label") in contract.SECTION_LABELS else "unknown"
-    tr = data.get("trajectory") or {}
-    tr_state = tr.get("state") if tr.get("state") in contract.TRAJECTORY_STATES else "steady"
+    sec = _obj(data.get("section"))
+    sec_label = word_of(sec.get("label"), contract.SECTION_LABELS, "unknown")
+    tr = _obj(data.get("trajectory"))
+    tr_state = word_of(tr.get("state"), contract.TRAJECTORY_STATES, "steady")
     eta = _f(tr.get("eta_to_change_s"))
-    content = data.get("content") if data.get("content") in contract.INSIGHT_CONTENT else "music"
-    vocals = data.get("vocals") if data.get("vocals") in VOCALS else "unknown"
+    content = word_of(data.get("content"), contract.INSIGHT_CONTENT, "music")
+    vocals = word_of(data.get("vocals"), VOCALS, "unknown")
     same = data.get("same_track_as_previous")
     evidence = " ".join(str(data.get("evidence") or "").split()[:25])
     return {"t_ms": round(t_ms, 1), "window": {"t0_ms": round(window[0] * 1000.0, 1),
@@ -436,7 +474,7 @@ def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms:
                       "confidence": round(_clamp(_f(g.get("confidence"), 0.0), 0.0, 1.0), 3)},
             "instrumentation": instruments[:8], "vocals": vocals,
             "mood": {"words": words[:3],
-                     "confidence": round(_clamp(_f((data.get("mood") or {}).get("confidence"), 0.0), 0.0, 1.0), 3)},
+                     "confidence": round(_clamp(_f(_obj(data.get("mood")).get("confidence"), 0.0), 0.0, 1.0), 3)},
             "section": {"segment_id": None, "label": sec_label,
                         "confidence": round(_clamp(_f(sec.get("confidence"), 0.0), 0.0, 1.0), 3)},
             "trajectory": {"state": tr_state, "eta_to_change_s": round(eta, 1) if eta is not None and eta >= 0 else None,
@@ -688,6 +726,8 @@ class Listener:
         self._prev: Optional[dict] = None         # the previous InsightData
         self._log: collections.deque = collections.deque(maxlen=LOG_N)
         self._status: dict = {}
+        self._estimate: Optional[dict] = None        # utils.llm.estimate("listen") this tick
+        self._llm_sig: Any = None                   # what the listen models resolved to (logged when it changes)
         self._budget_hit = False
         self._why: Optional[str] = WHY_OFF
         self._stream: Optional[str] = None
@@ -785,6 +825,13 @@ class Listener:
             if m is not None:
                 m.status()
                 import openai  # noqa: F401
+                probe = getattr(m, "probe", None)
+                if probe is not None:             # models.list() off show-brain: a discovered id before the first call
+                    t = probe("listen") or {}
+                    log.info("listen models: %s", ", ".join(
+                        f"{r.get('model') or r.get('configured')} "
+                        f"({r.get('provider')}: {r.get('skip') or r.get('via')})"
+                        for r in t.get("resolved") or []) or "none")
         except Exception as e:                    # noqa: BLE001
             log.info("LLM layer warm-up: %s", e)
 
@@ -798,6 +845,12 @@ class Listener:
                 self._budget_hit = bool(m.over_budget("listen"))
             except Exception:                     # noqa: BLE001
                 self._status, self._budget_hit = {}, False
+            try:
+                est = getattr(m, "estimate", None)
+                self._estimate = est("listen", audio_s=float(self.cfg["clip_s"])) if est is not None else None
+            except Exception:                     # noqa: BLE001
+                self._estimate = None
+            self._note_models()
         self._beliefs = self.beliefs_state.view(now_s)
         self._section_tick(now_s)
         self._why, self._stream = self._gate(now_s)
@@ -818,9 +871,11 @@ class Listener:
 
     def _refresh(self, now_s: float) -> None:
         self._view = self._build_view(now_s)
+        lt = ((self._status or {}).get("tasks") or {}).get("listen") or {}
         self._snap = dict(self._view, beliefs=self._beliefs, in_flight=self._task is not None,
                           agreeing=self._agree, problems=list(self.problems), vocab_error=self.vocab.error,
                           llm_error=self._llm_error, ced=dict(self._ced_state, **self.ced_cfg),
+                          llm={"usable": list(lt.get("usable") or []), "resolved": list(lt.get("resolved") or [])},
                           sections={"known": len(self._sections), "current": self._sections[-1]["id"]
                                     if self._sections else None,
                                     "section_call_in_s": round(self._section_due - now_s, 1)
@@ -1019,7 +1074,8 @@ class Listener:
 
     def _gate(self, now_s: float) -> tuple[Optional[str], Optional[str]]:
         """(the first failing reason in page words, or None; the stream a clip would come from). Every stream, test
-        or not, needs the AI listening switch, the mode's wish and the vibe's; only a stream whose sender says
+        or not, needs the AI listening switch, Auto and the mic on (owner, 17 Oct) and a vibe that doesn't say
+        ``listener: off``; the mode's show target no longer gates (owner, 17 Oct). Only a stream whose sender says
         ``room_sound: false`` skips the music/speech check (it can't carry anyone's speech)."""
         stream = self._active_stream(now_s)
         why = None
@@ -1030,13 +1086,9 @@ class Listener:
         elif self.cfg["requires_mic"] and not self._mic_is_on():
             why = WHY_MIC_OFF
         else:
-            target = self._call_or_none(self.ctx.target)
-            if target is None or not target.get("listening", False):
-                why = WHY_MODE
-            else:
-                vibe = self._call_or_none(self.ctx.vibe)
-                if vibe is not None and vibe.get("listener", True) is False:
-                    why = WHY_VIBE
+            vibe = self._call_or_none(self.ctx.vibe)
+            if vibe is not None and vibe.get("listener", True) is False:
+                why = WHY_VIBE                            # a feel can still say no (the piano: MIDI already says it)
         self._arm(why is None)
         if why is not None:
             return why, stream
@@ -1232,8 +1284,8 @@ class Listener:
                 "clip's end.")
 
     def _arm(self, on: bool) -> None:
-        """The ring records only while a clip could go (switch, mode and vibe allow it): no resampling on show-rx for
-        nothing. A first clip then waits for the ring to fill (min_clip_s)."""
+        """The ring records only while a clip could go (the switch, Auto, the mic and the vibe allow it): no
+        resampling on show-rx for nothing. A first clip then waits for the ring to fill (min_clip_s)."""
         rings = self.ctx.rings
         if rings is not None and getattr(rings, "armed", on) != on:
             try:
@@ -1376,7 +1428,7 @@ class Listener:
             user.append(self._prev_text(self._prev))
         self._calls += 1
         res = await m.acall_json("listen", system=self._listen_prompt(), user=user, tool=LISTEN_TOOL, audio=audio,
-                                 audio_format=fmt)
+                                 audio_format=fmt, lenient=True)   # a stray word is cleaned, never paid for twice
         if not res.ok:
             self.errors += 1
             self._errors_row += 1
@@ -1406,7 +1458,8 @@ class Listener:
                 pass
         self._log_event({"kind": "verdict", "insight": ins, "lufs": round(lufs, 1) if lufs is not None else None,
                          "gain_db": round(gain, 1), "format": fmt, "bytes": len(audio), "cost_usd": res.cost_usd,
-                         "usage": res.usage, "call": kind, "segments": segs})
+                         "usage": res.usage, "call": kind, "segments": segs,
+                         "problems": list(getattr(res, "problems", None) or []) or None})
         self._log_genre_detail(ins, now)
         self._refresh(now)
 
@@ -1557,12 +1610,40 @@ class Listener:
         if self._why is None and self._due is not None:
             nxt = round(max(0.0, self._due - now_s), 1)
         budget = (st.get("budgets") or {}).get("listen")
+        est = self.estimate_view()
         return {"on": self.on, "effective": self._why is None, "why": self._why, "stream": self._stream,
                 "next_in_s": nxt, "cadence_s": round(self.interval(), 1),
                 "calls_today": int((st.get("calls_today") or {}).get("listen", 0)),
                 "spend_today_usd": round(float((st.get("spend_today_usd") or {}).get("listen", 0.0)), 4),
                 "budget_usd": float(budget) if budget is not None else None,
-                "model": self._first_model(), "last": self._prev, "errors": self.errors}
+                "model": self._first_model(), "last": self._prev, "errors": self.errors,
+                "provider": est["provider"] if est else None,
+                "est_evening_usd": est["per_evening_usd"] if est else None, "estimate": est}
+
+    def estimate_view(self) -> Optional[dict]:
+        """README S5.20: what listening costs, shown even while the switch is off: {per_call_usd, per_hour_usd,
+        per_evening_usd, evening_h, cadence_s, model, provider (page words: "Google", "OpenAI"), basis: "ledger" |
+        "price table"}. Calls an hour = 3600 / show.yaml's cadence_s (the relaxed cadence and the budget's slowing
+        only make it cheaper). None when no model is usable or its cost isn't known."""
+        e = self._estimate
+        usd = _f((e or {}).get("usd"))
+        if not e or usd is None or not e.get("model"):
+            return None
+        cadence = float(self.cfg["cadence_s"])
+        hours = float(self.cfg["evening_h"])
+        per_hour = usd * 3600.0 / cadence
+        return {"per_call_usd": round(usd, 5), "per_hour_usd": round(per_hour, 3),
+                "per_evening_usd": round(per_hour * hours, 2), "evening_h": hours, "cadence_s": cadence,
+                "model": e["model"], "provider": e.get("label") or e.get("provider"), "basis": e.get("basis")}
+
+    def _note_models(self) -> None:
+        """Logs (memory and LISTENER_LOG) what the listen models resolved to, when it changes (README S5.20)."""
+        rows = (((self._status or {}).get("tasks") or {}).get("listen") or {}).get("resolved") or []
+        sig = tuple((r.get("configured"), r.get("model"), r.get("via"), r.get("skip")) for r in rows
+                    if isinstance(r, dict))
+        if sig and sig != self._llm_sig:
+            self._llm_sig = sig
+            self._log_event({"kind": "models", "resolved": [dict(r) for r in rows if isinstance(r, dict)]})
 
     def _log_event(self, entry: dict) -> None:
         e = {"at": round(self._wall(), 3), **entry}

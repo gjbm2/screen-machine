@@ -626,12 +626,17 @@ def test_genre_in_reads_the_context_first_then_the_beliefs():
     assert r["value"] is True and r["via"] == "ml" and r["evidence"]["parent"] == "Jazz"
     assert r["evidence"]["via"] == "ml"
     assert e.read("genre_in", {"genres": ["soul"]})["value"] is False     # the ML's word wins (§8.9)
-    e.mc = context(e, "jazz", 0.4)
+    e.mc = context(e, "jazz", 0.4)                        # the ML isn't sure: the AI listener's word (S5.20)
     r = e.read("genre_in", {"genres": ["jazz"]})
-    assert r["value"] is None and r["evidence"]["why"] == "not confident"
+    assert r["value"] is False and r["via"] == "listener" and r["evidence"]["ml"]["why"] == "not confident"
     e.mc = context(e, None, 0.0, via="none", parent="Electronic")         # a family genre_map gives no word for
     r = e.read("genre_in", {"genres": ["soul"]})
+    assert r["value"] is True and r["via"] == "listener" and r["evidence"]["parent"] == "Electronic"
+    assert r["evidence"]["ml"]["why"] == "no genre word yet"
+    e.beliefs = None                                      # ...and with no listener either: unknown, the ML's reason
+    r = e.read("genre_in", {"genres": ["soul"]})
     assert r["value"] is None and r["evidence"]["why"] == "no genre word yet"
+    e.beliefs = {"state": "fresh", "genre": {"word": "soul", "conf": 0.9}}
     e.mc = context(e, "house", 0.7, via="ml+listener", parent="Electronic")
     r = e.read("genre_in", {"genres": ["house"]})
     assert r["value"] is True and r["via"] == "ml+listener"
@@ -1043,3 +1048,124 @@ def test_check_nodes_paths_and_plain_words_and_check_unchanged():
     assert cond.check(rule) == [p["where"] for p in got]     # check() says exactly what it said before
     assert cond.check_nodes({}, "enter_when")[0]["text"] == "Empty: pick what Auto should notice"
     assert cond.check_nodes({"all": [{"quiet": {}}], "quiet": {}}, "e")[0]["path"] == "e"
+
+
+
+# -- README S5.20: the listener's words for Auto ----------------------------------------------------------------------
+def test_genre_in_falls_back_to_the_listener_when_the_ml_family_has_no_word():
+    """Audit, 17 Oct: the ML leading with Hip Hop (no vocab word) made genre_in unknown even with a sure listener."""
+    e = Env()
+    e.beliefs = {"state": "holding", "genre": {"word": "jazz", "conf": 0.8}}
+    e.mc = context(e, None, 0.0, via="none", parent="Hip Hop")
+    r = e.read("genre_in", {"genres": ["jazz", "soul"]})
+    assert r["value"] is True and r["via"] == "listener" and r["evidence"]["parent"] == "Hip Hop"
+    e.beliefs = {"state": "holding", "genre": {"word": "jazz", "conf": 0.3}}           # the listener unsure too
+    r = e.read("genre_in", {"genres": ["jazz"]})
+    assert r["value"] is None and r["via"] == "none" and r["evidence"]["why"] == "no genre word yet"
+    e.beliefs = {"state": "fading", "genre": {"word": "jazz", "conf": 0.9}}            # fading: not "now"
+    assert e.read("genre_in", {"genres": ["jazz"]})["value"] is None
+
+
+def ml_context(e: Env, *, moods=(), phase="calm", track_id=0, track_age=None, track_via=None, age_s=0.5) -> dict:
+    return {"t_ms": (e.now - age_s) * 1000.0, "genre": {"word": None, "conf": 0.0, "parent": None, "parent_p": 0.0,
+                                                        "via": "none"},
+            "moods": [], "section": {"id": 3, "phase": phase, "build_progress": 0.4 if phase == "build" else 0.0},
+            "track": {"id": track_id, "changed": False, "age_s": track_age, "via": track_via},
+            "ml": {"moods_top5": [list(x) for x in moods]}}
+
+
+def test_mood_in():
+    e = Env()
+    e.feat(gate=0.5)
+    params = {"moods": ["calm", "dreamy"]}
+    assert e.read("mood_in", params)["value"] is None                                  # nothing listens
+    assert e.read("mood_in", {})["value"] is None                                      # needs moods
+    e.beliefs = {"state": "fresh", "moods": [{"word": "dreamy", "conf": 0.8}, {"word": "warm", "conf": 0.3}]}
+    r = e.read("mood_in", params)
+    assert r["value"] is True and r["via"] == "listener" and r["evidence"]["mood"] == "dreamy"
+    r = e.read("mood_in", {"moods": ["euphoric"]})
+    assert r["value"] is False and r["evidence"]["heard"][0] == {"word": "dreamy", "conf": 0.8, "via": "listener"}
+    e.beliefs = {"state": "fresh", "moods": [{"word": "dreamy", "conf": 0.5}]}         # one read: not sure yet
+    assert e.read("mood_in", {"moods": ["euphoric"]})["value"] is None
+    e.beliefs = None
+    e.mc = ml_context(e, moods=[("calm", 0.7), ("dark", 0.2)])                         # the ML's mood tags count too
+    r = e.read("mood_in", params)
+    assert r["value"] is True and r["via"] == "ml"
+    assert e.read("mood_in", {"moods": ["calm"], "min_conf": 0.8})["value"] is None
+    e.health["active_audio"] = "test-piano"                                            # a test is measured
+    e.feat(gate=0.5, stream="test-piano")
+    assert e.read("mood_in", params)["value"] is None
+    assert e.read("mood_in", dict(params, include_test=True))["value"] is True
+    assert word_label("mood_in", params) == "the music feels calm or dreamy"
+
+
+def test_building():
+    e = Env()
+    assert e.read("building", {})["value"] is None                                     # nothing follows the music
+    e.feat(gate=0.5)
+    e.mc = ml_context(e, phase="build")
+    r = e.read("building", {})
+    assert r["value"] is True and r["via"] == "structure" and r["evidence"]["build_progress"] == 0.4
+    e.mc = ml_context(e, phase="peak")
+    assert e.read("building", {})["value"] is False
+    e.beliefs = {"state": "fresh", "trajectory": {"state": "building", "conf": 0.7, "eta_s": 8.0}}
+    r = e.read("building", {})
+    assert r["value"] is True and r["via"] == "listener"                              # the listener's word
+    e.beliefs = {"state": "fresh", "trajectory": {"state": "building", "conf": 0.4, "eta_s": None}}
+    assert e.read("building", {})["value"] is False                                   # unsure: structure says peak
+    e.mc = None
+    assert e.read("building", {})["value"] is None
+    e.beliefs = {"state": "fresh", "trajectory": {"state": "steady", "conf": 0.8, "eta_s": None}}
+    assert e.read("building", {})["value"] is False
+    e.features = None                                                                 # the mic off: structure isn't now
+    e.beliefs = None
+    e.mc = ml_context(e, phase="build")
+    assert e.read("building", {})["value"] is None
+
+
+def test_track_changed():
+    e = Env()
+    assert e.read("track_changed", {})["value"] is None                                # no music.context
+    e.feat(gate=0.5)
+    e.mc = ml_context(e, track_id=0, track_age=300.0)                                 # the first track since start
+    assert e.read("track_changed", {})["value"] is False
+    e.mc = ml_context(e, track_id=4, track_age=12.0, track_via="dsp")
+    r = e.read("track_changed", {})
+    assert r["value"] is True and r["via"] == "dsp" and r["evidence"]["within_s"] == 30
+    assert e.read("track_changed", {"within_s": 10})["value"] is False
+    e.features = None                                                                 # not heard now, not via Sonos
+    assert e.read("track_changed", {"within_s": 10})["value"] is None
+    e.mc = ml_context(e, track_id=5, track_age=50.0, track_via="sonos")
+    assert e.read("track_changed", {})["value"] is False                              # Sonos still says it
+    e.mc = ml_context(e, track_id=5, track_age=5.0, track_via="sonos")
+    assert e.read("track_changed", {})["value"] is True
+    assert word_label("track_changed", {"within_s": 120}) == "a new song started in the last 2 min"
+
+
+def test_the_new_words_in_the_vocabulary_and_the_rule_grammar():
+    e = Env()
+    e.sit.tick(e.now)
+    snap = e.sit.snapshot()
+    assert set(snap["readings"]) == set(c.SITUATIONS) and set(WORDS) >= {"mood_in", "building", "track_changed"}
+    voc = {d["id"]: d for d in snap["vocabulary"]}
+    assert voc["mood_in"]["params"]["moods"]["x-ui"]["widget"] == "vocab:moods"
+    assert voc["mood_in"]["params"]["moods"]["x-ui"]["required"] is True
+    assert voc["track_changed"]["params"]["within_s"]["default"] == 30
+    assert voc["track_changed"]["params"]["within_s"]["x-ui"]["source"].startswith("design default")
+    assert voc["building"]["rank"] == c.SITUATION_RANK["audio"]
+    assert voc["mood_in"]["rank"] == c.SITUATION_RANK["listener"]
+    assert snap["readings"]["mood_in"]["evidence"]["why"].startswith("needs")
+    for sid in ("mood_in", "building", "track_changed"):
+        assert voc[sid]["label"] and voc[sid]["description"] and voc[sid]["unavailable"]
+    cond = Conditions(e.sit)
+    assert cond.check({"mood_in": {"moods": ["calm"], "min_conf": 0.7, "for_s": 20}}) == []
+    assert cond.check({"all": [{"building": {}}, {"track_changed": {"within_s": 60}}]}) == []
+    assert cond.check({"mood_in": {}}) and cond.check({"track_changed": {"within_s": 0}})
+    assert cond.check({"building": {"moods": ["calm"]}})                              # not a param of building
+    e.now += 1.0                                                                      # past the tick's memoised reads
+    e.feat(gate=0.5)
+    e.mc = ml_context(e, phase="build", track_id=2, track_age=3.0, track_via="dsp")
+    ok, info = cond.holds({"all": [{"building": True}, {"track_changed": {}}]}, "p", e.now)
+    assert ok is True and set(info["words"]) == {"building", "track_changed"}
+    d = cond.describe({"any": [{"mood_in": {"moods": ["calm"]}}, {"building": {"for_s": 10}}]}, "x", e.now)
+    assert d["text"] == "any of: the music feels calm or (the music is building, for at least 10 s)"

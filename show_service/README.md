@@ -1797,8 +1797,9 @@ neutral.
     `reset` restores the constructor's depth and beat_lock True.
   - `status()["look"]` shows both.
   - With beat_lock off, the clock stays wired, so frames stay on the beat grid.
-- **Readback.** `listening_effective`/`listening_why` hold only the director's part: the target's `listening` and the
-  vibe's `listener`. api.py overlays the listener's own `effective` and `why` when those allow it (S3.4 "As built").
+- **Readback.** `listening_effective`/`listening_why` hold only the director's part: the vibe's `listener` (the
+  target's `listening` no longer gates since S5.20, but stays in the readback). api.py overlays the listener's own
+  `effective` and `why` when the vibe allows it (S3.4 "As built").
 - **Not built** (no detectors yet): section memory, builds and drops, peak tokens. `strobe` is only published. The
   Fine-tune form says so: `strobe` and `peak_tokens_per_hour` carry `x-ui.not_built` and "(not built yet)" and sit
   behind More (the room adapter honours `not_built`); `accents` is labelled as what it does today, the lamps' beat
@@ -2556,7 +2557,8 @@ class Listener:                                        # Component "listener", t
 16 Oct: privacy was decided by a stream's name, so `phone-test` or any `test-*` stream would have uploaded clips with
 AI listening off):
 - the AI listening switch is on (the switch stops every upload; nothing is uploaded until the owner turns it on);
-- `ctx.target().listening` (the mode's own wish; no show target set: no clips);
+- Auto is on and the room's mic is on (owner, 17 Oct; unknown counts as off);
+- ~~`ctx.target().listening` (the mode's own wish)~~: no longer a gate since 17 Oct (S5.20; the field stays in the API);
 - `ctx.vibe().listener`;
 - the music gate passes, except for a stream whose show.yaml sender says `room_sound: false` (a music file: no one's
   speech can be in it; shipped on `test-audio` only):
@@ -2572,7 +2574,7 @@ clip waits `min_clip_s` (10 s).
 
 `why` holds the first failing reason, in page words:
 - "AI listening is off"
-- "this mode doesn't listen"
+- "Auto is off", "the mic is off" (owner, 17 Oct)
 - "this feel doesn't listen"
 - "waiting for the music/speech check (P1)"
 - "too quiet"
@@ -2698,8 +2700,8 @@ under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins a
     seqlock test saw no torn reads.
   - Extras for readers: `Rings.last_stream` and `Rings.streams()`.
 - **Gating decisions.**
-  - With no show target, no stream is allowed: "this mode doesn't listen" (the target's neutral `listening` is
-    false). Since the review (16 Oct) that holds for test streams too.
+  - Until 17 Oct, with no show target no stream was allowed ("this mode doesn't listen"). S5.20 dropped that gate:
+    the switch, Auto, the mic and the vibe decide, for test streams too.
   - "no sound coming in" is checked before the music gate.
   - With `music_gate: dsp`, a loud sound that has no beat and no key gets one extra page word: "no music heard".
   - The gate is checked again right before the upload. Turning the switch off cancels any call in flight.
@@ -6508,3 +6510,133 @@ This adds the light words and the two routes the Room page's Auto editor (2f) is
   - `test_autopilot`: a light rule switches and leaves through the real poll; rules and check on good and bad blocks; the empty shapes in Auto itself;
   - `test_api`: both routes, their 400s, degrade without Auto, and the light words through `/api/v1/situations`.
 - **Live** at the next show_service restart (`scripts/ctl restart show`). Nothing switches by light until a mode's block uses a light word: the owner's call.
+
+### S5.20 Listening: Gemini first, the cost on the card, sturdier answers, and the listener's Auto words (17 Oct; the owner's decisions)
+
+The owner's decisions on the LLM listener after the 17 Oct audit (c8). Docs: §7, §8.9, §11, §13.
+
+- **The gate** (listener.py `_gate`; checked every tick and again right before each upload; the first that fails is `why`):
+  1. the AI listening switch, "Identify the music" (persisted; off by default): "AI listening is off";
+  2. Auto is on (`listener.requires_auto`; unknown counts as off): "Auto is off";
+  3. the room's mic is on (`listener.requires_mic`; unknown counts as off): "the mic is off";
+  4. the feel allows it (vibes.yaml `listener: false`, today the piano feel): "this feel doesn't listen";
+  5. the stream isn't kept off by the mic on demand: "the mic is off";
+  6. sound is coming in (fresh features): "no sound coming in";
+  7. substantive music, for room sound (every stream except a show.yaml sender with `room_sound: false`): `music_gate: classifier` needs a fresh CED reading ("the music/speech check isn't running"), speech under `ced.speech_max` ("people are talking") and a music run of at least `min_clip_s` ("not enough music without talking"); `dsp` needs a beat or a key over the loudness floor ("no music heard");
+  8. the loudness gate's mean over 10 s reaches `listener.quiet_gate` 0.1: "too quiet";
+  9. the ring holds enough audio: "no sound coming in";
+  10. a usable model in llm.yaml: "no model configured".
+
+  The ring records only while 1-4 pass. A clip cut before the mic went off is never sent. **Dropped:** the mode's
+  show.main `listening` ("this mode doesn't listen"). It stays in `GET /api/v1/vibe` and the room adapter's value for
+  readers; the director's readback now says only "this feel doesn't listen" (its `listening_effective` then takes the
+  listener's own gate). Rule 0 (1fe8b6f3) is unchanged and tested again with no mode wish at all.
+- **Provider and model** (config/llm.yaml `tasks.listen`; utils/llm):
+  - Order: **Gemini Flash** (provider `gemini`, Gemini's OpenAI-compatible endpoint, `GEMINI_API_KEY`), then
+    **gpt-audio-1.5** (OpenAI). A provider whose key is missing is skipped ("no key for gemini (GEMINI_API_KEY)"), so
+    without the key the listener runs on gpt-audio-1.5 as before. gpt-audio is no longer listed: it and gpt-audio-mini
+    shut down on 20 Jan 2027 (OpenAI's deprecations page); gpt-audio-1.5 is not deprecated.
+  - **Discovery.** A model entry may carry `discover` (a regex, full match). Once `models.list()` has been read: an
+    explicit `model` that is listed is used as written ("explicit"); else the newest listed id matching the pattern
+    (the highest version numbers: gemini-3.10-flash beats gemini-3.8-flash) ("discovered"); else the entry is skipped
+    ("missing"). Before the list is read, the explicit id is tried as written ("unprobed"). The listen entry is
+    `gemini-3.8-flash` with `discover: 'gemini-\d+(\.\d+)*-flash'` (plain Flash ids only: no -lite, -tts, -live,
+    -image or -preview). Ids Gemini lists as `models/<id>` are read without the prefix.
+  - **When.** The listener's warm-up thread calls `utils.llm.probe("listen")` at start (off show-brain), so the id is
+    known before the first call; `acall_json` also probes at first use and hourly. utils.llm logs a discovered choice
+    once; the listener logs a `models` event to listener.jsonl whenever the resolution changes, and its snapshot's
+    `llm` carries `{usable, resolved: [{configured, provider, model, via, skip}]}` (also in `utils.llm.status()`).
+  - **Gemini's request.** `omit: [store, modalities]` (OpenAI-only fields), `schema: openapi` (a tool schema's
+    `["number", "null"]` goes as `number` + `nullable: true`; the local validator reads both), and per-model options
+    `reasoning_effort: low` (3.x Flash can't turn thinking off; "minimal" errors on 3.8 Flash) and
+    `max_completion_tokens: 2048` (thinking counts toward Gemini's output limit).
+  - **Verified 17 Oct** (Google's own pages):
+    - https://ai.google.dev/gemini-api/docs/openai (updated 2026-10-14): chat completions take `input_audio`
+      `{data: base64, format}` (its example: `gemini-3.8-flash`, wav); tools work; `client.models.list()` lists ids.
+    - https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash (updated 2026-09-02): stable; input text, image,
+      video, audio and PDF; output text; function calling and structured outputs. Flash ids on the models page:
+      gemini-3.8-flash (new) and gemini-3.6-flash (previous).
+    - https://ai.google.dev/gemini-api/docs/audio (updated 2026-09-23): WAV and MP3 among the formats; 32 tokens a second.
+    - https://ai.google.dev/gemini-api/docs/pricing (updated 2026-10-16), paid tier, Standard: 3.8 Flash and 3.6
+      Flash **$0.75 per 1M input tokens, audio included (one price for every input)**, $3.75 output including
+      thinking, $0.075 caching, through 31 Dec 2026; from 1 Jan 2027 $1.50 / $7.50 / $0.15 (llm.yaml says to change the
+      row then). The paid tier's data is not used to improve Google's products.
+    - With the owner's key (added 11:19, 17 Oct): `models.list()` answers and lists gemini-3.8-flash (also 3.7, 3.6
+      and 3.5 Flash); discovery would pick 3.8. One **text-only** forced-tool call with the real LISTEN_TOOL and prompt
+      (no audio, so rule 0 is untouched; a scratch ledger): ok in 4.06 s, 1144 prompt + 133 completion tokens,
+      $0.0014, every field present, a null eta accepted. Gemini's usage carries no thinking-token field and its total
+      is prompt + completion, so the ledger prices what it reports; compare with Google's billing after an evening.
+- **Cost, visible** (shown even while the switch is off, so the price is there before it is turned on):
+  - `GET /api/v1/listening` (contract.ListenerView) gains `provider` (page words, llm.yaml `providers.<p>.label`:
+    "Google" or "OpenAI", for the model that would be used now), `est_evening_usd` and `estimate` {`per_call_usd`,
+    `per_hour_usd`, `per_evening_usd`, `evening_h`, `cadence_s`, `model`, `provider`, `basis`: "ledger" | "price
+    table"} (null with no usable model, or no known price). `model` is now the id it would call (after discovery).
+  - The card's `listening` (contract.CardData) gains `spend_today_usd`, `est_evening_usd` and `provider`.
+  - The arithmetic: per hour = 3600 / show.yaml `listener.cadence_s` × the cost of one clip; per evening = per hour ×
+    `listener.evening_h` (4, a starting point). The relaxed cadence and the budget's slowing only make it cheaper.
+  - The cost of one clip: `utils.llm.estimate("listen", audio_s=clip_s)`, the mean of that model's last 50 good calls in
+    the ledger once there are 3 ("ledger"), else the entry's `typical` usage (`text_in`, `audio_per_s` × the clip's
+    seconds, `text_out`) priced from llm.yaml ("price table"). Price rows may be globs (`gemini-*-flash`) for a
+    discovered id.
+  - **Example** (the shipped config, 17 Oct, switch off; Gemini key present):
+
+    ```json
+    GET /api/v1/listening (abridged)
+    {"on": false, "why": "AI listening is off", "model": "gemini-3.8-flash", "provider": "Google",
+     "spend_today_usd": 0.0, "est_evening_usd": 2.9,
+     "estimate": {"per_call_usd": 0.00403, "per_hour_usd": 0.725, "per_evening_usd": 2.9, "evening_h": 4.0,
+                  "cadence_s": 20.0, "model": "gemini-3.8-flash", "provider": "Google", "basis": "price table"}}
+    card.listening
+    {"on": false, "effective": false, "why": "AI listening is off", "spend_today_usd": 0.0, "est_evening_usd": 2.9,
+     "provider": "Google"}
+    ```
+
+    One clip on Gemini: (1600 text + 24 s × 32 audio) × $0.75 + 600 out × $3.75 per 1M = $0.0040, × 180 an hour × 4 h
+    = $2.90. Without the Gemini key: gpt-audio-1.5, (1600 × $2.50 + 240 × $32 + 200 × $10) per 1M = $0.0137 a clip,
+    $2.46 an hour, $9.85 an evening.
+- **Sturdier answers** (the audit: one stray word failed the whole reply and the same clip was charged again on the
+  fallback, core.py `_finish`/`acall_json`):
+  - LISTEN_TOOL's `content`, `vocals`, `section.label` and `trajectory.state` are plain strings (the words are in each
+    field's description); `to_insight` maps them (case, spaces and hyphens don't matter: "Pre-chorus" -> pre_chorus,
+    "winding down" -> winding_down; anything else -> unknown / steady / music / unknown) and is safe on any shape.
+  - utils.llm `call_json` / `acall_json(..., lenient=True)`: an answer whose only schema problems are soft (a word
+    outside an enum, a number out of range, too many items, a length, an extra key) is accepted, with
+    `LLMResult.problems` listing them; only a wrong type or a missing required key fails it and moves to the next
+    model. The listener calls with `lenient=True` and logs the problems on the verdict. Every other caller keeps the
+    strict default.
+- **The listener's Auto words** (situations.py; contract.SITUATIONS; listed by `GET /api/v1/situations`, checked and
+  described by Conditions, `GET /api/v1/autopilot/rules` and `POST /api/v1/autopilot/check` like the others):
+  - `genre_in` now falls back to the listener's genre word when the ML leads with a family that has no word, or isn't
+    sure (as the director's `_words` does). Unknown when neither is sure; the ML's reason is then the evidence.
+  - `mood_in` {`moods` (vocab.yaml moods; x-ui `vocab:moods`), `min_conf`, `include_test`}: "the music feels calm or
+    dreamy". The listener's moods (beliefs, fresh or holding) or the ML's mood tags (music.context `ml.moods_top5`), at
+    `min_conf` (0.6). False when a mood is confident and none is listed; unknown until one is. Source `listener`.
+  - `building` {`min_conf`, `include_test`}: "the music is building". structure's section phase is `build` (only
+    while the room's sound is measured), or the listener's trajectory is "building" at `min_conf`. False while either
+    follows the music and says otherwise; unknown while neither does. Source `audio`.
+  - `track_changed` {`within_s` (30, a starting point), `include_test`}: "a new song started in the last 30 s".
+    music.context's track id moved (> 0: a change since show_service started) within `within_s`, via Sonos or the
+    sound. False otherwise while Sonos says it or the sound is measured; unknown while nothing follows the music.
+    Source `audio`.
+  - Each reads unknown while only a test stream is measured (unless `include_test`).
+- **Tests:**
+  - `utils/llm/tests/test_llm.py` (shared plumbing, the real openai SDK against a fake server): `newest`'s version
+    order; discovery picks the newest plain Flash from a fake `models.list()` (with `models/` prefixes, -lite/-tts and
+    a preview beside it) when the explicit id is gone; a listed explicit id wins; `probe()` resolves a discover-only
+    entry before any call; no Gemini key skips it to OpenAI ("no key") with no request; the estimate from the price
+    table, then from the ledger after 3 calls, and again after a restart; lenient keeps a soft miss with one request
+    and still refuses a wrong type; `check()`'s split and `nullable`; the OpenAPI dialect on the wire (the caller's
+    schema untouched); a bad pattern or `typical` keeps the last good config.
+  - `test_listener`: every stream needs the switch, Auto and the mic (and a feel that listens); the mode's
+    `listening` no longer gates (no target, false, true); rule 0 still holds for room sound with no mode wish (no CED:
+    nothing; no beat: nothing; under the floor: nothing; Auto off: nothing); off-vocabulary words through the real
+    utils.llm with a fake client make one call, no fallback; the tool has no word lists left; a garbled answer never
+    crashes `to_insight`; the estimate's arithmetic while off, with show.yaml's `evening_h` and `cadence_s`; the
+    warm-up probe, the snapshot's `llm` and the `models` log event; the shipped llm.yaml (Gemini first, then
+    gpt-audio-1.5; no key: gpt-audio-1.5 and its price).
+  - `test_situations`: genre_in's fallback (a family with no word, an unsure ML, neither sure); mood_in, building and
+    track_changed (true, false, unknown, test streams, labels); the new words in the vocabulary, check, holds and
+    describe. `test_api`: the card's and `/api/v1/listening`'s cost fields while off; the neutral listener's shape.
+- **Live** at the next show_service restart (`scripts/ctl restart show`). From then on Gemini 3.8 Flash is first
+  (the owner's key is in .env), still only while the switch, Auto and the mic are on and the room plays music.
+  The Room page can show `listening.est_evening_usd` and `provider` (2f/e1's page; not changed here).

@@ -28,8 +28,13 @@ With it, ``talking``, ``quiet`` and ``music_audible`` read CED with hysteresis (
 its number is back past the threshold by ``situations.ced.hysteresis``); "speech" there is the max over
 ``situations.talking.speech_words`` (speech, conversation, crowd: babble counts). Without it they read exactly as in
 Stage 3. ``genre_in`` reads music.context's genre (the ML's parents through show.yaml ``genre_map``, or the listener's
-words) first, then the listener's beliefs; once confident it stays so until its conf is the CED hysteresis under
-min_conf.
+words) first, then the listener's beliefs: also when the ML leads with a family that has no word, or isn't sure (as the
+director does); once confident it stays so until its conf is the CED hysteresis under min_conf.
+
+The listener's words for Auto (README S5.20, 17 Oct): ``mood_in`` (the listener's moods, or the ML's mood tags, include
+one of the rule's), ``building`` (structure's section phase is a build, or the listener's trajectory says building) and
+``track_changed`` (music.context's track changed within ``within_s``, via Sonos or the sound). Each reads unknown while
+nothing listens, and while only a test stream is measured (unless include_test).
 
 The room's light (README S5.19). ``light_below`` / ``light_above`` read ``LightSensor``: show.yaml
 ``situations.light.url`` (Flask's light sensor route) polled every ``poll_s`` on show-brain's loop (async, a short
@@ -129,6 +134,10 @@ PARAM_SCHEMAS: dict[str, dict] = {
     "own_change_s": {"type": "number", "minimum": 0,
                      "x-ui": {"label": "Ignore after the room changed it", "unit": "s"}},
     "genres": {"type": "array", "items": {"type": "string"}, "x-ui": {"label": "Genres", "widget": "vocab:genre"}},
+    # README S5.20: the listener's words
+    "moods": {"type": "array", "items": {"type": "string"}, "x-ui": {"label": "Moods", "widget": "vocab:moods"}},
+    "within_s": {"type": "number", "minimum": 1, "maximum": 3600,
+                 "x-ui": {"label": "Within the last", "unit": "s"}},
     "min_conf": {"type": "number", "minimum": 0, "maximum": 1,
                  "x-ui": {"label": "Confidence at least", **_P, "ends": {"min": "A guess", "max": "Sure"}}},
     "value": {"type": "number", "minimum": 0, "maximum": 1,
@@ -153,6 +162,7 @@ DESIGN_DEFAULTS: dict[str, Any] = {
     "now_playing": None, "volume": None, "own_change_s": 60, "min_conf": 0.6, "gate_below": 0.05,
     "music_below": None, "speech_below": None,       # quiet: unset = the gate alone; talking: TALKING_MUSIC_BELOW
     "sensor": None,                                  # unset: the light sensor's only sensor (show.yaml names it)
+    "within_s": 30,                                  # track_changed: a song that began in the last 30 s is new
 }
 TALKING_MUSIC_BELOW = 0.5               # starting point (show.yaml situations.talking.music_below; §8.9: speech with
                                         # no music): talking's music threshold when show.yaml and the rule leave it out
@@ -230,6 +240,25 @@ WORDS: dict[str, dict] = {
         "description": "The room's light sensor reads more than this, taken over the last minute so a passing "
                        "shadow doesn't count. Once true it stays true until the room is clearly darker again (about "
                        "15 % less). Unknown while the sensor isn't reporting."},
+    # README S5.20 (17 Oct): the listener's words
+    "mood_in": {
+        "label": "the music feels like one of these", "source": "listener", "sections": (),
+        "params": ("moods", "min_conf", "include_test"), "required": ("moods",),
+        "unavailable": "Nothing is listening for the mood yet",
+        "description": "The music being heard has one of these moods, from the AI listener (when Identify the music "
+                       "is on) or the room's own music listener. Unknown until one of them is sure of a mood, and "
+                       "while only test music is playing."},
+    "building": {
+        "label": "the music is building", "source": "audio", "sections": (), "params": ("min_conf", "include_test"),
+        "unavailable": "Nothing is following the music's shape yet",
+        "description": "The music is building up toward a peak: the room's own section detector hears a build, or the "
+                       "AI listener says it is building. False while music plays without building; unknown while "
+                       "neither is listening, and while only test music is playing."},
+    "track_changed": {
+        "label": "a new song started", "source": "audio", "sections": (), "params": ("within_s", "include_test"),
+        "unavailable": "Nothing is following the songs yet",
+        "description": "A new song began within the last few seconds, from Sonos's now-playing or the room hearing "
+                       "the change. Unknown while nothing follows the music, and while only test music is playing."},
 }
 assert tuple(WORDS) == contract.SITUATIONS
 
@@ -241,6 +270,10 @@ def word_label(sid: str, params: Optional[dict] = None) -> str:
         return "the music is " + " or ".join(str(g) for g in p["genres"])
     if sid == "between" and isinstance(p.get("from"), str) and isinstance(p.get("to"), str):
         return f"it's {p['from']}-{p['to']}"
+    if sid == "mood_in" and isinstance(p.get("moods"), list) and p["moods"]:
+        return "the music feels " + " or ".join(str(m) for m in p["moods"])
+    if sid == "track_changed" and isinstance(p.get("within_s"), (int, float)) and not isinstance(p["within_s"], bool):
+        return f"a new song started in the last {duration_words(p['within_s'])}"
     if WORDS.get(sid, {}).get("source") == "light":       # "the room is darker than 50 lux"
         lux = p.get("lux")
         n = _fmt(lux) if isinstance(lux, (int, float)) and not isinstance(lux, bool) else "…"
@@ -907,8 +940,10 @@ class Situations:
             return self._sonos(p)[0] is not None or bool(p.get("now_playing") and p.get("volume"))
         if sid == "music_audible":
             return c.features is not None or bool(p.get("now_playing"))
-        if sid == "genre_in":
+        if sid in ("genre_in", "mood_in", "building"):
             return c.beliefs is not None or getattr(c, "music_context", None) is not None
+        if sid == "track_changed":
+            return getattr(c, "music_context", None) is not None
         if sid in ("energy_above", "quiet"):
             return c.features is not None
         if sid == "talking":
@@ -1227,27 +1262,137 @@ class Situations:
             need -= float(self._ced_cfg["hysteresis"])    # conf is the CED hysteresis under min_conf (no flapping)
         mc = self._context(now_s)
         g = mc.get("genre") if mc is not None and isinstance(mc.get("genre"), dict) else None
+        ctx_no: Optional[tuple] = None                    # why structure's genre couldn't say (the beliefs may)
         if g is not None:                                 # structure's genre (README S4.8's rule) comes first
             via = g.get("via") if g.get("via") in contract.GENRE_VIA else "listener"
             conf = _num(g.get("conf"), 0.0)
             ev = {"genre": g.get("word"), "conf": round(conf, 2), "genres": genres, "via": via,
                   "parent": g.get("parent")}
             if not isinstance(g.get("word"), str) or not g["word"]:
-                return None, via, {**ev, "why": "no genre word yet"}
-            if conf < need:
-                return None, via, {**ev, "why": "not confident"}
-            return g["word"] in genres, via, ev
+                ctx_no = (via, {**ev, "why": "no genre word yet"})
+            elif conf < need:
+                ctx_no = (via, {**ev, "why": "not confident"})
+            else:
+                return g["word"] in genres, via, ev
+        # README S5.20: the ML leads with a family that has no word (Hip Hop, Reggae, ...) or isn't sure: the AI
+        # listener's own word, as the director's _words does. Unknown when it has none either.
         b = self._call(self.ctx.beliefs)
         if not isinstance(b, dict) or b.get("state") in (None, "none", "fading"):
+            if ctx_no is not None:
+                return None, ctx_no[0], ctx_no[1]
             return None, "listener", {"why": "the listener has no confident view", "state": (b or {}).get("state")}
-        g = b.get("genre") if isinstance(b.get("genre"), dict) else None
-        if not g or not g.get("word"):
+        bg = b.get("genre") if isinstance(b.get("genre"), dict) else None
+        if not bg or not bg.get("word") or bg.get("word") == "unknown":
+            if ctx_no is not None:
+                return None, ctx_no[0], ctx_no[1]
             return None, "listener", {"why": "no genre yet"}
-        conf = _num(g.get("conf"), 0.0)
-        ev = {"genre": g["word"], "conf": round(conf, 2), "genres": genres, "via": "listener", "parent": None}
+        conf = _num(bg.get("conf"), 0.0)
+        ev = {"genre": bg["word"], "conf": round(conf, 2), "genres": genres, "via": "listener",
+              "parent": (ctx_no[1].get("parent") if ctx_no else None)}
+        if ctx_no is not None:
+            ev["ml"] = {"why": ctx_no[1]["why"], "genre": ctx_no[1].get("genre"), "conf": ctx_no[1].get("conf")}
         if conf < need:
+            if ctx_no is not None:
+                return None, ctx_no[0], ctx_no[1]
             return None, "listener", {**ev, "why": "not confident"}
-        return g["word"] in genres, "listener", ev
+        return bg["word"] in genres, "listener", ev
+
+    def _beliefs_live(self) -> Optional[dict]:
+        """The listener's beliefs while they are fresh or holding, else None."""
+        b = self._call(self.ctx.beliefs)
+        return b if isinstance(b, dict) and b.get("state") in ("fresh", "holding") else None
+
+    def _r_mood_in(self, p: dict, now_s: float):
+        """README S5.20: the listener's moods (beliefs, conf >= min_conf), or the ML worker's mood tags (music.context
+        ml.moods_top5, the same bar), include one of the rule's. False when a mood is confident and none is listed;
+        unknown until one is confident."""
+        moods = p.get("moods")
+        if not (isinstance(moods, list) and moods):
+            return None, "listener", {"why": "needs moods"}
+        test = self._test_measured(p, self._features(now_s))
+        if test is not None:
+            return None, "listener", test
+        need = _num(p.get("min_conf"), DESIGN_DEFAULTS["min_conf"])
+        if self._prev is not None:                        # as genre_in: no flapping at the bar
+            need -= float(self._ced_cfg["hysteresis"])
+        want = {str(m).strip().lower() for m in moods}
+        heard: dict[str, tuple[float, str]] = {}          # word -> (conf, via), the best of the two sources
+        b = self._beliefs_live()
+        for m in (b or {}).get("moods") or []:
+            if isinstance(m, dict) and isinstance(m.get("word"), str):
+                c = _num(m.get("conf"), 0.0)
+                if c > heard.get(m["word"], (-1.0, ""))[0]:
+                    heard[m["word"]] = (c, "listener")
+        mc = self._context(now_s)
+        ml = mc.get("ml") if mc is not None and isinstance(mc.get("ml"), dict) else {}
+        for x in ml.get("moods_top5") or []:
+            if isinstance(x, (list, tuple)) and len(x) >= 2 and isinstance(x[0], str):
+                w, c = x[0].strip().lower(), _num(x[1], 0.0)
+                if c > heard.get(w, (-1.0, ""))[0]:
+                    heard[w] = (c, "ml")
+        ev: dict = {"moods": sorted(want), "min_conf": round(need, 3),
+                    "heard": [{"word": w, "conf": round(c, 2), "via": v}
+                              for w, (c, v) in sorted(heard.items(), key=lambda kv: -kv[1][0])[:6]]}
+        if b is None and mc is None:
+            return None, "listener", {**ev, "why": "nothing is listening for the mood"}
+        hits = sorted(((c, w, v) for w, (c, v) in heard.items() if w in want and c >= need), reverse=True)
+        if hits:
+            return True, hits[0][2], {**ev, "mood": hits[0][1]}
+        if any(c >= need for c, _ in heard.values()):
+            return False, "listener" if b is not None else "ml", ev
+        return None, "listener", {**ev, "why": "no confident mood yet"}
+
+    def _r_building(self, p: dict, now_s: float):
+        """README S5.20: structure's section phase is "build" (while the room's sound is measured now), or the
+        listener's trajectory says "building" at min_conf. False when either is following the music and says
+        otherwise; unknown while neither is."""
+        f = self._features(now_s)
+        test = self._test_measured(p, f)
+        if test is not None:
+            return None, "structure", test
+        need = _num(p.get("min_conf"), DESIGN_DEFAULTS["min_conf"])
+        mc = self._context(now_s) if f is not None else None     # the mic off or no sound: structure isn't now
+        sec = mc.get("section") if mc is not None and isinstance(mc.get("section"), dict) else None
+        phase = sec.get("phase") if sec is not None and isinstance(sec.get("phase"), str) else None
+        b = self._beliefs_live()
+        tr = b.get("trajectory") if b is not None and isinstance(b.get("trajectory"), dict) else None
+        state = tr.get("state") if tr is not None and isinstance(tr.get("state"), str) else None
+        conf = _num((tr or {}).get("conf"), 0.0)
+        ev: dict = {"phase": phase, "build_progress": (sec or {}).get("build_progress"), "trajectory": state,
+                    "trajectory_conf": round(conf, 2) if tr is not None else None, "min_conf": need}
+        if phase == "build":
+            return True, "structure", ev
+        if state == "building" and conf >= need:
+            return True, "listener", ev
+        if phase is not None:
+            return False, "structure", ev
+        if state is not None and conf >= need:
+            return False, "listener", ev
+        return None, "structure", {**ev, "why": "nothing is following the music's shape"}
+
+    def _r_track_changed(self, p: dict, now_s: float):
+        """README S5.20: music.context's track changed (id > 0: a change since show_service started) within
+        ``within_s``, via Sonos's now-playing or the sound. False otherwise while Sonos says it or the sound is
+        measured; unknown while nothing follows the music."""
+        f = self._features(now_s)
+        test = self._test_measured(p, f)
+        if test is not None:
+            return None, "structure", test
+        within = _num(p.get("within_s"), DESIGN_DEFAULTS["within_s"])
+        mc = self._context(now_s)
+        tr = mc.get("track") if mc is not None and isinstance(mc.get("track"), dict) else None
+        if tr is None:
+            return None, "structure", {"why": "nothing is following the songs", "within_s": within}
+        tid = tr.get("id")
+        age = tr.get("age_s")
+        via = tr.get("via") if isinstance(tr.get("via"), str) else "structure"
+        ev = {"track_id": tid, "age_s": age, "via": tr.get("via"), "within_s": within}
+        if isinstance(tid, int) and not isinstance(tid, bool) and tid > 0 and isinstance(age, (int, float)) \
+                and not isinstance(age, bool) and age <= within:
+            return True, via, ev
+        if f is None and tr.get("via") != "sonos":
+            return None, "structure", {**ev, "why": "the music isn't being heard now"}
+        return False, via, ev
 
     def _r_energy_above(self, p: dict, now_s: float):
         if not isinstance(p.get("value"), (int, float)) or isinstance(p.get("value"), bool):
