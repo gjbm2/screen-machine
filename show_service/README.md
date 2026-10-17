@@ -6434,3 +6434,77 @@ much each enabled appliance responds. Plain words: docs/SHOW_ENGINE.md §8.10; t
 - **Later** (75's steps): the picture on the screens' INTENSITY channel and APL polling (3, with 04/75's renderer
   half: `pulse_depth`, `peak`, picture routes); one clock for change, using the plan's `change` (4); figure and
   ground caps (5). `pace` and `change` are published only: drive does not apply them yet.
+
+### S5.19 Auto triggers: light words, rules and check (17 Oct; the owner's ask)
+
+What starts a mode in Auto is that mode's own `autopilot` block in modes.json: per-mode config, built from the
+situation words (MIDI, the mic, Sonos, the listener, the clock and now the light). No code names a mode or a device.
+This adds the light words and the two routes the Room page's Auto editor (2f) is built on. Docs: §8.9.
+
+- **The light words** (situations.py `LightSensor`):
+  - `light_below` ("the room is darker than 50 lux") and `light_above` ("the room is brighter than 200 lux");
+  - params: `lux` (required), `sensor` (default show.yaml's) and `for_s`;
+  - source `light`, which ranks with `time` (4): the room's setting, not an activity.
+- **show.yaml `situations.light`** (starting points):
+
+  | Key | Value | What it does |
+  |---|---|---|
+  | `url` | `http://127.0.0.1:5000/api/lightsensor/lightsense` | Flask's own route; null: the words read unknown |
+  | `sensor` | `living-room` | The route's only sensor today. Unset: the only one in the answer |
+  | `poll_s` | 10 | One GET every 10 s |
+  | `smooth_s` | 60 | The median of the samples in the last minute |
+  | `hysteresis` | 0.15 | Below 50 holds until above 57.5; above 200 holds until under 170 |
+
+- **How the poll behaves:**
+  - It runs on show-brain's loop: one GET at a time, with a 2 s budget (at most half of poll_s), so the brain never waits.
+  - The samples are the answer's own history (the sensor's timestamps), else its current lux.
+  - A failed poll changes nothing: the last value holds until it goes stale.
+  - The words read unknown when there has been no good read for 3 × poll_s, when the sensor's newest sample is that old (Flask up, sensor silent), or when the sensor isn't in the answer.
+  - The snapshot's `light` shows the url, the sensors, the level and why it is unknown.
+- **The empty shapes** (autopilot.py `rule_of`, `from_of`, `leave_to_of`; one reading in Auto and in the check):
+  - no `autopilot` key: only when someone picks it;
+  - a rule absent, null or `{}`: never by itself, with no warning;
+  - `from` absent or `[]`: any mode. **Changed:** `[]` used to mean no mode;
+  - `leave_to` absent: `"previous"`.
+- **`GET /api/v1/autopilot/rules`** returns `{"modes": [...], "revision", "reachable", "error"}`, one row per mode of the room's config, in its order. Each row (contract.RuleView) has:
+  - `mode`, `label`;
+  - `enter`, `suggest`, `leave`: sentences, null when there is no rule;
+  - `summary`, `from`, `leave_to`, `problems`, `available`, `live`, `nodes`, `now`, `unknown_words`;
+  - `auto`: per rule, what Auto makes of it now (`holds`, `held_s`, `needs_s`, `blocked`), or null when Auto isn't evaluating it.
+- **`POST /api/v1/autopilot/check {"mode"?, "autopilot"?, "modes"?}`** answers the same keys plus `ok` (no error-level problem).
+  - `from` and `leave_to` validate against the room's modes, the unsaved `modes`, and (for `leave_to`) `"previous"`.
+  - It never saves. It answers 400 only for a body that isn't an object, a `mode` that isn't a name, or `modes` that isn't a list of names.
+- **One grammar.** `Conditions.check_nodes` is `check()` per node (`check()`'s strings are unchanged), and `Conditions.describe` gives the sentences and live readings. No second parser.
+- **Paths and words:**
+  - Paths: `enter_when`, `enter_when.any[1]`, `leave_when.all[0].not`, a word of a several-word object `enter_when.piano_playing`, `from`, `leave_to`, and `""` for the block itself.
+  - Problems are `{path, text, level}`.
+  - Errors: the rule never holds, or the room would refuse it (an unknown word, param or key, a bad value, an unknown mode).
+  - Warns: a word that can't be sensed now (its `unavailable` text, with `word`), a mode in its own `from`, `previous` in `from`, a `leave_to` of itself, `from`/`leave_to` with no rule to use them, and a leave rule with nothing to enter by.
+  - `live` is each node's raw truth now, from the same memoised reads Auto makes (for_s left out). A node with an error reads null.
+- **The vocabulary's hints.** Every param schema in `GET /api/v1/situations` carries the room's x-ui:
+  - `label`, `unit`, `unset_label`, `required` (on every param), `source`;
+  - `ends` and the slider widget on 0..1 and loudness scales;
+  - `enum` + `enum_labels` for the light sensors (the answer's, and show.yaml's own);
+  - each word's `unavailable` sentence.
+- **The chip's words** carry the rule's params ("Auto → Evening · the room is darker than 50 lux").
+- **Example** (modes.json's piano block, `GET /api/v1/autopilot/rules`, abridged):
+
+  ```json
+  {"mode": "piano", "label": "Piano",
+   "enter": "the piano is playing, for at least 10 s", "suggest": null,
+   "leave": "the piano has stopped, for at least 2 min",
+   "summary": "Auto switches to Piano when the piano is playing, for at least 10 s (only from Normal or Lights only). It goes back to the mode before when the piano has stopped, for at least 2 min.",
+   "from": ["gallery", "lights-only"], "leave_to": "previous", "problems": [], "available": true,
+   "live": {"enter_when": false, "leave_when": true},
+   "nodes": {"enter_when": "the piano is playing, for at least 10 s",
+             "leave_when": "the piano has stopped, for at least 2 min",
+             "from": "only from Normal or Lights only", "leave_to": "then back to the mode before"},
+   "now": {"enter": false, "suggest": null, "leave": true}, "unknown_words": [],
+   "auto": {"enter": {"holds": false, "held_s": 0.0, "needs_s": 10.0, "blocked": null}, "suggest": null, "leave": null}}
+  ```
+
+- **Tests:**
+  - `test_situations`: the median against a passer-by, hysteresis and its mirror, stale/silent/missing/unnamed sensors, the real poll (async, bounded, a failure keeps the last value until stale), the vocabulary's schemas and hints, the real show.yaml, sentences for nested all/any/not with for_s, and check_nodes' paths;
+  - `test_autopilot`: a light rule switches and leaves through the real poll; rules and check on good and bad blocks; the empty shapes in Auto itself;
+  - `test_api`: both routes, their 400s, degrade without Auto, and the light words through `/api/v1/situations`.
+- **Live** at the next show_service restart (`scripts/ctl restart show`). Nothing switches by light until a mode's block uses a light word: the owner's call.

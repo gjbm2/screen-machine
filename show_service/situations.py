@@ -30,19 +30,33 @@ its number is back past the threshold by ``situations.ced.hysteresis``); "speech
 Stage 3. ``genre_in`` reads music.context's genre (the ML's parents through show.yaml ``genre_map``, or the listener's
 words) first, then the listener's beliefs; once confident it stays so until its conf is the CED hysteresis under
 min_conf.
+
+The room's light (README S5.19). ``light_below`` / ``light_above`` read ``LightSensor``: show.yaml
+``situations.light.url`` (Flask's light sensor route) polled every ``poll_s`` on show-brain's loop (async, a short
+timeout: a slow or failed poll never blocks the brain and leaves the last value until it is stale), the median of the
+named sensor's samples over ``smooth_s`` (someone walking past the sensor doesn't flip it), with ``hysteresis`` (a word
+that holds keeps holding until the level is back past ``lux`` by that fraction). Unknown with no good read for 3 polls,
+while the sensor's own newest sample is that old, or when the sensor isn't in the answer. With no url, unknown.
+
+``Conditions.check_nodes`` and ``Conditions.describe`` give the same grammar per node, keyed by the editor's paths
+("enter_when.any[1]"): plain-words problems and sentences, and each node's live reading (autopilot.py's rules and check).
 """
 
 from __future__ import annotations
 
+import asyncio
 import bisect
 import json
 import logging
 import math
+import statistics
 import time
 from collections import deque
 from operator import itemgetter
 from datetime import datetime
 from typing import Any, Callable, Optional
+
+import aiohttp
 
 from . import contract, vban
 
@@ -64,9 +78,20 @@ CED_WINDOW_S = 3.0                      # README S4.8: the mean of the CED readi
 CED_HYSTERESIS = 0.05                   # starting point (show.yaml situations.ced.hysteresis): a CED word that holds
                                         # keeps holding until its number is back past its threshold by this much
 CONTEXT_STALE_S = 3.0                   # music.context comes at 1 Hz: older than this, genre_in reads the beliefs
+# README S5.19: the room's light (show.yaml situations.light)
+LIGHT_POLL_S = 10.0                     # starting point (situations.light.poll_s): how often the sensor route is read
+LIGHT_SMOOTH_S = 60.0                   # starting point (situations.light.smooth_s): the median over this window
+LIGHT_HYSTERESIS = 0.15                 # starting point (situations.light.hysteresis): a fraction of the word's lux
+LIGHT_STALE_POLLS = 3                   # no good read for this many polls: unknown
+LIGHT_TIMEOUT_S = 2.0                   # one poll's whole budget (never more than half of poll_s)
+LIGHT_KEEP = 4096                       # samples kept per sensor at most
+LIGHT_MAX_BYTES = 4 << 20               # an answer bigger than this isn't read
 
 # -- the vocabulary ---------------------------------------------------------------------------------------------------
-# Param JSON schemas (the room's catalog subset plus x-ui; "nullable" means null is allowed: "unset").
+# Param JSON schemas (the room's catalog subset plus x-ui; "nullable" means null is allowed: "unset"). The x-ui hints are
+# the room's own (room_service/roomstate/schema.py): label, unit, unset_label, help, widget, ends (a slider's two ends);
+# vocabulary() adds required, source, and enum + enum_labels where the choices are known now (the light sensors).
+_P = {"widget": "slider"}               # a bounded scale (the page shows a 0..1 one as a percentage)
 PARAM_SCHEMAS: dict[str, dict] = {
     "for_s": {"type": "number", "minimum": 0, "x-ui": {"label": "For at least", "unit": "s"}},
     "streams": {"type": "array", "items": {"type": "string"}, "nullable": True,
@@ -85,25 +110,38 @@ PARAM_SCHEMAS: dict[str, dict] = {
     "heard_by": {"type": "string", "nullable": True,
                  "x-ui": {"label": "The mic must hear it too", "unset_label": "Don't check"}},
     "heard_min_lufs": {"type": "number", "minimum": -70, "maximum": 0,
-                       "x-ui": {"label": "Mic loudness at least", "unit": "LUFS"}},
+                       "x-ui": {"label": "Mic loudness at least", "unit": "LUFS", **_P,
+                                "ends": {"min": "Faint", "max": "Loud"}}},
     "stream": {"type": "string", "nullable": True, "x-ui": {"label": "Audio stream", "unset_label": "Whichever plays"}},
-    "min_prob": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Classifier probability"}},
+    "min_prob": {"type": "number", "minimum": 0, "maximum": 1,
+                 "x-ui": {"label": "Classifier probability", **_P, "ends": {"min": "A hint", "max": "Certain"}}},
     "music_below": {"type": "number", "minimum": 0, "maximum": 1, "nullable": True,
-                    "x-ui": {"label": "Music probability under", "unset_label": "The starting point"}},
+                    "x-ui": {"label": "Music probability under", "unset_label": "The starting point", **_P,
+                             "ends": {"min": "No music at all", "max": "Any music"}}},
     "speech_below": {"type": "number", "minimum": 0, "maximum": 1, "nullable": True,
-                     "x-ui": {"label": "Speech probability under", "unset_label": "The starting point"}},
-    "dsp_min_gate": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Loud enough (gate)"}},
+                     "x-ui": {"label": "Speech probability under", "unset_label": "The starting point", **_P,
+                              "ends": {"min": "No speech at all", "max": "Any speech"}}},
+    "dsp_min_gate": {"type": "number", "minimum": 0, "maximum": 1,
+                     "x-ui": {"label": "Loud enough (gate)", **_P, "ends": {"min": "Faint", "max": "Loud"}}},
     "now_playing": {"type": "string", "nullable": True,
                     "x-ui": {"label": "Now-playing target", "unset_label": "No Sonos"}},
     "volume": {"type": "string", "nullable": True, "x-ui": {"label": "Volume target", "unset_label": "No Sonos"}},
     "own_change_s": {"type": "number", "minimum": 0,
                      "x-ui": {"label": "Ignore after the room changed it", "unit": "s"}},
     "genres": {"type": "array", "items": {"type": "string"}, "x-ui": {"label": "Genres", "widget": "vocab:genre"}},
-    "min_conf": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Confidence at least"}},
-    "value": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Energy above"}},
-    "gate_below": {"type": "number", "minimum": 0, "maximum": 1, "x-ui": {"label": "Quieter than (gate)"}},
+    "min_conf": {"type": "number", "minimum": 0, "maximum": 1,
+                 "x-ui": {"label": "Confidence at least", **_P, "ends": {"min": "A guess", "max": "Sure"}}},
+    "value": {"type": "number", "minimum": 0, "maximum": 1,
+              "x-ui": {"label": "Energy above", **_P, "ends": {"min": "Calm", "max": "Wild"}}},
+    "gate_below": {"type": "number", "minimum": 0, "maximum": 1,
+                   "x-ui": {"label": "Quieter than (gate)", **_P, "ends": {"min": "Silent", "max": "Loud"}}},
     "from": {"type": "string", "format": "HH:MM", "x-ui": {"label": "From", "widget": "time"}},
     "to": {"type": "string", "format": "HH:MM", "x-ui": {"label": "To", "widget": "time"}},
+    # README S5.19: the room's light
+    "lux": {"type": "number", "minimum": 0, "maximum": 100000,
+            "x-ui": {"label": "Light level", "unit": "lux",
+                     "help": "A room by day is a few hundred lux; a lamp-lit evening is about 10-50"}},
+    "sensor": {"type": "string", "nullable": True, "x-ui": {"label": "Light sensor", "unset_label": "The only sensor"}},
 }
 
 #: Design defaults: starting points (§8.9), used only where show.yaml's section and the rule both leave a param out.
@@ -114,57 +152,84 @@ DESIGN_DEFAULTS: dict[str, Any] = {
     "min_prob": 0.5, "dsp_min_gate": 0.3,
     "now_playing": None, "volume": None, "own_change_s": 60, "min_conf": 0.6, "gate_below": 0.05,
     "music_below": None, "speech_below": None,       # quiet: unset = the gate alone; talking: TALKING_MUSIC_BELOW
+    "sensor": None,                                  # unset: the light sensor's only sensor (show.yaml names it)
 }
 TALKING_MUSIC_BELOW = 0.5               # starting point (show.yaml situations.talking.music_below; §8.9: speech with
                                         # no music): talking's music threshold when show.yaml and the rule leave it out
 
 _PIANO = ("streams", "channels", "include_test")
 _SONOS = ("now_playing", "volume", "own_change_s")
-#: id -> label (page words), source (contract.SITUATION_RANK), the show.yaml sections it reads, params, required.
+#: id -> label (page words), source (contract.SITUATION_RANK), the show.yaml sections it reads, params, required, and
+#: unavailable: what the Auto editor says while the word can't be sensed (README S5.19).
+_NO_MIC = "The room mic isn't connected yet"
+_NO_PIANO = "The piano isn't connected yet"
+_NO_LIGHT = "The light sensor isn't reporting"
 WORDS: dict[str, dict] = {
     "piano_playing": {
-        "label": "the piano is playing", "source": "midi", "sections": ("midi",),
+        "label": "the piano is playing", "source": "midi", "sections": ("midi",), "unavailable": _NO_PIANO,
         "params": _PIANO + ("window_s", "min_notes", "min_span_s", "min_pitches", "heard_by", "heard_min_lufs"),
-        "description": "Enough note-ons on the listed MIDI streams and channels within the window, spread over time "
-                       "and keys. While the heard_by mic is up and playing, it must hear the piano too."},
+        "description": "Someone is really playing: enough notes in a short time, spread over a few seconds and "
+                       "several keys, so a single key press or a cat on the keys doesn't count. While the room's mic "
+                       "is on, it must hear the piano too, so silent practice with headphones never switches."},
     "piano_idle": {
         "label": "the piano has stopped", "source": "midi", "sections": ("midi",), "params": _PIANO + ("idle_note_s",),
-        "description": "No note-on for idle_note_s and no key or damper down. for_s is how long it has been idle."},
+        "unavailable": _NO_PIANO,
+        "description": "No note has been played for a moment and no key or the sustain pedal is held down. "
+                       "\u201cFor at least\u201d is how long the piano has been quiet."},
     "music_audible": {
-        "label": "music is playing", "source": "audio", "sections": ("music", "sonos"),
+        "label": "music is playing", "source": "audio", "sections": ("music", "sonos"), "unavailable": _NO_MIC,
         "params": ("stream", "min_prob", "dsp_min_gate", "include_test") + _SONOS,
-        "description": "The room mic hears music: the ML worker's music/speech classifier (CED, its last 3 s) says "
-                       "music at min_prob or more. Without the worker, a steady beat or a clear key over the loudness "
-                       "gate. Or Sonos is playing and the mic hears it (over the gate)."},
+        "description": "The room's mic hears music, not talk: the music-or-speech listener says music over its last "
+                       "few seconds. When that listener isn't running, a steady beat or a clear key, loud enough, "
+                       "counts. Sonos playing and loud enough to hear counts too."},
     "sonos_playing": {
         "label": "Sonos is playing", "source": "sonos", "sections": ("sonos",), "params": _SONOS,
-        "description": "The room's now-playing target says playing, not muted, with the volume above 0. Unknown for "
-                       "own_change_s after the room itself changed Sonos."},
+        "unavailable": "Sonos isn't connected yet",
+        "description": "Sonos says it is playing, isn't muted and has its volume up. Just after the room itself "
+                       "changed Sonos (a mode starting), this is left out for a short while, so Auto never reacts "
+                       "to its own change."},
     "genre_in": {
         "label": "the music is one of these genres", "source": "listener", "sections": (),
         "params": ("genres", "min_conf", "include_test"), "required": ("genres",),
-        "description": "The music's genre is one of these, confidently: the ML worker's genre family (through "
-                       "show.yaml genre_map) or the AI listener's word. Unknown while neither has one, and while a "
-                       "test stream is the one heard (unless include_test)."},
+        "unavailable": "Nothing is listening for the genre yet",
+        "description": "The music being heard is confidently one of these genres, from the room's own music "
+                       "listener (or the AI listener, if it is on). Unknown until one of them is sure, and while "
+                       "only test music is playing."},
     "energy_above": {
         "label": "the music is lively", "source": "audio", "sections": (),
-        "params": ("value", "stream", "include_test"), "required": ("value",),
-        "description": "The music's energy, averaged over about 10 s, is above this value. Unknown while a test "
-                       "stream is the one measured (unless include_test)."},
+        "params": ("value", "stream", "include_test"), "required": ("value",), "unavailable": _NO_MIC,
+        "description": "The music's energy, averaged over about 10 seconds, is above this level (0 calm, 1 "
+                       "flat out). Unknown while only test music is playing."},
     "talking": {
         "label": "people are talking", "source": "audio", "sections": ("talking",),
         "params": ("stream", "min_prob", "music_below", "include_test"),
-        "description": "The ML worker's music/speech classifier (CED, its last 3 s) hears speech at min_prob or more "
-                       "with music under music_below. Unknown without the worker."},
+        "unavailable": "The music/speech check isn't running yet",
+        "description": "The room's mic hears people talking, with little or no music under it, from the "
+                       "music-or-speech listener over its last few seconds. Unknown while that listener isn't "
+                       "running."},
     "quiet": {
         "label": "the room is quiet", "source": "audio", "sections": ("quiet",),
-        "params": ("stream", "gate_below", "music_below", "speech_below", "include_test"),
-        "description": "The mic stream is up and below the loudness gate. With the ML worker, also when the "
-                       "classifier hears neither music nor speech (both under their limits): only noise."},
+        "params": ("stream", "gate_below", "music_below", "speech_below", "include_test"), "unavailable": _NO_MIC,
+        "description": "The room's mic is on and hears almost nothing: below the loudness it needs, or only "
+                       "background noise (neither music nor talk). Unknown while the mic is off."},
     "between": {
         "label": "it's between these times", "source": "time", "sections": (), "params": ("from", "to"),
-        "required": ("from", "to"),
-        "description": "Local time in [from, to); from after to wraps past midnight."},
+        "required": ("from", "to"), "unavailable": "The clock isn't readable",
+        "description": "The time of day is between these two times. A \u201cFrom\u201d after the \u201cTo\u201d "
+                       "runs past midnight (22:00 to 07:00 is overnight)."},
+    # README S5.19: the room's light sensor (show.yaml situations.light)
+    "light_below": {
+        "label": "the room is darker than", "source": "light", "sections": ("light",), "params": ("lux", "sensor"),
+        "required": ("lux",), "unavailable": _NO_LIGHT,
+        "description": "The room's light sensor reads less than this, taken over the last minute so someone "
+                       "walking past doesn't count. Once true it stays true until the room is clearly brighter "
+                       "again (about 15 % more). Unknown while the sensor isn't reporting."},
+    "light_above": {
+        "label": "the room is brighter than", "source": "light", "sections": ("light",), "params": ("lux", "sensor"),
+        "required": ("lux",), "unavailable": _NO_LIGHT,
+        "description": "The room's light sensor reads more than this, taken over the last minute so a passing "
+                       "shadow doesn't count. Once true it stays true until the room is clearly darker again (about "
+                       "15 % less). Unknown while the sensor isn't reporting."},
 }
 assert tuple(WORDS) == contract.SITUATIONS
 
@@ -176,7 +241,29 @@ def word_label(sid: str, params: Optional[dict] = None) -> str:
         return "the music is " + " or ".join(str(g) for g in p["genres"])
     if sid == "between" and isinstance(p.get("from"), str) and isinstance(p.get("to"), str):
         return f"it's {p['from']}-{p['to']}"
+    if WORDS.get(sid, {}).get("source") == "light":       # "the room is darker than 50 lux"
+        lux = p.get("lux")
+        n = _fmt(lux) if isinstance(lux, (int, float)) and not isinstance(lux, bool) else "…"
+        at = f" (the {p['sensor']} sensor)" if isinstance(p.get("sensor"), str) and p["sensor"] else ""
+        return f"{WORDS[sid]['label']} {n} lux{at}"
     return WORDS[sid]["label"] if sid in WORDS else sid
+
+
+def _fmt(v: float) -> str:
+    """A number in page words: 50, 50.5."""
+    f = float(v)
+    return str(int(f)) if f.is_integer() else f"{f:g}"
+
+
+def duration_words(s: Any) -> str:
+    """for_s in page words: "10 s", "2 min", "1 hour", "90 s"."""
+    n = max(0.0, _num(s, 0.0))
+    if n >= 3600 and n % 3600 == 0:
+        h = int(n // 3600)
+        return f"{h} hour" + ("s" if h != 1 else "")
+    if n >= 60 and n % 60 == 0:
+        return f"{int(n // 60)} min"
+    return f"{_fmt(n)} s"
 
 
 def rank_of(sid: str) -> int:
@@ -342,6 +429,250 @@ class NoteTap:
                 "streams": per}
 
 
+# -- LightSensor (show-brain: an asyncio task; README S5.19) ---------------------------------------------------------------
+def _fnum(v: Any) -> Optional[float]:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+        return None
+    return float(v)
+
+
+def friendly(name: str) -> str:
+    """A config name in page words: "living-room" -> "Living room"."""
+    t = name.replace("-", " ").replace("_", " ").strip()
+    return t[:1].upper() + t[1:] if t else name
+
+
+class LightSensor:
+    """The room's light level, from show.yaml ``situations.light``: ``url`` (Flask's light sensor route: JSON
+    ``{"sensors": {name: {"current": {"lux"}, "history": [{"timestamp", "lux"}, ...]}}}``), ``sensor`` (the one the
+    light words read when a rule names none; unset: the answer's only sensor), ``poll_s``, ``smooth_s`` and
+    ``hysteresis`` (read by the words). Polled on show-brain's loop: one GET at a time, ``LIGHT_TIMEOUT_S`` at most (never
+    more than half of poll_s), so the brain never waits on it. A failed poll changes nothing: the last value holds until
+    it is stale. ``ingest`` and ``reading`` are plain calls (tests drive them without a socket).
+
+    Samples are the answer's history (the sensor's own timestamps), else its current lux as of the poll. A sensor's read
+    is good when its newest sample is no older than stale_s (3 polls); a sensor with no good read for stale_s, or not in
+    the last answer, reads unknown."""
+
+    def __init__(self, *, mono: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time) -> None:
+        self._mono, self._wall = mono, wall
+        self.url: Optional[str] = None
+        self.sensor: Optional[str] = None
+        self.poll_s, self.smooth_s, self.hysteresis = LIGHT_POLL_S, LIGHT_SMOOTH_S, LIGHT_HYSTERESIS
+        self._samples: dict[str, deque] = {}              # sensor -> deque[(wall t, lux)], oldest first
+        self._good: dict[str, float] = {}                 # sensor -> mono of its last good read
+        self._quiet: dict[str, float] = {}                # sensor -> how old its newest sample was (a silent sensor)
+        self._names: list[str] = []                       # the sensors in the last good answer
+        self._answered = False                            # a good answer has come since the url was set
+        self.error: Optional[str] = None
+        self.stats = {"polls": 0, "ok": 0, "failed": 0}
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._task: Optional[asyncio.Task] = None
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    # -- config ------------------------------------------------------------------------------------------------------
+    def configure(self, sec: Any) -> list[str]:
+        """show.yaml ``situations.light`` -> problems (a bad value keeps its starting point). Starts or stops the poll
+        when the url comes or goes."""
+        probs: list[str] = []
+        sec = sec if isinstance(sec, dict) else {}
+        url = sec.get("url")
+        if url is not None and not (isinstance(url, str) and url.startswith(("http://", "https://"))):
+            probs.append(f"situations.light.url: {url!r} is not an http(s) URL: the light words read unknown")
+            url = None
+        sensor = sec.get("sensor")
+        if sensor is not None and not (isinstance(sensor, str) and sensor):
+            probs.append(f"situations.light.sensor: {sensor!r} is not a sensor name: unset (the only sensor)")
+            sensor = None
+
+        def num(key: str, lo: float, hi: float, d: float) -> float:
+            v = sec.get(key)
+            if v is None:
+                return d
+            n = _fnum(v)
+            if n is None or not lo <= n <= hi:
+                probs.append(f"situations.light.{key}: {v!r} is not {lo:g}..{hi:g}: {d:g} used")
+                return d
+            return n
+
+        poll = num("poll_s", 1.0, 600.0, LIGHT_POLL_S)
+        smooth = num("smooth_s", 0.0, 3600.0, LIGHT_SMOOTH_S)
+        hyst = num("hysteresis", 0.0, 1.0, LIGHT_HYSTERESIS)
+        if url != self.url:
+            self._samples.clear()
+            self._good.clear()
+            self._quiet.clear()
+            self._names, self._answered, self.error = [], False, None
+        self.url, self.sensor, self.poll_s, self.smooth_s, self.hysteresis = url, sensor, poll, smooth, hyst
+        self._ensure()
+        return probs
+
+    def stale_s(self) -> float:
+        return LIGHT_STALE_POLLS * self.poll_s
+
+    # -- the poll (show-brain's loop) --------------------------------------------------------------------------------
+    def start(self, loop: Optional[asyncio.AbstractEventLoop]) -> None:
+        self._loop = loop
+        self._ensure()
+
+    def _ensure(self) -> None:
+        loop = self._loop
+        want = self.url is not None and loop is not None and not loop.is_closed()
+        if want and self._task is None:
+            self._task = loop.create_task(self._run(), name="show-light")
+        elif not want and self._task is not None:
+            self._task.cancel()
+            self._task = None
+
+    def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
+        s, self._session = self._session, None
+        loop = self._loop
+        if s is not None and not s.closed and loop is not None and not loop.is_closed():
+            try:
+                loop.create_task(s.close())
+            except RuntimeError:
+                pass
+
+    async def _run(self) -> None:
+        try:
+            while True:
+                await self.poll_once()
+                await asyncio.sleep(self.poll_s)
+        finally:
+            s, self._session = self._session, None
+            if s is not None and not s.closed:
+                try:
+                    await asyncio.shield(s.close())
+                except BaseException:
+                    pass
+
+    async def poll_once(self) -> bool:
+        """One GET of ``url``; True when its answer was taken. Never raises but for cancellation."""
+        url = self.url
+        if not url:
+            return False
+        self.stats["polls"] += 1
+        try:
+            if self._session is None or self._session.closed:
+                self._session = aiohttp.ClientSession()
+            budget = aiohttp.ClientTimeout(total=min(LIGHT_TIMEOUT_S, self.poll_s / 2.0))
+            async with self._session.get(url, timeout=budget) as r:
+                if r.status != 200:
+                    raise ValueError(f"answered {r.status}")
+                chunks, size = [], 0
+                async for chunk in r.content.iter_chunked(1 << 16):
+                    size += len(chunk)
+                    if size > LIGHT_MAX_BYTES:
+                        raise ValueError("the answer is too big")
+                    chunks.append(chunk)
+            obj = json.loads(b"".join(chunks))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:                            # the last value holds until it is stale
+            self.stats["failed"] += 1
+            self.error = f"GET {url}: {type(e).__name__}: {e}"[:300]
+            return False
+        if url != self.url:                               # the url changed meanwhile: not this one's answer
+            return False
+        return self.ingest(obj)
+
+    def ingest(self, obj: Any) -> bool:
+        """One answer from the sensor route -> samples. True when it was an answer (even one without our sensor)."""
+        sensors = obj.get("sensors") if isinstance(obj, dict) else None
+        if not isinstance(sensors, dict):
+            self.stats["failed"] += 1
+            self.error = "the light sensor's answer has no sensors"
+            return False
+        now_m, now_w, stale = self._mono(), self._wall(), self.stale_s()
+        names = []
+        for name, s in sensors.items():
+            if not isinstance(name, str) or not name or not isinstance(s, dict):
+                continue
+            names.append(name)
+            pts = []
+            for h in s.get("history") if isinstance(s.get("history"), list) else ():
+                if isinstance(h, dict):
+                    t, lux = _fnum(h.get("timestamp")), _fnum(h.get("lux"))
+                    if t is not None and lux is not None and lux >= 0:
+                        pts.append((t, lux))
+            if not pts:                                   # no timestamps: the current lux, as of this poll
+                cur = s.get("current") if isinstance(s.get("current"), dict) else {}
+                lux = _fnum(cur.get("lux"))
+                if lux is None or lux < 0:
+                    continue
+                pts = [(now_w, lux)]
+            pts.sort(key=itemgetter(0))
+            dq = self._samples.setdefault(name, deque())
+            last_t = dq[-1][0] if dq else -math.inf
+            dq.extend(p for p in pts if p[0] > last_t)
+            newest = dq[-1][0]
+            cut = newest - self.smooth_s - 1.0
+            while dq and (dq[0][0] < cut or len(dq) > LIGHT_KEEP):
+                dq.popleft()
+            quiet = now_w - newest
+            if quiet > stale:                             # the route answers, but the sensor itself went silent
+                self._quiet[name] = quiet
+                continue
+            self._quiet.pop(name, None)
+            self._good[name] = now_m
+        self._names = sorted(names)
+        self._answered = True
+        self.stats["ok"] += 1
+        self.error = None
+        return True
+
+    # -- reading (show-brain) ----------------------------------------------------------------------------------------
+    def choices(self) -> list[str]:
+        """The sensors to offer: the last answer's, and show.yaml's own (never an invented one)."""
+        return sorted(set(self._names) | ({self.sensor} if self.sensor else set()))
+
+    def which(self, sensor: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
+        """(the sensor a word reads, None) or (None, why not)."""
+        if not self.url:
+            return None, {"why": "no light sensor is set (show.yaml situations.light.url)"}
+        name = sensor or self.sensor
+        if name:
+            return name, None
+        if len(self._names) == 1:
+            return self._names[0], None
+        if not self._names:
+            return None, {"why": "no light reading yet", "error": self.error}
+        return None, {"why": "say which sensor (show.yaml situations.light.sensor)", "sensors": list(self._names)}
+
+    def reading(self, sensor: Optional[str] = None) -> tuple[Optional[float], dict]:
+        """(the median lux over smooth_s, evidence), or (None, why) while it can't be read now."""
+        name, why = self.which(sensor)
+        if name is None:
+            return None, why or {}
+        ev: dict = {"sensor": name}
+        if self._answered and name not in self._names:
+            return None, {**ev, "why": f"the light sensor has no {name!r}", "sensors": list(self._names)}
+        good = self._good.get(name)
+        age = None if good is None else self._mono() - good
+        if age is None or age > self.stale_s():
+            q = self._quiet.get(name)
+            what = (f"the sensor hasn't reported for {q:.0f} s" if q is not None else
+                    "no light reading yet" if age is None else f"no good light reading for {age:.0f} s")
+            return None, {**ev, "why": what, "error": self.error}
+        dq = self._samples.get(name) or deque()
+        if not dq:
+            return None, {**ev, "why": "no light reading yet"}
+        t0 = dq[-1][0] - self.smooth_s
+        vals = [lux for t, lux in dq if t >= t0]
+        med = float(statistics.median(vals))
+        return med, {**ev, "level": round(med, 1), "last": round(dq[-1][1], 1), "samples": len(vals),
+                     "smooth_s": self.smooth_s, "read_age_s": round(age, 1)}
+
+    def view(self) -> dict:
+        lvl, ev = self.reading(None) if self.url else (None, {"why": "off"})
+        return {"url": self.url, "sensor": self.sensor, "sensors": list(self._names), "level": lvl,
+                "why": None if lvl is not None else ev.get("why"), "poll_s": self.poll_s, "smooth_s": self.smooth_s,
+                "hysteresis": self.hysteresis, "error": self.error, "stats": dict(self.stats)}
+
+
 # -- Situations (component "situations", 1 Hz) ----------------------------------------------------------------------------
 class Situations:
     """Reads the vocabulary. ``read`` evaluates one word with a rule's params on top of show.yaml's; ``tick`` samples
@@ -351,10 +682,12 @@ class Situations:
     tick_hz = contract.SLOW_TICK_HZ
 
     def __init__(self, ctx: contract.BrainContext, *, local: Optional[Callable[[], datetime]] = None,
-                 mono: Callable[[], float] = time.monotonic) -> None:
+                 mono: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time) -> None:
         self.ctx = ctx
         self._local = local or datetime.now
         self._mono = mono
+        self.light = LightSensor(mono=mono, wall=wall)    # README S5.19: show.yaml situations.light
+        self.last_now: Optional[float] = None             # the last tick's now_s (autopilot's rules read at it)
         # CED (Stage 4): (stream) -> {CED_GROUPS word: 0..1, "stream", "n"} | None. Bound to ctx.ml at start (or the
         # first tick); a test may set its own.
         self.classifier: Optional[Callable[[Optional[str]], Optional[dict]]] = None
@@ -403,6 +736,10 @@ class Situations:
         ml = (settings or {}).get("ml") if isinstance(settings, dict) else None
         rs = _num(ml.get("results_stale_s"), -1.0) if isinstance(ml, dict) else -1.0
         self._results_stale_s = rs if rs > 0 else CED_WINDOW_S
+        light = self._section.get("light")
+        if light is not None and not isinstance(light, dict):
+            probs.append("situations.light: not a mapping")
+        probs.extend(self.light.configure(light))
         self._speech_words = words
         self._ced_cfg, self.problems = cfg, probs
         self.revision += 1
@@ -413,9 +750,16 @@ class Situations:
 
     def start(self) -> None:
         self._bind_classifier()
+        loop = self.ctx.loop
+        if loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None                               # no loop (a test): the light is read only by hand
+        self.light.start(loop)
 
     def stop(self) -> None:
-        pass
+        self.light.stop()
 
     def persist(self) -> None:
         return None
@@ -427,6 +771,7 @@ class Situations:
 
     def tick(self, now_s: float) -> None:
         self._bind_classifier()
+        self.last_now = now_s
         self._sample(now_s)
         readings = {}
         for sid in WORDS:
@@ -438,7 +783,7 @@ class Situations:
         for k in [k for k, v in self._since.items() if v[2] < cut]:
             del self._since[k]
         self._snap = {"readings": readings, "vocabulary": self.vocabulary(), "classifier": self._ced_view(now_s),
-                      "problems": list(self.problems)}
+                      "light": self.light.view(), "problems": list(self.problems)}
 
     def snapshot(self) -> dict:
         return self._snap
@@ -518,22 +863,40 @@ class Situations:
                 return f"show.yaml situations.{sec}"
         return "design default (starting point)" if k in DESIGN_DEFAULTS else "set in the rule"
 
+    def _choices(self, k: str) -> list[str]:
+        """The values a param can take right now, where they are known (the light sensors), else []."""
+        return self.light.choices() if k == "sensor" else []
+
     def vocabulary(self) -> list[contract.SituationDef]:
         out = []
         for sid, w in WORDS.items():
             p = self.params(sid)
-            params = {"for_s": {**PARAM_SCHEMAS["for_s"], "default": 0}}
+            params = {"for_s": {**PARAM_SCHEMAS["for_s"], "default": 0,
+                                "x-ui": {**PARAM_SCHEMAS["for_s"]["x-ui"], "required": False}}}
             for k in w["params"]:
                 sch = {**PARAM_SCHEMAS[k], "x-ui": {**PARAM_SCHEMAS[k].get("x-ui", {}),
-                                                    "source": self._param_source(sid, k)}}
+                                                    "source": self._param_source(sid, k),
+                                                    "required": k in w.get("required", ())}}
                 if k in p:
                     sch["default"] = p[k]
-                if k in w.get("required", ()):
-                    sch["x-ui"]["required"] = True
+                choices = self._choices(k)
+                if choices:
+                    sch["enum"] = choices
+                    sch["x-ui"].update(enum_labels=[friendly(c) for c in choices], widget="select")
                 params[k] = sch
             out.append({"id": sid, "label": w["label"], "description": w["description"], "source": w["source"],
-                        "rank": rank_of(sid), "params": params, "available": self._available(sid, p)})
+                        "rank": rank_of(sid), "params": params, "available": self._available(sid, p),
+                        "unavailable": w.get("unavailable") or "It can't be sensed right now"})
         return out
+
+    def available(self, sid: str, params: Optional[dict] = None) -> bool:
+        """The word's inputs exist now, with a rule's params on show.yaml's (False: it reads unknown)."""
+        if sid not in WORDS:
+            return False
+        try:
+            return bool(self._available(sid, self.params(sid, params)))
+        except Exception:
+            return False
 
     def _available(self, sid: str, p: dict) -> bool:
         c = self.ctx
@@ -550,6 +913,8 @@ class Situations:
             return c.features is not None
         if sid == "talking":
             return self.classifier is not None
+        if WORDS[sid]["source"] == "light":
+            return self.light.reading(p.get("sensor") if isinstance(p.get("sensor"), str) else None)[0] is not None
         return True
 
     # -- reading one word -----------------------------------------------------------------------------------------------
@@ -965,6 +1330,30 @@ class Situations:
         mins = t.hour * 60 + t.minute + t.second / 60.0
         return in_window(mins, a, b), "clock", {"now": f"{t.hour:02d}:{t.minute:02d}", "from": p["from"], "to": p["to"]}
 
+    def _r_light_below(self, p: dict, now_s: float):
+        return self._light_word(p, below=True)
+
+    def _r_light_above(self, p: dict, now_s: float):
+        return self._light_word(p, below=False)
+
+    def _light_word(self, p: dict, below: bool):
+        """README S5.19: the median level against lux. While it holds (its last reading was True) it keeps holding
+        until the level is past lux by the hysteresis: darker than 50 lux stays true up to 57.5 (0.15), brighter than
+        200 down to 170."""
+        lux = _fnum(p.get("lux"))
+        if lux is None:
+            return None, "light", {"why": "needs lux"}
+        sensor = p.get("sensor") if isinstance(p.get("sensor"), str) and p.get("sensor") else None
+        level, ev = self.light.reading(sensor)
+        if level is None:
+            return None, "light", ev
+        h = float(self.light.hysteresis) if self._prev is True else 0.0
+        if below:                                         # (1e-9: 50 x 1.15 is 57.49999... in floats)
+            v = level <= lux * (1.0 + h) + 1e-9 if h else level < lux
+        else:
+            v = level >= lux * (1.0 - h) - 1e-9 if h else level > lux
+        return v, "light", {**ev, "lux": lux, "hysteresis": h}
+
 
 # -- Conditions -------------------------------------------------------------------------------------------------------
 def kleene_all(vals: list[Optional[bool]]) -> Optional[bool]:
@@ -983,6 +1372,61 @@ def _for(v: Any) -> float:
     return max(0.0, _num(v, 0.0))
 
 
+COMB_WORDS = {"all": "both / all of", "any": "any of", "not": "not"}     # the combinators in page words
+
+
+def _join(path: str, seg: str) -> str:
+    return f"{path}.{seg}" if path else seg
+
+
+def word_path(node: dict, path: str, word: str) -> str:
+    """A word's path in a rule: the object's own path when it holds only that word (and for_s), else <path>.<word>."""
+    return path if sum(1 for k in node if k != "for_s") == 1 else _join(path, word)
+
+
+def param_label(k: str) -> str:
+    return (PARAM_SCHEMAS.get(k) or {}).get("x-ui", {}).get("label") or k
+
+
+def _wrap(t: str) -> str:
+    """A part of a bigger sentence: in brackets when it is itself a list or carries a for_s (a ", " or ": " outside
+    any brackets it already has)."""
+    depth = 0
+    for i, ch in enumerate(t):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0 and ch in ",:" and t[i + 1:i + 2] == " ":
+            return f"({t})"
+    return t
+
+
+def _list_words(items: list[str], conj: str) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {conj} " + items[-1]
+
+
+def all_words(items: list[str]) -> str:
+    """"both: A and B", "all of: A, B and C"."""
+    if not items:
+        return "?"
+    if len(items) == 1:
+        return items[0]
+    return ("both: " if len(items) == 2 else "all of: ") + _list_words(items, "and")
+
+
+def any_words(items: list[str]) -> str:
+    """"any of: A or B"."""
+    if not items:
+        return "?"
+    return items[0] if len(items) == 1 else "any of: " + _list_words(items, "or")
+
+
+def for_words(v: Any) -> str:
+    n = _fnum(v)
+    return f", for at least {duration_words(n)}" if n is not None and n > 0 else ""
+
+
 class Conditions:
     """The rule grammar (README S3.8):
 
@@ -992,7 +1436,12 @@ class Conditions:
     Three-valued (Kleene). A node *holds* when it has been true continuously for its for_s; a node that is true but not
     yet for long enough counts as false for its parent. False or unknown resets a timer, and so does a gap in
     evaluation (> GAP_S without a call). Timers are keyed by path: ``<rule path>/all/0/piano_playing``. A rule whose
-    text changes is reset. A rule with problems (unknown word or param, bad value) never holds."""
+    text changes is reset. A rule with problems (unknown word or param, bad value) never holds.
+
+    README S5.19: ``check_nodes`` is ``check`` per node and ``describe`` is the rule in page words with each node's
+    live reading, both keyed by the editor's paths (``enter_when.any[1]``, ``leave_when.all[0].not``; a word of a
+    several-word object ``enter_when.piano_playing``): "both: A and B", "any of: A or B", "not A", ", for at least 2
+    min"."""
 
     GAP_S = 3.0
 
@@ -1007,61 +1456,139 @@ class Conditions:
     # -- checking -------------------------------------------------------------------------------------------------------
     def check(self, cond: Any) -> list[str]:
         """Problems, in page words; [] when fine. Never raises."""
-        out: list[str] = []
+        return [p["where"] for p in self.check_nodes(cond)]
+
+    def check_nodes(self, cond: Any, root: str = "") -> list[dict]:
+        """check(), per node (README S5.19): [{"path": the node's path under ``root`` ("enter_when.any[1]", see
+        contract.RuleProblem), "text": plain words for the Room page, "level": "error", "where": check()'s words}].
+        Each one means the rule never holds. Never raises."""
+        out: list[dict] = []
         try:
-            self._check(cond, "", out)
+            self._check(cond, "", root, out)
         except Exception as e:                            # never raises
-            out.append(f"can't read this condition ({type(e).__name__})")
+            out.append({"path": root, "text": "This condition can't be read", "level": "error",
+                        "where": f"can't read this condition ({type(e).__name__})"})
         return out
 
-    def _check_for(self, v: Any, where: str, out: list[str]) -> None:
-        if (err := check_param("for_s", v)) is not None:
-            out.append(f"{where or '/'}for_s {err}")
+    @staticmethod
+    def _bad(out: list[dict], where: str, path: str, text: str) -> None:
+        out.append({"path": path, "text": text, "level": "error", "where": where})
 
-    def _check(self, node: Any, where: str, out: list[str]) -> None:
+    def _check_for(self, v: Any, where: str, path: str, out: list[dict]) -> None:
+        if (err := check_param("for_s", v)) is not None:
+            self._bad(out, f"{where or '/'}for_s {err}", path, f"“For at least” {err}")
+
+    def _check(self, node: Any, where: str, path: str, out: list[dict]) -> None:
         if not isinstance(node, dict) or not node:
-            out.append(f"{where or '/'}: must be an object of situations, or all/any/not")
+            self._bad(out, f"{where or '/'}: must be an object of situations, or all/any/not", path,
+                      "Empty: pick what Auto should notice" if isinstance(node, dict) else
+                      "This isn't a condition: pick what Auto should notice, or both / any of / not")
             return
         combs = [k for k in node if k in contract.COMBINATORS]
         if combs:
-            if len(combs) > 1 or set(node) - {combs[0], "for_s"}:
-                out.append(f"{where or '/'}: {combs[0]} stands alone (only for_s may sit beside it)")
+            c = combs[0]
+            if len(combs) > 1 or set(node) - {c, "for_s"}:
+                self._bad(out, f"{where or '/'}: {c} stands alone (only for_s may sit beside it)", path,
+                          f"“{COMB_WORDS[c]}” must stand alone (only “For at least” may sit beside it)")
                 return
             if "for_s" in node:
-                self._check_for(node["for_s"], where + "/", out)
-            c, body = combs[0], node[combs[0]]
+                self._check_for(node["for_s"], where + "/", path, out)
+            body = node[c]
             if c == "not":
-                self._check(body, f"{where}/not", out)
+                self._check(body, f"{where}/not", _join(path, "not"), out)
                 return
             if not isinstance(body, list) or not body:
-                out.append(f"{where}/{c}: must be a non-empty list of conditions")
+                self._bad(out, f"{where}/{c}: must be a non-empty list of conditions", path,
+                          f"“{COMB_WORDS[c]}” needs at least one condition")
                 return
             for i, ch in enumerate(body):
-                self._check(ch, f"{where}/{c}/{i}", out)
+                self._check(ch, f"{where}/{c}/{i}", f"{_join(path, c)}[{i}]", out)
             return
         for word, params in node.items():
             if word == "for_s":
-                self._check_for(params, where + "/", out)
+                self._check_for(params, where + "/", path, out)
                 continue
+            wpath = word_path(node, path, word)
             if word not in WORDS:
-                out.append(f"{where}/{word}: unknown situation (known: {', '.join(WORDS)})")
+                self._bad(out, f"{where}/{word}: unknown situation (known: {', '.join(WORDS)})", wpath,
+                          "This isn't something the room can notice (it may have been renamed)")
                 continue
+            label = WORDS[word]["label"]
             if params is None or params is True:
                 params = {}
             if not isinstance(params, dict):
-                out.append(f"{where}/{word}: params must be an object (or true)")
+                self._bad(out, f"{where}/{word}: params must be an object (or true)", wpath,
+                          f"“{label}”: its settings must be an object (or true)")
                 continue
             for k, v in params.items():
                 if k == "for_s":
-                    self._check_for(v, f"{where}/{word}/", out)
+                    self._check_for(v, f"{where}/{word}/", wpath, out)
                 elif k not in WORDS[word]["params"]:
-                    out.append(f"{where}/{word}/{k}: unknown param (known: for_s, {', '.join(WORDS[word]['params'])})")
+                    self._bad(out, f"{where}/{word}/{k}: unknown param (known: for_s, {', '.join(WORDS[word]['params'])})",
+                              wpath, f"“{label}” has no setting “{k}”")
                 elif (err := check_param(k, v)) is not None:
-                    out.append(f"{where}/{word}/{k} {err}")
+                    self._bad(out, f"{where}/{word}/{k} {err}", wpath, f"“{label}”: “{param_label(k)}” {err}")
             merged = self.s.params(word, params)
             for req in WORDS[word].get("required", ()):
                 if merged.get(req) is None:
-                    out.append(f"{where}/{word}: needs {req}")
+                    self._bad(out, f"{where}/{word}: needs {req}", wpath, f"“{label}” needs “{param_label(req)}”")
+
+    # -- page words (README S5.19) ------------------------------------------------------------------------------------
+    def describe(self, cond: Any, root: str = "", now_s: Optional[float] = None) -> dict:
+        """The rule in page words and what each node reads now, keyed by check_nodes' paths under ``root``:
+        {"text": the whole rule's sentence, "nodes": {path: sentence}, "live": {path: True | False | None}, "words":
+        {path: {"id", "params"}}}. live is the raw truth now: the words' readings (the same reads, memoised, that Auto's
+        own evaluation makes) combined with Kleene logic, every for_s left out (Auto's timers are its own). Without
+        ``now_s`` nothing is read and every node is None. Malformed parts read "?" and None (check_nodes says why).
+        Never raises."""
+        out: dict = {"text": "?", "nodes": {}, "live": {}, "words": {}}
+        try:
+            out["text"] = self._desc(cond, root, now_s, out)[0]
+        except Exception:
+            log.debug("describe failed", exc_info=True)
+        return out
+
+    def _desc(self, node: Any, path: str, now_s: Optional[float], out: dict) -> tuple[str, Optional[bool]]:
+        text, v = "?", None
+        if isinstance(node, dict) and node:
+            combs = [k for k in node if k in contract.COMBINATORS]
+            if combs:
+                c, body = combs[0], node[combs[0]]
+                if c == "not":
+                    t, v0 = self._desc(body, _join(path, "not"), now_s, out)
+                    text, v = "not " + _wrap(t), (None if v0 is None else not v0)
+                else:
+                    kids = [self._desc(ch, f"{_join(path, c)}[{i}]", now_s, out)
+                            for i, ch in enumerate(body)] if isinstance(body, list) else []
+                    texts, vals = [_wrap(t) for t, _ in kids], [x for _, x in kids]
+                    if c == "all":
+                        text, v = all_words(texts), (kleene_all(vals) if kids else None)
+                    else:
+                        text, v = any_words(texts), (kleene_any(vals) if kids else None)
+            else:
+                kids = []
+                for w, prm in node.items():
+                    if w == "for_s":
+                        continue
+                    wp = word_path(node, path, w)
+                    prm = {} if prm is None or prm is True else prm
+                    params = {k: x for k, x in prm.items() if k != "for_s"} if isinstance(prm, dict) else {}
+                    t = (word_label(w, params) if w in WORDS else f"“{w}”") + (
+                        for_words(prm.get("for_s")) if isinstance(prm, dict) else "")
+                    wv = None
+                    if now_s is not None and w in WORDS and isinstance(prm, dict):
+                        wv = self.s.read(w, params, now_s)["value"]
+                    out["words"][wp] = {"id": w, "params": params}
+                    if wp != path:
+                        out["nodes"][wp], out["live"][wp] = t, wv
+                    kids.append((t, wv))
+                if len(kids) == 1:
+                    text, v = kids[0]
+                elif kids:
+                    text, v = all_words([_wrap(t) for t, _ in kids]), kleene_all([x for _, x in kids])
+            text += for_words(node.get("for_s"))
+        out["nodes"][path], out["live"][path] = text, v
+        return text, v
 
     def _problems(self, text: str, cond: Any) -> list[str]:
         key = (text, self.s.revision)

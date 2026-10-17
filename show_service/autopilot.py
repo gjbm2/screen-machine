@@ -24,6 +24,16 @@ Owner rules kept here:
 - A leave sends the union of the left mode's and the destination's ``skip`` (what Auto entered with stays skipped);
   a person going straight back to the mode Auto left, within correction_s, is always a correction.
 - Put-back is the room's own per-row ``restore``; nothing here stores or restores device state.
+
+The empty shapes (README S5.19, §8.9), one reading everywhere (``rule_of``, ``from_of``, ``leave_to_of``): no
+``autopilot`` key: the mode starts only when someone picks it; ``enter_when`` / ``otherwise_suggest_when`` /
+``leave_when`` absent, null or {}: never by itself (no warning); ``from`` absent, null or []: from any mode;
+``leave_to`` absent or null: "previous".
+
+The rules in page words (README S5.19; the Room page's Auto editor, 2f): ``rules()`` (GET /api/v1/autopilot/rules)
+and ``check_block()`` (POST /api/v1/autopilot/check) describe and check one mode's block with situations.Conditions'
+own parser (check_nodes, describe): no second grammar. Problems, sentences and live readings are keyed by the node's
+path in the block (contract.RuleProblem). Nothing here saves anything.
 """
 
 from __future__ import annotations
@@ -81,6 +91,29 @@ def _guard(what: str, fn: Callable, *args: Any) -> Any:
     except Exception:
         log.exception("%s failed", what)
         return None
+
+
+def rule_of(ap: Any, key: str) -> Any:
+    """A mode's rule under ``key``, or None when it has none: absent, null and {} all mean "never by itself" (§8.9)."""
+    v = ap.get(key) if isinstance(ap, dict) else None
+    return None if v is None or (isinstance(v, dict) and not v) else v
+
+
+def from_of(ap: Any) -> Optional[list]:
+    """The modes Auto may switch to this one from, or None for any: absent, null and [] all mean any mode (§8.9). A
+    value that isn't a list of names allows none (check_block says why)."""
+    frm = ap.get("from") if isinstance(ap, dict) else None
+    if frm is None or frm == []:
+        return None
+    if isinstance(frm, str):
+        return [frm]
+    return [x for x in frm if isinstance(x, str)] if isinstance(frm, list) else []
+
+
+def leave_to_of(ap: Any) -> Any:
+    """Where Auto goes when it leaves this mode: "previous" (the mode before) unless the block names one."""
+    v = ap.get("leave_to") if isinstance(ap, dict) else None
+    return "previous" if v is None or v == "" else v
 
 
 def merge_skips(*lists: Any) -> list:
@@ -850,10 +883,15 @@ class Autopilot:
     def _suppressed(self, mode: str, rule: str) -> bool:
         return any(s["mode"] == mode and s["rule"] == rule for s in self.suppressed)
 
-    def _reason(self, info: dict, rule: str) -> str:
+    def _reason(self, info: dict, rule: str, cond: Any = None) -> str:
+        """The chip's words: the words that hold, with the rule's params ("the room is darker than 50 lux")."""
         words = info.get("words") or {}
         true = [w for w, r in words.items() if r.get("value") is True] or list(words)
-        return f"{' and '.join(word_label(w) for w in true) or 'its rule holds'} ({rule})"
+        labels = {}
+        if cond is not None:                            # describe without now_s reads nothing: only the params
+            labels = {w["id"]: word_label(w["id"], w["params"])
+                      for w in self.cond.describe(cond).get("words", {}).values()}
+        return f"{' and '.join(labels.get(w) or word_label(w) for w in true) or 'its rule holds'} ({rule})"
 
     def _evaluate(self, view: contract.RoomView, now_s: float) -> list[dict]:
         """Every mode's rules, every tick (so for_s timers run), with why each can't act now."""
@@ -870,12 +908,10 @@ class Autopilot:
             ap = (modes.get(name) or {}).get("autopilot")
             if not isinstance(ap, dict):
                 continue
-            frm = ap.get("from")
-            allowed = None if frm is None else ([frm] if isinstance(frm, str) else [x for x in frm if isinstance(x, str)]
-                                                if isinstance(frm, list) else [])
+            allowed = from_of(ap)
             enter_holds = False
             for kind, key in RULE_KEYS:
-                cond = ap.get(key)
+                cond = rule_of(ap, key)
                 if cond is None:
                     continue
                 rule = f"{name}/{key}"
@@ -914,7 +950,7 @@ class Autopilot:
                     e = self.entered
                     if not e or e.get("mode") != name:
                         continue
-                    to = ap.get("leave_to") or "previous"
+                    to = leave_to_of(ap)
                     to = e.get("previous") if to == "previous" else to
                     c["to"] = to
                     if current != name:
@@ -928,7 +964,7 @@ class Autopilot:
                     elif engaged:
                         c["blocked"] = "someone is using the controls"
                 if holds:
-                    c["reason"] = self._reason(info, rule)
+                    c["reason"] = self._reason(info, rule, cond)
                 cands.append(c)
         self._infos, self._would = infos, would
         return cands
@@ -947,7 +983,7 @@ class Autopilot:
             else:
                 held, info = self.cond.holds(self._settings["hold"]["until"], "_hold/until", now_s)
                 if held:
-                    ended = self._reason(info, "hold")
+                    ended = self._reason(info, "hold", self._settings["hold"]["until"])
             if ended:
                 self.hold = None
                 changed = True
@@ -1337,6 +1373,162 @@ class Autopilot:
         self._dirty()
         return self._publish()
 
+    # -- the rules in page words (README S5.19: GET /api/v1/autopilot/rules, POST /api/v1/autopilot/check) ---------------
+    def _now_s(self) -> float:
+        """The situations' last tick: the reads describe makes then are the ones Auto's own evaluation memoised."""
+        t = getattr(self.sit, "last_now", None)
+        return float(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else self._mono()
+
+    def rules(self) -> dict:
+        """GET /api/v1/autopilot/rules (show-brain): every mode of the room's config (RoomLink's view, in its order) as
+        ``describe_block`` has it, plus ``auto``: what Auto itself makes of each rule now, {"enter" | "suggest" | "leave":
+        {"holds", "held_s", "needs_s", "blocked"} | None (it isn't evaluated: no such rule, or a leave rule of a mode Auto
+        didn't enter)}."""
+        view = self.link.view()
+        modes = view.get("modes") or {}
+        now = self._now_s()
+        cands = {(c["mode"], c["kind"]): c for c in self._candidates}
+        out = []
+        for name in view.get("order") or []:
+            d = self.describe_block(name, (modes.get(name) or {}).get("autopilot"), view=view, now_s=now)
+            d["auto"] = {kind: ({k: c.get(k) for k in ("holds", "held_s", "needs_s", "blocked")}
+                                if (c := cands.get((name, kind))) is not None else None) for kind, _ in RULE_KEYS}
+            out.append(d)
+        return {"modes": out, "revision": view.get("revision"), "reachable": bool(view.get("reachable")),
+                "error": view.get("error") or self.link.rules_error()}
+
+    def check_block(self, mode: Optional[str], block: Any, extra_modes: Optional[list] = None) -> dict:
+        """POST /api/v1/autopilot/check (show-brain): one mode's block as the editor has it, never saved. ``mode`` is the
+        mode it belongs to (None: a block on its own; then nothing is "its own"), ``extra_modes`` names modes being made
+        in the editor (unsaved), which "from" and "leave_to" may name. describe_block's answer plus ``ok``: no problem
+        is an error (a warn never stops ok)."""
+        extra = [m for m in (extra_modes or []) if isinstance(m, str) and m]
+        d = self.describe_block(mode, block, view=self.link.view(), now_s=self._now_s(), extra_modes=extra)
+        return {"ok": not any(p["level"] == "error" for p in d["problems"]), **d}
+
+    def describe_block(self, mode: Optional[str], block: Any, *, view: contract.RoomView, now_s: Optional[float],
+                       extra_modes: list = ()) -> dict:
+        """One mode's ``autopilot`` block in page words and checked (contract.RuleView, plus ``unknown_words``): the
+        conditions through situations.Conditions (check_nodes, describe: the parser Auto evaluates with), the block's
+        keys, "from" and "leave_to" against the room's modes (plus ``extra_modes``; "previous" for leave_to), and what
+        each word can sense now. Errors: what makes a rule never hold or the room refuse it. Warns: a word that can't
+        be sensed now, a mode in its own "from", a leave rule with nothing to enter by, a "leave_to" of itself."""
+        modes = view.get("modes") or {}
+        names = set(view.get("order") or []) | set(extra_modes)
+        label = lambda m: self._label(view, m) if m in modes else str(m)     # noqa: E731
+        problems: list[dict] = []
+        nodes: dict[str, str] = {}
+        live: dict[str, Optional[bool]] = {}
+        words: dict[str, dict] = {}
+        said: dict[str, Optional[str]] = {kind: None for kind, _ in RULE_KEYS}
+        now: dict[str, Optional[bool]] = {kind: None for kind, _ in RULE_KEYS}
+        frm: Optional[list] = None
+        leave_to: Optional[str] = None
+
+        def bad(path: str, text: str, level: str = "error", **extra: Any) -> None:
+            problems.append({"path": path, "text": text, "level": level, **extra})
+
+        ap = block
+        if ap is not None and not isinstance(ap, dict):
+            bad("", "Auto's settings for a mode must be an object (or left out: the mode starts only when someone "
+                    "picks it)")
+            ap = None
+        if isinstance(ap, dict):
+            for k in ap:
+                if k not in contract.AUTOPILOT_MODE_KEYS:
+                    bad(str(k), f"“{k}” isn't one of Auto's settings ({', '.join(contract.AUTOPILOT_MODE_KEYS)})")
+            for kind, key in RULE_KEYS:
+                cond = rule_of(ap, key)
+                if cond is None:
+                    continue
+                for p in self.cond.check_nodes(cond, key):
+                    bad(p["path"], p["text"])
+                d = self.cond.describe(cond, key, now_s)
+                nodes.update(d["nodes"])
+                live.update(d["live"])
+                words.update(d["words"])
+                said[kind] = d["text"]
+            broken = {p["path"] for p in problems}
+            for pth in broken & set(live):               # a node with an error reads nothing
+                live[pth] = None
+            for kind, key in RULE_KEYS:
+                if said[kind] is not None:
+                    now[kind] = live.get(key)
+            avail = getattr(self.sit, "available", None)
+            for pth, w in words.items():
+                if w["id"] in WORDS and pth not in broken and avail is not None and not avail(w["id"], w["params"]):
+                    bad(pth, WORDS[w["id"]].get("unavailable") or "It can't be sensed right now", "warn", word=w["id"])
+            enters = said["enter"] is not None or said["suggest"] is not None
+            if not names and (ap.get("from") or ap.get("leave_to") not in (None, "", "previous")):
+                bad("", "The room's modes aren't known right now, so mode names weren't checked", "warn")
+            raw = ap.get("from")
+            if raw is not None and not (isinstance(raw, str) and raw) and not (
+                    isinstance(raw, list) and all(isinstance(x, str) and x for x in raw)):
+                bad("from", "“Only from” must be a list of modes")
+            frm = from_of(ap)
+            if frm is not None:
+                for x in frm:
+                    if x == "previous":
+                        bad("from", "“previous” isn't a mode: “Only from” lists the modes it may switch from", "warn")
+                    elif names and x not in names:
+                        bad("from", f"There's no mode called “{x}”")
+                    elif mode and x == mode:
+                        bad("from", f"{label(x)} is in its own “Only from”: Auto never switches to the mode it's in",
+                            "warn")
+                if not enters:
+                    bad("from", "“Only from” does nothing without a rule to switch to it", "warn")
+                nodes["from"] = "only from " + (" or ".join(label(x) for x in frm) if len(frm) <= 2 else
+                                                ", ".join(label(x) for x in frm[:-1]) + f" or {label(frm[-1])}") \
+                    if frm else "from no mode"
+            else:
+                nodes["from"] = "from any mode"
+            lt_raw = ap.get("leave_to")
+            if lt_raw is not None and not isinstance(lt_raw, str):
+                bad("leave_to", "“Then go to” must be a mode, or “previous” (the mode before)")
+            else:
+                lt = leave_to_of(ap)
+                if lt != "previous" and names and lt not in names:
+                    bad("leave_to", f"There's no mode called “{lt}”")
+                elif mode and lt == mode:
+                    bad("leave_to", "It goes to itself: Auto would never leave it", "warn")
+                if lt_raw not in (None, "") and said["leave"] is None:
+                    bad("leave_to", "“Then go to” does nothing without a rule to leave it", "warn")
+                if said["leave"] is not None or lt_raw not in (None, ""):
+                    leave_to = lt
+                    nodes["leave_to"] = ("then back to the mode before" if lt == "previous" else f"then to {label(lt)}")
+            if said["leave"] is not None and not enters:
+                bad("leave_when", "Auto only leaves a mode it switched to (or one picked while its rule held): with no "
+                                  "rule to switch to it, this never runs", "warn")
+            if ap.get("skip") is not None and not isinstance(ap.get("skip"), list):
+                bad("skip", "“Leave alone when Auto switches” must be a list")
+        unknown = sorted({w["id"] for w in words.values() if w["id"] not in WORDS})
+        return {"mode": mode, "label": label(mode) if mode else None,
+                "enter": said["enter"], "suggest": said["suggest"], "leave": said["leave"],
+                "summary": self._summary(label(mode) if mode else "it", said, nodes, frm, leave_to, label),
+                "from": frm, "leave_to": leave_to, "problems": problems,
+                "available": all(p.get("word") is None for p in problems) and not unknown,
+                "live": live, "nodes": nodes, "now": now, "unknown_words": unknown}
+
+    @staticmethod
+    def _summary(name: str, said: dict, nodes: dict, frm: Optional[list], leave_to: Optional[str],
+                 label: Callable[[Any], str]) -> str:
+        """The mode's Auto in one or two sentences: "Auto switches to Piano when … (only from Normal). It goes back to
+        the mode before when …"."""
+        enter, suggest, leave = said["enter"], said["suggest"], said["leave"]
+        if not (enter or suggest):
+            return f"Auto never switches to {name} by itself; it starts when someone picks it."
+        only = f" ({nodes['from']})" if frm is not None else ""
+        if enter:
+            out = f"Auto switches to {name} when {enter}{only}."
+            if suggest:
+                out += f" Otherwise it offers it (one tap) when {suggest}."
+        else:
+            out = f"Auto offers {name} (one tap) when {suggest}{only}."
+        if leave:
+            to = "back to the mode before" if leave_to in (None, "previous") else f"to {label(leave_to)}"
+            return out + f" It goes {to} when {leave}."
+        return out + " Auto never leaves it by itself."
+
     # -- saying it ------------------------------------------------------------------------------------------------------
     def _dirty(self) -> None:
         if self.ctx.persist is not None:
@@ -1456,7 +1648,7 @@ def attach(ctx: contract.BrainContext, **kw: Any) -> list:
     ``local`` (a datetime factory) and ``log_path``."""
     mono = kw.get("mono", time.monotonic)
     link = RoomLink(ctx, mono=mono)
-    sit = Situations(ctx, local=kw.get("local"), mono=mono)
+    sit = Situations(ctx, local=kw.get("local"), mono=mono, wall=kw.get("wall", time.time))
     ap = Autopilot(ctx, link, sit, wall=kw.get("wall", time.time), mono=mono, local=kw.get("local"),
                    log_path=kw.get("log_path", contract.AUTOPILOT_LOG))
     return [link, sit, ap]

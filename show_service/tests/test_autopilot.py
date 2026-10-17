@@ -68,6 +68,7 @@ class FakeRoom:
         self.status_held = False                         # room_service coalesces status after its events
         self.url = ""
         self.started_at = "2026-10-16T09:00:00+00:00"   # Stage 5: status.service.started_at (RoomLink.room_boot)
+        self.lux = None                                  # README S5.19: () -> the light sensor route's JSON (Flask's)
 
     async def start(self) -> None:
         app = web.Application()
@@ -78,6 +79,7 @@ class FakeRoom:
         app.router.add_put("/api/v1/room/targets", self.h_targets)
         app.router.add_get("/api/v1/events", self.h_events)
         app.router.add_patch("/api/v1/screens/{id}/look", self.h_look)
+        app.router.add_get("/api/lightsensor/lightsense", self.h_light)
         self.runner = web.AppRunner(app, shutdown_timeout=0.2)
         await self.runner.setup()
         site = web.TCPSite(self.runner, "127.0.0.1", 0)
@@ -111,6 +113,11 @@ class FakeRoom:
 
     async def h_status(self, r: web.Request) -> web.Response:
         return web.json_response(self.status())
+
+    async def h_light(self, r: web.Request) -> web.Response:
+        if self.lux is None:
+            return web.json_response({"error": "not_found"}, status=404)
+        return web.json_response(self.lux())
 
     async def h_config(self, r: web.Request) -> web.Response:
         return web.json_response({"config": self.config, "revision": self.revision, "path": "x", "error": None})
@@ -805,3 +812,154 @@ def test_is_on_and_the_on_listeners_for_the_mic(tmp_path):
         await h.step()
         assert h.state()["on"] is True
     run(tmp_path, body, on="off")
+
+
+# -- Auto triggers: the light words, the rules and the check (README S5.19) -----------------------------------------------
+EVENING = {**MODES, "evening": {"label": "Evening", "autopilot": {
+    "enter_when": {"light_below": {"lux": 50, "for_s": 2}}, "from": ["gallery"],
+    "leave_when": {"light_above": {"lux": 200, "for_s": 2}}}}}
+
+
+def test_a_light_rule_switches_to_its_mode_and_back(tmp_path):
+    """A mode whose block uses light_below parses and evaluates in Auto: the real poll (the fake room serves the
+    sensor route on its ephemeral port), the median, the for_s, the chip's words with the rule's lux."""
+    async def body(h: H):
+        lux = {"v": 400.0}
+        h.room.lux = lambda: {"sensors": {"living-room": {"current": {"lux": lux["v"]}, "history": [
+            {"timestamp": 1.79e9 + h.clock.t, "lux": lux["v"]}]}}}
+        h.sit.configure({"situations": {**SIT, "light": {"url": h.room.url + "/api/lightsensor/lightsense",
+                                                         "sensor": "living-room", "poll_s": 600, "smooth_s": 0}}})
+        assert await h.sit.light.poll_once()
+        await h.step(4)
+        assert h.room.current == "gallery" and not h.room.auto_puts()
+        cand = [x for x in h.state()["candidates"] if x["mode"] == "evening" and x["kind"] == "enter"][0]
+        assert cand["holds"] is False and cand["blocked"] is None
+        lux["v"] = 20.0
+        assert await h.sit.light.poll_once()
+        n = await h.step_until(lambda: h.room.current == "evening")
+        assert n >= 2                                     # its for_s: 2 s
+        put = h.room.auto_puts()[-1]
+        assert put["mode"] == "evening" and put["reason"] == "the room is darker than 50 lux (evening/enter_when)"
+        assert h.notified[-1][1]["text"] == "Auto → Evening · the room is darker than 50 lux"
+        lux["v"] = 300.0
+        assert await h.sit.light.poll_once()
+        await h.step_until(lambda: h.room.current == "gallery")
+        assert h.room.auto_puts()[-1]["reason"] == "the room is brighter than 200 lux (evening/leave_when)"
+
+    run(tmp_path, body, modes=EVENING)
+
+
+def test_rules_describe_every_mode_in_page_words(tmp_path):
+    async def body(h: H):
+        r = h.ap.rules()
+        assert r["reachable"] is True and r["revision"] == "r1" and r["error"] is None
+        by = {m["mode"]: m for m in r["modes"]}
+        assert list(by) == ["gallery", "piano", "lights-only", "disco"]
+        p = by["piano"]
+        assert p["label"] == "Piano" and p["suggest"] is None
+        assert p["enter"] == "the piano is playing, for at least 3 s"
+        assert p["leave"] == "the piano has stopped, for at least 5 s"
+        assert p["from"] == ["gallery", "lights-only"] and p["leave_to"] == "previous"
+        assert p["nodes"] == {"enter_when": p["enter"], "leave_when": p["leave"],
+                              "from": "only from Normal or Lights only", "leave_to": "then back to the mode before"}
+        assert p["summary"] == ("Auto switches to Piano when the piano is playing, for at least 3 s (only from Normal "
+                                "or Lights only). It goes back to the mode before when the piano has stopped, for at "
+                                "least 5 s.")
+        assert p["problems"] == [] and p["available"] is True and p["unknown_words"] == []
+        assert p["live"] == {"enter_when": False, "leave_when": True} and p["now"] == {
+            "enter": False, "suggest": None, "leave": True}       # silent now (its 5 s are Auto's own timer)
+        assert p["auto"]["enter"] == {"holds": False, "held_s": 0.0, "needs_s": 3.0, "blocked": None}
+        assert p["auto"]["leave"] is None and p["auto"]["suggest"] is None   # Auto didn't enter it
+        g = by["gallery"]
+        assert g["enter"] is g["leave"] is g["from"] is g["leave_to"] is None and g["problems"] == []
+        assert g["summary"] == "Auto never switches to Normal by itself; it starts when someone picks it."
+        assert g["live"] == {} and g["nodes"] == {} and g["available"] is True
+        h.playing = True
+        await h.step_until(lambda: {m["mode"]: m for m in h.ap.rules()["modes"]}["piano"]["live"]["enter_when"])
+        p = {m["mode"]: m for m in h.ap.rules()["modes"]}["piano"]
+        assert p["now"]["enter"] is True and p["live"]["leave_when"] is False
+        await h.step_until(lambda: h.room.current == "piano")
+        await h.step()
+        p = {m["mode"]: m for m in h.ap.rules()["modes"]}["piano"]
+        assert p["auto"]["leave"] is not None and p["auto"]["leave"]["holds"] is False   # Auto entered it: it watches
+
+    run(tmp_path, body)
+
+
+def test_check_good_and_bad_blocks_with_the_parser_auto_uses(tmp_path):
+    async def body(h: H):
+        ok = h.ap.check_block("piano", MODES["piano"]["autopilot"])
+        assert ok["ok"] is True and ok["problems"] == [] and ok["unknown_words"] == []
+        assert ok["enter"] == "the piano is playing, for at least 3 s" and ok["mode"] == "piano"
+        # an unknown word
+        b = h.ap.check_block("piano", {"enter_when": {"any": [{"piano_playing": {}}, {"piano_playin": {}}]}})
+        assert b["ok"] is False and b["unknown_words"] == ["piano_playin"] and b["available"] is False
+        assert b["problems"] == [{"path": "enter_when.any[1]", "text": "This isn't something the room can notice (it may have been renamed)",
+                                  "level": "error"}]
+        assert b["enter"] == "any of: the piano is playing or “piano_playin”"
+        assert b["live"]["enter_when.any[1]"] is None and b["nodes"]["enter_when.any[0]"] == "the piano is playing"
+        # a bad param, deep down
+        b = h.ap.check_block("piano", {"enter_when": {"piano_playing": {}}, "leave_when": {"all": [
+            {"not": {"piano_playing": {"min_notes": "lots"}}}, {"quiet": {"for_s": 60}}]}})
+        assert b["ok"] is False and [(x["path"], x["level"]) for x in b["problems"]] == [("leave_when.all[0].not", "error")]
+        assert "must be a number" in b["problems"][0]["text"] and b["live"]["leave_when.all[0].not"] is None
+        assert b["leave"] == "both: not the piano is playing and (the room is quiet, for at least 1 min)"
+        # a bad leave_to; then the same with the mode being made in the editor
+        blk = {**MODES["piano"]["autopilot"], "leave_to": "late-night"}
+        b = h.ap.check_block("piano", blk)
+        assert b["ok"] is False and b["problems"] == [{"path": "leave_to", "text": "There's no mode called “late-night”",
+                                                       "level": "error"}]
+        b = h.ap.check_block("piano", blk, ["late-night"])
+        assert b["ok"] is True and b["leave_to"] == "late-night" and b["nodes"]["leave_to"] == "then to late-night"
+        assert b["summary"].endswith("It goes to late-night when the piano has stopped, for at least 5 s.")
+        # a new mode: its own name in "from" and a leave_to with no leave rule are warns, never errors
+        b = h.ap.check_block("late-night", {"enter_when": {"between": {"from": "23:00", "to": "02:00"}},
+                                            "from": ["gallery", "late-night"], "leave_to": "gallery"}, ["late-night"])
+        assert b["ok"] is True and [(x["path"], x["level"]) for x in b["problems"]] == [("from", "warn"),
+                                                                                        ("leave_to", "warn")]
+        assert b["enter"] == "it's 23:00-02:00" and b["from"] == ["gallery", "late-night"]
+        b = h.ap.check_block("piano", {**MODES["piano"]["autopilot"], "from": ["gallery", "atlantis"]})
+        assert not b["ok"] and b["problems"][0] == {"path": "from", "text": "There's no mode called “atlantis”",
+                                                    "level": "error"}
+        # a word that can't be sensed now is a warn on its node, never an error
+        b = h.ap.check_block("disco", {"otherwise_suggest_when": {"all": [{"talking": {}}, {"piano_idle": {}}]}})
+        assert b["ok"] is True and b["available"] is False
+        assert b["problems"] == [{"path": "otherwise_suggest_when.all[0]", "text": "The music/speech check isn't "
+                                  "running yet", "level": "warn", "word": "talking"}]
+        assert b["summary"] == ("Auto offers Disco (one tap) when both: people are talking and the piano has stopped. "
+                                "Auto never leaves it by itself.")
+        # a leave rule with nothing to enter by; an unknown key; not an object
+        b = h.ap.check_block("disco", {"leave_when": {"quiet": {}}, "enter_whne": {"quiet": {}}})
+        assert b["ok"] is False and [(x["path"], x["level"]) for x in b["problems"]] == [
+            ("enter_whne", "error"), ("leave_when", "warn")]
+        b = h.ap.check_block("disco", ["piano_playing"])
+        assert b["ok"] is False and b["problems"][0]["path"] == "" and b["enter"] is None
+        # the empty shapes: no block, {}, absent/null/{} rules and from [] are all fine and say so, with no warning
+        for blk in (None, {}, {"enter_when": {}, "leave_when": None, "from": [], "otherwise_suggest_when": {}}):
+            e = h.ap.check_block("disco", blk)
+            assert e["ok"] is True and e["problems"] == [], blk
+            assert e["enter"] is e["suggest"] is e["leave"] is e["from"] is e["leave_to"] is None
+            assert e["summary"] == "Auto never switches to Disco by itself; it starts when someone picks it."
+        e = h.ap.check_block("disco", {"enter_when": {"piano_playing": {}}, "from": []})
+        assert e["ok"] and e["from"] is None and e["nodes"]["from"] == "from any mode" and "(" not in e["summary"]
+        assert e["summary"] == ("Auto switches to Disco when the piano is playing. Auto never leaves it by itself.")
+        assert h.ap.check_block(None, {"enter_when": {"quiet": {}}})["label"] is None
+        assert h.room.auto_puts() == []                       # checking never acts
+
+    run(tmp_path, body)
+
+
+EMPTY = {**MODES, "piano": {**MODES["piano"], "autopilot": {**MODES["piano"]["autopilot"], "from": []}},
+         "disco": {"label": "Disco", "autopilot": {"enter_when": {}, "otherwise_suggest_when": None}}}
+
+
+def test_the_empty_shapes_in_auto_itself(tmp_path):
+    """from [] is any mode (it used to be none); enter_when {} is never by itself, with no "rule error"."""
+    async def body(h: H):
+        await h.step(2)
+        assert [x for x in h.state()["candidates"] if x["mode"] == "disco"] == []
+        assert h.state()["state"] == "watching"
+        await enter_piano(h)
+        assert h.room.auto_puts()[-1]["mode"] == "piano"
+
+    run(tmp_path, body, modes=EMPTY)

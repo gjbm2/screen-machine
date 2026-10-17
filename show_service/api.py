@@ -35,6 +35,11 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
     target; ``{"vibe": null}`` and DELETE are no feel. Every read-back carries ``boot_id`` (this process).
   - Auto on/off and Undo each wait on one room PUT (up to contract.ROOM_PUT_TIMEOUT_S): their ``brain.call`` gets
     contract.AUTO_CALL_TIMEOUT_S, so a slow room never cuts the PUT off mid-way.
+  - Auto's rules in page words (README S5.19; the Room page's Auto editor): ``GET /api/v1/autopilot/rules`` (every
+    mode of the room's config: sentences, problems, live readings, per node path) and ``POST /api/v1/autopilot/check
+    {"mode"?, "autopilot"?, "modes"?}`` (one block as the editor has it, checked with Auto's own parser; never saved).
+    Empty shapes: no ``autopilot`` = only when someone picks it; a rule absent, null or {} = never by itself; ``from``
+    absent or [] = any mode; ``leave_to`` absent = "previous".
 * **WS /v1/events** (the card's socket): ``welcome`` first, then RFC 7386 ``card`` patches at most ``CARD_HZ`` (at
   once on ``notify("card")``), ``auto`` and ``describe`` events; ``ping``/``resync`` from the client; 64 clients,
   256 queued messages each (full: the queue is dropped and a fresh welcome goes next). ``seq`` is per client, +1 per
@@ -119,7 +124,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
     ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
-    ("POST", "/api/v1/autopilot/resume"),
+    ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
     ("GET", "/api/v1/situations"),
     ("GET", "/api/v1/test"), ("POST", "/api/v1/test"), ("DELETE", "/api/v1/test"), ("DELETE", "/api/v1/test/{source}"),
     ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
@@ -726,6 +731,8 @@ class Api:
             ("PUT", "/api/v1/autopilot", self._auto_put),
             ("POST", "/api/v1/autopilot/undo", self._auto_undo),
             ("POST", "/api/v1/autopilot/resume", self._auto_resume),
+            ("GET", "/api/v1/autopilot/rules", self._auto_rules),
+            ("POST", "/api/v1/autopilot/check", self._auto_check),
             ("GET", "/api/v1/situations", self._situations),
             ("GET", "/api/v1/test", self._test_get),
             ("POST", "/api/v1/test", self._test_post),
@@ -1362,6 +1369,47 @@ class Api:
             return _json(neutral_autopilot(MISSING[AUTOPILOT]))
         out = await self._call(brain, ap.resume)
         self._changed()
+        return _json(out)
+
+    async def _auto_rules(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/autopilot/rules -> {"modes": [contract.RuleView + "auto", "unknown_words"], "revision",
+        "reachable", "error"}: every mode of the room's config, in its order. A mode with no ``autopilot`` key starts
+        only when someone picks it (every rule None); a rule absent, null or {} is never by itself; ``from`` absent or
+        [] is any mode (None); ``leave_to`` absent is "previous". Paths name nodes in the block ("enter_when",
+        "enter_when.any[1]", "leave_when.all[0].not", "from", "leave_to")."""
+        ap = _components(brain).get(AUTOPILOT)
+        if ap is None or not callable(getattr(ap, "rules", None)):
+            return _json({"modes": [], "revision": None, "reachable": False, "error": None,
+                          "detail": MISSING[AUTOPILOT]})
+        return _json(await self._call(brain, ap.rules))
+
+    async def _auto_check(self, request: web.Request, brain: Any) -> web.Response:
+        """POST /api/v1/autopilot/check {"mode": "<name>" (optional), "autopilot": {one mode's block} | null | absent,
+        "modes": ["<unsaved mode>", ...] (optional)} -> {"ok": no error, "problems": [{"path", "text", "level":
+        error|warn}], "enter", "suggest", "leave" (sentences, None: no rule), "summary", "from", "leave_to",
+        "unknown_words", "available", "live", "nodes", "now", "mode", "label"}. "from" and "leave_to" may name the
+        room's modes, ``modes`` and (leave_to) "previous". The same empty shapes as GET /api/v1/autopilot/rules: an
+        absent or null block is ok (only when someone picks it). Never saves anything. 400 only for a body that isn't
+        an object, a ``mode`` that isn't a name or ``modes`` that isn't a list of names."""
+        body, bad = await self._body(request)
+        if bad:
+            return bad
+        if not isinstance(body, dict):
+            return _err(400, "bad_request", 'Send {"mode": "<name>", "autopilot": {...}}.')
+        mode = body.get("mode")
+        if mode is not None and not (isinstance(mode, str) and mode.strip()):
+            return _err(400, "bad_request", '"mode" is the name of the mode this block belongs to.')
+        extra = body.get("modes")
+        if extra is not None and not (isinstance(extra, list) and all(isinstance(m, str) and m for m in extra)):
+            return _err(400, "bad_request", '"modes" lists the names of modes being made in the editor.')
+        ap = _components(brain).get(AUTOPILOT)
+        if ap is None or not callable(getattr(ap, "check_block", None)):
+            return _json({"ok": False, "checked": False, "detail": MISSING[AUTOPILOT],
+                          "problems": [{"path": "", "text": "Auto isn't running, so this couldn't be checked",
+                                        "level": "error"}],
+                          "enter": None, "suggest": None, "leave": None, "unknown_words": [], "live": {}, "nodes": {}})
+        out = await self._call(brain, ap.check_block, mode.strip() if mode else None, body.get("autopilot"),
+                               list(extra or []))
         return _json(out)
 
     async def _situations(self, request: web.Request, brain: Any) -> web.Response:

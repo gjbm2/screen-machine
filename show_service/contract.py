@@ -688,10 +688,11 @@ class RoomView(TypedDict):
 
 # -- situations (§8.9) ---------------------------------------------------------------------------------------------------
 SITUATIONS: tuple[str, ...] = ("piano_playing", "piano_idle", "music_audible", "sonos_playing", "genre_in",
-                               "energy_above", "talking", "quiet", "between")
+                               "energy_above", "talking", "quiet", "between", "light_below", "light_above")
 COMBINATORS: tuple[str, ...] = ("all", "any", "not")
-SituationSource = Literal["midi", "sonos", "audio", "listener", "time"]
-SITUATION_RANK: dict[str, int] = {"midi": 0, "sonos": 1, "audio": 2, "listener": 3, "time": 4}   # §8.9 priority
+SituationSource = Literal["midi", "sonos", "audio", "listener", "time", "light"]
+#: §8.9 priority; the room's light level is the setting, like the time of day (README S5.19), so it ranks with time
+SITUATION_RANK: dict[str, int] = {"midi": 0, "sonos": 1, "audio": 2, "listener": 3, "time": 4, "light": 4}
 
 
 class SituationDef(TypedDict):
@@ -701,8 +702,11 @@ class SituationDef(TypedDict):
     description: str
     source: str                    # SituationSource
     rank: int                      # SITUATION_RANK[source]
-    params: dict[str, dict]        # param -> JSON schema (+ x-ui, default from show.yaml); for_s is on every word
+    params: dict[str, dict]        # param -> JSON schema (+ x-ui, default from show.yaml); for_s is on every word.
+                                   # x-ui: label, unit, unset_label, required (every param), ends (0..1 and loudness
+                                   # sliders), enum + enum_labels where the choices are known (the light sensors)
     available: bool                # its inputs exist now (False: it reads unknown)
+    unavailable: str               # page words while it can't be sensed: "The piano isn't connected yet" (S5.19)
 
 
 class SituationReading(TypedDict):
@@ -786,6 +790,33 @@ class AutopilotState(TypedDict):
     candidates: list[dict]         # [{"mode", "kind": enter|suggest|leave, "rule", "held_s", "needs_s", "blocked"}]
     settings: dict[str, dict]      # key -> {"value", "source": "modes.json" | "default"}
     room: dict                     # {"reachable", "revision", "current", "transition_running"}
+
+
+# -- Auto's rules in page words (README S5.19; the Room page's Auto editor, 2f) ----------------------------------------------
+#: a node's path in a mode's autopilot block: "enter_when", "enter_when.any[1]", "leave_when.all[0].not", a word of a
+#: several-word object "enter_when.piano_playing", "from", "leave_to"; "" is the block itself
+class RuleProblem(TypedDict):
+    path: str
+    text: str                      # plain words: "The piano isn't connected yet"
+    level: str                     # "error" (the rule never holds, or the room would refuse it) | "warn"
+
+
+class RuleView(TypedDict):
+    """One mode's Auto rules (GET /api/v1/autopilot/rules ``modes[]``; POST /api/v1/autopilot/check answers the same
+    keys plus ``ok`` and ``unknown_words``)."""
+    mode: Optional[str]
+    label: Optional[str]
+    enter: Optional[str]           # the whole rule's sentence: "the piano is playing, for at least 10 s"; None: no rule
+    suggest: Optional[str]
+    leave: Optional[str]
+    summary: str                   # the mode's Auto in one line ("Auto switches to it when …")
+    from_: Optional[list]          # key "from": the modes it switches from, None = any mode
+    leave_to: Optional[str]        # "previous" (the default) or a mode, None while it has no leave rule
+    problems: list[RuleProblem]
+    available: bool                # every word it uses can be sensed now
+    live: dict[str, Optional[bool]]   # path -> what that condition node reads now (for_s left out; None = unknown)
+    nodes: dict[str, str]          # path -> that node's sentence (conditions, "from", "leave_to")
+    now: dict[str, Optional[bool]]    # {"enter", "suggest", "leave"}: each rule's root, as live has it
 
 
 # -- the listener (§7) and Describe it (§7.4) ------------------------------------------------------------------------------
