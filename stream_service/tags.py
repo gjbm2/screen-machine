@@ -4,14 +4,24 @@ The art director names descriptors, never scenes: scene and transition presets c
 weights its picks by how well they match the session's ``direction``.  A tag key is spelt exactly like the
 direction key it matches:
 
-  scene preset:      tags: {energy: [lo, hi], moods: [...], genre: [...], palette_family: [...], weight: 1.0}
-  transition preset: tags: {transition_style: [gentle|lively|wild, ...], energy: [lo, hi], weight: 1.0}
+  scene preset:      tags: {energy: [lo, hi], moods: [...], genre: [...], genre_fit: {word: 0..1},
+                            palette_family: [...], valence: 0..1, organic: 0..1, density: 0..1, weight: 1.0}
+  transition preset: tags: {transition_style: [gentle|lively|wild, ...], energy: [lo, hi], moods: [...],
+                            genre_fit: {...}, weight: 1.0}
 
-One rule: a number matches a ``[lo, hi]`` tag; a word or list matches a tag list on overlap; an empty or null
-direction value, or a key the preset doesn't tag, counts as matched.  Weight = tags.weight x the product over
-the descriptors of (1 if matched, else 0.3); it is never 0.  Other tag keys (e.g. ``heavy: true``) are free-form
-and only used by pool filters (``{"tags": {...}}``: scalars by equality, lists by overlap; a key the preset
-doesn't tag matches, so ``{heavy: false}`` excludes only presets tagged heavy).
+Weight = tags.weight x one factor per descriptor (each in (0, 1], so the weight is never 0):
+  * energy: 1 inside the preset's [lo, hi], falling linearly to ENERGY_FLOOR over ENERGY_FALLOFF outside it;
+  * genre: GENRE_FLOOR + (1 - GENRE_FLOOR) x fit, where fit is the preset's ``genre_fit`` for the direction's
+    ``genres`` {word: p} (a p-weighted mean) or its one ``genre`` word (a preset with only a ``genre`` word list:
+    1 if listed, else 0);
+  * valence / organic / density (both sides 0..1): 1 - AXIS_SLOPE x |direction - preset|;
+  * any other word descriptor (moods, transition_style, palette_family, style): 1 on overlap, else MISMATCH
+    (transitions' moods: TRANSITION_MISMATCH, softer).
+An empty or null direction value, or a key the preset doesn't tag, counts as matched (factor 1).  The 17 Oct
+retagging pass (config/live/tags.generated.json, tag_overlay.py) gives every preset real energy bands, moods,
+genre_fit and the axes.  Other tag keys (e.g. ``heavy: true``) are free-form and only used by pool filters
+(``{"tags": {...}}``: scalars by equality, lists by overlap; a key the preset doesn't tag matches, so
+``{heavy: false}`` excludes only presets tagged heavy).
 
 The vocabulary (moods, genre, transition_style, palette_family) is ``config/live/vocab.yaml``, hot-reloaded and
 served in the catalog.  A tag value outside it logs a warning and is listed in the catalog's ``errors``; the
@@ -35,9 +45,15 @@ DEFAULT_VOCAB = {"moods": ["calm", "mellow", "dreamy", "warm", "cool", "bright",
                  "genre": ["pop", "techno", "house", "jazz", "ambient", "classical", "rock", "soul"],
                  "transition_style": ["gentle", "lively", "wild"],
                  "palette_family": ["warm", "cool", "vivid", "neutral"]}
-SCENE_DESCRIPTORS = ("energy", "moods", "genre", "palette_family")
-TRANSITION_DESCRIPTORS = ("energy", "transition_style")
-MISMATCH = 0.3
+SCENE_DESCRIPTORS = ("energy", "moods", "genre", "palette_family", "valence", "organic", "density")
+TRANSITION_DESCRIPTORS = ("energy", "transition_style", "moods", "genre")
+MISMATCH = 0.3                   # a word descriptor with no overlap
+TRANSITION_MISMATCH = {"moods": 0.6}     # a transition's moods count, but less than a scene's
+ENERGY_FALLOFF = 0.3             # outside a preset's energy band the factor falls linearly over this distance ...
+ENERGY_FLOOR = 0.1               # ... to this
+GENRE_FLOOR = 0.15               # a preset that would jar with the music's genre (fit 0); fit 1 = full weight
+AXES = ("valence", "organic", "density")
+AXIS_SLOPE = 0.6                 # opposite ends of an axis: 0.4
 
 
 class TagError(ValueError):
@@ -126,11 +142,61 @@ def descriptor_matches(key: str, want: Any, have: Any) -> bool:
     return bool(want_set & have_set)
 
 
-def match_weight(tags: dict, direction: dict, keys: Iterable[str]) -> float:
+def _num01(v: Any) -> Optional[float]:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return min(1.0, max(0.0, float(v)))
+
+
+def genre_fit(want: Any, tags: dict) -> Optional[float]:
+    """How well a preset suits the music's genre, 0..1: ``want`` is one word or {word: p}; None when either side
+    is untagged (or the map is empty)."""
+    if not want:
+        return None
+    fit, words = tags.get("genre_fit"), tags.get("genre")
+    if not fit and not words:
+        return None
+    if isinstance(want, str):
+        dist = {want: 1.0}
+    elif isinstance(want, dict):
+        dist = {str(w): p for w, p in ((w, _num01(p)) for w, p in want.items()) if p}
+    else:
+        return None
+    tot = sum(dist.values())
+    if tot <= 0:
+        return None
+    if isinstance(fit, dict) and fit:
+        return sum(p * (_num01(fit.get(w)) or 0.0) for w, p in dist.items()) / tot
+    have = {words} if isinstance(words, str) else set(words or ())
+    return sum(p for w, p in dist.items() if w in have) / tot
+
+
+def descriptor_factor(key: str, direction: dict, tags: dict, mismatch: float = MISMATCH) -> float:
+    """One descriptor's factor in (0, 1] (see the module docstring)."""
+    if key == "genre":
+        f = genre_fit(direction.get("genres") or direction.get("genre"), tags)
+        return 1.0 if f is None else GENRE_FLOOR + (1.0 - GENRE_FLOOR) * f
+    want, have = direction.get(key), tags.get(key)
+    if have is None or want is None or want == []:
+        return 1.0
+    if key == "energy":
+        e = _num01(want)
+        if e is None:
+            return 1.0
+        lo, hi = have
+        d = lo - e if e < lo else e - hi if e > hi else 0.0
+        return 1.0 if d <= 0.0 else max(ENERGY_FLOOR, 1.0 - d / ENERGY_FALLOFF)
+    if key in AXES:
+        a, b = _num01(want), _num01(have)
+        return 1.0 if a is None or b is None else 1.0 - AXIS_SLOPE * abs(a - b)
+    return 1.0 if descriptor_matches(key, want, have) else mismatch
+
+
+def match_weight(tags: dict, direction: dict, keys: Iterable[str],
+                 mismatch: Optional[dict] = None) -> float:
     w = tags.get("weight", 1.0)
     for k in keys:
-        if not descriptor_matches(k, direction.get(k), tags.get(k)):
-            w *= MISMATCH
+        w *= descriptor_factor(k, direction, tags, (mismatch or {}).get(k, MISMATCH))
     return max(w, 1e-6)
 
 
@@ -139,7 +205,7 @@ def scene_weight(tags: dict, direction: dict) -> float:
 
 
 def transition_weight(tags: dict, direction: dict) -> float:
-    return match_weight(tags, direction, TRANSITION_DESCRIPTORS)
+    return match_weight(tags, direction, TRANSITION_DESCRIPTORS, TRANSITION_MISMATCH)
 
 
 def matches_filter(tags: dict, flt: dict) -> bool:

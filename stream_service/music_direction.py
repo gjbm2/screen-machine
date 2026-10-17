@@ -27,8 +27,8 @@ a band change, a section re-seed or a change of ``m`` publish at once.
 The panel's direction is a TRIM around the music (``effective_direction``): numbers are
 ``clamp(panel + m * (music - neutral))`` (neutral = DIRECTION_DEFAULTS: 0.5, intensity 1.0), so a panel at its
 defaults means "follow the music" and panel energy 0.3 means "0.2 calmer than the music"; the music's words (moods,
-transition_style, fx.moods) apply only where the panel left them empty, and only while m >= 0.5.  genre,
-palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
+transition_style, fx.moods, genre / genres and the feel axes valence, organic, density) apply only where the panel
+left them empty, and only while m >= 0.5.  palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
 0.25 steps: a stale bus holds 10 s then fades to 0 over 20 s; recovery needs 3 s of fresh frames then ramps up over
 10 s (from cold: 3 s then on at once).  m = 0 is exactly the panel's direction: the behaviour before this module.
 
@@ -55,7 +55,7 @@ import collections
 import math
 from typing import Any, Optional
 
-from .director import AUTO_MUSIC_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS
+from .director import AUTO_MUSIC_DEFAULTS, DIRECTION_AXES, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS
 
 EVAL_S = 1.0
 TAU_E_S, TAU_D_S = 4.0, 8.0
@@ -103,8 +103,11 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
             out["moods"] = list(music["moods"])
         if panel.get("transition_style") is None:
             out["transition_style"] = music["transition_style"]
-        if panel.get("genre") is None and music.get("genre"):
-            out["genre"] = music["genre"]
+        if panel.get("genre") is None and not panel.get("genres") and (music.get("genre") or music.get("genres")):
+            out["genre"], out["genres"] = music.get("genre"), music.get("genres")
+        for k in DIRECTION_AXES:
+            if panel.get(k) is None and music.get(k) is not None:
+                out[k] = music[k]
         if not out["fx"].get("moods"):
             out["fx"]["moods"] = list(music["fx"]["moods"])
     return out
@@ -120,17 +123,30 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
             out.append("moods")
         if panel.get("transition_style") is None:
             out.append("transition_style")
-        if panel.get("genre") is None and music.get("genre"):
+        if panel.get("genre") is None and not panel.get("genres") and (music.get("genre") or music.get("genres")):
             out.append("genre")
+        out += [k for k in DIRECTION_AXES if panel.get(k) is None and music.get(k) is not None]
         if not (panel.get("fx") or {}).get("moods"):
             out.append("fx.moods")
     return out
 
 
+def genres_key(g: Any) -> tuple:
+    """A genre map coarsened to 0.1 steps (a pick no longer fits only when the mix really moved)."""
+    if not isinstance(g, dict):
+        return ()
+    return tuple(sorted((w, q) for w, q in ((w, round(float(p), 1)) for w, p in g.items()) if q > 0))
+
+
+def _axis_key(v: Any) -> Optional[int]:
+    return None if v is None else round(float(v) * 4)
+
+
 def pick_key(d: dict) -> tuple:
     """What a prepared pick depends on: a change here means the next scene should be re-picked."""
     return (round(float(d.get("energy", 0.5)) * 10), tuple(d.get("moods") or ()), d.get("transition_style"),
-            d.get("genre"), d.get("palette_family"))
+            d.get("genre"), genres_key(d.get("genres")), d.get("palette_family"),
+            tuple(_axis_key(d.get(k)) for k in DIRECTION_AXES))
 
 
 class MusicDirection:
@@ -236,19 +252,24 @@ class MusicDirection:
         d = room["direction"]
         target = {k: d[k] for k in NUMERIC}
         target.update(moods=list(d.get("moods") or []), transition_style=d.get("transition_style"),
-                      genre=d.get("genre"), fx={"density": d["fx"]["density"], "rate": d["fx"]["rate"],
-                                                "moods": list(d["fx"].get("moods") or [])})
+                      genre=d.get("genre"), genres=d.get("genres"),
+                      fx={"density": d["fx"]["density"], "rate": d["fx"]["rate"],
+                          "moods": list(d["fx"].get("moods") or [])},
+                      **{k: d.get(k) for k in DIRECTION_AXES})
         band = self._band_of(target["energy"], float(room.get("groove") or 0.0))
         p = self.proposal
         cause = None
         if p is None:
             cause = "music"
         elif any(target[k] != p.get(k) for k in ("moods", "transition_style", "genre")) \
+                or genres_key(target["genres"]) != genres_key(p.get("genres")) \
                 or target["fx"]["moods"] != p["fx"]["moods"]:
             cause = "band"
         elif reseeded:
             cause = "section"
         elif any(abs(target[k] - p[k]) >= DEADBAND for k in NUMERIC) \
+                or any((target[k] is None) != (p.get(k) is None)
+                       or (target[k] is not None and abs(target[k] - p[k]) >= DEADBAND) for k in DIRECTION_AXES) \
                 or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC):
             cause = "music"
         self.band = band

@@ -101,7 +101,7 @@ def test_stage_allow_list():
 def test_moods_energy_and_style_weights():
     d = director(energy=0.9, moods=["euphoric"], transition_style="wild")
     assert d.weight(PRESETS["kick"]["tags"]) == 1.0
-    assert d.weight(PRESETS["warm"]["tags"]) == pytest.approx(0.3 * 0.3)
+    assert d.weight(PRESETS["warm"]["tags"]) == pytest.approx(0.1 * 0.3)    # 0.3 above its band: the energy floor
     d = director(fxmoods=["cool"])                                               # fx.moods overrides direction
     assert d.weight(PRESETS["cool"]["tags"]) == 1.0 and d.weight(PRESETS["warm"]["tags"]) == pytest.approx(0.3)
     picks = [director(seed=i, energy=0.9, moods=["euphoric"], stages=["colour", "motion"]).plan(0, [], PRESETS, cost).add

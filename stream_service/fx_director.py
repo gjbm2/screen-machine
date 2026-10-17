@@ -39,7 +39,7 @@ NOVELTY_WINDOW = 4
 NOVELTY_WEIGHT = 0.25
 SWAP_P = 0.6
 QUARANTINE_S = 600.0
-FX_DESCRIPTORS = ("energy", "moods", "style")
+FX_DESCRIPTORS = ("energy", "moods", "style", "genre")
 FX_BARS = 4                    # on the clock: a scheduled move comes after whole phrases of this many bars ...
 FX_MIN_BARS, FX_MAX_BARS = 4, 64
 FX_FADE_BEATS = (1, 2, 4, 8, 16)   # ... and a fade lasts whole beats (the nearest to the rate's seconds)
@@ -206,7 +206,8 @@ class FxDirector:
         fxd = self.fxd
         want = {"energy": self.direction.get("energy"),
                 "moods": fxd.get("moods") if fxd.get("moods") else self.direction.get("moods"),
-                "style": self.direction.get("transition_style")}
+                "style": self.direction.get("transition_style"),
+                "genre": self.direction.get("genre"), "genres": self.direction.get("genres")}
         return match_weight(tags, want, FX_DESCRIPTORS)
 
     def candidates(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
