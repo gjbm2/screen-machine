@@ -387,6 +387,12 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     if is_important:
                         debug(f"Event trigger '{event_key}' is marked as IMPORTANT - will not be removed by other urgent actions")
                     
+                    # Each instruction carries its own event: they run after this loop, when _event holds the last
+                    # matched event (run_instruction restores this one)
+                    ev_ctx = dict(context["vars"]["_event"])
+                    event_instructions = [dict(i, _event_ctx=ev_ctx) if isinstance(i, dict) else i
+                                          for i in event_instructions]
+
                     # Add to all_trigger_data with urgency/importance flags
                     all_trigger_data.append({
                         "block": event_instructions,
@@ -477,6 +483,14 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         should_log_debug = True
         run_instruction._last_debug_log_time[publish_destination] = current_time
     
+    # An instruction queued by an event trigger carries that event (resolve_schedule stamps "_event_ctx"): restore it,
+    # so a block always reads ITS event even when several events matched in the same tick (_event is one slot)
+    if isinstance(instruction, dict) and "_event_ctx" in instruction:
+        instruction = dict(instruction)
+        ev = instruction.pop("_event_ctx")
+        context.setdefault("vars", {})["_event"] = ev
+        context["_event"] = ev
+
     # Ensure event data is accessible at the top level 
     # This is needed for proper Jinja processing of templates like {{ _event.payload.wait }}
     if "vars" in context and "_event" in context["vars"] and "_event" not in context:
