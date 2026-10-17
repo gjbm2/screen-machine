@@ -540,3 +540,39 @@ def test_a_slow_trip_benches_for_a_while_and_doubles():
     SessionManager.note_slow(mgr, info, "s-2")                        # again: twice as long
     assert mgr.slow[key]["count"] == 2 and mgr._slow_until[key] - time.monotonic() > 1.9 * SessionManager.SLOW_BENCH_S
     assert first > 0
+
+
+def test_one_spike_never_shrinks_and_the_scale_comes_back():
+    """73, 17 Oct: a busy host's spike ratcheted render scale to 0.25 in 0.4 s and it never came back.  Now it takes
+    SLOW_RUN slow samples in a row to shrink, and GOOD_RUN cheap ones step it back up to the asked scale."""
+    from stream_service.plugins._lib.glsl.plugins import GOOD_RUN, SLOW_RUN, _Watch
+    w = _Watch(None, "isf_fft_filled_waveform", 20.0)
+    feed = lambda ms: setattr(w, "poll", lambda: ms)                 # noqa: E731
+    for ms in (90.0, 2.0, 120.0, 2.0):                               # lone spikes
+        feed(ms)
+        assert w.judge(1.0, 0.25, 1.0) is None
+    feed(60.0)
+    got = [w.judge(1.0, 0.25, 1.0) for _ in range(SLOW_RUN)]
+    assert got[:-1] == [None] * (SLOW_RUN - 1) and got[-1] is not None and got[-1] < 1.0
+    scale = got[-1]
+    feed(2.0)
+    ups = [w.judge(scale, 0.25, 1.0) for _ in range(GOOD_RUN)]
+    assert ups[-1] is not None and ups[-1] > scale and all(u is None for u in ups[:-1])
+
+
+def test_a_lone_slow_render_does_not_drop_the_frame_rate():
+    from types import SimpleNamespace
+
+    from stream_service.layers import SourceLayer
+    lay = SourceLayer.__new__(SourceLayer)
+    lay.cost_ema, lay._prev_ms, lay._samples_seen, lay.rate_div, lay._low_since = None, None, 0, 1, None
+    lay.source = SimpleNamespace(name="x")
+    fc = SimpleNamespace(fps=30.0, t=0.0)
+    for i, ms in enumerate((3.0, 90.0, 3.0, 3.0), 1):
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms)
+        lay._adapt_rate(fc)
+        assert lay.rate_div == 1                                     # the 90 ms one alone: still every frame
+    for i, ms in enumerate((90.0, 90.0), 5):
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms)
+        lay._adapt_rate(fc)
+    assert lay.rate_div > 1                                          # two in a row: it is the scene
