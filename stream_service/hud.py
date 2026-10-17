@@ -225,6 +225,12 @@ def _mmss(s: Optional[float]) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+def _cut(t: Any, n: int) -> str:
+    """At most ``n`` characters, an ellipsis ("~") when cut: so a line's parts all fit in COLS."""
+    t = "-" if t is None else str(t)
+    return t if len(t) <= n else t[:max(1, n - 1)] + "~"
+
+
 def _eta(e: Any) -> str:
     if e is None:
         return "on Next"
@@ -301,23 +307,23 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     on_s = None
     if getattr(s.director, "dwell_start", None) is not None:
         on_s = now - s.director.dwell_start
-    add(f"now  {s.current_name or '-'}  {_mmss(on_s)}{rate}", bad=bool(rate))
+    add(f"now  {_cut(s.current_name, 34)}  {_mmss(on_s)}{rate}", bad=bool(rate))
     why = (s.director.last or {}).get("detail") or last.get("detail") or ""
-    add(f"why  {why}")
+    add(f"why  {_cut(why, COLS - 5)}")
     up = s.upnext_view(now)
     for label, e in zip(("next", "then"), up.get("scenes", [])[:2]):
-        add(f"{label} {e.get('scene')} via {e.get('transition') or 'auto'} {_eta(e.get('eta_s'))}")
+        add(f"{label} {_cut(e.get('scene'), 28)} via {_cut(e.get('transition') or 'auto', 18)} {_eta(e.get('eta_s'))}")
     # effects
     stack = [st for st in getattr(s.fx, "stack", [])]
     if stack:
-        add("fx   " + " | ".join(f"{st.spec.preset or st.spec.effect} {getattr(st, 'level', 1.0):.1f}"
-                                 for st in stack[:4]))
+        add("fx   " + " | ".join(f"{_cut(st.spec.preset or st.spec.effect, 18)} {getattr(st, 'level', 1.0):.1f}"
+                                 for st in stack[:3]))
     else:
         add("fx   none")
     fx = s.fx_director.status(now) if hasattr(s.fx_director, "status") else {}
     nxt = (up.get("effects") or [{}])[0].get("effect") if up.get("effects") else None
     lastfx = (fx.get("last") or {}).get("why") or ""
-    add(f"fx>  {nxt or '-'} in {_eta(fx.get('next_in_s'))}  {lastfx}")
+    add(f"fx>  {_cut(nxt, 26)} in {_eta(fx.get('next_in_s'))}  {_cut(lastfx, 22)}")
     # tempo / drive
     feed = s.mgr.music_feed
     c = feed.clock(now)
@@ -338,7 +344,7 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
                 ins = d.get("in") or d.get("signals") or []
                 sig = ins[0].get("sig") if ins and isinstance(ins[0], dict) else d.get("signal")
                 v = d.get("value", d.get("last"))
-                terms.append(f"{d.get('param')}<{sig}={_f(v, 2)}")
+                terms.append(f"{_cut(d.get('param'), 9)}<{_cut(sig, 8)}={_f(v, 2)}")
         except Exception:
             terms = []
     add("drive " + ("  ".join(terms) if terms else "-"))
@@ -359,8 +365,8 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
         au, mic, li, lk = (d.get(k) or {} for k in ("auto", "mic", "listening", "look"))
         ai = li.get("why") or ("on" if li.get("on") else "off")
         age = f" {int(lk['age_s'])}s" if isinstance(lk.get("age_s"), (int, float)) else ""
-        add(f"Auto: {au.get('last') or au.get('line') or '-'} · mic {'on' if mic.get('on') else 'off'}"
-            f" · AI: {ai} · look: {lk.get('why') or '-'}{age}")
+        add(f"Auto {_cut(au.get('last') or au.get('line'), 24)} | mic {'on' if mic.get('on') else 'off'}"
+            f" | AI {_cut(ai, 8)} | {_cut(lk.get('why'), 12)}{age}")
     evs = list(getattr(s.mgr, "room_events_ring", []))[-3:]
     add("evt  " + ("; ".join(f"{time.strftime('%H:%M:%S', time.localtime(t))} {k}" for t, k, _ in reversed(evs))
                    if evs else "-"))
