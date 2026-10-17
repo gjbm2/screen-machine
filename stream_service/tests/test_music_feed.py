@@ -255,7 +255,8 @@ def test_fast_energy_follows_a_step_while_the_directions_stays_slow():
 
 
 def test_onset_pulses_stand_in_for_an_unsure_beat_only():
-    f = MusicFeed()
+    f = MusicFeed()                                                     # the old fallback: the beat ladder off
+    f.response.cfg = __import__("dataclasses").replace(f.response.cfg, ladder_on=False)
     t0 = 50.0
     t = feed_steps(f, t0, [(1.2, 0.6, 0.1)])
     assert f.onset_pulse(t) == 0.0                                      # weak onsets: no pulse
@@ -389,7 +390,8 @@ async def test_session_inputs_show_the_rooms_drive_and_cuts_stay_on_the_sure_clo
     from dataclasses import replace
     sid, s, eng = await live(client, auto={**AUTO, "snap": "beat"})
     mgr = s.mgr
-    mgr.music_feed.response.cfg = replace(mgr.music_feed.response.cfg, onset_on=True)   # the live file ships it off
+    mgr.music_feed.response.cfg = replace(mgr.music_feed.response.cfg, onset_on=True,   # the live file ships it off
+                                          ladder_on=False)                # (and the ladder wins when both are on)
     now = time.monotonic()
     c = {**clock(now, bpm=112.0, gate="none"), "state": "holding", "conf": 0.35}
     t = now - 2.0

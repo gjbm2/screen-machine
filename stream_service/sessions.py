@@ -325,6 +325,7 @@ class Session(EngineListener):
         w = ex.get("music_w")
         fast = None if w is None else feed.energy_now(now)
         music_signals(sig, ex, self.sampler.w if w is None else w, fast, wf)
+        self.runtime.pivots.apply(sig)            # each level centred on its own norm, as the frames see it
         return sig
 
     def _sample_transition(self, spec: TransitionSpec) -> TransitionSpec:
@@ -1920,6 +1921,7 @@ class Session(EngineListener):
         out["bindings"] = mod.describe() if mod is not None else []
         out["fx_bindings"] = self.fx.bindings()
         out["masters"] = self.runtime.masters()
+        self.runtime.inputs_view(out, now)        # the beat ladder's rung (derived.beat_source) and the pivots
         out["lead"] = {"total_ms": None if self.lead_ms is None else round(self.lead_ms, 1), **self.lead_parts}
         ds = self.following() or self                  # who directs this screen (the room's leader, else itself)
         nx = ds.director.next_eligible(now)
