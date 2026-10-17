@@ -223,3 +223,18 @@ def header_doc(fifths: int, *, meter: bool, sig: tuple[int, int] = (4, 4)) -> st
     body = ('<measure xml:id="m0" n="1" right="invis">'
             + "".join(f'<staff n="{n}"><layer n="1"><space dur="32"/></layer></staff>' for n in (1, 2)) + "</measure>")
     return _doc(head, body)
+
+
+def change_doc(fifths: int, sig: tuple[int, int] | None = None) -> str:
+    """A key (and time, ``sig``) change written inline, mid-staff: no brace and no clefs, no music.  The new key
+    signature only (no cancelling naturals)."""
+    count, unit = sig if sig is not None else (4, 4)
+    form = "" if sig is not None else ' meter.form="invis"'
+    head = (f'<scoreDef meter.count="{count}" meter.unit="{unit}"{form} keysig="{_keysig(fifths)}" keysig.show="true">'
+            '<staffGrp symbol="none" bar.thru="true">'
+            '<staffDef n="1" lines="5" clef.shape="G" clef.line="2" clef.visible="false"/>'
+            '<staffDef n="2" lines="5" clef.shape="F" clef.line="4" clef.visible="false"/>'
+            "</staffGrp></scoreDef>")
+    body = ('<measure xml:id="m0" n="1" right="invis">'
+            + "".join(f'<staff n="{n}"><layer n="1"><space dur="32"/></layer></staff>' for n in (1, 2)) + "</measure>")
+    return _doc(head, body)

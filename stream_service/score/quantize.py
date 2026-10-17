@@ -115,6 +115,7 @@ class Bar:
     rewrite: bool = False                          # (a marker) the phrase is written again from its start: drop it
     beats: int = BEATS                             # the metre: beats per bar ...
     unit: int = GRID                               # ... and 16ths per beat (4 simple, 6 compound)
+    pos: int = 0                                   # the bar's number in its phrase from 0 (a rewrite restarts it)
 
     @property
     def units(self) -> int:
@@ -274,7 +275,9 @@ NOTATABLE = (1, 2, 3, 4, 6, 8, 12, 16, 24)
 
 class ScoreBuilder:
     """Feed note_on / note_off / pedal (sound-clock seconds); poll(now) returns the bars committed since.  With the
-    analysis worker, pass ``analysis_request(now)``'s requests to it and its replies to ``on_analysis``."""
+    analysis worker, pass ``analysis_request(now)``'s requests to it and its replies to ``on_analysis``.  For a
+    display: ``position(t)`` (bars from the phrase's start), ``where(t)`` (the bar a note will be written in) and
+    ``bar_seconds()``."""
 
     def __init__(self) -> None:
         self.clock = BeatClock()
@@ -512,6 +515,37 @@ class ScoreBuilder:
             return None
         return tl.beat(t) / self.beats - self.next_bar
 
+    def position(self, t: float) -> Optional[float]:
+        """Where time ``t`` falls in bars from the phrase's bar 0 (None while bars_ahead is None)."""
+        tl = self.timeline
+        if not tl.running or (self.analysed and self.grid is None):
+            return None
+        return tl.beat(t) / self.beats
+
+    def where(self, t: float) -> Optional[tuple[int, float, bool]]:
+        """(phrase bar, fraction of it, provisional) for a note starting at ``t``, as _build will assign it; on the
+        running clock in 4/4 (provisional) while the analysis hasn't decided the metre; None with no beat yet."""
+        provisional = self.analysed and self.grid is None
+        tl = self.clock if provisional else self.timeline
+        if not tl.running:
+            return None
+        bu = self.bar_units
+        q = self._q(tl.beat(t))
+        k, r = divmod(q, bu)
+        if k < 0:
+            return 0, 0.0, provisional
+        return int(k), r / bu, provisional
+
+    def bar_seconds(self) -> Optional[float]:
+        """A bar's length (s) at the newest beat, 0.3-6 s (None with no beat yet)."""
+        if self.grid is not None and len(self.grid.t) >= 2:
+            ibi = self.grid.t[-1] - self.grid.t[-2]
+        elif self.clock.running:
+            ibi = self.clock.P
+        else:
+            return None
+        return min(6.0, max(0.3, self.beats * ibi))
+
     def poll(self, now: float) -> list[Bar]:
         out: list[Bar] = []
         if self.rewrite_pending:
@@ -612,7 +646,7 @@ class ScoreBuilder:
                 vels.append(n.vel)
         staves = tuple(self._voice(sorted(sg), B, U) for sg in segs)
         bar = Bar(index=self.bar_number, staves=staves, t_start=tl.time(lo / U), t_end=tl.time(hi / U),
-                  empty=not any(segs), beats=B, unit=U)
+                  empty=not any(segs), beats=B, unit=U, pos=k)
         self.bar_number += 1
         if vels:
             m = sum(vels) / len(vels)
