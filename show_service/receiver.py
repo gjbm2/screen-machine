@@ -190,6 +190,7 @@ class _Stream:
         self.ndiff: Optional[int] = None
         self.ndiff_seg = -1
         self.sender_steps = 0
+        self.step_causes = {"xrun": 0, "capture": 0, "ndiff": 0}   # which heartbeat check found each sender step
         # meter
         self.t_loud: Optional[float] = None
         self.clips = 0
@@ -940,17 +941,21 @@ class Receiver:
         if st.clock is None or st.capture is None or st.want_seg is not None:
             return
         step = prev is not None and hb.xruns > prev.xruns
+        if step:
+            st.step_causes["xrun"] += 1
         if hb.frame is not None and hb.n is not None and hb.t_cap_ns is not None:
             n_rx = st.base_n + _signed(vban.counter_delta(st.base_c, hb.frame)) * st.frames
             if n_rx >= 0:
                 seg = st.clock.seg
                 if not st.capture.observe(n_rx, hb.t_cap_ns, seg=seg):
                     step = True
+                    st.step_causes["capture"] += 1
                 ndiff = hb.n - n_rx
                 if st.ndiff is None or st.ndiff_seg != seg:
                     st.ndiff, st.ndiff_seg = ndiff, seg
                 elif ndiff != st.ndiff:
                     step = True
+                    st.step_causes["ndiff"] += 1
         if step:
             st.want_seg = ("sender-step", True)
             st.sender_steps += 1
@@ -1122,7 +1127,7 @@ class Receiver:
                           "gaps": st.gaps, "lost": st.lost, "jitter_ms": _r(clock.jitter_ms),
                           "hold_ms": _r(st.hold_s() * 1000.0), "drift_ppm": _r(clock.skew_ppm),
                           "skew_alarm": clock.skew_alarm, "age_ms": age_ms, "segments": st.segments,
-                          "sender_steps": st.sender_steps}
+                          "sender_steps": st.sender_steps, "step_causes": dict(st.step_causes)}
             out["audio"] = self._audio_health(st, now)
             out["clock"] = {**clock.state(), "capture": st.capture.state() if st.capture is not None else None}
             out["line"] = "{} · {:g}k/{}ch · {} dBFS · {:.1f} % loss · {:.0f} ms jitter".format(
