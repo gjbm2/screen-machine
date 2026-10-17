@@ -1133,7 +1133,8 @@ class Director:
             table.append({"name": n, "moods": [x for x in w.get("moods") or [] if isinstance(x, str)],
                           "fx_moods": [x for x in w.get("fx_moods") or [] if isinstance(x, str)],
                           "transition_style": w.get("transition_style")
-                          if isinstance(w.get("transition_style"), str) else None})
+                          if isinstance(w.get("transition_style"), str) else None,
+                          "change_rate": _c01(w["change_rate"]) if _num(w.get("change_rate")) is not None else None})
         dwell = _num(b.get("dwell_s"), 0.0) or 0.0
         if dwell < 0:
             probs.append(f"director.bands.dwell_s: {b.get('dwell_s')!r} is not >= 0: 0 used")
@@ -2389,6 +2390,7 @@ class Director:
             moods, src = list(vs["moods"]), "vibe"
         style = (band or {}).get("transition_style") or vs["transition_style"]
         return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from, "genres": genres,
+                "change_rate": (band or {}).get("change_rate"),
                 "transition_style": style, "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
                 "band": band["name"] if band else None}
 
@@ -2614,14 +2616,22 @@ class Director:
                 and now_s - r["t_ms"] / 1000.0 <= RHYTHM_STALE_S:
             dens = _c01(r["density"])                    # the medium lane's onset density while it is fresh
         fam = vs["palette_family"] or (self.palettes.family(look_pal["name"]) if look_pal["name"] else None)
+        # the renderer's energy and change_rate: a feel's own (its range, centre and follow amount compose them);
+        # with no feel, the music's (2b's audit, 17 Oct: the neutral follow squeezed the energy to 0.25-0.75 and
+        # change_rate sat at 0.5): the band energy (absolute base + swing) and the band row's change_rate (show.yaml
+        # director.bands.words.*.change_rate). The lamps keep e.
+        feel_on = self.known and self._vibe_name is not None
+        e_dir = e if feel_on else _c01(_num(m.get("band_energy"), e) or 0.0)
+        cr = vs["change_rate"] if feel_on or words.get("change_rate") is None else words["change_rate"]
         self.direction = {"t_ms": round(now_s * 1000.0, 1), "seq": self._dir_seq, "source": "show_service",
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
-                          "vibe": self._vibe_name, "energy": round(e, 3), "pace": round(_c01(m["pace"]), 3),
-                          "intensity": 1.0, "change_rate": round(vs["change_rate"], 3), "moods": words["moods"],
+                          "vibe": self._vibe_name, "energy": round(e_dir, 3), "pace": round(_c01(m["pace"]), 3),
+                          "intensity": 1.0, "change_rate": round(cr, 3), "moods": words["moods"],
                           "genre": words["genre"], "genres": words.get("genres") or {},
                           "transition_style": words["transition_style"],
                           "palette_family": fam,
-                          "fx": {"density": round(_c01(0.1 + 0.8 * e), 3), "rate": round(_c01(0.05 + 0.85 * e), 3),
+                          "fx": {"density": round(_c01(0.1 + 0.8 * e_dir), 3),
+                                 "rate": round(_c01(0.05 + 0.85 * e_dir), 3),
                                  "stages": None, "moods": words["fx_moods"]},
                           "arousal": round(arousal, 3), "tension": round(_c01(m["tension"]), 3),
                           "section": section_ref,
