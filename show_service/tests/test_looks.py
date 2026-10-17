@@ -177,7 +177,7 @@ def test_parity_with_the_virtual_maestro():
     clk = SnapClock(anchor=10.0, period=0.5)
     box = {"f": feats(10.0)}
     vm = ao.VirtualMaestro(layout=lay, clock=clk, features_fn=lambda: box["f"], room_dmx_url=None)
-    e = LookEngine(clock=clk, features_fn=lambda: box["f"])     # neutral: artnet_out's DEFAULT_RGB and HUE_DEPTH
+    e = LookEngine(clock=clk, features_fn=lambda: box["f"])     # neutral: artnet_out's NEUTRAL_RGB and HUE_DEPTH
     fs = [fx(d.id, HUE_T, "hue", screen=d.screen) for d in hue_devs]
     rig = rigview(fs, [HUE_T], [out("hue", "hue")], groups={"around": [d.id for d in hue_devs]})
     assert e.configure(show_looks(), rig) == []
@@ -548,7 +548,7 @@ def test_allocation_by_role_and_placement_then_house():
     # no vibe: the neutral colour at full value; one colour from palette_fn: that colour
     box["pal"] = None
     for ff in e.evaluate("dmx", 10.2, DMX_CAPS)["fixtures"].values():
-        assert ff["rgb"] == pytest.approx(list(ao.DEFAULT_RGB))
+        assert ff["rgb"] == pytest.approx(list(ao.NEUTRAL_RGB))
     box["pal"] = (0.0, 0.5, 1.0)
     assert e.evaluate("dmx", 10.3, DMX_CAPS)["fixtures"]["spot.y"]["rgb"] == [0.0, 0.5, 1.0]
 
@@ -708,7 +708,7 @@ def test_a_failing_input_degrades():
     e2.configure({}, lamps_rig(1))
     fr = e2.evaluate("hue", 10.0, HUE_CAPS)
     assert fr["active"] is True and fr["fixtures"]["lamp.0"]["colour"] == pytest.approx(
-        [c / max(ao.DEFAULT_RGB) for c in ao.DEFAULT_RGB])
+        [c / max(ao.NEUTRAL_RGB) for c in ao.NEUTRAL_RGB])
 
 
 # -- budgets (README S5.3) --------------------------------------------------------------------------------------------

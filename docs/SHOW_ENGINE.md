@@ -1053,6 +1053,26 @@ Whether a mode can be entered automatically, suggested, or neither is entirely i
 - music and Sonos rules once CED (P1) and aa's Sonos adapter exist;
 - every other mode as its own config says (none have triggers until the owner adds them).
 
+### 8.10 Composition and balance
+
+The owner's rulings (17 Oct): **one composer, many renderers.** Modes only switch appliances on. The director decides how much each appliance that is on responds to the music, for an acceptable overall tonal balance and compositional equilibrium. **Volume is never intensity.** Session 75 wrote the design, and its spine is:
+- **Which appliances are on is read, never decided.** A screen counts while it is live. A Hue area counts while room believes it is exactly `dmx`; `taken_over` (another app holds it) never counts. No code knows a device or a mode by name.
+- **How much is one formula per appliance and dimension.** The dimensions are picture, lamp level, pace, beat pulse, music depth and how often looks change. Loudness enters once, as a partial, floored share:
+  - it is scaled by **the song's own dynamic range**, so a compressed song or an AGC'd input doesn't pump;
+  - **tension and builds** lift the picture, so a quiet but tense build keeps it up;
+  - **a dark scene isn't dimmed further** (its APL, once the renderer reports it);
+  - **speech is never loud**, and the piano's velocity is the loudness while it plays;
+  - silence calms, and missing audio is unknown, not quiet.
+- **Each feel sets only the limits:** how much it follows (`follow`), each dimension's quiet end (`q`), floors and bases. The number in the room is the director's call, moment by moment. The picture never goes below 0.6.
+- **Lamps by role:** the lamps above a screen move with it (weight 1.0). The lamps opposite are the slower partner (0.6).
+- **One tempo fold:** stream_service's `music_response.json` range [70, 180). A half-time beat lock no longer reads as slow.
+
+Built in steps. **Step 2 (17 Oct)** is the composition core (show_service/compose.py, pure) in two modes, chosen in show.yaml `director.compose.mode`:
+- **observe** (the default): the plan is published on `room.look` as `compose`, for the DSP monitor. Nothing else changes.
+- **drive:** room.direction carries the screens' music depth (`intensity`), beat depth (`pulse_depth`) and the feel's peak words (`peak`). The tempo is folded. The lamps take the plan on their own beat ladder (beat; else the clock's dmx beats at `looks.middle_depth`; else a steady level from the plan instead of the raw energy).
+
+Later steps: the picture on the screens' INTENSITY channel with APL headroom (3), one clock for changes (4), figure and ground (5). As built: show_service/README.md S5.18.
+
 ## 9. Outputs
 
 ### 9.1 Look engine (v1: intensity and colour only)
@@ -1370,6 +1390,11 @@ GET    /show/healthz
   - **Lamps:** they dip to the feel's floor across a gap. The new song's look lands at the junction, whatever the feel's change rule.
   - **Event ids:** every room.event now has a stable `id` (§11.1).
   - **Renderer:** 04's side, playing the transition at that change, is next.
+- **Composition and balance, step 2** (owner rulings, 17 Oct; §8.10; README S5.18). Built, in observe. It loads at the next show_service restart.
+  - **What's built:** show_service/compose.py (pure), the new enabled-set reader (live screens, Hue exactly `dmx`), and the per-feel limits (vibes.yaml `compose`, show.yaml `director.compose`).
+  - **observe** (shipped): `room.look.compose` carries every enabled appliance's plan and the balance. Nothing else changes, and a test proves the outputs are identical frame for frame.
+  - **drive** (one show.yaml line, hot-reloaded): room.direction's `intensity`, `pulse_depth` and `peak`; the one tempo fold; the lamps' dmx rung at `looks.middle_depth`; and the no-beat lamp swell from the plan instead of the raw energy.
+  - **Not yet:** the screens' INTENSITY channel, APL, and the renderer reading `pulse_depth` and `peak` (step 3, 04/75).
 - **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
 - **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
 - **Input meter.** The card's `hearing` carries:

@@ -102,7 +102,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence
 
 from . import colour_mix, contract
-from .artnet_out import (DEFAULT_RGB, HUE_ATTACK_S, HUE_DECAY_S, HUE_DEPTH, IDLE_AFTER_S, QUIET_AFTER_S,
+from .artnet_out import (DEFAULT_RGB, NEUTRAL_RGB, HUE_ATTACK_S, HUE_DECAY_S, HUE_DEPTH, IDLE_AFTER_S, QUIET_AFTER_S,
                          QUIET_GATE_OFF, QUIET_GATE_ON, TAU_ENERGY_S)
 from .clock import beat_at
 from .palette import mix as palette_mix
@@ -404,7 +404,7 @@ class LookEngine:
     def __init__(self, *, palette_fn: Optional[Callable[[float], Any]] = None,
                  look_fn: Optional[Callable[[], Any]] = None, clock: Any = None,
                  features_fn: Optional[Callable[[], Any]] = None,
-                 neutral: tuple[Sequence[float], float] = (DEFAULT_RGB, HUE_DEPTH),
+                 neutral: tuple[Sequence[float], float] = (NEUTRAL_RGB, HUE_DEPTH),
                  mono: Callable[[], float] = time.monotonic) -> None:
         self.palette_fn = palette_fn
         self.look_fn = look_fn
@@ -417,8 +417,8 @@ class LookEngine:
             self._snap_fn = clock                                # () -> ClockData | None
         else:
             self._snap_fn = None
-        n_rgb, n_depth = (neutral if neutral is not None else (DEFAULT_RGB, HUE_DEPTH))
-        self.neutral_rgb: Rgb = _rgb3(n_rgb) or DEFAULT_RGB
+        n_rgb, n_depth = (neutral if neutral is not None else (NEUTRAL_RGB, HUE_DEPTH))
+        self.neutral_rgb: Rgb = _rgb3(n_rgb) or NEUTRAL_RGB
         self.neutral_depth = _c01(float(n_depth)) if _isnum(n_depth) else HUE_DEPTH
         self._mono = mono
         # set_look (any thread; each swapped by reference, read once per frame)

@@ -11,6 +11,7 @@ import asyncio
 import io
 import json
 import math
+import os
 import pathlib
 import statistics
 import time
@@ -916,8 +917,10 @@ def test_snapshot_has_the_readme_keys_and_serialises(tmp_path):
     assert set(snap["palette"]) >= {"pick", "current", "choices"}
     assert [c["name"] for c in snap["palette"]["choices"]][:4] == ["auto", "art", "neon", "rainbow"]
     assert set(snap["stats"]) >= {"tick_ms_p95", "looks", "events", "published"}
-    assert set(snap["direction"]) == set(contract.DirectionData.__annotations__)
+    # README S5.18: pulse_depth and peak only in compose drive mode (the default, observe, leaves the message as it was)
+    assert set(snap["direction"]) == set(contract.DirectionData.__annotations__) - set(contract.DIRECTION_DRIVE_KEYS)
     assert set(snap["look"]) == set(contract.LookData.__annotations__)
+    assert set(snap["look"]["compose"]) == set(contract.ComposeView.__annotations__)
     assert set(snap["readback"]) >= set(contract.VibeReadback.__annotations__) - {"overrides", "boot_id"}   # api adds boot_id
     json.dumps(snap)
     json.dumps(r.d.persist())
@@ -2371,3 +2374,272 @@ def test_house_lights_use_the_fixtures_own_house_when_room_has_none(tmp_path):
     assert c["spot.dark"] == (0.0, 0.0, 0.0) and c["spot.red"] == pytest.approx((0.5, 0.0, 0.0))
     assert c["spot.bad"] == pytest.approx(warm)
     assert max(c["tv.left"]) == pytest.approx(1.0)                    # screens: never
+
+
+# -- composition and balance (README S5.18; compose.py) ------------------------------------------------------------------
+from show_service import compose as comp  # noqa: E402
+
+COMPOSE = {"defaults": {"follow": 0.8, "q": {"screens": {"picture": 0.9, "pace": 0.6, "pulse": 0.7, "depth": 0.7,
+                                                         "change": 0.6},
+                                             "lamps": {"level": 0.6, "pulse": 0.7}}}}
+
+
+def compose_rig(tmp_path, mode: str = "observe", *, extra: dict | None = None, vibes_text: str = VIBES,
+                looks: dict | None = None) -> Rig:
+    settings = json.loads(json.dumps(SETTINGS))
+    settings["director"]["compose"] = {**json.loads(json.dumps(COMPOSE)), "mode": mode, **(extra or {})}
+    settings["lamps"]["roles"]["keylight"]["dynamics"] = 0.6
+    if looks is not None:
+        settings["looks"] = looks
+    r = Rig(tmp_path, clock=True, settings=settings, vibes_text=vibes_text)
+    r.room = {"reachable": True, "current": "x", "stored_restore": {},
+              "screens": {"wall-left": {"layer": "live", "phase": "live", "cutting": False},
+                          "wall-right": {"layer": "art", "phase": "idle", "cutting": False}},
+              "members": {"lamp.one": {"believed": "dmx"}, "lamp.two": {"believed": "dmx"},
+                          "lamp.three": {"believed": "taken_over"}, "lamp.four": {"believed": "off"}}}
+    return r
+
+
+def song(r: Rig, *, quiet_after: float | None = None) -> None:
+    """Features with a song's own range (loud and soft 8 s passages, lufs_s -16 / -32) and, from ``quiet_after`` s
+    into the run, a quiet ending (gate 0.1)."""
+    t0 = r.t
+
+    def each(rig: Rig) -> None:
+        soft = int((rig.t - t0) // 8) % 2 == 1
+        quiet = quiet_after is not None and rig.t - t0 >= quiet_after
+        g = 0.1 if quiet else (0.5 if soft else 0.95)
+        rig.feat = {**feats(rig.t, energy=0.3 if soft or quiet else 0.8, gate=g),
+                    "lufs_s": -32.0 if soft or quiet else -16.0}
+    r._song = each                                                   # noqa: SLF001 (the test's own hook)
+
+
+def run_song(r: Rig, seconds: float) -> None:
+    r.run(seconds, getattr(r, "_song", None))
+
+
+def test_observe_changes_nothing_else(tmp_path):
+    """observe (the default): the plan goes out on room.look as ``compose`` and NOTHING else changes: the same script
+    with the composer cut out gives the same room.direction, room.event, the rest of room.look, palette_fn and every
+    set_look_out / GOBO / gate_ref call, frame for frame."""
+    rigs = []
+    for cut in (False, True):
+        d = tmp_path / ("cut" if cut else "on")
+        d.mkdir()
+        r = compose_rig(d)
+        if cut:
+            r.d._compose_plan = lambda *a, **k: None                  # noqa: SLF001 (today's director)
+        song(r, quiet_after=70.0)
+        r.d.set_target("alpha")
+        samples: list = []
+
+        def each(rig: Rig, _s=samples) -> None:
+            rig._song(rig)                                           # noqa: SLF001
+            _s.append(rig.d.palette_fn(rig.t))
+            if abs(rig.t - 1040.0) < 0.05:
+                rig.d.action("house")
+            if abs(rig.t - 1045.0) < 0.05:
+                rig.d.action("house")
+            if abs(rig.t - 1050.0) < 0.05:
+                rig.event("track_end_armed", rig.t + 15.0, eta_s=15.0, track_id=1)
+        r.run(90.0, each)
+        rigs.append((r, samples))
+    (a, sa), (b, sb) = rigs
+    assert a.of(contract.ROOM_DIRECTION) == b.of(contract.ROOM_DIRECTION)
+    assert a.of(contract.ROOM_EVENT) == b.of(contract.ROOM_EVENT)
+    la = [{k: v for k, v in x.items() if k != "compose"} for x in a.of(contract.ROOM_LOOK)]
+    lb = [{k: v for k, v in x.items() if k != "compose"} for x in b.of(contract.ROOM_LOOK)]
+    assert la == lb and len(la) > 10
+    assert sa == sb and a.calls == b.calls
+    assert not [c for c in a.calls if c[0] == "look" and "plan" in c[1]]
+    d = a.of(contract.ROOM_DIRECTION)[-1]
+    assert d["intensity"] == 1.0 and not set(contract.DIRECTION_DRIVE_KEYS) & set(d)
+    blk = a.d.look["compose"]                                        # ...while the plan itself moved with the song
+    assert blk["mode"] == "observe" and blk["appliances"]["wall-left"][comp.PICTURE] < 1.0
+
+
+def test_the_compose_block_on_room_look(tmp_path):
+    r = compose_rig(tmp_path)
+    song(r)
+    r.d.set_target("alpha")
+    run_song(r, 40.0)
+    blk = r.of(contract.ROOM_LOOK)[-1]["compose"]
+    assert set(blk) == set(contract.ComposeView.__annotations__)
+    assert blk["enabled"] == ["wall-left", "lamp.one", "lamp.two"]   # live screens; members exactly dmx
+    assert set(blk["appliances"]) == set(blk["enabled"]) and blk["limits"] == "defaults"
+    for vals in list(blk["appliances"].values()) + list(blk["nominal"].values()):
+        assert set(vals) == set(comp.DIMS) and all(0.0 <= x <= 1.0 for x in vals.values())
+    b = blk["balance"]
+    assert set(b) >= {"loud", "range", "lift", "s", "quiet", "h", "liveness"}
+    assert b["range"] > 0.9 and b["liveness"] == 1.0 and b["h"][comp.PICTURE] == 0.5 and b["h"][comp.PULSE] == 1.0
+    lamps = blk["appliances"]
+    assert lamps["lamp.two"][comp.LEVEL] >= lamps["lamp.one"][comp.LEVEL]   # the key role (W 0.6) moves less
+    json.dumps(r.d.snapshot())
+    sc = r.d.snapshot()["compose"]
+    assert sc["mode"] == "observe" and sc["problems"] == [] and sc["fold"] == [70.0, 180.0]
+    r.d.action("house")                                              # House lights: the lamps are held at base
+    run_song(r, 1.0)
+    assert r.d.look["compose"]["appliances"]["lamp.one"] == {d: 1.0 for d in comp.DIMS}
+
+
+def test_a_feels_compose_block_sets_the_limits(tmp_path):
+    text = VIBES.replace("    moods: [bright]\n", "    moods: [bright]\n    compose:\n      follow: 1.0\n"
+                         "      q: {screens: {depth: 0.2}}\n")
+    r = compose_rig(tmp_path, vibes_text=text)
+    song(r, quiet_after=40.0)
+    r.d.set_target("alpha")
+    run_song(r, 60.0)
+    blk = r.d.look["compose"]
+    assert blk["limits"] == "feel"
+    assert blk["appliances"]["wall-left"][comp.DEPTH] < 0.5          # the feel's own quiet end, nearly reached
+    assert blk["appliances"]["wall-left"][comp.PICTURE] == 1.0       # a dimension the block leaves out never moves
+    r.d.set_target("beta")                                           # a feel without a block: the defaults
+    run_song(r, 0.2)
+    assert r.d.look["compose"]["limits"] == "defaults"
+
+
+def test_drive_puts_the_plan_on_room_direction(tmp_path):
+    r = compose_rig(tmp_path, "drive")
+    song(r, quiet_after=40.0)
+    r.d.set_target("alpha")
+    run_song(r, 30.0)
+    loud = r.of(contract.ROOM_DIRECTION)[-1]
+    run_song(r, 30.0)                                                # the quiet ending
+    quiet = r.of(contract.ROOM_DIRECTION)[-1]
+    nom = r.d.look["compose"]["nominal"][comp.SCREENS]
+    assert quiet["intensity"] == pytest.approx(nom[comp.DEPTH], abs=0.021) and quiet["intensity"] < 0.85
+    assert quiet["pulse_depth"] == pytest.approx(nom[comp.PULSE], abs=0.021) and quiet["pulse_depth"] < 0.85
+    assert loud["intensity"] > quiet["intensity"] and loud["pulse_depth"] > quiet["pulse_depth"]
+    assert quiet["peak"] == {"energy": 0.9, "moods": ["bright"], "transition_style": "wild"}   # alpha's top, its
+    #                                                                 moods; no style of its own: the top band's
+    snap = r.d.snapshot()
+    assert set(snap["direction"]) == set(contract.DirectionData.__annotations__)
+    r.d.configure({**json.loads(json.dumps(SETTINGS)), "director": {**SETTINGS["director"], "compose": {
+        **COMPOSE, "mode": "drive", "defaults": {"follow": 0.0}}}})  # hot-reloaded: nothing answers now
+    n = len(r.of(contract.ROOM_DIRECTION))
+    r.run(0.1, r._song)                                              # noqa: SLF001
+    assert len(r.of(contract.ROOM_DIRECTION)) == n + 1               # intensity moved: published at once
+    assert r.of(contract.ROOM_DIRECTION)[-1]["intensity"] == 1.0 and r.of(contract.ROOM_DIRECTION)[-1][
+        "pulse_depth"] == 1.0
+    r.d.configure({**json.loads(json.dumps(SETTINGS)), "director": {**SETTINGS["director"], "compose": {
+        **COMPOSE, "mode": "observe"}}})
+    r.run(0.1, r._song)                                              # noqa: SLF001
+    d = r.of(contract.ROOM_DIRECTION)[-1]
+    assert not set(contract.DIRECTION_DRIVE_KEYS) & set(d) and d["intensity"] == 1.0
+
+
+def test_drive_folds_a_half_time_tempo_and_observe_does_not(tmp_path):
+    paces = {}
+    for mode in ("observe", "drive"):
+        d = tmp_path / mode
+        d.mkdir()
+        r = compose_rig(d, mode)
+        r.ctx.clock = lambda r=r: {**clock_body(r.t), "bpm": 60.0}  # a half-time lock of a 120 bpm song
+        r.d.set_target("alpha")
+        r.run(3.0)
+        paces[mode] = r.d.direction["pace"]
+        e = r.d.music["energy"]
+    assert paces["observe"] == pytest.approx(0.1 + 0.8 * (0.7 * e + 0.3 * 0.0), abs=1e-3)        # today: tempo 0
+    assert paces["drive"] == pytest.approx(0.1 + 0.8 * (0.7 * e + 0.3 * (60.0 / 90.0)), abs=1e-3)   # 120 bpm
+
+
+def test_drive_sends_the_lamps_plan_and_observe_clears_it(tmp_path):
+    r = compose_rig(tmp_path, "drive", looks={"middle_depth": 0.4})
+    song(r, quiet_after=40.0)
+    r.d.set_target("alpha")
+    run_song(r, 60.0)
+    plans = [c[1]["plan"] for c in r.calls if c[0] == "look" and "plan" in c[1]]
+    assert plans and all(set(c[1]) == {"plan"} for c in r.calls if c[0] == "look" and "plan" in c[1])
+    p = plans[-1]
+    assert p["middle_depth"] == 0.4 and p["depth"] == pytest.approx(0.5)     # alpha's downbeat accent depth
+    assert set(p["lamps"]) == {"lamp.one", "lamp.two", "*"}
+    lv, pu = p["lamps"]["lamp.one"]
+    blk = r.d.look["compose"]["appliances"]["lamp.one"]
+    assert lv == pytest.approx(blk[comp.LEVEL], abs=0.021) and pu == pytest.approx(blk[comp.PULSE], abs=0.021)
+    assert lv < 0.9                                                  # the quiet ending: the lamps soften
+    assert r.d.snapshot()["compose"]["plan_sent"]["middle_depth"] == 0.4
+    n = len(plans)
+    run_song(r, 5.0)                                                 # steady: nothing new under the deadband
+    assert len([c for c in r.calls if c[0] == "look" and "plan" in c[1]]) == n
+    r.d.configure({**json.loads(json.dumps(SETTINGS)), "director": {**SETTINGS["director"], "compose": {
+        **COMPOSE, "mode": "observe"}}})
+    run_song(r, 1.0)
+    after = [c[1] for c in r.calls if c[0] == "look" and "plan" in c[1]][n:]
+    assert after == [{"plan": {}}]                                   # cleared once: artnet_out as before
+    r.d.set_target(None)                                             # no feel, drive: the plan keeps artnet's depth
+    r.d.configure({**json.loads(json.dumps(SETTINGS)), "director": {**SETTINGS["director"], "compose": {
+        **COMPOSE, "mode": "drive"}}})
+    run_song(r, 1.0)
+    last = [c[1]["plan"] for c in r.calls if c[0] == "look" and "plan" in c[1]][-1]
+    assert last["depth"] is None and "*" in last["lamps"]
+
+
+def test_the_response_file_gives_the_one_tempo_fold(tmp_path):
+    resp = tmp_path / "music_response.json"
+    resp.write_text(json.dumps({"tempo": {"fold_min": 80, "fold_max": 160}}))
+    r = compose_rig(tmp_path, "drive", extra={"response_file": str(resp)})
+    r.run(0.1)
+    assert r.d.snapshot()["compose"]["fold"] == [80.0, 160.0] and r.d.snapshot()["compose"]["problems"] == []
+    resp.write_text(json.dumps({"tempo": {"fold_min": 0}}))          # hot: a bad edit falls back and is listed
+    st = resp.stat()
+    os.utime(resp, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    r.run(contract.RELOAD_S + 0.2)
+    sc = r.d.snapshot()["compose"]
+    assert sc["fold"] == [70.0, 180.0] and any("fold" in p for p in sc["problems"])
+    (tmp_path / "other").mkdir()
+    r2 = compose_rig(tmp_path / "other", extra={"response_file": str(tmp_path / "missing.json")})
+    r2.run(0.1)
+    sc2 = r2.d.snapshot()["compose"]
+    assert sc2["fold"] == [70.0, 180.0] and any("missing.json" in p for p in sc2["problems"])
+    assert r.d.cfg["compose"]["response_file"] == str(resp) and r2.d.settings_problems == []
+
+
+def test_an_armed_song_end_cues_the_fade_and_a_call_off_ends_it(tmp_path):
+    r = compose_rig(tmp_path)
+    song(r)
+    r.d.set_target("alpha")
+    run_song(r, 2.0)
+    assert r.d.look["compose"]["balance"]["fade"] is False
+    r.event("track_end_armed", r.t + 15.0, eta_s=15.0, track_id=1)
+    run_song(r, 0.2)
+    assert r.d.look["compose"]["balance"]["fade"] is True
+    r.event("track_end_armed", r.t + 15.0, eta_s=None, track_id=1, detail="disarmed")
+    run_song(r, 0.2)
+    assert r.d.look["compose"]["balance"]["fade"] is False
+    r.event("track_end_armed", r.t + 1.0, eta_s=1.0, track_id=1)
+    run_song(r, 1.0 + dmod.END_FADE_S + 0.5)                        # never longer than END_FADE_S past the end
+    assert r.d.look["compose"]["balance"]["fade"] is False
+
+
+def test_compose_settings_and_bad_values(tmp_path):
+    r = compose_rig(tmp_path, extra={"mode": "loud", "loud": {"rise_s": "fast"}})
+    probs = "\n".join(r.d.settings_problems)
+    assert "director.compose.mode" in probs and "director.compose.loud.rise_s" in probs
+    assert r.d.cfg["compose"]["mode"] == "observe"
+    bad = json.loads(json.dumps(SETTINGS))
+    bad["lamps"]["roles"]["wash"]["dynamics"] = "lots"
+    r.d.configure(bad)
+    assert any("lamps.roles.wash.dynamics" in p for p in r.d.settings_problems)
+    sy = yaml.safe_load(contract.SHOW_FILE.read_text())               # the real show.yaml's compose: clean, observe
+    r.d.configure(sy)
+    assert not [p for p in r.d.settings_problems if "compose" in p or "dynamics" in p]
+    assert r.d.cfg["compose"]["mode"] == "observe"
+
+
+def test_compose_tick_cost_with_every_appliance_enabled(tmp_path):
+    r = compose_rig(tmp_path, "drive")
+    r.room["screens"]["wall-right"]["layer"] = "live"
+    r.room["members"] = {f"lamp.{n}": {"believed": "dmx"} for n in ("one", "two", "three", "four")}
+    song(r)
+    r.d.set_target("alpha")
+    run_song(r, 15.0)
+    samples = []
+    for _ in range(300):
+        r.t = round(r.t + 0.1, 6)
+        r._song(r)                                                   # noqa: SLF001
+        t0 = time.perf_counter()
+        r.d._compose_plan(r.t, 0.1, r.room)                          # noqa: SLF001
+        samples.append((time.perf_counter() - t0) * 1000.0)
+    p95 = sorted(samples)[int(0.95 * len(samples))]
+    print(f"\ncompose plan, 6 appliances: p50 {statistics.median(samples):.3f} ms, p95 {p95:.3f} ms")
+    assert p95 < 2.0                                                 # README S5.18: ~0.1 ms unloaded

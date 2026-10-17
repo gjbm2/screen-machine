@@ -24,6 +24,15 @@
 # The screens are never dimmed by the show. level, floor, Lights low, House lights and dips reach the lamps (and later
 # DMX) only. On a screen, "calmer" means other words, palette or scenes, never a gain.
 #
+# compose (README S5.18; not a field: no mode overrides it and the mode editor never shows it): how much the room
+# answers the music's loudness. LIMITS, not the answer: the show engine decides moment by moment from the loudness, the
+# song's own range, tension, builds and (later) how dark the scene already is. follow: 0 = not at all .. 1. q: the quiet
+# end of each dimension, as a share of today's value (1 = never changes; a dimension left out never changes):
+#   picture (the scene's own brightness and glow), pace, pulse (the beat accents), depth (how much the scenes move
+#   with the music), change (how often looks change) per screens; level and pulse per lamps.
+# The picture never goes below 0.6 (show.yaml director.compose.hard_floor). A feel without a compose block takes
+# show.yaml director.compose.defaults. Nothing pumps on a compressed song: its range is ~0.
+#
 # Words come from config/live/vocab.yaml:
 #   moods: calm mellow dreamy warm cool bright dark euphoric tense playful hypnotic aggressive cosmic organic geometric
 #          retro glitchy elegant liquid fiery icy
@@ -71,6 +80,11 @@ vibes:
     palette_family: warm
     step_size: 0.1
     max_steps: 3
+    compose:                        # README S5.18: how much it answers the loudness (limits)
+      follow: 0.4
+      q:
+        screens: {picture: 0.85, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
+        lamps: {level: 0.6, pulse: 0.7}
     persona: >-
       A lived-in drawing room on an ordinary day. Light should feel like the room itself: warm, steady and unhurried.
       Requests lean towards comfort, never spectacle.
@@ -106,6 +120,11 @@ vibes:
     palette_family: warm
     step_size: 0.08
     max_steps: 3
+    compose:                        # README S5.18: how much it answers the loudness (limits)
+      follow: 0.3
+      q:
+        screens: {picture: 0.85, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
+        lamps: {level: 0.6, pulse: 0.7}
     persona: >-
       A dinner party: conversation comes first. The room glows rather than performs. Warm, low and kind to faces;
       colour lives on the walls near the art, never on the table.
@@ -140,6 +159,11 @@ vibes:
     palette_family: cool
     step_size: 0.1
     max_steps: 3
+    compose:                        # README S5.18: how much it answers the loudness (limits)
+      follow: 0.6
+      q:
+        screens: {picture: 0.8, pace: 0.6, pulse: 0.7, depth: 0.7, change: 0.6}
+        lamps: {level: 0.6, pulse: 0.7}
     persona: >-
       Late evening, people lounging. Long, slow washes of colour that seem to come out of the art, with a gentle
       breath when the music has a beat. Never busy.
@@ -175,6 +199,11 @@ vibes:
     palette_family: warm
     step_size: 0.1
     max_steps: 3
+    compose:                        # README S5.18 (limits); the piano's velocity is the loudness while it plays
+      follow: 0.7
+      q:
+        screens: {picture: 0.8, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
+        lamps: {level: 0.6, pulse: 0.7}
     persona: >-
       Someone is playing the piano. The room listens to them, not to a beat: louder playing glows brighter, high
       passages lift, rich chords deepen the colour. Stay out of the way between phrases.
@@ -210,6 +239,11 @@ vibes:
     palette_family: vivid
     step_size: 0.1
     max_steps: 3
+    compose:                        # README S5.18: how much it answers the loudness (limits)
+      follow: 0.8
+      q:
+        screens: {picture: 0.9, pace: 0.6, pulse: 0.7, depth: 0.7, change: 0.6}
+        lamps: {level: 0.6, pulse: 0.7}
     persona: >-
       A party in full swing. Bold, saturated colour, energy that tracks the dance floor, and big moments saved for
       when the music earns them.
@@ -244,6 +278,11 @@ vibes:
     palette_family: vivid
     step_size: 0.1
     max_steps: 3
+    compose:                        # README S5.18 (limits); the picture never dims: the music goes into the beat
+      follow: 0.5
+      q:
+        screens: {picture: 1.0, pace: 0.6, pulse: 0.8, depth: 0.7, change: 0.6}
+        lamps: {level: 0.6, pulse: 0.8}
     persona: >-
       A disco: glitterball, four-on-the-floor, everyone dancing. Bright, rhythmic and playful, with colour that moves
       on every beat.
