@@ -760,9 +760,9 @@ def test_genre_without_a_styles_table_keeps_the_parent_rule():
 
 def test_valence_weights_the_mood_labels():
     w = {"happy": 1.0, "sad": 0.0}
-    assert st.valence_of([["happy", 0.6], ["sad", 0.2], ["film", 0.9]], w) == 0.75
-    assert st.valence_of([["film", 0.9]], w) is None
-    assert st.valence_of(None, w) is None
+    assert st.mood_score([["happy", 0.6], ["sad", 0.2], ["film", 0.9]], w) == 0.75
+    assert st.mood_score([["film", 0.9]], w) is None
+    assert st.mood_score(None, w) is None
 
 def test_genre_maps_the_leading_parent_through_the_table():
     state: dict = {}
@@ -1279,7 +1279,7 @@ def test_the_fallbacks_are_show_yaml_s_starting_points():
                 same(a[k], b[k], f"{path}.{k}")
             else:
                 assert a[k] == b[k], f"{path}.{k}: code {a[k]} vs show.yaml {b[k]}"
-    tables = ("valence",)                         # config-only tables (no labels in code), like genre_map's
+    tables = ("valence", "mood_energy")           # config-only tables (no labels in code), like genre_map's
     same({k: v for k, v in st.STRUCTURE_FALLBACK.items() if k not in tables},
          {k: v for k, v in sy["structure"].items() if k not in tables}, "structure")
     assert all(isinstance(sy["structure"][k], dict) and sy["structure"][k] for k in tables)
