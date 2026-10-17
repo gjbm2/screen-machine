@@ -27,6 +27,7 @@ import numpy as np
 
 from stream_service.gpu import raw_module
 
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.frame3d import FRAME3D, FRAME3D_OPTIONS, FrameMips, camera_flat, flat_distance, smoothstep01
@@ -346,7 +347,7 @@ class MirrorBall(Effect):
         "ball_x": num(-0.8, 0.8, 0.0, "Ball position", tier="regional"),
         "ball_y": num(-0.5, 0.7, 0.3, "Ball height", tier="regional"),
         "facet_count": num(12, 64, 28, "Facet rows", step=1, tier="regional"),
-        "spin_speed": num(-0.4, 0.4, 0.06, "Spin", unit="turns/s", step=0.005, tier="realtime", bind="rate"),
+        "spin_speed": paced(num(-0.4, 0.4, 0.06, "Spin", unit="turns/s", step=0.005, tier="realtime", bind="rate")),
         "kick": num(0.0, 1.0, 0.3, "Beat spin kick", unit="turns/s", tier="regional"),
         "speck_intensity": num(0.0, 1.5, 0.85, "Speck brightness", tier="regional"),
         "speck_count": num(0.05, 1.0, 0.7, "Speck count", tier="regional"),

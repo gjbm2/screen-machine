@@ -18,15 +18,22 @@ GPU-agnostic like layers.py (the buffers come from the frame context), so it is 
 Effects run on stream time (``t_local`` since the slot was first rendered), never on the scene clock.  Fade
 envelopes advance by frame numbers, so repeats and skipped frames keep the timeline.
 
+Tempo lock (owner, 17 Oct: an effect's natural pacing follows the bpm): while the session's beat clock is sure
+(:func:`beat_clock`: show_service's clock, what cuts use, else the lighting desk's locked follower), each slot's
+``x-tempo`` params run at one cycle per musical division (plugins/_lib/beat.py, :class:`TempoLock`), and the
+plug-in gets the clock as ``beat_clock`` (with ``locks``: param -> beats per cycle) for an opt-in phase lock.
+
 Each effect render is timed on the GPU when the frame context has a timer (guard.py); a slot over its budget is
 tripped (``EffectSlot.trip``): failed and skipped from then on, i.e. dropped from the chain or the bus.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Iterable, Iterator, Optional
 
 from .layers import FrameCtx, Layer
+from .plugins._lib.beat import BeatClock, cycles_per_s, tempo_unit, value_for
 from .plugins.base import STAGES
 
 AMOUNT_EPS = 1e-3
@@ -51,6 +58,113 @@ def stage_index(stage: Optional[str]) -> int:
 def smoothstep(x: float) -> float:
     x = 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
     return x * x * (3.0 - 2.0 * x)
+
+
+TEMPO_SMOOTH_S = 1.0      # tempo lock: the pace it snaps is this slow an average (kicks and lurches ride on top)
+TEMPO_EASE_S = 0.4        # ... and its scale eases in and out: the clock comes or goes, a new division
+
+
+def beat_clock(runtime: Any) -> Optional[BeatClock]:
+    """The session's beat clock at this frame's photon time while it is sure, else None: show_service's clock while
+    fresh, gate "beat", locked or holding (what cuts use: SessionManager.music_grid), else the lighting desk's
+    locked follower (no bars).  Render thread (``runtime``: modulation.SessionRuntime, after begin_frame); never
+    raises."""
+    try:
+        if runtime is None:
+            return None
+        now = float(runtime.now)
+        sampler = getattr(runtime, "sampler", None)
+        if sampler is not None and getattr(sampler, "follow", "extrapolate") != "extrapolate":
+            return None
+        t = now + float(getattr(sampler, "lead", 0.0) or 0.0)
+        feed = getattr(runtime, "feed", None)
+        c = feed.clock(now) if feed is not None else None
+        if c is not None and c.get("gate") == "beat" and c.get("state") in ("locked", "holding"):
+            from .music_feed import beat_at
+            bpm = float(c["bpm"])
+            if bpm > 0.0 and math.isfinite(bpm):
+                return BeatClock(beats=beat_at(c, t), bpm=bpm, beats_per_bar=max(1, int(c.get("beats_per_bar") or 4)),
+                                 bar_beat=float(c.get("bar_anchor_beat") or 0.0), source="show")
+        grid = sampler.beat_grid(now) if sampler is not None else None
+        if grid is not None and grid[1] and grid[1] > 0.0:
+            anchor, period = grid
+            return BeatClock(beats=(t - anchor) / period, bpm=60.0 / period, source="desk")
+    except Exception:
+        return None
+    return None
+
+
+class TempoLock:
+    """One slot's ``x-tempo`` params on the beat (render thread; plugins/_lib/beat.py).  Each frame, while the clock
+    is sure, a param's slow average pace (TEMPO_SMOOTH_S, in octaves) snaps to a division (BeatClock.snap, with
+    hysteresis) and its value is scaled by locked / average, so the mapping's kicks and the music's nudges ride on
+    the locked pace; the scale eases (TEMPO_EASE_S) whenever it changes, so locking, a new division and letting go
+    are glides, never jumps.  A pace with no division in reach, or whose locked value is off the param's range,
+    keeps its value."""
+
+    def __init__(self, props: dict):
+        self.props = props
+        self.units = {k: u for k, p in props.items()
+                      if p.get("type") == "number" and (u := tempo_unit(p)) is not None}
+        self.avg: dict[str, float] = {}       # log2 cycles/s, slow
+        self.n: dict[str, float] = {}         # beats per cycle while locked
+        self.k: dict[str, float] = {}         # the eased scale on cycles/s (1: free)
+        self.locks: dict[str, float] = {}     # this frame's locked params (read by the API)
+        self.started: set[str] = set()        # params seen before: only a slot's first frame may start locked
+
+    def apply(self, p: dict, clock: Optional[BeatClock], dt: float) -> dict:
+        """Scale ``p``'s tempo params in place; -> the locked ones this frame (param -> beats per cycle)."""
+        a_s = 1.0 - math.exp(-dt / TEMPO_SMOOTH_S) if dt > 0.0 else 0.0
+        a_k = 1.0 - math.exp(-dt / TEMPO_EASE_S) if dt > 0.0 else 0.0
+        locks: dict[str, float] = {}
+        for key, unit in self.units.items():
+            v = p.get(key)
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                continue
+            cps = cycles_per_s(v, unit)
+            target = 1.0
+            n = None
+            if cps is None:
+                self.avg.pop(key, None)                       # stopped: average afresh when it moves again
+            else:
+                x = math.log2(cps)
+                m = self.avg.get(key)
+                m = x if m is None else m + (x - m) * a_s
+                self.avg[key] = m
+                if clock is not None:
+                    n = clock.snap(2.0 ** m, self.n.get(key))
+                if n is not None:
+                    locked = clock.bps / n                    # type: ignore[union-attr]
+                    lv = value_for(locked, unit, v)
+                    prop = self.props[key]
+                    lo, hi = prop.get("minimum"), prop.get("maximum")
+                    if (lo is not None and lv < lo - 1e-9) or (hi is not None and lv > hi + 1e-9):
+                        n = None                              # off the param's range: free
+                    else:
+                        target = locked / 2.0 ** m
+            if n is None:
+                self.n.pop(key, None)
+            else:
+                self.n[key] = locks[key] = n
+            k = self.k.get(key)
+            if k is None:
+                k = 1.0 if key in self.started else target     # first frame: the slot is fading in anyway
+            k += (target - k) * a_k
+            self.started.add(key)
+            if n is None and abs(k - 1.0) < 1e-3:
+                self.k.pop(key, None)                         # free and settled: the value passes untouched
+                continue
+            self.k[key] = k
+            out = v / k if unit == "period" else v * k
+            prop = self.props[key]
+            lo, hi = prop.get("minimum"), prop.get("maximum")
+            if lo is not None:
+                out = max(float(lo), out)
+            if hi is not None:
+                out = min(float(hi), out)
+            p[key] = out
+        self.locks = locks
+        return locks
 
 
 @dataclass
@@ -104,6 +218,9 @@ class EffectSlot:
         self.render_count = 0
         self._p: Optional[dict] = None
         self._orig_step: Optional[Callable[[float], dict]] = None
+        props = getattr(modulation, "props", None)
+        self.tempo = TempoLock(props) if isinstance(props, dict) else None
+        self.clock: Optional[BeatClock] = None
 
     # -- set-up -----------------------------------------------------------------------
     def install(self) -> None:
@@ -150,9 +267,16 @@ class EffectSlot:
             p = dict(self._orig_step(dt))           # type: ignore[misc]
             if self.modulation is not None:
                 p = self.modulation.apply(p)
+            clock = beat_clock(getattr(self.modulation, "runtime", None))
+            locks = self.tempo.apply(p, clock, dt) if self.tempo is not None and self.tempo.units else {}
+            self.clock = replace(clock, locks=locks) if clock is not None else None
         except Exception as e:
             self._fail(fc, e)
             return False
+        try:
+            self.effect.beat_clock = self.clock     # plugins/_lib/beat.py: an opt-in phase lock reads it
+        except Exception:
+            pass
         g = smoothstep(self.level) * outer_gain
         if self.mix:
             amount = g
@@ -237,9 +361,12 @@ class EffectSlot:
         return "active"
 
     def describe(self) -> dict:
-        return {"id": self.slot_id, "effect": self.name, "preset": self.preset, "stage": self.stage,
-                "level": round(self.level, 4), "target": round(self.target, 4),
-                "amount": round(self.amount_now, 4), "failed": self.failed, "slow": self.slow}
+        d = {"id": self.slot_id, "effect": self.name, "preset": self.preset, "stage": self.stage,
+             "level": round(self.level, 4), "target": round(self.target, 4),
+             "amount": round(self.amount_now, 4), "failed": self.failed, "slow": self.slow}
+        if self.tempo is not None and self.tempo.locks:
+            d["tempo"] = dict(self.tempo.locks)     # param -> beats per cycle, locked to the beat
+        return d
 
 
 class EffectChain:

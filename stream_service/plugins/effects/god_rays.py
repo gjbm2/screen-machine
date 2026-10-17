@@ -24,6 +24,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -163,7 +164,7 @@ class GodRays(Effect):
         "light_x": num(0.0, 1.0, 0.5, "Light X", tier="regional"),
         "light_y": num(0.0, 1.0, 0.28, "Light Y", tier="regional"),
         "orbit_radius": num(0.0, 0.4, 0.12, "Orbit radius", tier="regional"),
-        "orbit_speed": num(-0.5, 0.5, 0.05, "Orbit speed", unit="rev/s", step=0.005, tier="regional"),
+        "orbit_speed": paced(num(-0.5, 0.5, 0.05, "Orbit speed", unit="rev/s", step=0.005, tier="regional")),
         "ray_kick": num(0.0, 2.0, 1.0, "Beat kick", step=0.05, tier="regional"),
         "pan": num(0.0, 1.0, 0.5, "Pan (light X offset)", tier="realtime", bind="level"),
         "tilt": num(0.0, 1.0, 0.5, "Tilt (light Y offset)", tier="realtime", bind="level"),

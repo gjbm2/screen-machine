@@ -23,6 +23,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -123,7 +124,7 @@ class KaleidoMirror(Effect):
         "center_y": num(0.0, 1.0, 0.5, "Centre Y", tier="regional"),
         "zoom": num(0.5, 2.0, 1.0, "Zoom", step=0.01, unit="×", tier="regional"),
         "mirror_angle_deg": num(0.0, 180.0, 30.0, "Mirror angle", step=1.0, unit="°", tier="regional"),
-        "rotate_speed": num(-60.0, 60.0, 8.0, "Rotate speed", step=0.5, unit="°/s", tier="regional", bind="rate"),
+        "rotate_speed": paced(num(-60.0, 60.0, 8.0, "Rotate speed", step=0.5, unit="°/s", tier="regional", bind="rate"), 360),
         "rotate_kick": num(0.0, 240.0, 70.0, "Beat rotation kick", step=1.0, unit="°/s", tier="regional"),
         "zoom_kick": num(0.0, 0.3, 0.08, "Beat zoom breath", step=0.005, tier="regional"),
         "seam_glow": num(0.0, 1.0, 0.3, "Seam glow", tier="regional"),

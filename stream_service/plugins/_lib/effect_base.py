@@ -6,13 +6,14 @@ Expose :func:`stream_service.plugins._lib.params.standard_effect_params` (amount
 """
 from __future__ import annotations
 
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 from stream_service.plugins.base import ParamEaser, Plugin
 
 
 class Effect(Plugin):
     ease_tau_s: ClassVar[float] = 0.3
+    beat_clock: Any = None     # the session's beat clock this frame (plugins/_lib/beat.py), set by the EffectSlot
 
     def __init__(self) -> None:
         self.ctx = None

@@ -27,6 +27,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, PALETTES, palette_coeffs
@@ -132,7 +133,7 @@ class AfterimageGhost(Effect):
         "persistence": num(0.0, 1.0, 0.65, "Trail length", tier="regional", basic=True),
         "bright_threshold": num(0.0, 0.8, 0.12, "Brightness gate", tier="regional"),
         "blend": num(0.0, 1.0, 0.15, "Blend (comet max / ghost average)", tier="regional"),
-        "trail_hue_drift": num(-0.5, 0.5, 0.12, "Trail hue drift", unit="turns/s", step=0.005, tier="regional"),
+        "trail_hue_drift": paced(num(-0.5, 0.5, 0.12, "Trail hue drift", unit="turns/s", step=0.005, tier="regional")),
         "trail_tint": num(0.0, 1.0, 0.45, "Trail palette tint", tier="regional"),
         "beat_kick": num(0.0, 2.0, 1.0, "Beat kick (persistence + glow)", tier="regional"),
         "palette": enum(list(PALETTES), "neon", "Palette", tier="regional"),

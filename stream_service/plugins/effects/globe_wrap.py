@@ -27,6 +27,7 @@ import numpy as np
 
 from stream_service.gpu import raw_module
 
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.frame3d import (FRAME3D, FRAME3D_OPTIONS, FrameMips, HomingAngle, camera_flat,
@@ -191,7 +192,7 @@ class GlobeWrap(Effect):
         **standard_effect_params(),
         "size": num(0.3, 0.9, 0.66, "Globe size", tier="regional", basic=True),
         "tilt": num(0.0, 40.0, 18.0, "Axis tilt", unit="°", step=0.5, tier="regional"),
-        "spin_speed": num(-0.3, 0.3, 0.035, "Spin", unit="turns/s", step=0.005, tier="regional"),
+        "spin_speed": paced(num(-0.3, 0.3, 0.035, "Spin", unit="turns/s", step=0.005, tier="regional")),
         "kick": num(0.0, 0.8, 0.22, "Beat spin kick", unit="turns/s", step=0.01, tier="regional"),
         "lighting": num(0.0, 1.0, 0.7, "Lighting", tier="regional"),
         "atmosphere": num(0.0, 1.0, 0.6, "Atmosphere glow", tier="regional"),

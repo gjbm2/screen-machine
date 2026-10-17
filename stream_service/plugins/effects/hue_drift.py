@@ -30,6 +30,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, PALETTES, palette_coeffs
@@ -158,8 +159,8 @@ class HueDrift(Effect):
     _pal = palette_params("neon", 1.0, 0.03)
     params = {
         **standard_effect_params(),
-        "rate": num(-1.0, 1.0, 0.05, "Drift rate", unit="turns/s", step=0.005, tier="realtime", bind="rate",
-                    basic=True),
+        "rate": paced(num(-1.0, 1.0, 0.05, "Drift rate", unit="turns/s", step=0.005, tier="realtime", bind="rate",
+                          basic=True)),
         "offset": num(0.0, 0.5, 0.2, "Hue offset", unit="turn", tier="regional"),
         "luma_spread": num(0.0, 2.0, 0.6, "Rainbow spread across tones", unit="turns", tier="regional",
                            basic=True),

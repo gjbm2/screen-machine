@@ -24,6 +24,7 @@ import numpy as np
 
 from stream_service.gpu import raw_module
 
+from stream_service.plugins._lib.beat import paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.frame3d import FRAME3D, FRAME3D_OPTIONS, FrameMips, flat_distance, smoothstep01
@@ -274,7 +275,7 @@ class FlagWave(Effect):
         "pin": enum(["left", "top", "corner"], "left", "Pinned edge"),
         "wind_strength": num(0.0, 1.5, 0.7, "Wind strength", tier="regional", basic=True),
         "wavelength": num(0.15, 1.2, 0.45, "Wavelength", unit="× flag", step=0.01, tier="regional"),
-        "wind_speed": num(0.0, 3.0, 0.8, "Wind speed", unit="Hz", tier="realtime", bind="rate"),
+        "wind_speed": paced(num(0.0, 3.0, 0.8, "Wind speed", unit="Hz", tier="realtime", bind="rate")),
         "fold_shading": num(0.0, 1.0, 0.75, "Fold shading", tier="regional"),
         "sheen": num(0.0, 1.0, 0.45, "Silk sheen", tier="regional"),
         "margin": num(0.0, 0.3, 0.08, "Margin", tier="regional"),

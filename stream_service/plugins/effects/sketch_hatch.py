@@ -32,6 +32,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import advance, paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -303,7 +304,7 @@ class SketchHatch(Effect):
         "hatch_layers": num(1.0, 4.0, 3.0, "Hatch layers", step=0.05),
         "style": num(0.0, 2.0, 1.4, "Style (0 graphite, 1 ink, 2 coloured pencil)", step=0.02),
         "paper_tone": num(0.0, 1.0, 0.35, "Paper tone (white -> cream -> toned)"),
-        "boil_rate": num(0.0, 12.0, 8.0, "Boil (redraws per second)", step=0.5, unit="fps"),
+        "boil_rate": paced(num(0.0, 12.0, 8.0, "Boil (redraws per second)", step=0.5, unit="fps")),
         "ink_tint": num(0.0, 1.0, 0.45, "Ink tint (palette)"),
     }
 
@@ -345,7 +346,8 @@ class SketchHatch(Effect):
 
         # host-integrated counters: colour drift and the boil (pulse kicks the boil *rate*)
         self._drift = math.fmod(self._drift + float(p["drift_speed"]) * dt, 1.0)
-        self._boil = math.fmod(self._boil + float(p["boil_rate"]) * (1.0 + 1.5 * pk) * dt, 1.0e6)
+        self._boil = math.fmod(advance(self._boil, float(p["boil_rate"]) * (1.0 + 1.5 * pk), dt,
+                                       getattr(self, "beat_clock", None), "boil_rate"), 1.0e6)   # redraws on the beat
         if amt <= 1e-4:
             self.ctx.cp.copyto(out, src)
             return

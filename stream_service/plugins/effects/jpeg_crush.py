@@ -31,6 +31,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import advance, paced
 from stream_service.plugins._lib.cuda import HELPERS
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
@@ -328,8 +329,8 @@ class JpegCrush(Effect):
         "bit_depth": num(0.0, 1.0, 0.35, "Bit-depth crush", tier="regional"),
         "dc_corruption": num(0.0, 1.0, 0.4, "DC corruption", tier="regional", basic=True),
         "pframe_smear": num(0.0, 1.0, 0.25, "P-frame smear", tier="regional"),
-        "tempo": num(0.5, 12.0, 3.0, "Corruption tempo (reseeds per second)", step=0.1, unit="/s",
-                     tier="regional"),
+        "tempo": paced(num(0.5, 12.0, 3.0, "Corruption tempo (reseeds per second)", step=0.1, unit="/s",
+                           tier="regional")),
         "block_size": enum(["8", "16"], "8", "DCT block size", tier="structural"),
         **palette_params("neon", 1.0, 0.05),
         "seed": num(0, 2**31 - 1, 1, "Seed", tier="structural", integer=True),
@@ -383,7 +384,8 @@ class JpegCrush(Effect):
         tempo = float(p["tempo"])
         if kick:
             self._cphase = math.floor(self._cphase) + 1.0
-        self._cphase = (self._cphase + tempo * (1.0 + 1.5 * env) * dt) % 1.0e6
+        self._cphase = advance(self._cphase, tempo * (1.0 + 1.5 * env), dt, getattr(self, "beat_clock", None),
+                               "tempo") % 1.0e6           # on the beat grid while the clock is sure
         self._sphase = (self._sphase + tempo * 0.4 * dt) % 1.0e6
         self._drift = (self._drift + float(p["drift_speed"]) * dt) % 1.0
 

@@ -26,6 +26,7 @@ import math
 import numpy as np
 
 from stream_service.gpu import raw_module
+from stream_service.plugins._lib.beat import advance, paced
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
 from stream_service.plugins._lib.params import num, standard_effect_params
@@ -94,7 +95,7 @@ class HandheldDrift(Effect):
         "drift_speed": num(0.0, 4.0, 1.0, "Drift speed", step=0.05, unit="×", tier="realtime", bind="rate"),
         "roll": num(0.0, 4.0, 0.7, "Roll", step=0.05, unit="°", tier="regional"),
         "zoom_breath": num(0.0, 0.08, 0.018, "Zoom breathing", step=0.002, tier="regional"),
-        "reframe_rate": num(0.0, 12.0, 3.0, "Operator reframes", step=0.25, unit="/min", tier="regional"),
+        "reframe_rate": paced(num(0.0, 12.0, 3.0, "Operator reframes", step=0.25, unit="/min", tier="regional"), 60),
         "step_bob": num(0.0, 0.03, 0.008, "Footstep bob (of height)", step=0.001, tier="regional"),
     }
 
@@ -148,7 +149,8 @@ class HandheldDrift(Effect):
         self._nt += BASE_RATE * spd * dt               # host fp64 noise time: no wrap (octaves are not 256-periodic)
         self._bphase = (self._bphase + 2.0 * math.pi * BREATH_HZ * spd * dt) % (2.0 * math.pi)
         # reframe events from an integrated counter
-        self._rc += float(p["reframe_rate"]) / 60.0 * dt
+        self._rc = advance(self._rc, float(p["reframe_rate"]) / 60.0, dt, getattr(self, "beat_clock", None),
+                           "reframe_rate")                 # a reframe starts on a bar line while the clock is sure
         if self._rc >= 1.0:
             self._rc -= math.floor(self._rc)
             self._from = tuple(s[0] for s in self._rf)
