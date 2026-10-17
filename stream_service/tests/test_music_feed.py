@@ -7,7 +7,7 @@ import math
 
 from stream_service import music_direction as M
 from stream_service.director import AUTO_MUSIC_DEFAULTS
-from stream_service.music_feed import ClockSignals, FRESH_S, MusicFeed, blend, clock_signals
+from stream_service.music_feed import ClockSignals, FRESH_S, MusicFeed, blend, clock_signals, section_seed
 
 from .test_sessions import client  # noqa: F401 (fixture)
 
@@ -437,3 +437,20 @@ async def test_session_inputs_show_the_rooms_drive_and_cuts_stay_on_the_sure_clo
     assert max(abs(b - a) for a, b in zip(vals, vals[1:])) < 0.02, vals           # ... never a jump
     assert seen[-1] in (None, 0.5) and rt.extra["music_w"] is None                # ... then idle: the desk's
     assert mgr.music_feed.energy_now(now + 4.0) is None
+
+
+def test_sections_seed_section_looks_when_no_desk_sends_a_gobo():
+    f = MusicFeed()
+    f.on_message({"type": "music.features", "data": {"energy": 0.5}}, 10.0)
+    f.on_message({"type": "music.context", "data": {"section": {"id": "s7", "build_progress": 0.2}}}, 10.0)
+    snap = f.snapshot()
+    sig = {"gobo": None}
+    blend(sig, snap, 1.0, {})
+    assert sig["gobo"] == section_seed("s7") == section_seed("s7") and 0 <= sig["gobo"] < 256
+    assert section_seed("s7") != section_seed("s8")
+    sig = {"gobo": 52}                                     # a desk's GOBO stays
+    blend(sig, snap, 1.0, {})
+    assert sig["gobo"] == 52
+    sig = {"gobo": None}                                   # the feed down: nothing invented
+    blend(sig, snap, 0.0, {})
+    assert sig["gobo"] is None

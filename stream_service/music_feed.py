@@ -55,6 +55,7 @@ import logging
 import math
 import pathlib
 import time
+import zlib
 from dataclasses import dataclass, fields, replace
 from typing import Any, Optional
 
@@ -617,6 +618,12 @@ class ClockSignals:
         return clock_signals(c, t_s, self.mute_until)
 
 
+def section_seed(section_id: Any) -> int:
+    """A stable GOBO-like value (0-255) from show_service's music.context section id, for section-mode bindings when
+    no desk sends a GOBO (binding.Bound.x seeds each item's look from it; the same section gives the same look)."""
+    return zlib.crc32(str(section_id).encode()) % 256
+
+
 def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict, levels: Optional[dict] = None,
           onset: Optional[float] = None) -> Optional[str]:
     """Fold the room's music into a signals dict in place: activity / activity_slow eased over the desk's by the
@@ -632,6 +639,8 @@ def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict, levels: Op
         for k, v in (("activity", snap.activity), ("activity_slow", snap.activity_slow)):
             old = sig.get(k)
             sig[k] = v if old is None else old + w * (v - old)
+        if sig.get("gobo") is None and snap.section_id is not None:
+            sig["gobo"] = section_seed(snap.section_id)   # no desk GOBO: the room's own sections seed section looks
     for k, v in clock.items():
         if k != "tempo":                  # tempo is a music signal (MusicDirection's), eased with the others
             sig[k] = v
