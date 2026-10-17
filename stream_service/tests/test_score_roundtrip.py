@@ -307,3 +307,14 @@ def test_bars_written_past_the_last_beat_keep_their_bar_lines():
     line = g.time(12)                                          # bar 3's end, written at 6.0 s on the extrapolation
     g.merge([4.0 + i * 0.47 for i in range(12)], keep_beat=12)
     assert g.time(12) == line
+
+
+def test_the_note_glow_asks_where_a_note_is_written():
+    """live_score places each note's glow by builder._staff(note): it must say what the bar will say."""
+    sb = ScoreBuilder()
+    ids = []
+    for i, p in enumerate((60, 62, 64, 65, 67, 69, 71, 72)):
+        ids.append(sb.note_on(p, 0.6, i * 0.3))
+        sb.note_off(p, i * 0.3 + 0.27)
+    sb.hand = {i: 1 for i in ids}                              # the hand model: all "left hand"
+    assert all(sb._staff(n) == 0 for n in sb.notes)            # a single line from middle C up: treble, as written

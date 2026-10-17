@@ -792,11 +792,17 @@ class ScoreBuilder:
                 return int(whole * GRID + GRID // 2)
         return int(round(b * self.unit))
 
-    def _staff(self, n: Note, alone: bool = False, line: Optional[int] = None) -> int:
+    def _staff(self, n: Note, alone: Optional[bool] = None, line: Optional[int] = None) -> int:
         """Treble (0) or bass (1).  A single line (``alone``: nothing else sounds with it) goes by register: it
         stays on ``line`` (the staff the line is on) until it passes 2 ledger lines, and starts split at middle C.
         The hand model calls a one-hand scale all left hand (C5 on the bass staff) and its guesses flicker inside
-        a run.  Otherwise the analysed hand, within 3 ledger lines of its staff (no hand: split at middle C)."""
+        a run.  Otherwise the analysed hand, within 3 ledger lines of its staff (no hand: split at middle C).
+        Called with the note alone (live_score's note glow): the staff it was written on, else as it would be."""
+        if alone is None:
+            written = self.staff_of.get(n.id)
+            if written is not None:
+                return written
+            alone, line = self._alone(n, self.notes, self.last_event_t or n.t_on), self.line_staff
         if alone:
             if line == 0 and n.pitch >= LINE_TREBLE_LOW or line == 1 and n.pitch <= LINE_BASS_HIGH:
                 return line
