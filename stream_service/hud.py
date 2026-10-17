@@ -308,7 +308,11 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     if getattr(s.director, "dwell_start", None) is not None:
         on_s = now - s.director.dwell_start
     add(f"now  {_cut(s.current_name, 34)}  {_mmss(on_s)}{rate}", bad=bool(rate))
-    why = (s.director.last or {}).get("detail") or last.get("detail") or ""
+    why = (s.director.last or {}).get("detail") or last.get("detail")
+    if not why:                                  # no reason recorded: say who put it up
+        cause = last.get("cause") or getattr(s, "scene_cause", None)
+        why = {"auto": "the director's pick", "manual": "you chose it", "patch": "you chose it",
+               "go": "the first scene"}.get(cause, "-")
     add(f"why  {_cut(why, COLS - 5)}")
     up = s.upnext_view(now)
     for label, e in zip(("next", "then"), up.get("scenes", [])[:2]):
@@ -340,11 +344,15 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     terms = []
     if mod is not None:
         try:
-            for d in mod.describe()[:3]:
-                ins = d.get("in") or d.get("signals") or []
-                sig = ins[0].get("sig") if ins and isinstance(ins[0], dict) else d.get("signal")
+            for d in mod.describe():
+                ins = d.get("in") if isinstance(d.get("in"), list) else []
+                sig = (ins[0].get("sig") if ins and isinstance(ins[0], dict) else None) or d.get("bind") or d.get("kick")
+                if not sig or d.get("on") is False:      # a colour form, or switched off: nothing to show
+                    continue
                 v = d.get("value", d.get("last"))
                 terms.append(f"{_cut(d.get('param'), 9)}<{_cut(sig, 8)}={_f(v, 2)}")
+                if len(terms) == 3:
+                    break
         except Exception:
             terms = []
     add("drive " + ("  ".join(terms) if terms else "-"))
@@ -357,16 +365,16 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     genre = (ctx.get("genre") or {}).get("word") if isinstance(ctx.get("genre"), dict) else ctx.get("genre")
     key = " ".join(x for x in (ctx.get("key"), ctx.get("mode")) if x)
     sec = (ctx.get("section") or {})
-    add(f"room {(r or {}).get('vibe') or '-'}  {sec.get('letter') or sec.get('phase') or '-'}  {genre or '-'}"
-        f"  {key or '-'}" + ("  HELD" if r and r.get("hold") else ""))
+    add(f"room vibe {_cut((r or {}).get('vibe'), 10)} | sec {_cut(sec.get('letter') or sec.get('phase'), 8)}"
+        f" | {_cut(genre, 10)} | key {_cut(key, 9)}" + (" | HELD" if r and r.get("hold") else ""))
     rw = getattr(s.mgr, "room_why", None)
     if rw is not None and now - rw[1] <= 5.0:
         d = rw[0]
         au, mic, li, lk = (d.get(k) or {} for k in ("auto", "mic", "listening", "look"))
-        ai = li.get("why") or ("on" if li.get("on") else "off")
+        ai = li.get("why") or ("AI on" if li.get("on") else "AI off")
         age = f" {int(lk['age_s'])}s" if isinstance(lk.get("age_s"), (int, float)) else ""
         add(f"Auto {_cut(au.get('last') or au.get('line'), 24)} | mic {'on' if mic.get('on') else 'off'}"
-            f" | AI {_cut(ai, 8)} | {_cut(lk.get('why'), 12)}{age}")
+            f" | {_cut(ai, 16)} | {_cut(lk.get('why'), 12)}{age}")
     evs = list(getattr(s.mgr, "room_events_ring", []))[-3:]
     add("evt  " + ("; ".join(f"{time.strftime('%H:%M:%S', time.localtime(t))} {k}" for t, k, _ in reversed(evs))
                    if evs else "-"))
