@@ -1144,7 +1144,11 @@ class Situations:
         names = self._piano_streams(p, streams)
         up = sorted(n for n in names if self._up(streams, n))
         if not up:
-            return None, "midi", {"why": "no listed MIDI stream is up", "streams": sorted(names)}
+            # nothing is sending MIDI (the sender stopped, the piano is off, a test piece ended, or it was never
+            # connected): the piano isn't being played, so a leave rule can run its for_s (owner, 17 Oct: Piano never
+            # went back after the MIDI file stopped). "The piano is playing" stays unknown; availability says
+            # "isn't connected yet" on its own.
+            return True, "midi", {"why": "the piano isn't sending", "streams": sorted(names)}
         chans = self._channels(p)
         lasts = [t for (st, ch), t in (self.ctx.notes.last_note_times() if self.ctx.notes is not None else {}).items()
                  if st in names and (chans is None or ch in chans)]

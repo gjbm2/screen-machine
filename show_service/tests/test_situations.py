@@ -195,11 +195,14 @@ def test_piano_playing_must_be_heard_by_the_mic_while_it_is_up():
     assert e.read("piano_playing")["value"] is True
 
 
-def test_piano_words_are_unknown_with_no_stream_up():
+def test_a_piano_that_isnt_sending_has_stopped():
     e = Env()
-    e.health["streams"]["room-piano"]["state"] = "down"
+    e.health["streams"]["room-piano"]["state"] = "down"     # its sender stopped (owner, 17 Oct)
     assert e.read("piano_playing")["value"] is None
-    assert e.read("piano_idle")["value"] is None
+    r = e.read("piano_idle")
+    assert r["value"] is True and r["evidence"]["why"] == "the piano isn't sending"
+    del e.health["streams"]["room-piano"]                    # never connected (or gone after a restart): stopped too
+    assert e.read("piano_idle")["value"] is True and e.read("piano_playing")["value"] is None
 
 
 def test_piano_idle():
