@@ -717,6 +717,86 @@
           "additionalProperties": false
         },
         {
+          "title": "Set Room Mode",
+          "description": "Ask the room for a mode (Normal, Party, Disco, ... or its key). The room decides: it may refuse (e.g. Auto's minimum stay). Sent as source 'schedule:<this screen>'; the change comes back to every screen's schedule as the _room_mode event.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "set_mode",
+              "default": "set_mode",
+              "description": "Fixed to 'set_mode' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "mode": {
+              "type": "string",
+              "title": "Mode",
+              "description": "The mode's key (gallery, party, disco, ...) or its Room page label (Normal, Party, ...). Supports Jinja."
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason",
+              "description": "Optional words for the room's log (e.g. 'party schedule loaded')."
+            }
+          },
+          "required": [
+            "action",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Set Auto",
+          "description": "Turn Auto (the room listening to the music and picking modes) on or off. The change comes back to every screen's schedule as the _room_auto event.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "set_auto",
+              "default": "set_auto",
+              "description": "Fixed to 'set_auto' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "on": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "title": "On",
+              "description": "true or false (a Jinja expression giving true / false also works)."
+            }
+          },
+          "required": [
+            "action",
+            "on"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Read Room State",
+          "description": "Read the room into vars: room_mode (the mode key), room_auto (true / false) and screen_layer ('art' or 'live', for this screen). The same facts arrive as the events _room_mode, _room_auto and _screen_layer; use this at the start of a schedule.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "room_state",
+              "default": "room_state",
+              "description": "Fixed to 'room_state' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
           "title": "Throw Event",
           "description": "Throw an event for the scheduler to process.",
           "type": "object",

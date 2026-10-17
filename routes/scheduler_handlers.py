@@ -1836,3 +1836,54 @@ def handle_overlay(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
         return False 
+
+# === Room control (room_service / show_service; routes/room_client.py) ===
+# The room decides: a schedule asks (source "schedule:<destination>") and the room's own rules (refusals, Auto's
+# minimum stay) still apply. room_state reads the facts the room events bridge also sends as events.
+
+def _as_bool(v) -> Optional[bool]:
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("true", "on", "yes", "1"):
+        return True
+    if s in ("false", "off", "no", "0"):
+        return False
+    return None
+
+
+def handle_set_mode(instruction, context, now, output, publish_destination):
+    """Ask the room for a mode: {action: set_mode, mode: <key or Room page label>, reason?}."""
+    from routes import room_client
+    mode = str(instruction.get("mode") or "").strip()
+    ok, detail = room_client.set_mode(mode, source=f"schedule:{publish_destination}", reason=instruction.get("reason"))
+    log_schedule(f"Room mode {mode!r}: " + (f"requested ({detail})" if ok else f"not changed: {detail}"),
+                 publish_destination, now, output)
+    return False
+
+
+def handle_set_auto(instruction, context, now, output, publish_destination):
+    """Turn Auto (the room listening and picking modes) on or off: {action: set_auto, on: true | false}."""
+    from routes import room_client
+    on = _as_bool(instruction.get("on"))
+    if on is None:
+        log_schedule(f"set_auto: 'on' must be true or false, got {instruction.get('on')!r}", publish_destination, now, output)
+        return False
+    ok, detail = room_client.set_auto(on)
+    log_schedule(f"Auto {'on' if on else 'off'}: " + ("done" if ok else f"not changed: {detail}"),
+                 publish_destination, now, output)
+    return False
+
+
+def handle_room_state(instruction, context, now, output, publish_destination):
+    """Read the room into vars: room_mode, room_auto (true / false / null) and screen_layer ("art" / "live" / null,
+    for this destination's screen). The same facts arrive as the events _room_mode, _room_auto and _screen_layer."""
+    from routes import room_client
+    facts = room_client.room_facts()
+    vars_ = context.setdefault("vars", {})
+    vars_["room_mode"] = facts.get("mode")
+    vars_["room_auto"] = facts.get("auto")
+    vars_["screen_layer"] = (facts.get("screens", {}).get(publish_destination) or {}).get("layer")
+    log_schedule(f"Room state: mode {vars_['room_mode']}, Auto {vars_['room_auto']}, this screen {vars_['screen_layer']}",
+                 publish_destination, now, output)
+    return False

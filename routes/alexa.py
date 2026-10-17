@@ -38,6 +38,7 @@ from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
 import uuid
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
+from routes import room_client
 from routes.samsung_utils import device_wake, device_sleep, device_sync
 
 def Brianize(text: str) -> str:
@@ -370,6 +371,13 @@ def process(data):
         subs["ALEXA_CLOSEST_TARGET"] = (
             closest_screen if closest_screen else (subs["ALEXA_DEFAULT_SCREENS"][0] if subs["ALEXA_DEFAULT_SCREENS"] else None)
         )
+
+        # The room (modes, Auto) for the room intents: set_mode, set_auto, cue_scene, set_effect (routes/room_client.py)
+        room_modes = room_client.modes_cached()
+        room_facts = room_client.room_facts()
+        subs["ROOM_MODES"] = ", ".join(room_modes.values()) or "(the room isn't answering)"
+        subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
+        subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
         
         # Add exported variable friendly names for this screen's scope
         if closest_screen:
@@ -511,6 +519,19 @@ def process(data):
                 use_system_prompt="alexa-load-schedule.txt.j2"
             case "unload_schedule":
                 use_system_prompt="alexa-unload-schedule.txt.j2"
+            case "mode" | "scene" | "effect" | "auto" | "room":
+                use_system_prompt="alexa-room.txt.j2"
+            # The room's fixed phrases (no free text to read): straight to the room intents, no triage
+            case "next_scene":
+                result, response_ssml = {"intent": "cue_scene", "data": {"query": ""}}, Brianize("Another scene. As if it matters.")
+            case "clear_effects":
+                result, response_ssml = {"intent": "set_effect", "data": {"effect_op": "clear"}}, Brianize("Effects cleared.")
+            case "auto_on" | "auto_off":
+                on = alexa_intent == "auto_on"
+                result = {"intent": "set_auto", "data": {"on": on}}
+                response_ssml = Brianize("Auto on. I'm listening. I'm always listening." if on else "Auto off. I've stopped listening.")
+            case "which_mode":
+                response_ssml = Brianize(f"We're in {subs['ROOM_MODE_CURRENT']} mode, and Auto is {subs['ROOM_AUTO']}.")
             case "sleep":
                 response_ssml = Brianize("Goodnight.")
                 # Set result to include sleep intent
@@ -544,6 +565,8 @@ def process(data):
                     # Add a try/except block to catch JSON parsing errors
                     try:
                         result = future.result(timeout=7)
+                        if isinstance(result, list):     # the model now and then wraps its object in a list
+                            result = result[0] if result and isinstance(result[0], dict) else {}
                         utils.logger.debug(f"OpenAI raw response: {str(result)[:500]}...")
                     except json.JSONDecodeError as json_err:
                         utils.logger.error(f"JSON parse error in OpenAI response: {json_err}")
@@ -741,6 +764,55 @@ def process(data):
                         response_ssml = Brianize("Failed to unload schedules.")
                 else:
                     response_ssml = Brianize("I couldn't determine which screens to unload from.")
+            # The room: mode, Auto, the live scene, the live effects (room_service decides; it may refuse)
+            case "set_mode":
+                want = (result.get("data") or {}).get("mode") or ""
+                ok, detail = room_client.set_mode(want, source="voice", reason=f"Alexa: {utterance}")
+                if not ok:
+                    response_ssml = Brianize(f"The room didn't change mode. {detail}.")
+            case "set_auto":
+                on = (result.get("data") or {}).get("on")
+                if isinstance(on, bool):
+                    ok, detail = room_client.set_auto(on)
+                    if not ok:
+                        response_ssml = Brianize(f"Auto didn't change. {detail}.")
+                else:
+                    response_ssml = Brianize("Auto on, or auto off? I can't do both.")
+            case "cue_scene":
+                query = ((result.get("data") or {}).get("query") or "").strip()
+                screens = room_client.live_targets(closest_screen)
+                preset = room_client.find("scenes", query) if query else None
+                if not screens:
+                    response_ssml = Brianize("Nothing is live. Put a mode with live screens on first.")
+                elif query and preset is None:
+                    response_ssml = Brianize(f"I couldn't find a scene like {query}.")
+                else:
+                    to = preset["name"] if preset else "auto"
+                    fails = [d for sid in screens for ok, d in [room_client.cue_scene(sid, to)] if not ok]
+                    if fails:
+                        response_ssml = Brianize(f"The scene didn't change. {fails[0]}.")
+                    elif preset:
+                        response_ssml = Brianize(f"{preset.get('label', to)}. Brace yourself.")
+            case "set_effect":
+                data = result.get("data") or {}
+                query, op = (data.get("query") or "").strip(), data.get("effect_op") or "replace"
+                screens = room_client.live_targets(closest_screen)
+                preset = room_client.find("effects", query) if query and op != "clear" else None
+                if not screens:
+                    response_ssml = Brianize("Nothing is live, so there are no effects to change.")
+                elif op != "clear" and preset is None:
+                    response_ssml = Brianize(f"I couldn't find an effect like {query}.")
+                else:
+                    fails = []
+                    for sid in screens:
+                        stack = [] if op == "clear" else (room_client.effects(sid) if op == "add" else [])
+                        if preset:
+                            stack = stack + [preset["name"]]
+                        ok, d = room_client.set_effects(sid, stack[-6:])
+                        if not ok:
+                            fails.append(d)
+                    if fails:
+                        response_ssml = Brianize(f"The effects didn't change. {fails[0]}.")
             # User wants to animate a screen
             case "animate": 
                 # Fetch relevant image inputs
