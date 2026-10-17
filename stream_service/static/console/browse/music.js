@@ -20,10 +20,15 @@ const SIGNALS = [
   ["velocity", "how hard the piano is played"], ["note_rate", "how busy the playing is"], ["register", "high or low on the keyboard"],
   ["spread", "how full the chords are"], ["pedal", "the piano's pedal"], ["tension", "harmonic tension"],
   ["note_on", "each piano note"], ["chord_change", "a chord change"],
+  // the room's sound and the music's clock (show_service: music.features / rhythm / clock)
+  ["bass", "the bass"], ["mids", "the middle of the sound"], ["highs", "the treble"],
+  ["brightness", "how bright the sound is"], ["density", "how busy the rhythm is"], ["groove", "the groove"],
+  ["arousal", "how excited the music is"], ["downbeat", "each bar's first beat"],
+  ["beat_phase", "through each beat"], ["bar_phase", "through each bar"], ["phrase_phase", "through each phrase"],
 ];
 const SIG = Object.fromEntries(SIGNALS);
 const MAIN = new Set(["energy", "drive", "punch", "tempo", "warmth", "gobo", "beat", "velocity", "pedal"]);
-const TRIG = new Set(["beat", "pulse", "section", "note_on", "chord_change"]);
+const TRIG = new Set(["beat", "pulse", "section", "downbeat", "note_on", "chord_change"]);
 const WHEN = { live: "moves with", section: "changes each section with", cue: "is set at the start by" };
 const WHEN_SEG = { live: "Moves", section: "Each section", cue: "At the start" };
 const STATES = [["ambient", "Quiet"], ["jazz", "Jazz"], ["chorus", "Chorus"], ["peak", "Peak"]];
@@ -64,7 +69,7 @@ function inputsWords(b) {
   if (b.bind) return `follows ${SIG[b.bind] || b.bind} (set by the preset)`;
   const ins = (b.in || []).map((t) => `${t.inv ? "less " : ""}${SIG[t.sig] || t.sig}`);
   const list = ins.length > 1 ? `${ins.slice(0, -1).join(", ")} and ${ins[ins.length - 1]}` : ins[0] || "";
-  const kick = b.kick ? `, kicks on ${{ section: "each new section", note_on: "each piano note", chord_change: "each chord change" }[b.kick.sig] || "the beat"}` : "";
+  const kick = b.kick ? `, kicks on ${{ section: "each new section", downbeat: "each bar's first beat", note_on: "each piano note", chord_change: "each chord change" }[b.kick.sig] || "the beat"}` : "";
   return `${WHEN[b.at] || "follows"} ${list}${kick}`;
 }
 function num(v) {
