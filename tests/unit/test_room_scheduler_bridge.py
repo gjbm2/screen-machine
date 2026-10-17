@@ -76,3 +76,26 @@ def test_scheduler_room_actions(monkeypatch):
     assert calls == [("mode", "Party", "schedule:north-screen", "loaded"), ("auto", False)]   # 'maybe': not sent
     H.handle_room_state({"action": "room_state"}, ctx, now, out, "north-screen")
     assert ctx["vars"]["room_mode"] == "party" and ctx["vars"]["room_auto"] is True and ctx["vars"]["screen_layer"] == "live"
+
+
+def test_simultaneous_events_each_see_their_own_payload(monkeypatch):
+    """Several events matched in one tick: each block reads ITS event (the bridge sends mode, Auto and layer
+    together on connect); _event is one slot, so resolve_schedule stamps each instruction with its own."""
+    import routes.scheduler_utils as U
+    from routes.scheduler import resolve_schedule, run_instruction
+    dest = "test-bridge-dest"
+    monkeypatch.setattr(U, "get_destinations_for_group", lambda scope: [scope])
+    U.active_events.pop(dest, None)
+    blk = lambda var: {"instructions_block": [{"action": "set_var", "var": var,  # noqa: E731
+                                               "input": {"value": "{{ _event.payload.x }}"}}]}
+    sched = {"triggers": [{"type": "event", "value": "_ta", "trigger_actions": blk("a")},
+                          {"type": "event", "value": "_tb", "trigger_actions": blk("b")}],
+             "initial_actions": {"instructions_block": []}, "final_actions": {"instructions_block": []}}
+    U.throw_event(scope=dest, key="_ta", payload={"x": "A"})
+    U.throw_event(scope=dest, key="_tb", payload={"x": "B"})
+    ctx, now = {"vars": {}}, datetime.now()
+    for data in resolve_schedule(sched, now, dest, context=ctx):
+        for ins in data["block"]:
+            run_instruction(ins, ctx, now, [], dest)
+    assert ctx["vars"]["a"] == "A" and ctx["vars"]["b"] == "B"
+    U.active_events.pop(dest, None)
