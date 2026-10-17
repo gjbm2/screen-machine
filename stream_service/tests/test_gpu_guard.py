@@ -520,3 +520,23 @@ def test_a_slow_shader_at_its_smallest_scale_keeps_running():
     assert w.judge(0.25, 0.25) is None and w.judge(0.25, 0.25) is None
     with pytest.raises(GpuTooSlow):
         w.judge(0.25, 0.25)
+
+
+def test_a_slow_trip_benches_for_a_while_and_doubles():
+    """A guard trip keeps a plug-in out of the auto pool for SLOW_BENCH_S (x2 per repeat), not the process life."""
+    from types import SimpleNamespace
+
+    from stream_service.sessions import SessionManager
+    mgr = SimpleNamespace(slow={}, _slow_until={}, _slow_hist={}, slow_trips=0,
+                          SLOW_BENCH_S=SessionManager.SLOW_BENCH_S, SLOW_BENCH_MAX_S=SessionManager.SLOW_BENCH_MAX_S)
+    mgr._purge_slow = lambda: SessionManager._purge_slow(mgr)
+    info = {"kind": "source", "name": "st_x", "gpu_ms": 80.0, "budget_ms": 50.0, "why": "sustained"}
+    SessionManager.note_slow(mgr, info, "s-1")
+    key = ("source", "st_x")
+    assert SessionManager.is_slow(mgr, "source", "st_x")
+    first = mgr._slow_until[key]
+    mgr._slow_until[key] = time.monotonic() - 1                      # the bench is over
+    assert not SessionManager.is_slow(mgr, "source", "st_x") and key not in mgr.slow
+    SessionManager.note_slow(mgr, info, "s-2")                        # again: twice as long
+    assert mgr.slow[key]["count"] == 2 and mgr._slow_until[key] - time.monotonic() > 1.9 * SessionManager.SLOW_BENCH_S
+    assert first > 0
