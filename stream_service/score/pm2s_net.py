@@ -157,22 +157,24 @@ class CNNTimeSignatureModel(nn.Module):
 class PM2S:
     """All four networks, loaded once.  ``__call__(note_seq)`` -> raw per-note outputs (numpy)."""
 
-    def __init__(self, weights_dir: pathlib.Path, threads: int = 2) -> None:
+    def __init__(self, weights_dir: pathlib.Path, threads: int = 2, device: str = "cpu") -> None:
         torch.set_num_threads(threads)
+        self.device = device                # "cuda" only for batch work (tools/score/fit_metre.py); live: cpu
         self.nets = {"beat": RNNJointBeatModel(), "hand": RNNHandPartModel(), "key": RNNKeySignatureModel(),
                      "ts": CNNTimeSignatureModel()}
         for name, net in self.nets.items():
             sd = torch.load(weights_dir / WEIGHTS[name], map_location="cpu", weights_only=True)
             net.load_state_dict(sd)
-            net.eval()
+            net.to(device).eval()
 
     @torch.inference_mode()
     def __call__(self, note_seq: np.ndarray) -> dict:
-        x = torch.tensor(note_seq, dtype=torch.float32).unsqueeze(0)
+        x = torch.tensor(note_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
         beat, down = self.nets["beat"](x)
-        return {"beat": beat[0].numpy(), "down": down[0].numpy(), "hand": self.nets["hand"](x)[0].numpy(),
-                "key": self.nets["key"](x)[0].exp().numpy().T,             # (n, 12) probabilities
-                "ts": self.nets["ts"](x)[0].numpy()}
+        np_ = lambda t: t.float().cpu().numpy()             # noqa: E731
+        return {"beat": np_(beat[0]), "down": np_(down[0]), "hand": np_(self.nets["hand"](x)[0]),
+                "key": np_(self.nets["key"](x)[0].exp()).T,                # (n, 12) probabilities
+                "ts": np_(self.nets["ts"](x)[0])}
 
 
 # -- post-processing (pm2s/features/beat.py) -----------------------------------------------------------------------
