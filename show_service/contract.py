@@ -862,7 +862,8 @@ class Beliefs(TypedDict):
     state: str                     # "none" | "fresh" | "holding" | "fading"
     age_s: Optional[float]         # since the last verdict
     genre: Optional[dict]          # {"word", "conf"}: changes only on two agreeing reads (or a track change)
-    moods: list[dict]              # [{"word", "conf"}], conf decays (half-life 45 s)
+    moods: list[dict]              # [{"word", "conf"}]: vocab.yaml visual moods (feel through music_moods), top 3
+    feel: list[dict]               # [{"word", "conf"}]: the listener's own music_moods words, conf decays (45 s)
     instruments: list[str]
     vocals: Optional[str]
     section: Optional[dict]        # {"label", "conf"}

@@ -674,6 +674,9 @@ class Director:
         self._emphasis = 0
         self._band: Optional[int] = None
         self._split_hi = False
+        self._band_idx: Optional[int] = None      # the band words' row now (held director.bands.dwell_s)...
+        self._band_cand: Optional[int] = None     # ...and the row waiting to take over, since
+        self._band_since: Optional[float] = None
         # music state
         self._t_prev: Optional[float] = None
         self.lv = 0.0
@@ -1127,8 +1130,12 @@ class Director:
                           "fx_moods": [x for x in w.get("fx_moods") or [] if isinstance(x, str)],
                           "transition_style": w.get("transition_style")
                           if isinstance(w.get("transition_style"), str) else None})
+        dwell = _num(b.get("dwell_s"), 0.0) or 0.0
+        if dwell < 0:
+            probs.append(f"director.bands.dwell_s: {b.get('dwell_s')!r} is not >= 0: 0 used")
+            dwell = 0.0
         return {"edges": [float(e) for e in edges], "hysteresis": _num(b.get("hysteresis"), 0.0) or 0.0,
-                "split": split, "split_band": split_band, "table": table}
+                "split": split, "split_band": split_band, "table": table, "dwell_s": dwell}
 
     def restore(self, saved: dict) -> None:
         """state.json's ``director``: the target and nudges. A passed Keep is dropped; the first mode that differs
@@ -1368,6 +1375,12 @@ class Director:
         e_out = centre + vs["follow_amount"] * conf * live * (music - 0.5) + self._llm_bias * live \
             + self.steps * self._step_size(vs)
         e_out = min(hi, max(lo, e_out))
+        # the band words' energy: the music as heard (full follow round the middle), within the feel's range; the
+        # feel's centre while nothing is live (2b's audit, 17 Oct: with e_out, no feel never reached the peak band and
+        # Party read mellow jazz as euphoric)
+        heard = centre + live * (0.5 + conf * (music - 0.5) - centre) + self._llm_bias * live \
+            + self.steps * self._step_size(vs)
+        band_e = min(hi, max(lo, heard))
         u = (e_out - lo) / (hi - lo) if hi > lo else 0.5
         bpm = grid.bpm
         if self.cfg["compose"]["mode"] == comp.DRIVE and grid.has_grid:
@@ -1379,7 +1392,7 @@ class Director:
         self.music = {"fresh": fresh, "gate": round(gate, 3), "energy_in": round(energy_in, 3), "music": round(music, 3),
                       "conf": round(conf, 3), "inputs": {k: round(v, 3) for k, (v, _) in inputs.items()},
                       "liveness": round(self.lv, 3), "relax": round(self._relax, 3), "llm_bias": round(self._llm_bias, 3),
-                      "energy": e_out, "u": u, "pace": 0.1 + 0.8 * pace_in, "arousal": arousal,
+                      "energy": e_out, "band_energy": band_e, "u": u, "pace": 0.1 + 0.8 * pace_in, "arousal": arousal,
                       "onsets": onsets_now, "drive": drive, "tension": self._tension or 0.0,
                       "novelty": abs((self._nov_fast or 0.0) - (self._nov_slow or 0.0)) if fresh else 0.0,
                       "playing": playing, "no_audio": no_audio, "pv": p if isinstance(p, dict) else None, "beliefs": b
@@ -2247,7 +2260,17 @@ class Director:
                 idx = i + (1 if self._split_hi else 0)
             elif i > sb:
                 idx = i + 1
-        return b["table"][idx]
+        # a new row lands only once it has held dwell_s (2b's audit, 17 Oct: the words flapped up to 4 times a minute)
+        now = self._now_s if self._now_s is not None else 0.0
+        if self._band_idx is None or b["dwell_s"] <= 0:
+            self._band_idx, self._band_cand, self._band_since = idx, None, None
+        elif idx == self._band_idx:
+            self._band_cand, self._band_since = None, None
+        elif idx != self._band_cand:
+            self._band_cand, self._band_since = idx, now
+        elif now - (self._band_since if self._band_since is not None else now) >= b["dwell_s"]:
+            self._band_idx, self._band_cand, self._band_since = idx, None, None
+        return b["table"][self._band_idx]
 
     def _latest_features(self) -> Optional[dict]:
         f = _call(self.ctx.features)
@@ -2279,7 +2302,8 @@ class Director:
         mw = mg.get("words") if ml_on and isinstance(mg.get("words"), dict) else None
         genres = ({str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
                   else {genre: 1.0} if genre else {})
-        band = self._band_words(self.music.get("energy", vs["energy_centre"])) if self.music else None
+        band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
+            if self.music else None
         if self.moods:
             moods, src = list(self.moods), "human"
         elif llm_moods:

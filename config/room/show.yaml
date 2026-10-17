@@ -193,6 +193,9 @@ director:
   bands:
     edges: [0.30, 0.55, 0.80]               # still | groove-or-pulse | lively | peak
     hysteresis: 0.04
+    dwell_s: 20                             # starting point: a new band's words land once it has held this long (2b,
+                                            # 17 Oct: the words flapped up to 4 times a minute on ambient). The bands
+                                            # read the music as heard within the feel's range, not the look's energy
     split: {band: 1, by: drive, up: 0.65, down: 0.55}   # band 1 (0.30-0.55): groove below, pulse above
     words:
       still:  {moods: [calm, mellow, elegant, dreamy],    fx_moods: [calm, mellow, elegant, dreamy],    transition_style: gentle}
