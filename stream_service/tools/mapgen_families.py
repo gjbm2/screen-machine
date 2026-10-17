@@ -3,6 +3,10 @@
 classify(kind, name, prop) -> family id (kind: sources | effects | transitions).  Ordered rules: first match wins.  Name tokens dominate; the x-ui label
 (lower-cased, often Spanish for ISF imports) is a secondary hint; type / enum / format / unit / tier decide the
 structural families first.
+
+The room's sound (17 Oct, show_service's features) has its own families, so the rules can give each the signal that
+moves it: shake_displacement (bass hits), sway_amplitude (groove), sparkle_shimmer (highs), grain_texture (highs,
+density) and chroma_split (highs, punch); each is matched before the broad family that used to take it.
 """
 import re
 
@@ -83,6 +87,11 @@ def classify(kind, name, p):
         if kind == "transitions":
             return "glow_light"
         return "beat_trigger"
+
+    # ---- the room's sound: shake (bass hits) ------------------------------------------------------------------
+    if rx(n, r"shake|jolt|trauma|vibrat|tremble|judder|quake|max_shift|max_roll|step_bob|footstep|depth_kick|"
+             r"fov_pump") and not rx(n, r"rate|speed|freq|hz|_vel$|velocity|period") and not rx(n, r"angle|^rot|direction") and unit not in RATE_UNITS:
+        return "shake_displacement"
 
     # ---- timing (effects / transitions) -------------------------------------------------------------------
     if rx(n, r"duration|stagger|hold_time|fade_time|decay_ms|crossfade|(^|_)lag$|colour_lag|pause|delay|"
@@ -171,6 +180,11 @@ def classify(kind, name, p):
              r"center_feedback|flow_persistence|keyframe_mix|tape_wobble|distfading"):
         return "feedback_trail"
 
+    # ---- the room's sound: sparkle (highs) ------------------------------------------------------------------
+    if rx(n, r"sparkle|glint|glitter|shimmer|twinkle|scintill|spark|speck|firefly|glimmer") \
+            and not rx(n, r"rate|speed|freq|hz|_vel$|velocity|period") and not rx(n, r"colou?r|hue|tint|size|radius|density|count") and unit not in RATE_UNITS:
+        return "sparkle_shimmer"
+
     # ---- triggers-ish / glow / light ---------------------------------------------------------------------------
     if rx(n, r"glow|bloom|halo|sheen|sparkle|glint|glitter|shimmer|rim|shafts|starburst|lightning|bolt|"
              r"emissive|radiance|halation|light_intensity|light$|^light|lighting|backlight|edge_light|"
@@ -183,6 +197,15 @@ def classify(kind, name, p):
              r"sig_gain|heat_gain|motion_gain|size_gain|flow_gain|backdrop|background_dim|"
              r"^background$|base_dim|source_dim|cap_dim|gap_dim|wall_dim|shade|shading|ao_|absorb"):
         return "brightness_exposure"
+
+    # ---- the room's sound: grain and chroma (highs) -----------------------------------------------------------
+    if rx(n, r"grain|dirt|static|speckle|film_noise|scratches|noise_(amount|level|strength|mix|opacity|gain)|^noise$") \
+            and not rx(n, r"rate|speed|freq|hz|_vel$|velocity|period") and not rx(n, r"size|scale|seed|octave|detail|tip"):
+        return "grain_texture"
+    if rx(n, r"chroma|aberr|fringe|rgb_split|rgb_spread|rgb_offset|rgb_shift|dispersion|prism|colou?r_separation|"
+             r"convergence") and not rx(n, r"rate|speed|freq|hz|_vel$|velocity|period") \
+            and not rx(n, r"weight|saturat|key|subsampl"):
+        return "chroma_split"
 
     # ---- atmosphere ------------------------------------------------------------------------------------------
     if rx(n, r"fog|haze|mist|atmos|smoke|cloud|turbid|volumetric|nebula|dust|snow|marine_snow|darkmatter|"
@@ -222,6 +245,11 @@ def classify(kind, name, p):
              r"triangle_density|leak_density|spark_density|sign_density|glyph_density|hatch_density|"
              r"pattern_density|line_density|mushroom_density"):
         return "density_count"
+
+    # ---- the room's sound: sway (groove) ----------------------------------------------------------------------
+    if rx(n, r"sway|wobble|wander|breath|flutter|undulat|bob$|_bob_|float_amount|drift_amount|idle_sway|meander") \
+            and not rx(n, r"rate|speed|freq|hz|_vel$|velocity|period"):
+        return "sway_amplitude"
 
     if rx(n, r"julia|^c_re$|^c_im$|formuparam|fractal_(mod|offset|shape|scale)|inversion|sign_offset|^power$|"
              r"slice_plane|attractor|generator_[uv]|evolution|curve_amp|cohesion|coupling|mod_value|^p[0-9]$|"

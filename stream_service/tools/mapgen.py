@@ -45,70 +45,106 @@ def ins(*terms: Any) -> list[dict]:
 
 
 INV = {"inv": True}
-# family -> rule for scenes and effects: mode, inputs, map, curve, ease_s, hero (a beat-kick candidate)
+# family -> rule for scenes and effects: mode, inputs, map, curve, ease_s, hero (a beat-kick candidate).
+# The room's sound (owner, 17 Oct; show_service's features: 2b's review): every level input pivots on its own
+# running median (the runtime's adaptive pivot), so a rule says only which way the music moves a param and how far
+# at most; the art director's depth master sets how much.  The room's own signals (bass, mids, highs, brightness,
+# density, groove, arousal) always come with a fallback (energy, drive, punch, tempo) that moves the param while
+# they are n/a.  Maestro's (pan_slow, tilt_slow, zoom_slow, motion, sat, warmth, level_slow) stay as minor inputs:
+# n/a without the desk, they drop out.
+# The art director applies loudness once (75 / c8's compose, 17 Oct): it sets each screen's level, so a luminance
+# binding (LUMINANCE_FAMS: exposure, glow, contrast) never reads loudness (LOUDNESS) and an item has at most one
+# such picture route (compose_rule, enforced on drafts, merges and the check): exposure on level_slow only, glow on
+# level_slow + punch.
+LUMINANCE_FAMS = ("brightness_exposure", "glow_light", "contrast_tone")   # the picture route, in priority order
+LOUDNESS = frozenset(("energy", "energy_slow", "activity", "activity_slow"))
+NOT_PICTURE = re.compile(r"count|density|number|num_|_n$|length|size|radius|width|rate|speed|spread|amount_of|"
+                         r"distort|wave|warp|displace|ripple|turbul|twist|wobble|shake|noise|glitch|blur|blob|"
+                         r"dither|posteri|quantiz|bit")   # by name: counts, sizes and distortion "intensity", not light
 RULES: dict[str, dict] = {
-    "macro.energy": dict(at="live", in_=ins(("energy", .85), ("motion", .15)), map={"band": .1}),
+    "macro.energy": dict(at="live", in_=ins(("energy", .7), ("activity", .3)), map={"band": .1}),
     "macro.pulse": dict(at="live", in_=ins(("beat", 1), ("punch", 1, {"floor": .6})), op="mul", map="full"),
-    "macro.amount": dict(at="live", in_=ins(("energy", .7), ("activity_slow", .3)), curve="ease",
-                         map={"scale": [.55, 1.0]}),
-    "colour_cycle_rate": dict(at="live", in_=ins(("energy", .6), ("tempo", .4)), curve="ease",
-                              map={"scale": [.7, 1.4]}),
-    "motion_rate": dict(at="live", in_=ins(("motion", .4), ("drive", .3), ("tempo", .3)), map={"scale": [.75, 1.35]},
+    "macro.amount": dict(at="live", in_=ins(("energy", .5), ("arousal", .3), ("activity_slow", .2)), curve="ease",
+                         map={"scale": [.5, 1.0]}),
+    "colour_cycle_rate": dict(at="live", in_=ins(("energy", .4), ("tempo", .3), ("brightness", .3)), curve="ease",
+                              map={"scale": [.6, 1.6]}),
+    "motion_rate": dict(at="live", in_=ins(("energy", .3), ("drive", .25), ("tempo", .25), ("groove", .2)),
+                        map={"scale": [.6, 1.6]}, hero=True),
+    "rotation_rate": dict(at="live", in_=ins(("drive", .4), ("energy", .3), ("groove", .3)), map={"scale": [.6, 1.6]},
+                          hero=True),
+    "zoom_rate": dict(at="live", in_=ins(("drive", .4), ("energy", .3), ("bass", .3)), map={"scale": [.6, 1.6]},
+                      hero=True),
+    "travel_rate": dict(at="live", in_=ins(("tempo", .4), ("drive", .4), ("density", .2)), map={"scale": [.65, 1.5]},
                         hero=True),
-    "rotation_rate": dict(at="live", in_=ins(("motion", .6), ("drive", .4)), map={"scale": [.7, 1.45]}, hero=True),
-    "zoom_rate": dict(at="live", in_=ins(("drive", .6), ("energy", .4)), map={"scale": [.7, 1.4]}, hero=True),
-    "travel_rate": dict(at="live", in_=ins(("tempo", .5), ("drive", .5)), map={"scale": [.75, 1.35]}, hero=True),
-    "distortion_amplitude": dict(at="section", in_=ins(("energy", .7), ("drive", .3)), curve="ease",
-                                 map={"around": [-.1, .1]}, live_glsl=True),
-    "glow_light": dict(at="section", in_=ins(("energy", .6), ("punch", .4)), map={"scale": [.8, 1.25]}),
-    "brightness_exposure": dict(at="section", in_=ins(("level_slow", .5), ("energy", .5)), map={"scale": [.9, 1.08]},
+    "distortion_amplitude": dict(at="live", in_=ins(("bass", .4), ("energy", .4), ("drive", .2)), curve="ease",
+                                 map={"around": [-.2, .25]}, live_glsl=True),
+    "shake_displacement": dict(at="live", in_=ins(("bass", .5), ("punch", .3), ("energy", .2)),
+                               map={"around": [-.2, .3]}, hero=True),
+    "sway_amplitude": dict(at="live", in_=ins(("groove", .5), ("energy_slow", .3), ("bass", .2)), curve="ease",
+                           map={"around": [-.2, .25]}, ease=1.5),
+    "sparkle_shimmer": dict(at="live", in_=ins(("highs", .6), ("punch", .4)), map={"scale": [.6, 1.7]}, hero=True),
+    "glow_light": dict(at="live", in_=ins(("level_slow", .5), ("punch", .5)), map={"scale": [.7, 1.5]}, live_glsl=True),
+    "brightness_exposure": dict(at="live", in_=ins(("level_slow", 1)), map={"scale": [.85, 1.15]}, ease=1.0,
+                                live_glsl=True,
                                 skip=r"backdrop|background|dim|shading|shade|ambient|ao_|absorb|threshold"),
-    "beat_trigger": dict(at="section", in_=ins(("punch", .6), ("drive", .4)), map={"scale": [.4, 1.3]}),
+    "beat_trigger": dict(at="section", in_=ins(("punch", .5), ("bass", .3), ("drive", .2)), map={"scale": [.5, 1.5]}),
     # never above the authored amount (a feedback at its max never fades): busy music shortens the trails
-    "feedback_trail": dict(at="section", in_=ins(("energy", 1, INV)), map={"around": [-.12, 0.0]}),
-    "fog_atmosphere": dict(at="section", in_=ins(("energy", 1, INV)), map={"around": [-.12, .12]}, ease=5.0),
-    "glitch_noise": dict(at="section", in_=ins(("energy", .6), ("drive", .4)), curve="in",
-                         map={"around": [-.3, .15]}),
-    "density_count": dict(at="section", in_=ins(("energy", .8), ("drive", .2)), map={"around": [-.1, .15]}),
+    "feedback_trail": dict(at="section", in_=ins(("density", .5, INV), ("energy", .5, INV)), map={"around": [-.2, 0.0]}),
+    "fog_atmosphere": dict(at="section", in_=ins(("energy_slow", .6, INV), ("arousal", .4, INV)),
+                           map={"around": [-.15, .15]}, ease=5.0),
+    "grain_texture": dict(at="live", in_=ins(("highs", .5), ("energy", .3), ("density", .2)), curve="in",
+                          map={"around": [-.2, .2]}, live_glsl=True),
+    "chroma_split": dict(at="live", in_=ins(("highs", .4), ("punch", .4), ("energy", .2)),
+                         map={"around": [-.15, .3]}, hero=True, live_glsl=True),
+    "glitch_noise": dict(at="section", in_=ins(("density", .4), ("energy", .35), ("drive", .25)), curve="in",
+                         map={"around": [-.3, .2]}, live_glsl=True),
+    "density_count": dict(at="section", in_=ins(("density", .5), ("energy", .5)), map={"around": [-.15, .15]}),
     "symmetry_count": dict(at="section", in_=ins(("gobo", 1)), map={"around": [-.15, .15]}, ease=6.0),
     "style_morph": dict(at="section", in_=ins(("gobo", 1)), map={"around": [-.2, .2]}, ease=6.0),
-    "scale_size": dict(at="section", in_=ins(("zoom_slow", .6), ("energy", .4)), map={"around": [-.1, .1]}),
-    "camera_distance": dict(at="section", in_=ins(("zoom_slow", .6, INV), ("energy", .4, INV)),
+    "scale_size": dict(at="section", in_=ins(("energy", .4), ("bass", .3), ("zoom_slow", .3)), map={"around": [-.12, .12]}),
+    "camera_distance": dict(at="section", in_=ins(("energy", .5, INV), ("density", .3, INV), ("zoom_slow", .2, INV)),
                             map={"around": [-.1, .1]}),
-    "position_xy": dict(at="live", in_=ins(("pan_slow", 1)), map={"around": [-.15, .15]}, ease=1.0, axis=True),
-    "camera_angle": dict(at="live", in_=ins(("pan_slow", 1)), map={"around": [-.12, .12]}, ease=1.5, axis=True),
-    "light_direction": dict(at="live", in_=ins(("pan_slow", 1)), map={"around": [-.25, .25]}, ease=2.0, axis=True),
-    "tint_colour_mix": dict(at="live", in_=ins(("warmth", 1)), map={"around": [-.15, .15]}, ease=3.0,
+    # slow audio stand-ins for the desk's movers (SHOW_ENGINE §: PAN/TILT/ZOOM): x <- brightness, y <- bass
+    "position_xy": dict(at="live", in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.15, .15]}, ease=3.0,
+                        axis=True),
+    "camera_angle": dict(at="live", in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.12, .12]}, ease=3.0,
+                         axis=True),
+    "light_direction": dict(at="live", in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.25, .25]},
+                            ease=3.0, axis=True),
+    "tint_colour_mix": dict(at="live", in_=ins(("warmth", .5), ("arousal", .5)), map={"around": [-.15, .15]}, ease=3.0,
                             skip=r"^[rgba]_|bias_[rgb]|intensity_[rgb]|xor_|color_base_[rgb]|red_cyan"),
-    "saturation": dict(at="section", in_=ins(("energy", .6), ("sat", .4)), map={"around": [-.1, .15]},
+    "saturation": dict(at="section", in_=ins(("arousal", .5), ("energy", .3), ("sat", .2)), map={"around": [-.15, .2]},
                        skip=r"grey|gray"),
-    "contrast_tone": dict(at="section", in_=ins(("energy", 1)), map={"around": [-.08, .1]},
+    "contrast_tone": dict(at="section", in_=ins(("arousal", .5), ("level_slow", .5)), map={"around": [-.1, .12]},
                           skip=r"posteri|dither|bit|quantiz|levels|tone_mode|q_level"),
-    "line_width": dict(at="section", in_=ins(("punch", .5), ("energy", .5)), map={"around": [-.1, .15]}),
-    "snap_character": dict(at="section", in_=ins(("punch", .5), ("energy", .5)), map={"around": [-.2, .2]}),
-    "timing": dict(at="cue", in_=ins(("energy", 1, INV)), map={"scale": [.7, 1.4]}, skip=r"steps_per_beat"),
+    "line_width": dict(at="section", in_=ins(("punch", .4), ("bass", .3), ("energy", .3)), map={"around": [-.12, .18]}),
+    "snap_character": dict(at="section", in_=ins(("punch", .5), ("drive", .5)), map={"around": [-.2, .2]}),
+    "timing": dict(at="cue", in_=ins(("energy", .6, INV), ("tempo", .4, INV)), map={"scale": [.6, 1.5]},
+                   skip=r"steps_per_beat"),
 }
 # transitions: cue only (sampled when a cut is prepared)
 TRANSITION_RULES: dict[str, dict] = {
-    "macro.duration": dict(in_=ins(("energy", 1, INV)), map={"scale": [.65, 1.35]}, quant="beat"),
-    "position_xy": dict(in_=ins(("pan_slow", 1)), map={"around": [-.3, .3]}, axis=True),
-    "direction_angle": dict(in_=ins(("pan_slow", 1)), map={"around": [-.3, .3]}, axis=True),
-    "camera_angle": dict(in_=ins(("pan_slow", 1)), map={"around": [-.3, .3]}, axis=True),
-    "light_direction": dict(in_=ins(("pan_slow", 1)), map={"around": [-.3, .3]}, axis=True),
-    "glow_light": dict(in_=ins(("punch", .5), ("energy", .5)), map={"scale": [.7, 1.4]}),
-    "beat_trigger": dict(in_=ins(("punch", .5), ("energy", .5)), map={"scale": [.7, 1.4]}),
-    "brightness_exposure": dict(in_=ins(("punch", .5), ("energy", .5)), map={"scale": [.85, 1.15]}),
+    "macro.duration": dict(in_=ins(("energy", .6, INV), ("tempo", .4, INV)), map={"scale": [.6, 1.4]}, quant="beat"),
+    "position_xy": dict(in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.3, .3]}, axis=True),
+    "direction_angle": dict(in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.3, .3]}, axis=True),
+    "camera_angle": dict(in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.3, .3]}, axis=True),
+    "light_direction": dict(in_=ins(("pan_slow", .5), ("brightness", .5)), map={"around": [-.3, .3]}, axis=True),
+    "glow_light": dict(in_=ins(("punch", .5), ("level_slow", .3), ("brightness", .2)), map={"scale": [.7, 1.4]}),
+    "beat_trigger": dict(in_=ins(("punch", .5), ("bass", .3), ("energy", .2)), map={"scale": [.7, 1.4]}),
+    "shake_displacement": dict(in_=ins(("bass", .5), ("punch", .5)), map={"scale": [.7, 1.4]}),
+    "brightness_exposure": dict(in_=ins(("level_slow", 1)), map={"scale": [.85, 1.15]}),
     "threshold_softness": dict(in_=ins(("energy", 1, INV)), map={"around": [-.25, .25]}),
-    "density_count": dict(in_=ins(("energy", 1)), map={"around": [-.1, .15]}),
-    "symmetry_count": dict(in_=ins(("energy", 1)), map={"around": [-.1, .15]}),
-    "scale_size": dict(in_=ins(("energy", 1)), map={"around": [-.15, .15]}),
+    "density_count": dict(in_=ins(("density", .5), ("energy", .5)), map={"around": [-.1, .15]}),
+    "symmetry_count": dict(in_=ins(("energy", .6), ("arousal", .4)), map={"around": [-.1, .15]}),
+    "scale_size": dict(in_=ins(("energy", .6), ("bass", .4)), map={"around": [-.15, .15]}),
 }
-TRANSITION_NUMERIC = dict(in_=ins(("energy", 1)), map={"around": [-.2, .2]})   # other signal-like families
+TRANSITION_NUMERIC = dict(in_=ins(("energy", .6), ("arousal", .4)), map={"around": [-.2, .2]})   # other signal-like families
 SIGNAL_FAMS = {"beat_trigger", "brightness_exposure", "camera_angle", "camera_distance", "colour_cycle_rate",
                "contrast_tone", "density_count", "distortion_amplitude", "feedback_trail", "fog_atmosphere",
                "glitch_noise", "glow_light", "light_direction", "line_width", "motion_rate", "rotation_rate",
                "zoom_rate", "travel_rate", "position_xy", "saturation", "scale_size", "snap_character", "style_morph",
-               "symmetry_count", "timing", "tint_colour_mix"}
+               "symmetry_count", "timing", "tint_colour_mix", "shake_displacement", "sway_amplitude",
+               "sparkle_shimmer", "grain_texture", "chroma_split"}
 TRANSITION_SKIP = {"seed", "quality", "internal_smoothing", "legacy_input", "phase_offset", "other", "mode_enum",
                    "colour_rgb", "colour_background", "palette", "hue_palette_index", "iterations_detail"}
 
@@ -131,8 +167,8 @@ def draft_param(kind: str, plugin: str, name: str, prop: dict, glsl: bool) -> Op
     if binding.is_palette_param(name, prop) and kind != "transition":
         return "palette", {"colour": "room", "mix": .35 if glsl and kind == "scene" else .5,
                            "fam": "palette", "src": "rule"}
-    if name == "palette_period" and kind != "transition":
-        b = {"at": "section", "in": ins(("energy", 1)), "map": {"scale": [.8, 1.3]}}
+    if name == "palette_period" and kind != "transition":     # more colour bands as the room gets excited (review)
+        b = {"at": "live", "in": ins(("arousal", .5), ("energy_slow", .5)), "map": {"scale": [.75, 1.4]}, "ease_s": 3.0}
         return "palette", _tier(b, prop, name, glsl, "palette")
     typ = prop.get("type")
     if kind == "transition":
@@ -175,7 +211,7 @@ def draft_param(kind: str, plugin: str, name: str, prop: dict, glsl: bool) -> Op
 def _axis(r: dict, name: str) -> list[dict]:
     terms = [dict(t) for t in r["in_"]]
     if r.get("axis") and _ytoken(name):
-        terms = [{**t, "sig": {"pan_slow": "tilt_slow"}.get(t["sig"], t["sig"])} for t in terms]
+        terms = [{**t, "sig": {"pan_slow": "tilt_slow", "brightness": "bass"}.get(t["sig"], t["sig"])} for t in terms]
     return terms
 
 
@@ -209,6 +245,45 @@ def _flash(b: dict, name: str) -> dict:
     return b
 
 
+def picture_fam(kind: str, name: str, prop: dict) -> Optional[str]:
+    """The param's luminance family (LUMINANCE_FAMS), else None."""
+    fam = families.classify(KINDS[kind][1], name, prop)
+    if fam not in LUMINANCE_FAMS or NOT_PICTURE.search(name.lower()):   # spark_density, ember_count: counts, not light
+        return None
+    return fam
+
+
+def reads_loudness(b: dict) -> bool:
+    return any(t.get("sig") in LOUDNESS for t in b.get("in") or ()) or (b.get("kick") or {}).get("by") in LOUDNESS
+
+
+def compose_rule(kind: str, props: dict, bindings: dict) -> tuple[dict, list[str]]:
+    """The art director's loudness-once rule on one item's bindings -> (bindings, what was dropped and why): a
+    luminance binding loses its loudness inputs (dropped when none are left) and only the first picture route by
+    LUMINANCE_FAMS order (then name) stays."""
+    out, dropped, routes = {}, [], []
+    for p, b in bindings.items():
+        fam = picture_fam(kind, p, props[p]) if p in props and b and "colour" not in b else None
+        if fam is None:
+            out[p] = b
+            continue
+        if reads_loudness(b):
+            terms = [t for t in b.get("in") or () if t.get("sig") not in LOUDNESS]
+            if not terms:
+                dropped.append(f"{p}: luminance ({fam}) on loudness only")
+                continue
+            b = {**b, "in": terms}
+            if (b.get("kick") or {}).get("by") in LOUDNESS:
+                b["kick"] = {k: v for k, v in b["kick"].items() if k != "by"}
+            dropped.append(f"{p}: loudness inputs removed ({fam})")
+        out[p] = b
+        routes.append((LUMINANCE_FAMS.index(fam), p))
+    for _, p in sorted(routes)[1:]:
+        out.pop(p, None)
+        dropped.append(f"{p}: a second picture route")
+    return out, dropped
+
+
 def draft_item(kind: str, plugin: str, cls: type) -> dict:
     props = cls.param_props()
     glsl = _is_glsl(plugin, props)
@@ -240,6 +315,9 @@ def draft_item(kind: str, plugin: str, cls: type) -> dict:
             except binding.MappingError:
                 pass
         bindings[name] = nb
+    bindings, _ = compose_rule(kind, props, bindings)
+    if hero not in bindings:
+        hero = None
     # caps: the first MAX_LIVE live and MAX_SECTION section mappings (macros first)
     order = sorted(bindings, key=lambda p: (0 if p in ("energy", "pulse", "amount", "palette") else 1, p))
     n_live = n_sec = 0
@@ -344,6 +422,10 @@ def cmd_check(args) -> None:
             except binding.MappingError as e:
                 print(f"{key}.{p}: {e.detail}")
                 bad += 1
+        _, gone = compose_rule(kind, props, {p: b for p, b in (rec.get("bindings") or {}).items() if p in props})
+        for g in gone:
+            print(f"{key}.{g} (the loudness-once rule)")
+            bad += 1
         for p, row in preview(props, rec.get("bindings") or {}, {}, key).items():
             vals = [v for v in row.values() if isinstance(v, (int, float))]
             lo, hi = props[p].get("minimum"), props[p].get("maximum")
@@ -378,6 +460,8 @@ def digest(cls: type, limit: int = 150) -> str:
             where = "setup" if m.group(1) in ("setup", "__init__", "_alloc", "_build") else m.group(1)
         if re.search(r"p\[[\"']|self\.params\[|params\[[\"']|p\.get\(", ln):
             out.append(f"[{where}] {ln.strip()}")
+    if not out and src:                     # params read some other way (a dict walk, getattr): show the source head
+        return "\n".join(["// no p[...] reads found: the class source head"] + src.splitlines()[:limit])
     return "\n".join(out[:limit])
 
 
@@ -492,6 +576,10 @@ def cmd_merge(args) -> None:
                     print(f"{key}.{p}: rejected by the trace check: {why_bad}")
                     continue
                 new_b[p] = nb
+            new_b, gone = compose_rule(kind, props, new_b)
+            for g in gone:
+                stats["bindings_rejected"] += 1
+                print(f"{key}.{g} (the loudness-once rule)")
             changed = sum(1 for p in set(new_b) | set(cur.get("bindings") or {})
                           if new_b.get(p) != (cur.get("bindings") or {}).get(p))
             if changed > 10:
