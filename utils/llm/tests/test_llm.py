@@ -87,6 +87,14 @@ class FakeOpenAI:
         if b == "tool_400":
             return web.json_response({"error": {"message": "This model does not support tools.",
                                                 "type": "invalid_request_error"}}, status=400)
+        if b == "safety_400":
+            return web.json_response({"error": {"message": "Request blocked: PROHIBITED_CONTENT",
+                                                "type": "invalid_request_error"}}, status=400)
+        if b == "filter":
+            return web.json_response({"id": "cmpl-1", "object": "chat.completion", "created": 0, "model": model,
+                                      "choices": [{"index": 0, "finish_reason": "content_filter",
+                                                   "message": {"role": "assistant", "content": None}}],
+                                      "usage": {"prompt_tokens": 10, "completion_tokens": 0, "total_tokens": 10}})
         args = {"ok": {"word": "a", "n": 2}, "slow": {"word": "a", "n": 2}, "invalid": {"word": "zzz", "n": 9},
                 "hard": {"word": 7}}.get(b)
         arguments = "{not json" if b == "bad_json" else json.dumps(args)
@@ -534,3 +542,13 @@ def test_chat_raises_when_every_model_fails(server, layer):
     assert [a["model"] for a in ei.value.attempts] == ["m1", "m2"]
     with pytest.raises(llm.LLMError):
         llm.chat("no-such-task", messages=[])
+
+
+@pytest.mark.parametrize("bad", ["filter", "safety_400"])
+def test_chat_never_shops_a_safety_refusal_to_the_next_provider(server, layer, bad):
+    server.behaviour["m1"] = bad
+    n = len(server.requests)
+    with pytest.raises(llm.LLMError) as ei:
+        llm.chat("t", messages=[{"role": "user", "content": "u"}])
+    assert ei.value.blocked and [a["model"] for a in ei.value.attempts] == ["m1"]
+    assert [r["model"] for r in server.requests[n:]] == ["m1"]          # m2 never asked

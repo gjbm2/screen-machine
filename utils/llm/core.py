@@ -981,11 +981,15 @@ def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, aud
 
 
 class LLMError(RuntimeError):
-    """chat(): every model of the task failed.  ``attempts``: [{"model", "error"}] in order."""
+    """chat(): every model of the task failed, or one refused on safety grounds (``blocked``: no other provider is
+    tried after a safety block).  ``attempts``: [{"model", "error"}] in order."""
 
-    def __init__(self, task: str, error: str, attempts: list):
+    def __init__(self, task: str, error: str, attempts: list, blocked: bool = False):
         super().__init__(f"{task}: {error}")
-        self.task, self.error, self.attempts = task, error, attempts
+        self.task, self.error, self.attempts, self.blocked = task, error, attempts, blocked
+
+
+SAFETY_RX = re.compile(r"PROHIBITED_CONTENT|CSAM|BLOCKLIST|blocked.{0,40}safety|safety.{0,40}block", re.I)
 
 
 def chat(task: str, *, check: Optional[Any] = None, timeout_s: Optional[float] = None, **request: Any) -> tuple:
@@ -1025,16 +1029,26 @@ def chat(task: str, *, check: Optional[Any] = None, timeout_s: Optional[float] =
         except Exception as e:                        # noqa: BLE001
             err, status = _error_of(e, L._keys_seen)
             ms = (time.perf_counter() - t) * 1000.0
-            L.failed(prov, model, err, status)
             L.account(task, None)
             L.ledger(task, prov, model, False, ms, {}, None, err)
-            log.warning("%s: %s failed in %.0f ms: %s", task, model, ms, err)
             attempts.append({"model": model, "error": err})
+            if SAFETY_RX.search(err or ""):           # a provider's safety refusal is final: never shop it elsewhere
+                log.warning("%s: %s refused on safety grounds: %s", task, model, err)
+                raise LLMError(task, f"blocked by {prov}'s safety filter", attempts, blocked=True) from None
+            L.failed(prov, model, err, status)
+            log.warning("%s: %s failed in %.0f ms: %s", task, model, ms, err)
             continue
         ms = (time.perf_counter() - t) * 1000.0
         usage = _usage(resp)
         cost = L.cost(model, usage)
         L.account(task, cost)
+        choice = (getattr(resp, "choices", None) or [None])[0]
+        if getattr(choice, "finish_reason", None) == "content_filter":
+            err = f"blocked by {prov}'s safety filter"
+            L.ledger(task, prov, model, False, ms, usage, cost, err)
+            attempts.append({"model": model, "error": err})
+            log.warning("%s: %s refused on safety grounds (content_filter)", task, model)
+            raise LLMError(task, err, attempts, blocked=True)
         try:
             value = check(resp) if check is not None else resp
         except Exception as e:                        # noqa: BLE001 - a bad answer: the next model
