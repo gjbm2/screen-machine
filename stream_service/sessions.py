@@ -58,7 +58,8 @@ from typing import Any, Callable, Optional
 from . import binding, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
-    validate_auto, validate_direction
+    validate_auto, validate_direction, weighted_pick
+from .tags import scene_weight
 from .effects import EffectChain, EffectSlot
 from .fx_director import FX_EVENT_P, FxDirector, FxMove
 from .fx_state import SessionFx
@@ -1730,10 +1731,14 @@ class Session(EngineListener):
         if change == "small":
             cur = self.mgr.presets.scenes.get(self.current_name or "") or {}
             src = cur.get("source")
-            sib = [n for n, p in self.mgr.presets.scenes.items()
-                   if src and p.get("source") == src and n != self.current_name and n != DARK_SCENE]
-            if sib:
-                name = self.director.rng_scene.choice(sorted(sib))
+            scenes, d = self.mgr.presets.scenes, self.director
+            sib = sorted(n for n, p in scenes.items()
+                         if src and p.get("source") == src and n != self.current_name and n != DARK_SCENE
+                         and (p.get("tags") or {}).get("auto", True) is not False and self.room_ok("source", src))
+            got = weighted_pick(sib, lambda n: scene_weight(scenes[n].get("tags") or {}, d.direction)
+                                * self.mgr.rating_weight("source", src), d.rng_scene) if sib else None
+            if got is not None:
+                name = got[0]
                 why, words = f"{name} (a variant for the next song)", "A variant: the next song is close to this one"
         elif change == "big":
             got = self.director.pick_scene(self.mgr.presets.scenes, self.current_name, now)
