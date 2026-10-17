@@ -74,6 +74,7 @@ PROFILES: dict[str, Profile] = {p.name: p for p in (
     Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "50M", preset="p4", nvenc_delay=2, extra=AQ),
     Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", extra=AQ),
     Profile("hevc-1080p60", "hevc", 1920, 1080, 60, "16M", preset="p5", extra=AQ),
+    Profile("hevc-1080p30", "hevc", 1920, 1080, 30, "10M", preset="p5", extra=AQ),   # devtest: a busy browser
     Profile("h264-720p30", "h264", 1280, 720, 30, "6M", preset="p5", extra=AQ),
     Profile("av1-720p30", "av1", 1280, 720, 30, "3M"),
 )}
