@@ -87,6 +87,7 @@ ENDED_KEEP_S = 600.0          # ended sessions stay visible to GET /api/sessions
 SCREEN_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 LIVE_STATES = ("entering", "live")
 LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_follow", "direction_ease_s")
+LOOK_SCOPES = ("room", "screen")    # owner 17 Oct: a control acts where it sits (a screen card: that screen only)
 MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more cue waits (R6)
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
 EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at least this far past lead (G9)
@@ -109,6 +110,22 @@ class SessionError(Exception):
 
 def _iso(ts: float) -> str:
     return dt.datetime.fromtimestamp(ts, dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def lenient_direction(body: dict, vocab: Optional[dict]) -> tuple[dict, list[str]]:
+    """validate_direction for show_service's room.direction: a bad field (a transition_style outside the vocab, an
+    unknown fx key) takes its default instead of losing the whole direction; returns (direction, dropped fields)."""
+    try:
+        return validate_direction(body, vocab), []
+    except ParamError:
+        pass
+    dropped = []
+    for k in list(body):
+        try:
+            validate_direction({k: body[k]}, vocab)      # a missing field defaults, so each field checks alone
+        except ParamError:
+            dropped.append(k)
+    return validate_direction({k: v for k, v in body.items() if k not in dropped}, vocab), dropped
 
 
 def decode_still(spec: Any, field: str) -> tuple[Optional[bytes], Optional[tuple[int, int, int]]]:
@@ -247,6 +264,8 @@ class Session(EngineListener):
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
         self._building = False                     # a build is on: the next scene is the peak one, prepared (G10)
         self._dark: Optional[dict] = None          # fade-dark between songs: {since, in_s, prev, task}
+        self.own: set[str] = set()                 # look parts this screen set for itself (scope "screen"): never
+                                                   # mirrored from the room; a room-scope change of the part clears it
         self._track_arm: Optional[dict] = None     # track_end_armed: {id, at, transition}
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
@@ -643,11 +662,26 @@ class Session(EngineListener):
         for f in self.followers():
             f._apply_direction(cause)
 
+    def fx_source(self) -> Optional["Session"]:
+        """The session whose auto effects this one mirrors, or None when it directs its own: a screen that set its
+        effects for itself (``own`` fx) does; the room's effects come from the leader, or, when the leader set its
+        own, from the first other screen that didn't."""
+        if "fx" in self.own or not self.room or self.director.auto is None or self.exited:
+            return None
+        ld = self.room_leader()
+        if ld is None:
+            return None
+        if "fx" not in ld.own:
+            return None if ld is self else ld
+        heads = [m for m in rooms.members(self.mgr.sessions.values(), self.room) if "fx" not in m.own]
+        return None if not heads or heads[0] is self else heads[0]
+
     def _room_fx(self) -> None:
-        """Leader: its auto FX just moved; the followers mirror the bus."""
+        """This screen's auto FX just moved: the screens mirroring it follow."""
         want = [p for _, p in rooms.auto_fx(self.fx.stack)]
-        for f in self.followers():
-            f.follow_fx(want, self.fx_director.fade_s(), "room")
+        for f in self.room_peers():
+            if f.fx_source() is self:
+                f.follow_fx(want, self.fx_director.fade_s(), "room")
 
     def follow_fx(self, want: list, fade_s: float, why: str) -> None:
         self._fx_want = (list(want), fade_s, why)
@@ -685,11 +719,14 @@ class Session(EngineListener):
             if ld.current_spec is not None and ld.current_name != self.current_name \
                     and ld.scene_cause in ("go", "auto") and ld.state == "live":
                 self.follow_cue(ld.current_spec, self.t_in, "now", f"joined {ld.screen}")
-        if now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and ld._fx_task is None:
+        src = self.fx_source()
+        if src is None:                             # its own effects (or the room's, from here): direct them
+            self._fx_tick(now)
+        elif now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and src._fx_task is None:
             self._fx_check_t = now
-            want = [p for _, p in rooms.auto_fx(ld.fx.stack)]
+            want = [p for _, p in rooms.auto_fx(src.fx.stack)]
             if rooms.fx_step(rooms.auto_fx(self.fx.stack), want) != (None, None):
-                self.follow_fx(want, ld.fx_director.fade_s(), "room")
+                self.follow_fx(want, src.fx_director.fade_s(), "room")
 
     def _fit(self, spec: SceneSpec, explicit: bool) -> SceneSpec:
         return self.mgr.fit_scene(spec, self.gpu, self.pixels_ratio(), explicit)
@@ -764,15 +801,19 @@ class Session(EngineListener):
         return spec
 
     async def patch(self, body: dict) -> None:
-        unknown = set(body) - {"scene", "params", "transition", *LOOK_FIELDS}
+        unknown = set(body) - {"scene", "params", "transition", "scope", *LOOK_FIELDS}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
+        scope = body.get("scope", "room")
+        if scope not in LOOK_SCOPES:
+            raise ParamError("bad_scope", f"scope must be one of {list(LOOK_SCOPES)}")
+        body = {k: v for k, v in body.items() if k != "scope"}
         look = self._parse_look(body)             # validated before anything changes (400)
         if not {"scene", "params", "transition"} & set(body):
             # direction / palette / auto / beat_follow only: every non-terminal state (R12)
             if self.state in ("ended", "failed"):
                 raise SessionError(409, "bad_state", f"session is {self.state}")
-            self._apply_look(look)
+            self._apply_look(look, scope)
             return
         self._require("holding", *LIVE_STATES)
         spec = self._patched_spec(body)           # validated before anything changes (400)
@@ -1365,6 +1406,8 @@ class Session(EngineListener):
         if "auto" in body:
             a = body["auto"]
             out["auto"] = None if a is None else validate_auto(a, self.director.auto or AUTO_DEFAULTS)
+            if isinstance(a, dict):
+                out["auto_given"] = sorted(a)            # which parts the body set (scope: is it the effects?)
         if "palette" in body:
             out["palette"] = parse_palette(body["palette"])
         if "palette_transition_s" in body:
@@ -1377,12 +1420,36 @@ class Session(EngineListener):
             out["direction_ease_s"] = parse_seconds(body["direction_ease_s"], "direction_ease_s", 0, 120)
         return out
 
-    def _apply_look(self, look: dict) -> None:
-        """A look is the room's (rooms.py): it applies to this session and to the room's other screens."""
+    def _apply_look(self, look: dict, scope: str = "room") -> None:
+        """A look is the room's (rooms.py): it applies to this session and to the room's other screens, and the
+        parts it sets are the room's again everywhere.  ``scope`` "screen" (a screen card's control, owner 17 Oct):
+        this session only, and those parts become its own (never mirrored from the room)."""
+        parts = self._look_parts(look)
+        if scope == "screen":
+            self.own |= parts
+            self._apply_look_here(look)
+            if "direction" in parts or "fx" in parts:
+                self._apply_direction("panel")
+            return
         peers = self.room_peers() if look else []
+        for x in (self, *peers):
+            x.own -= parts
         self._apply_look_here(look)
         for p in peers:
             p._apply_look_here(copy.deepcopy(look))
+
+    @staticmethod
+    def _look_parts(look: dict) -> set:
+        parts = set()
+        if "direction" in look or "direction_ease_s" in look:
+            parts.add("direction")
+        if "palette" in look or "palette_transition_s" in look:
+            parts.add("palette")
+        if "beat_follow" in look:
+            parts.add("beat_follow")
+        if look.get("auto") is not None and "fx" in look.get("auto_given", ()):
+            parts.add("fx")
+        return parts
 
     def _apply_look_here(self, look: dict) -> None:
         if "direction_ease_s" in look:
@@ -1421,7 +1488,7 @@ class Session(EngineListener):
     def _apply_direction(self, cause: str) -> None:
         now = time.monotonic()
         ld = self.following()
-        eff = ld.direction_effective if ld is not None else \
+        eff = ld.direction_effective if ld is not None and "direction" not in self.own else \
             effective_direction(self.direction, self.music.proposal, self.music.m)
         self.direction_effective = eff
         key = pick_key(eff)
@@ -1756,10 +1823,16 @@ class Session(EngineListener):
         leader moves and the followers mirror it, like Next for scenes.  Body, all optional (owner 17 Oct, the Room
         page's effect controls): ``effect`` a preset to bring in (else the director's pick), ``replace`` the slot id
         to swap out ("none": add; else the oldest auto one), ``only`` true: every other auto effect goes too."""
-        ld = self.room_leader()
-        if ld is not None and ld is not self:
-            return await ld.fx_next(body)
-        body = body if isinstance(body, dict) else {}
+        body = dict(body) if isinstance(body, dict) else {}
+        scope = body.pop("scope", "room")
+        if scope not in LOOK_SCOPES:
+            raise ParamError("bad_scope", f"scope must be one of {list(LOOK_SCOPES)}")
+        if scope == "screen":                        # a screen card's Next: this screen's effects are its own now
+            self.own.add("fx")
+        else:
+            head = self.fx_source()
+            if head is not None:
+                return await head.fx_next(body)
         unknown = set(body) - {"effect", "replace", "only"}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1804,10 +1877,16 @@ class Session(EngineListener):
         or ``effect`` (a preset name or a slot id).  The director leaves a cleared preset alone for 10 min and
         waits a full interval before its next move, so nothing comes straight back (the followers' mirror is
         cleared with it)."""
-        ld = self.room_leader()
-        if ld is not None and ld is not self:
-            return await ld.fx_clear(body)
-        body = body if isinstance(body, dict) else {}
+        body = dict(body) if isinstance(body, dict) else {}
+        scope = body.pop("scope", "room")
+        if scope not in LOOK_SCOPES:
+            raise ParamError("bad_scope", f"scope must be one of {list(LOOK_SCOPES)}")
+        if scope == "screen":
+            self.own.add("fx")
+        else:
+            head = self.fx_source()
+            if head is not None:
+                return await head.fx_clear(body)
         unknown = set(body) - {"effect"}
         if unknown:
             raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
@@ -1818,7 +1897,8 @@ class Session(EngineListener):
         fd, now = self.fx_director, time.monotonic()
         hit = lambda st: eff is None or st.id == eff or st.spec.preset == eff or st.spec.effect == eff   # noqa: E731
         gone = sorted({st.spec.preset for st in self.fx.stack if hit(st) and st.spec.preset})
-        for s in [self, *self.followers()]:
+        mirrors = [] if "fx" in self.own else [f for f in self.room_peers() if f.fx_source() is self]
+        for s in [self, *mirrors]:
             await s.fx.remove(lambda st: not hit(st), fd.fade_s(), "cleared")
         for p in gone:
             fd.quarantine(p, now)                        # out of its own picks for QUARANTINE_S (10 min)
@@ -2173,7 +2253,7 @@ class Session(EngineListener):
                 "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": ds.fx_director.armed},
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
                 "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
-            "upnext": self.upnext_view(),
+            "upnext": self.upnext_view(), "own": sorted(self.own),
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
             "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
             "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
@@ -2467,13 +2547,11 @@ class SessionManager:
         if msg.get("type") != "room.direction" or not isinstance(msg.get("data"), dict):
             return
         data = msg["data"]
-        try:
-            d = validate_direction(data, self.presets.vocab.words)
-        except ParamError as e:
-            if not getattr(self, "_room_dir_warned", False):
-                log.warning("room.direction ignored: %s", e.detail)
-                self._room_dir_warned = True
-            return
+        d, dropped = lenient_direction(data, self.presets.vocab.words)
+        warned = self.__dict__.setdefault("_room_dir_warned", set())
+        if set(dropped) - warned:
+            log.warning("room.direction: bad field(s) %s took their defaults", sorted(set(dropped) - warned))
+            warned.update(dropped)
         groove = data.get("groove")
         self.music_feed.on_room_direction(data)
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
