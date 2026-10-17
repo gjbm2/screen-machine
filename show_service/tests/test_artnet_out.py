@@ -20,7 +20,7 @@ from show_service.contract import BAND_NAMES
 
 PATCH = ao.PATCH_FILE           # config/room/patch.yaml, read only
 
-SCREEN_FIELDS = ["r", "g", "b", "pulse", "global.activity", "pan", "tilt", "zoom", "effect", "variant"]
+SCREEN_FIELDS = ["r", "g", "b", "pulse", "global.activity", "pan", "tilt", "zoom", "effect", "variant", "level"]
 HUE_FIELDS = ["dimmer", "r", "g", "b"]
 
 
@@ -170,9 +170,9 @@ def test_layout_matches_patch_yaml():
         d = by_id[dev]
         assert d.kind == "screen" and d.address == addr
         assert [c.field for c in d.channels] == SCREEN_FIELDS
-        assert [c.index for c in d.channels] == list(range(addr - 1, addr - 1 + 10))
+        assert [c.index for c in d.channels] == list(range(addr - 1, addr - 1 + 11))
         assert [c.attr for c in d.channels] == ["RED", "GREEN", "BLUE", "DIMMER", "ACTIVITY", "PAN", "TILT", "ZOOM",
-                                                "GOBO", "PRISM"]
+                                                "GOBO", "PRISM", "INTENSITY"]   # 68, 17 Oct: level, appended
     for dev, addr in (("hue.ne", 33), ("hue.nw", 37), ("hue.se", 41), ("hue.sw", 45)):
         d = by_id[dev]
         assert d.kind == "hue" and d.address == addr
@@ -189,15 +189,15 @@ def test_universe_bytes_follow_the_profiles():
         vm.section_change()
     assert vm.compose(10.0)
     d = vm.channels()
-    # screen.north at 1: R G B DIMMER ACTIVITY PAN TILT ZOOM GOBO PRISM
-    assert list(d[0:10]) == [255, 0, 0, 0, 128, 255, 0, 0, 3, 0]
-    assert list(d[16:26]) == [0, 0, 255, 0, 128, 255, 0, 0, 3, 0]
+    # screen.north at 1: R G B DIMMER ACTIVITY PAN TILT ZOOM GOBO PRISM INTENSITY (level: its default, full)
+    assert list(d[0:11]) == [255, 0, 0, 0, 128, 255, 0, 0, 3, 0, 255]
+    assert list(d[16:27]) == [0, 0, 255, 0, 128, 255, 0, 0, 3, 0, 255]
     # hue: MASTER DIMMER 255, then RGB: by device id, then its screen
     assert list(d[32:36]) == [255, 0, 255, 0]        # hue.ne: its own colour
     assert list(d[36:40]) == [255, 255, 0, 0]        # hue.nw: north-screen's
     assert list(d[40:44]) == [255, 0, 0, 255]        # hue.se: south-screen's
     assert list(d[44:48]) == [255, 0, 0, 255]
-    patched = set(range(0, 10)) | set(range(16, 26)) | set(range(32, 48))
+    patched = set(range(0, 11)) | set(range(16, 27)) | set(range(32, 48))
     assert all(d[i] == 0 for i in range(512) if i not in patched)
     # what goes on the wire is the same universe at Port-Address 0
     op, _, pa, data = parse(bytes(vm.frame.advance()))
