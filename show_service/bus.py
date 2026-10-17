@@ -60,7 +60,7 @@ from .contract import (BUS_HOST, BUS_PATH, BUS_PORT, BUS_SCHEMA, CLOSE_BEHIND, H
                        LATEST_ON_CONNECT_BRAIN, MUSIC_CLOCK, MUSIC_FEATURES, MUSIC_HARMONY, MUSIC_HIT, MUSIC_INSIGHT,
                        MUSIC_NOTE, MUSIC_NOTES, MUSIC_PEDAL, OTHER_QUEUE, RENDERER_QUEUE, ROOM_DIRECTION, ROOM_EVENT,
                        ROOM_LOOK, SPEC_BANDS, WANT_ONLY as _WANT_ONLY_P0)
-from .contract import MUSIC_CONTEXT, MUSIC_RHYTHM, WANT_ONLY_STAGE4
+from .contract import MUSIC_CONTEXT, MUSIC_RHYTHM, WANT_ONLY_STAGE4, WANT_ONLY_STAGE5
 
 log = logging.getLogger("show_service.bus")
 
@@ -73,7 +73,7 @@ TYPES: tuple[str, ...] = (SHOW_STATE, MUSIC_NOTE, MUSIC_PEDAL, MUSIC_NOTES, MUSI
                           MUSIC_CONTEXT, MUSIC_RHYTHM)                                        # Stage 4
 #: only to clients whose hello ``want`` names them exactly: music.hit (lights) and Stage 4's music.rhythm (10 Hz,
 #: about 1 KB each), so the renderer's traffic grows by music.context's 1 Hz only (README S4.5)
-WANT_ONLY: tuple[str, ...] = _WANT_ONLY_P0 + WANT_ONLY_STAGE4
+WANT_ONLY: tuple[str, ...] = _WANT_ONLY_P0 + WANT_ONLY_STAGE4 + WANT_ONLY_STAGE5
 LATEST_ON_CONNECT: tuple[str, ...] = (MUSIC_NOTES, MUSIC_HARMONY, MUSIC_FEATURES, MUSIC_CLOCK) + LATEST_ON_CONNECT_BRAIN
 INBOX_MAX = 4096                     # publish() backlog if show-bus stalls; the oldest go first
 DRAIN_YIELD = 16                     # the drain lets the senders run after this many messages

@@ -178,7 +178,7 @@ def test_want_matching_rules():
 def test_stage4_types_and_music_rhythm_only_to_wanters():
     """README S4.5: music.context goes to every client, music.rhythm (10 Hz) only to one that names it."""
     assert c.MUSIC_CONTEXT in busmod.TYPES and c.MUSIC_RHYTHM in busmod.TYPES
-    assert set(busmod.WANT_ONLY) == {c.MUSIC_HIT, c.MUSIC_RHYTHM}
+    assert set(busmod.WANT_ONLY) == {c.MUSIC_HIT, c.MUSIC_RHYTHM, c.ROOM_WHY}
     renderer = busmod._Client(None, "renderer", "x", busmod._parse_want(None))
     assert renderer.wants(c.MUSIC_CONTEXT) and not renderer.wants(c.MUSIC_RHYTHM)
     for w in (["music"], ["music.*"], ["*"]):
