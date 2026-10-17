@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from .tags import genre_fit
+
 SCENES_AHEAD = 4
 EFFECTS_AHEAD = 3
 KINDS = ("scene", "effect")
@@ -37,9 +39,10 @@ def why_words(kind: str, tags: dict, direction: dict, rated: float = 1.0, stage:
     hit = [m for m in have if m in set(want)]
     if hit:
         out.append("fits " + ", ".join(hit[:2]))
-    g, tg = direction.get("genre"), tags.get("genre")
-    if g and (g == tg or (isinstance(tg, list) and g in tg)):
-        out.append(f"fits {g}")
+    g = direction.get("genres") or direction.get("genre")
+    fit = genre_fit(g, tags)
+    if fit is not None and fit >= 0.5:
+        out.append(f"fits {direction.get('genre') or (next(iter(g)) if isinstance(g, dict) else g)}")
     e, rng = direction.get("energy"), tags.get("energy")
     if isinstance(e, (int, float)) and isinstance(rng, (list, tuple)) and len(rng) == 2 and rng[0] <= e <= rng[1]:
         if e <= 0.35:

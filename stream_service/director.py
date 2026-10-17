@@ -46,7 +46,12 @@ AUTO_FX_MAX = 4
 AUTO_MUSIC_DEFAULTS: dict[str, Any] = {"enabled": True, "weight": 1.0, "activity": [0.0, 1.0]}
 DIRECTION_DEFAULTS: dict[str, Any] = {
     "energy": 0.5, "pace": 0.5, "intensity": 1.0, "change_rate": 0.5, "moods": [], "genre": None,
-    "transition_style": None, "palette_family": None, "source": None, "note": None, "fx": FX_DIRECTION_DEFAULTS}
+    "transition_style": None, "palette_family": None, "source": None, "note": None, "fx": FX_DIRECTION_DEFAULTS,
+    "genres": None, "valence": None, "organic": None, "density": None}
+# genres: the music's genre as {word: p} (show_service, top few, normalised; genre is then its top word unless set);
+# valence / organic / density 0..1: the music's feel, scored against the presets' axes (tags.py).  null = unknown.
+DIRECTION_AXES = ("valence", "organic", "density")
+GENRES_MAX = 6
 AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
@@ -89,6 +94,12 @@ def validate_direction(body: Any, vocab: Optional[dict] = None) -> dict:
         out["moods"] = list(dict.fromkeys(m))
     for k in ("genre", "transition_style", "palette_family"):
         out[k] = _word(body.get(k), f"direction.{k}")
+    out["genres"] = _genres(body.get("genres"), (vocab or {}).get("genre"))
+    if out["genres"] and out["genre"] is None:
+        out["genre"] = next(iter(out["genres"]))
+    for k in DIRECTION_AXES:
+        if body.get(k) is not None:
+            out[k] = _unit(body[k], f"direction.{k}")
     styles = (vocab or {}).get("transition_style")
     if out["transition_style"] is not None and styles and out["transition_style"] not in styles:
         raise ParamError("bad_request", f"direction.transition_style must be one of {styles} or null")
@@ -96,6 +107,19 @@ def validate_direction(body: Any, vocab: Optional[dict] = None) -> dict:
         v = _word(body.get(k), f"direction.{k}")
         out[k] = v[:500] if v else None
     return out
+
+
+def _genres(v: Any, words: Optional[list]) -> Optional[dict]:
+    """direction.genres {word: p}: words outside the vocab dropped, p > 0 kept, the top GENRES_MAX normalised and
+    sorted (largest first); empty = None."""
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise ParamError("bad_request", "direction.genres must be an object {genre: p} or null")
+    got = {str(w): _unit(p, f"direction.genres.{w}") for w, p in v.items() if not words or w in words}
+    top = sorted(((w, p) for w, p in got.items() if p > 0), key=lambda kv: (-kv[1], kv[0]))[:GENRES_MAX]
+    tot = sum(p for _, p in top)
+    return {w: round(p / tot, 3) for w, p in top} if tot > 0 else None
 
 
 def validate_direction_fx(body: Any) -> dict:

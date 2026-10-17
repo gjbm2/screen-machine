@@ -29,17 +29,20 @@ def snap(**stable) -> Snapshot:
     return Snapshot(0.0, 0.0, {}, {}, True, None, None, 0.0, None, False, 1.5, stable)
 
 
-def test_weight_is_a_product_with_a_0_3_factor_per_unmatched_descriptor():
+def test_weight_is_a_product_of_one_factor_per_descriptor():
     tags = {"energy": [0.4, 0.9], "moods": ["bright", "euphoric"], "weight": 0.8}
     assert scene_weight(tags, direction(energy=0.6, moods=["bright"])) == pytest.approx(0.8)
-    assert scene_weight(tags, direction(energy=0.1, moods=["bright"])) == pytest.approx(0.8 * 0.3)
-    assert scene_weight(tags, direction(energy=0.1, moods=["calm"])) == pytest.approx(0.8 * 0.09)
+    # energy is graded: 0.1 below the band = 2/3, 0.3 or more below = the floor 0.1
+    assert scene_weight(tags, direction(energy=0.3, moods=["bright"])) == pytest.approx(0.8 * (1 - 0.1 / 0.3))
+    assert scene_weight(tags, direction(energy=0.1, moods=["bright"])) == pytest.approx(0.8 * 0.1)
+    assert scene_weight(tags, direction(energy=0.1, moods=["calm"])) == pytest.approx(0.8 * 0.1 * 0.3)
     # untagged keys and empty / null direction values count as matched
-    assert scene_weight(tags, direction(energy=0.5, genre="jazz", palette_family="warm")) == pytest.approx(0.8)
-    t = {"transition_style": ["wild"], "energy": [0.6, 1.0], "weight": 1.0}
+    assert scene_weight(tags, direction(energy=0.5, genre="jazz", palette_family="warm", valence=0.1)) \
+        == pytest.approx(0.8)
+    t = {"transition_style": ["wild"], "energy": [0.6, 1.0], "moods": ["glitchy"], "weight": 1.0}
     assert transition_weight(t, direction(energy=0.8, transition_style="wild")) == 1.0
     assert transition_weight(t, direction(energy=0.8, transition_style="gentle")) == pytest.approx(0.3)
-    assert transition_weight(t, direction(energy=0.8, moods=["calm"])) == 1.0    # moods never weigh transitions
+    assert transition_weight(t, direction(energy=0.8, moods=["calm"])) == pytest.approx(0.6)   # softer for transitions
 
 
 def test_pools(presets):
