@@ -206,7 +206,7 @@ director:
                                             # within the feel's range. Room volume never counts (owner, 17 Oct).
       genre_energy:                         # starting points: a genre's usual energy, 0..1
         ambient: 0.15
-        classical: 0.35
+        classical: 0.45                     # 2b, 17 Oct: a presto sat on still; a nocturne's low mood_energy keeps it there
         piano: 0.3
         soundtrack: 0.35
         singer-songwriter: 0.3
