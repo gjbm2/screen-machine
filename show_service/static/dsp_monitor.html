@@ -112,6 +112,15 @@
   </section>
 
   <section class="wide">
+    <h2>Balance: how much each appliance follows the music <span class="pill" id="balT">—</span></h2>
+    <div class="cols2"><div id="balRows"></div><div><div class="kv" id="balTerms"></div></div></div>
+    <p class="note">The director's composition plan (room.look's compose block). 1.00 is today's response; lower means
+      that appliance calms with the music (quiet passages, fades, a song with little range moves nothing). In observe mode
+      it is worked out and shown here only; in drive it is sent. Left: each kind of appliance; right: the terms, then
+      each appliance that follows the show.</p>
+  </section>
+
+  <section class="wide">
     <h2>Screens <span class="pill">live picture, the signals its scene's parameters follow, the piano</span></h2>
     <canvas id="keys" style="height:46px"></canvas>
     <p class="note" id="keysNote">Piano: —</p>
@@ -1268,8 +1277,30 @@ function headerDom(t) {
   setText($("rates"), Object.keys(rates).sort().map((k) => `${k.replace("music.", "")} ${(rates[k] / 2).toFixed(0)}/s`).join(" · "));
 }
 
+// the director's composition plan (room.look compose, show_service README S5.18), redrawn only when a room.look arrives
+const BAL_DIMS = { screens: ["picture", "pace", "pulse", "depth", "change"], lamps: ["level", "pulse"] };
+function balanceDom() {
+  const L = latest["room.look"]; const c = L && L.data ? L.data.compose : null;
+  if (!c) { setText($("balT"), "no plan yet"); rows($("balRows"), []); kv($("balTerms"), []); return; }
+  setText($("balT"), `${c.mode} · limits: ${c.limits || "—"} · ${(c.enabled || []).length} following the show`);
+  const list = [];
+  for (const cls of Object.keys(BAL_DIMS)) for (const d of BAL_DIMS[cls]) {
+    const v = num(((c.nominal || {})[cls] || {})[d]); list.push([`${cls} · ${d}`, v, v === null ? "—" : v.toFixed(2)]);
+  }
+  rows($("balRows"), list);
+  const b = c.balance || {}; const p = (o) => (o && num(o.picture) !== null ? o.picture.toFixed(2) : "—");
+  const terms = [["loud", num(b.loud) === null ? "— (no music)" : b.loud.toFixed(2)],
+    ["range", `${num(b.range) === null ? "—" : b.range.toFixed(2)}${num(b.range_lu) !== null ? ` (${b.range_lu.toFixed(1)} LU)` : ""}`],
+    ["lift (picture)", p(b.lift)], ["share s (picture)", p(b.s)], ["quiet (picture)", p(b.quiet)], ["headroom h (picture)", p(b.h)],
+    ["liveness", num(b.liveness) === null ? "—" : b.liveness.toFixed(2)], ["fade cued", b.fade ? "yes" : "no"]];
+  for (const [id, a] of Object.entries(c.appliances || {})) {
+    terms.push([id, Object.entries(a).map(([k, v]) => `${k} ${num(v) === null ? "—" : v.toFixed(2)}`).join(" · ")]);
+  }
+  kv($("balTerms"), terms);
+}
 function sendsDom(t) {
   outputsDom(t);
+  if (inView("balRows") && changed("bal", "room.look")) balanceDom();
   // what the screen's scene receives: when a new inputs sample, session or mic answer arrived
   if (!inView("verdict") || !changed("detail", "inputs", "sessions", "mic")) return;
   const sel = $("scrSel"); const opts = [...new Set([screen, ...liveScreens])];
