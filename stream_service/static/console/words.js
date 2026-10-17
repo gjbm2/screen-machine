@@ -136,6 +136,7 @@ const CAUSE = {
   dmx_variant: "the lighting desk changed variant",
   plugin_error: "the previous scene failed",
   music: "the music changed",
+  room_event: "the music reached a new section",
   next: "someone asked for the next scene",
 };
 export function directorWords(ev, label = (s) => friendly(s), plugin = (n) => friendly(n)) {

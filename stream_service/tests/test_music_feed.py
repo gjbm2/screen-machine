@@ -9,6 +9,8 @@ from stream_service import music_direction as M
 from stream_service.director import AUTO_MUSIC_DEFAULTS
 from stream_service.music_feed import ClockSignals, FRESH_S, MusicFeed, blend, clock_signals
 
+from .test_sessions import client  # noqa: F401 (fixture)
+
 
 def feed_for(seconds, energy=0.8, drive=0.4, punch=0.3, t0=100.0, rate=25.0):
     f = MusicFeed()
@@ -103,3 +105,34 @@ def test_shader_textures_use_the_room_spectrum_without_the_piano():
     assert s.spectrum_live and not s.present
     s.view.t = 2500.0
     assert not s.spectrum_live
+
+
+async def test_bar_snap_event_hints_and_shared_beats(client):  # noqa: F811
+    """G9: "bar" cuts land on show_service's next downbeat; a room.event latches a cut at its own time; the cue
+    carries its glass time for the room's followers."""
+    import time
+
+    from .test_cue import AUTO, cue, live
+    sid, s, eng = await live(client, auto={**AUTO, "snap": "bar"})
+    mgr = s.mgr
+    now = time.monotonic()
+    c = {"bpm": 120.0, "anchor_ms": now * 1000.0, "beat_at_anchor": 0, "beats_per_bar": 4, "bar_anchor_beat": 0,
+         "phrase_bars": 4, "conf": 0.9, "gate": "beat", "state": "locked", "epoch": 1}
+    mgr.music_feed.on_message({"type": "music.clock", "data": c}, now)
+    t = s._next_downbeat(now)
+    assert t is not None and abs(((t - now) / 0.5) % 4) < 1e-6 and t > now + s.sampler.lead   # a whole bar
+    r = await cue(client, sid, to="auto", at="bar")
+    assert r.status == 202, await r.text()
+    assert abs(s.last_cue["at_pts"] - s._pts_at(t - s.sampler.lead)) < 0.02 if s.last_cue.get("at_pts") else True
+    inflight = [x for x in s.inflight.values() if x.get("cue_id") == s.last_cue["cue_id"]]
+    assert inflight and abs(inflight[0]["photon_at"] - t) < 1e-6        # what the followers are given
+    # a room.event latches a cut (deduped across the two publishers)
+    s.director.arm(True)
+    s.director.latched = None
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "section_change", "at_ms": (now + 3.0) * 1000}})
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "section_change", "at_ms": (now + 3.05) * 1000}})
+    assert s.director.latched and s.director.latched_kind == "room_event" and s._event_hint == now + 3.0
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "accent", "at_ms": now * 1000}})   # not a cut
+    # no sure clock: bar falls back to the beat (then now)
+    mgr.music_feed.on_message({"type": "music.clock", "data": {**c, "gate": "none"}}, now)
+    assert s._next_downbeat(now) is None

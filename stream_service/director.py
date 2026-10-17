@@ -49,7 +49,7 @@ DIRECTION_DEFAULTS: dict[str, Any] = {
 AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
-SNAPS = ("now", "beat")
+SNAPS = ("now", "beat", "bar")           # bar: the next downbeat on show_service's clock (else the beat)
 DWELL_AT_0 = (120.0, 240.0)      # change_rate 0
 DWELL_AT_1 = (15.0, 30.0)        # change_rate 1
 PREPARE_AHEAD_S = 2.0            # the next pick is prepared this long before min dwell
@@ -289,7 +289,8 @@ class Director:
         self.armed = False
         self.dwell_start: Optional[float] = None      # the previous scene transition's done (monotonic s)
         self.baseline: Optional[dict] = None          # follow_dmx values at the last cue / arming / recovery
-        self.latched: Optional[str] = None            # a dmx_change seen inside min dwell
+        self.latched: Optional[str] = None            # a dmx_change (or room_event) seen inside min dwell
+        self.latched_kind = "dmx_change"
         self.was_fresh = False
         self.quarantine: dict[str, float] = {}        # preset -> until (monotonic s)
         self.bad_transitions: set[str] = set()        # transition presets that failed to prepare
@@ -340,8 +341,17 @@ class Director:
     def scene_done(self, now: float) -> None:
         self.dwell_start = now
 
-    def observe(self, snap: Optional[Snapshot], fresh: bool) -> None:
-        """follow_dmx bookkeeping on each tick (armed or not: disarmed, changes are discarded)."""
+    def hint(self, text: str) -> bool:
+        """show_service's room.event (a section change, a drop, a new track): a trigger like the desk's GOBO
+        step, honoured once min dwell is reached.  -> latched?"""
+        if not (self.armed and self.enabled) or self.latched is not None:
+            return False
+        self.latched, self.latched_kind = text, "room_event"
+        return True
+
+    def observe(self, snap: Optional[Snapshot], fresh: bool, follow_desk: bool = True) -> None:
+        """follow_dmx bookkeeping on each tick (armed or not: disarmed, changes are discarded).  ``follow_desk``
+        False: show_service's room.events give the sections (its virtual desk's GOBO would cut twice)."""
         if not fresh or snap is None:
             self.was_fresh = False
             return
@@ -351,11 +361,14 @@ class Director:
             if not self.armed:
                 self.latched = None
             return
-        if self.latched is None and self.auto:
+        if self.latched is None and self.auto and follow_desk:
             for attr in self.auto["follow_dmx"]:
                 if attr in snap.stable and snap.stable[attr] != self.baseline.get(attr, snap.stable[attr]):
                     self.latched = f"{attr} {self.baseline.get(attr)}→{snap.stable[attr]}"
+                    self.latched_kind = "dmx_change"
                     break
+        elif not follow_desk:
+            self.baseline = dict(snap.stable)
 
     def due(self, now: float) -> Optional[tuple[str, str]]:
         """-> (reason, detail) when an armed, enabled director should move now, else None."""
@@ -366,7 +379,7 @@ class Director:
         if dwell < lo:
             return None
         if self.latched:
-            return "dmx_change", f"{self.latched}; dwell {dwell:.1f} s ≥ min {lo:.1f} s"
+            return self.latched_kind, f"{self.latched}; dwell {dwell:.1f} s ≥ min {lo:.1f} s"
         if dwell >= hi:
             return "max_dwell", f"dwell {dwell:.1f} s ≥ max {hi:.1f} s"
         return None

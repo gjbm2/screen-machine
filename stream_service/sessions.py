@@ -39,6 +39,7 @@ the session's GPU (library.Calibration) decides instead when there is one (statu
 from __future__ import annotations
 
 import asyncio
+import collections
 import base64
 import binascii
 import copy
@@ -67,7 +68,7 @@ from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
-from .music_feed import MusicFeed, clock_signals, blend as feed_blend
+from .music_feed import MusicFeed, beat_at, clock_signals, blend as feed_blend
 from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, why_words
 from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
@@ -88,6 +89,9 @@ LIVE_STATES = ("entering", "live")
 LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_follow", "direction_ease_s")
 MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more cue waits (R6)
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
+EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at least this far past lead (G9)
+CUT_EVENTS = ("section_change", "drop", "track_change")      # show_service's room.events that cue a scene change
+FX_BAR_MAX_S = 4.0            # an auto effect move waits for the next downbeat when one is this close
 CUE_SOURCES = ("panel", "director", "mode")
 INPUTS_EVENT_MIN_S = 2.0
 PALETTE_S_DEFAULT = 4.0
@@ -237,6 +241,7 @@ class Session(EngineListener):
         self.upnext = UpNext()                    # the director's forward plan, editable (upnext.py)
         self._upnext_sent = -1
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
+        self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -341,6 +346,25 @@ class Session(EngineListener):
         if r is not None and r["vibe"] is not None and r.get("beat_lock") is False:   # the vibe wants no beat lock
             return None
         return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
+
+    def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:
+        """The photon time (monotonic s, acoustic) of the next downbeat that can still land on glass, from
+        show_service's clock while it is sure (bars only come from there); None otherwise."""
+        if self._beat_grid(now) is None or self.mgr.music_grid(now) is None:
+            return None
+        c = self.mgr.music_feed.clock(now)
+        if c is None:
+            return None
+        try:
+            period = 60.0 / float(c["bpm"])
+            bpb = max(1, int(c.get("beats_per_bar") or 4))
+            bar0 = float(c.get("bar_anchor_beat") or 0)
+            b = beat_at(c, now + self.sampler.lead + margin)
+            k = math.ceil((b - bar0) / bpb)
+            beat_n = bar0 + k * bpb
+            return float(c["anchor_ms"]) / 1000.0 + (beat_n - float(c.get("beat_at_anchor") or 0)) * period
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            return None
 
     async def _transition_ready(self, spec: TransitionSpec, mapped: bool = True):
         """A transition instance, set up on a worker thread when the engine supports it (R20).  ``mapped``: sample
@@ -506,7 +530,7 @@ class Session(EngineListener):
         """Leader: an auto cue just started here; the followers cut to the same scene."""
         for f in self.followers():
             f.follow_cue(cue["spec"], getattr(cue["trans"], "frozen_spec", None) or cue["trans_spec"], cue["at"],
-                         f"{self.screen}: {cue.get('detail') or cue['scene']}")
+                         f"{self.screen}: {cue.get('detail') or cue['scene']}", cue.get("photon_at"))
 
     async def _prepare_like(self, spec: SceneSpec, trans_spec: TransitionSpec) -> dict:
         """The leader's scene and transition, prepared on this session's GPU (with its own fit)."""
@@ -559,12 +583,16 @@ class Session(EngineListener):
             pk, self.follow_pick = self.follow_pick, None
             self._retire(pk["src"], pk["trans"])
 
-    def follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str) -> None:
+    def follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
+                   photon_at: Optional[float] = None) -> None:
+        """``photon_at``: the leader's glass time for the cut, so every screen lands on the same beat (its own
+        lead subtracted here), not each on its own next beat."""
         if self.exited or self.state not in LIVE_STATES:
             return
-        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail))
+        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail, photon_at))
 
-    async def _follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str) -> None:
+    async def _follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
+                          photon_at: Optional[float] = None) -> None:
         want = (spec.name, trans_spec.name)
         epoch = self._epoch
         try:
@@ -582,7 +610,8 @@ class Session(EngineListener):
                 if self._epoch != epoch or self.state not in LIVE_STATES or self.following() is None:
                     self._retire(pk["src"], pk["trans"])
                     return
-                cue = self._new_cue("auto", pk["spec"], pk["trans_spec"], pk["src"], pk["trans"], at, "room", detail)
+                cue = self._new_cue("auto", pk["spec"], pk["trans_spec"], pk["src"], pk["trans"], at, "room", detail,
+                                    photon_at=photon_at)
                 if self._dispatch(cue) != "skipped":
                     self.scene_spec = pk["spec"]
         except Exception as e:
@@ -846,11 +875,14 @@ class Session(EngineListener):
 
     # -- cue (LIVE_V1 1.1 §1.6; review R3-R10) ---------------------------------------
     def _new_cue(self, cause: str, spec: SceneSpec, trans_spec: TransitionSpec, src: Any, trans: Any, at: str,
-                 reason: Optional[str] = None, detail: Optional[str] = None, source: Optional[str] = None) -> dict:
+                 reason: Optional[str] = None, detail: Optional[str] = None, source: Optional[str] = None,
+                 photon_at: Optional[float] = None) -> dict:
+        """``photon_at``: when the change should reach the glass (monotonic s, acoustic): the leader's, so a room's
+        screens cut on the same beat, or a room.event's time (G9)."""
         return {"cue_id": self.next_cue_id(), "cause": cause, "reason": reason, "detail": detail,
                 "source": source, "scene": spec.name, "transition": trans_spec.name, "spec": spec, "src": src,
                 "trans": trans, "trans_spec": trans_spec, "at": at, "fallback": None, "at_pts": None,
-                "duration_s": trans.duration_s}
+                "duration_s": trans.duration_s, "photon_at": photon_at}
 
     def _cue_event(self, phase: str, cue: dict, **extra) -> None:
         fields = {k: cue[k] for k in ("cause", "reason", "source", "scene", "transition", "at", "fallback",
@@ -880,7 +912,17 @@ class Session(EngineListener):
     def _submit(self, cue: dict) -> None:
         now = time.monotonic()
         at_mono = None
-        if cue["at"] == "beat":
+        lead = self.sampler.lead
+        pa = cue.get("photon_at")
+        if pa is not None and pa - lead > now + BEAT_MARGIN_S:   # the leader's beat / the event's time, if still ahead
+            at_mono = pa - lead
+        elif cue["at"] == "bar":
+            t = self._next_downbeat(now)
+            if t is not None:
+                at_mono = t - lead
+            else:
+                cue["at"], cue["fallback"] = "beat", "no_bar"
+        if at_mono is None and cue["at"] == "beat":
             grid = self._beat_grid(now)
             if grid is None:
                 cue["at"], cue["fallback"] = "now", "no_beat"
@@ -889,6 +931,7 @@ class Session(EngineListener):
                 lead = self.sampler.lead
                 k = math.ceil((now + lead + BEAT_MARGIN_S - anchor) / period)
                 at_mono = anchor + k * period - lead
+        cue["photon_at"] = None if at_mono is None else at_mono + lead
         tid = self.next_tid()
         cue["tid"] = tid
         cue["at_pts"] = self._pts_at(at_mono)
@@ -1195,7 +1238,7 @@ class Session(EngineListener):
         return {**result, "upnext": self.upnext_view()}
 
     async def cue(self, body: Any, *, cause: str = "manual", reason: Optional[str] = None,
-                  detail: Optional[str] = None) -> dict:
+                  detail: Optional[str] = None, photon_at: Optional[float] = None) -> dict:
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         unknown = set(body) - {"to", "via", "at", "idempotency_key", "source"}
@@ -1214,8 +1257,8 @@ class Session(EngineListener):
                     raise SessionError(409, "idempotency_conflict", "this idempotency_key was used for another cue")
                 return resp
         at = body.get("at", "now")
-        if at not in ("now", "beat"):
-            raise ParamError("bad_at", "at must be \"now\" or \"beat\"")
+        if at not in ("now", "beat", "bar"):
+            raise ParamError("bad_at", "at must be \"now\", \"beat\" or \"bar\"")
         source = body.get("source")
         if source is not None and source not in CUE_SOURCES:
             raise ParamError("bad_request", f"source must be one of {list(CUE_SOURCES)}")
@@ -1275,7 +1318,7 @@ class Session(EngineListener):
                 c = self._new_cue(cause, spec, trans_spec, None, trans, at, reason, detail, source)
                 self._cue_event("cancelled", c, reason="exit" if self.exited else self.state)
                 raise SessionError(409, "bad_state", f"session is {self.state}")
-            cue = self._new_cue(cause, spec, trans_spec, src, trans, at, reason, detail, source)
+            cue = self._new_cue(cause, spec, trans_spec, src, trans, at, reason, detail, source, photon_at)
             outcome = self._dispatch(cue)
             if outcome != "skipped":
                 self.scene_spec = spec
@@ -1396,7 +1439,7 @@ class Session(EngineListener):
             if armed and d.dwell_start is None:
                 d.scene_done(now)
             self._emit_director()
-        d.observe(snap, fresh)
+        d.observe(snap, fresh, follow_desk=self.mgr.music_feed.fresh(now) is None)
         feed = self.mgr.music_feed
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
                                   room=self.mgr.room_direction_now(now), feed=feed.fresh(now))
@@ -1454,6 +1497,11 @@ class Session(EngineListener):
             move = fd.plan(now, self.fx.stack, presets, lambda n: self.mgr.cost_ms("effect", n),
                            self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
             if move is not None:
+                t = self._next_downbeat(time.monotonic())
+                if t is not None:                   # effects come in on the bar (G9)
+                    delay = t - self.sampler.lead - time.monotonic()
+                    if 0.0 < delay < FX_BAR_MAX_S:
+                        await asyncio.sleep(delay)
                 res = await self.fx.auto_move(move, fd.fade_s())
                 if res is not None:
                     fd.last = {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why,
@@ -1475,6 +1523,14 @@ class Session(EngineListener):
         finally:
             fd.done(time.monotonic(), move)
             self._fx_task = None
+
+    def room_event(self, kind: str, at_s: Optional[float], detail: str) -> None:
+        """show_service's room.event (loop thread): a section change, a drop or a new track is a cue to change
+        scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached)."""
+        if self.following() is not None or self.state != "live" or self.exited:
+            return
+        if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})"):
+            self._event_hint = at_s
 
     def _upnext_took(self, effect: Optional[str]) -> None:
         """An effect move added ``effect``: its queue entry (the first with that preset) is done."""
@@ -1528,8 +1584,12 @@ class Session(EngineListener):
         try:
             if self._pick_task is not None:             # a pre-prepare is in flight: use it
                 await asyncio.shield(self._pick_task)
-            await self.cue({"to": "auto", "at": (self.director.auto or AUTO_DEFAULTS)["snap"]}, cause="auto",
-                           reason=reason, detail=detail)
+            at, photon_at = (self.director.auto or AUTO_DEFAULTS)["snap"], None
+            if reason == "room_event":              # show_service's section / drop / track: on its time, or the bar
+                at, hint, self._event_hint = "bar", self._event_hint, None
+                if hint is not None and hint >= time.monotonic() + self.sampler.lead + EVENT_MARGIN_S:
+                    photon_at = hint
+            await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail, photon_at=photon_at)
         except SessionError as e:
             if self.state == "live":
                 log.warning("[%s] auto cue failed: %s", self.id, e.detail)
@@ -2104,8 +2164,11 @@ class SessionManager:
 
     # -- sound (sound.py): every music.* / show.state message to each session's view; a test piano -------------
     def on_room_message(self, msg: dict) -> None:
-        """Loop thread (the music bus): show_service's room.direction, validated, for MusicDirection (§8.7).
-        room.look (the palette) goes through room_service, the one palette writer; room.event is not read yet."""
+        """Loop thread (the music bus): show_service's room.direction, validated, for MusicDirection (§8.7), and
+        its room.events (cue hints, G9).  room.look (the palette) goes through room_service, the one palette writer."""
+        if msg.get("type") == "room.event" and isinstance(msg.get("data"), dict):
+            self._room_event(msg["data"])
+            return
         if msg.get("type") != "room.direction" or not isinstance(msg.get("data"), dict):
             return
         data = msg["data"]
@@ -2120,6 +2183,25 @@ class SessionManager:
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
                                "beat_lock": data.get("beat_lock"), "seq": data.get("seq"), "t": time.monotonic()}
+
+    def _room_event(self, data: dict) -> None:
+        kind = data.get("kind")
+        if kind not in CUT_EVENTS:
+            return
+        try:
+            at_s = float(data["at_ms"]) / 1000.0
+        except (KeyError, TypeError, ValueError):
+            at_s = None
+        key = (kind, None if at_s is None else round(at_s * 4))     # two publishers, separate seqs: dedupe on time
+        seen = getattr(self, "_room_events_seen", None)
+        if seen is None:
+            seen = self._room_events_seen = collections.deque(maxlen=32)
+        if key in seen:
+            return
+        seen.append(key)
+        detail = str(data.get("detail") or "")[:80]
+        for s in list(self.sessions.values()):
+            s.room_event(kind, at_s, detail)
 
     def room_direction_now(self, now: float) -> Optional[dict]:
         """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
