@@ -40,7 +40,7 @@ async def test_cue_state_rules_and_bad_requests(client):
     await client.post(f"/api/sessions/{sid}/go", json={}, headers=AUTH)
     assert (await cue(client, sid, to="warp-cells")).status == 202               # entering: accepted
     for b, code in (({"to": {"still": {"rgb": [0, 0, 0]}}}, "bad_to"), ({}, "bad_to"),
-                    ({"to": "warp-cells", "at": "bar"}, "bad_at"), ({"to": "nope"}, "unknown_preset"),
+                    ({"to": "warp-cells", "at": "phrase"}, "bad_at"), ({"to": "nope"}, "unknown_preset"),
                     ({"to": "warp-cells", "extra": 1}, "bad_request")):
         r = await cue(client, sid, **b)
         assert r.status == 400 and (await r.json())["error"] == code, b

@@ -60,7 +60,7 @@ def test_direction_and_auto_validation():
     assert "arousal" not in validate_direction({"arousal": 0.7, "energy": 0.4})     # unknown fields: ignored (SHOW_ENGINE)
     a = validate_auto({"dwell_s": [6, 12], "follow_dmx": ["effect"]})
     assert a["enabled"] is True and a["dwell_s"] == [6.0, 12.0] and a["snap"] == "beat"
-    for bad in ({"paused": True}, {"dwell_s": [10, 5]}, {"snap": "bar"}, {"dwell_bars": [8, 16]},
+    for bad in ({"paused": True}, {"dwell_s": [10, 5]}, {"snap": "phrase"}, {"dwell_bars": [8, 16]},
                 {"follow_dmx": ["colour"]}):
         with pytest.raises(ParamError):
             validate_auto(bad)
