@@ -647,6 +647,7 @@ class Autopilot:
         self._sources: dict[str, str] = {k: "default" for k in AP_DEFAULTS}
         self._settings_key: Any = _BAD
         self._on_prev: Optional[bool] = None
+        self._dwell_waived_mode: Optional[str] = None    # turned on: the minimum stay is waived in this mode (owner, 17 Oct)
         self._on_override: Optional[tuple[bool, float]] = None
         self._on_listeners: list[Callable[[], None]] = []      # add_on_listener (mic.py's wake)
         self._on_told: Optional[bool] = None
@@ -780,9 +781,14 @@ class Autopilot:
         if on is True and self._on_prev is False:      # turned on: a fresh start (suppressions kept)
             self.hold = self.pause = None
             self.backoff_until = None
+            # switching Auto on is the person's newest choice: it acts now, not after the minimum stay of the mode
+            # they picked a moment before (owner, 17 Oct: "I played a midi file; piano mode didn't engage")
+            self._dwell_waived_mode = view.get("current") if isinstance(view.get("current"), str) else None
             self._dirty()
         if on is not None:
             self._on_prev = on
+        if self._dwell_waived_mode is not None and view.get("current") != self._dwell_waived_mode:
+            self._dwell_waived_mode = None                 # the mode changed since: the stay counts again
         wall = self._wall()
         e = self.entered
         if (e and isinstance(view.get("current"), str) and view["current"] != e.get("mode") and not self.acting
@@ -940,7 +946,8 @@ class Autopilot:
                         c["blocked"] = "suppressed: you changed it back"
                     elif kind == "suggest" and enter_holds:
                         c["blocked"] = "it would switch instead"
-                    elif kind == "enter" and since is not None and since < dwell:
+                    elif (kind == "enter" and since is not None and since < dwell
+                          and current != self._dwell_waived_mode):
                         c["blocked"] = f"staying in the current mode {dwell - since:.0f} s more"
                     elif kind == "enter" and self._quiet():
                         c["blocked"] = "quiet hours"
