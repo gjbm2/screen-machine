@@ -2,8 +2,10 @@
 
 Real piano performances as MIDI, played by the test piano (stream_service/piano_replay.py) into every screen's
 sound view the way the Steinway's MIDI arrives. Any `.mid` dropped here appears in the Room page's Test music and
-the console's Test piano, labelled by its file name. Private, non-commercial use in this house only; never
-redistributed.
+the console's Test piano, labelled by its file name. When show_service plays one (the Room page's Test music), it is
+also played out loud on PC22's default speakers through Windows' built-in GS synth (tools/show_sender/pc22_synth.py),
+so PC22's mic hears it as the boundary mic will hear the Steinway. Private, non-commercial use in this house only;
+never redistributed.
 
 ## Classical: MAESTRO v3.0.0 (Google Magenta)
 
