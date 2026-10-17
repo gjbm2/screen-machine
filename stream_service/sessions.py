@@ -2155,6 +2155,8 @@ class SessionManager:
         self.plugin_errors: dict[tuple[str, str], dict] = {}   # (kind, name) -> {count, sessions, last_*}
         self.library: Any = None                         # library.Library (dev: costs, thumbnails)
         self.slow: dict[tuple[str, str], dict] = {}      # (kind, plug-in) -> the GPU guard's trip (process-wide)
+        self._slow_until: dict[tuple[str, str], float] = {}   # -> monotonic end of its bench
+        self._slow_hist: dict[tuple[str, str], int] = {}      # -> trips so far (the bench doubles per repeat)
         self.slow_trips = 0
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
@@ -2177,19 +2179,36 @@ class SessionManager:
         return [{"kind": k, "name": n, **v} for (k, n), v in sorted(self.plugin_errors.items())]
 
     # -- GPU frame-time guard and the vetted pool ----------------------------------------
+    SLOW_BENCH_S = 1800.0          # a GPU guard trip keeps a plug-in out of the auto pool this long, doubling per
+    SLOW_BENCH_MAX_S = 8 * 3600.0  # repeat up to this (a trip can be a one-off: a busy host, a first compile)
+
     def note_slow(self, info: dict, sid: str) -> dict:
-        """The GPU guard tripped a plug-in (any session): slow for the rest of the process."""
-        now = _iso(time.time())
-        rec = self.slow.setdefault((str(info.get("kind")), str(info.get("name"))), {"count": 0, "first_at": now})
-        rec.update(count=rec["count"] + 1, ms=info.get("gpu_ms"), budget_ms=info.get("budget_ms"),
-                   why=info.get("why"), profile=info.get("profile"), session=sid, at=now)
+        """The GPU guard tripped a plug-in (any session): out of the directors' own picks for a while (by hand it
+        still plays, degraded: never refused)."""
+        key = (str(info.get("kind")), str(info.get("name")))
+        now, wall = time.monotonic(), time.time()
+        n = self._slow_hist.get(key, 0) + 1
+        self._slow_hist[key] = n
+        bench = min(self.SLOW_BENCH_MAX_S, self.SLOW_BENCH_S * 2 ** (n - 1))
+        self._slow_until[key] = now + bench
+        rec = self.slow.setdefault(key, {"count": 0, "first_at": _iso(wall)})
+        rec.update(count=n, ms=info.get("gpu_ms"), budget_ms=info.get("budget_ms"), why=info.get("why"),
+                   profile=info.get("profile"), session=sid, at=_iso(wall), until=_iso(wall + bench))
         self.slow_trips += 1
         return rec
 
+    def _purge_slow(self) -> None:
+        now = time.monotonic()
+        for key in [k for k, t in self._slow_until.items() if t <= now]:
+            self._slow_until.pop(key, None)
+            self.slow.pop(key, None)
+
     def is_slow(self, kind: str, name: Optional[str]) -> bool:
+        self._purge_slow()
         return (kind, str(name)) in self.slow
 
     def slow_runtime_list(self) -> list[dict]:
+        self._purge_slow()
         return [{"kind": k, "name": n, "source": "runtime", "status": "slow", **v}
                 for (k, n), v in sorted(self.slow.items())]
 
@@ -2199,6 +2218,7 @@ class SessionManager:
 
     def slow_for(self, kind: str, name: str) -> Optional[dict]:
         """One plug-in's slow mark for the library (a trip, else a calibration entry that is not ok)."""
+        self._purge_slow()
         rec = self.slow.get((kind, name))
         if rec is not None:
             return {"source": "runtime", "status": "slow", **rec}
@@ -2234,7 +2254,7 @@ class SessionManager:
             return True
         if self.rating_weight(kind, plugin) == 0.0:      # rejected in the Library
             return False
-        if (kind, plugin) in self.slow or plugin in self.broken_names():
+        if self.is_slow(kind, plugin) or plugin in self.broken_names():
             return False
         if gpu is not None:
             e = self.calibration.entry(plugin, gpu)
