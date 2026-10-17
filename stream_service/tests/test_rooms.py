@@ -129,3 +129,46 @@ def test_room_map_and_fx_step(tmp_path):
     assert rooms.fx_step([("a", "grade"), ("b", "chroma")], ["grade", "shake"]) == ("shake", "b")
     assert rooms.fx_step([("a", "grade")], ["grade"]) == (None, None)
     assert rooms.fx_step([], ["grade", "grade"]) == ("grade", None)
+
+
+async def test_a_screen_card_acts_on_its_screen_only(client):
+    """Owner 17 Oct: a control acts where it sits.  scope "screen" sets that screen's direction / palette / effects
+    for itself (never mirrored); a room-scope change of the same part makes it the room's again everywhere."""
+    (sa, a, ea), (sb, b, eb) = await room_pair(client)
+    r = await client.patch(f"/api/sessions/{sb}", json={"direction": {"energy": 0.9}, "palette": "ember",
+                                                         "scope": "screen"}, headers=AUTH)
+    assert r.status == 200, await r.text()
+    assert b.direction["energy"] == 0.9 and a.direction["energy"] != 0.9 and b.palette == "ember" != a.palette
+    assert {"direction", "palette"} <= b.own and not a.own
+    assert b.direction_effective["energy"] == 0.9                         # its own, not the leader's
+    a._apply_direction("panel")
+    assert b.direction_effective["energy"] == 0.9                         # the leader's moves don't overwrite it
+    # effects for itself: it directs its own, the room's come from the leader still
+    r = await client.patch(f"/api/sessions/{sb}", json={"auto": {"fx": {"enabled": False}}, "scope": "screen"},
+                           headers=AUTH)
+    assert r.status == 200 and "fx" in b.own and b.fx_source() is None and a.fx_source() is None
+    # the leader sets its own effects: the follower directs the room's effects (nobody else to mirror)
+    r = await client.patch(f"/api/sessions/{sa}", json={"auto": {"fx": {"enabled": True}}, "scope": "screen"},
+                           headers=AUTH)
+    assert "fx" in a.own and b.fx_source() is None
+    # a room-scope change makes it the room's again on both
+    r = await client.patch(f"/api/sessions/{sa}", json={"direction": {"energy": 0.3}, "auto": {"fx": {"enabled": True}}},
+                           headers=AUTH)
+    assert r.status == 200 and not a.own and b.own == {"palette"}
+    assert a.direction["energy"] == b.direction["energy"] == 0.3 and b.fx_source() is a
+    assert (await client.patch(f"/api/sessions/{sa}", json={"palette": None, "scope": "everywhere"},
+                               headers=AUTH)).status == 400
+    assert "own" in await get_session(client, sb)
+
+
+async def get_session(client, sid):
+    return await (await client.get(f"/api/sessions/{sid}", headers=AUTH)).json()
+
+
+async def test_a_screen_cards_next_effect_is_that_screens(client):
+    (sa, a, ea), (sb, b, eb) = await room_pair(client)
+    for s in (a, b):
+        s.on_fx({"bus": "open"})
+    r = await client.post(f"/api/sessions/{sb}/fx/next", json={"scope": "screen"}, headers=AUTH)
+    assert r.status == 200, await r.text()
+    assert "fx" in b.own and rooms.auto_fx(b.fx.stack) and not rooms.auto_fx(a.fx.stack)

@@ -54,7 +54,8 @@ DEV_ART_SCREENS = ("north-screen", "south-screen", "devtest")
 
 
 FEATURES = ("cue", "auto", "direction", "palette", "inputs", "bindings", "effects", "fx_bus", "fx_auto",
-            "plugin_errors", "gpu_guard", "music_direction", "rooms", "mappings")
+            "plugin_errors", "gpu_guard", "music_direction", "rooms", "mappings", "look_scope", "fx_controls",
+            "upnext", "song_ends")
 HTTP_ERROR_CODES = {400: "bad_request", 404: "not_found", 405: "method_not_allowed", 413: "too_large"}
 
 

@@ -209,7 +209,7 @@ async def test_catalog_v11_blocks(client):
     assert cat["api"] == {"contract": "LIVE_V1", "rev": "1.1",
                           "features": ["cue", "auto", "direction", "palette", "inputs", "bindings", "effects",
                                        "fx_bus", "fx_auto", "plugin_errors", "gpu_guard", "music_direction",
-                                       "rooms", "mappings"]}
+                                       "rooms", "mappings", "look_scope", "fx_controls", "upnext", "song_ends"]}
     assert set(cat["vocab"]) == {"moods", "genre", "transition_style", "palette_family"}
     assert cat["palettes"]["ember"]["swatch"][0].startswith("#") and cat["signals"]["activity_slow"]["idle"] == 0.5
     assert cat["errors"] == []
