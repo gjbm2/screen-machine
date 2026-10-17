@@ -15,6 +15,7 @@ Parameters map to uniforms through each prop's ``x-glsl`` entry (see runtime.app
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Any, ClassVar, Optional
 
@@ -317,6 +318,20 @@ def effect_params(shader_params: dict) -> dict:
     return {**standard_effect_params(), **shader_params}
 
 
+PULSE_LIFT = 0.6           # an effect's beat: the mix lifts by up to this share of its amount ...
+PULSE_HEADROOM = 0.25      # ... from a base this much lower while beats come, so an authored 1.0 pulses too
+PULSE_HOLD_S = 3.0         # "beats are coming" fades over this long after the last one
+
+
+def pulse_mix(amount: float, pulse: float, hold: float) -> float:
+    """An effect's mix this frame (75, 17 Oct: a pulse must show at amount 1.0).  ``hold`` (0-1) says beats are
+    coming: the base dips by PULSE_HEADROOM x hold and each pulse lifts it back and beyond, capped at 1.  With no
+    beats (hold 0, pulse 0) it is exactly the authored amount."""
+    h = min(1.0, max(0.0, hold))
+    base = amount * (1.0 - PULSE_HEADROOM * h)
+    return min(1.0, base + amount * (PULSE_LIFT + PULSE_HEADROOM * h) * pulse)
+
+
 class GlslEffect(Effect):
     dialect: ClassVar[str] = "isf"
     GLSL: ClassVar[str] = ""
@@ -336,6 +351,7 @@ class GlslEffect(Effect):
         _, self._kmix, self._kup = _kernels()
         self.t = 0.0
         self._beat_was = 0.0
+        self._hold = 0.0
 
     def _alloc(self, scale: float) -> None:
         ctx, cp = self.ctx, self.ctx.cp
@@ -351,7 +367,9 @@ class GlslEffect(Effect):
         if shrink is not None:
             self._alloc(shrink)
         p = self.step_params(dt)
-        amount = min(1.0, p["amount"] * (1.0 + 0.6 * p["pulse"]))
+        decay = math.exp(-dt / PULSE_HOLD_S) if dt > 0.0 else 1.0
+        self._hold = max(float(p["pulse"]), self._hold * decay)
+        amount = pulse_mix(float(p["amount"]), float(p["pulse"]), self._hold)
         self.t += dt
         if amount <= 1e-3:
             cp.copyto(out, src)

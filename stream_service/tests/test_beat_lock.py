@@ -270,3 +270,19 @@ def test_slot_without_modulation_is_untouched():
 
 def test_math_sanity():
     assert math.isclose(clock(120).bps, 2.0) and clock(120, beats=5.0).bar_phase == pytest.approx(0.25)
+
+
+# -- GLSL effects pulse at an authored amount of 1.0 (75, 17 Oct) ------------------------------------------------------
+
+def test_glsl_effect_pulse_shows_at_full_amount_and_leaves_the_rest_alone():
+    from stream_service.plugins._lib.glsl.plugins import PULSE_HEADROOM, pulse_mix
+    for a in (0.0, 0.3, 0.7, 1.0):
+        assert pulse_mix(a, 0.0, 0.0) == pytest.approx(a)               # no beats: the authored look exactly
+    assert pulse_mix(1.0, 0.0, 1.0) == pytest.approx(1.0 - PULSE_HEADROOM)  # beats coming: room to lift
+    assert pulse_mix(1.0, 1.0, 1.0) == 1.0 and pulse_mix(1.0, 0.1, 1.0) > pulse_mix(1.0, 0.0, 1.0)
+    assert pulse_mix(0.5, 1.0, 0.0) == pytest.approx(0.8)              # the old lift where there is headroom
+    prev = None
+    for p in np.linspace(0.0, 1.0, 21):                                 # monotonic in the pulse: a lift, never a dip
+        v = pulse_mix(1.0, float(p), 1.0)
+        assert prev is None or v >= prev - 1e-12
+        prev = v
