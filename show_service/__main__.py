@@ -639,6 +639,9 @@ class Show:
         c = self.clock
         if c is not None:
             try:
+                if f is not None and hasattr(c, "set_level"):         # a quiet room: no beat from talk or noise
+                    lf = f.latest()
+                    c.set_level(lf.get("gate") if isinstance(lf, dict) else None, t0_host_s)
                 c.process(stream, n0, t0_host_s, pcm, fs, flags)
             except Exception:
                 self._g["clock.process"].failed()

@@ -775,3 +775,30 @@ def test_the_kicks_vote_the_octave_on_fast_grids():
     kicks = drums_part(y, 0.3, 20.0, 174.0)
     r = hit_run(finish(y), kicks)
     assert relock_s(r, 0.0, 174.0) is not None and r.clk.stats().get("octave_changes", 0) == 0
+
+
+def test_a_quiet_room_drops_the_gate_and_skips_the_activation():
+    from show_service import clock as clock_mod
+    c = clock_mod.Clock(None, activation="aubio") if hasattr(clock_mod, "AubioActivation") else None
+    if c is None:
+        pytest.skip("no activation")
+    calls = []
+    real = c.act.process_hop
+    c.act.process_hop = lambda hop: calls.append(1) or real(hop)
+    c._gate, c._state = "beat", "locked"
+    c.set_level(0.5, 0.0)
+    assert not c._quiet
+    c.set_level(0.01, 1.0)
+    c.set_level(0.01, 3.0)
+    assert not c._quiet                                  # under QUIET_AFTER_S
+    c.set_level(0.01, 4.1)
+    assert c._quiet and c._gate == "none" and c._state == "holding"
+    c._lane_fs = clock_mod.FS
+    c._hop(np.zeros(clock_mod.HOP, np.float32))
+    assert calls == []                                   # madmom (here aubio) isn't run while quiet
+    c.set_level(0.03, 5.0)
+    assert c._quiet                                      # hysteresis: not back until QUIET_GATE_ON
+    c.set_level(0.06, 5.5)
+    assert not c._quiet and c.stats()["counts"]["quiet_ends"] == 1 if "counts" in c.stats() else not c._quiet
+    c.set_level(None, 6.0)
+    assert not c._quiet

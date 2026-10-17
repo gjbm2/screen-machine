@@ -191,6 +191,11 @@ OCTAVE_BEATS = 8
 OCTAVE_MARGIN = 1.3
 CONF_X_S = 0.025            # conf = P(next beat lands within +-25 ms)
 BEAT_ON, BEAT_OFF = 0.70, 0.60
+# the room is quiet (set_level, features.gate; artnet_out's numbers): under QUIET_GATE_OFF for QUIET_AFTER_S, until
+# back over QUIET_GATE_ON. While quiet the activation reads silence (madmom isn't run: no beat from talk or room
+# noise, and no CPU), the gate is "none" at once and a lock reads "holding" (the grid is kept for a breakdown).
+QUIET_GATE_OFF, QUIET_GATE_ON = 0.02, 0.05
+QUIET_AFTER_S = 3.0
 DMX_ON, DMX_OFF = 0.45, 0.35
 DWELL_BARS = 2
 SLEW_BEATS = 2.0            # close half the published phase error per beat ...
@@ -692,6 +697,8 @@ class Clock:
         self._gate: str = "none"
         self._gate_t = -1e9
         self._gate_up = True
+        self._quiet = False
+        self._quiet_below: Optional[float] = None
         self._state: str = "searching"
         self._t_known = -1e9
         self._t_known_seen = -1e9
@@ -806,6 +813,41 @@ class Clock:
         if d is None or _GATE_RANK.get(d["gate"], 0) < _GATE_RANK.get(gate, 0):
             return None
         return next_beat(d, t_s, lead_s)
+
+    def set_level(self, gate: Optional[float], t_s: float) -> None:
+        """features.gate for the block about to be processed (show-rx, before ``process``; None: unknown, no change).
+        Quiet under QUIET_GATE_OFF for QUIET_AFTER_S, until back over QUIET_GATE_ON (the constants' comment)."""
+        if gate is None or not isinstance(gate, (int, float)) or math.isnan(gate):
+            return
+        if self._quiet:
+            if gate >= QUIET_GATE_ON:
+                self._quiet, self._quiet_below = False, None
+                self._counts["quiet_ends"] += 1
+                self._act_reset()                       # madmom starts clean on the music, not mid-state
+                self._update_state()
+                self._emit(t_s)
+            return
+        if gate >= QUIET_GATE_OFF:
+            self._quiet_below = None
+            return
+        if self._quiet_below is None:
+            self._quiet_below = t_s
+        elif t_s - self._quiet_below >= QUIET_AFTER_S:
+            self._quiet = True
+            self._counts["quiet_starts"] += 1
+            if self._state == "locked":
+                self._state = "holding"
+            self._gate, self._gate_t, self._gate_up = "none", t_s, False
+            self._emit(t_s)
+
+    def _act_reset(self) -> None:
+        if self._bt is not None:
+            self._bt_epoch += 1
+            self._bt_splice = False
+            self._bt.q.put(("reset", self._bt_epoch))
+        else:
+            self.act.reset()
+        self._pk.reset()
 
     @property
     def beats_per_bar(self) -> int:
@@ -956,6 +998,8 @@ class Clock:
         if bt is not None and self._bt_stopped and not bt.thread.is_alive():
             changed = self._inline_again()
             bt = None
+        if self._quiet:                                 # a quiet room: silence, and madmom isn't run
+            return self._frame(0.0, t_raw) or changed
         if bt is None:
             return self._frame(self.act.process_hop(hop), t_raw) or changed
         if self._bt_put - self._bt_got >= BEAT_Q_MAX:
@@ -1529,6 +1573,8 @@ class Clock:
     def _update_state(self) -> None:
         if not self._grid or not self._confirmed:
             self._state = "searching"
+        elif self._quiet:
+            self._state = "holding"
         elif self._no_audio or self._tap_mode:          # a tap tempo is free until audio confirms it
             self._state = "free"
         elif sum(list(self._hits)[-4:]) >= 2.0:
@@ -1612,7 +1658,7 @@ class Clock:
 
     def _update_gate(self, t: float) -> None:
         c, g = self._conf, self._gate
-        if self._state == "searching":
+        if self._state == "searching" or self._quiet:
             new = "none"
         elif g == "none":
             new = "beat" if c >= BEAT_ON else ("dmx" if c >= DMX_ON else "none")
@@ -1626,7 +1672,7 @@ class Clock:
         recent = t - self._gate_t < DWELL_BARS * self._bpb * self._T
         # 2-bar dwell against flapping: nothing goes down within 2 bars of a change, and nothing goes back up within
         # 2 bars of a drop; a climb (none -> dmx -> beat) is not held back, and losing the grid drops at once
-        if recent and not (new == "none" and self._state == "searching") and (not up or not self._gate_up):
+        if recent and not (new == "none" and (self._state == "searching" or self._quiet)) and (not up or not self._gate_up):
             return
         self._gate, self._gate_t, self._gate_up = new, t, up
 
