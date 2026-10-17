@@ -1,0 +1,11 @@
+{
+ "note": "How much the auto-directors favour an item by the owner's star rating (stream_service/ratings.py; hot-reloaded). Multiplies each preset's direction / tag match. Unrated sits just above 2 stars so rated favourites lead and unvetted imports come up now and then (owner 17 Oct: 'too random'; 77% of the auto pool is unrated). A reject is never auto-picked.",
+ "stars": {
+  "unrated": 0.35,
+  "1": 0.05,
+  "2": 0.3,
+  "3": 1.5,
+  "4": 4.0,
+  "5": 8.0
+ }
+}

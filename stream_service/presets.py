@@ -34,6 +34,7 @@ import yaml
 
 from . import binding as binding_v2
 from .mappings import Mappings
+from .music_feed import ResponseFile
 from .modulation import parse_binding, split_bindings
 from .piano import PIANO_SIGNALS
 from .plugins import Registry
@@ -139,6 +140,7 @@ class Presets:
         self.rev = 0
         self.vocab = Vocab(self.dir)
         self.maps = Mappings(self.dir)           # per-item music mappings (mappings.py)
+        self.music_response = ResponseFile(self.dir)   # how hard the room's sound drives them (music_feed.py)
         self.reload_if_changed(force=True)
 
     # -- loading ------------------------------------------------------------
@@ -162,6 +164,7 @@ class Presets:
 
     def _reload(self, force: bool, plugin_files: bool) -> bool:
         self.maps.reload_if_changed(force)        # its own rev: the preset tables do not depend on it
+        self.music_response.reload_if_changed(force)   # read where it is used (MusicFeed.response)
         changed = self.vocab.reload_if_changed()
         sig = self._plugin_sig() if plugin_files or force else (self.registry.rev,) + self._plugin_mtimes[1:]
         plugins_moved = sig != self._plugin_mtimes

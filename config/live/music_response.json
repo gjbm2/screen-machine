@@ -1,0 +1,39 @@
+{
+ "format": 1,
+ "note": "How directly the room's sound (show_service's features) drives the per-item mappings. Hot-reloaded (stream_service/music_feed.py Response); a bad value keeps its default, an unknown key is listed in /inputs music_response.errors. Only while the features arrive; without them nothing here applies.",
+ "energy": {
+  "on": true,
+  "attack_s": 0.3,
+  "release_s": 0.6
+ },
+ "section_follow": {
+  "note": "regional_min_ease_s is binding.parse_v2's floor for live on a regional param; latched_bindings are <kind>/<item>/<param> whose review says they must hold for the section",
+  "amount": 0.7,
+  "max_ease_s": 1.0,
+  "regional_min_ease_s": 2.0,
+  "latched_fams": ["symmetry_count", "style_morph", "timing", "mode_enum", "seed", "quality"],
+  "latched_bindings": ["effect/isf_collage/cell_size", "scene/isf_im_rhodium_lquid_carbon/bounce_factor",
+                       "scene/dune_sea/relief", "effect/isf_gn_signal_trinity/omega",
+                       "effect/isf_gn_modulation_synth/omega",
+                       "scene/isf_im_filter_precalculated_voronoi_heightma/texture_scale",
+                       "scene/isf_im_xorcoridor337/zoom_effect"]
+ },
+ "beat_fallback": {
+  "note": "a pulse when onset / max(gate, gate_floor) >= max(floor, min(onset, relative x its mean over mean_s)); relative 0: onset alone. Off: an arrival-timed onset lands a whole render->photon lead (~0.6-0.8 s) late on glass; the predicted beat ladder replaces it",
+  "on": false,
+  "onset": 0.2,
+  "relative": 2.5,
+  "floor": 0.1,
+  "mean_s": 4.0,
+  "gate_floor": 0.15,
+  "min_gap_s": 0.33,
+  "decay_s": 0.15
+ },
+ "tempo": {
+  "on": true,
+  "min_conf": 0.3,
+  "ease_s": 2.0,
+  "fold_min": 70,
+  "fold_max": 180
+ }
+}

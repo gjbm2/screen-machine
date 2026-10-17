@@ -24,6 +24,8 @@ The runtime merges the session's music features (``extra``, set by the loop each
 n/a inputs in and out (``avail``, tau 2 s), keeps the section epoch, and eases Maestro's colour into cosine rows
 (``maestro_rows``) for the colour form: a palette-driven scene (``session_palette()``) gets its palette blended
 toward the room's colour by the binding's mix, and a GLSL scene's ``palette_mix`` is raised to that amount.
+While show_service's features arrive (music_feed.Response): ``energy`` is theirs, fast; an onset pulse stands in
+for ``beat`` while the clock is not sure; and section mappings follow the live value by ``follow``.
 
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
@@ -41,7 +43,7 @@ import numpy as np
 import logging
 
 from . import binding, music_feed, palettes, piano
-from .inputs import BIND_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
+from .inputs import BIND_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
 from .plugins.base import ParamError, is_bindable
 
 log = logging.getLogger("stream_service.modulation")
@@ -162,6 +164,10 @@ class SessionRuntime:
         self._live_hi = False
         self.maestro_rows: Optional[np.ndarray] = None    # Maestro's colour as cosine rows (eased), or None
         self.colour_avail = 0.0
+        # section mappings following the live value (binding.Bound.step; music_feed.Response), set each frame
+        self.follow = 0.0
+        self.response: Any = music_feed.Response()
+        self.beat_source: Optional[str] = None    # "clock" | "onset" | None (music_feed.blend)
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -190,17 +196,23 @@ class SessionRuntime:
         sig = self.sampler.sample(now) if self.sampler is not None else {}
         w = self.sampler.w if self.sampler is not None else 0.0
         wf = 0.0
-        if self.feed is not None:               # the room's sound and beat clock (music_feed.py) over the desk's
-            wf = self.feed.liveness(now)
-            lead = self.sampler.lead if self.sampler is not None else 0.0
-            music_feed.blend(sig, self.feed.snapshot(), wf,
-                             self.clock_sig.sample(self.feed.clock(now), now + lead), self.feed.levels(now))
         ex = self.extra
+        fast, follow, src = None, 0.0, None
+        feed = self.feed
+        if feed is not None:                    # the room's sound and beat clock (music_feed.py) over the desk's
+            wf = feed.liveness(now)
+            lead = self.sampler.lead if self.sampler is not None else 0.0
+            src = music_feed.blend(sig, feed.snapshot(), wf, self.clock_sig.sample(feed.clock(now), now + lead),
+                                   feed.levels(now), feed.onset_pulse(now))
+            r = feed.response.cfg
+            follow = r.follow * wf if wf > 0.0 else 0.0
+            self.response = r
+            if ex.get("music_w") is not None:   # the session's music is show_service's: its energy, at its rate
+                fast = feed.energy_now(now)
+        self.follow, self.beat_source = follow, src
         wm = ex.get("music_w")
         wm = w if wm is None else wm
-        for k in MUSIC_SIGNALS:                 # the music features, eased to idle with their source's liveness
-            v = ex.get(k)
-            sig[k] = None if v is None else 0.5 + wm * (v - 0.5)
+        music_feed.music_signals(sig, ex, wm, fast, wf)   # the music features, eased to idle with their liveness
         for k in piano.PIANO_LEVELS:            # the piano's: n/a when it is silent or not connected
             sig[k] = ex.get(k)
         sig.update(piano.envelopes(ex, now))    # note_on / chord_change, sharp at the frame rate
@@ -261,7 +273,7 @@ class Modulation:
                 old = self._bound.get(k) if hasattr(self, "_bound") else None
                 bd = binding.Bound(k, self.props[k], b, self.key)
                 if old is not None and old.y is not None:
-                    bd.y = old.y                  # a swap eases from what was showing
+                    bd.y, bd.yl = old.y, old.yl   # a swap eases from what was showing
                 bound[k] = bd
             except Exception as e:
                 log.warning("%s: mapping on %s dropped: %s", self.key or "?", k, e)
@@ -298,7 +310,7 @@ class Modulation:
         last = {}
         for key, bd in self._bound.items():
             try:
-                v = bd.step(sig, rt.avail, values.get(key), depth, rt.epoch, rt.now, rt.dt)
+                v = bd.step(sig, rt.avail, values.get(key), depth, rt.epoch, rt.now, rt.dt, rt.follow, rt.response)
             except Exception as e:                # a mapping never takes a frame down: drop it, keep the value
                 log.warning("%s: mapping on %s failed (%s): dropped", self.key or "?", key, e)
                 self._bound = {k: b for k, b in self._bound.items() if k != key}
@@ -327,7 +339,20 @@ class Modulation:
         return out
 
     def describe(self) -> list[dict]:
-        return [binding.describe(k, b, self.last.get(k)) for k, b in self.bindings.items()]
+        """The bindings with their last values (and ``section_row``)."""
+        return [{**binding.describe(k, b, self.last.get(k)), **self.section_row(k)} for k, b in self.bindings.items()]
+
+    def section_row(self, key: str) -> dict:
+        """A section binding's latch (``target``), whether it follows the live value now (``follows``: the last
+        frame's, read off the render thread's state) and the live part's ease when it does (``follow_tau_s``: s, or
+        [up, down]); {} for any other."""
+        bd = getattr(self, "_bound", {}).get(key)
+        if bd is None or bd.mode != "section":
+            return {}
+        t = bd.target
+        up, down = bd.follow_taus(self.runtime.response)
+        return {"target": round(t, 5) if isinstance(t, float) else t, "follows": bd.yl is not None,
+                "follow_tau_s": round(up, 3) if up == down else [round(up, 3), round(down, 3)]}
 
 
 _ROWS: dict = {}

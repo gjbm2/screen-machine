@@ -63,14 +63,14 @@ from .effects import EffectChain, EffectSlot
 from .fx_director import FxDirector, FxMove
 from .fx_state import SessionFx
 from .guard import trip_budget_ms
-from .inputs import BEAT_FOLLOW, BIND_SIGNALS, MUSIC_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
+from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
 from .media import MediaHub
 from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
-from .music_feed import MusicFeed, beat_at, clock_signals, blend as feed_blend
+from .music_feed import MusicFeed, beat_at, clock_signals, blend as feed_blend, music_signals
 from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, why_words
-from .music_direction import ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
+from .music_direction import BANDS, ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
 from .plugins.base import ParamError
@@ -242,6 +242,7 @@ class Session(EngineListener):
         self._upnext_sent = -1
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
+        self._building = False                     # a build is on: the next scene is the peak one, prepared (G10)
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -311,14 +312,13 @@ class Session(EngineListener):
         sig = dict(self.sampler.peek(now))
         feed = self.mgr.music_feed
         c = feed.clock(now)
-        feed_blend(sig, feed.snapshot(), feed.liveness(now), clock_signals(c, now + self.sampler.lead) if c else {},
-                   feed.levels(now))
+        wf = feed.liveness(now)
+        feed_blend(sig, feed.snapshot(), wf, clock_signals(c, now + self.sampler.lead) if c else {},
+                   feed.levels(now), feed.onset_pulse(now))
         ex = self.runtime.extra or {}
         w = ex.get("music_w")
-        w = self.sampler.w if w is None else w
-        for k, v in ex.items():
-            if k in MUSIC_SIGNALS:
-                sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+        fast = None if w is None else feed.energy_now(now)
+        music_signals(sig, ex, self.sampler.w if w is None else w, fast, wf)
         return sig
 
     def _sample_transition(self, spec: TransitionSpec) -> TransitionSpec:
@@ -1454,8 +1454,11 @@ class Session(EngineListener):
             if hm["chord_change_t"] is not None and (pn.get("chord_change_t") is None
                                                      or hm["chord_change_t"] > pn["chord_change_t"]):
                 pn["chord_change_t"] = hm["chord_change_t"]
-        self.runtime.extra = {**self.music.signals(now),
-                              "music_w": feed.liveness(now) if self.music.feeding else None, **pn}
+        # the music signals' weight: show_service's liveness while its features arrive and while it fades out after
+        # they stop (the fast energy fades with it, no jump to idle), handing over to the desk's (None) at the end
+        lw = feed.liveness(now)
+        mw = lw if self.music.feeding else max(lw, self.sampler.w) if lw > 0.0 else None
+        self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self.upnext.clear()     # the leader's plan is the room's
@@ -1469,6 +1472,7 @@ class Session(EngineListener):
         if cause is not None:
             self._apply_direction(cause)
         if self.state == "live" and not self.exited:
+            self._build_tick(now)
             self._upnext_fill(now)
             self._upnext_emit()
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
@@ -1530,8 +1534,42 @@ class Session(EngineListener):
         scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached)."""
         if self.following() is not None or self.state != "live" or self.exited:
             return
-        if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})"):
+        if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
+                              urgent=kind == "drop"):
             self._event_hint = at_s
+
+    BUILD_ON, BUILD_OFF = 0.5, 0.15
+
+    def _build_tick(self, now: float) -> None:
+        """A build in the music (music.context build_progress >= BUILD_ON): the head of Up next becomes a peak pick
+        (the director's own pick for high energy), prepared now so the drop can cut to it at once (d4's G10)."""
+        d = self.director
+        b = self.mgr.music_feed.building(now)
+        if self._building and b < self.BUILD_OFF:
+            self._building = False
+            return
+        if self._building or b < self.BUILD_ON or not (d.armed and d.enabled):
+            return
+        self._building = True
+        head = self.upnext.head("scene")
+        if head is not None and head.get("origin") == "you":
+            return                                   # the owner's next scene stays next
+        peak = {**d.direction, "energy": max(0.85, float(d.direction.get("energy", 0.5))),
+                "moods": list(BANDS["peak"][0]), "transition_style": "wild"}
+        keep, d.direction = d.direction, peak
+        try:
+            got = d.pick_scene(self.mgr.presets.scenes, self.current_name, now)
+            t = d.pick_transition(self.mgr.presets.transitions)
+        finally:
+            d.direction = keep
+        if got is None:
+            return
+        self.upnext.add("scene", {"scene": got[0], "transition": t[0] if t else None, "origin": "auto",
+                                  "transition_origin": "auto" if t else None, "why": f"{got[1]} for the drop",
+                                  "why_words": "For the drop: the music is building"}, at=0)
+        self._upnext_edited()
+        if self._pick_task is None and self.prepared_pick is None and self.state == "live":
+            self._pick_task = asyncio.create_task(self._prepare_next())
 
     def _upnext_took(self, effect: Optional[str]) -> None:
         """An effect move added ``effect``: its queue entry (the first with that preset) is done."""
@@ -1662,7 +1700,8 @@ class Session(EngineListener):
         feed = self.mgr.music_feed                 # the room's sound and clock, as the frames see them
         fsnap, fw, clk = feed.snapshot(), feed.liveness(now), feed.clock(now)
         csig = clock_signals(clk, now + self.sampler.lead) if clk else {}
-        feed_blend(sig, fsnap, fw, csig, feed.levels(now))
+        beat_src = feed_blend(sig, fsnap, fw, csig, feed.levels(now), feed.onset_pulse(now))
+        tb = feed.tempo_bpm(now)
         r3 = lambda v: None if v is None else round(v, 4)  # noqa: E731
         out: dict = {"online": self.sampler.freshness(now, snap) is None, "stale": self.sampler.stale,
                      "liveness": round(self.sampler.w, 3), "fixture": self.fixture,
@@ -1683,27 +1722,36 @@ class Session(EngineListener):
             out["values"], out["derived"], out["follower"] = None, {}, {}
         out["derived"].update(bpm=r3(sig["bpm"]), beat_confidence=r3(sig["beat_confidence"]),
                               beat_phase=r3(sig["beat_phase"]), beat=r3(sig["beat"]),
-                              beat_locked=sig["beat_locked"], beat_follow=self.beat_follow)
+                              beat_locked=sig["beat_locked"], beat_follow=self.beat_follow,
+                              beat_source=beat_src or ("desk" if self.sampler.w > 0.0 else None),
+                              bpm_source="desk" if sig["bpm"] is not None else None)
         out["feed"] = None if fsnap is None else {
             "live": round(fw, 3), "age_ms": round((now - fsnap.t) * 1000, 1), "energy": r3(fsnap.energy),
-            "activity": r3(fsnap.activity), "activity_slow": r3(fsnap.activity_slow), "drive": r3(fsnap.drive),
-            "punch": r3(fsnap.punch), "section": fsnap.section_id,
+            "energy_fast": r3(feed.energy_now(now)), "activity": r3(fsnap.activity),
+            "activity_slow": r3(fsnap.activity_slow), "drive": r3(fsnap.drive), "punch": r3(fsnap.punch),
+            "onset": r3(fsnap.onset_last), "onset_mean": r3(fsnap.onset_mean), "onset_n": fsnap.onset_n,
+            "onset_age_ms": None if fsnap.onset_t is None else round((now - fsnap.onset_t) * 1000, 1),
+            "section": fsnap.section_id, "tempo_bpm": r3(tb),
             "clock": None if clk is None else {k: clk.get(k) for k in ("bpm", "conf", "gate", "state", "epoch")}}
         if csig:                                   # the clock's beat, not the desk follower's
             out["derived"].update(beat_phase=r3(csig.get("beat_phase")), beat=r3(csig.get("beat", sig.get("beat"))),
                                   beat_confidence=r3(csig.get("beat_confidence")))
             if clk.get("gate") == "beat":
                 out["derived"].update(bpm=r3(float(clk["bpm"])), beat_locked=True)
+        sure = (clk or {}).get("gate") == "beat"
+        if tb is not None and (sure or not sig["beat_locked"]):   # the mappings' tempo (a locked desk's stays shown)
+            out["derived"].update(bpm=r3(tb), bpm_source="clock" if sure else "clock_tentative")
         mg = self.mgr.music_grid(now)
         out["cuts_on"] = None if self._beat_grid(now) is None else "show_service clock" if mg is not None \
             else "lighting desk pulse"
         out["clock"] = None if mg is None else {"bpm": round(60.0 / mg[1], 2)}
         ex = self.runtime.extra or {}
-        mw = self.sampler.w if ex.get("music_w") is None else ex["music_w"]
-        sig = {**sig, **{k: (None if v is None else 0.5 + mw * (v - 0.5))
-                         for k, v in ex.items() if k in MUSIC_SIGNALS},
-               **{k: ex.get(k) for k in PIANO_LEVELS}, **piano_envelopes(ex, now)}
+        mw = ex.get("music_w")
+        music_signals(sig, ex, self.sampler.w if mw is None else mw, None if mw is None else feed.energy_now(now), fw)
+        sig.update({k: ex.get(k) for k in PIANO_LEVELS}, **piano_envelopes(ex, now))
         out["signals"] = {k: r3(sig.get(k)) for k in BIND_SIGNALS}
+        out["section_follow"] = round(self.runtime.follow, 3)      # how far section mappings follow live now
+        out["music_response"] = feed.response.describe()          # config/live/music_response.json, as loaded
         out["avail"] = {k: round(v, 3) for k, v in self.runtime.avail.items()}
         out["epoch"] = list(self.runtime.epoch)
         out["colour"] = {"maestro": sig.get("colour"), "amount": round(self.runtime.colour_avail, 3),
@@ -1951,7 +1999,7 @@ class SessionManager:
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
-        self.music_feed = MusicFeed()                    # show_service's music.features / clock / context
+        self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self._broken_names: tuple = (None, frozenset())
 
