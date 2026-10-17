@@ -255,6 +255,20 @@ def test_with_no_feel_the_colours_still_resolve_from_no_feel_palettes(tmp_path):
     assert r.d.palette_fn(r.t) is not None
 
 
+def test_art_without_colour_to_give_falls_through_to_the_next_palette(tmp_path):
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
+    r = Rig(tmp_path, settings=st)
+    dark = [(0.01, 0.01, 0.008), (0.0, 0.0, 0.0)]                      # the masked glass at night
+    r.d.art = {"north-screen": {"colours": dark, "roles": pal.roles_from(dark), "at_s": 0.0}}
+    r.run(1.0)
+    assert (r.d.look or {}).get("palette", {}).get("name") == "ember"   # 75, 17 Oct: a rule, not a special case
+    bright = [(0.9, 0.4, 0.1), (0.2, 0.5, 0.9)]
+    r.d.art = {"north-screen": {"colours": bright, "roles": pal.roles_from(bright), "at_s": r.t}}
+    r.run(1.0)
+    assert (r.d.look or {}).get("palette", {}).get("name") == "art"
+
+
 def test_an_unknown_vibe_plays_neutral_and_a_vanished_vibe_goes_neutral(tmp_path):
     r = Rig(tmp_path)
     r.d.set_target({"vibe": "alpha"}, "mode")
