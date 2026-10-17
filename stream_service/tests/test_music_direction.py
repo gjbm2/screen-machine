@@ -295,7 +295,9 @@ def test_manager_keeps_only_a_speaking_valid_room_direction():
     from types import SimpleNamespace
 
     from stream_service.sessions import SessionManager
-    mgr = SimpleNamespace(room_direction=None, presets=SimpleNamespace(vocab=SimpleNamespace(words={})))
+    from stream_service.music_feed import MusicFeed
+    mgr = SimpleNamespace(room_direction=None, presets=SimpleNamespace(vocab=SimpleNamespace(words={})),
+                          music_feed=MusicFeed())
     on, now = SessionManager.on_room_message, SessionManager.room_direction_now
     body = {"energy": 0.4, "moods": ["calm"], "vibe": "dinner", "groove": 0.1, "section": {"id": 3}, "arousal": 0.2}
     on(mgr, {"type": "room.look", "data": {"palette": "x"}})
