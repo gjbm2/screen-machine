@@ -152,6 +152,11 @@ HUE_DECAY_S = 0.25
 HUE_DEPTH = 0.7
 TAU_ENERGY_S = 1.0                  # the hue envelope without a beat
 DEFAULT_RGB = (1.0, 0.62, 0.32)     # warm amber, until the director's palette (P2); SHOW_PALETTE overrides it
+try:                                # an instance's neutral (75, 17 Oct): warm white at the house CCT, not amber
+    from .palette import white as _white
+    NEUTRAL_RGB: tuple[float, float, float] = tuple(float(c) for c in _white(2700.0))[:3]  # type: ignore[assignment]
+except Exception:                   # noqa: BLE001 - standalone: the constant
+    NEUTRAL_RGB = DEFAULT_RGB
 PALETTES: dict[str, tuple[float, float, float]] = {     # SHOW_PALETTE names (or "r,g,b")
     "amber": DEFAULT_RGB, "warm": (1.0, 0.78, 0.55), "white": (1.0, 1.0, 1.0), "cool": (0.55, 0.70, 1.0),
     "red": (1.0, 0.12, 0.06), "blue": (0.15, 0.30, 1.0), "green": (0.20, 1.0, 0.35), "violet": (0.62, 0.25, 1.0)}
@@ -443,7 +448,7 @@ class VirtualMaestro:
         self.palette_fn = palette_fn
         self.palette_used = "fixed"                  # the last frame's screen colours: "fixed" | "director"
         self.default_rgb: tuple[float, float, float] = (tuple(float(c) for c in palette)  # type: ignore[assignment]
-                                                        if palette is not None and len(palette) == 3 else DEFAULT_RGB)
+                                                        if palette is not None and len(palette) == 3 else NEUTRAL_RGB)
         self.quiet_after_s = quiet_after_s
         self.hue_latency_s = hue_latency_ms / 1000.0
         self.hue_depth = hue_depth
