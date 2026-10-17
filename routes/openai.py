@@ -119,6 +119,10 @@ def _chat(task, check, request):
     try:
         value, label = llm.chat(task, check=check, **request)
     except llm.LLMError as e:
+        if e.blocked:                                 # a safety refusal: final (no other provider), logged only
+            alert("llm.blocked", f"LLM prompt refused on safety grounds ({task})", severity="info",
+                  context={"task": task, "model": (e.attempts or [{}])[-1].get("model")})
+            raise
         tried = "; ".join(f"{a['model']}: {a['error']}" for a in e.attempts)[:500]
         quota = any(s in tried.lower() for s in ("quota", "credit", "402", "billing"))
         alert("openai.quota" if quota else "openai.error",
