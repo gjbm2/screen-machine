@@ -128,6 +128,8 @@ LOG_N = 200
 
 # beliefs (§7.1)
 HALF_LIFE_S = {"genre": 120.0, "mood": 45.0, "instruments": 60.0}
+#: a music_moods word's visual moods, first to last: the conf each takes (the list's order is 04's ranking)
+MOOD_RANK_WEIGHTS = (1.0, 0.85, 0.7, 0.6)
 LEADER_MARGIN = 0.15
 REF_WEIGHT = 2.0              # vote weight that reads as full confidence (two agreeing reads)
 FRESH_S = 30.0
@@ -266,6 +268,7 @@ class Vocab:
         self.path = Path(path)
         self.moods: list[str] = []
         self.genre: list[str] = []
+        self.music_moods: dict[str, list[str]] = {}   # how the music feels -> the visual moods it means (04, 17 Oct)
         self.error: Optional[str] = None
         self._sig: Any = None
         self._poll = -math.inf
@@ -291,6 +294,11 @@ class Vocab:
             raw = yaml.safe_load(self.path.read_text()) or {}
             self.moods = [str(w) for w in (raw.get("moods") or [])]
             self.genre = [str(w) for w in (raw.get("genre") or [])]
+            mm = raw.get("music_moods") if isinstance(raw.get("music_moods"), dict) else {}
+            vis = set(self.moods)
+            self.music_moods = {str(w): [str(v) for v in vs if str(v) in vis]
+                                for w, vs in mm.items() if isinstance(vs, list)}
+            self.music_moods = {w: vs for w, vs in self.music_moods.items() if vs}
             self.error = None
             self.revision += 1
         except Exception as e:                    # noqa: BLE001 - keep the last good words
@@ -311,9 +319,12 @@ class BeliefState:
         self.last: Optional[dict] = None          # the last InsightData
         self.last_s: Optional[float] = None       # its arrival (monotonic s)
         self.track_pending = False                # a DSP track change (structure): the next verdict counts as one
+        self.mood_map: dict[str, list[str]] = {}  # vocab.yaml music_moods (the listener sets it from its Vocab)
 
     def clear(self) -> None:
+        mm = self.mood_map
         self.__init__()
+        self.mood_map = mm
 
     def track_changed(self) -> None:
         """structure heard a new track (§7.1: "or at once on a DSP track change"): the next verdict's genre wins at
@@ -375,8 +386,8 @@ class BeliefState:
             self.challenger, self.wins = None, 0
 
     def view(self, now_s: float) -> dict:
-        none = {"state": "none", "age_s": None, "genre": None, "moods": [], "instruments": [], "vocals": None,
-                "section": None, "trajectory": None, "content": None}
+        none = {"state": "none", "age_s": None, "genre": None, "moods": [], "feel": [], "instruments": [],
+                "vocals": None, "section": None, "trajectory": None, "content": None}
         if self.last_s is None or self.last is None:
             return none
         age = max(0.0, now_s - self.last_s)
@@ -394,9 +405,10 @@ class BeliefState:
             total = sum(gv.values())
             share = gv.get(self.word, 0.0) / total if total > 0 else 0.0
             genre = {"word": self.word, "conf": round(share * min(1.0, total / REF_WEIGHT) * fade, 3)}
-        moods = [{"word": w, "conf": round(min(1.0, v / REF_WEIGHT) * fade, 3)}
-                 for w, v in sorted(self.votes["mood"].items(), key=lambda kv: -kv[1])[:3]]
-        moods = [m for m in moods if m["conf"] >= 0.05]
+        feel = [{"word": w, "conf": round(min(1.0, v / REF_WEIGHT) * fade, 3)}
+                for w, v in sorted(self.votes["mood"].items(), key=lambda kv: -kv[1])[:3]]
+        feel = [m for m in feel if m["conf"] >= 0.05]
+        moods = self._visual(feel)
         instruments = [w for w, v in sorted(self.votes["instruments"].items(), key=lambda kv: -kv[1])
                        if v >= INSTRUMENT_MIN_W][:6]
         t1_s = (last.get("window") or {}).get("t1_ms", self.last_s * 1000.0) / 1000.0
@@ -411,9 +423,24 @@ class BeliefState:
             eta = _f(tr.get("eta_to_change_s"))
             trajectory = {"state": tr["state"], "conf": round(float(tr.get("confidence") or 0.0) * fade, 3),
                           "eta_s": round(max(0.0, eta - since_clip), 1) if eta is not None else None}
-        return {"state": state, "age_s": round(age, 1), "genre": genre, "moods": moods, "instruments": instruments,
-                "vocals": last.get("vocals") if musical else None, "section": section, "trajectory": trajectory,
-                "content": last.get("content")}
+        return {"state": state, "age_s": round(age, 1), "genre": genre, "moods": moods, "feel": feel,
+                "instruments": instruments, "vocals": last.get("vocals") if musical else None, "section": section,
+                "trajectory": trajectory, "content": last.get("content")}
+
+    def _visual(self, feel: list[dict]) -> list[dict]:
+        """The listener's words for how the music feels -> the visual moods scenes carry (vocab.yaml music_moods: each
+        word's moods in order, the first counting most; a word that is itself a visual mood stands for itself). Top 3,
+        each at the best conf any word gives it."""
+        if not self.mood_map:
+            return list(feel)
+        score: dict[str, float] = {}
+        for f in feel:
+            vis = self.mood_map.get(f["word"]) or [f["word"]]
+            for i, v in enumerate(vis):
+                c = f["conf"] * MOOD_RANK_WEIGHTS[min(i, len(MOOD_RANK_WEIGHTS) - 1)]
+                score[v] = max(score.get(v, 0.0), c)
+        top = sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        return [{"word": w, "conf": round(c, 3)} for w, c in top if c >= 0.05]
 
 
 # -- verdict -> InsightData ----------------------------------------------------------------------------------------------
@@ -438,7 +465,7 @@ def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms:
                t_ms: float) -> dict:
     """The model's tool arguments, checked against vocab.yaml and the fixed vocabularies (contract.InsightData). Any
     word outside its list, a number out of range or too many items is cleaned here (the call is lenient)."""
-    genres, moods_ok = set(vocab.genre), set(vocab.moods)
+    genres, moods_ok = set(vocab.genre), set(vocab.music_moods) or set(vocab.moods)
     data = _obj(data)
     g = _obj(data.get("genre"))
     label = str(g.get("label") or "").strip().lower()
@@ -837,6 +864,7 @@ class Listener:
 
     def tick(self, now_s: float) -> None:
         self.vocab.poll(now_s)
+        self.beliefs_state.mood_map = self.vocab.music_moods
         self._sample(now_s)
         m = self._llm_mod()
         if m is not None:
@@ -1491,7 +1519,7 @@ class Listener:
     # -- prompts -----------------------------------------------------------------------------------------------------
     def _listen_prompt(self) -> str:
         genres = ", ".join(self.vocab.genre) or "(none: use unknown)"
-        moods = ", ".join(self.vocab.moods) or "(none: leave the list empty)"
+        moods = ", ".join(self.vocab.music_moods or self.vocab.moods) or "(none: leave the list empty)"
         return (
             "You listen to a short clip of what is playing in a home's drawing room and describe it for the room's "
             "lighting and visuals director. Answer only by calling the tool.\n\n"
@@ -1501,7 +1529,7 @@ class Listener:
             "the style (for example \"bossa nova\", \"Afro house\"). genre.confidence: 0 to 1.\n"
             "- instrumentation: up to 8 instruments you clearly hear, as plain lowercase words.\n"
             "- vocals: none, male, female, mixed, choir or unknown.\n"
-            f"- mood.words: up to 3 words from this list: {moods}. mood.confidence: 0 to 1.\n"
+            f"- mood.words: how the music feels, up to 3 words from this list: {moods}. mood.confidence: 0 to 1.\n"
             "- section: what the clip's last seconds are in the piece: intro, verse, pre_chorus, chorus, bridge, "
             "breakdown, build, drop, solo, outro or unknown. section.confidence: 0 to 1.\n"
             "- trajectory.state: where the music is heading: building, peak, sustaining, releasing, steady or "

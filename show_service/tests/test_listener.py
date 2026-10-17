@@ -1099,3 +1099,27 @@ def test_the_real_llm_yaml_lists_gemini_first_then_gpt_audio_1_5(tmp_path, monke
         assert settings["models"][0]["discover"] and settings["audio"]["format"] == "mp3"
     finally:
         m.configure()
+
+
+def test_music_moods_map_the_feel_to_visual_moods(tmp_path):
+    """04's vocab.yaml music_moods (17 Oct): the listener says how the music feels; beliefs' moods are the visual
+    moods those words mean (first counts most), feel keeps its own words."""
+    vf = tmp_path / "vocab.yaml"
+    vf.write_text("moods: [calm, mellow, dark, warm, cool]\ngenre: [jazz]\n"
+                  "music_moods:\n  melancholic: [mellow, cool, dark, sparkly]\n  peaceful: [calm, mellow]\n")
+    v = L.Vocab(vf)
+    v.poll(0.0)
+    assert v.music_moods == {"melancholic": ["mellow", "cool", "dark"], "peaceful": ["calm", "mellow"]}
+    ins = L.to_insight(verdict(moods=("melancholic", "peaceful", "warm")), vocab=v, stream="s", model="m",
+                       latency_ms=1.0, window=(0.0, 0.0), t_ms=0.0)
+    assert ins["mood"]["words"] == ["melancholic", "peaceful"]          # the feel words; a visual word isn't one
+    b = L.BeliefState()
+    b.mood_map = v.music_moods
+    b.add(ins, 0.0)
+    b.add(ins, 0.0)
+    out = b.view(0.0)
+    assert [f["word"] for f in out["feel"]] == ["melancholic", "peaceful"]
+    assert [m["word"] for m in out["moods"]] == ["calm", "mellow", "cool"]
+    assert out["moods"][1]["conf"] == 1.0 and out["moods"][2]["conf"] == 0.85
+    b.clear()
+    assert b.mood_map == v.music_moods

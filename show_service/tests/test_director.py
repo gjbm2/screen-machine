@@ -2643,3 +2643,25 @@ def test_compose_tick_cost_with_every_appliance_enabled(tmp_path):
     p95 = sorted(samples)[int(0.95 * len(samples))]
     print(f"\ncompose plan, 6 appliances: p50 {statistics.median(samples):.3f} ms, p95 {p95:.3f} ms")
     assert p95 < 2.0                                                 # README S5.18: ~0.1 ms unloaded
+
+
+def test_band_words_land_after_the_dwell(rig):
+    """director.bands.dwell_s (2b's audit, 17 Oct: band words flapped up to 4 times a minute): a new row's words
+    land only once it has held the dwell; a dip back before then cancels it."""
+    s = json.loads(json.dumps(SETTINGS))
+    s["director"]["bands"]["dwell_s"] = 20
+    d = rig.d
+    d.configure(s)
+    d.lv = 1.0
+    d._now_s = 0.0
+    assert d._band_words(0.1)["name"] == "low"
+    d._now_s = 5.0
+    assert d._band_words(0.9)["name"] == "low"                       # waiting
+    d._now_s = 10.0
+    assert d._band_words(0.1)["name"] == "low"                       # back: the wait is off
+    d._now_s = 12.0
+    assert d._band_words(0.9)["name"] == "low"
+    d._now_s = 31.0
+    assert d._band_words(0.9)["name"] == "low"
+    d._now_s = 32.5
+    assert d._band_words(0.9)["name"] == "top"
