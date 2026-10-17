@@ -11,7 +11,7 @@ direction key it matches:
 
 Weight = tags.weight x one factor per descriptor (each in (0, 1], so the weight is never 0):
   * energy: 1 inside the preset's [lo, hi], falling linearly to ENERGY_FLOOR over ENERGY_FALLOFF outside it;
-  * genre: GENRE_FLOOR + (1 - GENRE_FLOOR) x fit, where fit is the preset's ``genre_fit`` for the direction's
+  * genre: GENRE_FLOOR + (1 - GENRE_FLOOR) x fit^GENRE_GAMMA, where fit is the preset's ``genre_fit`` for the direction's
     ``genres`` {word: p} (a p-weighted mean) or its one ``genre`` word (a preset with only a ``genre`` word list:
     1 if listed, else 0);
   * valence / organic / density (both sides 0..1): 1 - AXIS_SLOPE x |direction - preset|;
@@ -51,7 +51,9 @@ MISMATCH = 0.3                   # a word descriptor with no overlap
 TRANSITION_MISMATCH = {"moods": 0.6}     # a transition's moods count, but less than a scene's
 ENERGY_FALLOFF = 0.3             # outside a preset's energy band the factor falls linearly over this distance ...
 ENERGY_FLOOR = 0.1               # ... to this
-GENRE_FLOOR = 0.15               # a preset that would jar with the music's genre (fit 0); fit 1 = full weight
+GENRE_FLOOR = 0.05               # a preset that would jar with the music's genre (fit 0); fit 1 = full weight
+GENRE_GAMMA = 3.0                # fit 0.7 ("good") = 0.38, 0.5 = 0.17: a natural fit leads (17 Oct sims: ambient vs
+                                 # techno picks overlap 0.40, vs 0.71 linear; the stars still lead within a genre)
 AXES = ("valence", "organic", "density")
 AXIS_SLOPE = 0.6                 # opposite ends of an axis: 0.4
 
@@ -175,7 +177,7 @@ def descriptor_factor(key: str, direction: dict, tags: dict, mismatch: float = M
     """One descriptor's factor in (0, 1] (see the module docstring)."""
     if key == "genre":
         f = genre_fit(direction.get("genres") or direction.get("genre"), tags)
-        return 1.0 if f is None else GENRE_FLOOR + (1.0 - GENRE_FLOOR) * f
+        return 1.0 if f is None else GENRE_FLOOR + (1.0 - GENRE_FLOOR) * f ** GENRE_GAMMA
     want, have = direction.get(key), tags.get(key)
     if have is None or want is None or want == []:
         return 1.0
