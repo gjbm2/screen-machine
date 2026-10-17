@@ -963,3 +963,16 @@ def test_the_empty_shapes_in_auto_itself(tmp_path):
         assert h.room.auto_puts()[-1]["mode"] == "piano"
 
     run(tmp_path, body, modes=EMPTY)
+
+
+def test_switching_auto_on_waives_the_minimum_stay_in_the_current_mode(tmp_path):
+    """Owner, 17 Oct: picking a mode and then turning Auto on must not leave Auto waiting out min_dwell_s."""
+    async def body(h: H):
+        h.room.since = h.clock.t                          # someone just picked the current mode
+        h.playing = True
+        await h.step(15)
+        assert h.room.puts == []                          # off: nothing
+        await h.ap.set_on(True)
+        await h.step_until(lambda: h.room.current == "piano")   # long before the 300 s minimum stay
+        assert h.clock.t - h.room.since < 120
+    run(tmp_path, body, on="off", auto={**AUTO, "min_dwell_s": 300})
