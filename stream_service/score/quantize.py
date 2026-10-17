@@ -10,9 +10,15 @@ compound logit, older replies decaying by EV_DECAY: later windows hear more).  T
 it (MIN_DECIDE_S of playing and DECIDE_P confident, or MAX_DECIDE_S).  Should the evidence later turn (REWRITE_P
 for a different duple/triple or simple/compound, REWRITE_RUN replies running, within REWRITE_S of the phrase's
 start), the phrase is written again in the new metre: a ``rewrite`` marker bar, then its bars from the start.  Beats come from a BeatGrid: the analysed beat
-times, those under written bars frozen, later ones replaced by each new analysis.  A bar is written once its end is
-TRUST_S before the newest analysed note (the networks look both ways: the newest beats are the weakest).  Notes go
-to the treble or bass staff by the hand PM2S gives them (far out of range: the other staff).
+times, those under written bars frozen, later ones replaced by each new analysis, brought onto the written beat's
+level and phase first (a reply that counts a stretch at twice or half the tempo, or reads the beat half a beat
+off, once turned the rest of a phrase to double time; BeatGrid.merge, _same_level).  After a break of 3+ beats the
+playing resumes on a beat.  A phrase with nothing metric in it (even onsets, no accents: a test pattern's scale) is
+written in 4/4 on an even beat from its onsets.  A bar is written once its end is TRUST_S before the newest
+analysed note (the networks look both ways: the newest beats are the weakest).  Notes go to the treble or bass
+staff by the hand PM2S gives them, within 3 ledger lines of it; a single line (nothing else sounding) goes by
+register instead, keeping its staff within 2 ledger lines (the hand model calls a one-hand scale all left hand).
+Tests: tests/test_score.py and tests/test_score_roundtrip.py (scales in, a musically right score out).
 
 **Without it** (no venv, the worker died, or before its first reply when it never comes) the fallback pieces below
 write 4/4 with a beat clock of their own:
@@ -58,6 +64,9 @@ START_ONSETS, START_SPAN_S = 5, 1.5
 BUFFER_BEATS = 1.0
 SILENCE_S = 4.0
 SPLIT = 60                         # treble from middle C
+TREBLE_LOW, BASS_HIGH = 53, 67     # a hand's notes past these (3 ledger lines: F3, G4) go to the other staff
+MONO_OVERLAP_S = 0.1               # notes sounding together less than this (or a third of the shorter) are legato
+LINE_TREBLE_LOW, LINE_BASS_HIGH = 57, 64   # a single line changes staff only past 2 ledger lines (A3, E4)
 KEY_TAU_S = 30.0
 DYNAMICS = ((0.30, "pp"), (0.42, "p"), (0.54, "mp"), (0.66, "mf"), (0.80, "f"), (2.0, "ff"))
 # the analysis
@@ -74,6 +83,13 @@ REWRITE_RUN = 2                    # ... in this many replies running ...
 REWRITE_S = 45.0                   # ... while the phrase is younger than this
 HISTORY_S = 60.0                   # the phrase's notes kept (the analysis window, and a rewrite)
 TRUST_S = 1.2                      # a bar is written once it ends this long before the newest analysed note
+FAST_BEAT_S = 0.28                 # an analysed beat faster than this (215 bpm: a beat on every note of a fast
+                                   # run) is written at half the rate; jazz at 180 keeps its quarters
+PAUSE_BEATS = 3.0                  # a silence this long inside a phrase (a break): playing resumes on a beat
+PHASE_BEATS = 4                    # a reply's phase against ours: over our last this many written beats
+LOCAL_BEATS = 8                    # the tempo a merge goes by: our last this many beat intervals
+EVEN_IOI, EVEN_VEL = 0.08, 0.05     # metreless: onsets within 8 % of even, velocities within 0.05 of one swell
+BREAK_IOI = 2.5                    # metreless: a gap this many times the usual onset interval ends a run
 KEY_HOLD = 2                       # replies in a row a new key signature needs
 
 # Krumhansl-Kessler key profiles (major, minor), tonic first
@@ -215,26 +231,37 @@ class BeatGrid:
 
     def merge(self, times, keep_beat: Optional[int] = None) -> None:
         """Newer beats: keep ours up to beat number ``keep_beat`` (under written bars; None: up to where theirs
-        start), then theirs from after it."""
+        start), then theirs from after it, brought onto our beat level and phase: a reply may count the beat at
+        twice or half our tempo, or put it half a beat off ours (a scale's eighths read either way); spliced as
+        they come, either turned the rest of the phrase to double time."""
         if keep_beat is None:
             ibi0 = self.t[-1] - self.t[-2]
             keep_n = bisect.bisect_left(self.t, float(times[0]) - 0.5 * ibi0) if len(times) else len(self.t)
         else:
             keep_n = keep_beat + self.idx0 + 1
-        keep = self.t[:max(2, min(len(self.t), keep_n))]
-        ibi = keep[-1] - keep[-2]
-        new = [float(x) for x in times if x > keep[-1] + 0.5 * ibi]
-        out = keep + new
-        clean = out[:2]
-        for x in out[2:]:                      # a gap of whole beats (a missed beat) is filled evenly
-            gap = x - clean[-1]
-            last = clean[-1] - clean[-2]
-            k = int(round(gap / last)) if last > 0 else 1
-            if k >= 2 and abs(gap / k - last) < 0.25 * last:
-                clean += [clean[-1] + gap * i / k for i in range(1, k)]
-            if gap > 0.3 * last:
-                clean.append(x)
-        self.t = clean
+            while len(self.t) < keep_n:        # bars written past our last beat sit on its extrapolation (time()):
+                self.t.append(2 * self.t[-1] - self.t[-2])     # those beats are theirs now, or a gap opened
+        keep = self.t[:max(2, min(len(self.t), keep_n))]   # these stand as they are: bars may be written on them
+        ref = _median_ibi(keep[-(LOCAL_BEATS + 1):])      # the tempo now, not the phrase's
+        theirs = sorted(float(x) for x in times)
+        new = [x for x in theirs if x > keep[-1]]
+        # their phase against ours where both have beats (our last few written ones and their nearest, on the same
+        # playing; a circular mean): agreed on and over a quarter beat off, it's a different reading of where the
+        # beat falls, not rubato, and the written bars set it, so theirs move
+        ph = []
+        for b in keep[-PHASE_BEATS:]:
+            j = bisect.bisect_left(theirs, b)
+            near = min(theirs[max(0, j - 1):j + 1], key=lambda x: abs(x - b), default=None)
+            if near is not None and abs(near - b) < 0.6 * ref:
+                ph.append(2.0 * math.pi * (near - b) / ref)
+        if len(ph) >= 2 and new:
+            c, s = sum(math.cos(a) for a in ph), sum(math.sin(a) for a in ph)
+            off = math.atan2(s, c) / (2.0 * math.pi)
+            if math.hypot(c, s) / len(ph) > 0.5 and abs(off) > 0.25:
+                new = [x - off * ref for x in new if x - off * ref > keep[-1]]
+        # on our level from our last kept beat: extra beats dropped, missed ones (and rests) filled, out of step
+        # ones replaced by ours carried on
+        self.t = keep + _same_level([keep[-1]] + new, ref)[1:]
 
     def extend_before(self, t: float) -> None:
         """Carry the beats back until the first is at or before ``t`` (bar 0 keeps its numbering)."""
@@ -242,6 +269,55 @@ class BeatGrid:
             ibi = self.t[1] - self.t[0]
             self.t.insert(0, self.t[0] - ibi)
             self.idx0 += 1
+
+
+def _median_ibi(t: list) -> float:
+    d = sorted(b - a for a, b in zip(t, t[1:]) if b > a)
+    return d[len(d) // 2] if d else 0.5
+
+
+def _same_level(times: list, ref: float) -> list:
+    """Beats at one level, ``ref`` apart: the analysis may count a stretch (or all) of a window at twice or half
+    the tempo, or in threes against our twos (an even run of eighths reads any way), and a level that changes
+    inside the phrase wrote eighths as quarters from there on.  Only a sustained change is undone: two intervals
+    in a row of about half a beat lose the beat between them; one of about k beats (k >= 2) gets the missing ones
+    evenly; two in a row of about 1.5 have their span divided into ours.  Anything else is rubato and stands
+    (real timing displaces single beats, and a pushed beat stretches one by a third); a beat on top of another
+    (under 0.38) is dropped."""
+    out = [times[0]] if times else []
+    i = 1
+    while i < len(times):
+        x = times[i]
+        r = (x - out[-1]) / ref
+        r2 = (times[i + 1] - x) / ref if i + 1 < len(times) else None
+        if r < 0.38:                           # a beat on top of the last one
+            i += 1
+            continue
+        if r < 0.62 and r2 is not None and 0.38 < r2 < 0.62:
+            out.append(times[i + 1])           # double time: the beat between two half-beats goes
+            i += 2
+            continue
+        if 1.35 < r < 1.65 and r2 is not None and 1.35 < r2 < 1.65:
+            x = times[i + 1]                   # threes against our twos: their two beats are three of ours
+            i += 1
+            r = (x - out[-1]) / ref
+        k = int(round(r))
+        if r2 is None and (k == 0 or abs(r - k) >= 0.3):
+            break                              # a lone odd interval at the newest edge: nothing yet says which
+        if k >= 2 and abs(r - k) < 0.3:        # missed beats (or a rest): put back evenly
+            out += [out[-1] + (x - out[-1]) * j / k for j in range(1, k)]
+        out.append(x)
+        i += 1
+    return out
+
+
+def _steady_start(t: list, ref: float) -> list:
+    """A window's first beats are the networks' weakest (they look both ways): before the first 4 intervals in a
+    row within 15 % of ``ref``, they're dropped (BeatGrid.extend_before carries the steady beat back instead)."""
+    for i in range(max(0, len(t) - 4)):
+        if all(abs((t[j + 1] - t[j]) / ref - 1.0) < 0.15 for j in range(i, i + 4)):
+            return t[i:]
+    return t
 
 
 def split_value(pos: int, dur: int, beats: int = BEATS, unit: int = GRID) -> list[int]:
@@ -288,6 +364,8 @@ class ScoreBuilder:
         self.last_metre: Optional[tuple[int, int]] = None
         self.trusted_t: Optional[float] = None  # notes up to here are behind the analysis's weak edge
         self.hand: dict[int, int] = {}          # note id -> 0 treble / 1 bass, from the analysis
+        self.staff_of: dict[int, int] = {}      # note id -> the staff it was first written on (ties stay there)
+        self.line_staff: Optional[int] = None   # the staff a single line is on (None: no line running)
         self.history: collections.deque = collections.deque()   # the phrase's notes for the analysis
         self.req_t = -1e9
         self.req_id = 0
@@ -391,6 +469,9 @@ class ScoreBuilder:
             return
         t0 = float(rep["t0"])
         beats = [t0 + float(b) for b in rep.get("beats") or []]
+        even = self._metreless()
+        if even and len(beats) >= 4:
+            beats = self._even_beats()
         for k, h in (rep.get("hands") or {}).items():
             self.hand[int(k)] = int(h)
         self._key_vote(rep.get("key_fifths"))
@@ -418,18 +499,108 @@ class ScoreBuilder:
             played = (self.last_event_t or t0) - (self.phrase_t0 or t0)
             if m is None or played < MIN_DECIDE_S or (conf < DECIDE_P and played < MAX_DECIDE_S):
                 return
-            self.grid = BeatGrid(beats, 0)
+            g = beats if even else _steady_start(_same_level(beats, _median_ibi(beats)), _median_ibi(beats))
+            if even:                             # nothing says where the bars go: common time from the first note
+                L, unit, downbeat, conf = 4, GRID, self.phrase_t0, 1.0
+            if _median_ibi(g) < FAST_BEAT_S and unit == GRID and L in (2, 4) and len(g) >= 6:
+                # a beat on every note of a fast run (16ths at 66 bpm read as quarters at 264): half as many
+                # beats, the ones the downbeat is among, and the bar counted in them
+                j = min(range(len(g)), key=lambda i: abs(g[i] - downbeat)) if downbeat is not None else 0
+                g, L = g[j % 2::2], (4 if even else max(2, L // 2))
+            self.grid = BeatGrid(g, 0)
             self._set_metre(L, unit, downbeat, conf)
+            self._resume_on_beat()
             return
         self.grid.merge(beats, self.next_bar * self.beats)
+        self._resume_on_beat()
         family = (L == 3, unit == COMPOUND_UNIT)
         young = self.phrase_t0 is not None and (self.last_event_t or t0) - self.phrase_t0 < REWRITE_S
-        if m is not None and young and family != (self.beats == 3, self.unit == COMPOUND_UNIT) and conf >= REWRITE_P:
+        if (m is not None and young and family != (self.beats == 3, self.unit == COMPOUND_UNIT) and conf >= REWRITE_P
+                and not even):
             self.flip_run += 1
             if self.flip_run >= REWRITE_RUN:
                 self._rewrite(beats, L, unit, downbeat, conf)
         else:
             self.flip_run = 0
+
+    def _resume_on_beat(self) -> None:
+        """After a silence of PAUSE_BEATS or more inside the phrase, playing resumes on a beat: a pause isn't
+        metered, and the beats the analysis puts in it are guesses that differ from reply to reply (spliced, they
+        put a scale's restart a 16th early).  The first onset after it moves its nearest beat onto it (the beats
+        after it are the analysis's, read from the playing), the beats across the silence spaced evenly; not when
+        it's a 16th or more off (an anticipation, an upbeat), and never a beat a written bar sits on."""
+        g = self.grid
+        frozen = self.next_bar * self.beats + g.idx0        # g.t up to this index is under written bars
+        notes = sorted(self.history, key=lambda n: n.t_on)
+        until = None                                        # the latest release so far
+        for n in notes:
+            if until is not None and n.t_on > until:
+                j1 = min(range(len(g.t)), key=lambda j: abs(g.t[j] - n.t_on))
+                ibi = _median_ibi(g.t[max(0, j1 - 4):j1 + 1])
+                gap = (n.t_on - until) / ibi
+                f = (n.t_on - g.t[j1]) / ibi
+                j0 = max(bisect.bisect_right(g.t, until) - 1, frozen)   # from the last beat it sounded on (or written)
+                if gap >= PAUSE_BEATS and 1e-3 < abs(f) < 0.2 and j1 > j0:
+                    g.t[j1] = n.t_on
+                    a, b = g.t[j0], g.t[j1]
+                    g.t[j0 + 1:j1] = [a + (b - a) * i / (j1 - j0) for i in range(1, j1 - j0)]
+            off = n.t_off if n.t_off is not None else n.t_on
+            until = off if until is None else max(until, off)
+
+    def _runs(self) -> tuple[list, float]:
+        """The phrase's chord onsets in runs (a gap of over BREAK_IOI times the usual starts a new one), and the
+        usual inter-onset interval."""
+        chords: list[Note] = []
+        for n in self.history:
+            if not chords or n.t_on - chords[-1].t_on > CHORD_S:
+                chords.append(n)
+        iois = sorted(b.t_on - a.t_on for a, b in zip(chords, chords[1:]))
+        med = iois[len(iois) // 2] if iois else 0.0
+        runs: list[list[Note]] = []
+        for c in chords:
+            if runs and c.t_on - runs[-1][-1].t_on <= BREAK_IOI * med:
+                runs[-1].append(c)
+            else:
+                runs.append([c])
+        return runs, med
+
+    def _even_beats(self) -> list:
+        """A metreless phrase's beat: the usual onset interval folded into the readable octave (as the fallback
+        clock does), each run on it from its first note, and a break between runs spaced evenly in whole beats.
+        The analysis reads phase slips into an even run (a beat half a beat early, then back), which wrote a
+        scale's last bar in 16ths."""
+        runs, med = self._runs()
+        P = _fold(med)
+        out = [runs[0][0].t_on - P]
+        for run in runs:
+            a, z = run[0].t_on, run[-1].t_on
+            if len(out) > 1:                   # the break before this run: whole beats, evenly
+                k = max(1, int(round((a - out[-1]) / P)))
+                out += [out[-1] + (a - out[-1]) * j / k for j in range(1, k)]
+            out += [a + j * P for j in range(int((z - a) / P) + 3)]
+        return out
+
+    def _metreless(self) -> bool:
+        """Nothing in the playing says where the bar lines go: the phrase's onsets all evenly spaced (between its
+        breaks) and no accents (each run's velocities constant, or one smooth swell), as in a test pattern's scale.  The metre
+        model then reads 3/4 into the middle of a scale as readily as 4/4; such material is written in common time
+        on an even beat."""
+        runs, med = self._runs()
+        chords = [c for r in runs for c in r]
+        if len(chords) < MIN_NOTES or med <= 0:
+            return False
+        iois = [b.t_on - a.t_on for r in runs for a, b in zip(r, r[1:])]
+        if any(abs(x / med - 1.0) > EVEN_IOI for x in iois):
+            return False
+        for run in runs:                         # each run's velocities against their least-squares line
+            n = len(run)
+            xs, vs = range(n), [c.vel for c in run]
+            mx, mv = (n - 1) / 2, sum(vs) / n
+            sxx = sum((x - mx) ** 2 for x in xs)
+            slope = sum((x - mx) * (v - mv) for x, v in zip(xs, vs)) / sxx if sxx else 0.0
+            if any(abs(v - (mv + slope * (x - mx))) > EVEN_VEL for x, v in zip(xs, vs)):
+                return False
+        return True
 
     def _set_metre(self, L: int, unit: int, downbeat: Optional[float], conf: float) -> None:
         """Bar lines on the grid: beat 0 is the downbeat (in step with ``downbeat``) at or before the phrase's first
@@ -458,6 +629,8 @@ class ScoreBuilder:
         start = (self.phrase_t0 or 0.0) - 0.01
         self.notes = [n for n in self.history if n.t_on >= start]
         self.next_bar = 0
+        self.staff_of.clear()
+        self.line_staff = None
         self.bar_number = self.phrase_bar_number
         self.last_dynamic = None
         self.rewrite_pending = True
@@ -573,7 +746,8 @@ class ScoreBuilder:
             out.append(self._build(self.next_bar, now, tl))
             self.next_bar += 1
         if self._silent(now):
-            last = max((self._q(tl.beat(n.t_off)) for n in self.notes if n.t_off is not None), default=0)
+            last = max((max(self._q(tl.beat(n.t_off)), self._q(tl.beat(n.t_on)) + 1)   # a note on the last bar line
+                        for n in self.notes if n.t_off is not None), default=0)
             while self.next_bar * self.bar_units < last:
                 out.append(self._build(self.next_bar, now, tl))
                 self.next_bar += 1
@@ -595,6 +769,8 @@ class ScoreBuilder:
         self.notes = []
         self.history.clear()
         self.hand.clear()
+        self.staff_of.clear()
+        self.line_staff = None
         self.pedal_events = []
         self.next_bar = 0
         self.last_chord_t = None
@@ -616,15 +792,36 @@ class ScoreBuilder:
                 return int(whole * GRID + GRID // 2)
         return int(round(b * self.unit))
 
-    def _staff(self, n: Note) -> int:
+    def _staff(self, n: Note, alone: bool = False, line: Optional[int] = None) -> int:
+        """Treble (0) or bass (1).  A single line (``alone``: nothing else sounds with it) goes by register: it
+        stays on ``line`` (the staff the line is on) until it passes 2 ledger lines, and starts split at middle C.
+        The hand model calls a one-hand scale all left hand (C5 on the bass staff) and its guesses flicker inside
+        a run.  Otherwise the analysed hand, within 3 ledger lines of its staff (no hand: split at middle C)."""
+        if alone:
+            if line == 0 and n.pitch >= LINE_TREBLE_LOW or line == 1 and n.pitch <= LINE_BASS_HIGH:
+                return line
+            return 0 if n.pitch >= SPLIT else 1
         h = self.hand.get(n.id)
         if h is None:
             return 0 if n.pitch >= SPLIT else 1
-        if h == 0 and n.pitch < 48:
+        if h == 0 and n.pitch < TREBLE_LOW:
             return 1
-        if h == 1 and n.pitch > 72:
+        if h == 1 and n.pitch > BASS_HIGH:
             return 0
         return h
+
+    @staticmethod
+    def _alone(n: Note, notes: list, now: float) -> bool:
+        """No other note sounds with ``n`` beyond a legato overlap."""
+        a0, a1 = n.t_on, n.t_off if n.t_off is not None else now
+        for m in notes:
+            if m is n:
+                continue
+            b0, b1 = m.t_on, m.t_off if m.t_off is not None else now
+            ov = min(a1, b1) - max(a0, b0)
+            if ov > max(MONO_OVERLAP_S, min(a1 - a0, b1 - b0) / 3):
+                return False
+        return True
 
     def _build(self, k: int, now: float, tl=None) -> Bar:
         tl = tl or self.timeline
@@ -635,16 +832,39 @@ class ScoreBuilder:
         lo, hi = k * bar_u, (k + 1) * bar_u
         segs: tuple[list, list] = ([], [])
         vels = []
+        after: list = [None, None]               # per staff: the next onset after this bar (16ths from its start)
+        # who sounds with whom, looked up in onset order (a phrase's first bars come in one batch: no all-pairs)
+        order = sorted(self.notes, key=lambda m: m.t_on)
+        ons = [m.t_on for m in order]
+        longest = max(((m.t_off if m.t_off is not None else now) - m.t_on for m in order), default=0.0)
+
+        def alone(n: Note) -> bool:
+            end = n.t_off if n.t_off is not None else now
+            return self._alone(n, order[bisect.bisect_left(ons, n.t_on - longest):bisect.bisect_left(ons, end)], now)
+
         for n in self.notes:
             s = self._q(tl.beat(n.t_on))
             e = self._q(tl.beat(n.t_off if n.t_off is not None else now))
             e = max(e, s + 1)
-            if e <= lo or s >= hi:
+            if s >= hi:
+                if s < hi + U:                  # only a next onset within a beat of the bar line matters
+                    st = self.staff_of.get(n.id)
+                    if st is None:              # not cached: its hand may still change before its own bar
+                        st = self._staff(n, alone(n), self.line_staff)
+                    if after[st] is None or s - lo < after[st]:
+                        after[st] = s - lo
                 continue
-            segs[self._staff(n)].append((max(s, lo) - lo, min(e, hi) - lo, n.pitch, n.id, s < lo, e > hi))
+            if e <= lo:
+                continue
+            staff = self.staff_of.get(n.id)
+            if staff is None:
+                one = alone(n)
+                staff = self.staff_of[n.id] = self._staff(n, one, self.line_staff)
+                self.line_staff = staff if one else None
+            segs[staff].append((max(s, lo) - lo, min(e, hi) - lo, n.pitch, n.id, s < lo, e > hi))
             if lo <= s < hi:
                 vels.append(n.vel)
-        staves = tuple(self._voice(sorted(sg), B, U) for sg in segs)
+        staves = tuple(self._voice(sorted(sg), B, U, after[i]) for i, sg in enumerate(segs))
         bar = Bar(index=self.bar_number, staves=staves, t_start=tl.time(lo / U), t_end=tl.time(hi / U),
                   empty=not any(segs), beats=B, unit=U, pos=k)
         self.bar_number += 1
@@ -658,23 +878,32 @@ class ScoreBuilder:
             p = self._q(tl.beat(t)) - lo
             if 0 <= p < bar_u:
                 bar.pedal.append((p, what))
-        # forget what can't reach later bars
-        self.notes = [n for n in self.notes if n.t_off is None or self._q(tl.beat(n.t_off)) > hi]
+        # forget what can't reach later bars (a short note whose onset rounds up onto the bar line is the next
+        # bar's even when its release rounds there too: it was dropped unwritten)
+        self.notes = [n for n in self.notes
+                      if n.t_off is None or self._q(tl.beat(n.t_off)) > hi or self._q(tl.beat(n.t_on)) >= hi]
+        live = {n.id for n in self.notes}
+        self.staff_of = {i: s for i, s in self.staff_of.items() if i in live}
         self.pedal_events = [(t, w) for t, w in self.pedal_events if self._q(tl.beat(t)) >= hi]
         return bar
 
     @staticmethod
-    def _voice(segs: list, beats: int = BEATS, unit: int = GRID) -> list[Event]:
-        """One staff's notes in a bar -> chords and rests covering the bar, split into notatable tied pieces."""
+    def _voice(segs: list, beats: int = BEATS, unit: int = GRID, after: Optional[int] = None) -> list[Event]:
+        """One staff's notes in a bar -> chords and rests covering the bar, split into notatable tied pieces.
+        ``after``: the staff's next onset after the bar (16ths from the bar's start; None: none yet), which the
+        bar's last note may run on to like any other next onset (not the bar line: a scale's last eighth isn't a
+        quarter)."""
         bar = beats * unit
         starts = sorted({s for s, *_ in segs})
         events: list[Event] = []
         pos = 0
         for i, s in enumerate(starts):
             group = [g for g in segs if g[0] == s]
-            nxt = starts[i + 1] if i + 1 < len(starts) else bar
+            last = i + 1 == len(starts)
+            nxt = bar if last else starts[i + 1]
             end = max(1, min(nxt, max(g[1] for g in group)) - s) + s
-            if end < nxt and (nxt - s <= unit or nxt - end < unit // 2):
+            to = after if last else nxt         # the next onset it may run on to (None: nothing follows yet)
+            if end < nxt and to is not None and (to - s <= unit or to - end < unit // 2):
                 end = nxt                       # short gaps aren't written as rests: the note runs to the next one
             if s > pos:
                 events += [Event(p, d) for p, d in _pieces(pos, s - pos, beats, unit)]
