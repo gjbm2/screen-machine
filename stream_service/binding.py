@@ -18,9 +18,12 @@ toward Maestro's colour (modulation.py), by mix x liveness.
 
 Pivot: with every input at its idle value a binding gives exactly its base (the preset's plain value, the eased
 easer value), so no bus, a stale bus or a quiet room shows the authored look; the music moves the param around
-it.  Modes: ``live`` every frame; ``section`` re-sampled when the session's epoch moves (a GOBO section change, a
-new energy band: at most every 8 s; at once when the bus comes or goes), then eased; ``cue`` once, when the item
-is instantiated (sessions.py samples it before setup, so params read only in setup take it too).  The held
+it.  The levels a binding reads are already centred on their own norm (modulation.Pivots, the adaptive pivot: each
+listed level re-centred on its running median while music plays, by its liveness, eased), so "idle" here means "at
+the music's usual level", and a level that never reaches 0.5 (drive, tempo, motion) no longer holds the param
+below its base.  Modes: ``live`` every frame; ``section`` re-sampled when the session's epoch moves (a GOBO section
+change, a new energy band: at most every 8 s; at once when the bus comes or goes), then eased; ``cue`` once, when the
+item is instantiated (sessions.py samples it before setup, so params read only in setup take it too).  The held
 samples (section, cue) read ``energy_slow`` as ``energy``: the fast energy is the live modes'.  While
 show_service's features arrive, a float ``section`` binding also follows the live value around its latch: out =
 latched + f x (live - latched), f = music_feed.Response.follow x the feed's liveness, the live part eased by

@@ -62,6 +62,9 @@ BIND_SIGNALS = ("level", "pulse", "pan", "tilt", "zoom", "activity", "activity_s
     + CLOCK_SIGNALS + FEED_SIGNALS
 NA_SIGNALS = ("zoom_slow", "motion", "sat", "warmth") + MUSIC_SIGNALS + PIANO_LEVELS + CLOCK_SIGNALS \
     + FEED_SIGNALS   # may be None (n/a)
+POSITIONAL = ("pan", "tilt", "zoom", "pan_slow", "tilt_slow", "zoom_slow")   # DMX positions: never re-centred
+PIVOT_SIGNALS = ("energy", "energy_slow", "drive", "punch", "tempo", "activity", "activity_slow") + FEED_SIGNALS \
+    + ("motion",)              # the adaptive pivot's defaults (music_feed.Response.pivot_signals; modulation.Pivots)
 FOLLOW_ATTRS = ("effect", "variant")      # discrete attributes whose changes the director can follow
 BEAT_FOLLOW = ("extrapolate", "off")
 
@@ -105,6 +108,12 @@ def signal_catalog() -> dict:
 
 def idle_value(signal: str) -> float:
     return 0.0 if signal in TRIGGERS else 0.5
+
+
+def pivotable(signal: str) -> bool:
+    """A level the adaptive pivot may centre on its own norm (modulation.Pivots): never a trigger, a phase or a DMX
+    position."""
+    return signal in BIND_SIGNALS and signal_kind(signal) == "level" and signal not in POSITIONAL
 
 
 def default_fixture(screen: str) -> str:
@@ -166,13 +175,24 @@ class BeatFollower:
     * Locks at confidence >= 0.7 with >= 4 accepted edges; unlocks below 0.6, or when no edge has been
       accepted for max(2.5 P, 1.5 s).  That timeout also clears the hit history (P and the grid are kept), so
       edges that come back after a breakdown must earn the lock again (6 hits) rather than inherit it.
+    * :meth:`edge` takes edges from an onset detector instead (the beat ladder's onset follower, music_feed.py:
+      show_service's strong onsets at their acoustic time), skipping the Schmitt stage, with an optional period
+      ``hint`` (the show clock's, octave-folded, while its tempo is clear).  With a hint P is the hint's, trimmed by
+      the grid's own residuals (an alpha-beta loop: each hit moves the trim by pull^2 / (2 - pull) of its residual
+      per beat, bounded to +-``trim``: at the bound it is ``pinned``), so 25 ms-quantised, jittery edges never bias
+      the period the grid is extrapolated on, and a hint a little off the music still converges on its phase.  A hint
+      arriving on a grid of another period (fitted without one, or another octave) drops the hit history: the lock is
+      earned again on the hint's grid; on a grid of its period, the anchor moves by the recent edges' median residual
+      on the hint's grid (the trim starts from a fitted phase).  A re-fit counts edges in hint beats (1 to
+      ``refit_fold_hint`` apart) and sets the trim to its fitted period.  The grid, refractory, lock and timeout are
+      the same.
     """
 
     def __init__(self, *, rise: float = 0.6, fall: float = 0.3, floor: float = 0.1, peak_tau_s: float = 4.0,
                  window: int = 8, min_ms: float = 270.0, max_ms: float = 2000.0, tolerance: float = 0.12,
                  lock_at: float = 0.7, unlock_below: float = 0.6, min_edges: int = 4, pull: float = 0.25,
                  refit_edges: int = 7, refit_fold: int = 2, refit_tolerance: float = 0.08,
-                 refit_floor_ms: float = 30.0):
+                 refit_floor_ms: float = 30.0, refit_fold_hint: int = 4, trim: float = 0.05):
         self.rise, self.fall, self.floor, self.peak_tau = rise, fall, floor, peak_tau_s
         self.window = window
         self.min_s, self.max_s = min_ms / 1000.0, max_ms / 1000.0
@@ -180,6 +200,8 @@ class BeatFollower:
         self.min_edges, self.pull = min_edges, pull
         self.refit_edges, self.refit_fold = refit_edges, refit_fold
         self.refit_tolerance, self.refit_floor_s = refit_tolerance, refit_floor_ms / 1000.0
+        self.refit_fold_hint, self.trim = refit_fold_hint, trim
+        self.trim_gain = pull * pull / (2.0 - pull)  # the alpha-beta loop's beta for alpha = pull (Benedict-Bordner)
         self.intervals: collections.deque[float] = collections.deque(maxlen=window)
         self.hits: collections.deque[bool] = collections.deque(maxlen=window)
         self.recent: collections.deque[float] = collections.deque(maxlen=refit_edges)   # edge times, for a re-fit
@@ -194,10 +216,18 @@ class BeatFollower:
         self.rejected = 0
         self.refits = 0
         self.locked_since: Optional[float] = None
+        self.hint: Optional[float] = None         # edge(): the period to hold to (the show clock's beat), or None
+        self.trim_c = 0.0                         # edge(): the hint's trim (relative, within +-trim)
+        self.strength = 0.0                       # edge(): the last accepted edge's strength (the inputs API)
 
     @property
     def confidence(self) -> float:
         return sum(self.hits) / self.window
+
+    @property
+    def pinned(self) -> bool:
+        """edge(): the trim is at its bound (the hint is further off the music than ``trim``: the grid drifts)."""
+        return self.hint is not None and abs(self.trim_c) >= self.trim - 1e-9
 
     def timeout(self) -> float:
         return max(2.5 * self.period, 1.5) if self.period else 1.5
@@ -209,11 +239,7 @@ class BeatFollower:
         """One input sample at time t (s).  Returns True if it was an accepted beat edge."""
         dt = 0.0 if self.t_prev is None else min(0.1, max(0.0, t - self.t_prev))
         self.t_prev = t
-        if (self.is_locked or self.hits) and self.last_edge is not None and t - self.last_edge > self.timeout():
-            # timed out (no edge for max(2.5 P, 1.5 s)): unlocked, and the hit history is stale
-            self.is_locked, self.locked_since = False, None
-            self.hits.clear()
-            self.recent.clear()
+        self._expire(t)
         self.peak = max(value, self.peak * math.exp(-dt / self.peak_tau))
         x = value / max(self.peak, self.floor)
         if x <= self.fall:
@@ -231,6 +257,47 @@ class BeatFollower:
         self._edge(te)
         return True
 
+    def edge(self, t: float, strength: float = 1.0, hint: Optional[float] = None) -> bool:
+        """One edge from an onset detector at time t (s), its strength 0-1: no Schmitt stage.  ``hint``: the period
+        (s) to hold to (the show clock's beat; None or out of 270-2000 ms: the follower's own).  Returns True if it
+        was accepted (not inside the refractory period, nor out of order)."""
+        h = hint if hint is not None and self.min_s <= hint <= self.max_s else None
+        self._expire(t)
+        if h is not None and self.hint is None:
+            self.trim_c = 0.0                         # a new stretch on the clock's period: trimmed afresh ...
+            if self.anchor is not None and self.period is not None and abs(self.period - h) <= self.tolerance * h:
+                # ... from a phase fitted to the recent edges on its grid (the median residual within +-P/4), so the
+                # anchor's drift on the old period never pumps the trim
+                rs = [r for e in self.recent
+                      for r in (e - self.anchor - round((e - self.anchor) / h) * h,) if abs(r) <= 0.25 * h]
+                if rs:
+                    self.anchor += statistics.median(rs)
+        if h is not None and self.period is not None and abs(self.period - h) > self.tolerance * h:
+            # a grid on another period (fitted with no hint, or another octave): its phase is not the hint's beat
+            self.is_locked, self.locked_since = False, None
+            self.hits.clear()
+            self.recent.clear()
+            self.intervals.clear()
+            self.period = h
+        self.hint = h
+        if self.last_edge is not None:
+            refractory = 0.35 * self.period if self.is_locked and self.period else 0.150
+            if t - self.last_edge < refractory:
+                self.rejected += 1
+                return False
+        if self.period is None and self.hint is not None:
+            self.period = self.hint                   # the first interval folds on the clock's beat
+        self.t_prev, self.strength = t, strength
+        self._edge(t)
+        return True
+
+    def _expire(self, t: float) -> None:
+        if (self.is_locked or self.hits) and self.last_edge is not None and t - self.last_edge > self.timeout():
+            # timed out (no edge for max(2.5 P, 1.5 s)): unlocked, and the hit history is stale
+            self.is_locked, self.locked_since = False, None
+            self.hits.clear()
+            self.recent.clear()
+
     def _fold(self, interval: float) -> Optional[float]:
         if self.period is None:
             return interval if self.min_s <= interval <= self.max_s else None
@@ -242,7 +309,7 @@ class BeatFollower:
 
     def _edge(self, t: float) -> None:
         self.accepted += 1
-        hit, pred = False, None
+        hit, pred, k = False, None, 1
         if self.period is not None and self.anchor is not None:
             k = max(1, round((t - self.anchor) / self.period))
             pred = self.anchor + k * self.period
@@ -258,6 +325,9 @@ class BeatFollower:
             self.recent.clear()
         self.recent.append(t)
         if not (pred is not None and not hit and self._refit()):
+            if hit and self.hint is not None:         # edge(): the residual trims the hint (alpha-beta, bounded)
+                c = self.trim_c + self.trim_gain * (t - pred) / (k * self.hint)
+                self.trim_c = -self.trim if c < -self.trim else self.trim if c > self.trim else c
             self._update_period()
             if hit:
                 self.anchor = pred + self.pull * (t - pred)
@@ -274,25 +344,32 @@ class BeatFollower:
             med = statistics.median(self.intervals)
             inliers = [i for i in self.intervals if abs(i - med) <= self.tolerance * med]
             self.period = sum(inliers) / len(inliers) if inliers else med
+        if self.hint is not None:                     # edge(): the clock's period, trimmed by the grid's residuals
+            self.period = self.hint * (1.0 + self.trim_c)
 
     def _refit(self) -> bool:
         """The latest edge missed the grid: if the last ``refit_edges`` edges are evenly spaced (1 to
-        ``refit_fold`` beats apart), re-fit the grid to them (intervals, period, anchor, hit history).
-        -> whether it did."""
+        ``refit_fold`` beats apart; with a hint, 1 to ``refit_fold_hint`` hint beats and within ``tolerance`` of
+        it), re-fit the grid to them (intervals, period, anchor, hit history).  -> whether it did."""
         e = list(self.recent)
         if len(e) < self.refit_edges:
             return False
         d = [b - a for a, b in zip(e, e[1:])]
-        base = min(d)
+        h = self.hint
+        base = min(d) if h is None else h
         if base <= 0:
             return False
         ks = [round(x / base) for x in d]
-        if max(ks) > self.refit_fold:
+        if min(ks) < 1 or max(ks) > (self.refit_fold if h is None else self.refit_fold_hint):
             return False
         p = (e[-1] - e[0]) / sum(ks)
         tol = max(self.refit_tolerance * p, self.refit_floor_s)
         if not self.min_s <= p <= self.max_s or any(abs(x - k * p) > tol for x, k in zip(d, ks)):
             return False
+        if h is not None and abs(p - h) > self.tolerance * h:
+            return False
+        if h is not None:                             # the fitted period, as the hint's trim (bounded)
+            self.trim_c = max(-self.trim, min(self.trim, p / h - 1.0))
         self.intervals.clear()
         self.intervals.extend(x / k for x, k in zip(d, ks))
         self._update_period()

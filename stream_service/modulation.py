@@ -24,8 +24,26 @@ The runtime merges the session's music features (``extra``, set by the loop each
 n/a inputs in and out (``avail``, tau 2 s), keeps the section epoch, and eases Maestro's colour into cosine rows
 (``maestro_rows``) for the colour form: a palette-driven scene (``session_palette()``) gets its palette blended
 toward the room's colour by the binding's mix, and a GLSL scene's ``palette_mix`` is raised to that amount.
-While show_service's features arrive (music_feed.Response): ``energy`` is theirs, fast; an onset pulse stands in
-for ``beat`` while the clock is not sure; and section mappings follow the live value by ``follow``.
+While show_service's features arrive (music_feed.Response): ``energy`` is theirs, fast; ``beat`` comes from the
+beat ladder (music_feed.BeatLadder: one source at the frame's photon time, every pulse x "music present"); and
+section mappings follow the live value by ``follow``.
+
+The adaptive pivot (:class:`Pivots`; owner, 17 Oct): a binding pivots on its base at the input's idle 0.5, but drive
+(max ~0.45), tempo and motion never reach 0.5, so rate mappings ran scenes BELOW their authored base all song.  Each
+level listed in Response.pivot_signals now centres on its own norm: the running median of its values while music
+plays (sampled once a second while the bindings' energy is at least pivot_present_at and the level is fully live;
+silence, n/a and fades hold the ring, so a quiet room never drags the norm to 0; over pivot_window_s; it applies once
+there are pivot_min_s of them, before that the fixed 0.5).  It re-centres the signal the bindings read,
+x' = clamp01(x - w (median - 0.5)) with w the signal's liveness (x = 0.5 + w (v - 0.5), so x' = 0.5 + w (v - median)):
+at its norm a binding gives its base, and with the bus down (w 0) the signal is idle and the binding gives its base as
+before.  The offset is eased (tau pivot_ease_s) in when a median first applies, across a median's moves and out when
+the pivot is switched off: never a step.  Re-centring rather than
+moving each binding's x0 to the median: one O(listed signals) pass per frame here instead of a per-binding blend
+re-evaluation, it reaches every binding that reads the signals (v1, v2 live / section / cue, kicks' ``by``, effects
+and the master bus) the same way, and x0 at the median would break the idle invariant whenever the bus goes (signals
+ease to 0.5, x0 stays at the median) unless every binding re-evaluated its x0 with the liveness each frame.  The
+cost: the clamp saturates an input more than 0.5 from its norm (rare for the low-range levels that need it).  Never
+triggers, phases or DMX positions (inputs.pivotable).
 
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
@@ -35,6 +53,8 @@ assignments, atomic under the GIL.  Bindings change through the engine's command
 """
 from __future__ import annotations
 
+import bisect
+import collections
 import math
 from typing import Any, Optional
 
@@ -43,12 +63,15 @@ import numpy as np
 import logging
 
 from . import binding, music_feed, palettes, piano
-from .inputs import BIND_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value
+from .inputs import BIND_SIGNALS, FEED_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value, pivotable
+from .piano import PIANO_LEVELS
 from .plugins.base import ParamError, is_bindable
 
 log = logging.getLogger("stream_service.modulation")
 AVAIL_TAU_S = 2.0
 MAESTRO_EASE_S = 3.0
+PIVOT_SAMPLE_S = 1.0       # the adaptive pivot samples each listed level once a second ...
+PIVOT_LIVE = 0.99          # ... while its source is this live (and, n/a-able, fully available): else held
 
 
 def _finite(v: Any, what: str) -> float:
@@ -131,6 +154,112 @@ def split_bindings(props: dict[str, dict], params: Optional[dict], base_bindings
     return plain, bindings
 
 
+def _pivot_source(k: str) -> str:
+    """Whose liveness eases a signal to idle in begin_frame (Pivots weighs its offset by it)."""
+    return "music" if k in MUSIC_SIGNALS else "feed" if k in FEED_SIGNALS else \
+        "act" if k in ("activity", "activity_slow") else "piano" if k in PIANO_LEVELS else "desk"
+
+
+class Pivots:
+    """The adaptive pivot (the module docstring): each listed level's running median over a bounded ring (sorted
+    insert / remove at 1 Hz), and the re-centring of the signals the bindings read (O(listed) per frame).  Per session
+    (each session's own signal stream); the render thread samples, eases and re-centres, the loop thread re-centres
+    too (sessions.Session._cue_signals, for cue mappings) and reads ``view`` (the inputs API): ``off`` and ``view`` are
+    replaced whole when their keys change, an ``off`` entry's eased offset is a float set in place, ``w`` holds plain
+    floats."""
+
+    def __init__(self) -> None:
+        self._cfg: Any = None
+        self.need = 1                             # samples before a median applies (pivot_min_s)
+        self.ease_s = 3.0                         # the offsets' tau (pivot_ease_s)
+        self.present_at = 0.0                     # samples only while the bindings' energy is this (pivot_present_at)
+        self.rings: dict[str, tuple[collections.deque, list]] = {}   # signal -> (samples in order, sorted)
+        self.src: dict[str, str] = {}             # signal -> its liveness source (_pivot_source)
+        self.w: dict[str, float] = {"music": 0.0, "feed": 0.0, "act": 0.0, "piano": 1.0, "desk": 0.0}
+        self.tgt: dict[str, float] = {}           # applied: signal -> median - 0.5 (at the 1 Hz sample)
+        self.off: dict[str, list] = {}            # signal -> [source, offset eased to tgt (0 once not applied)]
+        self.view: dict = {}                      # signal -> {median, applied, samples}
+        self._t: Optional[float] = None           # the last sample
+        self._tf: Optional[float] = None          # the last frame
+
+    @property
+    def active(self) -> bool:
+        return bool(self.rings or self.off)
+
+    def configure(self, r: Any) -> None:
+        """music_feed.Response's pivot_*: rebuilt only when they change (hot reload; the samples are kept)."""
+        self.ease_s, self.present_at = r.pivot_ease_s, r.pivot_present_at
+        key = (r.pivot_on, r.pivot_window_s, r.pivot_min_s, r.pivot_signals)
+        if key == self._cfg:
+            return
+        self._cfg = key
+        n = max(1, int(r.pivot_window_s / PIVOT_SAMPLE_S))
+        self.need = min(n, max(1, math.ceil(r.pivot_min_s / PIVOT_SAMPLE_S)))
+        rings = {}
+        for k in (sorted(k for k in r.pivot_signals if pivotable(k)) if r.pivot_on else ()):
+            old = self.rings.get(k)
+            vals = list(old[0])[-n:] if old is not None else []
+            rings[k] = (collections.deque(vals, maxlen=n), sorted(vals))
+        self.rings, self.src = rings, {k: _pivot_source(k) for k in rings}
+        self._publish()
+
+    def step(self, sig: dict, avail: dict, now: float, present: bool = True) -> None:
+        """Render thread, once per frame (while ``active``): a sample of each listed level once a second (only while
+        the music is ``present`` and the level fully live: silence, n/a or fading holds the ring), the offsets eased
+        toward their medians (out, once not applied), then the re-centring."""
+        if self._t is None or now - self._t >= PIVOT_SAMPLE_S or now < self._t:
+            self._t = now
+            w = self.w
+            for k, (ring, srt) in (self.rings.items() if present else ()):
+                v = sig.get(k)
+                if v is None or w[self.src[k]] < PIVOT_LIVE or avail.get(k, 1.0) < PIVOT_LIVE:
+                    continue
+                if len(ring) == ring.maxlen:      # the oldest leaves the sorted copy too
+                    del srt[bisect.bisect_left(srt, ring[0])]
+                ring.append(v)
+                bisect.insort(srt, v)
+            self._publish()
+        dt = 0.0 if self._tf is None else min(0.5, max(0.0, now - self._tf))
+        self._tf = now
+        a = 1.0 if self.ease_s <= 0.0 else 1.0 - math.exp(-dt / self.ease_s)
+        tgt, gone = self.tgt, None
+        for k, e in self.off.items():
+            e[1] += (tgt.get(k, 0.0) - e[1]) * a
+            if k not in tgt and abs(e[1]) < 1e-4:
+                gone = (gone or []) + [k]
+        if gone:
+            self.off = {k: e for k, e in self.off.items() if k not in gone}
+        self.apply(sig)
+
+    def apply(self, sig: dict) -> None:
+        """Re-centre the applied signals in ``sig`` in place: x' = clamp01(x - w (median - 0.5)), eased."""
+        w = self.w
+        for k, (src, off) in self.off.items():
+            v = sig.get(k)
+            if v is not None:
+                v -= w[src] * off
+                sig[k] = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+
+    def shift(self, k: str) -> float:
+        """What apply subtracts from signal ``k`` now (the inputs API)."""
+        e = self.off.get(k)
+        return 0.0 if e is None else self.w[e[0]] * e[1]
+
+    def _publish(self) -> None:
+        tgt, view = {}, {}
+        for k, (ring, srt) in self.rings.items():
+            n = len(srt)
+            med = None if n == 0 else srt[n // 2] if n % 2 else 0.5 * (srt[n // 2 - 1] + srt[n // 2])
+            applied = med is not None and n >= self.need
+            if applied:
+                tgt[k] = med - 0.5
+            view[k] = {"median": None if med is None else round(med, 4), "applied": applied,
+                       "samples": n}
+        self.tgt, self.view = tgt, view
+        if any(k not in self.off for k in tgt):  # a newly applied level eases in from 0
+            self.off = {**self.off, **{k: [self.src[k], 0.0] for k in tgt if k not in self.off}}
+
+
 class SessionRuntime:
     """Per-session modulation state shared by the session's scene sources."""
 
@@ -167,7 +296,9 @@ class SessionRuntime:
         # section mappings following the live value (binding.Bound.step; music_feed.Response), set each frame
         self.follow = 0.0
         self.response: Any = music_feed.Response()
-        self.beat_source: Optional[str] = None    # "clock" | "onset" | None (music_feed.blend)
+        self.beat_source: Optional[str] = None    # the ladder's rung, else blend's ("clock" | "onset" | None)
+        self.ladder = music_feed.BeatLadder()     # the bindings' beat from one source at photon time
+        self.pivots = Pivots()                    # the adaptive pivot (per session)
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -197,18 +328,26 @@ class SessionRuntime:
         w = self.sampler.w if self.sampler is not None else 0.0
         wf = 0.0
         ex = self.extra
-        fast, follow, src = None, 0.0, None
+        fast, follow, src, wa = None, 0.0, None, w
         feed = self.feed
         if feed is not None:                    # the room's sound and beat clock (music_feed.py) over the desk's
             wf = feed.liveness(now)
             lead = self.sampler.lead if self.sampler is not None else 0.0
-            src = music_feed.blend(sig, feed.snapshot(), wf, self.clock_sig.sample(feed.clock(now), now + lead),
-                                   feed.levels(now), feed.onset_pulse(now))
             r = feed.response.cfg
+            snap, clk = feed.snapshot(), feed.clock(now)
+            csig = self.clock_sig.sample(clk, now + lead)
+            src = music_feed.blend(sig, snap, wf, csig, feed.levels(now), feed.onset_pulse(now))
+            if r.ladder_on and wf > 0.0:        # the bindings' beat: one source at photon time
+                desk = bool(sig.get("beat_locked")) and getattr(self.sampler, "follow", None) == "extrapolate"
+                src = self.ladder.resolve(sig, feed, clk, csig, self.clock_sig, wf, now, now + lead, desk)
+            else:                               # the feed gone: the desk's (or nothing), as blend left it
+                self.ladder.active = False
             follow = r.follow * wf if wf > 0.0 else 0.0
             self.response = r
             if ex.get("music_w") is not None:   # the session's music is show_service's: its energy, at its rate
                 fast = feed.energy_now(now)
+            if snap is not None and wf > 0.0:   # activity: the desk's, eased to the feed's (blend)
+                wa = wf + (1.0 - wf) * w
         self.follow, self.beat_source = follow, src
         wm = ex.get("music_w")
         wm = w if wm is None else wm
@@ -225,6 +364,13 @@ class SessionRuntime:
             a += ((1.0 if v is not None else 0.0) - a) * av
             self.avail[k] = a
             sig[k] = self._lastv.get(k) if a > 1e-3 else None
+        pv = self.pivots                        # the adaptive pivot: each listed level centred on its own norm
+        pv.configure(self.response)
+        if pv.active:
+            pw = pv.w
+            pw["music"], pw["feed"], pw["act"], pw["desk"] = wm, wf, wa, w
+            e = sig.get("energy")               # music present: the bindings' energy (n/a: liveness alone)
+            pv.step(sig, self.avail, now, e is None or e >= pv.present_at)
         hi = max(w, wf) >= 0.5
         live_ep = self.epoch[1] + (1 if hi != self._live_hi else 0)
         self._live_hi = hi
@@ -242,6 +388,37 @@ class SessionRuntime:
     def masters(self) -> dict:
         return {"speed": round(self.speed, 4), "depth": round(self.depth, 4),
                 "speed_target": round(self.speed_target, 4), "depth_target": round(self.depth_target, 4)}
+
+    def inputs_view(self, out: dict, now: float) -> None:
+        """The inputs API (loop thread, sessions.Session.inputs; ``out`` in place), off the render thread's last
+        frame: while the beat ladder runs (the ladder on and the feed live), ``derived.beat_source`` is its rung and
+        ``derived.beat`` its beat; ``ladder`` (rung, pulses_per_min, presence, the tempo-clear test and the onset
+        follower) and ``pivot`` (each listed level's median, whether it applies, the shift in effect and the value the
+        bindings read)."""
+        feed, lad, pv = self.feed, self.ladder, self.pivots
+        r = feed.response.cfg if feed is not None else self.response
+        running = feed is not None and r.ladder_on and lad.active and self._t is not None
+        if running:
+            d = out.setdefault("derived", {})
+            d["beat_source"], d["beat"] = lad.rung, round(lad.beat, 4)
+        s = feed.snapshot() if feed is not None else None
+        g = s.grid if s is not None else None
+        out["ladder"] = {
+            "on": bool(r.ladder_on), "running": running, "rung": lad.rung if running else None,
+            "pulses_per_min": lad.pulses_per_min if running else None, "presence": round(lad.presence, 3),
+            "tempo_clear": feed.tempo_clear(now) if feed is not None else False,
+            "clear_bpm": None if s is None or s.clear_bpm is None else round(s.clear_bpm, 2),
+            "onset_follower": None if g is None else {
+                "locked": g.locked(now), "period_ms": None if g.period is None else round(g.period * 1000.0, 1),
+                "confidence": round(g.confidence, 3), "edges": g.accepted, "refits": g.refits,
+                "held_to_clock": g.hint is not None, "trim_pinned": g.pinned,
+                "last_edge_age_ms": None if g.last_edge is None else round((now - g.last_edge) * 1000.0, 1)}}
+        sig = self.signals
+        out["pivot"] = {"on": bool(r.pivot_on), "window_s": r.pivot_window_s, "min_s": r.pivot_min_s,
+                        "present_at": r.pivot_present_at, "ease_s": r.pivot_ease_s,
+                        "signals": {k: {**v, "shift": round(pv.shift(k), 4),
+                                        "value": None if sig.get(k) is None else round(sig[k], 4)}
+                                    for k, v in pv.view.items()}}
 
 
 class Modulation:

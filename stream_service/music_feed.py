@@ -26,7 +26,20 @@ samples, is ``energy_slow``); with no sure beat (neither the clock's gate "beat"
 bindings' ``beat`` is a pulse of 1 at each strong onset (strength relative to the loudness gate; strong: over a
 fixed level, or well over its own recent mean, so sparse quiet music pulses too), decaying (``onset_pulse``; never
 for cuts: those use only the sure clock, SessionManager.music_grid); and ``tempo`` takes the clock's bpm, eased,
-once it is fairly sure (``tempo_bpm``: not "searching", conf >= tempo_conf), the phases keep their gate.  Section
+once it is fairly sure (``tempo_bpm``: not "searching", conf >= tempo_conf), the phases keep their gate.  The
+arrival-timed onset pulse lands a whole render->photon lead late on glass, so it ships off: the beat ladder
+(``BeatLadder``, per session, on by default; it wins when both are on) gives the bindings' ``beat`` (and the macros'
+``pulse``, bound to it) from one source at the frame's photon time (now + lead), in order: (a) the clock at gate
+"beat"; (b) the desk follower, locked and extrapolating (never overridden below); (c) the clock at gate "dmx": its own
+beat phase as a pulse, ``dmx_depth`` deep; (d) the tempo clear but the phase unsure (the clock's stability >=
+``stability_min``, its folded bpm within ``steady_pct`` % over ``steady_s``): the onset follower (a second
+inputs.BeatFollower, fed every strong rising onset above at its acoustic time, its period held to the clock's), once
+locked on that period (its trim not pinned), extrapolated, ``onset_depth`` deep; (e) else no pulse.  Every rung's pulse x "music present"
+(features.energy over ``present_at``, instant on, letting go with tau ``presence_release_s``; also once features stop
+arriving), so pulses stop about a lead after the music.  The shallow rungs never cross the GLSL effects' event
+threshold (pulse > 0.5) at a depth <= 0.5, and at 0.6 only on a frame within ~33 ms of the beat: an unsure phase
+moves the bindings but fires few or no discrete events.  Cuts, beat_locked, auto.snap and cue gains keep the sure
+clock only (rung a).  The adaptive pivot's settings (``pivot_*``: modulation.Pivots) live here too.  Section
 mappings follow the live value around their latch (binding.Bound.step, by ``follow`` x the feed's liveness; never
 integers, gobo inputs, snaps (ease 0), the latched families / bindings; a regional param no faster than
 ``regional_ease_s``, binding.parse_v2's rule for live on one).  When the features stop, all of it fades out with
@@ -36,6 +49,7 @@ Readers take ``snapshot()`` (an immutable FeedSnap swapped whole, atomic under t
 """
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import math
@@ -44,7 +58,7 @@ import time
 from dataclasses import dataclass, fields, replace
 from typing import Any, Optional
 
-from .inputs import MUSIC_SIGNALS
+from .inputs import MUSIC_SIGNALS, PIVOT_SIGNALS, BeatFollower, pivotable
 
 log = logging.getLogger("stream_service.music_feed")
 
@@ -54,6 +68,11 @@ SLOW_TAU_S = 2.0           # "activity_slow": the desk's ACTIVITY smoothing
 RECOVER_S, FADE_S = 1.0, 2.0   # liveness: up over 1 s when features resume, down over 2 s after FRESH_S
 CLOCK_FRESH_S = 1.5        # music.clock comes at 10 Hz and on every re-anchor
 BEAT_DECAY_S = 0.18        # as inputs.BEAT_DECAY_S: the beat envelope after each predicted beat
+FEAT_T_SANE_S = 2.0        # a features t_ms (acoustic, CLOCK_MONOTONIC) further than this from arrival: use arrival
+FEAT_DT_S = 0.04           # the features' own interval (25 Hz) when their t_ms gives none
+PRESENT_STALE_S = 0.25     # no features for this long (show_service down, not silent): "music present" lets go too
+PULSE_JUMP = 0.4           # the ladder counts a pulse when the bindings' beat jumps up this much of the rung's peak
+PULSE_MIN = 0.02           # ... and never less
 
 
 def _c01(x: float) -> float:
@@ -110,6 +129,21 @@ class Response:
     tempo_ease_s: float = 2.0       # ... eased with this tau until the clock is sure (its guesses wander) ...
     tempo_fold_lo: float = 70.0     # ... and folded by octaves into [fold_min, fold_max): a half-time lock (53)
     tempo_fold_hi: float = 180.0    # reads as its real tempo (106), not as "slow"
+    ladder_on: bool = True          # the bindings' beat from one source at photon time (BeatLadder; wins over onset_on)
+    dmx_depth: float = 0.5          # ... rung c, the clock at gate "dmx": its beat phase as a pulse this deep ...
+    onset_depth: float = 0.6        # ... rung d, the onset follower's grid this deep, while the tempo is clear: ...
+    stability_min: float = 0.6      # ... the clock's stability at least this ...
+    steady_pct: float = 3.0         # ... and its folded bpm within this many % ...
+    steady_s: float = 4.0           # ... over this long; ...
+    onset_lag_ms: float = 10.7      # ... an onset timed this much before its features' hop (dsp's flux peak lag)
+    present_at: float = 0.03        # every rung's pulse x "music present": features.energy / this (capped at 1) ...
+    presence_release_s: float = 0.1  # ... instant on, letting go with this tau
+    pivot_on: bool = True           # level inputs centre on their own norm (modulation.Pivots): the running median ...
+    pivot_window_s: float = 600.0   # ... of this many live seconds, sampled at 1 Hz (held while n/a) ...
+    pivot_min_s: float = 60.0       # ... once it has this many (before: the fixed 0.5) ...
+    pivot_present_at: float = 0.03  # ... sampled only while the music is present (the bindings' energy >= this) ...
+    pivot_ease_s: float = 3.0       # ... the re-centring eased in and out with this tau ...
+    pivot_signals: frozenset = frozenset(PIVOT_SIGNALS)   # ... for these levels (never triggers, phases, positions)
 
 
 # file block, key -> (Response field, lo, hi); a bool field takes true / false, a set field a list of strings
@@ -130,8 +164,19 @@ _RESPONSE_KEYS = {("energy", "on"): ("energy_on", None, None), ("energy", "attac
                   ("tempo", "on"): ("tempo_on", None, None), ("tempo", "min_conf"): ("tempo_conf", 0.0, 1.0),
                   ("tempo", "ease_s"): ("tempo_ease_s", 0.0, 10.0),
                   ("tempo", "fold_min"): ("tempo_fold_lo", 20.0, 200.0),
-                  ("tempo", "fold_max"): ("tempo_fold_hi", 40.0, 400.0)}
-_SETS = ("latched", "latched_bindings")
+                  ("tempo", "fold_max"): ("tempo_fold_hi", 40.0, 400.0),
+                  ("ladder", "on"): ("ladder_on", None, None), ("ladder", "dmx_depth"): ("dmx_depth", 0.0, 1.0),
+                  ("ladder", "onset_depth"): ("onset_depth", 0.0, 1.0),
+                  ("ladder", "stability_min"): ("stability_min", 0.0, 1.0),
+                  ("ladder", "steady_pct"): ("steady_pct", 0.1, 50.0), ("ladder", "steady_s"): ("steady_s", 0.0, 30.0),
+                  ("ladder", "onset_lag_ms"): ("onset_lag_ms", 0.0, 100.0),
+                  ("ladder", "present_at"): ("present_at", 0.0, 1.0),
+                  ("ladder", "release_s"): ("presence_release_s", 0.0, 2.0),
+                  ("pivot", "on"): ("pivot_on", None, None), ("pivot", "window_s"): ("pivot_window_s", 10.0, 7200.0),
+                  ("pivot", "min_s"): ("pivot_min_s", 0.0, 7200.0),
+                  ("pivot", "present_at"): ("pivot_present_at", 0.0, 1.0),
+                  ("pivot", "ease_s"): ("pivot_ease_s", 0.0, 60.0), ("pivot", "signals"): ("pivot_signals", None, None)}
+_SETS = ("latched", "latched_bindings", "pivot_signals")
 _BLOCKS = {blk for blk, _ in _RESPONSE_KEYS}
 
 
@@ -167,6 +212,13 @@ def parse_response(d: Any) -> tuple[Response, list[str]]:
         keep = getattr(Response, name)
         keep = sorted(keep) if isinstance(keep, frozenset) else keep
         errs.append(f"music_response: {blk}.{key} = {v!r} is not usable: keeping {keep!r}")
+    ps = vals.get("pivot_signals")
+    if ps is not None and any(not pivotable(k) for k in ps):    # triggers, phases, DMX positions: never pivoted
+        errs.append(f"music_response: pivot.signals {sorted(k for k in ps if not pivotable(k))} are not level "
+                    f"signals (ignored)")
+        vals["pivot_signals"] = frozenset(k for k in ps if pivotable(k))
+    if vals.get("pivot_min_s", Response.pivot_min_s) > vals.get("pivot_window_s", Response.pivot_window_s):
+        errs.append("music_response: pivot.min_s is over window_s: it applies once the window is full")
     return Response(**vals), errs
 
 
@@ -246,12 +298,40 @@ class FeedSnap:
     onset_mean: Optional[float] = None   # that strength's recent mean (Response.onset_mean_s; the relative threshold)
     onset_n: int = 0                     # onset pulses so far (the inputs API: the pulse rate)
     tempo_bpm: Optional[float] = None    # the clock's bpm while usable for the mappings' tempo (eased while unsure)
+    pres_target: Optional[float] = None  # "music present" from the last features (energy / present_at, capped) ...
+    pres_env: float = 0.0                # ... and the envelope at their arrival (letting go: MusicFeed.presence)
+    tempo_clear: bool = False            # the ladder's rung d: the clock's tempo is clear (stability, steady bpm) ...
+    clear_bpm: Optional[float] = None    # ... at this folded bpm (the onset follower's period hint)
+    grid: Any = None                     # the onset follower's grid (GridSnap), after its last edge
+    feat_ta: Optional[float] = None      # the last features' acoustic time (t_ms, s; None: not on this host's clock)
+
+
+@dataclass(frozen=True)
+class GridSnap:
+    """The onset follower's grid after its last edge (inputs.BeatFollower, fed on the loop thread), published whole."""
+    anchor: Optional[float] = None
+    period: Optional[float] = None
+    is_locked: bool = False
+    last_edge: Optional[float] = None
+    timeout: float = 1.5
+    confidence: float = 0.0
+    accepted: int = 0
+    refits: int = 0
+    hint: Optional[float] = None         # the clock's period it was held to at that edge (None: its own) ...
+    pinned: bool = False                 # ... its trim at the bound (the clock further off the music: not used)
+
+    def locked(self, now: float) -> bool:
+        return self.is_locked and self.period is not None and self.anchor is not None and \
+            self.last_edge is not None and now - self.last_edge <= self.timeout
 
 
 class MusicFeed:
     def __init__(self, response: Optional[ResponseFile] = None) -> None:
         self._snap: Optional[FeedSnap] = None
         self.response = response if response is not None else ResponseFile()
+        # loop thread only (published through the snapshot): the ladder's onset follower and the clock's recent bpm
+        self.follower = BeatFollower()
+        self._bpms: collections.deque = collections.deque(maxlen=1024)   # (arrival, folded bpm) over steady_s
 
     def snapshot(self) -> Optional[FeedSnap]:
         return self._snap
@@ -282,18 +362,28 @@ class MusicFeed:
             # pulses on the same hits as a loud one (no gate in the message: as published)
             on = _c01(_num(data.get("onset")) / max(_num(data.get("gate"), 1.0), r.onset_gate_floor))
             # a hit: as strong as Response.onset, or (quieter music, sparser hits) onset_rel x its recent mean, never
-            # under onset_floor; rising, and a gap after the last
+            # under onset_floor, and rising; the old pulse also wants a gap after its last (the ladder's follower
+            # paces its edges by its own refractory, so dense hits never alias to that gap's grid)
             om = None if gap else s.onset_mean
             thr = r.onset if om is None or r.onset_rel <= 0.0 else max(r.onset_floor, min(r.onset, r.onset_rel * om))
-            ot, n = s.onset_t, s.onset_n
-            if on >= thr and on > s.onset_last and (ot is None or now - ot >= r.onset_gap_s):
+            ot, n, grid = s.onset_t, s.onset_n, s.grid
+            hit = on >= thr and on > s.onset_last
+            if hit and (ot is None or now - ot >= r.onset_gap_s):
                 ot, n = now, n + 1
+            ta = _num(data.get("t_ms"), -1e12) / 1000.0
+            ta = ta if abs(ta - now) <= FEAT_T_SANE_S else None
+            if hit:                                  # every strong rising onset (the follower's refractory paces it)
+                grid = self._onset_edge(s, ta, now, dt, on)
             om = on if om is None else om + (on - om) * (1.0 - math.exp(-dt / r.onset_mean_s))
+            # "music present" (every ladder pulse x it): instant on, letting go with tau presence_release_s
+            pt = _c01(e / r.present_at) if r.present_at > 0.0 else 1.0
+            pe = pt if gap else max(pt, self._presence(s, now, r.presence_release_s) or 0.0)
             self._snap = replace(s, t=now, fresh_since=now if gap else s.fresh_since, energy=e, activity=act,
                                  activity_slow=slow, drive=_c01(_num(data.get("drive"))),
                                  punch=_c01(_num(data.get("punch"))),
                                  brightness=_c01(_num(data.get("brightness"), 0.5)), energy_fast=fast, onset_t=ot,
-                                 onset_last=on, onset_mean=om, onset_n=n)
+                                 onset_last=on, onset_mean=om, onset_n=n, pres_target=pt, pres_env=pe, grid=grid,
+                                 feat_ta=ta)
         elif kind == "music.clock":
             r = self.response.cfg
             bpm = fold_bpm(_num(data.get("bpm")), r.tempo_fold_lo, r.tempo_fold_hi)
@@ -307,7 +397,9 @@ class MusicFeed:
                 tb = bpm                             # a sure clock's bpm as it is; a first guess as it is
             else:                                    # an unsure one wanders (half / double): eased
                 tb += (bpm - tb) * (1.0 - math.exp(-max(0.0, now - s.clock_t) / r.tempo_ease_s))
-            self._snap = replace(s, clock=data, clock_t=now, tempo_bpm=tb)
+            clear = self._tempo_clear(s, data, bpm, now)
+            self._snap = replace(s, clock=data, clock_t=now, tempo_bpm=tb, tempo_clear=clear,
+                                 clear_bpm=bpm if clear else None)
         elif kind == "music.rhythm":
             self._snap = self._eased(s, {"density": _c01(_num(data.get("density")))}, now)
         elif kind == "music.harmony":
@@ -345,6 +437,53 @@ class MusicFeed:
             lt[k] = now
         return replace(s, levels=lv, levels_t=lt)
 
+    def _onset_edge(self, s: FeedSnap, ta: Optional[float], now: float, dt: float, strength: float) -> GridSnap:
+        """A strong onset into the onset follower at its acoustic time, its period held to the clock's while the tempo
+        is clear.  -> the follower's grid, to publish.  The time: ``ta`` (the features' t_ms, the latest hop's end)
+        less half the features' own interval (their t_ms step: the largest flux was somewhere in it; arrival steps
+        are jittery and batched on the loop) less onset_lag_ms (dsp's flux peaks when a transient reaches the fast
+        FFT's Hann middle, FAST_N / 4 / fs after it); arrival less half the arrival step when t_ms is missing or not
+        on this host's clock."""
+        r = self.response.cfg
+        if ta is not None:
+            d = ta - s.feat_ta if s.feat_ta is not None else 0.0
+            te = ta - 0.5 * (d if 0.0 < d <= 0.5 else FEAT_DT_S)
+        else:
+            te = now - 0.5 * dt
+        te -= r.onset_lag_ms / 1000.0
+        hint = 60.0 / s.clear_bpm if s.tempo_clear and s.clear_bpm and now - s.clock_t <= CLOCK_FRESH_S else None
+        f = self.follower
+        f.edge(te, strength, hint)
+        return GridSnap(f.anchor, f.period, f.is_locked, f.last_edge, f.timeout(), f.confidence, f.accepted, f.refits,
+                        f.hint, f.pinned)
+
+    def _tempo_clear(self, s: FeedSnap, data: dict, bpm: float, now: float) -> bool:
+        """The ladder's "tempo clear": the clock's stability >= stability_min and its folded bpm within steady_pct %
+        of this one for steady_s (fresh all along)."""
+        r = self.response.cfg
+        h = self._bpms
+        if bpm <= 0.0 or now - s.clock_t > CLOCK_FRESH_S:
+            h.clear()
+        if bpm <= 0.0:
+            return False
+        h.append((now, bpm))
+        while len(h) > 1 and h[1][0] <= now - r.steady_s:      # keep one at or before the window's start
+            h.popleft()
+        tol = r.steady_pct / 100.0 * bpm
+        return (h[0][0] <= now - r.steady_s and all(abs(b - bpm) <= tol for _, b in h)
+                and _num(data.get("stability")) >= r.stability_min)
+
+    @staticmethod
+    def _presence(s: Optional[FeedSnap], now: float, release_s: float) -> Optional[float]:
+        if s is None or s.pres_target is None:
+            return None
+        tgt, env, age = s.pres_target, s.pres_env, max(0.0, now - s.t)
+        p = tgt if env <= tgt or release_s <= 0.0 else \
+            tgt + (env - tgt) * math.exp(-min(age, PRESENT_STALE_S) / release_s)
+        if age > PRESENT_STALE_S:               # features stopped (show_service down, not silent): letting go too
+            p = 0.0 if release_s <= 0.0 else p * math.exp(-(age - PRESENT_STALE_S) / release_s)
+        return p
+
     def levels(self, now: float) -> dict:
         """FEED_SIGNALS that are fresh (room.direction's every 5 s: FRESH_S x 6), else absent."""
         s = self._snap
@@ -377,13 +516,33 @@ class MusicFeed:
         return s.energy_fast
 
     def onset_pulse(self, now: float) -> Optional[float]:
-        """The beat fallback at ``now``: 1 at each onset pulse, decaying; None with no feed yet (or off)."""
+        """The beat fallback at ``now``: 1 at each onset pulse, decaying; None with no feed yet (or off, or the beat
+        ladder on: it wins)."""
         s = self._snap
         r = self.response.cfg
-        if s is None or not r.onset_on:
+        if s is None or not r.onset_on or r.ladder_on:
             return None
         t = s.onset_t
         return math.exp(-(now - t) / r.onset_decay_s) if t is not None and now >= t else 0.0
+
+    def presence(self, now: float) -> Optional[float]:
+        """"Music present" 0-1 at ``now`` (every ladder pulse x it): None before any features."""
+        return self._presence(self._snap, now, self.response.cfg.presence_release_s)
+
+    def tempo_clear(self, now: float) -> bool:
+        """The clock's tempo is clear (stability, a steady bpm) and the clock fresh: the ladder's rung d may run."""
+        return self.clear_bpm(now) is not None
+
+    def clear_bpm(self, now: float) -> Optional[float]:
+        """The clock's folded bpm while its tempo is clear and the clock fresh, else None."""
+        s = self._snap
+        return s.clear_bpm if s is not None and s.tempo_clear and now - s.clock_t <= CLOCK_FRESH_S else None
+
+    def onset_grid(self, now: float) -> Optional[GridSnap]:
+        """The onset follower's grid while it is locked, else None."""
+        s = self._snap
+        g = s.grid if s is not None else None
+        return g if g is not None and g.locked(now) else None
 
     def tempo_bpm(self, now: float) -> Optional[float]:
         """The clock's bpm for the mappings' tempo while it is fresh and usable (FeedSnap.tempo_bpm), else None."""
@@ -446,16 +605,16 @@ class ClockSignals:
 
     def __init__(self) -> None:
         self._epoch: Any = None
-        self._mute_until: Optional[float] = None
+        self.mute_until: Optional[float] = None    # no beat before this beat number (the ladder's dmx rung too)
 
     def sample(self, c: Optional[dict], t_s: float) -> dict:
         if c is None:
             return {}
         ep = c.get("epoch")
         if self._epoch is not None and ep != self._epoch:
-            self._mute_until = math.floor(beat_at(c, t_s)) + 1     # silent until the next whole beat
+            self.mute_until = math.floor(beat_at(c, t_s)) + 1      # silent until the next whole beat
         self._epoch = ep
-        return clock_signals(c, t_s, self._mute_until)
+        return clock_signals(c, t_s, self.mute_until)
 
 
 def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict, levels: Optional[dict] = None,
@@ -463,9 +622,10 @@ def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict, levels: Op
     """Fold the room's music into a signals dict in place: activity / activity_slow eased over the desk's by the
     feed's liveness ``w``; the clock's signals (``clock``: clock_signals output) replace the follower's;
     ``levels`` (MusicFeed.levels) give the FEED_SIGNALS, eased to idle 0.5 with ``w`` (absent: n/a); with no sure
-    beat in ``clock`` and no locked desk follower, ``onset`` (MusicFeed.onset_pulse) is the beat, over the desk's by
-    ``w`` (the mappings' only: cuts never read the signal).  -> where the beat came from: "clock" | "onset" | None
-    (the desk's or nothing)."""
+    beat in ``clock`` and no locked desk follower, ``onset`` (MusicFeed.onset_pulse: None while the beat ladder is on)
+    is the beat, over the desk's by ``w`` (the mappings' only: cuts never read the signal).  A fallback never
+    overwrites a locked desk's beat (it predicts).  -> where the beat came from: "clock" | "onset" | None (the desk's
+    or nothing; BeatLadder.resolve then picks the rung)."""
     for k, v in (levels or {}).items():
         sig[k] = 0.5 + w * (v - 0.5) if w > 0.0 else None
     if snap is not None and w > 0.0:
@@ -493,3 +653,70 @@ def music_signals(sig: dict, ex: dict, w: float, fast: Optional[float] = None, w
         if k == "energy" and v is not None and fast is not None:
             v += wf * (fast - v)
         sig[k] = None if v is None else 0.5 + w * (v - 0.5)
+
+
+def dmx_beat(c: dict, t_s: float, mute_until: Optional[float] = None) -> float:
+    """The ladder's rung c: the clock's own beat phase at ``t_s`` as a pulse, exp(-phase x P / BEAT_DECAY_S) (gate
+    "dmx": the phase is fair, its beat not sure); 0 before ``mute_until`` (an epoch jump, ClockSignals)."""
+    bpm = _num(c.get("bpm"))
+    if bpm <= 0.0:
+        return 0.0
+    b = beat_at(c, t_s)
+    k = math.floor(b)
+    if mute_until is not None and k < mute_until:
+        return 0.0
+    return math.exp(-(b - k) * 60.0 / bpm / BEAT_DECAY_S)
+
+
+def grid_beat(g: GridSnap, t_s: float) -> float:
+    """A follower grid's beat envelope at ``t_s`` (the ladder's rung d, extrapolated to photon time)."""
+    k = math.floor((t_s - g.anchor) / g.period)
+    return math.exp(-(t_s - (g.anchor + k * g.period)) / BEAT_DECAY_S)
+
+
+class BeatLadder:
+    """The bindings' ``beat`` (and the macros' ``pulse``, bound to it) from one resolved source per frame, at the
+    frame's photon time (per session, render thread; the module docstring has the rungs).  Only the mappings read it:
+    cuts, beat_locked, auto.snap and cue gains keep the sure clock (SessionManager.music_grid, Sampler.beat_grid)."""
+
+    def __init__(self) -> None:
+        self.active = False                       # the last frame's beat came from here (the ladder on, the feed live)
+        self.rung: Optional[str] = None           # "clock" | "desk" | "dmx" | "onset_follower" | None (no pulse)
+        self.beat = 0.0                           # this frame's beat, as the bindings see it
+        self.presence = 1.0                       # this frame's "music present" (by the feed's liveness)
+        self.pulses_per_min = 0                   # pulses the bindings saw over the last 60 s
+        self._pulses: collections.deque = collections.deque(maxlen=4096)
+        self._last = 0.0
+
+    def resolve(self, sig: dict, feed: "MusicFeed", clk: Optional[dict], csig: dict, cs: ClockSignals, w: float,
+                now: float, t_s: float, desk: bool) -> Optional[str]:
+        """Set ``sig["beat"]`` (blend's output: the clock's at gate "beat", else the desk's) to the ladder's at photon
+        time ``t_s``; ``w``: the feed's liveness (rungs c-e count by it, so the desk's comes back as the feed goes);
+        ``desk``: the desk follower is locked and extrapolating.  O(1).  -> the rung."""
+        r = feed.response.cfg
+        p = feed.presence(now)
+        p = 1.0 if p is None else p
+        old = sig.get("beat") or 0.0
+        if "beat" in csig:                        # (a) the sure clock (blend put it in)
+            rung, v = "clock", None
+        elif desk:                                # (b) the desk's prediction: never overridden below
+            rung, v = "desk", None
+        elif clk is not None and clk.get("gate") == "dmx":
+            rung, v = "dmx", r.dmx_depth * dmx_beat(clk, t_s, cs.mute_until)
+        elif (cb := feed.clear_bpm(now)) and (g := feed.onset_grid(now)) is not None and g.hint is not None \
+                and not g.pinned and abs(g.hint * cb / 60.0 - 1.0) <= r.steady_pct / 100.0:   # (held to this clock)
+            rung, v = "onset_follower", r.onset_depth * grid_beat(g, t_s)
+        else:
+            rung, v = None, 0.0
+        pres = 1.0 + w * (p - 1.0)
+        b = old * pres if v is None else old + w * (v * p - old)
+        sig["beat"] = b
+        depth = 1.0 if v is None else r.dmx_depth if rung == "dmx" else r.onset_depth if rung else 0.0
+        if b - self._last >= max(PULSE_MIN, PULSE_JUMP * depth * pres):       # relative to the rung's peak
+            self._pulses.append(now)
+        q = self._pulses
+        while q and q[0] < now - 60.0:
+            q.popleft()
+        self.rung, self.beat, self.presence, self.pulses_per_min, self._last = rung, b, pres, len(q), b
+        self.active = True
+        return rung

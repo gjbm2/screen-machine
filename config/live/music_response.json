@@ -19,7 +19,7 @@
                        "scene/isf_im_xorcoridor337/zoom_effect"]
  },
  "beat_fallback": {
-  "note": "a pulse when onset / max(gate, gate_floor) >= max(floor, min(onset, relative x its mean over mean_s)); relative 0: onset alone. Off: an arrival-timed onset lands a whole render->photon lead (~0.6-0.8 s) late on glass; the predicted beat ladder replaces it",
+  "note": "a pulse when onset / max(gate, gate_floor) >= max(floor, min(onset, relative x its mean over mean_s)); relative 0: onset alone. Off: an arrival-timed onset lands a whole render->photon lead (~0.6-0.8 s) late on glass; the predicted beat ladder (below) replaces it and wins when both are on. The same thresholds pick the onsets that feed the ladder's onset follower (every strong rising onset: min_gap_s paces this pulse only)",
   "on": false,
   "onset": 0.2,
   "relative": 2.5,
@@ -35,5 +35,27 @@
   "ease_s": 2.0,
   "fold_min": 70,
   "fold_max": 180
+ },
+ "ladder": {
+  "note": "the bindings' beat (and the pulse macros) from one source at the frame's photon time: the clock at gate beat; else the desk follower locked and extrapolating; else the clock at gate dmx, its beat phase as a pulse dmx_depth deep; else, while the tempo is clear (clock stability >= stability_min, folded bpm within steady_pct % over steady_s), the onset follower (strong onsets at their acoustic time less onset_lag_ms, its period held to the clock's) once locked, onset_depth deep; else no pulse. Every pulse x music present (features.energy / present_at, capped at 1; instant on, letting go with tau release_s, and once features stop). Depths of 0.5 or less never cross the GLSL effects' event threshold (pulse > 0.5), 0.6 only on a frame within ~33 ms of the beat: an unsure phase fires few or no discrete events. Cuts keep the sure clock only. Wins over beat_fallback when both are on",
+  "on": true,
+  "dmx_depth": 0.5,
+  "onset_depth": 0.6,
+  "stability_min": 0.6,
+  "steady_pct": 3,
+  "steady_s": 4,
+  "onset_lag_ms": 10.7,
+  "present_at": 0.03,
+  "release_s": 0.1
+ },
+ "pivot": {
+  "note": "each listed level centres on its own norm: the running median of its values while music plays (1 Hz, only while the bindings' energy >= present_at; held while silent or n/a) over window_s, applied once there are min_s of them (before that the fixed 0.5); the signal the bindings read is re-centred on it, eased in and out with tau ease_s. Never triggers, phases or DMX positions",
+  "on": true,
+  "window_s": 600,
+  "min_s": 60,
+  "present_at": 0.03,
+  "ease_s": 3,
+  "signals": ["energy", "energy_slow", "drive", "punch", "tempo", "activity", "activity_slow", "bass", "mids",
+              "highs", "brightness", "density", "groove", "arousal", "motion"]
  }
 }
