@@ -1401,9 +1401,17 @@ class Session(EngineListener):
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
                                   room=self.mgr.room_direction_now(now), feed=feed.fresh(now))
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
+        pn = self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)
+        hm = feed.harmony(now)
+        if hm is not None:                  # no piano playing: the room's harmony (show_service, from the audio)
+            for k in ("tension", "register", "spread"):
+                if pn.get(k) is None:
+                    pn[k] = round(hm[k], 4) if hm[k] is not None else None
+            if hm["chord_change_t"] is not None and (pn.get("chord_change_t") is None
+                                                     or hm["chord_change_t"] > pn["chord_change_t"]):
+                pn["chord_change_t"] = hm["chord_change_t"]
         self.runtime.extra = {**self.music.signals(now),
-                              "music_w": feed.liveness(now) if self.music.feeding else None,
-                              **self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)}
+                              "music_w": feed.liveness(now) if self.music.feeding else None, **pn}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self.upnext.clear()     # the leader's plan is the room's

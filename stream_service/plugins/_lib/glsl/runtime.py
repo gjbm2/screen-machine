@@ -313,7 +313,8 @@ class ShowTextures:
     def update(self, t: float, energy: float, beat: float, sound: Any = None) -> None:
         fft, wave = _audio_rows(t, energy, beat, self.n)
         fr = getattr(sound, "frame", sound) if sound is not None else None
-        spec = getattr(fr, "spectrum", None) if fr is not None and getattr(sound, "present", False) else None
+        live = getattr(sound, "present", False) or getattr(sound, "spectrum_live", False)   # the piano or the room
+        spec = getattr(fr, "spectrum", None) if fr is not None and live else None
         if spec is not None and len(spec):
             real = spectrum_row(spec, self.n)
             fft = np.clip(real + 0.6 * beat * np.exp(-((np.arange(self.n) / self.n - 0.02) / 0.03) ** 2), 0, 1)
