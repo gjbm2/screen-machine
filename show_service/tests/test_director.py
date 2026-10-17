@@ -248,6 +248,9 @@ def test_with_no_feel_the_colours_still_resolve_from_no_feel_palettes(tmp_path):
     r.run(2.0)
     assert r.d.palette_fn(r.t) is not None and not r.d.readback()["known"]
     assert (r.d.look or {}).get("palette", {}).get("name") == "ember"
+    assert r.d.look["lamps"] and r.d.look["screens"]                       # 75's pass check: the devices get colours
+    amber = (1.0, 0.62, 0.32)
+    assert all(tuple(round(x, 2) for x in c) != amber for c in r.colours().values())
     r.d.set_target({"vibe": "alpha"}, "mode")
     r.run(1.0)
     r.d.set_target({"vibe": None})                                          # back to no feel: colours stay
@@ -2037,7 +2040,7 @@ def test_the_hold_settings_and_bad_values(tmp_path):
     assert r.d.screen_pick is None
     picks = [json.loads(z) for z in r.log_path.read_text().splitlines() if '"screen_pick"' in z]
     assert [(e["what"], e.get("held"), e.get("why")) for e in picks] == [
-        ("picked", False, "no feel is playing"), ("picked", True, None),
+        ("picked", False, "no palette is playing"), ("picked", True, None),
         ("cleared", None, "show.yaml director.screens.send_palette is off"),
         ("picked", False, "director.screens.send_palette is off")]
 

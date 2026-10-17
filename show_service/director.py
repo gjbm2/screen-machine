@@ -833,8 +833,8 @@ class Director:
         why = None
         if not scfg["hold_hand_picks"]:
             why = "director.screens.hold_hand_picks is off"
-        elif self._vibe_name is None:
-            why = "no feel is playing"
+        elif not self.pal_on:
+            why = "no palette is playing"
         elif not scfg["send_palette"]:
             why = "director.screens.send_palette is off"
         self._log_event("screen_pick", {"what": "picked", "event": dict(data), "held": why is None,
@@ -1646,7 +1646,7 @@ class Director:
         if ev.get("detail") == "sound_back":
             self._release_dip(now_s, "the sound is back")
             return
-        if self._vibe_name is None or ev.get("held") or self._held() or tr is None or tr.get("style") != "fade-dark":
+        if not self.pal_on or ev.get("held") or self._held() or tr is None or tr.get("style") != "fade-dark":
             return
         out_s = _num(tr.get("out_s"), 2.0) or 2.0
         in_s = _num(tr.get("in_s"), 2.0) or 2.0
@@ -1700,7 +1700,7 @@ class Director:
         # relaxed by the gap itself (quiet, no audio): the new song is the sound coming back, so its look lands;
         # relaxed because people talk over the music: it holds (§8.5)
         talk_hold = self._relaxed and bool(vs["relax_on_talk"]) and self._situation("talking") is True
-        if self._vibe_name is None or talk_hold or self.keep_until is not None or ev.get("held"):
+        if not self.pal_on or talk_hold or self.keep_until is not None or ev.get("held"):
             self._release_dip(now_s, "the new song, with no look change")
             return                                        # the palette moves on at the next look change
         pd = self.pending
@@ -2349,7 +2349,7 @@ class Director:
         if sd is not None and now_s >= sd["until"]:
             self._release_dip(now_s, "dark_max_s passed")    # never dark for long: back over in_s
             sd = None
-        if sd is not None and known:
+        if sd is not None and pal_on:
             song_dip = _c01((now_s - sd["t0"]) / sd["out_s"])
         roles_key = (look_pal["name"], emphasis, tuple(r["hex"] for r in look_pal["roles"].values()),
                      tuple((sid, tuple(r["hex"] for r in sr.values())) for sid, sr in sorted(screen_roles.items())))
@@ -2359,7 +2359,7 @@ class Director:
         lamps: dict[str, contract.LampOut] = {}
         screens: dict[str, contract.ScreenOut] = {}
         colours: dict[str, pal.Rgb] = {}
-        if known:
+        if pal_on:                                       # a palette resolves (a feel, or no_feel's): the devices' colours
             lamp_level = max(floor, level)
             if dip is not None:
                 lamp_level = min(lamp_level, dip)        # pre-drop: the lamps dip (screens never do)
@@ -2407,7 +2407,7 @@ class Director:
                      "motion": {"speed": round(speed, 3), "amount": round(amount, 3)}, "accents": accents,
                      "spread": round(spread, 3), "change_rate": vs["change_rate"], "transition": tr,
                      "lamps": lamps, "screens": screens,
-                     "dip": bool(known and (dip is not None or song_dip is not None) and not self.house
+                     "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house
                                  and not self.low),
                      "hit": self._hit_view()}
         bars = 0
@@ -2544,6 +2544,8 @@ class Director:
         p = self._pal
         if p is None:
             return None
+        if not self.known and self._relaxed:
+            return None                                   # a silent room with no feel: artnet_out's P0 idle, as before
         t0, t1, frm, to, frm_lab, to_lab = p
         if t_s >= t1:
             return to
@@ -2951,7 +2953,7 @@ class Director:
 
     def _human_change(self, reason: str, advance: bool = False) -> None:
         """Next look (or a palette pick): on the next bar, at most next_max_wait_s away; "Changing…" at once."""
-        if self._vibe_name is None:
+        if not self.pal_on:
             return
         now = self._now()
         grid = self._grid(now)
