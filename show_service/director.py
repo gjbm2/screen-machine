@@ -169,6 +169,11 @@ TAU_NOVELTY_FAST_S, TAU_NOVELTY_SLOW_S = 3.0, 30.0
 NOVELTY = 0.12                      # starting point (show.yaml director.novelty): |fast - slow| energy, a change point
 RELAX_TAU_S = 3.0
 LLM_CONF = 0.6                      # a listener word counts at this confidence (§8.2)
+#: room.why's look line: why the last look changed, in words (the reasons _announce is called with)
+LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repeat": "a section came back",
+                     "drop": "the drop", "track": "a new song", "dwell": "time for a change",
+                     "novelty": "the music changed", "relax": "the room went quiet", "between_pieces": "between pieces",
+                     "next": "someone pressed Next look", "palette": "someone picked a palette"}
 BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
@@ -678,6 +683,7 @@ class Director:
         self._split_hi = False
         self._swing_hist: collections.deque = collections.deque(maxlen=600)   # (t, heard music) at 1 Hz
         self._band_base: Optional[float] = None   # the last absolute base (README S5.21), for the readback
+        self._look_why: Optional[dict] = None     # {"why": words, "t"}: room.why's look line
         self._band_idx: Optional[int] = None      # the band words' row now (held director.bands.dwell_s)...
         self._band_cand: Optional[int] = None     # ...and the row waiting to take over, since
         self._band_since: Optional[float] = None
@@ -1629,6 +1635,8 @@ class Director:
             self.sec_stats["looks"] += 1
             self.sec_stats["recalled"] += 1 if rec is not None else 0
         self._log_event("look_change", detail)
+        self._look_why = {"why": LOOK_REASON_WORDS.get(pd["reason"], str(pd["reason"]).replace("_", " ")),
+                          "t": now_s}
 
     def _transition(self, vs: dict) -> dict:
         style = self._words(vs)["transition_style"]
@@ -3532,6 +3540,8 @@ class Director:
             "words_from": {"moods": self._words_now.get("moods_from"), "genre": self._words_now.get("genre_from")},
             "relaxed": self._relaxed, "pending": dict(self.pending) if self.pending else None,
             "neutral": not self.known,
+            "last_look": ({"why": self._look_why["why"], "age_s": int(max(0.0, now_s - self._look_why["t"]))}
+                          if self._look_why else None),
             "sections": self._sections_view(now_s),
             "screens_palette": {**{k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
                                    for k, v in self._scr.items() if k != "retry"},

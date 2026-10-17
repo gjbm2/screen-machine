@@ -1318,6 +1318,7 @@ For the owner and builders. It has:
 | `music.harmony` | 10 Hz | `{chroma12 (from MIDI while the piano plays, else audio), key, mode, tension, chord_change, register, spread}`. The director uses it. The renderer derives its own from the notes while the piano plays, and prefers this for audio-only music. `global.music.chroma12` on `show.state` carries the audio chroma too. |
 | `room.direction`, `room.look` | on change | §8.3 |
 | `room.event` | at least lead + 250 ms ahead | `{kind, id, at_ms, …}`; song-end kinds and fields below |
+| `room.why` | 1 Hz, want-only | the room's reasons in words for the renderer's diagnostics panel (docs/LIVE_DIAGNOSTICS.md v2; e1 / 04, 17 Oct), about 300 B: `{t_ms, auto: {on, line, last}, listening: {on, effective, why}, mic: {on, why}, look: {why, age_s}}`. `auto.last` is the last switch with its reason ("Piano -> Gallery: the piano has stopped"); `look.why` is the last look change's reason ("a new section", "the drop", "someone pressed Next look"); each text is at most 80 characters. Only a client whose hello `want` names it gets it. |
 
 **`room.event` and song ends** (17 Oct; the shape agreed with 04; README S5.17):
 - **Every** room.event has a stable `id`, from both publishers. A re-send (a moved drop line, a re-armed end, a call-off, a `sound_back`) keeps the same id and replaces the earlier one. The ids are:

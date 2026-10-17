@@ -1566,3 +1566,26 @@ def test_card_says_mic_muted_or_off_when_that_is_why_nothing_arrives():
     assert hearing(off, active="test-audio")["hearing"]["text"] == "Listening"      # sound comes in: not the mic's words
     assert hearing(None)["mic_state"] is None and hearing(None)["hearing"]["text"] == MIC_STARTING
     json.dumps(hearing(muted), allow_nan=False)
+
+
+def test_room_why_is_the_cards_words_in_short():
+    """room.why (docs/LIVE_DIAGNOSTICS.md v2): Auto's line and last switch, the listening why, the mic, the last look's
+    reason; every text cut to WHY_TEXT_MAX."""
+    from show_service import api as A
+    snap = {"components": {"autopilot": {"last": {"from": "piano", "to": "gallery", "from_label": "Piano",
+                                                  "to_label": "Gallery", "age_s": 3.0,
+                                                  "reason": "the piano has stopped (piano/leave_when)"}},
+                           "director": {"last_look": {"why": "a new section", "age_s": 12.4}}}}
+    card_body = {"auto": {"on": True, "line": "Auto · Gallery" + "x" * 200},
+                 "listening": {"on": True, "effective": False, "why": "Auto is off"},
+                 "mic_state": {"on": False, "why": "Off: nothing needs it"}}
+    w = A.why_of(snap, card_body, wall_ms=1000.0)
+    assert set(w) == set(c.WhyData.__annotations__)
+    assert w["auto"]["last"] == "Piano -> Gallery: the piano has stopped"
+    assert len(w["auto"]["line"]) == c.WHY_TEXT_MAX
+    assert w["listening"] == {"on": True, "effective": False, "why": "Auto is off"}
+    assert w["mic"] == {"on": False, "why": "Off: nothing needs it"}
+    assert w["look"] == {"why": "a new section", "age_s": 12}
+    assert c.ROOM_WHY in c.WANT_ONLY_STAGE5
+    w = A.why_of(None, None, wall_ms=0.0)                            # nothing yet: still the shape
+    assert w["auto"]["last"] is None and w["look"]["why"] is None

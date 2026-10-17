@@ -1324,6 +1324,19 @@ def speech_of(reading: Any, words: tuple[str, ...]) -> Optional[float]:
 # -- the medium lane (dsp.py; §4) ---------------------------------------------------------------------------------------
 MUSIC_RHYTHM = "music.rhythm"      # RhythmData, one per medium frame (10 Hz); want-only (bus: WANT_ONLY + this tuple)
 WANT_ONLY_STAGE4: tuple[str, ...] = (MUSIC_RHYTHM,)
+ROOM_WHY = "room.why"              # WhyData, 1 Hz (docs/LIVE_DIAGNOSTICS.md v2; e1 / 04, 17 Oct); want-only
+WANT_ONLY_STAGE5: tuple[str, ...] = (ROOM_WHY,)
+WHY_TEXT_MAX = 80                  # each words field is cut to this many characters (the panel's line is 64)
+
+
+class WhyData(TypedDict):
+    """room.why: the room's reasons in words, for the renderer's diagnostics panel (one line). About 300 B."""
+    t_ms: float                    # wall-clock ms
+    auto: dict                     # {"on": bool, "line": the card's Auto line, "last": the last switch and its reason
+                                   #  ("Piano -> Gallery: the piano has stopped") or None}
+    listening: dict                # {"on": the AI listening switch, "effective": clips going now, "why": why not, or None}
+    mic: dict                      # {"on": bool, "why": the mic's reason in words}
+    look: dict                     # {"why": the last look change's reason in words, or None, "age_s": int or None}
 RHYTHM_HZ = 10.0
 CONTEXT_HZ = 1.0                   # music.context
 

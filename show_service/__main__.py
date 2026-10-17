@@ -250,6 +250,8 @@ class Show:
         self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
                        routes=_routes)
         self.publish: contract.Publish = self.bus.publish
+        if self.api is not None:
+            self.api.publish = self.publish            # room.why (api.EventsHub's 1 Hz loop)
         self.rx: Any = None
         self.features: Any = None
         self.harmony: Any = None

@@ -75,6 +75,7 @@ WS_HEARTBEAT_S = 20.0
 WS_MAX_IN = 16 << 10
 CLOSE_TIMEOUT_S = 2.0
 LATE_REFRESH_S = 0.15            # after a change, the card is refreshed at once and again after one director tick
+WHY_S = 1.0                       # room.why's period (docs/LIVE_DIAGNOSTICS.md: at most 1 Hz)
 DESCRIBE_MAX_CHARS = 300
 DESCRIBE_TIMEOUT_S = 8.0         # show.yaml listener.describe_timeout_s wins; the call gets that + 1 s
 STALE_FEATURES_MS = 5000.0
@@ -331,6 +332,32 @@ def _palette_choices(director: dict) -> list[dict]:
 
     rest = [c for c in raw if c["name"] not in (PALETTE_AUTO, PALETTE_ART)][:CARD_PALETTE_EXTRA]
     return [first(PALETTE_AUTO, AUTO_CHOICE), first(PALETTE_ART, ART_CHOICE)] + rest
+
+
+def _cut(v: Any) -> Optional[str]:
+    return v[:contract.WHY_TEXT_MAX] if isinstance(v, str) and v else None
+
+
+def why_of(brain_snapshot: Optional[dict], card_body: Optional[dict], *, wall_ms: float) -> contract.WhyData:
+    """room.why (docs/LIVE_DIAGNOSTICS.md v2): the card's words plus Auto's last switch and the director's last look
+    reason, each cut to WHY_TEXT_MAX. Built from snapshots only (any thread)."""
+    cb = card_body if isinstance(card_body, dict) else {}
+    comps = _d(_d(brain_snapshot).get("components"))
+    au, li, ms = _d(cb.get("auto")), _d(cb.get("listening")), _d(cb.get("mic_state"))
+    last = _d(_d(comps.get(AUTOPILOT)).get("last"))
+    last_words = None
+    if last.get("to"):
+        reason = str(last.get("reason") or "").rsplit(" (", 1)[0]
+        last_words = f"{last.get('from_label') or last.get('from') or '?'} -> {last.get('to_label') or last['to']}" \
+            + (f": {reason}" if reason else "")
+    lk = _d(_d(comps.get(DIRECTOR)).get("last_look"))
+    return {"t_ms": round(wall_ms, 1),
+            "auto": {"on": bool(au.get("on")), "line": _cut(au.get("line")), "last": _cut(last_words)},
+            "listening": {"on": bool(li.get("on")), "effective": bool(li.get("effective")),
+                          "why": None if li.get("effective") else _cut(li.get("why"))},
+            "mic": {"on": bool(ms.get("on")), "why": _cut(ms.get("why"))},
+            "look": {"why": _cut(lk.get("why")),
+                     "age_s": int(lk["age_s"]) if isinstance(lk.get("age_s"), (int, float)) else None}}
 
 
 def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Optional[dict] = None) -> dict:
@@ -623,10 +650,15 @@ class EventsHub:
 
     async def _card_loop(self) -> None:
         period = 1.0 / max(0.1, self.hz)
+        next_why = 0.0
         while True:
             await asyncio.sleep(period)
             if self.clients:
                 self.refresh()
+            now = time.monotonic()
+            if self.api.publish is not None and now >= next_why:      # room.why, 1 Hz, whoever is watching
+                next_why = now + WHY_S
+                self.api.publish_why()
 
     async def _sender(self, c: _EvClient) -> None:
         try:
@@ -716,6 +748,8 @@ class Api:
         self.mounted: list[tuple[str, str]] = []
         self.boot_id = uuid.uuid4().hex[:12]          # this process: the read-back carries it (the room adapter's
                                                        # cold-start check)
+        self.publish: Optional[contract.Publish] = None    # the show bus (__main__ sets it): room.why
+        self.why_published = self.why_errors = 0
 
     # -- mounting (show-bus, inside Bus._startup) -------------------------------------------------------------------
     def __call__(self, app: web.Application) -> None:
@@ -807,6 +841,20 @@ class Api:
                     pass
         snap["components"] = comps
         return snap
+
+    def publish_why(self) -> None:
+        """room.why onto the show bus (want-only: the renderer asks for it). Never raises."""
+        try:
+            brain = self.brain()
+            if brain is None or self.publish is None:
+                return
+            body = why_of(self.snapshot(brain), self.build_card(), wall_ms=time.time() * 1000.0)
+            self.publish({"type": contract.ROOM_WHY, "data": body})
+            self.why_published += 1
+        except Exception:                          # noqa: BLE001
+            self.why_errors += 1
+            if self.why_errors <= 3:
+                log.exception("api: room.why failed")
 
     def build_card(self) -> Optional[dict]:
         brain = self.brain()

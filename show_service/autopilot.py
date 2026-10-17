@@ -1633,6 +1633,8 @@ class Autopilot:
                                         "until_in_s": round(max(0.0, (_num(h.get("until")) or wall) - wall), 1)},
             "last": None if not last else {"age_s": round(wall - (_num(last.get("at")) or wall), 1),
                                            "from": last.get("from"), "to": last.get("to"),
+                                           "from_label": label(view, last.get("from")),
+                                           "to_label": label(view, last.get("to")),
                                            "reason": last.get("reason"), "transition_id": last.get("transition_id"),
                                            "status": last.get("status"), "source": contract.AUTOPILOT_SOURCE},
             "chip": chip(self._chip), "suggest": chip(self._suggest),
