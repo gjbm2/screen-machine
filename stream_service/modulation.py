@@ -194,7 +194,7 @@ class SessionRuntime:
             wf = self.feed.liveness(now)
             lead = self.sampler.lead if self.sampler is not None else 0.0
             music_feed.blend(sig, self.feed.snapshot(), wf,
-                             self.clock_sig.sample(self.feed.clock(now), now + lead))
+                             self.clock_sig.sample(self.feed.clock(now), now + lead), self.feed.levels(now))
         ex = self.extra
         wm = ex.get("music_w")
         wm = w if wm is None else wm

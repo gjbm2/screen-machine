@@ -12,6 +12,10 @@ One MusicFeed per process, fed on the loop thread (SessionManager.broadcast_soun
                           bar_anchor_beat, phrase_bars, conf, gate, epoch); ClockSignals turns it into beat,
                           beat_phase, bar_phase, phrase_phase, downbeat and tempo at the frame's photon time.
   music.context (1 Hz)    the section id (a new id re-seeds MusicDirection like the desk's GOBO step).
+  music.rhythm (10 Hz)    density (onset density, x gate), asked for in the bus hello (``want``; G4).
+  room.direction          arousal and groove (show_service's director), via SessionManager.on_room_message.
+  Bind signals from these (G5; inputs.FEED_SIGNALS, all eased tau >= ACT_TAU_S, never raw hits): bass (sub +
+  bass bands), mids (low_mid + mid), highs (high_mid + air), brightness, density, groove, arousal.
 
 Readers take ``snapshot()`` (an immutable FeedSnap swapped whole, atomic under the GIL) from any thread.
 """
@@ -61,6 +65,8 @@ class FeedSnap:
     spread: Optional[float] = None
     chord_t: Optional[float] = None      # the last chord change (a rising edge of its chord_change), monotonic s
     chord_level: float = 0.0
+    levels: Any = None                   # FEED_SIGNALS -> eased value (a dict, replaced whole)
+    levels_t: Any = None                 # FEED_SIGNALS -> arrival of its last update
 
 
 class MusicFeed:
@@ -85,12 +91,18 @@ class MusicFeed:
             a_slow = 1.0 - math.exp(-dt / SLOW_TAU_S)
             act = e if gap else s.activity + (e - s.activity) * a_fast
             slow = e if gap else s.activity_slow + (e - s.activity_slow) * a_slow
+            b = data.get("bands") if isinstance(data.get("bands"), dict) else {}
+            lv = lambda *names: sum(_c01(_num((b.get(n) or {}).get("level"))) for n in names) / len(names)  # noqa: E731
+            s = self._eased(s, {"bass": lv("sub", "bass"), "mids": lv("low_mid", "mid"), "highs": lv("high_mid", "air"),
+                                "brightness": _c01(_num(data.get("brightness"), 0.5))}, now)
             self._snap = replace(s, t=now, fresh_since=now if gap else s.fresh_since, energy=e, activity=act,
                                  activity_slow=slow, drive=_c01(_num(data.get("drive"))),
                                  punch=_c01(_num(data.get("punch"))),
                                  brightness=_c01(_num(data.get("brightness"), 0.5)))
         elif kind == "music.clock":
             self._snap = replace(s, clock=data, clock_t=now)
+        elif kind == "music.rhythm":
+            self._snap = self._eased(s, {"density": _c01(_num(data.get("density")))}, now)
         elif kind == "music.harmony":
             gap = now - s.harmony_t > FRESH_S
             a = 1.0 if gap else 1.0 - math.exp(-max(0.0, min(0.5, now - s.harmony_t)) / ACT_TAU_S)
@@ -104,6 +116,32 @@ class MusicFeed:
         elif kind == "music.context":
             sec = data.get("section")
             self._snap = replace(s, section_id=sec.get("id") if isinstance(sec, dict) else None)
+
+    def on_room_direction(self, data: dict, now: Optional[float] = None) -> None:
+        """show_service's director's arousal and groove (loop thread)."""
+        now = time.monotonic() if now is None else now
+        s = self._snap or FeedSnap(fresh_since=now)
+        self._snap = self._eased(s, {"arousal": _c01(_num(data.get("arousal"), 0.5)),
+                                     "groove": _c01(_num(data.get("groove")))}, now)
+
+    @staticmethod
+    def _eased(s: FeedSnap, vals: dict, now: float) -> FeedSnap:
+        lv, lt = dict(s.levels or {}), dict(s.levels_t or {})
+        for k, v in vals.items():
+            t0 = lt.get(k)
+            if k not in lv or t0 is None or now - t0 > FRESH_S * 6:
+                lv[k] = v
+            else:
+                lv[k] += (v - lv[k]) * (1.0 - math.exp(-max(0.0, min(0.5, now - t0)) / ACT_TAU_S))
+            lt[k] = now
+        return replace(s, levels=lv, levels_t=lt)
+
+    def levels(self, now: float) -> dict:
+        """FEED_SIGNALS that are fresh (room.direction's every 5 s: FRESH_S x 6), else absent."""
+        s = self._snap
+        if s is None or not s.levels:
+            return {}
+        return {k: v for k, v in s.levels.items() if now - s.levels_t.get(k, -1e9) <= FRESH_S * 6}
 
     # -- any thread -----------------------------------------------------------------------------------------------
     def fresh(self, now: float) -> Optional[FeedSnap]:
@@ -184,9 +222,12 @@ class ClockSignals:
         return clock_signals(c, t_s, self._mute_until)
 
 
-def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict) -> None:
+def blend(sig: dict, snap: Optional[FeedSnap], w: float, clock: dict, levels: Optional[dict] = None) -> None:
     """Fold the room's music into a signals dict in place: activity / activity_slow eased over the desk's by the
-    feed's liveness ``w``; the clock's signals (``clock``: clock_signals output) replace the follower's."""
+    feed's liveness ``w``; the clock's signals (``clock``: clock_signals output) replace the follower's;
+    ``levels`` (MusicFeed.levels) give the FEED_SIGNALS, eased to idle 0.5 with ``w`` (absent: n/a)."""
+    for k, v in (levels or {}).items():
+        sig[k] = 0.5 + w * (v - 0.5) if w > 0.0 else None
     if snap is not None and w > 0.0:
         for k, v in (("activity", snap.activity), ("activity_slow", snap.activity_slow)):
             old = sig.get(k)

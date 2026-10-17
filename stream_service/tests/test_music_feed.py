@@ -136,3 +136,21 @@ async def test_bar_snap_event_hints_and_shared_beats(client):  # noqa: F811
     # no sure clock: bar falls back to the beat (then now)
     mgr.music_feed.on_message({"type": "music.clock", "data": {**c, "gate": "none"}}, now)
     assert s._next_downbeat(now) is None
+
+
+def test_feed_levels_bands_rhythm_and_room():
+    f = MusicFeed()
+    bands = {"sub": {"level": 0.8}, "bass": {"level": 0.6}, "low_mid": {"level": 0.2}, "mid": {"level": 0.4},
+             "high_mid": {"level": 0.1}, "air": {"level": 0.3}}
+    for i in range(50):
+        f.on_message({"type": "music.features", "data": {"energy": 0.5, "bands": bands, "brightness": 0.7}},
+                     10.0 + i * 0.04)
+    f.on_message({"type": "music.rhythm", "data": {"density": 0.9}}, 12.0)
+    f.on_room_direction({"arousal": 0.8, "groove": 0.4}, 12.0)
+    lv = f.levels(12.0)
+    assert abs(lv["bass"] - 0.7) < 1e-6 and abs(lv["mids"] - 0.3) < 1e-6 and abs(lv["highs"] - 0.2) < 1e-6
+    assert abs(lv["brightness"] - 0.7) < 1e-6 and lv["density"] == 0.9 and lv["arousal"] == 0.8 and lv["groove"] == 0.4
+    sig = {}
+    blend(sig, f.snapshot(), 1.0, {}, lv)
+    assert sig["bass"] == 0.7 and sig["arousal"] == 0.8
+    assert "bass" not in f.levels(30.0)                                   # stale: n/a

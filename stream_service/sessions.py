@@ -311,7 +311,8 @@ class Session(EngineListener):
         sig = dict(self.sampler.peek(now))
         feed = self.mgr.music_feed
         c = feed.clock(now)
-        feed_blend(sig, feed.snapshot(), feed.liveness(now), clock_signals(c, now + self.sampler.lead) if c else {})
+        feed_blend(sig, feed.snapshot(), feed.liveness(now), clock_signals(c, now + self.sampler.lead) if c else {},
+                   feed.levels(now))
         ex = self.runtime.extra or {}
         w = ex.get("music_w")
         w = self.sampler.w if w is None else w
@@ -1661,7 +1662,7 @@ class Session(EngineListener):
         feed = self.mgr.music_feed                 # the room's sound and clock, as the frames see them
         fsnap, fw, clk = feed.snapshot(), feed.liveness(now), feed.clock(now)
         csig = clock_signals(clk, now + self.sampler.lead) if clk else {}
-        feed_blend(sig, fsnap, fw, csig)
+        feed_blend(sig, fsnap, fw, csig, feed.levels(now))
         r3 = lambda v: None if v is None else round(v, 4)  # noqa: E731
         out: dict = {"online": self.sampler.freshness(now, snap) is None, "stale": self.sampler.stale,
                      "liveness": round(self.sampler.w, 3), "fixture": self.fixture,
@@ -2180,6 +2181,7 @@ class SessionManager:
                 self._room_dir_warned = True
             return
         groove = data.get("groove")
+        self.music_feed.on_room_direction(data)
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
                                "beat_lock": data.get("beat_lock"), "seq": data.get("seq"), "t": time.monotonic()}

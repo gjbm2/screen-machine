@@ -44,7 +44,7 @@ def read_token(path: Optional[str]) -> Optional[str]:
 
 async def run(url: str, inputs: Optional[ShowInputs], token_file: Optional[str] = None,
               sound_sink: Optional[Callable[[dict], None]] = None, name: str = "show bus",
-              room_sink: Optional[Callable[[dict], None]] = None) -> None:
+              room_sink: Optional[Callable[[dict], None]] = None, want: Optional[list] = None) -> None:
     """``sound_sink``: every music.* and show.state message, for the sessions' sound views (sound.py).
     ``room_sink``: every room.* message (show_service's director: room.direction / look / event).
     ``inputs`` None: a sound-only bus (--music-bus)."""
@@ -60,6 +60,8 @@ async def run(url: str, inputs: Optional[ShowInputs], token_file: Optional[str] 
                     hello = {"type": "hello", "v": 1, "role": "renderer", "client_id": f"stream_service-{os.getpid()}"}
                     if token:
                         hello["token"] = token
+                    if want:
+                        hello["want"] = list(want)      # the music bus: music.rhythm is sent only to who asks
                     await ws.send_str(json.dumps(hello))
                     msg = await asyncio.wait_for(ws.receive(), HELLO_TIMEOUT_S)
                     welcome = json.loads(msg.data) if msg.type == aiohttp.WSMsgType.TEXT else {}

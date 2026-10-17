@@ -352,6 +352,9 @@ def scene_tag_index(presets: dict) -> list[dict]:
 
 
 _catalog_cache: dict = {"key": None, "body": None}
+# The music bus hello's want (d4's G4): everything but music.hit (transients land a full lead late, SHOW_ENGINE
+# §5.4), plus music.rhythm, which is sent only to who names it.
+MUSIC_BUS_WANT = ["music", "music.rhythm", "room", "show"]
 
 
 async def catalog(request: web.Request) -> web.Response:
@@ -823,7 +826,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
             from . import showbus
 
             app[TASKS].append(asyncio.create_task(showbus.run(url, None, sound_sink=mgr.broadcast_sound,
-                                                               name="music bus", room_sink=mgr.on_room_message)))
+                                                               name="music bus", room_sink=mgr.on_room_message,
+                                                               want=MUSIC_BUS_WANT)))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:
