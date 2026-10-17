@@ -71,7 +71,8 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
   the drivers, every output off until config/room/fixtures.yaml enables it) joins the brain last, after the
   director, fed by reference: ``palette_fn`` and ``look_fn`` (the director's), the clock, ``Features.latest`` and
   artnet_out's neutral colour and depth. ``ctx.set_look_out`` fans out to Art-Net out's ``set_look`` and the rig's
-  (each guarded); the ``music.hit`` bodies that reach ``Clock.observe_hit`` also reach ``Rig.on_hit`` (guard
+  (each guarded, each with only its own keys: the composer's ``plan`` is Art-Net out's, ``beat_depth`` the rig's;
+  README S5.18); the ``music.hit`` bodies that reach ``Clock.observe_hit`` also reach ``Rig.on_hit`` (guard
   "rig.hit"). The registry reads config/room/fixtures.yaml, the latency file (``--latency-file``) and artnet_out's
   patch.yaml; nodes.json goes to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the brain
   stops the rig first (runners, then drivers: Hue gives its area back), then Art-Net out, rx, bus.
@@ -102,7 +103,8 @@ from .bus import Bus  # noqa: E402
 log = logging.getLogger("show_service")
 
 RELOAD_S = 2.0          # latency.json mtime poll
-VM_LOOK_KEYS = ("hue_depth", "beat_lock", "reset")   # artnet_out's set_look; the rig's also takes beat_depth (S5.14)
+VM_LOOK_KEYS = ("hue_depth", "beat_lock", "reset", "plan")   # artnet_out's set_look (plan: the composer's, S5.18)
+RIG_LOOK_KEYS = ("hue_depth", "beat_lock", "reset", "beat_depth")   # the rig's: beat_depth too (S5.14), no plan
 WARMUP_S = 10.0         # then gc.freeze()
 SNAPSHOT_S = 0.5        # show-rx -> API snapshot
 GUARD_LOG_S = 30.0
@@ -417,11 +419,12 @@ class Show:
 
     def _rig_kw(self, patch_path: Any) -> dict:
         """Stage 5 (README S5.4): the rig's inputs, all by reference. ``neutral`` is artnet_out's own colour
-        (SHOW_PALETTE, else DEFAULT_RGB) and hue depth, so a rig with no vibe looks exactly like the virtual Maestro."""
+        (SHOW_PALETTE, else NEUTRAL_RGB: warm white at 2700 K) and hue depth, so a rig with no vibe looks exactly like the virtual Maestro."""
         d, f, c = self.director, self.features, self.clock
         amod = self._amod
         neutral = None
-        rgb, depth = getattr(amod, "DEFAULT_RGB", None), getattr(amod, "HUE_DEPTH", None)
+        rgb = getattr(amod, "NEUTRAL_RGB", None) or getattr(amod, "DEFAULT_RGB", None)   # artnet_out's instance neutral
+        depth = getattr(amod, "HUE_DEPTH", None)
         if rgb is not None and depth is not None:
             neutral = (self._out_cfg.get("palette") or rgb, depth)
         driver_kw: dict[str, dict] = {"artnet": {"state_file": pathlib.Path(self.opts.state_dir) / "nodes.json"}}
@@ -518,15 +521,17 @@ class Show:
         """``ctx.set_look_out`` (Stage 5): Art-Net out's set_look, then the rig's (the look engine's), each under its
         own guard, so one failing never stops the other."""
         vm = getattr(self.artnet, "set_look", None)
-        if vm is not None:
+        vkw = {k: v for k, v in kw.items() if k in VM_LOOK_KEYS}     # beat_depth is the rig's alone
+        if vm is not None and vkw:
             try:
-                vm(**{k: v for k, v in kw.items() if k in VM_LOOK_KEYS})   # beat_depth is the rig's alone
+                vm(**vkw)
             except Exception:
                 self._g["artnet.set_look"].failed()
         rs = getattr(self.rig, "set_look", None)
-        if rs is not None:
+        rkw = {k: v for k, v in kw.items() if k in RIG_LOOK_KEYS}    # the plan is artnet_out's alone (README S5.18)
+        if rs is not None and rkw:
             try:
-                rs(**kw)
+                rs(**rkw)
             except Exception:
                 self._g["rig.set_look"].failed()
 

@@ -117,7 +117,8 @@ situations:
                                             # back past its threshold by this much
 
 # Lamp roles (§8.8). The role comes from each lamp's patch.yaml placement; the role's behaviour is the fields below.
-# Every value is a number, or the name of a vibe field to take it from.
+# Every value is a number, or the name of a vibe field to take it from. dynamics (README S5.18): the role's weight W
+# in the composer (director.compose): how strongly its lamps answer the music's loudness (starting points).
 lamps:
   placement_roles:
     above: extend                           # above a screen: it extends that screen's colours
@@ -129,12 +130,14 @@ lamps:
       follow_screen: true                   # the colours of the screen it hangs above (that screen's art, with "art")
       chroma_max: chroma_max                # the vibe's chroma_max
       motion: true
+      dynamics: 1.0                         # above a screen: co-moves with the picture
     key:
       palette_role: base
       white_k: key_cct                      # the vibe's key_cct: white first...
       chroma_max: lamp_chroma_max           # ...tinted at most this much (about 0.05 is a faint tint)
       avoid_hues: [[140, 230]]              # starting point (§8.8): OKLCh hue degrees, never green or cyan on a key
       motion: false
+      dynamics: 0.6                         # opposite: the slower partner
 
 director:
   steps:
@@ -250,6 +253,31 @@ director:
       artist: true                          # ...Sonos's artist differs. Each known on both sides votes (null: off);
       big_share: 0.5                        # big when at least this share of the votes differ,
       unknown: big                          # and this when none is known yet (a Sonos change, at once)
+  # Composition and balance (README S5.18; SHOW_ENGINE §8.10; owner 17 Oct: one composer, many renderers; volume is
+  # never intensity). How much each enabled appliance (a live screen, a lamp following the show) answers the music's
+  # loudness, per dimension (picture, level, pace, pulse, depth, change), as a share of today's value. A feel's
+  # compose block (vibes.yaml) sets its limits; these are the grammar. Starting points, all of them, to tune by ear.
+  compose:
+    mode: observe                           # observe: the plan goes out on room.look (compose) and nothing else changes;
+                                            # drive: room.direction's intensity, pulse_depth and peak, the tempo fold
+                                            # and the lamps' beat ladder and no-beat swell take it (hot-reloaded)
+    loud: {rise_s: 0.7, fall_s: 1.5, fade_fall_s: 0.35, music_only: true}   # the loudness (features.gate) rises fast,
+                                            # falls slowly, faster on a fade (an outro, an armed song end); talk is
+                                            # never loud; the piano's velocity replaces it while it plays
+    range: {window_s: 60, lu: [3, 12], min_gate: 0.05}   # the song's own range: p90 - p10 of lufs_s over 60 s of
+                                            # music; 3 LU (compressed, AGC'd: nothing pumps) .. 12 LU (the whole share)
+    response_file: config/live/music_response.json      # 75's tempo.fold_min / fold_max: the ONE tempo fold
+    headroom: {apl: [0.12, 0.45], unknown: 0.5, dims: [picture]}   # a dark scene isn't dimmed further (the scene's
+                                            # APL from the renderer, step 3; unknown until then)
+    lift: {picture: {tension: 0.3, build: 0.3}}         # a quiet but tense build keeps the picture up
+    weights: {screens: 1.0, lamps: 1.0}     # W by class; a lamp role's own dynamics (lamps.roles above) wins
+    hard_floor: {screens: {picture: 0.6}}   # the picture never goes below this, whatever a feel asks
+    smooth: {tau_s: 1.0, deadband: 0.02}    # range and lift ease over tau_s; drive sends the lamps' plan on 0.02 moves
+    defaults:                               # no feel, or a feel without a compose block: a modest follow
+      follow: 0.4
+      q:                                    # the quiet end, as a share of today's value (1 = never changes)
+        screens: {picture: 0.9, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
+        lamps: {level: 0.6, pulse: 0.7}
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
   cadence_s: 20                             # a clip every 20 s...

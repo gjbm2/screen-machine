@@ -240,3 +240,26 @@ def test_field_schemas_match_the_neutral_values():
             assert sch["default"] == vmod.NEUTRAL[f], f
         val, probs, ok = vmod.check_field(f, vmod.NEUTRAL[f], vocab=None, palette_names=())
         assert ok and not probs, f                                # every neutral value passes its own check
+
+
+def test_a_compose_block_is_checked_kept_out_of_the_fields_and_never_overridden(files):
+    """README S5.18: a vibe's ``compose`` (the composer's limits) is a block beside the fields: checked at load (a bad
+    cell dropped with a problem, the rest kept), out of the catalog's fields and the effective settings, and a mode
+    can't override it."""
+    _, make = files
+    v = make("vibes:\n  a:\n    label: Aye\n    compose:\n      follow: 0.6\n      q:\n"
+             "        screens: {picture: 0.9, glow: 0.5, pace: 2}\n        lamps: {level: 0.6}\n"
+             "      volume: 1\n  b: {label: Bee}\n")
+    assert v.compose_limits("a") == {"follow": 0.6, "q": {"screens": {"picture": 0.9}, "lamps": {"level": 0.6}}}
+    assert v.compose_limits("b") is None and v.compose_limits("gone") is None and v.compose_limits(None) is None
+    text = "\n".join(v.problems)
+    for frag in ("vibes.a.compose.q.screens.glow", "vibes.a.compose.q.screens.pace", "vibes.a.compose.volume"):
+        assert frag in text, frag
+    assert "compose" not in v.get("a") and "unknown field" not in text
+    c = v.catalog([])
+    assert "compose" not in c["vibes"]["a"]["fields"] and "compose" not in c["fields"]
+    lim = v.compose_limits("a")
+    lim["follow"] = 0.0                                           # a caller's copy never leaks back
+    assert v.compose_limits("a")["follow"] == 0.6
+    assert any("overrides.compose: unknown field" in p for p in
+               v.target_problems({"vibe": "a", "listening": False, "overrides": {"compose": {"follow": 1}}}))

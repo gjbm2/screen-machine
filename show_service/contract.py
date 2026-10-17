@@ -503,6 +503,21 @@ class LookData(TypedDict):
     # Stage 5 review fixes (README S5.14): lamps and DMX only, never a screen
     dip: bool                      # the pre-drop dip is on (§8.5): no music.hit flashes over it
     hit: Optional["LookHit"]       # the drop's unison hit, applied per output from its caps (looks.py); None: none
+    # README S5.18 (17 Oct): the composer's plan, for monitoring (dsp_monitor), never the Room page
+    compose: "ComposeView"
+
+
+class ComposeView(TypedDict):
+    """LookData.compose (README S5.18; compose.py): every enabled appliance's plan, a share of today's value per
+    dimension (compose.DIMS), and the balance that made it. observe: published only; drive: the outputs take it."""
+    mode: str                      # compose.MODES: observe | drive
+    limits: str                    # "feel" (the vibe's compose block) | "defaults" (show.yaml director.compose)
+    appliances: dict[str, dict[str, float]]   # enabled id -> {picture, level, pace, pulse, depth, change}
+    nominal: dict[str, dict[str, float]]      # compose.CLASSES -> the same for a class's own weight (room.direction and
+                                   # the lamps without a plan of their own take these)
+    balance: dict[str, Any]        # {loud, range, range_lu, lift, s: {dim}, quiet: {dim}, h: {dim}, liveness, fade}:
+                                   # s, quiet and h for the lead class (screens)
+    enabled: list[str]             # the enabled appliances: live screen ids, then members following the show (dmx)
 
 
 class LookHit(TypedDict):
@@ -526,8 +541,8 @@ class SectionRef(TypedDict):
 
 class DirectionData(TypedDict):
     """room.direction: the renderer's direction vocabulary (stream_service/director.py validate_direction: unknown keys
-    are ignored there) plus arousal/tension/section/density/groove. Numbers 0..1. intensity stays 1.0 (it is binding
-    depth in the renderer, not brightness)."""
+    are ignored there) plus arousal/tension/section/density/groove. Numbers 0..1. intensity is binding depth in the
+    renderer, not brightness: 1.0, or in compose drive mode the composer's music depth (README S5.18)."""
     t_ms: float
     seq: int
     source: str                    # "show_service"
@@ -549,6 +564,14 @@ class DirectionData(TypedDict):
     groove: float                  # drive x beat confidence
     beat_lock: bool                # the vibe allows it and the clock's gate is "beat"
     loose: bool                    # the card's "following loosely": the vibe wants the beat, the clock is unsure
+    # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
+    pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
+    peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
+                                   # pick reads them instead of its own fixed peak, from step 3)
+
+
+#: DirectionData keys present only in drive mode (README S5.18).
+DIRECTION_DRIVE_KEYS: tuple[str, ...] = ("pulse_depth", "peak")
 
 
 EVENT_KINDS: tuple[str, ...] = ("look_change", "section_change", "phrase", "build", "drop_armed", "drop", "accent",
@@ -918,7 +941,8 @@ class BrainContext:
     notes: Any = None                                                  # situations.NoteTap (reader side)
     clock_action: Optional[ClockAction] = None
     section_change: Optional[Callable[[], None]] = None               # VirtualMaestro.section_change (GOBO +1)
-    set_look_out: Optional[Callable[..., None]] = None                # VirtualMaestro.set_look (hue_depth, beat_lock, reset)
+    set_look_out: Optional[Callable[..., None]] = None                # VirtualMaestro.set_look (hue_depth, beat_lock, reset,
+                                                                       # plan: README S5.18's drive mode)
     set_gate_ref: Optional[Callable[[float], None]] = None            # Features.gate_ref_lufs = lufs
     set_senders: Optional[Callable[[tuple[Sender, ...]], None]] = None   # Receiver.set_senders
     set_priority: Optional[Callable[[tuple[str, ...]], None]] = None     # Receiver.set_priority

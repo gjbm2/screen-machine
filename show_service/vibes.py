@@ -18,6 +18,12 @@ unset) and keeps it **as asked** (degrade, never refuse): an unknown vibe plays 
 override is dropped at run time by ``effective``; ``target_problems`` lists both for the read-back. Only a body that
 isn't a target at all is refused. ``{"vibe": null}`` is the neutral target (None).
 
+**The composer's limits** (README S5.18): a vibe may carry one block that is not a field, ``compose`` (follow,
+floor, q, base per appliance class and dimension; ``compose.parse_limits``). It is checked at load like a field (a bad
+cell is dropped with a problem line, the rest stays: degrade, never refuse), never overridden by a mode, and never in
+the catalog's ``fields`` (the mode editor has no config). ``compose_limits(name)``: the clean block, or None when the
+vibe has none (the director then uses show.yaml director.compose.defaults).
+
 **Neutral as a real choice.** A word field's neutral is offered as the word ``auto`` (WORD_AUTO: "the music decides"),
 and ``loudness_ref_lufs``'s as the gate's own default (contract.GATE_REF_DEFAULT_LUFS, preset "The usual"), so a mode's
 fine-tune can set either back to neutral without a null.
@@ -33,6 +39,7 @@ import pathlib
 import re
 from typing import Any, Callable, Collection, Optional
 
+from . import compose as comp
 from . import contract
 
 log = logging.getLogger("show_service.vibes")
@@ -44,6 +51,7 @@ WORD_AUTO = "auto"           # a word field's neutral as a choice: "the music de
 VOCAB_FACETS: tuple[str, ...] = ("moods", "genre", "transition_style", "palette_family")
 LABEL_MAX = 40
 TEXT_MAX = 2000
+COMPOSE_BLOCK = "compose"    # the composer's limits: a block beside the fields, not a field (module docstring)
 
 # Each field: kind and bounds (the checker), and its JSON schema (the editor; room's catalog subset + x-ui).
 #   range   [lo, hi] with lo <= hi inside (min, max)      num     a number inside (min, max)
@@ -316,6 +324,7 @@ class Vibes:
         self._pal_seen: tuple[str, ...] = ()
         self._raw: dict[str, dict] = {}                  # name -> the fields as written (valid ones)
         self._vibes: dict[str, contract.VibeSettings] = {}
+        self._compose: dict[str, dict] = {}              # name -> its compose block (clean), when it has one
 
     # -- loading (show-brain) ---------------------------------------------------------------------------------------
     @staticmethod
@@ -381,6 +390,7 @@ class Vibes:
         if self.vocab_error:
             problems.append(f"vocab: {self.vocab_error}; words are not checked")
         clean: dict[str, dict] = {}
+        limits: dict[str, dict] = {}
         for name, fields in vibes.items():
             if not isinstance(name, str) or not _NAME.match(name):
                 problems.append(f"vibes.{name}: not a vibe name ({NAME_RE}): skipped")
@@ -392,6 +402,9 @@ class Vibes:
                 continue
             ok: dict = {}
             for f, v in fields.items():
+                if f == COMPOSE_BLOCK:                       # the composer's limits (README S5.18)
+                    limits[name] = comp.parse_limits(v, f"vibes.{name}.{f}", problems)
+                    continue
                 if f not in _SPECS:
                     problems.append(f"vibes.{name}.{f}: unknown field: ignored")
                     continue
@@ -421,6 +434,7 @@ class Vibes:
             problems.append(f"version: {version!r} (this reader knows 1)")
         self._raw = clean
         self._vibes = {n: _complete(n, f) for n, f in clean.items()}
+        self._compose = {n: lim for n, lim in limits.items() if n in clean}
         self.order = order
         self.problems = problems
         self.revision = _sha(data)
@@ -437,6 +451,11 @@ class Vibes:
         """NEUTRAL + the vibe's valid fields (a copy), or None for an unknown name."""
         v = self._vibes.get(name)
         return copy.deepcopy(v) if v is not None else None
+
+    def compose_limits(self, name: Optional[str]) -> Optional[dict]:
+        """The vibe's compose block (clean, ``compose.parse_limits``; a copy), or None: no such vibe, or no block."""
+        lim = self._compose.get(name) if isinstance(name, str) else None
+        return copy.deepcopy(lim) if lim is not None else None
 
     def effective(self, target: Optional[contract.VibeTarget]) -> tuple[contract.VibeSettings, bool]:
         """(settings, known): the target's vibe with its overrides. No target, or a vibe that isn't in the file:

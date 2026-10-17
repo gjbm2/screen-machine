@@ -101,6 +101,26 @@ hit as Hue takes it (README S5.14).
 ``beat_lock`` (the vibe's own) and ``beat_depth`` (the accent depth before the gate, for DMX at middle confidence,
 §5.4; artnet_out never gets it). A key role's white (``white_k``) is tinted toward the palette at most ``chroma_max``
 from that white (``white_tint``), so the key light stays near key_cct (§8.8).
+
+**Composition and balance** (README S5.18; SHOW_ENGINE §8.10; compose.py, pure). Every tick, before the look is
+composed: the composer's inputs (features.gate and lufs_s, liveness, the piano's velocity, talking, a fade cue from
+structure's outro or an armed song end, tension, build_progress) go through ``compose.step`` (the director owns its
+State), the NEW enabled-set reader (``compose.enabled``: live screens, room members exactly ``dmx``) picks the
+appliances, and ``compose.plan_one`` gives each one its plan per dimension, by the feel's limits (vibes.yaml
+``compose``; no feel or no block: show.yaml director.compose.defaults) and its role weight (a lamp role's ``dynamics``,
+else director.compose.weights). show.yaml director.compose.mode (hot-reloaded):
+  * ``observe`` (the default): the plan goes out on room.look as ``compose`` (LookData.compose) and NOTHING else
+    changes: room.direction, palette_fn, set_look_out and the publish cadence are exactly as before;
+  * ``drive``: room.direction's ``intensity`` is the screens' music depth (``depth``; observe: 1.0), it gains
+    ``pulse_depth`` (``pulse``) and ``peak`` (the build/drop words: the feel's energy top, its moods and transition
+    style, else the top band's), and intensity and pulse_depth join the publish-on-change fields; pace's tempo is
+    folded by octaves with stream_service's ONE range (config/live/music_response.json tempo.fold_min / fold_max,
+    director.compose.response_file; missing: [70, 180) and a listed problem), so a half-time lock no longer reads
+    slow; artnet_out's lamps take ``set_look_out(plan=...)``: the accent depth before the gate on their own ladder
+    (beat; else the clock's dmx beats at show.yaml looks.middle_depth; else none) times each lamp's ``pulse``, and
+    with no beat the swell follows each lamp's ``level`` instead of the raw energy. Back to observe clears it.
+Steps 3-5 (the screens' picture on INTENSITY, the APL headroom, figure and ground) are later: ``apl`` is None today
+and the cut guard is the room's cut phase.
 """
 
 from __future__ import annotations
@@ -116,6 +136,7 @@ import time
 import urllib.parse
 from typing import Any, Callable, Optional
 
+from . import compose as comp
 from . import contract
 from . import palette as pal
 from .vibes import Vibes
@@ -211,6 +232,9 @@ DEFAULT_STYLE = "default"
 CUT_RULES = ("never", "beat", "always")
 GATE_RANK = {"none": 0, "dmx": 1, "beat": 2}        # clock gates, weakest first (contract.ClockData.gate)
 TRACK_CUT = {"style": "cut", "beats": None, "seconds": 0.05}   # the director's own look at a song's cut
+# Composition and balance (README S5.18)
+END_FADE_S = 10.0                   # an armed song end cues the composer's fade until this long after its at_ms
+MIDDLE_DEPTH = 0.5                  # show.yaml looks.middle_depth's starting point (looks.py DEFAULT_MIDDLE_DEPTH)
 
 #: show.yaml ``director`` keys the code falls back to when the file leaves one out: the design's own numbers (§8.4,
 #: §8.5; starting points, as the module constants above they come from) or the neutral (no swell, no band words). The
@@ -239,7 +263,9 @@ DIRECTOR_FALLBACK = {
     # colours: every other behaviour stays neutral until a feel is set.
     "no_feel": {"palettes": []},
     # song ends (README S5.17)
-    "track_transitions": TRACK_TRANSITIONS}
+    "track_transitions": TRACK_TRANSITIONS,
+    # composition and balance (README S5.18; compose.py): observe | drive, the loudness, range, headroom and limits
+    "compose": comp.COMPOSE_FALLBACK}
 #: Stage 4's show.yaml director keys: section -> key -> (lowest, highest) allowed, or bool
 STAGE4_KEYS: dict[str, dict[str, Any]] = {
     "sections": {"max_late_bars": (0.0, 64.0), "express_gain": (0.0, 2.0), "phase_hint_s": (0.0, 10.0)},
@@ -745,6 +771,23 @@ class Director:
         self._song_dip: Optional[dict] = None            # fade-dark's outgoing half on the lamps: {"t0", "out_s",
                                                          # "in_s", "until", "track_id"} (to the vibe's floor, never off)
         self.ends_stats: dict[str, Any] = {"chosen": {}, "held": 0, "dips": 0, "dip_released": 0}
+        # composition and balance (README S5.18), all on show-brain
+        self._cstate = comp.State()                      # the composer's memory (compose.step changes only this)
+        self._cfg_gen = 0                                # +1 per configure: the limits cache's key
+        self._ctab_key: Optional[tuple] = None
+        self._ctab: dict = comp.table(None)
+        self._csrc = "defaults"                          # "feel" | "defaults": whose limits are in use
+        self._cval: list[str] = []                       # the validator's lines for the limits in use
+        self._cblock: Optional[dict] = None              # LookData.compose, built before the look
+        self._cnom: Optional[dict] = None                # {class: values}: the nominal plans (direction, unplanned lamps)
+        self._clamps: Optional[dict] = None              # {member id | "*": (level, pulse)}: artnet_out's lamps (drive)
+        self._plan_sent: Optional[dict] = None           # what set_look_out(plan=) last sent (drive)
+        self._feat_now: Optional[dict] = None            # this tick's features while fresh
+        self._end_armed: Optional[float] = None          # an armed song end's at (s): a fade cue
+        self._fold: tuple[float, float] = comp.FOLD_DEFAULT
+        self._resp_sig: Optional[tuple] = None
+        self._resp_problem: Optional[str] = None
+        self._middle_depth = MIDDLE_DEPTH
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -994,7 +1037,11 @@ class Director:
                 else:
                     probs.append(f"director.{key}.{k2}: {v!r} is not a number in {lim[0]:g}..{lim[1]:g}")
         cfg["track_transitions"] = parse_track_transitions(d.get("track_transitions"), probs)
+        cfg["compose"] = comp.parse_settings(d.get("compose"), probs)          # README S5.18
         self.cfg = cfg
+        lk = s.get("looks") if isinstance(s.get("looks"), dict) else {}
+        md = _num(lk.get("middle_depth"))                  # the look engine's own key (it lists a bad one)
+        self._middle_depth = md if md is not None and 0.0 <= md <= 1.0 else MIDDLE_DEPTH
         stc = s.get("structure") if isinstance(s.get("structure"), dict) else {}
         evc = stc.get("events") if isinstance(stc.get("events"), dict) else {}
         lead = _num(evc.get("min_lead_s"))
@@ -1017,6 +1064,11 @@ class Director:
                     isinstance(x, list) and len(x) == 2 and all(_num(y) is not None for y in x) for x in ah)):
                 probs.append(f"lamps.roles.{rname}.avoid_hues: not a list of [lo, hi] degrees: ignored")
                 rr["avoid_hues"] = None
+            dy = rr.get("dynamics")                        # README S5.18: the role's weight W in the composer
+            if dy is not None and not (_num(dy) is not None and 0.0 <= dy <= 2.0):
+                probs.append(f"lamps.roles.{rname}.dynamics: {dy!r} is not a number in 0..2: "
+                             f"director.compose.weights used")
+                rr["dynamics"] = None
             clean_roles[str(rname)] = rr
         for pl, rn in pr.items():
             if rn not in clean_roles:
@@ -1028,6 +1080,9 @@ class Director:
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
         self.settings_problems = probs
         self._roles_key = None
+        self._cfg_gen += 1
+        self._ctab_key = None
+        self._check_response(force=True)
 
     @staticmethod
     def _check_bands(b: Any, probs: list[str]) -> Optional[dict]:
@@ -1140,6 +1195,7 @@ class Director:
             self.palettes.poll()
             self.vibes.poll()
             self._check_patch()
+            self._check_response()
         self._check_rig()
         self._fetches(now_s)
 
@@ -1178,6 +1234,7 @@ class Director:
         self._armed_tick(now_s, vs, grid)
         self._changes(now_s, vs, grid, cutting)
         self._phase_tick(now_s, vs, grid)
+        self._compose_plan(now_s, dt, room)
         self._compose(now_s, vs, known, grid, room)
         self._outputs(now_s, vs, known, grid)
         self._screens_palette(now_s, room)
@@ -1212,6 +1269,7 @@ class Director:
         f = _call(self.ctx.features)
         ft = _num(f.get("t_ms")) if isinstance(f, dict) else None
         fresh = ft is not None and now_s - ft / 1000.0 <= STALE_S
+        self._feat_now = f if fresh else None              # the composer's gate and lufs_s (README S5.18)
         if fresh:
             self._stale_since = None
             if self._cold:
@@ -1303,7 +1361,10 @@ class Director:
             + self.steps * self._step_size(vs)
         e_out = min(hi, max(lo, e_out))
         u = (e_out - lo) / (hi - lo) if hi > lo else 0.5
-        tempo = _c01((grid.bpm - 60.0) / 90.0) if grid.has_grid and grid.gate in ("beat", "dmx") else None
+        bpm = grid.bpm
+        if self.cfg["compose"]["mode"] == comp.DRIVE and grid.has_grid:
+            bpm = comp.fold_bpm(bpm, *self._fold)          # README S5.18: 75's one fold, so half-time isn't slow
+        tempo = _c01((bpm - 60.0) / 90.0) if grid.has_grid and grid.gate in ("beat", "dmx") else None
         pace_in = 0.7 * e_out + 0.3 * tempo if tempo is not None else e_out
         onsets_now = onsets_in if onsets_in is not None and live > 0 else e_out
         arousal = _c01(0.6 * e_out + 0.4 * onsets_now)
@@ -1331,6 +1392,7 @@ class Director:
             if self._look_out is not None:
                 _call(self.ctx.set_look_out, reset=True)
                 self._look_out = None
+                self._plan_sent = None                    # reset cleared artnet_out's plan too: drive sends it again
             if self._gate_ref is not None and self._gate_ref != GATE_REF_DEFAULT_LUFS:
                 _call(self.ctx.set_gate_ref, GATE_REF_DEFAULT_LUFS)
             self._gate_ref = None
@@ -1615,7 +1677,10 @@ class Director:
         if at_ms is None:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
-        if kind == "track_change":
+        if kind == "track_end_armed":                     # the composer's fade cue (README S5.18); a call-off ends it
+            self._end_armed = None if ("eta_s" in ev and ev["eta_s"] is None) else at_ms / 1000.0
+        elif kind == "track_change":
+            self._end_armed = None
             self._on_track(ev.get("track_id"), ev.get("via"), now_s, vs, grid, at_s=at_ms / 1000.0, ev=ev)
         elif kind == "track_end":
             self._on_track_end(ev, now_s, vs)
@@ -2409,7 +2474,7 @@ class Director:
                      "lamps": lamps, "screens": screens,
                      "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house
                                  and not self.low),
-                     "hit": self._hit_view()}
+                     "hit": self._hit_view(), "compose": self._cblock}
         bars = 0
         if grid.ok and self.look_bar is not None:
             bars = max(0, grid.bar_at(now_s) - self.look_bar)
@@ -2449,6 +2514,8 @@ class Director:
                           "density": round(dens, 3),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat"}
+        if self.cfg["compose"]["mode"] == comp.DRIVE:
+            self._drive_direction(self.direction, vs)     # README S5.18: drive only
         self._words_now = words
         if not pal_on:
             return
@@ -2521,6 +2588,164 @@ class Director:
         if len(self._colour_cache) > COLOUR_CACHE:
             self._colour_cache.popitem(last=False)
         return c
+
+    # -- composition and balance (README S5.18; compose.py) ------------------------------------------------------------------
+    def _check_response(self, force: bool = False) -> None:
+        """stream_service's config/live/music_response.json (75's file; show.yaml director.compose.response_file):
+        its tempo.fold_min / fold_max, the ONE tempo fold, read again when it changes (mtime; never a second range
+        here). Missing or bad: compose.FOLD_DEFAULT [70, 180), and the compose view says why."""
+        rf = str(self.cfg["compose"]["response_file"])
+        lo0, hi0 = comp.FOLD_DEFAULT
+        path = pathlib.Path(rf).expanduser()
+        if not path.is_absolute():
+            path = contract.REPO_ROOT / path
+        try:
+            st = path.stat()
+            sig: tuple = (str(path), st.st_mtime_ns, st.st_size)
+        except OSError as e:
+            sig = (str(path), None, None)
+            if force or sig != self._resp_sig:
+                self._resp_sig, self._fold = sig, comp.FOLD_DEFAULT
+                self._resp_problem = f"{rf}: {e.strerror or e}: the tempo folds into [{lo0:g}, {hi0:g})"
+            return
+        if not force and sig == self._resp_sig:
+            return
+        self._resp_sig = sig
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            t = data.get("tempo") if isinstance(data, dict) else None
+            lo = _num(t.get("fold_min")) if isinstance(t, dict) else None
+            hi = _num(t.get("fold_max")) if isinstance(t, dict) else None
+            if lo is None or hi is None or not 0.0 < lo < hi:
+                raise ValueError(f"tempo.fold_min / fold_max {lo!r} / {hi!r} are not 0 < min < max")
+            self._fold, self._resp_problem = (lo, hi), None
+        except Exception as e:                           # noqa: BLE001  degrade, never refuse
+            self._fold = comp.FOLD_DEFAULT
+            self._resp_problem = f"{rf}: {type(e).__name__}: {e}: the tempo folds into [{lo0:g}, {hi0:g})"
+
+    def _limits(self) -> dict:
+        """The limits table in use (compose.table): the feel's compose block, else show.yaml director.compose.defaults
+        (no feel, or a feel without one). Cached per (vibes load, feel, settings); its validator lines go to the
+        snapshot's compose view."""
+        cm = self.cfg["compose"]
+        name = self._vibe_name if self.known else None
+        key = (getattr(self.vibes, "generation", 0), name, self._cfg_gen)
+        if key != self._ctab_key:
+            self._ctab_key = key
+            get = getattr(self.vibes, "compose_limits", None)
+            lim = get(name) if (get is not None and name is not None) else None
+            self._csrc = "feel" if lim is not None else "defaults"
+            self._ctab = comp.table(lim if lim is not None else cm["defaults"])
+            w = dict(cm["weights"])                        # the validator's W: the largest a class can take
+            dyn = [float(r["dynamics"]) for r in self.lamps_cfg["roles"].values()
+                   if _num(r.get("dynamics")) is not None]
+            if dyn:
+                w[comp.LAMPS] = max([float(w.get(comp.LAMPS, 1.0))] + dyn)
+            self._cval = comp.validate(self._ctab, w, f"vibes.{name}.compose" if lim is not None
+                                       else "director.compose.defaults")
+        return self._ctab
+
+    def _weight(self, cls: str, rc: Optional[dict]) -> float:
+        """W: a lamp role's own ``dynamics`` (show.yaml lamps.roles), else director.compose.weights.<class>."""
+        w = _num((rc or {}).get("dynamics"))
+        return w if w is not None else float(self.cfg["compose"]["weights"].get(cls, 1.0))
+
+    def _compose_plan(self, now_s: float, dt: float, room: Any) -> None:
+        """The composer's plan for this tick (README S5.18), before the look is composed: compose.step on this tick's
+        inputs, the enabled set (compose.enabled: live screens, members exactly dmx), each enabled appliance's plan
+        and the classes' nominal plans (room.direction and the lamps without a plan of their own take those). Only
+        reads: what it builds goes out as LookData.compose, and in drive mode through ``_drive_direction`` and
+        ``_plan_out``."""
+        cm = self.cfg["compose"]
+        m = self.music
+        f = self._feat_now
+        pv = m.get("pv")
+        piano = _c01(_num(pv.get("velocity"), 0.5) or 0.0) if m.get("playing") and isinstance(pv, dict) else None
+        phase = self._phase_eff(now_s)
+        if self._end_armed is not None and now_s > self._end_armed + END_FADE_S:
+            self._end_armed = None
+        inp = comp.Inputs(now_s=now_s, dt=dt, fresh=bool(m.get("fresh")),
+                          gate=_num(f.get("gate")) if f else None, lufs_s=_num(f.get("lufs_s")) if f else None,
+                          liveness=self.lv, piano=piano, talking=self._situation("talking") is True,
+                          fade=phase == "outro" or self._end_armed is not None, tension=self._tension or 0.0,
+                          build=self._build_progress() if phase == "build" else 0.0)
+        terms = comp.step(self._cstate, inp, cm)
+        tab = self._limits()
+        scr_on, mem_on = comp.enabled(room)
+        scr_view = room.get("screens") if isinstance(room, dict) and isinstance(room.get("screens"), dict) else {}
+        hold_lamps = bool(self.house or self.low)
+        w_scr = self._weight(comp.SCREENS, None)
+        apps: dict[str, dict] = {}
+        for sid in scr_on:
+            cut = bool((scr_view.get(sid) or {}).get("cutting"))     # the cut guard (step 3: the MasterBus's own)
+            apps[sid] = comp.plan_one(terms, tab, cm, comp.SCREENS, weight=w_scr, hold=cut)[0]
+        lamps: dict[str, tuple[float, float]] = {}
+        for mid in mem_on:
+            _rn, rc = self._lamp_role(self.lamps.get(mid) or {})
+            v = comp.plan_one(terms, tab, cm, comp.LAMPS, weight=self._weight(comp.LAMPS, rc), hold=hold_lamps)[0]
+            apps[mid] = v
+            lamps[mid] = (v[comp.LEVEL], v[comp.PULSE])
+        sv, ss, sq, sh = comp.plan_one(terms, tab, cm, comp.SCREENS, weight=w_scr)
+        _rn, rc0 = self._lamp_role({})                     # the default role's weight
+        lv = comp.plan_one(terms, tab, cm, comp.LAMPS, weight=self._weight(comp.LAMPS, rc0), hold=hold_lamps)[0]
+        lamps["*"] = (lv[comp.LEVEL], lv[comp.PULSE])
+        self._cnom = {comp.SCREENS: sv, comp.LAMPS: lv}
+        self._clamps = lamps
+        loud, rlu = terms["loud"], terms["range_lu"]
+        self._cblock = {"mode": cm["mode"], "limits": self._csrc,
+                        "appliances": {k: comp.rounded(v) for k, v in apps.items()},
+                        "nominal": {k: comp.rounded(v) for k, v in self._cnom.items()},
+                        "balance": {"loud": round(loud, 3) if loud is not None else None,
+                                    "range": round(terms["range"], 3), "range_lu": round(rlu, 2) if rlu is not None
+                                    else None, "lift": comp.rounded(terms["lift"]), "s": comp.rounded(ss),
+                                    "quiet": comp.rounded(sq), "h": comp.rounded(sh),
+                                    "liveness": round(terms["liveness"], 3), "fade": terms["fade"]},
+                        "enabled": scr_on + mem_on}
+
+    def _drive_direction(self, d: dict, vs: dict) -> None:
+        """Drive mode only (README S5.18): room.direction's intensity is the screens' music depth, and it gains
+        pulse_depth and peak. Observe never calls this, so the message stays exactly as it was."""
+        sv = (self._cnom or {}).get(comp.SCREENS)
+        if sv is None:
+            return
+        d["intensity"] = round(_c01(sv[comp.DEPTH]), 3)
+        d["pulse_depth"] = round(max(0.0, sv[comp.PULSE]), 3)
+        d["peak"] = self._peak(vs)
+
+    def _peak(self, vs: dict) -> dict:
+        """room.direction.peak, the build/drop words (the renderer's build pick, from step 3): the feel's energy top,
+        its own moods and transition style when it sets them, else the top energy band's (show.yaml director.bands),
+        else the vibe's neutral."""
+        b = self.cfg.get("bands")
+        top = (b["table"][-1] if b and b.get("table") else None) or {}
+        feel = self._vibe_name is not None and self.known
+        moods = list(vs["moods"]) if feel and vs["moods"] else list(top.get("moods") or vs["moods"])
+        style = (vs["transition_style"] if feel else None) or top.get("transition_style") or vs["transition_style"]
+        return {"energy": round(float(vs["energy"][1]), 3), "moods": moods, "transition_style": style}
+
+    def _plan_out(self, depth: Optional[float]) -> None:
+        """Drive mode (README S5.18): artnet_out's lamps take ``set_look_out(plan=...)``: ``depth`` (the accent depth
+        before the clock's gate; None with no feel: artnet_out keeps its own), ``middle_depth`` (show.yaml
+        looks.middle_depth: the clock's dmx rung) and each lamp's (level, pulse), "*" for one without its own plan.
+        Sent when it moves by director.compose.smooth.deadband or more. Observe: nothing, and a plan sent before is
+        cleared once (``plan={}``), so artnet_out is exactly as before."""
+        cm = self.cfg["compose"]
+        if cm["mode"] != comp.DRIVE or self._clamps is None:
+            if self._plan_sent is not None:
+                self._plan_sent = None
+                _call(self.ctx.set_look_out, plan={})
+            return
+        plan = {"depth": None if depth is None else round(float(depth), 3), "middle_depth": self._middle_depth,
+                "lamps": {k: (round(lv, 3), round(pu, 3)) for k, (lv, pu) in self._clamps.items()}}
+        last = self._plan_sent
+        db = float(cm["smooth"]["deadband"])
+        moved = (last is None or last["depth"] != plan["depth"] or last["middle_depth"] != plan["middle_depth"]
+                 or last["lamps"].keys() != plan["lamps"].keys()
+                 or any(abs(a - b) >= db - 1e-9 for k, v in plan["lamps"].items()
+                        for a, b in zip(v, last["lamps"][k])))
+        if moved:
+            self._plan_sent = plan
+            _call(self.ctx.set_look_out, plan=plan)
 
     # -- look_fn (Stage 5: the rig's look engine, any thread) ----------------------------------------------------------------
     def look_fn(self) -> Optional[contract.LookData]:
@@ -2622,11 +2847,12 @@ class Director:
         d = self.direction
         if d is not None:
             sec_a = (self._last_direction or {}).get("section") or {}
+            # intensity is 1.0 and pulse_depth / peak absent in observe (README S5.18), so the cadence is as before
             changed = self._differs(self._last_direction, d,
-                                    ("energy", "pace", "change_rate", "arousal", "tension", "density", "groove",
-                                     "fx.density", "fx.rate"),
+                                    ("energy", "pace", "intensity", "pulse_depth", "change_rate", "arousal", "tension",
+                                     "density", "groove", "fx.density", "fx.rate"),
                                     ("vibe", "moods", "genre", "transition_style", "palette_family", "beat_lock",
-                                     "loose")) or \
+                                     "loose", "peak")) or \
                 sec_a.get("id") != d["section"]["id"] or sec_a.get("label") != d["section"]["label"] or \
                 (self._last_direction or {}).get("fx", {}).get("moods") != d["fx"]["moods"]
             if changed or now_s - self._dir_pub_s >= rep:
@@ -2651,6 +2877,7 @@ class Director:
                 self._last_look = lk
                 self._look_pub_s = now_s
         if not known:
+            self._plan_out(None)                          # drive: the lamps' plan, artnet_out keeping its own depth
             return
         # The accent depth (§8.5), and how each reader takes it (README S5.14): ``hue_depth`` is 0 unless the clock's
         # gate is beat (the virtual Maestro's Hue swell, and the look engine's Hue parity); ``beat_depth`` is the same
@@ -2667,6 +2894,7 @@ class Director:
         if out != self._look_out:
             self._look_out = out
             _call(self.ctx.set_look_out, hue_depth=out[0], beat_lock=out[1], beat_depth=out[2])
+        self._plan_out(depth)                             # drive only (README S5.18): the depth before the gate
         ref = vs["loudness_ref_lufs"]
         if ref is not None and ref != self._gate_ref:
             self._gate_ref = ref
@@ -3186,7 +3414,19 @@ class Director:
                                 "hold": dict(self.screen_pick) if self.screen_pick else None,
                                 "look_source": self._look_source, "boot": self._look_boot},
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
-                      "gobo_steps": self.gobo_steps, "log_error": self._log_error}}
+                      "gobo_steps": self.gobo_steps, "log_error": self._log_error},
+            "compose": self._compose_view()}
+
+    def _compose_view(self) -> dict:
+        """The snapshot's composer (README S5.18): the mode, whose limits, the problems (the limits' validator, the
+        response file), the tempo fold, the dmx rung's depth and, in drive, what artnet_out was last sent."""
+        cm = self.cfg["compose"]
+        probs = list(self._cval) + ([self._resp_problem] if self._resp_problem else [])
+        return {"mode": cm["mode"], "limits": self._csrc, "problems": probs, "fold": list(self._fold),
+                "response_file": cm["response_file"], "middle_depth": self._middle_depth,
+                "plan_sent": ({"depth": self._plan_sent["depth"], "middle_depth": self._plan_sent["middle_depth"],
+                               "lamps": {k: list(v) for k, v in self._plan_sent["lamps"].items()}}
+                              if self._plan_sent else None)}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Director:

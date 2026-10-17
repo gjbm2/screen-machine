@@ -638,8 +638,9 @@ def _with_seams(monkeypatch) -> None:
             self.priority = names
 
     class VirtualMaestro(vm_mod.VirtualMaestro):
-        def set_look(self, *, hue_depth=None, beat_lock=None, reset=False):
+        def set_look(self, *, hue_depth=None, beat_lock=None, reset=False, plan=None):
             self.look = (hue_depth, beat_lock, reset)
+            self.plan_seen = plan
 
         def section_change(self):
             self.sections = getattr(self, "sections", 0) + 1
@@ -699,6 +700,10 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert show.rig.looks == [(0.4, False, False)]                    # the fan-out: Art-Net out, then the rig
         ctx.set_look_out(reset=True)
         assert vm.look == (None, None, True) and show.rig.looks[-1] == (None, None, True)
+        n = len(show.rig.looks)                                          # README S5.18: the composer's plan is
+        ctx.set_look_out(plan={"depth": 0.5, "middle_depth": 0.5, "lamps": {"*": (1.0, 1.0)}})   # Art-Net out's alone
+        assert vm.plan_seen == {"depth": 0.5, "middle_depth": 0.5, "lamps": {"*": (1.0, 1.0)}}
+        assert len(show.rig.looks) == n and show._g["rig.set_look"].errors == 0
         # the hit tap: the clock, then the rig; a raising rig is guarded
         hit = {"type": contract.MUSIC_HIT, "data": {"t_ms": 1000.0, "band": "sub", "strength": 0.8}}
         show._features_publish(hit)

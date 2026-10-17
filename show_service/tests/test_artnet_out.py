@@ -863,3 +863,106 @@ def test_set_look_beat_lock_back_on_never_starts_mid_pulse():
     frames = run(vm, 20.03, 20.6)
     assert all(d[pulse] == 0 for t, d in frames if t < 20.5 - 1e-9)   # no tail of the unlocked beat's pulse
     assert edges(frames, pulse) and abs(edges(frames, pulse)[0] - 20.5) < 1e-9
+
+
+# -- the composer's plan (README S5.18: show.yaml director.compose.mode drive) ----------------------------------------
+class GatedClock(FakeClock):
+    """FakeClock with clock.Clock's gate rule: next_beat(t, gate=) answers only while its own gate is at least the
+    one asked (none < dmx < beat); the default asks for beat."""
+    RANK = {"none": 0, "dmx": 1, "beat": 2}
+
+    def __init__(self, anchor: float, period: float) -> None:
+        super().__init__(anchor, period)
+        self.gate = "beat"
+
+    def next_beat(self, t: float, gate: str = "beat"):
+        if self.RANK[self.gate] < self.RANK[gate]:
+            return None
+        return super().next_beat(t)
+
+
+def _hue(frames, idx: int) -> list[int]:
+    return [d[idx] for _, d in frames]
+
+
+def at(vm: ao.VirtualMaestro, t0: float, t1: float, step: float = 0.01) -> list[tuple[float, bytes]]:
+    """compose() at fixed times (the hue swell reads the clock itself; no frame grid), so two outputs compare."""
+    out, n = [], int(round((t1 - t0) / step))
+    for i in range(n):
+        t = round(t0 + i * step, 6)
+        assert vm.compose(t)
+        out.append((t, vm.channels()))
+    return out
+
+
+def test_the_plan_runs_the_lamps_on_their_own_ladder():
+    """beat: the swell exactly as today's at the plan's depth x pulse; the clock at dmx: on its dmx beats at depth x
+    middle_depth (today: no swell at all at dmx); none: steady at 1 - d + d x the planned level, never the raw
+    energy. Checked frame for frame against plan-less outputs at the equivalent depth on a beat clock."""
+    lay = layout()
+    r, r_sw = ch(lay, "hue.ne", "r"), ch(lay, "hue.sw", "r")
+
+    def vm_with(clk, depth):
+        return ao.VirtualMaestro(layout=lay, clock=clk, palette_fn=lambda t: (1, 1, 1), idle_after_s=None,
+                                 features_fn=lambda: feats(0.0, energy=0.1), hue_depth=depth)
+    clk = GatedClock(anchor=20.0, period=0.5)
+    vm = vm_with(clk, 0.0)
+    vm.set_look(plan={"depth": 0.6, "middle_depth": 0.5, "lamps": {"hue.ne": (0.8, 1.0), "*": (0.5, 0.5)}})
+    beat = run(vm, 19.5, 22.0)
+    ref6, ref3 = run(vm_with(GatedClock(20.0, 0.5), 0.6), 19.5, 22.0), run(vm_with(GatedClock(20.0, 0.5), 0.3),
+                                                                             19.5, 22.0)
+    assert _hue(beat, r) == _hue(ref6, r) and min(_hue(beat, r)) < 200    # depth 0.6 x pulse 1: today's swell
+    assert _hue(beat, r_sw) == _hue(ref3, r_sw)                            # "*": pulse 0.5 -> depth 0.3
+    clk.gate = "dmx"
+    dmx = at(vm, 22.0, 24.0)
+    ref = at(vm_with(GatedClock(20.0, 0.5), 0.3), 22.0, 24.0)
+    assert _hue(dmx, r) == _hue(ref, r) and min(_hue(dmx, r)) < 240        # x middle_depth 0.5: it still swells
+    clk.gate = "none"
+    none = run(vm, 24.0, 25.0)
+    assert set(_hue(none, r)) == {round(255 * (1 - 0.6 + 0.6 * 0.8))}     # the planned level, not the energy 0.1
+    assert set(_hue(none, r_sw)) == {round(255 * (1 - 0.3 + 0.3 * 0.5))}  # its own depth x pulse
+    assert vm.status()["plan"] == {"depth": 0.6, "middle_depth": 0.5,
+                                   "lamps": {"hue.ne": [0.8, 1.0], "*": [0.5, 0.5]}}
+    vm.set_look(plan={})                                          # cleared: exactly as before (hue_depth 0: steady)
+    clk.gate = "dmx"
+    assert set(_hue(run(vm, 25.0, 26.0), r)) == {255} and vm.status()["plan"] is None
+
+
+def test_without_a_plan_nothing_changes_and_reset_clears_it():
+    """No plan: the dmx rung never swells, and with no beat the swell follows the smoothed energy (today)."""
+    lay = layout()
+    clk = GatedClock(anchor=20.0, period=0.5)
+    clk.gate = "dmx"
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, palette_fn=lambda t: (1, 1, 1), idle_after_s=None,
+                           features_fn=lambda: feats(0.0, energy=0.2))
+    r = ch(lay, "hue.ne", "r")
+    today = run(vm, 19.5, 22.0)
+    vals = [d[r] for t, d in today if t > 21.0]
+    assert max(vals) - min(vals) <= 3                            # no swell on the dmx beats...
+    assert vals[-1] == pytest.approx(255 * (1 - 0.7 + 0.7 * 0.2), abs=6)   # ...the energy, as today
+    vm.set_look(plan={"depth": None, "middle_depth": 0.5, "lamps": {"*": (1.0, 1.0)}})
+    assert vm.status()["plan"]["depth"] is None                  # None: the output's own hue_depth (0.7)
+    swell = at(vm, 22.0, 24.0)
+    ref = at(ao.VirtualMaestro(layout=lay, clock=GatedClock(20.0, 0.5), palette_fn=lambda t: (1, 1, 1),
+                               idle_after_s=None, hue_depth=0.35), 22.0, 24.0)
+    assert _hue(swell, r) == _hue(ref, r)                        # 0.7 x middle_depth on the dmx beats
+    vm.set_look(reset=True)
+    assert vm.lamp_plan is None
+    vm.set_look(plan={"lamps": {"x": ("a", 1)}, "middle_depth": "b"})   # nothing usable: no plan
+    assert vm.lamp_plan is None
+    vm.set_look(plan={"lamps": {"hue.ne": (2.0, -1.0)}, "middle_depth": float("nan"), "depth": 9})
+    assert vm.lamp_plan == {"depth": 1.0, "middle_depth": 0.0, "lamps": {"hue.ne": (1.0, 0.0)}}
+
+
+def test_a_held_frame_ignores_the_plan_s_swell():
+    """A quiet room with the director's look (held): steady colour, no swell, plan or not."""
+    lay = layout()
+    clk = GatedClock(anchor=20.0, period=0.5)
+    box = {"gate": 1.0}
+    vm = ao.VirtualMaestro(layout=lay, clock=clk, palette_fn=lambda t: {"*": (1, 1, 1)}, idle_after_s=None,
+                           quiet_after_s=1.0, features_fn=lambda: {**feats(0.0), "gate": box["gate"]})
+    vm.set_look(plan={"depth": 0.9, "middle_depth": 0.5, "lamps": {"*": (0.2, 1.0)}})
+    r = ch(lay, "hue.ne", "r")
+    box["gate"] = 0.0
+    frames = run(vm, 19.0, 23.0)
+    assert vm.held == "quiet" and {d[r] for t, d in frames if t > 21.0} == {255}

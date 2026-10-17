@@ -97,6 +97,15 @@ A callback that raises is counted and treated as None; it never stops the loop.
 thread, each value swapped by reference and read once per frame. ``hue_depth`` (0..1) replaces the constructor's.
 ``beat_lock`` False: no DIMMER pulse edges, no PRISM flips, and the hue swell follows the energy only; the clock stays
 wired (the frame grid keeps its phase). ``reset=True`` puts both back to the constructor's (the director gone neutral).
+
+**The composer's plan** (README S5.18, show.yaml director.compose.mode drive only): ``set_look(plan={"depth",
+"middle_depth", "lamps"})``; ``plan={}`` (and ``reset``) clears it, and without one every frame is exactly as above.
+With one, the hue lamps run the plan on this output's own beat ladder, read from its own clock each frame: a beat
+(the clock at gate beat) swells at ``depth`` (the director's accent depth before the gate; None: ``hue_depth``); else
+the clock's dmx-gate beats (``clock.next_beat(t, gate="dmx")``) swell at depth x ``middle_depth`` (show.yaml
+looks.middle_depth); else none, and the no-beat swell follows the lamp's planned ``level`` instead of the raw energy
+(the second loudness path, gone). Each lamp's depth is also x its planned ``pulse``. ``lamps``: ``{device id | "*":
+(level, pulse)}``. Screens (DIMMER pulses, PRISM) never read the plan.
 """
 
 from __future__ import annotations
@@ -428,6 +437,38 @@ def _http_json(url: str, timeout: float = 2.0) -> Any:
         return json.loads(r.read())
 
 
+def _clean_plan(plan: Any) -> Optional[dict]:
+    """set_look's ``plan`` -> {"depth": float | None, "middle_depth": float, "lamps": {key: (level, pulse)}}, each
+    number clamped to 0..1, junk dropped; None (no plan) when it is empty or nothing in it is usable."""
+    if not isinstance(plan, Mapping) or not plan:
+        return None
+
+    def unit(v: Any) -> Optional[float]:
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return None
+        return _c01(x) if math.isfinite(x) else None
+    lamps: dict[str, tuple[float, float]] = {}
+    raw = plan.get("lamps")
+    for key, v in (raw.items() if isinstance(raw, Mapping) else ()):
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            lv, pu = unit(v[0]), unit(v[1])
+            if lv is not None and pu is not None:
+                lamps[str(key)] = (lv, pu)
+    md = unit(plan.get("middle_depth"))
+    if not lamps and md is None:
+        return None
+    return {"depth": unit(plan.get("depth")), "middle_depth": md if md is not None else 0.0, "lamps": lamps}
+
+
+def _plan_view(plan: Optional[dict]) -> Optional[dict]:
+    if plan is None:
+        return None
+    return {"depth": plan["depth"], "middle_depth": plan["middle_depth"],
+            "lamps": {k: [round(x, 3) for x in v] for k, v in plan["lamps"].items()}}
+
+
 class VirtualMaestro:
     """The P0 sender. ``start()`` / ``stop()``; ``plan`` and ``compose`` are the loop's steps (show-artnet; tests call
     them with fake times). ``section_change``, ``set_hue_latency_ms``, ``status`` are safe from any thread."""
@@ -454,6 +495,7 @@ class VirtualMaestro:
         self.hue_depth = hue_depth
         self._hue_depth0 = hue_depth
         self.beat_lock = True                        # set_look: False = nothing beat-locked (pulses, PRISM, swell)
+        self.lamp_plan: Optional[dict] = None        # set_look(plan=): the composer's lamps plan (drive mode, S5.18)
         self._edge_locked = True                     # the last edge happened while beat-locked (else no pulse for it)
         self.poll_fn = poll_fn if poll_fn is not None else (
             (lambda: _http_json(room_dmx_url)) if room_dmx_url else None)
@@ -520,11 +562,15 @@ class VirtualMaestro:
         self.hue_latency_s = float(ms) / 1000.0
 
     def set_look(self, *, hue_depth: Optional[float] = None, beat_lock: Optional[bool] = None,
-                 reset: bool = False) -> None:
+                 reset: bool = False, plan: Optional[Mapping[str, Any]] = None) -> None:
         """The director's look (any thread; module docstring). A None argument leaves that value; a hue_depth that
-        isn't a finite number is ignored; ``reset`` restores the constructor's depth and beat_lock True first."""
+        isn't a finite number is ignored; ``reset`` restores the constructor's depth and beat_lock True first, and
+        clears the plan. ``plan``: the composer's (module docstring), swapped whole; ``{}`` clears it; junk in it is
+        dropped (a plan with nothing usable clears it)."""
         if reset:
-            self.hue_depth, self.beat_lock = self._hue_depth0, True
+            self.hue_depth, self.beat_lock, self.lamp_plan = self._hue_depth0, True, None
+        if plan is not None:
+            self.lamp_plan = _clean_plan(plan)
         if hue_depth is not None:
             try:
                 d = float(hue_depth)
@@ -566,7 +612,8 @@ class VirtualMaestro:
                 "patch": {"path": str(self.patch_path), "error": self.patch_error,
                           "devices": [d.id for d in lay.devices] if lay else []},
                 "callback_errors": self.callback_errors,
-                "look": {"hue_depth": round(self.hue_depth, 3), "beat_lock": self.beat_lock}}
+                "look": {"hue_depth": round(self.hue_depth, 3), "beat_lock": self.beat_lock},
+                "plan": _plan_view(self.lamp_plan)}
 
     # -- lifecycle ----------------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -650,9 +697,9 @@ class VirtualMaestro:
         return now
 
     # -- the loop's steps (show-artnet; tests call them) ----------------------------------------------------------------
-    def _next_beat(self, t: float) -> Optional[float]:
+    def _next_beat(self, t: float, gate: Optional[str] = None) -> Optional[float]:
         try:
-            b = self.clock.next_beat(t)
+            b = self.clock.next_beat(t) if gate is None else self.clock.next_beat(t, gate=gate)
         except Exception:
             self.callback_errors += 1
             return None
@@ -752,16 +799,17 @@ class VirtualMaestro:
             self._quiet_since = None
         return self._quiet
 
-    def _soft_beat(self, th: float) -> Optional[float]:
-        """Hue's beat envelope at th: attack up to each beat, then decay; None without a predicted beat."""
+    def _soft_beat(self, th: float, gate: Optional[str] = None) -> Optional[float]:
+        """Hue's beat envelope at th: attack up to each beat, then decay; None without a predicted beat. ``gate``:
+        the clock's gate to ask at (None: its default, beat; the plan's dmx rung asks "dmx")."""
         if self.clock is None:
             return None
-        b = self._next_beat(th)
+        b = self._next_beat(th, gate)
         if b is None:
             return None
         p = self._period
         if not p:
-            b2 = self._next_beat(b + MIN_GAP_S)
+            b2 = self._next_beat(b + MIN_GAP_S, gate)
             p = b2 - b if b2 is not None and b2 > b else None
         attack = _smoothstep(1.0 - (b - th) / HUE_ATTACK_S) if b - th < HUE_ATTACK_S else 0.0
         since = th - (b - p) if p else -1.0                 # since the previous beat (< 0: none yet)
@@ -803,6 +851,7 @@ class VirtualMaestro:
         dt = 0.0 if self._t_prev is None else min(1.0, max(0.0, t - self._t_prev))
         self._t_prev = t
         depth, locked = self.hue_depth, self.beat_lock          # the director's look, read once a frame
+        plan = self.lamp_plan                                    # the composer's (drive), read once a frame
         if why is not None:
             depth, locked = 0.0, False                           # held: steady colour, no pulses, no beat edges
 
@@ -855,8 +904,20 @@ class VirtualMaestro:
 
         # hue: the look for t + L_hue
         th = t + self.hue_latency_s
-        env = self._soft_beat(th) if locked else None   # beat_lock off: the swell follows the energy only
-        k = 1.0 - depth + depth * (self._energy if env is None else env)
+        plan_lamps: Optional[Mapping[str, tuple[float, float]]] = None
+        if plan is None:
+            env = self._soft_beat(th) if locked else None   # beat_lock off: the swell follows the energy only
+            k = 1.0 - depth + depth * (self._energy if env is None else env)
+        else:                                            # the plan on this output's own ladder (module docstring)
+            if why is None and plan["depth"] is not None:
+                depth = plan["depth"]
+            env = self._soft_beat(th) if locked else None
+            if env is None and locked:
+                env = self._soft_beat(th, "dmx")
+                if env is not None:
+                    depth *= plan["middle_depth"]
+            plan_lamps = plan["lamps"]
+            k = 1.0
         pal_h = pal_t if th == t else self._palette(th)
         self.palette_used = "fixed" if pal_t is None else "director"
 
@@ -867,7 +928,12 @@ class VirtualMaestro:
                 encode_into(data, dev, {**screen_vals, "rgb": self._colour(pal_t, dev)})
             elif dev.kind == "hue":
                 r, g, bl = self._colour(pal_h, dev)
-                encode_into(data, dev, {"dimmer": 1.0, "rgb": (r * k, g * k, bl * k)})
+                kd = k
+                if plan_lamps is not None:
+                    lv, pu = plan_lamps.get(dev.id) or plan_lamps.get("*") or (1.0, 1.0)
+                    d = depth * pu
+                    kd = 1.0 - d + d * (lv if env is None else env)
+                encode_into(data, dev, {"dimmer": 1.0, "rgb": (r * kd, g * kd, bl * kd)})
             else:
                 encode_into(data, dev, {})
         return True

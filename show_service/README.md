@@ -6319,3 +6319,118 @@ transition) at those junctures." Plain words: docs/SHOW_ENGINE.md §8.5 "Song en
   - `held: true`: ignore the cut for that change.
   - The `section_change` with `detail: "track"` that follows a track_change is the same junction.
   - Absent `transition`: the mode's default, as today.
+
+### S5.18 Composition (observe/drive) (17 Oct; the owner's rulings; session 75's design, step 2)
+"One composer, many renderers": modes only switch appliances on; volume is never intensity; the director decides how
+much each enabled appliance responds. Plain words: docs/SHOW_ENGINE.md §8.10; the design's spine and steps 3-5 are
+75's (compose_design.json). This is **step 2**, the composition core, for show_service only.
+- **`compose.py`** (new, PURE: inputs in, plan out; no I/O, threads or clock reads). For each enabled appliance A and
+  dimension x of `DIMS` (picture, level, pace, pulse, depth, change):
+
+  ```
+  s     = clamp01(follow x W[A,x] x liveness x range x (1 - hold_A))
+  quiet = 1 - clamp01(loud + lift[A,x])
+  value = max(floor[A,x], hard_floor[A,x], base[A,x] x (1 - s x (1 - q[A,x]) x quiet x h[A,x]))
+  ```
+
+  - Values are shares of today's value: base 1 = today, so s = 0 gives exactly today.
+  - **`loud`**: `features.gate`, eased by `compose.step` on a `State` the director owns. Up over `loud.rise_s` 0.7;
+    down over `fall_s` 1.5 (slower); down over `fade_fall_s` 0.35 while a fade is cued (structure's `outro`, or a
+    `track_end_armed` until its call-off, the track change, or `END_FADE_S` 10 s past its end).
+    - While the piano plays, its velocity replaces it.
+    - `music_only`: while people talk (situations' `talking`) it reads 0.
+    - Stale features hold it: unknown, not quiet; liveness runs the share down instead.
+  - **`range`**: p90 − p10 of `lufs_s` over `window_s` 60. Samples are taken at 2 Hz, only while the gate is at or
+    above `min_gate` (music only). It goes through smoothstep(`lu` 3, 12) and is eased over `smooth.tau_s` 1 s. Under
+    10 s of music it reads 0.
+  - **`lift`** (`lift.<dim>.tension / .build`, picture 0.3 / 0.3): the harmony's tension and structure's
+    `build_progress` while the phase is `build`, eased.
+  - **`h`** on `headroom.dims` [picture]: smoothstep(`apl` 0.12, 0.45) of the scene's APL. It is `headroom.unknown`
+    0.5 until a renderer reports APL. The `apl` input is None today: the step-3 seam.
+  - **`W`**: a lamp role's `dynamics` (show.yaml lamps.roles: extend 1.0, key 0.6), else `weights.<class>`.
+  - **`hold`**: lamps under House lights or Lights low; a screen while room says it is cutting (the cut guard; step
+    3's is the renderer's MasterBus).
+  - **`enabled(view)`**, the NEW enabled-set reader: RoomView screens whose `layer` is `live`, and members whose
+    `believed` is exactly `dmx` (`taken_over`, a stored state or anything else never counts). Read, never decided.
+  - **`validate`**: a class × dimension whose loudness weights (today one term: follow × W × (1 − q)) sum over 1, and
+    a floor over its base. Its lines go to the snapshot's `compose.problems`.
+  - `fold_bpm` is copied from stream_service/music_feed.py.
+- **Limits per feel** (vibes.yaml `<feel>.compose`; vibes.py `compose_limits`). The block sits beside the fields, not
+  among them: it is checked at load (a bad cell is dropped with a problem line), it is not in the catalog's `fields`
+  (no config on the Room page), and no mode overrides it.
+  - Each of `follow`, `floor`, `q`, `base` is a number or `{screens|lamps: number | {dim: number}}`, all 0..1.
+  - A cell the block leaves out is neutral (follow 0, floor 0, q 1, base 1): that dimension never moves.
+  - No feel, or a feel with no block: show.yaml `director.compose.defaults`. The code's own neutral is follow 0
+    (today).
+  - Starting points: home 0.4, dinner 0.3, chill 0.6, notes 0.7, party 0.8, disco 0.5 (picture 1.0: never dims; pulse
+    0.8), defaults 0.4. The picture's `hard_floor` is 0.6. `pulse` base stays 1.0 in every feel.
+- **show.yaml `director.compose`** (hot-reloaded): `mode` (observe | drive), `loud`, `range`, `response_file`
+  (config/live/music_response.json: 75's `tempo.fold_min / fold_max`, the ONE fold; missing or bad: [70, 180) and a
+  listed problem; re-read on mtime), `headroom`, `lift`, `weights`, `hard_floor`, `smooth {tau_s, deadband}`,
+  `defaults`. `lamps.roles.<role>.dynamics` is new. Bad values take their starting points and are listed in
+  `settings_problems`.
+- **The director, every tick** (`_compose_plan`, before the look is composed; it only reads):
+  - the inputs: gate, lufs_s, liveness, the piano's velocity, talking, the fade cue, tension, build_progress;
+  - `compose.step`, the enabled set, each enabled appliance's plan, and the classes' **nominal** plans (a class's own
+    weight, no cut guard). room.direction takes these, and so does a lamp without a plan of its own.
+- **observe** (the default): LookData gains `compose` (`contract.ComposeView`) and NOTHING else changes:
+  room.direction, room.event, the rest of room.look, palette_fn, every set_look_out / GOBO / gate_ref call and the
+  publish cadence (the block rides on the look's own publishes). `test_observe_changes_nothing_else` cuts the
+  composer out of the same script and compares frame for frame. A real block (party, both screens live, three Hue
+  areas `dmx` and one `taken_over`, at the quiet end of a song with 16 LU of range):
+
+  ```json
+  {"mode": "observe", "limits": "feel",
+   "appliances": {
+     "north-screen": {"picture": 0.966, "level": 1.0, "pace": 0.728, "pulse": 0.796, "depth": 0.796, "change": 0.728},
+     "south-screen": {"picture": 0.966, "level": 1.0, "pace": 0.728, "pulse": 0.796, "depth": 0.796, "change": 0.728},
+     "hue.ne": {"picture": 1.0, "level": 0.728, "pace": 1.0, "pulse": 0.796, "depth": 1.0, "change": 1.0},
+     "hue.nw": {"picture": 1.0, "level": 0.837, "pace": 1.0, "pulse": 0.878, "depth": 1.0, "change": 1.0},
+     "hue.se": {"picture": 1.0, "level": 0.728, "pace": 1.0, "pulse": 0.796, "depth": 1.0, "change": 1.0}},
+   "nominal": {"screens": {"picture": 0.966, "level": 1.0, "pace": 0.728, "pulse": 0.796, "depth": 0.796,
+                           "change": 0.728},
+               "lamps": {"picture": 1.0, "level": 0.728, "pace": 1.0, "pulse": 0.796, "depth": 1.0, "change": 1.0}},
+   "balance": {"loud": 0.15, "range": 1.0, "range_lu": 16.0, "lift": {"picture": 0.0},
+               "s": {"picture": 0.8, "...": 0.8}, "quiet": {"picture": 0.85, "...": 0.85},
+               "h": {"picture": 0.5, "level": 1.0, "...": 1.0}, "liveness": 1.0, "fade": false},
+   "enabled": ["north-screen", "south-screen", "hue.ne", "hue.nw", "hue.se"]}
+  ```
+
+  `s`, `quiet` and `h` are the lead class's (screens). The picture moves little until APL exists (h 0.5).
+- **drive** (`director.compose.mode: drive`; every change is gated on it):
+  - **room.direction:**
+    - `intensity` = the screens' nominal `depth` (observe: 1.0);
+    - new `pulse_depth` = their `pulse`;
+    - new `peak` {energy: the feel's energy top, moods: its own (else the top band's), transition_style: its own
+      (else the top band's)}: the build/drop words for the renderer's build pick (step 3). Example, party:
+      `{"energy": 0.95, "moods": ["euphoric", "playful", "bright"], "transition_style": "wild"}`;
+    - `intensity` and `pulse_depth` are publish-on-change numerics and `peak` a publish-on-change word. In observe,
+      intensity is the constant 1.0 and the others are absent, so the cadence is unchanged.
+    - `contract.DIRECTION_DRIVE_KEYS`.
+  - **pace:** the clock's bpm is folded into the response file's [fold_min, fold_max) before `(bpm − 60) / 90`, so a
+    half-time lock at 60 bpm reads 120, not tempo 0.
+  - **The lamps** (artnet_out): `set_look_out(plan={depth, middle_depth, lamps: {member id | "*": (level, pulse)}})`.
+    It is sent when it moves by `smooth.deadband` 0.02. `depth` is the director's accent depth before the clock's
+    gate (None with no feel: artnet_out keeps its own); `middle_depth` is show.yaml `looks.middle_depth`. Back to
+    observe sends `plan={}` once; leaving the feel's reset clears it too.
+    - artnet_out with a plan runs the hue lamps on its own ladder: a beat swells at depth × pulse; else the clock's
+      dmx-gate beats (`next_beat(t, gate="dmx")`) swell at depth × middle_depth × pulse (before: no swell at gate
+      dmx); else the steady k = 1 − d + d × the lamp's planned level, never the raw energy.
+    - Screens (DIMMER pulses, PRISM) never read it. A held frame stays steady.
+    - `status()["plan"]`.
+  - `__main__` gives each receiver only its own keys: `plan` to artnet_out, `beat_depth` to the rig.
+  - The rig's look engine (looks.py `without_beat: energy`) still takes the raw energy: not in step 2.
+- **Snapshot:** `compose` {mode, limits, problems, fold, response_file, middle_depth, plan_sent}.
+- **Cost:** `_compose_plan` with six appliances enabled, p50 0.12 ms, p95 0.15 ms (under the design's +0.2 ms).
+- **Tests:**
+  - `test_compose`: floors hold; the slope against loud is at most follow × W × (1 − q); a flat song gives s ≈ 0;
+    neutral equals today; a step never oscillates; a dark APL is never dimmed; hold, weights and lift; loud's
+    easing, talk, the piano and staleness; music-only range; the fold; the enabled reader; bad settings; the
+    validator; the real show.yaml and vibes.yaml load clean;
+  - `test_director`: observe identical frame for frame; the block; a feel's limits; drive's direction fields and
+    cadence; the tempo fold; the lamps' plan and its clearing; the response file; the fade cue; settings; cost;
+  - `test_artnet_out`: the plan's ladder against plan-less references; no plan = today; a held frame;
+  - `test_vibes` (the block), `test_main` (the fan-out).
+- **Later** (75's steps): the picture on the screens' INTENSITY channel and APL polling (3, with 04/75's renderer
+  half: `pulse_depth`, `peak`, picture routes); one clock for change, using the plan's `change` (4); figure and
+  ground caps (5). `pace` and `change` are published only: drive does not apply them yet.
