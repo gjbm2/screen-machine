@@ -56,7 +56,7 @@ DEV_ART_SCREENS = ("north-screen", "south-screen", "devtest")
 
 FEATURES = ("cue", "auto", "direction", "palette", "inputs", "bindings", "effects", "fx_bus", "fx_auto",
             "plugin_errors", "gpu_guard", "music_direction", "rooms", "mappings", "look_scope", "fx_controls",
-            "upnext", "song_ends")
+            "upnext", "song_ends", "hud")
 HTTP_ERROR_CODES = {400: "bad_request", 404: "not_found", 405: "method_not_allowed", 413: "too_large"}
 
 
@@ -356,7 +356,7 @@ def scene_tag_index(presets: dict) -> list[dict]:
 _catalog_cache: dict = {"key": None, "body": None}
 # The music bus hello's want (d4's G4): everything but music.hit (transients land a full lead late, SHOW_ENGINE
 # §5.4), plus music.rhythm, which is sent only to who names it.
-MUSIC_BUS_WANT = ["music", "music.rhythm", "room", "show"]
+MUSIC_BUS_WANT = ["music", "music.rhythm", "room", "room.why", "show"]   # room.why: the details panel (1 Hz)
 
 
 async def catalog(request: web.Request) -> web.Response:
@@ -655,6 +655,11 @@ async def fx_clear(request: web.Request) -> web.Response:
     return web.json_response(await s.fx_clear(body))
 
 
+async def hud_get(request: web.Request) -> web.Response:
+    """GET /api/sessions/{sid}/hud: the details panel's lines, on or off (docs/LIVE_DIAGNOSTICS.md)."""
+    return web.json_response(_session(request).hud_view())
+
+
 async def upnext_get(request: web.Request) -> web.Response:
     """GET /api/sessions/{sid}/upnext: the director's forward plan (upnext.py); a follower shows its leader's."""
     return web.json_response(_session(request).upnext_view())
@@ -811,6 +816,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_post("/api/sessions/{sid}/fx/next", fx_next)
     r.add_post("/api/sessions/{sid}/fx/clear", fx_clear)
     r.add_get("/api/sessions/{sid}/upnext", upnext_get)
+    r.add_get("/api/sessions/{sid}/hud", hud_get)
     r.add_post("/api/sessions/{sid}/upnext", upnext_post)
     r.add_get("/api/sessions/{sid}/frames", session_frames)
     r.add_get("/api/state", state)

@@ -31,6 +31,7 @@ SNDBUF = 256 << 10
 NOTSENT_LOWAT = 64 << 10
 TCP_NOTSENT_LOWAT = getattr(socket, "TCP_NOTSENT_LOWAT", 25)
 STATS_KEYS = ("presented", "dropped", "buffered_ms", "edge_jumps", "stalls")
+STATS_ROLES = ("kiosk", "viewer", "lab")
 
 
 def _finite_number(v: object) -> Optional[float]:
@@ -175,6 +176,8 @@ class MediaHub:
                 if isinstance(data, dict) and data.get("type") == "stats":
                     # numbers only: these are echoed in every session summary
                     c.stats = {k: _finite_number(data.get(k)) for k in STATS_KEYS}
+                    if data.get("role") in STATS_ROLES:     # which player: the TV's own (kiosk) is the glass line
+                        c.stats["role"] = data["role"]
         finally:
             self.clients.pop(c.id, None)
             sender.cancel()

@@ -329,6 +329,7 @@ class GridSnap:
 class MusicFeed:
     def __init__(self, response: Optional[ResponseFile] = None) -> None:
         self._snap: Optional[FeedSnap] = None
+        self.context: Optional[dict] = None       # the latest music.context data, whole (the details panel)
         self.response = response if response is not None else ResponseFile()
         # loop thread only (published through the snapshot): the ladder's onset follower and the clock's recent bpm
         self.follower = BeatFollower()
@@ -414,6 +415,7 @@ class MusicFeed:
                                  spread=ease(s.spread, _c01(_num(data.get("spread")))),
                                  chord_t=now if rose else s.chord_t, chord_level=cc)
         elif kind == "music.context":
+            self.context = data
             sec = data.get("section")
             sec = sec if isinstance(sec, dict) else {}
             self._snap = replace(s, section_id=sec.get("id"), build_progress=_c01(_num(sec.get("build_progress"))),
