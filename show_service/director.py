@@ -1160,6 +1160,7 @@ class Director:
                "weights": {k: max(0.0, _num(w.get(k), 0.0) or 0.0) for k in BAND_BASE_TERMS},
                "swing": max(0.0, _num(raw.get("swing"), 0.0) or 0.0),
                "swing_max": max(0.0, _num(raw.get("swing_max"), 1.0) or 0.0),
+               "swing_max_down": max(0.0, _num(raw.get("swing_max_down"), _num(raw.get("swing_max"), 1.0)) or 0.0),
                "swing_window_s": max(1.0, _num(raw.get("swing_window_s"), 60.0) or 60.0),
                "phase_lift": {str(k): float(v) for k, v in (raw.get("phase_lift") or {}).items()
                               if _num(v) is not None} if isinstance(raw.get("phase_lift"), dict) else {}}
@@ -2269,7 +2270,7 @@ class Director:
         dance and pop read peak throughout and an ambient pad read lively). With director.bands.base: an absolute base
         (the weighted genre_energy of music.context's genre words, the medium lane's onset rate / rate_full, its pulse
         clarity, music.context's mood_energy: the terms present, their weights renormalised) plus swing x (music -
-        its median over swing_window_s), at most swing_max either way, plus phase_lift for structure's phase (a drop
+        its median over swing_window_s), at most swing_max up and swing_max_down down, plus phase_lift for structure's phase (a drop
         or a peak lands where the song drops: mastered house barely moves in normalised loudness). Without a base, or with none of
         its terms: 0.5 + conf x (music - 0.5)."""
         heard = 0.5 + conf * (music - 0.5)
@@ -2304,7 +2305,7 @@ class Director:
         base = sum(bc["weights"][k] * v for k, v in terms.items()) / wsum
         self._band_base = round(base, 3)
         med = statistics.median(m for _, m in h) if h else music
-        sw = max(-bc["swing_max"], min(bc["swing_max"], bc["swing"] * conf * (music - med)))
+        sw = max(-bc["swing_max_down"], min(bc["swing_max"], bc["swing"] * conf * (music - med)))
         sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else {}
         lift = bc["phase_lift"].get(sec.get("phase"), 0.0) if isinstance(sec.get("phase"), str) else 0.0
         return _c01(base + sw + lift)
