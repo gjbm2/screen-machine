@@ -475,3 +475,11 @@ def test_process_sigterm_exits_zero(tmp_path):
         if p.poll() is None:
             p.kill()
             p.wait()
+
+
+def test_the_cycles_first_task_runs_even_after_some_elapsed_time():
+    beats = _st("beats", every=10.0, budget=5500.0)
+    beats.costs.extend([5400.0] * 20)                # a p95 that won't fit what's left of the budget after 0.3 ms
+    ready = lambda st: True                          # noqa: E731
+    assert W.plan_fast([beats], 0.0, 1.0, 0.3, 5400, ready, first=True) is beats    # 75, 17 Oct: it never ran
+    assert W.plan_fast([beats], 10.0, 1.0, 0.3, 5400, ready, first=False) is None

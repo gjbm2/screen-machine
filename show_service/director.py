@@ -42,7 +42,8 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
     ``express_gain`` x the energy step from the last section, within the vibe's ranges, over one beat). min_bars
     doesn't apply. ``time`` and ``between_pieces`` vibes: a section only shows inside the look.
   * Section memory: per track, letter -> {palette, variation, look_id}; cleared on track_change (which also lets the
-    palette move on, and replaces the silence test as the song-change signal while structure runs).
+    palette move on unless its transition's change is small, and replaces the silence test as the song-change signal
+    while structure runs).
   * GOBO: while a vibe plays the director owns it: every look that lands steps it once, whatever caused it
     (section, repeat, drop, track, its own), and nothing the vibe holds back does (change_looks time or
     between_pieces, Keep this look, relaxing, a late section, no token). structure steps it only while we are neutral.
@@ -62,6 +63,17 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
     its caps (looks.py), and ``maestro_palette_fn`` lays it over the virtual Maestro's lamps as Hue takes it (a
     predicted line's hit at the line, an unforeseen drop's as a slow swell, §5.4). LookData.dip says the pre-drop dip
     is on (no music.hit flashes over it).
+  * Song ends (README S5.17; owner 17 Oct): structure hands every track_end_armed, track_end and track_change to
+    ``track_transition`` while it builds it, and the choice goes on that room.event (``transition``), so the renderer
+    runs it for that change: through dark across a gap (fade-dark: out_s as the old song ends, in_s with the new
+    one), else a cut on the new song's first downbeat (the clock at segue.cut_gate) or a crossfade, biased by the
+    feel's transition_style (show.yaml director.track_transitions.styles; no feel: "default"), and ``change`` big
+    (a new scene family and palette) or small (the same) from the two songs' genre, key, tempo, energy and artist.
+    A person's hold (Keep this look, their change pending) puts ``held: true`` on the event instead, and no look of
+    ours fires. Our own look lands at the same junction: a fade-dark track_end dips the lamps to the vibe's floor
+    over out_s (never off; released by the new look, a sound_back, or dark_max_s), and the track_change's look lands
+    on the first bar line the screens' lead allows at or after its at_ms, crossing over as the event says. This
+    holds for every change_looks (a song change is the junction), not only phrase vibes.
   * Screens' palette (agreed with 2f and 04, 16 Oct): when the look's palette changes to a renderer catalog name, it
     goes to every live screen through the room (PATCH /api/v1/screens/{id}/look {palette, palette_transition_s});
     an art palette has no renderer name, so the screens keep their own (the snapshot says so).
@@ -179,6 +191,22 @@ PICK_SCENE = "the scene's own"      # ... for palette null: the Room page's own 
 SOURCE_REFUSED = (400, "bad_request")   # the old room's answer to a look PATCH with a key it doesn't know (S5.8)
 MUSIC_EVENTS_MAX = 64
 NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "chroma_max", "motion": False}
+# Song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends", owner 17 Oct). Starting points, overridable in show.yaml
+# (director.track_transitions): how the screens cross a song change. ``styles`` is keyed by vocab.yaml's
+# transition_style words, with "default" for no feel or a word with no entry; ``cut``: "never" (a crossfade instead),
+# "beat" (a cut on the first downbeat while the clock is at segue.cut_gate or better, else a crossfade), "always"
+# (a cut; on the downbeat when the clock allows, else now); ``scale`` multiplies every length.
+TRACK_TRANSITIONS = {
+    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0},
+    "segue": {"cut_gate": "beat", "crossfade_s": 2.0},
+    "styles": {"gentle": {"cut": "never", "scale": 1.5}, "lively": {"cut": "beat", "scale": 1.0},
+               "wild": {"cut": "always", "scale": 0.6}, "default": {"cut": "beat", "scale": 1.0}},
+    "change": {"genre": True, "key_fifths": 2.0, "tempo_ratio": 0.08, "energy": 0.25, "artist": True,
+               "big_share": 0.5, "unknown": "big"}}
+DEFAULT_STYLE = "default"
+CUT_RULES = ("never", "beat", "always")
+GATE_RANK = {"none": 0, "dmx": 1, "beat": 2}        # clock gates, weakest first (contract.ClockData.gate)
+TRACK_CUT = {"style": "cut", "beats": None, "seconds": 0.05}   # the director's own look at a song's cut
 
 #: show.yaml ``director`` keys the code falls back to when the file leaves one out: the design's own numbers (§8.4,
 #: §8.5; starting points, as the module constants above they come from) or the neutral (no swell, no band words). The
@@ -200,7 +228,9 @@ DIRECTOR_FALLBACK = {
     # the screens' palette (agreed with 2f and 04, 16 Oct): palette_transition_s is a starting point (the renderer's
     # own default, LIVE_V1 §1.11); send_palette false turns it off (hot-reloaded). Stage 5 (README S5.8): a person's
     # pick on a screen holds (hold_hand_picks, hot-reloaded); own_echo_s is agreed with 2f (16 Oct)
-    "screens": {"send_palette": True, "palette_transition_s": 4.0, "hold_hand_picks": True, "own_echo_s": 3.0}}
+    "screens": {"send_palette": True, "palette_transition_s": 4.0, "hold_hand_picks": True, "own_echo_s": 3.0},
+    # song ends (README S5.17)
+    "track_transitions": TRACK_TRANSITIONS}
 #: Stage 4's show.yaml director keys: section -> key -> (lowest, highest) allowed, or bool
 STAGE4_KEYS: dict[str, dict[str, Any]] = {
     "sections": {"max_late_bars": (0.0, 64.0), "express_gain": (0.0, 2.0), "phase_hint_s": (0.0, 10.0)},
@@ -353,6 +383,180 @@ def white_tint(white: pal.Rgb, colour: pal.Rgb, amount: float, cap: Optional[flo
     d = math.hypot(da, db)
     k = 1.0 if cap is None or d <= cap else max(0.0, cap) / d
     return pal.from_oklab((Lw + dL * k, aw + da * k, bw + db * k))
+
+
+# -- song ends: the transition (README S5.17) ------------------------------------------------------------------------------
+def key_fifths(a: Optional[str], a_mode: Optional[str], b: Optional[str], b_mode: Optional[str]) -> Optional[int]:
+    """Steps between two keys on the circle of fifths, 0..6: the same, parallel (C / C minor) and relative (C / A
+    minor) keys are 0 (structure's own rule for a key jump); others compare their relative majors. None: unknown."""
+    if a not in contract.KEY_NAMES or b not in contract.KEY_NAMES:
+        return None
+    pa, pb = contract.KEY_NAMES.index(a), contract.KEY_NAMES.index(b)
+    if pa == pb:
+        return 0
+    ma = (pa + 3) % 12 if a_mode == "minor" else pa
+    mb = (pb + 3) % 12 if b_mode == "minor" else pb
+    d = ((mb - ma) * 7) % 12
+    return min(d, 12 - d)
+
+
+def tempo_off(a: Optional[float], b: Optional[float]) -> Optional[float]:
+    """|b / a - 1| with the ratio folded by octaves into [1/sqrt 2, sqrt 2] (x2 and x0.5 are the same tempo)."""
+    if not a or not b or a <= 0 or b <= 0:
+        return None
+    r = b / a
+    while r > math.sqrt(2.0):
+        r /= 2.0
+    while r < 1.0 / math.sqrt(2.0):
+        r *= 2.0
+    return abs(r - 1.0)
+
+
+def change_size(old: Optional[dict], new: Optional[dict], rules: dict) -> tuple[str, dict[str, bool]]:
+    """("big" | "small", {term: differs}) between two contract.TrackProfile: each term known on both sides votes
+    (rules: genre words differ; keys >= key_fifths apart; tempo off by > tempo_ratio; mean energy >= energy apart;
+    Sonos's artist differs; a rule set to null/false is off). big when at least big_share of the votes differ;
+    ``unknown`` when nothing is known on both sides (a Sonos change at once: the new song isn't heard yet)."""
+    terms: dict[str, bool] = {}
+    o, n = old if isinstance(old, dict) else {}, new if isinstance(new, dict) else {}
+    if rules.get("genre") and isinstance(o.get("genre"), str) and isinstance(n.get("genre"), str):
+        terms["genre"] = o["genre"] != n["genre"]
+    kf = _num(rules.get("key_fifths"))
+    d = key_fifths(o.get("key"), o.get("mode"), n.get("key"), n.get("mode"))
+    if kf is not None and d is not None:
+        terms["key"] = d >= kf - 1e-9
+    tr = _num(rules.get("tempo_ratio"))
+    off = tempo_off(_num(o.get("bpm")), _num(n.get("bpm")))
+    if tr is not None and off is not None:
+        terms["tempo"] = off > tr + 1e-9
+    en = _num(rules.get("energy"))
+    eo, ew = _num(o.get("energy")), _num(n.get("energy"))
+    if en is not None and eo is not None and ew is not None:
+        terms["energy"] = abs(ew - eo) >= en - 1e-9
+    if rules.get("artist") and isinstance(o.get("artist"), str) and isinstance(n.get("artist"), str) \
+            and o["artist"] and n["artist"]:
+        terms["artist"] = o["artist"].casefold() != n["artist"].casefold()
+    if not terms:
+        return str(rules.get("unknown") or "big"), terms
+    share = sum(1 for v in terms.values() if v) / len(terms)
+    return ("big" if share >= float(rules.get("big_share", 0.5)) - 1e-9 else "small"), terms
+
+
+def choose_track_transition(cfg: dict, kind: str, ev: dict, facts: dict, style_word: Optional[str], *,
+                            dark: bool, last: Optional[dict] = None) -> dict:
+    """The transition for one track event (contract.TrackTransition), from show.yaml director.track_transitions
+    (``cfg``). A gap (track_end via dsp; at a Sonos end, or armed ahead of it: the room silent or the song in its
+    outro) fades through dark; a track_change fades in from dark only while the screens are dark (``dark``: this
+    junction's track_end chose fade-dark and no sound_back came); anything else is a segue: by the feel's cut rule,
+    a cut on the new song's first downbeat with the clock at segue.cut_gate or better, else a crossfade. A sound_back
+    repeats ``last`` (the track_end's choice), whose in_s brings the screens back. The feel's ``scale`` lengthens or
+    shortens every length (fade halves within gap.min_s..max_s). ``change``: the old and new songs' distance on a
+    track_change, ``change.unknown`` before the new song is known."""
+    styles = cfg["styles"]
+    st = styles.get(style_word or "") or styles.get(DEFAULT_STYLE) or TRACK_TRANSITIONS["styles"][DEFAULT_STYLE]
+    scale = float(st.get("scale", 1.0))
+    if kind == "track_change":
+        change, _terms = change_size(facts.get("old"), facts.get("new"), cfg["change"])
+    else:
+        change = str(cfg["change"].get("unknown") or "big")
+    if kind == "track_end" and ev.get("detail") == "sound_back" and isinstance(last, dict):
+        return dict(last)
+    gap = cfg["gap"]
+    if kind == "track_change":
+        through_dark = dark and not facts.get("back")
+    elif kind == "track_end" and ev.get("via") == "dsp":
+        through_dark = True                               # the end in the sound: a gap, by definition
+    else:
+        through_dark = bool(facts.get("silent")) or facts.get("phase") == "outro"
+
+    def bound(x: float) -> float:
+        return round(max(float(gap["min_s"]), min(float(gap["max_s"]), x * scale)), 3)
+    if through_dark:
+        return {"style": "fade-dark", "out_s": bound(float(gap["out_s"])), "in_s": bound(float(gap["in_s"])),
+                "seconds": None, "on": "now", "change": change, "dark_max_s": round(float(gap["dark_max_s"]), 3)}
+    seg = cfg["segue"]
+    locked = GATE_RANK.get(str(facts.get("gate")), 0) >= GATE_RANK.get(str(seg["cut_gate"]), 2)
+    rule = st.get("cut", "beat")
+    if rule == "always" or (rule == "beat" and locked):
+        return {"style": "cut", "out_s": None, "in_s": None, "seconds": 0.0, "on": "downbeat" if locked else "now",
+                "change": change, "dark_max_s": None}
+    return {"style": "crossfade", "out_s": None, "in_s": None, "seconds": round(float(seg["crossfade_s"]) * scale, 3),
+            "on": "now", "change": change, "dark_max_s": None}
+
+
+def parse_track_transitions(raw: Any, probs: list[str]) -> dict:
+    """show.yaml director.track_transitions -> the resolved table (TRACK_TRANSITIONS fills what is missing; a bad
+    value takes its starting point and is listed)."""
+    out = json.loads(json.dumps(TRACK_TRANSITIONS))
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        probs.append("director.track_transitions: not a mapping: the starting points used")
+        return out
+    p = "director.track_transitions"
+    for sec, keys in (("gap", ("out_s", "in_s", "min_s", "max_s", "dark_max_s")), ("segue", ("crossfade_s",))):
+        got = raw.get(sec)
+        if got is None:
+            continue
+        if not isinstance(got, dict):
+            probs.append(f"{p}.{sec}: not a mapping")
+            continue
+        for k in keys:
+            if k in got:
+                v = _num(got[k])
+                if v is not None and 0.0 <= v <= 60.0:
+                    out[sec][k] = v
+                else:
+                    probs.append(f"{p}.{sec}.{k}: {got[k]!r} is not a number in 0..60")
+        if sec == "segue" and "cut_gate" in got:
+            if got["cut_gate"] in ("dmx", "beat"):
+                out["segue"]["cut_gate"] = got["cut_gate"]
+            else:
+                probs.append(f"{p}.segue.cut_gate: {got['cut_gate']!r} is not dmx|beat")
+    g = out["gap"]
+    if g["min_s"] > g["max_s"]:
+        probs.append(f"{p}.gap: min_s over max_s: the starting points used")
+        g["min_s"], g["max_s"] = TRACK_TRANSITIONS["gap"]["min_s"], TRACK_TRANSITIONS["gap"]["max_s"]
+    styles = raw.get("styles")
+    if styles is not None:
+        if isinstance(styles, dict):
+            ok: dict[str, dict] = {}
+            for word, v in styles.items():
+                sc = _num(v.get("scale", 1.0)) if isinstance(v, dict) else None
+                if isinstance(v, dict) and v.get("cut", "beat") in CUT_RULES and sc is not None and 0.0 < sc <= 10.0:
+                    ok[str(word)] = {"cut": v.get("cut", "beat"), "scale": sc}
+                else:
+                    probs.append(f"{p}.styles.{word}: needs cut never|beat|always and scale in 0..10")
+            ok.setdefault(DEFAULT_STYLE, dict(TRACK_TRANSITIONS["styles"][DEFAULT_STYLE]))
+            out["styles"] = ok
+        else:
+            probs.append(f"{p}.styles: not a mapping")
+    ch = raw.get("change")
+    if ch is not None:
+        if not isinstance(ch, dict):
+            probs.append(f"{p}.change: not a mapping")
+        else:
+            for k in ("genre", "artist"):
+                if k in ch:
+                    if isinstance(ch[k], bool) or ch[k] is None:
+                        out["change"][k] = bool(ch[k])
+                    else:
+                        probs.append(f"{p}.change.{k}: {ch[k]!r} is not true/false")
+            for k, hi in (("key_fifths", 6.0), ("tempo_ratio", 1.0), ("energy", 1.0), ("big_share", 1.0)):
+                if k in ch:
+                    v = ch[k]
+                    if v is None and k != "big_share":
+                        out["change"][k] = None                # that term off
+                    elif _num(v) is not None and 0.0 <= v <= hi:
+                        out["change"][k] = float(v)
+                    else:
+                        probs.append(f"{p}.change.{k}: {v!r} is not a number in 0..{hi:g}")
+            if "unknown" in ch:
+                if ch["unknown"] in contract.CHANGE_SIZES:
+                    out["change"]["unknown"] = ch["unknown"]
+                else:
+                    probs.append(f"{p}.change.unknown: {ch['unknown']!r} is not big|small")
+    return out
 
 
 class Director:
@@ -524,6 +728,12 @@ class Director:
         self._look_source = contract.LOOK_SOURCE_STATES[0]       # "unknown": does this room boot take {source}?
         self._look_boot: Optional[str] = None            # the room boot (ctx.room_boot) that _look_source is about
         self._echo: dict[str, tuple[Any, float]] = {}    # screen -> (palette we last PATCHed there, monotonic s)
+        # song ends (README S5.17), all on show-brain
+        self._junction: Optional[dict] = None            # the song now ending: {"track_id", "dark", "transition",
+                                                         # "kind", "held"}, until its track_change
+        self._song_dip: Optional[dict] = None            # fade-dark's outgoing half on the lamps: {"t0", "out_s",
+                                                         # "in_s", "until", "track_id"} (to the vibe's floor, never off)
+        self.ends_stats: dict[str, Any] = {"chosen": {}, "held": 0, "dips": 0, "dip_released": 0}
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -532,13 +742,58 @@ class Director:
     def provides(self) -> dict:
         return {"vibe": self._vibe_now, "target": self._target_now, "engaged": self._engaged_now,
                 "on_mode_change": self.on_mode_change, "on_music_event": self.on_music_event,
-                "on_room_event": self.on_room_event}
+                "on_room_event": self.on_room_event, "track_transition": self.track_transition}
 
     def on_music_event(self, ev: dict) -> None:
         """structure's room.event (contract.MusicEventData), on show-brain: queued for this tick (structure ticks
         first in the same 10 Hz beat)."""
         if isinstance(ev, dict) and ev.get("kind") in contract.MUSIC_EVENT_KINDS:
             self._mev.append(ev)
+
+    def _held(self) -> bool:
+        """A person holds the look: Keep this look, or their change (Next look, a palette pick) still pending."""
+        return self.keep_until is not None or (self.pending is not None and self.pending.get("by") == "human")
+
+    def track_transition(self, ev: dict, facts: dict) -> Optional[dict]:
+        """ctx.track_transition (README S5.17): structure calls it on show-brain, synchronously, while it builds a
+        track_end_armed, track_end or track_change; what it returns goes on that event. {"held": True} while a person
+        holds the look (no transition: the renderer leaves the change alone, and our own look change doesn't fire);
+        else {"transition": choose_track_transition(...)}, by the feel's transition_style (none: the "default" rule:
+        the screens follow songs without a feel too). Remembers this junction, so the track_change knows whether the
+        screens went dark."""
+        if not isinstance(ev, dict) or ev.get("kind") not in contract.TRACK_EVENT_KINDS:
+            return None
+        facts = facts if isinstance(facts, dict) else {}
+        kind = ev["kind"]
+        tid = ev.get("track_id")
+        prev = ev.get("prev_track_id") if kind == "track_change" else tid
+        j = self._junction if (self._junction is not None and self._junction.get("track_id") == prev) else None
+        if self._held():
+            self.ends_stats["held"] += 1
+            if kind == "track_change":
+                self._junction = None
+            else:
+                self._junction = {"track_id": tid, "dark": False, "transition": None, "kind": kind, "held": True}
+            return {"held": True}
+        style = self._words(self.vs)["transition_style"] if (self.known and self._vibe_name is not None) else None
+        tr = choose_track_transition(self.cfg["track_transitions"], kind, ev, facts, style,
+                                     dark=bool(j and j.get("dark")), last=(j or {}).get("transition"))
+        self.ends_stats["chosen"][tr["style"]] = self.ends_stats["chosen"].get(tr["style"], 0) + 1
+        if kind == "track_change":
+            self._junction = None
+        elif kind == "track_end":
+            back = ev.get("detail") == "sound_back"
+            self._junction = {"track_id": tid, "dark": tr["style"] == "fade-dark" and not back,
+                              "transition": tr, "kind": kind, "held": False}
+        else:
+            self._junction = {"track_id": tid, "dark": bool(j and j.get("dark")), "transition": tr, "kind": kind,
+                              "held": False}
+        self._log_event("transition", {"event": {k: ev.get(k) for k in ("kind", "id", "via", "track_id",
+                                                                          "prev_track_id", "detail", "at_ms")},
+                                       "style": style, "transition": tr, "facts": {
+                                           k: facts.get(k) for k in ("silent", "phase", "gate", "back")},
+                                       "old": facts.get("old"), "new": facts.get("new")})
+        return {"transition": tr}
 
     def on_room_event(self, type_: str, data: dict) -> None:
         """A room WS event (autopilot.RoomLink, on show-brain). Only ``screen.look`` matters here (README S5.8): one
@@ -706,6 +961,7 @@ class Director:
                     cfg[key][k2] = float(v)
                 else:
                     probs.append(f"director.{key}.{k2}: {v!r} is not a number in {lim[0]:g}..{lim[1]:g}")
+        cfg["track_transitions"] = parse_track_transitions(d.get("track_transitions"), probs)
         self.cfg = cfg
         stc = s.get("structure") if isinstance(s.get("structure"), dict) else {}
         evc = stc.get("events") if isinstance(stc.get("events"), dict) else {}
@@ -1162,9 +1418,10 @@ class Director:
         if self.pending["structure"] and reason in ("drop", "track"):
             b = _num((section or {}).get("boundary_ms")) or _num((section or {}).get("at_ms"))
             self._cut_mark = ((b / 1000.0) if b is not None else at_s, reason)
-        ev: contract.EventData = {"kind": "look_change", "at_ms": round(at_s * 1000.0, 1),
-                                  "t_ms": round(now_s * 1000.0, 1), "seq": self._next_ev(),
-                                  "look_id": f"L{self.look_n + 1}", "detail": reason}
+        look_id = f"L{self.look_n + 1}"                   # re-announcing a pending change keeps its id (04, 17 Oct)
+        ev: contract.EventData = {"kind": "look_change", "id": f"look_change:{look_id}",
+                                  "at_ms": round(at_s * 1000.0, 1), "t_ms": round(now_s * 1000.0, 1),
+                                  "seq": self._next_ev(), "look_id": look_id, "detail": reason}
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
@@ -1202,6 +1459,7 @@ class Director:
             self.variation += 1                          # the director's own change: a new allocation of roles
         tr = pd.get("transition") or self._transition(vs)
         self._look_transition = tr
+        self._song_dip = None                            # a new look ends a song's outgoing half (S5.17)
         # GOBO +1, the screens' scene change: while a vibe plays the director owns it (structure steps it only while
         # we are neutral), so it comes with every look that actually lands, and with nothing the vibe holds back
         _call(self.ctx.section_change)
@@ -1245,6 +1503,7 @@ class Director:
         self._sec_mem.clear()
         self._x = (0.0, 0.0, 0.0, 0.0)
         self._cut_mark = None
+        self._song_dip = None
         self._scr["sent"].clear()
         self._scr["retry"].clear()
 
@@ -1319,7 +1578,9 @@ class Director:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
         if kind == "track_change":
-            self._on_track(ev.get("track_id"), ev.get("via"), now_s, vs, grid, at_s=at_ms / 1000.0)
+            self._on_track(ev.get("track_id"), ev.get("via"), now_s, vs, grid, at_s=at_ms / 1000.0, ev=ev)
+        elif kind == "track_end":
+            self._on_track_end(ev, now_s, vs)
         elif kind == "section_change":
             self._on_section(ev, at_ms / 1000.0, now_s, vs, grid)
         elif kind == "build":
@@ -1337,30 +1598,83 @@ class Director:
 
     def _section_info(self, ev: dict) -> dict:
         return {k: ev.get(k) for k in ("kind", "section_id", "letter", "repeat_of", "predicted", "at_ms", "boundary_ms",
-                                       "eta_beats", "track_id", "via") if k in ev}
+                                       "eta_beats", "track_id", "via", "prev_track_id") if k in ev}
 
-    def _on_track(self, tid: Any, via: Any, now_s: float, vs: dict, grid: Grid, *, at_s: float) -> None:
-        """A song change (structure's track_change, or a new track id in the context): the section memory clears and
-        the palette may move on at the next look change; a phrase vibe changes the look at the next bar."""
+    def _on_track_end(self, ev: dict, now_s: float, vs: dict) -> None:
+        """README S5.17: a track_end that fades through dark starts the outgoing half on the lamps (down to the
+        vibe's floor over out_s, never off; the screens fade themselves); its "sound_back" brings them back over
+        in_s. Nothing while a person holds the look, or without a vibe."""
+        tr = ev.get("transition") if isinstance(ev.get("transition"), dict) else None
+        if ev.get("detail") == "sound_back":
+            self._release_dip(now_s, "the sound is back")
+            return
+        if self._vibe_name is None or ev.get("held") or self._held() or tr is None or tr.get("style") != "fade-dark":
+            return
+        out_s = _num(tr.get("out_s"), 2.0) or 2.0
+        in_s = _num(tr.get("in_s"), 2.0) or 2.0
+        dark_max = _num(tr.get("dark_max_s"), out_s + in_s) or (out_s + in_s)
+        self._song_dip = {"t0": now_s, "out_s": max(0.05, out_s), "in_s": in_s, "until": now_s + max(out_s, dark_max),
+                          "track_id": ev.get("track_id")}
+        self.ends_stats["dips"] += 1
+        self._log_event("song_end", {"event": self._section_info(ev), "dip": dict(self._song_dip),
+                                     "context": self._ctx_brief()})
+
+    def _release_dip(self, now_s: float, why: str) -> None:
+        d, self._song_dip = self._song_dip, None
+        if d is None:
+            return
+        self._fade_s = float(d["in_s"])                  # the lamps come back over in_s
+        self.ends_stats["dip_released"] += 1
+        self._log_event("song_end", {"released": why, "track_id": d["track_id"]})
+
+    @staticmethod
+    def _look_transition_for(tr: Optional[dict]) -> Optional[dict]:
+        """The director's own look transition for a song change's transition (contract.TrackTransition): a cut, a
+        crossfade over its seconds, or fade-dark's in-half (in_s) from the dipped lamps."""
+        if not isinstance(tr, dict):
+            return None
+        if tr.get("style") == "cut":
+            return dict(TRACK_CUT)
+        secs = _num(tr.get("in_s")) if tr.get("style") == "fade-dark" else _num(tr.get("seconds"))
+        return {"style": "crossfade", "beats": None, "seconds": secs if secs is not None else TIME_FADE_S}
+
+    def _on_track(self, tid: Any, via: Any, now_s: float, vs: dict, grid: Grid, *, at_s: float,
+                  ev: Optional[dict] = None) -> None:
+        """A song change (structure's track_change, or a new track id in the context): the section memory clears; a
+        vibe's look changes at the junction (README S5.17): the first bar line at or after the new song's at_ms that
+        the screens' lead allows (no grid: then), with the event's transition (a cut, a crossfade, or fade-dark's
+        in-half). The palette moves on for a big change only (big: a new palette; small: the same). Nothing while a
+        person holds the look (the event's ``held``, Keep this look, their change pending) or while the feel is
+        relaxed because people talk (relaxed by the gap's own quiet, the new song is the sound coming back)."""
         if isinstance(tid, int) and not isinstance(tid, bool):
             if tid == self._track_id:
                 return
             self._track_id = tid
+        ev = ev if isinstance(ev, dict) else {}
+        tr = ev.get("transition") if isinstance(ev.get("transition"), dict) else None
         n = len(self._sec_mem)
         self._sec_mem.clear()
-        self._song_change = True
-        info = {"kind": "track_change", "track_id": tid, "via": via, "at_ms": round(at_s * 1000.0, 1)}
-        self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "context": self._ctx_brief()})
-        if self._vibe_name is None or vs["change_looks"] != "phrase" or not grid.ok or self._relaxed \
-                or self.keep_until is not None:
+        self._song_change = (tr or {}).get("change") != "small"
+        info = {"kind": "track_change", "track_id": tid, "via": via, "at_ms": round(at_s * 1000.0, 1),
+                "prev_track_id": ev.get("prev_track_id"), "transition": tr}
+        self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "transition": tr,
+                                  "held": bool(ev.get("held")), "context": self._ctx_brief()})
+        # relaxed by the gap itself (quiet, no audio): the new song is the sound coming back, so its look lands;
+        # relaxed because people talk over the music: it holds (§8.5)
+        talk_hold = self._relaxed and bool(vs["relax_on_talk"]) and self._situation("talking") is True
+        if self._vibe_name is None or talk_hold or self.keep_until is not None or ev.get("held"):
+            self._release_dip(now_s, "the new song, with no look change")
             return                                        # the palette moves on at the next look change
         pd = self.pending
         if pd is not None and pd.get("recall"):
             pd["recall"] = None                           # the last track's look doesn't come back in this one
         if pd is not None and (pd["by"] == "human" or pd.get("structure")):
+            self._release_dip(now_s, "a pending change lands instead")
             return                                        # a pending change takes the song change's palette
-        at, bar = grid.next_line(now_s + max(LOOK_MIN_LEAD_S, self._ev_lead), 1)   # the screens' lead (§5.4)
-        self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info)
+        t0 = max(at_s, now_s + max(LOOK_MIN_LEAD_S, self._ev_lead))   # the screens' lead (§5.4)
+        at, bar = grid.next_line(t0, 1) if grid.ok else (t0, None)
+        self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info,
+                       transition=self._look_transition_for(tr))
 
     def _on_section(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
         """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
@@ -1384,7 +1698,7 @@ class Director:
             if pd is not None and pd.get("structure") and pd["reason"] == "track" and at_s > pd["at_s"] \
                     and at_s - pd["at_s"] <= 2.0 * (grid.bar_s or 2.0):
                 self._announce(now_s, "track", "director", grid, at_s=at_s, bar=pd.get("bar"),
-                               section=pd.get("section"))
+                               section=pd.get("section"), transition=pd.get("transition"))
             self.sec_stats["kept"] += 1
             self._log_event("section_kept", {"section": info, "why": f"the same boundary as the {cm[1]} look",
                                              "express": None, "context": self._ctx_brief()})
@@ -1977,6 +2291,13 @@ class Director:
             a = self._armed
             if a is not None and grid.bar_s and now_s >= a["at_s"] - float(self.cfg["build"]["dip_bars"]) * grid.bar_s:
                 dip = float(self.cfg["build"]["dip_level"])
+        song_dip = None
+        sd = self._song_dip
+        if sd is not None and now_s >= sd["until"]:
+            self._release_dip(now_s, "dark_max_s passed")    # never dark for long: back over in_s
+            sd = None
+        if sd is not None and known:
+            song_dip = _c01((now_s - sd["t0"]) / sd["out_s"])
         roles_key = (look_pal["name"], emphasis, tuple(r["hex"] for r in look_pal["roles"].values()),
                      tuple((sid, tuple(r["hex"] for r in sr.values())) for sid, sr in sorted(screen_roles.items())))
         roles_changed = self._roles_key is not None and roles_key != self._roles_key
@@ -1989,6 +2310,8 @@ class Director:
             lamp_level = max(floor, level)
             if dip is not None:
                 lamp_level = min(lamp_level, dip)        # pre-drop: the lamps dip (screens never do)
+            if song_dip is not None:                     # a song's outgoing half (S5.17): down to the floor, never off
+                lamp_level += (min(lamp_level, floor) - lamp_level) * song_dip
             for i, (did, dev) in enumerate(sorted(self.lamps.items())):
                 rname, rc = self._lamp_role(dev)
                 if self.house:
@@ -2031,7 +2354,8 @@ class Director:
                      "motion": {"speed": round(speed, 3), "amount": round(amount, 3)}, "accents": accents,
                      "spread": round(spread, 3), "change_rate": vs["change_rate"], "transition": tr,
                      "lamps": lamps, "screens": screens,
-                     "dip": bool(known and dip is not None and not self.house and not self.low),
+                     "dip": bool(known and (dip is not None or song_dip is not None) and not self.house
+                                 and not self.low),
                      "hit": self._hit_view()}
         bars = 0
         if grid.ok and self.look_bar is not None:
@@ -2748,7 +3072,12 @@ class Director:
                 "armed": ({"in_s": round(self._armed["at_s"] - now_s, 2), "section_id": self._armed["section_id"]}
                           if self._armed else None),
                 "tokens": {"per_hour": n, "left": left, "spent_last_hour": len(self._tokens)},
-                "stats": {**self.sec_stats, "events": dict(self.sec_stats["events"])}}
+                "stats": {**self.sec_stats, "events": dict(self.sec_stats["events"])},
+                "song_end": {"junction": dict(self._junction) if self._junction else None,
+                             "dip": ({"progress": round(_c01((now_s - self._song_dip["t0"]) / self._song_dip["out_s"]),
+                                                        3), "until_s": round(self._song_dip["until"] - now_s, 1),
+                                      "track_id": self._song_dip["track_id"]} if self._song_dip else None),
+                             "stats": {**self.ends_stats, "chosen": dict(self.ends_stats["chosen"])}}}
 
     def _build_snapshot(self, now_s: float) -> None:
         if self._tick_ms and (now_s >= self._p95_next or self._p95 is None):

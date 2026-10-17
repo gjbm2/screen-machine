@@ -558,6 +558,11 @@ EVENT_KINDS: tuple[str, ...] = ("look_change", "section_change", "phrase", "buil
 class EventData(TypedDict):
     """room.event: stamped at ``at_ms`` (acoustic, the clock's timeline), published when decided."""
     kind: str                      # EVENT_KINDS
+    id: str                        # stable per occurrence (17 Oct, agreed with 04): a re-send (a moved line, a re-armed
+                                   # end, a call-off) has the same id and replaces the earlier one. structure: "<kind>:
+                                   # <track id>" for TRACK_EVENT_KINDS, "<kind>:<track id>:<section id>" for
+                                   # section_change and drop, "<kind>:<track id>:<n>" (a per-track count) for build,
+                                   # breakdown and drop_armed; the director: "look_change:<look_id>"
     at_ms: float
     t_ms: float                    # when it was published
     seq: int
@@ -958,6 +963,14 @@ class BrainContext:
                                                                        # data) for every room WS event other than status
                                                                        # and mode.transition (screen.look, ...), on
                                                                        # show-brain, guarded; brain.add appends
+    # Song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends"). None: no director, and the track events carry no
+    # "transition" (the renderer keeps the mode's default).
+    track_transition: Optional[Callable[[dict, dict], Optional[dict]]] = None   # director.Director.track_transition:
+                                                                       # structure calls it (show-brain, synchronous,
+                                                                       # guarded) while it builds a TRACK_EVENT_KINDS
+                                                                       # event, with (the event, TrackFacts); returns
+                                                                       # {"transition": TrackTransition} | {"held": True}
+                                                                       # | None, which structure puts on the event
 
 
 class Component(Protocol):
@@ -1263,8 +1276,59 @@ class RhythmData(TypedDict):
 
 # -- sections and the context (structure.py; §6.1, §6.2, §11.1) ---------------------------------------------------------
 SECTION_PHASES: tuple[str, ...] = ("calm", "build", "peak", "drop", "breakdown", "outro")
-MUSIC_EVENT_KINDS: tuple[str, ...] = ("section_change", "build", "drop_armed", "drop", "breakdown", "track_change")
-EVENT_KINDS_STAGE4: tuple[str, ...] = ("breakdown", "track_change")    # room.event kinds beyond EVENT_KINDS
+MUSIC_EVENT_KINDS: tuple[str, ...] = ("section_change", "build", "drop_armed", "drop", "breakdown", "track_change",
+                                       "track_end_armed", "track_end")
+EVENT_KINDS_STAGE4: tuple[str, ...] = ("breakdown", "track_change", "track_end_armed",
+                                       "track_end")             # room.event kinds beyond EVENT_KINDS (song ends: 17 Oct)
+# -- song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends", 17 Oct; the event shape agreed with 04) ------------------
+TRACK_EVENT_KINDS: tuple[str, ...] = ("track_end_armed", "track_end", "track_change")   # each carries "transition"
+TRACK_VIA: tuple[str, ...] = ("sonos", "dsp")
+TRACK_END_DETAILS: tuple[str, ...] = ("disarmed", "sound_back")   # track_end_armed called off; track_end: sound again
+TRANSITION_STYLES: tuple[str, ...] = ("fade-dark", "crossfade", "cut")
+TRANSITION_ON: tuple[str, ...] = ("downbeat", "now")
+CHANGE_SIZES: tuple[str, ...] = ("big", "small")
+
+
+class TrackTransition(TypedDict):
+    """How the screens cross a song change (the director's choice, show.yaml director.track_transitions), on every
+    TRACK_EVENT_KINDS event. Each event carries the choice as it stands then; a later one replaces an earlier one.
+      fade-dark  out_s: the old song's scene fades to dark (ending at an armed end's at_ms, else from the track_end);
+                 in_s: dark -> the new song's scene, from the track_change's at_ms (or a track_end "sound_back").
+                 Both halves are on all three events; the renderer runs the half that applies. dark_max_s: never dark
+                 longer than this (then back, in_s).
+      crossfade  seconds, at the track_change (the junction).
+      cut        seconds 0, on "downbeat": the new song's first downbeat at or after the track_change's at_ms ("now"
+                 only for a feel whose cut rule is "always" while the clock is unsure)."""
+    style: str                         # TRANSITION_STYLES
+    out_s: Optional[float]             # fade-dark only
+    in_s: Optional[float]              # fade-dark only
+    seconds: Optional[float]           # crossfade: its length; cut: 0; fade-dark: None
+    on: str                            # TRANSITION_ON
+    change: str                        # CHANGE_SIZES: big = a new scene family and palette, small = the same family.
+                                       # On track_end_armed and track_end the new song isn't known yet: show.yaml's
+                                       # director.track_transitions.change.unknown
+    dark_max_s: Optional[float]        # fade-dark only (additive to the shape agreed with 04, 17 Oct)
+
+
+class TrackProfile(TypedDict):
+    """One song as structure heard it, for the change size (TrackFacts.old / new). None where it isn't known."""
+    genre: Optional[str]               # the genre word (genre_map.parents; the old song's smoothed, the new one's recent)
+    key: Optional[str]                 # KEY_NAMES, at structure.track.key_min_conf or more
+    mode: Optional[str]
+    bpm: Optional[float]               # the clock's, while it gave beats
+    energy: Optional[float]            # the mean energy while it sounded
+    artist: Optional[str]              # Sonos now-playing's, when Sonos says
+
+
+class TrackFacts(TypedDict):
+    """What structure hands ctx.track_transition with a track event (not on the event itself)."""
+    silent: bool                       # the room is in a gap now (structure.track.gap_gate / gap_lufs_m)
+    phase: str                         # SECTION_PHASES: "outro" (falling, quiet) says a gap is coming
+    gate: str                          # the clock's gate as structure read it this tick
+    old: Optional[TrackProfile]        # the song that ends
+    new: Optional[TrackProfile]        # track_change only: the new song as far as it is heard (Sonos at once: only
+                                       # the artist)
+    back: bool                         # a track_end "sound_back" already brought the screens back for this junction
 GENRE_VIA: tuple[str, ...] = ("ml", "ml+listener", "listener", "none")
 
 
@@ -1333,7 +1397,11 @@ class MusicContext(TypedDict):
 class MusicEventData(EventData):
     """room.event from structure.py (MUSIC_EVENT_KINDS), also handed to every ctx.on_music_event. ``at_ms`` is when
     outputs act: a confirmed section_change's next bar line (>= structure.events.min_lead_s ahead), a predicted one's
-    or drop_armed's line; build, drop, breakdown and track_change report what was heard (at_ms in the past)."""
+    or drop_armed's line; build, drop, breakdown and track_change report what was heard (at_ms in the past).
+    Song ends (README S5.17): track_end_armed's at_ms is the predicted end (ahead, from Sonos now-playing); track_end's
+    is the end (via sonos: the armed end as it passes; via dsp: the gap's start, sent once the gap has lasted
+    structure.track.end_gap_s; detail "sound_back": the first sound after it, re-sent with the same id);
+    track_change's is the new song's first beat while the clock's gate is beat|dmx, else its first sound."""
     section_id: NotRequired[int]
     letter: NotRequired[Optional[str]]
     repeat_of: NotRequired[Optional[int]]
@@ -1344,8 +1412,18 @@ class MusicEventData(EventData):
     eta_beats: NotRequired[Optional[float]]   # drop_armed: beats from t_ms to at_ms; None: the line is off (``detail``
                                        # "disarmed": the build ended over drop.disarm_bars before it, or a new
                                        # track; "missed": the line passed with no drop), at_ms = that line
-    track_id: NotRequired[int]
-    via: NotRequired[str]              # track_change: "sonos" | "dsp"
+    track_id: NotRequired[int]         # track_end_armed, track_end: the ENDING song's track id; track_change: the new
+    via: NotRequired[str]              # TRACK_EVENT_KINDS: TRACK_VIA ("sonos": now-playing; "dsp": the sound)
+    # song ends (README S5.17, 17 Oct; agreed with 04)
+    prev_track_id: NotRequired[int]    # track_change: the song that ended
+    eta_s: NotRequired[Optional[float]]   # track_end_armed: seconds from t_ms to at_ms (the predicted end); None:
+                                       # called off (``detail`` "disarmed": a pause, skip, seek or another track first)
+    conf: NotRequired[float]           # track_end_armed: 0..1, how sure the predicted end is (1 - half the estimate's
+                                       # spread in s: 0.5 after one now-playing read, toward 1 with more)
+    transition: NotRequired["TrackTransition"]   # TRACK_EVENT_KINDS: the director's choice (absent: no director, a
+                                       # call-off, or ``held``)
+    held: NotRequired[bool]            # TRACK_EVENT_KINDS: a person holds the look (Keep this look, or their change
+                                       # pending): no transition; the renderer leaves this change alone
 
 
 # =====================================================================================================================

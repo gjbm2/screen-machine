@@ -78,11 +78,36 @@ are show.yaml structure.fastled):
   phase      drop (hold_bars) > build > breakdown > peak > outro > calm. The word holds at least phase_dwell_s, except
              that drop, build and breakdown (each announced by an event) show at once.
 
+**Song ends** (README S5.17; SHOW_ENGINE §8.5 "Song ends"; owner 17 Oct), 10 Hz:
+  sonos      while now_playing's state is "playing" with a usable duration and position ("H:MM:SS": a radio stream's
+             0 or empty gives nothing): the song's start on the monotonic clock is the read's time (now - the member's
+             age_s) - position, an interval a whole second wide (positions are whole seconds), narrowed by every later
+             read that agrees (READ_JITTER_S slack); one that doesn't (a seek, a pause and play) starts it again. The
+             predicted end = its middle + duration (no Sonos -> mic delay: structure models none). Once the end is
+             within track.arm_s: track_end_armed {at_ms the end, eta_s, via sonos, conf, track_id}, re-sent (the same
+             id) when the end moves more than track.rearm_s, called off (eta_s None, detail "disarmed") on a pause or
+             stop, a seek back past arm_s, a lost length, or another track (a skip) more than track.end_slack_s
+             before the end. When the armed end passes (or the track id changes, or Sonos stops, within end_slack_s
+             of it): track_end via sonos. The track change itself (step 6a below) then waits, while the room is
+             silent, for the new song's first sound (at most track.first_sound_s).
+  dsp        a silence (the track test's gap_gate / gap_lufs_m) that lasts track.end_gap_s after music (situations'
+             music_audible; unknown: any sound) is a song's end: track_end via dsp at the gap's start, unless Sonos
+             vouches for the song (playing, its end more than arm_s away: a break inside the song).
+  back       after a track_end, sound again with no track change (at once via dsp; via sonos after end_slack_s,
+             the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
+             that went dark come back. A later silence after music sends track_end (the same id) again.
+  transition each track_end_armed, track_end and track_change is handed to ``ctx.track_transition`` (the
+             director's, synchronous) with contract.TrackFacts while it is built: its {"transition"} or {"held"} goes
+             on the event. One room.event per change; no second event.
+  track_change's at_ms is the new song's first beat while the clock's gate is beat|dmx, else its first sound (via
+  dsp after a gap: the sound's return; via sonos: the armed end, a short gap's end, or the first sound waited for).
+
 **Events** (room.event, MusicEventData), each also handed to every ``ctx.on_music_event`` (copied, guarded):
 section_change (confirmed: at the next bar >= now + events.min_lead_s, else the next beat, else now + the lead;
 predicted: the line; a track change's new section: detail "track"), build, drop_armed (eta_beats None: called off,
-``detail`` disarmed | missed), drop, breakdown, track_change. ``detail`` on section_change says why: "section" |
-"repeat" (predicted) | "track".
+``detail`` disarmed | missed), drop, breakdown, track_change, track_end_armed, track_end. ``detail`` on section_change
+says why: "section" | "repeat" (predicted) | "track". Every event has a stable ``id`` (contract.EventData): a re-send
+(a moved drop line or armed end, a call-off, a sound_back) keeps it.
 
 **GOBO** (ctx.section_change, the screens' scene change, §9.5) **only while the director is neutral** (``ctx.vibe()``
 None: §9.5's P0 path). While a vibe plays the director owns it and steps it when it lands a look, so the vibe's
@@ -135,6 +160,11 @@ STAT_N = 600
 INSTR_KEEP = 1e-3               # an instrument whose smoothed score falls under this is forgotten
 INSTR_TOP = 5                   # music.context instruments: the top 5 smoothed (MlTags.instruments_top5's length)
 EVENT_PHASES = ("drop", "build", "breakdown")   # phase words an event announces: they show at once (no dwell)
+SONOS_POS_RES_S = 1.0           # now_playing's position and duration are "H:MM:SS": whole seconds
+READ_JITTER_S = 0.15            # a read's own time: room's age_s is rounded to 0.1 s, and the read returns tens of ms
+                                # after Sonos sampled its position
+SONOS_PLAYING = "playing"       # room's Sonos adapter: now_playing.state, the transport state in lower case
+SONOS_STOPPED = ("paused_playback", "stopped")
 
 #: show.yaml ``structure`` (README S4.9): the starting points, the same numbers as the file. The file's values win.
 #: ``fastled`` holds FastLED's own audio-detector numbers (MIT; fl/audio/detector buildup.cpp.hpp, drop.cpp.hpp).
@@ -150,7 +180,8 @@ STRUCTURE_FALLBACK: dict = {
     "key_min_strength": 0.3, "key_hold": {"strength_margin": 0.05, "hold_s": 4},
     "events": {"min_lead_s": 1.1},
     "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": -60, "window_s": 20, "tempo_jump": 0.04,
-              "key_min_conf": 0.3, "parent_window_s": 5, "parent_margin": 0.05, "spike_k": 2.0, "spike_jumps": 2},
+              "key_min_conf": 0.3, "parent_window_s": 5, "parent_margin": 0.05, "spike_k": 2.0, "spike_jumps": 2,
+              "end_gap_s": 3, "arm_s": 20, "rearm_s": 0.5, "end_slack_s": 3, "first_sound_s": 10},
     "build": {"window_s": 12, "min_slope": {"lufs_db_s": 0.15, "brightness_s": 0.004, "onset_rate_s": 0.05},
               "low_max_slope_db_s": 0.05, "full_rise_db": 6, "phrase16_conf": 0.5, "arm_beats": 8, "foot_db": 0.5},
     "drop": {"low_jump_db": 6, "lufs_jump_db": 3, "within_beats": 1, "hold_bars": 8, "snap_beats": 0.25,
@@ -176,7 +207,8 @@ _POSITIVE = {"structure.novelty.recent_s", "structure.novelty.before_s", "struct
              "structure.build.full_rise_db", "structure.build.arm_beats", "structure.drop.hold_bars",
              "structure.outro.window_s", "structure.min_section_bars", "structure.min_section_s",
              "structure.same_bars", "structure.tags_hold_s", "structure.ced_mean_s", "structure.track.parent_window_s",
-             "structure.track.spike_jumps", "structure.fastled.build_end", "genre_map.tau_s"}
+             "structure.track.spike_jumps", "structure.fastled.build_end", "genre_map.tau_s",
+             "structure.track.end_gap_s", "structure.track.arm_s"}
 #: paths that may be null (unset): track.spike_k null turns the no-gap track change off
 _NULLABLE = {"structure.track.spike_k"}
 
@@ -211,6 +243,29 @@ def _call(fn: Optional[Callable], *a: Any) -> Any:
 def _p95(values: Any) -> Optional[float]:
     v = sorted(values)
     return round(v[min(len(v) - 1, int(0.95 * len(v)))], 3) if v else None
+
+
+def _hms(v: Any) -> Optional[float]:
+    """Sonos now_playing's "H:MM:SS" (or "M:SS", or a number of seconds) -> seconds; None for anything else ("",
+    "NOT_IMPLEMENTED", a stream's nothing)."""
+    x = _f(v)
+    if x is not None:
+        return x if x >= 0 else None
+    if not isinstance(v, str) or not v.strip() or "-" in v:
+        return None
+    parts = v.strip().split(":")
+    if not 1 <= len(parts) <= 3:
+        return None
+    try:
+        nums = [float(p) for p in parts]
+    except ValueError:
+        return None
+    if any(not math.isfinite(n) or n < 0 for n in nums):
+        return None
+    s = 0.0
+    for n in nums:
+        s = s * 60.0 + n
+    return s
 
 
 def _r(x: Optional[float], nd: int = 3) -> Optional[float]:
@@ -509,6 +564,22 @@ class Structure:
         self._sonos_key: Optional[tuple] = None
         self._tags_stream: Optional[str] = None          # the stream the ML state below was heard on
         self._reset_ml_state()
+        # song ends (README S5.17): across track changes
+        self._sits: Any = None                           # situations' readings, read once a tick
+        self._np: Optional[dict] = None                  # Sonos's song: {"key", "dur", "lo", "hi", "reads", "read_s"}
+                                                         # (its start on the monotonic clock is in [lo, hi])
+        self._np_artist: Optional[str] = None
+        self._end_arm: Optional[dict] = None             # the armed Sonos end: {"id", "at_s", "track_id", "conf"}
+        self._end: Optional[dict] = None                 # this song's track_end, until the track change:
+                                                         # {"id", "track_id", "via", "at_s", "back", "sound_s"}
+        self._end_profile: Optional[dict] = None         # the song as it ended (contract.TrackProfile)
+        self._np_wait: Optional[dict] = None             # a Sonos change waiting for the new song's first sound
+        self._last_quiet: Optional[tuple[float, float]] = None   # the last silence (from_s, to_s)
+        self._heard = False                              # music since the last track_end or track change
+        self._trk_e = [0.0, 0]                           # this song's energy while it sounded: (sum, n)
+        self._kind_n: collections.Counter = collections.Counter()   # per-track counts for event ids
+        self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, "sound_back": 0, "waited": 0,
+                     "hook_errors": 0}
         self._ctx_parts: dict = {}
         self._build_snapshot(mono())
 
@@ -658,8 +729,10 @@ class Structure:
         if self.cur is None:
             self._start_section(now_s, "start", now_s, emit=False)
         self._run_gobo_queue(now_s)
+        self._sits = _call(ctx.situations)
         self._sample(now_s)
         self._sonos(now_s)
+        self._end_tick(now_s)
         self._phases(now_s, grid)
         self._predict(now_s, grid)
         sec = math.floor(now_s)
@@ -710,6 +783,9 @@ class Structure:
         self.ring.push(row)
         self._t_last = t
         e = row[ENERGY]
+        if math.isfinite(e) and gate >= self.cfg["track"]["gap_gate"]:
+            self._trk_e[0] += e                          # this song's mean energy (the change size, S5.17)
+            self._trk_e[1] += 1
         if math.isfinite(e):
             self._energy = e if (self._energy is None or dt is None) else \
                 self._energy + (e - self._energy) * (1.0 - math.exp(-max(0.0, dt) / ENERGY_TAU_S))
@@ -719,20 +795,26 @@ class Structure:
         if not sound:
             if self._silent_since is None:
                 self._silent_since = now_s
+            elif now_s - self._silent_since >= tr["end_gap_s"] - 1e-9:
+                self._dsp_end(now_s)
             return
         if self._silent_since is not None:
+            self._last_quiet = (self._silent_since, now_s)
             if now_s - self._silent_since >= tr["gap_s"]:
                 self._gap = {"from_s": self._silent_since, "return_s": now_s,
                              "sig": self._sigs[-1] if self._sigs else None}
             self._silent_since = None
+        if self._music_now():
+            self._heard = True
         cur = self.cur
         if cur is not None and cur["nvec"] == 0 and not cur.get("sounded"):
             cur["start_s"] = now_s                       # a section begins with its first sound
         if cur is not None:
             cur["sounded"] = True
 
-    # -- Sonos now-playing (README S4.7 step 6a) ---------------------------------------------------------------------
+    # -- Sonos now-playing (README S4.7 step 6a; the song's end, S5.17) -------------------------------------------------
     def _sonos(self, now_s: float) -> None:
+        self._first_sound_wait(now_s)
         if not self.np_target:
             return
         room = _call(self.ctx.room)
@@ -752,17 +834,241 @@ class Structure:
             key = ("title", str(title), str(artist or "")) if isinstance(title, str) and title else None
         if key is None:
             return
-        sits = _call(self.ctx.situations)
+        sits = self._sits
         rd = sits.get("sonos_playing") if isinstance(sits, dict) else None
         playing = rd.get("value") if isinstance(rd, dict) else None
+        state = str(b.get("state") or "").lower()
+        if playing is False or state in SONOS_STOPPED:
+            self._sonos_stopped(now_s)
         if playing is False:
             return                                       # paused or stopped: the next play decides
+        artist = b.get("artist") if isinstance(b.get("artist"), str) and b.get("artist") else None
         if self._sonos_key is None:
+            self._sonos_key, self._np_artist = key, artist
+        elif key != self._sonos_key:
             self._sonos_key = key
+            old_artist, self._np_artist = self._np_artist, artist
+            self._np = None
+            self._sonos_flip(now_s, old_artist, artist)
+        else:
+            self._np_artist = artist
+        if state == SONOS_PLAYING:
+            self._np_read(now_s, key, b, m.get("age_s"))
+        self._sonos_arm(now_s)
+
+    def _np_read(self, now_s: float, key: tuple, b: dict, age: Any) -> None:
+        """One now_playing read: the song's start on the monotonic clock is in [read - position - 1 s, read -
+        position] (whole-second positions); a read that agrees narrows the interval, one that doesn't (a seek, a
+        pause and play) starts it again. No usable length (a radio stream: 0 or empty): no end to know."""
+        dur, pos = _hms(b.get("duration")), _hms(b.get("position"))
+        if dur is None or dur <= 0.0 or pos is None or pos > dur + SONOS_POS_RES_S:
+            self._np = None
             return
-        if key != self._sonos_key:
-            self._sonos_key = key
-            self._track_change(now_s, "sonos", now_s, adopt=False)
+        read_s = now_s - max(0.0, _f(age, 0.0) or 0.0)
+        lo, hi = read_s - pos - SONOS_POS_RES_S, read_s - pos
+        np_ = self._np
+        if np_ is not None and np_["key"] == key and abs(np_["dur"] - dur) < 1e-6:
+            lo2, hi2 = max(np_["lo"], lo - READ_JITTER_S), min(np_["hi"], hi + READ_JITTER_S)
+            if lo2 <= hi2:
+                new = abs(read_s - np_["read_s"]) > READ_JITTER_S
+                np_.update(lo=lo2, hi=hi2, reads=np_["reads"] + (1 if new else 0), read_s=read_s)
+                return
+        self._np = {"key": key, "dur": dur, "lo": lo, "hi": hi, "reads": 1, "read_s": read_s}
+
+    def _np_end(self) -> Optional[float]:
+        np_ = self._np
+        if np_ is None or np_["key"] != self._sonos_key:
+            return None
+        return (np_["lo"] + np_["hi"]) / 2.0 + np_["dur"]
+
+    def _sonos_vouches(self, now_s: float) -> bool:
+        """Sonos plays this song with a known length and its end is more than arm_s away: a silence now is a break
+        inside the song, not its end."""
+        end = self._np_end()
+        return bool(self.np_target) and end is not None and end - now_s > self.cfg["track"]["arm_s"]
+
+    def _sonos_arm(self, now_s: float) -> None:
+        tr = self.cfg["track"]
+        a = self._end_arm
+        end = self._np_end()
+        if end is None:
+            if a is not None:
+                self._end_disarm(now_s)                  # the length is gone: nothing to follow
+            return
+        rem = end - now_s
+        conf = round(_c01(1.0 - (self._np["hi"] - self._np["lo"]) / 2.0), 3)
+        if a is None:
+            if 0.0 < rem <= tr["arm_s"] + 1e-9 and (self._end is None or self._end["back"]):
+                self._end_arm = {"id": f"track_end_armed:{self.track_id}", "at_s": end, "track_id": self.track_id,
+                                 "conf": conf}
+                self.ends["armed"] += 1
+                self._emit("track_end_armed", end, now_s, facts=self._facts(), ev_id=self._end_arm["id"],
+                           eta_s=round(rem, 3), via="sonos", conf=conf, track_id=self.track_id)
+            return
+        if self._end is not None and not self._end["back"]:
+            if now_s >= a["at_s"] - 1e-6:                # the sound ended first (a dsp end): the arm just runs out
+                self._end_arm = None
+            return
+        if rem > tr["arm_s"] + tr["rearm_s"] + 1e-9:
+            self._end_disarm(now_s)                      # a seek back: the end is far again
+            return
+        if abs(end - a["at_s"]) > tr["rearm_s"] + 1e-9:
+            a.update(at_s=end, conf=conf)
+            self.ends["rearmed"] += 1
+            self._emit("track_end_armed", end, now_s, facts=self._facts(), ev_id=a["id"],
+                       eta_s=round(max(0.0, rem), 3), via="sonos", conf=conf, track_id=a["track_id"])
+        if now_s >= a["at_s"] - 1e-6:
+            self._end_arm = None
+            if self._end is None or self._end["back"]:
+                self._track_end(now_s, "sonos", a["at_s"])
+
+    def _end_disarm(self, now_s: float) -> None:
+        a, self._end_arm = self._end_arm, None
+        if a is None:
+            return
+        self.ends["disarmed"] += 1
+        self._emit("track_end_armed", a["at_s"], now_s, ev_id=a["id"], eta_s=None, via="sonos", conf=a["conf"],
+                   track_id=a["track_id"], detail="disarmed")
+
+    def _sonos_stopped(self, now_s: float) -> None:
+        """Paused or stopped: within end_slack_s of an armed end it is the end (Sonos stops at its queue's end);
+        before that the arm is called off. The estimate starts again on the next play."""
+        self._np = None
+        a = self._end_arm
+        if a is None:
+            return
+        if a["at_s"] - now_s <= self.cfg["track"]["end_slack_s"] + 1e-9:
+            self._end_arm = None
+            if self._end is None or self._end["back"]:
+                self._track_end(now_s, "sonos", min(a["at_s"], now_s))
+            return
+        self._end_disarm(now_s)
+
+    def _sonos_flip(self, now_s: float, old_artist: Optional[str], artist: Optional[str]) -> None:
+        """Another Sonos track: the end, when the armed end is within end_slack_s (or its track_end went out), else a
+        skip (the arm called off). The track change goes out at once while there is sound, else on the new song's
+        first sound (at most first_sound_s)."""
+        tr = self.cfg["track"]
+        if self._np_wait is not None:                    # the last change still waited: it goes now
+            w, self._np_wait = self._np_wait, None
+            self._sonos_change(now_s, w, now_s)
+        a, e = self._end_arm, self._end
+        natural = (e is not None and not e["back"]) or (a is not None and a["at_s"] - now_s <= tr["end_slack_s"] + 1e-9)
+        if a is not None and not natural:
+            self._end_disarm(now_s)
+        elif a is not None:
+            self._end_arm = None
+            if e is None or e["back"]:
+                self._track_end(now_s, "sonos", min(a["at_s"], now_s))
+        e = self._end
+        w = {"since_s": now_s, "junction_s": e["at_s"] if natural and e is not None else now_s, "natural": natural,
+             "old_artist": old_artist, "artist": artist}
+        if self._silent_since is not None and tr["first_sound_s"] > 0:
+            self._np_wait = w
+            self.ends["waited"] += 1
+            return
+        self._sonos_change(now_s, w, None)
+
+    def _first_sound_wait(self, now_s: float) -> None:
+        w = self._np_wait
+        if w is None:
+            return
+        if self._silent_since is None or now_s - w["since_s"] >= self.cfg["track"]["first_sound_s"] - 1e-9:
+            self._np_wait = None
+            self._sonos_change(now_s, w, now_s)          # its first sound (or none came: now)
+
+    def _sonos_change(self, now_s: float, w: dict, first_s: Optional[float]) -> None:
+        if first_s is None:
+            first_s = w["junction_s"]
+            q = self._last_quiet
+            if w["natural"] and q is not None and w["junction_s"] - self.cfg["track"]["end_slack_s"] <= q[1] <= now_s:
+                first_s = max(first_s, q[1])             # a short gap at the junction: the new song began after it
+        new = {"genre": None, "key": None, "mode": None, "bpm": None, "energy": None, "artist": w.get("artist")}
+        self._track_change(now_s, "sonos", min(first_s, now_s), adopt=False, first_s=min(first_s, now_s),
+                           new_profile=new, old_artist=w.get("old_artist"))
+
+    # -- the end in the sound, and the sound back (S5.17) ---------------------------------------------------------------
+    def _music_now(self) -> bool:
+        """Is what sounds music (situations' music_audible)? Unknown (no reading): any sound counts (degrade)."""
+        sits = self._sits
+        rd = sits.get("music_audible") if isinstance(sits, dict) else None
+        v = rd.get("value") if isinstance(rd, dict) else None
+        return v is not False
+
+    def _dsp_end(self, now_s: float) -> None:
+        e = self._end
+        if not self._heard or (e is not None and not e["back"]) or self._sonos_vouches(now_s):
+            return
+        self._track_end(now_s, "dsp", self._silent_since if self._silent_since is not None else now_s)
+
+    def _track_end(self, now_s: float, via: str, at_s: float) -> None:
+        self._end = {"id": f"track_end:{self.track_id}", "track_id": self.track_id, "via": via, "at_s": at_s,
+                     "back": False, "sound_s": None}
+        self._end_profile = self._profile_old()
+        self._heard = False
+        self.ends[via] += 1
+        log.info("structure: track %d ends via %s", self.track_id, via)
+        self._emit("track_end", at_s, now_s, facts=self._facts(), ev_id=self._end["id"], via=via,
+                   track_id=self.track_id)
+
+    def _end_tick(self, now_s: float) -> None:
+        """After a track_end: sound again with no track change (at once via dsp; via sonos after end_slack_s, the
+        read's own lag, so a gapless next track's id can still arrive) -> track_end "sound_back"."""
+        e = self._end
+        if e is None or e["back"]:
+            return
+        if self._silent_since is not None:
+            e["sound_s"] = None
+            return
+        if now_s < e["at_s"] - 1e-6:
+            return
+        if e["sound_s"] is None:
+            e["sound_s"] = now_s
+        wait = self.cfg["track"]["end_slack_s"] if e["via"] == "sonos" else 0.0
+        if now_s - e["sound_s"] < wait - 1e-9:
+            return
+        e["back"] = True
+        self.ends["sound_back"] += 1
+        self._emit("track_end", e["sound_s"], now_s, facts=self._facts(back=True), ev_id=e["id"], via=e["via"],
+                   track_id=e["track_id"], detail="sound_back")
+
+    # -- the songs as heard (the change size; contract.TrackProfile) ----------------------------------------------------
+    def _word_of(self, parent: Any) -> Optional[str]:
+        entry = self.gcfg["parents"].get(parent) if isinstance(parent, str) else None
+        return entry if isinstance(entry, str) and entry else None
+
+    def _profile(self, sig: Optional[dict], word: Optional[str], energy: Optional[float],
+                 artist: Optional[str]) -> dict:
+        ok = bool(sig and sig.get("key") and (sig.get("key_strength") or 0.0) >= self.cfg["track"]["key_min_conf"])
+        return {"genre": word, "key": sig["key"] if ok else None, "mode": sig.get("mode") if ok else None,
+                "bpm": _r(sig.get("bpm"), 2) if sig and sig.get("bpm") else None, "energy": _r(energy, 3),
+                "artist": artist}
+
+    def _profile_old(self, sig: Optional[dict] = None, artist: Optional[str] = None) -> dict:
+        """The song now ending: its last sounding signature (or ``sig``), its smoothed genre word (else the recent
+        parent's), its mean energy, Sonos's artist."""
+        sig = sig if sig is not None else (self._sigs[-1] if self._sigs else None)
+        g = self.genre
+        word = g.get("word") if isinstance(g.get("word"), str) and (g.get("conf") or 0.0) > 0.0 else None
+        if word is None:
+            word = self._word_of(sig.get("parent") if sig else None)
+        n = self._trk_e[1]
+        return self._profile(sig, word, self._trk_e[0] / n if n else None,
+                             artist if artist is not None else self._np_artist)
+
+    def _energy_since(self, t0: float) -> Optional[float]:
+        w = _since(self.ring.rows(), t0)
+        if not len(w):
+            return None
+        e = w[np.isfinite(w[:, ENERGY]) & (w[:, GATE] >= self.cfg["track"]["gap_gate"])][:, ENERGY]
+        return float(e.mean()) if len(e) else None
+
+    def _facts(self, *, new: Optional[dict] = None, back: bool = False, old: Optional[dict] = None) -> dict:
+        """contract.TrackFacts for ctx.track_transition."""
+        if old is None:
+            old = self._end_profile if self._end_profile is not None else self._profile_old()
+        return {"silent": self._silent_since is not None, "phase": self.phase, "gate": self._grid.gate,
+                "old": old, "new": new, "back": back}
 
     # -- phases (README S4.7 "Every tick") -----------------------------------------------------------------------------
     def _phases(self, now_s: float, grid: _Grid) -> None:
@@ -917,10 +1223,14 @@ class Structure:
         lead = self.cfg["events"]["min_lead_s"]
         if beats <= b["arm_beats"] and beats >= ARM_MIN_BEATS and ahead >= lead:
             if self.armed is None or abs(self.armed["line"] - line) > LINE_MOVED_BEATS * grid.beat_s:
+                eid = self.armed.get("id") if self.armed is not None else None    # a moved line: the same arm
                 if self.armed is not None:
                     self._gobo_cancel(("drop", self.armed["line"]))
-                self.armed = {"line": line, "epoch": grid.epoch, "at_s": now_s}
-                self._emit("drop_armed", line, now_s, eta_beats=round(beats, 3), section_id=self._cur_id())
+                if eid is None:
+                    self._kind_n["drop_armed"] += 1
+                    eid = f"drop_armed:{self.track_id}:{self._kind_n['drop_armed']}"
+                self.armed = {"line": line, "epoch": grid.epoch, "at_s": now_s, "id": eid}
+                self._emit("drop_armed", line, now_s, ev_id=eid, eta_beats=round(beats, 3), section_id=self._cur_id())
                 self._gobo_at(line, ("drop", line))
 
     def _disarm(self, now_s: float, why: str) -> None:
@@ -932,7 +1242,8 @@ class Structure:
             return
         if why != "missed":
             self._gobo_cancel(("drop", a["line"]))
-        self._emit("drop_armed", a["line"], now_s, eta_beats=None, detail=why, section_id=self._cur_id())
+        self._emit("drop_armed", a["line"], now_s, ev_id=a.get("id"), eta_beats=None, detail=why,
+                   section_id=self._cur_id())
 
     def _drop(self, now_s: float, tl: float, rows: np.ndarray, grid: _Grid) -> None:
         d = self.cfg["drop"]
@@ -1295,7 +1606,10 @@ class Structure:
         if jump is not None:
             rec["kind"] = "track"
             rec["why"] = jump
-            self._track_change(now_s, "dsp", snapped, adopt=False, rec=rec)
+            g = self._gap_for(now_s, tau) if jump.startswith("after a gap") else None
+            self._track_change(now_s, "dsp", snapped, adopt=False, rec=rec,
+                               first_s=g["return_s"] if g is not None else None,
+                               old_sig=g["sig"] if g is not None else self._sig_before(tau - 2.0))
             return True
         cur = self.cur
         min_len = self.cfg["min_section_bars"] * grid.bar_s if grid.has_grid and grid.beats \
@@ -1310,7 +1624,7 @@ class Structure:
         g = self._gap
         if g is not None and now_s - g["return_s"] <= self.cfg["track"]["window_s"] and tau >= g["from_s"] - 1.0:
             self._pending_gap = {"until": g["return_s"] + self.cfg["track"]["window_s"], "sig": g["sig"],
-                                 "section_id": sec["id"]}
+                                 "section_id": sec["id"], "return_s": g["return_s"]}
         return True
 
     def _boundary_record(self, t_s: float, nov_v: Optional[float], snapped: float, kind: str, sid: int) -> None:
@@ -1532,11 +1846,18 @@ class Structure:
                 return s
         return None
 
+    def _gap_for(self, now_s: float, tau: float) -> Optional[dict]:
+        """The gap a boundary at ``tau`` follows (the sound back within track.window_s, tau not before it), or None."""
+        g = self._gap
+        if g is not None and now_s - g["return_s"] <= self.cfg["track"]["window_s"] and tau >= g["from_s"] - 1.0:
+            return g
+        return None
+
     def _track_jump(self, now_s: float, tau: float, nov_v: float, thr: float, grid: _Grid) -> Optional[str]:
         tr = self.cfg["track"]
         now_sig = self._signature(now_s, grid)
-        g = self._gap
-        if g is not None and now_s - g["return_s"] <= tr["window_s"] and tau >= g["from_s"] - 1.0:
+        g = self._gap_for(now_s, tau)
+        if g is not None:
             j = self._jump(g["sig"], now_sig)
             if j:
                 return f"after a gap: {j}"
@@ -1560,15 +1881,40 @@ class Structure:
             self._pending_gap = None
             rec = {"t_s": round(self.cur["start_s"], 3), "novelty": None, "snapped": round(self.cur["start_s"], 3),
                    "kind": "track", "missed": False, "section_id": self.cur["id"], "why": f"after a gap: {j}"}
-            self._track_change(now_s, "dsp", self.cur["start_s"], adopt=True, rec=rec)
+            self._track_change(now_s, "dsp", self.cur["start_s"], adopt=True, rec=rec, first_s=pg.get("return_s"),
+                               old_sig=pg["sig"])
 
-    def _track_change(self, now_s: float, via: str, at_s: float, *, adopt: bool, rec: Optional[dict] = None) -> None:
+    def _track_change(self, now_s: float, via: str, at_s: float, *, adopt: bool, rec: Optional[dict] = None,
+                      first_s: Optional[float] = None, old_sig: Optional[dict] = None,
+                      new_profile: Optional[dict] = None, old_artist: Optional[str] = None) -> None:
+        """A new song from ``at_s`` (its first section's start). ``first_s``: the new song's first sound (default
+        at_s); the event's at_ms is the first beat at or after it while the clock's gate is beat|dmx (S5.17).
+        ``old_sig``: the old song's last signature (default: its last sounding second); ``new_profile``: the new song
+        as Sonos tells it (default: as the sound tells it now)."""
         cur = self.cur
+        grid = self._grid
+        first = first_s if first_s is not None else at_s
+        ev_at = grid.beat_after(first - 1e-3) if grid.gridded and grid.beat_s else first
+        # the facts for the director's transition, before the reset: the old song as it ended, the new one so far
+        old = self._end_profile if self._end_profile is not None else self._profile_old(old_sig, old_artist)
+        if new_profile is None:
+            sig = self._signature(now_s, grid)
+            new_profile = self._profile(sig, self._word_of(sig.get("parent") if sig else None),
+                                        self._energy_since(first), None)
+        facts = self._facts(new=new_profile, old=old, back=bool(self._end is not None and self._end["back"]))
+        if self._end_arm is not None:
+            self._end_disarm(now_s)                      # another song came first: the armed end is off
+        prev = self.track_id
         self.track_id += 1
         self.track_via = via
         self.track_start = at_s
         self._track_pending = True
         self._gap = None
+        self._end = None
+        self._end_profile = None
+        self._heard = False
+        self._trk_e = [0.0, 0]
+        self._kind_n.clear()
         self._cancel_pred()
         if self.armed is not None:
             self._disarm(now_s, "disarmed")              # a new song: the old build's line is off
@@ -1576,7 +1922,7 @@ class Structure:
         boundaries = self.boundaries
         self._reset_track_state()
         self.boundaries = boundaries
-        self._emit("track_change", at_s, now_s, track_id=self.track_id, via=via)
+        self._emit("track_change", ev_at, now_s, facts=facts, track_id=self.track_id, prev_track_id=prev, via=via)
         if keep is not None:
             keep.update(letter=None, repeat_of=None, identified=False, expected_bars=None, provisional=False,
                         predicted_done=False, kind="track")
@@ -1595,17 +1941,45 @@ class Structure:
         log.info("structure: track change %d via %s%s", self.track_id, via, f" ({r['why']})" if r.get("why") else "")
 
     # -- events ----------------------------------------------------------------------------------------------------------
-    def _emit(self, kind: str, at_s: float, now_s: float, **extra: Any) -> dict:
+    def _ev_id(self, kind: str, extra: dict) -> str:
+        """contract.EventData.id: "<kind>:<track id>" for the track events, "<kind>:<track id>:<section id>" for
+        section_change and drop, else "<kind>:<track id>:<n>" (a per-track count). A re-send passes its own."""
+        if kind in contract.TRACK_EVENT_KINDS:
+            return f"{kind}:{extra.get('track_id', self.track_id)}"
+        sid = extra.get("section_id")
+        if kind in ("section_change", "drop") and isinstance(sid, int):
+            return f"{kind}:{self.track_id}:{sid}"
+        self._kind_n[kind] += 1
+        return f"{kind}:{self.track_id}:{self._kind_n[kind]}"
+
+    def _emit(self, kind: str, at_s: float, now_s: float, *, facts: Optional[dict] = None,
+              ev_id: Optional[str] = None, **extra: Any) -> dict:
+        """Publish one room.event and hand it to every on_music_event. A track event (contract.TRACK_EVENT_KINDS)
+        with ``facts`` first goes to ctx.track_transition (the director, synchronous), and what it returns goes on the
+        event: {"transition"} or {"held": True} (S5.17)."""
         grid = self._grid
         self._ev_seq += 1
-        ev: dict = {"kind": kind, "at_ms": round(at_s * 1000.0, 1), "t_ms": round(now_s * 1000.0, 1),
-                    "seq": self._ev_seq}
+        ev: dict = {"kind": kind, "id": ev_id or self._ev_id(kind, extra), "at_ms": round(at_s * 1000.0, 1),
+                    "t_ms": round(now_s * 1000.0, 1), "seq": self._ev_seq}
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             if grid.ok:
                 ev["bar"] = grid.bar_at(at_s + 1e-6)
                 ev["phrase"] = math.floor(ev["bar"] / grid.pb)
         ev.update(extra)
+        fn = getattr(self.ctx, "track_transition", None)
+        if facts is not None and fn is not None and kind in contract.TRACK_EVENT_KINDS:
+            try:
+                got = fn(dict(ev), copy.deepcopy(facts))
+            except Exception:
+                got = None
+                self.ends["hook_errors"] += 1
+                log.debug("structure: track_transition failed", exc_info=True)
+            if isinstance(got, dict):
+                if got.get("held"):
+                    ev["held"] = True
+                elif isinstance(got.get("transition"), dict):
+                    ev["transition"] = dict(got["transition"])
         self.event_counts[kind] += 1
         try:
             self.ctx.publish({"type": contract.ROOM_EVENT, "data": ev})
@@ -1897,6 +2271,19 @@ class Structure:
             self._context = body
 
     # -- the snapshot -------------------------------------------------------------------------------------------------------
+    def _ends_view(self, now_s: float) -> dict:
+        """The song's end (S5.17): Sonos's estimate, an armed end, this song's track_end, a change waiting."""
+        np_, a, e = self._np, self._end_arm, self._end
+        end = self._np_end()
+        return {"sonos": ({"end_s": round(end, 3), "remaining_s": round(end - now_s, 1),
+                           "spread_s": round(np_["hi"] - np_["lo"], 3), "reads": np_["reads"],
+                           "duration_s": np_["dur"]} if np_ is not None and end is not None else None),
+                "armed": ({"at_s": round(a["at_s"], 3), "in_s": round(a["at_s"] - now_s, 1), "conf": a["conf"],
+                           "track_id": a["track_id"]} if a is not None else None),
+                "end": ({"via": e["via"], "at_s": round(e["at_s"], 3), "back": e["back"], "track_id": e["track_id"]}
+                        if e is not None else None),
+                "waiting_first_sound": self._np_wait is not None, "heard": self._heard, "counts": dict(self.ends)}
+
     def _build_snapshot(self, now_s: float) -> None:
         def sec_view(s: dict) -> dict:
             return {"id": s["id"], "letter": s.get("letter"), "repeat_of": s.get("repeat_of"),
@@ -1920,6 +2307,7 @@ class Structure:
             "track": {"id": self.track_id, "via": self.track_via},
             "pending": {"predicted_s": _r(self._pred["line"], 3) if self._pred else None,
                         "gap_check": self._pending_gap is not None},
+            "ends": self._ends_view(now_s),
             "settings_problems": list(self.settings_problems),
             "stats": {"tick_ms_p95": _p95(self._tick_ms), "second_ms_p95": _p95(self._second_ms)}}
 

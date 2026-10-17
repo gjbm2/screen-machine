@@ -6218,3 +6218,104 @@ with the senders' capture devices actually closed. The Room page's Mute always w
 - `GET /api/v1/state` carries `mic`: the GET body plus `receiver` (its `off*` health keys).
 - **Without the brain** (`--no-brain`) there is no Auto: the mode claim alone decides, before the first SUBSCRIBE.
   If mic.py fails to load, the receiver keeps every room mic held off (privacy first), logged.
+
+### S5.17 Song ends (17 Oct; the owner's ask; the event shape agreed with 04)
+"End of track / song would be detected by art director so it could naturally transition (and select an appropriate
+transition) at those junctures." Plain words: docs/SHOW_ENGINE.md §8.5 "Song ends"; bus shapes: §11.1.
+- **`structure.py`, the end ahead (Sonos).**
+  - **The estimate.** While `now_playing.state` is `playing` with a usable `duration` and `position` ("H:MM:SS";
+    a stream's 0 or empty gives nothing), the song's start on the monotonic clock is
+    `read time - position`. The read time is `now - the member's age_s`.
+    - Positions are whole seconds, so the start is an interval 1 s wide. Each later read that agrees narrows it
+      (0.15 s slack for room's rounded ages and the read's own lag). One that doesn't (a seek, or a pause and play)
+      starts it again.
+    - The predicted end is the interval's middle + duration. There is no Sonos → mic delay, because structure models
+      none.
+  - **Arming.** Once the end is within `track.arm_s` (20), `track_end_armed` goes out. It is re-sent with the same
+    id when the end moves more than `rearm_s` (0.5).
+  - **Calling it off** (`eta_s: null`, `detail: "disarmed"`):
+    - a pause or stop, or a muted or silent zone (sonos_playing false);
+    - a seek back past `arm_s`, or the length being lost;
+    - a track change more than `end_slack_s` (3) before the end: another Sonos track (a skip), or a dsp track change.
+  - **The end.** `track_end` via `sonos` goes out when the armed end passes, or when the track id changes or Sonos
+    stops within `end_slack_s` of it.
+  - **The change itself.** The track change goes out at once if there is sound. If the change comes in silence, it
+    waits for the new song's first sound, at most `first_sound_s` (10).
+- **`structure.py`, the end in the sound.**
+  - A silence (the track test's `gap_gate` / `gap_lufs_m`) that lasts `track.end_gap_s` (3) after music is an end.
+    Music means situations' `music_audible`; when that is unknown, any sound counts. `track_end` via `dsp` goes out
+    with `at_ms` = the gap's start.
+  - There is no dsp end while Sonos vouches for the song (playing, its end further than `arm_s`). There is one
+    `track_end` per song: the first of the two vias wins.
+  - **The sound back.** After a `track_end`, if sound returns with no track change (at once via dsp; via sonos
+    after `end_slack_s`, so a gapless next id can still arrive), `track_end` is re-sent with `detail: "sound_back"`
+    and `at_ms` = the first sound. A later silence after music sends `track_end` again (the same id).
+  - **`track_change` at_ms.** The new song's first beat while the clock's gate is beat|dmx, else its first sound:
+    - after a dsp gap, the sound's return;
+    - via sonos, the armed end, the end of a short gap, or the first sound it waited for.
+  - It now also carries `prev_track_id`. A dsp track change is still detected exactly as before.
+- **The hook.** The new `ctx.track_transition(event, TrackFacts)` slot is provided by the director. `_emit` calls it
+  synchronously on show-brain while it builds a TRACK_EVENT_KINDS event; a call-off is not sent to it.
+  - It returns `{"transition"}` or `{"held": True}`, which goes on that same room.event. There is no second event.
+  - A failing hook leaves the event without either, and is counted in `ends.hook_errors`.
+  - `TrackFacts`: `{silent, phase, gate, old, new, back}`. `old` and `new` are `TrackProfile`s `{genre, key, mode,
+    bpm, energy, artist}`; a Sonos change at once knows only the new artist.
+- **Event ids** (every room.event, both publishers): `contract.EventData.id`. A re-send keeps its id; a moved drop
+  line's drop_armed and its call-off share one.
+- **`director.py`, `track_transition`** (`choose_track_transition`, `change_size`; show.yaml
+  `director.track_transitions`). A person's hold (Keep this look, or their change pending) → `{"held": True}`.
+  Otherwise:
+  - **Through dark (`fade-dark`)** when the gap is certain or expected:
+    - a track_end via dsp;
+    - at a Sonos end, or armed ahead of one: the room silent, or the phase `outro`;
+    - a track_change while this junction's track_end went dark and no sound_back came.
+
+    `out_s` / `in_s` (2.5 / 2.0) × the feel's scale, each within `min_s`..`max_s` (1.5..4); `dark_max_s` 8.
+  - **Otherwise a segue**, by the feel's `styles.<transition_style>.cut` (no feel, or a word with no entry:
+    `default`):
+    - `never`: a crossfade;
+    - `beat`: a cut `on: downbeat` while the clock is at `segue.cut_gate` (beat) or better, else a crossfade over
+      `crossfade_s` (2) × scale;
+    - `always`: a cut (`on: now` without the beat).
+
+    Starting points: gentle never ×1.5, lively beat ×1, wild always ×0.6.
+  - A sound_back repeats the end's choice.
+  - **`change`.** On a track_change, each term known on both sides votes:
+    - the genre words differ;
+    - the keys are ≥ `key_fifths` (2) apart on the circle of fifths (the same, parallel or relative key is 0);
+    - the tempos are off by more than `tempo_ratio` (0.08), folded by octaves;
+    - the mean energy is ≥ `energy` (0.25) apart;
+    - Sonos's artist differs.
+
+    It is big at ≥ `big_share` (0.5), and `unknown` (big) when nothing is known yet (always on the two end events).
+- **`director.py`, its own look.**
+  - **A fade-dark track_end** dips the lamps toward the vibe's floor over `out_s` (never off; `LookData.dip` true).
+    A new look, a sound_back, or `dark_max_s` releases the dip, and the lamps return over `in_s`.
+  - **The track_change's look** lands on the first bar line at or after its at_ms that the screens' lead allows (no
+    grid: then). It crosses over as the event says: a cut; a crossfade over `seconds`; or, for fade-dark, a crossfade
+    over `in_s`.
+    - It now applies to every `change_looks`, not only phrase vibes. A song change is the junction.
+    - It also lands when the director is relaxed by the gap's own quiet, since the new song is the sound coming back.
+      It does not land when the feel is relaxed because people talk.
+  - **`change: small`** keeps the palette; anything else moves it on.
+  - **Holds.** Keep this look, a pending human change, or the event's `held`: no look of ours.
+- **Snapshots.**
+  - structure: `ends` `{sonos (end_s, remaining_s, spread_s, reads, duration_s), armed, end, waiting_first_sound,
+    heard, counts}`.
+  - director: `sections.song_end` `{junction, dip, stats}`.
+  - The director log gets `transition` and `song_end` records.
+- **Tests.**
+  - `test_structure` (Sonos arm, re-arm, call-off on pause / seek / skip, the end, a stream with no length, the wait
+    for the first sound; a dsp end at the gap's start but not on a 1.5 s rest, after talk alone, or in a break Sonos
+    vouches for; sound_back; the hook's answer, held or nothing; ids);
+  - `test_director` (the transition table, change sizes, the lamps' dip and the junction's look, a small change, the
+    holds, no feel, the real hook through structure, settings);
+  - `test_contract`.
+- **For 04 (the renderer).**
+  - Play `transition` on that change, using the half that applies:
+    - fade-dark `out_s` from the track_end (ending at an armed end's at_ms where it can), and `in_s` from the
+      track_change (or from a `sound_back`);
+    - dark for at most `dark_max_s`, then back by `in_s`.
+  - `held: true`: ignore the cut for that change.
+  - The `section_change` with `detail: "track"` that follows a track_change is the same junction.
+  - Absent `transition`: the mode's default, as today.
