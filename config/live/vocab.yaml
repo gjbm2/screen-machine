@@ -3,6 +3,44 @@
 # catalog's `errors` (the preset still loads).  room_service's look adapter validates direction against it.
 moods: [calm, mellow, dreamy, warm, cool, bright, dark, euphoric, tense, playful, hypnotic, aggressive,
         cosmic, organic, geometric, retro, glitchy, elegant, liquid, fiery, icy]
-genre: [pop, techno, house, jazz, ambient, classical, rock, soul]
+# genre: the music's family (one word, lower case, hyphenated).  show_service maps its ML / listener genres onto these
+# (show.yaml genre_map); a preset's tags.genre uses them too.  Grown 17 Oct (b8 / the listener): "unknown" was too common.
+genre: [pop, rock, indie, metal, punk, electronic, techno, house, trance, drum-and-bass, dubstep, ambient, downtempo,
+        hip-hop, rnb, soul, funk, disco, jazz, blues, gospel, reggae, latin, afrobeat, folk, country, singer-songwriter,
+        classical, piano, soundtrack, world]
 transition_style: [gentle, lively, wild]
 palette_family: [warm, cool, vivid, neutral]
+# music_moods: words for how the MUSIC feels (the listener describes music with these, not with the visual moods
+# above), each mapped to the visual moods a scene should have for it.  Not a tag vocabulary: presets keep `moods`.
+# The renderer ignores this key; show_service may turn a music mood into direction moods with it.
+music_moods:
+  melancholic: [dreamy, mellow, cool, dark]
+  sad: [mellow, dark, cool]
+  wistful: [dreamy, mellow, retro]
+  nostalgic: [retro, warm, mellow]
+  peaceful: [calm, mellow, organic]
+  chill: [calm, mellow, cool]
+  dreamy: [dreamy, liquid, cosmic]
+  romantic: [warm, elegant, dreamy]
+  sensual: [warm, liquid, elegant]
+  tender: [warm, calm, elegant]
+  happy: [bright, playful, warm]
+  uplifting: [bright, euphoric, warm]
+  joyful: [bright, playful, euphoric]
+  groovy: [warm, playful, hypnotic, organic]
+  funky: [playful, retro, warm]
+  energetic: [bright, euphoric, playful]
+  driving: [hypnotic, geometric, bright]
+  epic: [euphoric, cosmic, fiery]
+  triumphant: [euphoric, bright, fiery]
+  intense: [tense, aggressive, fiery]
+  aggressive: [aggressive, fiery, glitchy]
+  angry: [aggressive, fiery, dark]
+  dark: [dark, tense, hypnotic]
+  mysterious: [dark, cosmic, hypnotic]
+  eerie: [dark, icy, tense]
+  tense: [tense, dark, glitchy]
+  hypnotic: [hypnotic, geometric, liquid]
+  playful: [playful, bright, retro]
+  quirky: [playful, glitchy, retro]
+  elegant: [elegant, calm, cool]
