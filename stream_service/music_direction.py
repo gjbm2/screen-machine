@@ -98,18 +98,24 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
         out[k] = round(_c01(panel[k] + m * (music[k] - DIRECTION_DEFAULTS[k])), 3)
     for k in FX_NUMERIC:
         out["fx"][k] = round(_c01(out["fx"][k] + m * (music["fx"][k] - FX_DIRECTION_DEFAULTS[k])), 3)
-    if m >= 0.5:
-        if not panel.get("moods"):
-            out["moods"] = list(music["moods"])
-        if panel.get("transition_style") is None:
-            out["transition_style"] = music["transition_style"]
+    how = panel.get("music") or "blend"
+    if m >= 0.5 and how != "ignore":
+        mm, ms = list(music.get("moods") or []), music.get("transition_style")
+        if not panel.get("moods") or (how == "replace" and mm):
+            out["moods"] = mm
+        elif how == "blend" and mm:               # the mode's words lead; the music's shade them (2b's audit:
+            out["music_moods"] = mm               # Party / Disco / Piano froze the music's words out)
+        if panel.get("transition_style") is None or (how == "replace" and ms):
+            out["transition_style"] = ms
+        elif how == "blend" and ms and ms != panel["transition_style"]:
+            out["music_style"] = ms
         if panel.get("genre") is None and not panel.get("genres") and (music.get("genre") or music.get("genres")):
             out["genre"], out["genres"] = music.get("genre"), music.get("genres")
         for k in DIRECTION_AXES:
             if panel.get(k) is None and music.get(k) is not None:
                 out[k] = music[k]
-        if not out["fx"].get("moods"):
-            out["fx"]["moods"] = list(music["fx"]["moods"])
+        if not out["fx"].get("moods") or how == "replace":
+            out["fx"]["moods"] = list((music.get("fx") or {}).get("moods") or []) or out["fx"].get("moods")
     return out
 
 
@@ -118,11 +124,16 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
     if music is None or m <= 0.0:
         return []
     out = [*NUMERIC, *(f"fx.{k}" for k in FX_NUMERIC)]
-    if m >= 0.5:
-        if not panel.get("moods"):
+    how = panel.get("music") or "blend"
+    if m >= 0.5 and how != "ignore":
+        if not panel.get("moods") or (how == "replace" and music.get("moods")):
             out.append("moods")
-        if panel.get("transition_style") is None:
+        elif how == "blend" and music.get("moods"):
+            out.append("music_moods")
+        if panel.get("transition_style") is None or (how == "replace" and music.get("transition_style")):
             out.append("transition_style")
+        elif how == "blend" and music.get("transition_style") and music["transition_style"] != panel["transition_style"]:
+            out.append("music_style")
         if panel.get("genre") is None and not panel.get("genres") and (music.get("genre") or music.get("genres")):
             out.append("genre")
         out += [k for k in DIRECTION_AXES if panel.get(k) is None and music.get(k) is not None]
@@ -146,7 +157,8 @@ def pick_key(d: dict) -> tuple:
     """What a prepared pick depends on: a change here means the next scene should be re-picked."""
     return (round(float(d.get("energy", 0.5)) * 10), tuple(d.get("moods") or ()), d.get("transition_style"),
             d.get("genre"), genres_key(d.get("genres")), d.get("palette_family"),
-            tuple(_axis_key(d.get(k)) for k in DIRECTION_AXES))
+            tuple(_axis_key(d.get(k)) for k in DIRECTION_AXES), tuple(d.get("music_moods") or ()),
+            d.get("music_style"))
 
 
 class MusicDirection:

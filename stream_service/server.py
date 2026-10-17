@@ -23,6 +23,7 @@ from aiohttp import web
 
 from . import __version__, binding, mappings as mappings_mod, palettes
 from .bodies import parse_body
+from .director import MUSIC_WORD_LABELS, MUSIC_WORD_MODES
 from .events import EventHub
 from .library import Library
 from .plugins import Registry
@@ -385,7 +386,8 @@ def _catalog_body(app: web.Application, slow: list) -> bytes:
     out["scene_tags"] = scene_tag_index(out["presets"])
     # additive (LIVE_V1 1.1): feature discovery, vocabulary, palettes, bindable signals, tag problems
     out["api"] = {"contract": "LIVE_V1", "rev": "1.1", "features": list(FEATURES)}
-    out["vocab"] = presets.vocab.words
+    out["vocab"] = {**presets.vocab.words, "music": list(MUSIC_WORD_MODES)}     # + the music-words control
+    out["vocab_labels"] = {"music": dict(MUSIC_WORD_LABELS)}
     out["palettes"] = palettes.catalog()
     out["signals"] = signal_catalog()
     out["errors"] = presets.catalog_errors()

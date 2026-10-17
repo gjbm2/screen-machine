@@ -311,3 +311,43 @@ def test_manager_keeps_only_a_speaking_valid_room_direction():
     on(mgr, {"type": "room.direction", "data": {**body, "energy": "loud"}})
     assert mgr.room_direction["vibe"] == "dinner" and mgr.room_direction["direction"]["energy"] == 0.5
     # a bad field takes its default, the rest still applies (75's lenient room.direction, degrade never refuse)
+
+
+def test_a_modes_own_words_lead_and_the_musics_shade_them():
+    """2b's audit: Party / Disco / Piano set moods and transition_style, which froze the music's words out.  They
+    still lead; the music's ride along as music_moods / music_style for the scorer to weigh more softly."""
+    panel = validate_direction({"moods": ["euphoric", "bright"], "transition_style": "wild"})
+    music = {**DIRECTION_DEFAULTS, "moods": ["calm", "dreamy"], "transition_style": "gentle",
+             "fx": dict(FX_DIRECTION_DEFAULTS)}
+    eff = M.effective_direction(panel, music, 1.0)
+    assert eff["moods"] == ["euphoric", "bright"] and eff["transition_style"] == "wild"
+    assert eff["music_moods"] == ["calm", "dreamy"] and eff["music_style"] == "gentle"
+    assert {"music_moods", "music_style"} <= set(M.music_fields(panel, music, 1.0))
+    assert M.pick_key(eff) != M.pick_key({**eff, "music_moods": ["euphoric"]})      # the music's words re-pick
+    assert "music_moods" not in M.effective_direction(validate_direction({}), music, 1.0)   # none set: as before
+
+
+def test_a_replan_keeps_a_pick_held_for_a_moment():
+    from stream_service.upnext import UpNext
+    q = UpNext()
+    q.add("scene", {"scene": "a", "origin": "auto"})
+    q.add("scene", {"scene": "peak", "origin": "auto", "hold": True})
+    q.drop_auto("scene")
+    assert [e["scene"] for e in q.scenes] == ["peak"]
+
+
+
+def test_how_the_music_changes_the_feel():
+    """direction.music (the Room page's "How the music changes it"): fill | blend (default) | replace | ignore."""
+    music = {**DIRECTION_DEFAULTS, "energy": 0.9, "moods": ["calm"], "transition_style": "gentle", "genre": "jazz",
+             "fx": {**FX_DIRECTION_DEFAULTS, "moods": ["warm"]}}
+    mode = {"moods": ["euphoric"], "transition_style": "wild"}
+    eff = lambda how: M.effective_direction(validate_direction({**mode, "music": how}), music, 1.0)   # noqa: E731
+    assert eff("fill")["moods"] == ["euphoric"] and "music_moods" not in eff("fill")
+    assert eff(None)["moods"] == ["euphoric"] and eff(None)["music_moods"] == ["calm"]                # blend
+    assert eff("replace")["moods"] == ["calm"] and eff("replace")["transition_style"] == "gentle"
+    ig = eff("ignore")
+    assert ig["moods"] == ["euphoric"] and "music_moods" not in ig and ig.get("genre") is None
+    assert ig["energy"] > 0.5                                       # the numbers still trim
+    with pytest.raises(ParamError):
+        validate_direction({"music": "loudly"})

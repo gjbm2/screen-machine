@@ -210,7 +210,8 @@ async def test_catalog_v11_blocks(client):
                           "features": ["cue", "auto", "direction", "palette", "inputs", "bindings", "effects",
                                        "fx_bus", "fx_auto", "plugin_errors", "gpu_guard", "music_direction",
                                        "rooms", "mappings", "look_scope", "fx_controls", "upnext", "song_ends"]}
-    assert set(cat["vocab"]) == {"moods", "genre", "transition_style", "palette_family"}
+    assert set(cat["vocab"]) == {"moods", "genre", "transition_style", "palette_family", "music"}
+    assert cat["vocab"]["music"] == ["fill", "blend", "replace", "ignore"] and cat["vocab_labels"]["music"]["blend"]
     assert cat["palettes"]["ember"]["swatch"][0].startswith("#") and cat["signals"]["activity_slow"]["idle"] == 0.5
     assert cat["errors"] == []
     assert cat["presets"]["scenes"]["warp-kaleido"]["tags"]["energy"] == [0.4, 1.0]

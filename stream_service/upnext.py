@@ -118,7 +118,8 @@ class UpNext:
     def drop_auto(self, kind: str) -> int:
         """The director's own entries go (to be picked again); the owner's stay, their auto transitions cleared."""
         q = self.items(kind)
-        keep = [e for e in q if e.get("origin") == "you"]
+        keep = [e for e in q if e.get("origin") == "you" or e.get("hold")]    # hold: picked for a moment (a drop,
+        # a song change): a re-plan keeps it
         n = len(q) - len(keep)
         for e in keep:
             if kind == "scene" and e.get("transition_origin") == "auto":

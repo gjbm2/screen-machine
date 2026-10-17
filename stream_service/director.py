@@ -55,7 +55,13 @@ GENRES_MAX = 6
 AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
-SNAPS = ("now", "beat", "bar")           # bar: the next downbeat on show_service's clock (else the beat)
+SNAPS = ("now", "beat", "bar")
+# direction.music: how the music's words meet the mode's own (aa's Room page control "How the music changes it").
+# fill: only where the mode set none; blend (default): the mode's lead, the music's shade them (music_moods /
+# music_style); replace: the music's win; ignore: none of the music's words, genre or axes (the numbers still trim).
+MUSIC_WORD_MODES = ("fill", "blend", "replace", "ignore")
+MUSIC_WORD_LABELS = {"fill": "Fills what the mode leaves open", "blend": "Shades the mode's feel",
+                     "replace": "Takes over the feel", "ignore": "Doesn't change the feel"}           # bar: the next downbeat on show_service's clock (else the beat)
 URGENT_DWELL = 0.5                       # a drop may cut once this share of min dwell has passed
 DWELL_AT_0 = (120.0, 240.0)      # change_rate 0
 DWELL_AT_1 = (15.0, 30.0)        # change_rate 1
@@ -100,6 +106,10 @@ def validate_direction(body: Any, vocab: Optional[dict] = None) -> dict:
     for k in DIRECTION_AXES:
         if body.get(k) is not None:
             out[k] = _unit(body[k], f"direction.{k}")
+    mu = body.get("music")
+    if mu is not None and mu not in MUSIC_WORD_MODES:
+        raise ParamError("bad_request", f"direction.music must be one of {list(MUSIC_WORD_MODES)} or null")
+    out["music"] = mu
     styles = (vocab or {}).get("transition_style")
     if out["transition_style"] is not None and styles and out["transition_style"] not in styles:
         raise ParamError("bad_request", f"direction.transition_style must be one of {styles} or null")

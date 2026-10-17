@@ -1749,7 +1749,7 @@ class Session(EngineListener):
         if head is not None:
             self.upnext.remove(head["id"])
         self.upnext.add("scene", {"scene": name, "transition": None, "origin": "auto", "transition_origin": None,
-                                  "why": why, "why_words": words, "for_song": change}, at=0)
+                                  "why": why, "why_words": words, "for_song": change, "hold": True}, at=0)
         self._upnext_edited()
 
     def _end_dark(self) -> None:
@@ -1799,8 +1799,11 @@ class Session(EngineListener):
         head = self.upnext.head("scene")
         if head is not None and head.get("origin") == "you":
             return                                   # the owner's next scene stays next
-        peak = {**d.direction, "energy": max(0.85, float(d.direction.get("energy", 0.5))),
-                "moods": list(BANDS["peak"][0]), "transition_style": "wild"}
+        # the peak in this mode's own words (the music's where the mode sets none), not fixed EDM ones (2b's audit)
+        mood = list(d.direction.get("moods") or d.direction.get("music_moods") or BANDS["peak"][0])
+        style = "wild" if (d.direction.get("transition_style") or "wild") != "gentle" else "gentle"
+        peak = {**d.direction, "energy": max(0.85, float(d.direction.get("energy", 0.5))), "moods": mood,
+                "transition_style": style}
         keep, d.direction = d.direction, peak
         try:
             got = d.pick_scene(self.mgr.presets.scenes, self.current_name, now)
@@ -1811,7 +1814,7 @@ class Session(EngineListener):
             return
         self.upnext.add("scene", {"scene": got[0], "transition": t[0] if t else None, "origin": "auto",
                                   "transition_origin": "auto" if t else None, "why": f"{got[1]} for the drop",
-                                  "why_words": "For the drop: the music is building"}, at=0)
+                                  "why_words": "For the drop: the music is building", "hold": True}, at=0)
         self._upnext_edited()
         if self._pick_task is None and self.prepared_pick is None and self.state == "live":
             self._pick_task = asyncio.create_task(self._prepare_next())
