@@ -16,7 +16,10 @@ Weight = tags.weight x one factor per descriptor (each in (0, 1], so the weight 
     1 if listed, else 0);
   * valence / organic / density (both sides 0..1): 1 - AXIS_SLOPE x |direction - preset|;
   * any other word descriptor (moods, transition_style, palette_family, style): 1 on overlap, else MISMATCH
-    (transitions' moods: TRANSITION_MISMATCH, softer).
+    (transitions' moods: TRANSITION_MISMATCH, softer);
+  * music_moods / music_style (the music's words where a mode set its own, music_direction.effective_direction):
+    the same overlap test against the preset's moods / style or transition_style, but a miss costs only
+    BLEND_MISMATCH: the mode's words lead, the music's shade them.
 An empty or null direction value, or a key the preset doesn't tag, counts as matched (factor 1).  The 17 Oct
 retagging pass (config/live/tags.generated.json, tag_overlay.py) gives every preset real energy bands, moods,
 genre_fit and the axes.  Other tag keys (e.g. ``heavy: true``) are free-form and only used by pool filters
@@ -45,10 +48,12 @@ DEFAULT_VOCAB = {"moods": ["calm", "mellow", "dreamy", "warm", "cool", "bright",
                  "genre": ["pop", "techno", "house", "jazz", "ambient", "classical", "rock", "soul"],
                  "transition_style": ["gentle", "lively", "wild"],
                  "palette_family": ["warm", "cool", "vivid", "neutral"]}
-SCENE_DESCRIPTORS = ("energy", "moods", "genre", "palette_family", "valence", "organic", "density")
-TRANSITION_DESCRIPTORS = ("energy", "transition_style", "moods", "genre")
+SCENE_DESCRIPTORS = ("energy", "moods", "genre", "palette_family", "valence", "organic", "density", "music_moods")
+TRANSITION_DESCRIPTORS = ("energy", "transition_style", "moods", "genre", "music_moods", "music_style")
 MISMATCH = 0.3                   # a word descriptor with no overlap
-TRANSITION_MISMATCH = {"moods": 0.6}     # a transition's moods count, but less than a scene's
+BLEND_MISMATCH = 0.6             # the music's words under a mode's own (music_moods, music_style)
+TRANSITION_MISMATCH = {"moods": 0.6, "music_moods": 0.8}     # a transition's moods count, but less than a scene's
+BLEND_TAG = {"music_moods": ("moods",), "music_style": ("transition_style", "style")}   # the tag each one reads
 ENERGY_FALLOFF = 0.3             # outside a preset's energy band the factor falls linearly over this distance ...
 ENERGY_FLOOR = 0.1               # ... to this
 GENRE_FLOOR = 0.05               # a preset that would jar with the music's genre (fit 0); fit 1 = full weight
@@ -178,7 +183,13 @@ def descriptor_factor(key: str, direction: dict, tags: dict, mismatch: float = M
     if key == "genre":
         f = genre_fit(direction.get("genres") or direction.get("genre"), tags)
         return 1.0 if f is None else GENRE_FLOOR + (1.0 - GENRE_FLOOR) * f ** GENRE_GAMMA
-    want, have = direction.get(key), tags.get(key)
+    want = direction.get(key)
+    if key in BLEND_TAG:
+        have = next((tags[t] for t in BLEND_TAG[key] if tags.get(t) is not None), None)
+        if have is None or want is None or want == []:
+            return 1.0
+        return 1.0 if descriptor_matches(key, want, have) else mismatch
+    have = tags.get(key)
     if have is None or want is None or want == []:
         return 1.0
     if key == "energy":
@@ -198,7 +209,8 @@ def match_weight(tags: dict, direction: dict, keys: Iterable[str],
                  mismatch: Optional[dict] = None) -> float:
     w = tags.get("weight", 1.0)
     for k in keys:
-        w *= descriptor_factor(k, direction, tags, (mismatch or {}).get(k, MISMATCH))
+        miss = (mismatch or {}).get(k, BLEND_MISMATCH if k in BLEND_TAG else MISMATCH)
+        w *= descriptor_factor(k, direction, tags, miss)
     return max(w, 1e-6)
 
 
