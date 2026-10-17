@@ -312,7 +312,7 @@ class SessionFx:
         eff = await s.prepare_effect(eff, it.spec.params)
         self._eid += 1
         self._seq += 1
-        mod = Modulation(s.runtime, cls.param_props(), it.spec.bindings)
+        mod = Modulation(s.runtime, cls.param_props(), it.spec.bindings, key=f"effect/{it.spec.effect}")
         slot = EffectSlot(f"e{self._eid}", eff, name=cls.name, preset=it.spec.preset,
                           stage=getattr(cls, "stage", "stylise"), modulation=mod,
                           mix=getattr(cls, "amount_mode", "native") == "mix", level=0.0,
@@ -386,5 +386,6 @@ class SessionFx:
             last = getattr(mod, "last", {}) if mod is not None else {}
             for param, b in st.spec.bindings.items():
                 out.append({"slot": st.id, "param": param, **b,
-                            "value": None if param not in last else round(float(last[param]), 5)})
+                            "value": None if param not in last else round(float(last[param]), 5),
+                            **(mod.section_row(param) if hasattr(mod, "section_row") else {})})
         return out

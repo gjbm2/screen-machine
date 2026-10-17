@@ -18,7 +18,8 @@ Derived from Maestro's channels for the per-item mappings (binding.py; owner, 15
             the lit hue, tau 6 s)
   section   a trigger: 1 at each stable GOBO change, decaying (tau 1.5 s); ``gobo`` (the stable GOBO value)
             seeds section-mode bindings
-  music     energy, drive, punch, tempo: music_direction.py's features, merged in by the session (modulation.py)
+  music     energy, energy_slow, drive, punch, tempo: music_direction.py's features, merged in by the session
+            (modulation.py); while show_service's features arrive, energy follows theirs closely (music_feed.py)
   piano     note_on, chord_change (triggers), note_rate, velocity, register, spread, pedal, tension: piano.py, from
             the piano's notes (Session.sound), merged in by the session too
 An n/a signal is None; a binding drops it and renormalises the rest.
@@ -51,7 +52,7 @@ log = logging.getLogger("stream_service.inputs")
 from .piano import PIANO_LEVELS, PIANO_SIGNALS, PIANO_TRIGGERS
 
 TRIGGERS = ("pulse", "beat", "section", "downbeat") + PIANO_TRIGGERS
-MUSIC_SIGNALS = ("energy", "drive", "punch", "tempo")       # from music_direction.py (the session merges them)
+MUSIC_SIGNALS = ("energy", "energy_slow", "drive", "punch", "tempo")   # music_direction.py's (the session merges)
 CLOCK_SIGNALS = ("bar_phase", "phrase_phase", "downbeat")   # show_service's music.clock only (music_feed.py)
 FEED_SIGNALS = ("bass", "mids", "highs", "brightness", "density", "groove", "arousal")   # show_service's, smoothed
 PHASES = ("beat_phase", "bar_phase", "phrase_phase")

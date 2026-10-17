@@ -40,9 +40,12 @@ its energy and groove (as drive).  Otherwise the Maestro features above propose,
 drops the proposal and publishes at once.
 
 show_service's own features take the Maestro channels' place whenever they arrive (``feed``, music_feed.FeedSnap;
-d4's G2, owner 17 Oct): act = the features' energy (activity_slow), drive and punch as published, tempo from the
-beat clock while its gate is "beat", a new music.context section id re-seeds as a GOBO step does; liveness is the
-features' freshness (a quiet room is a real low value, not stale).  The desk's path is the fallback.
+d4's G2, owner 17 Oct): act = the features' energy (activity_slow), drive and punch as published, a new
+music.context section id re-seeds as a GOBO step does; liveness is the features' freshness (a quiet room is a real
+low value, not stale).  The desk's path is the fallback.  Tempo: the proposal's pace takes it only from a sure clock
+(gate "beat"); the mappings' ``tempo`` signal from the clock's bpm once it is usable (FeedSnap.tempo_bpm: not
+searching, conf >= music_feed.Response.tempo_conf).  The mappings' ``energy_slow`` is always ``energy`` below (the
+session swaps the fast one in for ``energy`` while the features arrive: music_feed.music_signals).
 
 Pure state and arithmetic, no I/O: sessions.py calls ``update`` from its 10 Hz tick.
 """
@@ -162,7 +165,8 @@ class MusicDirection:
         self._epoch_band: Optional[int] = None
         self._signals_t: Optional[float] = None
         self._drive_seen = False
-        self._tempo: Optional[float] = None
+        self._tempo: Optional[float] = None       # the mappings' tempo signal
+        self._tempo_sure: Optional[float] = None  # the proposal's pace: a locked follower / a sure clock only
         self._feeding = False
         self._punch: Optional[float] = None
         self.source: Optional[str] = None    # who proposes: "room" (its director) | "show" (its features) | "maestro"
@@ -322,7 +326,7 @@ class MusicDirection:
         self.features = {"act": round(act, 3), "E": round(self._E, 3), "edge_rate": round(rate, 2),
                          "punch": round(punch, 3), "D": round(self._D, 3), "energy": round(energy, 3),
                          "bpm": None if bpm is None else round(bpm, 1), "locked": bool(locked)}
-        self._tempo = tempo
+        self._tempo = self._tempo_sure = tempo
         return reseeded
 
     def _features_feed(self, now: float, f: Any) -> bool:
@@ -354,10 +358,12 @@ class MusicDirection:
         c = f.clock if f.clock is not None and now - f.clock_t <= 1.5 else None
         bpm = float(c.get("bpm") or 0.0) if c else 0.0
         locked = bool(c) and bpm > 0.0 and c.get("gate") == "beat"
-        self._tempo = _c01((bpm - 60.0) / 90.0) if locked else None
+        tb = f.tempo_bpm if c else None     # usable sooner than sure (the mappings' tempo; phases keep their gate)
+        self._tempo_sure = _c01((tb - 60.0) / 90.0) if locked and tb else None   # tb: octave-folded (music_feed)
+        self._tempo = _c01((tb - 60.0) / 90.0) if tb else None
         self.features = {"act": round(act, 3), "E": round(self._E, 3), "punch": round(punch, 3),
                          "D": round(self._D, 3), "energy": round(energy, 3),
-                         "bpm": round(bpm, 1) if locked else None, "locked": locked, "from": "show_service"}
+                         "bpm": round(tb, 1) if tb else None, "locked": locked, "from": "show_service"}
         self._punch = punch
         return reseeded
 
@@ -396,7 +402,7 @@ class MusicDirection:
             return None
         self._last_eval = now
         e = self.features["energy"]
-        tempo = getattr(self, "_tempo", None)
+        tempo = self._tempo_sure
         pace_in = 0.7 * e + 0.3 * tempo if tempo is not None else e
         band = self._band_of(e, self.features["D"])
         moods, fx_moods, style = BANDS[band]
@@ -423,20 +429,23 @@ class MusicDirection:
     SIGNALS_STALE_S = 2.0
 
     def signals(self, now: float) -> dict:
-        """The music features as mapping signals (binding.py): {energy, drive, punch, tempo, epoch}; None = n/a."""
+        """The music features as mapping signals (binding.py): {energy, energy_slow, drive, punch, tempo, epoch};
+        None = n/a.  ``energy`` and ``energy_slow`` are both the slow energy here (see the module doc)."""
         f = self.features
         stale = not f or self._signals_t is None or now - self._signals_t > self.SIGNALS_STALE_S
         if self._feeding and not stale:     # show_service's own features: the direct values (the room's director
-            return {"energy": f["energy"], "drive": f["D"], "punch": f["punch"], "tempo": self._tempo,
-                    "epoch": self.epoch}      # steers the picks; its numbers are made from these same features)
+            return {"energy": f["energy"], "energy_slow": f["energy"], "drive": f["D"], "punch": f["punch"],
+                    "tempo": self._tempo, "epoch": self.epoch}   # steers the picks; its numbers are made from these)
         r = self.room
         if r is not None:                   # the room's director: its energy, its groove as drive
-            return {"energy": r["direction"]["energy"], "drive": r.get("groove"),
+            e = r["direction"]["energy"]
+            return {"energy": e, "energy_slow": e, "drive": r.get("groove"),
                     "punch": None if stale or not self._drive_seen else f["punch"],
                     "tempo": None if stale else self._tempo, "epoch": self.epoch}
         if stale:
-            return {"energy": None, "drive": None, "punch": None, "tempo": None, "epoch": self.epoch}
-        return {"energy": f["energy"], "drive": f["D"] if self._drive_seen else None,
+            return {"energy": None, "energy_slow": None, "drive": None, "punch": None, "tempo": None,
+                    "epoch": self.epoch}
+        return {"energy": f["energy"], "energy_slow": f["energy"], "drive": f["D"] if self._drive_seen else None,
                 "punch": f["punch"] if self._drive_seen else None, "tempo": self._tempo, "epoch": self.epoch}
 
     def status(self, now: float) -> dict:

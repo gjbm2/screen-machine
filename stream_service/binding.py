@@ -20,7 +20,13 @@ Pivot: with every input at its idle value a binding gives exactly its base (the 
 easer value), so no bus, a stale bus or a quiet room shows the authored look; the music moves the param around
 it.  Modes: ``live`` every frame; ``section`` re-sampled when the session's epoch moves (a GOBO section change, a
 new energy band: at most every 8 s; at once when the bus comes or goes), then eased; ``cue`` once, when the item
-is instantiated (sessions.py samples it before setup, so params read only in setup take it too).
+is instantiated (sessions.py samples it before setup, so params read only in setup take it too).  The held
+samples (section, cue) read ``energy_slow`` as ``energy``: the fast energy is the live modes'.  While
+show_service's features arrive, a float ``section`` binding also follows the live value around its latch: out =
+latched + f x (live - latched), f = music_feed.Response.follow x the feed's liveness, the live part eased by
+min(ease_s, Response.follow_ease_s), and never faster than Response.regional_ease_s on a regional param (the tier
+contract for live: REGIONAL_EASE_S); integers, ``gobo`` inputs, snaps (ease_s 0: "any ramp reshuffles"), the
+Response.latched families and Response.latched_bindings ("<kind>/<item>/<param>") stay latched.
 
 Depth (``direction.intensity``) scales every excursion around base: the operator's "how much the music moves
 the picture".  Inputs that are n/a (None: tempo unlocked, no movement, unlit) drop out and the weights
@@ -44,9 +50,10 @@ INPUT_SIGNALS = BIND_SIGNALS + ("gobo",)        # phases too (17 Oct): a sawtoot
 KEYS = {"at", "in", "op", "curve", "map", "kick", "steps", "quant", "ease_s", "live_ok", "on", "fam", "src", "why"}
 COLOUR_KEYS = {"colour", "mix", "at", "ease_s", "on", "fam", "src", "why"}
 MAX_INPUTS = 4
-KICK_SIGNALS = ("beat", "section", "note_on", "chord_change")
+KICK_SIGNALS = ("beat", "downbeat", "section", "note_on", "chord_change")
 SECTION_MIN_S = 8.0
 SECTION_EASE_S = 4.0
+REGIONAL_EASE_S = 2.0           # the slowest live ease on a regional param (parse_v2; section-follow's default floor)
 NEVER = {"speed", "intensity", "seed", "render_scale", "random_seed", "start_time"}
 NEVER_RX = re.compile(r"(^|_)(iterations?|octaves|quality|max_steps|raymarch_steps|samples|ao_samples|taps)($|_)")
 FLASH_RX = re.compile(r"flash|strobe|flicker|blink")
@@ -210,8 +217,8 @@ def parse_v2(name: str, prop: dict, spec: dict, *, kind: str = "scene") -> dict:
         elif tier == "regional" and not bindable:
             if not live_ok:
                 bad("live_needs_ok", "live on a regional param needs live_ok (the plug-in reads it every frame)")
-            elif up < 2.0:
-                bad("smooth_too_short", "live on a regional param needs ease_s >= 2")
+            elif up < REGIONAL_EASE_S:
+                bad("smooth_too_short", f"live on a regional param needs ease_s >= {REGIONAL_EASE_S:g}")
     elif at == "section":
         if typ == "integer" or tier == "structural":
             bad("bad_mode", "integers and structural params change at cue only")
@@ -313,7 +320,7 @@ class Bound:
     """One compiled v2 binding (render thread state: the eased output and the section / cue hold)."""
     __slots__ = ("key", "mode", "terms", "op", "curve", "x0", "mapk", "m0", "m1", "rest", "lo", "hi", "span",
                  "is_int", "steps", "kick", "ease_up", "ease_down", "hk", "y", "target", "epoch", "t_sampled",
-                 "quant", "last")
+                 "quant", "last", "fam", "pinned", "yl", "regional", "ref")
 
     def __init__(self, key: str, prop: dict, b: dict, item: str = ""):
         self.key = key
@@ -343,8 +350,14 @@ class Bound:
         self.ease_up, self.ease_down = (e, e) if _num(e) else (e[0], e[1])
         self.hk = _h01(item, key)
         self.quant = b.get("quant")
+        self.fam = b.get("fam")
+        self.ref = f"{item}/{key}"              # "<kind>/<item>/<param>" (Response.latched_bindings)
+        # section: never follows live (an integer, a gobo seed, a snap: ease 0 means "hold, then cut")
+        self.pinned = self.is_int or any(t[0] == "gobo" for t in self.terms) or min(self.ease_up, self.ease_down) <= 0
+        self.regional = prop.get("x-tier") == "regional" and not prop.get("x-bindable")
         self.x0 = self.x({}, None)              # the blend at idle: the pivot
         self.y: Optional[float] = None
+        self.yl: Optional[float] = None         # section: the live value, eased (while following)
         self.target: Any = None
         self.epoch: Any = None
         self.t_sampled = -1e9
@@ -431,20 +444,53 @@ class Bound:
             v = float(self.hi)
         return v
 
+    def held(self, sig: dict, avail: Optional[dict], base: Any, depth: float) -> Any:
+        """A held sample (section latch, cue): ``energy`` is the slow one (the latch as it always was; the fast
+        energy is the live modes').  Rare (a section change, a cue), so the copy is not per frame."""
+        es = sig.get("energy_slow") if sig else None
+        if es is not None and sig.get("energy") != es:
+            sig = {**sig, "energy": es}
+        return self.value(sig, avail, base, depth)
+
+    def follow_taus(self, resp: Any) -> tuple[float, float]:
+        """The live part's ease (up, down) while a section binding follows (as step works it out; the inputs API)."""
+        out = []
+        for e in (self.ease_up, self.ease_down):
+            tau = min(e, resp.follow_ease_s)
+            out.append(max(tau, resp.regional_ease_s) if self.regional else tau)
+        return out[0], out[1]
+
     def step(self, sig: dict, avail: Optional[dict], base: Any, depth: float, epoch: Any, now: float,
-             dt: float) -> Any:
-        """The output this frame: the mode's hold and the ease (render thread)."""
+             dt: float, follow: float = 0.0, resp: Any = None) -> Any:
+        """The output this frame: the mode's hold and the ease (render thread).  ``follow``: how far a section
+        binding follows the live value around its latch now (0: held, as before); ``resp`` (music_feed.Response,
+        needed when ``follow`` > 0): its follow_ease_s, regional_ease_s, latched families and latched_bindings."""
         if self.mode == "cue":
             if self.target is None:
-                self.target = self.value(sig, avail, base, depth)
+                self.target = self.held(sig, avail, base, depth)
             v = self.target
         elif self.mode == "section":
             music_ep, live_ep = epoch if isinstance(epoch, tuple) else (epoch, 0)
             due = self.target is None or (self.epoch is not None and live_ep != self.epoch[1]) or (
                 self.epoch is not None and music_ep != self.epoch[0] and now - self.t_sampled >= SECTION_MIN_S)
             if due:
-                self.target, self.epoch, self.t_sampled = self.value(sig, avail, base, depth), (music_ep, live_ep), now
+                self.target, self.epoch, self.t_sampled = self.held(sig, avail, base, depth), (music_ep, live_ep), now
             v = self._ease(self.target, dt)
+            if (follow > 0.0 and not self.pinned and _num(v) and self.fam not in resp.latched
+                    and self.ref not in resp.latched_bindings):
+                lv = self.value(sig, avail, base, depth)
+                yl = self.yl
+                if yl is None:                  # from the latch: the live part always eases in
+                    yl = v
+                if dt > 0.0:
+                    tau = min(self.ease_up if lv > yl else self.ease_down, resp.follow_ease_s)
+                    if self.regional and tau < resp.regional_ease_s:
+                        tau = resp.regional_ease_s
+                    yl = lv if tau <= 0.0 else yl + (lv - yl) * (1.0 - math.exp(-dt / tau))
+                self.yl = yl
+                v += follow * (yl - v)
+            else:
+                self.yl = None
         else:
             v = self._ease(self.value(sig, avail, base, depth), dt)
         if self.is_int and _num(v):
@@ -479,7 +525,7 @@ def sample_cue(props: dict, bindings: dict, params: dict, sig: dict, avail: Opti
             continue
         try:
             bd = Bound(key, props[key], b, item)
-            v = bd.value(sig, avail, params.get(key, props[key].get("default")), depth)
+            v = bd.held(sig, avail, params.get(key, props[key].get("default")), depth)
             if bd.quant == "beat" and period and _num(v):
                 v = max(1, round(v / period)) * period
             if bd.is_int and _num(v):

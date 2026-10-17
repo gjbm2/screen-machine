@@ -259,3 +259,100 @@ def test_schema_hash_and_modes():
     assert mappings_mod.modes_for("e", a["e"], "scene") == ["cue"]
     assert mappings_mod.modes_for("seed", NUM, "scene") == []
     assert mappings_mod.modes_for("x", NUM, "transition") == ["cue"]
+
+
+def test_clock_signals_bind_and_kick():
+    """04's show_service signals (17 Oct): a kick on each bar's first beat, and a phase as an input."""
+    prop = {"type": "number", "minimum": 0.0, "maximum": 2.0, "x-bindable": True}
+    b = binding.parse_v2("swirl_speed", prop, {"in": [{"sig": "bass"}], "map": {"scale": [.8, 1.3]},
+                                               "kick": {"sig": "downbeat", "amt": .1}})
+    assert b["kick"]["sig"] == "downbeat"
+    binding.parse_v2("swirl_speed", prop, {"in": [{"sig": "bar_phase"}], "map": {"around": [-.1, .1]}})
+
+
+def test_section_floats_follow_live_around_their_latch_while_the_feed_is_live():
+    """music_feed.Response.follow (owner, 17 Oct): a float section binding latches as before and follows the live
+    value around it, eased in from the latch; integers, gobo inputs, snaps (ease 0), the latched families and
+    bindings hold; a regional param follows no faster than parse_v2 lets live move it."""
+    from stream_service.music_feed import Response
+    spec = {"at": "section", "in": [{"sig": "energy"}], "map": {"around": [-.25, .25]}, "ease_s": 4}
+    resp = Response(latched=frozenset({"symmetry_count"}), latched_bindings=frozenset({"scene/x/q"}))
+    regional = {"type": "number", "minimum": 0.0, "maximum": 2.0, "default": 1.0, "x-tier": "regional"}
+    b, held, fam, snap, reg = (bound(spec), bound(spec), bound({**spec, "fam": "symmetry_count"}),
+                               bound({**spec, "ease_s": 0}), bound(spec, regional))
+    opted = bound(spec, key="q")                         # "scene/x/q": a reviewed binding that must hold
+    gobo = bound({**spec, "in": [{"sig": "gobo"}, {"sig": "energy"}]})
+    integer = binding.Bound("n", {"type": "integer", "minimum": 0, "maximum": 10, "default": 5},
+                            {"at": "section", "in": [{"sig": "energy", "w": 1.0}], "map": {"around": [-.25, .25]},
+                             "ease_s": 4.0}, "scene/x")
+    assert snap.pinned and not b.pinned and reg.regional and not b.regional
+    floats = (b, held, fam, snap, reg, opted)
+    for x in floats:
+        assert x.step({"energy": 0.5}, None, 1.0, 1.0, (0, 0), 0.0, 0.05) == pytest.approx(1.0)   # latched at base
+    g0 = gobo.step({"energy": 0.5, "gobo": 2}, None, 1.0, 1.0, (0, 0), 0.0, 0.05)
+    integer.step({"energy": 0.5}, None, 5, 1.0, (0, 0), 0.0, 0.05)
+    t, out = 0.0, {}
+    for k in range(1, 41):                               # loud music, same section, 20 fps: the live part eases in
+        t += 0.05
+        for x in floats:
+            out[x] = x.step({"energy": 1.0}, None, 1.0, 1.0, (0, 0), t, 0.05, *((0.7, resp) if x is not held else ()))
+        gv = gobo.step({"energy": 1.0, "gobo": 2}, None, 1.0, 1.0, (0, 0), t, 0.05, 0.7, resp)
+        iv = integer.step({"energy": 1.0}, None, 5, 1.0, (0, 0), t, 0.05, 0.7, resp)
+        if k == 1:                                       # from the latch, no jump on the first frame
+            assert out[b] < 1.0 + 0.7 * 0.5 * 0.06
+        if k == 20:                                      # 1 s: tau min(ease 4, max_ease 1) = 1 s; regional 2 s
+            assert out[b] == pytest.approx(1.0 + 0.7 * 0.5 * (1.0 - math.exp(-1.0)), rel=1e-6)
+            assert out[reg] == pytest.approx(1.0 + 0.7 * 0.5 * (1.0 - math.exp(-0.5)), rel=1e-6)
+    assert b.target == pytest.approx(1.0) and out[b] == pytest.approx(1.0 + 0.7 * 0.5 * (1.0 - math.exp(-2.0)))
+    for x in (held, fam, snap, opted):                   # no feed / a latched family / a snap / opted out: held
+        assert out[x] == pytest.approx(1.0) and x.yl is None
+    assert gv == pytest.approx(g0) and iv == 5
+    for _ in range(40):                                  # the feed goes: follow 0, back to the latch (no pop: the
+        t += 0.05                                        # runtime's follow fades with the feed's liveness)
+        v = b.step({"energy": 1.0}, None, 1.0, 1.0, (0, 0), t, 0.05, 0.0, resp)
+    assert v == pytest.approx(1.0) and b.yl is None
+    # the latch is sampled from the slow energy (as it always was); the live part from the fast one
+    s2 = bound(spec)
+    s2.step({"energy": 1.0, "energy_slow": 0.5}, None, 1.0, 1.0, (0, 0), 0.0, 0.0, 0.7, resp)
+    assert s2.target == pytest.approx(1.0) and s2.yl == pytest.approx(1.0)
+    s2.step({"energy": 1.0, "energy_slow": 0.5}, None, 1.0, 1.0, (0, 0), 0.05, 0.05, 0.7, resp)
+    assert s2.target == pytest.approx(1.0) and s2.yl > 1.0
+    cue = binding.sample_cue({"p": NUM}, {"p": {**ENERGY, "at": "cue"}}, {"p": 1.0},
+                             {"energy": 1.0, "energy_slow": 0.5, "drive": 0.5}, None, 1.0, "scene/x")
+    assert cue["p"] == pytest.approx(1.0)               # a cue is held too: the slow energy
+    # through the runtime: Modulation hands the follow to every section binding; /inputs shows latch and follow
+    rt = SessionRuntime(None)
+    mod = Modulation(rt, {"p": NUM}, {"p": binding.parse_v2("p", NUM, spec)}, key="scene/x")
+    rt.signals, rt.epoch, rt.dt = {"energy": 0.5}, (0, 0), 0.05
+    assert mod.apply({"p": 1.0})["p"] == pytest.approx(1.0)
+    assert mod.describe()[0]["target"] == pytest.approx(1.0) and mod.describe()[0]["follows"] is False
+    rt.signals, rt.follow, rt.response = {"energy": 1.0}, 0.7, resp
+    for _ in range(40):
+        rt.now += 0.05
+        o = mod.apply({"p": 1.0})
+    assert o["p"] > 1.2 and mod.describe()[0]["follows"] is True and mod.describe()[0]["value"] > 1.2
+    assert mod.describe()[0]["follow_tau_s"] == 1.0 and reg.follow_taus(resp) == (2.0, 2.0)   # min(4, 1); regional 2
+    # the bus effects' rows (fx_state.SessionFx.bindings) show the same
+    from types import SimpleNamespace as NS
+
+    from stream_service.fx_state import SessionFx
+    fx = SessionFx.__new__(SessionFx)
+    fx.stack = [NS(id="fx-1", engine_slot=NS(modulation=mod), spec=NS(bindings={"p": spec}))]
+    row = fx.bindings()[0]
+    assert row["follows"] is True and row["target"] == pytest.approx(1.0) and row["follow_tau_s"] == 1.0
+    assert Modulation(rt, {"p": NUM}, {"p": binding.parse_v2("p", NUM, {**spec, "at": "live"})}).section_row("p") == {}
+
+
+def test_the_runtime_follows_only_while_the_feed_is_live():
+    from stream_service.music_feed import MusicFeed
+    rt = SessionRuntime(None)
+    rt.begin_frame(10.0)
+    assert rt.follow == 0.0                              # no feed at all: section bindings hold, as before
+    f = MusicFeed()
+    rt.feed = f
+    for i in range(50):
+        f.on_message({"type": "music.features", "data": {"energy": 0.5}}, 10.0 + i * 0.04)
+    rt.begin_frame(12.0)
+    assert rt.follow == pytest.approx(0.7) and rt.response is f.response.cfg
+    rt.begin_frame(20.0)                                 # the feed has gone (faded out)
+    assert rt.follow == 0.0

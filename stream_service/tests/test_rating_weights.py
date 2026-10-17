@@ -52,3 +52,21 @@ def test_a_reject_leaves_the_vetted_pool(tmp_path):
     assert mgr.auto_ok("source", "fractal_zoom")
     mgr.ratings = _ratings(tmp_path, {"scene/fractal_zoom": {"reject": True}})
     assert not mgr.auto_ok("source", "fractal_zoom") and mgr.rating_weight("source", "fractal_zoom") == 0.0
+
+
+def test_the_star_table_is_config_and_hot_reloads(tmp_path):
+    r = _ratings(tmp_path, {"scene/good": {"stars": 4}, "scene/tagged": {"tags": ["x"]}})
+    w = tmp_path / "rating_weights.json"
+    w.write_text(json.dumps({"stars": {"unrated": 0.35, "4": 5.0, "2": "bad", "9": 3.0}}))
+    r._checked = None                                          # past the 1 s mtime throttle
+    assert r.weight("source", "nobody") == 0.35 and r.weight("source", "tagged") == 0.35   # unrated, tags only
+    assert r.weight("source", "good") == 5.0 and r.star_weight[2] == STAR_WEIGHT[2]       # a bad value: default
+    assert 9 not in r.star_weight
+    w.write_text(json.dumps({"stars": {"unrated": 0.5}}))
+    import os
+    os.utime(w, (w.stat().st_atime, w.stat().st_mtime + 5))
+    r._checked = None
+    assert r.weight("source", "nobody") == 0.5 and r.weight("source", "good") == STAR_WEIGHT[4]
+    w.unlink()
+    r._checked = None
+    assert r.weight("source", "nobody") == STAR_WEIGHT[0]     # no file: the code's table

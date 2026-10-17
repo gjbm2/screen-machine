@@ -50,6 +50,7 @@ AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
 SNAPS = ("now", "beat", "bar")           # bar: the next downbeat on show_service's clock (else the beat)
+URGENT_DWELL = 0.5                       # a drop may cut once this share of min dwell has passed
 DWELL_AT_0 = (120.0, 240.0)      # change_rate 0
 DWELL_AT_1 = (15.0, 30.0)        # change_rate 1
 PREPARE_AHEAD_S = 2.0            # the next pick is prepared this long before min dwell
@@ -291,6 +292,7 @@ class Director:
         self.baseline: Optional[dict] = None          # follow_dmx values at the last cue / arming / recovery
         self.latched: Optional[str] = None            # a dmx_change (or room_event) seen inside min dwell
         self.latched_kind = "dmx_change"
+        self.urgent = False                           # a drop: it may cut at URGENT_DWELL of min dwell
         self.was_fresh = False
         self.quarantine: dict[str, float] = {}        # preset -> until (monotonic s)
         self.bad_transitions: set[str] = set()        # transition presets that failed to prepare
@@ -334,19 +336,19 @@ class Director:
         if armed == self.armed:
             return False
         self.armed = armed
-        self.latched = None
+        self.latched, self.urgent = None, False
         self.baseline = None                  # the next fresh frame is a baseline
         return True
 
     def scene_done(self, now: float) -> None:
         self.dwell_start = now
 
-    def hint(self, text: str) -> bool:
+    def hint(self, text: str, urgent: bool = False) -> bool:
         """show_service's room.event (a section change, a drop, a new track): a trigger like the desk's GOBO
-        step, honoured once min dwell is reached.  -> latched?"""
-        if not (self.armed and self.enabled) or self.latched is not None:
+        step, honoured once min dwell is reached (``urgent``, a drop: URGENT_DWELL of it).  -> latched?"""
+        if not (self.armed and self.enabled) or (self.latched is not None and not urgent):
             return False
-        self.latched, self.latched_kind = text, "room_event"
+        self.latched, self.latched_kind, self.urgent = text, "room_event", urgent
         return True
 
     def observe(self, snap: Optional[Snapshot], fresh: bool, follow_desk: bool = True) -> None:
@@ -376,7 +378,7 @@ class Director:
             return None
         dwell = now - self.dwell_start
         lo, hi, _ = self.window()
-        if dwell < lo:
+        if dwell < (lo * URGENT_DWELL if self.latched and self.urgent else lo):
             return None
         if self.latched:
             return self.latched_kind, f"{self.latched}; dwell {dwell:.1f} s ≥ min {lo:.1f} s"
@@ -405,7 +407,7 @@ class Director:
             self.recent_scenes.append(scene)
         if transition:
             self.recent_transitions.append(transition)
-        self.latched = None
+        self.latched, self.urgent = None, False
         if snap is not None:
             self.baseline = dict(snap.stable)
 

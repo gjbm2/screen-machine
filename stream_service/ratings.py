@@ -34,8 +34,24 @@ LOOK_NAME_RE = re.compile(r"^[^<>\x00-\x1f]{1,40}$")
 # novelty) weight of every preset of that plug-in.  Unrated is neutral, 3 stars and up are favoured, 1-2 stars are
 # rare, and a reject is never auto-picked (the vetted pool drops it).  Manual cues and pushes ignore ratings.
 STAR_WEIGHT = {0: 1.0, 1: 0.05, 2: 0.3, 3: 1.5, 4: 4.0, 5: 8.0}
+# The table is config: rating_weights.json beside ratings.json ({"stars": {"unrated": w, "1": w, ... "5": w}}),
+# hot-reloaded; a missing file or a bad value keeps the default above for that entry.
+WEIGHTS_FILE = "rating_weights.json"
 KIND_KEY = {"source": "scene", "scene": "scene", "transition": "transition", "effect": "effect"}
 CHECK_S = 1.0       # look at the file's mtime at most this often (the directors ask per candidate, hundreds a pass)
+
+
+def parse_star_weights(raw: Any) -> dict[int, float]:
+    """``{"stars": {"unrated" | "0".."5": w >= 0}}`` -> the full table (defaults for anything missing or bad)."""
+    out = dict(STAR_WEIGHT)
+    stars = raw.get("stars") if isinstance(raw, dict) else None
+    if not isinstance(stars, dict):
+        return out
+    for k, v in stars.items():
+        n = 0 if k == "unrated" else int(k) if isinstance(k, str) and k.isdigit() else None
+        if n in out and isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0:
+            out[n] = float(v)
+    return out
 
 
 class Ratings:
@@ -44,16 +60,34 @@ class Ratings:
         self.lock = threading.Lock()
         self.data: dict[str, dict] = {}
         self.mtime = None
+        self.weights_path = self.path.parent / WEIGHTS_FILE
+        self.weights_mtime = None
+        self.star_weight: dict[int, float] = dict(STAR_WEIGHT)
         self._weights: dict[str, float] = {}
-        self._weights_at = None             # the mtime the weights were built from
+        self._weights_at = None             # the (ratings, table) mtimes the weights were built from
         self._checked = None                # monotonic time of the last mtime check
         self._load()
+
+    def _load_table(self) -> None:
+        try:
+            m = self.weights_path.stat().st_mtime
+        except OSError:
+            self.star_weight, self.weights_mtime = dict(STAR_WEIGHT), None
+            return
+        if m == self.weights_mtime:
+            return
+        try:
+            self.star_weight = parse_star_weights(json.loads(self.weights_path.read_text()))
+        except (OSError, ValueError):
+            pass   # keep the last good table
+        self.weights_mtime = m
 
     def _load(self, force: bool = False) -> None:
         now = time.monotonic()
         if not force and self._checked is not None and now - self._checked < CHECK_S:
             return
         self._checked = now
+        self._load_table()
         try:
             m = self.path.stat().st_mtime
         except OSError:
@@ -69,17 +103,19 @@ class Ratings:
         self.mtime = m
 
     def weight(self, kind: str, plugin: str | None) -> float:
-        """The auto-directors' rating weight for a plug-in (STAR_WEIGHT; 0.0 for a reject).  Cheap: one stat per call,
-        the table is rebuilt only when the file changed."""
+        """The auto-directors' rating weight for a plug-in (the star table; 0.0 for a reject; unrated: the table's
+        0).  Cheap: one stat per call, rebuilt only when either file changed."""
         if not plugin:
             return 1.0
         with self.lock:
             self._load()
-            if self._weights_at != self.mtime:
-                self._weights = {k: 0.0 if v.get("reject") else STAR_WEIGHT.get(int(v.get("stars") or 0), 1.0)
+            sw = self.star_weight
+            at = (self.mtime, self.weights_mtime)
+            if self._weights_at != at:
+                self._weights = {k: 0.0 if v.get("reject") else sw.get(int(v.get("stars") or 0), sw[0])
                                  for k, v in self.data.items()}
-                self._weights_at = self.mtime
-            return self._weights.get(f"{KIND_KEY.get(kind, kind)}/{plugin}", 1.0)
+                self._weights_at = at
+            return self._weights.get(f"{KIND_KEY.get(kind, kind)}/{plugin}", sw[0])
 
     def all(self) -> dict:
         with self.lock:

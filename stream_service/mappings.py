@@ -42,19 +42,19 @@ CANON = {
     "ambient": {"energy": .13, "drive": .16, "punch": .03, "tempo": None, "activity": .12, "activity_slow": .12,
                 "level": .35, "level_slow": .35, "motion": .08, "sat": .45, "warmth": .18, "pan_slow": .5,
                 "tilt_slow": .5, "zoom_slow": None, "pan": .5, "tilt": .5, "zoom": .5, "beat": 0.0, "pulse": 0.0,
-                "section": 0.0, "beat_confidence": .2, "gobo": 1},
+                "section": 0.0, "beat_confidence": .2, "gobo": 1, "energy_slow": .13},
     "jazz": {"energy": .41, "drive": .46, "punch": .22, "tempo": .40, "activity": .42, "activity_slow": .42,
              "level": .55, "level_slow": .55, "motion": .3, "sat": .7, "warmth": .85, "pan_slow": .45,
              "tilt_slow": .55, "zoom_slow": None, "pan": .45, "tilt": .55, "zoom": .5, "beat": 0.0, "pulse": 0.0,
-             "section": 0.0, "beat_confidence": .6, "gobo": 2},
+             "section": 0.0, "beat_confidence": .6, "gobo": 2, "energy_slow": .41},
     "chorus": {"energy": .87, "drive": .95, "punch": .92, "tempo": .71, "activity": .85, "activity_slow": .85,
                "level": .9, "level_slow": .9, "motion": .75, "sat": .85, "warmth": .85, "pan_slow": .6,
                "tilt_slow": .4, "zoom_slow": None, "pan": .6, "tilt": .4, "zoom": .5, "beat": 0.0, "pulse": 0.0,
-               "section": 0.0, "beat_confidence": 1.0, "gobo": 3},
+               "section": 0.0, "beat_confidence": 1.0, "gobo": 3, "energy_slow": .87},
     "peak": {"energy": .96, "drive": .99, "punch": 1.0, "tempo": .80, "activity": .95, "activity_slow": .95,
              "level": 1.0, "level_slow": 1.0, "motion": .9, "sat": .8, "warmth": .7, "pan_slow": .7,
              "tilt_slow": .35, "zoom_slow": None, "pan": .7, "tilt": .35, "zoom": .5, "beat": 0.0, "pulse": 0.0,
-             "section": 0.0, "beat_confidence": 1.0, "gobo": 4},
+             "section": 0.0, "beat_confidence": 1.0, "gobo": 4, "energy_slow": .96},
 }
 
 
