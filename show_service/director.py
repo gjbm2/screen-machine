@@ -229,6 +229,10 @@ DIRECTOR_FALLBACK = {
     # own default, LIVE_V1 §1.11); send_palette false turns it off (hot-reloaded). Stage 5 (README S5.8): a person's
     # pick on a screen holds (hold_hand_picks, hot-reloaded); own_echo_s is agreed with 2f (16 Oct)
     "screens": {"send_palette": True, "palette_transition_s": 4.0, "hold_hand_picks": True, "own_echo_s": 3.0},
+    # with no feel set (owner, 17 Oct: the director always resolves a palette): the palettes it picks from, as a
+    # vibe's list (art = the screens' own stills). [] keeps the old neutral (artnet_out's fixed colour). Only the
+    # colours: every other behaviour stays neutral until a feel is set.
+    "no_feel": {"palettes": []},
     # song ends (README S5.17)
     "track_transitions": TRACK_TRANSITIONS}
 #: Stage 4's show.yaml director keys: section -> key -> (lowest, highest) allowed, or bool
@@ -607,6 +611,8 @@ class Director:
         # look state
         self.vs: contract.VibeSettings = self.vibes.effective(None)[0]
         self.known = False
+        self.pal_on = False                         # colours resolve (a feel, or director.no_feel.palettes)
+        self.vp: dict = {}
         self._vibe_name: Optional[str] = None            # the vibe entered (None: neutral)
         self.entered_s: Optional[float] = None
         self.look_n = 0
@@ -882,6 +888,13 @@ class Director:
                     cfg[key] = v
                 else:
                     probs.append(f"director.{key}: {d[key]!r} is not a positive number")
+        nf = d.get("no_feel")
+        if nf is not None:
+            pl = nf.get("palettes") if isinstance(nf, dict) else None
+            if isinstance(pl, list) and all(isinstance(x, str) and x for x in pl):
+                cfg["no_feel"]["palettes"] = list(pl)
+            else:
+                probs.append(f"director.no_feel: {nf!r} is not {{palettes: [names]}}")
         ee = d.get("emphasis_edges")
         if ee is not None:
             if (isinstance(ee, list) and len(ee) == 2 and all(_num(x) is not None for x in ee)
@@ -1113,6 +1126,9 @@ class Director:
 
         vs, known = self._effective()
         self.vs, self.known = vs, known
+        nf = self.cfg["no_feel"]["palettes"]
+        self.pal_on = known or bool(nf)                   # colours resolve: a feel, or no_feel's palettes
+        self.vp = vs if known else {**vs, "palettes": list(nf)}
         name = self.target["vibe"] if (known and self.target) else None
         if name != self._vibe_name:
             self._enter(name, now_s)
@@ -1286,7 +1302,10 @@ class Director:
         old = self._vibe_name
         self._vibe_name = name
         if name is None:
-            self._pal = None                              # neutral: artnet_out keeps its fixed colour
+            if self.cfg["no_feel"]["palettes"]:
+                self._entry_fade = True                   # no feel: cross over to no_feel's colours from what shows
+            else:
+                self._pal = None                          # neutral: artnet_out keeps its fixed colour
             self.pending = None
             self.next_pending = False
             self._stage4_reset()
@@ -1962,7 +1981,7 @@ class Director:
             del sc["sent"][sid]
             sc["sent_at"].pop(sid, None)
         sc["live"] = live
-        name = ((self.look or {}).get("palette") or {}).get("name") if self.known else None
+        name = ((self.look or {}).get("palette") or {}).get("name") if getattr(self, "pal_on", self.known) else None
         if self._pal_chosen == contract.PALETTE_ART:      # art not on hand yet: the lamps' stand-in stays theirs
             name = contract.PALETTE_ART
         sc["palette"] = name
@@ -1972,7 +1991,7 @@ class Director:
         if self.screen_pick is not None:
             sc["why"] = f"held: {self.screen_pick['label']} was picked on a screen"
             return
-        if not self.known or not name:
+        if not getattr(self, "pal_on", self.known) or not name:
             sc["why"] = "no feel is set"
             return
         if name == contract.PALETTE_ART:
@@ -2253,9 +2272,11 @@ class Director:
         m = self.music
         e, u, arousal = m["energy"], m["u"], m["arousal"]
         words = self._words(vs)
-        name, source = self._resolve_palette(vs) if known else (None, "neutral")
+        pal_on = getattr(self, "pal_on", known)
+        vp = getattr(self, "vp", vs) if pal_on else vs
+        name, source = self._resolve_palette(vp) if pal_on else (None, "neutral")
         self._pal_chosen = name                           # the screens' palette follows the choice, not a stand-in
-        look_pal, screen_roles = self._roles_for(name, source, vs)
+        look_pal, screen_roles = self._roles_for(name, source, vp)
         emphasis = self._emphasis_of(arousal)
         look_pal["emphasis"] = emphasis
         xpr = self._express_now(now_s) if known else 0.0    # a section shown inside the look (§8.5)
@@ -2397,8 +2418,10 @@ class Director:
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat"}
         self._words_now = words
-        if not known:
+        if not pal_on:
             return
+        if not known and self._pal is None:
+            self._entry_fade = True                       # no feel, first colours: fade in from the house light
         # palette_fn: glide to the new colours
         if self._entry_fade:
             self._entry_fade = False
@@ -2676,10 +2699,10 @@ class Director:
             self.lamps_from = "patch.yaml"
 
     def _art_in_play(self) -> bool:
-        if not self.known:
+        if not getattr(self, "pal_on", self.known):
             return False
         return (self.palette_pick == contract.PALETTE_ART or self.palette_name == contract.PALETTE_ART
-                or contract.PALETTE_ART in self.vs["palettes"])
+                or contract.PALETTE_ART in getattr(self, "vp", self.vs)["palettes"])
 
     def _fetches(self, now_s: float) -> None:
         loop, get = self.ctx.loop, self.ctx.room_get

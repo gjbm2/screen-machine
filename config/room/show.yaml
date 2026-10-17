@@ -155,6 +155,8 @@ director:
   novelty: 0.12                             # |fast - slow| energy that counts as a change point when changing by time
   variation_bars: 64                        # while Keep this look holds: a new allocation after this many bars
   entry_fade_s: 8.0                         # entering a vibe: the lamps fade in from the house light (§8.6)
+  no_feel:                                  # owner, 17 Oct: the director always resolves a palette. With no feel set
+    palettes: [art]                         # it picks from these (art = the screens' own stills); [] = the old neutral
   emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)
   # How deep the lamps' beat swell goes for each of the vibe's accent styles (artnet_out's hue_depth: 0 = steady
   # colour, 1 = the full swell). Starting points. With beat_lock false or an unsure clock, there is no beat swell.

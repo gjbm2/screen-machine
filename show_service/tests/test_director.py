@@ -241,6 +241,20 @@ def test_neutral_is_hands_off(rig):
     assert rig.d.snapshot()["neutral"] is True and rig.d.provides()["vibe"]() is None
 
 
+def test_with_no_feel_the_colours_still_resolve_from_no_feel_palettes(tmp_path):
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["ember"]}      # owner, 17 Oct: always a palette
+    r = Rig(tmp_path, settings=st)
+    r.run(2.0)
+    assert r.d.palette_fn(r.t) is not None and not r.d.readback()["known"]
+    assert (r.d.look or {}).get("palette", {}).get("name") == "ember"
+    r.d.set_target({"vibe": "alpha"}, "mode")
+    r.run(1.0)
+    r.d.set_target({"vibe": None})                                          # back to no feel: colours stay
+    r.run(1.0)
+    assert r.d.palette_fn(r.t) is not None
+
+
 def test_an_unknown_vibe_plays_neutral_and_a_vanished_vibe_goes_neutral(tmp_path):
     r = Rig(tmp_path)
     r.d.set_target({"vibe": "alpha"}, "mode")
