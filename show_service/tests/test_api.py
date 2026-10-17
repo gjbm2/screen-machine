@@ -212,6 +212,7 @@ class FakeAutopilot:
         self.unreachable = False
         self.refuse: str | None = None
         self.last_switch = False
+        self.checked: list[tuple] = []
 
     def state(self) -> dict:
         return {**apimod.neutral_autopilot("Auto is off" if not self.on else "Auto · watching"),
@@ -239,6 +240,21 @@ class FakeAutopilot:
 
     def resume(self) -> dict:
         return self.state()
+
+    def rules(self) -> dict:                  # README S5.19: autopilot.Autopilot.rules's shape
+        return {"modes": [{"mode": "piano", "label": "Piano", "enter": "the piano is playing, for at least 10 s",
+                           "suggest": None, "leave": "the piano has stopped, for at least 2 min", "from": ["gallery"],
+                           "leave_to": "previous", "problems": [], "available": True,
+                           "live": {"enter_when": False, "leave_when": True}, "nodes": {}, "now": {}, "auto": {},
+                           "summary": "Auto switches to Piano when …", "unknown_words": []}],
+                "revision": "r1", "reachable": True, "error": None, "thread": _thread()}
+
+    def check_block(self, mode, block, extra=None) -> dict:
+        self.checked.append((mode, block, extra, _thread()))
+        bad = isinstance(block, dict) and "nope" in json.dumps(block)
+        return {"ok": not bad, "problems": [{"path": "enter_when", "text": "“nope” isn't something Auto can notice",
+                                             "level": "error"}] if bad else [],
+                "enter": None, "suggest": None, "leave": None, "unknown_words": ["nope"] if bad else []}
 
     def log(self, n: int = 50) -> list[dict]:
         return [{"kind": "switch"}]
@@ -464,6 +480,8 @@ def test_missing_components_degrade_never_refuse():
                     ("GET", "/api/v1/listening", None), ("PUT", "/api/v1/listening", {"on": True}),
                     ("GET", "/api/v1/autopilot", None), ("PUT", "/api/v1/autopilot", {"on": True}),
                     ("POST", "/api/v1/autopilot/undo", None), ("POST", "/api/v1/autopilot/resume", None),
+                    ("GET", "/api/v1/autopilot/rules", None),
+                    ("POST", "/api/v1/autopilot/check", {"mode": "piano", "autopilot": {}}),
                     ("GET", "/api/v1/situations", None), ("GET", "/api/v1/test", None),
                     ("POST", "/api/v1/test", {"source": "piano"}), ("DELETE", "/api/v1/test", None),
                     ("GET", "/api/v1/look", None), ("GET", "/api/v1/log?kind=autopilot", None),
@@ -761,6 +779,93 @@ def test_autopilot_routes(brain):
             assert c.AUTO_CALL_TIMEOUT_S > c.ROOM_PUT_TIMEOUT_S
 
     run(go())
+
+
+def test_autopilot_rules_and_check_routes(brain):
+    """README S5.19: both run on show-brain; the check takes the mode, the block and the editor's unsaved modes, and
+    400s only a body that isn't what the route takes."""
+    ap = brain.components["autopilot"]
+
+    async def go():
+        async with served(make_api(brain)) as cl:
+            r = await cl.get("/api/v1/autopilot/rules")
+            b = await body(r)
+            assert r.status == 200 and b["thread"] == "show-brain" and b["modes"][0]["leave_to"] == "previous"
+            blk = {"enter_when": {"piano_playing": {"for_s": 10}}, "from": ["gallery", "late-night"]}
+            r = await cl.post("/api/v1/autopilot/check", json={"mode": " piano ", "autopilot": blk,
+                                                               "modes": ["late-night"]})
+            b = await body(r)
+            assert r.status == 200 and b["ok"] is True
+            assert ap.checked[-1] == ("piano", blk, ["late-night"], "show-brain")
+            r = await cl.post("/api/v1/autopilot/check", json={"autopilot": {"enter_when": {"nope": {}}}})
+            b = await body(r)
+            assert r.status == 200 and b["ok"] is False and b["unknown_words"] == ["nope"]   # a bad block: 200, words
+            assert ap.checked[-1][0] is None and ap.checked[-1][2] == []
+            await cl.post("/api/v1/autopilot/check", json={"mode": "disco"})                 # no block: only by hand
+            assert ap.checked[-1][:3] == ("disco", None, [])
+            for bad in ([1], "piano", {"mode": 3}, {"mode": " "}, {"modes": "late"}, {"modes": [""]}):
+                r = await cl.post("/api/v1/autopilot/check", json=bad)
+                assert r.status == 400 and (await body(r))["error"] == "bad_request", bad
+            r = await cl.post("/api/v1/autopilot/check", data=b"{not json", headers={"Content-Type": "application/json"})
+            assert r.status == 400
+            assert ("GET", "/api/v1/autopilot/rules") in apimod.ROUTES and ("POST", "/api/v1/autopilot/check") in \
+                apimod.ROUTES
+
+    run(go())
+
+
+def test_auto_rules_and_check_without_auto_degrade():
+    b = FakeBrain([FakeRoom()])
+
+    async def go():
+        async with served(make_api(b)) as cl:
+            r = await cl.get("/api/v1/autopilot/rules")
+            got = await body(r)
+            assert r.status == 200 and got["modes"] == [] and got["detail"] == apimod.MISSING["autopilot"]
+            r = await cl.post("/api/v1/autopilot/check", json={"mode": "piano", "autopilot": {}})
+            got = await body(r)
+            assert r.status == 200 and got["ok"] is False and got["checked"] is False and got["problems"]
+
+    try:
+        run(go())
+    finally:
+        b.close()
+
+
+def test_situations_route_lists_the_light_words_with_their_schemas():
+    """The real Situations behind GET /api/v1/situations: the light words, their params' JSON schemas and hints."""
+    from show_service.situations import Situations
+    t = [1000.0]
+    sit = Situations(c.BrainContext(publish=lambda m: None), mono=lambda: t[0], wall=lambda: 1.79e9 + t[0])
+    sit.configure({"situations": {"light": {"url": "http://127.0.0.1:9/api/lightsensor/lightsense",
+                                            "sensor": "living-room"}}})
+    assert sit.light.ingest({"sensors": {"living-room": {"current": {"lux": 30.0}, "history": [
+        {"timestamp": 1.79e9 + t[0], "lux": 30.0}]}}})
+    sit.tick(t[0])
+    b = FakeBrain([sit])
+
+    async def go():
+        async with served(make_api(b)) as cl:
+            got = await body(await cl.get("/api/v1/situations"))
+            voc = {d["id"]: d for d in got["vocabulary"]}
+            assert {"light_below", "light_above"} <= set(voc) and set(voc) == set(c.SITUATIONS)
+            lb = voc["light_below"]
+            assert lb["label"] == "the room is darker than" and lb["source"] == "light" and lb["available"] is True
+            assert set(lb["params"]) == {"for_s", "lux", "sensor"}
+            lux = lb["params"]["lux"]
+            assert lux["type"] == "number" and lux["minimum"] == 0
+            assert lux["x-ui"]["label"] == "Light level" and lux["x-ui"]["unit"] == "lux" and lux["x-ui"]["required"]
+            sensor = lb["params"]["sensor"]
+            assert sensor["default"] == "living-room" and sensor["enum"] == ["living-room"]
+            assert sensor["x-ui"]["enum_labels"] == ["Living room"] and sensor["x-ui"]["unset_label"] == "The only sensor"
+            assert lb["params"]["for_s"]["x-ui"] == {"label": "For at least", "unit": "s", "required": False}
+            assert got["readings"]["light_below"]["value"] is None          # needs a rule's lux
+            assert got["combinators"] == ["all", "any", "not"]
+
+    try:
+        run(go())
+    finally:
+        b.close()
 
 
 def test_situations_route(brain):

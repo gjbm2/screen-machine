@@ -992,8 +992,40 @@ How the pieces make it work. This is all generic mode machinery, nothing piano-s
 | `sonos_playing`, `genre_in`, `energy_above` | Sonos now-playing (below), the listener and local ML, and gated room loudness |
 | `talking`, `quiet` | CED speech with no music; silence for N minutes |
 | `between` | Time of day |
+| `light_below` / `light_above` | The room's light sensor (Flask's `/api/lightsensor/lightsense`, the `living-room` sensor today): the median lux over the last minute, so someone walking past doesn't flip it, with 15 % hysteresis. Labels: "the room is darker than 50 lux", "the room is brighter than 200 lux" |
 
 Situations combine with `all`, `any` and `not`, each with its own `for_s` confirmation time.
+
+**Triggers are per-mode config** (owner, 17 Oct; README S5.19). What starts a mode in Auto is that mode's own `autopilot` block, built from these words (MIDI, the mic, Sonos, the listener, the clock, the light). No code names a mode or a device.
+
+- **The empty shapes** (one reading, in Auto and in the check):
+  - no `autopilot` key: the mode starts only when someone picks it;
+  - `enter_when` (or `otherwise_suggest_when`) absent, `null` or `{}`: never by itself, with no warning;
+  - `leave_when` absent: Auto never leaves it by itself;
+  - `from` absent or `[]`: from any mode;
+  - `leave_to` absent: `"previous"`.
+- **The light** (show.yaml `situations.light`):
+  - `url`: Flask's own route;
+  - `sensor`: `living-room`, the one a rule reads when it names none;
+  - `poll_s` 10, `smooth_s` 60, `hysteresis` 0.15 (starting points).
+  - The poll is async with a 2 s budget, so it never blocks the brain. A failed poll keeps the last value.
+  - The words read unknown with no good read for 3 polls, or while the sensor is missing or silent.
+  - A word's params are `lux` (required), `sensor` and `for_s`. For example, `{"light_below": {"lux": 50, "for_s": 300}}`.
+- **The editor's routes** (the Room page's Auto editor, 2f). Both use the parser Auto evaluates with, and neither saves anything.
+  - `GET /api/v1/autopilot/rules` gives every mode of the room's config with:
+    - sentences (`enter`, `suggest`, `leave`, `summary`);
+    - `from`, `leave_to`, `problems`, `available`, `live`, `nodes` and `now`;
+    - `auto`: what Auto itself makes of each rule now (holds, held_s, needs_s, blocked).
+  - `POST /api/v1/autopilot/check {"mode", "autopilot", "modes"?}` answers the same keys plus `ok` and `unknown_words`:
+    - `from` and `leave_to` may name the room's modes, the unsaved `modes`, and (for `leave_to`) `"previous"`;
+    - a mode in its own `from` is a warn.
+  - Everything is keyed by the node's path in the block: `enter_when`, `enter_when.any[1]`, `leave_when.all[0].not`, a word of a several-word object `enter_when.piano_playing`, `from` and `leave_to`.
+  - Problems are `{path, text, level: error|warn}`:
+    - errors: the rule never holds, or the room would refuse it;
+    - a word that can't be sensed now is a warn ("The piano isn't connected yet"), never an error.
+  - `live` is each node's raw truth now (for_s left out; null = can't tell).
+  - Sentences read naturally: "both: … and …", "any of: … or …", "not …", ", for at least 2 min".
+  - Every param schema in `GET /api/v1/situations` carries the room's x-ui hints: label, unit, unset_label, required, slider `ends`, and `enum` + `enum_labels` for the light sensors.
 
 **Global settings** go in one top-level `autopilot` block in modes.json:
 - on/off (default **off** until the owner turns it on);
@@ -1395,6 +1427,11 @@ GET    /show/healthz
   - **observe** (shipped): `room.look.compose` carries every enabled appliance's plan and the balance. Nothing else changes, and a test proves the outputs are identical frame for frame.
   - **drive** (one show.yaml line, hot-reloaded): room.direction's `intensity`, `pulse_depth` and `peak`; the one tempo fold; the lamps' dmx rung at `looks.middle_depth`; and the no-beat lamp swell from the plan instead of the raw energy.
   - **Not yet:** the screens' INTENSITY channel, APL, and the renderer reading `pulse_depth` and `peak` (step 3, 04/75).
+- **Auto triggers** (owner, 17 Oct; §8.9; README S5.19). Built, not yet live (it loads at the next show_service restart).
+  - **Light words:** `light_below` and `light_above` read the room's light sensor (show.yaml `situations.light`).
+  - **Editor routes:** `GET /api/v1/autopilot/rules` and `POST /api/v1/autopilot/check` give each mode's triggers in plain words, its problems and its live readings, per node path. The Room page's editor (2f) is built on them.
+  - **Empty shapes:** `from: []` now means any mode (before, it meant none); `enter_when: {}` means never by itself.
+  - **No mode has a light rule yet:** writing one is the owner's call, in modes.json or the editor.
 - **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
 - **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
 - **Input meter.** The card's `hearing` carries:

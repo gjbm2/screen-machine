@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from datetime import datetime
 
 import pytest
+from aiohttp import web
 
 from show_service import contract as c
 from show_service.situations import (WORDS, Conditions, NoteTap, Situations, check_param, in_window, kleene_all,
@@ -736,3 +738,305 @@ def test_a_rule_on_quiet_never_holds_because_the_mic_went_off():
         e.now += 1
         assert cond.holds({"quiet": {"for_s": 5}}, "r", e.now)[0] is False
         assert cond.holds({"not": {"music_audible": {}}}, "m", e.now)[0] is False
+
+
+# -- the room's light (README S5.19) ------------------------------------------------------------------------------------
+LIGHT_URL = "http://127.0.0.1:9/api/lightsensor/lightsense"     # never polled here: no loop, answers fed by hand
+
+
+class LightEnv:
+    """Situations with show.yaml's light section and a fake clock; the sensor route's answers are fed by hand."""
+
+    def __init__(self, **light) -> None:
+        self.t = 1000.0
+        self.sit = Situations(c.BrainContext(publish=lambda m: None), mono=lambda: self.t, wall=self.wall)
+        self.sit.configure({"situations": {"light": {"url": LIGHT_URL, "sensor": "living-room", **light}}})
+        self.sit.start()                                      # no event loop: nothing is polled
+
+    def wall(self) -> float:
+        return 1.79e9 + self.t
+
+    def answer(self, lux, *, every_s: float = 1.0, name: str = "living-room", age_s: float = 0.0,
+               extra: dict | None = None) -> dict:
+        """The route's JSON (routes/lightsensor.py's shape): ``lux`` one value or a list of samples, the newest age_s
+        old, every_s apart."""
+        vals = lux if isinstance(lux, list) else [lux]
+        end = self.wall() - age_s
+        hist = [{"timestamp": end - (len(vals) - 1 - i) * every_s, "lux": v, "target_intensity": 1.0}
+                for i, v in enumerate(vals)]
+        sensors = {name: {"current": {"lux": vals[-1], "target_group": name, "target_intensity": 1.0}, "history": hist}}
+        return {"sensors": {**sensors, **(extra or {})}}
+
+    def feed(self, lux, **kw) -> None:
+        assert self.sit.light.ingest(self.answer(lux, **kw))
+
+    def read(self, sid: str, **params) -> dict:
+        self.t += 0.001                                       # a new now: never the memo
+        return self.sit.read(sid, params, self.t)
+
+
+def test_light_words_read_the_median_so_someone_walking_past_doesnt_flip_them():
+    e = LightEnv()
+    e.feed([300.0] * 50 + [8.0] * 6 + [300.0] * 4)           # a bright minute; a shadow for 6 s
+    r = e.read("light_below", lux=50)
+    assert r["value"] is False and r["via"] == "light" and r["evidence"]["level"] == 300.0
+    assert r["evidence"]["samples"] == 60 and r["evidence"]["sensor"] == "living-room"
+    assert e.read("light_above", lux=200)["value"] is True
+    e.t += 60
+    e.feed([10.0] * 60)                                       # the lights go down for a minute
+    r = e.read("light_below", lux=50)
+    assert r["value"] is True and r["evidence"]["level"] == 10.0 and r["evidence"]["last"] == 10.0
+    e.t += 120
+    e.feed([10.0] * 20 + [400.0] * 40)                        # the curtains open: the median follows within the window
+    assert e.read("light_below", lux=50)["value"] is False
+
+
+def test_light_hysteresis_and_its_mirror():
+    e = LightEnv(smooth_s=0)                                  # the newest sample alone: steps are exact
+
+    def below(lux: float):
+        e.t += 1
+        e.feed(lux)
+        return e.read("light_below", lux=50)["value"]
+
+    # true under 50; once true, false again only above 50 x 1.15 = 57.5; then true again only under 50
+    assert [below(x) for x in (60, 49, 55, 57.5, 58, 52, 49.9)] == [False, True, True, True, False, False, True]
+    e = LightEnv(smooth_s=0)
+
+    def above(lux: float):
+        e.t += 1
+        e.feed(lux)
+        return e.read("light_above", lux=200)["value"]
+
+    assert [above(x) for x in (190, 201, 175, 170, 169, 199, 201)] == [False, True, True, True, False, False, True]
+    e = LightEnv(smooth_s=0, hysteresis=0)
+    assert [below(x) for x in (49, 50, 49)] == [True, False, True]
+
+
+def test_light_is_unknown_when_stale_silent_or_missing():
+    e = LightEnv()                                            # poll_s 10: stale after 30 s
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and r["evidence"]["why"] == "no light reading yet"
+    e.feed(20.0)
+    assert e.read("light_below", lux=50)["value"] is True
+    e.t += 29.9
+    assert e.read("light_below", lux=50)["value"] is True    # no poll for 3 x poll_s: still good
+    e.t += 1
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and r["evidence"]["why"].startswith("no good light reading for 31")
+    e.feed(20.0, age_s=40)                                    # the route answers, its newest sample older still
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and r["evidence"]["why"] == "the sensor hasn't reported for 31 s"
+    e2 = LightEnv()
+    e2.feed(20.0, age_s=45)                                   # the route answers, the sensor itself went silent
+    r = e2.read("light_below", lux=50)
+    assert r["value"] is None and r["evidence"]["why"] == "the sensor hasn't reported for 45 s"
+    e.feed(20.0)
+    assert e.read("light_below", lux=50)["value"] is True
+    assert e.sit.light.ingest(e.answer(20.0, name="hall"))   # Flask restarted with another sensor only
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and "has no 'living-room'" in r["evidence"]["why"] and r["evidence"]["sensors"] == ["hall"]
+    assert e.read("light_below", lux=50, sensor="hall")["value"] is True     # a rule may name its own sensor
+    assert not e.sit.light.ingest({"error": "x"}) and e.sit.light.error   # not an answer: changes nothing
+    assert e.read("light_below", lux=50, sensor="hall")["value"] is True
+
+    e = LightEnv(sensor=None)                                 # show.yaml names none: the only one, else say which
+    e.feed(20.0, extra={"hall": {"current": {"lux": 400.0}, "history": []}})   # no history: its current lux, now
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and r["evidence"]["why"].startswith("say which sensor")
+    assert e.read("light_above", lux=200, sensor="hall")["value"] is True
+    assert e.sit.light.ingest(e.answer(20.0))
+    assert e.read("light_below", lux=50)["value"] is True
+    e = LightEnv(url=None)                                    # no url: unknown, never an invented value
+    r = e.read("light_below", lux=50)
+    assert r["value"] is None and "situations.light.url" in r["evidence"]["why"]
+    assert e.read("light_below")["value"] is None             # no lux: unknown (the rule check says why)
+
+
+def test_a_failed_or_slow_poll_never_blocks_and_keeps_the_last_value_until_stale():
+    """The real poll against a local aiohttp server (an ephemeral port): async, bounded by its timeout, and a failure
+    leaves the last value until 3 x poll_s have passed."""
+    async def go():
+        t = [1000.0]
+        state = {"status": 200, "delay": 0.0, "lux": 20.0}
+
+        async def route(request):
+            if state["delay"]:
+                await asyncio.sleep(state["delay"])
+            if state["status"] != 200:
+                return web.json_response({"error": "boom"}, status=state["status"])
+            return web.json_response({"sensors": {"living-room": {"current": {"lux": state["lux"]}, "history": [
+                {"timestamp": 1.79e9 + t[0], "lux": state["lux"]}]}}})
+
+        app = web.Application()
+        app.router.add_get("/api/lightsensor/lightsense", route)
+        runner = web.AppRunner(app, shutdown_timeout=0.2)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = runner.addresses[0][1]
+        assert port not in (5000, 8700, 8701, 8702, 8703)
+        ctx = c.BrainContext(publish=lambda m: None)
+        ctx.loop = asyncio.get_running_loop()
+        sit = Situations(ctx, mono=lambda: t[0], wall=lambda: 1.79e9 + t[0])
+        try:
+            sit.configure({"situations": {"light": {"url": f"http://127.0.0.1:{port}/api/lightsensor/lightsense",
+                                                    "sensor": "living-room", "poll_s": 60}}})
+            sit.start()                                       # the poll task: its first read comes at once
+            for _ in range(200):
+                if sit.light.stats["ok"]:
+                    break
+                await asyncio.sleep(0.01)
+            assert sit.light.stats["ok"] == 1 and sit.light._task is not None
+            assert sit.read("light_below", {"lux": 50}, t[0])["value"] is True
+            state["status"] = 500
+            assert await sit.light.poll_once() is False and "500" in sit.light.error
+            t[0] += 100
+            assert sit.read("light_below", {"lux": 50}, t[0])["value"] is True      # the last value holds
+            state["status"], state["delay"] = 200, 3.0        # slower than its budget (2 s)
+            t0 = time.monotonic()
+            assert await sit.light.poll_once() is False
+            assert time.monotonic() - t0 < 2.8 and "Timeout" in sit.light.error
+            t[0] += 81                                        # 181 s since the last good read: stale (3 x 60 s)
+            r = sit.read("light_below", {"lux": 50}, t[0])
+            assert r["value"] is None and r["evidence"]["why"].startswith("no good light reading")
+            state["delay"], state["lux"] = 0.0, 400.0
+            assert await sit.light.poll_once() is True
+            assert sit.read("light_above", {"lux": 200}, t[0] + 1)["value"] is True
+            sit.configure({"situations": {}})                 # the url goes: the poll stops, the words read unknown
+            assert sit.light._task is None and sit.read("light_above", {"lux": 200}, t[0] + 2)["value"] is None
+        finally:
+            sit.stop()
+            await runner.cleanup()
+
+    asyncio.run(go())
+
+
+def test_light_words_in_the_vocabulary_and_their_labels():
+    e = LightEnv()
+    voc = {d["id"]: d for d in e.sit.vocabulary()}
+    lb = voc["light_below"]
+    assert lb["label"] == "the room is darker than" and lb["source"] == "light" and lb["rank"] == c.SITUATION_RANK["light"]
+    assert lb["available"] is False and lb["unavailable"] == "The light sensor isn't reporting"
+    assert set(lb["params"]) == {"for_s", "lux", "sensor"}
+    lux = lb["params"]["lux"]
+    assert lux["type"] == "number" and "default" not in lux
+    assert {k: lux["x-ui"][k] for k in ("label", "unit", "required")} == {"label": "Light level", "unit": "lux",
+                                                                           "required": True}
+    sensor = lb["params"]["sensor"]
+    assert sensor["default"] == "living-room" and sensor["x-ui"]["source"] == "show.yaml situations.light"
+    assert sensor["x-ui"]["required"] is False and sensor["enum"] == ["living-room"]     # show.yaml's own, no other
+    e.feed(30.0, extra={"hall": {"current": {"lux": 5.0}, "history": []}})
+    voc = {d["id"]: d for d in e.sit.vocabulary()}
+    sensor = voc["light_above"]["params"]["sensor"]
+    assert sensor["enum"] == ["hall", "living-room"] and sensor["x-ui"]["enum_labels"] == ["Hall", "Living room"]
+    assert voc["light_below"]["available"] is True and voc["light_above"]["available"] is True
+    # every param carries the room's hints: a label and required; 0..1 sliders name their ends
+    for d in voc.values():
+        assert d["unavailable"]
+        for k, sch in d["params"].items():
+            assert sch["x-ui"]["label"] and isinstance(sch["x-ui"]["required"], bool), (d["id"], k)
+            if sch.get("minimum") == 0 and sch.get("maximum") == 1:
+                assert set(sch["x-ui"]["ends"]) == {"min", "max"} and sch["x-ui"]["widget"] == "slider", (d["id"], k)
+    assert voc["genre_in"]["params"]["genres"]["x-ui"]["required"] is True
+    assert word_label("light_below", {"lux": 50}) == "the room is darker than 50 lux"
+    assert word_label("light_above", {"lux": 200.5, "sensor": "hall"}) == "the room is brighter than 200.5 lux (the hall sensor)"
+    assert word_label("light_below") == "the room is darker than … lux"
+    e.sit.tick(e.t)
+    snap = e.sit.snapshot()
+    assert snap["readings"]["light_below"]["value"] is None and "needs lux" in snap["readings"]["light_below"]["evidence"]["why"]
+    assert snap["light"]["level"] == 30.0 and snap["light"]["sensors"] == ["hall", "living-room"]
+
+
+def test_the_real_show_yaml_light_section_and_bad_values():
+    import yaml as _yaml
+    real = _yaml.safe_load(c.SHOW_FILE.read_text())
+    e = LightEnv()
+    e.sit.configure(real)
+    assert e.sit.problems == []
+    lt = e.sit.light
+    assert lt.url == "http://127.0.0.1:5000/api/lightsensor/lightsense" and lt.sensor == "living-room"
+    assert (lt.poll_s, lt.smooth_s, lt.hysteresis, lt.stale_s()) == (10.0, 60.0, 0.15, 30.0)
+    assert lt._task is None                                   # no loop here: the real route is never read by a test
+    e.sit.configure({"situations": {"light": {"url": "ftp://x", "sensor": "", "poll_s": 0, "smooth_s": -1,
+                                              "hysteresis": 2}}})
+    assert len(e.sit.problems) == 5 and lt.url is None
+    assert (lt.poll_s, lt.smooth_s, lt.hysteresis) == (10.0, 60.0, 0.15)
+    e.sit.configure({"situations": {"light": "on"}})
+    assert e.sit.problems == ["situations.light: not a mapping"] and lt.url is None
+
+
+def test_a_light_rule_checks_and_holds():
+    e = LightEnv()
+    cond = Conditions(e.sit)
+    assert cond.check({"light_below": {"lux": 50, "for_s": 120}}) == []
+    assert any("needs lux" in p for p in cond.check({"light_below": {}}))
+    assert any("lux must be at least 0" in p for p in cond.check({"light_above": {"lux": -1}}))
+    e.feed(20.0)
+    rule = {"all": [{"light_below": {"lux": 50, "for_s": 2}}, {"not": {"light_above": {"lux": 300}}}]}
+    got = []
+    for _ in range(4):
+        e.t += 1
+        e.feed(20.0)
+        got.append(cond.holds(rule, "evening/enter_when", e.t)[0])
+    assert got == [False, False, True, True]
+    assert cond.describe(rule, "enter_when")["nodes"]["enter_when.all[0]"] == \
+        "the room is darker than 50 lux, for at least 2 s"
+
+
+# -- the rules in page words, per node (README S5.19) ---------------------------------------------------------------------
+def test_describe_reads_naturally_with_nested_all_any_not_and_for_s():
+    s = Stub()
+    cond = Conditions(s)
+    s.values.update(piano_playing=True, quiet=False, light_below=True)
+    rule = {"any": [{"all": [{"piano_playing": {"for_s": 10}}, {"light_below": {"lux": 50}}]},
+                    {"not": {"quiet": {"for_s": 30}}}], "for_s": 5}
+    d = cond.describe(rule, "enter_when", 0.0)
+    assert d["text"] == ("any of: (both: (the piano is playing, for at least 10 s) and the room is darker than 50 lux) "
+                         "or not (the room is quiet, for at least 30 s), for at least 5 s")
+    assert d["nodes"] == {
+        "enter_when.any[0].all[0]": "the piano is playing, for at least 10 s",
+        "enter_when.any[0].all[1]": "the room is darker than 50 lux",
+        "enter_when.any[0]": "both: (the piano is playing, for at least 10 s) and the room is darker than 50 lux",
+        "enter_when.any[1].not": "the room is quiet, for at least 30 s",
+        "enter_when.any[1]": "not (the room is quiet, for at least 30 s)",
+        "enter_when": d["text"]}
+    # live: the raw truth now, for_s left out (Auto's timers are its own)
+    assert d["live"] == {"enter_when.any[0].all[0]": True, "enter_when.any[0].all[1]": True, "enter_when.any[0]": True,
+                         "enter_when.any[1].not": False, "enter_when.any[1]": True, "enter_when": True}
+    assert d["words"]["enter_when.any[0].all[1]"] == {"id": "light_below", "params": {"lux": 50}}
+    s.values.update(piano_playing=None, quiet=True)
+    assert cond.describe(rule, "enter_when", 1.0)["live"]["enter_when"] is None          # unknown or false: unknown
+    assert cond.describe(rule, "enter_when", None)["live"]["enter_when"] is None          # nothing read
+    # leave rules, several words in one object, three items, durations
+    assert cond.describe({"piano_idle": {"for_s": 120}}, "leave_when")["text"] == "the piano has stopped, for at least 2 min"
+    d = cond.describe({"piano_idle": {}, "between": {"from": "18:00", "to": "23:00"}, "for_s": 3600}, "leave_when")
+    assert d["text"] == "both: the piano has stopped and it's 18:00-23:00, for at least 1 hour"
+    assert set(d["nodes"]) == {"leave_when", "leave_when.piano_idle", "leave_when.between"}
+    d = cond.describe({"all": [{"quiet": {}}, {"piano_idle": True}, {"genre_in": {"genres": ["jazz", "soul"]}}]}, "x")
+    assert d["text"] == "all of: the room is quiet, the piano has stopped and the music is jazz or soul"
+    assert cond.describe({"any": [{"quiet": {"for_s": 90}}, {"talking": {}}]}, "x")["text"] == \
+        "any of: (the room is quiet, for at least 90 s) or people are talking"
+    d = cond.describe({"all": [{"nope": {}}, 3]}, "enter_when")                           # malformed: "?" and None
+    assert d["text"] == "both: “nope” and ?" and d["live"]["enter_when.all[1]"] is None
+
+
+def test_check_nodes_paths_and_plain_words_and_check_unchanged():
+    cond = Conditions(Stub())
+    rule = {"any": [{"piano_playin": {}}, {"all": [{"not": {"piano_playing": {"min_notes": "lots"}}}]},
+                    {"piano_idle": {}, "between": {"from": "25:00"}}], "for_s": -1}
+    got = cond.check_nodes(rule, "leave_when")
+    assert [(p["path"], p["level"]) for p in got] == [
+        ("leave_when", "error"),                              # for_s -1
+        ("leave_when.any[0]", "error"),                       # unknown word
+        ("leave_when.any[1].all[0].not", "error"),            # a bad param
+        ("leave_when.any[2].between", "error"),               # a bad time
+        ("leave_when.any[2].between", "error")]               # and a missing one
+    texts = [p["text"] for p in got]
+    assert texts[0] == "“For at least” must be at least 0"
+    assert texts[1] == "This isn't something the room can notice (it may have been renamed)"
+    assert texts[2] == "“the piano is playing”: “At least this many notes” must be a number"
+    assert texts[4] == "“it's between these times” needs “To”"
+    assert cond.check(rule) == [p["where"] for p in got]     # check() says exactly what it said before
+    assert cond.check_nodes({}, "enter_when")[0]["text"] == "Empty: pick what Auto should notice"
+    assert cond.check_nodes({"all": [{"quiet": {}}], "quiet": {}}, "e")[0]["path"] == "e"

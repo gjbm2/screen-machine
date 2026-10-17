@@ -115,6 +115,15 @@ situations:
     window_s: 3                             # README S4.8: the mean of the readings in the last 3 s
     hysteresis: 0.05                        # starting point: a CED word that holds keeps holding until its number is
                                             # back past its threshold by this much
+  light:                                    # light_below, light_above (README S5.19): the room's light sensor
+    url: "http://127.0.0.1:5000/api/lightsensor/lightsense"   # Flask's own light sensor route; null: the light
+                                            # words read unknown
+    sensor: living-room                     # the sensor a rule reads when it names none (the route's only one today)
+    poll_s: 10                              # starting point: one read of the route every 10 s (2 s timeout, async)
+    smooth_s: 60                            # starting point: the median over the last minute, so someone walking past
+                                            # the sensor doesn't flip it
+    hysteresis: 0.15                        # starting point: "darker than 50 lux" stays true until above 57.5, and
+                                            # "brighter than 200" until under 170
 
 # Lamp roles (§8.8). The role comes from each lamp's patch.yaml placement; the role's behaviour is the fields below.
 # Every value is a number, or the name of a vibe field to take it from. dynamics (README S5.18): the role's weight W
