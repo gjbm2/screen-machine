@@ -91,6 +91,9 @@ MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
 EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at least this far past lead (G9)
 CUT_EVENTS = ("section_change", "drop", "track_change")      # show_service's room.events that cue a scene change
+TRACK_EVENTS = ("track_end_armed", "track_end", "track_change")   # its song ends (c8, SHOW_ENGINE §8.5 "Song ends")
+DARK_SCENE = "black"          # fade-dark's dark: the scene preset shown across the gap between songs
+DARK_MAX_S = 8.0              # never stay dark longer than this (or the event's dark_max_s)
 FX_BAR_MAX_S = 4.0            # an auto effect move waits for the next downbeat when one is this close
 CUE_SOURCES = ("panel", "director", "mode")
 INPUTS_EVENT_MIN_S = 2.0
@@ -243,6 +246,8 @@ class Session(EngineListener):
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
         self._building = False                     # a build is on: the next scene is the peak one, prepared (G10)
+        self._dark: Optional[dict] = None          # fade-dark between songs: {since, in_s, prev, task}
+        self._track_arm: Optional[dict] = None     # track_end_armed: {id, at, transition}
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -1292,7 +1297,14 @@ class Session(EngineListener):
                 return await ld.cue(body, cause=cause, reason=reason, detail=detail)
             if cause == "manual":
                 cause, reason = "auto", "next"
-            pk = self._take_prepared() if via is None else None
+            pk = self._take_prepared()
+            if pk is not None and via is not None:      # the warmed scene, with the given way in
+                try:
+                    trans = await self._transition_ready(via)
+                    self._retire(pk["trans"])
+                    pk = {**pk, "trans_spec": via, "trans": trans, "why": f"{pk['why'].split(' via ')[0]} via {via.name}"}
+                except Exception:
+                    pass                                 # its own transition stays (degrade, never refuse)
             if pk is None:
                 pk = await self._pick_and_prepare(via)
                 self._room_prepare(pk)
@@ -1491,7 +1503,8 @@ class Session(EngineListener):
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
-            due = None if self.music.settling(now) else d.due(now)   # a section change: pick for the new direction
+            due = None if self.music.settling(now) or self._dark is not None else d.due(now)   # a section change:
+            # pick for the new direction (between songs, the next song's own cue brings the scene in)
             if due is not None:
                 self._auto_task = asyncio.create_task(self._auto_cue(*due))
         self._fx_tick(now)
@@ -1542,17 +1555,147 @@ class Session(EngineListener):
             fd.done(time.monotonic(), move)
             self._fx_task = None
 
-    def room_event(self, kind: str, at_s: Optional[float], detail: str) -> None:
+    def room_event(self, kind: str, at_s: Optional[float], detail: str, data: Optional[dict] = None) -> None:
         """show_service's room.event (loop thread): a section change, a drop or a new track is a cue to change
-        scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached)."""
+        scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached).  The
+        song-end events with a ``transition`` are handled by _track_event (no min dwell: a song's end is the
+        moment)."""
         if self.following() is not None or self.state != "live" or self.exited:
             return
         self.fx_director.on_event(kind, time.monotonic())     # the bus follows the song too (fx_director.py)
+        data = data or {}
+        if kind in TRACK_EVENTS and (data.get("transition") is not None or data.get("held")
+                                     or kind != "track_change" or detail in ("disarmed", "sound_back")):
+            self._track_event(kind, at_s, detail, data)
+            return
         if kind not in CUT_EVENTS:
             return
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
             self._event_hint = at_s
+
+    # -- song ends (c8's room.events; SHOW_ENGINE §8.5 "Song ends") ------------------------------------------------
+    def _track_event(self, kind: str, at_s: Optional[float], detail: str, data: dict) -> None:
+        d = self.director
+        if data.get("held") or not (d.armed and d.enabled):
+            return                                   # Keep this look (or a person's pending change): leave it be
+        tr = data.get("transition") if isinstance(data.get("transition"), dict) else {}
+        now = time.monotonic()
+        if kind == "track_end_armed":
+            if detail == "disarmed":
+                self._track_arm = None
+                return
+            self._track_arm = {"id": data.get("id"), "at": at_s, "transition": tr}
+            self._track_head(tr.get("change"))        # provisional (big): the director's next pick, ready in time
+            if self._pick_task is None and self.prepared_pick is None:
+                self._pick_task = asyncio.create_task(self._prepare_next())
+            return
+        if kind == "track_end":
+            if detail == "sound_back":                # the music came back with no new song: back to the scene
+                dk = self._dark
+                if dk is not None:
+                    self._end_dark()
+                    self._spawn_track_cue(dk["prev"] or "auto", self._xfade(dk["in_s"]), None, "now",
+                                          "the music came back")
+                return
+            if tr.get("style") == "fade-dark" and self._dark is None:
+                out_s = self._secs(tr.get("out_s"), 2.5)
+                cap = min(DARK_MAX_S, self._secs(tr.get("dark_max_s"), DARK_MAX_S))
+                self._dark = {"since": now, "in_s": self._secs(tr.get("in_s"), 2.0), "prev": self.current_name,
+                              "task": None}
+                self._spawn_track_cue(DARK_SCENE, self._xfade(out_s), None, "now", "the song ended: fading out")
+                self._dark["task"] = asyncio.create_task(self._dark_timeout(out_s + cap))
+            return
+        # track_change: the new song.  Its own transition, landing on its first beat; change big = a fresh pick,
+        # small = a variant of what is on (the owner's queued scenes stay first either way)
+        self._track_arm = None
+        self._track_head(tr.get("change"))
+        style = tr.get("style")
+        if self._dark is not None:
+            in_s = self._secs(tr.get("in_s"), self._dark["in_s"])
+            self._end_dark()
+            via = self._xfade(in_s)
+        elif style == "cut":
+            via = "cut"
+        elif style == "crossfade" or style == "fade-dark":
+            via = self._xfade(self._secs(tr.get("seconds"), 2.0))
+        else:
+            via = None
+        on_beat = tr.get("on", "downbeat") == "downbeat"
+        ahead = at_s is not None and at_s >= now + self.sampler.lead + EVENT_MARGIN_S
+        self._spawn_track_cue("auto", via, at_s if ahead and on_beat else None, "bar" if on_beat else "now",
+                              "a new song" + (f" ({tr.get('change')} change)" if tr.get("change") else ""))
+
+    @staticmethod
+    def _secs(v: Any, default: float) -> float:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return default
+        return max(0.0, min(30.0, f)) if math.isfinite(f) else default
+
+    @staticmethod
+    def _xfade(seconds: float) -> Any:
+        return {"preset": "crossfade-1s", "params": {"duration_s": round(max(0.2, seconds), 2)}}
+
+    def _track_head(self, change: Optional[str]) -> None:
+        """Up next's head for the new song: big = a fresh pick for it, small = another preset of the scene on screen
+        (a variant).  The owner's entries stay first."""
+        head = self.upnext.head("scene")
+        if head is not None and (head.get("origin") == "you" or (change and head.get("for_song") == change)):
+            return                                   # the owner's, or already picked (and warmed) for this song
+        now = time.monotonic()
+        name = None
+        if change == "small":
+            cur = self.mgr.presets.scenes.get(self.current_name or "") or {}
+            src = cur.get("source")
+            sib = [n for n, p in self.mgr.presets.scenes.items()
+                   if src and p.get("source") == src and n != self.current_name and n != DARK_SCENE]
+            if sib:
+                name = self.director.rng_scene.choice(sorted(sib))
+                why, words = f"{name} (a variant for the next song)", "A variant: the next song is close to this one"
+        elif change == "big":
+            got = self.director.pick_scene(self.mgr.presets.scenes, self.current_name, now)
+            if got is not None:
+                name, why, words = got[0], f"{got[1]} for the next song", "For the next song"
+        if name is None:
+            return
+        if head is not None:
+            self.upnext.remove(head["id"])
+        self.upnext.add("scene", {"scene": name, "transition": None, "origin": "auto", "transition_origin": None,
+                                  "why": why, "why_words": words, "for_song": change}, at=0)
+        self._upnext_edited()
+
+    def _end_dark(self) -> None:
+        dk, self._dark = self._dark, None
+        if dk is not None and dk.get("task") is not None:
+            dk["task"].cancel()
+
+    async def _dark_timeout(self, after_s: float) -> None:
+        """Never dark longer than dark_max_s: then the next scene comes in anyway."""
+        try:
+            await asyncio.sleep(after_s)
+        except asyncio.CancelledError:
+            return
+        dk = self._dark
+        if dk is None or self.state != "live":
+            return
+        self._dark = None
+        await self._track_cue("auto", self._xfade(dk["in_s"]), None, "now", "dark long enough")
+
+    def _spawn_track_cue(self, to: Any, via: Any, photon_at: Optional[float], at: str, why: str) -> None:
+        asyncio.create_task(self._track_cue(to, via, photon_at, at, why))
+
+    async def _track_cue(self, to: Any, via: Any, photon_at: Optional[float], at: str, why: str) -> None:
+        try:
+            if self._auto_task is not None:            # the director is mid-cut: let it land first
+                await asyncio.shield(self._auto_task)
+            body = {"to": to, "at": at, **({"via": via} if via is not None else {})}
+            await self.cue(body, cause="auto", reason="track", detail=why, photon_at=photon_at)
+        except SessionError as e:
+            log.warning("[%s] song-end cue failed: %s", self.id, e.detail)
+        except Exception:
+            log.exception("[%s] song-end cue failed", self.id)
 
     BUILD_ON, BUILD_OFF = 0.5, 0.15
 
@@ -2252,13 +2395,17 @@ class SessionManager:
 
     def _room_event(self, data: dict) -> None:
         kind = data.get("kind")
-        if kind not in CUT_EVENTS and kind not in FX_EVENT_P:      # a breakdown moves only the FX bus
+        if kind not in CUT_EVENTS and kind not in FX_EVENT_P and kind not in TRACK_EVENTS:   # breakdown: FX only
             return
+        if kind == "section_change" and data.get("detail") == "track":
+            return                                   # the same junction as the track_change: one cut, not two
         try:
             at_s = float(data["at_ms"]) / 1000.0
         except (KeyError, TypeError, ValueError):
             at_s = None
-        key = (kind, None if at_s is None else round(at_s * 4))     # two publishers, separate seqs: dedupe on time
+        # a stable id (re-sends and updates of one event share it; detail / time tell the updates apart), else
+        # (an older show_service, two publishers with separate seqs) the kind and time
+        key = (data.get("id") or kind, data.get("detail"), None if at_s is None else round(at_s * 4))
         seen = getattr(self, "_room_events_seen", None)
         if seen is None:
             seen = self._room_events_seen = collections.deque(maxlen=32)
@@ -2267,7 +2414,7 @@ class SessionManager:
         seen.append(key)
         detail = str(data.get("detail") or "")[:80]
         for s in list(self.sessions.values()):
-            s.room_event(kind, at_s, detail)
+            s.room_event(kind, at_s, detail, data)
 
     def room_direction_now(self, now: float) -> Optional[dict]:
         """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
