@@ -8,13 +8,20 @@
     - the live meter (WS /v1/levels): raw peak + FFT per frame, and ping/pong to align this page's clock with
       show_service's (every t_ms on the bus is show_service's CLOCK_MONOTONIC, acoustic time)
     - GET /api/v1/state every 2 s: the engine's own timings and the stream's health.
+    - What a live screen's renderer receives (owner, 17 Oct: "still no evidence of any connection between dsp and
+      devtest"): room_service's GET /api/v1/screens/<screen>/inputs, one read a second in all (the signals the scene's
+      bindings read; the screen in detail gets two reads in three while other screens are live, their cards share the
+      third) and the renderer's session (scene + bindings) every 5 s, against the DSP's own energy and beats, with the
+      best correlation over 0-1.6 s of lag (over the last 30 s) as the verdict.
   Nothing here is computed from the audio itself: what it shows is what the DSP says. Built by screen-machine-d4.
+  It shares the owner's browser and GPU with the screens' 4K pages, so it is cheap by construction (17 Oct): at most
+  10 draws a second and only what changed, small canvases, ring-buffered charts, and nothing while the tab is hidden.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DSP monitor</title>
+<title>Show monitor</title>
 <style>
   :root { --bg: #fafaf9; --card: #fff; --ink: #1c1917; --mute: #78716c; --line: #e7e5e4; --teal: #0d9488; --amber: #d97706; --rose: #e11d48; }
   * { box-sizing: border-box; }
@@ -30,6 +37,7 @@
   h2 .pill { text-transform: none; letter-spacing: 0; }
   canvas { display: block; width: 100%; }
   .row { display: grid; grid-template-columns: 112px 1fr 64px; gap: 8px; align-items: center; margin: 3px 0; }
+  #rcvRows .row { grid-template-columns: 120px 1fr 190px; }
   .row .k { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row .v { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
   .bar { height: 10px; background: #f5f5f4; position: relative; }
@@ -47,17 +55,110 @@
   details { margin: 4px 0; } summary { cursor: pointer; color: var(--mute); font-size: 12px; }
   pre { margin: 4px 0 0; padding: 8px; background: #f5f5f4; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
   .note { color: var(--mute); font-size: 12px; margin: 6px 0 0; }
+  .verdict { font-size: 16px; font-weight: 600; }
+  .cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 16px; margin-top: 8px; }
+  select { font: inherit; font-size: 12px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button { font: inherit; font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); background: var(--card); color: var(--mute); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  main[hidden] { display: none; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip { border: 1px solid var(--line); padding: 3px 8px; font-size: 13px; background: #fafaf9; }
+  .chip.ok { border-color: #99f6e4; background: #f0fdfa; color: var(--ink); } .chip.warn { border-color: #fde68a; background: #fffbeb; color: var(--ink); }
+  .chip.off { color: var(--mute); }
+  .arrow { color: var(--mute); }
+  .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); margin-top: 10px; }
+  .card { border: 1px solid var(--line); padding: 10px; min-width: 0; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .card .sub { color: var(--mute); font-size: 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
+  .brow { display: grid; grid-template-columns: 104px 1fr 54px; gap: 6px; align-items: center; margin: 2px 0; font-size: 12px; }
+  .brow .k { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brow .v { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+  .brow .src { grid-column: 1 / -1; color: var(--mute); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; margin: -2px 0 3px; overflow-wrap: anywhere; }
+  .tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .tile { border: 1px solid var(--line); padding: 10px; }
+  .sw { height: 54px; border: 1px solid var(--line); display: flex; align-items: flex-end; justify-content: flex-end; padding: 2px 4px; font: 11px ui-monospace, monospace; color: rgba(255,255,255,.85); text-shadow: 0 0 2px #000; }
+  .dev { border: 1px solid var(--line); padding: 8px; }
+  .dev h4 { margin: 0 0 4px; font-size: 13px; display: flex; justify-content: space-between; gap: 6px; }
+  .lamp2 { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--amber); opacity: .08; vertical-align: -1px; }
+  /* What the DSP view changes on every tick (hit lamps, beat boxes, the pulse circle) gets its own compositor layer,
+     so a tick that changes only those and the charts repaints none of the page around them (a third less paint and
+     layerising there, measured 17 Oct; the number rows change on every other tick and repaint the page then). */
+  #lamps, #beats, #pulse { will-change: transform; }
+  /* a scrolling chart: tile canvases moved by the compositor (see Strip) */
+  .strip { position: relative; overflow: hidden; contain: strict; }
+  .strip > .trk { position: absolute; left: 0; top: 0; width: 100%; height: 100%; will-change: transform; }
+  .trk > canvas { position: absolute; left: 0; top: 0; width: auto; height: 100%; will-change: transform; }
+  .strip > canvas.ov { position: absolute; left: 0; top: 0; z-index: 1; }
 </style>
 </head>
 <body>
 <header>
-  <h1>DSP monitor</h1>
+  <h1>Show monitor</h1>
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-view="sends">What each appliance gets</button>
+    <button type="button" role="tab" data-view="hears">What the room hears</button>
+  </nav>
   <span class="pill" id="conn">connecting…</span>
   <span class="pill" id="stream">—</span>
   <span class="pill" id="delay">—</span>
   <span class="pill" id="rates">—</span>
 </header>
-<main>
+<main id="viewSends">
+  <section class="wide">
+    <h2>Where the show goes now <span class="pill" id="flowT">—</span></h2>
+    <div class="flow" id="flow"></div>
+    <p class="note" id="dirLine">—</p>
+  </section>
+
+  <section class="wide">
+    <h2>Screens <span class="pill">live picture, the signals its scene's parameters follow, the piano</span></h2>
+    <canvas id="keys" style="height:46px"></canvas>
+    <p class="note" id="keysNote">Piano: —</p>
+    <div class="cards" id="screenCards"></div>
+  </section>
+
+  <section class="wide">
+    <h2>One screen in detail: does the DSP move its scene? <span class="pill"><select id="scrSel"></select> <span id="scrT">—</span></span></h2>
+    <div class="verdict" id="verdict">waiting for the renderer…</div>
+    <canvas id="rcv" style="height:150px;margin-top:8px"></canvas>
+    <div class="cols2">
+      <div id="rcvRows"></div>
+      <div><div class="kv" id="bindings"></div></div>
+    </div>
+    <p class="note">The last 30 s; the screen's signals are read once a second (two reads in three while other screens
+      are live too: this page reads one screen a second in all). Thin teal: the DSP's energy
+      (music.features). Thick teal: the energy the screen's scene gets. Blue:
+      its activity. Amber spikes: its beat signal; amber ticks on top: the DSP clock's beats. If the DSP drives the
+      scene, the two teal lines move together and the spikes sit on the ticks. ● marks the signals this scene's
+      parameters use (right: each parameter and its signals). A signal "follows the DSP" when it moves with the DSP's
+      energy (r ≥ 0.6 within 1.6 s) and by at least a quarter as much.</p>
+  </section>
+
+  <section class="wide">
+    <h2>Hue lamps <span class="pill" id="hueT">—</span></h2>
+    <div class="tiles" id="hueTiles"></div>
+    <p class="note" id="hueNote"></p>
+  </section>
+
+  <section class="wide">
+    <h2>DMX over Art-Net <span class="pill" id="dmxT">—</span></h2>
+    <div class="kv" id="dmxLines"></div>
+    <canvas id="universe" style="height:44px;margin-top:8px"></canvas>
+    <div id="dmxDevices" class="cols2"></div>
+    <p class="note" id="dmxNote"></p>
+    <h2 style="margin-top:12px">Physical DMX (show_service's rig) <span class="pill" id="rigT">—</span></h2>
+    <div class="kv" id="rigLines"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Appliances that follow the mode, not the music <span class="pill" id="otherT">—</span></h2>
+    <div class="kv" id="otherRows"></div>
+    <p class="note">The music reaches these only when Auto switches the mode (Auto picks a mode from what it hears).</p>
+  </section>
+</main>
+<main id="viewHears">
+
   <section>
     <h2>Beat clock <span class="pill" id="clockState">—</span></h2>
     <div style="display:flex; gap:16px; align-items:center">
@@ -139,348 +240,1166 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 const $ = (id) => document.getElementById(id);
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const fmt = (v, d = 2) => (v === null || v === undefined) ? "—" : (typeof v === "number" ? (Number.isFinite(v) ? v.toFixed(d) : String(v)) : String(v));
+const abs = (u) => new URL(u, location.href).href;
+
+// -- cheap by construction (owner, 17 Oct: "fix the dsp monitor page as well so it doesn't blow up an entire gpu"; it
+// shares Brave and the RTX 4060 with the screens' 4K pages):
+//   - the sockets and the polls run in a worker (FEED), which hands this page one batch per tick (TICK_MS): the ~150
+//     socket messages a second never reach the main thread, and a burst is shown once, as its newest value;
+//   - a tick draws only what changed since the last: a canvas when what it shows moved, a DOM text, class or bar width
+//     when its value did (the DSP view's number rows every other tick);
+//   - canvases at most 1 backing px per CSS px and MAX_W px wide (CSS stretches them); a scrolling chart is a row of
+//     small tile canvases that the compositor moves, so a tick repaints and hands over one or two tiles, not the chart;
+//   - while the tab is hidden nothing runs: no ticks, no polls, no drawing (the sockets stay open; FEED only stores).
+// FEED's batches come every TICK_MS (a little over 100 ms, so timer jitter never fits 11 into a second), and two ticks
+// are never closer than MIN_TICK_MS (a batch held up behind other work and the next one draw once).
+const TICK_MS = { sends: 110, hears: 125 };   // between batches: 9 a second, 8 on the DSP view (the busiest)
+const MIN_TICK_MS = 100;
+const MAX_W = 1000;
+const ver = {};                    // data source -> a counter bumped on each arrival
+const bump = (k) => { ver[k] = (ver[k] || 0) + 1; };
+const drawnAt = {};                // panel -> its sources' counters (or its content key) when it last drew
+function changedKey(part, s) {     // true (once) when s differs from what part last drew
+  if (drawnAt[part] === s) return false;
+  drawnAt[part] = s; return true;
+}
+function changed(part, ...keys) {  // true (once) when any of keys moved since part last drew
+  let s = ""; for (const k of keys) s += (ver[k] || 0) + ",";
+  return changedKey(part, s);
+}
+function setText(el, s) {          // the text node's data when it has one (no node churn), else textContent
+  if (el._t === s) return;
+  el._t = s; const n = el.firstChild;
+  if (n && n.nodeType === 3 && !n.nextSibling) n.data = s; else el.textContent = s;
+}
+function setCls(el, s) { if (el._c !== s) { el._c = s; el.className = s; } }
+function setStyle(el, p, v) { const k = "_s_" + p; if (el[k] !== v) { el[k] = v; el.style[p] = v; } }
+// The index of the first entry of arr (in time order) at or after time t; at(entry) is its time.
+function idx(arr, t, at = (e) => e[0]) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (at(arr[m]) < t) lo = m + 1; else hi = m; }
+  return lo;
+}
+function keep(arr, now, ms, at = (e) => e[0]) { let i = 0; while (i < arr.length && now - at(arr[i]) > ms) i++; if (i) arr.splice(0, i); }
 
 // -- state ------------------------------------------------------------------------------------------------------
 const latest = {};                 // type -> {data, at, n}
-const arrivals = {};               // type -> [client ms]
+let rates = {};                    // type -> messages in the last 2 s (from FEED)
 let clock = null;                  // music.clock data
-const hits = [];                   // {band, strength, at (client ms), t (srv ms)}
-const lastHit = {};                // band -> {strength, at}
-let lowHitAt = -1e9;
-const series = { onset: [], energy: [], gate: [], lufs: [], bright: [] };   // [client ms, 0..1]
-const levels = [];                 // {at, db, f}
+const hits = [];                   // {band, strength, at (client ms)}
+const lastHit = {};                // band -> {strength, at, seen (when it reached this page)}
+let lowHitSeen = -1e9;             // when the newest sub/bass hit reached this page
+const series = { onset: [], energy: [], gate: [], lufs: [], bright: [] };   // [client ms, 0..1]: 10.5 s (energy 33 s, for the verdict)
+const levels = [];                 // {at, db, f, a, s}
 let range = { lo: 40, hi: 16000 };
-const pongs = [];                  // {rtt, off}: srv_ms = client_ms + off
+let pong = null;                   // the best ping/pong so far {rtt, off}: srv_ms = client_ms + off
 let offMs = null;
-
-function bestOff() {
-  let b = null;
-  for (const p of pongs) if (!b || p.rtt < b.rtt) b = p;
-  return b;
-}
+function bestOff() { return pong; }
 function srvNow() { return offMs === null ? null : performance.now() + offMs; }
-function note(type) {
-  const a = (arrivals[type] ||= []); const now = performance.now();
-  a.push(now); while (a.length && now - a[0] > 2000) a.shift();
-}
-function keep(arr, now, ms) { while (arr.length && now - arr[0][0] > ms) arr.shift(); }
 
-// -- the bus ------------------------------------------------------------------------------------------------------
-function openBus() {
-  const ws = new WebSocket(wsBase + "/v1/show");
-  ws.onopen = () => ws.send(JSON.stringify({ type: "hello", v: 2, role: "monitor", client_id: "dsp-monitor-" + Math.random().toString(36).slice(2, 8),
-                                             want: ["music", "music.hit", "music.rhythm", "show.state"] }));
-  ws.onmessage = (ev) => {
-    let m; try { m = JSON.parse(ev.data); } catch { return; }
-    const type = m.type; if (!type) return;
-    const at = performance.now();
-    const data = m.data !== undefined ? m.data : m;
-    latest[type] = { data, at, n: ((latest[type] && latest[type].n) || 0) + 1 };
-    note(type);
-    if (type === "music.clock") clock = data;
-    else if (type === "music.hit") {
-      hits.push({ band: data.band, strength: data.strength || 0, at });
-      lastHit[data.band] = { strength: data.strength || 0, at };
-      if (data.band === "sub" || data.band === "bass") lowHitAt = at;
-      while (hits.length && at - hits[0].at > 6000) hits.shift();
-    } else if (type === "music.features") {
-      series.onset.push([at, clamp01(data.onset || 0)]);
-      series.energy.push([at, clamp01(data.energy || 0)]);
-      series.gate.push([at, clamp01(data.gate || 0)]);
-      series.lufs.push([at, clamp01(((data.lufs_m ?? -70) + 70) / 70)]);
-      series.bright.push([at, clamp01(data.brightness || 0)]);
-      for (const k in series) keep(series[k], at, 10500);
+// -- the feeds -------------------------------------------------------------------------------------------------------
+// FEED owns the show bus (WS /v1/show, role "monitor": music.* incl. music.hit and music.rhythm, show.state, room.*),
+// the live meter (WS /v1/levels: raw peak + FFT per frame, and the ping/pong that aligns this page's clock with
+// show_service's), room's per-packet DMX feed (WS /api/v1/dmx/live, when room offers it, appliances view) and every GET.
+// It stamps each arrival on this page's clock and keeps it; every tick while the page is visible it posts one batch:
+// each hit, features frame, meter frame and key flash since the last, the newest message of every type, and the polls'
+// answers. A poll runs only while the view that shows it is open. It runs in a worker; where one can't be made, here.
+function FEED(post, listen) {
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  let cfg = null, shift = 0, visible = false, view = "sends", timer = 0, lastPing = -1e9;
+  const now = () => performance.now() + shift;
+  const counts = {}, arrivals = {}, pongs = [], polls = {};
+  const keyDown = new Map(); let pedals = {}, present = false, notesAt = -1e9;
+  const fresh = () => ({ latest: {}, series: [], hits: [], levels: [], flashes: [], polls: [], piano: null, off: null, conn: null, range: null, rates: null, dmxLive: null, dmxGone: false, dmxState: null });
+  let B = fresh();
+  // an entry's time: [at, ...] (features, key flashes) or {at, ...} (hits, meter frames); an array's .at is a method
+  const ts = (e) => (Array.isArray(e) ? e[0] : e.at);
+  // keep the last ms of arr: while the tab is hidden no batch goes out, so this is all that bounds what piles up
+  const push = (arr, x, at, ms) => { arr.push(x); let i = 0; while (i < arr.length && at - ts(arr[i]) > ms) i++; if (i) arr.splice(0, i); };
+  const piano = () => { B.piano = { down: [...keyDown], pedals, present, notesAt }; };
+
+  function openBus() {
+    const ws = new WebSocket(cfg.wsBase + "/v1/show");
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "hello", v: 2, role: "monitor", client_id: "dsp-monitor-" + Math.random().toString(36).slice(2, 8),
+                               want: ["music", "music.hit", "music.rhythm", "show.state", "room"] }));
+      B.conn = ["bus connected", "pill ok"];
+    };
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      const type = m.type; if (!type) return;
+      const at = now();
+      const data = m.data !== undefined ? m.data : m;
+      counts[type] = (counts[type] || 0) + 1; B.latest[type] = { data, at, n: counts[type] };
+      const a = (arrivals[type] ||= []); a.push(at); while (a.length && at - a[0] > 2000) a.shift();
+      if (type === "music.notes") { keyDown.clear(); for (const k of data.keys || []) keyDown.set(k[0], k[1] || 64); pedals = data.pedals || {}; present = !!data.present; notesAt = at; piano(); }
+      else if (type === "music.note") { if (data.on) { keyDown.set(data.pitch, data.vel || 64); push(B.flashes, [at, data.pitch], at, 1000); } else keyDown.delete(data.pitch); notesAt = at; piano(); }
+      else if (type === "music.pedal") { pedals = { ...pedals, [data.pedal]: data.value }; piano(); }
+      else if (type === "music.hit") push(B.hits, { band: data.band, strength: data.strength || 0, at }, at, 6000);
+      else if (type === "music.features") push(B.series, [at, clamp01(data.onset || 0), clamp01(data.energy || 0), clamp01(data.gate || 0), clamp01(((data.lufs_m ?? -70) + 70) / 70), clamp01(data.brightness || 0)], at, 34000);
+    };
+    ws.onclose = () => { B.conn = ["bus closed: retrying", "pill bad"]; setTimeout(openBus, 1000); };
+  }
+
+  let lws = null;
+  function ping() { lastPing = now(); if (lws && lws.readyState === 1) lws.send(JSON.stringify({ ping: now() })); }
+  function openLevels() {
+    const ws = lws = new WebSocket(cfg.wsBase + "/v1/levels");
+    ws.onopen = () => ping();
+    ws.onmessage = (ev) => {
+      const at = now();
+      let f; try { f = JSON.parse(ev.data); } catch { return; }
+      if (typeof f.pong === "number") {
+        const rtt = at - f.pong; pongs.push({ rtt, off: f.srv * 1000 - (f.pong + rtt / 2) }); if (pongs.length > 20) pongs.shift();
+        let b = null; for (const p of pongs) if (!b || p.rtt < b.rtt) b = p;
+        B.off = b; return;
+      }
+      if (typeof f.pk !== "number") return;
+      push(B.levels, { at, db: f.pk, f: f.f, a: f.a, s: f.s }, at, 6000);
+      if (typeof f.fl === "number") B.range = { lo: f.fl, hi: f.fh };
+    };
+    ws.onclose = () => { if (lws === ws) lws = null; setTimeout(openLevels, 1000); };
+  }
+
+  // Open only while the appliances view is showing (this page closes it when it isn't); after a close it waits 1 s (30 s
+  // when room shut it without a frame: no feed there) and one timer brings it back, however early or late that fires.
+  let dws = null, dRetryAt = 0, dTimer = 0, dState = "trying";   // room's per-packet feed: "trying" | "on" | "absent"
+  const sendsOpen = () => visible && view === "sends";
+  const shut = (ws) => { ws._mine = true; ws.close(); };
+  function openDmxLive() {
+    clearTimeout(dTimer); dTimer = 0;
+    if (dws || !sendsOpen()) return;
+    const wait = dRetryAt - now();
+    if (wait > 0) { dTimer = setTimeout(openDmxLive, wait + 5); return; }
+    let got = false; const ws = dws = new WebSocket(cfg.roomWs + "/api/v1/dmx/live");
+    ws.onopen = () => {
+      if (!sendsOpen()) { shut(ws); return; }
+      ws.send(JSON.stringify({ type: "hello", v: 1, role: "monitor", client_id: "show-monitor-" + Math.random().toString(36).slice(2, 8) }));
+    };
+    ws.onmessage = (ev) => {
+      if (!sendsOpen()) { shut(ws); return; }
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "show.state") { got = true; dState = B.dmxState = "on"; B.dmxLive = { fixtures: m.fixtures || {}, global: m.global || {}, input: m.input || {}, at: now() }; }
+    };
+    ws.onclose = () => {
+      if (dws === ws) dws = null;
+      const absent = !got && !ws._mine;
+      if (absent) dState = B.dmxState = "absent";
+      B.dmxLive = null; B.dmxGone = true;
+      dRetryAt = now() + (absent ? 30000 : 1000); openDmxLive();
+    };
+  }
+  // (a socket still connecting shuts itself on open: closing it before then is logged as a failed connection)
+  const closeDmxLive = () => { clearTimeout(dTimer); dTimer = 0; if (dws && dws.readyState === 1) shut(dws); };
+
+  // GETs: {id, urls, ms, msLive (while the DMX feed is on), views: "all" | "sends", rotate}; due ones run, paused ones
+  // wait. A rotating poll reads one of its URLs a period, not all of them: the first gets two periods in three while
+  // there are others, and the others take turns in the third.
+  const pick = (p) => { const u = p.urls, n = p.slot++; return u.length < 2 || n % 3 !== 2 ? u[0] : u[1 + (p.turn++ % (u.length - 1))]; };
+  function kick(p) {
+    clearTimeout(p.timer); p.timer = 0;
+    if (p.busy || !visible || (p.views !== "all" && p.views !== view) || !p.urls.length) return;
+    const wait = p.last + (p.msLive && dState === "on" ? p.msLive : p.ms) - now();
+    if (wait > 0) { p.timer = setTimeout(() => kick(p), wait); return; }
+    p.busy = true; p.last = now();
+    Promise.all((p.rotate ? [pick(p)] : p.urls).map(async (url) => {
+      try {
+        const r = await fetch(url, { cache: "no-store" }); let data = null, bad = false;
+        try { data = await r.json(); } catch { bad = true; }
+        return { url, ok: r.ok, data, bad, at: now() };
+      } catch { return { url, ok: false, data: null, bad: true, at: now() }; }
+    })).then((res) => { B.polls.push({ id: p.id, res }); p.busy = false; kick(p); });
+  }
+  const kickAll = () => { for (const id in polls) kick(polls[id]); };
+
+  function flush() {
+    const t = now();
+    if (t - lastPing >= 1000) ping();
+    const r = {}; for (const k in arrivals) { const a = arrivals[k]; while (a.length && t - a[0] > 2000) a.shift(); r[k] = a.length; }
+    B.rates = r;
+    post(B); B = fresh();
+  }
+  listen((m) => {
+    if (m.init) {
+      cfg = m.init; shift = performance.timeOrigin - cfg.origin;
+      openBus(); openLevels();
     }
-  };
-  ws.onclose = () => { $("conn").textContent = "bus closed: retrying"; $("conn").className = "pill bad"; setTimeout(openBus, 1000); };
-  ws.onopen2 = null;
-  ws.addEventListener("open", () => { $("conn").textContent = "bus connected"; $("conn").className = "pill ok"; });
-}
-
-// -- the meter (raw level + FFT, and the clock alignment) ---------------------------------------------------------
-function openLevels() {
-  const ws = new WebSocket(wsBase + "/v1/levels");
-  const ping = () => { if (ws.readyState === 1) ws.send(JSON.stringify({ ping: performance.now() })); };
-  let t; ws.onopen = () => { ping(); t = setInterval(ping, 1000); };
-  ws.onmessage = (ev) => {
-    const at = performance.now();
-    let f; try { f = JSON.parse(ev.data); } catch { return; }
-    if (typeof f.pong === "number") {
-      const rtt = at - f.pong; pongs.push({ rtt, off: f.srv * 1000 - (f.pong + rtt / 2) }); if (pongs.length > 20) pongs.shift();
-      offMs = bestOff().off; return;
+    if (m.polls) for (const [id, p] of Object.entries(m.polls)) {
+      const q = (polls[id] ||= { id, last: -1e9, busy: false, timer: 0, urls: [], slot: 0, turn: 0 });
+      if (p.urls && p.urls.join("|") !== q.urls.join("|")) q.slot = 0;   // new URLs: the first one is read next
+      Object.assign(q, p); kick(q);
     }
-    if (typeof f.pk !== "number") return;
-    levels.push({ at, db: f.pk, f: f.f, a: f.a, s: f.s });
-    if (typeof f.fl === "number") range = { lo: f.fl, hi: f.fh };
-    while (levels.length && at - levels[0].at > 6000) levels.shift();
-  };
-  ws.onclose = () => { clearInterval(t); setTimeout(openLevels, 1000); };
+    if (m.view !== undefined) {
+      view = m.view; visible = m.visible;
+      clearInterval(timer); timer = 0;
+      if (visible) timer = setInterval(flush, cfg.tick[view] || 110);
+      else for (const id in polls) { clearTimeout(polls[id].timer); polls[id].timer = 0; }
+      if (sendsOpen()) openDmxLive(); else closeDmxLive();
+      kickAll();
+    }
+  });
 }
-
-// -- the engine's own report ---------------------------------------------------------------------------------------
-let engine = null;
-async function pollState() {
+let toFeed = () => {};
+function startFeed() {
+  const init = { origin: performance.timeOrigin, wsBase, roomWs, tick: TICK_MS };
   try {
-    const r = await fetch(base + "/api/v1/state", { cache: "no-store" });
-    engine = await r.json(); engine._at = performance.now();
-  } catch { engine = null; }
-  setTimeout(pollState, 2000);
+    const src = `(${FEED.toString()})((m) => postMessage(m), (fn) => { onmessage = (e) => fn(e.data); });`;
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    let ok = false;
+    w.onmessage = (e) => { ok = true; onBatch(e.data); };
+    w.onerror = () => { if (!ok) { w.terminate(); inThread(); } };
+    toFeed = (m) => w.postMessage(m);
+  } catch { inThread(); return; }
+  configure();
+  function inThread() {             // no worker (a policy or an old browser): the same feed, on this thread
+    let inbox = () => {};
+    FEED((m) => onBatch(m), (fn) => { inbox = fn; });
+    toFeed = (m) => inbox(m);
+    configure();
+  }
+  function configure() { toFeed({ init }); toFeed({ polls: pollTable() }); toFeed({ view, visible: !document.hidden }); }
+}
+
+// One batch from FEED: store it, then draw at the next animation frame (no sooner than MIN_TICK_MS after the last).
+let tickRaf = 0, tickTimer = 0, tickAt = -1e9, tickN = 0;
+function schedule() {
+  if (tickRaf || tickTimer || document.hidden) return;
+  const wait = tickAt + MIN_TICK_MS - performance.now();
+  if (wait > 0) tickTimer = setTimeout(() => { tickTimer = 0; schedule(); }, wait + 1);
+  else tickRaf = requestAnimationFrame(tick);
+}
+function onBatch(b) {
+  for (const [type, L] of Object.entries(b.latest)) { latest[type] = L; bump(type); }
+  if (b.latest["music.clock"]) clock = b.latest["music.clock"].data;
+  const t = performance.now();
+  if (b.series.length) {
+    for (const s of b.series) { series.onset.push([s[0], s[1]]); series.energy.push([s[0], s[2]]); series.gate.push([s[0], s[3]]); series.lufs.push([s[0], s[4]]); series.bright.push([s[0], s[5]]); }
+    for (const k in series) keep(series[k], t, k === "energy" ? 33000 : 10500);
+  }
+  if (b.hits.length) {
+    // the lamps and the low-hit dot decay from when a hit reaches this page (seen), so the first tick that can show it
+    // shows it at full strength (a hit already 400 ms old when it gets here, e.g. back from a hidden tab, from its
+    // stamp); one batch's hits on a band flash as the strongest of them
+    const seen = (at) => (t - at <= 400 ? t : at);
+    for (const h of b.hits) {
+      hits.push(h); const L = lastHit[h.band], s = seen(h.at);
+      if (L && L.seen === s && s === t) { L.strength = Math.max(L.strength, h.strength); L.at = h.at; }
+      else lastHit[h.band] = { strength: h.strength, at: h.at, seen: s };
+      if (h.band === "sub" || h.band === "bass") lowHitSeen = seen(h.at);
+    }
+    keep(hits, t, 6000, (e) => e.at);
+    hitStrip.back(b.hits[0].at);   // a hit stamped before the last tick still gets its dot
+  }
+  if (b.levels.length) {
+    for (const L of b.levels) levels.push(L); keep(levels, t, 6000, (e) => e.at);
+    levelStrip.back(b.levels[0].at); specStrip.back(b.levels[0].at);
+  }
+  if (b.range) range = b.range;
+  if (b.off) { pong = b.off; offMs = pong.off; }
+  if (b.rates) rates = b.rates;
+  if (b.conn) { setText($("conn"), b.conn[0]); setCls($("conn"), b.conn[1]); }
+  if (b.piano) { keyDown.clear(); for (const [p, v] of b.piano.down) keyDown.set(p, v); pedals = b.piano.pedals; pianoPresent = b.piano.present; notesAt = b.piano.notesAt; }
+  for (const [at, p] of b.flashes) keyFlash.set(p, at);
+  if (b.dmxGone) { dmxLive = null; bump("dmxLive"); }
+  if (b.dmxLive) { dmxLive = b.dmxLive; bump("dmxLive"); }
+  if (b.dmxState) dmxLiveState = b.dmxState;
+  for (const P of b.polls) applyPoll(P);
+  schedule();
+}
+
+// -- what a live screen's renderer receives (room_service: the inputs it samples; the renderer: scene + bindings) ------
+// The room's front door is this page's base less "/show" (:8700/show/dev/dsp, or /rs/show/dev/dsp over https); on
+// show_service's own port there is no room API beside it, so the front door's port on the same host.
+const roomBase = /\/show$/.test(base) ? base.replace(/\/show$/, "") : `${location.protocol}//${location.hostname}:8700`;
+const RCV_KEYS = ["energy", "activity", "activity_slow", "drive", "punch", "tempo", "beat", "beat_phase", "bar_phase", "phrase_phase", "downbeat", "motion"];
+const RCV_SPAN = 30000, RCV_GAP = 3000;   // the detail chart and the verdict: the last 30 s of the 1 Hz inputs samples
+let screen = new URLSearchParams(location.search).get("screen") || "devtest";
+let rcv = null;                    // the latest inputs answer, with _at
+const rcvSeries = [];              // [client ms, the DSP's energy | null, the screen's signals {name: value | null}]
+let sess = null;                   // the screen's live renderer session
+let liveScreens = [];
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const screenInputs = {};           // screen -> its latest inputs answer (live screens, and the one in detail)
+const rangeSeen = {};              // "screen/param" -> {lo, hi}: a binding's bar spans what it has done
+function noteRanges(id, d) {
+  for (const bd of d.bindings || []) {
+    const v = typeof bd.value === "number" ? bd.value : null; if (v === null) continue;
+    const r = (rangeSeen[`${id}/${bd.param}`] ||= { lo: v, hi: v }); r.lo = Math.min(r.lo, v); r.hi = Math.max(r.hi, v);
+  }
+}
+// The polls (FEED runs them): the engine's own report and the room's mic choice on both views; the rest only while
+// the appliances view is open. inputs: one read a second in all, the screen in detail first (every read while it is the
+// only one; two in three while other screens are live, and they take turns in the third: their cards update slower).
+let inputsUrl = new Map();         // inputs URL -> screen
+function inputsUrls() {
+  inputsUrl = new Map([...new Set([screen, ...liveScreenIds()])].map((id) => [abs(`${roomBase}/api/v1/screens/${encodeURIComponent(id)}/inputs`), id]));
+  return [...inputsUrl.keys()];
+}
+function pollTable() {
+  return {
+    state: { urls: [abs(base + "/api/v1/state")], ms: 2000, views: "all" },
+    mic: { urls: [abs(base + "/api/v1/inputs")], ms: 5000, views: "all" },
+    sessions: { urls: [abs(`${roomBase}/renderer/api/sessions`)], ms: 5000, views: "sends" },
+    inputs: { urls: inputsUrls(), ms: 1000, views: "sends", rotate: true },   // one screen a second in all
+    room: { urls: [abs(`${roomBase}/api/v1/status`)], ms: 2000, views: "sends" },
+    dmx: { urls: [abs(`${roomBase}/api/v1/dmx`)], ms: 200, msLive: 2000, views: "sends" },
+    fix: { urls: [abs(`${roomBase}/api/v1/fixtures`)], ms: 1000, views: "sends" },
+    rig: { urls: [abs(`${base}/api/v1/rig`)], ms: 5000, views: "sends" },
+  };
+}
+function syncInputs() {            // the live screens changed: FEED polls their inputs too
+  const before = [...inputsUrl.keys()].join("|"); const urls = inputsUrls();
+  if (urls.join("|") !== before) toFeed({ polls: { inputs: { urls } } });
+}
+let engine = null, micInputs = null;
+function applyPoll(P) {
+  const r0 = P.res[0]; const json = (x) => (!x.bad && x.data && typeof x.data === "object" ? x.data : null);
+  if (P.id === "state") { engine = json(r0); if (engine) engine._at = r0.at; bump("engine"); }
+  else if (P.id === "mic") { micInputs = json(r0); bump("mic"); }
+  else if (P.id === "sessions") {
+    const d = json(r0);
+    if (!d) sess = null;
+    else {
+      const list = Array.isArray(d) ? d : (d.sessions || []);
+      const live = list.filter((x) => x.state === "live");
+      liveScreens = [...new Set(live.map((x) => x.screen).filter(Boolean))];
+      sess = live.find((x) => x.screen === screen) || null;
+      sessLive = live;
+    }
+    bump("sessions");
+  } else if (P.id === "inputs") {
+    for (const x of P.res) {
+      const id = inputsUrl.get(x.url); if (id === undefined) continue;
+      const d = json(x);
+      if (!d) { if (id === screen) rcv = null; delete screenInputs[id]; continue; }
+      d._at = x.at; d._ok = x.ok; screenInputs[id] = d;
+      if (d._ok) noteRanges(id, d);
+      if (id === screen) {
+        rcv = d; const F = latest["music.features"];
+        rcvSeries.push([x.at, F && x.at - F.at < 1000 ? num(F.data.energy) : null, d.signals || {}]);
+        keep(rcvSeries, x.at, RCV_SPAN + 500);
+      }
+    }
+    bump("inputs");
+  } else if (r0.ok && json(r0)) {  // the appliances' sources keep their last answer when one fails
+    if (P.id === "room") { roomSt = r0.data; bump("room"); syncInputs(); }
+    else if (P.id === "dmx") { dmxSt = r0.data; bump("dmx"); }
+    else if (P.id === "fix") { fixSt = r0.data; bump("fix"); }
+    else if (P.id === "rig") { rigSt = r0.data; bump("rig"); }
+  }
+}
+const micName = (n) => { const m = /^(?:Microphone|Headset Microphone|Line In|Microphone Array)\s*\((?:\d+-\s*)?(.+)\)$/i.exec(String(n || "").trim()); return m ? m[1] : n; };
+function inputUse() {
+  const mi = micInputs; if (!mi || !mi.inputs) return null;
+  const ch = mi.choice || null; const i = mi.inputs.find((x) => x.stream === ((ch && ch.stream) || mi.active)) || mi.inputs[0];
+  if (!i) return null;
+  const devs = i.devices || (i.device ? [i.device] : []);
+  const use = i.device ? micName(i.device) : i.stream;
+  if (ch && ch.device && !devs.includes(ch.device)) return `${use} (${micName(ch.device)} is chosen but not plugged in)`;
+  return use;
+}
+
+// The signals the scene's bindings read, with the parameters each one moves.
+function boundSignals() {
+  const out = {};
+  for (const [param, b] of Object.entries((sess && sess.scene_bindings) || {})) {
+    if (!b || b.on === false) continue;
+    // v2 {in: [{sig, w}]}, v1 {bind: "note_on"} or {sig}
+    const ins = b.in || [b.sig || b.bind].flat().filter((x) => typeof x === "string").map((sig) => ({ sig }));
+    for (const i of ins) if (i.sig) (out[i.sig] ||= []).push(param);
+  }
+  return out;
+}
+// The DSP's energy at client time t: its newest music.features at or before t, if under 0.5 s old.
+function dspEnergyAt(t) {
+  const a = series.energy; const i = idx(a, t + 1e-6) - 1;
+  return i >= 0 && t - a[i][0] < 500 ? a[i][1] : null;
+}
+// How signal k behaved over the last 30 s against the DSP's energy: n/a, stuck (moved < 0.03), follows (best r over
+// 0-1.6 s of lag >= 0.6 and it moves >= 0.25 per 1.0 of the DSP's energy), or moves on its own. The screen is sampled
+// once a second; the DSP's energy (25 Hz) is read at each sample's time less the lag.
+function judge(k) {
+  const vals = rcvSeries.map((p) => num(p[2][k]));
+  const have = vals.filter((v) => v !== null);
+  if (have.length < 10) return { k, state: "n/a" };
+  const span = Math.max(...have) - Math.min(...have);
+  if (span < 0.03) return { k, state: "stuck", at: have[have.length - 1] };
+  let best = null;
+  for (let lag = 0; lag <= 8; lag++) {
+    const xs = [], ys = [];
+    rcvSeries.forEach((p, i) => { const x = dspEnergyAt(p[0] - lag * 200), y = vals[i]; if (x !== null && y !== null) { xs.push(x); ys.push(y); } });
+    if (xs.length < 15) continue;
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    xs.forEach((x, n) => { sxy += (x - mx) * (ys[n] - my); sxx += (x - mx) ** 2; syy += (ys[n] - my) ** 2; });
+    if (sxx < 1e-6 || syy < 1e-9) continue;
+    const r = sxy / Math.sqrt(sxx * syy), gain = sxy / sxx;
+    if (!best || r > best.r) best = { r, gain, lag: lag * 200 };
+  }
+  if (best && best.r >= 0.6 && best.gain >= 0.25) return { k, state: "follows", ...best };
+  return { k, state: "own", span, ...(best || {}) };
+}
+const WORDS = { "n/a": "n/a (nothing arrives)", stuck: "stuck", follows: "follows the DSP", own: "moves, not with the DSP" };
+function verdict(jd) {
+  if (!rcv) return ["No answer from room_service's inputs for this screen.", "bad"];
+  if (!rcv._ok) return [`${screen} is showing art, not a live scene: put it live (a mode with it on Live) to see what the scene gets.`, "warn"];
+  const dsp = rcvSeries.map((p) => p[1]).filter((v) => v !== null);
+  if (dsp.length < 15) return [`Collecting… (${dsp.length} of 15 readings)`, ""];
+  if (Math.max(...dsp) - Math.min(...dsp) < 0.05) {
+    // Flat energy: say why. A shut gate with sound arriving is a quiet input (73, 17 Oct), not "no music".
+    const F = latest["music.features"]; const f = F ? F.data : {};
+    const mic = inputUse();
+    if (typeof f.lufs_s === "number" && (f.gate ?? 0) < 0.05 && f.lufs_s > -69)
+      return [`The DSP's gate is shut: ${mic ? mic + " hears" : "the input is"} only ${f.lufs_s.toFixed(0)} LUFS, and the gate opens at about −45. The input is too quiet, so nothing reaches the scenes.`, "warn"];
+    return ["The DSP's energy is flat: no sound is arriving. Play something to compare.", "warn"];
+  }
+  const bound = boundSignals(); const used = Object.keys(bound);
+  if (!sess) return ["The screen isn't live: no scene to drive.", "warn"];
+  if (!used.length) return [`${sess.current_scene || sess.scene}: no parameter is bound to a signal.`, "warn"];
+  const js = used.map(jd); const on = js.filter((j) => j.state === "follows");
+  const params = [...new Set(on.flatMap((j) => bound[j.k]))];
+  if (on.length) return [`Connected: ${on.map((j) => j.k).join(", ")} follow${on.length === 1 ? "s" : ""} the DSP and move ${params.join(", ")}`, "ok"];
+  const why = js.map((j) => `${j.k} ${j.state === "stuck" ? `stuck at ${fmt(j.at)}` : j.state === "n/a" ? "n/a" : "not with the DSP"}`).join(" · ");
+  return [`Not connected: none of the signals this scene uses follows the DSP (${why})`, "bad"];
+}
+
+// -- what each appliance gets (the Sends view) ----------------------------------------------------------------------
+// Sources, all same-origin through room's front door (or show_service's base): room status (screens, modes, every
+// appliance's believed state), room's decoded Art-Net universe (GET /api/v1/dmx; per packet on WS /api/v1/dmx/live
+// when room offers it), the Hue lamps (GET /api/v1/fixtures), show_service's rig (GET /api/v1/rig) and its Art-Net
+// sender (the 2 s state poll). Nothing is polled while this view is closed or the tab is hidden.
+const roomWs = roomBase.startsWith("http") ? roomBase.replace(/^http/, "ws") : (location.protocol === "https:" ? "wss://" : "ws://") + location.host + roomBase;
+let view = (() => {
+  const q = new URLSearchParams(location.search).get("view");
+  if (q === "hears" || q === "sends") return q;
+  try { return localStorage.getItem("sm-monitor-view") || "sends"; } catch { return "sends"; }
+})();
+let roomSt = null, dmxSt = null, fixSt = null, rigSt = null, sessLive = [];
+let dmxLive = null, dmxLiveState = "trying";      // the per-packet feed: "trying" | "on" | "absent"
+const keyDown = new Map(), keyFlash = new Map(); let pedals = {}, pianoPresent = false, notesAt = -1e9;
+function liveScreenIds() {
+  const sc = (roomSt && roomSt.screens) || {};
+  return Object.keys(sc).filter((id) => ((sc[id] || {}).observed || {}).layer === "live");
+}
+function dmxValues() {               // the per-fixture values: per packet when the live feed is on, else the poll
+  if (dmxLive && performance.now() - dmxLive.at < 1500) return { fixtures: dmxLive.fixtures, global: dmxLive.global, live: true };
+  return dmxSt ? { fixtures: dmxSt.values || {}, global: dmxSt.global || {}, live: false } : null;
+}
+// A device's channel bytes: room's raw universe when it reports one, else re-encoded from the decoded fields (exact
+// for colour, range and raw fields; a hue's MASTER DIMMER is folded into its rgb, and a screen's ACTIVITY is the room max).
+function deviceBytes(dev, prof, vals, glob) {
+  const raw = dmxSt && Array.isArray(dmxSt.channels) ? dmxSt.channels : null;
+  return (prof.channels || []).map((ch) => {
+    const addr = dev.address + ch.offset - 1;
+    if (raw && raw.length >= addr) return { ch, byte: raw[addr - 1], exact: true };
+    let v = null; const f = ch.field || "";
+    if (f === "r" || f === "g" || f === "b") v = vals && vals.rgb ? vals.rgb["rgb".indexOf(f)] : null;
+    else if (f.startsWith("global.")) v = glob ? glob[f.slice(7)] : null;
+    else if (f === "dimmer") v = null;
+    else v = vals ? vals[f] : null;
+    if (v === null || v === undefined) return { ch, byte: null, exact: false };
+    const byte = ch.raw ? Math.max(0, Math.min(255, Math.round(v))) : ch.range ? Math.round(255 * (v - ch.range[0]) / (ch.range[1] - ch.range[0])) : Math.round(255 * clamp01(v));
+    return { ch, byte, exact: !f.startsWith("global.") };
+  });
+}
+// Every patched device's bytes from the newest values, rebuilt when a DMX source arrived. Keyed on what they say: key
+// (the patch and each byte: what the universe draws) and more (live or polled, the screens' beat pulses: the panel's
+// text and lamps), so a frame that repeats the last (room's live feed sends ~10 a second while nothing moves) draws and
+// writes nothing.
+let dmxF = null;
+function dmxFrame() {
+  if (!changed("dmxFrame", "dmx", "dmxLive") && dmxF) return dmxF;
+  const pv = dmxValues(); const patch = (dmxSt && dmxSt.patch) || { devices: [], profiles: {} };
+  const devs = patch.devices.map((d) => ({ d, bytes: deviceBytes(d, patch.profiles[d.profile] || { channels: [] }, pv && pv.fixtures[d.id], pv && pv.global) }));
+  let key = "";
+  for (const { d, bytes } of devs) { key += `|${d.id}@${d.address}-${d.end}:`; for (const b of bytes) key += (b.byte === null ? "n" : b.byte) + (b.exact ? "," : "~"); }
+  let more = pv ? (pv.live ? "L" : "P") : "-";
+  if (pv) for (const [id, v] of Object.entries(pv.fixtures || {})) if (v && typeof v.pulse === "number") more += `|${id}^${v.pulse.toFixed(3)}`;
+  return (dmxF = { pv, patch, devs, key, more });
+}
+function xyToHex(x, y, bri) {        // CIE xy + brightness to an sRGB swatch (display only)
+  if (!(y > 0)) return "#000000";
+  const Y = clamp01(bri), X = (Y / y) * x, Z = (Y / y) * (1 - x - y);
+  let r = X * 1.656492 - Y * 0.354851 - Z * 0.255038, g = -X * 0.707196 + Y * 1.655397 + Z * 0.036152, b = X * 0.051713 - Y * 0.121364 + Z * 1.011530;
+  const mx = Math.max(r, g, b, 1e-6); if (mx > 1) { r /= mx; g /= mx; b /= mx; }
+  const gam = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+  return "#" + [r, g, b].map((c) => Math.round(255 * clamp01(gam(Math.max(0, c)))).toString(16).padStart(2, "0")).join("");
+}
+const rgbHex = (rgb) => "#" + (rgb || [0, 0, 0]).map((c) => Math.round(255 * clamp01(c)).toString(16).padStart(2, "0")).join("");
+const words = (id) => String(id).replace(/[_.]/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+const esc = (x) => String(x ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+function summarise(v) {              // an appliance's believed state in a few words, whatever its shape
+  if (v === null || v === undefined) return "—";
+  if (typeof v !== "object") return String(v);
+  return Object.entries(v).map(([k, x]) => {
+    if (x && typeof x === "object") return x.title ? `${k}: ${x.title}` : x.state ? `${k}: ${x.state}` : null;
+    return x === null || x === undefined ? null : `${k} ${x}`;
+  }).filter(Boolean).slice(0, 8).join(" · ") || "—";
+}
+
+// The Sends panels, each rebuilt only when one of its sources moved, and written in place (text, classes, bar widths)
+// so a new value is one text or style change, not a new subtree.
+$("flow").innerHTML = '<span class="chip"></span> <span class="arrow">·</span> <span class="chip"></span> <span class="arrow">→</span> <span class="chip"></span> <span class="arrow">→</span> <span class="chip"></span> <span class="chip"></span> <span class="chip"></span>';
+const flowChips = $("flow").querySelectorAll(".chip");
+const BROW = '<div class="brow"><span class="k"></span><div class="bar"><i></i></div><span class="v"></span><span class="src"></span></div>';
+const HUE_TILE = `<div class="tile"><div style="display:flex;justify-content:space-between;gap:6px"><strong></strong><span class="pill"></span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+    <div><div class="sw"></div><div class="pill">Art-Net asks</div></div>
+    <div><div class="sw"></div><div class="pill"></div></div>
+  </div>
+  <div class="pill" style="margin-top:4px"></div></div>`;
+function outputsDom(t) {
+  const sc = (roomSt && roomSt.screens) || {}; const subs = (roomSt && roomSt.subsystems) || {}; const mode = (roomSt && roomSt.mode) || {};
+  const art = engine && engine.artnet; const inp = dmxSt && dmxSt.input; const hue = dmxSt && dmxSt.hue;
+  const liveIds = liveScreenIds(); const auto = subs.autopilot ? subs.autopilot.believed : null;
+  const nodes = rigSt && rigSt.registry && rigSt.registry.counts ? rigSt.registry.counts.nodes : null;
+  // flow strip
+  if (inView("flow") && changed("flow", "room", "engine", "dmx", "rig")) {
+    const chip = (i, txt, cls) => { setText(flowChips[i], txt); setCls(flowChips[i], "chip " + (cls || "")); };
+    chip(0, `Auto ${auto || "?"} · mode ${mode.current || "?"}`, auto === "on" ? "ok" : "");
+    chip(1, art ? `show_service → Art-Net u0: ${art.state}${art.state === "sending" ? ` ${fmt(art.rate_hz, 1)} Hz` : art.idle_reason ? ` (${art.idle_reason})` : ""} · palette ${art.palette || "?"}` : "show_service: —", art && art.state === "sending" ? "ok" : "warn");
+    chip(2, inp ? `room: ${inp.online ? "receiving" : "nothing arriving"} ${fmt(inp.pps, 0)} pps` : "room: —", inp && inp.online ? "ok" : "warn");
+    chip(3, `screens: ${liveIds.length ? liveIds.join(", ") + " live" : "none live"}${Object.keys(sc).length - liveIds.length ? ` · ${Object.keys(sc).length - liveIds.length} on art` : ""}`, liveIds.length ? "ok" : "off");
+    chip(4, hue ? `Hue: ${hue.state}${hue.wanted && hue.wanted.length ? ` · ${hue.wanted.length} following` : " · none following"}` : "Hue: —", hue && hue.state === "streaming" ? "ok" : "off");
+    chip(5, nodes === null ? "physical DMX: —" : nodes ? `physical DMX: ${nodes} node(s)` : "physical DMX: none configured", nodes ? "ok" : "off");
+    setText($("flowT"), roomSt ? "live" : "waiting for room…");
+  }
+  if (inView("dirLine") && changed("dir", "room.direction")) {
+    const dir = latest["room.direction"];
+    setText($("dirLine"), dir ? `Director (room.direction): ${dir.data.vibe ? `vibe ${dir.data.vibe} · ` : "no vibe · "}energy ${fmt(dir.data.energy)} · pace ${fmt(dir.data.pace)} · change ${fmt(dir.data.change_rate)} · moods ${(dir.data.moods || []).join(", ") || "—"}${dir.data.transition_style ? ` · transitions ${dir.data.transition_style}` : ""} · beat lock ${dir.data.beat_lock ? "on" : "off"}` : "Director: no room.direction yet");
+  }
+
+  // screens
+  if (inView("screenCards") && changed("cards", "room", "sessions", "inputs")) {
+    const ids = Object.keys(sc);
+    const box = $("screenCards");
+    if (box.dataset.k !== ids.join("|")) { box.dataset.k = ids.join("|"); box.innerHTML = ids.map((id) => `<div class="card" data-id="${esc(id)}"><h3><span class="nm"></span><span class="pill st"></span></h3><div class="sub"></div><div class="bl"></div></div>`).join(""); }
+    for (const card of box.children) {
+      const id = card.dataset.id; const s0 = sc[id] || {}; const o = s0.observed || {}; const live = o.layer === "live";
+      const ss = sessLive.find((x) => x.screen === id) || null; const inpx = screenInputs[id];
+      setText(card.querySelector(".nm"), s0.name || words(id));
+      const st = card.querySelector(".st"); setText(st, live ? "live" : `${o.layer || "?"} · ${o.phase || "?"}`); setCls(st, "pill st " + (live ? "ok" : o.phase === "failed" ? "bad" : ""));
+      const cs = ss && ss.client_stats && ss.client_stats[0];
+      setText(card.querySelector(".sub"), live && ss
+        ? `${ss.current_scene || ss.scene} · ${ss.w}×${ss.h} ${ss.fps} fps · GPU ${ss.gpu} · ${ss.clients} viewer${ss.clients === 1 ? "" : "s"}${cs && cs.stats ? ` · buffered ${cs.stats.buffered_ms} ms` : ""} · reads fixture ${(inpx && inpx.fixture) || "—"}`
+        : (o.detail || (s0.desired === "art" ? "art (the mode keeps it on art)" : "not live")));
+      const bl = card.querySelector(".bl");
+      if (!live || !inpx || !inpx._ok) { if (bl._n !== 0) { bl._n = 0; bl.innerHTML = ""; } continue; }
+      const sig = inpx.signals || {};
+      const rows = (inpx.bindings || []).map((bd) => {
+        const ins = bd.in || [bd.sig || bd.bind].flat().filter((x) => typeof x === "string").map((x) => ({ sig: x }));
+        const v = typeof bd.value === "number" ? bd.value : null;
+        const r = rangeSeen[`${id}/${bd.param}`]; const span = r ? r.hi - r.lo : 0;
+        const src = bd.colour ? `colour (mix ${fmt(bd.mix)})` : ins.map((i) => `${i.sig}${i.w !== undefined ? " " + fmt(i.w) : ""} [${sig[i.sig] === null || sig[i.sig] === undefined ? "n/a" : fmt(sig[i.sig])}]`).join(" + ") || "—";
+        return { p: bd.param, v, bar: v === null ? null : span > 1e-6 ? (v - r.lo) / span : 0.5, moving: span > 1e-6, src, on: bd.on !== false };
+      }).filter((x) => x.on).sort((a, c) => Number(c.moving) - Number(a.moving));
+      if (!rows.length) { if (bl._n !== -1) { bl._n = -1; bl.innerHTML = '<p class="note">This scene has no parameter bound to a signal.</p>'; } continue; }
+      if (bl._n !== rows.length) { bl._n = rows.length; bl.innerHTML = BROW.repeat(rows.length) + '<p class="note"></p>'; }
+      rows.forEach((x, i) => {
+        const r = bl.children[i]; const k = r.children[0], bar = r.children[1].firstChild;
+        if (k._t !== x.p) { setText(k, x.p); k.title = x.p; }
+        setStyle(bar, "width", `${x.bar === null ? 0 : (clamp01(x.bar) * 100).toFixed(1)}%`); setStyle(bar, "background", x.moving ? "" : "#d6d3d1");
+        setText(r.children[2], x.v === null ? "—" : fmt(x.v)); setText(r.children[3], `← ${x.src}`);
+      });
+      setText(bl.lastChild, `${rows.filter((x) => x.moving).length} of ${rows.length} bound parameters have moved since this page opened (grey: not yet). Bars span what each has done.`);
+    }
+  }
+  if (inView("keysNote")) setText($("keysNote"), `Piano: ${pianoPresent ? "playing" : "quiet"} · ${keyDown.size} key${keyDown.size === 1 ? "" : "s"} down · pedals ${Object.entries(pedals).map(([k, v]) => `${k} ${fmt(v)}`).join(", ") || "—"}${t - notesAt > 10000 ? " · no MIDI for a while" : ""}`);
+
+  // Hue
+  if (inView("hueTiles") && changed("hue", "fix", "dmx")) {
+    const lamps = ((fixSt && fixSt.fixtures) || []).filter((f) => f.kind === "hue");
+    const sent = (hue && hue.sent) || {};
+    setText($("hueT"), hue ? `${hue.state}${hue.detail ? " · " + hue.detail : ""} · ${hue.frames || 0} frames${hue.dtls ? " · DTLS" : ""}` : "—");
+    const box = $("hueTiles"); const ids = lamps.map((f) => f.id).join("|");
+    if (box.dataset.k !== ids) {
+      box.dataset.k = ids; box.innerHTML = lamps.length ? HUE_TILE.repeat(lamps.length) : '<p class="note">No Hue lamps in the patch.</p>';
+      for (const el of box.children) { const p = el.querySelectorAll(".pill"), sw = el.querySelectorAll(".sw"); el._r = { lb: el.querySelector("strong"), st: p[0], a: sw[0], b: sw[1], bt: p[2], ft: p[3] }; }
+    }
+    lamps.forEach((f, i) => {
+      const R = box.children[i]._r; const sx = sent[f.id];
+      const inHex = f.dmx_hex || rgbHex(f.dmx && f.dmx.rgb); const lvl = f.dmx ? f.dmx.level : null;
+      setText(R.lb, String(f.label ?? "")); setText(R.st, String(f.status_text || f.status || ""));
+      setStyle(R.a, "background", inHex); setText(R.a, lvl === null ? "" : Math.round(lvl * 100) + "%");
+      setStyle(R.b, "background", sx ? xyToHex(sx.x, sx.y, sx.bri) : "#f5f5f4"); setText(R.b, sx ? Math.round(sx.bri * 100) + "%" : "");
+      setText(R.bt, sx ? "sent to the lamp" : hue && hue.sent ? "not streaming" : "sent: needs room's tap");
+      setText(R.ft, `${f.control === "dmx" ? "follows the show" : `control: ${f.control || "—"}`} · bridge reads ${f.light ? `${f.light.value || (f.light.on ? "on" : "off")}${f.light.hex ? " " + f.light.hex : ""} bri ${f.light.bri ?? ""}` : "—"}`);
+    });
+    setText($("hueNote"), hue && hue.state !== "streaming" ? "The lamps get the show only in modes that set them to follow it (their target \"dmx\"); in other modes the house controls them." : "");
+  }
+
+  // DMX / Art-Net
+  const DF = inView("dmxLines") ? dmxFrame() : null;
+  if (DF && changedKey("dmx", `${ver.dmx || 0},${ver.engine || 0}${DF.key}${DF.more}`)) {
+    const { pv, patch } = DF;
+    setText($("dmxT"), pv ? (pv.live ? "per packet (live feed)" : "polled 5×/s") : "—");
+    kv($("dmxLines"), [
+      ["sender", art ? `show_service virtual Maestro → ${art.target || "?"} universe ${art.universe ?? 0}: ${art.state}${art.idle_reason ? " (" + art.idle_reason + ")" : ""} · ${fmt(art.rate_hz, 1)} Hz · beats ${art.beats ?? "—"}${art.period_ms ? ` · ${fmt(60000 / art.period_ms, 1)} bpm` : ""} · palette ${art.palette || "—"} · hue depth ${art.look ? fmt(art.look.hue_depth) : "—"}` : "—"],
+      ["receiver", inp ? `room_service ${inp.bind}: ${inp.online ? "online" : "offline"} · ${fmt(inp.pps, 0)} pps · ${Math.round(inp.age_ms ?? 0)} ms old · from ${inp.last_from || "—"} · ${inp.packets} packets` : "—"],
+      ["patch", `${patch.devices.length} devices: ${patch.devices.map((d) => `${d.id} ${d.address}-${d.end}`).join(", ")}`],
+    ]);
+    const box = $("dmxDevices"); const ids = patch.devices.map((d) => d.id);
+    if (box.dataset.k !== ids.join("|")) { box.dataset.k = ids.join("|"); box.innerHTML = patch.devices.map((d) => `<div class="dev" data-id="${esc(d.id)}"><h4><span>${esc(d.label)} <span class="pill">${esc(d.id)} · ${d.address}-${d.end}</span></span>${d.kind === "screen" ? `<span class="lamp2" id="lamp-${esc(d.id)}" title="DIMMER: the beat pulse"></span>` : ""}</h4><div class="ch"></div></div>`).join(""); }
+    for (const el of box.children) {
+      const D = DF.devs.find((x) => x.d.id === el.dataset.id); if (!D) continue;
+      rows(el.querySelector(".ch"), D.bytes.map((b) => [`${b.ch.attr}`, b.byte === null ? null : b.byte / 255, b.byte === null ? (b.ch.field === "dimmer" ? "in rgb" : "—") : `${b.byte}${b.exact ? "" : " ≈"}`]));
+    }
+    // the screens' beat pulse lamps (DIMMER), per packet when the live feed is on
+    if (pv) for (const [id, v] of Object.entries(pv.fixtures || {})) { const el = document.getElementById("lamp-" + id); if (el && typeof v.pulse === "number") setStyle(el, "opacity", (0.08 + 0.92 * clamp01(v.pulse / 0.7)).toFixed(2)); }
+    setText($("dmxNote"), (pv && !pv.live ? "Polled 5 times a second: the beat pulses on DIMMER (60–250 ms) are mostly missed until room offers its live feed. " : "")
+      + (dmxSt && Array.isArray(dmxSt.channels) ? "" : "≈: re-encoded from room's decode (a Hue's MASTER DIMMER is folded into its colour; ACTIVITY is the room's max)."));
+  }
+  if (inView("rigLines") && changed("rig", "rig")) {
+    const outs = (rigSt && rigSt.outputs) || {};
+    setText($("rigT"), rigSt ? (rigSt.enabled ? "rig on" : "rig off") : "—");
+    const lines = Object.values(outs).map((o) => [o.id, `${o.driver}: ${o.state}${o.detail ? " · " + o.detail : ""}${o.state !== "off" ? ` · ${fmt(o.rate_hz, 1)} Hz · ${o.frames} frames` : ""}`]);
+    lines.push(["nodes", nodes ? `${nodes} Art-Net node(s)` : "none configured: no physical DMX fixtures get anything yet"]);
+    kv($("rigLines"), lines);
+  }
+
+  // appliances that follow the mode
+  if (inView("otherRows") && changed("other", "room")) {
+    const skip = new Set(["screens", "page", "sensor_mask", "log", "hue", "show"]);
+    const lt = mode.last_transition || {};
+    const rowsO = [["Auto", `${auto || "—"} · mode ${mode.current || "—"}${lt.to ? ` · last switch ${lt.from || "?"} → ${lt.to} by ${lt.source || "?"}` : ""}`]];
+    for (const [id, x] of Object.entries(subs)) {
+      if (skip.has(id) || id === "autopilot") continue;
+      const flags = [x.dry_run ? "dry run" : null, x.available === false ? "unavailable" : null, x.last_error ? x.last_error : null].filter(Boolean);
+      rowsO.push([words(id), `${summarise(x.believed)}${flags.length ? " · " + flags.join(" · ") : ""}`]);
+    }
+    kv($("otherRows"), rowsO);
+    setText($("otherT"), mode.current ? `mode ${mode.current}` : "—");
+  }
 }
 
 // -- helpers to draw ----------------------------------------------------------------------------------------------
+// Every canvas's (and chart box's) CSS size comes from a ResizeObserver, so drawing never reads layout; a canvas that
+// isn't shown is shrunk to 0×0.
+const sizes = new ResizeObserver((es) => {
+  for (const e of es) {
+    const c = e.target; c._cw = e.contentRect.width; c._ch = e.contentRect.height;
+    if (c.tagName === "CANVAS" && (!c._cw || !c._ch)) { c.width = 0; c.height = 0; }
+  }
+});
+for (const c of document.querySelectorAll("canvas")) sizes.observe(c);
+// What is on screen: a canvas, chart or panel scrolled out of view (or in the closed view) is neither drawn nor
+// written; it catches up on the first tick it is back.
+const seen = new IntersectionObserver((es) => { for (const e of es) e.target._vis = e.isIntersecting; });
+for (const el of document.querySelectorAll("canvas, section")) seen.observe(el);
+const inView = (id) => { const el = $(id); return (el._sec ||= el.closest("section") || el)._vis !== false; };
+// The canvas's backing store: at most 1 px per CSS px and MAX_W px wide (CSS stretches it). Returns [ctx, w, h, k],
+// k the backing px per CSS px (w = 0 while it isn't shown); a resize clears it and marks it _fresh.
 function fit(c) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
-  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-  return [c.getContext("2d"), w, h, dpr];
+  const cw = c._cw || 0, ch = c._ch || 0;
+  if (!cw || !ch) return [null, 0, 0, 1];
+  const k = Math.min(window.devicePixelRatio || 1, 1, MAX_W / cw);
+  const w = Math.max(1, Math.round(cw * k)), h = Math.max(1, Math.round(ch * k));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c._fresh = true; }
+  return [c.getContext("2d"), w, h, k];
+}
+// Draw canvas c with fn(g, w, h, k) only when key (what it shows) differs from what it last drew, or it was resized.
+function paintIf(c, key, fn) {
+  if (c._vis === false) return;
+  const [g, w, h, k] = fit(c); if (!w) return;
+  if (c._key === key && !c._fresh) return;
+  c._key = key; c._fresh = false; fn(g, w, h, k);
+}
+// A scrolling chart: the <canvas id> becomes a clipped box holding a track of tile canvases (`tile` columns each)
+// that cover the last `span` ms, newest on the right. Each tick paints only the columns since the last (back to
+// `since`, a line's last point that the next one joins, less `margin` CSS px for half a stroke or a dot) into the one
+// or two tiles that hold them, and moves the track with one CSS transform (the compositor's work, no repaint); a tile
+// that scrolls out on the left is placed again on the right. So a tick hands over a tile or two, never the whole
+// chart, and never copies its history. paint(s) draws what overlaps s.t0..s.t1 (client ms) at x = s.X(time) (clipped
+// to s.x0..s.x1; with raw: true it writes those columns itself). cols/rows: a fixed backing size (CSS stretches it).
+// overlay: {w, h (CSS px, h 0 = the box's), key(), draw(g, w, h, k)}: labels on top, drawn when key() changes.
+// back(at): data stamped at `at` arrived after a tick had already painted past it: the next tick repaints from there.
+// grid: it draws the beat clock's beats; when the clock (or this page's offset to it) has since moved them by more than
+// GRID_TOL backing px anywhere on the strip, or a grid started or stopped, the next tick repaints it all against the
+// new one (the beats always stand where the current clock puts them, as when every frame redrew them).
+const GRID_TOL = 2;
+const beatGrid = () => (clock && clock.bpm > 0 && offMs !== null ? { c: clock, off: offMs } : null);
+const beatAt = (G, t) => G.c.beat_at_anchor + (t + G.off - G.c.anchor_ms) * G.c.bpm / 60000;
+function gridMoved(a, b, t0, t1, tolMs) {   // did grid b put the beats in t0..t1 more than tolMs from where a did?
+  if (!a || !b) return !a !== !b;
+  if (a.c === b.c && a.off === b.off) return false;
+  const per = 60000 / b.c.bpm;
+  for (const x of [t0, t1]) { let d = beatAt(b, x) - beatAt(a, x); d -= Math.round(d); if (Math.abs(d) * per > tolMs) return true; }
+  return false;                    // both lines are straight, so the ends are the worst case
+}
+class Strip {
+  constructor(id, span, bg, paint, { since = null, margin = 2, overlay = null, cols = 0, rows = 0, tile = 256, raw = false, grid = false } = {}) {
+    const c = $(id); const box = document.createElement("div"), track = document.createElement("div");
+    box.className = "strip"; box.id = id; box.style.cssText = c.style.cssText; track.className = "trk"; box.appendChild(track);
+    sizes.unobserve(c); seen.unobserve(c); c.replaceWith(box); sizes.observe(box); seen.observe(box); box._strip = this;
+    Object.assign(this, { box, track, span, bg, paint, since, margin, overlay, cols, rows, tile, raw, grid, gridAt: null, tiles: [], from: -Infinity, geo: "", ov: null, org: null });
+  }
+  reset() { this.from = -Infinity; }
+  back(at) { if (at < this.from) this.from = at; }
+  release() {                      // its view closed: give the tiles' memory back (rebuilt when it opens)
+    if (!this.geo) return;
+    for (const T of this.tiles) { T.el.width = 0; T.el.height = 0; T.j = null; }
+    if (this.ov) { this.ov.width = 0; this.ov.height = 0; }
+    this.geo = "";
+  }
+  layout() {                       // (re)build the tiles for the box's size; false while it isn't shown
+    const cw = this.box._cw || 0, ch = this.box._ch || 0; if (!cw || !ch) return false;
+    const k = Math.min(window.devicePixelRatio || 1, 1, MAX_W / cw);
+    // cols/rows cap the backing size; a narrower (phone) box gets fewer, so never more than 1 backing px per CSS px
+    const fitTo = (n, css) => Math.max(1, n ? Math.min(n, Math.round(css * k)) : Math.round(css * k));
+    const W = fitTo(this.cols, cw), H = fitTo(this.rows, ch);
+    const geo = `${W}x${H}/${cw}x${ch}/${k}`;
+    if (geo === this.geo) return true;
+    Object.assign(this, { geo, W, H, k, kx: W / cw });
+    const n = Math.ceil(W / this.tile) + 1;
+    while (this.tiles.length < n) { const el = document.createElement("canvas"); this.track.appendChild(el); this.tiles.push({ el, g: null, j: null }); }
+    while (this.tiles.length > n) this.tiles.pop().el.remove();
+    for (const T of this.tiles) {
+      T.el.width = this.tile; T.el.height = H; T.el.style.width = (this.tile / this.kx + 1).toFixed(3) + "px";   // 1 px over the next: no seams
+      T.g = T.el.getContext("2d"); T.j = null; T.el._s_transform = undefined;
+    }
+    if (this.overlay) {
+      if (!this.ov) { this.ov = document.createElement("canvas"); this.ov.className = "ov"; this.box.appendChild(this.ov); }
+      const o = this.overlay, ow = o.w || cw, oh = o.h || ch;
+      this.ov.width = Math.round(ow * k); this.ov.height = Math.round(oh * k); this.ov.style.width = ow + "px"; this.ov.style.height = oh + "px"; this.ov._key = null;
+    }
+    this.from = -Infinity; this.org = null;
+    return true;
+  }
+  draw(t) {
+    if (this.box._vis === false || !this.layout()) return;
+    const { W, H, tile: TW, kx } = this, n = this.tiles.length, ppm = W / this.span;
+    const gd = this.grid ? beatGrid() : null;
+    if (this.grid && this.from > -Infinity && gridMoved(this.gridAt, gd, t - this.span, t, GRID_TOL / ppm)) this.from = -Infinity;
+    const c1 = Math.ceil(t * ppm); let c0 = Math.floor(this.from * ppm - this.margin * kx);
+    if (!(c0 > c1 - W)) { c0 = c1 - W; this.gridAt = gd; }   // a first draw, a resize, a pause or a new grid: every column
+    const left = c1 - W, place = (T) => setStyle(T.el, "transform", `translateX(${((T.j * TW - this.org) / kx).toFixed(2)}px)`);
+    if (this.org === null || Math.abs(left - this.org) > 1e5) {   // (re)anchor the track, so its offsets stay small
+      this.org = Math.floor(left / TW) * TW;
+      for (const T of this.tiles) if (T.j !== null) place(T);
+    }
+    for (let j = Math.floor(c0 / TW); j * TW < c1; j++) {
+      const T = this.tiles[((j % n) + n) % n], g = T.g, off = j * TW;
+      if (T.j !== j) { T.j = j; place(T); g.fillStyle = this.bg; g.fillRect(0, 0, TW, H); }   // a placed tile starts blank
+      const a = Math.max(c0, off), b = Math.min(c1, off + TW);
+      const s = { g, t0: a / ppm, t1: b / ppm, X: (at) => at * ppm - off, ppm, w: W, h: H, k: this.k, now: t, x0: a - off, x1: b - off };
+      if (this.raw) { this.paint(s); continue; }
+      g.save(); g.beginPath(); g.rect(s.x0, 0, s.x1 - s.x0, H); g.clip();
+      g.fillStyle = this.bg; g.fillRect(s.x0, 0, s.x1 - s.x0, H);
+      this.paint(s); g.restore();
+    }
+    this.from = Math.min(t, this.since ? this.since(t) : t);
+    setStyle(this.track, "transform", `translateX(${((this.org - left) / kx).toFixed(2)}px)`);
+    if (this.ov) { const key = this.overlay.key ? this.overlay.key() : ""; if (this.ov._key !== key) { this.ov._key = key; const g = this.ov.getContext("2d"); g.clearRect(0, 0, this.ov.width, this.ov.height); this.overlay.draw(g, this.ov.width, this.ov.height, this.k); } }
+  }
+}
+// Stroke one series over a strip's region: from the point before s.t0 to the first after s.t1, lifting the pen over
+// nulls and over gaps longer than gap ms. get(entry) is its value (0..1 after Y), at(entry) its time.
+function line(s, arr, get, Y, colour, width, gap, at = (e) => e[0]) {
+  const { g, t0, t1, X, k } = s;
+  g.strokeStyle = colour; g.lineWidth = width * k; g.beginPath();
+  let pen = false, prev = -Infinity;
+  for (let i = Math.max(0, idx(arr, t0, at) - 1); i < arr.length; i++) {
+    const e = arr[i], tt = at(e), v = get(e);
+    if (v === null || v === undefined || !Number.isFinite(v)) { pen = false; continue; }
+    const x = X(tt), y = Y(v);
+    if (pen && tt - prev <= gap) g.lineTo(x, y); else g.moveTo(x, y);
+    pen = true; prev = tt;
+    if (tt > t1) break;
+  }
+  g.stroke();
+}
+// The beat clock's beats (client ms) from t0 to t1, the clock evaluated at client time now (at most 400).
+function beatsIn(t0, t1, now) {
+  if (!clock || !(clock.bpm > 0) || offMs === null) return [];
+  const per = 60000 / clock.bpm, bNow = clock.beat_at_anchor + (now + offMs - clock.anchor_ms) / per, out = [];
+  for (let b = Math.ceil(bNow - (now - t0) / per); out.length < 400; b++) { const tb = now + (b - bNow) * per; if (tb > t1) break; out.push(tb); }
+  return out;
 }
 function rows(el, list) {
-  // list: [label, value01 or null, text]
+  // list: [label, value01 or null, text]; written in place, each part only when it changed
   if (el.childElementCount !== list.length) {
     el.innerHTML = list.map(() => '<div class="row"><span class="k"></span><div class="bar"><i></i></div><span class="v"></span></div>').join("");
   }
   list.forEach(([k, v, txt], i) => {
-    const r = el.children[i];
-    r.children[0].textContent = k; r.children[0].title = k;
-    r.children[1].firstChild.style.width = v === null || v === undefined ? "0%" : (clamp01(v) * 100).toFixed(1) + "%";
-    r.children[1].style.visibility = v === null || v === undefined ? "hidden" : "visible";
-    r.children[2].textContent = txt;
+    const r = el.children[i]; const kk = r.children[0], bar = r.children[1];
+    if (kk._t !== k) { setText(kk, k); kk.title = k; }
+    const none = v === null || v === undefined;
+    setStyle(bar.firstChild, "width", none ? "0%" : (clamp01(v) * 100).toFixed(1) + "%");
+    setStyle(bar, "visibility", none ? "hidden" : "visible");
+    setText(r.children[2], txt);
   });
 }
-const LUT = (() => {
+function kv(el, list, pre = "") {
+  // list: [key, value]: a key/value grid, written in place
+  if (el.childElementCount !== list.length * 2) el.innerHTML = '<span class="k"></span><span></span>'.repeat(list.length);
+  list.forEach(([k, v], i) => { setText(el.children[2 * i], String(k)); setText(el.children[2 * i + 1], pre + (v === undefined || v === null ? "—" : String(v))); });
+}
+const LUT = (() => {               // the spectrogram's colours: [r, g, b] for 0..255
   const st = [[0, [12, 10, 9]], [0.3, [30, 58, 138]], [0.6, [13, 148, 136]], [0.85, [250, 204, 21]], [1, [255, 251, 235]]];
   const out = [];
   for (let i = 0; i < 256; i++) {
     const v = i / 255; let k = st.findIndex(([p]) => p >= v); k = Math.max(1, k);
     const [p0, c0] = st[k - 1], [p1, c1] = st[k]; const f = (v - p0) / (p1 - p0 || 1);
-    out.push(`rgb(${c0.map((c, j) => Math.round(c + (c1[j] - c) * f)).join(",")})`);
+    out.push(c0.map((c, j) => Math.round(c + (c1[j] - c) * f)));
   }
   return out;
 })();
 const col = (db) => LUT[Math.round(clamp01((db + 100) / 80) * 255)];
 
+// -- the charts -------------------------------------------------------------------------------------------------------
+const hitStrip = new Strip("hitTrail", 5000, "#f5f5f4", (s) => {
+  const { g, t0, t1, X, ppm, h, k, now } = s; const rowH = h / BANDS.length, rMs = rowH * 0.45 / ppm;
+  g.fillStyle = "#0d9488"; g.beginPath();
+  for (let i = idx(hits, t0 - rMs, (e) => e.at); i < hits.length && hits[i].at <= t1 + rMs; i++) {
+    const hh = hits[i]; const b = BANDS.indexOf(hh.band); if (b < 0) continue;
+    const x = X(hh.at), y = (b + 0.5) * rowH, r = Math.max(1.5 * k, clamp01(hh.strength) * rowH * 0.45);
+    g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2);
+  }
+  g.fill();
+  g.strokeStyle = "rgba(217,119,6,0.6)"; g.lineWidth = k; g.beginPath();     // beat lines on the same axis
+  for (const tb of beatsIn(t0 - 1 / ppm, t1 + 1 / ppm, now)) { const x = X(tb); g.moveTo(x, 0); g.lineTo(x, h); }
+  g.stroke();
+}, { margin: 14, tile: 128, grid: true, overlay: { w: 70, draw: (g, w, h, k) => {
+  g.font = `${10 * k}px ui-sans-serif`; g.fillStyle = "#a8a29e";
+  BANDS.forEach((b, i) => g.fillText(b, 3 * k, (i + 0.7) * h / BANDS.length));
+} } });
+const levelStrip = new Strip("level", 5000, "#f5f5f4", (s) => {
+  const { g, t0, t1, X, h, k, now } = s; g.fillStyle = "#0d9488";
+  for (let i = Math.max(0, idx(levels, t0 - 250, (e) => e.at) - 1); i < levels.length && levels[i].at <= t1; i++) {
+    const L = levels[i]; const end = Math.min(i + 1 < levels.length ? levels[i + 1].at : now, L.at + 250); if (end < t0) continue;
+    const x0 = X(L.at), v = clamp01((L.db + 72) / 72); g.fillRect(x0, h - v * h, Math.max(k, X(end) - x0), v * h);
+  }
+}, { since: (t) => { const L = levels[levels.length - 1]; return L && t - L.at < 300 ? L.at : t; } });
+// The spectrogram: SPEC_COLS columns over 5 s (fewer on a box narrower than that), SPEC_ROWS rows (2 per band),
+// written as pixels: each column from the newest FFT frame by its end (dark when none within 250 ms). Its tiles (64
+// columns each) are its ring buffer: at most 512 × 96 in all, and nothing is ever copied, scrolled or drawn twice.
+const SPEC_COLS = 448, SPEC_ROWS = 96;
+const specStrip = new Strip("spectro", 5000, "#0c0a09", (s) => {
+  const n = s.x1 - s.x0, rows = s.h; if (n <= 0) return;
+  const img = new ImageData(n, rows), d = img.data, cms = 1 / s.ppm;
+  let p = idx(levels, s.t0 - 300, (e) => e.at), fr = -1;
+  for (let c = 0; c < n; c++) {
+    const end = s.t0 + (c + 1) * cms;
+    while (p < levels.length && levels[p].at <= end) { if (levels[p].f) fr = p; p++; }
+    const F = fr >= 0 && end - levels[fr].at < 250 ? levels[fr].f : null; const nb = F ? F.length : 0;
+    for (let y = 0; y < rows; y++) {
+      const rgb = F ? col(F[Math.min(nb - 1, Math.floor((rows - 1 - y) * nb / rows))]) : LUT[0];
+      const o = (y * n + c) * 4; d[o] = rgb[0]; d[o + 1] = rgb[1]; d[o + 2] = rgb[2]; d[o + 3] = 255;
+    }
+  }
+  s.g.putImageData(img, s.x0, 0);
+}, { raw: true, cols: SPEC_COLS, rows: SPEC_ROWS, tile: 64, margin: 3, overlay: { w: 40, key: () => `${range.lo}-${range.hi}`, draw: (g, w, h, k) => {
+  g.font = `${10 * k}px ui-sans-serif`; g.fillStyle = "rgba(255,255,255,.75)";
+  for (const hz of [100, 1000, 10000]) { const yy = h - Math.log(hz / range.lo) / Math.log(range.hi / range.lo) * h; g.fillRect(0, yy, 6 * k, k); g.fillText(hz >= 1000 ? hz / 1000 + "k" : hz, 8 * k, yy + 4 * k); }
+} } });
+const SPARK = { onset: "#e11d48", energy: "#0d9488", gate: "#a8a29e", lufs: "#1e3a8a", bright: "#d97706" };
+const sparkStrip = new Strip("spark", 10000, "#fff", (s) => {
+  const Y = (v) => s.h - v * (s.h - 4 * s.k) - 2 * s.k;
+  for (const [key, arr] of Object.entries(series)) line(s, arr, (e) => e[1], Y, SPARK[key], 1.5, 1000);
+}, { since: (t) => { const a = series.onset, e = a[a.length - 1]; return e && t - e[0] < 1000 ? e[0] : t; },
+     overlay: { w: 260, h: 16, draw: (g, w, h, k) => {
+  g.font = `${10 * k}px ui-sans-serif`; let x = 4 * k;
+  for (const [key, c] of Object.entries(SPARK)) { g.fillStyle = c; g.fillText(key, x, 12 * k); x += g.measureText(key).width + 10 * k; }
+} } });
+const rcvStrip = new Strip("rcv", RCV_SPAN, "#fff", (s) => {
+  const { g, t0, t1, X, ppm, h, k, now } = s; const Y = (v) => h - clamp01(v) * (h - 14 * k) - 2 * k;
+  g.fillStyle = "rgba(217,119,6,0.9)";              // the DSP clock's beats, as ticks along the top
+  for (const tb of beatsIn(t0 - 2 * k / ppm, t1 + 2 * k / ppm, now)) g.fillRect(X(tb) - k, 0, 2 * k, 9 * k);
+  const sig = (name) => (p) => num(p[2][name]);
+  line(s, rcvSeries, sig("beat"), Y, "rgba(217,119,6,0.85)", 1.5, RCV_GAP); line(s, rcvSeries, sig("activity"), Y, "#1e3a8a", 1.5, RCV_GAP);
+  line(s, series.energy, (e) => e[1], Y, "#0d9488", 1, 1000); line(s, rcvSeries, sig("energy"), Y, "#0d9488", 3, RCV_GAP);
+}, { margin: 3, grid: true, since: (t) => {
+  const r = rcvSeries[rcvSeries.length - 1], e = series.energy[series.energy.length - 1];
+  return Math.min(r && t - r[0] < RCV_GAP ? r[0] : t, e && t - e[0] < 1000 ? e[0] : t);
+} });
+const STRIPS = { sends: [rcvStrip], hears: [hitStrip, levelStrip, specStrip, sparkStrip] };
+
 // -- static bits ----------------------------------------------------------------------------------------------------
 $("lamps").innerHTML = BANDS.map((b) => `<div class="lamp" data-b="${b}">${b}</div>`).join("");
+const WHITES = []; const isBlack = (p) => [1, 3, 6, 8, 10].includes(p % 12);
+for (let p = 21; p <= 108; p++) if (!isBlack(p)) WHITES.push(p);
 
-// -- the render loop ------------------------------------------------------------------------------------------------
-let specBuf = null, lastT = 0, acc = 0, lastBeat = null, beatFlashAt = -1e9, lastDom = 0;
-function frame(t) {
-  requestAnimationFrame(frame);
+// -- the tick: one animation frame per FEED batch (at most every TICK_MS), only while the tab is visible ---------------
+let slowAt = -1e9, rawAt = -1e9;
+const rawEls = new Map();          // type -> its <details> in Raw
+function tick() {
+  tickRaf = 0;
+  const t = performance.now();
+  if (t - tickAt < MIN_TICK_MS) { schedule(); return; }   // (a timer that fired early: the rest of the wait)
+  tickAt = t; tickN++;
   const sn = srvNow();
+  if (view === "sends") { drawSends(t); sendsDom(t); } else { drawHears(t, sn); hearsDom(t, sn); }
+  headerDom(t);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { cancelAnimationFrame(tickRaf); tickRaf = 0; clearTimeout(tickTimer); tickTimer = 0; }
+  toFeed({ view, visible: !document.hidden });
+});
+// A canvas whose 2D context the GPU process lost (and Chrome then restored) is blank: draw it all again next tick.
+function redrawCanvas(e) {
+  const c = e.target; if (!(c instanceof HTMLCanvasElement)) return;
+  c._fresh = true;
+  const box = c.closest(".strip"); const S = box && box._strip;
+  if (S) { S.reset(); if (S.ov) S.ov._key = null; }
+}
+document.addEventListener("contextlost", redrawCanvas, true);
+document.addEventListener("contextrestored", redrawCanvas, true);
 
-  // beat pulse
-  {
-    const [g, w, h, dpr] = fit($("pulse"));
-    g.clearRect(0, 0, w, h);
-    let phase = null, beatIdx = null;
-    if (clock && clock.bpm > 0 && sn !== null) {
-      const beat = clock.beat_at_anchor + (sn - clock.anchor_ms) / 1000 * clock.bpm / 60;
-      beatIdx = Math.floor(beat); phase = beat - beatIdx;
-      if (lastBeat !== null && beatIdx !== lastBeat) beatFlashAt = t;
-      lastBeat = beatIdx;
+function drawSends(t) {
+  // the keyboard: 88 keys, held ones teal (deeper with velocity), a struck key flashes amber; drawn when a key changed
+  for (const [p, at] of keyFlash) if (t - at > 1000) keyFlash.delete(p);
+  const colour = (p) => { const f = Math.exp(-(t - (keyFlash.get(p) ?? -1e9)) / 180); const v = keyDown.get(p);
+    if (f > 0.05) return `rgba(217,119,6,${(0.35 + 0.65 * f).toFixed(2)})`; return v ? `rgba(13,148,136,${(0.35 + 0.65 * (v / 127)).toFixed(2)})` : null; };
+  const cs = new Map(); let sig = "";
+  for (let p = 21; p <= 108; p++) { const c = colour(p); if (c) { cs.set(p, c); sig += p + c; } }
+  paintIf($("keys"), sig, (g, w, h, dpr) => {
+    const ww = w / WHITES.length; const xOf = new Map(); WHITES.forEach((p, i) => xOf.set(p, i * ww));
+    g.fillStyle = "#d6d3d1"; g.fillRect(0, 0, w, h);                // the gaps between white keys
+    for (const p of WHITES) { g.fillStyle = cs.get(p) || "#fafaf9"; g.fillRect(xOf.get(p) + dpr * 0.5, 0, ww - dpr, h); }
+    for (let p = 21; p <= 108; p++) if (isBlack(p)) { const x = xOf.get(p - 1) + ww * 0.68; g.fillStyle = cs.get(p) || "#44403c"; g.fillRect(x, 0, ww * 0.64, h * 0.6); }
+  });
+  // the universe: one cell per patched channel, brightness = its byte, device boundaries marked; drawn when a byte (or
+  // the patch) changed, not on every frame that says the same
+  const U = $("universe");
+  if (U._vis !== false) { const DF = dmxFrame(); paintIf(U, DF.key, (g, w, h, dpr) => {
+    g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+    const patch = DF.patch; if (!patch.devices.length) return;
+    const end = Math.max(...patch.devices.map((d) => d.end)); const cw = w / end;
+    g.font = `${9 * dpr}px ui-sans-serif`;
+    for (const { d, bytes } of DF.devs) {
+      bytes.forEach((b) => { const x = (d.address + b.ch.offset - 2) * cw; const v = b.byte === null ? null : b.byte / 255;
+        g.fillStyle = v === null ? "#e7e5e4" : b.ch.field === "r" ? `rgb(${b.byte},0,0)` : b.ch.field === "g" ? `rgb(0,${b.byte},0)` : b.ch.field === "b" ? `rgb(0,0,${b.byte})` : `rgba(13,148,136,${(0.08 + 0.92 * v).toFixed(3)})`;
+        g.fillRect(x + 0.5, 12 * dpr, cw - 1, h - 12 * dpr); });
+      g.fillStyle = "#78716c"; g.fillText(d.id, (d.address - 1) * cw + 2, 9 * dpr);
+      g.fillStyle = "#1c1917"; g.fillRect((d.address - 1) * cw, 0, dpr, h);
     }
-    const k = Math.exp(-(t - beatFlashAt) / 120);
-    const locked = clock && (clock.state === "locked" || clock.state === "holding");
-    g.beginPath(); g.arc(w / 2, h / 2, (0.28 + 0.17 * k) * w, 0, Math.PI * 2);
-    g.fillStyle = clock && clock.bpm > 0 ? `rgba(${locked ? "13,148,136" : "217,119,6"},${0.15 + 0.85 * k})` : "#e7e5e4"; g.fill();
+  }); }
+  // what the screen's scene receives
+  rcvStrip.draw(t);
+}
+
+function drawHears(t, sn) {
+  // the beat clock: the circle flashes on each beat (the clock's phase, evaluated now), the hand is the phase, the
+  // small dot flashes on each low-band hit; drawn when any of them visibly changed
+  let phase = null, beatIdx = null, per = null;
+  if (clock && clock.bpm > 0 && sn !== null) {
+    per = 60000 / clock.bpm;
+    const beat = clock.beat_at_anchor + (sn - clock.anchor_ms) / per;
+    beatIdx = Math.floor(beat); phase = beat - beatIdx;
+  }
+  const kf = phase === null ? 0 : Math.exp(-(phase * per) / 120);
+  const running = !!(clock && clock.bpm > 0);
+  const locked = !!clock && (clock.state === "locked" || clock.state === "holding");
+  const lk = Math.exp(-Math.max(0, t - lowHitSeen) / 100);
+  paintIf($("pulse"), `${running}|${locked}|${phase === null ? "-" : Math.round(phase * 90)}|${kf.toFixed(2)}|${lk.toFixed(2)}`, (g, w, h, dpr) => {
+    g.clearRect(0, 0, w, h);
+    g.beginPath(); g.arc(w / 2, h / 2, (0.28 + 0.17 * kf) * w, 0, Math.PI * 2);
+    g.fillStyle = running ? `rgba(${locked ? "13,148,136" : "217,119,6"},${0.15 + 0.85 * kf})` : "#e7e5e4"; g.fill();
     if (phase !== null) {     // the phase hand
       g.strokeStyle = "#1c1917"; g.lineWidth = 2 * dpr; g.beginPath();
       const a = -Math.PI / 2 + phase * Math.PI * 2; g.moveTo(w / 2, h / 2); g.lineTo(w / 2 + Math.cos(a) * 0.47 * w, h / 2 + Math.sin(a) * 0.47 * w); g.stroke();
     }
-    const lk = Math.exp(-(t - lowHitAt) / 100);
     g.beginPath(); g.arc(w * 0.88, h * 0.12, 0.09 * w, 0, Math.PI * 2); g.fillStyle = `rgba(225,29,72,${0.12 + 0.88 * lk})`; g.fill();
-    if (clock) {
-      const bpb = clock.beats_per_bar || 4;
-      const inBar = beatIdx === null ? null : (((beatIdx - clock.bar_anchor_beat) % bpb) + bpb) % bpb;
-      const bars = beatIdx === null ? null : Math.floor((beatIdx - clock.bar_anchor_beat) / bpb);
-      const ph = clock.phrase_bars || 4;
-      const inPhrase = bars === null ? null : ((bars % ph) + ph) % ph;
-      const beats = $("beats");
-      if (beats.childElementCount !== bpb) beats.innerHTML = Array.from({ length: bpb }, (_, i) => `<span class="${i === 0 ? "one" : ""}"></span>`).join("");
-      [...beats.children].forEach((s, i) => s.classList.toggle("on", i === inBar));
-      if (t - lastDom > 100) {
-        $("bpm").textContent = clock.bpm > 0 ? clock.bpm.toFixed(1) : "—";
-        $("barpos").textContent = inBar === null ? "no grid yet" : `beat ${inBar + 1} of ${bpb} · bar ${inPhrase + 1} of ${ph}`;
-        $("clockState").textContent = `${clock.state} · gate ${clock.gate}`;
-        $("clockState").className = "pill " + (clock.state === "locked" ? "ok" : clock.state === "searching" ? "warn" : "");
-      }
+  });
+  if (clock && inView("beats")) {
+    const bpb = clock.beats_per_bar || 4;
+    const inBar = beatIdx === null ? null : (((beatIdx - clock.bar_anchor_beat) % bpb) + bpb) % bpb;
+    const bars = beatIdx === null ? null : Math.floor((beatIdx - clock.bar_anchor_beat) / bpb);
+    const ph = clock.phrase_bars || 4;
+    const inPhrase = bars === null ? null : ((bars % ph) + ph) % ph;
+    const beats = $("beats");
+    if (beats.childElementCount !== bpb) { beats.innerHTML = Array.from({ length: bpb }, (_, i) => `<span class="${i === 0 ? "one" : ""}"></span>`).join(""); beats._on = undefined; }
+    if (beats._on !== inBar) { beats._on = inBar; [...beats.children].forEach((s, i) => s.classList.toggle("on", i === inBar)); }
+    if (!(tickN & 1)) {               // its text with the number rows (4 a second): a text change costs a layout
+    setText($("bpm"), clock.bpm > 0 ? clock.bpm.toFixed(1) : "—");
+    setText($("barpos"), inBar === null ? "no grid yet" : `beat ${inBar + 1} of ${bpb} · bar ${inPhrase + 1} of ${ph}`);
+    setText($("clockState"), `${clock.state} · gate ${clock.gate}`);
+    setCls($("clockState"), "pill " + (clock.state === "locked" ? "ok" : clock.state === "searching" ? "warn" : ""));
     }
   }
 
   // hit lamps + trail
-  for (const el of $("lamps").children) {
-    const h = lastHit[el.dataset.b]; const k = h ? h.strength * Math.exp(-(t - h.at) / 150) : 0;
-    el.style.background = `rgba(13,148,136,${k.toFixed(3)})`; el.style.color = k > 0.5 ? "#fff" : "";
+  if (inView("lamps")) for (const el of $("lamps").children) {
+    const h = lastHit[el.dataset.b]; const k = h ? h.strength * Math.exp(-Math.max(0, t - h.seen) / 150) : 0;
+    setStyle(el, "background", `rgba(13,148,136,${(Math.round(k * 20) / 20).toFixed(2)})`); setStyle(el, "color", k > 0.5 ? "#fff" : "");
   }
-  {
-    const [g, w, h, dpr] = fit($("hitTrail")); g.clearRect(0, 0, w, h); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
-    const rowH = h / BANDS.length;
-    g.font = `${10 * dpr}px ui-sans-serif`; g.fillStyle = "#a8a29e";
-    BANDS.forEach((b, i) => g.fillText(b, 3 * dpr, (i + 0.7) * rowH));
-    for (const hh of hits) {
-      const x = w - ((t - hh.at) / 5000) * w; if (x < 0) continue;
-      const i = BANDS.indexOf(hh.band); if (i < 0) continue;
-      g.beginPath(); g.arc(x, (i + 0.5) * rowH, Math.max(1.5 * dpr, hh.strength * rowH * 0.45), 0, Math.PI * 2);
-      g.fillStyle = "#0d9488"; g.fill();
-    }
-    if (clock && clock.bpm > 0 && sn !== null) {     // beat lines on the same axis
-      g.strokeStyle = "rgba(217,119,6,0.6)"; g.lineWidth = dpr;
-      const per = 60000 / clock.bpm; const b0 = clock.beat_at_anchor + (sn - clock.anchor_ms) / per;
-      for (let b = Math.floor(b0); b > b0 - 5000 / per - 1; b--) {
-        const x = w - ((b0 - b) * per / 5000) * w; if (x < 0) break;
-        g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-      }
-    }
-  }
+  hitStrip.draw(t);
 
-  // level + spectrogram
-  {
-    const [g, w, h, dpr] = fit($("level")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
-    g.fillStyle = "#0d9488";
-    for (let i = levels.length - 1; i >= 0; i--) {
-      const x0 = w - ((t - levels[i].at) / 5000) * w; if (x0 < 0) break;
-      const nx = i + 1 < levels.length ? levels[i + 1].at : t; const x1 = w - ((t - Math.min(nx, levels[i].at + 250)) / 5000) * w;
-      const v = clamp01((levels[i].db + 72) / 72); g.fillRect(x0, h - v * h, Math.max(dpr, x1 - x0), v * h);
-    }
-    const sc = $("spectro"); const [sg, sw, sh] = fit(sc);
-    if (!specBuf || specBuf.width !== sw || specBuf.height !== sh) {
-      specBuf = document.createElement("canvas"); specBuf.width = sw; specBuf.height = sh;
-      const b0 = specBuf.getContext("2d"); b0.fillStyle = "#0c0a09"; b0.fillRect(0, 0, sw, sh); acc = 0;
-    }
-    const bg = specBuf.getContext("2d");
-    acc += lastT ? ((t - lastT) / 5000) * sw : 0; const dx = Math.min(sw, Math.floor(acc)); acc -= dx;
-    if (dx > 0) {
-      bg.drawImage(specBuf, -dx, 0);
-      let last = null; for (let i = levels.length - 1; i >= 0 && !last; i--) if (levels[i].f) last = levels[i];
-      if (last && t - last.at < 250) {
-        const n = last.f.length;
-        for (let i = 0; i < n; i++) { const y0 = Math.round(sh - (i + 1) * sh / n), y1 = Math.round(sh - i * sh / n); bg.fillStyle = col(last.f[i]); bg.fillRect(sw - dx, y0, dx, y1 - y0); }
-      } else { bg.fillStyle = "#0c0a09"; bg.fillRect(sw - dx, 0, dx, sh); }
-    }
-    sg.drawImage(specBuf, 0, 0);
-    sg.font = `${10 * dpr}px ui-sans-serif`; sg.fillStyle = "rgba(255,255,255,.75)";
-    for (const hz of [100, 1000, 10000]) { const yy = sh - Math.log(hz / range.lo) / Math.log(range.hi / range.lo) * sh; sg.fillRect(0, yy, 6 * dpr, dpr); sg.fillText(hz >= 1000 ? hz / 1000 + "k" : hz, 8 * dpr, yy + 4 * dpr); }
-  }
-  lastT = t;
+  // level + spectrogram, sparklines
+  levelStrip.draw(t);
+  specStrip.draw(t);
+  sparkStrip.draw(t);
 
-  // sparklines
-  {
-    const [g, w, h, dpr] = fit($("spark")); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
-    const cols = { onset: "#e11d48", energy: "#0d9488", gate: "#a8a29e", lufs: "#1e3a8a", bright: "#d97706" };
-    g.lineWidth = 1.5 * dpr;
-    for (const [k, arr] of Object.entries(series)) {
-      g.strokeStyle = cols[k]; g.beginPath(); let first = true;
-      for (const [at, v] of arr) { const x = w - ((t - at) / 10000) * w; if (x < 0) continue; const y = h - v * (h - 4 * dpr) - 2 * dpr; first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; }
-      g.stroke();
-    }
-    g.font = `${10 * dpr}px ui-sans-serif`; let x = 4 * dpr;
-    for (const [k, c] of Object.entries(cols)) { g.fillStyle = c; g.fillText(k, x, 12 * dpr); x += g.measureText(k).width + 10 * dpr; }
-  }
-
-  if (t - lastDom > 100) { lastDom = t; dom(t, sn); }
+  // the band bars, mfcc and chroma: with the number rows (every other tick), when their message moved
+  if (tickN & 1) return;
+  const F = latest["music.features"], R = latest["music.rhythm"], H = latest["music.harmony"];
+  paintIf($("spec32"), ver["music.features"] || 0, (g, w, h) => {
+    const s32 = (F && F.data.spectrum32) || [];
+    g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h); g.fillStyle = "#0d9488";
+    s32.forEach((v, i) => { const bw = w / s32.length; g.fillRect(i * bw + 1, h - clamp01(v) * h, bw - 2, clamp01(v) * h); });
+  });
+  paintIf($("mfcc"), ver["music.rhythm"] || 0, (g, w, h) => {
+    const m = (R && R.data.mfcc13) || []; g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    const mx = Math.max(1, ...m.map(Math.abs));
+    m.forEach((v, i) => { const bw = w / m.length; const y = (v / mx) * h / 2; g.fillStyle = v >= 0 ? "#0d9488" : "#d97706"; g.fillRect(i * bw + 1, h / 2 - Math.max(0, y), bw - 2, Math.abs(y)); });
+  });
+  // harmony (chroma from harmony, else rhythm)
+  paintIf($("chroma"), `${ver["music.harmony"] || 0}|${ver["music.rhythm"] || 0}`, (g, w, h, dpr) => {
+    const chroma = (H && H.data.chroma12) || (R && R.data.chroma12) || [];
+    g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
+    g.font = `${10 * dpr}px ui-sans-serif`;
+    chroma.forEach((v, i) => { const bw = w / 12; g.fillStyle = "#0d9488"; g.fillRect(i * bw + 2, (h - 14 * dpr) * (1 - clamp01(v)), bw - 4, (h - 14 * dpr) * clamp01(v)); g.fillStyle = "#78716c"; g.fillText(NOTE_NAMES[i], i * bw + 4, h - 2 * dpr); });
+  });
 }
 
-// -- the slower DOM parts (10 Hz) -------------------------------------------------------------------------------------
-function dom(t, sn) {
-  // header
-  const b = bestOff();
+// -- the DOM parts (at the tick, each when its value changed) -----------------------------------------------------------
+function headerDom(t) {
   const lv = levels[levels.length - 1];
-  $("stream").textContent = lv ? `input ${lv.s}` : "no input";
+  { const u = inputUse(); setText($("stream"), lv ? `input ${lv.s}${u ? " · " + u : ""}` : (u ? `no audio · ${u}` : "no input"));
+    setCls($("stream"), "pill" + (u && /not plugged in/.test(u) ? " warn" : "")); }
+  if (view === "hears" && lv && !(tickN & 1)) setText($("lvl"), `${lv.db.toFixed(1)} dBFS peak`);
+  if (t - slowAt < 500) return;                // the delay and the rates: twice a second
+  slowAt = t;
+  const b = bestOff();
   if (b && lv && lv.a) {
     const lags = levels.filter((x) => t - x.at < 2000 && x.a).map((x) => x.at - (x.a * 1000 - b.off)).sort((a, c) => a - c);
-    $("delay").textContent = lags.length ? `meter delay ${Math.max(0, Math.round(lags[lags.length >> 1]))} ms (show_service → here) · rtt ${b.rtt.toFixed(1)} ms` : "—";
+    setText($("delay"), lags.length ? `meter delay ${Math.max(0, Math.round(lags[lags.length >> 1]))} ms (show_service → here) · rtt ${b.rtt.toFixed(1)} ms` : "—");
   }
-  const types = Object.keys(arrivals).sort();
-  $("rates").textContent = types.map((k) => `${k.replace("music.", "")} ${(arrivals[k].length / 2).toFixed(0)}/s`).join(" · ");
-  if (lv) $("lvl").textContent = `${lv.db.toFixed(1)} dBFS peak`;
+  setText($("rates"), Object.keys(rates).sort().map((k) => `${k.replace("music.", "")} ${(rates[k] / 2).toFixed(0)}/s`).join(" · "));
+}
 
+function sendsDom(t) {
+  outputsDom(t);
+  // what the screen's scene receives: when a new inputs sample, session or mic answer arrived
+  if (!inView("verdict") || !changed("detail", "inputs", "sessions", "mic")) return;
+  const sel = $("scrSel"); const opts = [...new Set([screen, ...liveScreens])];
+  if (sel.dataset.k !== opts.join("|")) { sel.dataset.k = opts.join("|"); sel.innerHTML = opts.map((x) => `<option${x === screen ? " selected" : ""}>${esc(x)}</option>`).join(""); }
+  const J = {}; const jd = (k) => (J[k] ||= judge(k));
+  const [txt, cls] = verdict(jd); setText($("verdict"), txt); setCls($("verdict"), "verdict " + cls);
+  const sg = (rcv && rcv.signals) || {};
+  setText($("scrT"), sess ? `${sess.current_scene || sess.scene || "?"} · live` : "not live");
+  const bound = boundSignals(); const keys = [...new Set([...Object.keys(bound), ...RCV_KEYS])];
+  rows($("rcvRows"), [
+    ...keys.map((k) => [`${bound[k] ? "● " : ""}${k}`, typeof sg[k] === "number" ? sg[k] : null,
+      `${sg[k] === null || sg[k] === undefined ? "n/a" : fmt(sg[k])} · ${WORDS[jd(k).state].replace(" (nothing arrives)", "")}`]),
+    ["DSP feed", rcv && rcv.feed ? num(rcv.feed.live) : null, rcv && rcv.feed ? `live ${fmt(rcv.feed.live)} · ${Math.round(rcv.feed.age_ms ?? 0)} ms old` : "not wired"],
+    ["DSP clock", null, rcv && rcv.feed && rcv.feed.clock ? `${rcv.feed.clock.state} · gate ${rcv.feed.clock.gate} · ${fmt(rcv.feed.clock.bpm, 1)} bpm` : "—"],
+    ["cuts land on", null, rcv && rcv.cuts_on ? String(rcv.cuts_on) : "no beat source"], ["desk bus", null, rcv ? `${rcv.online ? "online" : "offline"} · ${rcv.stale || "fresh"}` : "—"],
+  ]);
+  const bnd = (sess && sess.scene_bindings) || {};
+  const list = Object.entries(bnd).filter(([, b]) => b && b.on !== false).map(([p, b]) => [p, (b.in || []).map((i) => `${i.sig} ${fmt(i.w)}`).join(" + ") || [b.sig || b.bind].flat().join(" + ") || "—"]);
+  const mu = sess && sess.music;     // the art director's side: what the music proposes for pace, moods and changes
+  if (mu) list.push(["(director)", `music ${mu.online ? "online" : "offline"} · ${mu.band || "—"}${mu.proposal ? ` · energy ${fmt(mu.proposal.energy)} pace ${fmt(mu.proposal.pace)} change ${fmt(mu.proposal.change_rate)}` : ""}`]);
+  kv($("bindings"), list.length ? list : [["bindings", sess ? "none on this scene" : "—"]], "← ");
+}
+
+function hearsDom(t, sn) {
+  if (tickN & 1) return;           // the number rows: every other tick (4 a second)
   // clock rows
-  if (clock) rows($("clockRows"), [
+  if (!inView("clockRows")) { /* scrolled away */ } else if (clock) rows($("clockRows"), [
     ["conf", clock.conf, fmt(clock.conf)], ["bar_conf", clock.bar_conf, fmt(clock.bar_conf)], ["phrase_conf", clock.phrase_conf, fmt(clock.phrase_conf)],
     ["beats/bar", null, String(clock.beats_per_bar)], ["phrase bars", null, String(clock.phrase_bars)], ["epoch", null, String(clock.epoch)],
     ["anchor age", null, sn !== null ? `${((sn - clock.anchor_ms) / 1000).toFixed(1)} s` : "—"],
   ]);
   else rows($("clockRows"), [["music.clock", null, "none yet"]]);
 
-  const nh = hits.filter((x) => t - x.at < 5000).length;
-  $("hitRate").textContent = `${(nh / 5).toFixed(1)} hits/s`;
+  if (inView("hitRate")) setText($("hitRate"), `${((hits.length - idx(hits, t - 5000, (e) => e.at)) / 5).toFixed(1)} hits/s`);
 
   // features
   const F = latest["music.features"];
-  if (F) {
-    const d = F.data; $("featT").textContent = `${Math.round(t - F.at)} ms ago`;
-    rows($("featRows"), [
-      ["onset", d.onset, fmt(d.onset)], ["energy", d.energy, fmt(d.energy)], ["gate", d.gate, fmt(d.gate)],
-      ["punch", d.punch, fmt(d.punch)], ["drive", d.drive, fmt(d.drive)], ["brightness", d.brightness, fmt(d.brightness)],
-      ["noisiness", d.noisiness, fmt(d.noisiness)], ["lufs_m", clamp01((d.lufs_m + 70) / 70), fmt(d.lufs_m, 1)],
-      ["lufs_s", clamp01((d.lufs_s + 70) / 70), fmt(d.lufs_s, 1)], ["peak_dbfs", clamp01((d.peak_dbfs + 72) / 72), fmt(d.peak_dbfs, 1)],
-      ["rms_dbfs", clamp01((d.rms_dbfs + 72) / 72), fmt(d.rms_dbfs, 1)],
-    ]);
-    const bands = d.bands || {};
-    rows($("bandRows"), BANDS.flatMap((k) => bands[k] ? [[k, bands[k].level, `${fmt(bands[k].level)} · ${fmt(bands[k].presence)} · ${bands[k].hits}`]] : []));
-    const s32 = d.spectrum32 || [];
-    const [g, w, h] = fit($("spec32")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h); g.fillStyle = "#0d9488";
-    s32.forEach((v, i) => { const bw = w / s32.length; g.fillRect(i * bw + 1, h - clamp01(v) * h, bw - 2, clamp01(v) * h); });
+  if (!inView("featRows")) { /* scrolled away */ } else if (F) {
+    setText($("featT"), `${Math.round(t - F.at)} ms ago`);
+    if (changed("feat", "music.features")) {
+      const d = F.data;
+      rows($("featRows"), [
+        ["onset", d.onset, fmt(d.onset)], ["energy", d.energy, fmt(d.energy)], ["gate", d.gate, fmt(d.gate)],
+        ["punch", d.punch, fmt(d.punch)], ["drive", d.drive, fmt(d.drive)], ["brightness", d.brightness, fmt(d.brightness)],
+        ["noisiness", d.noisiness, fmt(d.noisiness)], ["lufs_m", clamp01((d.lufs_m + 70) / 70), fmt(d.lufs_m, 1)],
+        ["lufs_s", clamp01((d.lufs_s + 70) / 70), fmt(d.lufs_s, 1)], ["peak_dbfs", clamp01((d.peak_dbfs + 72) / 72), fmt(d.peak_dbfs, 1)],
+        ["rms_dbfs", clamp01((d.rms_dbfs + 72) / 72), fmt(d.rms_dbfs, 1)],
+      ]);
+    }
   } else rows($("featRows"), [["music.features", null, "none yet"]]);
+  // the band rows: their own panel (Bands), so their own gate (on one column it is on screen without Features)
+  if (F && inView("bandRows") && changed("bands", "music.features")) {
+    const bands = F.data.bands || {};
+    rows($("bandRows"), BANDS.flatMap((k) => bands[k] ? [[k, bands[k].level, `${fmt(bands[k].level)} · ${fmt(bands[k].presence)} · ${bands[k].hits}`]] : []));
+  }
 
   // rhythm
   const R = latest["music.rhythm"];
-  if (R) {
-    const d = R.data; $("rhyT").textContent = `${Math.round(t - R.at)} ms ago`;
-    rows($("rhyRows"), [
-      ["pulse_clarity", d.pulse_clarity, fmt(d.pulse_clarity)], ["density", d.density, fmt(d.density)], ["onset_rate", clamp01(d.onset_rate / 10), `${fmt(d.onset_rate, 1)}/s`],
-      ["percussive", d.percussive_ratio, fmt(d.percussive_ratio)], ["harm_change", d.harm_change, fmt(d.harm_change)],
-      ["swing", d.swing === null ? null : clamp01((d.swing - 1) / 2), fmt(d.swing)], ["syncopation", d.syncopation, fmt(d.syncopation)],
-      ["low_db", clamp01((d.low_db + 72) / 72), fmt(d.low_db, 1)], ["harmonic_db", clamp01((d.harmonic_db + 100) / 100), fmt(d.harmonic_db, 1)],
-    ]);
-    const m = d.mfcc13 || []; const [g, w, h] = fit($("mfcc")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
-    const mx = Math.max(1, ...m.map(Math.abs));
-    m.forEach((v, i) => { const bw = w / m.length; const y = (v / mx) * h / 2; g.fillStyle = v >= 0 ? "#0d9488" : "#d97706"; g.fillRect(i * bw + 1, h / 2 - Math.max(0, y), bw - 2, Math.abs(y)); });
+  if (!inView("rhyRows")) { /* scrolled away */ } else if (R) {
+    setText($("rhyT"), `${Math.round(t - R.at)} ms ago`);
+    if (changed("rhy", "music.rhythm")) {
+      const d = R.data;
+      rows($("rhyRows"), [
+        ["pulse_clarity", d.pulse_clarity, fmt(d.pulse_clarity)], ["density", d.density, fmt(d.density)], ["onset_rate", clamp01(d.onset_rate / 10), `${fmt(d.onset_rate, 1)}/s`],
+        ["percussive", d.percussive_ratio, fmt(d.percussive_ratio)], ["harm_change", d.harm_change, fmt(d.harm_change)],
+        ["swing", d.swing === null ? null : clamp01((d.swing - 1) / 2), fmt(d.swing)], ["syncopation", d.syncopation, fmt(d.syncopation)],
+        ["low_db", clamp01((d.low_db + 72) / 72), fmt(d.low_db, 1)], ["harmonic_db", clamp01((d.harmonic_db + 100) / 100), fmt(d.harmonic_db, 1)],
+      ]);
+    }
   } else rows($("rhyRows"), [["music.rhythm", null, "none yet"]]);
 
-  // harmony (chroma from harmony, else rhythm)
+  // harmony
   const H = latest["music.harmony"];
-  const chroma = (H && H.data.chroma12) || (R && R.data.chroma12) || [];
-  if (H) {
-    const d = H.data; $("harT").textContent = `${d.source || ""} · ${Math.round(t - H.at)} ms ago`;
-    $("key").textContent = d.key ? `${d.key} ${d.mode || ""}` : "no key";
-    rows($("harRows"), [["conf", d.conf, fmt(d.conf)], ["tension", d.tension, fmt(d.tension)], ["chord_change", d.chord_change, fmt(d.chord_change)], ["register", d.register, fmt(d.register)], ["spread", d.spread, fmt(d.spread)]]);
-  }
-  {
-    const [g, w, h, dpr] = fit($("chroma")); g.fillStyle = "#f5f5f4"; g.fillRect(0, 0, w, h);
-    g.font = `${10 * dpr}px ui-sans-serif`;
-    chroma.forEach((v, i) => { const bw = w / 12; g.fillStyle = "#0d9488"; g.fillRect(i * bw + 2, (h - 14 * dpr) * (1 - clamp01(v)), bw - 4, (h - 14 * dpr) * clamp01(v)); g.fillStyle = "#78716c"; g.fillText(NOTE_NAMES[i], i * bw + 4, h - 2 * dpr); });
+  if (H && inView("harRows")) {
+    const d = H.data; setText($("harT"), `${d.source || ""} · ${Math.round(t - H.at)} ms ago`);
+    if (changed("har", "music.harmony")) {
+      setText($("key"), d.key ? `${d.key} ${d.mode || ""}` : "no key");
+      rows($("harRows"), [["conf", d.conf, fmt(d.conf)], ["tension", d.tension, fmt(d.tension)], ["chord_change", d.chord_change, fmt(d.chord_change)], ["register", d.register, fmt(d.register)], ["spread", d.spread, fmt(d.spread)]]);
+    }
   }
 
   // engine
-  if (engine) {
-    $("stT").textContent = `${Math.round((performance.now() - engine._at) / 1000)} s ago`;
-    const act = engine.active_audio; const st = (engine.streams || {})[act] || {};
-    const fs = engine.features_stats || {};
-    const kv = [
-      ["active input", act], ["stream state", st.state], ["sender", st.sender && st.sender.dev],
-      ["clock jitter / late", st.clock ? `${fmt(st.clock.jitter_ms)} / ${fmt(st.clock.late_ms)} ms` : "—"],
-      ["skew", st.clock ? `${fmt(st.clock.skew_ppm, 1)} ppm` : "—"],
-      ["dsp hop ms p50/p95", `${fmt(fs.hop_ms_p50, 3)} / ${fmt(fs.hop_ms_p95, 3)}`], ["dsp block ms p95", fmt(fs.block_ms_p95, 3)],
-      ["dsp tick ms p95", fmt(fs.tick_ms_p95, 3)], ["medium ms p50/p95", `${fmt(fs.medium_ms_p50, 2)} / ${fmt(fs.medium_ms_p95, 2)}`],
-      ["hops / gaps", `${fs.hops ?? "—"} / ${fs.gaps ?? "—"}`], ["publishes / fades", `${fs.publishes ?? "—"} / ${fs.fades ?? "—"}`],
-      ["onsets", fs.onsets], ["hits per band", fs.hits ? JSON.stringify(fs.hits) : "—"],
-      ["errors", JSON.stringify(engine.errors || {})],
-    ];
-    $("engine").innerHTML = kv.map(([k, v]) => `<span class="k">${k}</span><span>${v === undefined || v === null ? "—" : String(v).replace(/</g, "&lt;")}</span>`).join("");
+  if (engine && inView("engine")) {
+    setText($("stT"), `${Math.round((performance.now() - engine._at) / 1000)} s ago`);
+    if (changed("engine", "engine")) {
+      const act = engine.active_audio; const st = (engine.streams || {})[act] || {};
+      const fs = engine.features_stats || {};
+      kv($("engine"), [
+        ["active input", act], ["stream state", st.state], ["sender", st.sender && st.sender.dev],
+        ["clock jitter / late", st.clock ? `${fmt(st.clock.jitter_ms)} / ${fmt(st.clock.late_ms)} ms` : "—"],
+        ["skew", st.clock ? `${fmt(st.clock.skew_ppm, 1)} ppm` : "—"],
+        ["dsp hop ms p50/p95", `${fmt(fs.hop_ms_p50, 3)} / ${fmt(fs.hop_ms_p95, 3)}`], ["dsp block ms p95", fmt(fs.block_ms_p95, 3)],
+        ["dsp tick ms p95", fmt(fs.tick_ms_p95, 3)], ["medium ms p50/p95", `${fmt(fs.medium_ms_p50, 2)} / ${fmt(fs.medium_ms_p95, 2)}`],
+        ["hops / gaps", `${fs.hops ?? "—"} / ${fs.gaps ?? "—"}`], ["publishes / fades", `${fs.publishes ?? "—"} / ${fs.fades ?? "—"}`],
+        ["onsets", fs.onsets], ["hits per band", fs.hits ? JSON.stringify(fs.hits) : "—"],
+        ["errors", JSON.stringify(engine.errors || {})],
+      ]);
+    }
   }
 
-  // raw
+  // raw: once a second (an opened one at once), an open one's JSON only while it is on screen: a big <pre> rewritten
+  // costs a layout (and its text shaping) of its own
+  if (t - rawAt < 1000 || !inView("raw")) return;
+  rawAt = t;
   const raw = $("raw");
   for (const k of Object.keys(latest).sort()) {
-    let d = raw.querySelector(`details[data-k="${k}"]`);
-    if (!d) { d = document.createElement("details"); d.dataset.k = k; d.innerHTML = "<summary></summary><pre></pre>"; raw.appendChild(d); }
-    d.firstChild.textContent = `${k} · ${latest[k].n} received · ${Math.round(t - latest[k].at)} ms ago`;
-    if (d.open) d.lastChild.textContent = JSON.stringify(latest[k].data, null, 1);
+    let d = rawEls.get(k);
+    if (!d) { d = document.createElement("details"); d.dataset.k = k; d.innerHTML = "<summary></summary><pre></pre>"; raw.appendChild(d); rawEls.set(k, d); seen.observe(d); }
+    setText(d.firstChild, `${k} · ${latest[k].n} received · ${Math.round(t - latest[k].at)} ms ago`);
+    if (d.open && d._vis !== false) setText(d.lastChild, JSON.stringify(latest[k].data, null, 1));
   }
 }
+$("raw").addEventListener("toggle", () => { rawAt = -1e9; }, true);
 
-openBus(); openLevels(); pollState(); requestAnimationFrame(frame);
+$("scrSel").addEventListener("change", (e) => {
+  // its session from the last sessions answer, its inputs at the next read (within a second): no extra requests
+  screen = e.target.value; rcvSeries.length = 0; rcv = null; rcvStrip.reset();
+  sess = sessLive.find((x) => x.screen === screen) || null; bump("inputs"); bump("sessions");
+  syncInputs();
+});
+function setView(v) {
+  view = v; $("viewSends").hidden = v !== "sends"; $("viewHears").hidden = v !== "hears";
+  for (const btn of document.querySelectorAll(".tabs button")) btn.setAttribute("aria-selected", String(btn.dataset.view === v));
+  try { localStorage.setItem("sm-monitor-view", v); } catch { /* private window: the view isn't remembered */ }
+  for (const [w, list] of Object.entries(STRIPS)) if (w !== v) for (const s of list) s.release();
+  toFeed({ view, visible: !document.hidden });
+}
+for (const btn of document.querySelectorAll(".tabs button")) btn.addEventListener("click", () => setView(btn.dataset.view));
+setView(view);
+startFeed();
 </script>
 </body>
 </html>
