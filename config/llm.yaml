@@ -64,6 +64,23 @@ tasks:
                                             # page, 17 Oct): re-check before then.
     timeout_s: 8                            # then the local keyword match answers
     max_output_tokens: 300
+  prompt:                                   # the app's prompt work (routes/openai.py openai_prompt via chat()): the
+    models:                                 # refiner, translate, the scheduler's reasoners (image checks and picks)
+      - provider: gemini                    # owner, 17 Oct: Gemini first. The 17 Oct side-by-side (20 real cases:
+        model: gemini-3.1-flash-lite        # Alexa room probes, translate, refine, image_criteria_evaluator,
+                                            # image_batch_selector) matched gpt-4o on all of them at the same ~1.1 s;
+                                            # checked 17 Oct 2026: in models.list(). 3.8 Flash matched too but took
+                                            # 2.5-9 s (its thinking can't go below "low").
+      - {provider: openai, model: gpt-4o}   # the fallback: the old default, so a fallback answers as before. It
+                                            # retires 14 Jan 2027: replace it before then.
+    timeout_s: 20                           # per model: images and long refined prompts
+    max_output_tokens: 2048
+  alexa:                                    # Alexa's intents (routes/alexa.py): the same models on a short timeout,
+    models:                                 # so the fallback still answers inside Alexa's 8 s (3.5 + 3.5)
+      - {provider: gemini, model: gemini-3.1-flash-lite}
+      - {provider: openai, model: gpt-4o}
+    timeout_s: 3.5
+    max_output_tokens: 1024
 
 # USD per 1M tokens. text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
 # A key may be a glob (gemini-*-flash): an exact id wins; a glob prices an id the listener discovered.
@@ -80,6 +97,9 @@ prices:
   gemini-3.8-flash: {text_in: 0.75, text_out: 3.75, audio_in: 0.75, cached_in: 0.075}
   gemini-*-flash:   {text_in: 0.75, text_out: 3.75, audio_in: 0.75, cached_in: 0.075}   # 3.6 Flash (same price
                                             # today), and a newer Flash the listener discovers until it is checked
+  gemini-3.1-flash-lite: {text_in: 0.25, text_out: 1.50}   # Google's launch price (TechRadar, LLM Reference agree;
+                                            # one tracker shows $0.125 input now): the higher figure until checked
+  gpt-4o:        {text_in: 2.50, text_out: 10.00, cached_in: 1.25}   # Standard tier (the prompt tasks' fallback)
 
 # USD per local day, per task. Reaching it makes the listener call three times less often; it never stops it.
 budgets:

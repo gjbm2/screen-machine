@@ -559,7 +559,8 @@ def process(data):
                         routes.openai.openai_prompt,
                         user_prompt=user_prompt_text,
                         system_prompt=processed_system_prompt,
-                        schema=schema_json
+                        schema=schema_json,
+                        task="alexa",           # config/llm.yaml: the prompt models on Alexa's short timeout
                     )
                     
                     # Add a try/except block to catch JSON parsing errors
