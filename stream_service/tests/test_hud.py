@@ -95,3 +95,7 @@ async def test_api_create_patch_get_and_suppression(client):
     s._hud_suppressed = lambda: True
     s._hud_sync(time.monotonic() + 1)
     assert not s.engine.hud.on
+
+
+def test_long_parts_are_cut_to_fit():
+    assert H._cut("drift_speed", 9) == "drift_sp~" and H._cut("ok", 9) == "ok" and H._cut(None, 4) == "-"
