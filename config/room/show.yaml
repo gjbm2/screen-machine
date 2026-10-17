@@ -157,6 +157,7 @@ director:
   house: {white_k: 2700, level: 0.8}        # starting point (§8.4): House lights when the room has no stored house
                                             # state for a lamp
   next_max_wait_s: 4.0                      # starting point (§8.4): Next look lands on the next bar, at most this long
+  genre_min_conf: 0.4                       # the local ML's genre word counts at this share (genre_map; 17 Oct)
   art:
     poll_s: 60                              # starting point: how often the art palette's stills are read
     colours: 5                              # starting point (§8.8): OKLCh clusters per still
@@ -295,8 +296,11 @@ listener:                                   # §7.3, §7.5. Starting points, all
   relaxed_cadence_s: 45                     # after agree_reads agreeing, confident verdicts
   agree_reads: 3
   quiet_gate: 0.1                           # the loudness gate's mean over the last 10 s must reach this
-  requires_auto: true                       # owner, 17 Oct: no audio goes to OpenAI unless Auto is on (cost, and it's
-  requires_mic: true                        # intrusive) and the room's mic is on; re-checked right before each upload
+  requires_auto: true                       # owner, 17 Oct: no audio goes to any provider unless Auto is on (cost, and
+  requires_mic: true                        # it's intrusive) and the room's mic is on; re-checked right before each
+                                            # upload. The mode's show.main "listening" no longer gates (17 Oct)
+  evening_h: 4                              # README S5.20: the evening the Music card's estimate covers (starting
+                                            # point): est_evening_usd = evening_h x 3600 / cadence_s x the cost a clip
   min_clip_s: 10                            # the ring records only while a clip could go: a first clip waits this long
   music_gate: classifier                    # room-mic clips go only while a music/speech classifier says music, with
                                             # speech under 0.3. The classifier is CED, in P1. "dsp" would allow a DSP
@@ -344,6 +348,7 @@ ml:
       window_s: 2.1                         # one EffNet patch: 128 frames x 256 samples at 16 kHz
       model: discogs-effnet
       budget_ms: 80                         # starting point (§6: 6-9 ms + under 1 ms a head, measured)
+      styles_top: 5                         # the styles a tags line carries for genre_map (measured 17 Oct)
       heads:                                # music.context field -> catalogue head (index.json says which class is "yes")
         genre: genre_discogs400             # also gives genre_parents and styles_top3
         moods: mtg_jamendo_moodtheme
@@ -394,20 +399,195 @@ ml:
     healthy_s: 600                          # starting point: running this long resets the backoff
     stall_s: 30                             # starting point: no line from the worker this long while fed: restart it
 
-# Genre words (§6): Discogs-EffNet's parent genres -> config/live/vocab.yaml genre words. §6's table, as written; a
-# parent not listed gives no word (unknown). Extending vocab.yaml is 04's call. Read by structure (music.context's
-# genre), which situations' genre_in, the card and the director read.
+# Genre words (§6): Discogs-EffNet's 400 styles -> config/live/vocab.yaml genre words (04's 31, 17 Oct). Each tags
+# line's top styles (ml.tasks.tags.styles_top), weighted by activation ** weight_power, give word shares; smoothed
+# (tau_s), the leader is music.context's genre word and its share the conf; the top words_top shares are
+# room.direction's genres (screen-machine-2b's genre_fit tags). A style takes styles[style], else its parent's word
+# (parents); null = no word (its share counts against the leader). Measured 17 Oct on the 9 test tracks (2b's
+# audit, c8's replay): the leader right on 7 of 9 clear tracks, share 0.5-0.95; the two soul tracks split
+# blues / funk / reggae at ~0.3. Read by structure (music.context's genre), which situations' genre_in, the card
+# and the director read.
 genre_map:
-  parents:
-    "Jazz": jazz
-    "Funk / Soul": soul
-    "Blues": soul
-    "Pop": pop
-    "Latin": pop
-    "Rock": rock
+  parents:                                # a family's word, for each of its styles not listed under styles
+    "Blues": blues
+    "Brass & Military": null
+    "Children's": null
     "Classical": classical
-    "Electronic": {from_listener: [house, techno, ambient]}   # fine styles are unreliable (§6): the word comes only
-                                                              # from the AI listener's genre, when it is one of these
+    "Electronic": electronic
+    "Folk, World, & Country": world
+    "Funk / Soul": soul
+    "Hip Hop": hip-hop
+    "Jazz": jazz
+    "Latin": latin
+    "Non-Music": null
+    "Pop": pop
+    "Reggae": reggae
+    "Rock": rock
+    "Stage & Screen": soundtrack
+  styles:                                 # a style's own word, over its family's
+    "Blues---Rhythm & Blues": soul
+    "Classical---Modern": classical
+    "Electronic---Techno": techno
+    "Electronic---Minimal": techno
+    "Electronic---Minimal Techno": techno
+    "Electronic---Deep Techno": techno
+    "Electronic---Dub Techno": techno
+    "Electronic---Hard Techno": techno
+    "Electronic---Schranz": techno
+    "Electronic---Acid": techno
+    "Electronic---House": house
+    "Electronic---Deep House": house
+    "Electronic---Acid House": house
+    "Electronic---Tech House": house
+    "Electronic---Progressive House": house
+    "Electronic---Electro House": house
+    "Electronic---Garage House": house
+    "Electronic---Ghetto House": house
+    "Electronic---Hard House": house
+    "Electronic---Hip-House": house
+    "Electronic---Italo House": house
+    "Electronic---Euro House": house
+    "Electronic---Tribal House": house
+    "Electronic---Tribal": house
+    "Electronic---Tropical House": house
+    "Electronic---Beatdown": house
+    "Electronic---Speed Garage": house
+    "Electronic---UK Garage": house
+    "Electronic---Bassline": house
+    "Electronic---Trance": trance
+    "Electronic---Goa Trance": trance
+    "Electronic---Psy-Trance": trance
+    "Electronic---Progressive Trance": trance
+    "Electronic---Hard Trance": trance
+    "Electronic---Tech Trance": trance
+    "Electronic---Hands Up": trance
+    "Electronic---Drum n Bass": drum-and-bass
+    "Electronic---Jungle": drum-and-bass
+    "Electronic---Halftime": drum-and-bass
+    "Electronic---Dubstep": dubstep
+    "Electronic---Ambient": ambient
+    "Electronic---Dark Ambient": ambient
+    "Electronic---Drone": ambient
+    "Electronic---New Age": ambient
+    "Electronic---Berlin-School": ambient
+    "Electronic---Dungeon Synth": ambient
+    "Electronic---Downtempo": downtempo
+    "Electronic---Trip Hop": downtempo
+    "Electronic---Chillwave": downtempo
+    "Electronic---Future Jazz": downtempo
+    "Electronic---Illbient": downtempo
+    "Electronic---Vaporwave": downtempo
+    "Electronic---Disco": disco
+    "Electronic---Nu-Disco": disco
+    "Electronic---Italo-Disco": disco
+    "Electronic---Euro-Disco": disco
+    "Electronic---Hi NRG": disco
+    "Electronic---Dance-pop": pop
+    "Electronic---Synth-pop": pop
+    "Electronic---Eurodance": pop
+    "Electronic---Eurobeat": pop
+    "Electronic---Italodance": pop
+    "Electronic---Freestyle": pop
+    "Electronic---Disco Polo": pop
+    "Electronic---New Wave": pop
+    "Electronic---Hip Hop": hip-hop
+    "Electronic---Grime": hip-hop
+    "Electronic---Acid Jazz": jazz
+    "Electronic---Jazzdance": jazz
+    "Electronic---Modern Classical": classical
+    "Electronic---Neofolk": folk
+    "Electronic---Latin": latin
+    "Electronic---Dub": reggae
+    "Folk, World, & Country---Bluegrass": country
+    "Folk, World, & Country---Country": country
+    "Folk, World, & Country---Hillbilly": country
+    "Folk, World, & Country---Honky Tonk": country
+    "Folk, World, & Country---Cajun": country
+    "Folk, World, & Country---Folk": folk
+    "Folk, World, & Country---Celtic": folk
+    "Folk, World, & Country---Nordic": folk
+    "Folk, World, & Country---Gospel": gospel
+    "Folk, World, & Country---African": afrobeat
+    "Folk, World, & Country---Highlife": afrobeat
+    "Folk, World, & Country---Soukous": afrobeat
+    "Funk / Soul---Funk": funk
+    "Funk / Soul---P.Funk": funk
+    "Funk / Soul---Free Funk": funk
+    "Funk / Soul---Boogie": funk
+    "Funk / Soul---Afrobeat": afrobeat
+    "Funk / Soul---Contemporary R&B": rnb
+    "Funk / Soul---New Jack Swing": rnb
+    "Funk / Soul---Swingbeat": rnb
+    "Funk / Soul---UK Street Soul": rnb
+    "Funk / Soul---Gospel": gospel
+    "Funk / Soul---Disco": disco
+    "Hip Hop---Trip Hop": downtempo
+    "Hip Hop---RnB/Swing": rnb
+    "Hip Hop---Bass Music": electronic
+    "Jazz---Afrobeat": afrobeat
+    "Jazz---Bossa Nova": latin
+    "Pop---Indie Pop": indie
+    "Pop---Bollywood": world
+    "Reggae---Calypso": world
+    "Reggae---Soca": world
+    "Rock---Indie Rock": indie
+    "Rock---Lo-Fi": indie
+    "Rock---Shoegaze": indie
+    "Rock---Dream Pop": indie
+    "Rock---Post Rock": indie
+    "Rock---Math Rock": indie
+    "Rock---Brit Pop": indie
+    "Rock---Post-Punk": indie
+    "Rock---Coldwave": indie
+    "Rock---No Wave": indie
+    "Rock---Ethereal": indie
+    "Rock---Punk": punk
+    "Rock---Pop Punk": punk
+    "Rock---Oi": punk
+    "Rock---Crust": punk
+    "Rock---Hardcore": punk
+    "Rock---Melodic Hardcore": punk
+    "Rock---Post-Hardcore": punk
+    "Rock---Power Violence": punk
+    "Rock---Emo": punk
+    "Rock---Psychobilly": punk
+    "Rock---Atmospheric Black Metal": metal
+    "Rock---Black Metal": metal
+    "Rock---Death Metal": metal
+    "Rock---Deathcore": metal
+    "Rock---Depressive Black Metal": metal
+    "Rock---Doom Metal": metal
+    "Rock---Folk Metal": metal
+    "Rock---Funeral Doom Metal": metal
+    "Rock---Funk Metal": metal
+    "Rock---Goregrind": metal
+    "Rock---Gothic Metal": metal
+    "Rock---Grindcore": metal
+    "Rock---Heavy Metal": metal
+    "Rock---Melodic Death Metal": metal
+    "Rock---Metalcore": metal
+    "Rock---Noisecore": metal
+    "Rock---Nu Metal": metal
+    "Rock---Pornogrind": metal
+    "Rock---Post-Metal": metal
+    "Rock---Power Metal": metal
+    "Rock---Progressive Metal": metal
+    "Rock---Sludge Metal": metal
+    "Rock---Speed Metal": metal
+    "Rock---Technical Death Metal": metal
+    "Rock---Thrash": metal
+    "Rock---Viking Metal": metal
+    "Rock---Folk Rock": folk
+    "Rock---Neofolk": folk
+    "Rock---Country Rock": country
+    "Rock---Acoustic": singer-songwriter
+    "Rock---Doo Wop": soul
+    "Rock---Lounge": jazz
+    "Rock---Pop Rock": pop
+    "Rock---Yé-Yé": pop
+    "Rock---Ska": reggae
+  weight_power: 2                         # measured 17 Oct: squared activations beat plain ones and top-1 votes
+  words_top: 3                            # room.direction's genres: this many words, shares summing to 1
   tau_s: 30                                 # starting point (§6: smooth over 10-60 s)
   freeze_below_music: 0.5                   # §6: genre and the other tags hold while CED music is under this
   speech_scale_above: 0.3                   # §6: confidence scales down while CED speech is above this
@@ -443,6 +623,51 @@ structure:
   tags_hold_s: 30                           # ...and read null once the tags are this old
   ced_mean_s: 3                             # README S4.8: music.context's CED is the mean of the last 3 s
   listener_conf: 0.6                        # the AI listener's moods and section label count at this confidence
+  valence:                                  # music.context valence, 0 (sad, dark) .. 1 (happy): the mood head's top
+                                            # labels' weights averaged by activation (starting points, from the
+                                            # labels' meaning; labels with no feel either way are left out)
+    happy: 1.0
+    uplifting: 0.95
+    positive: 0.95
+    fun: 0.9
+    funny: 0.85
+    upbeat: 0.85
+    party: 0.85
+    summer: 0.85
+    holiday: 0.85
+    christmas: 0.85
+    children: 0.8
+    hopeful: 0.8
+    inspiring: 0.8
+    motivational: 0.8
+    groovy: 0.75
+    love: 0.7
+    romantic: 0.7
+    sexy: 0.65
+    travel: 0.65
+    energetic: 0.65
+    retro: 0.6
+    adventure: 0.6
+    calm: 0.55
+    relaxing: 0.55
+    melodic: 0.55
+    nature: 0.55
+    soft: 0.5
+    dream: 0.5
+    meditative: 0.45
+    epic: 0.45
+    powerful: 0.45
+    ballad: 0.4
+    space: 0.4
+    emotional: 0.35
+    slow: 0.35
+    deep: 0.35
+    drama: 0.3
+    dramatic: 0.3
+    heavy: 0.25
+    dark: 0.1
+    melancholic: 0.1
+    sad: 0.0
   key_min_strength: 0.3                     # Essentia's key is used at this strength or more...
   key_hold:                                 # ...and music.context's key doesn't flicker:
     strength_margin: 0.05                   # the worker's key stays the source until its strength is this far under

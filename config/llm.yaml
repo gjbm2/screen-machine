@@ -1,12 +1,12 @@
 # config/llm.yaml: which model each LLM task uses, what it costs, and the daily budgets (utils/llm; docs/SHOW_ENGINE.md
-# §7.2, §7.6; show_service/README.md "Stage 3 > S3.12").
-# Owner: screen-machine-c8 (written by B6, 16 Oct 2026). utils/llm re-reads it when it changes (mtime, every 2 s); a bad
-# edit keeps the last good file and shows the error in utils.llm.status().
+# §7.2, §7.6; show_service/README.md "Stage 3 > S3.12", S5.20).
+# Owner: screen-machine-c8 (written by B6, 16 Oct 2026; Gemini first, owner 17 Oct). utils/llm re-reads it when it
+# changes (mtime, every 2 s); a bad edit keeps the last good file and shows the error in utils.llm.status().
 #
 # Model ids appear ONLY in this file. Keys never do: each provider names the environment variable that holds its key,
-# read from the environment, else from the repo's .env. A model is listed only after it was checked (models.list() with
-# the key, and the price on the provider's pricing page). An empty models list means "no model configured": the
-# listener says so, and Describe it uses its keyword match.
+# read from the environment, else from the repo's .env. A model is listed only after it was checked (the provider's own
+# model page, and the price on its pricing page). An empty models list means "no model configured": the listener says
+# so, and Describe it uses its keyword match.
 # YAML note: on/off/yes/no are booleans in this parser, so write true/false.
 
 version: 1
@@ -15,18 +15,42 @@ providers:
   openai:
     key_env: OPENAI_API_KEY
     base_url: null                          # null = the SDK's default (api.openai.com)
+    label: OpenAI                           # the page's word for it (the Music card's "provider")
   gemini:
-    # Gemini's OpenAI-compatible endpoint, on the same client (§7.2's fallback; paid tier only). Off for now: there is
-    # no GEMINI_API_KEY in .env, so a Gemini model would be skipped ("no key"), and none is listed under tasks until
-    # its id is checked with models.list() and its price with Google's pricing page.
+    # Gemini's OpenAI-compatible endpoint, on the same client (paid tier: the paid tier's data is not used to improve
+    # Google's products; the free tier's is). Checked 17 Oct 2026 at https://ai.google.dev/gemini-api/docs/openai
+    # (page updated 2026-10-14): chat completions take an input_audio part ({data: base64, format}), tools work, and
+    # client.models.list() lists the ids. Audio formats Gemini takes include WAV and MP3 (docs/audio, updated
+    # 2026-09-23). Without GEMINI_API_KEY (the owner is adding it) this provider is skipped ("no key") and the
+    # listener runs on OpenAI exactly as before.
     key_env: GEMINI_API_KEY
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    label: Google
+    omit: [store, modalities]               # OpenAI-only request fields: not sent here
+    schema: openapi                         # tool schemas in OpenAPI's dialect (["number", "null"] -> nullable)
 
 tasks:
   listen:                                   # the LLM listener (§7.3): a room clip -> genre, moods, section, trajectory
     models:                                 # tried in order; the next one only when the one before fails
-      - {provider: openai, model: gpt-audio-1.5}   # checked 16 Oct 2026: in models.list(); the smoke call worked
-      - {provider: openai, model: gpt-audio}       # checked 16 Oct 2026: in models.list()
+      - provider: gemini                    # owner, 17 Oct: Gemini Flash first (better on music, about a third the cost)
+        model: gemini-3.8-flash             # checked 17 Oct 2026 (ai.google.dev/gemini-api/docs/models/gemini-3.8-flash,
+                                            # updated 2026-09-02): stable; input text, image, video, AUDIO, PDF; output
+                                            # text; function calling and structured outputs. Not yet called (no key).
+        discover: 'gemini-\d+(\.\d+)*-flash'   # used as written while models.list() has it; else the newest listed
+                                            # plain Flash id (no -lite/-tts/-live/-image/-preview), logged and shown
+                                            # in the listener's snapshot. Flash ids on 17 Oct: gemini-3.8-flash (new),
+                                            # gemini-3.6-flash (previous); no 3.7.
+        options:
+          reasoning_effort: low             # 3.x Flash can't turn thinking off, and "minimal" errors on 3.8 Flash
+          max_completion_tokens: 2048       # thinking counts toward Gemini's output limit (and is billed as output)
+        typical: {text_in: 1600, audio_per_s: 32, text_out: 600}   # the estimate until the ledger has 3 calls:
+                                            # 32 audio tokens/s (Google's docs/audio); ~1600 prompt tokens and ~200
+                                            # answer tokens as measured on OpenAI, plus ~400 thinking (a starting point)
+      - {provider: openai, model: gpt-audio-1.5,      # the fallback. checked 16 Oct 2026: in models.list(); the
+         typical: {text_in: 1600, audio_per_s: 10, text_out: 200}}   # smoke call worked. Not deprecated (17 Oct).
+                                            # typical: measured 17 Oct (150 audio tokens per 15 s, ~190 out)
+      # gpt-audio (and gpt-audio-mini) shut down on 20 Jan 2027, replaced by gpt-audio-1.5
+      # (https://developers.openai.com/api/docs/deprecations, checked 17 Oct 2026), so gpt-audio is no longer listed.
     timeout_s: 12                           # §7.3; no retries (the next window is the retry)
     max_output_tokens: 400
     audio:                                  # the clip as sent: ffmpeg MP3 (a WAV when ffmpeg fails)
@@ -35,19 +59,30 @@ tasks:
       bitrate: 64k                          # README S3.12 (§7.3 said 96k; 64k is plenty for a 24 kHz mono clip)
   describe:                                 # Describe it (§7.4): the guest's words -> the card's own settings
     models:
-      - {provider: openai, model: gpt-4.1-mini}    # checked 16 Oct 2026: in models.list(); fast, no reasoning tokens
+      - {provider: openai, model: gpt-4.1-mini}    # checked 16 Oct 2026: in models.list(); fast, no reasoning tokens.
+                                            # Its snapshot shuts down 14 Jan 2027 (replacement gpt-6-luna; deprecations
+                                            # page, 17 Oct): re-check before then.
     timeout_s: 8                            # then the local keyword match answers
     max_output_tokens: 300
 
-# USD per 1M tokens. Retrieved 16 Oct 2026 from https://developers.openai.com/api/docs/pricing ("Realtime and audio
+# USD per 1M tokens. text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
+# A key may be a glob (gemini-*-flash): an exact id wins; a glob prices an id the listener discovered.
+# OpenAI rows: retrieved 16 Oct 2026 from https://developers.openai.com/api/docs/pricing ("Realtime and audio
 # generation models" for the gpt-audio rows, text and audio tokens; Standard tier for gpt-4.1-mini).
-# text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
+# Gemini rows: retrieved 17 Oct 2026 from https://ai.google.dev/gemini-api/docs/pricing (page updated 2026-10-16),
+# paid tier, Standard: Gemini 3.8 Flash and 3.6 Flash both $0.75 input (one price for every input, audio included),
+# $3.75 output including thinking, $0.075 context caching, THROUGH 31 DEC 2026. From 1 Jan 2027 they double:
+# $1.50 input, $7.50 output, $0.15 caching. Change this row then.
 prices:
   gpt-audio-1.5: {text_in: 2.50, text_out: 10.00, audio_in: 32.00}
-  gpt-audio:     {text_in: 2.50, text_out: 10.00, audio_in: 32.00}
+  gpt-audio:     {text_in: 2.50, text_out: 10.00, audio_in: 32.00}     # kept for the ledger's old rows
   gpt-4.1-mini:  {text_in: 0.40, text_out: 1.60, cached_in: 0.10}
+  gemini-3.8-flash: {text_in: 0.75, text_out: 3.75, audio_in: 0.75, cached_in: 0.075}
+  gemini-*-flash:   {text_in: 0.75, text_out: 3.75, audio_in: 0.75, cached_in: 0.075}   # 3.6 Flash (same price
+                                            # today), and a newer Flash the listener discovers until it is checked
 
 # USD per local day, per task. Reaching it makes the listener call three times less often; it never stops it.
 budgets:
-  listen: 15.00                             # starting point, the owner's call: §7.2 estimates $10-14 for a 4-hour
-                                            # evening at one call every 20 s
+  listen: 15.00                             # starting point, the owner's call. At one call every 20 s for 4 h the
+                                            # estimate is about $3 on Gemini 3.8 Flash and about $10 on gpt-audio-1.5
+                                            # (GET /api/v1/listening "estimate" shows the live figure)

@@ -126,6 +126,24 @@ def test_sine_lights_its_spectrum32_band_at_both_rates(k):
     assert peaks[48000] == peaks[44100]
 
 
+def test_spectrum32_rises_at_once_from_silence_and_falls_softly():
+    """Owner, 17 Oct (sound to glass under 0.5 s): spec_gate follows the window's own level, the rise is tau 35 ms."""
+    out: list = []
+    f = dsp.Features(publish=lambda m: out.append(m["data"]) if m["type"] == c.MUSIC_FEATURES else None)
+    n = 15 * FS
+    x = coloured(n, 1, 0.05)
+    x[8 * FS:11 * FS] = 0.0
+    feed(f, x)
+    ts = np.array([d["t_ms"] / 1000.0 - T0 for d in out])
+    v = np.array([max(d["spectrum32"]) for d in out])
+    plat = v[(ts > 12.0) & (ts < 12.5)].mean()
+    t50 = ts[np.argmax((ts >= 11.0) & (v >= 0.5 * plat))] - 11.0
+    assert t50 < 0.08, t50
+    pre = v[(ts > 7.0) & (ts < 8.0)].mean()
+    t_half = ts[np.argmax((ts >= 8.0) & (v <= 0.5 * pre))] - 8.0
+    assert 0.15 < t_half < 0.35, t_half                                  # the fall: tau 300 ms
+
+
 def test_lowest_bands_share_bins_but_stay_in_place():
     """Bands 0-2 are 7-10 Hz wide and a 4096 FFT's bins 11 Hz apart: an empty band takes the nearest bin (spec)."""
     for k in (0, 1, 2):
@@ -386,24 +404,25 @@ def test_a_new_stream_clears_the_history():
     assert f._q.c_s <= 3
 
 
-def test_tick_cadence_25_hz_only_with_fresh_audio():
+def test_tick_cadence_50_hz_only_with_fresh_audio():
     msgs, f = collect()
     feed(f, coloured(4 * FS, 1, 0.1))
     feats = of_type(msgs, c.MUSIC_FEATURES)
-    assert 99 <= len(feats) <= 103
+    assert 198 <= len(feats) <= 203
     ts = [d["t_ms"] for d in feats]
     assert all(b > a for a, b in zip(ts, ts[1:]))
-    assert 39.0 < float(np.mean(np.diff(ts))) < 41.0
-    f.tick(T0 + 4.5)                                                  # the audio since the last publish
+    assert 19.0 < float(np.mean(np.diff(ts))) < 21.0
+    f.tick(T0 + 4.5)                         # the audio since the last publish, or (all of it out) the fade's first
     before = len(of_type(msgs, c.MUSIC_FEATURES))
     assert before == len(feats) + 1
-    last = of_type(msgs, c.MUSIC_FEATURES)[-1]
+    last = feats[-1]
     assert last["gate"] > 0.5 and sum(last["spectrum32"]) > 1.0
     for k in range(300):                                              # 3 s without audio: the fade, then nothing
         f.tick(T0 + 4.51 + k * 0.01)
     fade = of_type(msgs, c.MUSIC_FEATURES)[before:]
-    # from the latest hop (seen at ~T0 + 4.0): 25 Hz up to 1.5 s, then one all-zero frame (ticks resume at 4.51)
-    assert 22 <= len(fade) <= 28 and f.stats()["fades"] == len(fade)
+    # from the latest hop (seen at ~T0 + 4.0): 50 Hz up to 1.5 s, then one all-zero frame (ticks resume at 4.51; the
+    # 4.5 tick's frame was the fade's first when the feed's own ticks had published all the audio)
+    assert 44 <= len(fade) <= 56 and f.stats()["fades"] in (len(fade), len(fade) + 1)
     assert all(d["gate"] == 0 and d["energy"] == 0 and d["onset"] == 0 and d["punch"] == 0 for d in fade)
     assert all(d["bands"][b]["level"] == 0 and d["bands"][b]["hits"] == 0 for d in fade for b in d["bands"])
     sums = [sum(d["spectrum32"]) for d in fade]

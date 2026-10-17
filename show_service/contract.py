@@ -194,7 +194,7 @@ class BandData(TypedDict):
 
 
 class FeaturesData(TypedDict):
-    """music.features, 25 Hz. Levels in dB are absolute (dBFS / LUFS, floored at -70 LUFS and -120 dBFS)."""
+    """music.features, 50 Hz (dsp.PUBLISH_HZ; 25 Hz until 17 Oct). Levels in dB are absolute (dBFS / LUFS, floored at -70 LUFS and -120 dBFS)."""
     t_ms: float
     stream: str
     bands: dict[str, BandData]
@@ -253,7 +253,9 @@ SPEC_EDGES_HZ: tuple[float, ...] = tuple(SPEC_LO_HZ * (SPEC_HI_HZ / SPEC_LO_HZ) 
 SPEC_CENTRES_HZ: tuple[float, ...] = tuple(math.sqrt(a * b) for a, b in zip(SPEC_EDGES_HZ, SPEC_EDGES_HZ[1:]))
 SPEC_WINDOW_DB = 60.0   # value = clamp((dB - (ref - 60)) / 60), ref = rolling p95 of the loudest band over 60 s
 SPEC_REF_S = 60.0
-SPEC_TAU_S = 0.3        # smoothing, rise and fall alike, after the gate
+SPEC_TAU_S = 0.3        # smoothing after the gate: the fall
+SPEC_RISE_TAU_S = 0.035  # ...and the rise (owner, 17 Oct, via screen-machine-73: sound to glass under 0.5 s, so the
+                         # screens' bars rise at once and fall softly; this replaces "tau >= 300 ms both ways")
 
 
 # =====================================================================================================================
@@ -562,6 +564,12 @@ class DirectionData(TypedDict):
     section: Optional[SectionRef]
     density: float                 # onset density
     groove: float                  # drive x beat confidence
+    hold: bool                     # a person holds the look (Keep this look, or their change pending; owner 17 Oct:
+                                   # the renderer's directors change nothing, effects included, while it is true)
+    genres: dict[str, float]       # soft genre: vocab genre word -> share (the top few, summing to 1; {} with none):
+                                   # the local ML's style shares (music.context genre.words), else {genre: 1.0}
+    valence: Optional[float]       # 0 (sad, dark) .. 1 (happy): music.context valence (None without the ML)
+    organic: Optional[float]       # 0 (synthetic) .. 1 (acoustic): music.context acoustic (None without the ML)
     beat_lock: bool                # the vibe allows it and the clock's gate is "beat"
     loose: bool                    # the card's "following loosely": the vibe wants the beat, the clock is unsure
     # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
@@ -688,7 +696,9 @@ class RoomView(TypedDict):
 
 # -- situations (§8.9) ---------------------------------------------------------------------------------------------------
 SITUATIONS: tuple[str, ...] = ("piano_playing", "piano_idle", "music_audible", "sonos_playing", "genre_in",
-                               "energy_above", "talking", "quiet", "between", "light_below", "light_above")
+                               "energy_above", "talking", "quiet", "between", "light_below", "light_above",
+                               # README S5.20 (17 Oct): the listener's words for Auto
+                               "mood_in", "building", "track_changed")
 COMBINATORS: tuple[str, ...] = ("all", "any", "not")
 SituationSource = Literal["midi", "sonos", "audio", "listener", "time", "light"]
 #: §8.9 priority; the room's light level is the setting, like the time of day (README S5.19), so it ranks with time
@@ -864,16 +874,22 @@ class ListenerView(TypedDict):
     """GET /api/v1/listening and state's "listener"."""
     on: bool                       # the AI listening switch (persisted; default False until the owner turns it on)
     effective: bool                # clips are going now
-    why: Optional[str]             # page words when not: "AI listening is off", "this mode doesn't listen", ...
+    why: Optional[str]             # page words when not: "AI listening is off", "Auto is off", "the mic is off",
+                                   # "this feel doesn't listen", "people are talking", "too quiet", ...
     stream: Optional[str]
     next_in_s: Optional[float]
     cadence_s: float
     calls_today: int
     spend_today_usd: float
     budget_usd: Optional[float]
-    model: Optional[str]           # the first model llm.yaml lists for the task, after the startup probe
+    model: Optional[str]           # the model it would call now (the first usable one, after discovery)
     last: Optional[InsightData]
     errors: int
+    provider: Optional[str]        # README S5.20: who that model is with, in page words ("Google", "OpenAI")
+    est_evening_usd: Optional[float]   # estimate.per_evening_usd (shown even while the switch is off)
+    estimate: Optional[dict]       # {"per_call_usd", "per_hour_usd", "per_evening_usd", "evening_h", "cadence_s",
+                                   #  "model", "provider", "basis": "ledger" | "price table"}, or None (no usable
+                                   #  model, or its cost isn't known)
 
 
 class DescribeIntent(TypedDict):
@@ -939,7 +955,9 @@ class CardData(TypedDict):
     house: bool
     low: bool
     chips: list[ChipData]
-    listening: dict[str, Any]      # {"on": bool, "effective": bool, "why": str | None}
+    listening: dict[str, Any]      # {"on": bool, "effective": bool, "why": str | None, "spend_today_usd": float,
+                                   #  "est_evening_usd": float | None, "provider": "Google" | "OpenAI" | None}
+                                   #  (README S5.20: the price shows even while the switch is off)
     describe: dict[str, Any]       # {"state": "idle" | "working" | "done", "text": str | None, "reply": str | None,
                                    #  "suggest": {"mode", "label"} | None}
     auto: dict[str, Any]           # {"on": bool | None, "state", "line", "chip": AutoAnnouncement | None,
@@ -1148,6 +1166,7 @@ class MlTags(TypedDict):
     genre_parents: dict[str, float]    # every parent in the model's labels -> the max of its styles' activations,
                                        # mean over the window's patches, 0..1 (multi-label sigmoids: not a distribution)
     styles_top3: list[list[Any]]       # [["Electronic---House", 0.61], ...]: the 400-style head's three highest
+    styles_top: list[list[Any]]        # the same, its ml.tasks.tags.styles_top highest (structure's genre words)
     moods_top5: list[list[Any]]        # [[label, p], ...]: the mood/theme head's raw labels
     instruments_top5: list[list[Any]]  # [[label, p], ...]
     dance: Optional[float]             # 0..1: the head's "yes" class (index.json facts say which)
@@ -1392,8 +1411,11 @@ class GenreReading(TypedDict):
     word: Optional[str]                # a vocab.yaml genre word, or None (unknown, or a parent genre_map doesn't map)
     conf: float                        # 0..1
     parent: Optional[str]              # the leading Discogs parent (smoothed, with hysteresis), or None
-    parent_p: float                    # its smoothed activation
+    parent_p: float                    # its smoothed activation (the style rule: the top style's parent, its activation)
     via: str                           # GENRE_VIA
+    words: dict[str, float]            # word -> share, the top genre_map.words_top summing to 1 ({} with none): the
+                                       # soft genre room.direction's genres carries (the listener's: {word: 1.0})
+    style: Optional[str]               # the newest tags line's top Discogs style (the style rule), else None
 
 
 class SectionInfo(TypedDict):
@@ -1437,6 +1459,7 @@ class MusicContext(TypedDict):
     engagement: Optional[float]
     bright: Optional[float]
     acoustic: Optional[float]
+    valence: Optional[float]           # 0 (sad, dark) .. 1 (happy): structure.valence's weights over the mood head
     key: Optional[str]                 # KEY_NAMES
     mode: Optional[str]
     key_strength: float

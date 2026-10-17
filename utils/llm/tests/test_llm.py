@@ -81,10 +81,14 @@ class FakeOpenAI:
             return web.json_response({"error": {"message": f"Incorrect API key provided: {SECRET}. Find yours.",
                                                 "type": "invalid_request_error", "code": "invalid_api_key"}},
                                      status=401)
+        if b == "404":
+            return web.json_response({"error": {"message": f"The model {model} does not exist.",
+                                                "type": "invalid_request_error"}}, status=404)
         if b == "tool_400":
             return web.json_response({"error": {"message": "This model does not support tools.",
                                                 "type": "invalid_request_error"}}, status=400)
-        args = {"ok": {"word": "a", "n": 2}, "slow": {"word": "a", "n": 2}, "invalid": {"word": "zzz", "n": 9}}.get(b)
+        args = {"ok": {"word": "a", "n": 2}, "slow": {"word": "a", "n": 2}, "invalid": {"word": "zzz", "n": 9},
+                "hard": {"word": 7}}.get(b)
         arguments = "{not json" if b == "bad_json" else json.dumps(args)
         msg = {"role": "assistant", "content": None, "tool_calls": [
             {"id": "call_1", "type": "function", "function": {"name": "report", "arguments": arguments}}]}
@@ -141,7 +145,7 @@ def _ledger(path):
     return [json.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
 
 
-# -- the validator ------------------------------------------------------------------------------------------------------
+# -- the validator -----------------------------------------------------------------------------------------------------
 def test_validate_covers_the_keywords():
     s = {"type": "object", "required": ["a", "b"], "additionalProperties": False,
          "properties": {"a": {"type": "integer", "minimum": 1, "maximum": 3},
@@ -157,7 +161,7 @@ def test_validate_covers_the_keywords():
     assert llm.validate(True, {"type": "integer"})        # a bool is not an integer
 
 
-# -- calls ----------------------------------------------------------------------------------------------------------------
+# -- calls -------------------------------------------------------------------------------------------------------------
 def test_forced_tool_call_parses_and_sends_the_right_request(server, layer):
     res = llm.call_json("t", system="sys", user="hello", tool=TOOL)
     assert res.ok and res.data == {"word": "a", "n": 2}
@@ -325,3 +329,178 @@ def test_redact():
     assert llm.redact("key sk-abcdef123456 and sk-proj-XYZ_123") == "key sk-*** and sk-***"
     assert "AIza***" in llm.redact("AIzaSyA1234567890abcdef")
     assert llm.redact("my secret-value-here", ["secret-value-here"]) == "my ***"
+
+
+# -- discovery, estimates, lenient answers (S5.20) ---------------------------------------------------------------------
+GKEY = "AIzaTESTKEY0123456789abcdefghij"
+
+
+def _two_providers(layer, server, *, gemini_model="gemini-9-flash", discover=r"gemini-\d+(\.\d+)*-flash",
+                   gemini_key=True, monkeypatch=None, extra=""):
+    """A gemini-like provider (its own key, the fake server, OpenAPI schemas) first, then openai m1."""
+    if gemini_key:
+        monkeypatch.setenv("GEM_KEY", GKEY)
+    else:
+        monkeypatch.delenv("GEM_KEY", raising=False)
+    entry = "{provider: g" + (f", model: {gemini_model}" if gemini_model else "") + \
+        (f", discover: '{discover}'" if discover else "") + \
+        ", typical: {text_in: 1000, audio_per_s: 32, text_out: 400}}"
+    layer.cfg.write_text("\n".join([
+        "version: 1", "providers:", "  openai:", "    key_env: OPENAI_API_KEY",
+        f"    base_url: http://127.0.0.1:{server.port}/v1", "    label: OpenAI",
+        "  g:", "    key_env: GEM_KEY", f"    base_url: http://127.0.0.1:{server.port}/v1", "    label: Google",
+        "    omit: [store, modalities]", "    schema: openapi",
+        "tasks:", "  t:", "    models:", f"      - {entry}",
+        "      - {provider: openai, model: m1, typical: {text_in: 1000, audio_per_s: 10, text_out: 100}}",
+        "    timeout_s: 2", "    max_output_tokens: 50",
+        "prices:", "  m1: {text_in: 2.0, text_out: 10.0, audio_in: 30.0}",
+        "  gemini-*-flash: {text_in: 0.75, text_out: 3.75, audio_in: 0.75}"]) + "\n" + extra)
+    core.configure(config_path=layer.cfg, env_file=layer.env, ledger_path=layer.ledger)
+
+
+GEMINI_LIST = ["models/gemini-3.6-flash", "models/gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.8-flash-tts",
+               "gemini-3.10-flash-preview", "gemini-omni-1.1-flash", "m1"]
+
+
+def test_newest_reads_version_numbers():
+    pat = r"gemini-\d+(\.\d+)*-flash"
+    assert llm.newest(["gemini-3.8-flash", "gemini-3.10-flash", "gemini-3.9-flash-lite"], pat) == "gemini-3.10-flash"
+    assert llm.newest(["gemini-3.8-flash", "gemini-4-flash"], pat) == "gemini-4-flash"
+    assert llm.newest(["gemini-3.8-flash-tts", "m1"], pat) is None and llm.newest([], pat) is None
+
+
+def test_discovery_picks_the_newest_listed_flash_when_the_explicit_id_is_gone(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, monkeypatch=monkeypatch)
+    res = asyncio.run(llm.acall_json("t", system="s", user="u", tool=TOOL, audio=b"x"))
+    assert res.ok and (res.provider, res.model) == ("g", "gemini-3.8-flash")     # "models/" stripped; no -lite/-tts
+    req = server.requests[-1]
+    assert req["model"] == "gemini-3.8-flash" and "store" not in req and "modalities" not in req
+    rows = llm.status()["tasks"]["t"]["resolved"]
+    assert rows[0] == {"configured": "gemini-9-flash", "provider": "g", "model": "gemini-3.8-flash",
+                       "via": "discovered", "skip": None}
+    assert llm.status()["tasks"]["t"]["usable"] == ["gemini-3.8-flash", "m1"]
+    assert _ledger(layer.ledger)[-1]["model"] == "gemini-3.8-flash"
+    assert res.cost_usd > 0                                    # priced by the glob row
+
+
+def test_a_listed_explicit_id_wins_over_a_newer_match(server, layer, monkeypatch):
+    server.models = GEMINI_LIST + ["gemini-3.9-flash"]
+    _two_providers(layer, server, gemini_model="gemini-3.6-flash", monkeypatch=monkeypatch)
+    res = llm.call_json("t", system="s", user="u", tool=TOOL)
+    assert res.model == "gemini-3.6-flash"
+    assert llm.status()["tasks"]["t"]["resolved"][0]["via"] == "explicit"
+
+
+def test_probe_resolves_a_discover_only_entry_before_the_first_call(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, gemini_model=None, monkeypatch=monkeypatch)
+    st = llm.status()["tasks"]["t"]
+    assert st["models"][0].startswith("newest ") and st["usable"] == ["m1"]          # not read yet
+    assert st["resolved"][0]["skip"] == "models.list() not read yet"
+    n = server.model_lists
+    t = llm.probe("t")
+    assert server.model_lists > n and t["usable"] == ["gemini-3.8-flash", "m1"]
+    assert t["resolved"][0]["via"] == "discovered" and server.requests == []          # no call was made
+
+
+def test_no_gemini_key_skips_it_as_today(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, gemini_key=False, monkeypatch=monkeypatch)
+    res = llm.call_json("t", system="s", user="u", tool=TOOL)
+    assert res.ok and (res.provider, res.model) == ("openai", "m1")
+    assert res.attempts[0] == {"model": "gemini-9-flash", "error": "no key for g (GEM_KEY)"}
+    assert [r["model"] for r in server.requests] == ["m1"]
+    st = llm.status()
+    assert st["tasks"]["t"]["usable"] == ["m1"] and st["providers"]["g"] == {
+        "key": False, "base_url": f"http://127.0.0.1:{server.port}/v1", "label": "Google"}
+    e = llm.estimate("t", audio_s=24)
+    assert (e["model"], e["provider"], e["label"], e["basis"]) == ("m1", "openai", "OpenAI", "price table")
+
+
+def test_estimate_from_the_price_table_then_from_the_ledger(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, monkeypatch=monkeypatch)
+    llm.probe("t")
+    e = llm.estimate("t", audio_s=24)
+    # 1000 text + 24 s x 32 audio at $0.75, 400 out at $3.75
+    want = (1000 * 0.75 + 768 * 0.75 + 400 * 3.75) / 1e6
+    assert e == {"model": "gemini-3.8-flash", "provider": "g", "label": "Google", "usd": pytest.approx(want),
+                 "basis": "price table", "calls": 0}
+    for _ in range(core.ESTIMATE_MIN_CALLS):
+        assert llm.call_json("t", system="s", user="u", tool=TOOL).model == "gemini-3.8-flash"
+    e = llm.estimate("t", audio_s=24)
+    real = (1000 - 200 - 100) * 0.75 + 100 * 0.75 + 200 * 0.75 + 100 * 3.75      # the fake's usage, no cached rate
+    assert e["basis"] == "ledger" and e["calls"] == 3 and e["usd"] == pytest.approx(real / 1e6)
+    core.configure(config_path=layer.cfg, env_file=layer.env, ledger_path=layer.ledger)   # a restart: from the file
+    llm.probe("t")
+    assert llm.estimate("t", audio_s=24)["basis"] == "ledger"
+    assert llm.estimate("nope") == {"model": None, "provider": None, "label": None, "usd": None, "basis": None,
+                                    "calls": 0}
+
+
+def test_lenient_keeps_a_soft_miss_and_never_pays_twice(server, layer):
+    server.behaviour["m1"] = "invalid"                         # word "zzz" (not in its enum), n 9 (over its maximum)
+    res = llm.call_json("t", system="s", user="u", tool=TOOL, lenient=True)
+    assert res.ok and res.model == "m1" and res.data == {"word": "zzz", "n": 9}
+    assert len(res.problems) == 2 and any("not in enum" in p for p in res.problems)
+    assert [r["model"] for r in server.requests] == ["m1"]    # no second, paid call to m2
+    assert [r["ok"] for r in _ledger(layer.ledger)] == [True]
+    res = asyncio.run(llm.acall_json("t", system="s", user="u", tool=TOOL, lenient=True))
+    assert res.ok and res.model == "m1" and res.problems
+
+
+def test_lenient_still_refuses_a_wrong_type_or_a_missing_key(server, layer):
+    server.behaviour["m1"] = "hard"                            # word 7, n missing: can't be read
+    res = llm.call_json("t", system="s", user="u", tool=TOOL, lenient=True)
+    assert res.ok and res.model == "m2" and res.problems == []
+    assert "expected string" in res.attempts[0]["error"]
+
+
+def test_check_splits_hard_and_soft_and_nullable_is_understood():
+    s = {"type": "object", "required": ["a"], "properties": {"a": {"type": "string", "enum": ["x"]},
+                                                             "b": {"type": "number", "nullable": True,
+                                                                   "maximum": 1}}}
+    assert llm.check({"a": "y", "b": 3}, s) == ([], ["$.a: 'y' not in enum", "$.b: 3 > 1"])
+    assert llm.check({"b": None}, s) == (["$.a: missing"], [])
+    assert llm.check({"a": 1}, s)[0] == ["$.a: expected string, got int"]
+    assert llm.validate({"a": "x", "b": None}, s) == []
+
+
+def test_openapi_providers_get_nullable_instead_of_a_type_list(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, monkeypatch=monkeypatch)
+    tool = {"name": "report", "description": "say it",
+            "parameters": {"type": "object", "properties": {"word": {"type": "string"},
+                                                            "eta": {"type": ["number", "null"]},
+                                                            "n": {"type": "integer"}},
+                           "required": ["word", "n"]}}
+    assert llm.call_json("t", system="s", user="u", tool=tool).model == "gemini-3.8-flash"
+    sent = server.requests[-1]["tools"][0]["function"]["parameters"]["properties"]["eta"]
+    assert sent == {"type": "number", "nullable": True}
+    assert tool["parameters"]["properties"]["eta"] == {"type": ["number", "null"]}   # the caller's own is untouched
+    assert llm.openapi_schema({"type": ["string", "integer"]}) == {"type": ["string", "integer"]}
+
+
+def test_a_bad_discover_pattern_or_typical_keeps_the_last_good_config(server, layer):
+    rev = llm.status()["config"]["revision"]
+    layer.cfg.write_text("tasks:\n  t:\n    models:\n      - {provider: openai, discover: '([unclosed'}\n")
+    llm.reload(force=True)
+    st = llm.status()
+    assert "discover" in st["config"]["error"] and st["config"]["revision"] == rev
+    layer.cfg.write_text("tasks:\n  t:\n    models:\n      - {provider: openai, model: m1, typical: {tokens: 5}}\n")
+    llm.reload(force=True)
+    assert "typical" in llm.status()["config"]["error"]
+
+
+def test_a_404_skips_a_discovered_id_until_a_fresh_list_has_it_again(server, layer, monkeypatch):
+    server.models = GEMINI_LIST
+    _two_providers(layer, server, monkeypatch=monkeypatch)
+    server.behaviour["gemini-3.8-flash"] = "404"
+    assert llm.call_json("t", system="s", user="u", tool=TOOL).model == "m1"
+    st = llm.status()["tasks"]["t"]
+    assert st["resolved"][0]["skip"] == "not in models.list()" and st["probed"]["gemini-3.8-flash"] == "missing"
+    server.behaviour.clear()
+    core._layer()._probes["g"]["at"] -= core.PROBE_S + 1        # the hourly re-read is due
+    llm.probe("t")
+    assert llm.status()["tasks"]["t"]["usable"][0] == "gemini-3.8-flash"

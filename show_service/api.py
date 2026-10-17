@@ -418,10 +418,15 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
                 ch["expires_in_s"] = float(round(ch["expires_in_s"]))
             chips.append(ch)
 
-    if LISTENER in comps:
-        listening = {"on": bool(lview.get("on")), "effective": bool(lview.get("effective")), "why": lview.get("why")}
+    if LISTENER in comps:          # README S5.20: today's spend and the evening's estimate, even while it is off
+        est = _num(lview.get("est_evening_usd"), None)
+        listening = {"on": bool(lview.get("on")), "effective": bool(lview.get("effective")), "why": lview.get("why"),
+                     "spend_today_usd": round(_num(lview.get("spend_today_usd"), 0.0) or 0.0, 4),
+                     "est_evening_usd": None if est is None else round(est, 2),
+                     "provider": lview.get("provider") if isinstance(lview.get("provider"), str) else None}
     else:
-        listening = {"on": False, "effective": False, "why": MISSING[LISTENER]}
+        listening = {"on": False, "effective": False, "why": MISSING[LISTENER], "spend_today_usd": 0.0,
+                     "est_evening_usd": None, "provider": None}
 
     if AUTOPILOT in comps:
         auto = {"on": ap.get("on") if isinstance(ap.get("on"), bool) else None, "state": ap.get("state") or "off",
@@ -458,7 +463,8 @@ def neutral_catalog(why: str) -> dict:
 
 def neutral_listener(why: str) -> dict:
     return {"on": False, "effective": False, "why": why, "stream": None, "next_in_s": None, "cadence_s": 0.0,
-            "calls_today": 0, "spend_today_usd": 0.0, "budget_usd": None, "model": None, "last": None, "errors": 0}
+            "calls_today": 0, "spend_today_usd": 0.0, "budget_usd": None, "model": None, "last": None, "errors": 0,
+            "provider": None, "est_evening_usd": None, "estimate": None}
 
 
 def neutral_autopilot(line: str) -> dict:
@@ -987,9 +993,10 @@ class Api:
 
     @staticmethod
     def _with_listener(brain: Any, rb: Any) -> Any:
-        """The readback's ``listening_effective``/``listening_why`` hold only the director's part (the target's
-        ``listening`` and the vibe's ``listener``). When those allow it, the listener's own gate has the last word
-        (the AI switch, the music check, the sound, the model), from its last snapshot (at most one 1 Hz tick old)."""
+        """The readback's ``listening_effective``/``listening_why`` hold only the director's part (the vibe's
+        ``listener``; the target's ``listening`` no longer gates, README S5.20). When it allows it, the listener's own
+        gate has the last word (the AI switch, Auto and the mic, the music check, the sound, the model), from its last
+        snapshot (at most one 1 Hz tick old)."""
         if not isinstance(rb, dict) or not rb.get("listening_effective"):
             return rb
         lis = _components(brain).get(LISTENER)

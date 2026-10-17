@@ -168,6 +168,8 @@ TAU_NOVELTY_FAST_S, TAU_NOVELTY_SLOW_S = 3.0, 30.0
 NOVELTY = 0.12                      # starting point (show.yaml director.novelty): |fast - slow| energy, a change point
 RELAX_TAU_S = 3.0
 LLM_CONF = 0.6                      # a listener word counts at this confidence (§8.2)
+GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
+                                    # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
 LLM_SLEW_PER_S = 0.1                # §8.2: numbers slewed <= 0.1 per update
 # Starting points, overridable in show.yaml (director.listener_bias): the energy nudge per listener trajectory word
 # (contract.TRAJECTORY_STATES), x its confidence.
@@ -243,7 +245,7 @@ DIRECTOR_FALLBACK = {
     "steps": {"size_from": "step_size", "max_from": "max_steps"}, "keep_s": 900.0,
     "low": {"level": 0.10, "fade_s": 2.0}, "house": {"white_k": 2700.0, "level": 0.8}, "next_max_wait_s": 4.0,
     "art": {"poll_s": 60.0, "colours": 5, "sources": list(ART_SOURCES), "min_chroma": 0.03, "min_lightness": 0.3},
-    "republish_s": 5.0, "accent_depth": {}, "bands": None,
+    "republish_s": 5.0, "accent_depth": {}, "bands": None, "genre_min_conf": GENRE_MIN_CONF,
     "transitions": TRANSITIONS, "listener_bias": LLM_TRAJECTORY_BIAS,
     "between_pieces": {"pause_s": PAUSE_S, "damper_up": DAMPER_UP}, "new_song_after_s": SILENCE_SONG_S,
     "novelty": NOVELTY, "variation_bars": float(VARIATION_BARS), "entry_fade_s": ENTRY_FADE_S,
@@ -285,6 +287,12 @@ def _num(v: Any, default: Optional[float] = None) -> Optional[float]:
     if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
         return float(v)
     return default
+
+
+def _r3(v: Any) -> Optional[float]:
+    """A 0..1 number rounded for room.direction, or None when there is none."""
+    x = _num(v)
+    return None if x is None else round(_c01(x), 3)
 
 
 def _ema(prev: Optional[float], x: float, dt: float, tau: float) -> float:
@@ -929,7 +937,7 @@ class Director:
         d = s.get("director") if isinstance(s.get("director"), dict) else {}
         cfg = json.loads(json.dumps(DIRECTOR_FALLBACK))
         for key in ("keep_s", "next_max_wait_s", "republish_s", "new_song_after_s", "novelty", "variation_bars",
-                    "entry_fade_s"):
+                    "entry_fade_s", "genre_min_conf"):
             if key in d:
                 v = _num(d[key])
                 if v is not None and v > 0:
@@ -2260,11 +2268,17 @@ class Director:
         # above the LLM), then the listener's, then the vibe's. No one picks a genre by hand on the card.
         ml_genre = None
         mg = (self._mc or {}).get("genre") if isinstance((self._mc or {}).get("genre"), dict) else None
-        if (mg is not None and mg.get("via") in ("ml", "ml+listener") and isinstance(mg.get("word"), str)
-                and mg["word"] and (_num(mg.get("conf"), 0.0) or 0.0) >= LLM_CONF):
+        ml_on = mg is not None and mg.get("via") in ("ml", "ml+listener")
+        if (ml_on and isinstance(mg.get("word"), str)
+                and mg["word"] and (_num(mg.get("conf"), 0.0) or 0.0) >= float(self.cfg["genre_min_conf"])):
             ml_genre = mg["word"]
         genre, genre_from = ((ml_genre, "ml") if ml_genre else (llm_genre, "listener") if llm_genre
                              else (vs["genre"], "vibe") if vs["genre"] else (None, None))
+        # room.direction's genres (soft: word -> share): the local ML's while it reads one (even a mixed one, under
+        # genre_min_conf), else the chosen word's
+        mw = mg.get("words") if ml_on and isinstance(mg.get("words"), dict) else None
+        genres = ({str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
+                  else {genre: 1.0} if genre else {})
         band = self._band_words(self.music.get("energy", vs["energy_centre"])) if self.music else None
         if self.moods:
             moods, src = list(self.moods), "human"
@@ -2275,7 +2289,7 @@ class Director:
         else:
             moods, src = list(vs["moods"]), "vibe"
         style = (band or {}).get("transition_style") or vs["transition_style"]
-        return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from,
+        return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from, "genres": genres,
                 "transition_style": style, "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
                 "band": band["name"] if band else None}
 
@@ -2505,13 +2519,17 @@ class Director:
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
                           "vibe": self._vibe_name, "energy": round(e, 3), "pace": round(_c01(m["pace"]), 3),
                           "intensity": 1.0, "change_rate": round(vs["change_rate"], 3), "moods": words["moods"],
-                          "genre": words["genre"], "transition_style": words["transition_style"],
+                          "genre": words["genre"], "genres": words.get("genres") or {},
+                          "transition_style": words["transition_style"],
                           "palette_family": fam,
                           "fx": {"density": round(_c01(0.1 + 0.8 * e), 3), "rate": round(_c01(0.05 + 0.85 * e), 3),
                                  "stages": None, "moods": words["fx_moods"]},
                           "arousal": round(arousal, 3), "tension": round(_c01(m["tension"]), 3),
                           "section": section_ref,
                           "density": round(dens, 3),
+                          "hold": self._held(),
+                          "valence": _r3((self._mc or {}).get("valence")),
+                          "organic": _r3((self._mc or {}).get("acoustic")),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat"}
         if self.cfg["compose"]["mode"] == comp.DRIVE:
@@ -3086,13 +3104,9 @@ class Director:
     def readback(self) -> contract.VibeReadback:
         t = self.target
         vs, known = self._effective()
-        listening = bool(t["listening"]) if t else False
-        why = None
-        if not t:
-            why = "no feel is set"
-        elif not listening:
-            why = "this mode doesn't listen"
-        elif not vs["listener"]:
+        listening = bool(t["listening"]) if t else False    # as the mode asked: kept for readers, no longer a gate
+        why = None                                           # (owner, 17 Oct: the AI listening switch, Auto and the
+        if not vs["listener"]:                               # mic decide, and a feel may still say listener: off)
             why = "this feel doesn't listen"
         out: contract.VibeReadback = {
             "vibe": t["vibe"] if t else None, "listening": listening,

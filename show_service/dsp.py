@@ -1,11 +1,11 @@
-"""dsp: the room's ears in real time. Audio blocks become ``music.features`` (25 Hz), ``music.hit`` (per hit) and
+"""dsp: the room's ears in real time. Audio blocks become ``music.features`` (50 Hz), ``music.hit`` (per hit) and
 ``music.rhythm`` (10 Hz, the medium lane) (docs/SHOW_ENGINE.md §4, §6.3, §11.1; README "Stage 4" S4.6).
 
 One ``Features`` lives on the hot thread ("show-rx"). ``__main__`` passes ``Features.process`` as ``on_audio`` and
 calls ``Features.tick`` from ``on_tick``. Nothing here locks, waits, logs or does I/O, and nothing is thread-safe
 except ``latest()``, ``rhythm()`` and ``stats()``, which hand out snapshots swapped in by reference. Every buffer is allocated
 when the sample rate or channel count is first seen; a steady stream allocates no sample buffers (only numpy view
-headers, the 25 Hz and 10 Hz message dicts built in tick, a hit's dict, and a medium frame's few small scalars).
+headers, the 50 Hz and 10 Hz message dicts built in tick, a hit's dict, and a medium frame's few small scalars).
 
   process(stream, n0, t0_host_s, pcm, fs, flags)     = contract.OnAudio
       pcm float32 (frames, channels) or (frames,), any block size. Blocks over CHUNK (1024) frames are handled in
@@ -67,10 +67,13 @@ Fast lane, every hop (256 samples, 5.3 ms at 48 kHz):
   hop's end - 2048/4/fs (the 512-hop diagnostic log ``_olog_t/_olog_v`` keeps that). The publish takes the
   largest flux since the previous publish.
 
-At publish (tick, 25 Hz), from the latest hop:
-  spectrum32  4096-point Hann FFT. Band k = the summed bin power whose centre is in SPEC_EDGES_HZ[k]..[k+1]; a
-              band with no bin takes the bin nearest its centre. dB; ref = the rolling p95 over 60 s of the loudest
-              band (at least -90 dB); value = clamp((dB - (ref - 60)) / 60) x gate, then tau 300 ms both ways.
+At publish (tick, 50 Hz), from the latest hop:
+  spectrum32  4096-point FFT of a 2048-sample Hann (the newest samples, zero-padded: SPEC_WIN_N). Band k = the
+              summed bin power whose centre is in SPEC_EDGES_HZ[k]..[k+1]; a band with no bin takes the bin nearest
+              its centre. dB; ref = the rolling p95 over 60 s of the loudest band (at least -90 dB); value =
+              clamp((dB - (ref - 60)) / 60) x spec_gate, then rise tau 35 ms, fall 300 ms (owner, 17 Oct: sound
+              to glass under 0.5 s). spec_gate = smoothstep(bottom, bottom + 6, the window's own level in dBFS),
+              bottom the gate's (ref - 15): it opens and closes with the sound, not lufs_s's 3 s.
               One shared ref, so bass still reads above air for a falling spectrum.
   brightness  clamp(log2(centroid / 50) / log2(16000 / 50)), centroid over the 30 Hz-16 kHz bins.
   noisiness   spectral flatness (geometric / arithmetic mean) of the 32 bands' mean bin power.
@@ -133,7 +136,7 @@ not behaviour thresholds).
               the hop's onset time (the fast lane's: the hop's end - FAST_N / 4 / fs) and its strength the flux.
               onset_rate = onsets in the last 4 s / 4 s (/ the time since the first frame, at least 1 s, earlier).
               density = clamp((onset_rate - lo) / (hi - lo)) x gate, lo/hi the rolling p05/p95 (a row of the same
-              percentiles as onset and energy, pushed at 25 Hz).
+              percentiles as onset and energy, pushed at 50 Hz).
   pulse_clarity  the autocorrelation (FFT, zero-padded past the largest lag: no wrap; mean removed) of the last 6 s
               of the flux, summed over pairs of hops (94 Hz at 48 kHz: half the FFT, the same lags to 11 ms); max
               over lags 0.25-1.5 s / lag 0, clamped 0..1. 0 until 3 s of hops, and 0 when that envelope's RMS is
@@ -179,14 +182,18 @@ from scipy.signal import butter, sosfilt
 
 from .contract import (AUDIO_GAP, AUDIO_RESUME, AUDIO_SEGMENT, BAND_EDGES_HZ, BAND_NAMES, MUSIC_FEATURES, MUSIC_HIT,
                        MUSIC_RHYTHM, RHYTHM_HZ, SPEC_BANDS, SPEC_EDGES_HZ, SPEC_HI_HZ, SPEC_LO_HZ, SPEC_REF_S,
-                       SPEC_TAU_S, SPEC_WINDOW_DB, ClockData, FeaturesData, Publish, RhythmData)
+                       SPEC_RISE_TAU_S, SPEC_TAU_S, SPEC_WINDOW_DB, ClockData, FeaturesData, Publish, RhythmData)
 
 # -- constants --------------------------------------------------------------------------------------------------------
 HOP = 256
 CHUNK = 1024                    # the largest piece one pass handles; bigger blocks are split
 HIT_BLOCK = 128                 # hit detection runs in pieces of at most this, so hits don't depend on block size
 FAST_N = 2048                   # fast-lane FFT (log-mel, SuperFlux)
-SPEC_N = 4096                   # spectrum32 / brightness / noisiness FFT (the lowest spectrum band is 7 Hz wide)
+SPEC_N = 4096                   # spectrum32 / brightness / noisiness FFT (the lowest spectrum band is 7 Hz wide)...
+SPEC_WIN_N = 2048               # ...over a Hann of the newest 2048 samples, zero-padded (owner, 17 Oct: sound to glass
+                                # under 0.5 s; the window's centre is 21 ms back, not 43; bins stay 4096's, so the
+                                # bass bands interpolate instead of stair-stepping; the bass blurs over ~+-47 Hz)
+PUBLISH_HZ = 50.0               # music.features (owner, 17 Oct: the publish phase costs up to a period; 25 Hz before)
 RING_N = 16384                  # analysis ring: > SPEC_N + a hop + CHUNK, and >= the medium lane's N_M
 MEL_BANDS = 40
 MEL_LO_HZ, MEL_HI_HZ = 30.0, 16000.0
@@ -214,13 +221,19 @@ DRIVE_TAU_S = 8.0
 RATE_WINDOW_S, RATE_MIN_SPAN_S, RATE_FULL = 8.0, 4.0, 2.2
 PRESENCE_TAU_S = 1.0
 FADE_AFTER_S = 0.1               # no hop for this long (2.5 publish periods): the source stopped, fade
-FADE_FOR_S = 1.5                 # ... at 25 Hz with the gate at 0 until this long, then one all-zero frame
+FADE_FOR_S = 1.5                 # ... at 50 Hz with the gate at 0 until this long, then one all-zero frame
 
 SPEC_REF_FLOOR_DB = -90.0
 SILENCE_DB = -90.0
 LUFS_FLOOR, DBFS_FLOOR = -70.0, -120.0
 LUFS_S_EVERY_S = 0.2
 GATE_SPAN_LU = 15.0
+#: spectrum32's own gate (owner, 17 Oct: sound to glass under 0.5 s): the level of its own 43 ms window (the Hann's
+#: weighted mean square, dBFS like the floor) from the gate's bottom (ref - GATE_SPAN_LU, i.e. floor + FLOOR_ABOVE_LU
+#: once the floor is known) to this many dB over it. The gate's lufs_s (3 s) held the bars up 1.3-3.3 s after the music
+#: stopped and opened them ~1 s late (screen-machine-73's replay of production features); lufs_m (400 ms) still ~0.3 s.
+#: Music well over the floor reads 1 (no pumping on kicks); the room's noise stays shut, as with the gate.
+SPEC_GATE_FAST_LU = 6.0
 # The gate's reference follows the input's own noise floor down, never up: ref = min(gate_ref_lufs, floor +
 # FLOOR_ABOVE_LU + GATE_SPAN_LU). floor = the FLOOR_PCT percentile of the input's 100 ms RMS levels (dBFS; gap fill
 # skipped) over the last FLOOR_WINDOW_S, once FLOOR_MIN_S of them are in; a new stream starts over. Short bins find
@@ -455,7 +468,9 @@ class _Tables:
         self.nb_fast = int(min(freqs_f.size, np.searchsorted(freqs_f, mel_hi) + 2))   # bins the mel bank uses
         self.mel_w = np.ascontiguousarray(_mel_bank(freqs_f[:self.nb_fast], MEL_BANDS, MEL_LO_HZ, mel_hi) * scale_f)
 
-        self.hann_spec = _hann(SPEC_N)
+        self.hann_spec = np.zeros(SPEC_N)
+        self.hann_spec[SPEC_N - SPEC_WIN_N:] = _hann(SPEC_WIN_N)
+        self.hann_spec_ss = float(np.dot(self.hann_spec, self.hann_spec))   # its weighted mean square's divisor
         freqs_s = np.fft.rfftfreq(SPEC_N, 1.0 / fs)
         scale_s = (2.0 / self.hann_spec.sum()) ** 2
         self.nb_spec = int(min(freqs_s.size, np.searchsorted(freqs_s, SPEC_HI_HZ) + 2))
@@ -588,12 +603,12 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
 
 
 class Features:
-    """Audio blocks in, music.features (25 Hz) and music.hit out. Hot thread only (see the module docstring)."""
+    """Audio blocks in, music.features (50 Hz) and music.hit out. Hot thread only (see the module docstring)."""
 
     gate_ref_lufs: float = -30.0
     clock_fn: Optional[Callable[[], Optional[ClockData]]] = None      # set by __main__: clock.snapshot
 
-    def __init__(self, *, publish: Optional[Publish] = None, hop: int = HOP, publish_hz: float = 25.0) -> None:
+    def __init__(self, *, publish: Optional[Publish] = None, hop: int = HOP, publish_hz: float = PUBLISH_HZ) -> None:
         if not 32 <= hop <= CHUNK:
             raise ValueError(f"hop must be 32..{CHUNK}")
         self._publish = publish
@@ -669,6 +684,8 @@ class Features:
         self._val32 = np.zeros(SPEC_BANDS)
         self._psd32 = np.zeros(SPEC_BANDS)
         self._spec_sm = np.zeros(SPEC_BANDS)
+        self._a32 = np.zeros(SPEC_BANDS)              # per band: the rise or the fall coefficient this publish
+        self._up32 = np.zeros(SPEC_BANDS, dtype=bool)
         self._level_db = np.zeros(NB)
         self._level_n = np.zeros(NB)
         self._presence = np.zeros(NB)
@@ -1626,6 +1643,9 @@ class Features:
         p = self._hop_rpos
         np.multiply(self._ring[p + RING_N - SPEC_N:p + RING_N], T.hann_spec, out=self._frame_s)
         np.fft.rfft(self._frame_s, out=self._spec_s)
+        ms = float(np.dot(self._frame_s, self._frame_s)) / T.hann_spec_ss
+        fast_db = 10.0 * math.log10(ms) if ms > 1e-12 else DBFS_FLOOR
+        spec_gate = _smoothstep(ref_l - GATE_SPAN_LU, ref_l - GATE_SPAN_LU + SPEC_GATE_FAST_LU, fast_db)
         pw = self._pw_s
         np.multiply(self._re_s, self._re_s, out=pw)
         np.multiply(self._im_s, self._im_s, out=self._tmp_s)
@@ -1668,13 +1688,16 @@ class Features:
 
         ref = max(SPEC_REF_FLOOR_DB, float(q.hi60[Q_SPEC]) if q.ready else loudest)
         np.subtract(db32, ref - SPEC_WINDOW_DB, out=val32)
-        val32 *= gate / SPEC_WINDOW_DB
+        val32 *= spec_gate / SPEC_WINDOW_DB
         np.maximum(val32, 0.0, out=val32)
-        np.minimum(val32, gate, out=val32)
-        a = 1.0 - math.exp(-dt / SPEC_TAU_S)
+        np.minimum(val32, spec_gate, out=val32)
         sm = self._spec_sm
         val32 -= sm
-        val32 *= a
+        a32 = self._a32
+        a32.fill(1.0 - math.exp(-dt / SPEC_TAU_S))
+        np.greater(val32, 0.0, out=self._up32)
+        np.copyto(a32, 1.0 - math.exp(-dt / SPEC_RISE_TAU_S), where=self._up32)
+        val32 *= a32
         sm += val32
         sm += 1e-12                                    # flush what would decay into denormals in long silence
         sm -= 1e-12

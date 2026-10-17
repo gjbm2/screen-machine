@@ -144,7 +144,7 @@ def run(coro):
     return asyncio.run(coro)
 
 
-# -- gating -------------------------------------------------------------------------------------------------------------
+# -- gating ------------------------------------------------------------------------------------------------------------
 def test_switch_off_sends_nothing_from_the_room(tmp_path):
     rig = Rig(tmp_path, stream="room-mic", on=False)
     rig.fill()
@@ -159,20 +159,69 @@ def test_switch_off_sends_nothing_from_the_room(tmp_path):
 
 
 @pytest.mark.parametrize("stream", ["test-audio", "phone-test", "test-anything", "room-mic"])
-def test_every_stream_needs_the_switch_and_a_mode_that_listens(tmp_path, stream):
-    """Privacy is never decided by a stream's name: test streams, phone-test and test-* need AI listening on and a
-    mode that listens, exactly as the room mic does (§7.5: the switch stops every upload)."""
-    for on, target in ((False, {"vibe": "home", "listening": True}), (True, None),
-                       (True, {"vibe": "home", "listening": False})):
-        rig = Rig(tmp_path, stream=stream, on=on, target=target)
+def test_every_stream_needs_the_switch_auto_and_the_mic(tmp_path, stream):
+    """Privacy is never decided by a stream's name: test streams, phone-test and test-* need AI listening on, Auto on
+    and the mic on, exactly as the room mic does (§7.5: the switch stops every upload)."""
+    for case in ("switch_off", "auto_off", "auto_unknown", "mic_off", "vibe_off"):
+        rig = Rig(tmp_path, stream=stream, on=case != "switch_off")
         rig.fill()
+        if case == "auto_off":
+            rig.auto_on = False
+        elif case == "auto_unknown":
+            rig.auto_on = None
+        elif case == "mic_off":
+            rig.mic = {"on": False}
+        elif case == "vibe_off":
+            rig.vibe = {"listener": False}
 
         async def go():
             await rig.ticks(25)
         run(go())
-        assert rig.llm.calls == [] and rig.pub == [], (stream, on, target)
-        assert rig.lis.view()["why"] == (L.WHY_OFF if not on else L.WHY_MODE)
+        assert rig.llm.calls == [] and rig.pub == [], (stream, case)
+        want = {"switch_off": L.WHY_OFF, "auto_off": L.WHY_AUTO_OFF, "auto_unknown": L.WHY_AUTO_OFF,
+                "mic_off": L.WHY_MIC_OFF, "vibe_off": L.WHY_VIBE}[case]
+        assert rig.lis.view()["why"] == want, (stream, case)
         assert rig.rings.armed is False                   # nothing recorded for nothing
+
+
+@pytest.mark.parametrize("target", [None, {"vibe": "home", "listening": False}, {"vibe": "home", "listening": True}])
+def test_the_modes_listening_no_longer_gates(tmp_path, target):
+    """Owner, 17 Oct: the AI listening switch, Auto and the mic decide (and a feel's own listener: off); a mode with
+    no show target, or one whose show.main says listening: false, listens like any other."""
+    rig = Rig(tmp_path, stream="test-audio", target=target)
+    rig.fill()
+    run(rig.tick())
+    assert rig.lis.view()["effective"] is True and rig.rings.armed is True
+    assert len(rig.llm.calls) == 1 and [m["type"] for m in rig.pub] == [c.MUSIC_INSIGHT]
+    assert not hasattr(L, "WHY_MODE")
+
+
+def test_rule_0_still_holds_for_room_sound_without_the_music_check(tmp_path):
+    """Owner, 17 Oct (1fe8b6f3): room sound goes only as substantive music: the CED music/speech run (or the DSP
+    gate) and the loudness floor, with Auto and the mic on. Dropping the mode's wish changes none of it."""
+    rig = Rig(tmp_path, stream="room-mic", target=None)  # no mode wish at all
+    rig.fill()
+    run(rig.ticks(5))
+    assert rig.lis.view()["why"] == L.WHY_NO_CED and rig.llm.calls == []          # no classifier: nothing goes
+    s = {"listener": {"music_gate": "dsp"}, "situations": {"music": {"dsp_min_gate": 0.3}}}
+    rig = Rig(tmp_path, stream="room-mic", settings=s, target=None)
+    rig.fill()
+    run(rig.ticks(3))
+    assert rig.lis.view()["why"] == L.WHY_NO_MUSIC and rig.llm.calls == []        # no beat, no key: no music
+    rig.feats["gate"] = 0.05                                                     # under the floor...
+    run(rig.ticks(12))
+    rig.clock = {"gate": "beat", "bpm": 120.0, "state": "locked", "conf": 0.8}  # ...with a beat
+    run(rig.ticks(2))
+    assert rig.lis.view()["why"] == L.WHY_QUIET and rig.llm.calls == []
+    rig.feats["gate"] = 0.6
+    rig.auto_on = False                                                          # loud music, Auto off
+    run(rig.ticks(12))
+    assert rig.lis.view()["why"] == L.WHY_AUTO_OFF and rig.llm.calls == []
+    rig.auto_on = True
+    run(rig.tick())
+    rig.fill()                                                                   # re-armed: the ring starts afresh
+    run(rig.ticks(2))
+    assert len(rig.llm.calls) == 1
 
 
 @pytest.mark.parametrize("stream", ["phone-test", "test-anything", "room-mic"])
@@ -268,19 +317,13 @@ def test_dsp_music_gate(tmp_path):
     run(go())
 
 
-@pytest.mark.parametrize("case,why", [("mode_off", L.WHY_MODE), ("no_target_live", L.WHY_MODE),
-                                      ("vibe_off", L.WHY_VIBE), ("quiet", L.WHY_QUIET),
+@pytest.mark.parametrize("case,why", [("vibe_off", L.WHY_VIBE), ("quiet", L.WHY_QUIET),
                                       ("no_sound", L.WHY_NO_SOUND), ("no_model", L.WHY_NO_MODEL),
                                       ("too_little_audio", L.WHY_NO_SOUND)])
 def test_why(tmp_path, case, why):
     rig = Rig(tmp_path, stream="test-audio")
     rig.fill()
-    if case == "mode_off":
-        rig.target = {"vibe": "home", "listening": False}
-    elif case == "no_target_live":
-        rig.target = None
-        rig.health["active_audio"] = "room-mic"
-    elif case == "vibe_off":
+    if case == "vibe_off":
         rig.vibe = {"listener": False}
     elif case == "quiet":
         rig.feats["gate"] = 0.02
@@ -301,7 +344,7 @@ def test_why(tmp_path, case, why):
     assert rig.llm.calls == []
 
 
-# -- cadence ------------------------------------------------------------------------------------------------------------
+# -- cadence -----------------------------------------------------------------------------------------------------------
 def test_cadence_min_gap_and_one_in_flight(tmp_path):
     rig = Rig(tmp_path)
     rig.fill()
@@ -413,12 +456,12 @@ def test_gate_is_checked_again_right_before_the_upload(tmp_path):
     rig.fill()
 
     async def enc(pcm, fs, **kw):
-        rig.target = {"vibe": "home", "listening": False}  # the mode changed while the clip was being encoded
+        rig.auto_on = False                                # Auto went off while the clip was being encoded
         return b"MP3", "mp3"
     rig.lis._encode = enc
     run(rig.tick())
     assert rig.llm.calls == [] and rig.lis.log(1)[0] == {"at": rig.lis.log(1)[0]["at"], "kind": "skipped",
-                                                          "stream": "test-audio", "why": L.WHY_MODE}
+                                                          "stream": "test-audio", "why": L.WHY_AUTO_OFF}
 
 
 def test_persist_restore(tmp_path):
@@ -437,7 +480,7 @@ def test_bad_settings_fall_back_to_design_defaults(tmp_path):
     assert rig.lis.cfg["agree_reads"] == 3 and len(rig.lis.problems) == 3
 
 
-# -- beliefs ------------------------------------------------------------------------------------------------------------
+# -- beliefs -----------------------------------------------------------------------------------------------------------
 def _ins(rig, **kw):
     return L.to_insight(verdict(**kw), vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
                         window=(0.0, 0.0), t_ms=0.0)
@@ -492,7 +535,7 @@ def test_speech_adds_no_votes(tmp_path):
     assert v["genre"] is None and v["moods"] == [] and v["content"] == "speech" and v["vocals"] is None
 
 
-# -- Describe it ----------------------------------------------------------------------------------------------------------
+# -- Describe it -------------------------------------------------------------------------------------------------------
 CTX = {"vibe": "home", "persona": "A warm living room.", "current_mode": "gallery",
        "palettes": [{"name": "ember", "label": "Ember"}, {"name": "deep-sea", "label": "Deep Sea"}],
        "moods": [], "modes": [{"name": "gallery", "label": "Gallery"}, {"name": "party", "label": "Party"}]}
@@ -560,7 +603,7 @@ def test_describe_falls_back_to_keywords(tmp_path, how):
     assert rig.lis.log(1)[0]["via"] == "keywords"
 
 
-# -- audio -----------------------------------------------------------------------------------------------------------------
+# -- audio -------------------------------------------------------------------------------------------------------------
 def test_normalise_to_minus_16_lufs():
     fs = 16000
     t = np.arange(10 * fs) / fs
@@ -869,3 +912,190 @@ def test_nothing_goes_to_openai_unless_auto_and_the_mic_are_on(tmp_path):
     assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
     r.lis.configure({"senders": SENDERS, "listener": {"requires_auto": False, "requires_mic": False}})
     assert r.lis._gate(r.now)[0] not in (L.WHY_AUTO_OFF, L.WHY_MIC_OFF)   # config can relax it (not the default)
+
+
+# -- README S5.20: provider, cost, reliability -------------------------------------------------------------------------
+class _Resp:
+    """A Chat Completions answer with one tool call (what the openai SDK hands back)."""
+
+    def __init__(self, args: dict) -> None:
+        fn = type("F", (), {"name": "report_music", "arguments": json.dumps(args)})()
+        msg = type("M", (), {"tool_calls": [type("C", (), {"function": fn})()], "content": None})()
+        self.choices = [type("Ch", (), {"message": msg})()]
+        pd = type("PD", (), {"audio_tokens": 240, "cached_tokens": 0})()
+        self.usage = type("U", (), {"prompt_tokens": 1840, "completion_tokens": 200, "prompt_tokens_details": pd,
+                                    "completion_tokens_details": None})()
+
+
+class _FakeClient:
+    """AsyncOpenAI's two calls the layer makes: models.list() and chat.completions.create()."""
+
+    def __init__(self, answer: dict, ids=("m1", "m2")) -> None:
+        self.requests: list = []
+        outer = self
+
+        class _Models:
+            async def list(self, timeout=None):
+                return type("P", (), {"data": [type("I", (), {"id": i})() for i in ids]})()
+
+        class _Completions:
+            async def create(self, **kw):
+                outer.requests.append(kw)
+                return _Resp(answer)
+
+        self.models = _Models()
+        self.chat = type("Chat", (), {"completions": _Completions()})()
+
+
+def _real_llm(tmp_path, monkeypatch, answer):
+    """utils.llm itself on tmp files (two models, m1 then m2), with a fake client: no network, no real ledger."""
+    import utils.llm as m
+    from utils.llm import core
+    cfg = tmp_path / "llm.yaml"
+    cfg.write_text("version: 1\ntasks:\n  listen:\n    models:\n      - {provider: openai, model: m1}\n"
+                   "      - {provider: openai, model: m2}\n    timeout_s: 2\n"
+                   "prices:\n  m1: {text_in: 2.5, text_out: 10, audio_in: 32}\n  m2: {text_in: 2.5, text_out: 10}\n")
+    env = tmp_path / ".env"
+    env.write_text("")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-NOTAREALKEY0123456789")
+    m.configure(config_path=cfg, env_file=env, ledger_path=tmp_path / "ledger.jsonl")
+    client = _FakeClient(answer)
+    monkeypatch.setattr(core._Layer, "aclient", lambda self, prov, key: client)
+    return m, client
+
+
+def test_off_vocabulary_words_are_kept_and_never_sent_to_the_fallback(tmp_path, monkeypatch):
+    """Audit, 17 Oct: a section word outside the list ("sustaining") failed the whole answer, and the same clip was
+    then charged again on the fallback. The words are plain strings now and the call is lenient: one call, cleaned."""
+    v = verdict(section="sustaining", traj="Winding down", content="Music")
+    v["genre"]["confidence"] = 1.4                                 # out of range: soft, clamped
+    v["instrumentation"] = [f"inst{i}" for i in range(11)]         # too many: soft, cut to 8
+    m, client = _real_llm(tmp_path, monkeypatch, v)
+    try:
+        rig = Rig(tmp_path)
+        rig.lis._llm = m                                           # the real layer, not the fake
+        rig.fill()
+        run(rig.tick())
+        assert [r["model"] for r in client.requests] == ["m1"]     # no second, paid call to m2
+        ins = rig.pub[0]["data"]
+        assert ins["section"]["label"] == "unknown" and ins["trajectory"]["state"] == "winding_down"
+        assert ins["content"] == "music" and ins["genre"]["confidence"] == 1.0 and len(ins["instrumentation"]) == 8
+        verdict_log = [e for e in rig.lis.log(20) if e["kind"] == "verdict"][0]
+        assert verdict_log["problems"] and any("more than 8" in p for p in verdict_log["problems"])
+        assert m.status()["calls_today"]["listen"] == 1
+        sent = client.requests[0]["tools"][0]["function"]["parameters"]["properties"]
+        assert "enum" not in sent["section"]["properties"]["label"] and "enum" not in sent["content"]
+        assert "sustaining" in sent["trajectory"]["properties"]["state"]["description"]   # the words, as a hint
+    finally:
+        m.configure()
+
+
+def test_the_tool_has_no_word_lists_left_to_fail_on():
+    from utils.llm import check
+    v = verdict(section="sustaining", traj="climbing", content="music with talking")
+    v["vocals"] = "a tenor"
+    assert check(v, L.LISTEN_TOOL["parameters"]) == ([], [])
+    assert L.word_of("Pre-chorus", c.SECTION_LABELS, "unknown") == "pre_chorus"
+    assert L.word_of(7, c.SECTION_LABELS, "unknown") == "unknown"
+
+
+def test_a_garbled_answer_never_crashes_to_insight(tmp_path):
+    rig = Rig(tmp_path)
+    rig.lis.vocab.poll(0.0)
+    ins = L.to_insight({"genre": "jazz", "mood": ["calm"], "section": None, "trajectory": "up",
+                        "instrumentation": "piano"}, vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
+                       window=(0.0, 1.0), t_ms=0.0)
+    assert ins["genre"]["label"] == "unknown" and ins["mood"]["words"] == [] and ins["section"]["label"] == "unknown"
+    assert ins["trajectory"]["state"] == "steady" and ins["instrumentation"] == []
+
+
+class EstLLM(FakeLLM):
+    """FakeLLM with utils.llm's estimate() and probe()."""
+
+    def __init__(self, usd=0.004, label="Google", model="gemini-3.8-flash", basis="price table") -> None:
+        super().__init__()
+        self.est = {"model": model, "provider": "gemini", "label": label, "usd": usd, "basis": basis, "calls": 0}
+        self.est_args: list = []
+        self.probed: list = []
+        self.resolved = [{"configured": "gemini-3.8-flash", "provider": "gemini", "model": model, "via": "explicit",
+                          "skip": None}]
+
+    def estimate(self, task, *, audio_s=None):
+        self.est_args.append((task, audio_s))
+        return dict(self.est)
+
+    def probe(self, task=None):
+        self.probed.append(task)
+        return {"resolved": self.resolved}
+
+    def status(self):
+        st = super().status()
+        st["tasks"]["listen"]["resolved"] = [dict(r) for r in self.resolved]
+        return st
+
+
+def test_the_estimate_shows_per_hour_and_per_evening_even_while_off(tmp_path):
+    rig = Rig(tmp_path, on=False, settings={"listener": {"cadence_s": 20, "clip_s": 24, "evening_h": 4}})
+    rig.lis._llm = rig.llm = EstLLM(usd=0.004026)
+    run(rig.tick())
+    v = rig.lis.view()
+    assert v["on"] is False and v["why"] == L.WHY_OFF
+    assert rig.llm.est_args[-1] == ("listen", 24.0)                    # the clip's length prices its audio
+    # 4 h x 3600 / 20 s = 720 clips x $0.004026
+    assert v["estimate"] == {"per_call_usd": 0.00403, "per_hour_usd": 0.725, "per_evening_usd": 2.9,
+                             "evening_h": 4.0, "cadence_s": 20.0, "model": "gemini-3.8-flash",
+                             "provider": "Google", "basis": "price table"}
+    assert v["est_evening_usd"] == 2.9 and v["provider"] == "Google"
+    assert set(v) == set(c.ListenerView.__annotations__)
+    rig.lis.configure({"senders": SENDERS, "listener": {"evening_h": 3, "cadence_s": 45}})
+    run(rig.tick())
+    assert rig.lis.view()["estimate"]["per_evening_usd"] == round(0.004026 * 3600 / 45 * 3, 2)
+    rig.llm.est = dict(rig.llm.est, usd=None, basis=None)               # a model with no price: no estimate
+    run(rig.tick())
+    assert rig.lis.view()["estimate"] is None and rig.lis.view()["est_evening_usd"] is None
+
+
+def test_the_snapshot_and_the_log_show_what_the_models_resolved_to(tmp_path):
+    rig = Rig(tmp_path)
+    rig.lis._llm = rig.llm = EstLLM()
+    rig.lis._warm_up()
+    assert rig.llm.probed == ["listen"]                                 # discovery before the first call
+    run(rig.tick())
+    snap = rig.lis.snapshot()
+    assert snap["llm"]["resolved"][0]["model"] == "gemini-3.8-flash" and snap["llm"]["usable"] == ["gpt-x"]
+    models = [e for e in rig.lis.log(50) if e["kind"] == "models"]
+    assert len(models) == 1 and models[0]["resolved"][0]["via"] == "explicit"
+    run(rig.ticks(3))
+    assert len([e for e in rig.lis.log(50) if e["kind"] == "models"]) == 1          # only when it changes
+    rig.llm.resolved = [dict(rig.llm.resolved[0], model="gemini-3.9-flash", via="discovered")]
+    run(rig.tick())
+    assert [e for e in rig.lis.log(50) if e["kind"] == "models"][-1]["resolved"][0]["model"] == "gemini-3.9-flash"
+
+
+def test_the_real_llm_yaml_lists_gemini_first_then_gpt_audio_1_5(tmp_path, monkeypatch):
+    """config/llm.yaml as shipped: Gemini Flash first, gpt-audio-1.5 the fallback; with no Gemini key the Gemini entry
+    is skipped ("no key") and the listener runs on gpt-audio-1.5 exactly as before."""
+    import utils.llm as m
+    env = tmp_path / ".env"
+    env.write_text("")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-NOTAREALKEY0123456789")
+    m.configure(env_file=env, ledger_path=tmp_path / "ledger.jsonl")
+    try:
+        t = m.status()["tasks"]["listen"]
+        assert m.status()["config"]["error"] is None
+        assert [(r["provider"], r["configured"]) for r in t["resolved"]] == [("gemini", "gemini-3.8-flash"),
+                                                                             ("openai", "gpt-audio-1.5")]
+        assert t["resolved"][0]["skip"] == "no key for gemini (GEMINI_API_KEY)" and t["usable"] == ["gpt-audio-1.5"]
+        e = m.estimate("listen", audio_s=24)
+        assert (e["model"], e["label"], e["basis"]) == ("gpt-audio-1.5", "OpenAI", "price table")
+        assert e["usd"] == pytest.approx((1600 * 2.5 + 240 * 32 + 200 * 10) / 1e6)
+        monkeypatch.setenv("GEMINI_API_KEY", "AIzaNOTAREALKEY0123456789abcd")
+        e = m.estimate("listen", audio_s=24)
+        assert (e["model"], e["label"]) == ("gemini-3.8-flash", "Google")
+        assert e["usd"] == pytest.approx(((1600 + 768) * 0.75 + 600 * 3.75) / 1e6)
+        settings = m.task_settings("listen")
+        assert settings["models"][0]["options"]["reasoning_effort"] == "low"
+        assert settings["models"][0]["discover"] and settings["audio"]["format"] == "mp3"
+    finally:
+        m.configure()

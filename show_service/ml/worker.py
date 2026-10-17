@@ -75,7 +75,7 @@ DEFAULTS: dict = {
     "fast_lane": {"every_s": 1, "budget_ms": 250},            # §6 / starting point
     "tasks": {
         "ced": {"every_s": 1, "window_s": 2.0, "model": "ced-mini", "budget_ms": 100},
-        "tags": {"every_s": 1, "window_s": 2.1, "model": "discogs-effnet", "budget_ms": 80,
+        "tags": {"every_s": 1, "window_s": 2.1, "model": "discogs-effnet", "budget_ms": 80, "styles_top": 5,
                  "heads": {"genre": "genre_discogs400", "moods": "mtg_jamendo_moodtheme",
                            "instruments": "mtg_jamendo_instrument", "dance": "danceability",
                            "voice_p": "voice_instrumental", "engagement": "engagement_regression",
@@ -645,6 +645,7 @@ class Worker:
             emb = res.pop("emb_vec")
             line = {"type": C.ML_TAGS, "t": w.t_end, "window_s": st.window_s, **base,
                     "genre_parents": res["genre_parents"], "styles_top3": res["styles_top3"],
+                    "styles_top": res.get("styles_top") or res["styles_top3"],
                     "moods_top5": res["moods_top5"], "instruments_top5": res["instruments_top5"]}
             for f in M.SCALAR_FIELDS:
                 line[f] = res.get(f)

@@ -2,15 +2,28 @@
 S3.12").
 
 * **Config.** ``config/llm.yaml`` (re-read when its mtime or size changes, polled at most every RELOAD_S): providers
-  (``key_env``, ``base_url``), tasks (an ordered model list, ``timeout_s``, ``max_output_tokens``, ``audio``), prices
-  (USD per 1M tokens) and daily budgets. Model ids live only there. A bad edit keeps the last good file.
+  (``key_env``, ``base_url``, ``label`` in page words, ``omit``: request fields that provider doesn't take, ``schema``:
+  ``openapi`` sends tool schemas in OpenAPI's dialect, ``["T", "null"]`` -> ``T`` + ``nullable``), tasks (an ordered
+  model list, ``timeout_s``, ``max_output_tokens``, ``audio``), prices (USD per 1M tokens; a key may be a glob such as
+  ``gemini-*-flash``, an exact id wins) and daily budgets. Model ids live only there. A bad edit keeps the last good
+  file.
+* **Discovery.** A model entry may carry ``discover`` (a regex, full match) beside or instead of ``model``: once
+  ``models.list()`` has been read, an explicit ``model`` that is listed is used as written; else the newest listed id
+  matching the pattern (the highest version numbers in the id). ``probe(task)`` reads ``models.list()`` ahead of the
+  first call (a warm-up thread); ``status()`` shows what each entry resolved to and why.
 * **One call.** ``call_json`` (sync) / ``acall_json`` (AsyncOpenAI) send one Chat Completions request with one forced
-  function tool (``tool_choice`` names it, ``store=False``), optionally with ``input_audio``, parse the tool call's
-  arguments and check them with a small local JSON-schema validator. They never raise.
+  function tool (``tool_choice`` names it, ``store=False`` unless the provider omits it), optionally with
+  ``input_audio``, parse the tool call's arguments and check them with a small local JSON-schema validator. They never
+  raise. ``lenient=True``: an answer whose only problems are soft (a word outside an enum, a number out of range, too
+  many items, a length, an extra key) is accepted with ``LLMResult.problems`` listing them; the caller cleans the
+  values. Only a wrong type or a missing required key fails it, so a usable answer is never paid for twice.
 * **Fallback.** The task's models in order. A missing key, an open breaker (BREAKER_FAILS failures in a row skip a
   model for BREAKER_OPEN_S), an id missing from ``models.list()`` (probed at first use, then hourly) or a model that
   rejected tools is skipped. A failure (HTTP error, timeout, no tool call, invalid JSON) moves to the next model. No
   retries: the caller's next window is the retry.
+* **Estimates.** ``estimate(task, audio_s=)``: what one call costs on the model that would be used now: the mean of
+  its last RECENT_CALLS good calls in the ledger (at least ESTIMATE_MIN_CALLS), else the entry's ``typical`` usage
+  (``text_in``, ``audio_per_s``, ``text_out``) x the price table.
 * **The key.** ``key_env`` from the environment, else from the repo's ``.env`` (KEY=VALUE lines). It is never logged
   and never put in an error string, the ledger or ``status()``: every error string goes through ``redact``.
 * **The ledger.** One JSON line per request to LEDGER_FILE: ``{at, task, provider, model, ok, latency_ms, usage,
@@ -24,7 +37,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import collections
 import datetime as _dt
+import fnmatch
 import hashlib
 import json
 import logging
@@ -55,7 +70,12 @@ LEDGER_ROTATE_BYTES = 5_000_000
 DEFAULT_TIMEOUT_S = 12.0     # a task that names no timeout_s
 DEFAULT_MAX_OUTPUT_TOKENS = 400
 ERROR_MAX = 300              # characters of an error string
-DEFAULT_PROVIDERS: dict[str, dict] = {"openai": {"key_env": "OPENAI_API_KEY", "base_url": None}}
+RECENT_CALLS = 50            # estimate(): the mean of this many recent good calls per (task, model)...
+ESTIMATE_MIN_CALLS = 3       # ...once there are this many; else the price table
+SCHEMA_STYLES = ("json", "openapi")
+TYPICAL_KEYS = ("text_in", "audio_per_s", "text_out")
+DEFAULT_PROVIDERS: dict[str, dict] = {"openai": {"key_env": "OPENAI_API_KEY", "base_url": None, "omit": [],
+                                                 "label": "OpenAI", "schema": "json"}}
 
 _KEY_RE = re.compile(r"(sk-|sk_)[A-Za-z0-9_\-*]{3,}")
 _AIZA_RE = re.compile(r"AIza[0-9A-Za-z_\-]{10,}")
@@ -73,10 +93,11 @@ class LLMResult:
     usage: dict = field(default_factory=dict)
     cost_usd: float = 0.0
     attempts: list = field(default_factory=list)      # [{"model", "error"}] in order; error None on the one that won
+    problems: list = field(default_factory=list)      # lenient: the soft schema problems the answer was kept with
 
 
-# -- validation (no dependency: type, required, enum, properties, items, maxItems, minItems, minimum, maximum,
-#    maxLength, minLength, additionalProperties false) -------------------------------------------------------------
+# -- validation (no dependency: type, nullable, required, enum, properties, items, maxItems, minItems, minimum,
+#    maximum, maxLength, minLength, additionalProperties false) ------------------------------------------------------
 def _is_type(v: Any, t: str) -> bool:
     if t == "object":
         return isinstance(v, dict)
@@ -95,48 +116,100 @@ def _is_type(v: Any, t: str) -> bool:
     return True                                         # an unknown type word: not ours to refuse
 
 
-def validate(value: Any, schema: dict, path: str = "$") -> list[str]:
-    """The problems with ``value`` against ``schema`` (empty: valid)."""
+def _walk(value: Any, schema: Any, path: str, out: list[tuple[bool, str]]) -> None:
+    """Appends (hard, problem): hard is a wrong type or a missing required key (the answer can't be read); everything
+    else is soft (an enum word, a range, a count, a length, an extra key: the caller can clean it)."""
     if not isinstance(schema, dict):
-        return []
+        return
+    if value is None and schema.get("nullable") is True:     # OpenAPI's dialect (Gemini's): null allowed
+        return
     t = schema.get("type")
     if t is not None:
         types = t if isinstance(t, list) else [t]
         if not any(_is_type(value, x) for x in types):
-            return [f"{path}: expected {'|'.join(types)}, got {type(value).__name__}"]
-    out: list[str] = []
+            out.append((True, f"{path}: expected {'|'.join(types)}, got {type(value).__name__}"))
+            return
     if "enum" in schema and value not in schema["enum"]:
-        out.append(f"{path}: {value!r} not in enum")
+        out.append((False, f"{path}: {value!r} not in enum"))
     if isinstance(value, dict):
         props = schema.get("properties") or {}
         for r in schema.get("required") or ():
             if r not in value:
-                out.append(f"{path}.{r}: missing")
+                out.append((True, f"{path}.{r}: missing"))
         for k, v in value.items():
             if k in props:
-                out.extend(validate(v, props[k], f"{path}.{k}"))
+                _walk(v, props[k], f"{path}.{k}", out)
             elif schema.get("additionalProperties") is False:
-                out.append(f"{path}.{k}: not allowed")
+                out.append((False, f"{path}.{k}: not allowed"))
     elif isinstance(value, list):
         if "maxItems" in schema and len(value) > schema["maxItems"]:
-            out.append(f"{path}: more than {schema['maxItems']} items")
+            out.append((False, f"{path}: more than {schema['maxItems']} items"))
         if "minItems" in schema and len(value) < schema["minItems"]:
-            out.append(f"{path}: fewer than {schema['minItems']} items")
+            out.append((False, f"{path}: fewer than {schema['minItems']} items"))
         items = schema.get("items")
         if isinstance(items, dict):
             for i, v in enumerate(value):
-                out.extend(validate(v, items, f"{path}[{i}]"))
+                _walk(v, items, f"{path}[{i}]", out)
     elif isinstance(value, str):
         if "maxLength" in schema and len(value) > schema["maxLength"]:
-            out.append(f"{path}: longer than {schema['maxLength']}")
+            out.append((False, f"{path}: longer than {schema['maxLength']}"))
         if "minLength" in schema and len(value) < schema["minLength"]:
-            out.append(f"{path}: shorter than {schema['minLength']}")
+            out.append((False, f"{path}: shorter than {schema['minLength']}"))
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
         if "minimum" in schema and value < schema["minimum"]:
-            out.append(f"{path}: {value} < {schema['minimum']}")
+            out.append((False, f"{path}: {value} < {schema['minimum']}"))
         if "maximum" in schema and value > schema["maximum"]:
-            out.append(f"{path}: {value} > {schema['maximum']}")
+            out.append((False, f"{path}: {value} > {schema['maximum']}"))
+
+
+def validate(value: Any, schema: dict, path: str = "$") -> list[str]:
+    """The problems with ``value`` against ``schema`` (empty: valid)."""
+    out: list[tuple[bool, str]] = []
+    _walk(value, schema, path, out)
+    return [p for _, p in out]
+
+
+def check(value: Any, schema: dict, path: str = "$") -> tuple[list[str], list[str]]:
+    """validate(), split: (hard problems: a wrong type or a missing required key; soft: everything else)."""
+    out: list[tuple[bool, str]] = []
+    _walk(value, schema, path, out)
+    return [p for h, p in out if h], [p for h, p in out if not h]
+
+
+def openapi_schema(schema: Any) -> Any:
+    """A JSON schema in OpenAPI 3.0's dialect (Gemini's function declarations): a type list ``["T", "null"]`` becomes
+    ``T`` with ``nullable: true``. Everything else is kept as it is (the local validator reads both dialects)."""
+    if isinstance(schema, list):
+        return [openapi_schema(x) for x in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: openapi_schema(v) for k, v in schema.items()}
+    t = schema.get("type")
+    if isinstance(t, list):
+        rest = [x for x in t if x != "null"]
+        if len(rest) == 1:
+            out["type"] = rest[0]
+            if "null" in t:
+                out["nullable"] = True
     return out
+
+
+def newest(ids: Any, pattern: str) -> Optional[str]:
+    """The newest id that fully matches ``pattern``: the highest version numbers in the id (gemini-3.10-flash beats
+    gemini-3.8-flash, gemini-4-flash beats both), the id itself breaking a tie. None when nothing matches."""
+    try:
+        rx = re.compile(pattern)
+    except re.error:
+        return None
+    found = [i for i in ids or () if isinstance(i, str) and rx.fullmatch(i)]
+    if not found:
+        return None
+    return max(found, key=lambda i: (tuple(int(x) for x in re.findall(r"\d+", i)), i))
+
+
+def _label(entry: dict) -> str:
+    """A model entry in words: its explicit id, or "newest <pattern>"."""
+    return entry.get("model") or f"newest {entry.get('discover')}"
 
 
 # -- the layer -------------------------------------------------------------------------------------------------------
@@ -163,23 +236,44 @@ def _parse_config(raw: Any) -> dict:
             base = p.get("base_url")
             if base is not None and not isinstance(base, str):
                 raise ValueError(f"providers.{name}.base_url: a URL or null")
+            label = p.get("label")
+            if label is not None and not (isinstance(label, str) and label):
+                raise ValueError(f"providers.{name}.label: words (the page's name for it), or leave it out")
+            style = p.get("schema", "json")
+            if style not in SCHEMA_STYLES:
+                raise ValueError(f"providers.{name}.schema: one of {', '.join(SCHEMA_STYLES)}")
             providers[str(name)] = {"key_env": p["key_env"], "base_url": base or None,
-                                    "omit": [str(x) for x in (p.get("omit") or [])]}
+                                    "omit": [str(x) for x in (p.get("omit") or [])],
+                                    "label": label or str(name), "schema": style}
     tasks: dict[str, dict] = {}
     for name, t in (raw.get("tasks") or {}).items():
         if not isinstance(t, dict):
             raise ValueError(f"tasks.{name}: must be a mapping")
         models = []
         for i, m in enumerate(t.get("models") or []):
-            if not isinstance(m, dict) or not isinstance(m.get("model"), str) or not m["model"]:
-                raise ValueError(f"tasks.{name}.models[{i}]: needs {{provider, model}}")
+            model = m.get("model") if isinstance(m, dict) else None
+            disc = m.get("discover") if isinstance(m, dict) else None
+            if not isinstance(m, dict) or not ((isinstance(model, str) and model) or (isinstance(disc, str) and disc)) \
+                    or (model is not None and not (isinstance(model, str) and model)) \
+                    or (disc is not None and not (isinstance(disc, str) and disc)):
+                raise ValueError(f"tasks.{name}.models[{i}]: needs {{provider, model}} (or a discover pattern)")
+            if disc is not None:
+                try:
+                    re.compile(disc)
+                except re.error as e:
+                    raise ValueError(f"tasks.{name}.models[{i}].discover: not a pattern ({e})") from None
             prov = str(m.get("provider") or "openai")
             if prov not in providers:
                 raise ValueError(f"tasks.{name}.models[{i}]: unknown provider {prov!r}")
             opts = m.get("options") or {}
             if not isinstance(opts, dict):
                 raise ValueError(f"tasks.{name}.models[{i}].options: must be a mapping")
-            models.append({"provider": prov, "model": m["model"], "options": dict(opts)})
+            typ = m.get("typical")
+            if typ is not None and not (isinstance(typ, dict) and set(typ) <= set(TYPICAL_KEYS)
+                                        and all((_num(v) or -1.0) >= 0 for v in typ.values())):
+                raise ValueError(f"tasks.{name}.models[{i}].typical: {{{', '.join(TYPICAL_KEYS)}}} as numbers >= 0")
+            models.append({"provider": prov, "model": model or None, "discover": disc or None, "options": dict(opts),
+                           "typical": {k: float(v) for k, v in typ.items()} if typ else None})
         audio = t.get("audio", False)
         if not isinstance(audio, (bool, dict)):
             raise ValueError(f"tasks.{name}.audio: true/false or a mapping")
@@ -253,6 +347,7 @@ class _Layer:
         self._day: Optional[str] = None
         self.spend: dict[str, float] = {}
         self.calls: dict[str, int] = {}
+        self.recent: dict[tuple[str, str], collections.deque] = {}   # (task, model) -> recent good calls' cost
         self._ledger_seeded = False
         self.reload(force=True)
 
@@ -293,7 +388,7 @@ class _Layer:
             self.cfg_error = None
             self.probed = {k: v for k, v in self.probed.items() if v != "no_tools"}
         log.info("llm.yaml loaded (revision %s): tasks %s", self.revision,
-                 ", ".join(f"{t}={'/'.join(m['model'] for m in c['models']) or 'none'}"
+                 ", ".join(f"{t}={'/'.join(_label(m) for m in c['models']) or 'none'}"
                            for t, c in cfg["tasks"].items()) or "none")
 
     def key(self, provider: str) -> Optional[str]:
@@ -377,29 +472,81 @@ class _Layer:
         return time.monotonic() - p["at"] >= wait
 
     def probe_done(self, provider: str, ids: Optional[set], error: Optional[str]) -> None:
+        if ids is not None:                           # Gemini's OpenAI-compatible list may name them "models/<id>"
+            ids = {i[7:] if i.startswith("models/") else i for i in ids if isinstance(i, str)}
         with self.lock:
             self._probes[provider] = {"at": time.monotonic(), "ids": ids, "error": error}
             if ids is None:
                 return
+            for mk, state in list(self.probed.items()):  # a fresh list clears an old 404 (a discovered id's too)
+                if state == "missing" and mk.startswith(provider + ":") and mk[len(provider) + 1:] in ids:
+                    self.probed[mk] = "ok"
             for t in self.cfg["tasks"].values():
                 for m in t["models"]:
-                    if m["provider"] != provider:
+                    if m["provider"] != provider or not m["model"]:
                         continue
                     mk = f"{provider}:{m['model']}"
                     self.probed[mk] = "ok" if m["model"] in ids else "missing"
         if error:
             log.warning("models.list() for %s failed (%s): trying the models anyway", provider, error)
-        else:
-            for t in self.cfg["tasks"].values():
-                for m in t["models"]:
-                    if m["provider"] == provider and m["model"] not in (ids or ()):
-                        self._log_once(f"missing:{provider}:{m['model']}", logging.ERROR,
-                                       "llm.yaml lists %s, but %s's models.list() doesn't have it: skipped",
-                                       m["model"], provider)
+            return
+        for name, t in self.cfg["tasks"].items():
+            for m in t["models"]:
+                if m["provider"] != provider:
+                    continue
+                model, via = self.resolve(m)
+                if via == "missing":
+                    self._log_once(f"missing:{provider}:{_label(m)}", logging.ERROR,
+                                   "llm.yaml lists %s, but %s's models.list() doesn't have it%s: skipped", _label(m),
+                                   provider, f" (and no id matches {m['discover']!r})" if m["discover"] else "")
+                elif m["discover"]:
+                    self._log_once(f"resolved:{name}:{provider}:{_label(m)}:{model}", logging.INFO,
+                                   "%s: %s uses %s (%s)", name, provider, model,
+                                   "as written; it is in models.list()" if via == "explicit" else
+                                   f"the newest id matching {m['discover']!r}"
+                                   + (f"; {m['model']} isn't listed" if m["model"] else ""))
+
+    def ids(self, provider: str) -> Optional[set]:
+        """The ids the provider's last good models.list() gave, or None (not read yet, or it failed)."""
+        with self.lock:
+            p = self._probes.get(provider)
+        return p.get("ids") if p else None
+
+    def resolve(self, entry: dict) -> tuple[Optional[str], str]:
+        """(the model id this entry uses now, how): "explicit" (listed in models.list()), "discovered" (the newest
+        listed id matching its ``discover``), "unprobed" (models.list() not read: the explicit id as written, or
+        None), "missing" (neither: skipped)."""
+        ids = self.ids(entry["provider"])
+        explicit = entry.get("model")
+        if ids is None:
+            return explicit, "unprobed"
+        if explicit and explicit in ids:
+            return explicit, "explicit"
+        if entry.get("discover"):
+            best = newest(ids, entry["discover"])
+            if best:
+                return best, "discovered"
+        return explicit, "missing"
 
     # -- planning, accounting --------------------------------------------------------------------------------------
     def task(self, name: str) -> Optional[dict]:
         return self.cfg["tasks"].get(name)
+
+    def plan(self, entry: dict) -> tuple[Optional[str], Optional[str]]:
+        """(the model id this entry would call, why it is skipped or None). (None, None): a discover entry whose
+        provider's models.list() hasn't been read; the caller probes first."""
+        provider = entry["provider"]
+        if provider not in self.cfg["providers"]:
+            return entry.get("model"), f"unknown provider {provider}"
+        if self.key(provider) is None:
+            return entry.get("model"), f"no key for {provider} ({self.cfg['providers'][provider]['key_env']})"
+        model, via = self.resolve(entry)
+        if via == "missing":
+            return model, ("not in models.list()" if not entry.get("discover") else
+                           f"no id in models.list() matches {entry['discover']!r}")
+        if model is None:
+            return None, None
+        return model, self.skip_reason(provider, model)
 
     def skip_reason(self, provider: str, model: str) -> Optional[str]:
         mk = f"{provider}:{model}"
@@ -438,8 +585,20 @@ class _Layer:
             self.breakers.pop(f"{provider}:{model}", None)
             self.probed.setdefault(f"{provider}:{model}", "ok")
 
+    def price(self, model: Optional[str]) -> Optional[dict]:
+        """llm.yaml's price row for ``model``: its own, else the first glob key that matches (a discovered id)."""
+        prices = self.cfg["prices"]
+        if not model:
+            return None
+        if model in prices:
+            return prices[model]
+        for k, p in prices.items():
+            if any(ch in k for ch in "*?[") and fnmatch.fnmatchcase(model, k):
+                return p
+        return None
+
     def cost(self, model: str, usage: dict) -> Optional[float]:
-        p = self.cfg["prices"].get(model)
+        p = self.price(model)
         if p is None:
             if usage:
                 self._log_once(f"noprice:{model}", logging.WARNING,
@@ -461,7 +620,8 @@ class _Layer:
             self._day, self.spend, self.calls = day, {}, {}
 
     def _seed_from_ledger(self) -> None:
-        """Today's spend from the ledger (once per process), so a restart doesn't reset the budget."""
+        """Today's spend from the ledger (once per process), so a restart doesn't reset the budget; and each (task,
+        model)'s last RECENT_CALLS good calls' cost, for estimate()."""
         with self.lock:
             if self._ledger_seeded:
                 return
@@ -473,18 +633,27 @@ class _Layer:
                 return
             spend: dict[str, float] = {}
             calls: dict[str, int] = {}
+            recent: dict[tuple[str, str], collections.deque] = {}
             with self.ledger_path.open() as fh:
                 for line in fh:
                     try:
                         e = json.loads(line)
                     except ValueError:
                         continue
-                    if _local_day(float(e.get("at") or 0)) != day:
+                    if not isinstance(e, dict):
                         continue
                     t = str(e.get("task"))
+                    c = _num(e.get("cost_usd"))
+                    if e.get("ok") is True and c is not None and isinstance(e.get("model"), str):
+                        recent.setdefault((t, e["model"]), collections.deque(maxlen=RECENT_CALLS)).append(c)
+                    if _local_day(float(e.get("at") or 0)) != day:
+                        continue
                     calls[t] = calls.get(t, 0) + 1
-                    spend[t] = spend.get(t, 0.0) + float(e.get("cost_usd") or 0.0)
+                    spend[t] = spend.get(t, 0.0) + float(c or 0.0)
             with self.lock:
+                for k, dq in recent.items():
+                    mine = self.recent.get(k)
+                    self.recent[k] = collections.deque(list(dq) + list(mine or ()), maxlen=RECENT_CALLS)
                 if self._day == day:
                     for t, v in spend.items():
                         self.spend[t] = self.spend.get(t, 0.0) + v
@@ -492,6 +661,49 @@ class _Layer:
                         self.calls[t] = self.calls.get(t, 0) + n
         except Exception as e:                        # noqa: BLE001 - the budget starts at 0 instead
             log.warning("ledger not read (%s): today's spend starts at 0", e)
+
+    def remember(self, task: str, model: str, cost: Optional[float]) -> None:
+        """A good call's cost, for estimate()."""
+        if cost is None:
+            return
+        self._seed_from_ledger()
+        with self.lock:
+            self.recent.setdefault((task, model), collections.deque(maxlen=RECENT_CALLS)).append(float(cost))
+
+    def estimate(self, task: str, audio_s: Optional[float] = None) -> dict:
+        """What one call of ``task`` costs on the model it would use now (module estimate())."""
+        out: dict[str, Any] = {"model": None, "provider": None, "label": None, "usd": None, "basis": None,
+                               "calls": 0}
+        t = self.task(task)
+        if not t:
+            return out
+        entry, model = None, None
+        for m in t["models"]:
+            model, why = self.plan(m)
+            if why is None and model:
+                entry = m
+                break
+        if entry is None:
+            return out
+        prov = entry["provider"]
+        out.update(model=model, provider=prov, label=self.cfg["providers"][prov]["label"])
+        self._seed_from_ledger()
+        with self.lock:
+            recent = list(self.recent.get((task, model), ()))
+        out["calls"] = len(recent)
+        if len(recent) >= ESTIMATE_MIN_CALLS:
+            out.update(usd=round(sum(recent) / len(recent), 6), basis="ledger")
+            return out
+        ty = entry.get("typical")
+        if ty:
+            audio = int(round(float(ty.get("audio_per_s") or 0.0) * max(0.0, float(audio_s or 0.0))))
+            text_in = int(round(float(ty.get("text_in") or 0.0)))
+            usage = {"prompt_tokens": text_in + audio, "audio_tokens": audio, "cached_tokens": 0,
+                     "completion_tokens": int(round(float(ty.get("text_out") or 0.0)))}
+            usd = self.cost(model, usage)
+            if usd is not None:
+                out.update(usd=usd, basis="price table")
+        return out
 
     def account(self, task: str, cost: Optional[float]) -> None:
         self._seed_from_ledger()
@@ -534,9 +746,9 @@ class _Layer:
             now = time.monotonic()
             tasks = {}
             for name, t in cfg["tasks"].items():
-                ids = [m["model"] for m in t["models"]]
+                ids = [_label(m) for m in t["models"]]
                 probed = {m["model"]: self.probed[f"{m['provider']}:{m['model']}"]
-                          for m in t["models"] if f"{m['provider']}:{m['model']}" in self.probed}
+                          for m in t["models"] if m["model"] and f"{m['provider']}:{m['model']}" in self.probed}
                 tasks[name] = {"models": ids, "probed": probed, "timeout_s": t["timeout_s"]}
             breakers = {mk: {"failures": b["fails"], "open_for_s": round(max(0.0, b["open_until"] - now), 1)}
                         for mk, b in self.breakers.items()}
@@ -547,9 +759,19 @@ class _Layer:
                    "spend_today_usd": {k: round(v, 4) for k, v in self.spend.items()},
                    "calls_today": dict(self.calls), "budgets": dict(cfg["budgets"]), "probes": probes}
         for name, t in tasks.items():
-            t["usable"] = [m["model"] for m in cfg["tasks"][name]["models"]
-                           if self.skip_reason(m["provider"], m["model"]) is None]
-        out["providers"] = {p: {"key": self.key(p) is not None, "base_url": v["base_url"]}
+            rows = []
+            for m in cfg["tasks"][name]["models"]:
+                model, why = self.plan(m)
+                via = self.resolve(m)[1] if m["provider"] in cfg["providers"] else "missing"
+                rows.append({"configured": _label(m), "provider": m["provider"], "model": model, "via": via,
+                             "skip": why if why is not None or model else "models.list() not read yet"})
+            t["resolved"] = rows
+            t["usable"] = [r["model"] for r in rows if r["skip"] is None and r["model"]]
+            for r in rows:                               # a discovered id's own state (no_tools, a 404)
+                mk = f"{r['provider']}:{r['model']}"
+                if r["via"] == "discovered" and mk in self.probed:
+                    t["probed"].setdefault(r["model"], self.probed[mk])
+        out["providers"] = {p: {"key": self.key(p) is not None, "base_url": v["base_url"], "label": v["label"]}
                             for p, v in cfg["providers"].items()}
         return out
 
@@ -625,6 +847,8 @@ def _messages(system: str, user: Union[str, list], audio: Optional[bytes], audio
 def _request(L: _Layer, entry: dict, task_cfg: dict, messages: list, tool: dict, audio: bool,
              timeout_s: float) -> dict:
     fn = {k: tool[k] for k in ("name", "description", "parameters") if k in tool}
+    if L.cfg["providers"][entry["provider"]].get("schema") == "openapi" and "parameters" in fn:
+        fn["parameters"] = openapi_schema(fn["parameters"])
     kw: dict[str, Any] = {"model": entry["model"], "messages": messages,
                           "tools": [{"type": "function", "function": fn}],
                           "tool_choice": {"type": "function", "function": {"name": tool["name"]}},
@@ -654,11 +878,13 @@ def _usage(resp: Any) -> dict:
     return out
 
 
-def _parse(resp: Any, tool: dict) -> tuple[Optional[dict], Optional[str]]:
+def _parse(resp: Any, tool: dict, lenient: bool = False) -> tuple[Optional[dict], Optional[str], list[str]]:
+    """(the tool's arguments, None, soft problems kept) or (None, why, []). lenient: only a hard problem (a wrong
+    type, a missing required key) refuses the answer."""
     try:
         msg = resp.choices[0].message
     except (AttributeError, IndexError, TypeError):
-        return None, "no choices in the answer"
+        return None, "no choices in the answer", []
     args = None
     for c in (getattr(msg, "tool_calls", None) or []):
         f = getattr(c, "function", None)
@@ -671,17 +897,17 @@ def _parse(resp: Any, tool: dict) -> tuple[Optional[dict], Optional[str]]:
         if isinstance(content, str) and content.strip().startswith("{"):
             args = content
         else:
-            return None, "no tool call in the answer"
+            return None, "no tool call in the answer", []
     try:
         data = json.loads(args) if isinstance(args, str) else args
     except ValueError as e:
-        return None, f"tool arguments are not JSON ({e})"
+        return None, f"tool arguments are not JSON ({e})", []
     if not isinstance(data, dict):
-        return None, "tool arguments are not an object"
-    problems = validate(data, tool.get("parameters") or {})
-    if problems:
-        return None, "invalid: " + "; ".join(problems[:5])
-    return data, None
+        return None, "tool arguments are not an object", []
+    hard, soft = check(data, tool.get("parameters") or {})
+    if hard or (soft and not lenient):
+        return None, "invalid: " + "; ".join(validate(data, tool.get("parameters") or {})[:5]), []
+    return data, None, soft
 
 
 def _fail_result(task: str, t0: float, error: str, attempts: list, cost: float = 0.0) -> LLMResult:
@@ -695,8 +921,19 @@ def _start(task: str, timeout_s: Optional[float]) -> tuple[_Layer, Optional[dict
     return L, tcfg, float(timeout_s if timeout_s is not None else (tcfg or {}).get("timeout_s") or DEFAULT_TIMEOUT_S)
 
 
+def _probe_sync(L: _Layer, prov: str) -> None:
+    try:
+        page = L.client(prov, L.key(prov)).models.list(timeout=PROBE_TIMEOUT_S)
+        L.probe_done(prov, {m.id for m in page.data}, None)
+    except Exception as e:                            # noqa: BLE001
+        L.probe_done(prov, None, _error_of(e, L._keys_seen)[0])
+
+
+NO_LIST = "models.list() couldn't be read, so no id was picked"
+
+
 def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, audio: Optional[bytes] = None,
-              audio_format: str = "mp3", timeout_s: Optional[float] = None) -> LLMResult:
+              audio_format: str = "mp3", timeout_s: Optional[float] = None, lenient: bool = False) -> LLMResult:
     """One forced-tool call for ``task`` (sync; Flask threads, tools). Never raises."""
     t0 = time.perf_counter()
     attempts: list[dict] = []
@@ -707,19 +944,17 @@ def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, aud
             return _fail_result(task, t0, "no model configured", attempts)
         messages = _messages(system, user, audio, audio_format)
         for entry in tcfg["models"]:
-            prov, model = entry["provider"], entry["model"]
-            why = L.skip_reason(prov, model)
+            prov = entry["provider"]
+            model, why = L.plan(entry)
             if why is None and L.probe_due(prov):
-                key = L.key(prov)
-                try:
-                    page = L.client(prov, key).models.list(timeout=PROBE_TIMEOUT_S)
-                    L.probe_done(prov, {m.id for m in page.data}, None)
-                except Exception as e:                # noqa: BLE001
-                    L.probe_done(prov, None, _error_of(e, L._keys_seen)[0])
-                why = L.skip_reason(prov, model)
+                _probe_sync(L, prov)
+                model, why = L.plan(entry)
+            if why is None and model is None:
+                why = NO_LIST
             if why is not None:
-                attempts.append({"model": model, "error": why})
+                attempts.append({"model": model or _label(entry), "error": why})
                 continue
+            entry = dict(entry, model=model)          # the id it resolved to (an explicit one, or discovered)
             kw = _request(L, entry, tcfg, messages, tool, audio is not None, tmo)
             t = time.perf_counter()
             try:
@@ -733,7 +968,7 @@ def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, aud
                 log.warning("%s: %s failed in %.0f ms: %s", task, model, ms, err)
                 attempts.append({"model": model, "error": err})
                 continue
-            res = _finish(L, task, entry, resp, tool, t, attempts)
+            res = _finish(L, task, entry, resp, tool, t, attempts, lenient)
             total += res.cost_usd
             if res.ok:
                 res.cost_usd = round(total, 6)
@@ -745,13 +980,14 @@ def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, aud
         return _fail_result(task, t0, redact(f"internal: {type(e).__name__}: {e}"), attempts, total)
 
 
-def _finish(L: _Layer, task: str, entry: dict, resp: Any, tool: dict, t: float, attempts: list) -> LLMResult:
+def _finish(L: _Layer, task: str, entry: dict, resp: Any, tool: dict, t: float, attempts: list,
+            lenient: bool = False) -> LLMResult:
     prov, model = entry["provider"], entry["model"]
     ms = (time.perf_counter() - t) * 1000.0
     usage = _usage(resp)
     cost = L.cost(model, usage)
     L.account(task, cost)
-    data, err = _parse(resp, tool)
+    data, err, soft = _parse(resp, tool, lenient)
     if err is not None:
         L.failed(prov, model, err)
         L.ledger(task, prov, model, False, ms, usage, cost, err)
@@ -760,12 +996,16 @@ def _finish(L: _Layer, task: str, entry: dict, resp: Any, tool: dict, t: float, 
         return LLMResult(False, None, err, task, prov, model, ms, usage, float(cost or 0.0), attempts)
     L.succeeded(prov, model)
     L.ledger(task, prov, model, True, ms, usage, cost, None)
+    L.remember(task, model, cost)
+    if soft:                                          # lenient: kept (the caller cleans the words), never paid twice
+        log.info("%s: %s answered outside its schema, kept: %s", task, model, redact("; ".join(soft[:5]), L._keys_seen))
     attempts.append({"model": model, "error": None})
-    return LLMResult(True, data, None, task, prov, model, ms, usage, float(cost or 0.0), attempts)
+    return LLMResult(True, data, None, task, prov, model, ms, usage, float(cost or 0.0), attempts, list(soft))
 
 
 async def acall_json(task: str, *, system: str, user: Union[str, list], tool: dict, audio: Optional[bytes] = None,
-                     audio_format: str = "mp3", timeout_s: Optional[float] = None) -> LLMResult:
+                     audio_format: str = "mp3", timeout_s: Optional[float] = None,
+                     lenient: bool = False) -> LLMResult:
     """call_json on AsyncOpenAI (show-brain's loop): the same rules. Never raises (a cancel still propagates)."""
     t0 = time.perf_counter()
     attempts: list[dict] = []
@@ -776,8 +1016,8 @@ async def acall_json(task: str, *, system: str, user: Union[str, list], tool: di
             return _fail_result(task, t0, "no model configured", attempts)
         messages = _messages(system, user, audio, audio_format)
         for entry in tcfg["models"]:
-            prov, model = entry["provider"], entry["model"]
-            why = L.skip_reason(prov, model)
+            prov = entry["provider"]
+            model, why = L.plan(entry)
             if why is None and L.probe_due(prov):
                 try:
                     page = await L.aclient(prov, L.key(prov)).models.list(timeout=PROBE_TIMEOUT_S)
@@ -786,10 +1026,13 @@ async def acall_json(task: str, *, system: str, user: Union[str, list], tool: di
                     raise
                 except Exception as e:                # noqa: BLE001
                     L.probe_done(prov, None, _error_of(e, L._keys_seen)[0])
-                why = L.skip_reason(prov, model)
+                model, why = L.plan(entry)
+            if why is None and model is None:
+                why = NO_LIST
             if why is not None:
-                attempts.append({"model": model, "error": why})
+                attempts.append({"model": model or _label(entry), "error": why})
                 continue
+            entry = dict(entry, model=model)          # the id it resolved to (an explicit one, or discovered)
             kw = _request(L, entry, tcfg, messages, tool, audio is not None, tmo)
             t = time.perf_counter()
             try:
@@ -805,7 +1048,7 @@ async def acall_json(task: str, *, system: str, user: Union[str, list], tool: di
                 log.warning("%s: %s failed in %.0f ms: %s", task, model, ms, err)
                 attempts.append({"model": model, "error": err})
                 continue
-            res = _finish(L, task, entry, resp, tool, t, attempts)
+            res = _finish(L, task, entry, resp, tool, t, attempts, lenient)
             total += res.cost_usd
             if res.ok:
                 res.cost_usd = round(total, 6)
@@ -820,10 +1063,12 @@ async def acall_json(task: str, *, system: str, user: Union[str, list], tool: di
 
 
 def status() -> dict:
-    """{"config": {"path", "revision", "error"}, "tasks": {task: {"models", "usable", "probed": {id: ok | missing |
-    no_tools}, "timeout_s"}}, "breakers": {"provider:id": {"failures", "open_for_s"}}, "spend_today_usd": {task: x},
+    """{"config": {"path", "revision", "error"}, "tasks": {task: {"models" (as configured: an id or "newest
+    <pattern>"), "usable" (the ids it would call, in order), "resolved": [{"configured", "provider", "model", "via":
+    explicit | discovered | unprobed | missing, "skip": why or None}], "probed": {id: ok | missing | no_tools},
+    "timeout_s"}}, "breakers": {"provider:id": {"failures", "open_for_s"}}, "spend_today_usd": {task: x},
     "calls_today": {task: n}, "budgets": {task: x}, "probes": {provider: {"age_s", "ok", "error"}},
-    "providers": {name: {"key": bool, "base_url"}}}. Never contains a key."""
+    "providers": {name: {"key": bool, "base_url", "label"}}}. Never contains a key."""
     try:
         L = _layer()
         L.reload()
@@ -832,6 +1077,39 @@ def status() -> dict:
         return {"config": {"path": str(CONFIG_FILE), "revision": None, "error": redact(e)}, "tasks": {},
                 "breakers": {}, "spend_today_usd": {}, "calls_today": {}, "budgets": {}, "probes": {},
                 "providers": {}}
+
+
+def estimate(task: str, *, audio_s: Optional[float] = None) -> dict:
+    """What one call of ``task`` costs on the model it would use now (the first usable one, after discovery):
+    {"model", "provider", "label" (the provider in page words), "usd" (one call), "basis": "ledger" (the mean of
+    its last RECENT_CALLS good calls, at least ESTIMATE_MIN_CALLS) | "price table" (the entry's ``typical`` usage, its
+    audio tokens x ``audio_s``, priced from llm.yaml) | None (neither known), "calls" (good calls behind "ledger")}.
+    Everything None when no model is usable. Pure arithmetic and memory: no network. Never raises."""
+    try:
+        L = _layer()
+        L.reload()
+        return L.estimate(task, audio_s)
+    except Exception:                                 # noqa: BLE001
+        return {"model": None, "provider": None, "label": None, "usd": None, "basis": None, "calls": 0}
+
+
+def probe(task: Optional[str] = None) -> dict:
+    """models.list() now (sync, PROBE_TIMEOUT_S) for each provider that ``task`` uses (None: every provider with a
+    key) whose probe is due, so a discover entry has its id before the first call. For a warm-up thread, never an
+    event loop. Returns status()["tasks"][task] ({} without it), or status() for None. Never raises."""
+    try:
+        L = _layer()
+        L.reload()
+        t = L.task(task) if task else None
+        provs = ({m["provider"] for m in t["models"]} if t else set()) if task else set(L.cfg["providers"])
+        for prov in sorted(provs):
+            if prov in L.cfg["providers"] and L.key(prov) is not None and L.probe_due(prov):
+                _probe_sync(L, prov)
+        st = L.status()
+        return st if not task else (st.get("tasks") or {}).get(task) or {}
+    except Exception as e:                            # noqa: BLE001
+        log.warning("models.list() probe failed (%s)", redact(e))
+        return {}
 
 
 def task_settings(task: str) -> dict:

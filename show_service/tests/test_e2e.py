@@ -535,7 +535,8 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
         assert show.director.palette_fn(time.monotonic()) is None
         code, rb = http("PUT", base + "/api/v1/vibe", {"vibe": "e2e-lively", "listening": False})
         assert code == 200 and rb["vibe"] == "e2e-lively" and rb["known"] is True and rb["source"] == "mode", rb
-        assert rb["listening_effective"] is False and rb["listening_why"] == "this mode doesn't listen"
+        # the mode's "listening" no longer gates (README S5.20): the listener's own switch says why (off by default)
+        assert rb["listening_effective"] is False and rb["listening_why"] == "AI listening is off"
         assert rb["problems"] == [] and rb["boot_id"] == odd["boot_id"]
         look = wait_for(lambda: next((d for d in reversed(tap.of(contract.ROOM_LOOK)) if d["vibe"] == "e2e-lively"),
                                      None), 5, "room.look for the vibe")

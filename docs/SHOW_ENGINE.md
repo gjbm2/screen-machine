@@ -474,7 +474,7 @@ Each output evaluates its look at **`now + L(output, attribute)`**:
 |---|---|---|
 | **DMX** | Beat-locked effects; **hits** (per packet, from show_rt); recurring hits *scheduled* from the bar pattern (§9.5); piano note-ons straight from MIDI | — |
 | **Hue** | Gentle beat pulses (attack ≥ 80 ms, so the bridge's tick is invisible); smoothed features; washes from palette roles. Send continuously at 50 Hz, not only on change, so a lost packet heals. | Reactive hits (they land 60–170 ms late). An *unforeseen* drop gets a slow swell (attack ≥ 300 ms); only a *predicted* drop gets a timed hit. |
-| **Screens** | The clock, evaluated by the renderer at its own live lead; features smoothed with τ ≥ 300 ms; cue hints and drop warnings at least **lead + 250 ms ahead (≈1 s)**; `drop_armed` ≥ 2 beats early | Transients of any kind. A raw spectrum or onset would land ~0.6 s late. No gain or level, ever. |
+| **Screens** | The clock, evaluated by the renderer at its own live lead; features smoothed (spectrum32: rise τ 35 ms, fall 300 ms; owner, 17 Oct: sound to glass under 0.5 s); cue hints and drop warnings at least **lead + 250 ms ahead (≈1 s)**; `drop_armed` ≥ 2 beats early | Transients of any kind. A raw spectrum or onset would land ~0.6 s late. No gain or level, ever. |
 
 **DMX frame grid.**
 - Frames are **phase-locked to the beat**: `tick = beat_period / m`, with m the largest multiple of 4 that keeps the rate at ≤ 44 Hz (120 bpm → 40 Hz; 128 bpm → 42.7 Hz).
@@ -570,15 +570,14 @@ So:
 - freeze genre and mood while music probability is under 0.5;
 - scale confidence down while speech is above 0.3.
 
-**Genre words.** EffNet's 15 parents map onto vocab.yaml's genre words through a table in config:
-- Jazz → jazz;
-- Funk/Soul and Blues → soul;
-- Pop and Latin → pop;
-- Rock → rock;
-- Classical → classical;
-- Electronic → house or techno or ambient, **only from the LLM's words**, because fine styles are unreliable.
+**Genre words** (17 Oct: 04's 31 vocab.yaml genres; 2b's audit). EffNet's 400 fine styles map onto the genre words through show.yaml `genre_map`: `styles` gives a style its own word (Electronic---Deep House → house, Rock---Math Rock → indie), and `parents` gives each family's default for the rest (Jazz → jazz, Electronic → electronic; null = no word, as for Non-Music). The 15-parent table alone left the genre null on almost every publish (the parent max crowned Rock for jazz; Electronic waited for the listener), while the top fine style was right almost every second.
+- Each tags line's top 5 styles (`ml.tasks.tags.styles_top`), weighted by activation², give word shares; a style with no word counts against the leader.
+- The shares are smoothed (`tau_s` 30 s), frozen and speech-scaled as above; the leader changes with the same margin and dwell.
+- **conf = the leader's share.** It is calibrated: one family dominating reads 0.5–0.95, a mixed track about 0.3. The director takes the word at `director.genre_min_conf` 0.4.
+- room.direction's **`genres`** carries the top 3 shares (summing to 1) even when no single word clears the bar, for the renderer's genre_fit tags.
+- Measured on the 9 test tracks: the word now reads ~90% of the time on 7 of them (before: never); the two soul tracks split blues / funk / reggae.
 
-Extending vocab.yaml is 04's call.
+room.direction also carries **`valence`** (0 sad … 1 happy: show.yaml `structure.valence`'s weights over the mood head's top labels), **`organic`** (the acoustic head) and **`hold`** (a person holds the look; the renderer's scene and FX directors change nothing while it is true, owner 17 Oct). Extending vocab.yaml is 04's call.
 
 ### 6.1 Sections
 
@@ -641,18 +640,23 @@ Normalised features would stretch quiet 8 pm background music to full scale. So:
 - Ask: genre and style in words; instrumentation; vocals; mood words; section function; trajectory; track change.
 - **Never:** BPM, key, beats or energy. Audio LLMs score near zero on those, and the DSP does them. Never the track's identity or lyrics either: those can trigger refusals.
 
-### 7.2 Model and cost *(retrieved 15 Oct; re-verify at build)*
+### 7.2 Model and cost *(owner, 17 Oct; checked against Google's and OpenAI's own pages that day)*
 
-**Default, as the owner asked:** OpenAI `gpt-audio-1.5` through Chat Completions with `input_audio`.
-- Reported MMAU-Pro music score ~67 (gpt-audio).
-- JSON comes back through one forced tool call, validated locally.
-- **Cost:** audio ≈ 10 tokens/s × 24 s × $32/M, plus about 2.2k text tokens in and 250 out at its text rates, per call. At one call every 20 s (720 calls in 4 h) that is **about $10–14 per evening**. The ledger computes real cost from the usage tokens and the prices in `config/llm.yaml`.
+**Primary, the owner's choice (17 Oct): Gemini Flash** through Gemini's OpenAI-compatible endpoint, on the same client (`gemini-3.8-flash` today; `GEMINI_API_KEY`, paid tier, whose data isn't used to improve Google's products).
+- Gemini 3.x Flash scores 70.7–71.7 on MMAU-Pro music, against 67.3 for gpt-audio.
+- Verified 17 Oct: the endpoint takes `input_audio` parts and tools, and `models.list()` lists the ids (ai.google.dev/gemini-api/docs/openai); 3.8 Flash takes audio in (its model page). With the owner's key, one text-only call with the real tool and prompt answered in 4 s for $0.0014.
+- **Cost:** $0.75 per 1M input tokens, audio included, and $3.75 out including thinking, through 31 Dec 2026 (both double on 1 Jan 2027; ai.google.dev/gemini-api/docs/pricing). Audio is 32 tokens/s. A 24 s clip with ~1.6k text tokens and ~600 out is about **$0.004, so about $3 an evening** at one call every 20 s.
+- Request: `reasoning_effort: low` (3.x can't turn thinking off), the OpenAI-only `store`/`modalities` left out, tool schemas in OpenAPI's dialect (`nullable`).
 
-**A fallback, off until the owner adds a key:** Gemini 3.6 Flash through Gemini's OpenAI-compatible endpoint, on the same client. It reportedly scores higher on music (~71) and costs ~$2 an evening. Paid tier only.
+**The fallback: OpenAI `gpt-audio-1.5`** through Chat Completions with `input_audio`. Without the Gemini key it is the one used, as before.
+- **Cost:** audio ≈ 10 tokens/s × 24 s × $32/M, plus about 1.6k text tokens in and 200 out at its text rates: about $0.014 a call, **about $10 an evening**.
+- gpt-audio and gpt-audio-mini shut down on 20 Jan 2027 (gpt-audio-1.5 doesn't), so gpt-audio is no longer listed.
+
+**The cost is visible** (README S5.20): `GET /api/v1/listening` carries `estimate` {per call, per hour, per evening (show.yaml `listener.evening_h`, 4), cadence, model, provider, basis} and the card's `listening` block `spend_today_usd`, `est_evening_usd` and `provider` ("Google" / "OpenAI"), even while the switch is off. A clip's cost is the ledger's recent mean for the model that would be used, else llm.yaml's `typical` usage × its prices. The ledger computes real cost from the usage tokens and the prices in `config/llm.yaml`.
 
 **For information:** a one-evening comparison on the owner's own music can be logged once the listener runs. It changes nothing unless the owner says so.
 
-**Model ids live only in `config/llm.yaml`.** At startup the layer calls `models.list()` and probes each capability (json_schema or forced tool). If an id is missing, it logs, alerts once, and falls back down that task's list.
+**Model ids live only in `config/llm.yaml`.** The layer reads `models.list()` at startup (the listener's warm-up) and hourly. An explicit id that is listed is used as written; else, for an entry with `discover`, the newest listed id matching its pattern (the newest plain Flash); else it is skipped, logged once, and the task falls down its list. A provider without its key is skipped. A model that rejects the forced tool is skipped from then on.
 
 **No local audio-LLM:** they need ~20 GB of RAM or a free GPU, and we have neither.
 
@@ -676,7 +680,7 @@ Normalised features would stretch quiet 8 pm background music to full scale. So:
   - the previous verdict marked "hypothesis, may be wrong", left out every 5th call;
   - the audio.
 
-**Output** (strict):
+**Output** (one forced tool; the words are plain strings, cleaned to these lists after the call, so one stray word never fails an answer nor sends the clip again to the fallback; README S5.20):
 
 ```
 content: music|speech|mixed|silence|noise
@@ -707,16 +711,18 @@ A text box under More on the Music card, e.g. "smoky jazz club".
 The room mic is the only music source (owner, 15 Oct), so clips would carry guests' conversation to a cloud API every 20 s.
 - Clips go only while CED says the audio is music-dominant and speech is below about 0.3. The clip is cut to the music-dominant seconds.
 - A vibe can turn the listener off (`listener: off`). For example, while the piano plays MIDI already gives the harmony and the dynamics.
-- **Owner, 17 Oct: nothing goes to OpenAI unless Auto is on AND the room's mic is on**, for cost and because it is intrusive. Unknown counts as off, and the gate runs again right before each upload, so a clip cut before Auto or the mic went off is never sent. The ring doesn't even record for the listener while the gate is shut. Config: show.yaml `listener.requires_auto` / `requires_mic` (both true).
+- **Owner, 17 Oct: nothing goes to any provider unless Auto is on AND the room's mic is on**, for cost and because it is intrusive. Unknown counts as off, and the gate runs again right before each upload, so a clip cut before Auto or the mic went off is never sent. The ring doesn't even record for the listener while the gate is shut. Config: show.yaml `listener.requires_auto` / `requires_mic` (both true).
+- **The gate, in full** (README S5.20): the AI listening switch ("Identify the music"), Auto on, the mic on, the feel not saying `listener: off`, sound coming in, substantive music (below), the loudness floor, a usable model. **The mode's show.main `listening` no longer gates** (owner, 17 Oct); it stays in the API for readers.
 - **No substantive audio, no upload:** a clip needs the music/speech check (music-dominant, speech under ~0.3, over a continuous run) and the loudness floor (`listener.quiet_gate`) over the last 10 s. Without the classifier running, nothing goes.
 - On the Music card (e1, 17 Oct, one listening block): the **Room mic** switch with its input picker, then **Identify the music** (the AI listening switch: off stops all uploads), then **What it hears**. The menu has no switches. Describe it, the DSP and the local ML carry on whatever these say.
 - To date (17 Oct) one clip has ever been sent ($0.006).
-- Requests use `store: false`, and never a free tier.
+- Requests use `store: false` on OpenAI (Gemini's endpoint has no such field), and never a free tier.
 - The camera on PC22 (Insta360) is **out of scope**: no room stills go to any model.
 
 ### 7.6 The `utils/llm/` layer, and gpt-4o
 
 **What it is.** A small layer: a provider registry, cached sync and async clients, a capability table, and `call_json(task, …)` with validation, a circuit breaker, fallback, a JSONL cost ledger and deduplicated `llm.*` alerts.
+- As built (README S3.12, S5.20): providers carry `label`, `omit` and `schema` (`openapi`); model entries `discover` and `typical`; `probe(task)` reads `models.list()` ahead of the first call; `estimate(task, audio_s=)` prices one call (ledger, else the price table; price rows may be globs); `lenient=True` keeps an answer whose only schema problems are soft. Alerts are log lines (logged once), not `llm.*` alerts.
 - It targets the **openai 1.x API**. Flask pins `openai<2`, with 1.77 installed, which supports `input_audio` and tools.
 - So the same code serves Flask and show_service, and show_service pins 1.77 too, until both move together.
 
@@ -992,7 +998,10 @@ How the pieces make it work. This is all generic mode machinery, nothing piano-s
 |---|---|
 | `piano_playing` / `piano_idle` | MIDI channel 1 from the live `room-piano` stream: ≥ 12 note-ons in 10 s, spanning ≥ 6 s, ≥ 4 distinct pitches. When the mic is up, it must also hear the piano, so silent headphone practice doesn't switch (configurable). Ignores channel 2 (the adsilent replaying itself), `test-piano`, `phone-test` and the `pc22-*` streams. |
 | `music_audible` | CED music ≥ 0.5 on the room mic for ≥ 5 s; or Sonos PLAYING, not muted, volume > 0, *and* confirmed by the mic |
-| `sonos_playing`, `genre_in`, `energy_above` | Sonos now-playing (below), the listener and local ML, and gated room loudness |
+| `sonos_playing`, `genre_in`, `energy_above` | Sonos now-playing (below), the listener and local ML, and gated room loudness. `genre_in` takes the AI listener's word when the ML leads with a family that has no word, or isn't sure (as the director does; 17 Oct) |
+| `mood_in` | The music feels like one of these (vocab moods): the AI listener's moods or the ML's mood tags, confident (≥ 0.6). "the music feels calm or dreamy" (17 Oct; README S5.20) |
+| `building` | structure's section phase is a build, or the AI listener's trajectory says building. "the music is building" |
+| `track_changed` | A new song started within `within_s` (30 s): music.context's track change, from Sonos or the sound. "a new song started in the last 30 s" |
 | `talking`, `quiet` | CED speech with no music; silence for N minutes |
 | `between` | Time of day |
 | `light_below` / `light_above` | The room's light sensor (Flask's `/api/lightsensor/lightsense`, the `living-room` sensor today): the median lux over the last minute, so someone walking past doesn't flip it, with 15 % hysteresis. Labels: "the room is darker than 50 lux", "the room is brighter than 200 lux" |
@@ -1298,7 +1307,7 @@ For the owner and builders. It has:
 | Type | Rate | Body |
 |---|---|---|
 | `music.clock` | on re-anchor + 10 Hz | §5.3 |
-| `music.features` | 25 Hz | band level/hits/presence, onset, LUFS, brightness, energy (gated), drive, punch, smoothed `spectrum32` (spec below) |
+| `music.features` | 50 Hz | band level/hits/presence, onset, LUFS, brightness, energy (gated), drive, punch, smoothed `spectrum32` (spec below) |
 | `music.pattern` | 1–2 Hz | the bar pattern (6 × 16) with confidence |
 | `music.context` | 1 Hz | genre (with conf), moods, instruments, vocal, dance, arousal, engagement, key/mode, talking, section `{id, letter, repeat_of, phase, build_progress, drop_eta_beats, bars_in_section}`, track `{id, changed}` |
 | `music.insight` | on arrival | the LLM verdict, with window and segment ids |
@@ -1335,7 +1344,12 @@ For the owner and builders. It has:
   - one *shared* reference is used for all bands: the rolling p95 of the loudest band over 60 s;
   - `value = clamp((dB − (ref − 60)) / 60)`, i.e. a 60 dB window below the reference.
   - Bass therefore still reads higher than air, as shaders expect; there is no per-band normalisation.
-- **Then:** multiplied by the loudness gate `g` (§6.3) and smoothed with τ = 300 ms on both rise and fall. It goes to screens only.
+- **Then:** multiplied by its own fast gate and smoothed with a rise τ of 35 ms and a fall τ of 300 ms. It goes to screens only.
+- **Latency** (owner, 17 Oct: sound to glass under 0.5 s; screen-machine-73's chain budget leaves the show side ≤ 80 ms):
+  - the FFT is 4096 points over a Hann of the newest 2048 samples, zero-padded, so the window's centre is 21 ms back, not 43, and the bass bands interpolate rather than stair-step;
+  - the fast gate is `smoothstep(bottom, bottom + 6 dB, the window's own level)`, with `bottom` the gate's (`ref − 15`); `g`'s 3 s short-term loudness held the bars up 1.3–3.3 s after the music stopped and opened them about 1 s late;
+  - music.features publishes at **50 Hz** (it was 25).
+  - Measured offline: from silence to half the bars 40 ms (was ~1 s); a tone in playing music 37 ms; the bars fall to half 240 ms after the music stops; kicks don't pump the treble.
 - The mic's own range is about 50 Hz–15 kHz, so the outermost bands read low.
 
 Every time is CLOCK_MONOTONIC in ms, as today, and is the time of the **sound** (capture time through the clock map), not arrival. For notes and pedals, `seq` is one increasing space per `sess`. These piano shapes are agreed with 98 and 04; 98 writes the renderer's consumer (`stream_service/music_view.py`) and the TestPiano that emits them. Kiosk Chrome is on the box clock (−57 ms ± 2 ms), so it would keep an offset from a minimum-RTT ping filter if it ever needs beat-timed DOM changes.
@@ -1351,13 +1365,17 @@ POST   /show/api/v1/action    {do: next|keep|house|low|tap|half|double|one}
 DELETE /show/api/v1/nudge/{id|all}             × on a chip / Back to auto
 PUT    /show/api/v1/vibe      {name}            (the show adapter; modes only)
 POST   /show/api/v1/describe  {text}            → chips, or a "switch to <mode>?" suggestion
-PUT    /show/api/v1/listening {on}
+PUT    /show/api/v1/listening {on}              GET: the listener's view, incl. provider, est_evening_usd and estimate
+                                                {per_call_usd, per_hour_usd, per_evening_usd, evening_h, cadence_s, model,
+                                                provider, basis: ledger|price table} (README S5.20), shown while off too
 POST   /show/api/v1/hue/release                 → {released: true} (exit choreography)
 PUT    /show/api/v1/autopilot {on}              Auto on/off (persisted); GET state shows {on, state: watching|holding|paused, why, last}
 POST   /show/api/v1/autopilot/undo              undo the last Auto switch (a correction)
 POST   /show/api/v1/autopilot/resume            end a hold or pause
 GET    /show/healthz
 ```
+
+**The card's `listening` block** (`GET /show/api/v1/card`, contract.CardData; README S5.20): `{on, effective, why, spend_today_usd, est_evening_usd, provider}`. `provider` is "Google" or "OpenAI" (the model that would be used now); the price shows before the switch is on.
 
 **What survives a restart:** vibe, steps, palette pick, chips (with absolute expiry) and listening. They live in `~/.local/state/screen-machine/show/state.json`, written atomically. The clock, section memory and LLM beliefs deliberately start cold.
 
@@ -1408,7 +1426,7 @@ GET    /show/healthz
 | Phase | State |
 |---|---|
 | P0 virtual Maestro | **Live.** show_service in production (`scripts/ctl show`, Spectre card), VBAN receiver, fast DSP, madmom beat clock, Art-Net into room's 6454. Hears PC22's mic (`pc22-mic`, d4's agent) until the kiosk's mic arrives |
-| P1 hearing words | **Built, off.** LLM listener (OpenAI via `utils/llm`) waits for the owner's AI-listening decision; the CED privacy gate is live |
+| P1 hearing words | **Built, off.** LLM listener (Gemini Flash, then gpt-audio-1.5, via `utils/llm`) waits for the owner's AI-listening switch; the CED privacy gate is live |
 | P2 director + Music card | **Live.** Director, vibes, nudges, palettes (incl. from the art), room `show` adapter, `/show/*` pass-through, Music card on /room. Neutral until modes get `show` rows (owner) |
 | P3 understanding | **Live.** ML worker (CED, EffNet + heads, key, Beat This!), medium lane, structure (sections, repeats, track change, build/drop/breakdown), `music.context` |
 | P3b piano | **Built.** 98's kiosk sender + test piano; the kiosk deploy waits for the kit and the owner's OK (alsa-utils, audio group). Test piano runs through production |
@@ -1435,6 +1453,12 @@ GET    /show/healthz
   - **Editor routes:** `GET /api/v1/autopilot/rules` and `POST /api/v1/autopilot/check` give each mode's triggers in plain words, its problems and its live readings, per node path. The Room page's editor (2f) is built on them.
   - **Empty shapes:** `from: []` now means any mode (before, it meant none); `enter_when: {}` means never by itself.
   - **No mode has a light rule yet:** writing one is the owner's call, in modes.json or the editor.
+- **Listening** (owner, 17 Oct; §7; README S5.20). Built, not yet live (it loads at the next show_service restart).
+  - **Provider:** Gemini Flash first (`gemini-3.8-flash`; a newer plain Flash is discovered from `models.list()` if it goes), gpt-audio-1.5 the fallback. Without `GEMINI_API_KEY` Gemini is skipped. The owner's key is in .env since 17 Oct; models.list and one text-only check worked.
+  - **Gate:** the switch, Auto, the mic, the feel, then substantive music and the loudness floor. The mode's show.main `listening` no longer gates.
+  - **Cost on the card:** today's spend, the evening's estimate and the provider, even while off; `/listening` carries the whole estimate.
+  - **Sturdier answers:** the tool's words are plain strings and the call is lenient, so a stray word never fails an answer or charges the clip twice.
+  - **Auto words:** `mood_in`, `building`, `track_changed`, and `genre_in`'s fallback to the listener (§8.9). No mode uses them yet: the owner's call.
 - **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
 - **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
 - **Input meter.** The card's `hearing` carries:
