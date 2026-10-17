@@ -1,0 +1,75 @@
+gallery-favourites:
+  label: "Gallery: Favourites, slowly"
+  source: gallery
+  params:
+    pace: phrase
+    pool: favourites
+    style: soft
+    quality: full
+    open_on_art: true
+    hold_s: 16.0
+    hold_fast_s: 6.0
+    transition_s: 3.0
+    transition_fast_s: 2.0
+    drift: 0.5
+    drift_rate: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, dreamy, elegant]
+    family: light
+    dims: 2d
+    technique: [projection]
+    weight: 1.0
+
+gallery-on-the-bar:
+  label: "Gallery: On the bar"
+  source: gallery
+  params:
+    pace: bar
+    pool: mixed
+    style: lively
+    quality: full
+    hold_s: 4.0
+    hold_fast_s: 2.0
+    transition_s: 1.2
+    transition_fast_s: 0.6
+    drift: 0.6
+    drift_rate: 1.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.45, 0.9]
+    moods: [bright, playful, euphoric]
+    family: light
+    dims: 2d
+    technique: [projection]
+    weight: 1.0
+
+gallery-rush:
+  label: "Gallery: Rush"
+  source: gallery
+  params:
+    pace: beat
+    pool: fresh
+    style: rush
+    quality: draft
+    hold_s: 1.0
+    hold_fast_s: 0.6
+    transition_s: 0.4
+    transition_fast_s: 0.2
+    drift: 0.9
+    drift_rate: 4.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.8, 1.0]
+    moods: [euphoric, glitchy, aggressive]
+    family: glitch
+    dims: 2d
+    technique: [projection, glitch]
+    weight: 1.0

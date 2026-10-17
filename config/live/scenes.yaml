@@ -94,3 +94,49 @@ black:
   label: Black
   source: solid
   params: {rgb: "#000000"}
+
+# Gallery looks: the gallery scene with one effect on top (effects: names from the effect presets files, fine on both GPUs).
+gallery-kaleidoscope:
+  label: "Gallery: kaleidoscope"
+  source: gallery
+  params: {pace: bar, pool: mixed, style: lively, hold_s: 4.0, hold_fast_s: 2.0, transition_s: 1.2,
+           transition_fast_s: 0.6, drift: 0.6, drift_rate: 1.6,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  effects: [isf-kaleidoscope]
+  tags: {energy: [0.5, 1.0], moods: [playful, hypnotic, geometric], weight: 1.0}
+
+gallery-little-planets:
+  label: "Gallery: little planets"
+  source: gallery
+  params: {pace: phrase, pool: favourites, style: soft, hold_s: 16.0, hold_fast_s: 6.0, transition_s: 3.0,
+           transition_fast_s: 2.0, drift: 0.4,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.5]}}
+  effects: [polar-wrap-tiny-planet]
+  tags: {energy: [0.2, 0.7], moods: [cosmic, dreamy, playful], weight: 1.0}
+
+gallery-show-colours:
+  label: "Gallery: in the show's colours"
+  source: gallery
+  params: {pace: bar, pool: mixed, style: lively, hold_s: 4.0, hold_fast_s: 2.0, transition_s: 1.2,
+           transition_fast_s: 0.6, drift: 0.6, drift_rate: 1.6,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  effects: [palette-map-duotone-glow]
+  tags: {energy: [0.4, 0.9], moods: [warm, bright, retro], weight: 1.0}
+
+gallery-contact-sheet:
+  label: "Gallery: moving contact sheet"
+  source: gallery
+  params: {pace: bar, pool: mixed, style: lively, hold_s: 4.0, hold_fast_s: 2.0, transition_s: 1.0,
+           transition_fast_s: 0.6, drift: 0.5, drift_rate: 1.4,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  effects: [isf-video-snake]
+  tags: {energy: [0.4, 0.9], moods: [geometric, playful], weight: 1.0}
+
+gallery-ghosts:
+  label: "Gallery: ghosts"
+  source: gallery
+  params: {pace: phrase, pool: favourites, style: soft, hold_s: 12.0, hold_fast_s: 5.0, transition_s: 3.0,
+           transition_fast_s: 2.0, drift: 0.5,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.5]}}
+  effects: [afterimage-ghost-dream]
+  tags: {energy: [0.1, 0.6], moods: [dreamy, hypnotic, mellow], weight: 1.0}
