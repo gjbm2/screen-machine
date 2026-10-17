@@ -2665,3 +2665,30 @@ def test_band_words_land_after_the_dwell(rig):
     assert d._band_words(0.9)["name"] == "low"
     d._now_s = 32.5
     assert d._band_words(0.9)["name"] == "top"
+
+
+def test_band_energy_has_an_absolute_base_and_swings_round_it(rig):
+    """director.bands.base (2b's replay, 17 Oct): the genre words' energy, the onset rate and the pulse clarity set
+    the level; the heard energy only swings it round its own running median."""
+    s = json.loads(json.dumps(SETTINGS))
+    s["director"]["bands"]["base"] = {"genre_energy": {"ambient": 0.15, "techno": 0.7}, "rate_full": 12,
+                                      "weights": {"genre": 0.5, "rate": 0.3, "clarity": 0.2}, "swing": 0.5,
+                                      "swing_window_s": 60}
+    d = rig.d
+    d.configure(s)
+    assert d.cfg["bands"]["base"]["rate_full"] == 12
+    d._mc = {"genre": {"words": {"techno": 1.0}}}
+    rig.rhythm = {"t_ms": 100_000.0, "onset_rate": 12.0, "pulse_clarity": 0.8}
+    for k in range(30):                                             # steady: the median is the music itself
+        rig.rhythm["t_ms"] = (100.0 + k) * 1000.0
+        e = d._band_heard(0.9, 1.0, 100.0 + k)
+    assert e == pytest.approx(0.5 * 0.7 + 0.3 * 1.0 + 0.2 * 0.8)   # mastered loudness 0.9 doesn't count
+    rig.rhythm["t_ms"] = 130_000.0
+    lift = d._band_heard(1.0, 1.0, 130.0)                           # a drop: above the median
+    assert lift > e
+    d._mc = {"genre": {"words": {"ambient": 1.0}}}
+    rig.rhythm = {"t_ms": 131_000.0, "onset_rate": 1.5, "pulse_clarity": 0.2}
+    assert d._band_heard(0.9, 1.0, 131.0) < 0.3                    # an ambient pad near its own p95: still
+    rig.rhythm = None
+    d._mc = {}
+    assert d._band_heard(0.9, 1.0, 132.0) == pytest.approx(0.9)    # no terms: the heard energy as before

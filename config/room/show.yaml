@@ -197,6 +197,49 @@ director:
                                             # 17 Oct: the words flapped up to 4 times a minute on ambient). The bands
                                             # read the music as heard within the feel's range, not the look's energy
     split: {band: 1, by: drive, up: 0.65, down: 0.55}   # band 1 (0.30-0.55): groove below, pulse above
+    base:                                   # how energetic the music is, absolutely (2b's replay, 17 Oct: normalised
+                                            # loudness alone read mastered house and pop as peak throughout and an
+                                            # ambient pad as lively). base = the weighted terms present: the genre
+                                            # words' energy, the onset rate / rate_full, the pulse clarity; the band
+                                            # energy = base + swing x (the heard energy - its median over the window),
+                                            # within the feel's range. Room volume never counts (owner, 17 Oct).
+      genre_energy:                         # starting points: a genre's usual energy, 0..1
+        ambient: 0.15
+        classical: 0.35
+        piano: 0.3
+        soundtrack: 0.35
+        singer-songwriter: 0.3
+        folk: 0.35
+        downtempo: 0.35
+        jazz: 0.4
+        country: 0.45
+        blues: 0.45
+        gospel: 0.5
+        soul: 0.5
+        rnb: 0.5
+        reggae: 0.5
+        world: 0.5
+        indie: 0.55
+        latin: 0.6
+        pop: 0.65
+        hip-hop: 0.6
+        electronic: 0.6
+        funk: 0.65
+        afrobeat: 0.65
+        rock: 0.65
+        disco: 0.7
+        house: 0.7
+        techno: 0.7
+        trance: 0.75
+        punk: 0.8
+        drum-and-bass: 0.8
+        dubstep: 0.8
+        metal: 0.85
+      rate_full: 12                         # onsets a second that read 1 (measured 17 Oct: techno 10.75, house 7,
+                                            # soul 6.5, rock 5.75, pop 5, jazz 4, ambient 1.75, Saltarello 0.5)
+      weights: {genre: 0.5, rate: 0.3, clarity: 0.2}   # clarity: the pulse clarity
+      swing: 0.5                            # a drop lifts a track, a breakdown drops it, by this x the heard change
+      swing_window_s: 60
     words:
       still:  {moods: [calm, mellow, elegant, dreamy],    fx_moods: [calm, mellow, elegant, dreamy],    transition_style: gentle}
       groove: {moods: [mellow, elegant, warm, organic],   fx_moods: [mellow, warm, elegant, liquid],    transition_style: gentle}
