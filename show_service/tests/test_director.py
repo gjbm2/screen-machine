@@ -2692,3 +2692,18 @@ def test_band_energy_has_an_absolute_base_and_swings_round_it(rig):
     rig.rhythm = None
     d._mc = {}
     assert d._band_heard(0.9, 1.0, 132.0) == pytest.approx(0.9)    # no terms: the heard energy as before
+
+
+def test_without_a_feel_the_direction_reads_the_music_and_the_band_rows_change_rate(rig):
+    """2b's audit (17 Oct): with no feel, room.direction's energy is the band energy (not squeezed by the neutral
+    follow) and its change_rate the band row's."""
+    s = json.loads(json.dumps(SETTINGS))
+    for row, cr in zip(("low", "mid_a", "mid_b", "high", "top"), (0.15, 0.3, 0.45, 0.6, 0.75)):
+        s["director"]["bands"]["words"][row]["change_rate"] = cr
+    rig.d.configure(s)
+    rig.energy = 1.0
+    rig.run(20.0)
+    d = rig.d.direction
+    assert rig.d.snapshot()["neutral"] is True
+    assert d["energy"] == pytest.approx(rig.d.music["band_energy"], abs=1e-3) and d["energy"] > 0.8
+    assert d["change_rate"] == 0.75 and d["moods"] == ["euphoric"]
