@@ -6,8 +6,8 @@
     "properties": {
       "intent": {
         "type": "string",
-        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate", "set_variable", "trigger", "adapt", "combine", "undo", "redo", "load_schedule", "unload_schedule"],
-        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', 'animate', 'set_variable', 'change_refiner', 'trigger', 'adapt', 'combine', 'undo', 'redo', 'load_schedule', or 'unload_schedule'."
+        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate", "set_variable", "trigger", "adapt", "combine", "undo", "redo", "load_schedule", "unload_schedule", "set_mode", "set_auto", "cue_scene", "set_effect"],
+        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', 'animate', 'set_variable', 'change_refiner', 'trigger', 'adapt', 'combine', 'undo', 'redo', 'load_schedule', 'unload_schedule', 'set_mode' (change the room's mode), 'set_auto' (turn Auto on or off), 'cue_scene' (change the live scene) or 'set_effect' (change, add or clear the live effects)."
       },
       "response_ssml": {
         "type": "string",
@@ -57,6 +57,23 @@
           "script_name": {
             "type": "string",
             "description": "The name of the scheduler script to load when intent is load_schedule."
+          },
+          "mode": {
+            "type": "string",
+            "description": "For set_mode: the mode the user named, as one of the room's mode names (e.g. 'Party', 'Disco', 'Normal')."
+          },
+          "on": {
+            "type": "boolean",
+            "description": "For set_auto: true to turn Auto (the room listening and choosing modes) on, false to turn it off."
+          },
+          "query": {
+            "type": "string",
+            "description": "For cue_scene and set_effect: the user's words for the scene or effect (e.g. 'ocean', 'fractal zoom', 'film grain'). Empty for 'next scene'."
+          },
+          "effect_op": {
+            "type": "string",
+            "enum": ["replace", "add", "clear"],
+            "description": "For set_effect: 'replace' the effects with this one (default), 'add' it to them, or 'clear' all effects."
           }
         },
         "additionalProperties": false

@@ -13,7 +13,8 @@ from routes.scheduler_handlers import (
     handle_sleep, handle_wait, handle_unload, handle_device_media_sync,
     handle_device_wake, handle_device_sleep, handle_set_var, handle_terminate,
     handle_random_choice, handle_generate, handle_animate, handle_display,
-    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event, handle_device_standby, handle_purge, handle_publish, handle_overlay
+    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event, handle_device_standby, handle_purge, handle_publish, handle_overlay,
+    handle_set_mode, handle_set_auto, handle_room_state
 )
 from routes.scheduler_utils import (
     log_schedule, default_context, copy_context, 
@@ -559,6 +560,12 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         elif action == "overlay":
             # For overlay, pass the raw instruction to avoid double Jinja processing
             result = handle_overlay(instruction, context, now, output, publish_destination)
+        elif action == "set_mode":
+            result = handle_set_mode(processed_instruction, context, now, output, publish_destination)
+        elif action == "set_auto":
+            result = handle_set_auto(processed_instruction, context, now, output, publish_destination)
+        elif action == "room_state":
+            result = handle_room_state(processed_instruction, context, now, output, publish_destination)
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
