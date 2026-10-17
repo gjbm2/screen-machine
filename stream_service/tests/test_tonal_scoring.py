@@ -102,3 +102,18 @@ def test_pick_key_ignores_small_genre_and_axis_wobble():
 def test_why_words_uses_genre_fit():
     assert "fits techno" in why_words("scene", LASER, d(genres={"techno": 0.8, "house": 0.2})).lower()
     assert "fits rock" not in why_words("scene", INK, d(genre="rock")).lower()
+
+
+def test_the_musics_words_under_a_modes_own_shade_softly():
+    party = dict(d(energy=0.6, moods=["euphoric", "bright"], transition_style="wild"),
+                 music_moods=["calm", "liquid"], music_style="gentle")
+    assert scene_weight(INK, party) == pytest.approx(0.3)            # the mode's moods miss (x0.3), the music's fit
+    assert scene_weight(LASER, party) == pytest.approx(0.3 * 0.6)    # both miss: the music's costs only x0.6
+    t = {"transition_style": ["gentle"], "energy": [0.0, 1.0], "moods": ["calm"], "weight": 1.0}
+    assert transition_weight(t, party) == pytest.approx(0.3 * 0.6)   # style and moods miss the mode; the music's fit
+    t2 = dict(t, transition_style=["lively"], moods=["glitchy"])
+    assert transition_weight(t2, party) == pytest.approx(0.3 * 0.6 * 0.8 * 0.6)
+    fd = FxDirector(1)
+    fd.configure({"enabled": True, "pool": "all", "max": 2}, party)
+    assert fd.weight({"moods": ["calm"], "style": "gentle", "weight": 1.0}) == pytest.approx(0.3 * 0.3)
+    assert fd.weight({"moods": ["glitchy"], "style": "lively", "weight": 1.0}) == pytest.approx(0.3 * 0.3 * 0.6 * 0.6)
