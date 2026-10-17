@@ -132,6 +132,7 @@ import logging
 import math
 import os
 import pathlib
+import statistics
 import time
 import urllib.parse
 from typing import Any, Callable, Optional
@@ -674,6 +675,8 @@ class Director:
         self._emphasis = 0
         self._band: Optional[int] = None
         self._split_hi = False
+        self._swing_hist: collections.deque = collections.deque(maxlen=600)   # (t, heard music) at 1 Hz
+        self._band_base: Optional[float] = None   # the last absolute base (README S5.21), for the readback
         self._band_idx: Optional[int] = None      # the band words' row now (held director.bands.dwell_s)...
         self._band_cand: Optional[int] = None     # ...and the row waiting to take over, since
         self._band_since: Optional[float] = None
@@ -1135,7 +1138,30 @@ class Director:
             probs.append(f"director.bands.dwell_s: {b.get('dwell_s')!r} is not >= 0: 0 used")
             dwell = 0.0
         return {"edges": [float(e) for e in edges], "hysteresis": _num(b.get("hysteresis"), 0.0) or 0.0,
-                "split": split, "split_band": split_band, "table": table, "dwell_s": dwell}
+                "split": split, "split_band": split_band, "table": table, "dwell_s": dwell,
+                "base": Director._check_band_base(b.get("base"), probs)}
+
+    @staticmethod
+    def _check_band_base(raw: Any, probs: list[str]) -> Optional[dict]:
+        """director.bands.base: how energetic the music is, absolutely (genre_energy per vocab genre word, the onset
+        rate that reads 1, the terms' weights), and how far the normalised energy swings it (swing round its running
+        median over swing_window_s). None: the band words read the heard energy alone."""
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            probs.append("director.bands.base: not a mapping: off")
+            return None
+        ge = raw.get("genre_energy") if isinstance(raw.get("genre_energy"), dict) else {}
+        w = raw.get("weights") if isinstance(raw.get("weights"), dict) else {}
+        out = {"genre_energy": {str(k): _c01(float(v)) for k, v in ge.items() if _num(v) is not None},
+               "rate_full": _num(raw.get("rate_full"), 0.0) or 0.0,
+               "weights": {k: max(0.0, _num(w.get(k), 0.0) or 0.0) for k in ("genre", "rate", "clarity")},
+               "swing": max(0.0, _num(raw.get("swing"), 0.0) or 0.0),
+               "swing_window_s": max(1.0, _num(raw.get("swing_window_s"), 60.0) or 60.0)}
+        if out["rate_full"] <= 0 or not any(out["weights"].values()):
+            probs.append("director.bands.base: needs rate_full > 0 and a weight: off")
+            return None
+        return out
 
     def restore(self, saved: dict) -> None:
         """state.json's ``director``: the target and nudges. A passed Keep is dropped; the first mode that differs
@@ -1378,8 +1404,8 @@ class Director:
         # the band words' energy: the music as heard (full follow round the middle), within the feel's range; the
         # feel's centre while nothing is live (2b's audit, 17 Oct: with e_out, no feel never reached the peak band and
         # Party read mellow jazz as euphoric)
-        heard = centre + live * (0.5 + conf * (music - 0.5) - centre) + self._llm_bias * live \
-            + self.steps * self._step_size(vs)
+        heard_e = self._band_heard(music, conf, now_s)
+        heard = centre + live * (heard_e - centre) + self._llm_bias * live + self.steps * self._step_size(vs)
         band_e = min(hi, max(lo, heard))
         u = (e_out - lo) / (hi - lo) if hi > lo else 0.5
         bpm = grid.bpm
@@ -1392,7 +1418,7 @@ class Director:
         self.music = {"fresh": fresh, "gate": round(gate, 3), "energy_in": round(energy_in, 3), "music": round(music, 3),
                       "conf": round(conf, 3), "inputs": {k: round(v, 3) for k, (v, _) in inputs.items()},
                       "liveness": round(self.lv, 3), "relax": round(self._relax, 3), "llm_bias": round(self._llm_bias, 3),
-                      "energy": e_out, "band_energy": band_e, "u": u, "pace": 0.1 + 0.8 * pace_in, "arousal": arousal,
+                      "energy": e_out, "band_energy": band_e, "band_base": self._band_base, "u": u, "pace": 0.1 + 0.8 * pace_in, "arousal": arousal,
                       "onsets": onsets_now, "drive": drive, "tension": self._tension or 0.0,
                       "novelty": abs((self._nov_fast or 0.0) - (self._nov_slow or 0.0)) if fresh else 0.0,
                       "playing": playing, "no_audio": no_audio, "pv": p if isinstance(p, dict) else None, "beliefs": b
@@ -2233,6 +2259,45 @@ class Director:
                 "roles": {"base": w, "accent": dict(w), "highlight": dict(w)}, "emphasis": "base"}, {}
 
     # -- words (§8.2: human, listener, bands, vibe) ------------------------------------------------------------------------
+    def _band_heard(self, music: float, conf: float, now_s: float) -> float:
+        """The band words' energy as heard (2b's audit, 17 Oct: normalised loudness has no absolute level, so mastered
+        dance and pop read peak throughout and an ambient pad read lively). With director.bands.base: an absolute base
+        (the weighted genre_energy of music.context's genre words, the medium lane's onset rate / rate_full, its pulse
+        clarity: the terms present, their weights renormalised) plus swing x (music - its median over
+        swing_window_s), so a drop still lifts a track and a breakdown drops it. Without a base, or with none of
+        its terms: 0.5 + conf x (music - 0.5)."""
+        heard = 0.5 + conf * (music - 0.5)
+        bc = (self.cfg.get("bands") or {}).get("base")
+        if not bc:
+            return heard
+        h = self._swing_hist
+        if not h or now_s - h[-1][0] >= 1.0:
+            h.append((now_s, music))
+        while h and now_s - h[0][0] > bc["swing_window_s"]:
+            h.popleft()
+        terms: dict[str, float] = {}
+        mg = (self._mc or {}).get("genre") if isinstance((self._mc or {}).get("genre"), dict) else {}
+        words = mg.get("words") if isinstance(mg.get("words"), dict) else {}
+        ge = bc["genre_energy"]
+        known = {w: _num(p, 0.0) or 0.0 for w, p in words.items() if w in ge}
+        tot = sum(known.values())
+        if tot > 0:
+            terms["genre"] = sum(ge[w] * p for w, p in known.items()) / tot
+        r = _call(getattr(self.ctx, "rhythm", None))
+        if isinstance(r, dict) and _num(r.get("t_ms")) is not None and now_s - r["t_ms"] / 1000.0 <= RHYTHM_STALE_S:
+            if _num(r.get("onset_rate")) is not None:
+                terms["rate"] = _c01(r["onset_rate"] / bc["rate_full"])
+            if _num(r.get("pulse_clarity")) is not None:
+                terms["clarity"] = _c01(r["pulse_clarity"])
+        wsum = sum(bc["weights"][k] for k in terms)
+        if wsum <= 0:
+            self._band_base = None
+            return heard
+        base = sum(bc["weights"][k] * v for k, v in terms.items()) / wsum
+        self._band_base = round(base, 3)
+        med = statistics.median(m for _, m in h) if h else music
+        return _c01(base + bc["swing"] * conf * (music - med))
+
     def _band_words(self, e: float) -> Optional[dict]:
         b = self.cfg.get("bands")
         if not b or self.lv < 0.5:
