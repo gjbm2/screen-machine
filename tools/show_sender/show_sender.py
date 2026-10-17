@@ -27,7 +27,10 @@ Streams:
               playback channel 2: show_rt decides).  A state packet every 500 ms: channel 1's keys down
               (88 strike velocities) and the last pedals; its seq is the newest batch sent.
   test-piano  --test-piano PIECE: a piece from config/live/test-piano/ (or a built-in phrase) played in real time as
-              MIDI events and state, looping; no audio.  Needs the repo (stream_service/piano_replay.py).
+              MIDI events and state, looping.  Needs the repo (stream_service/piano_replay.py).  On PC22 (WSL) it
+              is also played out loud, in step, on Windows' built-in GS synth through the default speakers
+              (pc22_synth.py, run by Windows Python through interop; --no-speaker: MIDI only), so PC22's mic hears
+              it as the boundary mic will hear the Steinway.  Without Windows it is MIDI only.
 """
 from __future__ import annotations
 
@@ -39,6 +42,7 @@ import os
 import pathlib
 import re
 import select
+import shutil
 import socket
 import subprocess
 import sys
@@ -318,13 +322,72 @@ def run_rawmidi(out: Out, stop: threading.Event, match: Optional[str]) -> None:
         stop.wait(0.5)
 
 
-def run_test_piano(out: Out, stop: threading.Event, piece: str) -> None:
-    """A piece from the test-piano library played in real time as test-piano MIDI, looping."""
+class Speaker:
+    """The test piano out loud on PC22: pc22_synth.py run by Windows Python through WSL interop, fed raw MIDI on its
+    stdin. Nothing (a warning, MIDI only) when that can't start: off WSL, no Windows Python, no synth."""
+
+    READY_S = 10.0
+
+    def __init__(self) -> None:
+        self.proc: Optional[subprocess.Popen] = None
+        py = shutil.which("py.exe") or "/mnt/c/Windows/py.exe"
+        if not os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop") or not os.access(py, os.X_OK):
+            log.warning("speaker: no Windows here (WSL interop, py.exe); MIDI only")
+            return
+        try:
+            script = subprocess.run(["wslpath", "-w", str(HERE / "pc22_synth.py")], capture_output=True, text=True,
+                                    check=True, timeout=5).stdout.strip()
+            self.proc = subprocess.Popen([py, "-3", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning("speaker: couldn't start pc22_synth: %s; MIDI only", e)
+            return
+        r, _, _ = select.select([self.proc.stdout], [], [], self.READY_S)
+        line = self.proc.stdout.readline().decode("utf-8", "replace").strip() if r else "no answer"
+        if not line.startswith("ready"):
+            log.warning("speaker: pc22_synth: %s; MIDI only", line or "exited")
+            self.close()
+            return
+        log.info("speaker: %s", line[5:].strip())
+
+    def play(self, events: list) -> None:
+        if self.proc is None:
+            return
+        try:
+            self.proc.stdin.write(b"".join(bytes((st, d1, d2)) for _t, st, d1, d2 in events))
+            self.proc.stdin.flush()
+        except OSError as e:
+            log.warning("speaker: pc22_synth gone (%s); MIDI only", e)
+            self.close()
+
+    def close(self) -> None:
+        if self.proc is None:
+            return
+        try:
+            self.proc.stdin.close()                         # end of input: it silences every note and exits
+            self.proc.wait(timeout=2.0)
+        except (OSError, subprocess.SubprocessError):
+            self.proc.kill()
+        self.proc = None
+
+
+def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = False) -> None:
+    """A piece from the test-piano library played in real time as test-piano MIDI, looping; with ``speaker`` also
+    out loud on PC22 (Speaker), so PC22's mic hears it as the boundary mic will hear the Steinway."""
     from stream_service.piano_replay import PHRASES, TestPiano, resolve
     piano = resolve(piece) if piece.startswith("file:") or piece in PHRASES else TestPiano.from_file(piece, loop=True)
     events = piano.midi()
     length = max(t for t, *_ in events) + 3.0
     ms = MidiStream("test-piano", out.send)
+    spk = Speaker() if speaker else None
+    try:
+        _play_test_piano(ms, stop, piece, events, length, spk)
+    finally:
+        if spk is not None:
+            spk.close()
+
+
+def _play_test_piano(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
+                     spk: Optional[Speaker]) -> None:
     log.info("test piano: %s (%d events, %.0f s)", piece, len(events), length)
     t0 = time.monotonic()
     i, last_state = 0, 0.0
@@ -343,6 +406,8 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str) -> None:
             i += 1
         if due:
             ms.events(due)
+            if spk is not None:
+                spk.play(due)
         if now - last_state >= STATE_S:
             ms.state(now_ns())
             last_state = now
@@ -518,6 +583,8 @@ def main(argv: Optional[list] = None) -> None:
     ap.add_argument("--no-midi", action="store_true")
     ap.add_argument("--test-piano", default=None, metavar="PIECE",
                     help="play a test-piano piece (file:<name>.mid from config/live/test-piano/, or a phrase)")
+    ap.add_argument("--no-speaker", action="store_true",
+                    help="test piano: MIDI only, not also out loud on PC22's speakers (pc22_synth.py)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -526,7 +593,8 @@ def main(argv: Optional[list] = None) -> None:
     stop = threading.Event()
     threads = [threading.Thread(target=out.serve, args=(stop,), name="net", daemon=True)]
     if a.test_piano:
-        threads.append(threading.Thread(target=run_test_piano, args=(out, stop, a.test_piano), name="test-piano",
+        threads.append(threading.Thread(target=run_test_piano, args=(out, stop, a.test_piano, not a.no_speaker),
+                                        name="test-piano",
                                         daemon=True))
     else:
         if not a.no_midi:
