@@ -57,3 +57,19 @@ def test_config_fields_live_here():
 
 def test_features_carry_punch_and_drive():
     assert {"punch", "drive", "energy", "spectrum32"} <= set(c.FeaturesData.__annotations__)
+
+
+def test_song_end_kinds_and_shapes():
+    """README S5.17 (the room.event shape agreed with 04, 17 Oct)."""
+    assert set(c.TRACK_EVENT_KINDS) == {"track_end_armed", "track_end", "track_change"}
+    assert set(c.TRACK_EVENT_KINDS) <= set(c.MUSIC_EVENT_KINDS)
+    assert {"track_end_armed", "track_end"} <= set(c.EVENT_KINDS_STAGE4)
+    assert not set(c.EVENT_KINDS_STAGE4) & set(c.EVENT_KINDS)
+    assert "id" in c.EventData.__annotations__
+    assert {"transition", "held", "prev_track_id", "eta_s", "conf", "track_id", "via"} <= set(
+        c.MusicEventData.__annotations__)
+    assert set(c.TrackTransition.__annotations__) == {"style", "out_s", "in_s", "seconds", "on", "change",
+                                                      "dark_max_s"}
+    assert c.TRANSITION_STYLES == ("fade-dark", "crossfade", "cut") and c.TRANSITION_ON == ("downbeat", "now")
+    assert c.CHANGE_SIZES == ("big", "small") and c.TRACK_VIA == ("sonos", "dsp")
+    assert c.BrainContext(publish=lambda m: None).track_transition is None

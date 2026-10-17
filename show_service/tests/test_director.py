@@ -1425,6 +1425,247 @@ def test_a_new_songs_own_section_boundary_lands_with_the_track_look(tmp_path):
     assert r.d.snapshot()["sections"]["stats"]["looks"] == 1
 
 
+# -- song ends (README S5.17) ------------------------------------------------------------------------------------------------
+TT = json.loads(json.dumps(dmod.TRACK_TRANSITIONS))
+OLD = {"genre": "house", "key": "C", "mode": "major", "bpm": 124.0, "energy": 0.7, "artist": "A"}
+
+
+def facts(**kw) -> dict:
+    f = {"silent": False, "phase": "calm", "gate": "beat", "old": dict(OLD), "new": None, "back": False}
+    f.update(kw)
+    return f
+
+
+def choose(kind: str, *, style=None, dark=False, last=None, **kw) -> dict:
+    ev = {"kind": kind, "id": f"{kind}:0", "via": kw.pop("via", "sonos"), "track_id": 0,
+          "detail": kw.pop("detail", None)}
+    return dmod.choose_track_transition(TT, kind, ev, facts(**kw), style, dark=dark, last=last)
+
+
+def test_the_transition_table_gap_segue_and_the_feels():
+    # a gap between the songs: through dark, both halves on the event, bounded
+    t = choose("track_end", via="dsp", gate="none")
+    assert t == {"style": "fade-dark", "out_s": 2.5, "in_s": 2.0, "seconds": None, "on": "now", "change": "big",
+                 "dark_max_s": 8.0}
+    assert choose("track_end_armed", phase="outro")["style"] == "fade-dark"           # a fade-out ending: a gap coming
+    assert choose("track_end", silent=True)["style"] == "fade-dark"                   # silent at a Sonos end
+    assert choose("track_change", dark=True, gate="none")["style"] == "fade-dark"     # the screens are dark: in_s
+    # a gapless segue: a cut on the first downbeat with the clock at beat, else a crossfade
+    assert choose("track_end") == {"style": "cut", "out_s": None, "in_s": None, "seconds": 0.0, "on": "downbeat",
+                                   "change": "big", "dark_max_s": None}
+    assert choose("track_change", gate="dmx")["style"] == "crossfade"                 # cut_gate: beat
+    assert choose("track_change", gate="none")["seconds"] == 2.0
+    assert choose("track_change", dark=True, back=True)["style"] == "cut"             # sound_back brought them back
+    # the feel biases it: gentle never cuts (longer), wild cuts without the beat (now), shorter (bounded)
+    g = choose("track_change", style="gentle")
+    assert g["style"] == "crossfade" and g["seconds"] == 3.0
+    gd = choose("track_end", style="gentle", via="dsp")
+    assert gd["out_s"] == 3.75 and gd["in_s"] == 3.0
+    w = choose("track_change", style="wild", gate="none")
+    assert w["style"] == "cut" and w["on"] == "now"
+    wd = choose("track_end", style="wild", via="dsp")
+    assert wd["out_s"] == 1.5 and wd["in_s"] == 1.5                                   # min_s
+    # no feel, or a word with no entry: the default rule, sensibly
+    assert choose("track_change", style=None)["style"] == "cut"
+    assert choose("track_change", style="unheard-of", gate="none")["style"] == "crossfade"
+    # a sound_back repeats the end's choice
+    assert choose("track_end", detail="sound_back", last=dict(gd)) == gd
+
+
+def test_the_change_size_from_the_two_songs():
+    near = {"genre": "house", "key": "A", "mode": "minor", "bpm": 125.0, "energy": 0.65, "artist": "a"}
+    far = {"genre": "jazz", "key": "F#", "mode": "major", "bpm": 90.0, "energy": 0.3, "artist": "B"}
+    assert choose("track_change", new=near)["change"] == "small"     # relative key, same genre/tempo/energy, artist
+    assert choose("track_change", new=far)["change"] == "big"
+    assert dmod.change_size(OLD, near, TT["change"])[1] == {"genre": False, "key": False, "tempo": False,
+                                                             "energy": False, "artist": False}
+    assert choose("track_change", new=None)["change"] == "big"                         # nothing known: unknown
+    only = {"genre": None, "key": None, "mode": None, "bpm": None, "energy": None, "artist": "a"}
+    assert choose("track_change", new=only)["change"] == "small"                       # Sonos: the same artist
+    assert choose("track_change", new={**only, "artist": "Someone"})["change"] == "big"
+    assert choose("track_end")["change"] == "big"                                      # before the new song: unknown
+    assert dmod.change_size(OLD, {**OLD, "bpm": 248.0}, TT["change"])[1]["tempo"] is False   # an octave
+    assert dmod.key_fifths("C", "major", "C", "minor") == 0 and dmod.key_fifths("C", "major", "G", "major") == 1
+    assert dmod.key_fifths("C", "major", "F#", "major") == 6 and dmod.key_fifths("C", "major", None, None) is None
+
+
+def _track_ev(kind: str, at_s: float, now_s: float, **kw) -> dict:
+    return {"kind": kind, "id": f"{kind}:{kw.get('track_id', 0)}", "at_ms": at_s * 1000.0, "t_ms": now_s * 1000.0,
+            "seq": 1, **kw}
+
+
+def test_a_song_end_fades_the_lamps_through_the_floor_and_the_new_song_lands_its_look(tmp_path):
+    """A time vibe too: the song change is the junction. The track_end (a gap: fade-dark) dips the lamps toward the
+    vibe's floor over out_s, never off; the track_change's look lands on the next bar the lead allows, crossing over
+    in in_s; the palette moves on (big)."""
+    r = stage4_rig(tmp_path, vibe="gamma")
+    lv0 = max(x["level"] for x in r.d.look["lamps"].values())
+    pal0 = r.d.palette_name                                               # the look's choice ("art" here)
+    end = _track_ev("track_end", r.t, r.t, via="dsp", track_id=0)
+    got = r.d.track_transition(end, facts(gate="beat"))
+    assert got["transition"]["style"] == "fade-dark"
+    r.d.on_music_event({**end, "transition": got["transition"]})
+    r.run(1.2)
+    mid = max(x["level"] for x in r.d.look["lamps"].values())
+    assert r.d.look["dip"] is True and mid < lv0
+    r.run(got["transition"]["out_s"])                                     # out_s passed: at the floor, never off
+    floor = r.d.vs["floor"]
+    assert floor > 0 and all(x["level"] == pytest.approx(floor, abs=0.02) for x in r.d.look["lamps"].values())
+    n0, g0 = len(r.looks()), r.gobos()
+    ch = _track_ev("track_change", r.t, r.t, via="dsp", track_id=1, prev_track_id=0)
+    got2 = r.d.track_transition(ch, facts(new={**OLD, "genre": "jazz", "bpm": 90.0, "key": "F#", "energy": 0.3}))
+    assert got2["transition"]["style"] == "fade-dark" and got2["transition"]["change"] == "big"   # dark: in_s
+    r.sec.update(track=1, id=3, letter=None, started_s=r.t)
+    r.d.on_music_event({**ch, "transition": got2["transition"]})
+    r.run(0.1)
+    pd = r.d.pending
+    assert pd["reason"] == "track" and pd["transition"] == {"style": "crossfade", "beats": None,
+                                                            "seconds": got2["transition"]["in_s"]}   # the in-half
+    bar = 4 * BEAT
+    assert pd["at_s"] >= ch["t_ms"] / 1000.0 + 1.1 - 1e-6 and (pd["at_s"] / bar) == pytest.approx(
+        round(pd["at_s"] / bar), abs=1e-6)                                # the first bar line the lead allows
+    r.run(3.0)
+    assert len(r.looks()) == n0 + 1 and r.gobos() == g0 + 1 and r.d.palette_name != pal0   # big: moved on
+    assert r.d.look["dip"] is False and r.d._song_dip is None
+    snap = r.d.snapshot()["sections"]["song_end"]
+    assert snap["stats"]["dips"] == 1 and snap["junction"] is None and snap["stats"]["chosen"]["fade-dark"] == 2
+    json.dumps(r.d.snapshot())
+
+
+def test_a_small_change_keeps_the_palette_and_a_sound_back_or_dark_max_brings_the_lamps_back(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    pal0 = r.d.look["palette"]["name"]
+    lv0 = max(x["level"] for x in r.d.look["lamps"].values())
+    end = _track_ev("track_end", r.t, r.t, via="dsp", track_id=0)
+    tr = r.d.track_transition(end, facts())["transition"]
+    r.d.on_music_event({**end, "transition": tr})
+    r.run(3.0)
+    assert r.d._song_dip is not None
+    back = _track_ev("track_end", r.t, r.t, via="dsp", track_id=0, detail="sound_back")
+    assert r.d.track_transition(back, facts(back=True))["transition"] == tr          # the end's choice again
+    r.d.on_music_event({**back, "transition": tr})
+    r.run(3.0)
+    assert r.d._song_dip is None and max(x["level"] for x in r.d.look["lamps"].values()) == pytest.approx(lv0, abs=0.05)
+    ch = _track_ev("track_change", r.t, r.t, via="dsp", track_id=1, prev_track_id=0)
+    tr2 = r.d.track_transition(ch, facts(back=True, new={**OLD, "key": "G", "artist": "A"}))["transition"]
+    assert tr2["style"] == "cut" and tr2["on"] == "downbeat" and tr2["change"] == "small"   # back: a segue
+    r.sec.update(track=1, id=3, letter=None, started_s=r.t)
+    r.d.on_music_event({**ch, "transition": tr2})
+    r.run(0.1)
+    assert r.d.pending["transition"]["style"] == "cut"
+    r.run(3.0)
+    assert r.d.look["palette"]["name"] == pal0                                         # small: the same palette
+    # dark_max_s: no new song and no sound: the lamps come back by themselves
+    end2 = _track_ev("track_end", r.t, r.t, via="dsp", track_id=1)
+    tr3 = r.d.track_transition(end2, facts())["transition"]
+    r.d.on_music_event({**end2, "transition": tr3})
+    r.run(2.0)
+    assert r.d._song_dip is not None
+    r.run(7.0)
+    assert r.d._song_dip is None and r.d.snapshot()["sections"]["song_end"]["stats"]["dip_released"] == 2
+
+
+def test_a_held_look_puts_held_on_the_event_and_no_look_fires(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.d.action("keep")
+    r.run(0.5)
+    n0, g0 = len(r.looks()), r.gobos()
+    end = _track_ev("track_end", r.t, r.t, via="dsp", track_id=0)
+    assert r.d.track_transition(end, facts()) == {"held": True}
+    r.d.on_music_event({**end, "held": True})
+    r.run(1.0)
+    assert r.d._song_dip is None
+    ch = _track_ev("track_change", r.t, r.t, via="sonos", track_id=1, prev_track_id=0)
+    assert r.d.track_transition(ch, facts()) == {"held": True}
+    r.d.on_music_event({**ch, "held": True})
+    r.run(3.0)
+    assert len(r.looks()) == n0 and r.gobos() == g0 and r.d.pending is None
+    r.d.clear("keep")
+    r.d.action("next")                                                    # a person's change pending: held too
+    assert r.d.pending["by"] == "human"
+    assert r.d.track_transition(_track_ev("track_end_armed", r.t + 20, r.t, via="sonos", track_id=1),
+                                facts()) == {"held": True}
+    assert r.d.ends_stats["held"] == 3
+
+
+def test_a_new_song_after_a_quiet_gap_lands_its_look_but_talk_holds_it(tmp_path):
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.situations = {"quiet": {"value": True}}                             # the gap between the songs
+    r.run(6.0)
+    assert r.d._relaxed
+    r.situations = {"quiet": {"value": False}}
+    n0 = len(r.looks())
+    r.sec.update(track=1, id=3, letter=None, started_s=r.t)
+    r.event("track_change", r.t, track_id=1, prev_track_id=0, via="sonos", transition=choose("track_change"))
+    r.run(0.1)
+    assert r.d.pending is not None and r.d.pending["reason"] == "track"  # the sound is back: the new song's look
+    r.run(3.0)
+    assert len(r.looks()) == n0 + 1
+    r.situations = {"talking": {"value": True}}                           # people talk over the music: it holds
+    r.run(6.0)
+    assert r.d._relaxed
+    r.event("track_change", r.t, track_id=2, prev_track_id=1, via="sonos", transition=choose("track_change"))
+    r.run(0.1)
+    assert r.d.pending is None or r.d.pending["reason"] != "track"
+
+
+def test_without_a_feel_the_screens_still_get_a_transition(rig):
+    rig.run(1.0)
+    assert rig.d.snapshot()["neutral"] is True
+    got = rig.d.track_transition(_track_ev("track_change", rig.t, rig.t, via="sonos", track_id=1,
+                                           prev_track_id=0), facts(gate="none"))
+    assert got["transition"]["style"] == "crossfade" and got["transition"]["seconds"] == 2.0   # the default rule
+    assert rig.d.track_transition({"kind": "drop"}, {}) is None
+
+
+def test_structure_puts_the_directors_transition_on_its_track_events(tmp_path):
+    """The real hook (provides()["track_transition"] in ctx, as brain.add does): a gap in the sound -> structure's
+    track_end carries the director's fade-dark, and the director dips the lamps."""
+    from show_service import structure as smod
+    r = stage4_rig(tmp_path, LATE_OK)
+    r.sec = None                                                          # structure's own context instead
+    s = smod.Structure(r.ctx, mono=lambda: r.t)
+    s.configure({})
+    r.ctx.track_transition = r.d.provides()["track_transition"]
+    r.ctx.music_context = s.context
+    r.ctx.on_music_event.append(r.d.on_music_event)
+    r.run(5.0, each=lambda rr: s.tick(rr.t))
+    r.feat = {"t_ms": r.t * 1000.0, "energy": 0.0, "gate": 0.0}           # silence (stale features)...
+    r.run(5.0, each=lambda rr: s.tick(rr.t))
+    ends = [p["data"] for p in r.pubs if p["type"] == contract.ROOM_EVENT and p["data"]["kind"] == "track_end"]
+    assert len(ends) == 1 and ends[0]["via"] == "dsp" and ends[0]["transition"]["style"] == "fade-dark"
+    assert r.d.look["dip"] is True
+    r.feat = None                                                         # ...and the sound back
+    r.run(1.0, each=lambda rr: s.tick(rr.t))
+    ends = [p["data"] for p in r.pubs if p["type"] == contract.ROOM_EVENT and p["data"]["kind"] == "track_end"]
+    assert ends[-1]["detail"] == "sound_back" and ends[-1]["transition"] == ends[0]["transition"]
+    assert r.d._song_dip is None
+    assert all(isinstance(p["data"]["id"], str) for p in r.pubs if p["type"] == contract.ROOM_EVENT)
+
+
+def test_track_transitions_settings_and_bad_values(tmp_path):
+    settings = json.loads(json.dumps(SETTINGS))
+    settings["director"]["track_transitions"] = {
+        "gap": {"out_s": 3.0, "dark_max_s": -1}, "segue": {"cut_gate": "dmx", "crossfade_s": 1.0},
+        "styles": {"calm-ish": {"cut": "never", "scale": 2.0}, "odd": {"cut": "sometimes"}},
+        "change": {"genre": False, "tempo_ratio": None, "unknown": "medium", "energy": 3}}
+    r = Rig(tmp_path, settings=settings)
+    tt = r.d.cfg["track_transitions"]
+    assert tt["gap"]["out_s"] == 3.0 and tt["gap"]["dark_max_s"] == 8.0
+    assert tt["segue"] == {"cut_gate": "dmx", "crossfade_s": 1.0}
+    assert set(tt["styles"]) == {"calm-ish", "default"} and tt["styles"]["calm-ish"]["scale"] == 2.0
+    assert tt["change"]["genre"] is False and tt["change"]["tempo_ratio"] is None
+    assert tt["change"]["unknown"] == "big" and tt["change"]["energy"] == 0.25
+    probs = "\n".join(r.d.settings_problems)
+    for frag in ("track_transitions.gap.dark_max_s", "track_transitions.styles.odd", "track_transitions.change.unknown",
+                 "track_transitions.change.energy"):
+        assert frag in probs, frag
+    sy = yaml.safe_load(contract.SHOW_FILE.read_text())
+    probs2: list = []
+    assert dmod.parse_track_transitions(sy["director"]["track_transitions"], probs2) == dmod.TRACK_TRANSITIONS
+    assert probs2 == []                                                   # show.yaml = the code's starting points
+
+
 # -- Stage 5: the screens' hand-pick hold (README S5.8) -------------------------------------------------------------------
 LIVE = {"layer": "live", "phase": "live", "cutting": False}
 

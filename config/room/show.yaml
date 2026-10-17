@@ -211,6 +211,37 @@ director:
     hold_hand_picks: true                   # false: the director sends over a hand pick, as in Stage 4 (hot-reloaded)
     own_echo_s: 3                           # agreed with 2f: a screen.look without a source whose palette is what we
                                             # sent that screen this recently is our own change coming back
+  # Song ends (README S5.17, owner 17 Oct): how the screens cross a song change. The director picks one for every
+  # track_end_armed, track_end and track_change, and it goes on that room.event ("transition") for the renderer.
+  # While a person holds the look (Keep this look, their change pending) the event says held instead. Starting
+  # points, all of them.
+  track_transitions:
+    gap:                                    # a gap between the songs (or one coming: the room silent, or the song in
+                                            # its outro, as it ends): through dark
+      out_s: 2.5                            # the old song's scene fades to dark over this...
+      in_s: 2.0                             # ...and the new one fades in over this
+      min_s: 1.5                            # each half stays within min_s..max_s (after the feel's scale)
+      max_s: 4.0
+      dark_max_s: 8                         # the screens (and the lamps' dip) never stay dark longer than this
+    segue:                                  # no gap: the new song starts as the old one ends
+      cut_gate: beat                        # the clock at this gate (dmx|beat) or better: a cut on the new song's
+                                            # first downbeat...
+      crossfade_s: 2.0                      # ...else a crossfade over this
+    styles:                                 # the feel's transition_style (config/live/vocab.yaml) biases it. cut:
+      gentle:  {cut: never, scale: 1.5}     # never (a crossfade instead), beat (only on the beat), always (on the
+      lively:  {cut: beat, scale: 1.0}      # downbeat when the clock allows, else now). scale: every length times this
+      wild:    {cut: always, scale: 0.6}
+      default: {cut: beat, scale: 1.0}      # no feel set (the screens follow songs without one too), or a word with
+                                            # no entry here
+    change:                                 # big: a new scene family and palette; small: the same family and palette.
+      genre: true                           # the genre words differ (genre_map.parents)...
+      key_fifths: 2                         # ...the keys this many steps apart on the circle of fifths (the same,
+                                            # parallel or relative key: 0)...
+      tempo_ratio: 0.08                     # ...the tempos apart by more than this (x2 and x0.5: the same tempo)...
+      energy: 0.25                          # ...the songs' mean energy this far apart...
+      artist: true                          # ...Sonos's artist differs. Each known on both sides votes (null: off);
+      big_share: 0.5                        # big when at least this share of the votes differ,
+      unknown: big                          # and this when none is known yet (a Sonos change, at once)
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
   cadence_s: 20                             # a clip every 20 s...
@@ -384,6 +415,20 @@ structure:
     parent_margin: 0.05                     # ...leading the next by this (a near tie is no evidence)
     spike_k: 2.0                            # without a gap: a novelty peak this many times the threshold (null: off)...
     spike_jumps: 2                          # ...with this many of the jumps at once (the genre by its smoothed leader)
+    # Song ends (README S5.17, owner 17 Oct): room.event track_end_armed / track_end, so the director can choose the
+    # change's transition. Starting points, all of them.
+    end_gap_s: 3                            # a silence (gap_gate / gap_lufs_m, as above) this long after music is a
+                                            # song's end: track_end via dsp at the gap's start (shorter: a rest inside
+                                            # the song; none while Sonos plays a song whose end is further than arm_s)
+    arm_s: 20                               # Sonos now-playing (playing, with a duration): track_end_armed this long
+                                            # before the predicted end...
+    rearm_s: 0.5                            # ...re-sent when the predicted end moves more than this
+    end_slack_s: 3                          # another Sonos track id, or a stop, this close to the armed end is the end
+                                            # (Sonos is read every 2 s, positions are whole seconds); earlier: a skip.
+                                            # Also how long sound after a Sonos end waits for the next track's id
+                                            # before track_end "sound_back"
+    first_sound_s: 10                       # a Sonos track change in silence waits this long for the new song's first
+                                            # sound (its at_ms), then goes anyway
   build:                                    # §6.2 (needs a clock grid: no builds or drops without one)
     window_s: 12                            # §6.2: over 8-16 s...
     min_slope: {lufs_db_s: 0.15, brightness_s: 0.004, onset_rate_s: 0.05}   # ...loudness, centroid, onsets rising...

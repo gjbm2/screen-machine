@@ -90,6 +90,7 @@ class Rig:
         self.beliefs: Optional[dict] = None
         self.harmony: Optional[dict] = None
         self.ml_extra: dict = {}
+        self.each: Optional[Callable[[float], None]] = None   # called with t before each tick's frame
         ctx = c.BrainContext(publish=self.published.append)
         ctx.features = lambda: self.features
         ctx.rhythm = lambda: self.rhythm
@@ -155,6 +156,8 @@ class Rig:
     def run(self, until: float, dt: float = 0.1) -> None:
         while self.t < until - 1e-9:
             self.t = round(self.t + dt, 6)
+            if self.each is not None:
+                self.each(self.t)
             self._frame(self.t)
             self.s.tick(self.t)
             self.loop.run_due()
@@ -958,6 +961,233 @@ def test_gobo_on_a_real_asyncio_loop():
         s.stop()
     finally:
         loop.close()
+
+
+# -- song ends (README S5.17) ----------------------------------------------------------------------------------------------------------
+SON = {"situations": {"sonos": {"now_playing": SONOS}}}
+FADE = {"style": "fade-dark", "out_s": 2.5, "in_s": 2.0, "seconds": None, "on": "now", "change": "big",
+        "dark_max_s": 8.0}
+
+
+def hms(x: float) -> str:
+    x = int(x)
+    return f"{x // 3600}:{(x % 3600) // 60:02d}:{x % 60:02d}"
+
+
+class FakeSonos:
+    """Room's view of a Sonos zone's now_playing, read every ``poll_s`` as room's adapter does: the position is whole
+    seconds at the read, and the member's age_s (rounded to 0.1 s, as room's status) grows until the next read.
+    ``songs``: [(start_s, duration_s, track_id, artist)], each playing from its start (duration 0: a stream, no
+    length). ``state`` and ``seek`` (seconds added to the true position) can be changed."""
+
+    def __init__(self, r: Rig, songs: list, *, poll_s: float = 2.07, phase: float = 0.3) -> None:
+        self.r, self.songs, self.poll_s = r, list(songs), poll_s
+        self.next_read = phase
+        self.state = "playing"
+        self.seek = 0.0
+        self.read_t = 0.0
+        self.believed: Optional[dict] = None
+        r.sits = {"sonos_playing": {"value": True}}
+        r.each = self.tick
+
+    def tick(self, t: float) -> None:
+        if t >= self.next_read - 1e-9:
+            self.next_read += self.poll_s
+            self.read_t = t
+            start, dur, tid, artist = [sg for sg in sorted(self.songs) if t >= sg[0]][-1]
+            pos = min(dur, max(0.0, t - start + self.seek))
+            self.believed = {"state": self.state, "track_id": tid, "title": tid, "artist": artist,
+                             "duration": hms(dur) if dur else "", "position": hms(pos) if dur else ""}
+        if self.believed is not None:
+            self.r.room["members"][SONOS] = {"believed": dict(self.believed), "confidence": "confirmed",
+                                             "age_s": round(t - self.read_t, 1), "sent_age_s": None}
+
+
+def test_hms_reads_sonos_times():
+    assert st._hms("0:03:45") == 225.0 and st._hms("1:00:00") == 3600.0 and st._hms("2:05") == 125.0
+    assert st._hms(12) == 12.0
+    for bad in ("", "NOT_IMPLEMENTED", None, "1:x:00", "-0:01:00", -3):
+        assert st._hms(bad) is None, bad
+
+
+def test_a_sonos_end_is_armed_ahead_ends_on_time_and_the_next_song_changes_at_the_junction():
+    r = Rig(lambda t: {"vec": "A"}, settings=SON)
+    FakeSonos(r, [(-150.0, 180.0, "x:1", "Artist One"), (30.0, 200.0, "x:2", "Artist Two")])
+    r.run(9.0)
+    assert not r.kinds("track_end_armed")
+    r.run(11.0)
+    arms = r.kinds("track_end_armed")
+    assert len(arms) == 1
+    a = arms[0]
+    assert a["id"] == "track_end_armed:0" and a["via"] == "sonos" and a["track_id"] == 0
+    assert a["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.6) and a["eta_s"] == pytest.approx(20.0, abs=0.7)
+    assert 0.5 <= a["conf"] <= 1.0 and a["kind"] in c.MUSIC_EVENT_KINDS
+    r.run(29.0)
+    arms = r.kinds("track_end_armed")
+    assert all(x["id"] == "track_end_armed:0" and x.get("detail") is None for x in arms)   # re-sends replace it
+    assert r.s.snapshot()["ends"]["sonos"]["spread_s"] < 0.6              # later reads narrowed the estimate
+    assert not r.kinds("track_end")
+    r.run(31.5)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0]["via"] == "sonos" and te[0]["id"] == "track_end:0" and te[0]["track_id"] == 0
+    assert te[0]["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.6)
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["via"] == "sonos" and tc[0]["id"] == "track_change:1"
+    assert tc[0]["track_id"] == 1 and tc[0]["prev_track_id"] == 0 and tc[0]["seq"] > te[0]["seq"]
+    assert tc[0]["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.6)       # the new song began at the junction
+    r.run(40.0)
+    assert len(r.kinds("track_end")) == 1                                 # its id came in time: no sound_back
+    assert r.s.snapshot()["ends"]["counts"]["sonos"] == 1
+    json.dumps(r.s.snapshot(), allow_nan=False)
+
+
+def test_a_pause_a_seek_back_or_a_skip_calls_the_armed_end_off():
+    r = Rig(lambda t: {"vec": "A"}, settings=SON)
+    fs = FakeSonos(r, [(-150.0, 180.0, "x:1", "a")])
+
+    def armed() -> list:
+        return [e for e in r.kinds("track_end_armed") if e.get("detail") is None]
+
+    def off() -> list:
+        return [e for e in r.kinds("track_end_armed") if e.get("detail") == "disarmed"]
+    r.run(15.0)
+    assert len(armed()) == 1
+    fs.state = "paused_playback"                                          # a pause
+    r.sits = {"sonos_playing": {"value": False}}
+    r.run(17.0)
+    assert len(off()) == 1 and off()[0]["eta_s"] is None and off()[0]["id"] == "track_end_armed:0"
+    assert "transition" not in off()[0] and off()[0]["at_ms"] == armed()[0]["at_ms"]
+    fs.state, fs.seek = "playing", -2.0                                   # play again where it stopped
+    r.sits = {"sonos_playing": {"value": True}}
+    r.run(21.0)
+    assert len(armed()) == 2 and armed()[1]["id"] == "track_end_armed:0"
+    assert armed()[1]["at_ms"] / 1000.0 == pytest.approx(32.0, abs=0.7)   # its end moved 2 s on
+    fs.seek = -62.0                                                       # a seek back by a minute: far again
+    r.run(24.0)
+    assert len(off()) == 2
+    r.run(80.0)
+    assert len(armed()) == 3                                              # armed again for the end at ~92
+    fs.songs.append((80.0, 200.0, "x:9", "b"))                            # a skip, 12 s before the end
+    fs.seek = 0.0
+    r.run(83.0)
+    assert len(off()) == 3 and not r.kinds("track_end")
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["prev_track_id"] == 0 and tc[0]["via"] == "sonos"
+    assert off()[-1]["seq"] < tc[0]["seq"]
+
+
+def test_a_stream_with_no_length_arms_nothing_and_changes_as_before():
+    r = Rig(lambda t: {"vec": "A"}, settings=SON)
+    FakeSonos(r, [(-10.0, 0.0, "radio:1", "a"), (20.0, 0.0, "radio:2", "b")])
+    r.run(30.0)
+    assert not r.kinds("track_end_armed") and not r.kinds("track_end")
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["at_ms"] / 1000.0 == pytest.approx(21.0, abs=0.15)   # at the read, as today
+
+
+def test_a_sonos_change_in_silence_waits_for_the_new_songs_first_sound():
+    def scene(t: float) -> dict:
+        return {"vec": None, "gate": 0.0, "lufs": -70.0} if 29.0 <= t < 33.0 else {"vec": "A"}
+    r = Rig(scene, settings=SON, clock=lambda t: clock_body(t, bpm=128.0))
+    FakeSonos(r, [(-150.0, 180.0, "x:1", "a"), (30.0, 200.0, "x:2", "b")])
+    seen: list = []
+    r.ctx.track_transition = lambda ev, f: seen.append((dict(ev), f)) or {"transition": dict(FADE)}
+    r.run(32.5)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0]["via"] == "sonos"                       # no second end from the sound's gap
+    assert not r.kinds("track_change")                                    # the new id came in silence: it waits
+    assert seen[-1][0]["kind"] == "track_end" and seen[-1][1]["silent"] is True
+    assert te[0]["transition"] == FADE
+    r.run(34.0)
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["t_ms"] / 1000.0 == pytest.approx(33.0, abs=0.15)
+    beat = 60.0 / 128.0
+    assert tc[0]["at_ms"] == pytest.approx(math.ceil(33.0 / beat - 1e-6) * beat * 1000.0, abs=1.0)   # first beat
+    assert tc[0]["transition"] == FADE and seen[-1][1]["new"]["artist"] == "b" and seen[-1][1]["old"]["artist"] == "a"
+    assert not [e for e in r.kinds("track_end") if e.get("detail") == "sound_back"]
+    assert r.s.snapshot()["ends"]["counts"]["waited"] == 1
+
+
+def test_a_gap_after_music_is_a_dsp_end_at_its_start_and_a_short_rest_is_not():
+    def scene(t: float) -> dict:
+        if 40.0 <= t < 41.5 or 60.0 <= t < 65.0:
+            return {"vec": None, "gate": 0.0, "lufs": -70.0}
+        return {"vec": "A" if t < 60.0 else "C"}
+    r = Rig(scene, clock=lambda t: clock_body(t, bpm=120.0 if t < 62.0 else 140.0))
+    seen: list = []
+    r.ctx.track_transition = lambda ev, f: seen.append((dict(ev), f)) or {"transition": dict(FADE)}
+    r.run(59.0)
+    assert not r.kinds("track_end")                                       # 1.5 s: a rest inside the song
+    r.run(64.0)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0]["via"] == "dsp" and te[0]["id"] == "track_end:0" and te[0]["track_id"] == 0
+    assert te[0]["at_ms"] / 1000.0 == pytest.approx(60.0, abs=0.15)      # at the gap's start...
+    assert te[0]["t_ms"] / 1000.0 == pytest.approx(63.0, abs=0.15)       # ...once it has lasted end_gap_s
+    assert te[0]["transition"] == FADE and seen[0][1]["silent"] is True and seen[0][1]["old"]["bpm"] == 120.0
+    r.run(66.0)
+    back = [e for e in r.kinds("track_end") if e.get("detail") == "sound_back"]
+    assert len(back) == 1 and back[0]["id"] == "track_end:0" and back[0]["via"] == "dsp"
+    assert back[0]["at_ms"] / 1000.0 == pytest.approx(65.0, abs=0.15)    # the first sound back
+    assert seen[-1][1]["back"] is True
+    r.run(85.0)
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["via"] == "dsp" and tc[0]["track_id"] == 1 and tc[0]["prev_track_id"] == 0
+    beat = 60.0 / 140.0
+    assert tc[0]["at_ms"] == pytest.approx(math.ceil(65.0 / beat - 1e-6) * beat * 1000.0, abs=1.0)   # first beat
+    f = [x[1] for x in seen if x[0]["kind"] == "track_change"][0]
+    assert f["back"] is True and f["old"]["bpm"] == 120.0 and f["new"]["bpm"] == 140.0
+    assert len([e for e in r.kinds("track_end")]) == 2                    # the end and its sound_back, nothing more
+
+
+def test_no_dsp_end_after_talk_alone_or_in_a_break_sonos_vouches_for():
+    def scene(t: float) -> dict:
+        return {"vec": None, "gate": 0.0, "lufs": -70.0} if 30.0 <= t < 36.0 else {"vec": "A"}
+    r = Rig(scene)
+    r.sits = {"music_audible": {"value": False}}                          # people talking, no music
+    r.run(40.0)
+    assert not r.kinds("track_end")
+    r2 = Rig(scene, settings=SON)
+    FakeSonos(r2, [(-10.0, 300.0, "x:1", "a")])                           # a long song: its end is far away
+    r2.run(40.0)
+    assert not r2.kinds("track_end") and not r2.kinds("track_end_armed")
+
+
+def test_track_events_carry_the_hooks_answer_held_or_nothing():
+    def boom(ev: dict, f: dict) -> dict:
+        raise RuntimeError("boom")
+    for hook, want in ((lambda ev, f: {"transition": dict(FADE)}, "transition"), (lambda ev, f: {"held": True}, "held"),
+                       (boom, None), (None, None)):
+        r = Rig(lambda t: {"vec": "A"}, settings=SON)
+        r.room["members"][SONOS] = {"believed": {"state": "playing", "track_id": "x:1"}, "confidence": "confirmed"}
+        r.sits = {"sonos_playing": {"value": True}}
+        r.ctx.track_transition = hook
+        r.run(5.0)
+        r.room["members"][SONOS]["believed"] = {"state": "playing", "track_id": "x:2"}
+        r.run(5.5)
+        tc = r.kinds("track_change")[0]
+        pub = [m["data"] for m in r.published if m["type"] == c.ROOM_EVENT and m["data"]["kind"] == "track_change"][0]
+        if want == "transition":
+            assert tc["transition"] == FADE and pub["transition"] == FADE and "held" not in tc
+        elif want == "held":
+            assert tc["held"] is True and "transition" not in tc
+        else:
+            assert "transition" not in tc and "held" not in tc
+        assert r.s.ends["hook_errors"] == (1 if hook is boom else 0)
+
+
+def test_every_event_has_a_stable_id_and_a_moved_drop_line_keeps_its_own():
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.run(40.0)
+    assert r.events and all(isinstance(e["id"], str) and e["id"].startswith(e["kind"] + ":0:") for e in r.events)
+    assert [e["id"] for e in r.kinds("build")] == ["build:0:1"]
+    assert {e["id"] for e in r.kinds("drop_armed")} == {"drop_armed:0:1"}            # re-sends keep it
+    d = r.kinds("drop")[0]
+    assert d["id"] == f"drop:0:{d['section_id']}"
+    r2 = Rig(lambda t: abab(t))
+    r2.run(125.0)
+    sc = r2.kinds("section_change")
+    assert len(sc) >= 3 and [e["id"] for e in sc] == [f"section_change:0:{e['section_id']}" for e in sc]
+    assert len({e["id"] for e in sc}) == len(sc)
 
 
 # -- settings ------------------------------------------------------------------------------------------------------------------------------

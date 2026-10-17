@@ -388,9 +388,13 @@ class CpuGuard:
 
 
 def plan_fast(states: list[TaskState], g: float, stretch: float, elapsed_ms: float, budget_ms: float,
-              ready: Callable[[TaskState], bool]) -> Optional[TaskState]:
+              ready: Callable[[TaskState], bool], first: Optional[bool] = None) -> Optional[TaskState]:
     """The next task to run in this fast-lane cycle, or None. Tasks not due are passed over; a due task whose p95
-    doesn't fit what is left of ``budget_ms`` is skipped (counted, and its turn taken)."""
+    doesn't fit what is left of ``budget_ms`` is skipped (counted, and its turn taken). The cycle's first task always
+    runs (its own budget caps it): ``first`` says it is (the caller counts; None: ``elapsed_ms <= 0``, as before;
+    elapsed time is never exactly 0 in a real cycle, so a single-task lane like Beat This! never ran, 75, 17 Oct)."""
+    if first is None:
+        first = elapsed_ms <= 0
     for st in states:
         if st.last_turn == g or not st.due(g, stretch) or not ready(st):
             continue
@@ -399,7 +403,7 @@ def plan_fast(states: list[TaskState], g: float, stretch: float, elapsed_ms: flo
             st.skipped += 1
             st.last_turn = g
             continue
-        if elapsed_ms > 0 and st.p95() > budget_ms - elapsed_ms:
+        if not first and st.p95() > budget_ms - elapsed_ms:
             st.skipped += 1                          # (the cycle's first task always runs: its own budget caps it)
             st.last_turn = g
             continue
@@ -698,12 +702,14 @@ class Worker:
             states = [self.states[n] for n in names]
             info.update(beat=start, period=every_s * self.guard.stretch,
                         budget_s=max([budget_ms] + [st.budget_ms for st in states]) / 1000.0)
+            ran = 0
             while b is not None and not self.stop.is_set():
                 st = plan_fast(states, g, self.guard.stretch, (self.clock() - start) * 1000.0, budget_ms,
-                               self._ready)
+                               self._ready, first=ran == 0)
                 if st is None:
                     break
                 st.last_turn = g
+                ran += 1
                 self._run_task(st, b)
             info["beat"] = self.clock()
             grid.after(self.clock(), every_s * self.guard.stretch)

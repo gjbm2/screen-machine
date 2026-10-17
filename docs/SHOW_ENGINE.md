@@ -858,6 +858,19 @@ f = clamp_to_vibe(vibe.centre + follow·conf·liveness·(music − neutral) + c_
 
 **Song change.** Allows a palette change from the mode's list, and clears the section memory.
 
+**Song ends** (owner, 17 Oct: the art director sees the end of a song coming and crosses to the next one naturally, with a fitting transition). As built in show_service/README.md S5.17.
+- **Seeing the end coming.** While Sonos plays a song with a known length, structure works out when it ends from Sonos's position and length (they are read every 2 s, in whole seconds, so it keeps narrowing the estimate). About 20 s before the end it says so (`track_end_armed`), updates it if the end moves, and calls it off on a pause, a skip or a seek. Radio and streams have no length, so there is nothing to see coming.
+- **Hearing the end.** Without Sonos (or between Sonos's reads), a silence of 3 s after music is a song's end, dated from the start of the silence (`track_end`). A shorter rest is part of the song. A silence while Sonos says the song still has a long way to go is a break inside it, not the end. Talk alone never ends a song.
+- **The new song.** The track change comes as before (Sonos's next track, or the sound's own evidence). Its time is the new song's first beat when the clock has one, else its first sound; if Sonos changes track during silence, structure waits for the new song's first sound.
+- **Choosing the transition.** The director picks one for each of these moments, and it travels on the event itself so the screens play it at that change:
+  - **a gap between the songs** (the room goes silent at the end, or the song is fading out): the screens fade to dark as the old song ends and fade in with the new one. Each half lasts 1.5–4 s, and they never stay dark more than 8 s;
+  - **one song running straight into the next:** a cut on the new song's first downbeat when the beat is locked, else a 2 s crossfade;
+  - **the feel adjusts it:** a gentle feel never cuts (it crossfades, and everything is slower), and a wild one cuts even without the beat (and is quicker). With no feel set, the screens still follow songs by the plain rule;
+  - **how big a change:** genre, key, tempo, overall energy and (from Sonos) the artist are compared. A big change brings a new scene family and a new palette; a small one keeps the family and the palette. Until the new song has been heard, the change counts as big.
+- **The sound comes back with no new song** (the same song after a long rest): the screens come back too.
+- **A person's hold wins.** While someone holds the look (Keep this look, or their own change is about to land), the events say "held", there is no transition, and the director's own look stays put.
+- **Lamps.** At a fade-through-dark end the lamps sink to the feel's floor (never off), then the new song's look lands on the first bar line the screens' lead allows, crossing over the same way. This happens at every song change, whatever the feel's change rule.
+
 **Builds and drops.**
 - During a build, every 2–4 bars: step the accent subdivision (½ → ¼ → ⅛), raise saturation, and narrow toward one tension colour.
 - Pre-drop: lamps dip to 20–30 %. Screens never dip.
@@ -1240,7 +1253,25 @@ For the owner and builders. It has:
 | `music.notes` | 2–10 Hz | `{seq, t_ms, keys: [[pitch, vel, t_on_ms], …], pedals: {damper, soft, sostenuto}, present, source, sess}`: the keys held at `t_ms`. `seq` is the last event it reflects. Consumers use it to heal lost events. |
 | `music.harmony` | 10 Hz | `{chroma12 (from MIDI while the piano plays, else audio), key, mode, tension, chord_change, register, spread}`. The director uses it. The renderer derives its own from the notes while the piano plays, and prefers this for audio-only music. `global.music.chroma12` on `show.state` carries the audio chroma too. |
 | `room.direction`, `room.look` | on change | §8.3 |
-| `room.event` | at least lead + 250 ms ahead | `{kind, at_ms, …}` |
+| `room.event` | at least lead + 250 ms ahead | `{kind, id, at_ms, …}`; song-end kinds and fields below |
+
+**`room.event` and song ends** (17 Oct; the shape agreed with 04; README S5.17):
+- **Every** room.event has a stable `id`, from both publishers. A re-send (a moved drop line, a re-armed end, a call-off, a `sound_back`) keeps the same id and replaces the earlier one. The ids are:
+  - `<kind>:<track id>` for the three track events;
+  - `section_change:<track id>:<section id>` and `drop:<track id>:<section id>`;
+  - `<kind>:<track id>:<n>` (counted within the track) for build, breakdown and drop_armed;
+  - `look_change:<look_id>` from the director.
+- `track_end_armed` `{at_ms: the predicted end, eta_s, via: "sonos", conf, track_id: the ending song's}`. If it is called off, the same id comes again with `eta_s: null, detail: "disarmed"` and no transition.
+- `track_end` `{at_ms, via: "sonos"|"dsp", track_id: the ending song's}`:
+  - `at_ms` is the armed end for `sonos`, and the start of the gap for `dsp`;
+  - `detail: "sound_back"` (the same id, `at_ms` = the first sound): the sound returned with no new song.
+- `track_change` `{at_ms, via, track_id: the new song's, prev_track_id}`. `at_ms` is the new song's first beat while the clock's gate is dmx or better, else its first sound.
+- All three carry `transition: {style: "fade-dark"|"crossfade"|"cut", out_s, in_s, seconds, on: "downbeat"|"now", change: "big"|"small", dark_max_s}`:
+  - `fade-dark`: `out_s` applies on track_end (old song → dark), `in_s` on track_change (dark → new song). Both are on every event; `seconds` is null.
+  - `crossfade`: `seconds`.
+  - `cut`: `seconds: 0`, `on: "downbeat"`.
+  - `dark_max_s` is set only for fade-dark.
+  - While a person holds the look the events carry `held: true` and no `transition`.
 
 **`spectrum32`, fixed** (agreed with b8; `runtime.py` `SPEC_LO_HZ`/`SPEC_HI_HZ`):
 - **Bands:** 32 bands log-spaced from **30 Hz to 16 kHz**. Band k spans `30·(16000/30)^(k/32)` to `30·(16000/30)^((k+1)/32)` Hz, edges 30, 37, 44, 54, 66, 80, 97, 118 … 8881, 10806, 13149, 16000. The centre is the geometric mean of the two edges.
@@ -1333,6 +1364,12 @@ GET    /show/healthz
 
 **As-built differences from §6–§9:**
 - **Song changes.** Detected from a loudness gap (momentary LUFS) plus a genre/key/tempo jump, or two independent jumps without a gap. Relative and parallel keys don't count as a jump.
+- **Song ends** (owner, 17 Oct; README S5.17; §8.5 "Song ends"). Built, not yet live (it loads at the next show_service restart).
+  - **Seeing and hearing the end:** structure predicts the end from Sonos's position and length (`track_end_armed`, 20 s ahead) and hears it in a silence of 3 s after music (`track_end`, `via: dsp`).
+  - **Choosing the transition:** the director picks it synchronously (`ctx.track_transition`) and it rides on the event (`transition`, or `held`).
+  - **Lamps:** they dip to the feel's floor across a gap. The new song's look lands at the junction, whatever the feel's change rule.
+  - **Event ids:** every room.event now has a stable `id` (§11.1).
+  - **Renderer:** 04's side, playing the transition at that change, is next.
 - **GOBO** (the screens' section cue through the virtual Maestro). With no feel set, structure steps it on each confirmed section. With a feel, the director owns it: one step per look change, under its restraint rules.
 - **Speech for the privacy gate.** The max of CED's speech, conversation and crowd groups.
 - **Input meter.** The card's `hearing` carries:
