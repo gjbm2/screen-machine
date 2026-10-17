@@ -483,3 +483,19 @@ def test_fuzz_never_raises_and_stays_finite():
     for d in feats:
         assert all(0.0 <= v <= 1.0 for v in d["spectrum32"])
     assert f.stats()["blocks"] >= 400
+
+
+def test_the_gate_follows_a_quiet_mics_own_floor_down():
+    bg = coloured(40 * FS, 1, 10 ** (-62 / 20), seed=3)               # about -60 LUFS of room noise for 40 s
+    msgs, f = collect()
+    feed(f, bg, block=1024)
+    d, st = f.latest(), f.stats()
+    assert st["floor_lufs"] is not None and st["floor_lufs"] < -55.0
+    assert st["gate_ref_lufs"] < -30.0 and d["gate"] == 0.0           # its own noise stays shut
+    music = bg[: 6 * FS] + coloured(6 * FS, 1, 10 ** (-47 / 20), seed=4)  # ~15 dB over the floor
+    feed(f, music, block=1024, t0=T0 + 40.0)
+    assert f.latest()["gate"] > 0.3                                   # the absolute -45..-30 gate would read 0
+    loud = coloured(40 * FS, 1, 10 ** (-22 / 20), seed=5)             # a PA-level input: gated as before
+    msgs, g = collect()
+    feed(g, loud, block=1024)
+    assert g.stats()["gate_ref_lufs"] == -30.0 and g.latest()["gate"] > 0.9

@@ -221,6 +221,17 @@ SILENCE_DB = -90.0
 LUFS_FLOOR, DBFS_FLOOR = -70.0, -120.0
 LUFS_S_EVERY_S = 0.2
 GATE_SPAN_LU = 15.0
+# The gate's reference follows the input's own noise floor down, never up: ref = min(gate_ref_lufs, floor +
+# FLOOR_ABOVE_LU + GATE_SPAN_LU). floor = the FLOOR_PCT percentile of the input's 100 ms RMS levels (dBFS; gap fill
+# skipped) over the last FLOOR_WINDOW_S, once FLOOR_MIN_S of them are in; a new stream starts over. Short bins find
+# the room's own floor between notes even under continuous music. A quiet or distant mic still opens the gate on music
+# over its own noise (degrade, never refuse); noise within FLOOR_ABOVE_LU of the floor stays shut; an input at the
+# mode's loudness is gated exactly as before.
+FLOOR_BIN_S = 0.1
+FLOOR_WINDOW_S = 600.0
+FLOOR_MIN_S = 30.0
+FLOOR_PCT = 2.0
+FLOOR_ABOVE_LU = 6.0
 BRIGHT_LO_HZ, BRIGHT_HI_HZ = 50.0, 16000.0
 _BRIGHT_OCT = math.log2(BRIGHT_HI_HZ / BRIGHT_LO_HZ)
 
@@ -593,6 +604,12 @@ class Features:
         self._fs = 0
         self._ch = 0
         self._stream: Optional[str] = None
+        self._floor_vals: collections.deque = collections.deque(maxlen=int(FLOOR_WINDOW_S / FLOOR_BIN_S))  # dBFS
+        self._floor_lufs: Optional[float] = None
+        self._floor_t = -math.inf
+        self._fl_ss = 0.0                          # the 100 ms bin being filled: sum of squares, samples
+        self._fl_n = 0
+        self._gate_ref_eff = float(self.gate_ref_lufs)
         self._r128 = None
         self._latest: Optional[FeaturesData] = None
 
@@ -744,6 +761,13 @@ class Features:
             self._gaps += 1
             self._timing(tp, 0)
             return
+        x0 = pcm if pcm.ndim == 1 else pcm[:, 0]       # the noise floor's 100 ms bins (the gate's reference)
+        self._fl_ss += float(np.dot(x0, x0))
+        self._fl_n += frames
+        if self._fl_n >= FLOOR_BIN_S * fs:
+            p = self._fl_ss / self._fl_n
+            self._floor_vals.append(10.0 * math.log10(p) if p > 1e-12 else DBFS_FLOOR)
+            self._fl_ss, self._fl_n = 0.0, 0
         if flags & AUDIO_RESUME:
             self._supp_hit_n = max(self._supp_hit_n, self._n + frames + self.hop)
             self._supp_onset_n = max(self._supp_onset_n, self._n + frames + FAST_N // 2 + self.hop)
@@ -863,7 +887,8 @@ class Features:
                 "fs": self._fs, "channels": self._ch, "stream": self._stream, "kernel": KERNEL,
                 "medium_frames": self._med_frames, "medium_ms_p50": pct(self._med_ms, self._med_i, 50),
                 "medium_ms_p95": pct(self._med_ms, self._med_i, 95), "rhythm_publishes": self._rhythm_pubs,
-                "onsets": self._onsets_total}
+                "onsets": self._onsets_total, "gate_ref_lufs": round(self._gate_ref_eff, 1),
+                "floor_lufs": None if self._floor_lufs is None else round(self._floor_lufs, 1)}
 
     # -- state -------------------------------------------------------------------------------------------------------
     def _rebuild(self, fs: int, ch: int) -> None:
@@ -997,6 +1022,10 @@ class Features:
         self._med_reset()
 
     def _clear_history(self) -> None:
+        self._floor_vals.clear()
+        self._floor_lufs = None
+        self._floor_t = -math.inf
+        self._fl_ss, self._fl_n = 0.0, 0
         self._q.clear()
         self._spec_sm.fill(0.0)
         self._presence.fill(0.0)
@@ -1583,7 +1612,14 @@ class Features:
             except Exception:                          # noqa: BLE001
                 pass
         lufs_s = self._lufs_s
+        if t - self._floor_t >= 1.0:
+            self._floor_t = t
+            if len(self._floor_vals) >= FLOOR_MIN_S / FLOOR_BIN_S:
+                self._floor_lufs = max(LUFS_FLOOR, float(np.percentile(np.fromiter(self._floor_vals, float), FLOOR_PCT)))
         ref_l = float(self.gate_ref_lufs)
+        if self._floor_lufs is not None:
+            ref_l = min(ref_l, self._floor_lufs + FLOOR_ABOVE_LU + GATE_SPAN_LU)
+        self._gate_ref_eff = ref_l
         gate = _smoothstep(ref_l - GATE_SPAN_LU, ref_l, lufs_s)
 
         # the 4096-point spectrum: spectrum32, brightness, noisiness
