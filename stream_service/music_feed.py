@@ -55,6 +55,12 @@ class FeedSnap:
     section_id: Any = None
     clock: Optional[dict] = None
     clock_t: float = -1e9
+    harmony_t: float = -1e9              # music.harmony (10 Hz): eased tau ACT_TAU_S
+    tension: Optional[float] = None
+    register: Optional[float] = None
+    spread: Optional[float] = None
+    chord_t: Optional[float] = None      # the last chord change (a rising edge of its chord_change), monotonic s
+    chord_level: float = 0.0
 
 
 class MusicFeed:
@@ -85,6 +91,16 @@ class MusicFeed:
                                  brightness=_c01(_num(data.get("brightness"), 0.5)))
         elif kind == "music.clock":
             self._snap = replace(s, clock=data, clock_t=now)
+        elif kind == "music.harmony":
+            gap = now - s.harmony_t > FRESH_S
+            a = 1.0 if gap else 1.0 - math.exp(-max(0.0, min(0.5, now - s.harmony_t)) / ACT_TAU_S)
+            ease = lambda old, v: v if old is None or gap else old + (v - old) * a     # noqa: E731
+            cc = _c01(_num(data.get("chord_change")))
+            rose = cc >= 0.5 and s.chord_level < 0.5
+            self._snap = replace(s, harmony_t=now, tension=ease(s.tension, _c01(_num(data.get("tension")))),
+                                 register=ease(s.register, _c01(_num(data.get("register"), 0.5))),
+                                 spread=ease(s.spread, _c01(_num(data.get("spread")))),
+                                 chord_t=now if rose else s.chord_t, chord_level=cc)
         elif kind == "music.context":
             sec = data.get("section")
             self._snap = replace(s, section_id=sec.get("id") if isinstance(sec, dict) else None)
@@ -104,6 +120,13 @@ class MusicFeed:
         if age > FRESH_S:
             return _c01(1.0 - (age - FRESH_S) / FADE_S)
         return _c01((now - s.fresh_since) / RECOVER_S) if RECOVER_S > 0 else 1.0
+
+    def harmony(self, now: float) -> Optional[dict]:
+        """The room's harmony while fresh: tension, register, spread (eased) and chord_change_t, else None."""
+        s = self._snap
+        if s is None or now - s.harmony_t > FRESH_S or s.tension is None:
+            return None
+        return {"tension": s.tension, "register": s.register, "spread": s.spread, "chord_change_t": s.chord_t}
 
     def clock(self, now: float) -> Optional[dict]:
         """The clock while fresh with a tempo (any gate), else None."""

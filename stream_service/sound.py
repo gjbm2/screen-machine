@@ -43,6 +43,13 @@ class Sound:
     def present(self) -> bool:
         return bool(self.frame is not None and getattr(self.frame, "present", False))
 
+    @property
+    def spectrum_live(self) -> bool:
+        """The spectrum is the room's (music.features fresh), piano or not (d4's G6)."""
+        v = self.view
+        ft, t = getattr(v, "features_t", None), getattr(v, "t", None)
+        return ft is not None and t is not None and t - ft <= 1000.0
+
     def on_message(self, msg: dict) -> None:
         self.view.on_message(msg)
 

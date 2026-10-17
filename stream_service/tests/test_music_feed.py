@@ -81,3 +81,25 @@ def test_music_direction_follows_the_feed():
     # show_service goes away: the desk's path (nothing fresh there): the proposal is dropped at once
     assert md.update(t + 2.0, None, False, (), True, feed=None) is not None
     assert md.source == "maestro" and not md.feeding and md.proposal is None
+
+
+def test_room_harmony_eases_and_marks_chord_changes():
+    f = MusicFeed()
+    for i, cc in enumerate([0.0, 0.0, 0.9, 0.9, 0.1, 0.8]):
+        f.on_message({"type": "music.harmony", "data": {"tension": 0.6, "register": 0.4, "spread": 0.3,
+                                                       "chord_change": cc}}, 50.0 + i * 0.1)
+    h = f.harmony(50.5)
+    assert h["tension"] == 0.6 and h["register"] == 0.4 and h["chord_change_t"] == 50.5   # the second rising edge
+    assert f.harmony(52.0) is None
+
+
+def test_shader_textures_use_the_room_spectrum_without_the_piano():
+    from types import SimpleNamespace
+
+    from stream_service.sound import Sound
+    s = Sound.__new__(Sound)
+    s.view = SimpleNamespace(features_t=1000.0, t=1500.0)
+    s.frame = SimpleNamespace(present=False)
+    assert s.spectrum_live and not s.present
+    s.view.t = 2500.0
+    assert not s.spectrum_live
