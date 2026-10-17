@@ -60,7 +60,7 @@ from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction
 from .effects import EffectChain, EffectSlot
-from .fx_director import FxDirector, FxMove
+from .fx_director import FX_EVENT_P, FxDirector, FxMove
 from .fx_state import SessionFx
 from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
@@ -269,6 +269,7 @@ class Session(EngineListener):
         self.prev_spec: Optional[SceneSpec] = None        # the one before it: a slow scene's recovery target
         self.director.vet = self.fx_director.vet = self.room_ok
         self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
+        self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
         # -- room-level direction (rooms.py): set by the manager on create --
         self.room: Optional[str] = None
         self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
@@ -347,6 +348,18 @@ class Session(EngineListener):
         if r is not None and r["vibe"] is not None and r.get("beat_lock") is False:   # the vibe wants no beat lock
             return None
         return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
+
+    def _fx_clock(self, now: float) -> Optional[tuple[float, int]]:
+        """(beat s, beats per bar) while the beat grid is sure (the FX director's phrases and beats), else None."""
+        g = self._beat_grid(now)
+        if g is None:
+            return None
+        c = self.mgr.music_feed.clock(now) or {}
+        try:
+            bpb = max(1, int(c.get("beats_per_bar") or 4))
+        except (TypeError, ValueError):
+            bpb = 4
+        return g[1], bpb
 
     def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:
         """The photon time (monotonic s, acoustic) of the next downbeat that can still land on glass, from
@@ -1534,6 +1547,9 @@ class Session(EngineListener):
         scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached)."""
         if self.following() is not None or self.state != "live" or self.exited:
             return
+        self.fx_director.on_event(kind, time.monotonic())     # the bus follows the song too (fx_director.py)
+        if kind not in CUT_EVENTS:
+            return
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
             self._event_hint = at_s
@@ -2236,7 +2252,7 @@ class SessionManager:
 
     def _room_event(self, data: dict) -> None:
         kind = data.get("kind")
-        if kind not in CUT_EVENTS:
+        if kind not in CUT_EVENTS and kind not in FX_EVENT_P:      # a breakdown moves only the FX bus
             return
         try:
             at_s = float(data["at_ms"]) / 1000.0

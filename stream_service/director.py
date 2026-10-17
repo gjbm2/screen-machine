@@ -39,7 +39,8 @@ from .inputs import FOLLOW_ATTRS, Snapshot
 from .plugins.base import STAGES, ParamError
 from .tags import matches_filter, scene_weight, transition_weight
 
-FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None}
+FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
+                                         "follow": None}     # follow: how much room.events move the bus (fx_director)
 AUTO_FX_DEFAULTS: dict[str, Any] = {"enabled": False, "pool": "all", "max": 2}
 AUTO_FX_MAX = 4
 AUTO_MUSIC_DEFAULTS: dict[str, Any] = {"enabled": True, "weight": 1.0, "activity": [0.0, 1.0]}
@@ -105,7 +106,7 @@ def validate_direction_fx(body: Any) -> dict:
     if unknown:
         raise ParamError("bad_request", f"direction.fx: unknown fields {sorted(unknown)}")
     out = dict(FX_DIRECTION_DEFAULTS)
-    for k in ("density", "rate"):
+    for k in ("density", "rate", "follow"):
         if body.get(k) is not None:
             out[k] = _unit(body[k], f"direction.fx.{k}")
     st = body.get("stages")

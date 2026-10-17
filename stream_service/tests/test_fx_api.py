@@ -265,18 +265,21 @@ async def test_scene_effect_prepare_failure_is_prepare_failed(client, monkeypatc
 
 async def test_direction_fx_and_auto_fx(client):
     sid, s, eng = await live(client, auto=AUTO)
-    assert s.summary()["direction"]["fx"] == {"density": 0.5, "rate": 0.5, "stages": None, "moods": None}
+    assert s.summary()["direction"]["fx"] == {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
+                                              "follow": None}
     assert s.summary()["auto"]["fx"]["enabled"] is False                       # off by default
     r = await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.8, "fx": {"density": 1.0,
-                                                                                              "stages": ["colour"]}},
+                                                                                              "stages": ["colour"],
+                                                                                              "follow": 0.3}},
                                                          "auto": {"fx": {"enabled": True, "max": 3}}}, headers=AUTH)
     assert r.status == 200, await r.text()
     sm = await r.json()
-    assert sm["direction"]["fx"] == {"density": 1.0, "rate": 0.5, "stages": ["colour"], "moods": None}
+    assert sm["direction"]["fx"] == {"density": 1.0, "rate": 0.5, "stages": ["colour"], "moods": None, "follow": 0.3}
     assert sm["auto"]["fx"]["enabled"] is True and sm["auto"]["fx"]["max"] == 3 and sm["auto"]["enabled"] is True
-    assert s.fx_director.enabled and s.fx_director.fxd["density"] == 1.0
+    assert s.fx_director.enabled and s.fx_director.fxd["density"] == 1.0 and s.fx_director.follow == 0.3
     for body in ({"direction": {"fx": {"stages": ["nope"]}}}, {"direction": {"fx": {"density": "x"}}},
-                 {"direction": {"fx": {"bogus": 1}}}, {"auto": {"fx": {"max": 9}}}, {"auto": {"fx": {"enabled": 1}}}):
+                 {"direction": {"fx": {"bogus": 1}}}, {"direction": {"fx": {"follow": "x"}}},
+                 {"auto": {"fx": {"max": 9}}}, {"auto": {"fx": {"enabled": 1}}}):
         r = await client.patch(f"/api/sessions/{sid}", json=body, headers=AUTH)
         assert r.status == 400 and (await r.json())["error"] == "bad_request", body
     # auto fx without scene auto
@@ -344,3 +347,14 @@ async def test_next_effect_adds_then_swaps_and_never_touches_manual(client):
     r = await client.post(f"/api/sessions/{sid}/fx/next", headers=AUTH)
     res = await get(client, sid)
     assert r.status == 200 and sum(1 for x in res["stack"] if x["origin"] == "manual") >= 1
+
+
+async def test_room_events_and_the_clock_reach_the_fx_director(client):
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": True, "max": 2}})
+    seen = []
+    s.fx_director.on_event = lambda kind, now: seen.append(kind)
+    assert s.fx_director.clock == s._fx_clock and s._fx_clock(0.0) is None       # no sure clock in tests
+    s.mgr._room_event({"kind": "breakdown", "at_ms": 1000})                       # FX only: passes the filter
+    s.mgr._room_event({"kind": "drop", "at_ms": 2000})
+    s.mgr._room_event({"kind": "look_change", "at_ms": 3000})                     # neither cuts nor moves FX
+    assert seen == ["breakdown", "drop"]
