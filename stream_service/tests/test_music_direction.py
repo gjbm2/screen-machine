@@ -309,4 +309,5 @@ def test_manager_keeps_only_a_speaking_valid_room_direction():
     on(mgr, {"type": "room.direction", "data": {**body, "vibe": None}})
     assert now(mgr, mgr.room_direction["t"]) is mgr.room_direction       # no vibe: it still follows the music
     on(mgr, {"type": "room.direction", "data": {**body, "energy": "loud"}})
-    assert mgr.room_direction["vibe"] is None                            # a bad one is dropped, the last kept
+    assert mgr.room_direction["vibe"] == "dinner" and mgr.room_direction["direction"]["energy"] == 0.5
+    # a bad field takes its default, the rest still applies (75's lenient room.direction, degrade never refuse)
