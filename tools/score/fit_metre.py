@@ -4,11 +4,12 @@
     ~/.venvs/sm-score-ml/bin/python tools/score/fit_metre.py fit    --cache CACHE_DIR [--write]
 
 ``cache`` runs PM2S over 24 s windows (single time signature) of ASAP's performances (github.com/fosfrancesco/
-asap-dataset, CC BY-NC-SA 4.0: time signatures, beats and downbeats annotated per performance; 3 windows each) and,
-weakly labelled 4-beat simple metre with swing, PiJAMA jazz .mid files (2 windows each).  Nothing from the datasets
+asap-dataset, CC BY-NC-SA 4.0: time signatures, beats and downbeats annotated per performance; --per windows each) and,
+weakly labelled 4-beat simple metre with swing, PiJAMA jazz .mid files (--jazz-per windows each, the newest 600
+notes as live).  --device cuda runs it on an idle GPU from a CUDA torch venv (~/.venvs/sm-score-train).  Nothing from the datasets
 goes into the repo: only the fitted weights.  ``fit`` scores every window's nine candidate bars (metre.py),
 fits the bar weights (conditional logit over the candidates; jazz windows count any 2- or 4-beat candidate), the
-compound logistic (the fallback) and the class network (sklearn's MLPClassifier, one hidden layer of 32, on
+compound logistic (the fallback) and the class network (sklearn's MLPClassifier, one hidden layer of 128 with early stopping, on
 metre.window_features; sklearn is needed here only, the worker runs the exported weights in numpy), reports 5-fold
 accuracy split by piece (one window, and a performance's windows combined) against PM2S's own metre rule, and with
 ``--write`` saves everything fitted on all the windows.
@@ -57,7 +58,7 @@ def _record(net, w, s, **gt) -> dict:
 
 
 def cache(a) -> None:
-    net = P.PM2S(pathlib.Path(a.weights).expanduser(), threads=a.threads)
+    net = P.PM2S(pathlib.Path(a.weights).expanduser(), threads=a.threads, device=a.device)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(7)
@@ -74,8 +75,8 @@ def cache(a) -> None:
             ts = sorted((float(t), s, int(b)) for t, (s, b) in v["perf_time_signatures"].items())
             beats, downs = np.array(v["performance_beats"]), np.array(v["performance_downbeats"])
             starts = np.arange(ns[0, 1], ns[-1, 1] - WIN, WIN)
-            if len(starts) > 3:
-                starts = np.sort(rng.choice(starts, 3, replace=False))
+            if len(starts) > a.per:
+                starts = np.sort(rng.choice(starts, a.per, replace=False))
             recs = []
             for s in starts:
                 if any(s < x[0] < s + WIN for x in ts):
@@ -96,9 +97,9 @@ def cache(a) -> None:
                 continue
             ns = note_seq(f)
             recs = []
-            for frac in (0.3, 0.65):
+            for frac in np.linspace(0.1, 0.85, a.jazz_per):
                 s = ns[0, 1] + frac * (ns[-1, 1] - ns[0, 1] - WIN)
-                w = ns[(ns[:, 1] >= s) & (ns[:, 1] < s + WIN)].copy()
+                w = ns[(ns[:, 1] >= s) & (ns[:, 1] < s + WIN)].copy()[-600:]   # as live: the newest 600 notes
                 if len(w) >= 24:
                     w[:, 1] -= s
                     recs.append(_record(net, w, s, gt_beats=None, gt_downs=None, gt_ts="jazz"))
@@ -196,8 +197,8 @@ def fit_net(data: list[dict]):
     from sklearn.neural_network import MLPClassifier
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
-    m = make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(32,), alpha=1e-2, max_iter=2000,
-                                                      random_state=0))
+    m = make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(128,), alpha=1e-1, max_iter=2000,
+                                                      random_state=0, early_stopping=True))
     m.fit(np.stack([d["wf"] for d in data]), [_cls(d) for d in data])
     return m
 
@@ -314,6 +315,9 @@ def main() -> None:
     c.add_argument("--weights", default="~/.local/share/screen-machine/pm2s")
     c.add_argument("--threads", type=int, default=4)
     c.add_argument("--reverse", action="store_true", help="work from the end (a second process alongside)")
+    c.add_argument("--per", type=int, default=3, help="windows per ASAP performance (non-overlapping, sampled)")
+    c.add_argument("--jazz-per", type=int, default=2, help="windows per jazz performance")
+    c.add_argument("--device", default="cpu", help="cuda for a quick batch on an idle GPU (a CUDA torch venv)")
     f = sub.add_parser("fit")
     f.add_argument("--cache", required=True)
     f.add_argument("--write", action="store_true")
