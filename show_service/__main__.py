@@ -511,6 +511,10 @@ class Show:
             add = getattr(ap, "add_on_listener", None)
             if callable(add):
                 add(mic.wake)
+            lis = comps.get("listener") if isinstance(comps, dict) else None
+            if lis is not None and callable(getattr(lis, "set_auto", None)):
+                lis.set_auto(getattr(ap, "is_on", None) if ap is not None else None)   # no OpenAI unless Auto is on
+                lis.set_mic(mic.state)                                                 # ... and the mic is on
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))

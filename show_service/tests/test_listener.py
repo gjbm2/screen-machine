@@ -106,6 +106,9 @@ class Rig:
                          "music_gate": "classifier", "describe_timeout_s": 0.5},
             "situations": {"music": {"dsp_min_gate": 0.3}}})))
         self.lis.on = bool(on)                            # as restored from state.json (set_on would persist)
+        self.auto_on, self.mic = True, {"on": True}         # owner, 17 Oct: uploads need Auto on and the mic on
+        self.lis.set_auto(lambda: self.auto_on)
+        self.lis.set_mic(lambda: self.mic)
 
     def _persist(self):
         self.persisted += 1
@@ -849,3 +852,20 @@ def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
     rig.lis._encode = enc
     run(rig.tick())
     assert rig.llm.calls == [] and rig.lis.log(1)[0]["why"] == L.WHY_MIC_WENT_OFF
+
+
+
+def test_nothing_goes_to_openai_unless_auto_and_the_mic_are_on(tmp_path):
+    """Owner, 17 Oct: Auto off, or the mic off, or unknown -> no audio to OpenAI (cost, and it's intrusive)."""
+    r = Rig(tmp_path)
+    assert r.lis._gate(r.now)[0] != L.WHY_AUTO_OFF
+    r.auto_on = False
+    assert r.lis._gate(r.now)[0] == L.WHY_AUTO_OFF
+    r.auto_on = None                                     # unknown (the brain starting): off
+    assert r.lis._gate(r.now)[0] == L.WHY_AUTO_OFF
+    r.auto_on, r.mic = True, {"on": False, "muted": True}
+    assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
+    r.lis.set_mic(None)                                  # no mic component at all: off
+    assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
+    r.lis.configure({"senders": SENDERS, "listener": {"requires_auto": False, "requires_mic": False}})
+    assert r.lis._gate(r.now)[0] not in (L.WHY_AUTO_OFF, L.WHY_MIC_OFF)   # config can relax it (not the default)

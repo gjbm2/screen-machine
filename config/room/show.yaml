@@ -295,6 +295,8 @@ listener:                                   # §7.3, §7.5. Starting points, all
   relaxed_cadence_s: 45                     # after agree_reads agreeing, confident verdicts
   agree_reads: 3
   quiet_gate: 0.1                           # the loudness gate's mean over the last 10 s must reach this
+  requires_auto: true                       # owner, 17 Oct: no audio goes to OpenAI unless Auto is on (cost, and it's
+  requires_mic: true                        # intrusive) and the room's mic is on; re-checked right before each upload
   min_clip_s: 10                            # the ring records only while a clip could go: a first clip waits this long
   music_gate: classifier                    # room-mic clips go only while a music/speech classifier says music, with
                                             # speech under 0.3. The classifier is CED, in P1. "dsp" would allow a DSP

@@ -83,7 +83,10 @@ LOG_ROTATE_BYTES = 1_000_000
 # call (it records only while a clip could go, so a first clip waits this long).
 DEFAULTS: dict[str, Any] = {"cadence_s": 20.0, "clip_s": 24.0, "min_gap_s": 8.0, "relaxed_cadence_s": 45.0,
                             "agree_reads": 3, "music_gate": "classifier", "describe_timeout_s": 8.0,
-                            "quiet_gate": 0.1, "min_clip_s": 10.0, "section_call_after_s": 8.0}
+                            "quiet_gate": 0.1, "min_clip_s": 10.0, "section_call_after_s": 8.0,
+                            # owner, 17 Oct: nothing goes to OpenAI unless Auto is on and the room's mic is on (cost,
+                            # and it's intrusive); unknown reads as off. show.yaml listener.requires_auto / requires_mic
+                            "requires_auto": True, "requires_mic": True}
 # Stage 4 (README S4.8, §7.5): the CED gate's thresholds (show.yaml listener.ced; starting points, the same numbers)
 CED_DEFAULTS: dict[str, float] = {"music_min": 0.5, "speech_max": 0.3}
 RESULTS_STALE_S = 3.0         # show.yaml ml.results_stale_s when it is left out (starting point): an older CED reading
@@ -135,6 +138,7 @@ WHY_NO_SOUND = "no sound coming in"
 WHY_NO_MODEL = "no model configured"
 WHY_MIC_OFF = "the mic is off"                              # the mic on demand (README S5.16)
 WHY_MIC_WENT_OFF = "the mic went off"                       # a clip cut before that is never uploaded
+WHY_AUTO_OFF = "Auto is off"                                  # owner, 17 Oct: no uploads unless Auto is on
 
 LISTEN_TOOL: dict = {
     "name": "report_music",
@@ -646,6 +650,8 @@ class Listener:
                  vocab_path: Path = contract.VOCAB_FILE, encoder: Optional[Callable[..., Any]] = None,
                  warm: bool = True) -> None:
         self.ctx = ctx
+        self._auto_fn: Optional[Callable[[], Optional[bool]]] = None   # Autopilot.is_on (set_auto)
+        self._mic_fn: Optional[Callable[[], Any]] = None               # Mic.state (set_mic): {"on": bool, ...}
         self._llm = llm
         self._llm_error: Optional[str] = None
         self._llm_retry = -math.inf
@@ -711,6 +717,11 @@ class Listener:
                     cfg[k] = v
                 else:
                     problems.append(f"listener.music_gate: {v!r} is not one of {', '.join(MUSIC_GATES)}")
+            elif k in ("requires_auto", "requires_mic"):
+                if isinstance(v, bool):
+                    cfg[k] = v
+                else:
+                    problems.append(f"listener.{k}: {v!r} is not true/false")
             elif k == "agree_reads":
                 if isinstance(v, int) and not isinstance(v, bool) and v >= 1:
                     cfg[k] = v
@@ -985,6 +996,27 @@ class Listener:
         (a music file played as a test). Unknown streams count as room sound: the strict side."""
         return not (stream and stream in self.no_room_sound)
 
+    def set_auto(self, fn: Optional[Callable[[], Optional[bool]]]) -> None:
+        """Auto on/off now (autopilot.Autopilot.is_on; any thread, no side effects). Unset or None: off."""
+        self._auto_fn = fn
+
+    def set_mic(self, fn: Optional[Callable[[], Any]]) -> None:
+        """The room mic's state (mic.Mic.state: {"on": bool, ...}). Unset or unknown: off."""
+        self._mic_fn = fn
+
+    def _auto_is_on(self) -> bool:
+        try:
+            return self._auto_fn is not None and self._auto_fn() is True
+        except Exception:                         # noqa: BLE001
+            return False
+
+    def _mic_is_on(self) -> bool:
+        try:
+            st = self._mic_fn() if self._mic_fn is not None else None
+        except Exception:                         # noqa: BLE001
+            st = None
+        return isinstance(st, dict) and st.get("on") is True
+
     def _gate(self, now_s: float) -> tuple[Optional[str], Optional[str]]:
         """(the first failing reason in page words, or None; the stream a clip would come from). Every stream, test
         or not, needs the AI listening switch, the mode's wish and the vibe's; only a stream whose sender says
@@ -993,6 +1025,10 @@ class Listener:
         why = None
         if not self.on:
             why = WHY_OFF
+        elif self.cfg["requires_auto"] and not self._auto_is_on():
+            why = WHY_AUTO_OFF                        # owner, 17 Oct: cost, and it's intrusive; checked again at upload
+        elif self.cfg["requires_mic"] and not self._mic_is_on():
+            why = WHY_MIC_OFF
         else:
             target = self._call_or_none(self.ctx.target)
             if target is None or not target.get("listening", False):

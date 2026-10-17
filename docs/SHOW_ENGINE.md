@@ -707,7 +707,10 @@ A text box under More on the Music card, e.g. "smoky jazz club".
 The room mic is the only music source (owner, 15 Oct), so clips would carry guests' conversation to a cloud API every 20 s.
 - Clips go only while CED says the audio is music-dominant and speech is below about 0.3. The clip is cut to the music-dominant seconds.
 - A vibe can turn the listener off (`listener: off`). For example, while the piano plays MIDI already gives the harmony and the dynamics.
-- An **AI listening** switch (in the Room page menu) stops audio uploads. Describe it, the DSP and the local ML carry on.
+- **Owner, 17 Oct: nothing goes to OpenAI unless Auto is on AND the room's mic is on**, for cost and because it is intrusive. Unknown counts as off, and the gate runs again right before each upload, so a clip cut before Auto or the mic went off is never sent. The ring doesn't even record for the listener while the gate is shut. Config: show.yaml `listener.requires_auto` / `requires_mic` (both true).
+- **No substantive audio, no upload:** a clip needs the music/speech check (music-dominant, speech under ~0.3, over a continuous run) and the loudness floor (`listener.quiet_gate`) over the last 10 s. Without the classifier running, nothing goes.
+- On the Music card (e1, 17 Oct, one listening block): the **Room mic** switch with its input picker, then **Identify the music** (the AI listening switch: off stops all uploads), then **What it hears**. The menu has no switches. Describe it, the DSP and the local ML carry on whatever these say.
+- To date (17 Oct) one clip has ever been sent ($0.006).
 - Requests use `store: false`, and never a free tier.
 - The camera on PC22 (Insta360) is **out of scope**: no room stills go to any model.
 
@@ -1255,7 +1258,7 @@ It sits directly under the mode tiles. Phone first, light and warm, primary acti
 5. **Active chips**, each with an ×, plus **Back to auto**. Shown only when there are any.
 6. **More** (an unroll): Lights low (the lamp-brightness control) · Describe it.
 
-**AI listening** goes in the page's menu. Nothing is ever disabled. When the beat is unsure the card says "following loosely". The lamp rows read "Follow the music".
+**Listening** is one block on the Music card (e1, 17 Oct): the **Room mic** switch with its input picker, **Identify the music** (the AI listening switch, `api.showListening`), then **What it hears** (the catch-all "Listening" reads "Not sure yet" there). The menu has no switches. Nothing is ever disabled. When the beat is unsure the card says "following loosely". The lamp rows read "Follow the music".
 
 The test show becomes two test *sources* in the console: PC22 playback, and the **test piano** (§3.5). These let the room be exercised from another room.
 
