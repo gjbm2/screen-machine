@@ -358,3 +358,67 @@ async def test_room_events_and_the_clock_reach_the_fx_director(client):
     s.mgr._room_event({"kind": "drop", "at_ms": 2000})
     s.mgr._room_event({"kind": "look_change", "at_ms": 3000})                     # neither cuts nor moves FX
     assert seen == ["breakdown", "drop"]
+
+
+async def test_next_effect_with_a_chosen_effect_replace_and_only(client):
+    """The Room page's effect controls (owner 17 Oct): fx/next {effect, replace, only}; fx/clear {effect?}."""
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": False}})
+    s.on_fx({"bus": "open"})
+    names = list(s.mgr.presets.effects)
+    a, b, c = names[0], names[1], names[2]
+    r = await client.post(f"/api/sessions/{sid}/fx/next", json={"effect": a}, headers=AUTH)
+    assert r.status == 200 and (await r.json())["preset"] == a
+    r = await client.post(f"/api/sessions/{sid}/fx/next", json={"effect": b, "replace": "none"}, headers=AUTH)
+    res = await get(client, sid)
+    assert r.status == 200 and [x["preset"] for x in res["stack"]] == [a, b]
+    r = await client.post(f"/api/sessions/{sid}/fx/next", json={"effect": c, "replace": res["stack"][0]["id"],
+                                                                  "only": True}, headers=AUTH)
+    res = await get(client, sid)
+    assert r.status == 200 and [x["preset"] for x in res["stack"]] == [c]
+    for bad in ({"effect": "nope"}, {"replace": "fx-404"}, {"colour": 1}):
+        assert (await client.post(f"/api/sessions/{sid}/fx/next", json=bad, headers=AUTH)).status == 400, bad
+    # clear: everything goes, and the director leaves it alone
+    r = await client.post(f"/api/sessions/{sid}/fx/clear", headers=AUTH)
+    body = await r.json()
+    assert r.status == 200 and body["cleared"] == [c] and (await get(client, sid))["stack"] == []
+    assert c in s.fx_director.quarantined
+
+
+async def test_an_fx_only_look_change_keeps_the_scene_plan(client):
+    import time
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": False}})
+    s._upnext_fill(time.monotonic())
+    before = [e["id"] for e in s.upnext.scenes]
+    gen = s._dir_gen
+    r = await client.patch(f"/api/sessions/{sid}", json={"auto": {"fx": {"enabled": True}}}, headers=AUTH)
+    assert r.status == 200, await r.text()
+    assert [e["id"] for e in s.upnext.scenes] == before and s._dir_gen == gen and s.fx_director.enabled
+
+
+async def test_keep_this_look_freezes_scenes_and_effects(client):
+    import time
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": True}})
+    mgr = s.mgr
+    mgr.on_room_message({"type": "room.direction", "data": {"energy": 0.5, "vibe": None, "hold": True}})
+    assert mgr.room_hold(time.monotonic())
+    s.director.arm(True)
+    s.director.latched = None
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "section_change", "id": "x:1",
+                                                         "at_ms": time.monotonic() * 1000}})
+    assert s.director.latched is None                                # no cut while held
+    mgr.on_room_message({"type": "room.direction", "data": {"energy": 0.5, "vibe": None, "hold": False}})
+    assert not mgr.room_hold(time.monotonic())
+
+
+async def test_a_swap_of_the_first_of_two_effects_keeps_both_slots_right(client):
+    """A swap that removes any slot but the last used to put two items on one index (one effect shown twice)."""
+    from stream_service.fx_director import FxMove
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": False}})
+    s.on_fx({"bus": "open"})
+    a, b, c = list(s.mgr.presets.effects)[:3]
+    await s.fx.auto_move(FxMove("add", a, None, "t"), 0.5)
+    await s.fx.auto_move(FxMove("add", b, None, "t"), 0.5)
+    first = s.fx.stack[0].id
+    await s.fx.auto_move(FxMove("swap", c, first, "t"), 0.5)
+    stack = [(st.spec.preset, st.id) for st in s.fx.stack]
+    assert [p for p, _ in stack] == [b, c] and len({i for _, i in stack}) == 2

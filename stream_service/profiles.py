@@ -70,11 +70,18 @@ class Profile:
 # default 2 s VBV stays.
 AQ = ("-spatial-aq", "1", "-aq-strength", "12")
 
+# The pages' buffer target for the screens' profiles (owner 17 Oct: sound to glass under 0.5 s, push hard).  The lab
+# ran 4K60 to both TVs at 67 ms and found ~110 ms "few stalls" (experiments/stream-latency/README.md); 120 ms is that
+# plus a little.  The page hard-jumps to the live edge when it gets 70 ms past this (2f).
+LIVE_BUFFER_MS = 120
+
 PROFILES: dict[str, Profile] = {p.name: p for p in (
-    Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "50M", preset="p4", nvenc_delay=2, extra=AQ),
-    Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", extra=AQ),
-    Profile("hevc-1080p60", "hevc", 1920, 1080, 60, "16M", preset="p5", extra=AQ),
-    Profile("hevc-1080p30", "hevc", 1920, 1080, 30, "10M", preset="p5", extra=AQ),   # devtest: a busy browser
+    Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "50M", preset="p4", nvenc_delay=2, extra=AQ,
+            target_buffer_ms=LIVE_BUFFER_MS),
+    Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", extra=AQ, target_buffer_ms=LIVE_BUFFER_MS),
+    Profile("hevc-1080p60", "hevc", 1920, 1080, 60, "16M", preset="p5", extra=AQ, target_buffer_ms=LIVE_BUFFER_MS),
+    Profile("hevc-1080p30", "hevc", 1920, 1080, 30, "10M", preset="p5", extra=AQ,    # devtest: a busy browser
+            target_buffer_ms=LIVE_BUFFER_MS),
     Profile("h264-720p30", "h264", 1280, 720, 30, "6M", preset="p5", extra=AQ),
     Profile("av1-720p30", "av1", 1280, 720, 30, "3M"),
 )}

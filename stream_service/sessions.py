@@ -1389,10 +1389,19 @@ class Session(EngineListener):
             self.direction_ease_s = self.runtime.ease_s = look["direction_ease_s"]
         if "direction" in look:
             self.direction = look["direction"]
+        fx_only = False
         if "auto" in look:
+            old = self.director.auto
+            strip = lambda a: {k: v for k, v in (a or {}).items() if k != "fx"}       # noqa: E731
+            fx_only = "direction" not in look and old is not None and look["auto"] is not None \
+                and strip(old) == strip(look["auto"])
             self.director.set_auto(look["auto"])
             self.music.configure(self.director.auto.get("music") if self.director.auto else None)
-        if look.keys() & {"direction", "auto"}:
+        if fx_only:                                      # effects only: the scene plan and the prepared pick stay
+            self.fx_director.configure((self.director.auto or {}).get("fx"), self.direction_effective)
+            self.upnext.drop_auto("effect")
+            self._fill_retry["effect"] = 0.0
+        elif look.keys() & {"direction", "auto"}:
             self._apply_direction("panel" if "direction" in look else "auto")
         if "palette_transition_s" in look:
             self.palette_s = self.runtime.palette_s = look["palette_transition_s"]
@@ -1504,7 +1513,8 @@ class Session(EngineListener):
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
-            due = None if self.music.settling(now) or self._dark is not None else d.due(now)   # a section change:
+            due = None if self.music.settling(now) or self._dark is not None or self.mgr.room_hold(now) \
+                else d.due(now)   # a section change:
             # pick for the new direction (between songs, the next song's own cue brings the scene in)
             if due is not None:
                 self._auto_task = asyncio.create_task(self._auto_cue(*due))
@@ -1516,6 +1526,9 @@ class Session(EngineListener):
         armed = self.state == "live" and not self.exited and self.fx.open and fd.enabled
         fd.arm(armed, now)
         if not armed or not fd.due(now) or self._fx_task is not None or self.fx.lock.locked():
+            return
+        if self.mgr.room_hold(now):                      # Keep this look: the effects stay too
+            fd.done(now, None)
             return
         if self.inflight or self.pending is not None:     # never during a scene transition
             return
@@ -1569,7 +1582,7 @@ class Session(EngineListener):
                                      or kind != "track_change" or detail in ("disarmed", "sound_back")):
             self._track_event(kind, at_s, detail, data)
             return
-        if kind not in CUT_EVENTS:
+        if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic()):
             return
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
@@ -1738,29 +1751,81 @@ class Session(EngineListener):
                 self.upnext.remove(e["id"])
                 break
 
-    async def fx_next(self) -> dict:
+    async def fx_next(self, body: Optional[dict] = None) -> dict:
         """POST /api/sessions/{sid}/fx/next: change the effect now (the owner's Next for effects).  In a room the
-        leader moves and the followers mirror it, like Next for scenes."""
+        leader moves and the followers mirror it, like Next for scenes.  Body, all optional (owner 17 Oct, the Room
+        page's effect controls): ``effect`` a preset to bring in (else the director's pick), ``replace`` the slot id
+        to swap out ("none": add; else the oldest auto one), ``only`` true: every other auto effect goes too."""
         ld = self.room_leader()
         if ld is not None and ld is not self:
-            return await ld.fx_next()
+            return await ld.fx_next(body)
+        body = body if isinstance(body, dict) else {}
+        unknown = set(body) - {"effect", "replace", "only"}
+        if unknown:
+            raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
+        eff, rep, only = body.get("effect"), body.get("replace"), bool(body.get("only"))
+        if eff is not None and (not isinstance(eff, str) or eff not in self.mgr.presets.effects):
+            raise ParamError("unknown_preset", f"unknown effect preset {eff!r}")
+        ids = {st.id for st in self.fx.stack}
+        if rep is not None and rep != "none" and rep not in ids:
+            raise ParamError("bad_request", f"replace: no slot {rep!r} on the bus (have {sorted(ids)})")
         self._require("live")
         if self._fx_task is not None:                    # the director is mid-move: let it land first
             await asyncio.shield(self._fx_task)
         fd, now = self.fx_director, time.monotonic()
-        move = fd.next_move(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
-                            self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
-        if move is None:
-            raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
+        autos = [st for st in self.fx.stack if getattr(st, "origin", "manual") == "auto"]
+        if eff is None:
+            move = fd.next_move(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
+                                self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
+            if move is None:
+                raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
+            if rep is not None:
+                move = FxMove("add" if rep == "none" else "swap", move.add, None if rep == "none" else rep, move.why)
+        else:
+            old = None if rep == "none" else rep if rep is not None else (autos[0].id if autos else None)
+            move = FxMove("swap" if old else "add", eff, old, f"chosen: {eff}")
         res = await self.fx.auto_move(move, fd.fade_s())
         if res is None:
             raise SessionError(409, "bad_state", f"session is {self.state}")
+        if only:                                         # the one just added stays; every other auto effect goes
+            keep_id = next((st.id for st in reversed(self.fx.stack)
+                            if getattr(st, "origin", "manual") == "auto" and st.spec.preset == move.add), None)
+            await self.fx.remove(lambda st: getattr(st, "origin", "manual") != "auto" or st.id == keep_id,
+                                 fd.fade_s(), "only this effect")
         fd.last = {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why,
                    "at_pts": round(self._pts_now(), 3)}
         fd.done(time.monotonic(), move)                  # a full interval before the director's own next move
         self._upnext_took(move.add)
         self._room_fx()
-        return {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why}
+        return {"op": move.op, "preset": move.add, "removed": move.remove, "why": move.why, "only": only}
+
+    async def fx_clear(self, body: Optional[dict] = None) -> dict:
+        """POST /api/sessions/{sid}/fx/clear: take effects off every screen in the room (owner 17 Oct): all of them,
+        or ``effect`` (a preset name or a slot id).  The director leaves a cleared preset alone for 10 min and
+        waits a full interval before its next move, so nothing comes straight back (the followers' mirror is
+        cleared with it)."""
+        ld = self.room_leader()
+        if ld is not None and ld is not self:
+            return await ld.fx_clear(body)
+        body = body if isinstance(body, dict) else {}
+        unknown = set(body) - {"effect"}
+        if unknown:
+            raise ParamError("bad_request", f"unknown fields {sorted(unknown)}")
+        eff = body.get("effect")
+        self._require("live")
+        if self._fx_task is not None:
+            await asyncio.shield(self._fx_task)
+        fd, now = self.fx_director, time.monotonic()
+        hit = lambda st: eff is None or st.id == eff or st.spec.preset == eff or st.spec.effect == eff   # noqa: E731
+        gone = sorted({st.spec.preset for st in self.fx.stack if hit(st) and st.spec.preset})
+        for s in [self, *self.followers()]:
+            await s.fx.remove(lambda st: not hit(st), fd.fade_s(), "cleared")
+        for p in gone:
+            fd.quarantine(p, now)                        # out of its own picks for QUARANTINE_S (10 min)
+        if eff is None:
+            self.upnext.drop_auto("effect")
+        fd.done(now, None)
+        return {"cleared": gone, "stack": self.fx.summary().get("stack")}
 
     async def _prepare_next(self) -> None:
         epoch, gen = self._epoch, self._dir_gen
@@ -2413,7 +2478,8 @@ class SessionManager:
         self.music_feed.on_room_direction(data)
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
-                               "beat_lock": data.get("beat_lock"), "seq": data.get("seq"), "t": time.monotonic()}
+                               "beat_lock": data.get("beat_lock"), "hold": data.get("hold") is True,
+                               "seq": data.get("seq"), "t": time.monotonic()}
 
     def _room_event(self, data: dict) -> None:
         kind = data.get("kind")
@@ -2437,6 +2503,13 @@ class SessionManager:
         detail = str(data.get("detail") or "")[:80]
         for s in list(self.sessions.values()):
             s.room_event(kind, at_s, detail, data)
+
+    def room_hold(self, now: float) -> bool:
+        """A person holds the look (show_service's room.direction ``hold``: Keep this look, or their own pick still
+        pending): neither director changes anything, scenes or effects (owner 17 Oct).  A person's own Next still
+        works."""
+        r = self.room_direction_now(now)
+        return bool(r and r.get("hold"))
 
     def room_direction_now(self, now: float) -> Optional[dict]:
         """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
