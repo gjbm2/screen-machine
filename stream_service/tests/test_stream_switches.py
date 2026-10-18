@@ -19,7 +19,8 @@ def write(path, data, bump=0):
 
 def test_no_file_means_ffmpeg_everywhere(tmp_path):
     s = StreamSwitches(tmp_path / "stream_switches.json")
-    assert s.encoder("south-screen") == "ffmpeg" and s.for_screen("x") == {"encoder": "ffmpeg", "workers": "inproc"}
+    assert s.encoder("south-screen") == "ffmpeg" and s.for_screen("x") == {"encoder": "ffmpeg", "workers": "inproc",
+                                                                            "fps": 30, "degrade": "on"}
 
 
 def test_default_and_per_screen_values(tmp_path):
@@ -84,6 +85,17 @@ def test_in_dir_and_the_shipped_file():
         ["ffmpeg", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
     assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["inproc", "proc", "proc", "inproc"]                          # change 3: devtest, then south, in a worker
+    assert [s.fps(k) for k in ("north-screen", "south-screen", "devtest", "other")] == [30, 30, 60, 30]   # change 5
+    assert {s.degrade(k) for k in ("north-screen", "south-screen", "devtest", "other")} == {"on"}
+
+
+def test_fps_and_degrade_switches(tmp_path):
+    p = tmp_path / "stream_switches.json"
+    write(p, {"default": {"fps": 60, "degrade": "off"}, "screens": {"a": {"fps": 30}, "b": {"fps": "60"},
+                                                                   "c": {"fps": True, "degrade": "maybe"}}})
+    s = StreamSwitches(p)
+    assert [s.fps(k) for k in "abcd"] == [30, 60, 60, 60] and s.degrade("a") == "off"
+    assert len(s.errors) == 3                                         # "60" (a string), True, "maybe"
 
 
 async def test_a_session_takes_its_encoder_from_the_file_at_creation(client, tmp_path):  # noqa: F811
@@ -97,3 +109,19 @@ async def test_a_session_takes_its_encoder_from_the_file_at_creation(client, tmp
     write(p, {"screens": {"devtest": {"encoder": "ffmpeg"}}}, bump=10**9)  # flipped: the next session, no restart
     _, s2 = await create(client, screen="devtest", idempotency_key="second")
     assert s2 is not s and s2.engine.encoder == "ffmpeg" and s.engine.encoder == "nvenc"
+
+
+async def test_a_sessions_frame_rate_and_degrade_mode_come_from_the_file(client, tmp_path):  # noqa: F811
+    p = tmp_path / "stream_switches.json"
+    write(p, {"screens": {"devtest": {"fps": 60, "degrade": "off"}}})
+    client.app[MANAGER].switches = StreamSwitches(p)
+    _, s = await create(client, profile="hevc-2160p30")
+    assert s.profile.name == "hevc-2160p60" and s.profile.fps == 60 and s.profile.bitrate == "40M"
+    summ = s.summary()                                                # room matches the asked name on adoption
+    assert (summ["profile"], summ["profile_live"], summ["fps"]) == ("hevc-2160p30", "hevc-2160p60", 60)
+    assert s.attach["fps"] == 60 and s.engine.degrade_mode == "off" and s.media.fps == 60
+    write(p, {"screens": {"devtest": {"fps": 30}}}, bump=10**9)
+    _, s2 = await create(client, profile="hevc-2160p60", idempotency_key="b")
+    assert s2.profile.name == "hevc-2160p30" and s2.engine.degrade_mode == "on"
+    _, s3 = await create(client, profile="h264-720p30", idempotency_key="c")   # no 60p sibling: as asked
+    assert s3.profile.name == "h264-720p30"

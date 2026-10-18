@@ -156,6 +156,11 @@ class GpuTimer:
         self.over = 0                   # samples over the budget (reported; nothing stops on them)
         self.worst: Optional[dict] = None   # the slowest call so far {kind, name, ms}
 
+    def set_fps(self, fps: float) -> None:
+        """The output frame rate changed (the degradation controller's fps step): budgets follow the new period."""
+        self.mon.period_ms = 1000.0 / fps
+        self.mon.budget_ms = trip_budget_ms(fps)
+
     # -- recording (render thread, inside a frame) ----------------------------------
     def _ev(self) -> Any:
         return self._free.pop() if self._free else self.be.new()

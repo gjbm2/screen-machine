@@ -1,7 +1,9 @@
 {
   "default": {
     "encoder": "ffmpeg",
-    "workers": "inproc"
+    "workers": "inproc",
+    "fps": 30,
+    "degrade": "on"
   },
   "screens": {
     "south-screen": {
@@ -10,7 +12,8 @@
     },
     "devtest": {
       "encoder": "nvenc",
-      "workers": "proc"
+      "workers": "proc",
+      "fps": 60
     }
   }
 }

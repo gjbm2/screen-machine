@@ -4,7 +4,11 @@
 
 ``encoder``: ``nvenc`` (GPU-resident, encode/nvenc.py) or ``ffmpeg`` (raw NV12 piped into ffmpeg's hevc_nvenc, the
 fallback).  ``workers``: ``inproc`` (the render engine in the service process, as before) or ``proc`` (the screen's
-sessions render in a worker process of their own, workers.py).  A screen's values override the default's.  Read when
+sessions render in a worker process of their own, workers.py).  ``fps`` (plan change 5): ``30`` or ``60``, the
+screen's live frame rate: a session's profile becomes its sibling at that rate (profiles.at_fps: hevc-2160p30 <->
+hevc-2160p60; a profile with no sibling keeps its own).  ``degrade``: ``on`` (the session's degradation controller,
+degrade.py) or ``off`` (it is not made; the scene's own rate divider and the repeat rule stay as before).  A screen's
+values override the default's.  Read when
 a session is created (the file's mtime is checked each time), so a flip applies at that screen's next session, with
 no restart.  No file: ffmpeg and inproc everywhere; an unreadable or malformed one keeps the last good copy; an unknown
 value takes the default.  Each problem is logged once.  Plain file, no auth.
@@ -22,8 +26,10 @@ FILE = "stream_switches.json"
 DEFAULT_DIR = pathlib.Path(__file__).resolve().parent.parent / "config" / "live"
 ENCODERS = ("nvenc", "ffmpeg")
 WORKERS = ("inproc", "proc")
-DEFAULTS = {"encoder": "ffmpeg", "workers": "inproc"}
-KNOWN = {"encoder": ENCODERS, "workers": WORKERS}
+FPS = (30, 60)
+DEGRADE = ("on", "off")
+DEFAULTS = {"encoder": "ffmpeg", "workers": "inproc", "fps": 30, "degrade": "on"}
+KNOWN = {"encoder": ENCODERS, "workers": WORKERS, "fps": FPS, "degrade": DEGRADE}
 
 
 def _parse(raw: Any) -> tuple[dict, dict, list[str]]:
@@ -36,7 +42,7 @@ def _parse(raw: Any) -> tuple[dict, dict, list[str]]:
             return {}
         out = {}
         for k, x in v.items():
-            if x in KNOWN.get(k, ()):
+            if not isinstance(x, bool) and x in KNOWN.get(k, ()):
                 out[k] = x
             elif k in KNOWN:
                 errs.append(f"{where}.{k}: {x!r} ignored ({k} must be one of {list(KNOWN[k])})")
@@ -99,3 +105,9 @@ class StreamSwitches:
 
     def workers(self, screen: str) -> str:
         return self.for_screen(screen)["workers"]
+
+    def fps(self, screen: str) -> int:
+        return int(self.for_screen(screen)["fps"])
+
+    def degrade(self, screen: str) -> str:
+        return self.for_screen(screen)["degrade"]

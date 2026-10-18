@@ -559,6 +559,7 @@ class EngineProxy:
         self.pool = pool
         self.fps = profile.fps
         self.encoder = "ffmpeg"
+        self.degrade_mode = "on"                    # the degradation controller runs in the worker (degrade.py)
         self.sound: Any = None
         self.frame_hook: Any = None
         self.bus = _Bus()
@@ -618,6 +619,7 @@ class EngineProxy:
         local = sessions.Engine(profile=self.profile, gpu=self.gpu, post=self.post, listener=self.listener,
                                 name=self.name)
         local.encoder = self.encoder
+        local.degrade_mode = self.degrade_mode
         local.sound = self.sound
         local.frame_hook = self.frame_hook
         if getattr(local, "bus", None) is not None:
@@ -729,7 +731,8 @@ class EngineProxy:
     def start(self, anchor: Any) -> None:
         if self._local is not None:
             return self._local.start(anchor)
-        res = self._call("start", {"sid": self.name, "anchor": self._hid(anchor), "encoder": self.encoder})
+        res = self._call("start", {"sid": self.name, "anchor": self._hid(anchor), "encoder": self.encoder,
+                                   "degrade": self.degrade_mode})
         self.encoder_active, self.encoder_fallback = res.get("encoder_active"), res.get("encoder_fallback")
         if res.get("hud"):
             h = _Hud(self)
@@ -879,7 +882,7 @@ class EngineProxy:
         if h is not None and hs:
             h.remote_fade, h.ema_ms, h.failed = float(hs.get("fade") or 0.0), hs.get("ema_ms"), hs.get("failed")
         lay = st.get("layer") or {}
-        self.root.rate_div = int(lay.get("rate_div") or 1)
+        self.root.rate_div = self.root.div_now = int(lay.get("rate_div") or 1)   # (the worker sends what it renders at)
         self.root.cost_ema = lay.get("cost_ema")
         for sid, vals in (st.get("slots") or {}).items():
             r = self.slot_shadows.get(sid)

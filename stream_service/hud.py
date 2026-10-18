@@ -273,6 +273,11 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     trips = int(gs.get("trips") or 0) + int(gs.get("slow_trips") or 0)
     add(f"guard {_f(gs.get('frame_gpu_ms'))}/{_f(ws.get('budget_ms'))} ms  trips {trips}"
         f"  details {_f(hud_ms, 2)} ms", bad=trips > 0)
+    # the degradation controller (degrade.py), while a step is on: plain words ("60 -> 30 fps: computer busy")
+    dg = getattr(s, "degrade", None) or {}
+    out_fps = dg.get("out_fps") or p.fps
+    if dg.get("level"):
+        add(_cut(dg.get("text"), COLS), bad=True)
     # glass (the TV's own player)
     glass = None
     for c in list(getattr(s.media, "clients", {}).values()):
@@ -295,11 +300,11 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
         c._hud_prev = (now, pres, drop)
         stalls = int(st.get("stalls") or 0)
         add(f"glass {_f(fps)} fps  drop {_f(drops)}/s  buf {_f(st.get('buffered_ms'), 0)} ms  stalls {stalls}",
-            bad=bool((drops or 0) > 1.0 or (fps is not None and fps < 0.8 * p.fps)))
+            bad=bool((drops or 0) > 1.0 or (fps is not None and fps < 0.8 * out_fps)))
     # scene
     lay = _first_source_layer(eng.root)
-    rate = "" if lay is None or getattr(lay, "rate_div", 1) <= 1 else \
-        f"  1/{lay.rate_div} ({_f(getattr(lay, 'cost_ema', None))} ms)"
+    div = 1 if lay is None else max(int(getattr(lay, "rate_div", 1) or 1), int(getattr(lay, "div_now", 1) or 1))
+    rate = "" if div <= 1 else f"  1/{div} ({_f(getattr(lay, 'cost_ema', None))} ms)"
     last = s.last_cue or {}
     on_s = None
     if getattr(s.director, "dwell_start", None) is not None:

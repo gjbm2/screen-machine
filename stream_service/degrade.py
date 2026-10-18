@@ -1,0 +1,312 @@
+"""The degradation controller (4K60 plan change 5; docs/perf/PLAN.md, DIAGNOSIS_2026-10-18 §8 "The ladder").
+
+One per session, where its Engine runs (renderer.py: the render worker for ``workers: proc`` screens, the service
+otherwise), on the render thread at a frame boundary.  Every DECIDE_S it reads the last second of the engine's frame
+records and decides with arithmetic only.  Per output slot (means, ms) it knows:
+  * host: the render thread's wall time per rendered slot (own CPU + run-queue wait + blocked: GIL, locks, syscalls);
+  * gpu:  the frame's GPU span where it outlasted the host's submit by GPU_MARGIN_MS (real GPU work; a shorter span is
+          the GPU waiting on the host);
+  * enc:  the encode thread's time per slot (Encode() / the pipe write) plus the render thread's wait for a free slot;
+and the outcome: repeats and late slots.  Each stage's time as a share of the output period is its load.
+
+A second is overloaded when both its halves are: a stage at DOWN_LOAD or more, or repeats (REPEAT_SHARE) or late slots
+(LATE_SHARE).  Then one step down, the first of these that is not on yet and can relieve the busiest stage:
+  fx          fewer, cheaper bus effects (the session's FX director: one auto effect fewer, half the bus budget; the bus
+              keeps playing): while the bus carries effects and the host or the GPU is the busy stage;
+  scene_rate  new scene content every 2nd output slot, the last frame shown in between (layers.py: a floor under the
+              scene's own rate_div): the host or the GPU, and the scene not already that slow by itself;
+  fps         output 60 -> 30 fps: NVENC Reconfigure, frame ids stay on the 60 Hz grid, each fMP4 sample lasts two ticks
+              (renderer.py): any stage, on the GPU-encode path at 60 fps only (the ffmpeg path skips it).
+None left: it stays where it is (``floor``).  Down at most once a second: the window after a change starts at the
+change.  Up: the last step on comes off once its projection (the load without it, from the same numbers) has stayed
+under UP_LOAD for its UP_WAIT_S (fps 30 s) and as long since the last change.  A step that has to come back on within
+SETTLE_S of coming off doubles its wait (up to WAIT_MAX_X); one that stays off that long starts again from 1x.  Frozen
+(no change, windows restart) across the entry (until the master bus is fully open) and the exit.  It never stops a
+stream and never refuses: every step keeps the stream playing.
+
+``state()`` is what /api/sessions (``degrade``), the session.degrade event and the details panel show.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Iterable, Optional
+
+STEPS = ("fx", "scene_rate", "fps")
+WHY = {"host": "computer busy", "gpu": "GPU busy", "enc": "encoder busy", "fallback": "encoder fell back"}
+DECIDE_S = 1.0          # decisions per second, each over the last second
+DOWN_LOAD = 0.95        # a stage this busy in both halves of a second: one step down
+UP_LOAD = 0.7           # a step comes off only if the projection without it is under this share of the period
+REPEAT_SHARE = 0.05     # ... or this share of the slots repeated (at least 2)
+LATE_SHARE = 0.25       # ... or started more than a period late
+MIN_SLOTS = 3           # a half with fewer slots says nothing
+UP_WAIT_S = {"fx": 10.0, "scene_rate": 10.0, "fps": 30.0}
+SETTLE_S = 60.0
+WAIT_MAX_X = 8
+GPU_MARGIN_MS = 1.0     # as guard.GPU_BOUND_MARGIN_MS: a span this much over the host's submit is real GPU work
+SCENE_FLOOR = 2
+EPS = 1e-6
+
+
+def _iso(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts, dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+@dataclass
+class Window:
+    """A stretch of slots: per-slot means (ms) of each stage, and the outcome."""
+    slots: int = 0
+    rendered: int = 0
+    host_ms: float = 0.0
+    cpu_ms: float = 0.0
+    runq_ms: float = 0.0
+    blocked_ms: float = 0.0
+    gpu_ms: float = 0.0
+    enc_ms: float = 0.0
+    wait_ms: float = 0.0
+    drawn_host_ms: Optional[float] = None   # slots whose scene was drawn (not held by a rate divider)
+    drawn_gpu_ms: Optional[float] = None
+    repeats: int = 0
+    late: int = 0
+
+    def load(self, period_ms: float) -> dict[str, float]:
+        p = max(EPS, period_ms)
+        return {"host": self.host_ms / p, "gpu": self.gpu_ms / p, "enc": (self.enc_ms + self.wait_ms) / p}
+
+
+def window(recs: Iterable[Any], period_ms: float) -> Window:
+    """renderer._Rec rows -> a Window.  Host and GPU are over rendered slots (a repeat renders nothing), the encoder
+    over every slot it has taken; the GPU span of a frame still on the GPU is not known yet and is left out."""
+    w = Window()
+    host = cpu = runq = blk = gpu = enc = wait = dh = dg = 0.0
+    n_gpu = n_enc = nd = ndg = 0
+    for r in recs:
+        w.slots += 1
+        if r.slip_ms > period_ms:
+            w.late += 1
+        wait += r.wait_ms or 0.0
+        if r.write_ms is not None:
+            enc += r.write_ms
+            n_enc += 1
+        if r.repeat:
+            w.repeats += 1
+            continue
+        w.rendered += 1
+        h = r.host_ms or 0.0
+        host += h
+        cpu += r.cpu_ms or 0.0
+        runq += r.runq_ms or 0.0
+        blk += r.blocked_ms or 0.0
+        g = None
+        if r.render_ms is not None:
+            g = r.render_ms if r.render_ms > h + GPU_MARGIN_MS else 0.0
+            gpu += g
+            n_gpu += 1
+        if not r.held:
+            dh += h
+            nd += 1
+            if g is not None:
+                dg += g
+                ndg += 1
+    k = max(1, w.rendered)
+    w.host_ms, w.cpu_ms, w.runq_ms, w.blocked_ms = host / k, cpu / k, runq / k, blk / k
+    w.gpu_ms = gpu / n_gpu if n_gpu else 0.0
+    w.enc_ms = enc / n_enc if n_enc else 0.0
+    w.wait_ms = wait / max(1, w.slots)
+    w.drawn_host_ms = dh / nd if nd else None
+    w.drawn_gpu_ms = dg / ndg if ndg else None
+    return w
+
+
+@dataclass
+class Ctx:
+    """What the engine adds to the records at a decision."""
+    frozen: bool = False        # the entry (master bus not fully open yet) or the exit
+    has_fx: bool = False        # the bus carries effects (not on their way out)
+    fx_host_ms: float = 0.0     # their cost per rendered frame now (the guard's samples: own CPU, real GPU)
+    fx_gpu_ms: float = 0.0
+    own_div: int = 1            # the scene's own rate_div (layers.py)
+    can_fps: bool = False       # the GPU-encode path at 60 fps
+
+
+@dataclass
+class Change:
+    step: str
+    on: bool
+    why: Optional[str]          # the busy stage (host | gpu | enc | fallback); None for a step up
+
+
+def text(steps: Iterable[str], why: Optional[str], grid_fps: int) -> str:
+    """Plain words for the panel: "60 -> 30 fps: computer busy", "fewer effects: GPU busy"."""
+    steps = list(steps)
+    if not steps:
+        return f"full rate, {grid_fps} fps"
+    out_fps = grid_fps // 2 if "fps" in steps else grid_fps
+    words = {"fps": f"{grid_fps} -> {out_fps} fps", "scene_rate": f"scene {out_fps // SCENE_FLOOR} fps",
+             "fx": "fewer effects"}
+    s = " + ".join(words[x] for x in reversed(steps))
+    return f"{s}: {WHY.get(why, why)}" if why else s
+
+
+class Controller:
+    def __init__(self, grid_fps: int, wall: Callable[[], float] = time.time):
+        self.grid_fps = int(grid_fps)
+        self.wall = wall
+        self.steps: list[str] = []
+        self.why: Optional[str] = None             # the busy stage behind the steps on
+        self.changed_at: Optional[float] = None    # pace clock
+        self.since: Optional[float] = None         # wall clock of the last change
+        self.window_from: Optional[float] = None   # decisions read records from here on (a change, an unfreeze)
+        self.ok_since: Optional[float] = None      # the last step's projection under UP_LOAD since
+        self.mult = {s: 1 for s in STEPS}
+        self.off_at: dict[str, float] = {}         # when a step last came off
+        self.fx_at = (0.0, 0.0)                    # the bus's cost when the fx step came on
+        self.frozen = True
+        self.floor = False                         # overloaded with no step left
+        self.load: Optional[dict] = None
+        self.downs = self.ups = self.failed_ups = 0
+
+    # -- when ----------------------------------------------------------------------------------------------------
+    def window_start(self, now: float) -> float:
+        w = now - DECIDE_S
+        return w if self.window_from is None else max(w, self.window_from)
+
+    # -- what ----------------------------------------------------------------------------------------------------
+    def decide(self, recs: list, ctx: Ctx, now: float, period_ms: float) -> Optional[Change]:
+        """``recs``: the frame records since window_start(now); ``period_ms``: the output period now."""
+        if ctx.frozen:
+            self.frozen, self.window_from, self.ok_since = True, now, None
+            return None
+        if self.frozen:                           # just opened: a whole second from here before anything
+            self.frozen, self.window_from, self.ok_since = False, now, None
+            return None
+        if self.window_from is not None and now - self.window_from < DECIDE_S - EPS:
+            return None
+        mid = now - DECIDE_S / 2
+        a = window([r for r in recs if r.t_start < mid], period_ms)
+        b = window([r for r in recs if r.t_start >= mid], period_ms)
+        whole = window(recs, period_ms)
+        ld = whole.load(period_ms)
+        self.load = {k: round(v, 3) for k, v in ld.items()}
+        sa, sb = self._over(a, period_ms), self._over(b, period_ms)
+        if sa and sb:                             # held for the whole second
+            self.ok_since = None
+            stage = max(ld, key=ld.get)
+            step = self._next_down(stage, ctx)
+            if step is None:
+                self.floor = True
+                return None
+            return self._on(step, stage, ctx, now)
+        self.floor = False
+        if sa or sb or not self.steps:
+            self.ok_since = None
+            return None
+        last = self.steps[-1]
+        if self.project(last, whole, ctx, period_ms) >= UP_LOAD:
+            self.ok_since = None
+            return None
+        if self.ok_since is None:
+            self.ok_since = now - DECIDE_S        # this second counts
+        wait = UP_WAIT_S[last] * self.mult[last]
+        if now - self.ok_since >= wait - EPS and now - (self.changed_at or -1e9) >= wait - EPS:
+            return self._off(last, now)
+        return None
+
+    def drop(self, step: str, now: float, why: str = "fallback") -> Optional[Change]:
+        """A step that can no longer apply (the GPU encoder fell back to ffmpeg: no fps step there) comes off now."""
+        if step not in self.steps:
+            return None
+        self.steps.remove(step)
+        if not self.steps:
+            self.why = None
+        self._changed(now)
+        return Change(step, False, why)
+
+    @staticmethod
+    def _over(w: Window, period_ms: float) -> Optional[str]:
+        if w.slots < MIN_SLOTS:
+            return None
+        ld = w.load(period_ms)
+        stage = max(ld, key=ld.get)
+        if ld[stage] >= DOWN_LOAD or w.repeats >= max(2.0, REPEAT_SHARE * w.slots) or w.late >= LATE_SHARE * w.slots:
+            return stage
+        return None
+
+    def _next_down(self, stage: str, ctx: Ctx) -> Optional[str]:
+        for step in STEPS:
+            if step in self.steps:
+                continue
+            if step == "fx" and ctx.has_fx and stage in ("host", "gpu"):
+                return step
+            if step == "scene_rate" and stage in ("host", "gpu") and ctx.own_div < SCENE_FLOOR:
+                return step
+            if step == "fps" and ctx.can_fps:
+                return step
+        return None
+
+    def project(self, step: str, w: Window, ctx: Ctx, period_ms: float) -> float:
+        """The load (the busiest stage's share of the period) with ``step`` off again."""
+        ld = w.load(period_ms)
+        p = max(EPS, period_ms)
+        if step == "fps":                         # the same work per slot in half the period
+            return 2.0 * max(ld.values())
+        if step == "scene_rate":
+            if ctx.own_div >= SCENE_FLOOR or w.drawn_host_ms is None:
+                return max(ld.values())           # the scene is that slow by itself: the floor changes nothing
+            return max(max(w.host_ms, w.drawn_host_ms) / p, max(w.gpu_ms, w.drawn_gpu_ms or 0.0) / p, ld["enc"])
+        h0, g0 = self.fx_at                       # fx: what the bus cost when the trim came on, back
+        return max(ld["host"] + max(0.0, h0 - ctx.fx_host_ms) / p, ld["gpu"] + max(0.0, g0 - ctx.fx_gpu_ms) / p,
+                   ld["enc"])
+
+    def _on(self, step: str, stage: str, ctx: Ctx, now: float) -> Change:
+        self.steps.append(step)
+        self.why = stage
+        off = self.off_at.pop(step, None)
+        if off is not None:
+            if now - off < SETTLE_S:              # it came off too soon: wait longer next time
+                self.mult[step] = min(WAIT_MAX_X, self.mult[step] * 2)
+                self.failed_ups += 1
+            else:
+                self.mult[step] = 1
+        if step == "fx":
+            self.fx_at = (ctx.fx_host_ms, ctx.fx_gpu_ms)
+        self.downs += 1
+        self._changed(now)
+        return Change(step, True, stage)
+
+    def _off(self, step: str, now: float) -> Change:
+        self.steps.pop()
+        self.off_at[step] = now
+        if not self.steps:
+            self.why = None
+        self.ups += 1
+        self._changed(now)
+        return Change(step, False, None)
+
+    def _changed(self, now: float) -> None:
+        self.changed_at = self.window_from = now
+        self.ok_since = None
+        self.since = self.wall()
+
+    # -- reporting -----------------------------------------------------------------------------------------------
+    @property
+    def out_fps(self) -> int:
+        return self.grid_fps // 2 if "fps" in self.steps else self.grid_fps
+
+    def state(self) -> dict:
+        return {"mode": "on", "level": len(self.steps), "step": self.steps[-1] if self.steps else None,
+                "steps": list(self.steps), "why": WHY.get(self.why) if self.steps and self.why else None,
+                "since": None if self.since is None else _iso(self.since),
+                "text": text(self.steps, self.why if self.steps else None, self.grid_fps),
+                "out_fps": self.out_fps, "scene_div": SCENE_FLOOR if "scene_rate" in self.steps else 1,
+                "fx_trim": "fx" in self.steps, "floor": self.floor, "frozen": self.frozen, "load": self.load,
+                "up_wait_s": {s: UP_WAIT_S[s] * self.mult[s] for s in STEPS},
+                "downs": self.downs, "ups": self.ups, "failed_ups": self.failed_ups}
+
+
+def off_state(grid_fps: int) -> dict:
+    """``degrade: off`` (stream_switches.json): no controller."""
+    return {"mode": "off", "level": 0, "step": None, "steps": [], "why": None, "since": None,
+            "text": text((), None, grid_fps), "out_fps": grid_fps, "scene_div": 1, "fx_trim": False, "floor": False,
+            "frozen": False, "load": None}

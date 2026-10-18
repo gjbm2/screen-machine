@@ -704,6 +704,7 @@ def _hevc_vui(r: BitReader, rec: dict, max_sub_layers_minus1: int, pos: dict) ->
     if r.u(1):                     # default_display_window_flag
         r.ue(); r.ue(); r.ue(); r.ue()
     if r.u(1):                     # vui_timing_info_present_flag
+        pos["timing"] = r.pos      # vui_num_units_in_tick, vui_time_scale: 64 bits
         r.u(32); r.u(32)
         if r.u(1):
             r.ue()
@@ -877,16 +878,46 @@ def hevc_sps_with_colour(sps: bytes, colr: tuple[int, int, int, bool]) -> bytes:
     return sps[:2] + escape_rbsp(w.trailing())
 
 
+def hevc_sps_same_but_timing(a: bytes, b: bytes) -> bool:
+    """Two SPS NAL units that differ at most in their VUI timing (num_units_in_tick, time_scale): what NVENC changes
+    after an fps Reconfigure with its level held (P4000, 18 Oct)."""
+    if a == b:
+        return True
+    if len(a) < 3 or a[:2] != b[:2]:
+        return False
+    ra, rb = unescape_rbsp(a[2:]), unescape_rbsp(b[2:])
+    if len(ra) != len(rb):
+        return False
+    pa: dict = {}
+    pb: dict = {}
+    try:
+        _hevc_sps(BitReader(ra), _hvcc_rec(), pa)
+        _hevc_sps(BitReader(rb), _hvcc_rec(), pb)
+    except (ValueError, IndexError):
+        return False
+    t = pa.get("timing")
+    if t is None or t != pb.get("timing"):
+        return False
+    bits = len(ra) * 8
+    mask = ((1 << 64) - 1) << (bits - t - 64)
+    return (int.from_bytes(ra, "big") ^ int.from_bytes(rb, "big")) & ~mask == 0
+
+
 class HevcAnnexB:
     """NVENC's Annex B access units -> the config record and the length-prefixed samples today's FLV path gives
     (``hev1``: parameter sets stay in band).  With ``colr`` every SPS (the record's and the in-band copies on IDRs)
-    carries that VUI colour description."""
+    carries that VUI colour description.  An in-band SPS that differs from the record's only in its VUI timing (after
+    the degradation controller's fps step, encode/nvenc.py) is sent as the record's: the decoder never sees its
+    parameter sets change mid-stream (frame times are the fMP4's; ``pinned_sps`` counts them)."""
 
     def __init__(self, width: int, height: int, colr: Optional[tuple[int, int, int, bool]] = None):
         self.width, self.height, self.colr = width, height, colr
         self._sps: dict[bytes, bytes] = {}
         self.config: Optional[StreamConfig] = None
         self.inband_param_sets = 0
+        self._pin: Optional[bytes] = None
+        self._pinned: dict[bytes, bytes] = {}
+        self.pinned_sps = 0
 
     def _fix_sps(self, nal: bytes) -> bytes:
         if self.colr is None:
@@ -896,8 +927,22 @@ class HevcAnnexB:
             out = self._sps[nal] = hevc_sps_with_colour(nal, self.colr)
         return out
 
+    def _inband_sps(self, nal: bytes) -> bytes:
+        out = self._fix_sps(nal)
+        pin = self._pin
+        if pin is None or out == pin:
+            return out
+        got = self._pinned.get(out)
+        if got is None:
+            got = self._pinned[out] = pin if hevc_sps_same_but_timing(out, pin) else out
+        if got is pin:
+            self.pinned_sps += 1
+        return got
+
     def on_param_sets(self, annexb: bytes) -> StreamConfig:
         nals = [self._fix_sps(n) if hevc_nal_type(n) == HEVC_SPS else n for n in annexb_nals(annexb)]
+        sps = [n for n in nals if hevc_nal_type(n) == HEVC_SPS]
+        self._pin, self._pinned = (sps[0] if len(sps) == 1 else None), {}
         rec = build_hvcc(nals)
         self.config = StreamConfig("hevc", "hev1", "hvcC", rec, hevc_codec_string(rec, "hev1"), self.width,
                                    self.height, [])
@@ -913,5 +958,5 @@ class HevcAnnexB:
                 key = True
             elif t == HEVC_SPS:
                 self.inband_param_sets += 1
-                nals[k] = self._fix_sps(n)
+                nals[k] = self._inband_sps(n)
         return join_length_prefixed(nals), key

@@ -58,7 +58,8 @@ async def test_catalog(client):
     assert set(cat["profiles"]) == {"hevc-2160p60", "hevc-2160p30", "hevc-1080p60", "hevc-1080p30", "h264-720p30",
                                     "av1-720p30"}
     p = cat["profiles"]["hevc-2160p60"]
-    assert (p["codec"], p["w"], p["h"], p["fps"], p["bitrate"], p["gop_s"]) == ("hevc", 3840, 2160, 60, "50M", 1.0)
+    assert (p["codec"], p["w"], p["h"], p["fps"], p["bitrate"], p["gop_s"]) == ("hevc", 3840, 2160, 60, "40M", 1.0)
+    assert (p["vbv_s"], p["level"]) == (1.0, "5.1")                   # change 5: HEVC Main tier 5.1 (40 Mbit/s)
     assert cat["presets"]["scenes"]["fractal-zoom"]["source"] == "fractal_zoom"
     assert cat["presets"]["transitions"]["crossfade-3s"]["transition"] == "crossfade"
     assert r.headers["Cache-Control"] == "no-store"

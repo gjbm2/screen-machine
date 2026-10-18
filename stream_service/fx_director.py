@@ -27,6 +27,11 @@ music's load budget and the scene leave it (never below level_min).  An effect d
 ``draws``) is x by how much of it there is now (``heard``, set by the session): no piano, few note streams.  One layer moves at a time: a section change
 waits SECTION_WAIT_S for the scene director, and when the scene changes the carried auto effects are re-checked
 against the new scene (the one that fits worst is swapped once its fit fell below refit_below of what it was).
+
+The degradation controller's first step (degrade.py, plan change 5; ``set_trim``, from the session's on_degrade):
+fewer, cheaper bus effects while it is on: at most one auto effect fewer than the bus carried when it came on, and
+FX_TRIM_BUDGET of the bus budget for new picks.  A move is due at once when that leaves one too many (the remove fades
+like any other); the bus keeps playing, and manual effects are never touched.
 """
 from __future__ import annotations
 
@@ -61,6 +66,7 @@ FX_EVENT_GAP_S = 8.0           # no event move this soon after the last move
 FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
 FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
 SECTION_WAIT_S = 4.0           # a section change: the scene director moves first; if it did, only re-check the bus
+FX_TRIM_BUDGET = 0.5           # the degradation controller's fx step: this share of the bus budget for new picks
 
 
 @dataclass
@@ -106,6 +112,7 @@ class FxDirector:
         self._event_scene: Optional[str] = None               # the scene when a section change came in
         self._fit_at_add: dict[str, float] = {}                # preset -> its fit when it came in
         self.last_fit: Optional[str] = None
+        self.trim_max: Optional[int] = None                    # the degradation controller's fx step: auto effects cap
 
     # -- configuration -------------------------------------------------------------
     def configure(self, auto_fx: Optional[dict], direction: dict) -> None:
@@ -204,6 +211,17 @@ class FxDirector:
             self.next_at = now + SECTION_WAIT_S
         return True
 
+    def set_trim(self, on: bool, now: float, autos: int) -> bool:
+        """The degradation controller's fx step (degrade.py) came on or off; ``autos``: auto effects on the bus now.
+        -> a move is due now (one auto effect fewer)."""
+        if on == (self.trim_max is not None):
+            return False
+        self.trim_max = max(0, int(autos) - 1) if on else None
+        if on and autos > 0 and self.armed and self.enabled:
+            self.next_at = now
+            return True
+        return False
+
     def due(self, now: float) -> bool:
         return self.armed and self.enabled and self.next_at is not None and now >= self.next_at
 
@@ -249,7 +267,7 @@ class FxDirector:
         used_stages = {getattr(s, "stage", None) for s in keep}
         used_presets = {getattr(s.spec, "preset", None) for s in stack}    # a swap never re-picks the same
         bus_cost = sum(self._cost(cost, s.spec.preset or s.spec.effect) for s in keep)
-        budget = FX_BUS_BUDGET_MS / max(1e-3, pixels_ratio)
+        budget = FX_BUS_BUDGET_MS / max(1e-3, pixels_ratio) * (1.0 if self.trim_max is None else FX_TRIM_BUDGET)
         out = []
         for name in pool:
             p = presets[name]
@@ -406,6 +424,8 @@ class FxDirector:
         k = self.target_count()
         if ev == "drop":
             k = max(k, min(1, int(self.auto_fx.get("max", 2))))      # a drop always brings an effect
+        if self.trim_max is not None:
+            k = min(k, self.trim_max)                                # the degradation controller: fewer
         if self.thin_until is not None:
             if now < self.thin_until:
                 k = max(0, k - 1)                                    # a breakdown: one fewer
@@ -413,7 +433,9 @@ class FxDirector:
                 self.thin_until = None
         if len(autos) > k:
             old = autos[0]
-            return FxMove("remove", None, old.id, f"remove {old.spec.name} (density: {len(autos)} > {k}){on}")
+            why = "fewer effects: the stream is degraded" if self.trim_max is not None and k == self.trim_max \
+                else "density"
+            return FxMove("remove", None, old.id, f"remove {old.spec.name} ({why}: {len(autos)} > {k}){on}")
         if len(autos) < k:
             if len(stack) >= MAX_BUS_SLOTS:
                 return None
@@ -449,4 +471,4 @@ class FxDirector:
                 "next_in_s": None if self.next_at is None or not self.enabled else round(max(0.0, self.next_at - now), 1),
                 "on_the_bar": self.grid is not None, "event": self.event,
                 "thinned": self.thin_until is not None and now < self.thin_until, "last": self.last,
-                "scene": self._scene_seen, "last_fit": self.last_fit}
+                "scene": self._scene_seen, "last_fit": self.last_fit, "trimmed": self.trim_max is not None}

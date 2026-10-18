@@ -53,6 +53,16 @@ on the frame at ``hold_pts`` (the exit's last frame) and when a player joins.  I
 the session starts on today's ffmpeg path; if it fails mid-session the encode thread copies the surfaces down and
 feeds a new ffmpeg pipeline (frame ids continue; the frames NVENC held back are re-sent as the current one) and the
 session keeps playing: ``encoder_fallback`` says why (summary, details panel).  Degrade, never refuse.
+
+Degradation controller (4K60 plan change 5, degrade.py; ``degrade_mode`` "on" | "off", set by the session from
+stream_switches.json): decided on the render thread once a second, applied at a frame boundary.  Its scene-rate step
+is ``FrameCtx.rate_floor`` (layers.py); its fps step (GPU encoder at 60 fps only) is ``step``: frame ids stay on the
+profile's grid (``n`` = stream seconds x fps; the page's key times are fid / fps) and advance by ``step`` per output
+slot, the pacing deadlines with them; the step changes on a frame id that is a multiple of it, so the GOP's IDR grid
+still lands; the encode thread Reconfigure()s NVENC before the first frame of the new rate; each fMP4 sample lasts its
+slot's step in ticks, so the timeline stays contiguous (tfdt = id x tick).  The FX trim reaches the session's FX
+director through ``on_degrade``.  The repeat rule stays the per-slot catch-up; the scene's own rate divider stays its
+own (the floor bounds it from below).
 """
 from __future__ import annotations
 
@@ -65,6 +75,7 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from .degrade import DECIDE_S, Controller, Ctx, off_state
 from .effects import BUS_CLOSE_S, POOL_RESERVE, EffectLayer, FxUpdate, MasterBus, SlotUpdate, close_with_effects, \
     smoothstep
 from .encode.bitstream import StreamConfig
@@ -151,6 +162,7 @@ class EngineListener:
     def on_failed(self, detail: str) -> None: ...
     def on_plugin_error(self, info: dict) -> None: ...
     def on_fx(self, info: dict) -> None: ...   # {"retired": [ids]} | {"bus": "open"|"closed"}
+    def on_degrade(self, info: dict) -> None: ...   # the degradation controller stepped (degrade.Controller.state())
 
 
 __all__ = ["Engine", "EngineListener", "StartTransition", "UpdateParams", "Retire", "FxUpdate", "SlotUpdate"]
@@ -287,6 +299,18 @@ class Engine:
         self.backlog_repeats = 0
         self.frozen_exits = 0
         self.slow_trips = 0
+        # -- the degradation controller (plan change 5): "on" | "off", set by the session before start() --
+        self.degrade_mode = "on"
+        self.degrade: Optional[Controller] = None
+        self.step = 1                                 # frame ids per output slot (2: the fps step, 60 -> 30)
+        self._step_want = 1
+        self._steps: dict[int, int] = {}              # frame id -> its slot's step while not 1 (the sample duration)
+        self._enc_step = 1                            # encode thread: the step NVENC is configured for
+        self._fps_lost: Optional[str] = None          # the GPU encoder fell back: no fps step any more
+        self._dg_next = 0.0
+        self.fps_steps = 0
+        self.reconfigure_ms: Optional[float] = None
+        self.reconfigure_error: Optional[str] = None
 
     # ------------------------------------------------------------------------
     # setup (called from a worker thread, never the asyncio loop)
@@ -408,6 +432,7 @@ class Engine:
                 self.hud = None
         self.root = SourceLayer(anchor, 0.0)
         self._gpu_enc = gpu_enc
+        self.degrade = Controller(self.fps) if self.degrade_mode != "off" else None
         self.pipeline = gpu_enc if gpu_enc is not None else self._ffmpeg_pipeline()
         self.encoder_active = "nvenc" if gpu_enc is not None else "ffmpeg"
         self.started_at = pace_clock()
@@ -439,6 +464,7 @@ class Engine:
 
             return GpuEncoder(p.codec, self.w, self.h, self.fps, cp=self.ctx.cp, stream=self.ctx.stream,
                               bitrate=p.bitrate, gop_seconds=p.gop_s, colr=p.colr(), name=self._tag(),
+                              vbv_s=getattr(p, "vbv_s", None), level=getattr(p, "level", None),
                               clock=pace_clock, on_config=self._on_config, on_frame=self._on_frame)
         except Exception as e:
             self.encoder_fallback = f"NVENC unavailable: {type(e).__name__}: {e}"[:300]
@@ -517,7 +543,7 @@ class Engine:
     # ------------------------------------------------------------------------
     def _render_loop(self) -> None:
         ctx = self.ctx
-        period = 1.0 / self.fps
+        period = 1.0 / self.fps               # the frame-id grid; an output slot is step x this
         from .gpu import GpuOps
 
         fc = FrameCtx(0, self.fps, ctx.pool, retire=self._retire, ops=GpuOps(ctx), report=self._report,
@@ -556,7 +582,9 @@ class Engine:
                     if self.stop_evt.is_set():
                         break
                     self._poll_retired()
-                    late = slip > period
+                    self._degrade_boundary(fc, n)
+                    step = self.step
+                    late = slip > period * step
                     # Start-up is not counted: NVENC initialisation blocks the first pipe writes for ~0.3 s, and
                     # the catch-up after it (while the anchor is held) would count a few slots late.  Counting
                     # starts at the first on-time slot after the first encoded frame, or STARTUP_GRACE_S after
@@ -567,20 +595,20 @@ class Engine:
                         counting = not late or n - n_first_enc >= STARTUP_GRACE_S * self.fps
                     if late and counting:
                         self.late_frames += 1
-                    act = slot_action(late, self._last_slot is not None, self.render_cost_ema, period * 1000,
+                    act = slot_action(late, self._last_slot is not None, self.render_cost_ema, period * step * 1000,
                                       self._gpu_behind, self._repeat_run)
                     if act == "repeat" or act == "backlog":
                         self.repeats += 1
                         if act == "backlog":
                             self.backlog_repeats += 1
                         self._repeat_run += 1
-                        self._submit_repeat(n, slip_seen)
+                        self._submit_repeat(n, slip_seen, step)
                     else:
                         if act == "probe":
                             self.probe_frames += 1
                         self._repeat_run = 0
-                        self._render_frame(fc, slip_seen, probe=act == "probe")
-                    n += 1
+                        self._render_frame(fc, slip_seen, probe=act == "probe", step=step)
+                    n += step
                     self.frames = n
         except Exception as e:
             if not self.stop_evt.is_set():
@@ -593,6 +621,95 @@ class Engine:
             with self._cv:
                 self._pending.append(None)  # writer: stop
                 self._cv.notify_all()
+
+    # -- the degradation controller (degrade.py; render thread, at a frame boundary) ----------------------------------
+    def _degrade_boundary(self, fc: FrameCtx, n: int) -> None:
+        """Once a second, a decision; a pending fps step lands here on a frame id that is a multiple of it."""
+        try:
+            if self._fps_lost is not None and (self._step_want != 1 or self.step != 1):
+                self._step_want = 1                    # the ffmpeg fallback numbers frames itself: one tick each
+                ch = self.degrade.drop("fps", pace_clock()) if self.degrade is not None else None
+                if ch is not None:
+                    self._degrade_changed(ch)
+            if self._step_want != self.step and n % self._step_want == 0:
+                self._set_step(fc, self._step_want)
+            dg = self.degrade
+            if dg is None:
+                return
+            now = pace_clock()
+            if now < self._dg_next:
+                return
+            self._dg_next = now + DECIDE_S
+            ch = dg.decide(self._records_since(dg.window_start(now)), self._degrade_ctx(), now,
+                           1000.0 * self.step / self.fps)
+            if ch is None:
+                return
+            if ch.step == "scene_rate":
+                fc.rate_floor = 2 if ch.on else 1
+            elif ch.step == "fps":
+                self._step_want = 2 if ch.on else 1
+                if n % self._step_want == 0:
+                    self._set_step(fc, self._step_want)
+            self._degrade_changed(ch)
+        except Exception:                          # the controller must never take the stream down
+            log.exception("[%s] degradation controller failed; off for this session (its steps stay)", self.name)
+            self.degrade = None
+
+    def _set_step(self, fc: FrameCtx, step: int) -> None:
+        self.step = fc.step = step
+        self.fps_steps += 1
+        out = self.fps // step
+        if self.ctx is not None:
+            self.ctx.fps = out                     # plug-ins that read ctx.fps (iFrameRate, simulation caps)
+        if self.timer is not None:
+            self.timer.set_fps(out)
+        if self.hud is not None:
+            self.hud.fps = out
+        log.info("[%s] output %d fps from frame %d (frame ids every %d)", self.name, out, fc.n, step)
+
+    def _degrade_changed(self, ch: Any) -> None:
+        st = self.degrade_state()
+        log.info("[%s] degrade: %s %s (%s): now %s", self.name, ch.step, "on" if ch.on else "off", ch.why or "headroom",
+                 st.get("text"))
+        if not self.stop_evt.is_set():
+            self.post(self.listener.on_degrade, st)
+
+    def _records_since(self, t: float) -> list:
+        out = []
+        for n in reversed(self.order):          # render thread: the only writer of order / records
+            r = self.records.get(n)
+            if r is None or r.t_start < t:
+                break
+            out.append(r)
+        return out
+
+    def _degrade_ctx(self) -> Ctx:
+        bus = self.bus
+        live = [sl for sl in bus.chain.slots if not getattr(sl, "removing", False) and not getattr(sl, "failed", False)]
+        fh = fg = 0.0
+        for sl in live:
+            st = getattr(sl, "gpu_stat", None)
+            if st is not None:
+                fh += float(st.cpu_ms or 0.0)
+                fg += float(st.gpu_bound_ms or 0.0)
+        from .hud import _first_source_layer
+
+        lay = _first_source_layer(self.root) if self.root is not None else None   # the scene, as the panel shows it
+        own = int(getattr(lay, "rate_div", 1) or 1)
+        frozen = self._out_applied or not bus.is_open or bus.level < 1.0
+        return Ctx(frozen=frozen, has_fx=bool(live), fx_host_ms=fh, fx_gpu_ms=fg, own_div=own,
+                   can_fps=self._gpu_enc is not None and self.fps == 60 and self._fps_lost is None)
+
+    def degrade_state(self) -> dict:
+        """The controller's state (its out_fps is the decided rate: the step lands within a slot), or the off one."""
+        dg = self.degrade
+        if dg is not None:
+            return dg.state()
+        st = off_state(self.fps)
+        if self.degrade_mode != "off":
+            st["mode"] = "stopped" if self.started_at is not None else "on"
+        st["out_fps"] = self.fps // self.step
+        return st
 
     def _poll_timer(self) -> None:
         """Read finished GPU timings and trip slow plug-ins (render thread; never blocks)."""
@@ -757,7 +874,7 @@ class Engine:
                 self._poll_timer()            # a stuck plug-in trips while we wait for the GPU
         return None
 
-    def _render_frame(self, fc: FrameCtx, slip: float, probe: bool = False) -> None:
+    def _render_frame(self, fc: FrameCtx, slip: float, probe: bool = False, step: int = 1) -> None:
         cp = self.ctx.cp
         stream = self.ctx.stream
         tw = pace_clock()
@@ -832,18 +949,22 @@ class Engine:
         self._keep(rec)
         self.slip_ms.add(rec.slip_ms)
         self.host_ms.add(host_ms)
+        if step != 1:
+            self._steps[fc.n] = step            # its fMP4 sample lasts step ticks
         with self._cv:
             slot.frame_id = fc.n
             slot.refs += 1                      # the pending write
             self._set_last(slot)
-            self._pending.append((fc.n, slot, True))
+            self._pending.append((fc.n, slot, True, step))
             self._cv.notify_all()
 
-    def _submit_repeat(self, n: int, slip: float) -> None:
+    def _submit_repeat(self, n: int, slip: float, step: int = 1) -> None:
         tw = pace_clock()
         rec = _Rec(n, True, slip * 1000, t_start=tw)
         self._keep(rec)
         self.slip_ms.add(rec.slip_ms)
+        if step != 1:
+            self._steps[n] = step
         with self._cv:
             while len(self._pending) >= MAX_PENDING_WRITES and not self.stop_evt.is_set():
                 self._cv.wait(0.1)
@@ -851,7 +972,7 @@ class Engine:
             rec.wait_ms = (pace_clock() - tw) * 1000
             slot = self._last_slot
             slot.refs += 1
-            self._pending.append((n, slot, False))
+            self._pending.append((n, slot, False, step))
             self._cv.notify_all()
 
     def _set_last(self, slot: _Slot) -> None:
@@ -929,7 +1050,7 @@ class Engine:
                     item = self._pending[0]
                 if item is None or self.stop_evt.is_set():
                     return
-                n, slot, rendered = item
+                n, slot, rendered, step = item
                 slot.ev_copied.synchronize()
                 rec = self.records.get(n)
                 if rendered and rec is not None:
@@ -941,7 +1062,7 @@ class Engine:
                 t0 = pace_clock()
                 c0 = time.thread_time()
                 try:
-                    self._submit(n, slot)
+                    self._submit(n, slot, step)
                 except (BrokenPipeError, ValueError, OSError) as e:
                     if not self.stop_evt.is_set():
                         self._fail(f"encoder input closed: {type(e).__name__}: {e}")
@@ -963,12 +1084,23 @@ class Engine:
             with self._cv:
                 self._cv.notify_all()
 
-    def _submit(self, n: int, slot: _Slot) -> None:
+    def _submit(self, n: int, slot: _Slot, step: int = 1) -> None:
         """One slot to the encoder (writer thread).  GPU encoder: Encode() on the slot's surface, an IDR where due;
-        an error there falls back to ffmpeg for the rest of the session, starting with this frame."""
+        an error there falls back to ffmpeg for the rest of the session, starting with this frame.  A new step (the
+        fps step) Reconfigure()s NVENC first; if it refuses, encoding goes on at the old rate's bits per frame."""
         gpu = self._gpu_enc
         if gpu is not None:
             try:
+                if step != self._enc_step:
+                    self._enc_step = step
+                    try:
+                        self.reconfigure_ms = round(gpu.set_fps(self.fps // step), 2)
+                    except Exception as e:
+                        if self.stop_evt.is_set():
+                            return
+                        self.reconfigure_error = f"{type(e).__name__}: {e}"[:300]
+                        log.error("[%s] NVENC fps Reconfigure failed (encoding goes on): %s", self.name,
+                                  self.reconfigure_error)
                 gpu.submit(slot.surface, n, self._idr_due(n))
                 return
             except Exception as e:
@@ -1004,6 +1136,8 @@ class Engine:
         the new init segment (MediaHub.set_config), then its first IDR."""
         log.error("[%s] encoder fallback to ffmpeg at frame %d: %s", self.name, n, reason)
         self.encoder_fallback, self.encoder_active = reason, "ffmpeg"
+        self._fps_lost = reason                 # ffmpeg numbers its frames one tick apart: the fps step comes off
+        self._steps.clear()
         gpu, self._gpu_enc = self._gpu_enc, None
         try:
             gpu.close()
@@ -1045,7 +1179,8 @@ class Engine:
             if rec.t_written is not None:
                 rec.encode_ms = (t_encoded - rec.t_written) * 1000
                 self.encode_ms.add(rec.encode_ms)
-        frag, _ = media_fragment(frame_id + 1, frame_id * self.frame_dur, self.frame_dur, sample, key)
+        step = self._steps.pop(frame_id, 1) if self._steps else 1
+        frag, _ = media_fragment(frame_id + 1, frame_id * self.frame_dur, self.frame_dur * step, sample, key)
         msg = bytes([MSG_FRAME, 1 if key else 0]) + frame_id.to_bytes(4, "big") + frag
         self.post(self.listener.on_media, frame_id, key, msg)
 
@@ -1133,6 +1268,9 @@ class Engine:
             "encoder": self.encoder_active or self.encoder, "encoder_fallback": self.encoder_fallback,
             "encode_cpu_ms": self.enc_cpu_ms.summary(), "slot_to_packet_ms": self.server_ms.summary(),
             "forced_idrs": self.forced_idrs,
+            # change 5: the degradation controller, the output rate and its NVENC Reconfigures
+            "degrade": self.degrade_state(), "out_fps": self.fps // self.step, "fps_steps": self.fps_steps,
+            "reconfigure_ms": self.reconfigure_ms, "reconfigure_error": self.reconfigure_error,
         }
 
     def guard_stats(self) -> dict:
@@ -1165,7 +1303,7 @@ class Engine:
         recs = self._recent(seconds)
         now = pace_clock()
         rendered = [r for r in recs if not r.repeat]
-        period_ms = 1000.0 / self.fps
+        period_ms = 1000.0 * self.step / self.fps      # an output slot
 
         def dist(key: str, rows: Optional[list] = None) -> dict:
             vals = sorted(getattr(r, key) for r in (recs if rows is None else rows) if getattr(r, key) is not None)
@@ -1187,18 +1325,20 @@ class Engine:
             "encode_queue": len(self._pending) + max(0, self.frames_written - self.frames_encoded),
             "mbps": round(sizes * 8 / 1e6 / seconds, 2),
             "nvenc_delay_frames": getattr(self._gpu_enc, "delay_frames", self.profile.nvenc_delay),   # the active one
+            "out_fps": self.fps // self.step,
         }
 
     def _recent_bitrate(self) -> Optional[float]:
-        """Encoded Mbit/s over the last second of frames."""
+        """Encoded Mbit/s over the last second of frames (at the output rate)."""
+        fps = self.fps // self.step
         sizes = []
-        for n in list(self.order)[-(self.fps + 30):]:
+        for n in list(self.order)[-(fps + 30):]:
             r = self.records.get(n)
             if r is not None and r.size is not None:
                 sizes.append(r.size)
-        if len(sizes) < self.fps // 2:
+        if len(sizes) < fps // 2:
             return None
-        return round(sum(sizes[-self.fps:]) * 8 / 1e6 * self.fps / min(len(sizes), self.fps), 2)
+        return round(sum(sizes[-fps:]) * 8 / 1e6 * fps / min(len(sizes), fps), 2)
 
     def frame_records(self, since: int = -1, limit: int = RECORD_KEEP) -> list[dict]:
         out = []
