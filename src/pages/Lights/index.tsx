@@ -1,8 +1,10 @@
 // /lights: setting up the room's lights (contract D), linked from the Room page's menu ("Lights setup"). Every light
 // show_service's rig knows (GET /show/api/v1/rig, polled every 2 s while the page is visible): the DMX lights on
 // Art-Net boxes, which can be added, edited and removed here, and the Hue lamps, which come from the Hue bridge. Each
-// row has Identify (full white for a moment). Add a light is the page's main action (LightForm.tsx). What a light does
-// with the music is chosen on the Room page, not here. Same light, warm skin as /room (its theme and pieces).
+// row has Identify (full white for a moment). Add a light is the page's main action (LightForm.tsx; Move it inside it).
+// "Lights | Room map" at the top (remembered on this device) switches to the Room map (RoomMap.tsx): where the screens,
+// lights and places are. What a light does with the music is chosen on the Room page, not here. Same light, warm skin
+// as /room (its theme and pieces).
 
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,13 +14,23 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Dot, Notice, Spinner, Unroll } from "@/pages/Room/bits";
 import { DeviceList, DeviceSection } from "@/pages/Room/Devices";
+import { storageGet, storageSet } from "@/pages/Room/api";
 import { RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
 import type { Tone } from "@/pages/Room/tones";
 import { LightsApi } from "./api";
 import { LightSheet } from "./LightForm";
 import { LightItem } from "./LightItem";
 import type { LightRow } from "./lib";
+import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig } from "./useRig";
+
+type Tab = "lights" | "map";
+const TAB_KEY = "lights.tab";
+
+/** The tab last shown on this device (Room's storage helpers: a blocked store reads as none). */
+function storedTab(): Tab {
+  return storageGet(TAB_KEY) === "map" ? "map" : "lights";
+}
 
 /** The tab title while on this page, put back on the way out. */
 function usePageTitle(title: string) {
@@ -45,6 +57,12 @@ export default function LightsPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<LightRow | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tab, setTabState] = useState<Tab>(storedTab);
+  const [mapSelect, setMapSelect] = useState<string | null>(null);
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    storageSet(TAB_KEY, t);
+  };
 
   const rows = useMemo(() => rig.rows ?? [], [rig.rows]);
   const dmx = useMemo(() => rows.filter((r) => r.dmx).sort(byPlace), [rows]);
@@ -110,6 +128,33 @@ export default function LightsPage() {
         </header>
 
         <main className="space-y-5 pt-2">
+          <div role="tablist" aria-label="Show" className="grid grid-cols-2 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
+            {(
+              [
+                ["lights", "Lights"],
+                ["map", "Room map"],
+              ] as [Tab, string][]
+            ).map(([t, words]) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  "min-h-10 rounded-full text-[15px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  tab === t ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
+                )}
+              >
+                {words}
+              </button>
+            ))}
+          </div>
+
+          {tab === "map" ? (
+            <RoomMap api={api} things={rig.all} selectedId={mapSelect} />
+          ) : (
+          <>
           <div className="space-y-2">
             <Button onClick={openAdd} className={cn(TAP_BUTTON_CLASS, "w-full sm:w-auto")} data-testid="add-light">
               <Plus aria-hidden /> Add a light
@@ -173,6 +218,8 @@ export default function LightsPage() {
             </Link>
             .
           </p>
+          </>
+          )}
         </main>
       </div>
 
@@ -183,7 +230,12 @@ export default function LightsPage() {
         api={api}
         rows={rows}
         types={types}
+        ui={rig.ui}
         onSaved={rig.refresh}
+        onShowOnMap={(id) => {
+          setMapSelect(id);
+          setTab("map");
+        }}
       />
 
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="other" />

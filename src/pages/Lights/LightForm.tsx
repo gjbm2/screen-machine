@@ -1,13 +1,18 @@
-// Add a light (one question at a time, four steps) and Edit a DMX light (the same four questions on one sheet).
+// Add a light (one question at a time, five steps) and Edit a DMX light (the same questions on one sheet).
 //   1. What kind of light it is (the types the room knows, the plain generic ones first).
 //   2. Where it's plugged in: the Art-Net box's address and the universe (1 unless the box says otherwise).
-//   3. Its first channel, with the channels it uses and any light it would share them with.
-//   4. Its name and where it is in the room (the placements the other lights have, or anything typed).
-// Save sends POST /show/api/v1/rig/fixtures (Edit: PUT with only what changed). The server's problems come back in
-// its words, inline. After saving a new light the sheet offers Identify, so it can be found at once.
+//   3. Its first channel, with the channels it uses and any light it would share them with. Next SAVES the light
+//      (POST /show/api/v1/rig/fixtures under a provisional name: its kind and the next number), so it exists and can
+//      be driven straight away (docs/LIGHTS.md §8.2).
+//   4. Move it (MoveIt.tsx): drive the real light, store its home, limits and positions, point it at places on the Room
+//      map; a light that doesn't move shows only what it can do ("Check it lights").
+//   5. Its name and where it is in the room (PUT with only what changed).
+// Closing after step 3 leaves the light registered and offers "Remove this light". Edit shows the same questions with
+// Move it as a section that unrolls ("Move it and set it up"). The server's problems come back in its words, inline.
+// After saving a new light the sheet offers Identify, and "Put it on the Room map".
 
-import { useMemo, useState, type ReactNode } from "react";
-import { Check, ChevronLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { Check, ChevronLeft, MapPin, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +22,7 @@ import { ActionSheet } from "@/pages/Room/overlays";
 import { TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { explainLightsError, LightsApiError, type LightsApi } from "./api";
 import { IdentifyButton, useIdentify } from "./Identify";
+import { MoveIt } from "./MoveIt";
 import {
   changedBody,
   checkDraft,
@@ -30,16 +36,19 @@ import {
   overlapsWith,
   placementChoices,
   problemWords,
+  provisionalName,
   rowsFromRig,
   wholeNumber,
   type Draft,
   type DraftField,
   type LightRow,
+  type LightsUi,
   type LightType,
 } from "./lib";
 import type { TypesState } from "./useRig";
 
-const STEPS = 4;
+const STEPS = 5;
+const MOVE_STEP = 4;
 const INPUT = "h-11 rounded-xl bg-white text-base";
 const CHIP =
   "inline-flex min-h-11 items-center rounded-full border px-3.5 text-[15px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -54,7 +63,9 @@ export function LightSheet({
   api,
   rows,
   types,
+  ui,
   onSaved,
+  onShowOnMap,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,13 +73,22 @@ export function LightSheet({
   api: LightsApi;
   rows: LightRow[];
   types: TypesState;
+  /** Move it's numbers (show.yaml lights.jog). */
+  ui: LightsUi;
   /** Read the rig again. */
   onSaved: () => void;
+  /** Open the Room map with this light selected. */
+  onShowOnMap?: (id: string) => void;
 }) {
+  // Closing the sheet half way through adding asks first (the light is already saved): the form says when.
+  const guard = useRef<(() => boolean) | null>(null);
   return (
     <ActionSheet
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(o) => {
+        if (!o && guard.current?.()) return;
+        onOpenChange(o);
+      }}
       title={editing ? `Edit ${editing.label}` : "Add a light"}
       testId="light-sheet"
     >
@@ -78,8 +98,18 @@ export function LightSheet({
         api={api}
         rows={rows}
         types={types}
+        ui={ui}
+        guard={guard}
         onSaved={onSaved}
         onClose={() => onOpenChange(false)}
+        onShowOnMap={
+          onShowOnMap
+            ? (id) => {
+                onOpenChange(false);
+                onShowOnMap(id);
+              }
+            : undefined
+        }
       />
     </ActionSheet>
   );
@@ -136,17 +166,26 @@ function LightForm({
   api,
   rows,
   types: typesState,
+  ui,
+  guard,
   onSaved,
   onClose,
+  onShowOnMap,
 }: {
   editing: LightRow | null;
   api: LightsApi;
   rows: LightRow[];
   types: TypesState;
+  ui: LightsUi;
+  guard: MutableRefObject<(() => boolean) | null>;
   onSaved: () => void;
   onClose: () => void;
+  onShowOnMap?: (id: string) => void;
 }) {
   const adding = editing === null;
+  // Adding: the light as saved at the end of step 3 (under its provisional name), so Move it can drive it.
+  const [created, setCreated] = useState<LightRow | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => (editing ? draftFromRow(editing) : emptyDraft()));
   const [step, setStep] = useState(1);
   // The steps (or, editing, the whole form) the person has tried to leave: their problems show from then on.
@@ -166,7 +205,7 @@ function LightForm({
     setFailure(null);
   };
 
-  const others = useMemo(() => rows.filter((r) => r.id !== editing?.id), [rows, editing?.id]);
+  const others = useMemo(() => rows.filter((r) => r.id !== (editing?.id ?? created?.id)), [rows, editing?.id, created?.id]);
   const universe = wholeNumber(draft.universe);
   const address = wholeNumber(draft.address);
   const nextFree = nextFreeChannel(others, draft.node_ip, universe);
@@ -183,24 +222,94 @@ function LightForm({
 
   const stepOk = (n: number) => (Object.keys(problems) as DraftField[]).every((f) => FIELD_STEP[f] !== n);
 
-  const save = async () => {
-    setTried(new Set([0, 1, 2, 3, 4]));
-    if (Object.keys(problems).length) {
-      if (adding) setStep(Math.min(...(Object.keys(problems) as DraftField[]).map((f) => FIELD_STEP[f])));
+  useEffect(() => {
+    guard.current = () => {
+      if (!created || saved || leaving) return false;
+      setLeaving(true);
+      return true;
+    };
+    return () => {
+      guard.current = null;
+    };
+  });
+
+  /** Step 3's Next: save the light (POST under a provisional name; once saved, PUT any change to steps 1-3). */
+  const saveWiring = async () => {
+    setTried((t) => new Set(t).add(1).add(2).add(3));
+    const bad = [1, 2, 3].find((n) => !stepOk(n));
+    if (bad !== undefined) {
+      setStep(bad);
       return;
-    }
-    let body = draftBody(draft);
-    if (editing) {
-      body = changedBody(draft, editing);
-      if (Object.keys(body).length === 0) {
-        onClose();
-        return;
-      }
     }
     setSaving(true);
     setFailure(null);
     try {
-      const res = editing ? await api.update(editing.id, body) : await api.add(body);
+      let row: LightRow | null = created;
+      let notes: string[] = [];
+      if (!created) {
+        const label = draft.label.trim() || provisionalName(type, rows);
+        const res = await api.add(draftBody({ ...draft, label }));
+        row = rowsFromRig({ fixtures: res?.fixture ? [res.fixture] : [] })[0] ?? null;
+        notes = problemWords(res?.problems);
+        if (!row) {
+          setFailure({ text: "That wasn't saved:", problems: notes });
+          return;
+        }
+        setDraft((d) => ({ ...d, label: row?.label ?? label }));
+      } else {
+        const body = changedBody({ ...draft, label: created.label }, created);
+        if (Object.keys(body).length) {
+          const res = await api.update(created.id, body);
+          row = rowsFromRig({ fixtures: res?.fixture ? [res.fixture] : [] })[0] ?? created;
+          notes = problemWords(res?.problems);
+        }
+      }
+      setCreated(row);
+      onSaved();
+      if (notes.length) setFailure({ text: "Saved. Worth a look:", problems: notes });
+      setStep(MOVE_STEP);
+    } catch (e) {
+      setFailure({ text: explainLightsError(e), problems: e instanceof LightsApiError ? e.problems : [] });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeCreated = async () => {
+    if (!created) return;
+    setSaving(true);
+    try {
+      await api.remove(created.id);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setFailure({ text: explainLightsError(e), problems: e instanceof LightsApiError ? e.problems : [] });
+      setLeaving(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = async () => {
+    setTried(new Set([0, 1, 2, 3, 4, 5]));
+    if (Object.keys(problems).length) {
+      if (adding) setStep(Math.min(...(Object.keys(problems) as DraftField[]).map((f) => FIELD_STEP[f])));
+      return;
+    }
+    const target = editing ?? created;
+    const body = target ? changedBody(draft, target) : draftBody(draft);
+    if (target && Object.keys(body).length === 0) {
+      if (editing) {
+        onClose();
+        return;
+      }
+      setSaved({ id: target.id, label: target.label, words: footprintWords(target.address, target.footprint), problems: [] });
+      return;
+    }
+    setSaving(true);
+    setFailure(null);
+    try {
+      const res = target ? await api.update(target.id, body) : await api.add(body);
       const row = rowsFromRig({ fixtures: res?.fixture ? [res.fixture] : [] })[0] ?? null;
       const notes = problemWords(res?.problems);
       if (!res?.fixture && notes.length) {
@@ -214,7 +323,7 @@ function LightForm({
         onClose();
         return;
       }
-      setSaved({ id: row?.id ?? editing?.id ?? null, label: row?.label ?? draft.label.trim(), words, problems: notes });
+      setSaved({ id: row?.id ?? target?.id ?? null, label: row?.label ?? draft.label.trim(), words, problems: notes });
     } catch (e) {
       setFailure({ text: explainLightsError(e), problems: e instanceof LightsApiError ? e.problems : [] });
     } finally {
@@ -230,13 +339,32 @@ function LightForm({
         adding={adding}
         onAnother={() => {
           setSaved(null);
+          setCreated(null);
           setDraft((d) => ({ ...emptyDraft(), type: d.type, node_ip: d.node_ip, universe: d.universe }));
           setTried(new Set());
           setFreeText(false);
           setStep(3);
         }}
         onClose={onClose}
+        onShowOnMap={onShowOnMap}
       />
+    );
+  }
+
+  if (leaving && created) {
+    return (
+      <div className="space-y-4 pb-1" data-testid="light-leaving">
+        <p className="text-[17px] font-semibold">{created.label} is already saved</p>
+        <p className="text-[15px] text-muted-foreground">The show can drive it now. Keep it as it is (you can name it later with Edit), or remove it.</p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={() => void removeCreated()} disabled={saving} className={cn(TAP_BUTTON_CLASS, "text-rose-700 hover:bg-rose-50")}>
+            {saving ? <Spinner /> : <Trash2 aria-hidden />} Remove this light
+          </Button>
+          <Button onClick={onClose} className={TAP_BUTTON_CLASS} data-testid="light-keep">
+            Keep it
+          </Button>
+        </div>
+      </div>
     );
   }
 
@@ -367,7 +495,7 @@ function LightForm({
 
   const q4 = (
     <section data-testid="step-name" className="space-y-3">
-      <StepHead n={4} title="Its name and where it is" adding={adding} />
+      <StepHead n={adding ? STEPS : 4} title="Its name and where it is" adding={adding} />
       <div className="space-y-1.5">
         <Label htmlFor="light-name" className="text-[15px]">
           Name
@@ -464,6 +592,11 @@ function LightForm({
         {q1}
         {q2}
         {q3}
+        {editing.address !== null && (
+          <Unroll title={<span className="text-[17px] font-semibold">Move it and set it up</span>} testId="edit-move-it" revealOnOpen>
+            <MoveIt api={api} row={editing} ui={ui} onChanged={onSaved} />
+          </Unroll>
+        )}
         {q4}
         {failureNote}
         <div className="sticky bottom-0 -mx-1 flex flex-wrap justify-end gap-2 bg-background px-1 pb-1 pt-2">
@@ -480,19 +613,35 @@ function LightForm({
 
   // -- add: one question at a time ----------------------------------------------------------------------------------------
   const next = () => {
+    if (step === 3) {
+      void saveWiring();
+      return;
+    }
     setTried((t) => new Set(t).add(step));
     if (stepOk(step)) setStep((s) => Math.min(STEPS, s + 1));
   };
+  const moveStep = created && (
+    <section data-testid="step-move" className="space-y-3">
+      <StepHead
+        n={MOVE_STEP}
+        title={created.caps?.moves ? "Move it" : "Check it lights"}
+        sub={created.caps?.moves ? "It's saved as “" + created.label + "”: move the real light, and store where it rests and where it may go." : "It's saved as “" + created.label + "”: try what it can do."}
+        adding
+      />
+      <MoveIt api={api} row={created} ui={ui} onChanged={onSaved} />
+    </section>
+  );
   return (
     <div className="space-y-4 pb-1">
       {step === 1 && q1}
       {step === 2 && q2}
       {step === 3 && q3}
-      {step === 4 && q4}
-      {step === STEPS && failureNote}
+      {step === MOVE_STEP && moveStep}
+      {step === STEPS && q4}
+      {step >= 3 && failureNote}
       {step > 1 && (
         <p className="text-sm text-muted-foreground" data-testid="add-so-far">
-          {[type?.label, draft.node_ip.trim() && `box ${draft.node_ip.trim()}`, universe !== null && `universe ${universe}`, step > 3 && fpWords]
+          {[created?.label, type?.label, draft.node_ip.trim() && `box ${draft.node_ip.trim()}`, universe !== null && `universe ${universe}`, step > 3 && fpWords]
             .filter(Boolean)
             .join(" · ")}
         </p>
@@ -503,11 +652,16 @@ function LightForm({
             <ChevronLeft aria-hidden /> Back
           </Button>
         )}
+        {created && step > 3 && (
+          <Button variant="ghost" onClick={() => setLeaving(true)} disabled={saving} className={cn(TAP_BUTTON_CLASS, "px-3 text-rose-700 hover:bg-rose-50")}>
+            Remove this light
+          </Button>
+        )}
         <span className="flex-1" />
         {step < STEPS ? (
           (step > 1 || !!draft.type) && (
-            <Button onClick={next} className={TAP_BUTTON_CLASS} data-testid="light-next">
-              Next
+            <Button onClick={next} disabled={saving} className={TAP_BUTTON_CLASS} data-testid="light-next">
+              {saving && <Spinner />} {step === 3 && !created ? "Save and move it" : "Next"}
             </Button>
           )
         ) : (
@@ -575,12 +729,14 @@ function SavedPanel({
   adding,
   onAnother,
   onClose,
+  onShowOnMap,
 }: {
   saved: Saved;
   api: LightsApi;
   adding: boolean;
   onAnother: () => void;
   onClose: () => void;
+  onShowOnMap?: (id: string) => void;
 }) {
   const ident = useIdentify(api, saved.id);
   return (
@@ -607,6 +763,11 @@ function SavedPanel({
         </div>
       )}
       <div className="flex flex-wrap justify-end gap-2 pt-1">
+        {saved.id && onShowOnMap && (
+          <Button variant="outline" onClick={() => onShowOnMap(saved.id as string)} className={cn(TAP_BUTTON_CLASS, "bg-white")}>
+            <MapPin aria-hidden /> Put it on the Room map
+          </Button>
+        )}
         {adding && (
           <Button variant="outline" onClick={onAnother} className={cn(TAP_BUTTON_CLASS, "bg-white")}>
             Add another

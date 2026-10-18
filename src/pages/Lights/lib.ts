@@ -29,6 +29,10 @@ export interface LightRow {
   hue: boolean;
   /** On an Art-Net box: editable and removable here. */
   dmx: boolean;
+  /** What it can do (show_service's FixtureCaps): Move it's controls come from this alone. Null: not known yet. */
+  caps: Caps | null;
+  /** Its own settings (fixtures.setup.yaml): home, limits, named positions, slot names, its normal beam. */
+  setup: Setup;
 }
 
 /** A kind of light the room can drive (GET /show/api/v1/rig/types). */
@@ -179,6 +183,8 @@ function toRow(o: Obj, rv: Obj | null): LightRow | null {
     last_rgb: parseRgb(o.last_rgb),
     hue,
     dmx: !hue && (driver === "artnet" || address !== null || node_ip !== null),
+    caps: parseCaps(o.caps),
+    setup: parseSetup(o.setup),
   };
 }
 
@@ -420,7 +426,7 @@ export function checkDraft(d: Draft, type: LightType | null | undefined): Partia
 }
 
 /** The step of the add flow each field is asked on (1-based). */
-export const FIELD_STEP: Record<DraftField, number> = { type: 1, node_ip: 2, universe: 2, address: 3, label: 4 };
+export const FIELD_STEP: Record<DraftField, number> = { type: 1, node_ip: 2, universe: 2, address: 3, label: 5 };
 
 /** The whole body for POST (call only once checkDraft is empty). */
 export function draftBody(d: Draft): FixtureBody {
@@ -448,4 +454,655 @@ export function changedBody(d: Draft, r: LightRow): FixtureBody {
   if ((d.placement ?? null) !== r.placement) out.placement = d.placement ?? null;
   if ((d.zone ?? null) !== r.zone) out.zone = d.zone ?? null;
   return out;
+}
+
+// -- moving lights: capabilities, setup and Move it's controls (docs/LIGHTS.md §2.3, §8.3) -----------------------------
+
+export interface AxisCaps {
+  /** Centred degrees: 0 is the middle of the light's range. */
+  min: number;
+  max: number;
+  fine: boolean;
+}
+
+export interface SlotChoice {
+  slot: number;
+  name: string;
+  hex: string | null;
+  /** The wheel's Open slot (no pattern). */
+  open: boolean;
+  /** It can shake (gobo slots). */
+  shake: boolean;
+}
+
+export interface MacroChoice {
+  channel: string;
+  name: string;
+  choices: string[];
+}
+
+/** What a light can do (show_service's FixtureCaps). The page builds Move it's controls from this alone. */
+export interface Caps {
+  attrs: string[];
+  pan: AxisCaps | null;
+  tilt: AxisCaps | null;
+  zoom: { min: number; max: number; known: boolean } | null;
+  focus: boolean;
+  iris: boolean;
+  frost: boolean;
+  colour: "mix" | "wheel" | "none";
+  colour_slots: SlotChoice[];
+  gobo_slots: SlotChoice[];
+  gobo2_slots: SlotChoice[];
+  prism_slots: SlotChoice[];
+  spins: string[];
+  cct: { min_k: number; max_k: number } | null;
+  shutter: string[];
+  macros: MacroChoice[];
+  /** It turns and tilts. */
+  moves: boolean;
+}
+
+export type Axis = "pan" | "tilt";
+export type PanTilt = { pan: number; tilt: number };
+
+/** A light's own settings (fixtures.setup.yaml, written by POST .../setup). */
+export interface Setup {
+  home: PanTilt | null;
+  limits: Partial<Record<Axis, [number, number]>>;
+  positions: Record<string, PanTilt>;
+  jog_flip: Record<Axis, boolean>;
+  beam: Record<string, number>;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function strList(v: unknown): string[] {
+  return Array.isArray(v) ? v.flatMap((x) => (typeof x === "string" && x ? [x] : [])) : [];
+}
+
+function axisCaps(v: unknown): AxisCaps | null {
+  if (!isObj(v)) return null;
+  const min = num(v.min);
+  const max = num(v.max);
+  return min !== null && max !== null && max > min ? { min, max, fine: v.fine === true } : null;
+}
+
+function slotList(v: unknown): SlotChoice[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(isObj).flatMap((o) => {
+    const slot = int(o.slot);
+    if (slot === null) return [];
+    const hex = str(o.hex);
+    return [{ slot, name: str(o.name) ?? `Slot ${slot}`, hex: hex && hexToRgb(hex) ? hex : null, open: o.open === true, shake: o.shake === true }];
+  });
+}
+
+/** show_service's caps for a light, read tolerantly; null when it sent none (an older show_service). */
+export function parseCaps(v: unknown): Caps | null {
+  if (!isObj(v)) return null;
+  const attrs = strList(v.attrs);
+  const pan = axisCaps(v.pan);
+  const tilt = axisCaps(v.tilt);
+  const zoomRaw = isObj(v.zoom) ? v.zoom : null;
+  const zmin = zoomRaw ? num(zoomRaw.min) : null;
+  const zmax = zoomRaw ? num(zoomRaw.max) : null;
+  const cctRaw = isObj(v.cct) ? v.cct : null;
+  const kmin = cctRaw ? num(cctRaw.min_k) : null;
+  const kmax = cctRaw ? num(cctRaw.max_k) : null;
+  const macros = Array.isArray(v.macros)
+    ? v.macros.filter(isObj).flatMap((m) => {
+        const channel = str(m.channel);
+        if (!channel) return [];
+        const choices = Array.isArray(m.choices) ? m.choices.flatMap((c) => (isObj(c) && str(c.word) ? [str(c.word) as string] : [])) : [];
+        return choices.length ? [{ channel, name: str(m.name) ?? channel, choices }] : [];
+      })
+    : [];
+  return {
+    attrs,
+    pan,
+    tilt,
+    zoom: zmin !== null && zmax !== null && zmax > zmin ? { min: zmin, max: zmax, known: zoomRaw?.known === true } : null,
+    focus: v.focus === true,
+    iris: v.iris === true,
+    frost: v.frost === true,
+    colour: v.colour === "mix" || v.colour === "wheel" ? v.colour : "none",
+    colour_slots: slotList(v.colour_slots),
+    gobo_slots: slotList(v.gobo_slots),
+    gobo2_slots: slotList(v.gobo2_slots),
+    prism_slots: slotList(v.prism_slots),
+    spins: strList(v.spins),
+    cct: kmin !== null && kmax !== null && kmax > kmin ? { min_k: kmin, max_k: kmax } : null,
+    shutter: strList(v.shutter),
+    macros,
+    moves: typeof v.moves === "boolean" ? v.moves : !!(pan && tilt),
+  };
+}
+
+function panTilt(v: unknown): PanTilt | null {
+  if (!isObj(v)) return null;
+  const pan = num(v.pan);
+  const tilt = num(v.tilt);
+  return pan !== null && tilt !== null ? { pan, tilt } : null;
+}
+
+function pair(v: unknown): [number, number] | null {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const a = num(v[0]);
+  const b = num(v[1]);
+  return a !== null && b !== null ? [Math.min(a, b), Math.max(a, b)] : null;
+}
+
+export function emptySetup(): Setup {
+  return { home: null, limits: {}, positions: {}, jog_flip: { pan: false, tilt: false }, beam: {} };
+}
+
+/** A light's setup as POST .../setup answers it (or a rig row carries it), read tolerantly. */
+export function parseSetup(v: unknown): Setup {
+  const out = emptySetup();
+  if (!isObj(v)) return out;
+  out.home = panTilt(v.home);
+  if (isObj(v.limits)) {
+    for (const ax of ["pan", "tilt"] as Axis[]) {
+      const p = pair(v.limits[ax]);
+      if (p) out.limits[ax] = p;
+    }
+  }
+  if (isObj(v.positions)) {
+    for (const [name, pos] of Object.entries(v.positions)) {
+      const p = panTilt(pos);
+      if (p) out.positions[name] = p;
+    }
+  }
+  if (isObj(v.jog_flip)) out.jog_flip = { pan: v.jog_flip.pan === true, tilt: v.jog_flip.tilt === true };
+  if (isObj(v.beam)) for (const [k, x] of Object.entries(v.beam)) if (num(x) !== null) out.beam[k] = x as number;
+  return out;
+}
+
+/** Move it's numbers (show.yaml lights.jog, GET /rig lights_ui); the same starting points as show_service's. */
+export interface LightsUi {
+  send_hz: number;
+  idle_s: number;
+  nudge_deg: { fine: number; coarse: number };
+  drag_deg_per_px: { fine: number; coarse: number };
+}
+
+export const LIGHTS_UI_DEFAULT: LightsUi = {
+  send_hz: 20,
+  idle_s: 60,
+  nudge_deg: { fine: 1, coarse: 5 },
+  drag_deg_per_px: { fine: 0.1, coarse: 0.5 },
+};
+
+export function lightsUiFrom(rig: unknown): LightsUi {
+  const d = LIGHTS_UI_DEFAULT;
+  const ui = isObj(rig) && isObj(rig.lights_ui) ? rig.lights_ui : {};
+  const pos = (v: unknown, dflt: number) => (num(v) !== null && (v as number) > 0 ? (v as number) : dflt);
+  const two = (v: unknown, dflt: { fine: number; coarse: number }) => ({
+    fine: pos(isObj(v) ? v.fine : null, dflt.fine),
+    coarse: pos(isObj(v) ? v.coarse : null, dflt.coarse),
+  });
+  return {
+    send_hz: pos(ui.send_hz, d.send_hz),
+    idle_s: pos(ui.idle_s, d.idle_s),
+    nudge_deg: two(ui.nudge_deg, d.nudge_deg),
+    drag_deg_per_px: two(ui.drag_deg_per_px, d.drag_deg_per_px),
+  };
+}
+
+/** One control on Move it, from a capability (never from a type). `group` is the heading it sits under. */
+export type Control =
+  | { kind: "slider"; group: string; attr: string; label: string; min: number; max: number; step: number; ends: [string, string]; unit?: string }
+  | { kind: "colour"; group: string; attr: "colour"; label: string }
+  | { kind: "slots"; group: string; attr: string; wheel: "colour" | "gobo" | "gobo2"; label: string; slots: SlotChoice[] }
+  | { kind: "spin"; group: string; attr: string; label: string }
+  | { kind: "switch"; group: string; attr: string; label: string; on: unknown; off: unknown }
+  | { kind: "macro"; group: string; attr: "macro"; channel: string; label: string; choices: string[] };
+
+/** A shake switched on shakes at this share of the fastest (a starting point: the slider-free control). */
+export const SHAKE_ON = 0.5;
+
+/** Move it's controls for what a light can do (docs/LIGHTS.md §8.3's table), in the order the page shows them. */
+export function controlsFor(caps: Caps | null): Control[] {
+  if (!caps) return [];
+  const has = (a: string) => caps.attrs.includes(a);
+  const spins = (a: string) => caps.spins.includes(a) || has(a);
+  const out: Control[] = [];
+  if (has("intensity")) {
+    out.push({ kind: "slider", group: "Brightness", attr: "intensity", label: "Brightness", min: 0, max: 1, step: 0.01, ends: ["Dark", "Full"] });
+  }
+  if (caps.colour === "mix") out.push({ kind: "colour", group: "Colour", attr: "colour", label: "Colour" });
+  if (caps.colour === "wheel" && caps.colour_slots.length) {
+    out.push({ kind: "slots", group: "Colour", attr: "colour_slot", wheel: "colour", label: "Colour", slots: caps.colour_slots });
+  }
+  if (spins("colour_spin")) out.push({ kind: "spin", group: "Colour", attr: "colour_spin", label: "Spin the colours" });
+  if (caps.cct) {
+    out.push({ kind: "slider", group: "Colour", attr: "cct", label: "White warmth", min: caps.cct.min_k, max: caps.cct.max_k, step: 50, ends: ["Warm", "Cool"], unit: "K" });
+  }
+  for (const [wheel, group] of [["gobo", "Pattern"], ["gobo2", "Second pattern"]] as const) {
+    const slots = wheel === "gobo" ? caps.gobo_slots : caps.gobo2_slots;
+    if (!slots.length) continue;
+    out.push({ kind: "slots", group, attr: wheel, wheel, label: group, slots });
+    if (spins(`${wheel}_spin`)) out.push({ kind: "spin", group, attr: `${wheel}_spin`, label: "Spin" });
+    if (slots.some((s) => s.shake) || has(`${wheel}_shake`)) {
+      out.push({ kind: "switch", group, attr: `${wheel}_shake`, label: "Shake", on: SHAKE_ON, off: 0 });
+    }
+  }
+  if (caps.prism_slots.length || has("prism")) {
+    out.push({ kind: "switch", group: "Split the beam", attr: "prism", label: "Split the beam", on: caps.prism_slots[0]?.slot || 1, off: 0 });
+    if (spins("prism_spin")) out.push({ kind: "spin", group: "Split the beam", attr: "prism_spin", label: "Spin" });
+  }
+  if (caps.zoom) {
+    out.push({ kind: "slider", group: "Beam", attr: "zoom", label: "Beam size", min: caps.zoom.min, max: caps.zoom.max, step: 0.5, ends: ["Narrow", "Wide"], unit: "°" });
+  }
+  if (caps.focus) out.push({ kind: "slider", group: "Beam", attr: "focus", label: "Focus", min: 0, max: 1, step: 0.01, ends: ["Near", "Far"] });
+  if (caps.iris) out.push({ kind: "slider", group: "Beam", attr: "iris", label: "Iris", min: 0, max: 1, step: 0.01, ends: ["Small", "Open"] });
+  if (caps.frost) out.push({ kind: "slider", group: "Beam", attr: "frost", label: "Soft edge", min: 0, max: 1, step: 0.01, ends: ["Sharp", "Soft"] });
+  if (caps.shutter.includes("closed")) {
+    out.push({ kind: "switch", group: "Shutter", attr: "shutter", label: "Shutter open", on: { mode: "open" }, off: { mode: "closed" } });
+  }
+  for (const m of caps.macros) {
+    out.push({ kind: "macro", group: "More", attr: "macro", channel: m.channel, label: m.name, choices: m.choices });
+  }
+  return out;
+}
+
+/** The beam attributes "Keep this beam as its normal look" keeps. */
+export const BEAM_ATTRS = ["zoom", "focus", "iris", "frost"];
+
+export function hasBeam(caps: Caps | null): boolean {
+  return !!caps && (!!caps.zoom || caps.focus || caps.iris || caps.frost);
+}
+
+const deg = (x: number) => `${x < 0 ? "−" : ""}${Math.abs(Math.round(x))}°`;
+
+/** The pad's readout: "Turned 45° · Tilted −20°". */
+export function turnWords(pan: number, tilt: number): string {
+  return `Turned ${deg(pan)} · Tilted ${deg(tilt)}`;
+}
+
+/** "Turns from −120° to 90°", or "Turns anywhere" with no limits set. */
+export function limitWords(setup: Setup, axis: Axis): string {
+  const verb = axis === "pan" ? "Turns" : "Tilts";
+  const p = setup.limits[axis];
+  return p ? `${verb} from ${deg(p[0])} to ${deg(p[1])}` : `${verb} anywhere (no limits)`;
+}
+
+/** The hand-back countdown starts this many seconds before the show takes the light back. */
+export const HAND_BACK_WARN_S = 15;
+
+export type HoldState = "starting" | "holding" | "released" | "cant";
+
+/** Move it's banner: who has the light, and the countdown before the show takes it back. */
+export function holdWords(state: HoldState, leftS: number | null, why?: string | null): { text: string; warn: boolean } {
+  if (state === "cant") return { text: why || "This light can't be moved from here yet.", warn: true };
+  if (state === "released") return { text: "Handed back to the show. Tap to hold it again.", warn: false };
+  if (state === "starting") return { text: "Taking this light from the show…", warn: false };
+  if (leftS !== null && leftS <= HAND_BACK_WARN_S) {
+    return { text: `Handing it back to the show in ${Math.max(0, Math.ceil(leftS))} s`, warn: true };
+  }
+  return { text: "The show leaves this light alone while this is open.", warn: false };
+}
+
+/** A place's or a position's id from its name, as show_service makes them: "The piano" -> "piano". */
+export function placeId(words: string): string {
+  const s = words.trim();
+  if (/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(s)) return s;
+  return s
+    .toLowerCase()
+    .replace(/^(the|a|an)\s+/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64)
+    .replace(/-+$/g, "");
+}
+
+/** Words for a name with no label: "mirror_ball" -> "Mirror ball". */
+export function nameWords(name: string): string {
+  const s = name.replace(/[-_.]+/g, " ").trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : name;
+}
+
+/** "Moving head" from "Moving head: pan, tilt (fine), … (13 channels)". */
+export function shortTypeName(label: string | null | undefined): string {
+  const s = (label ?? "").split(/[:(]/)[0].trim();
+  return s || "Light";
+}
+
+/** The name a new light is saved under before it's named (step 3): its kind and the next free number. */
+export function provisionalName(t: LightType | null | undefined, rows: LightRow[]): string {
+  const base = shortTypeName(t?.label);
+  const taken = new Set(rows.map((r) => r.label.toLowerCase()));
+  for (let n = 1; ; n++) {
+    const name = `${base} ${n}`;
+    if (!taken.has(name.toLowerCase())) return name;
+  }
+}
+
+// -- the room: the Room map's space and the live view (docs/LIGHTS.md §3, §8.1) ----------------------------------------
+
+export type Vec3 = [number, number, number];
+export const FRONTS = ["north", "east", "south", "west"] as const;
+export type Front = (typeof FRONTS)[number];
+
+export interface Sample {
+  pan: number;
+  tilt: number;
+  point: string | null;
+}
+
+export interface Pose {
+  at: Vec3;
+  rms_deg: number;
+  samples: number;
+}
+
+export interface PlacedThing {
+  at: Vec3 | null;
+  mount: string | null;
+  plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
+  teach: Sample[];
+  pose: Pose | null;
+}
+
+export interface Place {
+  name: string;
+  label: string;
+  at: Vec3;
+  from: string | null;
+}
+
+export interface Area {
+  name: string;
+  label: string;
+  surface: string;
+  centre: Vec3;
+  size: [number, number];
+}
+
+export interface Target {
+  name: string;
+  label: string;
+  kind: string;
+  at: Vec3 | null;
+}
+
+/** GET /rig/space, read tolerantly (show_service's SpaceView + targets). */
+export interface RoomSpace {
+  error: string | null;
+  problems: string[];
+  size: Vec3 | null;
+  front: Front;
+  points: Place[];
+  regions: Area[];
+  appliances: Record<string, PlacedThing>;
+  targets: Target[];
+}
+
+function vec3(v: unknown): Vec3 | null {
+  if (!Array.isArray(v) || v.length !== 3) return null;
+  const xs = v.map(num);
+  return xs.every((x) => x !== null) ? (xs as Vec3) : null;
+}
+
+function size2(v: unknown): [number, number] | null {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const a = num(v[0]);
+  const b = num(v[1]);
+  return a !== null && b !== null && a > 0 && b > 0 ? [a, b] : null;
+}
+
+export function frontOf(v: unknown): Front {
+  return (FRONTS as readonly string[]).includes(v as string) ? (v as Front) : "north";
+}
+
+export function parseSpace(v: unknown): RoomSpace {
+  const o = isObj(v) ? v : {};
+  const room = isObj(o.room) ? o.room : {};
+  const size = vec3(room.size);
+  const points = isObj(o.points)
+    ? Object.entries(o.points).flatMap(([name, p]) => {
+        const at = isObj(p) ? vec3(p.at) : null;
+        return at && isObj(p) ? [{ name, label: str(p.label) ?? nameWords(name), at, from: str(p.from) }] : [];
+      })
+    : [];
+  const regions = isObj(o.regions)
+    ? Object.entries(o.regions).flatMap(([name, r]) => {
+        if (!isObj(r)) return [];
+        const centre = vec3(r.centre);
+        const sz = size2(r.size);
+        return centre && sz ? [{ name, label: str(r.label) ?? nameWords(name), surface: str(r.surface) ?? "floor", centre, size: sz }] : [];
+      })
+    : [];
+  const appliances: Record<string, PlacedThing> = {};
+  if (isObj(o.appliances)) {
+    for (const [id, a] of Object.entries(o.appliances)) {
+      if (!isObj(a)) continue;
+      const pl = isObj(a.plane) ? a.plane : null;
+      const pose = isObj(a.pose) && vec3(a.pose.at) ? { at: vec3(a.pose.at) as Vec3, rms_deg: num(a.pose.rms_deg) ?? 0, samples: int(a.pose.samples) ?? 0 } : null;
+      appliances[id] = {
+        at: vec3(a.at),
+        mount: str(a.mount),
+        plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
+        teach: Array.isArray(a.teach)
+          ? a.teach.filter(isObj).flatMap((s) => (num(s.pan) !== null && num(s.tilt) !== null ? [{ pan: s.pan as number, tilt: s.tilt as number, point: str(s.point) }] : []))
+          : [],
+        pose,
+      };
+    }
+  }
+  const targets = Array.isArray(o.targets)
+    ? o.targets.filter(isObj).flatMap((t) => {
+        const name = str(t.name);
+        return name ? [{ name, label: str(t.label) ?? nameWords(name), kind: str(t.kind) ?? "point", at: vec3(t.at) }] : [];
+      })
+    : [];
+  return { error: str(o.error), problems: problemWords(o.problems), size, front: frontOf(room.front), points, regions, appliances, targets };
+}
+
+export interface LiveFixture {
+  at: Vec3 | null;
+  hit: Vec3 | null;
+  surface: string | null;
+  pan: number | null;
+  tilt: number | null;
+  zoom_deg: number | null;
+  gobo: string | null;
+  prism: boolean;
+  intensity: number;
+  hex: string | null;
+  held: boolean;
+  calibrated: boolean;
+}
+
+export interface LiveFlow {
+  dir: string;
+  at: string | null;
+  at_xyz: Vec3 | null;
+}
+
+export interface LiveView {
+  flow: LiveFlow | null;
+  fixtures: Record<string, LiveFixture>;
+}
+
+/** GET /rig/live (show_service's LiveView), read tolerantly. */
+export function parseLive(v: unknown): LiveView {
+  const o = isObj(v) ? v : {};
+  const fl = isObj(o.flow) ? o.flow : null;
+  const fixtures: Record<string, LiveFixture> = {};
+  if (isObj(o.fixtures)) {
+    for (const [id, f] of Object.entries(o.fixtures)) {
+      if (!isObj(f)) continue;
+      fixtures[id] = {
+        at: vec3(f.at),
+        hit: vec3(f.hit),
+        surface: str(f.surface),
+        pan: num(f.pan),
+        tilt: num(f.tilt),
+        zoom_deg: num(f.zoom_deg),
+        gobo: str(f.gobo),
+        prism: f.prism === true,
+        intensity: num(f.intensity) ?? 0,
+        hex: str(f.hex),
+        held: f.held === true,
+        calibrated: f.calibrated === true,
+      };
+    }
+  }
+  return { flow: fl && str(fl.dir) ? { dir: str(fl.dir) as string, at: str(fl.at), at_xyz: vec3(fl.at_xyz) } : null, fixtures };
+}
+
+/** The flow in Room-page words: "Flowing upwards", "Turning clockwise". */
+export function flowWords(dir: string | null | undefined, atLabel?: string | null): string {
+  switch (dir) {
+    case "up":
+      return "Flowing upwards";
+    case "down":
+      return "Flowing downwards";
+    case "left":
+      return "Flowing to the left";
+    case "right":
+      return "Flowing to the right";
+    case "cw":
+      return "Turning clockwise";
+    case "ccw":
+      return "Turning anticlockwise";
+    case "outward":
+      return "Spreading outwards";
+    case "inward":
+      return "Gathering inwards";
+    case "towards":
+      return atLabel ? `Flowing towards ${atLabel}` : "Flowing towards one place";
+    case "away":
+      return atLabel ? `Flowing away from ${atLabel}` : "Flowing away from one place";
+    default:
+      return "Still";
+  }
+}
+
+/** "It knows where it hangs (within 1°)." for a calibrated light. */
+export function poseWords(pose: Pose | null, taught: number): string {
+  if (pose) return `It knows where it hangs (within ${Math.max(1, Math.round(pose.rms_deg))}°).`;
+  return taught > 0 ? `Learnt ${taught} of 3.` : "Point it at 3 places so the map can show where it shines.";
+}
+
+// -- the Room map's plan: room metres <-> SVG pixels, the front wall at the top ------------------------------------------
+
+/** Unit vectors in the floor plane (x east, y north): the wall people face (f) and their right (r). */
+const FRONT_AXES: Record<Front, { f: [number, number]; r: [number, number] }> = {
+  north: { f: [0, 1], r: [1, 0] },
+  east: { f: [1, 0], r: [0, -1] },
+  south: { f: [0, -1], r: [-1, 0] },
+  west: { f: [-1, 0], r: [0, 1] },
+};
+
+/** The plan's frame: the room drawn from above with its front wall at the top, so left and right on the page are the
+ *  room's left and right as people face the front. `s` px per metre. */
+export interface PlanFrame {
+  front: Front;
+  size: Vec3;
+  s: number;
+  pad: number;
+  /** The SVG's width and the plan's height in px (the side strip is `sideH` more). */
+  w: number;
+  h: number;
+  sideH: number;
+  u0: number;
+  v1: number;
+}
+
+export function planFrame(size: Vec3, front: Front, widthPx: number, pad = 24): PlanFrame {
+  const { f, r } = FRONT_AXES[front];
+  const corners: [number, number][] = [
+    [0, 0],
+    [size[0], 0],
+    [0, size[1]],
+    [size[0], size[1]],
+  ];
+  const us = corners.map(([x, y]) => x * r[0] + y * r[1]);
+  const vs = corners.map(([x, y]) => x * f[0] + y * f[1]);
+  const u0 = Math.min(...us);
+  const span = Math.max(...us) - u0;
+  const s = Math.max(1, (Math.max(widthPx, 2 * pad + 40) - 2 * pad) / Math.max(span, 0.1));
+  const depth = Math.max(...vs) - Math.min(...vs);
+  return { front, size, s, pad, w: widthPx, h: depth * s + 2 * pad, sideH: size[2] * s + 2 * pad, u0, v1: Math.max(...vs) };
+}
+
+/** A room point (x, y) on the plan, in px. */
+export function toPlan(fr: PlanFrame, x: number, y: number): [number, number] {
+  const { f, r } = FRONT_AXES[fr.front];
+  const u = x * r[0] + y * r[1];
+  const v = x * f[0] + y * f[1];
+  return [fr.pad + (u - fr.u0) * fr.s, fr.pad + (fr.v1 - v) * fr.s];
+}
+
+/** A plan point (px) back in the room's metres (x, y). */
+export function fromPlan(fr: PlanFrame, px: number, py: number): [number, number] {
+  const { f, r } = FRONT_AXES[fr.front];
+  const u = (px - fr.pad) / fr.s + fr.u0;
+  const v = fr.v1 - (py - fr.pad) / fr.s;
+  return [u * r[0] + v * f[0], u * r[1] + v * f[1]];
+}
+
+/** The side strip (looking at the front from behind the room's left-right axis): x px as the plan's, z up. */
+export function toSide(fr: PlanFrame, x: number, y: number, z: number): [number, number] {
+  return [toPlan(fr, x, y)[0], fr.pad + (fr.size[2] - z) * fr.s];
+}
+
+export function fromSide(fr: PlanFrame, py: number): number {
+  return fr.size[2] - (py - fr.pad) / fr.s;
+}
+
+/** Where a compass wall sits on the plan: "top" | "right" | "bottom" | "left". */
+export function wallSide(fr: PlanFrame, wall: Front): "top" | "right" | "bottom" | "left" {
+  const d: Record<Front, [number, number]> = { north: [0, 1], east: [1, 0], south: [0, -1], west: [-1, 0] };
+  const { f, r } = FRONT_AXES[fr.front];
+  const [dx, dy] = d[wall];
+  if (dx * f[0] + dy * f[1] > 0.5) return "top";
+  if (dx * f[0] + dy * f[1] < -0.5) return "bottom";
+  return dx * r[0] + dy * r[1] > 0 ? "right" : "left";
+}
+
+export function clampToRoom(size: Vec3, x: number, y: number): [number, number] {
+  return [Math.min(size[0], Math.max(0, x)), Math.min(size[1], Math.max(0, y))];
+}
+
+/** A screen dragged on the plan sits on the nearest wall, facing into the room. */
+export function snapToWall(size: Vec3, x: number, y: number): { x: number; y: number; wall: Front; normal: Vec3 } {
+  const [cx, cy] = clampToRoom(size, x, y);
+  const d: [Front, number][] = [
+    ["west", cx],
+    ["east", size[0] - cx],
+    ["south", cy],
+    ["north", size[1] - cy],
+  ];
+  const wall = d.reduce((a, b) => (b[1] < a[1] ? b : a))[0];
+  if (wall === "west") return { x: 0, y: cy, wall, normal: [1, 0, 0] };
+  if (wall === "east") return { x: size[0], y: cy, wall, normal: [-1, 0, 0] };
+  if (wall === "south") return { x: cx, y: 0, wall, normal: [0, 1, 0] };
+  return { x: cx, y: size[1], wall, normal: [0, -1, 0] };
+}
+
+/** Something on the Room map: every light and screen the rig knows (screens too, unlike rowsFromRig). */
+export interface Placeable {
+  id: string;
+  label: string;
+  kind: "screen" | "mover" | "lamp";
+  zone: string | null;
+}
+
+export function placeablesFromRig(rig: unknown): Placeable[] {
+  if (!isObj(rig)) return [];
+  const raw = rig.fixtures;
+  const list: Obj[] = Array.isArray(raw) ? raw.filter(isObj) : isObj(raw) ? Object.entries(raw).flatMap(([id, v]) => (isObj(v) ? [{ id, ...v }] : [])) : [];
+  return list.flatMap((o) => {
+    const id = str(o.id);
+    if (!id) return [];
+    const caps = parseCaps(o.caps);
+    const kind = str(o.kind) === "screen" ? "screen" : caps?.moves ? "mover" : "lamp";
+    return [{ id, label: str(o.label) ?? id, kind, zone: str(o.zone) }];
+  });
 }
