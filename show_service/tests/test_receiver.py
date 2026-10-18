@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import math
 import socket
+import struct
+import sys
 import threading
 import time
 
@@ -693,8 +695,8 @@ def test_set_priority_lifts_a_test_stream_after_the_switch_up_time():
 
 
 def test_end_to_end_over_localhost_udp(sender_sock):
-    """A real receiver thread and an in-process VBAN sender: SUBSCRIBE handshake, audio with one packet lost,
-    a heartbeat, MIDI and an unknown stream, all on ephemeral 127.0.0.1 ports."""
+    """A real receiver thread and an in-process VBAN sender: SUBSCRIBE handshake, audio in bursts of 4 with one packet
+    lost, heartbeats, MIDI (on its own socket) and an unknown stream, all on ephemeral 127.0.0.1 ports."""
     port = sender_sock.getsockname()[1]
     cfg = Config(senders=(Sender("kiosk", "localhost", port, ("room-mic", "room-piano")),),
                  vban_bind=("127.0.0.1", 0))
@@ -703,8 +705,9 @@ def test_end_to_end_over_localhost_udp(sender_sock):
     rx.start()
     try:
         sender_sock.settimeout(3.0)
-        data, back = sender_sock.recvfrom(2048)                 # the SUBSCRIBE handshake
+        data, back = sender_sock.recvfrom(2048)                 # the SUBSCRIBE handshake (from A, the bound port)
         assert vban.subscribed_streams(vban.parse(data)) == ["room-mic", "room-piano"]
+        assert back == rx._sock.getsockname()
         t_start = time.perf_counter()
         for c in range(80):
             if c != 40:                                         # one packet lost on the way
@@ -712,30 +715,45 @@ def test_end_to_end_over_localhost_udp(sender_sock):
             if c % 20 == 19:
                 sender_sock.sendto(hbpkt("room-mic", c // 20, sess="e2e", frame=c, n=c * FR,
                                          t_cap_ns=time.monotonic_ns(), dev="loop"), back)
-            delay = t_start + (c + 1) * PKT_S - time.perf_counter()
-            if delay > 0:
-                time.sleep(delay)
+            if c % 4 == 3:                                      # bursts: wakes with several packets queued
+                delay = t_start + (c + 1) * PKT_S - time.perf_counter()
+                if delay > 0:
+                    time.sleep(delay)
         sender_sock.sendto(apkt(0, "mystery"), back)
         sender_sock.sendto(midi_batch(1, time.monotonic_ns(), 0), back)
         sender_sock.sendto(b"junk", back)
         deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline:
             h = rx.health()
-            if (len(rec.of("room-mic")) >= 80 and rec.midi and "mystery" in h.get("streams", {})
-                    and h["socket"]["junk"] >= 1):
+            piano = h.get("streams", {}).get("room-piano", {}).get("net") or {}
+            if (sum(len(b[3]) for b in rec.of("room-mic")) >= 80 * FR and rec.midi and "mystery" in h["streams"]
+                    and h["socket"]["junk"] >= 1 and piano.get("rx_lag_ms")):
                 break
             time.sleep(0.05)
         mic = rec.of("room-mic")
-        assert [b[1] for b in mic] == [i * FR for i in range(80)]
-        flags = [b[5] for b in mic]
-        assert flags[0] == AUDIO_SEGMENT and flags[40] == AUDIO_GAP and flags[41] == AUDIO_RESUME
-        assert not mic[40][3].any() and all(math.isfinite(b[2]) for b in mic)
+        lens = [len(b[3]) for b in mic]
+        assert mic[0][1] == 0 and mic[0][5] == AUDIO_SEGMENT
+        assert all(mic[i + 1][1] == mic[i][1] + lens[i] for i in range(len(mic) - 1))    # n0 continuous
+        assert sum(lens) == 80 * FR and all(L % FR == 0 for L in lens)
+        g = [i for i, b in enumerate(mic) if b[5] & AUDIO_GAP]
+        assert len(g) == 1 and (mic[g[0]][1], lens[g[0]]) == (40 * FR, FR) and not mic[g[0]][3].any()
+        assert mic[g[0] + 1][5] == AUDIO_RESUME and (mic[g[0] + 1][1], lens[g[0] + 1]) == (41 * FR, FR)
+        assert all(b[5] == 0 for i, b in enumerate(mic) if i not in (0, g[0], g[0] + 1))
+        assert all(math.isfinite(b[2]) for b in mic)
         assert rec.midi[0][0] == "room-piano" and math.isfinite(rec.midi[0][3](rec.midi[0][1].ev[0][0]))
         h = rx.health()
         assert h["streams"]["mystery"]["rank"] == contract.UNKNOWN_RANK
         assert h["streams"]["room-mic"]["sender"]["sess"] == "e2e"
         assert h["streams"]["room-mic"]["net"]["gaps"] == 1 and h["socket"]["junk"] >= 1
         assert h["socket"]["bind"].startswith("127.0.0.1:") and h["senders"]["kiosk"]["addr"] == f"127.0.0.1:{port}"
+        assert h["socket"]["blocks"] == len(rec.audio) and h["socket"]["coalesce_min"] == 1
+        if sys.platform.startswith("linux"):
+            sk = h["socket"]
+            assert sk["stamps"] == "kernel" and sk["ts_bad"] == 0 and sk["queue_ms"]["max"] >= 0.0
+            assert sk["text"]["split"] is True and sk["text"]["bind"] == sk["bind"] and sk["text"]["stamps"] == "kernel"
+            assert sk["text"]["rx"] == 1 and sk["text"]["misrouted"] == 0          # the note came on B
+            lag = h["streams"]["room-piano"]["net"]["rx_lag_ms"]
+            assert 0.0 <= lag["p50"] <= lag["max"] < 1000.0
         assert {t.name for t in threading.enumerate()} >= {"show-rx", "show-dns"}
         ticks = np.diff(rec.ticks[-50:])
         assert len(rec.ticks) > 20 and np.median(ticks) < 0.02
@@ -789,6 +807,7 @@ def test_a_transient_socket_error_clears_on_the_next_packet(sender_sock):
         while time.monotonic() < deadline and (rx.health()["socket"]["error"] or not rec.of("room-mic")):
             time.sleep(0.02)
         assert rx.health()["socket"]["error"] is None and rec.of("room-mic")
+        assert rx.health()["socket"]["stamps"] == "user" and rx.health()["socket"]["text"]["split"] is False
     finally:
         rx.stop()
         rsock.close()
@@ -998,3 +1017,330 @@ def test_batch_counts_a_full_batch_as_a_backlog():
     rx._build_health(t + 1)
     s = rx.health()["socket"]
     assert s["batch_max"] == RX_BATCH_MAX and s["backlogs"] == 1 and s["rx"] == RX_BATCH_MAX
+
+
+# -- coalesced blocks (contract items 1-3): one on_audio per contiguous run within a wake -----------------------------
+STATS_S = 2.5                         # past the receiver's ~2 s stats window
+
+
+def _warm(**kw) -> tuple[Receiver, Rec, Sim]:
+    rx, rec = make(**kw)
+    s = Sim(rx)
+    s.heartbeats = False
+    s.run(40)                                                # per packet (handle + tick): the stream is active
+    return rx, rec, s
+
+
+def _batch(s: Sim, idx, stream: str = "room-mic", **kw) -> list:
+    return [(apkt(i, stream, **kw), s.addr, s.arrival(i)) for i in idx]
+
+
+def test_a_batch_of_contiguous_packets_is_one_block_equal_to_the_per_packet_blocks():
+    rx, rec, s = _warm()
+    twin, trec, ts = _warm()                                 # the same stream, one call per packet
+    obs = rx._streams["room-mic"].clock.state()["observations"]
+    n_a, n_b = len(rec.audio), len(trec.audio)
+    t_h = s.arrival(56) + 3.0
+    rx._build_health(t_h)                                    # (the warm-up's per-packet blocks leave the window)
+    idx = range(40, 56)
+    rx.handle_batch(_batch(s, idx))
+    for i in idx:
+        twin.handle(apkt(i), ADDR, ts.arrival(i))
+    got, per = rec.audio[n_a:], trec.audio[n_b:]
+    assert len(got) == 1 and len(per) == 16
+    stream, n0, t0, pcm, fs, flags = got[0]
+    assert (stream, n0, fs, flags) == ("room-mic", per[0][1], FS, 0) and n0 == 40 * FR
+    assert pcm.shape == (16 * FR, 1) and pcm.dtype == np.float32
+    assert np.array_equal(pcm, np.concatenate([b[3] for b in per]))
+    assert t0 == per[0][2]                                   # exactly the per-packet first t0
+    assert all(abs(t0 + (b[1] - n0) / FS - b[2]) < 50e-6 for b in per)   # sample i at t0 + i/fs
+    assert rx._streams["room-mic"].clock.state()["observations"] == obs + 16   # observed per packet
+    rx._build_health(t_h + STATS_S)
+    sk = rx.health()["socket"]
+    assert sk["block_packets"] == 16.0 and sk["block_frames_max"] == 16 * FR and sk["coalesce_min"] == 1
+    assert sk["blocks"] == len(rec.audio)
+
+
+def test_a_hole_inside_a_batch_gives_run_gap_resume_run():
+    rx, rec, s = _warm()
+    n = len(rec.audio)
+    rx.handle_batch(_batch(s, [40, 41, 42, 43, 44] + list(range(46, 51))))   # 45 lost; its hold (4 ms) ends at 48
+    got = [(b[1] // FR, len(b[3]) // FR, b[5]) for b in rec.audio[n:]]
+    assert got == [(40, 5, 0), (45, 1, AUDIO_GAP), (46, 1, AUDIO_RESUME), (47, 4, 0)]
+    gap = rec.audio[n + 1][3]
+    assert not gap.flags.writeable and not gap.any() and gap.shape == (FR, 1)
+    n_all = [b[1] for b in rec.audio[n:]]
+    assert all(n_all[i + 1] == n_all[i] + len(rec.audio[n + i][3]) for i in range(3))
+
+
+def test_a_segment_or_a_format_change_splits_a_batch():
+    rx, rec, s = _warm()
+    n = len(rec.audio)
+    batch = _batch(s, range(40, 44))
+    batch += [(apkt(5000 + k), ADDR, s.arrival(44 + k)) for k in range(3)]          # a counter jump: a segment
+    batch += [(apkt(5003 + k, frames=64), ADDR, s.arrival(47) + k * 64 / FS) for k in range(2)]   # format
+    rx.handle_batch(batch)
+    got = [(b[1], len(b[3]), b[5]) for b in rec.audio[n:]]
+    assert got == [(40 * FR, 4 * FR, 0), (0, 3 * FR, AUDIO_SEGMENT), (0, 2 * 64, AUDIO_SEGMENT)]
+
+
+def test_a_run_never_takes_another_streams_block():
+    rx, rec, s = _warm()
+    other = Sim(rx, "pc22-mic", addr=("192.0.2.11", 40001))
+    other.heartbeats = False
+    other.run(3, tick=False)
+    a, b = rx._streams["room-mic"], rx._streams["pc22-mic"]
+    n = len(rec.audio)
+    rx._coal = True                                         # (inside a wake)
+    pcm = np.zeros((FR, 1), np.float32)
+    rx._emit(a, a.base_n, pcm, 0, T0)
+    rx._emit(b, a.base_n + FR, pcm, 0, T0)                  # n0 would extend: the stream doesn't
+    rx._coal = False
+    rx._flush()
+    assert [x[0] for x in rec.audio[n:]] == ["room-mic", "pc22-mic"]
+
+
+def test_coalesce_min_holds_a_short_run_until_its_count_or_its_wait():
+    rx, rec, s = _warm(coalesce_min=4)
+    n = len(rec.audio)
+    rx.handle_batch(_batch(s, [40, 41]))
+    assert len(rec.audio) == n                               # held: 2 of 4
+    rx.handle_batch(_batch(s, [42, 43]))
+    assert [(b[1] // FR, len(b[3]) // FR) for b in rec.audio[n:]] == [(40, 4)]   # the count
+    rx.handle_batch(_batch(s, [44]))
+    rx._settle(s.arrival(44) + 0.005)
+    assert len(rec.audio) == n + 1                           # still within 4 x 128 / 48k + 1 ms
+    rx._settle(s.arrival(44) + 4 * PKT_S + 0.0011)
+    assert [(b[1] // FR, len(b[3]) // FR) for b in rec.audio[n + 1:]] == [(44, 1)]   # its wait
+    rx.handle_batch(_batch(s, [45]))
+    rx.handle_batch([(midi_batch(1, CAP0, 0), (ADDR[0], ADDR[1] + 1), s.arrival(45) + 0.0001)])
+    assert rec.midi and len(rec.audio) == n + 2              # MIDI is never held; the audio still is
+    rx.tick(s.arrival(45) + 0.0002)
+    assert rec.audio[-1][1] == 45 * FR                       # tick flushes first
+    rx._build_health(s.arrival(46))
+    assert rx.health()["socket"]["coalesce_min"] == 4
+
+
+def test_gap_pcm_is_a_read_only_broadcast_of_one_cached_zero_row():
+    rx, rec, s = _warm()
+    s.seconds(0.2, skip={s.i + 3})
+    s.seconds(0.2, skip={s.i + 5, s.i + 6})
+    gaps = [b[3] for b in rec.audio if b[5] & AUDIO_GAP]
+    assert [g.shape for g in gaps] == [(FR, 1), (2 * FR, 1)]
+    for g in gaps:
+        assert not g.flags.writeable and not g.any() and g.dtype == np.float32 and g.strides[0] == 0
+        with pytest.raises(ValueError):
+            g[0, 0] = 1.0
+    assert np.shares_memory(gaps[0], gaps[1])                # no per-hole allocation
+
+
+# -- arrival vs seen: kernel stamps time the models, the wake keeps liveness ------------------------------------------
+def test_a_backlog_reads_as_streaming_not_stale():
+    """Kernel arrivals 0.8 s behind the wake (a queued socket) for 3 s: the stream stays streaming and active (states
+    run on the wake), and no idle segment (timing runs on the arrivals, still 2.67 ms apart)."""
+    rx, rec, s = _warm()
+    s.seconds(2.0)
+    segs = rx._streams["room-mic"].segments
+    states = set()
+    for _ in range(140):                                     # 3 s in batches of 8
+        idx = range(s.i, s.i + 8)
+        s.i += 8
+        seen = s.arrival(idx[-1]) + 0.8
+        rx.handle_batch(_batch(s, idx), seen_s=seen)
+        rx.tick(seen)
+        states.add(rx._streams["room-mic"].state)
+    assert states == {"streaming"} and rx.active_audio() == "room-mic"
+    assert rx._streams["room-mic"].segments == segs
+    assert rec.audio[-1][1] + len(rec.audio[-1][3]) == s.i * FR   # every packet delivered
+
+
+def test_kernel_arrival_parses_fabricated_cmsgs():
+    from show_service import receiver as R
+    SOL = socket.SOL_SOCKET
+    off = 1_783_771_855_140_000_000                          # realtime - monotonic (ns)
+    wake = 1000.0
+
+    def ts(mono_s: float) -> tuple:
+        ns = int(round(mono_s * 1e9)) + off
+        return (SOL, R.SO_TIMESTAMPNS, struct.pack("@ll", ns // 1_000_000_000, ns % 1_000_000_000))
+    arr, status, drops = R.kernel_arrival([ts(999.99)], wake, off)
+    assert status == 0 and arr == pytest.approx(999.99, abs=1e-9) and drops is None
+    assert R.kernel_arrival([ts(1000.002)], wake, off)[:2] == (wake, 1)          # ahead of the wake: a step
+    assert R.kernel_arrival([ts(994.0)], wake, off)[:2] == (wake, 1)             # > 5 s old: a step
+    assert R.kernel_arrival([], wake, off) == (wake, 2, None)                     # none
+    assert R.kernel_arrival([(SOL, R.SO_TIMESTAMPNS, b"\x00" * 8)], wake, off)[1] == 2   # truncated
+    assert R.kernel_arrival([(0, R.SO_TIMESTAMPNS, ts(999.99)[2])], wake, off)[1] == 2  # another level
+    ovfl = (SOL, R.SO_RXQ_OVFL, struct.pack("@I", 78668))
+    arr, status, drops = R.kernel_arrival([ts(999.5), ovfl], wake, off)
+    assert (status, drops) == (0, 78668) and arr == pytest.approx(999.5, abs=1e-9)
+    # 50 in a row without a stamp: that socket goes back to user stamps
+    rx, rec = make()
+    rx._sa.kts = True
+    items = [(b"x", ADDR, []) for _ in range(R.KTS_MISS_MAX)]
+    w, oldest = rx._kconvert(items, rx._sa)
+    assert rx._sa.kts is False and rx._sa.ts_bad == R.KTS_MISS_MAX and oldest == math.inf
+    assert all(x[2] == w for x in items)
+
+
+# -- the MIDI socket: a reuseport pair on one port, MIDI steered to B by a BPF program (ephemeral 127.0.0.1 only) ------
+linux_only = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="SO_REUSEPORT + classic BPF: Linux")
+
+
+def _free_port() -> int:
+    p = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    p.bind(("127.0.0.1", 0))
+    port = p.getsockname()[1]
+    p.close()
+    assert not 6980 <= port <= 6984
+    return port
+
+
+def _until(cond, timeout: float = 3.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return bool(cond())
+
+
+def _queue_mixed(tx: socket.socket, dest, n_audio: int = 16) -> None:
+    for c in range(n_audio):
+        tx.sendto(apkt(c), dest)
+    tx.sendto(hbpkt("room-mic", 0, sess="pair", frame=0, n=0, t_cap_ns=time.monotonic_ns(), dev="loop"), dest)
+    tx.sendto(midi_batch(1, time.monotonic_ns(), 0), dest)
+    tx.sendto(vban.pack_text("room-piano", 1, vban.midi_state_obj(2, [0] * 88, 0, 0, 0, time.monotonic_ns(),
+                                                                  sess="m")), dest)
+    tx.sendto(b"VBAN\x40" + bytes(10), dest)                # short junk
+
+
+@linux_only
+def test_the_reuseport_pair_puts_midi_on_b_and_the_rest_on_a(sender_sock):
+    port = _free_port()
+    rx, rec = make(Config(vban_bind=("127.0.0.1", port)))
+    rx.set_off_streams(())
+    rx._bind()                                               # bound, not reading yet: the datagrams queue
+    try:
+        a, b = rx._sock, rx._tsock
+        assert b is not None and a.getsockname() == b.getsockname() == ("127.0.0.1", port)
+        assert a.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT) == 1
+        _queue_mixed(sender_sock, ("127.0.0.1", port))
+        time.sleep(0.02)
+        t_start = time.monotonic()
+        rx.start()                                           # (keeps the bound pair)
+        assert _until(lambda: len(rec.midi) == 2 and rec.of("room-mic"))
+        assert rx._sb.rx == 2 and rx._sa.rx == 18            # ev + state on B; 16 audio + heartbeat + junk on A
+        assert all(m[2] < t_start for m in rec.midi)         # kernel arrivals: before show-rx read them
+        mic = rec.of("room-mic")
+        assert [(x[1], len(x[3]), x[5]) for x in mic] == [(0, 16 * FR, AUDIO_SEGMENT)]   # one wake, one block
+        assert _until(lambda: (rx.health()["socket"]["text"]["rx"] == 2
+                               and rx.health()["streams"].get("room-piano", {}).get("net", {}).get("rx_lag_ms")))
+        h = rx.health()
+        sk = h["socket"]
+        assert sk["stamps"] == "kernel" and sk["ts_bad"] == 0 and sk["queue_ms"]["max"] >= 15.0
+        assert sk["block_frames_max"] == 16 * FR or sk["blocks"] == 1
+        assert sk["text"] == {"bind": f"127.0.0.1:{port}", "rx": 2, "rcvbuf": sk["text"]["rcvbuf"], "split": True,
+                              "error": None, "misrouted": 0, "rebinds": 0, "stamps": "kernel", "ts_bad": 0,
+                              "kernel_drops": sk["text"]["kernel_drops"]}
+        assert sk["text"]["rcvbuf"] > 0 and h["streams"]["room-mic"]["sender"]["sess"] == "pair"
+        assert h["streams"]["room-piano"]["net"]["rx_lag_ms"]["p50"] >= 15.0      # (queued before the start)
+        # a second instance can't share the port: its probe bind (no SO_REUSEPORT) fails, as a plain bind would
+        rx2, _ = make(Config(vban_bind=("127.0.0.1", port)))
+        rx2._bind()
+        assert rx2._sock is None and rx2._tsock is None and rx2.health() is not None and rx2._sock_error
+    finally:
+        rx.stop()
+    assert rx._sock is None and rx._tsock is None
+
+
+@linux_only
+def test_an_attach_failure_runs_on_one_plain_socket_as_before(sender_sock, monkeypatch):
+    from show_service import receiver as R
+
+    def refuse(sock, prog=None):
+        raise OSError(1, "Operation not permitted (test)")
+    monkeypatch.setattr(R, "_attach_cbpf", refuse)
+    port = _free_port()
+    rx, rec = make(Config(vban_bind=("127.0.0.1", port)))
+    rx.set_off_streams(())
+    rx.start()
+    try:
+        assert rx._tsock is None and rx._sock.getsockname() == ("127.0.0.1", port)
+        assert rx._sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT) == 0      # exactly the old socket
+        _queue_mixed(sender_sock, ("127.0.0.1", port), n_audio=4)
+        assert _until(lambda: len(rec.midi) == 2 and sum(len(x[3]) for x in rec.of("room-mic")) == 4 * FR)
+        assert _until(lambda: rx.health()["socket"]["rx"] == 8)
+        t = rx.health()["socket"]["text"]
+        assert t["split"] is False and "not permitted" in t["error"] and t["bind"] is None and t["rx"] == 0
+        assert rx.health()["socket"]["stamps"] == "kernel"   # stamps don't need the pair
+    finally:
+        rx.stop()
+
+
+@linux_only
+def test_audio_on_the_midi_socket_rebinds_both_in_order(sender_sock):
+    port = _free_port()
+    rx, rec = make(Config(vban_bind=("127.0.0.1", port)))
+    rx.set_off_streams(())
+    rx._bind()
+    a, b = rx._sock, rx._tsock
+    stray = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)   # stands in for a B the kernel fills with audio
+    stray.bind(("127.0.0.1", 0))
+    try:
+        sender_sock.sendto(apkt(0), stray.getsockname())
+        time.sleep(0.02)
+        stray.setblocking(False)
+        rx._enable_kts(stray, rx._sb)
+        rx._text_read(stray, mid=False)
+        assert rx._misrouted == 1 and rx._rebind_due and rec.of("room-mic")   # handled all the same
+        rx._maybe_rebind(time.monotonic())
+        assert rx._rebinds == 1 and not rx._rebind_due
+        assert rx._sock is not a and rx._tsock is not b and rx._tsock is not None
+        assert a.fileno() == -1 and b.fileno() == -1                            # the old pair is closed
+        assert rx._sock.getsockname() == rx._tsock.getsockname() == ("127.0.0.1", port)
+        rx._rebind_due = True
+        rx._maybe_rebind(time.monotonic())                   # at most every REBIND_EVERY_S
+        assert rx._rebinds == 1
+        sb0 = rx._sb.rx
+        rx.start()                                           # the new pair steers again
+        _queue_mixed(sender_sock, ("127.0.0.1", port), n_audio=2)
+        assert _until(lambda: rx._sb.rx == sb0 + 2 and len(rec.midi) == 2)
+        assert _until(lambda: rx.health()["socket"]["text"]["rebinds"] == 1)
+        assert rx.health()["socket"]["text"]["misrouted"] == 1 and rx.health()["socket"]["text"]["split"] is True
+    finally:
+        rx.stop()
+        stray.close()
+
+
+# -- the rollback switches: each new receive-path behaviour off gives the receiver before it ---------------------------
+def test_coalesce_false_gives_one_call_per_packet_in_a_batch():
+    rx, rec, s = _warm(coalesce=False, coalesce_min=4)
+    n = len(rec.audio)
+    rx.handle_batch(_batch(s, [40, 41, 42, 43, 44] + list(range(46, 51))))   # 45 lost, as in the run test above
+    got = [(b[1] // FR, len(b[3]) // FR, b[5]) for b in rec.audio[n:]]
+    assert got == ([(i, 1, 0) for i in range(40, 45)] + [(45, 1, AUDIO_GAP), (46, 1, AUDIO_RESUME)]
+                   + [(i, 1, 0) for i in range(47, 51)])                    # nothing held, nothing merged
+    assert not rx._run_open
+    rx._build_health(s.arrival(51))
+    sk = rx.health()["socket"]
+    assert sk["coalesce"] is False and sk["coalesce_min"] == 4 and sk["blocks"] == len(rec.audio)
+
+
+@linux_only
+def test_kernel_stamps_and_split_midi_off_bind_the_old_plain_socket(sender_sock):
+    port = _free_port()
+    rx, rec = make(Config(vban_bind=("127.0.0.1", port)), kernel_stamps=False, split_midi=False)
+    rx.set_off_streams(())
+    rx.start()
+    try:
+        assert rx._tsock is None and rx._sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT) == 0
+        t_send = time.monotonic()
+        _queue_mixed(sender_sock, ("127.0.0.1", port), n_audio=4)
+        assert _until(lambda: len(rec.midi) == 2 and sum(len(x[3]) for x in rec.of("room-mic")) == 4 * FR)
+        assert all(m[2] >= t_send for m in rec.midi)         # user stamps: taken after the recv
+        assert _until(lambda: rx.health()["socket"]["rx"] == 8)
+        sk = rx.health()["socket"]
+        assert sk["stamps"] == "user" and sk["queue_ms"] is None and sk["kernel_drops"] is None
+        assert sk["text"]["split"] is False and sk["text"]["error"] is None and sk["text"]["rx"] == 0
+    finally:
+        rx.stop()
