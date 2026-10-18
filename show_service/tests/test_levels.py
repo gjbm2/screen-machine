@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 
 import numpy as np
@@ -14,6 +15,11 @@ from show_service.levels import LevelFeed
 
 def _sine(n: int, amp: float = 0.5, hz: float = 440.0, sr: int = 48000) -> np.ndarray:
     return (amp * np.sin(2 * np.pi * hz * np.arange(n) / sr)).astype(np.float32)
+
+
+def _w(frame: dict) -> list[int]:
+    """A frame's waveform: "wb" (base64 little-endian int16) as ints."""
+    return np.frombuffer(base64.b64decode(frame["wb"]), "<i2").astype(int).tolist()
 
 
 def _feed_with(qs: dict) -> tuple[LevelFeed, asyncio.AbstractEventLoop]:
@@ -48,15 +54,16 @@ def test_flush_wave_only_for_who_asks_and_plain_frames_unchanged():
         b = json.loads(w128.get_nowait())
         c = json.loads(w128b.get_nowait())
         d = json.loads(w64.get_nowait())
-        assert "w" not in a and "f" in a
-        assert len(b["w"]) == 128 and all(isinstance(v, int) and -32767 <= v <= 32767 for v in b["w"])
+        assert "wb" not in a and "f" in a
+        wb = _w(b)
+        assert len(wb) == 128 and all(-32767 <= v <= 32767 for v in wb)
         assert b == c
-        assert len(d["w"]) == 64 and d["w"] == b["w"][-64:]   # the newest samples, oldest first
-        assert max(b["w"]) == 32767 and min(b["w"]) == -32767  # clipped
+        assert len(_w(d)) == 64 and _w(d) == wb[-64:]   # the newest samples, oldest first
+        assert max(wb) == 32767 and min(wb) == -32767  # clipped
         want = np.clip(np.rint(x[-128:] * 32767.0), -32767, 32767).astype(int).tolist()
-        assert b["w"] == want
+        assert wb == want
         # without the wave clients, the plain frame is byte-identical to the wave-free path
-        b.pop("w")
+        b.pop("wb")
         assert b == a
     finally:
         loop.close()
@@ -84,7 +91,7 @@ def test_wave_pads_zeros_before_the_ring_fills():
     try:
         f.push("room-mic", 1, 0.5, None, 1.0, pcm=np.full(32, 0.5, np.float32), sr=48000)
         f._flush()
-        w = json.loads(q.get_nowait())["w"]
+        w = _w(json.loads(q.get_nowait()))
         assert len(w) == 128 and w[:96] == [0] * 96 and w[96:] == [16384] * 32
     finally:
         loop.close()
@@ -108,7 +115,7 @@ def test_ws_query_wave_end_to_end():
             a = json.loads((await plain.receive(timeout=2)).data)
             b = json.loads((await waved.receive(timeout=2)).data)
             c = json.loads((await big.receive(timeout=2)).data)
-            assert "w" not in a and len(b["w"]) == 128 and len(c["w"]) == lv.WAVE_MAX
+            assert "wb" not in a and len(_w(b)) == 128 and len(_w(c)) == lv.WAVE_MAX
             await waved.close()
             for _ in range(50):
                 if len(f._wave) == 1:
