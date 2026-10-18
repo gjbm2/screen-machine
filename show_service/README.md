@@ -4419,6 +4419,141 @@ with glibc's per-thread arenas, 1.6 GB with onnxruntime's arena as first built).
   ML now.
 - **68:** lamp dips and hits stop when a build gives out before its line.
 
+### S4.14 The show-rx capacity fix (18 Oct, screen-machine-3a)
+
+**Why.** Measured live on 18 Oct (09's py-spy plus ours, music on PC22's mic, no screen live): show-rx was over capacity
+whenever madmom ran (104-111% of the ~0.8 core it can get under the GIL; 34% of its time waiting on the GIL futex).
+The 425984 B receive buffer (net.core.rmem_max caps it; 1280 B per datagram) sat full, about 0.9 s of hidden delay
+for audio and MIDI alike, and the kernel dropped about 76 datagrams a second (20-30% loss). The show-beat thread
+(S4.12) added no capacity: it turned UDP drops into GIL hand-overs. The fix, in four parts, each with a rollback:
+
+| part | file | rollback |
+|---|---|---|
+| contiguous packets in one `on_audio` block (up to 4096 frames); free zero-fill holes | receiver.py | `SHOW_RX_OFF=coalesce` |
+| kernel arrival stamps (SO_TIMESTAMPNS), liveness on the wake | receiver.py | `SHOW_RX_OFF=stamps` |
+| MIDI on its own reuseport socket on :6980 (BPF steering) | receiver.py | `SHOW_RX_OFF=split` |
+| madmom in its own child process | clock.py, beatproc.py | `SHOW_BEAT_PROC=off` |
+| batched hit path and multi-hop fast lane | dsp.py | `SHOW_RX_OFF=batch` |
+| long holes skip madmom; AGC per 128 frames | clock.py | `SHOW_RX_OFF=gapskip` / `agc` |
+
+`SHOW_RX_COALESCE_MIN` (default 1: never wait) can make show-rx wait for N packets. mllink counts the beat process in
+show_service's CPU share (`child_pids`, `cpu.children`). deploy/sm-show.env has `SHOW_BEAT_PROC=on`.
+
+**The loudness gate per mic** (3ecda73a). 26's room calibration found PC22's mic hears party music at about
+-47.5 LUFS, so the mode's -30 gate kept madmom off and the clock never locked. `config/room/audio_cal.json` (local,
+hot-reloaded every 2 s; `SHOW_AUDIO_CAL_FILE`) `streams.<stream>.summary.music_lufs` gives that stream an offset of
+music_lufs + 30 dB (clamped -40..+20) over the mode's `gate_ref_lufs` (`Features.gate_offsets`; `gate_offset_db` in
+the DSP stats). No file or no entry: 0, as before.
+
+#### Receiver
+
+**Blocks.** Within one wake of show-rx (a drained batch, or the held-hole expiries), contiguous real audio of the active stream reaches `on_audio` as one block of up to `COALESCE_MAX_FRAMES` (4096) frames.
+- `n0` is the block's first sample; sample i is at `t0 + i/fs`, where `t0 = clock.to_host(n0)` is taken when the first packet is delivered (exactly the per-packet value). `flags` are the first packet's.
+- A block ends at:
+  - the end of the wake;
+  - a hole;
+  - a SEGMENT, RESUME or GAP flag;
+  - a change of stream, rate, channels or n0;
+  - the size cap;
+  - a clock self-step.
+- `AUDIO_GAP` blocks (zero-fill, at most 250 ms) and `AUDIO_RESUME` blocks always go alone. A GAP block's `pcm` is a read-only `np.broadcast_to` view of one cached zero row, so consumers must never write into `pcm`.
+- `coalesce_min` > 1 holds a short run until it has that many packets or its first packet has waited `coalesce_min x frames/fs + 1 ms`. MIDI and control are never held, and `tick()` flushes first.
+- `handle()` stays one call per packet. Observation, metering, the live meter and loss stay per packet.
+- `rx_ms.on_audio` and every consumer's per-block cost are now **per call**, up to about 85 ms of audio, not per 2.67 ms packet.
+
+**Two times per datagram.**
+- `arrival` is the kernel's receive time. It comes from SO_TIMESTAMPNS (CLOCK_REALTIME, mapped to time.monotonic with the offset sampled once per wake). A stamp outside [wake - 5 s, wake + 1 ms] counts as a clock step: the wake is used and `ts_bad` is counted. After 50 datagrams in a row without a stamp, the socket goes back to user stamps.
+- Every timing model uses `arrival`: SampleClock / CaptureMap, the hole hold, idle segments, meter bins, loss, the off grace, `RemoteTimeMap` and `on_midi`'s `arrival_s`.
+- `seen` is the wake time, used only for liveness: stream states, the active stream, host answers and the live meter's `a`. A socket backlog therefore never makes a flowing stream read stale or flap the active stream.
+- With an injected clock (tests) or on a non-Linux host, stamps stay `user`, as before.
+
+**MIDI on its own socket.**
+- `cfg.vban_bind` holds a SO_REUSEPORT pair: A (audio, heartbeats, everything else; bound first, index 0) and B (MIDI).
+- A classic BPF program steers TEXT packets with `seq"` at byte 36 (our `{"v":1,"seq"...` events and states) to B.
+- A plain probe bind comes first, so a port someone else holds fails exactly as before.
+- If anything fails, A runs alone as before (`socket.text.split` false, with the error).
+- B is drained first on every wake and polled before each `on_audio` call, so a note waits at most one call.
+- Audio arriving on B rebinds both sockets in order (at most every 5 s, counted).
+- SUBSCRIBE still goes from A (source port 6980), so senders, show.yaml and NAT are unchanged.
+
+**Rollback switches** (Receiver kwargs, each on by default; off gives exactly the old receiver): `coalesce`, `kernel_stamps`, `split_midi`; also `coalesce_min` (default 1).
+
+**Health `socket`** gains:
+- `blocks`, `block_packets` (mean packets per real block, ~2 s), `block_frames_max`, `coalesce`, `coalesce_min`;
+- `stamps` (`kernel` | `user`), `queue_ms` {p50, p95, max} (wake minus kernel arrival, ~2 s), `kernel_drops` (SO_RXQ_OVFL), `ts_bad`;
+- `text` {bind, rx, rcvbuf, split, error, misrouted, rebinds, stamps, ts_bad, kernel_drops}.
+
+Each MIDI stream gains `net.rx_lag_ms` {p50, p95, max}: dispatch minus kernel arrival over ~10 s.
+
+The stream's holes minus `kernel_drops` give the network loss.
+
+#### The beat process and the clock
+
+**The beat process** (`SHOW_BEAT_PROC=on`, `--beat-proc on`; off by default; `clock.Clock(beat_proc=True)`; `show_service/beatproc.py`).
+- **What it does.** madmom's beat activation runs in its own child process (`python -m show_service.beatproc`), so a madmom frame takes neither show-rx's time nor the GIL. The show-beat thread could not do that: every BLAS call hands the GIL back and forth.
+- **The link.** Two pipes carrying binary frames, with no JSON:
+  - each hop goes out as one atomic 1796 B write (a 32 B header plus 441 float32);
+  - each result comes back as a 40 B record;
+  - the first record is a HELLO;
+  - a reset never travels alone: it rides the next hop as a flag;
+  - EOF on the child's stdin means stop.
+- **The child.**
+  - It sets its nice first (`SHOW_BEAT_NICE`, default 0, the same as madmom has inside show_service).
+  - It keeps stdout for the protocol and points fd 1 at stderr.
+  - It dies with show_service (PR_SET_PDEATHSIG), and exits at once if its parent is gone.
+  - It runs one thread and never looks ahead.
+  - Its stderr is appended to `<state_dir>/beat-worker.log`, which moves to `.1` past 1 MB.
+- **Supervisor.** The `show-beat-sup` thread spawns the child, so a spawn never runs on show-rx; Popen takes 17-31 ms under GIL load.
+  - Restarts back off as the ML worker's do: 2/5/15/60/300 s, and a 600 s run resets the count. It never gives up.
+  - Only the supervisor closes fds, and only once show-rx has acknowledged a newer generation of the child, so show-rx can never write to an fd number that has been reused.
+- **Degrade, never refuse.** The parent keeps its own madmom as the fallback.
+  - Hops run inline until the child's hello (about 0.5-1.5 s). The next hop then switches over, with an epoch bump and a reset, and the peak picker starts over (`beat_thread.switches`).
+  - These all put show-rx back inline at once, counted:
+    - a child that dies (EOF or EPIPE: `proc_lost`);
+    - one that stalls (hops in flight and no record for 2 s: `stalls`; it is killed);
+    - one that never says hello (30 s; it is killed and retried).
+  - The next hello switches back. Each switch costs one LSTM restart (1-2 s of weaker activation); the beat grid holds through it.
+- **Health.** `stats()['beat_thread']` now also reports mode (inline/thread/process), via, pid, state, restarts, failures_in_row, last_exit, cpu (the child's share of a core, every 10 s), inline_hops, switches, stalls, pipe_full and proc_lost. `Clock.beat_pid()` gives the child's pid for CPU accounting.
+- **Cost** (madmom 2 nets, loaded host, CPU on show-rx per 10 ms of audio):
+  - 128-frame blocks: 1.21 ms inline against 0.36 ms with the process;
+  - 1024-frame blocks: 0.96 ms against 0.25 ms;
+  - the child itself uses about 1.2-1.3 ms per 10 ms of audio (about 0.12 core), off the GIL, and about 68 MB of RSS.
+
+**The clock and coalesced blocks/holes** (contract.OnAudio, up to 4096 frames a call):
+- **Blocks.** Any block length gives the same frames and beats (to float noise) as 128-frame packets. The AGC steps once per 128 frames, aligned on n. A RESUME block's peak suppression spans one packet at most. `cost_ms_per_10ms` counts real audio only.
+- **Short holes.** An AUDIO_GAP block of one hop or less (480 frames at 48 kHz) is zero-filled through the lane as before, so madmom's state runs on.
+- **Long holes.** A longer one (up to 250 ms) computes nothing:
+  - soxr is cleared and the lane moves on by the hole;
+  - a fractional carry keeps every later frame's time exact;
+  - its hops are silent frames (`gap_hops_skipped`);
+  - the next hop that reaches madmom resets it first (a splice).
+  - It is never a segment or a lane reset. GAP pcm is never written to.
+- **Rollbacks.** `Clock(gap_skip=False)` and `Clock(agc_chunks=False)` restore the old hole and AGC paths.
+
+#### DSP
+
+`dsp.Features` takes the receiver's coalesced runs: one `on_audio` call can carry up to 4096 contiguous frames (32 packets). The output is the same as packet by packet:
+- the same hits in the same publish order (times within the 1 us rounding);
+- the same onsets, hops and medium frames.
+
+What changed:
+- **Batched hit path.** A block's whole 128-sample pieces go through the band filters, the envelopes and the reductions in one pass. Detection still works piece by piece with the same arithmetic.
+- **Multi-hop fast lane.** A block that completes 3 or more hops writes the ring once. Its hops' windows, FFTs and SuperFlux run at once; the log-mel bank runs row by row, so it stays bit-identical.
+- **low_db fix.** Each medium frame now reads the hit path's envelopes as they stood at its own hop. Before, it read them at the end of the block, which was up to 13 dB off for large blocks.
+- **AUDIO_RESUME** suppresses hits only for the block's first packet plus a hop, not for the whole coalesced block.
+- **Noise-floor bins** are now exactly 100 ms (4800 samples at 48 kHz) at any block size. Before, they were 4864 samples with 128-frame packets.
+
+Cost of Features.process (ms of CPU per second of audio, PC22 under load):
+
+| packets per block | before | now |
+|---|---|---|
+| 1 | 73 | 73 |
+| 8 | 52 | 31 |
+| 16 | 50 | 28 |
+| 32 | 52 | 23 |
+
+Rollback: `Features(batch=False)` turns both batched paths off and gives the same numbers at the old cost. `stats()` shows `batch` and `batch_fallbacks`. A batched pass that fails is redone the old way and counted in `batch_fallbacks`; it never drops audio.
+
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
 **Interfaces, 16 Oct (c8).** This section defines Stage 5 so that five builders can work in parallel, each in its own
