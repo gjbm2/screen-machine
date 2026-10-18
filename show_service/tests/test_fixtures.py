@@ -611,7 +611,7 @@ def test_generic_types_have_channels_labels_and_encode():
         t = fx.BUILTIN_TYPES[tid]
         assert t["source"] == "builtin" and t["kind"] == "lamp" and fx.TYPE_LABELS[tid] == label
         assert t["footprint"] == len(chans) == len(t["channels"]) and f"({len(chans)} channel" in label
-        assert [c["name"] for c in t["channels"]] == list(chans) and all(c["default"] == 0 for c in t["channels"])
+        assert [c["name"] for c in t["channels"]] == list(chans) and all(c["default"] == fx.GENERIC_DEFAULTS.get(c["name"], 0) for c in t["channels"])
         assert set(t) == set(contract.TypeInfo.__annotations__)
     assert fx.BUILTIN_TYPES["generic-dimmer"]["attrs"] == ["intensity"]
     assert fx.BUILTIN_TYPES["generic-mover"]["attrs"] == ["intensity", "colour"]
@@ -834,3 +834,10 @@ def test_the_real_added_file_reads():
     assert doc["version"] == 1 and set(doc) <= {"version", *fx.ADDED_SECTIONS}
     v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=p)
     assert v["error"] is None and not [x for x in v["problems"] if x.startswith(fx.ADDED_NAME)], v["problems"]
+
+
+def test_generic_mover_rests_at_centre():
+    """Owner, 18 Oct: Pan and Tilt aren't driven yet, so a registered mover rests at centre, not aimed at 0, 0."""
+    t = fx._generic("generic-mover", fx.GENERIC_TYPES["generic-mover"][1])
+    d = {c["name"]: c["default"] for c in t["channels"]}
+    assert d["Pan"] == 128 and d["Tilt"] == 128 and d["Dimmer"] == 0 and d["Red"] == 0
