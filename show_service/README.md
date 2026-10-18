@@ -4447,6 +4447,13 @@ the DSP stats). No file or no entry: 0, as before.
 
 #### Receiver
 
+**Capture-only sender steps are splices, not segments** (19 Oct). A heartbeat pair off the sender's capture line twice
+running (no xrun, the sender's n still ours) used to start a "sender-step" segment, which resets the DSP and madmom.
+On PC22 under host load it fired every ~40 s (232 in 2.7 h on 18 Oct), so the beat clock kept starting over. The
+samples ran on, and their host times come from arrivals (the SampleClock steps by itself if time was really lost),
+so now only the CaptureMap (MIDI's audio map) starts over and the next real block carries AUDIO_RESUME (dsp and the
+clock skip one packet's hits and peaks): `net.capture_splices`. xrun and n-mismatch steps still segment.
+
 **Blocks.** Within one wake of show-rx (a drained batch, or the held-hole expiries), contiguous real audio of the active stream reaches `on_audio` as one block of up to `COALESCE_MAX_FRAMES` (4096) frames.
 - `n0` is the block's first sample; sample i is at `t0 + i/fs`, where `t0 = clock.to_host(n0)` is taken when the first packet is delivered (exactly the per-packet value). `flags` are the first packet's.
 - A block ends at:

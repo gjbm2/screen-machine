@@ -79,9 +79,10 @@ Audio (per stream; the receiver's own index ``n`` per segment, from 0; ``fill_ma
     and zero-fill never). A block's ``t0_host_s = clock.to_host(n0)`` at delivery; only the active stream's blocks
     are delivered, and the first after a switch carries AUDIO_SEGMENT.
   * heartbeat -> CaptureMap: ``n_rx = n_base + signed(counter_delta(c_base, frame)) x frames`` (dropped if < 0),
-    ``ok = capture.observe(n_rx, t_cap_ns, seg)``. A "sender-step" segment starts at the next packet when ``ok`` is
-    False, when ``xruns`` rose within a sess, or when the sender's ``n - n_rx`` moved off its baseline (re-taken at
-    the first heartbeat of each segment).
+    ``ok = capture.observe(n_rx, t_cap_ns, seg)``. A "sender-step" segment starts at the next packet when ``xruns``
+    rose within a sess, or when the sender's ``n - n_rx`` moved off its baseline (re-taken at the first heartbeat of
+    each segment). ``ok`` False alone (the capture line moved, the samples didn't) is a ``capture_splices``: the
+    CaptureMap starts over and the next real block carries AUDIO_RESUME, with no segment (18 Oct).
   * metering on every real packet (500 ms peak/RMS, clips at |x| >= 0.999, a 10 s floor of 100 ms RMS bins).
 
 The mic on demand (README S5.16; mic.py decides). :meth:`Receiver.set_off_streams` (any thread) names the streams to
@@ -362,6 +363,7 @@ class _Stream:
         self.ndiff_seg = -1
         self.sender_steps = 0
         self.step_causes = {"xrun": 0, "capture": 0, "ndiff": 0}   # which heartbeat check found each sender step
+        self.capture_splices = 0                         # capture-only steps: a splice (AUDIO_RESUME), not a segment
         # meter
         self.t_loud: Optional[float] = None
         self.clips = 0
@@ -1611,7 +1613,7 @@ class Receiver:
                 st.want_seg = ("idle", True)
         if st.clock is None or st.capture is None or st.want_seg is not None:
             return
-        step = prev is not None and hb.xruns > prev.xruns
+        step = hard = prev is not None and hb.xruns > prev.xruns
         if step:
             st.step_causes["xrun"] += 1
         if hb.frame is not None and hb.n is not None and hb.t_cap_ns is not None:
@@ -1625,9 +1627,17 @@ class Receiver:
                 if st.ndiff is None or st.ndiff_seg != seg:
                     st.ndiff, st.ndiff_seg = ndiff, seg
                 elif ndiff != st.ndiff:
-                    step = True
+                    step = hard = True
                     st.step_causes["ndiff"] += 1
-        if step:
+        if step and not hard:
+            # Only the capture line moved (no xrun, the sender's n still matches ours): the samples run on and their
+            # host times come from arrivals (SampleClock, which steps by itself if time was really lost), so only
+            # the CaptureMap (MIDI's audio map) starts over, which observe() just did. The audio gets a splice mark
+            # (AUDIO_RESUME: dsp and the clock skip a packet's hits and peaks) instead of a segment, which reset the
+            # DSP and madmom: on a loaded host this check fired every ~40 s (232 in 2.7 h, 18 Oct).
+            st.flags |= AUDIO_RESUME
+            st.capture_splices += 1
+        elif step:
             st.want_seg = ("sender-step", True)
             st.sender_steps += 1
 
@@ -1826,7 +1836,8 @@ class Receiver:
                           "gaps": st.gaps, "lost": st.lost, "jitter_ms": _r(clock.jitter_ms),
                           "hold_ms": _r(st.hold_s() * 1000.0), "drift_ppm": _r(clock.skew_ppm),
                           "skew_alarm": clock.skew_alarm, "age_ms": age_ms, "segments": st.segments,
-                          "sender_steps": st.sender_steps, "step_causes": dict(st.step_causes)}
+                          "sender_steps": st.sender_steps, "step_causes": dict(st.step_causes),
+                          "capture_splices": st.capture_splices}
             out["audio"] = self._audio_health(st, now)
             out["clock"] = {**clock.state(), "capture": st.capture.state() if st.capture is not None else None}
             out["line"] = "{} · {:g}k/{}ch · {} dBFS · {:.1f} % loss · {:.0f} ms jitter".format(

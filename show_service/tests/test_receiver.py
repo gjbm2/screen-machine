@@ -338,6 +338,13 @@ def test_sender_step_triggers(trigger):
     else:                                                       # samples skipped, counter continuous
         s.n_extra = 3 * FR
     s.seconds(1.2)
+    if trigger == "capture":                                    # the samples ran on: a splice, not a segment
+        assert calls == [] and st.sender_steps == 0 and st.capture_splices == 1
+        assert any(b[5] & AUDIO_RESUME for b in rec.audio[-500:])
+        assert rx.health()["streams"]["room-mic"]["net"]["capture_splices"] == 1
+        s.seconds(6.0)                                          # and it settles: the CaptureMap starts over
+        assert st.capture_splices == 1 and st.capture.ready and calls == []   # (the arrivals' own 20 ms step
+        return                                                  #  re-anchors the SampleClock: n continues)
     assert [c[0] for c in calls] == ["sender-step"] and calls[0][1] == {"keep_skew": True}
     assert st.sender_steps == 1 and st.clock.reason == "sender-step"
     s.seconds(3.0)                                              # and it settles: no more steps
