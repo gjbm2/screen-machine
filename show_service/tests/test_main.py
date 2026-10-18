@@ -38,7 +38,7 @@ def install_fakes(monkeypatch) -> None:
     dsp = types.ModuleType("show_service.dsp")
 
     class Features:
-        def __init__(self, *, publish=None, hop=256, publish_hz=25.0):
+        def __init__(self, *, publish=None, hop=256, publish_hz=25.0, batch=True):
             self.publish, self.blocks = publish, 0
 
         def process(self, stream, n0, t0_host_s, pcm, fs, flags):
@@ -98,7 +98,8 @@ def install_fakes(monkeypatch) -> None:
     receiver = types.ModuleType("show_service.receiver")
 
     class Receiver:
-        def __init__(self, cfg, *, on_audio, on_midi, on_tick, clock=time.monotonic, sock=None, on_level=None):
+        def __init__(self, cfg, *, on_audio, on_midi, on_tick, clock=time.monotonic, sock=None, on_level=None,
+                     coalesce=True, coalesce_min=1, kernel_stamps=True, split_midi=True):
             self.cfg, self.on_audio, self.on_midi, self.on_tick = cfg, on_audio, on_midi, on_tick
             self.started = self.stopped = False
             self.offsets = None
@@ -676,7 +677,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
         assert made["cues"].kw == {"log_path": sd / "cues.jsonl"} and ctx.cue_sheet() == []
         assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
-        assert made["mllink"].kw == {"log_path": sd / "ml-worker.log"} and made["structure"].kw == {}
+        assert made["mllink"].kw == {"log_path": sd / "ml-worker.log", "child_pids": show._child_pids}
+        assert made["structure"].kw == {} and show._child_pids() == []           # the fake clock has no beat process
         # Stage 5: the rig, after the director, fed by reference (the fake clock has no snapshot: no clock)
         rk = made["outputs"].kw
         assert rk["palette_fn"] == show.director.palette_fn and rk["look_fn"] is None and rk["clock"] is None
