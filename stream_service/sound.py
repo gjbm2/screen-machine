@@ -9,6 +9,18 @@ object, refreshed once per rendered frame on the render thread before any plug-i
   sound.notes_gpu    the notes table on the session's GPU (cupy float32 [128, 4]: LEVEL, VEL, AGE_ON, AGE_OFF)
   sound.spectrum_gpu the 32-band spectrum on the GPU (cupy float32 [32])
 
+The fast feed (listens "scope" / "fft"; scope_feed.py, 18 Oct): show_service's raw waveform and 48-band FFT at up
+to 60 frames a second, shared by the process (``feed``), stepped per session by a ScopeState here:
+
+  sound.wave_gpu         cupy float32 [1024]  the waveform, DC removed, AGC'd, soft-clipped: about -1..1
+  sound.wave_trigger     int: the latest rising zero crossing in the first half (a stable scope start), 0 if none
+  sound.fft_gpu          cupy float32 [48]    0..1, log bands 40 Hz-16 kHz, instant attack, release tau 0.12 s
+  sound.fft_peak_gpu     cupy float32 [48]    peak hold 0.4 s, then falls 1.5 / s
+  sound.fft_history_gpu  cupy float32 [128, 48] one row per 1/30 s; sound.fft_row is the newest row
+  sound.level            0..1 fast loudness;  sound.scope_live: the fast feed is fresh (< 0.5 s)
+  sound.wave / fft / fft_peak / fft_history   the same, host numpy (read-only)
+Without the fast feed, fft follows the smoothed spectrum32 and the wave eases to zeros.
+
 Ages are evaluated at photon time (the frame's time plus the session's measured lead), so what a scene draws for
 a note matches what the ear hears at the TV.  Read-only for plug-ins; both scenes of a transition see the same
 frame.  Every music.* and show.state message reaches each session's view (``on_message``, any thread, append only).
@@ -16,7 +28,10 @@ frame.  Every music.* and show.state message reaches each session's view (``on_m
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
+
+from .scope_feed import ScopeFields, ScopeState
 
 log = logging.getLogger("stream_service.sound")
 
@@ -29,8 +44,8 @@ def available() -> bool:
         return False
 
 
-class Sound:
-    def __init__(self) -> None:
+class Sound(ScopeFields):
+    def __init__(self, feed: Any = None) -> None:
         from .sound_view import SoundView
 
         self.view = SoundView()
@@ -38,6 +53,11 @@ class Sound:
         self.notes_gpu = None
         self.spectrum_gpu = None
         self._failed = False
+        self.feed = feed                      # scope_feed.ScopeFeed (process-wide) or None
+        self.scope = ScopeState()
+        self._scope_t: Optional[float] = None
+        self._scope_errors = 0
+        self._scope_logged = -1e9
 
     @property
     def present(self) -> bool:
@@ -58,29 +78,49 @@ class Sound:
         if self.notes_gpu is None:
             self.notes_gpu = cp.zeros((128, 4), cp.float32)
             self.spectrum_gpu = cp.zeros((32,), cp.float32)
+        self.scope_alloc(cp)
 
     def update(self, photon_s: float) -> None:
         """Render thread, once per frame, before any plug-in renders.  Never raises into the frame."""
-        if self._failed:
-            return
+        if not self._failed:
+            try:
+                self.frame = f = self.view.update(photon_s * 1000.0)
+                if self.notes_gpu is not None:
+                    self.notes_gpu.set(f.notes)                       # 2 KB on the current (render) stream
+                    spec = getattr(f, "spectrum", None)
+                    if spec is not None:
+                        self.spectrum_gpu.set(spec)
+            except Exception:
+                self._failed = True
+                log.exception("sound view failed; scenes hear nothing from here on")
+        self._scope_step()
+
+    def _scope_step(self) -> None:
+        """Render thread: the fast feed's newest frame (a lock-free read) through this session's ScopeState.  An error
+        skips this frame's step (logged at most once a minute) and the next frame tries again: no latch."""
         try:
-            self.frame = f = self.view.update(photon_s * 1000.0)
-            if self.notes_gpu is not None:
-                self.notes_gpu.set(f.notes)                       # 2 KB on the current (render) stream
-                spec = getattr(f, "spectrum", None)
-                if spec is not None:
-                    self.spectrum_gpu.set(spec)
+            now = time.monotonic()
+            dt = 0.0 if self._scope_t is None else now - self._scope_t
+            self._scope_t = now
+            feed = self.feed
+            spec = None if self._failed else getattr(self.frame, "spectrum", None)
+            self.scope.update(now, feed.latest if feed is not None else None, spec, dt)
+            self.scope_upload()
         except Exception:
-            self._failed = True
-            log.exception("sound view failed; scenes hear nothing from here on")
+            self._scope_errors += 1
+            t = time.monotonic()
+            if t - self._scope_logged >= 60.0:
+                self._scope_logged = t
+                log.exception("scope step failed (%d so far); scope / fft effects keep their last values this frame",
+                              self._scope_errors)
 
 
-def new_sound() -> Optional[Sound]:
-    """A session's Sound, or None while sound_view.py is not installed."""
+def new_sound(feed: Any = None) -> Optional[Sound]:
+    """A session's Sound, or None while sound_view.py is not installed.  ``feed``: the process's ScopeFeed."""
     if not available():
         return None
     try:
-        return Sound()
+        return Sound(feed=feed)
     except Exception:
         log.exception("could not create the sound view")
         return None

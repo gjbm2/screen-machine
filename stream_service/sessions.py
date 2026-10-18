@@ -241,7 +241,7 @@ class Session(EngineListener):
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
         # -- what scenes can hear (sound.py): the piano and the room mic, one view per session --
-        self.sound = new_sound()
+        self.sound = new_sound(feed=getattr(mgr, "scope_feed", None))   # + the fast scope / fft feed
         self.engine.sound = self.sound
         self.engine.frame_hook = self._frame_hook
         if getattr(self.engine, "bus", None) is not None:

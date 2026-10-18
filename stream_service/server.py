@@ -721,7 +721,8 @@ async def diag(request: web.Request) -> web.Response:
     h = dg.host()
     return web.json_response({"host": h, "gpus": gpu_list, "sessions": out, "verdict": dg.verdict(h, gpu_list, out),
                               "plugin_errors": mgr.plugin_error_list(),
-                              "slow": {"trips": mgr.slow_trips, "plugins": mgr.slow_runtime_list()}})
+                              "slow": {"trips": mgr.slow_trips, "plugins": mgr.slow_runtime_list()},
+                              "scope_feed": mgr.scope_feed.stats() if getattr(mgr, "scope_feed", None) else None})
 
 
 async def events_ws(request: web.Request) -> web.StreamResponse:
@@ -765,6 +766,9 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     inputs = ShowInputs(show_bus) if show_bus else None
     mgr = SessionManager(registry=registry, presets=presets, events=events, max_sessions=max_sessions,
                          public_base=public_base, inputs=inputs, latency_file=latency_file)
+    from .scope_feed import ScopeFeed
+
+    mgr.scope_feed = ScopeFeed.from_music_bus(music_bus)   # the fast scope / fft feed (None: no music bus)
     app = web.Application(middlewares=[auth_and_errors], client_max_size=MAX_BODY)
     app[REGISTRY] = registry
     app[PRESETS] = presets
@@ -847,6 +851,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
             app[TASKS].append(asyncio.create_task(showbus.run(url, None, sound_sink=mgr.broadcast_sound,
                                                                name="music bus", room_sink=mgr.on_room_message,
                                                                want=MUSIC_BUS_WANT)))
+        if getattr(mgr, "scope_feed", None) is not None:   # show_service's /v1/levels?wave=1024 (scope_feed.py)
+            app[TASKS].append(asyncio.create_task(mgr.scope_feed.run()))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:
