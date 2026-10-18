@@ -596,7 +596,9 @@ class Engine:
         return True
 
     def _notify(self, kind: str, phase: str, pts: float, tid: int, superseded: bool) -> None:
-        if kind == "in" and phase == "done" and not superseded and not self._out_applied:
+        # the opening is over when the in transition finishes, or when a scene change started during it (a GPU
+        # guard's recovery cue, a room join) finishes first: either way the bus opens, else it never would
+        if kind == "in" and phase == "done" and not self._out_applied and not self.stop_evt.is_set():
             self.bus.open()
             if not self.stop_evt.is_set():
                 self.post(self.listener.on_fx, {"bus": "open"})

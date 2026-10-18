@@ -315,6 +315,27 @@ def test_exit_over_a_tripped_scene_crossfades_from_the_frozen_frame():
     assert eng.bus.target == 0.0 and eng.bus.fade_s == 0.0                    # the bus is in the frozen frame
 
 
+def test_bus_opens_when_a_scene_change_supersedes_the_in_transition():
+    """North, 18 Oct: a scene tripped on its first frame, the recovery cue ran over the in transition and the bus
+    never opened (effects queued, none shown).  The opening is over either way."""
+    eng, _ = make_engine()
+    eng.root = SourceLayer(Const(0.0), 0.0)
+    pool = Pool()
+    fc = FrameCtx(0, FPS, pool, retire=eng._retire)
+    t_in, t_scene = Mix(3.0), Mix(0.2)
+    t_in.prepared = t_scene.prepared = True
+    eng._start_transition(fc, StartTransition("in", 1, Const(50.0), t_in))
+    out = np.zeros((1, 1, 4))
+    for n in range(0, 40):
+        fc.n = n
+        if n == 3:
+            eng._start_transition(fc, StartTransition("scene", 2, Const(100.0), t_scene))
+        eng.root.render(fc, out)
+        eng.root = eng.root.collapse(fc)
+    assert float(out[0, 0, 0]) == 100.0 and isinstance(eng.root, SourceLayer)
+    assert eng.bus.target == 1.0
+
+
 def test_exit_over_an_over_budget_scene_freezes_too_but_a_healthy_one_renders():
     eng, _ = make_engine()
     gpu = FakeGpu()
