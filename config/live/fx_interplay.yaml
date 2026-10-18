@@ -86,8 +86,9 @@ roles_by_music:
 # a plug-in's role by hand, over the generated file
 role_overrides: {}
 
-# effects that draw what they hear (the plug-in's `listens`): x the pick weight by how much there is to hear now,
-# [with nothing, playing]; an effect that listens to several kinds takes the best. A fact, not a guess, so these sit
+# effects drawn from the sound (`draws` in effect_roles.generated.json; not the plug-in's `listens`, which the GLSL
+# host declares for every shader): x the pick weight by how much there is to hear now, [with nothing, playing];
+# an effect that draws several kinds takes the best. A fact, not a guess, so these sit
 # outside multiplier_range. notes/chroma: the piano (sound.present); spectrum: the room's music present; scope/fft:
 # the fast feed live and the music present.
 listens:

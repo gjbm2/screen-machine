@@ -301,9 +301,7 @@ class Session(EngineListener):
         self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
         self.fx_director.looks = fx_interplay.shared(self.mgr.presets.dir)   # scenes and effects together
         self.fx_director.scene = lambda: (self.current_name, self.mgr.presets.scenes.get(self.current_name or ""))
-        self.fx_director.heard = self._heard_now    # an effect that draws what it hears: weighted by what there is
-        reg = self.mgr.registry
-        self.fx_director.looks.listens_of = lambda p: getattr(reg.effects.get(p or ""), "listens", ())
+        self.fx_director.heard = self._heard_now    # an effect drawn from the sound: weighted by what there is
         # -- room-level direction (rooms.py): set by the manager on create --
         self.room: Optional[str] = None
         self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
@@ -397,18 +395,16 @@ class Session(EngineListener):
         return g[1], bpb
 
     def _heard_now(self) -> dict:
-        """{listens kind: 0..1} what there is to hear now (fx_interplay's listens): the piano's notes, the room's
-        music for the spectrum and the fast scope / fft feed.  A kind with nothing known is left out (no opinion)."""
+        """{listens kind: 0..1} what there is to hear now (fx_interplay's listens): the piano's notes, and the
+        room's music for spectrum / scope / fft.  Not sound.scope_live: the fast feed connects only once such an
+        effect is on screen (c6f43e9b), and fft follows spectrum32 until then.  Unknown kinds are left out."""
         out: dict = {}
         snd = self.sound
         if snd is not None:
             out["notes"] = out["chroma"] = 1.0 if snd.present else 0.0
         music = self.mgr.music_feed.presence(time.monotonic())
         if music is not None:
-            spec, scope = getattr(snd, "spectrum_live", None), getattr(snd, "scope_live", None)
-            out["spectrum"] = music if snd is None or spec is None or spec else 0.0
-            if scope is not None:
-                out["scope"] = out["fft"] = music if scope else 0.0
+            out["spectrum"] = out["scope"] = out["fft"] = music
         return out
 
     def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:

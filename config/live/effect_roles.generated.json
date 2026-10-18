@@ -1413,37 +1413,55 @@
    "role": "add",
    "secondary": null,
    "changes_over_time": true,
-   "_why": "Draws the piano's notes as a scrolling stream over the picture (0b, 18 Oct)"
+   "_why": "Draws the piano's notes as a scrolling stream over the picture (0b, 18 Oct)",
+   "draws": [
+    "notes"
+   ]
   },
   "note_highway_3d": {
    "role": "add",
    "secondary": null,
    "changes_over_time": true,
-   "_why": "Draws the piano's notes on a 3D highway over the picture (0b, 18 Oct)"
+   "_why": "Draws the piano's notes on a 3D highway over the picture (0b, 18 Oct)",
+   "draws": [
+    "notes"
+   ]
   },
   "note_ripples": {
    "role": "add",
    "secondary": null,
    "changes_over_time": true,
-   "_why": "Draws a ripple for each piano note over the picture (0b, 18 Oct)"
+   "_why": "Draws a ripple for each piano note over the picture (0b, 18 Oct)",
+   "draws": [
+    "notes"
+   ]
   },
   "oscilloscope": {
    "role": "add",
    "secondary": null,
    "changes_over_time": false,
-   "_why": "Draws the room's live waveform over the picture (0b, 18 Oct)"
+   "_why": "Draws the room's live waveform over the picture (0b, 18 Oct)",
+   "draws": [
+    "scope"
+   ]
   },
   "spectrum_bars": {
    "role": "add",
    "secondary": null,
    "changes_over_time": false,
-   "_why": "Draws the room's live spectrum as bars over the picture (0b, 18 Oct)"
+   "_why": "Draws the room's live spectrum as bars over the picture (0b, 18 Oct)",
+   "draws": [
+    "fft"
+   ]
   },
   "spectrum_terrain_3d": {
    "role": "add",
    "secondary": null,
    "changes_over_time": true,
-   "_why": "Draws the room's spectrum history as a 3D terrain over the picture (0b, 18 Oct)"
+   "_why": "Draws the room's spectrum history as a 3D terrain over the picture (0b, 18 Oct)",
+   "draws": [
+    "fft"
+   ]
   }
  }
 }

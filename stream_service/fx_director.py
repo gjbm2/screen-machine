@@ -23,8 +23,8 @@ Scenes and effects together (docs/SCENE_FX_INTERPLAY.md, fx_interplay.py; ``look
 session): each candidate's weight is also x its fit with the scene on screen (its role against the scene's measured
 busyness, motion, brightness, symmetry, colour source), with the other effects on the bus and with the music's
 genre, and the retag's per-preset guess counts only as weight ** tag_prior; the effect comes in at a level the
-music's load budget and the scene leave it (never below level_min).  An effect that draws what it hears (its
-``listens``) is x by how much of it there is now (``heard``, set by the session): no piano, few note streams.  One layer moves at a time: a section change
+music's load budget and the scene leave it (never below level_min).  An effect drawn from the sound (its
+``draws``) is x by how much of it there is now (``heard``, set by the session): no piano, few note streams.  One layer moves at a time: a section change
 waits SECTION_WAIT_S for the scene director, and when the scene changes the carried auto effects are re-checked
 against the new scene (the one that fits worst is swapped once its fit fell below refit_below of what it was).
 """
