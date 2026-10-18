@@ -96,11 +96,14 @@ def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
 
 #: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23). Intensity and emitters
 #: are driven (colour_mix; ``uv`` never takes part); a Strobe is a shutter held at 0 ("no strobe" on generic LED
-#: lights); Pan and Tilt are never driven in Stage 5 and sit at 0 until the fixture's ``pin`` says otherwise.
+#: lights); Pan and Tilt are not driven yet: they rest at centre (GENERIC_DEFAULTS, 128 of 255; at 0 most movers aim
+#: into a corner or the ceiling) until the fixture's ``pin`` says otherwise.
 GENERIC_CHANNELS: dict[str, tuple[str, Optional[str]]] = {
     "Dimmer": ("intensity", None), "Red": ("emitter", "red"), "Green": ("emitter", "green"),
     "Blue": ("emitter", "blue"), "White": ("emitter", "white"), "Amber": ("emitter", "amber"),
     "UV": ("emitter", "uv"), "Strobe": ("shutter", None), "Pan": ("pan", None), "Tilt": ("tilt", None)}
+#: a generic channel's resting value when nothing drives it (owner, 18 Oct: a mover must not sit aimed at 0, 0)
+GENERIC_DEFAULTS: dict[str, int] = {"Pan": 128, "Tilt": 128}
 #: The generic channelled types (README S5.23): a DMX light with no Open Fixture Library file, registered on the
 #: Lights page. id -> (label, its channels in DMX order).
 GENERIC_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -123,7 +126,7 @@ def _generic(tid: str, names: tuple[str, ...]) -> contract.TypeInfo:
     chans: list[contract.AttrChannel] = []
     for off, n in enumerate(names):
         attr, em = GENERIC_CHANNELS[n]
-        ch: contract.AttrChannel = {"offset": off, "name": n, "attr": attr, "default": 0}
+        ch: contract.AttrChannel = {"offset": off, "name": n, "attr": attr, "default": GENERIC_DEFAULTS.get(n, 0)}
         if em is not None:
             ch["emitter"] = em
         chans.append(ch)
