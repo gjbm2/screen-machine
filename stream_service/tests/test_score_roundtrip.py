@@ -1,6 +1,10 @@
 """Roundtrip: MIDI played into the live score (ScoreBuilder, fed frame by frame as live_score._listen feeds it, with
 the real analysis worker when its venv and weights are there) -> bars -> what a reader sees on the page.
 
+Each bar is also engraved as live_score engraves it (mei.bar_doc -> Verovio), and the notes Verovio reads off the stave
+(pitch, onset, length) are compared with what was played (owner, 18 Oct: "confirm that from midi input the score
+machinery correctly recovers the actual notes on a stave").
+
 Simple material must come out musically right (owner, 17 Oct: the scales test file produced mad scores):
   * every played note written once, in the order played (none lost or doubled across bar lines or rewrites);
   * spelled in the key: the key signature is the scale's, and no diatonic note carries an accidental;
@@ -18,7 +22,7 @@ import pytest
 
 from stream_service.piano_replay import CC, NOTE_OFF, NOTE_ON, phrase
 from stream_service.score.client import Analyser
-from stream_service.score.mei import signature, spell
+from stream_service.score.mei import ottava, signature, spell
 from stream_service.score.quantize import BeatGrid, ScoreBuilder
 
 FPS = 30.0
@@ -65,18 +69,43 @@ class SyncAnalyser:
         self.worker.close()
 
 
-def transcribe(events: list, analyser: SyncAnalyser | None, tail_s: float = 8.0) -> list:
-    """Feed the events frame by frame (onsets and releases at their own times, as sound_view's ages give them);
-    -> the bars a reader ends up with (a rewrite replaces the phrase's bars so far, as live_score does), each with
-    the key signature it was engraved in."""
+BUS_LAGS_MS = (20, 400, 100, 750, 50, 250, 30, 600)   # the bus delivers in order but in clumps (captured 18 Oct)
+
+
+def transcribe(events: list, analyser: SyncAnalyser | None, tail_s: float = 8.0, via_bus: bool = False) -> list:
+    """Feed the events frame by frame -> the bars a reader ends up with (a rewrite replaces the phrase's bars so far,
+    as live_score does), each with the key signature it was engraved in.
+
+    ``via_bus``: as the room plays it.  The test piano's own bus messages (music.note, music.notes snapshots),
+    delivered in order but each 20-750 ms late in clumps (BUS_LAGS_MS), into a real SoundView, whose frames feed the
+    builder exactly as live_score._listen does: a frame's onsets, then its releases, at ``t - age``.  Otherwise each
+    event goes straight in at its own time."""
+    from stream_service.piano_replay import TestPiano
+    from stream_service.sound_view import SoundView
     sb = ScoreBuilder()
     if analyser is not None:
         sb.use_analysis(True)
     evs = sorted(events)
     end = evs[-1][0] + tail_s
     out, pending, i, t = [], [], 0, 0.0
+    piano, view, inbox, k, last_arrival = (TestPiano(evs), SoundView(), [], 0, 0.0) if via_bus else (None,) * 5
     while t <= end:
-        while i < len(evs) and evs[i][0] <= t:
+        if via_bus:
+            now = t * 1000.0
+            for m in piano.poll(now):
+                last_arrival = max(last_arrival, m["data"]["t_ms"] + BUS_LAGS_MS[k % len(BUS_LAGS_MS)])
+                k += 1
+                inbox.append((last_arrival, m))
+            while inbox and inbox[0][0] <= now:
+                view.on_message(inbox.pop(0)[1])
+            f = view.update(now)
+            ts = float(f.t_ms) / 1000.0
+            for p, vel, age in f.onsets:
+                sb.note_on(p, float(vel), ts - age)
+            for p, _vo, age in f.releases:
+                sb.note_off(p, ts - age)
+            sb.pedal(float(f.pedals[0]), ts)
+        while not via_bus and i < len(evs) and evs[i][0] <= t:
             te, st, d1, d2 = evs[i]
             if st == NOTE_ON and d2 > 0:
                 sb.note_on(d1, d2 / 127.0, te)
@@ -133,6 +162,42 @@ def read(bars: list) -> list[Written]:
     return sorted(notes, key=lambda w: (w.at, w.pitch))
 
 
+def engraved(bars: list) -> list[tuple[float, int, float]]:
+    """The notes on the stave: each bar's document as live_score engraves it (mei.bar_doc, in the key it was written
+    in), read back by Verovio -> [(onset in quarters from the score's start, MIDI pitch, length in quarters)], one per
+    played note (its pieces and ties across bar lines summed by our note id, which every engraved note carries)."""
+    verovio = pytest.importorskip("verovio")
+    from stream_service.score.mei import bar_doc
+    import re
+    tk = verovio.toolkit()
+    notes: dict[int, list] = {}
+    base = 0.0
+    for bar, fifths in bars:
+        if bar.marker:
+            continue
+        doc = bar_doc(bar, fifths)
+        assert tk.loadData(doc), "Verovio couldn't read a bar"
+        tk.renderToMIDI()
+        q = 60000.0 / 120.0                                    # Verovio plays a bar document at 120 bpm
+        for xid in re.findall(r'<note xml:id="(n\d+-\d+)"', doc):
+            v = tk.getMIDIValuesForElement(xid)
+            nid = int(xid[1:].split("-")[0])
+            on, dur = base + v["time"] / q, v["duration"] / q
+            if nid in notes:
+                notes[nid][2] += dur
+            else:
+                notes[nid] = [on, v["pitch"], dur]
+        base += bar.units / 4.0
+    return sorted((round(on, 3), p, round(d, 3)) for on, p, d in notes.values())
+
+
+def assert_on_the_stave(bars: list, played: list[int], written: list[Written]) -> None:
+    """What Verovio engraves is what was played (pitch, in order) and what was written (onset and value)."""
+    st = engraved(bars)
+    assert [p for _, p, _ in st] == played, "the stave's pitches aren't the played ones (spelling, octave or accidental)"
+    assert [(on, d) for on, _, d in st] == [(w.at / 4.0, w.dur / 4.0) for w in written], "the stave's rhythm differs"
+
+
 def ledger_lines(pitch: int, staff: int) -> int:
     """Ledger lines a note needs on its staff (treble E4-F5, bass G2-A3)."""
     step = lambda m: (m // 12) * 7 + (0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6)[m % 12]  # noqa: E731
@@ -153,7 +218,7 @@ def assert_musical(notes: list[Written], played: list[int], fifths: int, value16
     (step,) = steps
     assert step in (value16 // 2 or value16, value16, 2 * value16), f"a {value16}-16ths run written {step} apart"
     assert {w.dur for w in notes} == {step}, f"durations {sorted({w.dur for w in notes})}, want {step}"
-    worst = max(ledger_lines(w.pitch, w.staff) for w in notes)
+    worst = max(ledger_lines(w.pitch - 12 * ottava([w.pitch], w.staff), w.staff) for w in notes)   # as written
     assert worst <= 3, f"a note {worst} ledger lines off its staff"
     if one_hand:
         flips = [b.pitch for a, b, c in zip(notes, notes[1:], notes[2:]) if b.staff != a.staff and b.staff != c.staff]
@@ -191,8 +256,10 @@ CASES = [
 @pytest.mark.parametrize("name,tonic,octaves,value,bpm,hands,loops", CASES, ids=[c[0] for c in CASES])
 def test_scales_come_out_musically_right(analyser, name, tonic, octaves, value, bpm, hands, loops):
     ev, played = scale(tonic, octaves, value, bpm, hands, loops)
-    notes = read(transcribe(ev, analyser))
+    bars = transcribe(ev, analyser)
+    notes = read(bars)
     assert_musical(notes, played, FIFTHS[tonic % 12], int(round(value * 4)), hands != "both")
+    assert_on_the_stave(bars, played, notes)
 
 
 def test_the_test_pianos_scale_phrase_looped(analyser):
@@ -202,14 +269,36 @@ def test_the_test_pianos_scale_phrase_looped(analyser):
     length = max(t for t, *_ in once)
     ev = [(t + k * (length + 3.0), s, a, b) for k in range(3) for t, s, a, b in once]
     played = [a for _t, s, a, b in sorted(ev) if s == NOTE_ON and b > 0]
-    assert_musical(read(transcribe(ev, analyser)), played, 0, 2, True)
+    bars = transcribe(ev, analyser)
+    notes = read(bars)
+    assert_musical(notes, played, 0, 2, True)
+    assert_on_the_stave(bars, played, notes)
 
 
 # -- without it (the fallback beat clock) --------------------------------------------------------------------------
 @pytest.mark.parametrize("tonic,value,bpm", [(60, 0.5, 100), (55, 0.5, 90), (53, 1.0, 80)])
 def test_scales_without_the_analysis(tonic, value, bpm):
     ev, played = scale(tonic, 2 if tonic < 60 else 1, value, bpm)
-    assert_musical(read(transcribe(ev, None)), played, FIFTHS[tonic % 12], int(round(value * 4)), True)
+    bars = transcribe(ev, None)
+    notes = read(bars)
+    assert_musical(notes, played, FIFTHS[tonic % 12], int(round(value * 4)), True)
+    assert_on_the_stave(bars, played, notes)
+
+
+@pytest.mark.parametrize("with_analysis", [False, True], ids=["beat-clock", "analysis"])
+def test_a_chromatic_scale_engraves_every_accidental_right(with_analysis, request):
+    """Every black key, up and down across bar lines: sharps, flats, naturals cancelling them, gestural accidentals.
+    What Verovio reads off the stave must be the played pitches (a wrong or missing accidental moves one)."""
+    an = request.getfixturevalue("analyser") if with_analysis else None
+    beat = 60.0 / 100
+    run = list(range(60, 73)) + list(range(71, 59, -1))
+    ev = []
+    for i, p in enumerate(run):
+        ev += [(i * beat / 2, NOTE_ON, p, 70), (i * beat / 2 + beat / 2 * 0.9, NOTE_OFF, p, 40)]
+    bars = transcribe(sorted(ev), an)
+    notes = read(bars)
+    assert [w.pitch for w in notes] == run
+    assert_on_the_stave(bars, run, notes)
 
 
 # -- the pieces that went wrong -------------------------------------------------------------------------------------
@@ -318,3 +407,96 @@ def test_the_note_glow_asks_where_a_note_is_written():
         sb.note_off(p, i * 0.3 + 0.27)
     sb.hand = {i: 1 for i in ids}                              # the hand model: all "left hand"
     assert all(sb._staff(n) == 0 for n in sb.notes)            # a single line from middle C up: treble, as written
+
+
+
+# -- through the bus, as the room plays it -------------------------------------------------------------------------
+@pytest.mark.parametrize("name,tonic,octaves,value,bpm", [("C-major-8ths", 60, 2, 0.5, 100), ("Bb-major-16ths", 58, 1, 0.25, 90)],
+                         ids=["C-major-8ths", "Bb-major-16ths"])
+def test_scales_through_the_bus(analyser, name, tonic, octaves, value, bpm):
+    """The same scales played by the test piano onto the bus, late and in clumps, through the renderer's SoundView."""
+    ev, played = scale(tonic, octaves, value, bpm, loops=2)
+    bars = transcribe(ev, analyser, via_bus=True)
+    notes = read(bars)
+    assert_musical(notes, played, FIFTHS[tonic % 12], int(round(value * 4)), True)
+    assert_on_the_stave(bars, played, notes)
+
+
+def test_a_real_piece_through_the_bus_keeps_every_note(analyser):
+    """The Bach the owner was playing (first 30 s): every key struck is written once, and none is left held.  A
+    re-struck key's release and new strike arriving in one frame (strike first) once released the new note before
+    it began and left the old one tied on and on; two voices on one key got one release for two strikes."""
+    import pathlib
+    from stream_service.piano_replay import read_midi
+    f = next(pathlib.Path(__file__).resolve().parents[2].joinpath("config/live/test-piano").glob("*Bach*.mid"), None)
+    if f is None:
+        pytest.skip("no Bach in config/live/test-piano")
+    ev = [e for e in read_midi(f.read_bytes()) if e[0] < 30.0]
+    held: dict[int, int] = {}
+    for _t, st, a, b in ev:                                   # notes still down at the cut are let go there
+        if st == NOTE_ON and b > 0:
+            held[a] = held.get(a, 0) + 1
+        elif st in (NOTE_ON, NOTE_OFF) and held.get(a):
+            held[a] -= 1
+    ev += [(30.0, NOTE_OFF, a, 0) for a, n in held.items() for _ in range(n)] + [(30.0, CC, 64, 0)]
+    played = sorted(a for _t, st, a, b in ev if st == NOTE_ON and b > 0)
+    bars = transcribe(ev, analyser, via_bus=True)
+    notes = read(bars)
+    assert sorted(w.pitch for w in notes) == played, "a struck key was lost or written twice"
+    assert bars and bars[-1][0].phrase_end, "the phrase never ended: a note was left held"
+    assert sorted(p for _, p, _ in engraved(bars)) == played, "the stave's pitches aren't the played ones"
+
+
+def test_a_restruck_key_and_two_voices_on_one_key():
+    sb = ScoreBuilder()
+    sb.note_on(60, 0.6, 1.0)
+    sb.note_on(60, 0.6, 2.0)            # a frame with the re-strike first ...
+    sb.note_off(60, 1.9)                # ... and the old note's release after it
+    old, new = sb.notes
+    assert old.t_off == pytest.approx(1.9) and new.t_off is None
+    sb.note_off(60, 2.4)
+    assert new.t_off == pytest.approx(2.4)
+    sb.note_on(64, 0.6, 3.0)
+    sb.note_on(64, 0.6, 3.5)            # two voices on one key: two strikes ...
+    sb.note_off(64, 4.0)                # ... one release
+    a, b = sb.notes[-2:]
+    assert a.t_off == pytest.approx(3.5) and b.t_off == pytest.approx(4.0)
+
+
+
+def test_every_key_low_to_high_through_the_bus(analyser):
+    """The test piano's sweep (every key A0..C8, 8 a second): every note in order, one value, and none more than 3
+    ledger lines off its staff as written: the ends go under octave lines (8vb / 15mb, 8va / 15ma), and what Verovio
+    reads off the stave is still every key in turn (owner, 18 Oct: the sweep drew towers of ledger lines)."""
+    from stream_service.score.mei import bar_doc
+    ev = phrase("sweep")
+    played = [a for _t, st, a, b in sorted(ev) if st == NOTE_ON and b > 0]
+    bars = transcribe(ev, analyser, via_bus=True)
+    notes = read(bars)
+    assert [w.pitch for w in notes] == played
+    onsets = sorted({w.at for w in notes})
+    assert len({b - a for a, b in zip(onsets, onsets[1:])}) == 1, "the run's notes aren't evenly written"
+    assert max(ledger_lines(w.pitch - 12 * ottava([w.pitch], w.staff), w.staff) for w in notes) <= 3
+    docs = "".join(bar_doc(b, f) for b, f in bars if not b.marker)
+    assert 'dis.place="above"' in docs and 'dis.place="below"' in docs, "no octave lines for the far ends"
+    assert [p for _, p, _ in engraved(bars)] == played, "the stave doesn't read back as every key in turn"
+
+
+def test_the_staves_keep_one_gap_whatever_each_bar_engraves():
+    """Each bar is engraved on its own and Verovio widens the gap between the staves wherever a bar has ledger lines
+    there: placed whole, the bass wandered down and back along a line (owner, 18 Oct).  Its rows now go one fixed gap
+    below the treble's, in every bar and the header."""
+    from types import SimpleNamespace
+    from stream_service.plugins.sources.live_score import LiveScore, STAVE_GAP_SP
+    sp, t1 = 10.0, 60.0
+    scene = SimpleNamespace(gap=STAVE_GAP_SP * sp, ch=240)
+    scene._rows = lambda m, t: LiveScore._rows(scene, m, t)
+    for natural in (90.0, 110.0, 150.0):                     # three bars' own treble-top -> bass-top distances
+        m = {"staves": [[20.0, 60.0], [20.0 + natural, 60.0 + natural]]}
+        parts = LiveScore._parts(scene, m, t1, 260)
+        (a0, a1, dy1), (b0, b1, dy2) = parts
+        assert 20.0 + dy1 == t1                              # the treble's top line on the line's
+        assert 20.0 + natural + dy2 == t1 + STAVE_GAP_SP * sp   # the bass's top line one fixed gap below, every bar
+        assert a1 - dy1 == b0 - dy2                           # the image's two parts meet: nothing dropped or doubled
+        head_bass = LiveScore._head_y(scene, m, t1, 20.0 + natural + 5.0)
+        assert head_bass == t1 + STAVE_GAP_SP * sp + 5.0      # a bass notehead's glow follows its staff
