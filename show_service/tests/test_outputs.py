@@ -917,3 +917,82 @@ def test_online_pings_each_node_address_off_the_frame_path(tmp_path):
 def test_ping_once():
     assert om.ping_once("not-an-ip") is None and om.ping_once("-c9") is None
     assert om.ping_once("127.0.0.1") in (True, None)                     # None: no ping on this machine
+
+
+# -- movers: the jog, busy frames and the live view (docs/LIGHTS.md §5.8) ----------------------------------------------
+class RateDriver(FakeDriver):
+    """Plans at 100 Hz while a frame is active (or busy), 2 Hz when idle: artnet's grid vs its keepalive."""
+
+    def plan(self, t_last, now, active):
+        return max(now, t_last + (0.01 if active else 0.5))
+
+
+class FakeStore:
+    """space.Store's shape: poll and view (a SpaceView with a revision)."""
+
+    def __init__(self):
+        self.v, self.polls = {"revision": "s1", "appliances": {}}, []
+
+    def poll(self, force=False):
+        self.polls.append(force)
+        return False
+
+    def view(self):
+        return self.v
+
+
+def test_jog_holds_a_light_at_the_active_rate_and_frame_view_shows_its_attrs():
+    from show_service import fixtures as fxmod
+    from show_service.looks import LookEngine
+    mover_t = fxmod.BUILTIN_TYPES["generic-mover-full"]
+    v = view({"o-dmx": out("o-dmx", "artnet")})
+    v["types"] = {mover_t["id"]: mover_t}
+    v["fixtures"] = {"mv": {"id": "mv", "label": "Mover", "type": mover_t["id"], "kind": "lamp", "output": "o-dmx",
+                            "address": 1, "pin": {}, "wb": {}, "setup": {}, "latency": {}}}
+    eng = LookEngine(features_fn=lambda: None, light_scenes=False, space_mod=False)   # stale: inactive frames
+    store = FakeStore()
+    rig = make(FakeRegistry(v), eng, factories={"artnet": lambda oid, **k: RateDriver(oid, kind="artnet", **k)},
+               settings={"rig": {"enabled": True}, "looks": {"layers": []},
+                         "lights": {"jog": {"idle_s": 30, "smooth_ms": 0}, "motion": {"accel_s": 0}}},
+               space_store=store)
+    rig.start()
+    try:
+        d = rig.drivers_of("artnet")[0]
+        assert rig.snapshot_now()["space"]["revision"] == "s1" and store.polls
+        time.sleep(0.3)
+        idle = len(d.frames)
+        assert idle <= 2                                                 # inactive and nothing held: keepalive only
+        with pytest.raises(ValueError, match="^bad_request"):
+            rig.jog("mv", ["pan"])
+        got = rig.jog("mv", {"pan": 45.0, "tilt": -10.0, "sparkle": 1})
+        assert got["held"] is True and got["idle_s"] == 30 and got["unknown"] == ["sparkle"]
+        assert got["target"]["pan"] == 45.0 and rig.holds()["mv"]["target"]["tilt"] == -10.0
+        time.sleep(0.6)
+        assert len(d.frames) - idle >= 20                                # held: the active rate while inactive
+        fv = rig.frame_view("o-dmx")
+        assert fv["active"] is False and fv["fixtures"]["mv"]["attrs"]["pan"] == 45.0
+        json.dumps(fv)
+        assert rig.caps_of("mv")["moves"] is True and rig.caps_of("nope") is None
+        lv = rig.live_view()
+        assert lv["fixtures"]["mv"]["pan"] == 45.0 and lv["fixtures"]["mv"]["held"] is True
+        assert rig.jog("nope", {})["why"] == "There's no light 'nope' in the rig."
+        assert rig.jog("mv", release=True)["held"] is False and rig.holds() == {}
+        rig.reload_now()
+        assert store.polls[-1] is True                                   # an API write re-reads the space at once
+    finally:
+        rig.stop()
+
+
+def test_jog_degrades_without_an_engine_that_holds():
+    v = view({"o-hue": out("o-hue", "hue")})
+    rig = make(FakeRegistry(v), FakeEngine(), space_store=False)
+    rig.start()
+    try:
+        assert rig.jog("lamp.a", {"intensity": 1}) == {"held": False, "until_s": None, "idle_s": om.JOG_IDLE_S,
+                                                       "target": {}, "now": {}, "unknown": [],
+                                                       "why": "This light can't be moved from here yet."}
+        assert rig.holds() == {} and rig.caps_of("lamp.a") is None
+        assert rig.live_view()["fixtures"] == {}
+        assert rig._engine_kw == frozenset()                             # a fake engine's configure: lamps only
+    finally:
+        rig.stop()

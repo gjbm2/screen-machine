@@ -618,7 +618,7 @@ def test_bad_layers_are_left_out_with_problem_lines():
     probs = e.configure({"layers": [
         layer(id="ok", wobble=1),
         layer(id="ok"),                                            # used twice
-        layer(id="col", attr="colour"),
+        layer(id="col", attr="colour"),                            # a colour layer needs a role (docs/LIGHTS.md §5.2)
         layer(id="fx", fx="zigzag"),
         layer(id="ph", phase="fortnight"),
         layer(id="nd", needs="vibes"),
@@ -633,7 +633,7 @@ def test_bad_layers_are_left_out_with_problem_lines():
     ids = [L.id for L in e._program.layers]
     assert ids == ["ok", "sel"]
     text = "\n".join(probs)
-    for needle in ("looks.layers.ok.wobble", "used twice", "colour layers are kept for later", "zigzag", "fortnight",
+    for needle in ("looks.layers.ok.wobble", "used twice", "a colour layer needs a role", "zigzag", "fortnight",
                    "vibes", "no depth", "loudness", "period_s", "kind:", "enabled", "layers[12]", "looks.master",
                    "looks.middle_depth", "strobe_hz", "looks.colours"):
         assert needle in text, needle
@@ -692,8 +692,9 @@ def test_stats_shape():
         e.evaluate("hue", 10 + i * 0.02, DMX_CAPS)
     s = e.stats()
     po = s["per_output"]["hue"]
-    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops"}
-    assert set(s["program"]) == {"revision", "layers", "problems", "scenes"}
+    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops", "motion", "holds"}
+    assert set(s["program"]) == {"revision", "layers", "problems", "scenes", "groups", "effects", "skipped",
+                                 "modules"}
     assert set(s["program"]["scenes"]) == {"revision", "compiled", "problems"}
     assert po["frames"] == 10 and po["eval_us"]["p50"] is not None and po["eval_us"]["p95"] >= po["eval_us"]["p50"]
 

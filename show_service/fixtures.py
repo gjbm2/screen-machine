@@ -24,9 +24,11 @@ can't start (``no_config``).
 **Selectors** (LX-style; ``parse_selector``, ``select``): ``|`` separates OR clauses, spaces AND terms, ``!`` negates a
 term; a term is ``key:value`` (``SELECTOR_KEYS``), a bare word is ``tag:<word>``, ``*`` is every fixture, and a value
 ending in ``*`` is a prefix. ``role:`` matches a fixture's own role, else (given show.yaml ``lamps``) its placement's
-role, else ``lamps.default_role`` for a lamp, as the director decides it. **Order:** members of the selector's
-positive ``group:`` terms first, in the group's order (the first such group a fixture is in), then the rest by
-``order``, then id.
+role, else ``lamps.default_role`` for a lamp, as the director decides it. ``cap:<attr>`` (docs/LIGHTS.md §2.7) holds
+when the fixture's type can show that ATTRS word (``cap:pan``, ``cap:gobo``); ``side:<word>`` and
+``height:<low|mid|high>`` are the room's (space.py's ``spatial_fn``, passed as ``spatial``): without it they hold for
+no fixture (an unplaced light is on no side). **Order:** members of the selector's positive ``group:`` terms first, in
+the group's order (the first such group a fixture is in), then the rest by ``order``, then id.
 
 **Latency** (``resolve_latency``; S5.2): per edge, latency.json ``outputs.<fixture id>.<attr>``, then
 ``outputs.<the output's latency_key>.<attr>``, then fixtures.yaml's hand-set ms, then 0 ("unset"). A measured edge's
@@ -37,7 +39,15 @@ fixtures.yaml's schema (its nodes, outputs, types and fixtures). ``Registry`` me
 file wins on an id clash, with a problem line; one that doesn't read is a problem line and the hand file loads alone)
 and reloads on its changes too. Only ``Registrar`` writes it, whole and atomically, after checking the result with the
 loader itself; nothing in code ever writes fixtures.yaml. ``GENERIC_TYPES`` are builtin channelled types (RGB, RGBW,
-..., a mover) for a DMX light with no OFL file.
+..., the movers) for a DMX light with no OFL file: ``GENERIC_RANGES`` gives their channels' ranges (starting points
+for a typical head; the wheels re-divide by the light's setup ``slots.count``).
+
+**The setup file** (docs/LIGHTS.md §2.6): config/room/fixtures.setup.yaml holds each light's settings from the Lights
+page (home, soft limits, measured speeds, its range when the type doesn't say, its default beam, slot names, named
+positions, its strobe cap), keyed by fixture id, for any fixture (hand-file ones too). Only ``SetupStore`` writes it,
+whole and atomically; ``Registry`` merges each entry into ``FixtureInfo.setup`` (``{}`` when none) and reloads on its
+changes. A key it can't use is dropped with a problem line; an id that isn't a light is kept in the file, with a
+problem line; a file that doesn't read keeps the last good settings.
 
 Config names live in config: nothing here branches on a fixture, output, node, group, zone, screen or role name. A
 driver kind (``contract.DRIVERS``) and a builtin type (``BUILTIN_TYPES``) are fixed vocabulary words.
@@ -76,7 +86,9 @@ HUE_KEYS: tuple[str, ...] = ("bridge", "area", "gamma", "stop_after_s")   # read
 UNIVERSE_DRIVERS: tuple[str, ...] = ("artnet",)    # driver kinds whose fixtures sit in a DMX universe (need address)
 LIGHT_DRIVERS: tuple[str, ...] = ("hue",)          # driver kinds whose fixtures are a bridge's lights (need light)
 SELECTOR_KEYS: tuple[str, ...] = ("id", "kind", "type", "output", "driver", "zone", "placement", "role", "screen",
-                                  "tag", "group")
+                                  "tag", "group", "cap", "side", "height")
+SPATIAL_KEYS: tuple[str, ...] = ("side", "height")   # answered by ``select``'s ``spatial`` (space.spatial_fn)
+HEIGHT_WORDS: tuple[str, ...] = ("low", "mid", "high")   # height:<word>: the room's thirds, floor to ceiling
 TOP_KEYS: tuple[str, ...] = ("version", "outputs", "nodes", "types", "fixtures", "groups")
 OUTPUT_KEYS: tuple[str, ...] = ("driver", "enabled", "node", "port_address", "latency_key", "latency", "hits",
                                 "min_attack_ms", "rate_hz")
@@ -91,19 +103,25 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
     return {"id": tid, "source": "builtin", "kind": kind, "file": None, "mode": None, "footprint": 0,
-            "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": []}
+            "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
+            "wheels": {}, "physical": ofl.no_physical()}
 
 
-#: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23). Intensity and emitters
-#: are driven (colour_mix; ``uv`` never takes part); a Strobe is a shutter held at 0 ("no strobe" on generic LED
-#: lights); Pan and Tilt are not driven yet: they rest at centre (GENERIC_DEFAULTS, 128 of 255; at 0 most movers aim
-#: into a corner or the ceiling) until the fixture's ``pin`` says otherwise.
+#: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23; docs/LIGHTS.md §2.5).
+#: Intensity and emitters are driven by colour_mix (``uv`` never takes part); the movers' channels by fixture_encode
+#: through GENERIC_RANGES. A Strobe is a shutter held at 0 ("no strobe" on generic LED lights: no ranges, never
+#: driven). A "<name> fine" channel is the LSB of <name> (16-bit, MSB first).
 GENERIC_CHANNELS: dict[str, tuple[str, Optional[str]]] = {
     "Dimmer": ("intensity", None), "Red": ("emitter", "red"), "Green": ("emitter", "green"),
     "Blue": ("emitter", "blue"), "White": ("emitter", "white"), "Amber": ("emitter", "amber"),
-    "UV": ("emitter", "uv"), "Strobe": ("shutter", None), "Pan": ("pan", None), "Tilt": ("tilt", None)}
-#: a generic channel's resting value when nothing drives it (owner, 18 Oct: a mover must not sit aimed at 0, 0)
-GENERIC_DEFAULTS: dict[str, int] = {"Pan": 128, "Tilt": 128}
+    "UV": ("emitter", "uv"), "Strobe": ("shutter", None), "Pan": ("pan", None), "Tilt": ("tilt", None),
+    "Pan fine": ("other", None), "Tilt fine": ("other", None), "Pan/Tilt speed": ("pt_speed", None),
+    "Shutter": ("shutter", None), "Colour wheel": ("wheel", None), "Gobo": ("gobo", None),
+    "Gobo rotation": ("gobo_spin", None), "Prism": ("prism", None), "Zoom": ("zoom", None),
+    "Focus": ("focus", None)}
+#: a generic channel's resting value when nothing drives it (owner, 18 Oct: a mover must not sit aimed at 0, 0; the
+#: shutter open)
+GENERIC_DEFAULTS: dict[str, int] = {"Pan": 128, "Tilt": 128, "Shutter": 8}    # centre, centre, open
 #: The generic channelled types (README S5.23): a DMX light with no Open Fixture Library file, registered on the
 #: Lights page. id -> (label, its channels in DMX order).
 GENERIC_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -118,22 +136,139 @@ GENERIC_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
     "generic-drgbs": ("Dimmer + RGB + strobe light (5 channels)", ("Dimmer", "Red", "Green", "Blue", "Strobe")),
     "generic-mover": ("Moving head: pan, tilt, dimmer, RGB (6 channels)", ("Pan", "Tilt", "Dimmer", "Red", "Green",
                                                                           "Blue")),
+    "generic-mover-full": ("Moving head: pan, tilt (fine), speed, dimmer, shutter, colour wheel, gobo, gobo spin, "
+                           "prism, zoom, focus (13 channels)",
+                           ("Pan", "Pan fine", "Tilt", "Tilt fine", "Pan/Tilt speed", "Dimmer", "Shutter",
+                            "Colour wheel", "Gobo", "Gobo rotation", "Prism", "Zoom", "Focus")),
 }
+#: The generic channels' ranges (contract.CapRange, 8-bit; a channel with its fine is scaled to 16 bit). Starting
+#: points: a common budget mover's layout; check the light's manual. An OFL file is the real answer, and the light's
+#: setup ``range`` / ``slots`` override. "slots:<n>" is a wheel of n equal slots (GENERIC_WHEELS), re-divided by setup
+#: ``slots.count``.
+GENERIC_RANGES: dict[str, Any] = {
+    "Pan": [{"dmx": [0, 255], "cap": "Pan", "attr": "pan", "lo": -270, "hi": 270}],          # 540° (setup range wins)
+    "Tilt": [{"dmx": [0, 255], "cap": "Tilt", "attr": "tilt", "lo": -135, "hi": 135}],       # 270°
+    "Pan/Tilt speed": [{"dmx": [0, 255], "cap": "PanTiltSpeed", "attr": "pt_speed", "lo": 1.0, "hi": 0.0}],  # 0 = fast
+    "Shutter": [{"dmx": [0, 7], "cap": "ShutterStrobe", "attr": "shutter", "mode": "closed", "lo": 0, "hi": 0},
+                {"dmx": [8, 15], "cap": "ShutterStrobe", "attr": "shutter", "mode": "open", "lo": 0, "hi": 0},
+                {"dmx": [16, 131], "cap": "ShutterStrobe", "attr": "shutter", "mode": "strobe", "lo": 1, "hi": 20},
+                {"dmx": [132, 255], "cap": "ShutterStrobe", "attr": "shutter", "mode": "open", "lo": 0, "hi": 0}],
+    "Colour wheel": "slots:8",    # 8 equal slots over 0..127 (slot 1 Open), then colour_spin: 128..191 CW, 192..255 CCW
+    "Gobo": "slots:8",            # 8 equal slots over 0..63 (slot 1 Open), shake 64..127 per slot, gobo_scroll above
+    "Gobo rotation": [{"dmx": [0, 3], "cap": "WheelSlotRotation", "attr": "gobo_spin", "lo": 0, "hi": 0},
+                      {"dmx": [4, 127], "cap": "WheelSlotRotation", "attr": "gobo_spin", "lo": 0.01, "hi": 1.0},
+                      {"dmx": [128, 131], "cap": "WheelSlotRotation", "attr": "gobo_spin", "lo": 0, "hi": 0},
+                      {"dmx": [132, 255], "cap": "WheelSlotRotation", "attr": "gobo_spin", "lo": -0.01, "hi": -1.0}],
+    "Prism": [{"dmx": [0, 127], "cap": "WheelSlot", "attr": "prism", "lo": 0, "hi": 0, "slot": 0},
+              {"dmx": [128, 255], "cap": "Prism", "attr": "prism", "lo": 1, "hi": 1, "slot": 1}],
+    "Zoom": [{"dmx": [0, 255], "cap": "Zoom", "attr": "zoom", "lo": ofl.ZOOM_UNKNOWN_DEG[0],
+              "hi": ofl.ZOOM_UNKNOWN_DEG[1]}],                                             # ZOOM_UNKNOWN_DEG
+    "Focus": [{"dmx": [0, 255], "cap": "Focus", "attr": "focus", "lo": 0.0, "hi": 1.0}],
+}
+#: The generic wheels: channel word -> (the setup ``slots.count`` key, the wheel's attr, its slots' span on the
+#: channel, the slot type, the rest of the channel: (attr, cap, [lo, hi], speed lo, speed hi) per range; "shake" is
+#: one WheelShake range per slot over that span).
+GENERIC_WHEELS: dict[str, dict[str, Any]] = {
+    "Colour wheel": {"count": "colour", "attr": "colour_slot", "kind": "colour", "span": (0, 127), "slot_type": "Color",
+                     "rest": [("colour_spin", "WheelRotation", (128, 191), 0.01, 1.0),
+                              ("colour_spin", "WheelRotation", (192, 255), -0.01, -1.0)]},
+    "Gobo": {"count": "gobo", "attr": "gobo", "kind": "gobo", "span": (0, 63), "slot_type": "Gobo",
+             "shake": (64, 127),
+             "rest": [("gobo_scroll", "WheelRotation", (128, 191), 0.01, 1.0),
+                      ("gobo_scroll", "WheelRotation", (192, 255), -0.01, -1.0)]},
+}
+GENERIC_SLOTS = 8                   # starting point: a generic wheel's slots until the light's setup says (slots.count)
+SLOT_COUNT_MAX = 32                 # the most slots setup ``slots.count`` may divide a generic wheel into
 
 
-def _generic(tid: str, names: tuple[str, ...]) -> contract.TypeInfo:
+def _split_span(lo: int, hi: int, n: int) -> list[tuple[int, int]]:
+    """``n`` equal DMX spans over [lo, hi] (inclusive), in order."""
+    w = hi - lo + 1
+    return [(lo + (k * w) // n, lo + ((k + 1) * w) // n - 1) for k in range(n)]
+
+
+def _wheel_ranges(word: str, n: int) -> tuple[list[dict], dict[str, Any]]:
+    """A generic wheel channel's ranges for ``n`` slots (slot 1 Open), and its TypeInfo.wheels entry."""
+    g = GENERIC_WHEELS[word]
+    out: list[dict] = []
+    spans = _split_span(g["span"][0], g["span"][1], n)
+    slot_word = "Pattern" if g["kind"] == "gobo" else "Colour"
+    slots = []
+    for k, (a, b) in enumerate(spans, start=1):
+        name = "Open" if k == 1 else f"{slot_word} {k}"
+        out.append({"dmx": [a, b], "cap": "WheelSlot", "attr": g["attr"], "lo": k, "hi": k, "slot": k, "word": name})
+        slots.append({"slot": k, "type": "Open" if k == 1 else g["slot_type"], "name": name,
+                      **({"hex": "#ffffff"} if k == 1 else {})})
+    if g.get("shake"):
+        for k, (a, b) in enumerate(_split_span(g["shake"][0], g["shake"][1], n), start=1):
+            out.append({"dmx": [a, b], "cap": "WheelShake", "attr": g["attr"] + "_shake", "lo": 0.01, "hi": 1.0,
+                        "slot": k})
+    for attr, cap, (a, b), lo, hi in g["rest"]:
+        out.append({"dmx": [a, b], "cap": cap, "attr": attr, "lo": lo, "hi": hi})
+    return out, {"kind": g["kind"], "attr": g["attr"], "slots": slots}
+
+
+def _generic(tid: str, names: tuple[str, ...], counts: Optional[dict[str, int]] = None) -> contract.TypeInfo:
+    """A generic type's TypeInfo; ``counts``: setup ``slots.count`` ({"gobo": n, "colour": n}) for its wheels."""
     t = _builtin(tid, "lamp", ())
+    counts = counts or {}
+    at = {n: off for off, n in enumerate(names)}
     chans: list[contract.AttrChannel] = []
+    served: set[str] = set()
     for off, n in enumerate(names):
         attr, em = GENERIC_CHANNELS[n]
         ch: contract.AttrChannel = {"offset": off, "name": n, "attr": attr, "default": GENERIC_DEFAULTS.get(n, 0)}
         if em is not None:
             ch["emitter"] = em
+        fine = at.get(f"{n} fine")
+        if fine is not None:
+            ch["fine"] = fine
+        spec = GENERIC_RANGES.get(n)
+        if isinstance(spec, str):
+            ranges, wheel = _wheel_ranges(n, max(1, min(SLOT_COUNT_MAX, int(counts.get(
+                GENERIC_WHEELS[n]["count"]) or GENERIC_SLOTS))))
+            t["wheels"][n] = wheel
+        else:
+            ranges = copy.deepcopy(spec) if spec else None
+        if ranges is not None:
+            if fine is not None:                                     # 16-bit: 0..255 -> 0..65535 (x 257)
+                for r in ranges:
+                    r["dmx"] = [r["dmx"][0] * 257, r["dmx"][1] * 257 + (256 if r["dmx"][1] < 255 else 0)]
+                ch["res"] = 2
+            ch["ranges"] = ranges
+            served |= {r["attr"] for r in ranges}
         chans.append(ch)
     kinds = {c["attr"] for c in chans}
+    attrs = set()
+    if kinds & {"intensity", "emitter"}:
+        attrs.add("intensity")
+    if kinds & {"emitter", "wheel"}:
+        attrs.add("colour")
     t["channels"], t["footprint"] = chans, len(chans)
-    t["attrs"] = (["intensity"] if kinds & {"intensity", "emitter"} else []) + (["colour"] if "emitter" in kinds
-                                                                                 else [])
+    t["attrs"] = [a for a in contract.ATTRS if a in attrs | served]
+    return t
+
+
+_GENERIC_CACHE: dict[tuple, contract.TypeInfo] = {}
+
+
+def generic_type(tid: str, counts: Optional[dict[str, int]] = None) -> Optional[contract.TypeInfo]:
+    """A generic type re-divided for a light's setup ``slots.count`` (fixture_encode's per-light plan); the builtin
+    one when no count changes it; None for a type that isn't generic. Cached (one object per (type, counts))."""
+    if tid not in GENERIC_TYPES:
+        return None
+    names = GENERIC_TYPES[tid][1]
+    used = {g["count"] for w, g in GENERIC_WHEELS.items() if w in names}
+    key_counts = tuple(sorted((k, int(v)) for k, v in (counts or {}).items() if k in used and _int(v) is not None
+                              and int(v) != GENERIC_SLOTS))
+    if not key_counts:
+        return BUILTIN_TYPES[tid]
+    key = (tid, key_counts)
+    t = _GENERIC_CACHE.get(key)
+    if t is None:
+        if len(_GENERIC_CACHE) > 256:
+            _GENERIC_CACHE.clear()
+        t = _GENERIC_CACHE[key] = _generic(tid, names, dict(key_counts))
     return t
 
 
@@ -259,6 +394,11 @@ def parse_selector(expr: str) -> Selector:
                 raise ValueError(f"bad_selector: {w!r}: '*' only ends a prefix")
             if not value and not prefix:
                 raise ValueError(f"bad_selector: {w!r} has no value")
+            if key == "cap" and not prefix and value not in contract.ATTRS:
+                raise ValueError(f"bad_selector: {w!r}: {value!r} isn't something a light can do "
+                                 f"({', '.join(contract.ATTRS)})")
+            if key == "height" and not prefix and value not in HEIGHT_WORDS:
+                raise ValueError(f"bad_selector: {w!r}: height is {', '.join(HEIGHT_WORDS)}")
             terms.append(Term(key, value, prefix=prefix, neg=neg))
         clauses.append(tuple(terms))
     return Selector(expr, tuple(clauses))
@@ -269,9 +409,12 @@ class _Matcher:
     lists the groups a prefix term may name."""
 
     def __init__(self, fixtures: dict, outputs: dict, groups: Callable[[str], Optional[list[str]]],
-                 group_ids: Iterable[str], lamps: Optional[dict] = None) -> None:
+                 group_ids: Iterable[str], lamps: Optional[dict] = None, *, types: Optional[dict] = None,
+                 spatial: Optional[Callable[[str, str, str], bool]] = None) -> None:
         self.fixtures = fixtures
         self.outputs = outputs
+        self.types = types if isinstance(types, dict) else {}
+        self.spatial = spatial
         self.groups = groups
         self.group_ids = sorted(group_ids)
         lamps = lamps if isinstance(lamps, dict) else {}
@@ -313,6 +456,17 @@ class _Matcher:
             hit = True
         elif t.key == "group":
             hit = any(fid in (self.groups(g) or ()) for g in self._groups_named(t))
+        elif t.key == "cap":
+            ty = self.types.get(f.get("type"))
+            attrs = (ty.get("attrs") if isinstance(ty, dict) else None) or ()
+            hit = any(a.startswith(t.value) for a in attrs) if t.prefix else t.value in attrs
+        elif t.key in SPATIAL_KEYS:
+            hit = False
+            if self.spatial is not None:
+                try:
+                    hit = bool(self.spatial(fid, t.key, t.value))
+                except Exception:                                # noqa: BLE001  a bad answer: on no side
+                    log.exception("fixtures: spatial(%s, %s, %s) failed", fid, t.key, t.value)
         else:
             vals = self._values(fid, f, t.key)
             hit = any(v.startswith(t.value) for v in vals) if t.prefix else t.value in vals
@@ -337,16 +491,19 @@ class _Matcher:
         return sorted(ids, key=key)
 
 
-def select(expr: Union[str, Selector], rig: Optional[contract.RigView], *, lamps: Optional[dict] = None) -> list[str]:
+def select(expr: Union[str, Selector], rig: Optional[contract.RigView], *, lamps: Optional[dict] = None,
+           spatial: Optional[Callable[[str, str, str], bool]] = None) -> list[str]:
     """The fixture ids ``expr`` selects in ``rig``, ordered (module docstring). A string that doesn't parse raises
     ValueError("bad_selector: ...") as ``parse_selector`` does: the caller writes the problem line, and whatever used
-    it selects nothing. Pass show.yaml ``lamps`` for ``role:`` to follow placements."""
+    it selects nothing. Pass show.yaml ``lamps`` for ``role:`` to follow placements, and space.py's ``spatial_fn(view)``
+    for ``side:`` and ``height:`` (``spatial(fixture id, key, value) -> bool``; without it they hold for none)."""
     if not isinstance(expr, Selector):
         expr = parse_selector(expr)
     if not rig:
         return []
     groups = rig.get("groups") or {}
-    return _Matcher(rig.get("fixtures") or {}, rig.get("outputs") or {}, groups.get, groups, lamps).select(expr)
+    return _Matcher(rig.get("fixtures") or {}, rig.get("outputs") or {}, groups.get, groups, lamps,
+                    types=rig.get("types") or {}, spatial=spatial).select(expr)
 
 
 # -- latency -----------------------------------------------------------------------------------------------------------
@@ -852,7 +1009,7 @@ class _Builder:
                         "light": light, "screen": self._opt_str(where, f, "screen"),
                         "zone": self._opt_str(where, f, "zone"), "placement": self._opt_str(where, f, "placement"),
                         "role": role, "tags": tags, "order": _num(order) if order is not None else None, "wb": wb,
-                        "curve": curve, "pin": pin, "house": house, "latency": {}}
+                        "curve": curve, "pin": pin, "house": house, "latency": {}, "setup": {}}
         self._shared_lights(out, outputs)
         return out
 
@@ -905,7 +1062,7 @@ class _Builder:
                     self.problems.append(f"fixtures.{fid2}: channels {a2}-{e2} overlap fixtures.{fid} ({a}-{e}): both "
                                          f"kept; the later address wins on the shared channels")
 
-    def groups(self, sec: dict, fixtures: dict, outputs: dict) -> dict[str, list[str]]:
+    def groups(self, sec: dict, fixtures: dict, outputs: dict, types: Optional[dict] = None) -> dict[str, list[str]]:
         specs: dict[str, tuple[Selector, list[str]]] = {}
         for gid, g in sec.items():
             where = f"groups.{gid}"
@@ -946,7 +1103,7 @@ class _Builder:
                 return None
             resolving.append(gid)
             sel, order = specs[gid]
-            ids = _Matcher(fixtures, outputs, members, specs, self.lamps).select(sel)
+            ids = _Matcher(fixtures, outputs, members, specs, self.lamps, types=types).select(sel)
             have = set(ids)
             resolving.pop()
             resolved[gid] = [x for x in order if x in have] + [x for x in ids if x not in order]
@@ -971,17 +1128,19 @@ class _Builder:
         for fid, f in fixtures.items():
             f["latency"] = resolve_latency(fid, outputs.get(f["output"]) if f["output"] else None, self.latency,
                                            align_pct=self.align_pct, min_visible_ms=self.min_visible_ms)
-        groups = self.groups(self._section(raw, "groups"), fixtures, outputs)
+        groups = self.groups(self._section(raw, "groups"), fixtures, outputs, types)
         return {"revision": revision, "path": _rel(path), "error": None,
                 "problems": list(dict.fromkeys(self.problems)), "outputs": outputs, "nodes": nodes, "types": types,
                 "fixtures": fixtures, "groups": groups}
 
 
 def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], looks: Optional[dict],
-          lamps: Optional[dict], added_path: Optional[pathlib.Path] = None
+          lamps: Optional[dict], added_path: Optional[pathlib.Path] = None,
+          setups: Optional[tuple[dict, bytes]] = None
           ) -> tuple[contract.RigView, list[pathlib.Path], bool, frozenset[str]]:
     """(view, the type files it read, ok, the fixture ids that came from the added file). Not ok: ``error`` set and
-    empty maps. ``added_path``: fixtures.added.yaml, merged under the hand file (``merge_added``); None: none."""
+    empty maps. ``added_path``: fixtures.added.yaml, merged under the hand file (``merge_added``); None: none.
+    ``setups``: (fixtures.setup.yaml's ``fixtures`` mapping, its bytes) to merge into each FixtureInfo.setup."""
     try:
         data = path.read_bytes()
     except OSError as e:
@@ -991,6 +1150,8 @@ def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], 
     h = hashlib.sha1(data)
     if added_data:
         h.update(b"\0" + added_data)
+    if setups is not None and setups[1]:
+        h.update(b"\0setup\0" + setups[1])
     revision = h.hexdigest()[:12]
     try:
         raw = _yaml(data)
@@ -1007,6 +1168,8 @@ def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], 
     except Exception as e:                      # a bug here must not take the rig down: the last good view stays
         log.exception("fixtures: building the registry failed")
         return _empty_view(path, f"{path.name}: {type(e).__name__}: {e}", revision), b.used, False, frozenset()
+    if setups is not None:
+        attach_setup(view, setups[0], pre)
     if pre:
         view["problems"] = list(dict.fromkeys(pre + view["problems"]))
     return view, b.used, True, frozenset(i for i in ids if i in view["fixtures"])
@@ -1014,14 +1177,23 @@ def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], 
 
 def load(path: pathlib.Path = contract.FIXTURES_FILE, *, types_dir: pathlib.Path = contract.FIXTURE_TYPES_DIR,
          latency: Optional[dict] = None, patch: Optional[dict] = None, looks: Optional[dict] = None,
-         lamps: Optional[dict] = None, added_path: Optional[pathlib.Path] = None) -> contract.RigView:
+         lamps: Optional[dict] = None, added_path: Optional[pathlib.Path] = None,
+         setup_path: Optional[pathlib.Path] = None) -> contract.RigView:
     """fixtures.yaml -> RigView. Never raises: a bad file gives ``error`` and empty maps (``Registry`` keeps the last
     good one). ``latency`` is latency.json, ``looks`` show.yaml's looks (align_pct, min_visible_ms), ``lamps``
     show.yaml's lamps (role names). ``patch`` (patch.yaml) isn't needed to build the view: drivers read
     ``hue_settings(out, patch)``. ``added_path``: a fixtures.added.yaml to merge under it (None: the hand file
-    alone; ``Registry`` merges its sibling)."""
-    return _load(pathlib.Path(path), pathlib.Path(types_dir), latency, looks, lamps,
-                 pathlib.Path(added_path) if added_path is not None else None)[0]
+    alone; ``Registry`` merges its sibling). ``setup_path``: a fixtures.setup.yaml to merge (None: every setup {})."""
+    setups = None
+    if setup_path is not None:
+        sp: list[str] = []
+        got, data = read_setup(pathlib.Path(setup_path), sp)
+        setups = (got or {}, data)
+    view = _load(pathlib.Path(path), pathlib.Path(types_dir), latency, looks, lamps,
+                 pathlib.Path(added_path) if added_path is not None else None, setups)[0]
+    if setup_path is not None and sp and view["error"] is None:
+        view["problems"] = list(dict.fromkeys(sp + view["problems"]))
+    return view
 
 
 def summary(view: Optional[contract.RigView]) -> dict:
@@ -1120,11 +1292,12 @@ def type_label(t: Any) -> Optional[str]:
 
 def type_rows(view: Optional[contract.RigView]) -> list[dict]:
     """GET /api/v1/rig/types: every type a DMX light can be registered with, [{id, label, source, footprint, channels:
-    [name], kind}]: the generic types (GENERIC_TYPES), then the view's own types with DMX channels (an OFL type in
+    [name], kind, caps}]: the generic types (GENERIC_TYPES), then the view's own types with DMX channels (an OFL type in
     fixtures.yaml). A type with none (a screen, a Hue lamp, an inert matrix mode) isn't one."""
     def row(t: contract.TypeInfo) -> dict:
         return {"id": t["id"], "label": type_label(t), "source": t["source"], "footprint": t["footprint"],
-                "channels": [c["name"] for c in sorted(t["channels"], key=lambda c: c["offset"])], "kind": t["kind"]}
+                "channels": [c["name"] for c in sorted(t["channels"], key=lambda c: c["offset"])], "kind": t["kind"],
+                "caps": caps_of(t)}
     rows = [row(BUILTIN_TYPES[tid]) for tid in GENERIC_TYPES]
     for tid, t in ((view or {}).get("types") or {}).items():
         if tid not in GENERIC_TYPES and isinstance(t, dict) and t.get("footprint") and t.get("kind") == "lamp":
@@ -1140,16 +1313,19 @@ def role_of(f: dict, lamps: Optional[dict] = None) -> Optional[str]:
 
 # -- the hot-reloaded registry -----------------------------------------------------------------------------------------
 class Registry:
-    """fixtures.yaml with fixtures.added.yaml merged under it, hot-reloaded (module docstring). ``poll`` on show-brain;
-    ``view`` from any thread."""
+    """fixtures.yaml with fixtures.added.yaml merged under it and fixtures.setup.yaml merged into each fixture's
+    ``setup``, hot-reloaded (module docstring). ``poll`` on show-brain; ``view`` from any thread."""
 
     def __init__(self, path: pathlib.Path = contract.FIXTURES_FILE, *,
                  types_dir: pathlib.Path = contract.FIXTURE_TYPES_DIR,
                  latency_path: pathlib.Path = contract.LATENCY_FILE,
                  patch_path: pathlib.Path = contract.PATCH_FILE,
-                 added_path: Optional[pathlib.Path] = None) -> None:
+                 added_path: Optional[pathlib.Path] = None,
+                 setup_path: Optional[pathlib.Path] = None) -> None:
         self.path = pathlib.Path(path)
         self.added_path = pathlib.Path(added_path) if added_path is not None else added_path_for(self.path)
+        self.setup_path = pathlib.Path(setup_path) if setup_path is not None else setup_path_for(self.path)
+        self._setup_good: dict[str, Any] = {}       # the last fixtures.setup.yaml that read (a broken one keeps it)
         self.types_dir = pathlib.Path(types_dir)
         self.latency_path = pathlib.Path(latency_path)
         self.patch_path = pathlib.Path(patch_path)
@@ -1175,7 +1351,7 @@ class Registry:
         lk = looks if isinstance(looks, dict) else {}
         inputs = json.dumps({"align_pct": lk.get("align_pct"), "min_visible_ms": lk.get("min_visible_ms"),
                              "lamps": lamps}, sort_keys=True, default=str)
-        files = (self.path, self.added_path, self.latency_path, self.patch_path) + self._type_files
+        files = (self.path, self.added_path, self.setup_path, self.latency_path, self.patch_path) + self._type_files
         return tuple((str(p), self._stat(p)) for p in files) + (inputs,)
 
     def _read_side(self, problems: list[str]) -> None:
@@ -1216,7 +1392,13 @@ class Registry:
         self._seen = None
         side: list[str] = []
         self._read_side(side)
-        view, used, ok, added_ids = _load(self.path, self.types_dir, self.latency, looks, lamps, self.added_path)
+        got, sdata = read_setup(self.setup_path, side)
+        if got is None:
+            side.append(f"{SETUP_NAME}: the lights' last good settings stay in use")
+        else:
+            self._setup_good = got
+        view, used, ok, added_ids = _load(self.path, self.types_dir, self.latency, looks, lamps, self.added_path,
+                                          (self._setup_good, sdata))
         if ok:
             view["problems"] = list(dict.fromkeys(side + view["problems"]))
             self._type_files = tuple(dict.fromkeys(used))
@@ -1565,3 +1747,374 @@ class Registrar:
             write_added(self.added_path, new)
         except OSError as e:
             raise Refused("not_saved", f"{ADDED_NAME} couldn't be written ({e.strerror or e}): nothing changed")
+
+
+# -- the setup file (the Lights page's per-light settings; docs/LIGHTS.md §2.6) ----------------------------------------
+SETUP_NAME = "fixtures.setup.yaml"
+SETUP_KEYS: tuple[str, ...] = ("home", "limits", "max_speed", "range", "beam", "slots", "positions", "strobe_hz_max",
+                               "jog_flip")
+SETUP_AXES: tuple[str, ...] = ("pan", "tilt")
+SETUP_BEAM: tuple[str, ...] = ("zoom", "focus", "iris", "frost")
+SETUP_SLOT_WHEELS: tuple[str, ...] = ("gobo", "gobo2", "colour", "prism")   # slots.<wheel>.<n>: its name
+SETUP_COUNTS: tuple[str, ...] = ("gobo", "colour")    # slots.count.<wheel>: a generic wheel's slots
+#: how deep a patch merges into each key (a null at that depth removes the entry): positions.<name> and
+#: slots.<wheel>.<n> are replaced whole; the rest key by key (home.pan, beam.zoom, ...)
+_SETUP_MERGE_DEPTH: dict[str, int] = {"home": 1, "limits": 1, "max_speed": 1, "range": 1, "beam": 1, "jog_flip": 1,
+                                      "positions": 1, "slots": 2}
+SETUP_HEADER = """\
+# config/room/fixtures.setup.yaml: each light's settings from the Lights page (Move it and set it up: where it rests,
+# its limits, its normal beam, its pattern and colour names, its named positions; docs/LIGHTS.md §2.6). WRITTEN BY
+# show_service's rig API (POST /show/api/v1/rig/fixtures/{id}/setup and .../positions; fixtures.SetupStore), whole, on
+# every change: don't edit it by hand. Keyed by fixture id, for any light (config/room/fixtures.yaml's too).
+# show_service re-reads it when it changes. Angles are degrees from the middle of the light's pan or tilt range.
+"""
+
+
+def setup_path_for(path: pathlib.Path) -> pathlib.Path:
+    """The setup file next to a fixtures.yaml (``Registry``'s default)."""
+    return pathlib.Path(path).parent / SETUP_NAME
+
+
+def slug_id(text: Any, fallback: str = "place") -> str:
+    """Page words -> an id (ID_RE): lower case, runs of anything else to "-" ("Over the sofa" -> "over-the-sofa"),
+    the names positions and room points are kept under."""
+    s = _SLUG.sub("-", str(text or "").strip().lower()).strip("-.")[:64].rstrip("-.")
+    return s if _is_id(s) else fallback
+
+
+def _finite(v: Any, what: str, *, lo: Optional[float] = None, hi: Optional[float] = None, above: bool = False
+            ) -> float:
+    n = _num(v)
+    if n is None:
+        raise ValueError(f"{what}: {v!r} isn't a number")
+    if (above and lo is not None and not n > lo) or (not above and lo is not None and n < lo) \
+            or (hi is not None and n > hi):
+        rng = f"above {lo:g}" if above else f"{lo:g} to {hi:g}" if hi is not None else f"at least {lo:g}"
+        raise ValueError(f"{what}: {v!r} isn't {rng}")
+    return n
+
+
+def _axes(v: Any, what: str, check: Callable[[Any, str], Any]) -> dict:
+    if not isinstance(v, dict):
+        raise ValueError(f"{what}: not a mapping of pan and tilt")
+    out = {}
+    for k, x in v.items():
+        if k not in SETUP_AXES:
+            raise ValueError(f"{what}.{k}: only pan and tilt")
+        if x is not None:
+            out[k] = check(x, f"{what}.{k}")
+    return out
+
+
+def _limit_pair(v: Any, what: str) -> list[float]:
+    if not isinstance(v, (list, tuple)) or len(v) != 2:
+        raise ValueError(f"{what}: [one end, the other end] in degrees")
+    a, b = _finite(v[0], what), _finite(v[1], what)
+    if not a < b:
+        raise ValueError(f"{what}: {list(v)!r}: the first end must be below the second")
+    return [a, b]
+
+
+def _slot_key(k: Any, what: str) -> str:
+    n = _whole(k)
+    if n is None or n < 0:
+        raise ValueError(f"{what}: {k!r} isn't a slot number")
+    return str(n)
+
+
+def _name(v: Any, what: str) -> str:
+    if not isinstance(v, str) or not v.strip() or len(v.strip()) > LABEL_MAX:
+        raise ValueError(f"{what}: a name of 1 to {LABEL_MAX} characters")
+    return v.strip()
+
+
+def _slots(v: Any, what: str) -> dict:
+    if not isinstance(v, dict):
+        raise ValueError(f"{what}: not a mapping")
+    out: dict[str, Any] = {}
+    for w, m in v.items():
+        if m is None:
+            continue
+        if w == "count":
+            if not isinstance(m, dict):
+                raise ValueError(f"{what}.count: a mapping of wheel -> slots")
+            cnt = {}
+            for k, n in m.items():
+                if k not in SETUP_COUNTS:
+                    raise ValueError(f"{what}.count.{k}: only {', '.join(SETUP_COUNTS)}")
+                if n is None:
+                    continue
+                c = _whole(n)
+                if c is None or not 1 <= c <= SLOT_COUNT_MAX:
+                    raise ValueError(f"{what}.count.{k}: {n!r} isn't 1 to {SLOT_COUNT_MAX}")
+                cnt[k] = c
+            if cnt:
+                out["count"] = cnt
+            continue
+        if w not in SETUP_SLOT_WHEELS:
+            raise ValueError(f"{what}.{w}: not a wheel ({', '.join(SETUP_SLOT_WHEELS)}, count)")
+        if not isinstance(m, dict):
+            raise ValueError(f"{what}.{w}: a mapping of slot number -> name")
+        names: dict[str, Any] = {}
+        for k, x in m.items():
+            key = _slot_key(k, f"{what}.{w}")
+            if x is None:
+                continue
+            if w == "colour":
+                d = {"name": x} if isinstance(x, str) else x
+                if not isinstance(d, dict) or not set(d) <= {"name", "hex"} or not d:
+                    raise ValueError(f"{what}.colour.{key}: {{name?, hex?}}")
+                e: dict[str, str] = {}
+                if d.get("name") is not None:
+                    e["name"] = _name(d["name"], f"{what}.colour.{key}.name")
+                if d.get("hex") is not None:
+                    if not isinstance(d["hex"], str) or not _HEX.match(d["hex"]):
+                        raise ValueError(f"{what}.colour.{key}.hex: {d['hex']!r} isn't #rrggbb")
+                    e["hex"] = d["hex"].lower()
+                if e:
+                    names[key] = e
+            else:
+                names[key] = _name(x, f"{what}.{w}.{key}")
+        if names:
+            out[w] = names
+    return out
+
+
+def _positions(v: Any, what: str) -> dict:
+    if not isinstance(v, dict):
+        raise ValueError(f"{what}: not a mapping of name -> {{pan, tilt}}")
+    out = {}
+    for k, x in v.items():
+        if not _is_id(k):
+            raise ValueError(f"{what}: {k!r} isn't a name the room can use ({ID_RE}; fixtures.slug_id makes one)")
+        if x is None:
+            continue
+        if not isinstance(x, dict) or not {"pan", "tilt"} <= set(x) or not set(x) <= {"pan", "tilt", "label"}:
+            raise ValueError(f"{what}.{k}: {{pan, tilt, label?}}")
+        e: dict[str, Any] = {"pan": _finite(x["pan"], f"{what}.{k}.pan"),
+                             "tilt": _finite(x["tilt"], f"{what}.{k}.tilt")}
+        if x.get("label") is not None:
+            e["label"] = _name(x["label"], f"{what}.{k}.label")
+        out[k] = e
+    return out
+
+
+def _beam(v: Any, what: str) -> dict:
+    if not isinstance(v, dict):
+        raise ValueError(f"{what}: not a mapping of {', '.join(SETUP_BEAM)}")
+    out = {}
+    for k, x in v.items():
+        if k not in SETUP_BEAM:
+            raise ValueError(f"{what}.{k}: only {', '.join(SETUP_BEAM)}")
+        if x is not None:
+            out[k] = _finite(x, f"{what}.{k}", lo=0.0, above=True) if k == "zoom" else \
+                _finite(x, f"{what}.{k}", lo=0.0, hi=1.0)
+    return out
+
+
+def _flip(v: Any, what: str) -> bool:
+    if not isinstance(v, bool):
+        raise ValueError(f"{what}: {v!r} isn't true or false")
+    return v
+
+
+_SETUP_CHECK: dict[str, Callable[[Any, str], Any]] = {
+    "home": lambda v, w: _axes(v, w, _finite),
+    "limits": lambda v, w: _axes(v, w, _limit_pair),
+    "max_speed": lambda v, w: _axes(v, w, lambda x, ww: _finite(x, ww, lo=0.0, above=True)),
+    "range": lambda v, w: _axes(v, w, lambda x, ww: _finite(x, ww, lo=0.0, above=True)),
+    "beam": _beam,
+    "slots": _slots,
+    "positions": _positions,
+    "strobe_hz_max": lambda v, w: _finite(v, w, lo=0.0, above=True),
+    "jog_flip": lambda v, w: _axes(v, w, _flip),
+}
+
+
+def clean_setup(entry: Any) -> tuple[contract.FixtureSetup, list[str]]:
+    """A setup entry -> (the part that can be used, normalised; a page-words line per key that can't). Empty
+    mappings drop out (an unset key is absent, never a default)."""
+    if not isinstance(entry, dict):
+        return {}, ["not a mapping of settings"]
+    out: dict[str, Any] = {}
+    probs: list[str] = []
+    for k, v in entry.items():
+        if k not in SETUP_KEYS:
+            probs.append(f"{k}: not a setting a light has ({', '.join(SETUP_KEYS)})")
+            continue
+        if v is None:
+            continue
+        try:
+            got = _SETUP_CHECK[k](v, k)
+        except ValueError as e:
+            probs.append(str(e))
+            continue
+        if got != {}:
+            out[k] = got
+    return out, probs                                                  # type: ignore[return-value]
+
+
+def read_setup(path: pathlib.Path, problems: list[str]) -> tuple[Optional[dict[str, Any]], bytes]:
+    """(its ``fixtures`` mapping as written, its bytes). Missing: ({}, b""). One that doesn't read: a problem line and
+    None (``Registry`` keeps the last good settings)."""
+    try:
+        data = pathlib.Path(path).read_bytes()
+    except FileNotFoundError:
+        return {}, b""
+    except OSError as e:
+        problems.append(f"{SETUP_NAME}: {e.strerror or e}")
+        return None, b""
+    try:
+        raw = _yaml(data)
+    except Exception as e:
+        problems.append(f"{SETUP_NAME}: {type(e).__name__}: {e}")
+        return None, data
+    if raw is None:
+        return {}, data
+    fx = raw.get("fixtures") if isinstance(raw, dict) else None
+    if not isinstance(raw, dict) or not isinstance(fx if fx is not None else {}, dict):
+        problems.append(f"{SETUP_NAME}: not a mapping with fixtures: {{<id>: settings}}")
+        return None, data
+    if raw.get("version", VERSION) != VERSION:
+        problems.append(f"{SETUP_NAME}: version: {raw.get('version')!r} (this reader knows {VERSION})")
+    return dict(fx or {}), data
+
+
+def attach_setup(view: contract.RigView, setups: dict[str, Any], problems: list[str]) -> None:
+    """Each fixture's ``setup`` from the setup file's entry ({} when none), what can't be used dropped with a problem
+    line; an id that isn't a light is a problem line (kept in the file)."""
+    fixtures = view.get("fixtures") or {}
+    for fid, entry in sorted(setups.items(), key=lambda kv: str(kv[0])):
+        if fid not in fixtures:
+            problems.append(f"{SETUP_NAME}: setup for {fid}: no such light (kept)")
+            continue
+        clean, probs = clean_setup(entry)
+        problems.extend(f"{SETUP_NAME}: {fid}.{p}: ignored" for p in probs)
+        fixtures[fid]["setup"] = clean
+
+
+def merge_setup(cur: Any, patch: dict) -> dict:
+    """``cur`` with ``patch`` merged in (a new dict): a key set to null removes it; dict keys merge to their
+    _SETUP_MERGE_DEPTH (positions per name, slots per wheel and slot, the rest per axis or beam word), a null there
+    removing that entry; emptied mappings drop out."""
+    def merge(a: dict, b: dict, depth: int) -> dict:
+        out = copy.deepcopy(a)
+        for k, v in b.items():
+            if v is None:
+                out.pop(k, None)
+            elif depth > 1 and isinstance(v, dict) and isinstance(out.get(k), dict):
+                out[k] = merge(out[k], v, depth - 1)
+            else:
+                out[k] = copy.deepcopy(v)
+            if out.get(k) == {}:
+                out.pop(k, None)
+        return out
+    out = copy.deepcopy(cur) if isinstance(cur, dict) else {}
+    for k, v in patch.items():
+        if v is None:
+            out.pop(k, None)
+        elif isinstance(v, dict) and isinstance(out.get(k), dict) and k in _SETUP_MERGE_DEPTH:
+            out[k] = merge(out[k], v, _SETUP_MERGE_DEPTH[k])
+        else:
+            out[k] = copy.deepcopy(v)
+        if out.get(k) == {}:
+            out.pop(k, None)
+    return out
+
+
+def write_setup(path: pathlib.Path, fixtures: dict) -> None:
+    """The setup file, whole and atomically (as ``write_added``): SETUP_HEADER, ``version``, ``fixtures`` by id."""
+    import yaml
+    body = {"version": VERSION, "fixtures": {k: fixtures[k] for k in sorted(fixtures)}}
+    text = SETUP_HEADER + yaml.safe_dump(body, sort_keys=False, default_flow_style=False, allow_unicode=True,
+                                         width=120)
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+class SetupStore:
+    """The setup file's reader and its only writer (the rig API, on show-brain: one write at a time). ``patch``
+    merges, checks the whole result (``clean_setup``: any problem refuses it, nothing written) and writes the file
+    whole; the Registry picks it up (``Rig.reload_now`` after the write)."""
+
+    def __init__(self, path: pathlib.Path = contract.FIXTURES_SETUP_FILE) -> None:
+        self.path = pathlib.Path(path)
+
+    def _raw(self) -> dict[str, Any]:
+        probs: list[str] = []
+        got, _ = read_setup(self.path, probs)
+        if got is None:
+            raise Refused("setup_unreadable", f"{probs[0] if probs else SETUP_NAME}: fix or remove it first, then try "
+                                              f"again")
+        return got
+
+    def read(self) -> dict[str, contract.FixtureSetup]:
+        """Every light's settings, as the Registry uses them ({} for a missing file). Refused when it doesn't read."""
+        return {str(k): clean_setup(v)[0] for k, v in self._raw().items()}
+
+    def get(self, fid: str) -> contract.FixtureSetup:
+        return self.read().get(fid, {})
+
+    def patch(self, fid: str, patch: Any) -> contract.FixtureSetup:
+        """Merge ``patch`` into ``fid``'s settings (``merge_setup``) and write: the light's settings now. Refused
+        ``bad_request`` (an id that isn't one, a body that isn't a mapping, a value that can't be used: ``problems``
+        lists each) or ``setup_unreadable`` / ``not_saved``; nothing is written then."""
+        if not _is_id(fid):
+            raise Refused("bad_request", f"{fid!r} isn't a light's id")
+        if not isinstance(patch, dict):
+            raise Refused("bad_request", f"The settings are a mapping of {', '.join(SETUP_KEYS)}.")
+        raw = self._raw()
+        merged = merge_setup(raw.get(fid), patch)
+        clean, probs = clean_setup(merged)
+        if probs:
+            raise Refused("bad_request", f"{fid}: {probs[0]}", problems=probs)
+        new = dict(raw)
+        if clean:
+            new[fid] = clean
+        else:
+            new.pop(fid, None)
+        self._write(new)
+        return clean
+
+    def remove(self, fid: str) -> bool:
+        """Forget a light's settings (when it is removed from the page): True when there were some."""
+        raw = self._raw()
+        if fid not in raw:
+            return False
+        self._write({k: v for k, v in raw.items() if k != fid})
+        return True
+
+    def _write(self, fixtures: dict) -> None:
+        try:
+            write_setup(self.path, fixtures)
+        except OSError as e:
+            raise Refused("not_saved", f"{SETUP_NAME} couldn't be written ({e.strerror or e}): nothing changed")
+
+
+def caps_of(t: Any, setup: Optional[dict] = None) -> Optional[contract.FixtureCaps]:
+    """fixture_encode.caps for a type (and a light's setup), imported lazily: None when it can't be (the page then
+    shows no controls) or the type isn't one."""
+    if not isinstance(t, dict):
+        return None
+    try:
+        from . import fixture_encode
+    except Exception:                                    # noqa: BLE001  degrade: no capability rows
+        return None
+    try:
+        return fixture_encode.caps(t, setup if isinstance(setup, dict) else None)
+    except Exception:                                    # noqa: BLE001
+        log.exception("fixtures: caps for type %s failed", t.get("id"))
+        return None

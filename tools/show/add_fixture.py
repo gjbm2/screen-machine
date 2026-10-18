@@ -13,7 +13,8 @@
 The tool never edits fixtures.yaml (c8's file; code never writes it): it prints the ``types`` entry to paste, with the
 mode's name. Then add the fixtures (``type``, ``output``, ``address``), and the output and node (README S5.12 step 5).
 The channel map it prints is exactly what show_service drives (show_service/ofl.py): which channels are intensity,
-emitters, a colour wheel, a shutter (held open, never strobed), and every channel's default, with any problem lines.
+emitters, a colour wheel, a shutter, pan and tilt, gobo and prism wheels, zoom, focus and the rest (each channel's
+word, from its ranges: docs/LIGHTS.md §2.2), the wheels' slots, and every channel's default, with any problem lines.
 
 Standard library only (urllib), like fetch_models.py. Exit codes: 0 done, 2 bad arguments, 3 the fetch or the file
 failed, 4 a saved copy differs (use --force).
@@ -95,6 +96,12 @@ def describe_mode(doc: dict, mode: str, *, type_id: str, file: Optional[str]) ->
         lines.append(f"  {c['offset'] + 1:>3}  {c['name']:<28} {what:<16} default {c['default']}{fine}")
     if info["wheel"]:
         lines.append("  colour wheel: " + ", ".join(f"{s['name']} {s['hex']} @{s['dmx']}" for s in info["wheel"]))
+    for name, w in (info.get("wheels") or {}).items():
+        if w.get("attr") and w.get("attr") != "colour_slot":
+            lines.append(f"  {w['attr']} wheel {name!r}: " + ", ".join(s["name"] for s in w.get("slots") or []))
+    phys = info.get("physical") or {}
+    if phys.get("pan_deg") or phys.get("tilt_deg"):
+        lines.append(f"  pan {phys.get('pan_deg') or '?'}°, tilt {phys.get('tilt_deg') or '?'}°")
     for p in info["problems"]:
         lines.append(f"  ! {p}")
     if not usable:

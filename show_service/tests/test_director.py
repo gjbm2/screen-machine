@@ -855,6 +855,24 @@ def _fixed_vocabulary() -> set[str]:
     voc = yaml.safe_load(contract.VOCAB_FILE.read_text())
     for ws in voc.values():
         words |= {w for w in ws if isinstance(w, str)}
+    # docs/LIGHTS.md (18 Oct): the look engine's own words (layer kinds, position modes, spreads, targets) and the room
+    # frame's (compass words) are fixed vocabulary too, wherever a scene's layer id or a zone happens to reuse one
+    import importlib
+    for mod in ("looks", "space"):
+        try:
+            m = importlib.import_module(f"show_service.{mod}")
+        except Exception:                                            # not landed yet
+            continue
+        for k, v in vars(m).items():
+            if not k.isupper():
+                continue
+            vals = list(v.keys()) + list(v.values()) if isinstance(v, dict) else v
+            if isinstance(vals, (tuple, list, set, frozenset)):
+                for x in vals:
+                    if isinstance(x, str):
+                        words.add(x)
+                    elif isinstance(x, (tuple, list, set, frozenset)):
+                        words |= {y for y in x if isinstance(y, str)}
     return words
 
 
@@ -884,11 +902,17 @@ def _names_from_config() -> set[str]:
             names |= {f[k] for k in ("zone", "screen", "placement", "role") if isinstance(f.get(k), str)}
             names |= {t for t in f.get("tags") or [] if isinstance(t, str)}
     names |= {L["id"] for L in ((sh.get("looks") or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
-    # README S5.24: the light scenes' names and their layer ids are config too
-    ls_doc = yaml.safe_load((contract.REPO_ROOT / "config" / "live" / "light_scenes.yaml").read_text()) or {}
-    for sname, sc in (ls_doc.get("scenes") or {}).items():
-        names.add(sname)
-        names |= {L["id"] for L in ((sc or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
+    # README S5.24: the light scenes' names and their layer ids are config too; docs/LIGHTS.md §6, §12: so are the
+    # effects', the transitions' and the light groups' names
+    from show_service import light_scenes as lsmod
+    for fname, sec in (("light_scenes.yaml", "scenes"), ("light_effects.yaml", "effects"),
+                       ("light_transitions.yaml", "transitions")):
+        p = contract.REPO_ROOT / "config" / "live" / fname
+        ls_doc = (lsmod.load_yaml(p.read_text()) or {}) if p.exists() else {}
+        for sname, sc in (ls_doc.get(sec) or {}).items():
+            names.add(sname)
+            names |= {L["id"] for L in ((sc or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
+    names |= set(((sh.get("lights") or {}).get("groups") or {}).keys())
     names -= set(fxmod.BUILTIN_TYPES)
     return (names - _fixed_vocabulary()) | {"piano"}
 
@@ -896,7 +920,7 @@ def _names_from_config() -> set[str]:
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
                                     "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py",
                                     "fixtures.py", "ofl.py", "outputs.py", "looks.py", "colour_mix.py", "hue_out.py",
-                                    "artnet_lan.py", "cues.py", "light_scenes.py"])
+                                    "artnet_lan.py", "cues.py", "light_scenes.py", "flow.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
     if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
         pytest.skip(f"{module} isn't there yet")

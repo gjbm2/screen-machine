@@ -1,0 +1,22 @@
+# Light transitions (docs/LIGHTS.md §6.4; show_service/light_scenes.py). kind: cut | dark_move | crossfade | fade_dark |
+# sweep. The director chooses one with the screens' own decision (the look's transition style, or the song change's),
+# so lights and screens cross over together at the same moment: a look's cut picks among cut and dark_move, a
+# crossfade among crossfade and sweep, a song change through dark is fade_dark. A crossfade or sweep takes the look's
+# own beats and seconds when it has them; the numbers here are used otherwise.
+#   beats, seconds   a crossfade's length (beats with a clock grid, else seconds)
+#   out_s, in_s      fade_dark: down to the group's dark_level over out_s, back up over in_s
+#   wave_beats       sweep: each light starts at its place along the flow x this many beats (the screens get it too)
+#   dark_move        movers travel dark when they would jump far (show.yaml lights.motion.dark_move_min_deg)
+#   tags             transition_style (vocab: gentle | lively | wild), energy band, flow
+# Hot-reloaded. Every number is a STARTING POINT: tune by watching the room.
+version: 1
+transitions:
+  cut:        {label: Cut, kind: cut, tags: {transition_style: [wild], energy: [0.5, 1.0]}}
+  dark-cut:   {label: "Cut, moving in the dark", kind: dark_move, tags: {transition_style: [lively, wild],
+               energy: [0.3, 1.0]}}
+  glide:      {label: Glide, kind: crossfade, beats: 4, seconds: 3, dark_move: true,
+               tags: {transition_style: [gentle, lively], energy: [0.0, 0.8]}}
+  fade-dark:  {label: Through dark, kind: fade_dark, out_s: 2.5, in_s: 2.0, tags: {transition_style: [gentle]}}
+  sweep:      {label: A sweep across the room, kind: sweep, beats: 2, wave_beats: 4, dark_move: true,
+               tags: {transition_style: [lively], energy: [0.3, 0.9], flow: {dirs: [up, down, left, right, cw, ccw,
+               outward, inward], honours: true}}}

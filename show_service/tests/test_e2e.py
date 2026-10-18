@@ -524,20 +524,20 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
         wait_for(lambda: show.health().get("active_audio") == "test-audio", 10, "test-audio active (rank_first)")
         t_active = time.monotonic()
         assert show.rx.health()["priority"][:1] == ["test-audio"]
-        # neutral first: published with vibe null, Art-Net keeps the fixed colour
+        # neutral first: published with vibe null. With music and no feel the colours follow the music's palette once
+        # one resolves (54a08ccf), so palette_fn may already be set: only a silent feel-less room keeps P0 idle
         wait_for(lambda: any(d["vibe"] is None for d in tap.of(contract.ROOM_LOOK)), 6, "a neutral room.look")
-        assert show.director.palette_fn(time.monotonic()) is None
         wait_for(lambda: len([f for f in tap.of(contract.MUSIC_FEATURES) if f["stream"] == "test-audio"]) > 100, 10,
                  "features from test-audio")
         time.sleep(max(0.0, t_active + 8.0 - time.monotonic()))     # let the clock find the beat
         # degrade, never refuse: a feel vibes.yaml doesn't have is kept as asked and plays neutral, and says so
         code, odd = http("PUT", base + "/api/v1/vibe", {"vibe": "no-such-feel"})
         assert code == 200 and odd["vibe"] == "no-such-feel" and odd["known"] is False and odd["problems"], odd
-        assert show.director.palette_fn(time.monotonic()) is None
         code, rb = http("PUT", base + "/api/v1/vibe", {"vibe": "e2e-lively", "listening": False})
         assert code == 200 and rb["vibe"] == "e2e-lively" and rb["known"] is True and rb["source"] == "mode", rb
-        # the mode's "listening" no longer gates (README S5.20): the listener's own switch says why (off by default)
-        assert rb["listening_effective"] is False and rb["listening_why"] == "AI listening is off"
+        # the listener's own switch (off by default) or the feel's listening: false says why (README S5.20)
+        assert rb["listening_effective"] is False and rb["listening_why"] in ("AI listening is off",
+                                                                            "this feel doesn't listen")
         assert rb["problems"] == [] and rb["boot_id"] == odd["boot_id"]
         look = wait_for(lambda: next((d for d in reversed(tap.of(contract.ROOM_LOOK)) if d["vibe"] == "e2e-lively"),
                                      None), 5, "room.look for the vibe")

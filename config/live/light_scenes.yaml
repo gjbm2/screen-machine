@@ -24,6 +24,17 @@
 #            valence (sad 0 .. happy 1), organic (synthetic 0 .. acoustic 1), density (sparse 0 .. busy 1); weight.
 # Hue lamps keep their own caps whatever a scene says: attack >= 80 ms, nothing cycles faster than 160 ms, no hits.
 # Every depth, period, attack and decay below is a STARTING POINT, chosen by eye on paper: tune by watching the room.
+#
+# Movers and flow (docs/LIGHTS.md §5, §6; 18 Oct). The director now picks one scene per light group (show.yaml
+# lights.groups), so these keys join the ones above:
+#   needs    [attr, ...]: the scene fits a group only when one of its lights can do all of them ([pan, tilt]: movers)
+#   layers   a layer's kind: intensity (the default, every layer above) | position | beam | gobo | prism | colour |
+#            colour_wheel | cct (docs/LIGHTS.md §5.2 has their keys). A light that can't do a layer's kind skips it.
+#            order: group | flow | mirror, spread_mode: unison | chase | mirror, flow_dir: a direction of its own.
+#            select defaults to every light in the group. Shutter (strobe) layers live in light_effects.yaml only.
+#   tags     flow: {dirs: [still|up|down|left|right|cw|ccw|outward|inward|towards|away], honours: true|false}: the
+#            flows it suits; honours: its layers follow the room's flow, so it suits any.
+# Targets (centre, points, on) are Room map names: a light with no such place keeps the layers below it.
 
 version: 1
 
@@ -257,3 +268,176 @@ scenes:
       valence: 0.6
       organic: 0.15
       density: 0.9
+
+  # -- movers (docs/LIGHTS.md §6.2). Targets are Room map names: a light with no such place keeps the layers below. --
+  movers-still-pools:
+    label: Still pools of light
+    needs: [pan, tilt]
+    layers:
+      - {id: aim, kind: position, mode: fan, centre: [dance-floor, piano, centre], on: floor, size: 1.5, size_deg: 25,
+         fan: 1.0, along: right}
+      - {id: beam, kind: beam, zoom: wide, frost: 0.3, iris: 1.0}
+      - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.25, needs: none}
+    tags: {energy: [0.0, 0.35], moods: [calm, warm, elegant, dreamy], genre_fit: {classical: 0.9, piano: 0.9, jazz: 0.8,
+           ambient: 0.8, "*": 0.3}, valence: 0.5, organic: 0.8, density: 0.1, flow: {dirs: [still, inward], honours: false}}
+
+  movers-slow-drift:
+    label: Slow drift across the ceiling
+    needs: [pan, tilt]
+    layers:
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+         needs: none, spread_mode: chase, spread: 0.5}
+      - {id: beam, kind: beam, zoom: wide, frost: 0.2}
+      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.15}
+    tags: {energy: [0.05, 0.45], moods: [dreamy, liquid, cosmic, calm], genre_fit: {ambient: 0.9, downtempo: 0.85,
+           soundtrack: 0.8, classical: 0.6, "*": 0.3}, valence: 0.5, organic: 0.5, density: 0.2,
+           flow: {dirs: [still, left, right, cw, ccw], honours: true}}
+
+  movers-ceiling-circles:
+    label: Circles on the ceiling
+    needs: [pan, tilt]
+    layers:
+      - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size: 1.0, size_deg: 18,
+         rotate: flow, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5, order: flow}
+      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
+      - {id: beam, kind: beam, zoom: 15}
+      - {id: pulse, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
+         attack_ms: 60, decay_ms: 300}
+    tags: {energy: [0.35, 0.8], moods: [cosmic, hypnotic, dreamy, geometric], genre_fit: {trance: 0.9, techno: 0.85,
+           electronic: 0.85, house: 0.8, ambient: 0.6, "*": 0.35}, valence: 0.55, organic: 0.25, density: 0.55,
+           flow: {dirs: [cw, ccw], honours: true}}
+
+  movers-converge-ball:
+    label: Every beam on the mirror ball
+    needs: [pan, tilt]
+    layers:
+      - {id: ball, kind: position, mode: aim, centre: [mirror-ball, flow, centre]}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0, iris: 0.6}
+      - {id: pulse, fx: swell, phase: beat, depth: 0.6, needs: beat, without_beat: energy, attack_ms: 40,
+         decay_ms: 200}
+    hits: {styles: [beat, full], min_strength: 0.3, depth: 0.6, decay_ms: 100, drop: {depth: 1.0, decay_ms: 500}}
+    tags: {energy: [0.5, 1.0], moods: [euphoric, retro, bright, playful], genre_fit: {disco: 0.95, house: 0.85,
+           funk: 0.8, pop: 0.75, "*": 0.35}, valence: 0.8, organic: 0.3, density: 0.7,
+           flow: {dirs: [inward, towards], honours: false}}
+
+  movers-floor-sweep:
+    label: Sweeping the floor
+    needs: [pan, tilt]
+    layers:
+      - {id: sweep, kind: position, mode: sweep, on: floor, centre: [dance-floor, centre], along: flow, size: 2.0,
+         size_deg: 30, ease: sine, phase: bar, period_bars: [2, 1], needs: grid, spread_mode: chase, spread: 0.25,
+         order: flow}
+      - {id: beam, kind: beam, zoom: 12}
+      - {id: chase, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, order: flow, spread: 1.0,
+         attack_ms: 40, decay_ms: 250}
+    tags: {energy: [0.45, 0.9], moods: [playful, bright, geometric, hypnotic], genre_fit: {house: 0.85, techno: 0.8,
+           pop: 0.75, funk: 0.75, latin: 0.75, "*": 0.35}, valence: 0.7, organic: 0.3, density: 0.65,
+           flow: {dirs: [left, right], honours: true}}
+
+  movers-wall-wash-wave:
+    label: Soft walls with a wave
+    needs: [pan, tilt]
+    layers:
+      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-n, along: flow, size: 2.5, size_deg: 40,
+         fan: 1.0}
+      - {id: beam, kind: beam, zoom: wide, frost: 0.6}
+      - {id: wave, fx: sine, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, order: flow, spread: 1.0}
+    tags: {energy: [0.2, 0.6], moods: [warm, elegant, mellow, liquid], genre_fit: {soul: 0.85, jazz: 0.8, rnb: 0.8,
+           downtempo: 0.75, gospel: 0.7, "*": 0.35}, valence: 0.6, organic: 0.6, density: 0.35,
+           flow: {dirs: [left, right, cw, ccw], honours: true}}
+
+  movers-fan-up:
+    label: Beams fanning upwards
+    needs: [pan, tilt]
+    layers:
+      - {id: fan, kind: position, mode: fan, centre: [dance-floor, centre], on: floor, along: right, size: 2.0,
+         size_deg: 35, fan: 1.0}
+      - {id: lift, kind: position, mode: lift, lift: 2.5, depth: {fx: saw, phase: bar, period_bars: [8, 2],
+         between: [0.0, 1.0]}}
+      - {id: beam, kind: beam, zoom: narrow}
+      - {id: build, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
+         attack_ms: 60, decay_ms: 200}
+    tags: {energy: [0.45, 0.95], moods: [tense, euphoric, bright], genre_fit: {trance: 0.9, house: 0.8, electronic: 0.8,
+           pop: 0.7, gospel: 0.6, "*": 0.35}, valence: 0.65, organic: 0.3, density: 0.6,
+           flow: {dirs: [up, outward], honours: true}}
+
+  movers-figure8:
+    label: Figure eights on the floor
+    needs: [pan, tilt]
+    layers:
+      - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size: 1.2, size_deg: 18,
+         phase: bar, period_bars: [2, 1], needs: grid, spread_mode: mirror}
+      - {id: beam, kind: beam, zoom: 14}
+      - {id: colour, kind: colour_wheel, mode: step, step_on: bar}
+    tags: {energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
+           latin: 0.8, afrobeat: 0.75, "*": 0.35}, valence: 0.8, organic: 0.35, density: 0.6,
+           flow: {dirs: [still, left, right], honours: false}}
+
+  movers-ballyhoo:
+    label: Big ballyhoo
+    needs: [pan, tilt]
+    layers:
+      - {id: bally, kind: position, mode: ballyhoo, on: floor, centre: centre, size: 2.5, size_deg: 45, phase: bar,
+         period_bars: [2, 1], needs: grid, spread_mode: chase, spread: 0.25, order: flow}
+      - {id: gobo, kind: gobo, slot: auto, change_on: bar, spin: flow, spin_scale: 0.8}
+      - {id: prism, kind: prism, in: accents, spin: flow, spin_scale: 0.6}
+      - {id: stab, fx: square, phase: beat, depth: 0.5, needs: beat, without_beat: energy}
+    hits: {styles: [beat, full], min_strength: 0.2, depth: 0.8, decay_ms: 80, drop: {depth: 1.0, decay_ms: 400}}
+    tags: {energy: [0.75, 1.0], moods: [euphoric, aggressive, fiery, glitchy], genre_fit: {techno: 0.9,
+           drum-and-bass: 0.9, dubstep: 0.85, trance: 0.85, metal: 0.8, rock: 0.7, "*": 0.2}, valence: 0.6,
+           organic: 0.15, density: 0.9, flow: {dirs: [cw, ccw, outward], honours: true}}
+
+  movers-gobo-texture:
+    label: Turning patterns on the walls
+    needs: [pan, tilt]
+    layers:
+      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-n, along: right, size: 2.0, size_deg: 35,
+         fan: 0.8}
+      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.2}
+      - {id: beam, kind: beam, zoom: mid, focus: default, frost: 0.0}
+      - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
+    tags: {energy: [0.15, 0.55], moods: [mellow, elegant, dark, hypnotic], genre_fit: {jazz: 0.8, soul: 0.75,
+           downtempo: 0.8, blues: 0.75, ambient: 0.6, "*": 0.35}, valence: 0.45, organic: 0.5, density: 0.3,
+           flow: {dirs: [cw, ccw, still], honours: true}}
+
+  movers-bounce-points:
+    label: Hopping between places on the beat
+    needs: [pan, tilt]
+    layers:
+      - {id: hop, kind: position, mode: bounce, points: [piano, dance-floor, mirror-ball, centre], hop: beat,
+         spread_mode: chase, spread: 0.5}
+      - {id: beam, kind: beam, zoom: narrow}
+      - {id: pulse, fx: swell, phase: beat, depth: 0.6, needs: beat, without_beat: energy, attack_ms: 30,
+         decay_ms: 220}
+    tags: {energy: [0.55, 0.95], moods: [playful, bright, retro, euphoric], genre_fit: {funk: 0.9, disco: 0.85,
+           pop: 0.8, latin: 0.8, hip-hop: 0.7, "*": 0.3}, valence: 0.8, organic: 0.35, density: 0.75,
+           flow: {dirs: [still], honours: false}}
+
+  movers-tilt-wave:
+    label: A wave across the movers
+    needs: [pan, tilt]
+    layers:
+      - {id: wave, kind: position, mode: tilt_wave, size_deg: 25, fx: sine, phase: bar, period_bars: [2, 1],
+         needs: grid, order: flow, spread: 1.0}
+      - {id: beam, kind: beam, zoom: 12}
+      - {id: glow, fx: sine, phase: bar, period_bars: [2, 1], depth: 0.4, needs: grid, order: flow, spread: 1.0}
+    tags: {energy: [0.35, 0.8], moods: [playful, hypnotic, liquid, geometric], genre_fit: {house: 0.8, pop: 0.8,
+           electronic: 0.75, latin: 0.7, "*": 0.35}, valence: 0.7, organic: 0.35, density: 0.55,
+           flow: {dirs: [left, right, cw, ccw, outward, inward], honours: true}}
+
+  # -- every light (intensity, so lamps and movers alike) ------------------------------------------------------------
+  flow-wave:
+    label: A wave travelling across the room
+    layers:
+      - {id: wave, fx: swell, phase: bar, period_bars: [2, 1], depth: 0.6, needs: grid, without_beat: energy,
+         order: flow, spread: flow.spread, attack_ms: 120, decay_ms: 700}
+    tags: {energy: [0.25, 0.8], moods: [liquid, hypnotic, dreamy, playful], genre_fit: {"*": 0.6}, valence: 0.6,
+           organic: 0.45, density: 0.45, flow: {dirs: [up, down, left, right, cw, ccw, outward, inward], honours: true}}
+
+  rising-swell:
+    label: Swelling upwards
+    layers:
+      - {id: rising, fx: saw, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, without_beat: energy,
+         order: flow, flow_dir: up, spread: 0.75}
+    tags: {energy: [0.4, 0.9], moods: [tense, euphoric, bright], genre_fit: {trance: 0.85, house: 0.8, pop: 0.75,
+           gospel: 0.7, "*": 0.4}, valence: 0.65, organic: 0.35, density: 0.55, flow: {dirs: [up], honours: false}}

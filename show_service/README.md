@@ -7020,3 +7020,330 @@ director from the music. Docs: SHOW_ENGINE §9.1 "Light scenes". Files: `show_se
   onset that `fixtures.resolve_latency` gives output "hue" (show.yaml `looks.align_pct`, 25: ~99 ms from this run),
   else `SHOW_HUE_LATENCY_MS`, else 0, so the virtual Maestro's Hue look runs at `t + 99 ms` like the rig's lamps will.
   The rig (outputs.py) already reads the same entry through `latency_key: hue`.
+
+### S5.26 Lights: capabilities and encoding (18 Oct; docs/LIGHTS.md §2; the encode builder)
+
+Movers and every other light become a set of normalised attributes, each mapped to DMX through the fixture's own
+ranges. Files: `show_service/fixture_encode.py` (new), ofl.py, fixtures.py, contract.py (ATTRS, SHUTTER_MODES, the
+extended CHANNEL_ATTRS, FIXTURES_SETUP_FILE, AttrChannel `ranges`/`res`, TypeInfo `wheels`/`physical`, FixtureInfo and
+RigFixtureRow `setup`, RigFixtureRow/RigTypeRow `caps`, and CapRange, FixtureCaps, FixtureSetup), outputs.py (the rig
+rows' `caps` and `setup`: one hunk), `config/room/fixtures.setup.yaml` (new), tools/show/add_fixture.py (lists the
+wheels and the pan/tilt degrees).
+
+- **Attributes** (`contract.ATTRS`): intensity, colour, colour_slot, colour_spin, cct, shutter `{mode, hz}`, pan and
+  tilt (centred degrees: 0 is the middle of the range), pan_spin, tilt_spin, pt_speed, zoom (beam degrees), focus, iris,
+  frost, gobo/gobo2 (slot numbers), their spins and shakes, gobo_scroll, prism, prism_spin, and macro (the page's
+  "More" only). A type's `attrs` now lists every word a range serves (the director's "colour" check is unchanged).
+- **OFL ranges** (ofl.py): every coarse channel gets `ranges` (contract.CapRange: dmx at the channel's resolution, the
+  OFL capability, the attr, its value at each end, slot / shutter mode / page word) and `res` when 16-bit. Units as
+  docs/LIGHTS.md §2.2; the code starting points (`UNKNOWN_PAN_DEG` 540, `UNKNOWN_TILT_DEG` 270, `ZOOM_UNKNOWN_DEG`
+  10-40, `STROBE_HZ_UNKNOWN` 1-20 Hz, `CCT_WARM_K`/`CCT_COLD_K`) each put a problem line on the type when used; the
+  file's `physical.focus` panMax/tiltMax and `physical.lens` are used first. A channel Stage 5 read as `other` takes its
+  word (`gobo`, `zoom`, `pt_speed`, ...); mixed and backwards channels stay `other` (their strobe range still serves an
+  effect). Pan and Tilt with no defaultValue rest at their centre (8000h), as the owner ruled for the generic mover.
+- **The encoder** (`fixture_encode.encode(f, t, intensity, colour, attrs)`): attrs None (or only intensity and colour)
+  is byte for byte colour_mix.encode (tested on every generic type and every test OFL mode, 200 random cases each).
+  Otherwise per channel: ATTR_PRIORITY's first active attr with a range there, then the continuous ones, then (a
+  dedicated, unpinned channel) an explicit resting value; else colour_mix's byte. Pins hold at rest; an active value
+  drives a pinned channel. Pan/tilt clamp to the fixture's range (soft limits are the engine's). `caps(t, setup)`
+  (contract.FixtureCaps), `neutral(caps, setup)`, `to_dmx(range, value)`, `plan(t)` and `enc(t)` (the engine's
+  `_Slot.enc`: anything beyond what colour_mix sends) complete it. A moving spot encodes in ~25-50 µs on this loaded
+  host (colour_mix alone ~3 µs): pan and tilt take a precomputed fast path, and the discrete channels are memoised.
+- **Generic types**: `generic-mover` (Pan, Tilt, D, R, G, B) is driven now; `generic-mover-full` (13 channels: pan and
+  tilt 16-bit, speed, dimmer, shutter, colour wheel, gobo, gobo rotation, prism, zoom, focus) is new.
+  `fixtures.GENERIC_RANGES` gives their ranges (starting points for a common budget head); `GENERIC_DEFAULTS` rests
+  them centred with the shutter open; the wheels re-divide by the light's `slots.count` (`fixtures.generic_type`).
+- **The setup file** `config/room/fixtures.setup.yaml` (version 1, `fixtures: {<id>: FixtureSetup}`): written only by
+  `fixtures.SetupStore(path).patch(fid, patch)` (merge: a null removes a key; positions per name, slots per wheel and
+  slot, the rest per axis; the whole result checked, any problem refused `bad_request` with `problems` and nothing
+  written; atomic, with a header), `.read()`, `.get(fid)`, `.remove(fid)`. Position names are ids (`fixtures.slug_id`
+  makes one from page words). The Registry merges each entry into `FixtureInfo.setup` (`{}` when none), drops a key it
+  can't use with a problem line, lists an id that isn't a light ("setup for x: no such light (kept)"), keeps the last
+  good settings on a file that doesn't read, folds the file into the revision and hot-reloads on it.
+- **Selectors**: `cap:<attr>` (the type can show it; a word outside ATTRS is a bad_selector), `side:<word>` and
+  `height:<low|mid|high>` (true when `select(..., spatial=space.spatial_fn(view))` says so; without it, on no side).
+  fixtures.yaml groups can use `cap:` too.
+- **Rows**: `GET /api/v1/rig/types` rows carry `caps`; `GET /api/v1/rig` rows carry `caps` (with the light's setup)
+  and `setup` (`fixtures.caps_of`, lazy: None if fixture_encode can't be imported).
+- **Tests:** test_ofl (ranges, centring, unknown ranges and their problem lines, speeds, strobes, beam/focus/iris/frost/
+  CCT, gobo, gobo2, shake, scroll, spin, a prism wheel, macros, duration speeds), test_fixture_encode (new: the spot's
+  exact bytes, parity, shared channels, resting values and pins, setup range and colours, the generic movers' exact
+  bytes, caps, neutral, the cost), test_fixtures (the full mover, `generic_type`, cap/side/height selectors, the
+  setup store's merge, refusals and atomic writes, the Registry merging and reloading it, the real setup file).
+
+### S5.27 Lights: room space (18 Oct; docs/LIGHTS.md §3; the space builder)
+
+- **Files**: `config/room/space.yaml` (hand) ships with every room fact commented: the drawing room's two Frame TVs
+  (north and south walls, their normals), the four Hue lamps by their corners, the piano and the glitterball
+  (`device: mirror_ball`) as `<measure>` starting points. `front` is commented too, so the Room map can set it (unset:
+  north, the frame's convention; the hand file would otherwise win). `config/room/space.added.yaml` (header, `version:
+  1`, empty sections) is written only by the rig API. `space.Store` (`shared()`, one per process, loaded once on
+  creation) merges them: the hand file wins with a problem line, per key for an appliance (a hand-placed light can
+  still be taught) and whole entries for points, regions and surfaces. A file that doesn't read keeps its last good
+  contents (`error`). It re-reads on mtime/size, and subscribers are weak.
+- **The frame**: metres, x east, y north, z up, origin the south-west floor corner. The floor always exists; the
+  ceiling and four walls come from `room.size`. Surfaces' u runs left to right as seen from inside (east on the floor
+  and ceiling) and v runs up (north on the floor and ceiling). SpaceView's room also carries `front_vec`.
+- **Writers** (show-brain; each checked by the loader itself, a new problem line refuses it, then written atomically
+  and polled):
+  - `set_room` (None leaves a value as it is; `size: []` clears it);
+  - `set_appliance` (`...` leaves a key unchanged, None clears it; it also takes `kind` and `label`);
+  - `remove_appliance` (the page's whole entry: place, taught places and pose);
+  - `set_point` (+ `device`), `remove_point`, `set_region`, `remove_region`;
+  - `add_sample` (the last `TEACH_MAX` 16 are kept), `remove_sample` (0-based), `clear_samples`, `set_pose`.
+
+  `Refused` carries `bad_request`, `in_hand_file`, `not_found` or `added_unreadable`.
+- **Flow maths** (§3.5):
+  - `flow_vector` / `flow_coord(view, dir, centre, p, *, symmetry="none")`. "mirror" folds the room onto its right half
+    across the front axis, so both halves fire together; vectors on the left half are reflected back.
+  - `screen_flow(view, <screen fixture id>, dir, centre)`: a screen with no `plane` takes its nearest wall's.
+  - `spatial_fn` (fixtures.select's `side:`/`height:`), `lateral`, `resolve`, `region_of`, `surface_of`,
+    `nearest_surface`, `surface_point`/`surface_uv`, `position(view, id)` (map `at`, else the pose's), and
+    `targets(view)` for the page.
+
+  Derived numbers are cached per view object. On this loaded host (load ~7.5, best of 5) `flow_coord` takes
+  1.5-4 µs, `beam_dir` ~3 µs and `aim` ~13 µs (~17 µs with soft limits).
+- **Movers** (§3.6):
+  - `beam_dir`.
+  - `aim`, plus a `speed` keyword (default 180/120 °/s, the motion starting point). It enumerates only the turns inside
+    range ∩ limits; when none is reachable it returns the nearest clamped point with `error_deg`.
+  - `ray_hit`: the room box first on a tie.
+  - `solve_pose(samples, *, at_hint, mount, pan_range, tilt_range, cfg, view=None)`. It fits 7 unknowns with SciPy,
+    with angle residuals weighted at `angle_sigma_deg` (0.5°, a starting point; `lights.calibration.angle_sigma_deg`
+    wins). The prior is `at_hint` at `pos_sigma_m`, else the room's centre (at ceiling height when hung) at 2 m. It uses
+    an analytic Jacobian. Starts per pan sign: the Kabsch rotation plus hung/standing × 8 headings, each scouted for 20
+    evaluations, with the best 4 refined.
+  - Tilt and pan signs are each ambiguous (the same beams), so the pose reports `tilt_sign` +1 and |offset| ≤ 90°.
+  - **Added** `PoseFit.pos_m`: how far the solved position may be off, from the fit's Jacobian. Over `pos_sigma_m`, a
+    good or ok fit reads rough ("Rough: point it at one more place."). In a random-room check, every fit that said
+    good or ok was within 0.25 m.
+  - With no map position, places in a line read need_more ("further apart").
+  - The solve takes ~0.1-0.4 s. It is pure: run it off show-brain (api.py uses asyncio.to_thread).
+- **Tests**: test_space (27), covering:
+  - the frame and surfaces, and flow_coord for every dir at known points;
+  - unit flow vectors, front turning left/right, and mirror;
+  - every screen's view of the flow, and the side/height words;
+  - aim round trips (200 points < 0.05°), the turn kept, clamping and the soonest branch, and ray hits;
+  - the solve: 4 places (< 0.1 m, good), 3 + the map, need_more, a wrong place named, hung and standing either way;
+  - the store: merge, last good, problem lines, atomic writes reread equal, teach/pose, refusals with nothing written,
+    weak subscribers, and the real files loading clean.
+
+### S5.28 Lights: the engine: movers, programs, motion and the hold (18 Oct; docs/LIGHTS.md §5; the engine builder)
+
+- **What it reads.** `LookEngine.configure(looks, rig, lamps=, lights=, space=)`: show.yaml `lights` (groups, `motion`,
+  `jog`) and the room's SpaceView. Each light gets these, all imported lazily and degrading:
+  - its capabilities (`fixture_encode.caps(type, setup)`) and setup (home, soft limits, max speed, default beam, saved
+    positions);
+  - its room position and solved pose (space.py);
+  - its group (`light_scenes.group_members`; without it, the same first-match rule here).
+
+  `outputs.Rig` passes `lights`, and polls `space.shared()` on show-brain, reconfiguring on a new revision. A type with
+  ranges beyond intensity, colour and the wheel is `enc`: it is encoded by `fixture_encode.encode(..., attrs)`, and its
+  FixtureFrame carries `attrs`. Everything else keeps colour_mix's bytes exactly.
+- **Layer kinds** (`kind`, defaulting from `attr`):
+  - `intensity` (as before), `position`, `beam`, `gobo`, `prism`, `colour` (a palette role, OKLab), `colour_wheel`,
+    `cct`, and `shutter` (effects only: a scene's is a problem line).
+  - `select` defaults to `"*"`, and a layer reaches only the members that can show it. The rest are skipped silently
+    and counted in `stats()["program"]["skipped"]`.
+  - Any continuous value may be an oscillator (`{fx, phase, period_*, between, spread, order}`).
+  - Spread follows `order` (group | flow | mirror) and `spread_mode` (unison | chase | mirror). `order: flow` lags each
+    light by `spread x space.flow_coord` of its position (space's own `symmetry: mirror`), else by its place in its
+    group, reversed for left/down/ccw/inward/away.
+  - `flow_wave(flow, clock, t, coord)` is §4.1's shared phase.
+- **Positions.** A target is the light's own saved position (works uncalibrated), then a Room map name through the pose
+  (`space.aim`), then `home` / `flow` / `centre` / `up` / `down`; nothing resolves: the layers below stand
+  (`unresolved`).
+  - Patterns (fan, sweep, circle, figure8, drift, ballyhoo) are drawn in a surface's metres (`on`, `along`, `rotate`).
+    They fall back to the light's own degrees around home, or around its own position, when it is uncalibrated or there
+    is no surface to draw on.
+  - `bounce`, `lift`, `tilt_wave`, `aim` and `home` are also built.
+  - Where each pattern is drawn (centre, surface, axes) is cached per light, layer, space and flow; each frame moves
+    only the phase.
+- **Programs** (`LookData.light_programs`): one per group.
+  - Each group's scene is compiled per group, ids `<scene>/<layer>@<group>`.
+  - A program change lands at its transition's `at_ms` at each light's own time:
+    - `cut`: positions are pre-rolled by their travel time, so they arrive on the line;
+    - `dark_move`: dark first, then lit at the line;
+    - `crossfade`: positions lerp; with `dark_move: true`, a jump over `dark_move_min_deg` travels dark instead;
+    - `fade_dark`: to the group's `dark_level` and back, moving while dark;
+    - `sweep`: each light's crossfade starts at `at + flow_coord x wave_beats`.
+  - Effects ride over the scene by an envelope (fade in and out beats; one that leaves the list fades out from then):
+    intensity layers multiply, the rest lerp, their hits join HTP, and `caps.flash_hz_max` applies while they run.
+  - With no programs: the `light_scene` path for every lamp, exactly as before.
+- **The motion stage.**
+  - Commanded pan/tilt never exceeds the light's max speed (setup, else `lights.motion` 180/120 °/s). It runs an exact
+    trapezoid (`accel_s`) toward a still target, and passes a moving pattern through when it is within the frame's
+    reach.
+  - The soft limits clamp (`clamped`).
+  - Hops pre-roll by `travel_s = d/v + accel_s`, so the beam lands on the beat. A hop it can't make in
+    `max_travel_share` of its period doubles on the grid (`slowed`).
+  - A pattern faster than the light shrinks (to `min_size_share`), then doubles its period (`slowed`). Nothing refuses.
+  - A dark move goes dark for the fall latency, moves at full speed, and lights at arrival + `settle_ms`.
+  - Inactive, House and Low: a mover glides home, and the frame says `busy` until it lands.
+- **The hold** (Move it):
+  - `hold(fixture, values, idle_s=, smooth_ms=, free=)` (any thread). Values are clamped to the range, and to the soft
+    limits unless `free`. Attrs it can't show are listed in `unknown`. It starts from where the light is, at intensity
+    1 with the shutter open.
+  - The light glides there: pan/tilt first order within its speed, the beam over `smooth_ms`.
+  - It is out of everything else (layers, effects, hits, master, caps, follow, identify) until `release`, or `idle_s`
+    after the last call. Then it glides back through the motion stage.
+  - `holds()`, `caps_of()` and `live_view(frames)` (the Room map's beams and hits) read the engine.
+- **outputs.Rig.** These are called by api.py:
+  - `jog(fid, values, release=, free=)`: any thread, no brain hop, with show.yaml `lights.jog` idle_s/smooth_ms, waking
+    the runner;
+  - `holds()`, `caps_of(fid)`, `reload_now()` (show-brain, after a page write: the registry and the space re-read now)
+    and `live_view()`.
+
+  Also:
+  - a frame with `busy` keeps its runner at the active rate;
+  - `frame_view` adds `attrs` per mover;
+  - the snapshot adds `space` {revision, module}, and the engine's stats add `motion` (per light: slowed, clamped,
+    unresolved, unreachable, held) and `holds`.
+- **Contract** (the frames block): `FixtureFrame.attrs`, `Frame.busy`, `LOOK_INPUTS` + flow.speed/spread/coherence,
+  and `HoldView`, `LiveFixture`, `LiveView`.
+- **Costs** (this host, loaded, A/B in one run):
+  - `evaluate` for 4 Hue lamps: ~45 -> ~70 µs p50;
+  - 32 RGBW pars: ~280 -> ~300-360 µs (the group bookkeeping);
+  - 8 calibrated movers drawing ceiling circles with gobos, plus 4 lamps: ~1.4 ms p50 per frame, about half of it in
+    `fixture_encode.encode` and `space.aim`.
+- **Tests:**
+  - test_looks_motion (new: 28 tests, 30 cases), on the real encoder and the real room geometry:
+    - capability-aware layers (the par's and lamp's bytes unchanged);
+    - uncalibrated circles, and calibrated ceiling circles (every hit within 2 cm);
+    - aim order and words; fan; slew; limits;
+    - bounce pre-roll on a simulated head (within a frame of each beat), and the hop doubling at 240 bpm;
+    - a too-fast circle shrinking, then slowing, never over speed;
+    - dark-move glides and cuts; the pre-rolled cut; fade_dark; sweep;
+    - two groups' programs; effects' envelopes;
+    - flow-order waves, mirror, and group order;
+    - beam/gobo/prism/colour/wheel layers; shutter in effects only; the hold; the glide home;
+    - problem lines; the real catalogue on movers and lamps; the live view.
+  - test_looks: a colour layer needs a role; the stats shape.
+  - test_outputs: jog at the active rate on an idle output, with frame_view's attrs and the live view; degrading
+    without a holding engine.
+
+### S5.29 Lights: scenes, effects, transitions, programs per group and the flow (18 Oct; docs/LIGHTS.md §4, §6, §7; the catalogue builder)
+
+Lights get scenes, effects and transitions like the screens, run per light group, and one direction of travel (the
+flow) for every appliance. Files: `show_service/light_scenes.py` (grown), `show_service/flow.py` (new),
+`config/live/light_scenes.yaml` (14 scenes appended), `config/live/light_effects.yaml` and
+`config/live/light_transitions.yaml` (new), director.py (the lighting hunks), `config/room/show.yaml` (the `lights:`
+block, docs/LIGHTS.md §12), contract.py (LookData `flow`/`light_programs`, DirectionData `flow`, EventData
+`flow_id`/`sweep_beats`, and FlowData, FLOW_SOURCES, FLOW_SYMMETRY, LIGHT_TRANSITION_KINDS, LIGHT_EFFECT_TRIGGERS,
+LIGHT_LAYER_KINDS, EXPRESSIVE_ATTRS, LightEffectRun, LightTransitionRun, LightProgram, GroupInfo).
+
+- **The catalogue** (`light_scenes.Catalogue`, `shared()`): three hot-reloaded files, one revision; a bad file keeps
+  its last good entries, a missing effects or transitions file is a view note. Entries gain `needs` (hard: one member
+  of the group can do every attr), layer `kind`s (an unknown kind, or a shutter layer in a scene, is a problem line and
+  left out; the rest of a layer is the engine's to check) and `tags.flow {dirs, honours}`. The files load with YAML 1.2
+  booleans (`load_yaml`): YAML 1.1 reads an effect's `on:` and a position layer's `on:` as `True`. Ten effects (strobe
+  only lives there), five transitions (cut, cut moving in the dark, glide, through dark, a sweep).
+- **Weights for a group**: tags.py's `scene_weight` (`transition_weight` for transitions) with the direction's `flow`
+  left out, x **cap_fit** (0.3 + 0.7 x the share of the group's expressive attrs the entry drives) x **flow_fit** (1 when
+  the flow's dir is tagged or the entry honours the flow, else `FLOW_MISMATCH` 0.6, a starting point). `pick_for(group,
+  direction, flow, rng, avoid=)`, `pick_effect(group, trigger, direction, flow, rng, running=, bar=)` (its chance after
+  the draw; every_bars by the bar number), `pick_transition(kinds, style, direction, flow, rng)`, `fits(entry, group)`;
+  `pick()` is unchanged (every scene, no group).
+- **Groups** (`group_members(groups_cfg, rig, lamps=, spatial=, problems=)`, pure; the engine calls it too): each lamp
+  in the first group (file order) whose selector takes it, the rest in `"*"` ("Other lights"); GroupInfo also carries
+  `member_caps` (fixture_encode.caps per member; the type's attrs and channels until it is there). `parse_lights`
+  checks show.yaml's block (follows loops broken, scene_group, programs). No `lights:` block: one group, `"*"`.
+- **Programs** (director): one per live group (members, or the scene group), `{scene, effects, transition, flow,
+  since_ms, at_ms, why}` in LookData `light_programs`; a `follows` group copies its leader's (effects too). Picked where
+  the light scene was picked before (a feel, a song with no feel, Next, none set yet, a scene leaving), and for a look
+  change **when it is announced**: the programs go out ahead with the look_change's at_ms (lockstep: every output
+  switches at its own photon time), `light_scene` (compat: the scene group's) switches when the look lands, and a change
+  that never lands takes its programs back. Keep holds a group showing a scene (a person's Next still picks). A new
+  light (or group) with no scene gets one at once.
+- **Transitions**: the screens' decision in light kinds (cut -> cut | dark_move, crossfade -> crossfade | sweep with the
+  look's beats and seconds, a song through dark -> fade_dark with its out_s / in_s); the look_change carries `flow_id`
+  and, for a sweep, `sweep_beats` (wave_beats). Track events: `track_transition` also returns `flow_id` and, with
+  lights.flow.events.track_change, `sweep_beats`, and the voted flow lands at the new song (open: structure.py copies
+  only `transition`/`held` onto the event today).
+- **Effects**: structure's drop, build, breakdown, section_change and track_change at their lines; the phase entering
+  peak or outro (next bar line); every_bars on the clock's bars. Per group: the effect's chance, at most
+  `programs.effects_max` running, `effect_gap_bars` apart (a drop always may), one trigger a beat; `while` effects end
+  when their phase leaves, then fade out. None while neutral, House, Low or Keep. Logged (`light_effect`); the snapshot
+  keeps the last ten.
+- **The flow** (`flow.FlowDecider`, pure; show.yaml `lights.flow`): votes from the section phase, harmony's register
+  slope (the piano's MIDI feeds it), the listener's trajectory (at LLM_CONF) and the first three moods; net against the
+  opposite dir, `min_score`, `margin` and `dwell_s` hysteresis, still under `still_below_energy`; events bypass the dwell
+  (a drop: outward for a bar, then down; a build: up while the phase is build; a new song: the voted dir at its line).
+  FlowData on room.direction (published at once on a new id or anchor) and room.look: speed from the pace and energy,
+  spread from the look, the period a power of two (cross_beats with a grid, cross_s without, with hysteresis),
+  anchored on a bar line past the screens' lead, at_xyz and every screen's view from space.py once the room is placed.
+  Still while neutral. Logged (`flow`) with its votes.
+- **The glitterball**: while the flow turns (cw/ccw) and room believes `mirror_ball.main` is spinning, the motor's
+  direction and speed word follow on a bar line, at most once per `min_gap_s` (PUT /api/v1/room/targets, source
+  "show"); it never powers it, and a failed PUT waits for the next change. **Blinds**: off until targets are set.
+- **Costs**: the lights' part of the director tick ~0.09 ms p50 / 0.2 ms p95 (8 movers, 4 lamps, loaded host).
+- **Tests:** test_light_scenes (the three real files load clean and compile per group against two movers and four Hue
+  lamps; effects/transitions loading, notes, the YAML 1.2 `on`, validation lines; needs, cap_fit, flow_fit and the
+  draws; pick_effect's triggers, chance, bars and running; pick_transition; group_members (first match, follows, `"*"`,
+  bad selectors, spatial); parse_lights; the director's programs per group, the compat light_scene, lockstep ahead of a
+  look change, a change that never lands, Keep, followers, the transition mapping, a sweep's sweep_beats, effects by
+  event, max, gap, while, every_bars, none under House/Low/neutral, a light added later, no lights block); test_flow
+  (votes per source, opposites, dwell and margin, events, the pitch slope, settings, the period rule; room.direction and
+  room.look's flow, its timing and id, events' flow_id and sweep_beats, the glitterball); test_director (the name scan
+  covers flow.py, the effects', transitions' and groups' names, with the engine's and the space's words as vocabulary).
+
+### S5.30 Lights: the page — Move it, the Room map, teach (18 Oct; docs/LIGHTS.md §8; the page builder)
+
+Manual control is part of adding or editing a light. Files: api.py (the routes below), `src/pages/Lights/`
+(LightForm.tsx, MoveIt.tsx, JogPad.tsx, CapControls.tsx, RoomMap.tsx, Preview.tsx, jog.ts, lib.ts, api.ts, useRig.ts,
+index.tsx), tests in test_api.py and `src/pages/Lights/lib.test.ts`.
+
+- **Routes** (through room's `/show/*` pass-through; errors `{error, detail, choices?, problems?}`):
+  - `GET /api/v1/rig` gains `lights_ui` {send_hz, idle_s, nudge_deg {fine, coarse}, drag_deg_per_px {fine, coarse}}
+    from show.yaml `lights.jog` (api.JOG_UI's starting points, key by key). Rows without `caps` / `setup` get them
+    here: Rig.caps_of, else fixture_encode.caps over the view; the registry's FixtureInfo.setup, else the setup file.
+    The add/update answers' `fixture` row too.
+  - `POST .../fixtures/{id}/jog {values?, release?, free?}` -> Rig.jog's answer, called on show-bus (no brain hop).
+    Without Rig.jog: `{held: false, why: "This light can't be moved from here yet."}`.
+  - `POST .../fixtures/{id}/setup`: `home` / `beam` ("here" | a value | null), `limit {axis: pan|tilt, end:
+    here|low|high}`, `limits` (null: none), `slots`, `max_speed`, `range`, `jog_flip`, `strobe_hz_max` ->
+    `{setup, problems}`. "here" reads Rig.holds()[id] (its target over its now): 409 `not_held` ("Open Move it
+    first.") without a hold, 400 `no_position` / `no_beam` for a light that can't. `limit` moves one end to the held
+    value (`here`: the nearer end, the spec's word; with no limits the ends start at the full range) and keeps the pair
+    sorted, so the page's two taps ("Turn: stop here", then the other end by name) make the span between them.
+    `problems` says when the home is outside the limits. fixtures.SetupStore.patch validates (Refused -> 400).
+  - `POST .../fixtures/{id}/positions {name, label?, at?: "here" | {pan, tilt}}` -> `{positions, point, problems}`.
+    The name is kept as a place id (api.place_id: "The piano" -> `piano`, as the page makes them). A calibrated mover's
+    name the map doesn't have becomes a room point where its beam lands (space.beam_dir + ray_hit from its pose,
+    `set_point(..., source=<fixture id>)`); an existing place is never moved. `DELETE .../positions/{name}`.
+  - `POST .../fixtures/{id}/teach {point}` -> `{samples, fit, problems}`: a TeachSample from the held pan/tilt (and
+    `positions[point]`), then space.solve_pose with the map placement as `at_hint`, its mount, the ranges from caps
+    (else setup `range`, else ofl's UNKNOWN degrees), `cfg` = show.yaml lights.calibration and the view; set_pose
+    (None below 3). 400 `unknown_point` with the map's names. `DELETE .../teach/{n}` (0-based; one that isn't
+    there: what is true now) and `DELETE .../teach` solve again.
+  - `GET /api/v1/rig/space` -> SpaceView + `targets` [{name, label, kind: point | region | screen | appliance |
+    surface, at}] (a screen as "Centre of the north screen", a bounded surface by its centre); polled on show-brain
+    first. `PUT .../space/room {size?, front?: n|e|s|w|north…}` (a key left out is unchanged; `size: null` clears),
+    `PUT`/`DELETE .../space/appliances/{id}` (`at`, `mount`, `plane`; null clears), `.../points/{name}` (`at`,
+    `label?`, `device?`), `.../regions/{name}` (`surface`, `centre`, `size`, `label?`). space.Refused -> 400/404/409
+    in its words.
+  - `GET /api/v1/rig/live` -> Rig.live_view(); without it `{t_ms, flow: null, programs: {}, fixtures: {}, why}`.
+- **Threads.** Writes run on show-brain (`brain.call`), then Rig.reload_now (or `_reload_now`). The pose solve runs
+  on a worker thread (`asyncio.to_thread`: scipy, ~0.3 s, the first ~1 s), never on show-brain; its set_pose goes back
+  to show-brain only if the light's samples are still the ones solved.
+- **Degrade.** No rig: the fixture routes 503 `unavailable`, live empty with `why`; the map works. No SetupStore: 503
+  with page words. No space module: GET space neutral with `error`, writes 503. A store without `remove_region`: 503.
+- **The page.** `/lights` has **Lights | Room map** at the top (remembered on the device). Add a light is five
+  steps: kind, box, first channel, then **Next saves it** under a provisional name (its kind + the next number) so
+  **Move it** (step 4) drives the real light, then its name and place (PUT). Closing after step 3 offers "Remove this
+  light" (or Keep it). Edit has "Move it and set it up" as a section that unrolls. Move it holds the light while open
+  (`jog {}`; released on close), counts down from 15 s before show.yaml's idle_s with "Keep it", and says "Handed
+  back to the show. Tap to hold it again." after. The pad drags relatively (Fine | Coarse), nudges with arrows,
+  reads "Turned 45° · Tilted −20°", and keeps "Swap left/right" / "Swap up/down" as setup `jog_flip`. jog.ts sends
+  latest-wins, one in flight, at most send_hz, and anything stored waits for the last move to land. The controls come
+  from caps alone (lib.controlsFor). Store it: Set as home, Set limits (jog `free` while open), Save as… (room places
+  as suggestions; saved positions to tap and go), Point it at… ("Put the middle of the beam on it, then tap Done";
+  "Learnt 2 of 3."; the fit's words; × per sample; Start again), Keep this beam as its normal look. The preview and the
+  Room map draw the plan from above with the front wall at the top (left/right as people facing it), a side strip for
+  heights, each beam to where it lands (live, 4 Hz) and the flow as an arrow and words ("Turning clockwise").
+- **Tests:** test_api (place ids and setup patches; every route without a rig or space; jog direct and its degrade;
+  setup here/limits/refusals; teach and positions with fakes; the space routes; GET rig's extras; and the page's flows
+  against the real space module on tmp files: a synthetic hung mover taught by space.aim's angles, solved within 0.1 m,
+  a saved position landing on the floor within 5 cm). lib.test.ts (controls for the full mover, an RGB par and a wheel
+  spot; JogSender latest-wins and its rate on a fake clock; the plan's room <-> SVG round trip on every front; the
+  countdown and other words; names; tolerant reads).

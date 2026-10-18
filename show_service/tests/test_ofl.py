@@ -107,6 +107,11 @@ def by_name(info) -> dict:
     return {c["name"]: c for c in info["channels"]}
 
 
+def bare(c: dict) -> dict:
+    """A channel without its ranges and resolution (docs/LIGHTS.md §2.2), as Stage 5 read it."""
+    return {k: v for k, v in c.items() if k not in ("ranges", "res")}
+
+
 def doc_with(channels: dict, mode_channels: list, **extra) -> dict:
     return {"name": "Test", "availableChannels": channels, "modes": [{"name": "m", "channels": mode_channels}],
             **extra}
@@ -118,11 +123,15 @@ def test_rgbw_par_with_dimmer_fine_dimmer_and_strobe():
     assert ok and info["problems"] == []
     assert info["id"] == "par" and info["source"] == "ofl" and info["kind"] == "lamp"
     assert info["file"] == "ofl/x/par.json" and info["mode"] == "Pro 7" and info["footprint"] == 7
-    assert info["attrs"] == ["intensity", "colour"]
+    assert info["attrs"] == ["intensity", "colour", "shutter"]                  # the strobe: effects may use it
     ch = by_name(info)
     assert [ch[n]["emitter"] for n in ("Red", "Green", "Blue", "White")] == ["red", "green", "blue", "white"]
     assert [ch[n]["offset"] for n in ("Red", "Green", "Blue", "White")] == [0, 1, 2, 3]
-    assert ch["Dimmer"] == {"offset": 4, "name": "Dimmer", "attr": "intensity", "default": 0, "fine": 5}
+    assert bare(ch["Dimmer"]) == {"offset": 4, "name": "Dimmer", "attr": "intensity", "default": 0, "fine": 5}
+    assert ch["Dimmer"]["res"] == 2 and ch["Dimmer"]["ranges"] == [
+        {"dmx": [0, 65535], "cap": "Intensity", "attr": "intensity", "lo": 0.0, "hi": 1.0}]
+    assert [(r["mode"], r["dmx"], r["lo"], r["hi"]) for r in ch["Strobe"]["ranges"]] == [
+        ("open", [0, 10], 0.0, 0.0), ("strobe", [11, 255], 1.0, 20.0)]
     assert ch["Dimmer fine"] == {"offset": 5, "name": "Dimmer fine", "attr": "other", "default": 0}
     assert ch["Strobe"]["attr"] == "shutter" and ch["Strobe"]["default"] == 0      # its Open range starts at 0
     assert "fine" not in ch["Red"]                                                 # the mode doesn't carry Red fine
@@ -165,10 +174,11 @@ def test_colour_wheel_spot():
     assert ok and info["mode"] == "6-channel" and info["footprint"] == 6
     ch = by_name(info)
     assert ch["Color Wheel"]["attr"] == "wheel"
-    assert ch["Gobo Wheel"]["attr"] == "other"                                   # a wheel without colours
+    assert ch["Gobo Wheel"]["attr"] == "gobo"                                    # a wheel of patterns (no colours)
     assert (ch["Pan"]["attr"], ch["Tilt"]["attr"]) == ("pan", "tilt")
     assert ch["Dimmer"]["attr"] == "intensity" and ch["Strobe"]["attr"] == "shutter"
-    assert info["attrs"] == ["intensity", "colour"]
+    assert info["attrs"] == ["intensity", "colour", "colour_slot", "shutter", "pan", "tilt", "gobo"]
+    assert (ch["Pan"]["default"], ch["Tilt"]["default"]) == (128, 128)          # centre, never 0, 0 (owner, 18 Oct)
     assert info["wheel"][0] == {"dmx": 15, "hex": "#ffffff", "name": "Open"}      # Open counts as white
     assert info["wheel"][1] == {"dmx": 47, "hex": "#ff0000", "name": "Red"}       # the middle of 32..63
     assert [s["dmx"] for s in info["wheel"]] == [15 + 32 * i for i in range(8)]
@@ -189,8 +199,8 @@ def test_shutter_default_is_the_start_of_its_open_range():
         {"dmxRange": [0, 9], "type": "ShutterStrobe", "shutterEffect": "Closed"},
         {"dmxRange": [10, 19], "type": "ShutterStrobe", "shutterEffect": "Open"},
         {"dmxRange": [20, 255], "type": "ShutterStrobe", "shutterEffect": "Strobe"}]}}, ["Shutter"])
-    assert by_name(ofl.parse(d, "m")[0])["Shutter"] == {"offset": 0, "name": "Shutter", "attr": "shutter",
-                                                         "default": 10}
+    assert bare(by_name(ofl.parse(d, "m")[0])["Shutter"]) == {"offset": 0, "name": "Shutter", "attr": "shutter",
+                                                               "default": 10}
 
 
 def test_a_defaultvalue_wins_over_the_open_rule_and_percentages_scale():
@@ -241,7 +251,8 @@ def test_a_dimmer_strobe_channel_is_not_driven_and_held_at_its_brightest():
     info, ok = ofl.parse(d, "m")
     ch = by_name(info)
     assert ok and ch["Dimmer/Strobe"]["attr"] == "other" and ch["Dimmer/Strobe"]["default"] == 127
-    assert info["attrs"] == ["intensity", "colour"]                              # the emitter still dims
+    assert info["attrs"] == ["intensity", "colour", "shutter"]                   # the emitter still dims; its strobe
+    assert [r["attr"] for r in ch["Dimmer/Strobe"]["ranges"]] == ["intensity", "shutter"]   # range stays usable
     assert any("mixes intensity with other functions: not driven, held at 127" in p for p in info["problems"])
 
 
@@ -254,7 +265,7 @@ def test_a_backwards_dimmer_and_a_mixed_emitter_are_not_driven():
     info, ok = ofl.parse(d, "m")
     ch = by_name(info)
     assert ch["Dim"]["attr"] == "other" and ch["Dim"]["default"] == 0           # brightest is its start
-    assert ch["White"]["attr"] == "other" and info["attrs"] == []
+    assert ch["White"]["attr"] == "other" and info["attrs"] == ["shutter"]     # its strobe range only
     assert any("runs backwards" in p for p in info["problems"])
     assert any("mixes its white intensity" in p for p in info["problems"])
 
@@ -285,10 +296,10 @@ def test_attrs_follow_the_channels():
                                         {"dmxRange": [128, 255], "type": "WheelSlot", "slotNumber": 2}]}}
     wheels = {"Color": {"slots": [{"type": "Open"}, {"type": "Color", "name": "Red", "colors": ["#ff0000"]}]}}
     assert ofl.parse(doc_with(dim, ["Dimmer"]), "m")[0]["attrs"] == ["intensity"]
-    assert ofl.parse(doc_with(wheel, ["Color"], wheels=wheels), "m")[0]["attrs"] == ["colour"]
+    assert ofl.parse(doc_with(wheel, ["Color"], wheels=wheels), "m")[0]["attrs"] == ["colour", "colour_slot"]
     assert ofl.parse(doc_with({**dim, **wheel}, ["Dimmer", "Color"], wheels=wheels), "m")[0]["attrs"] == [
-        "intensity", "colour"]
-    assert ofl.parse(doc_with({"Pan": {"capability": {"type": "Pan"}}}, ["Pan"]), "m")[0]["attrs"] == []
+        "intensity", "colour", "colour_slot"]
+    assert ofl.parse(doc_with({"Pan": {"capability": {"type": "Pan"}}}, ["Pan"]), "m")[0]["attrs"] == ["pan"]
 
 
 def test_wheels_skip_splits_and_mix_multicolour_slots_and_drive_only_the_first():
@@ -310,6 +321,189 @@ def test_wheels_skip_splits_and_mix_multicolour_slots_and_drive_only_the_first()
                                                                             "name": "#800080"}]
     assert ch["CW"]["attr"] == "wheel" and ch["CW2"]["attr"] == "other"
     assert any("a second colour wheel" in p for p in info["problems"])
+
+
+# -- ranges (docs/LIGHTS.md §2.2) --------------------------------------------------------------------------------------
+def ranges_of(info, name: str, attr: str | None = None) -> list[tuple]:
+    """(dmx lo, dmx hi, lo, hi) per range of a channel (of one attr)."""
+    return [(r["dmx"][0], r["dmx"][1], r["lo"], r["hi"]) for r in by_name(info)[name]["ranges"]
+            if attr is None or r["attr"] == attr]
+
+
+def test_pan_and_tilt_are_centred_degrees_with_the_physical_range():
+    info, _ = ofl.parse(SPOT, "12ch")
+    assert ranges_of(info, "Pan") == [(0, 65535, -270.0, 270.0)] and ranges_of(info, "Tilt") == [(0, 65535, -135.0,
+                                                                                                   135.0)]
+    assert by_name(info)["Pan"]["res"] == 2 and by_name(info)["Pan"]["fine"] == 1
+    assert info["physical"] == {"lens_deg": None, "pan_deg": 540.0, "tilt_deg": 270.0, "zoom_deg": None}
+    ch = by_name(info)
+    assert (ch["Pan"]["default"], ch["Pan fine"]["default"]) == (0x80, 0x00)     # centre: 0x8000 of 16 bits
+    assert info["attrs"] == ["intensity", "colour", "colour_slot", "shutter", "pan", "tilt", "pt_speed"]
+    assert ch["Pan/Tilt Speed"]["attr"] == "pt_speed" and ranges_of(info, "Pan/Tilt Speed") == [(0, 255, 1.0, 0.01)]
+
+
+def test_a_percent_pan_assumes_540_with_a_problem_line_unless_the_file_says():
+    d = doc_with({"Pan": {"capability": {"type": "Pan", "angleStart": "0%", "angleEnd": "100%"}},
+                  "Tilt": {"capability": {"type": "Tilt"}}}, ["Pan", "Tilt"])
+    info, _ = ofl.parse(d, "m")
+    assert ranges_of(info, "Pan") == [(0, 255, -270.0, 270.0)] and ranges_of(info, "Tilt") == [(0, 255, -135.0,
+                                                                                                 135.0)]
+    assert "Pan: pan range not in the file: 540° assumed (set it on the Lights page)" in info["problems"]
+    assert info["physical"]["pan_deg"] is None and info["physical"]["tilt_deg"] is None
+    d["physical"] = {"focus": {"type": "Head", "panMax": 630, "tiltMax": 200}}
+    info, _ = ofl.parse(d, "m")
+    assert ranges_of(info, "Pan") == [(0, 255, -315.0, 315.0)] and info["physical"]["pan_deg"] == 630.0
+    assert not [p for p in info["problems"] if "range not in the file" in p]
+    two = doc_with({"Pan": {"capabilities": [
+        {"dmxRange": [0, 127], "type": "Pan", "angleStart": "0deg", "angleEnd": "270deg"},
+        {"dmxRange": [128, 255], "type": "Pan", "angleStart": "270deg", "angleEnd": "540deg"}]}}, ["Pan"])
+    assert ranges_of(ofl.parse(two, "m")[0], "Pan") == [(0, 127, -270.0, 0.0), (128, 255, 0.0, 270.0)]
+
+
+def test_rotation_speeds_are_signed_shares_and_hz_divide_by_the_fastest():
+    d = doc_with({"Spin": {"capabilities": [
+        {"dmxRange": [0, 9], "type": "PanContinuous", "speed": "stop"},
+        {"dmxRange": [10, 127], "type": "PanContinuous", "speedStart": "slow CW", "speedEnd": "fast CW"},
+        {"dmxRange": [128, 255], "type": "PanContinuous", "speedStart": "-10rpm", "speedEnd": "-60rpm"}]},
+        "Tilt spin": {"capability": {"type": "TiltContinuous", "speedStart": "-100%", "speedEnd": "100%"}}},
+        ["Spin", "Tilt spin"])
+    info, _ = ofl.parse(d, "m")
+    assert ranges_of(info, "Spin") == [(0, 9, 0.0, 0.0), (10, 127, 0.01, 1.0), (128, 255, round(-1 / 6, 6), -1.0)]
+    assert ranges_of(info, "Tilt spin") == [(0, 255, -1.0, 1.0)]
+    assert by_name(info)["Spin"]["attr"] == "pan_spin" and "tilt_spin" in info["attrs"]
+
+
+def test_strobes_keep_hz_modes_and_keyword_speeds_are_a_starting_point():
+    d = doc_with({"Shutter": {"capabilities": [
+        {"dmxRange": [0, 9], "type": "ShutterStrobe", "shutterEffect": "Closed"},
+        {"dmxRange": [10, 19], "type": "ShutterStrobe", "shutterEffect": "Open"},
+        {"dmxRange": [20, 99], "type": "ShutterStrobe", "shutterEffect": "Pulse", "speedStart": "60bpm",
+         "speedEnd": "600bpm"},
+        {"dmxRange": [100, 149], "type": "ShutterStrobe", "shutterEffect": "Strobe", "randomTiming": True,
+         "speedStart": "slow", "speedEnd": "fast"},
+        {"dmxRange": [150, 199], "type": "ShutterStrobe", "shutterEffect": "Lightning"},
+        {"dmxRange": [200, 229], "type": "ShutterStrobe", "shutterEffect": "RampUpDown"},
+        {"dmxRange": [230, 255], "type": "ShutterStrobe", "shutterEffect": "Burst"}]},
+        "Strobe speed": {"capability": {"type": "StrobeSpeed", "speedStart": "1Hz", "speedEnd": "25Hz"}}},
+        ["Shutter", "Strobe speed"])
+    info, _ = ofl.parse(d, "m")
+    rs = by_name(info)["Shutter"]["ranges"]
+    assert [r["mode"] for r in rs] == ["closed", "open", "pulse", "random", "random", "ramp", "burst"]
+    assert (rs[2]["lo"], rs[2]["hi"]) == (1.0, 10.0)                              # bpm -> Hz
+    lo, hi = ofl.STROBE_HZ_UNKNOWN
+    assert rs[3]["lo"] == pytest.approx(lo + ofl.SLOW * (hi - lo)) and rs[3]["hi"] == hi
+    assert any("strobe speed not in Hz in the file" in p for p in info["problems"])
+    assert by_name(info)["Strobe speed"]["attr"] == "shutter" and ranges_of(info, "Strobe speed") == [(0, 255, 1.0,
+                                                                                                         25.0)]
+    assert by_name(info)["Strobe speed"]["ranges"][0]["mode"] == "strobe"
+
+
+def test_beam_focus_iris_frost_and_colour_temperature():
+    chans = {"Zoom": {"capability": {"type": "Zoom", "angleStart": "narrow", "angleEnd": "wide"}},
+             "Focus": {"capability": {"type": "Focus", "distanceStart": "near", "distanceEnd": "far"}},
+             "Focus m": {"capability": {"type": "Focus", "distanceStart": "2m", "distanceEnd": "12m"}},
+             "Iris": {"capability": {"type": "Iris", "openPercentStart": "closed", "openPercentEnd": "open"}},
+             "Frost": {"capability": {"type": "Frost", "frostIntensityStart": "0%", "frostIntensityEnd": "100%"}},
+             "CTO": {"capability": {"type": "ColorTemperature", "colorTemperatureStart": "6500K",
+                                    "colorTemperatureEnd": "3200K"}},
+             "Beam": {"capability": {"type": "BeamAngle", "angleStart": "8deg", "angleEnd": "30deg"}}}
+    names = list(chans)
+    info, _ = ofl.parse(doc_with(chans, names, physical={"lens": {"degreesMinMax": [5, 50]}}), "m")
+    assert ranges_of(info, "Zoom") == [(0, 255, 5.0, 50.0)] and ranges_of(info, "Beam") == [(0, 255, 8.0, 30.0)]
+    assert info["physical"]["lens_deg"] == [5.0, 50.0] and info["physical"]["zoom_deg"] == [5.0, 50.0]
+    assert ranges_of(info, "Focus") == [(0, 255, 0.0, 1.0)] and ranges_of(info, "Focus m") == [(0, 255, 0.0, 1.0)]
+    assert ranges_of(info, "Iris") == [(0, 255, 0.0, 1.0)] and ranges_of(info, "Frost") == [(0, 255, 0.0, 1.0)]
+    assert ranges_of(info, "CTO") == [(0, 255, 6500.0, 3200.0)]
+    assert {"zoom", "focus", "iris", "frost", "cct"} <= set(info["attrs"]) and info["problems"] == []
+    assert [by_name(info)[n]["attr"] for n in names] == ["zoom", "focus", "focus", "iris", "frost", "cct", "zoom"]
+    guess, _ = ofl.parse(doc_with({"Zoom": chans["Zoom"], "CT": {"capability": {
+        "type": "ColorTemperature", "colorTemperatureStart": "warm", "colorTemperatureEnd": "cold"}}},
+        ["Zoom", "CT"]), "m")
+    assert ranges_of(guess, "Zoom") == [(0, 255, *ofl.ZOOM_UNKNOWN_DEG)] and guess["physical"]["zoom_deg"] is None
+    assert ranges_of(guess, "CT") == [(0, 255, ofl.CCT_WARM_K, ofl.CCT_COLD_K)]
+    assert any("beam angle not in the file" in p for p in guess["problems"])
+    assert any("colour temperature not in kelvin" in p for p in guess["problems"])
+
+
+GOBOS = {
+    "name": "Gobo spot",
+    "availableChannels": {
+        "Colour": {"capabilities": [
+            {"dmxRange": [0, 63], "type": "WheelSlot", "slotNumber": 1},
+            {"dmxRange": [64, 127], "type": "WheelSlot", "slotNumber": 2},
+            {"dmxRange": [128, 191], "type": "WheelRotation", "speedStart": "slow CW", "speedEnd": "fast CW"},
+            {"dmxRange": [192, 255], "type": "WheelRotation", "speedStart": "slow CCW", "speedEnd": "fast CCW"}]},
+        "Gobo 1": {"capabilities": [
+            {"dmxRange": [0, 15], "type": "WheelSlot", "slotNumber": 1},
+            {"dmxRange": [16, 31], "type": "WheelSlot", "slotNumber": 2},
+            {"dmxRange": [32, 47], "type": "WheelSlot", "slotNumber": 3},
+            {"dmxRange": [48, 63], "type": "WheelSlot", "slotNumberStart": 2.5, "slotNumberEnd": 2.5},
+            {"dmxRange": [64, 95], "type": "WheelShake", "slotNumber": 2, "shakeSpeedStart": "slow",
+             "shakeSpeedEnd": "fast"},
+            {"dmxRange": [96, 127], "type": "WheelShake", "slotNumber": 3, "shakeSpeedStart": "slow",
+             "shakeSpeedEnd": "fast"},
+            {"dmxRange": [128, 191], "type": "WheelRotation", "speedStart": "slow CW", "speedEnd": "fast CW"},
+            {"dmxRange": [192, 255], "type": "WheelRotation", "speedStart": "slow CCW", "speedEnd": "fast CCW"}]},
+        "Gobo 1 rotation": {"capabilities": [
+            {"dmxRange": [0, 127], "type": "WheelSlotRotation", "wheel": "Gobo 1", "angleStart": "0deg",
+             "angleEnd": "360deg", "comment": "Index"},
+            {"dmxRange": [128, 255], "type": "WheelSlotRotation", "wheel": "Gobo 1", "speedStart": "fast CCW",
+             "speedEnd": "fast CW"}]},
+        "Gobo 2": {"capabilities": [{"dmxRange": [32 * i, 32 * i + 31], "type": "WheelSlot", "slotNumber": i + 1}
+                                    for i in range(8)]},
+        "Prisms": {"capabilities": [
+            {"dmxRange": [0, 63], "type": "WheelSlot", "slotNumber": 1},
+            {"dmxRange": [64, 127], "type": "WheelSlot", "slotNumber": 2},
+            {"dmxRange": [128, 191], "type": "WheelSlot", "slotNumber": 3},
+            {"dmxRange": [192, 255], "type": "WheelSlot", "slotNumber": 4}]},
+        "Prism turn": {"capability": {"type": "PrismRotation", "speedStart": "slow CW", "speedEnd": "fast CW"}},
+        "Macros": {"capabilities": [
+            {"dmxRange": [0, 9], "type": "NoFunction"},
+            {"dmxRange": [10, 19], "type": "Maintenance", "comment": "Reset"},
+            {"dmxRange": [20, 255], "type": "Effect", "effectName": "Auto program"}]},
+        "Move time": {"capability": {"type": "PanTiltSpeed", "durationStart": "0s", "durationEnd": "4s"}},
+    },
+    "wheels": {
+        "Colour": {"slots": [{"type": "Open"}, {"type": "Color", "name": "Deep red", "colors": ["#cc0000"]}]},
+        "Gobo 1": {"slots": [{"type": "Open"}, {"type": "Gobo", "name": "Stars"}, {"type": "Gobo"}]},
+        "Gobo 2": {"slots": [{"type": "Open"}] + [{"type": "Gobo"}] * 7},
+        "Prisms": {"slots": [{"type": "Open"}, {"type": "Prism", "facets": 3}, {"type": "Frost"},
+                             {"type": "Prism", "name": "Linear", "facets": 5}]},
+    },
+    "modes": [{"name": "all", "channels": ["Colour", "Gobo 1", "Gobo 1 rotation", "Gobo 2", "Prisms", "Prism turn",
+                                           "Macros", "Move time"]}],
+}
+
+
+def test_wheels_gobos_shake_scroll_spin_and_a_prism_wheel():
+    info, ok = ofl.parse(GOBOS, "all")
+    assert ok and info["problems"] == []
+    w = info["wheels"]
+    assert {k: (v["kind"], v["attr"]) for k, v in w.items()} == {
+        "Colour": ("colour", "colour_slot"), "Gobo 1": ("gobo", "gobo"), "Gobo 2": ("gobo", "gobo2"),
+        "Prisms": ("prism", "prism")}
+    assert [s["name"] for s in w["Gobo 1"]["slots"]] == ["Open", "Stars", "Pattern 3"]
+    assert w["Prisms"]["slots"][1] == {"slot": 2, "type": "Prism", "name": "Prism 3", "facets": 3}
+    g1 = by_name(info)["Gobo 1"]["ranges"]
+    assert [(r["attr"], r.get("slot")) for r in g1] == [
+        ("gobo", 1), ("gobo", 2), ("gobo", 3), ("gobo_shake", 2), ("gobo_shake", 3), ("gobo_scroll", None),
+        ("gobo_scroll", None)]                                                     # the split (2.5) is left out
+    assert (g1[3]["lo"], g1[3]["hi"]) == (ofl.SLOW, 1.0) and g1[1]["word"] == "Stars"
+    assert ranges_of(info, "Colour", "colour_spin") == [(128, 191, 0.01, 1.0), (192, 255, -0.01, -1.0)]
+    assert ranges_of(info, "Gobo 1 rotation", "gobo_spin") == [(128, 255, -1.0, 1.0)]
+    assert ranges_of(info, "Gobo 1 rotation", "macro") == [(0, 127, 0.0, 0.0)]  # an index angle: the page's More
+    assert [r["attr"] for r in by_name(info)["Gobo 2"]["ranges"]] == ["gobo2"] * 8
+    pr = by_name(info)["Prisms"]["ranges"]
+    assert [(r["attr"], r["lo"]) for r in pr] == [("prism", 0.0), ("prism", 1.0), ("frost", 1.0), ("prism", 2.0)]
+    assert ranges_of(info, "Prism turn") == [(0, 255, 0.01, 1.0)] and by_name(info)["Prism turn"]["attr"] == \
+        "prism_spin"
+    assert by_name(info)["Macros"]["attr"] == "other"
+    assert [(r["attr"], r["word"]) for r in by_name(info)["Macros"]["ranges"]] == [("macro", "Reset"),
+                                                                                    ("macro", "Auto program")]
+    assert ranges_of(info, "Move time") == [(0, 255, 1.0, 0.0)]                   # 0 s = the fastest
+    assert info["attrs"] == ["colour", "colour_slot", "colour_spin", "pt_speed", "frost", "gobo", "gobo2",
+                             "gobo_spin", "gobo_shake", "gobo_scroll", "prism", "prism_spin", "macro"]
+    json.dumps(info)
 
 
 # -- modes, matrices and bad files -------------------------------------------------------------------------------------

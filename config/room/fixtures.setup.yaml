@@ -1,0 +1,7 @@
+# config/room/fixtures.setup.yaml: each light's settings from the Lights page (Move it and set it up: where it rests,
+# its limits, its normal beam, its pattern and colour names, its named positions; docs/LIGHTS.md §2.6). WRITTEN BY
+# show_service's rig API (POST /show/api/v1/rig/fixtures/{id}/setup and .../positions; fixtures.SetupStore), whole, on
+# every change: don't edit it by hand. Keyed by fixture id, for any light (config/room/fixtures.yaml's too).
+# show_service re-reads it when it changes. Angles are degrees from the middle of the light's pan or tilt range.
+version: 1
+fixtures: {}
