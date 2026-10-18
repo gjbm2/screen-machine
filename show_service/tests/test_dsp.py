@@ -180,7 +180,7 @@ def test_spectrum32_keeps_the_shape():
 
 
 # -- hits -------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("block", [128, 96, 1000])
+@pytest.mark.parametrize("block", [128, 96, 1000, 4096])
 def test_kicks_hit_sub_and_bass_within_15_ms(block):
     n = 10 * FS
     x, onsets = kicks(n)
@@ -441,18 +441,21 @@ def test_tick_cadence_50_hz_only_with_fresh_audio():
 
 
 # -- allocation and cost ----------------------------------------------------------------------------------------------
-def test_no_buffer_allocations_per_block():
+@pytest.mark.parametrize("block", [128, 4096])
+def test_no_buffer_allocations_per_block(block):
+    """Packets, and the receiver's coalesced 32-packet blocks (a block size's views are built once, so whole blocks)."""
     f = dsp.Features()
     x = (sine(4 * FS, 220.0, 0.2) + coloured(4 * FS, 1, 0.01)).astype(np.float32).reshape(-1, 1)
-    for s in range(0, 2 * FS, 128):
-        f.process("room-mic", s, T0 + s / FS, x[s:s + 128], FS, 0)
-    blocks = [x[s:s + 128] for s in range(2 * FS, 4 * FS, 128)]
+    w = 2 * FS // block * block
+    for s in range(0, w, block):
+        f.process("room-mic", s, T0 + s / FS, x[s:s + block], FS, 0)
+    blocks = [x[s:s + block] for s in range(w, x.shape[0] - block + 1, block)]
     tracemalloc.start()
     try:
         base, _ = tracemalloc.get_traced_memory()
         tracemalloc.reset_peak()
         for j, blk in enumerate(blocks):
-            s = 2 * FS + 128 * j
+            s = w + block * j
             f.process("room-mic", s, T0 + s / FS, blk, FS, 0)
         cur, peak = tracemalloc.get_traced_memory()
     finally:

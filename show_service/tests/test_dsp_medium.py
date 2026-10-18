@@ -393,26 +393,30 @@ def test_a_bad_clock_never_raises():
         json.dumps(frames, allow_nan=False)
 
 
-def test_no_buffer_allocations_per_block_with_a_locked_clock():
+@pytest.mark.parametrize("block", [128, 4096])
+def test_no_buffer_allocations_per_block_with_a_locked_clock(block):
+    """Packets, and the receiver's coalesced 32-packet blocks (16 hops and a medium frame or two a block)."""
     f = dsp.Features()
     ck = clock()
     f.clock_fn = lambda: ck
     x = (drum_loop(6 * FS) + chord(6 * FS, [60, 64, 67])).astype(np.float32).reshape(-1, 1)
-    for s in range(0, 4 * FS, 128):
-        f.process("room-mic", s, T0 + s / FS, x[s:s + 128], FS, 0)
-    blocks = [x[s:s + 128] for s in range(4 * FS, 6 * FS, 128)]
+    w = 4 * FS // block * block                                   # whole blocks (a size's views are built once)
+    e = w + (6 * FS - w) // block * block
+    for s in range(0, w, block):
+        f.process("room-mic", s, T0 + s / FS, x[s:s + block], FS, 0)
+    blocks = [x[s:s + block] for s in range(w, e, block)]
     frames0 = f.stats()["medium_frames"]
     tracemalloc.start()
     try:
         base, _ = tracemalloc.get_traced_memory()
         tracemalloc.reset_peak()
         for j, blk in enumerate(blocks):
-            s = 4 * FS + 128 * j
+            s = w + block * j
             f.process("room-mic", s, T0 + s / FS, blk, FS, 0)
         cur, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
-    assert f.stats()["medium_frames"] - frames0 == 20
+    assert f.stats()["medium_frames"] - frames0 == 20             # the hops ending first at or past 4800 k: 40..59
     assert peak - base < 8192, (base, cur, peak)                     # small arrays and scalars, no sample buffers
     assert cur - base < 4096
 
