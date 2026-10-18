@@ -73,6 +73,7 @@ LOOKS = ("paper", "night")
 LAYOUTS = ("page", "scroll")
 ROW_SP = 24                    # a line's canvas height in staff spaces
 TOP_SP = 6                     # the treble staff's top line, in staff spaces from the canvas top
+ROOM_KEY = "room"              # the screens' shared transcription (score/room.py): show_service hears one room
 STAVE_GAP_SP = 11.5            # treble top line to bass top line, the same in every bar (owner 18 Oct: room for 3
                                # ledger lines each side; Verovio's per-bar gap made the staves wander apart and back)
 RESULTS_PER_FRAME = 3
@@ -540,18 +541,12 @@ class LiveScore(Source):
         self.RIh = np.zeros(NROW, np.int32)
         self.L = cp.zeros(MAX_LIVE * 8, cp.float32)
         self.Lh = np.zeros(MAX_LIVE * 8, np.float32)
-        from stream_service.score.quantize import ScoreBuilder
-        self.builder = ScoreBuilder()
-        self.analyser = None
-        try:
-            from stream_service.score.client import Analyser
-            if Analyser.available():
-                self.analyser = Analyser()
-                self.builder.use_analysis(self.analyser.ok)
-            else:
-                log.warning("live_score: no analysis venv or PM2S weights; writing 4/4 on the beat clock")
-        except Exception as e:
-            log.warning("live_score: no analysis (%s); writing 4/4 on the beat clock", e)
+        # the room's one transcription, shared with its other screens (score/room.py: one builder, one analysis
+        # worker, fed by whichever screen leads; owner, 18 Oct: both screens transcribed the same MIDI twice)
+        from stream_service.score.room import RoomScore
+        self.room = RoomScore.join(ROOM_KEY, self)
+        self.builder = self.room.builder
+        self.seen_rev = 0
         self.engraver = None
         try:
             import verovio  # noqa: F401  (the worker imports them; this only checks they're installed)
@@ -704,28 +699,17 @@ class LiveScore(Source):
             return None
         t = float(f.t_ms) / 1000.0
         self.t_sound = t
-        b = self.builder
-        for p, vel, age in f.onsets:
-            b.note_on(p, float(vel), t - age)
-        for p, _vo, age in f.releases:
-            b.note_off(p, t - age)
-        b.pedal(float(f.pedals[0]), t)
+        b, room = self.builder, self.room
+        if room.leads(self):                              # the room's notes go in once, from the screen that leads
+            room.feed(f, t)
         self._births()
-        an = self.analyser
-        if an is not None:
-            if an.ok:
-                req = b.analysis_request(t)
-                if req is not None:
-                    an.submit("a", req)
-                for _key, meta, _blob in an.results():
-                    b.on_analysis(meta)
-                    self._dirty()
-            elif b.analysed:
-                b.use_analysis(False)                         # the worker died: the beat clock from the next phrase
+        if room.rev != self.seen_rev:                     # an analysis reply: the glows re-lay
+            self.seen_rev = room.rev
+            self._dirty()
         ph = self.ph
         if ph.metre is None and not ph.killing and b.position(t) is not None:    # the metre is known: lay it out
             self._metre(ph, b.beats, b.unit)
-        for bar in b.poll(t):
+        for bar in room.take(self):
             if bar.rewrite:                                   # the metre turned: the phrase is written again
                 self._rewrite()
                 continue
@@ -2187,16 +2171,17 @@ class LiveScore(Source):
         self.kick += (pulse - self.kick) * a
         Ph = self.Ph
         Ph[0:12] = palette_coeffs(p["palette"]) if p.get("palette") else palette_coeffs("ember")
-        f = self._listen()
-        self._take_renders()
-        glow_s = max(0.05, float(p["ink_glow"]))
-        if self.layout == "scroll":
-            self._scroll_step(dt, glow_s, e, big)
-        else:
-            if big:
-                self.turn.snap()
-            self._page_step(dt, glow_s, e)
-        nl = self._glows_step(f, dt, big)
+        with self.room.lock:                              # the room's builder is shared with the other screens
+            f = self._listen()
+            self._take_renders()
+            glow_s = max(0.05, float(p["ink_glow"]))
+            if self.layout == "scroll":
+                self._scroll_step(dt, glow_s, e, big)
+            else:
+                if big:
+                    self.turn.snap()
+                self._page_step(dt, glow_s, e)
+            nl = self._glows_step(f, dt, big)
         Ph[12], Ph[13] = self.w, self.h
         Ph[14] = LOOKS.index(p["look"])
         Ph[15] = self.breath % (2.0 * math.pi)
@@ -2230,9 +2215,9 @@ class LiveScore(Source):
         if self.engraver is not None:
             self.engraver.close()
             self.engraver = None
-        if self.analyser is not None:
-            self.analyser.close()
-            self.analyser = None
+        room, self.room = getattr(self, "room", None), None
+        if room is not None:
+            room.leave(self)                              # the last screen out closes the room's analysis
         self.buf = self.canvas = self.P = self.R = self.RI = self.L = self.page = self.gstage = None
         self.tape = self.colok = self.hdr = self.G = None
         self.stage = self._pinned = None
