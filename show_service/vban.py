@@ -607,6 +607,7 @@ def midi_events_obj(seq: int, events: Iterable[Sequence[int]],
         raise ValueError(f"a batch has 1..{MIDI_BATCH_MAX} events (split bigger ones into more batches)")
     if not _is_int(seq) or seq < 0:
         raise ValueError("seq must be an int >= 0")
+    # keep "v" then "seq" first: receiver.py's reuseport BPF steers TEXT with 'seq"' at byte 36 to the MIDI socket
     return {"v": 1, "seq": seq, "ev": ev, "prev": [[int(s), _clean_events(e)] for s, e in list(prev)[:MIDI_PREV]],
             "sess": _sender_sess(sess)}
 
@@ -637,6 +638,7 @@ def midi_state_obj(seq: int, keys: Sequence[int], cc64: int, cc66: int, cc67: in
         raise ValueError("pedal values must be 0-127")
     if not _is_int(seq) or seq < 0 or int(t_ns) < 0:
         raise ValueError("seq and t_ns must be ints >= 0")
+    # keep "v" then "seq" first: receiver.py's reuseport BPF steers TEXT with 'seq"' at byte 36 to the MIDI socket
     return {"v": 1, "seq": seq, "state": {"keys": k, "cc64": ccs[0], "cc66": ccs[1], "cc67": ccs[2]},
             "t_ns": int(t_ns), "sess": _sender_sess(sess)}
 
