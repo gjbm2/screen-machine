@@ -47,9 +47,22 @@ def status() -> Optional[dict]:
 
 def modes() -> dict[str, str]:
     """{mode key: label} from room_service (modes.json, hot-reloaded); {} if the room is down."""
+    return {k: v["label"] for k, v in _modes_full().items()}
+
+
+def _modes_full() -> dict[str, dict]:
+    """{mode key: {label, voice}} from room_service; voice is the mode's short name for Alexa ("" = none)."""
     d = _get("/api/v1/modes") or {}
     ms = d.get("modes") if isinstance(d, dict) else None
-    return {k: (v.get("label") or k) for k, v in ms.items()} if isinstance(ms, dict) else {}
+    if not isinstance(ms, dict):
+        return {}
+    return {k: {"label": v.get("label") or k, "voice": str(v.get("voice") or "").strip()} for k, v in ms.items()}
+
+
+def voice_modes() -> dict[str, str]:
+    """{voice name: mode key} for the modes that have one (owner 18 Oct: only these are reachable by voice)."""
+    _modes_cached()
+    return {v["voice"].lower(): k for k, v in _modes_cache["full"].items() if v["voice"]}
 
 
 def resolve_mode(name: str, known: Optional[dict[str, str]] = None) -> Optional[str]:
@@ -66,7 +79,9 @@ def resolve_mode(name: str, known: Optional[dict[str, str]] = None) -> Optional[
         lab = " ".join(str(label).lower().replace("-", " ").split())
         if want == lab or want == lab.split(" (")[0]:
             return k
-    return None
+    if want.endswith(" mode"):
+        want = want[:-5].strip()
+    return voice_modes().get(want)                        # its voice name ("normal", "lights only")
 
 
 def set_mode(name: str, source: str, reason: Optional[str] = None) -> tuple[bool, str]:
@@ -220,14 +235,70 @@ def set_effects(screen: str, stack: list) -> tuple[bool, str]:
     return _send("PUT", f"/api/v1/screens/{screen}/fx", {"stack": stack})
 
 
-_modes_cache: dict = {"t": -1e9, "modes": {}}
+_modes_cache: dict = {"t": -1e9, "modes": {}, "full": {}}
+
+
+def _modes_cached(ttl_s: float = 60.0) -> None:
+    now = _time.monotonic()
+    if not _modes_cache["full"] or now - _modes_cache["t"] > ttl_s:
+        full = _modes_full()
+        if full:
+            _modes_cache.update(t=now, full=full, modes={k: v["label"] for k, v in full.items()})
 
 
 def modes_cached(ttl_s: float = 60.0) -> dict[str, str]:
     """modes(), cached for ``ttl_s`` (voice replies have an 8 s budget)."""
-    now = _time.monotonic()
-    if not _modes_cache["modes"] or now - _modes_cache["t"] > ttl_s:
-        m = modes()
-        if m:
-            _modes_cache.update(t=now, modes=m)
+    _modes_cached(ttl_s)
     return _modes_cache["modes"]
+
+
+# -- scenes by voice name (config/live/voice_names.yaml) -----------------------------------------------------------
+VOICE_NAMES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "live",
+                                "voice_names.yaml")
+_voice_file: dict = {"mtime": None, "scenes": {}}
+_paused: dict[str, Optional[str]] = {}       # screen -> the room's mode when a voice pick paused its scene changes
+
+
+def voice_scenes() -> dict[str, str]:
+    """{voice name: scene preset}: the few scenes Alexa can ask for by name (owner 18 Oct: by exception)."""
+    try:
+        mt = os.path.getmtime(VOICE_NAMES_FILE)
+    except OSError:
+        return {}
+    if mt != _voice_file["mtime"]:
+        import yaml
+        try:
+            with open(VOICE_NAMES_FILE, encoding="utf-8") as f:
+                d = yaml.safe_load(f) or {}
+            sc = d.get("scenes") or {}
+            _voice_file.update(mtime=mt, scenes={" ".join(str(k).lower().split()): str(v) for k, v in sc.items() if v})
+        except Exception:
+            _voice_file.update(mtime=mt, scenes={})
+    return dict(_voice_file["scenes"])
+
+
+def resolve_voice_scene(words: str) -> Optional[str]:
+    """The scene preset a voice name names ("the piano score scene" -> live-score-paper), else None."""
+    want = " ".join(w for w in _re.split(r"[^a-z0-9']+", str(words or "").lower()) if w and w not in ("the", "a", "scene"))
+    return voice_scenes().get(want) if want else None
+
+
+def pick_scene(screen: str, preset: str) -> tuple[bool, str]:
+    """A scene asked for by name: cue it, then pause the director's own scene changes on that screen (owner 18 Oct)
+    until "change the scene" or a mode change (a mode re-applies its own auto block)."""
+    ok, detail = cue_scene(screen, preset)
+    if not ok:
+        return ok, detail
+    ok, detail = _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": False, "source": "voice"})
+    if ok:
+        _paused[screen] = room_facts().get("mode")
+    return True, "" if ok else f"the scene changed, but its auto changes didn't pause: {detail}"
+
+
+def next_scene(screen: str) -> tuple[bool, str]:
+    """The director's next pick; scene changes resume if a voice pick paused them in this same mode."""
+    ok, detail = cue_scene(screen, "auto")
+    if ok and screen in _paused:
+        if _paused.pop(screen) == room_facts().get("mode"):
+            _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": True, "source": "voice"})
+    return ok, "" if ok else detail

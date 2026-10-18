@@ -7,9 +7,9 @@ Your job is to:
    - "load_schedule": if the user wants to load a scheduler script (e.g., "load showcase", "start art rotation", "use quick demo").
    - "unload_schedule": if the user wants to unload the current scheduler script (e.g., "unload schedule", "stop scheduler", "remove current script").
    - "respond_only": if the user is asking a question or making a statement that should be answered verbally.
-   - "set_mode": if the user wants the room in a different mode (e.g., "change mode to disco", "party mode", "back to normal"). Put the mode in data.mode, one of: {{ROOM_MODES}}.
+   - "set_mode": if the user wants the room in a different mode (e.g., "switch to party mode", "go back to normal"). Put the mode in data.mode, exactly one of these voice names (the closest-sounding): {{ROOM_MODES}}.
    - "set_auto": if the user wants Auto (the room listening and choosing modes) on or off (e.g., "auto on", "stop listening"). data.on is true or false.
-   - "cue_scene": if the user wants a different scene on the live screens (e.g., "change scene to ocean", "next scene"). data.query is their words for the scene (empty for "next").
+   - "cue_scene": if the user wants a different scene on the live screens: "next scene" (data.query empty), or a scene by its voice name, one of: {{ROOM_SCENES}} (e.g. "show the piano score": data.query is that voice name). When the words name one of those scenes, it is cue_scene, never generate_image.
    - "set_effect": if the user wants the live effects changed (e.g., "add a kaleidoscope", "no effects"). data.query is their words for the effect; data.effect_op is "add", "clear" or "replace".
    - "other_action": for commands unrelated to visuals or questions (e.g., "turn off the lights").
 

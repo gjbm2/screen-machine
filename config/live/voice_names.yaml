@@ -1,0 +1,6 @@
+# Scenes Alexa can ask for by name (owner 18 Oct 2026: a few, by exception; the full list is far too long for voice).
+# "computer, use AI to show the piano score". Asking for one pauses the Art Director's own scene changes on those
+# screens until "change the scene" or a mode change. Modes have their voice names in config/room/modes.json.
+#   voice name: scene preset (its name in the Room page's scene list)
+scenes:
+  piano score: live-score-paper
