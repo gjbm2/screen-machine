@@ -105,6 +105,8 @@ export class LightsApi {
     }
   }
 
+  // -- the lights ----------------------------------------------------------------------------------------------------------
+
   /** The whole rig view (read with lib.rowsFromRig). */
   rig(signal?: AbortSignal) {
     return this.json<unknown>("GET", "", undefined, signal);
@@ -133,4 +135,109 @@ export class LightsApi {
   identify(id: string, seconds: number) {
     return this.json<IdentifyResult>("POST", `/fixtures/${encodeURIComponent(id)}/identify`, { seconds });
   }
+
+  // -- Move it (docs/LIGHTS.md §8.1) -------------------------------------------------------------------------------------
+
+  /** Hold the light and move it: `{}` holds it where it is (or keeps holding), `release` hands it back to the show,
+   *  `free` ignores its limits (while they're being set). */
+  jog(id: string, values: Record<string, unknown>, opts: { release?: boolean; free?: boolean } = {}) {
+    const body: Record<string, unknown> = { values };
+    if (opts.release) body.release = true;
+    if (opts.free) body.free = true;
+    return this.json<JogResult>("POST", `/fixtures/${encodeURIComponent(id)}/jog`, body);
+  }
+
+  /** Keep something about the light: home / beam ("here" or a value), a limit end, limits, slot names, … */
+  setup(id: string, body: Record<string, unknown>) {
+    return this.json<{ setup?: unknown; problems?: unknown }>("POST", `/fixtures/${encodeURIComponent(id)}/setup`, body);
+  }
+
+  /** Save where it points now under a name. */
+  savePosition(id: string, name: string, label?: string) {
+    return this.json<{ positions?: unknown; point?: { name: string } | null; problems?: unknown }>(
+      "POST",
+      `/fixtures/${encodeURIComponent(id)}/positions`,
+      label ? { name, label } : { name },
+    );
+  }
+
+  removePosition(id: string, name: string) {
+    return this.json<{ positions?: unknown }>("DELETE", `/fixtures/${encodeURIComponent(id)}/positions/${encodeURIComponent(name)}`);
+  }
+
+  /** "Point it at…": it points at that place now, so it learns where it hangs. */
+  teach(id: string, point: string) {
+    return this.json<TeachResult>("POST", `/fixtures/${encodeURIComponent(id)}/teach`, { point });
+  }
+
+  /** Forget one place it learnt (0 is the first), or all of them. */
+  forget(id: string, index?: number) {
+    const tail = index === undefined ? "" : `/${index}`;
+    return this.json<TeachResult>("DELETE", `/fixtures/${encodeURIComponent(id)}/teach${tail}`);
+  }
+
+  // -- the Room map --------------------------------------------------------------------------------------------------------
+
+  /** The room (read with lib.parseSpace). */
+  space(signal?: AbortSignal) {
+    return this.json<unknown>("GET", "/space", undefined, signal);
+  }
+
+  setRoom(body: { size?: [number, number, number] | null; front?: string }) {
+    return this.json<unknown>("PUT", "/space/room", body);
+  }
+
+  /** Where a light or screen is: `at`, `mount`, `plane` (null clears one). */
+  place(id: string, body: Record<string, unknown>) {
+    return this.json<unknown>("PUT", `/space/appliances/${encodeURIComponent(id)}`, body);
+  }
+
+  unplace(id: string) {
+    return this.json<unknown>("DELETE", `/space/appliances/${encodeURIComponent(id)}`);
+  }
+
+  setPlace(name: string, body: { at: [number, number, number]; label?: string }) {
+    return this.json<unknown>("PUT", `/space/points/${encodeURIComponent(name)}`, body);
+  }
+
+  removePlace(name: string) {
+    return this.json<unknown>("DELETE", `/space/points/${encodeURIComponent(name)}`);
+  }
+
+  setArea(name: string, body: { surface: string; centre: [number, number, number]; size: [number, number]; label?: string }) {
+    return this.json<unknown>("PUT", `/space/regions/${encodeURIComponent(name)}`, body);
+  }
+
+  removeArea(name: string) {
+    return this.json<unknown>("DELETE", `/space/regions/${encodeURIComponent(name)}`);
+  }
+
+  /** Where every beam lands now, and the flow (read with lib.parseLive). */
+  live(signal?: AbortSignal) {
+    return this.json<unknown>("GET", "/live", undefined, signal);
+  }
+}
+
+export interface JogResult {
+  held: boolean;
+  until_s?: number | null;
+  idle_s?: number;
+  target?: Record<string, unknown>;
+  now?: Record<string, unknown>;
+  unknown?: string[];
+  why?: string | null;
+}
+
+export interface FitResult {
+  level: string;
+  words: string;
+  rms_deg?: number | null;
+  worst_index?: number | null;
+  pose?: unknown;
+}
+
+export interface TeachResult {
+  samples?: unknown[];
+  fit?: FitResult;
+  problems?: unknown;
 }
