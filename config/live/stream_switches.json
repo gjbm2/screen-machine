@@ -1,7 +1,16 @@
 {
-  "default": {"encoder": "ffmpeg", "workers": "inproc"},
+  "default": {
+    "encoder": "ffmpeg",
+    "workers": "inproc"
+  },
   "screens": {
-    "south-screen": {"encoder": "nvenc"},
-    "devtest": {"encoder": "nvenc", "workers": "proc"}
+    "south-screen": {
+      "encoder": "nvenc",
+      "workers": "proc"
+    },
+    "devtest": {
+      "encoder": "nvenc",
+      "workers": "proc"
+    }
   }
 }
