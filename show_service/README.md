@@ -2,7 +2,8 @@
 
 The room's own ears (docs/SHOW_ENGINE.md). Audio and the Steinway's MIDI arrive as VBAN over UDP from senders it
 subscribes to. They go onto one CLOCK_MONOTONIC timeline, become features, notes and harmony, and are published on
-the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send contract changes to c8.
+the show bus as `music.*` (§11.1). Maintainer: **screen-machine-77** (from 18 Oct, after c8). Send contract
+changes to 77.
 
 - **Venv:** `~/.venvs/sm-show` (python3.12). Pins are in `requirements.txt`. Build and test niced and serialised:
   ```
@@ -18,7 +19,7 @@ the show bus as `music.*` (§11.1). Maintainer: **screen-machine-c8**. Send cont
   pairing file, both only once fixtures.yaml enables that output (`rig.artnet.reply_bind`, ca's relay port, stays
   unset until ca registers one).
 - **Files it writes:** `~/.local/state/screen-machine/show/` (`--state-dir`): `state.json`, `director.jsonl`,
-  `autopilot.jsonl`, `listener.jsonl`, `test-piano.log`, `test-audio.log`, `ml-worker.log` (Stage 4: the worker's
+  `autopilot.jsonl`, `listener.jsonl`, `cues.jsonl` (S5.22), `test-piano.log`, `test-audio.log`, `ml-worker.log` (Stage 4: the worker's
   stderr, appended per run after a "--- ml-worker start ---" line, rotated to `.1` past 1 MB), `nodes.json` (Stage 5:
   where artnet_lan's discovery last found each node; written only when a node answers from a new address). It reads
   `config/room/show.yaml`, `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml`,
@@ -1524,8 +1525,9 @@ The file itself documents every key. Its sections:
 | `room` | RoomLink | `url` (default `contract.ROOM_URL`) |
 | `situations` | Situations; `__main__` (`midi.channels`: the MIDI state channels) | `midi` (renamed from `piano`, 16 Oct: no code reads a key called piano), `music`, `sonos`, `quiet`: each situation's default params (S3.8) |
 | `lamps` | director | `placement_roles: {placement: role}`, `default_role`, `roles: {role: {palette_role, follow_screen?, white_k?, chroma_max?, avoid_hues?, motion}}`. A value that is a string names a vibe field. |
-| `director` | director | `steps.size_from`, `steps.max_from`, `keep_s`, `low {level, fade_s}`, `house {white_k, level}`, `next_max_wait_s`, `art {poll_s, colours}`, `republish_s`, `between_pieces {pause_s, damper_up}`, `new_song_after_s`, `novelty`, `variation_bars`, `entry_fade_s`, `emphasis_edges [lo, hi]`, `accent_depth {style: 0..1}`, `bands {edges, hysteresis, split {band, by, up, down}, words {band: {moods, fx_moods, transition_style}}}`, `transitions {style word: {style: cut \| crossfade, beats, seconds}}`, `listener_bias {trajectory word: energy nudge}` |
-| `listener` | listener | `cadence_s`, `clip_s`, `min_gap_s`, `relaxed_cadence_s`, `agree_reads`, `quiet_gate`, `min_clip_s`, `music_gate` (`classifier` \| `dsp`), `describe_timeout_s` |
+| `director` | director | `steps.size_from`, `steps.max_from`, `keep_s`, `low {level, fade_s}`, `house {white_k, level}`, `next_max_wait_s`, `art {poll_s, colours}`, `republish_s`, `between_pieces {pause_s, damper_up}`, `new_song_after_s`, `novelty`, `variation_bars`, `entry_fade_s`, `emphasis_edges [lo, hi]`, `accent_depth {style: 0..1}`, `bands {edges, hysteresis, split {band, by, up, down}, words {band: {moods, fx_moods, transition_style}}}`, `transitions {style word: {style: cut \| crossfade, beats, seconds}}`, `listener_bias {trajectory word: energy nudge}`, `listener_change {slow, medium, fast: change_rate}` (S5.22) |
+| `listener` | listener | `cadence_s`, `fast_cadence_s`, `clip_s`, `min_gap_s`, `max_in_flight`, `fast_lookahead_s`, `fast_end_s`, `fast_after_section_s`, `est_fast_share`, `quiet_gate`, `min_clip_s`, `music_gate` (`classifier` \| `dsp`), `describe_timeout_s` (S5.22: `relaxed_cadence_s` and `agree_reads` are gone) |
+| `cues` | cues (S5.22) | `stop {...}`, `fade {...}`, `forecast {...}`, `signs {...}`: the cue engine's thresholds (cues.CUES_FALLBACK) |
 
 **Starting points.** Every number in show.yaml is a design default to be tuned by ear, unless its comment says
 "measured" or "owner"; each says where it comes from. The behaviour thresholds that used to live only in code are
@@ -2581,7 +2583,7 @@ clip waits `min_clip_s` (10 s).
 - "no sound coming in"
 - "no model configured"
 
-**Cadence.**
+**Cadence** (superseded 18 Oct by S5.22: 10 s clips, every 15 s or every 5 s while something develops, two in flight).
 - A call is due every `cadence_s`, at least `min_gap_s` after the last one, with one in flight at most.
 - After `agree_reads` agreeing, confident (≥ 0.6) verdicts, it moves to `relaxed_cadence_s`.
 - Over the daily budget (`utils.llm.over_budget("listen")`), the cadence is ×3. The budget never stops it.
@@ -6640,3 +6642,117 @@ The owner's decisions on the LLM listener after the 17 Oct audit (c8). Docs: §7
 - **Live** at the next show_service restart (`scripts/ctl restart show`). From then on Gemini 3.8 Flash is first
   (the owner's key is in .env), still only while the switch, Auto and the mic are on and the room plays music.
   The Room page can show `listening.est_evening_usd` and `provider` (2f/e1's page; not changed here).
+
+### S5.22 The listener guides the director and arms cues; the cue engine fires them (18 Oct; the owner's ask; 77)
+
+The owner (18 Oct): the LLM listener both GUIDES the art director and ARMS cues that a real-time component fires;
+"24 s every 20 s is too long a round trip". Prototype rules: no shadow modes, no new gates, trips or suppression;
+the listener's privacy gating (S5.20: the AI listening switch, Auto, the mic, real music) is unchanged. Docs:
+SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
+
+- **The answer** (listener.py `LISTEN_TOOL`, `_listen_prompt`, `to_insight`; contract.InsightData): `content`;
+  `character` (<= 12 words: "soft late-night jazz trio"); `genre` {label, detail, confidence}; `mood` {words <= 3,
+  confidence}; `approach` {intensity 0..1, change slow|medium|fast, transitions gentle|lively|wild, confidence}: the
+  AI's recommendation for the director's style of approach; `trajectory` {state, confidence}; `ending`
+  cold|fade|segue|unknown; `coming` (<= 2) {kind (contract.COMING_KINDS), eta_min_s, eta_max_s from the clip's end,
+  signs (contract.COMING_SIGNS), size small|medium|big, confidence}; `track_change`; `why` (<= 12 words). Dropped:
+  instrumentation, vocals, section, same_track_as_previous, evidence. Every word is a plain string cleaned after the
+  call (lenient, S5.20): an unknown kind is `new_section`, an unknown sign is dropped, a window is ordered and cut to
+  0..120 s. The prompt keeps the rules (no tempo/key/BPM numbers, never the track, artist or lyrics, ignore speech,
+  "unknown" is valid, trust the measured numbers) and the message gains a "Now" line: structure's phase, bars into the
+  section (and a known repeat's length), the probable chorus, an armed song end.
+- **Beliefs** (`BeliefState`): genre and mood as before; the approach's change and transitions words are votes and its
+  intensity a decaying weighted mean (half-life 45 s; confidence falls with the reads' spread, INTENSITY_SPREAD 0.25);
+  `character` and `coming` are the newest clip's (each window converted to the acoustic clock and dropped once
+  passed); `ending` is the latest word that said something, for 60 s. A track change clears them. Two calls may be in
+  flight: an older clip's verdict that arrives second adds its votes and replaces nothing of the newer one's.
+- **Cadence** (show.yaml `listener`, DEFAULTS): `clip_s` 10; `cadence_s` 15 while steady; `fast_cadence_s` 5 while
+  something develops (`_developing`: structure's build or outro, a forecast window open or opening within
+  `fast_lookahead_s` 20, an armed song end within `fast_end_s` 30, a confirmed boundary within `fast_after_section_s`
+  10); `max_in_flight` 2; `min_gap_s` 4 between call starts; the section call stays. `relaxed_cadence_s` and
+  `agree_reads` are gone. `min_clip_s` 6 (a room clip's shortest music-only run in 10 s). The view gains `fast` (why)
+  and `in_flight`.
+- **The estimate** (`estimate_view`): calls an hour = 3600 x ((1 - share) / cadence_s + share / fast_cadence_s), the
+  share measured once an hour of effective listening is behind it, else show.yaml `est_fast_share` (0.5, "assumed":
+  forecasts open fast windows often). It shows `cadence_s` (the blend), `steady_cadence_s`, `fast_cadence_s`,
+  `fast_share`, `fast_share_basis`, `clip_s`.
+- **The guide side** (director.py `_llm_guide`, `_band_heard`, `_words`): while the beliefs are fresh or holding and
+  each part is confident (LLM_CONF 0.6):
+  - its genre leads room.direction's `genre` and `genres` ({word: 1.0}) and the band base's genre term (its
+    `genre_energy`); the local ML's genre is the fallback (it led before);
+  - `approach.intensity` IS the band base's genre term (the style's base wildness), slewed <= 0.1 a second from what
+    the term was;
+  - `approach.transitions` -> `transition_style` and `approach.change` -> `change_rate` (show.yaml
+    `director.listener_change`: slow 0.15, medium 0.45, fast 0.75) only where no person or feel sets them: human >
+    feel > listener > bands. **Changed:** a feel's own transition_style now beats the band row's (the band row won
+    before, so a feel's word only showed without bands); room.direction's change_rate was already the feel's with a
+    feel;
+  - the listener's moods keep replacing the band moods. The snapshot's `words_from` gains `transition_style`,
+    `change_rate` and `band_genre`, and `guide` shows what the listener said.
+  - The director provides `ctx.held` (Keep this look, or a person's change pending), which the cue engine respects.
+- **The cue engine** (cues.py, new; component `cues`, 10 Hz on show-brain after structure and the listener, before the
+  director; `__main__.BRAIN_MODULES`; log `cues.jsonl`; show.yaml `cues`):
+  - **Standing:** an abrupt stop (the 20 ms rms level 20 dB under the 2 s median within 0.3 s, down 2 ticks, near the
+    floor: the median of the quiet seconds' levels + 12 dB, before any: under -45 dBFS; after music) fires at once
+    `track_end` {id `track_end:<track id>`, detail `stop`, fade-dark out 0.2 in 1.0}, and `sound_back` (the same id)
+    if the sound returns before structure's own track_end takes over. structure's outro phase fires `track_end`
+    {detail `fade`, fade-dark, out_s = the time to the floor from lufs_s's 4 s slope, 3..12} with `sound_back` when
+    lufs_s comes 3 dB back over where it was. The listener's ending: cold = the stop only, fade = both, segue =
+    neither, unknown = both. Structure's own drop, breakdown, track_change and track_end_armed are untouched.
+  - **Forecasts:** each `coming` armed once (by its id), one per kind (newer replaces), disarmed at the window's end
+    + 2 s ("missed") or a track change. Confident (>= 0.6) + a phrase line (16 bars at phrase_conf 0.5, else 8) in the
+    window + an early sign (structure's build, lufs_s rising 0.15 dB/s, or one of its signs since it was armed):
+    scheduled AT the line, published a bar ahead (>= 1.1 s). Else the next downbeat >= 1.1 s ahead once a listed sign
+    is seen in the window (within 4 s). Big -> `drop`, medium -> `section_change` {id `cue:<kind>:<n>`, detail
+    `forecast: <kind>`, at_ms, beat/bar/phrase, `cue` {kind, size, conf, sign, window_ms}}; small: logged only. One
+    fire a bar (a second one moves to the next bar); nothing while `ctx.held()`.
+  - **Signs implemented:** louder (lufs_m, 0.3 s vs the 2 s before, +4 dB), low_in (rhythm low_db, +6 dB), busier
+    (onset_rate +0.75/s and x1.3 on 3-4 s before), stop_return (a 15 dB dip of 0.15-3 s, then back), timbre_change
+    (structure's confirmed section_change or drop, on arrival), key_change (music.context's key vs at arm time),
+    drums_in/out (percussive_ratio +-0.15, 0.5 s vs the 3 s before), vocal_in/out (the ML worker's voice_p crossing
+    0.6 / 0.4 within 6 s), phrase_line (the clock's next 8-bar line within the lead + a bar: fires AT it). All eleven.
+  - **The sheet** (`sheet()`, `ctx.cue_sheet`): [contract.CueLine {kind, words, window_s, size}] on
+    `GET /api/v1/listening` and the card's `listening.armed` (with `character` and `approach` {intensity, change,
+    transitions, conf}). Words: "Big change at the chorus, likely in 10-25 s", "Change when the band comes in, any
+    moment now", "Watching for the drop, ...", "Ready: snap to dark if the music stops", "Ready: slow fade if the
+    music fades", "Ready: straight on into the next song", "Dark: the music stopped; back if it returns".
+  - **Log:** arm, schedule, fire, held, replaced, missed, disarmed, skipped, the standing fires, sound_back, handed,
+    and each forecast's `outcome` once its window has passed: `structure_saw` lists structure's own events in that
+    window (the hit rate). Memory ring (snapshot `log`) and `cues.jsonl` (1 MB rotation).
+- **Validated with real calls** (18 Oct; 8 clips of 10 s from the test-music files, never room audio; the real prompt
+  and tool through utils.llm, gemini-3.8-flash): every answer parsed with no problems; 2.9-3.6 s; 2.1-2.7k prompt
+  tokens (audio included; Gemini reports no audio split) and 150-215 out; **$0.0022-0.0028 a call, mean $0.00256** ($0.0205 for the 8).
+  Answers (character / genre / approach / ending / coming):
+  - jazz "1973" (80-90 s): "retro funky pop rock groove with lively rhythm section" / pop 0.85 / 0.55 medium lively
+    / fade / vocal_in 3-10 s medium [vocal_in, phrase_line] 0.7
+  - techno "Storm" (110-120 s): "abstract experimental electronic beats with vocal fragments and sound design" /
+    electronic 0.8 / 0.55 slow gentle / fade / new_section 4-12 s medium [timbre_change, phrase_line] 0.7
+  - house "Memorias" (140-150 s): "grooving afrobeat funk with steady percussion and vocal chants" / afrobeat 0.85 /
+    0.65 slow gentle / fade / none
+  - ambient "Decompress" (50-60 s): "gentle contemplative acoustic guitar and piano ballad" / pop 0.8 / 0.3 slow
+    gentle / fade / none
+  - classical Saltarello (90-100 s): "sparse delicate classical pizzicato string dialogue" / classical 0.9 / 0.25
+    slow gentle / unknown / new_section 2-6 s medium [phrase_line, timbre_change] 0.75
+  - rock "Airplane Mode" (192-202 s, 15 s before its end): "upbeat driving pop rock with punchy male vocals and
+    energetic guitars" / rock 0.85 / 0.8 medium lively / unknown / new_section 4-12 s medium [phrase_line, louder] 0.75
+  - pop "Play the Game" (40-50 s): "Hyperactive Japanese techno-pop vocal with pounding electronic beat" / electronic
+    0.85 / 0.85 medium lively / unknown / new_section 3-8 s medium 0.7
+  - soul "Light Me On Fire" (65-75 s): "upbeat funky disco pop with soulful female vocals and bassline" / disco 0.9 /
+    0.65 medium lively / fade / chorus 2-6 s medium [vocal_in, louder, phrase_line] 0.8
+  The approach tracks the music sensibly (pizzicato 0.25 slow gentle; J-pop 0.85 lively). Genre words differ from the
+  tracks' labels on some (the 1973 jazz clip heard as funk-pop, Memorias as afrobeat): those are the clips' sound,
+  and the local ML stays the fallback when the AI isn't sure. Forecast windows are short (2-12 s from the clip's end),
+  so with a 10 s clip and ~3.3 s latency much of a window is close when it arrives; big sizes were rare (none here).
+- **Cost** at the new cadence (the ledger's mean, $0.00256 a call; `utils.llm.estimate` now reads "ledger"): steady
+  (every 15 s, 240 calls an hour) $0.62 an hour, $2.46 an evening; all fast (every 5 s, 720) $1.85 an hour, $7.38 an
+  evening; the card's blend (half fast, assumed until an hour is measured; 450 an hour) $1.15 an hour, **about $4.61
+  an evening** (4 h). Before: $2.90 an evening on the price table (a 24 s clip every 20 s).
+- **Tests:** test_listener (the new answer and its cleaning, the beliefs' approach agreement, ending hold, coming
+  windows, an older clip arriving second, the cadence steady and fast and its reasons, two in flight, min gap between
+  starts, the section call's slowing, the estimate's blend and measured share, the view's character, approach and
+  sheet, the "Now" line); test_cues (new: the stop and its sound_back, a slide or a dip is no stop, music / hold /
+  segue / cold, structure's end taking over, the fade's time to the floor, cold never fades, every sign detector, the
+  downbeat fire, the phrase-line schedule, medium / small, a miss and its outcome, replace and disarm, the hold, one
+  fire a bar, the phrase_line sign, key_change, settings and the real show.yaml); test_director (the listener's genre
+  over the ML's, intensity as the slewed genre term, transitions and change under a person's or the feel's own);
+  test_api (the card's listening block); test_main (the `cues` component and its log path).

@@ -6,7 +6,9 @@ One component, ``director``, ticked at 10 Hz on show-brain. Each tick composites
   L1 music      the vibe's ``follow`` inputs (energy, onsets, dynamics, register, harmony) -> numbers, and show.yaml
                 ``director.bands`` -> words; liveness holds 10 s after the features go stale, then fades over 20 s
   L2 listener   confident beliefs (the listener only changes a word on two agreeing reads): words first; a small
-                trajectory bias on energy, slewed at most 0.1 a second
+                trajectory bias on energy, slewed at most 0.1 a second; its style of approach (README S5.22):
+                approach.intensity is the band base's genre term (slewed), approach.transitions and .change set
+                transition_style and change_rate under a person's or the feel's own and over the band row's
   L3 people     Calmer/Wilder steps, a palette pick, Keep this look, House lights, Lights low (and Describe it)
   L4 momentary  Next look, on the next bar (at most ``next_max_wait_s``)
   L5 caps       strobe only when the vibe allows it
@@ -50,8 +52,8 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
   * Peak tokens: the vibe's ``peak_tokens_per_hour``, a sliding 60-minute budget; only a drop within
     ``director.peaks.after_build_s`` of a build spends one. A line structure calls off (drop_armed with eta_beats
     None) releases a reservation ("disarmed") or refunds the token its line spent ("missed": no drop came).
-  * Genre on room.direction: music.context's (the local ML's, fresh, at LLM_CONF), then the listener's, then the
-    vibe's (``words_from`` in the snapshot).
+  * Genre on room.direction: the listener's (confident, fresh or holding: README S5.22, owner 18 Oct), then
+    music.context's (the local ML's, fresh, at genre_min_conf), then the vibe's (``words_from`` in the snapshot).
   * The build -> drop grammar (only with a vibe, beat_lock and the clock's gate ``beat``), lamps and DMX ONLY: during
     a build the accent subdivision steps 1/2 -> 1/4 -> 1/8, saturation rises toward the vibe's top and the lamps
     narrow toward the accent colour; an armed drop with a token dips the lamps for the last ``dip_bars``, then cuts
@@ -182,6 +184,9 @@ LLM_SLEW_PER_S = 0.1                # §8.2: numbers slewed <= 0.1 per update
 # (contract.TRAJECTORY_STATES), x its confidence.
 LLM_TRAJECTORY_BIAS = {"building": 0.05, "peak": 0.1, "sustaining": 0.0, "steady": 0.0, "releasing": -0.05,
                        "winding_down": -0.1}
+# README S5.22 (owner, 18 Oct): the listener's approach.change word -> room.direction's change_rate while no feel sets
+# it (show.yaml director.listener_change; starting points, the band rows' own values: still 0.15 .. peak 0.75)
+LLM_CHANGE_RATE = {"slow": 0.15, "medium": 0.45, "fast": 0.75}
 EMPHASIS_EDGES = (0.4, 0.75)        # starting point (director.emphasis_edges): arousal base | accent | highlight
 EMPHASIS_HYST = 0.05
 LOOK_MIN_LEAD_S = 0.35              # an announced change lands at least this far ahead (>= 250 ms, plus a tick)
@@ -253,7 +258,7 @@ DIRECTOR_FALLBACK = {
     "low": {"level": 0.10, "fade_s": 2.0}, "house": {"white_k": 2700.0, "level": 0.8}, "next_max_wait_s": 4.0,
     "art": {"poll_s": 60.0, "colours": 5, "sources": list(ART_SOURCES), "min_chroma": 0.03, "min_lightness": 0.3},
     "republish_s": 5.0, "accent_depth": {}, "bands": None, "genre_min_conf": GENRE_MIN_CONF,
-    "transitions": TRANSITIONS, "listener_bias": LLM_TRAJECTORY_BIAS,
+    "transitions": TRANSITIONS, "listener_bias": LLM_TRAJECTORY_BIAS, "listener_change": LLM_CHANGE_RATE,
     "between_pieces": {"pause_s": PAUSE_S, "damper_up": DAMPER_UP}, "new_song_after_s": SILENCE_SONG_S,
     "novelty": NOVELTY, "variation_bars": float(VARIATION_BARS), "entry_fade_s": ENTRY_FADE_S,
     "emphasis_edges": list(EMPHASIS_EDGES),
@@ -683,6 +688,12 @@ class Director:
         self._split_hi = False
         self._swing_hist: collections.deque = collections.deque(maxlen=600)   # (t, heard music) at 1 Hz
         self._band_base: Optional[float] = None   # the last absolute base (README S5.21), for the readback
+        # README S5.22: what the listener's confident beliefs say for the style of approach (_llm_guide), and the
+        # band base's genre term while the listener sets it (slewed <= LLM_SLEW_PER_S from what it was)
+        self._guide: dict = {"genre": None, "intensity": None, "change": None, "transitions": None}
+        self._gterm: Optional[float] = None
+        self._gterm_t: Optional[float] = None
+        self._gterm_from: Optional[str] = None
         self._look_why: Optional[dict] = None     # {"why": words, "t"}: room.why's look line
         self._band_idx: Optional[int] = None      # the band words' row now (held director.bands.dwell_s)...
         self._band_cand: Optional[int] = None     # ...and the row waiting to take over, since
@@ -817,7 +828,7 @@ class Director:
     def provides(self) -> dict:
         return {"vibe": self._vibe_now, "target": self._target_now, "engaged": self._engaged_now,
                 "on_mode_change": self.on_mode_change, "on_music_event": self.on_music_event,
-                "on_room_event": self.on_room_event, "track_transition": self.track_transition}
+                "on_room_event": self.on_room_event, "track_transition": self.track_transition, "held": self._held}
 
     def on_music_event(self, ev: dict) -> None:
         """structure's room.event (contract.MusicEventData), on show-brain: queued for this tick (structure ticks
@@ -1037,6 +1048,12 @@ class Director:
                                         if _num(v) is not None}
             else:
                 probs.append("director.listener_bias: not a mapping")
+        lc = d.get("listener_change")
+        if lc is not None:
+            if isinstance(lc, dict):
+                cfg["listener_change"] = {str(k): _c01(float(v)) for k, v in lc.items() if _num(v) is not None}
+            else:
+                probs.append("director.listener_change: not a mapping")
         for key, spec in STAGE4_KEYS.items():
             got = d.get(key)
             if got is None:
@@ -1397,8 +1414,9 @@ class Director:
         self._relaxed = self._relax > 0.5
         if self._relaxed and not was:
             self._relax_done = False
-        # L2: the listener's trajectory, slewed
+        # L2: the listener's trajectory, slewed; and its style of approach (README S5.22)
         b = _call(self.ctx.beliefs)
+        self._guide = self._llm_guide(b)
         bias_want = 0.0
         if isinstance(b, dict) and b.get("state") in ("fresh", "holding"):
             tr = b.get("trajectory") if isinstance(b.get("trajectory"), dict) else {}
@@ -2298,6 +2316,22 @@ class Director:
         tot = sum(known.values())
         if tot > 0:
             terms["genre"] = sum(ge[w] * p for w, p in known.items()) / tot
+        # README S5.22: the listener's confident approach.intensity is the genre term (the style's base wildness),
+        # else its confident genre word's genre_energy; slewed from what the term was. The ML's words are the fallback
+        gd = self._guide
+        want, src = ((gd["intensity"], "listener approach") if gd.get("intensity") is not None
+                     else (ge[gd["genre"]], "listener genre") if gd.get("genre") in ge else (None, None))
+        if want is not None:
+            was = self._gterm if self._gterm is not None else terms.get("genre", want)
+            dt = max(0.0, min(1.0, now_s - self._gterm_t)) if self._gterm_t is not None else 0.0
+            step = LLM_SLEW_PER_S * dt
+            self._gterm = was + max(-step, min(step, want - was))
+            terms["genre"] = self._gterm
+            self._gterm_from = src
+        else:
+            self._gterm = None
+            self._gterm_from = "ml" if "genre" in terms else None
+        self._gterm_t = now_s
         r = _call(getattr(self.ctx, "rhythm", None))
         if isinstance(r, dict) and _num(r.get("t_ms")) is not None and now_s - r["t_ms"] / 1000.0 <= RHYTHM_STALE_S:
             if _num(r.get("onset_rate")) is not None:
@@ -2361,31 +2395,54 @@ class Director:
         f = _call(self.ctx.features)
         return f if isinstance(f, dict) else None
 
+    def _llm_guide(self, b: Any) -> dict:
+        """README S5.22 (owner, 18 Oct: the AI "can characterise 'this is soft jazz', which otherwise the system
+        generally won't know"): what the listener's beliefs say for the style of approach, while they are fresh or
+        holding and each part is confident (LLM_CONF): {"genre": its word, "intensity": approach.intensity,
+        "change": approach.change (a director.listener_change word), "transitions": approach.transitions}; None
+        where it isn't sure."""
+        out: dict = {"genre": None, "intensity": None, "change": None, "transitions": None}
+        if not isinstance(b, dict) or b.get("state") not in ("fresh", "holding"):
+            return out
+        g = b.get("genre") if isinstance(b.get("genre"), dict) else {}
+        if isinstance(g.get("word"), str) and g["word"] and g["word"] != "unknown" \
+                and (_num(g.get("conf"), 0.0) or 0.0) >= LLM_CONF:
+            out["genre"] = g["word"]
+        ap = b.get("approach") if isinstance(b.get("approach"), dict) else {}
+        if _num(ap.get("intensity")) is not None and (_num(ap.get("intensity_conf"), 0.0) or 0.0) >= LLM_CONF:
+            out["intensity"] = _c01(ap["intensity"])
+        if ap.get("change") in self.cfg["listener_change"] and (_num(ap.get("change_conf"), 0.0) or 0.0) >= LLM_CONF:
+            out["change"] = ap["change"]
+        if isinstance(ap.get("transitions"), str) and ap["transitions"] \
+                and (_num(ap.get("transitions_conf"), 0.0) or 0.0) >= LLM_CONF:
+            out["transitions"] = ap["transitions"]
+        return out
+
     def _words(self, vs: dict) -> dict:
         b = self.music.get("beliefs")
         llm_moods: list[str] = []
-        llm_genre = None
         if isinstance(b, dict) and b.get("state") in ("fresh", "holding"):
             llm_moods = [m["word"] for m in b.get("moods") or []
                          if isinstance(m, dict) and isinstance(m.get("word"), str)
                          and (_num(m.get("conf"), 0.0) or 0.0) >= LLM_CONF]
-            g = b.get("genre") if isinstance(b.get("genre"), dict) else {}
-            if isinstance(g.get("word"), str) and g["word"] != "unknown" and (_num(g.get("conf"), 0) or 0) >= LLM_CONF:
-                llm_genre = g["word"]
-        # the genre: the local ML's (music.context, fresh, confident: README S4.8 rule 6, §8.9: mic classifiers rank
-        # above the LLM), then the listener's, then the vibe's. No one picks a genre by hand on the card.
+        gd = self._guide
+        llm_genre = gd.get("genre")
+        # the genre (README S5.22, owner 18 Oct): the listener's when it is confident (it characterises the music,
+        # which the local ML generally can't), then the local ML's (music.context, fresh, confident), then the
+        # vibe's. No one picks a genre by hand on the card.
         ml_genre = None
         mg = (self._mc or {}).get("genre") if isinstance((self._mc or {}).get("genre"), dict) else None
         ml_on = mg is not None and mg.get("via") in ("ml", "ml+listener")
         if (ml_on and isinstance(mg.get("word"), str)
                 and mg["word"] and (_num(mg.get("conf"), 0.0) or 0.0) >= float(self.cfg["genre_min_conf"])):
             ml_genre = mg["word"]
-        genre, genre_from = ((ml_genre, "ml") if ml_genre else (llm_genre, "listener") if llm_genre
+        genre, genre_from = ((llm_genre, "listener") if llm_genre else (ml_genre, "ml") if ml_genre
                              else (vs["genre"], "vibe") if vs["genre"] else (None, None))
-        # room.direction's genres (soft: word -> share): the local ML's while it reads one (even a mixed one, under
-        # genre_min_conf), else the chosen word's
+        # room.direction's genres (soft: word -> share): the listener's word while it leads, else the local ML's
+        # while it reads one (even a mixed one, under genre_min_conf), else the chosen word's
         mw = mg.get("words") if ml_on and isinstance(mg.get("words"), dict) else None
-        genres = ({str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
+        genres = ({llm_genre: 1.0} if llm_genre
+                  else {str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
                   else {genre: 1.0} if genre else {})
         band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
             if self.music else None
@@ -2397,10 +2454,24 @@ class Director:
             moods, src = list(band["moods"]), "bands"
         else:
             moods, src = list(vs["moods"]), "vibe"
-        style = (band or {}).get("transition_style") or vs["transition_style"]
+        # transition_style and change_rate (README S5.22): a person's or the feel's own (vs), then the listener's
+        # confident approach, then the band row's. room.direction's change_rate takes these only with no feel (a
+        # feel's own change_rate always wins there)
+        if vs["transition_style"]:
+            style, style_from = vs["transition_style"], "feel"
+        elif gd.get("transitions"):
+            style, style_from = gd["transitions"], "listener"
+        elif (band or {}).get("transition_style"):
+            style, style_from = band["transition_style"], "bands"
+        else:
+            style, style_from = None, None
+        lcr = self.cfg["listener_change"].get(gd["change"]) if gd.get("change") else None
+        cr, cr_from = ((lcr, "listener") if lcr is not None
+                       else ((band or {}).get("change_rate"), "bands") if (band or {}).get("change_rate") is not None
+                       else (None, None))
         return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from, "genres": genres,
-                "change_rate": (band or {}).get("change_rate"),
-                "transition_style": style, "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
+                "change_rate": cr, "change_from": cr_from, "transition_style": style, "style_from": style_from,
+                "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
                 "band": band["name"] if band else None}
 
     # -- composing the look ------------------------------------------------------------------------------------------------
@@ -3537,7 +3608,10 @@ class Director:
             "settings_problems": list(self.settings_problems),
             "music": {k: v for k, v in self.music.items() if k not in ("pv", "beliefs")},
             "band": self._words_now.get("band"),
-            "words_from": {"moods": self._words_now.get("moods_from"), "genre": self._words_now.get("genre_from")},
+            "words_from": {"moods": self._words_now.get("moods_from"), "genre": self._words_now.get("genre_from"),
+                           "transition_style": self._words_now.get("style_from"),
+                           "change_rate": self._words_now.get("change_from"), "band_genre": self._gterm_from},
+            "guide": dict(self._guide),
             "relaxed": self._relaxed, "pending": dict(self.pending) if self.pending else None,
             "neutral": not self.known,
             "last_look": ({"why": self._look_why["why"], "age_s": int(max(0.0, now_s - self._look_why["t"]))}

@@ -245,8 +245,8 @@ WORDS: dict[str, dict] = {
         "label": "the music feels like one of these", "source": "listener", "sections": (),
         "params": ("moods", "min_conf", "include_test"), "required": ("moods",),
         "unavailable": "Nothing is listening for the mood yet",
-        "description": "The music being heard has one of these moods, from the AI listener (when Identify the music "
-                       "is on) or the room's own music listener. Unknown until one of them is sure of a mood, and "
+        "description": "The music being heard has one of these moods, from the AI listener (when AI listening is on) "
+                       "or the room's own music listener. Unknown until one of them is sure of a mood, and "
                        "while only test music is playing."},
     "building": {
         "label": "the music is building", "source": "audio", "sections": (), "params": ("min_conf", "include_test"),

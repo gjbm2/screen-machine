@@ -5,10 +5,10 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 (written there) and the DSP's latest values by reference, and does its work in asyncio tasks on show-brain's loop.
 
 * **Each tick:** sample the DSP (features, clock, harmony) into a 120 s timeline; age the beliefs; decide whether a
-  clip may go (``why``: the first failing reason, in page words); when one is due, start one call (one in flight at
-  most).
-* **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch ("Identify the
-  music"; persisted; default off: nothing is uploaded until the owner turns it on); Auto on and the room's mic on
+  clip may go (``why``: the first failing reason, in page words); when one is due, start a call (up to
+  ``max_in_flight`` in flight).
+* **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch ("AI
+  listening"; persisted; default off: nothing is uploaded until the owner turns it on); Auto on and the room's mic on
   (owner, 17 Oct; ``requires_auto`` / ``requires_mic``; unknown = off); the vibe's own ``listener`` (a feel can say
   off); sound coming in (fresh features, audio in the ring); the music gate (``classifier``: CED from the ML worker,
   below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``), skipped only for a stream whose show.yaml
@@ -33,9 +33,12 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 * **The mic on demand** (README S5.16): a stream the mic keeps off (the ring's ``off``, receiver health's ``off``, or
   state "off") never gives a clip ("the mic is off"); the ring forgets what it held of it; and a clip cut before a
   stream went off (the ring's ``off_gen`` moved while it was encoded) is never uploaded.
-* **Cadence:** every ``cadence_s``, at least ``min_gap_s`` after the last call ended; ``relaxed_cadence_s`` after
-  ``agree_reads`` agreeing, confident verdicts; x3 over the daily budget (never stopped); after failures in a row, x2
-  per failure up to ERROR_BACKOFF_MAX_S (no retries: the next window is the retry).
+* **Cadence** (README S5.22; owner 18 Oct): a ``clip_s`` (10 s) clip every ``cadence_s`` (15 s) while the music is
+  steady, every ``fast_cadence_s`` (5 s) while something develops (``_developing``: structure's build or outro, a
+  forecast window open or opening within ``fast_lookahead_s``, an armed song end within ``fast_end_s``, a confirmed
+  section boundary in the last ``fast_after_section_s``); call starts at least ``min_gap_s`` apart, up to
+  ``max_in_flight`` (2) in flight; x3 over the daily budget (never stopped); after failures in a row, x2 per failure
+  up to ERROR_BACKOFF_MAX_S (no retries: the next window is the retry).
 * **One call:** ``rings.latest(stream, clip_s)`` -> normalised to -16 LUFS (pyebur128, gain clamped to +-24 dB, in a
   worker thread, in short chunks) -> ffmpeg MP3 at llm.yaml's rate and bitrate (asyncio, 5 s), else WAV ->
   ``utils.llm.acall_json("listen", ..., lenient=True)`` with a static system prompt, the DSP timeline and (except
@@ -49,11 +52,15 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   ``estimate`` (``utils.llm.estimate``: the ledger's recent mean for the model that would be used, else llm.yaml's
   ``typical`` x prices) gives per hour and per evening (``evening_h`` x 3600 / ``cadence_s`` calls), shown even
   while the switch is off.
-* **Beliefs** (§7.1): votes decay (half-lives genre 120 s, mood 45 s, instruments 60 s); the genre word changes only
-  when a new leader leads two reads in a row by LEADER_MARGIN of the vote weight, or at once on a track change;
-  confidence comes from agreement over time, not the model's own number. Section and trajectory are anchored to the
-  clip's window (the eta counts down from the clip's end; a section label lapses SECTION_HOLD_S after it). After the
-  last verdict: fresh, holding to HOLD_S, fading to neutral over FADE_S, then none.
+* **The answer** (README S5.22): content, character (<= 12 words), genre, mood, approach (intensity, change,
+  transitions: the director's style of approach), trajectory, ending (cold | fade | segue | unknown), coming (<= 2
+  forecasts: kind, window from the clip's end, signs, size), track_change, why (<= 12 words). Compact: output tokens
+  dominate the cost.
+* **Beliefs** (§7.1): votes decay (half-lives genre 120 s, mood and the approach's words and intensity 45 s); the
+  genre word changes only when a new leader leads two reads in a row by LEADER_MARGIN of the vote weight, or at once
+  on a track change; confidence comes from agreement over time, not the model's own number. character and coming are
+  the newest clip's (coming on the acoustic clock: the clip's end + the window, gone once passed); ending holds
+  ENDING_HOLD_S. After the last verdict: fresh, holding to HOLD_S, fading to neutral over FADE_S, then none.
 * **Describe it:** ``describe(text, context)`` asks the LLM (task "describe") within ``describe_timeout_s``; anything
   else (no model, a timeout, a bad answer) falls back to a local keyword match. It never raises.
 
@@ -91,15 +98,28 @@ LOG_ROTATE_BYTES = 1_000_000
 # Design defaults (§7.3; starting points), used for any key show.yaml's ``listener`` leaves out. quiet_gate: the
 # loudness gate's mean over QUIET_WINDOW_S must reach this; min_clip_s: the ring must hold min(clip_s, this) before a
 # call (it records only while a clip could go, so a first clip waits this long).
-DEFAULTS: dict[str, Any] = {"cadence_s": 20.0, "clip_s": 24.0, "min_gap_s": 8.0, "relaxed_cadence_s": 45.0,
-                            "agree_reads": 3, "music_gate": "classifier", "describe_timeout_s": 8.0,
-                            "quiet_gate": 0.1, "min_clip_s": 10.0, "section_call_after_s": 8.0,
+DEFAULTS: dict[str, Any] = {"cadence_s": 15.0, "clip_s": 10.0, "min_gap_s": 4.0,
+                            # README S5.22 (owner, 18 Oct: "24 s every 20 s is too long a round trip"): a 10 s clip
+                            # every 15 s while the music is steady, every fast_cadence_s while something develops
+                            # (structure's build or outro, a forecast window open or opening within
+                            # fast_lookahead_s, a predicted song end within fast_end_s, a section boundary in the
+                            # last fast_after_section_s), with up to max_in_flight calls at once, starts at least
+                            # min_gap_s apart
+                            "fast_cadence_s": 5.0, "max_in_flight": 2, "fast_lookahead_s": 20.0, "fast_end_s": 30.0,
+                            "fast_after_section_s": 10.0,
+                            "music_gate": "classifier", "describe_timeout_s": 8.0,
+                            "quiet_gate": 0.1, "min_clip_s": 6.0, "section_call_after_s": 8.0,
                             # owner, 17 Oct: nothing goes to any provider unless Auto is on and the room's mic is
                             # on (cost, and it's intrusive); unknown reads as off. show.yaml listener.requires_auto /
                             # requires_mic
                             "requires_auto": True, "requires_mic": True,
-                            # README S5.20: the evening the Music card's estimate covers (hours; starting point)
-                            "evening_h": 4.0}
+                            # README S5.20: the evening the Music card's estimate covers (hours; starting point);
+                            # S5.22: the share of the time at the fast cadence the estimate assumes until it has
+                            # measured an hour of its own listening
+                            "evening_h": 4.0, "est_fast_share": 0.5}
+INT_KEYS = ("max_in_flight",)
+SHARE_KEYS = ("est_fast_share",)
+FAST_SHARE_MIN_S = 3600.0     # the estimate's fast share is measured once an hour of effective listening is behind it
 # Stage 4 (README S4.8, §7.5): the CED gate's thresholds (show.yaml listener.ced; starting points, the same numbers)
 CED_DEFAULTS: dict[str, float] = {"music_min": 0.5, "speech_max": 0.3}
 RESULTS_STALE_S = 3.0         # show.yaml ml.results_stale_s when it is left out (starting point): an older CED reading
@@ -126,8 +146,8 @@ ENCODE_TIMEOUT_S = 5.0
 ENCODE_NICE = 10
 LOG_N = 200
 
-# beliefs (§7.1)
-HALF_LIFE_S = {"genre": 120.0, "mood": 45.0, "instruments": 60.0}
+# beliefs (§7.1; README S5.22)
+HALF_LIFE_S = {"genre": 120.0, "mood": 45.0, "change": 45.0, "transitions": 45.0, "intensity": 45.0}
 #: a music_moods word's visual moods, first to last: the conf each takes (the list's order is 04's ranking)
 MOOD_RANK_WEIGHTS = (1.0, 0.85, 0.7, 0.6)
 LEADER_MARGIN = 0.15
@@ -135,10 +155,12 @@ REF_WEIGHT = 2.0              # vote weight that reads as full confidence (two a
 FRESH_S = 30.0
 HOLD_S = 60.0
 FADE_S = 60.0
-SECTION_HOLD_S = 30.0         # a section label applies to its clip, and lapses this long after the clip's end
-INSTRUMENT_MIN_W = 0.5
+ENDING_HOLD_S = 60.0          # README S5.22: how the piece will end holds this long after the verdict that said it
+INTENSITY_SPREAD = 0.25       # approach.intensity: reads this far apart (standard deviation) agree on nothing
+COMING_MAX_ETA_S = 120.0      # a forecast further out than this is cut to it
+CHARACTER_WORDS = 12
+WHY_WORDS = 12
 MUSICAL = ("music", "mixed")
-VOCALS = ("none", "male", "female", "mixed", "choir", "unknown")
 
 WHY_OFF = "AI listening is off"
 WHY_VIBE = "this feel doesn't listen"
@@ -160,39 +182,57 @@ def _one_of(words: Any) -> str:
 
 # The words are plain strings (README S5.20): an enum fails the whole answer on one stray word ("sustaining" as a
 # section) and the same clip then goes to the fallback at a second charge. to_insight maps every word to its list.
+# README S5.22 (owner, 18 Oct): compact, because output tokens (and thinking) dominate the cost. The answer describes
+# the music (content, character, genre, mood), recommends the director's approach, says where it is heading
+# (trajectory), how it will end, and what is coming (the cue engine arms those). No instrumentation, vocals, section,
+# same-track or evidence: the local ML worker gives instruments and vocals, and nothing used the rest.
+_CONF = {"type": "number", "minimum": 0, "maximum": 1}
 LISTEN_TOOL: dict = {
     "name": "report_music",
-    "description": "Report what the clip sounds like, for the room's lighting and visuals director.",
+    "description": "Report what the clip sounds like and what is coming, for the room's lighting and visuals "
+                   "director.",
     "parameters": {
         "type": "object",
         "properties": {
             "content": {"type": "string", "description": _one_of(contract.INSIGHT_CONTENT)},
+            "character": {"type": "string", "description": "At most 12 words."},
             "genre": {"type": "object",
-                      "properties": {"label": {"type": "string"}, "detail": {"type": "string"},
-                                     "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
+                      "properties": {"label": {"type": "string"}, "detail": {"type": "string"}, "confidence": _CONF},
                       "required": ["label", "detail", "confidence"]},
-            "instrumentation": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
-            "vocals": {"type": "string", "description": _one_of(VOCALS)},
             "mood": {"type": "object",
                      "properties": {"words": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
-                                    "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
+                                    "confidence": _CONF},
                      "required": ["words", "confidence"]},
-            "section": {"type": "object",
-                        "properties": {"label": {"type": "string", "description": _one_of(contract.SECTION_LABELS)},
-                                       "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
-                        "required": ["label", "confidence"]},
+            "approach": {"type": "object",
+                         "properties": {"intensity": _CONF,
+                                        "change": {"type": "string",
+                                                   "description": _one_of(contract.APPROACH_CHANGE)},
+                                        "transitions": {"type": "string",
+                                                        "description": _one_of(contract.APPROACH_TRANSITIONS)},
+                                        "confidence": _CONF},
+                         "required": ["intensity", "change", "transitions", "confidence"]},
             "trajectory": {"type": "object",
                            "properties": {"state": {"type": "string",
                                                     "description": _one_of(contract.TRAJECTORY_STATES)},
-                                          "eta_to_change_s": {"type": ["number", "null"]},
-                                          "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
-                           "required": ["state", "eta_to_change_s", "confidence"]},
+                                          "confidence": _CONF},
+                           "required": ["state", "confidence"]},
+            "ending": {"type": "string", "description": _one_of(contract.ENDINGS)},
+            "coming": {"type": "array", "maxItems": 2,
+                       "items": {"type": "object",
+                                 "properties": {"kind": {"type": "string",
+                                                         "description": _one_of(contract.COMING_KINDS)},
+                                                "eta_min_s": {"type": "number"}, "eta_max_s": {"type": "number"},
+                                                "signs": {"type": "array", "items": {"type": "string"},
+                                                          "maxItems": 4},
+                                                "size": {"type": "string",
+                                                         "description": _one_of(contract.COMING_SIZES)},
+                                                "confidence": _CONF},
+                                 "required": ["kind", "eta_min_s", "eta_max_s", "signs", "size", "confidence"]}},
             "track_change": {"type": "boolean"},
-            "same_track_as_previous": {"type": ["boolean", "null"]},
-            "evidence": {"type": "string"},
+            "why": {"type": "string", "description": "At most 12 words."},
         },
-        "required": ["content", "genre", "instrumentation", "vocals", "mood", "section", "trajectory",
-                     "track_change", "same_track_as_previous", "evidence"],
+        "required": ["content", "character", "genre", "mood", "approach", "trajectory", "ending", "coming",
+                     "track_change", "why"],
     },
 }
 
@@ -306,20 +346,36 @@ class Vocab:
             log.warning("vocab not reloaded (%s): keeping the last good words", self.error)
 
 
-# -- beliefs (§7.1) --------------------------------------------------------------------------------------------------
+# -- beliefs (§7.1; README S5.22) ------------------------------------------------------------------------------------
+def _t1_s(ins: Optional[dict]) -> float:
+    """A verdict's clip end (acoustic monotonic s); -inf when it has none."""
+    t = _f(((ins or {}).get("window") or {}).get("t1_ms"))
+    return t / 1000.0 if t is not None else -math.inf
+
+
 class BeliefState:
-    """The fused, decaying view of the verdicts. Show-brain only; ``view()`` builds a fresh dict."""
+    """The fused, decaying view of the verdicts. Show-brain only; ``view()`` builds a fresh dict.
+
+    Genre and mood, and the approach's change and transitions words, are votes that decay (HALF_LIFE_S); the genre
+    word changes only on two reads in a row by LEADER_MARGIN (or at once on a track change). approach.intensity is a
+    decaying weighted mean whose confidence falls with the reads' spread (INTENSITY_SPREAD). character, ending and
+    coming are the latest verdict's (ending: the latest word that said something, for ENDING_HOLD_S; coming: each
+    window on the acoustic clock, from the clip's end, gone once it has passed). Two calls may be in flight: a verdict
+    for an older clip that arrives after a newer one adds its votes but replaces nothing of the newer one's."""
 
     def __init__(self) -> None:
-        self.votes: dict[str, dict[str, float]] = {"genre": {}, "mood": {}, "instruments": {}}
+        self.votes: dict[str, dict[str, float]] = {"genre": {}, "mood": {}, "change": {}, "transitions": {}}
+        self.intensity = [0.0, 0.0, 0.0]          # approach.intensity, decayed: (sum w, sum w x, sum w x^2)
         self.t_votes: Optional[float] = None
         self.word: Optional[str] = None
         self.challenger: Optional[str] = None
         self.wins = 0
-        self.last: Optional[dict] = None          # the last InsightData
-        self.last_s: Optional[float] = None       # its arrival (monotonic s)
+        self.last: Optional[dict] = None          # the newest clip's InsightData
+        self.last_s: Optional[float] = None       # the last verdict's arrival (monotonic s)
         self.track_pending = False                # a DSP track change (structure): the next verdict counts as one
         self.mood_map: dict[str, list[str]] = {}  # vocab.yaml music_moods (the listener sets it from its Vocab)
+        self.character: Optional[str] = None
+        self.ending: Optional[tuple[str, float]] = None   # (word, the verdict's arrival)
 
     def clear(self) -> None:
         mm = self.mood_map
@@ -340,6 +396,8 @@ class BeliefState:
                     table[w] *= f
                     if table[w] < 1e-3:
                         del table[w]
+            f = 0.5 ** (dt / HALF_LIFE_S["intensity"])
+            self.intensity = [x * f for x in self.intensity]
         self.t_votes = now_s
 
     def add(self, ins: dict, now_s: float) -> None:
@@ -349,16 +407,33 @@ class BeliefState:
         if track_change:
             for table in self.votes.values():
                 table.clear()
+            self.intensity = [0.0, 0.0, 0.0]
+            self.character, self.ending = None, None
+        newer = self.last is None or track_change or _t1_s(ins) >= _t1_s(self.last) - 1e-6
         if ins.get("content") in MUSICAL:
             g = (ins.get("genre") or {}).get("label")
             if g and g != "unknown":
                 self.votes["genre"][g] = self.votes["genre"].get(g, 0.0) + 1.0
             for w in (ins.get("mood") or {}).get("words") or []:
                 self.votes["mood"][w] = self.votes["mood"].get(w, 0.0) + 1.0
-            for w in ins.get("instrumentation") or []:
-                self.votes["instruments"][w] = self.votes["instruments"].get(w, 0.0) + 1.0
+            ap = ins.get("approach") or {}
+            for kind in ("change", "transitions"):
+                w = ap.get(kind)
+                if isinstance(w, str) and w:
+                    self.votes[kind][w] = self.votes[kind].get(w, 0.0) + 1.0
+            x = _f(ap.get("intensity"))
+            if x is not None:
+                self.intensity = [self.intensity[0] + 1.0, self.intensity[1] + x, self.intensity[2] + x * x]
+            if newer:
+                if ins.get("character"):
+                    self.character = str(ins["character"])
+                e = ins.get("ending")
+                if isinstance(e, str) and e in contract.ENDINGS and e != "unknown":
+                    self.ending = (e, now_s)
         self._pick_genre(track_change)
-        self.last, self.last_s = ins, now_s
+        if newer:
+            self.last = ins
+        self.last_s = now_s
 
     def _pick_genre(self, track_change: bool) -> None:
         votes = self.votes["genre"]
@@ -385,9 +460,35 @@ class BeliefState:
         else:
             self.challenger, self.wins = None, 0
 
+    @staticmethod
+    def _leader(table: dict[str, float], fade: float) -> tuple[Optional[str], float]:
+        """The leading word and its confidence: its share of the votes x how much agreement there is (REF_WEIGHT of
+        votes reads as full) x the fade, as the genre's."""
+        if not table:
+            return None, 0.0
+        w = max(table, key=table.get)
+        total = sum(table.values())
+        share = table[w] / total if total > 0 else 0.0
+        return w, round(share * min(1.0, total / REF_WEIGHT) * fade, 3)
+
+    def _approach(self, fade: float) -> Optional[dict]:
+        change, cc = self._leader(self.votes["change"], fade)
+        trans, tc = self._leader(self.votes["transitions"], fade)
+        w, wx, wxx = self.intensity
+        inten, ic = None, 0.0
+        if w > 1e-3:
+            mean = wx / w
+            spread = math.sqrt(max(0.0, wxx / w - mean * mean))
+            inten = round(_clamp(mean, 0.0, 1.0), 3)
+            ic = round(min(1.0, w / REF_WEIGHT) * max(0.0, 1.0 - spread / INTENSITY_SPREAD) * fade, 3)
+        if inten is None and change is None and trans is None:
+            return None
+        return {"intensity": inten, "intensity_conf": ic, "change": change, "change_conf": cc,
+                "transitions": trans, "transitions_conf": tc, "conf": round(min(ic, cc, tc), 3)}
+
     def view(self, now_s: float) -> dict:
-        none = {"state": "none", "age_s": None, "genre": None, "moods": [], "feel": [], "instruments": [],
-                "vocals": None, "section": None, "trajectory": None, "content": None}
+        none = {"state": "none", "age_s": None, "genre": None, "moods": [], "feel": [], "trajectory": None,
+                "content": None, "character": None, "approach": None, "ending": None, "coming": []}
         if self.last_s is None or self.last is None:
             return none
         age = max(0.0, now_s - self.last_s)
@@ -409,23 +510,32 @@ class BeliefState:
                 for w, v in sorted(self.votes["mood"].items(), key=lambda kv: -kv[1])[:3]]
         feel = [m for m in feel if m["conf"] >= 0.05]
         moods = self._visual(feel)
-        instruments = [w for w, v in sorted(self.votes["instruments"].items(), key=lambda kv: -kv[1])
-                       if v >= INSTRUMENT_MIN_W][:6]
-        t1_s = (last.get("window") or {}).get("t1_ms", self.last_s * 1000.0) / 1000.0
-        since_clip = max(0.0, now_s - t1_s)
-        section = None
-        sec = last.get("section") or {}
-        if sec.get("label") and since_clip < SECTION_HOLD_S:
-            section = {"label": sec["label"], "conf": round(float(sec.get("confidence") or 0.0) * fade, 3)}
         trajectory = None
         tr = last.get("trajectory") or {}
         if tr.get("state"):
-            eta = _f(tr.get("eta_to_change_s"))
-            trajectory = {"state": tr["state"], "conf": round(float(tr.get("confidence") or 0.0) * fade, 3),
-                          "eta_s": round(max(0.0, eta - since_clip), 1) if eta is not None else None}
+            trajectory = {"state": tr["state"], "conf": round(float(tr.get("confidence") or 0.0) * fade, 3)}
+        ending = None
+        if self.ending is not None and now_s - self.ending[1] < ENDING_HOLD_S:
+            ending = self.ending[0]
+        coming = []
+        t1 = _t1_s(last)
+        if musical and math.isfinite(t1):
+            for i, c in enumerate(last.get("coming") or []):
+                lo, hi = _f(c.get("eta_min_s")), _f(c.get("eta_max_s"))
+                if lo is None or hi is None:
+                    continue
+                a, b = t1 + lo, t1 + hi
+                if b < now_s:
+                    continue                      # the window has passed
+                coming.append({"id": f"{_f(last.get('t_ms'), 0.0):.0f}:{i}", "kind": c.get("kind"),
+                               "t0_s": round(a, 2), "t1_s": round(b, 2),
+                               "in_s": [round(max(0.0, a - now_s), 1), round(b - now_s, 1)],
+                               "signs": list(c.get("signs") or []), "size": c.get("size"),
+                               "conf": round(_clamp(_f(c.get("confidence"), 0.0), 0.0, 1.0), 3)})
         return {"state": state, "age_s": round(age, 1), "genre": genre, "moods": moods, "feel": feel,
-                "instruments": instruments, "vocals": last.get("vocals") if musical else None, "section": section,
-                "trajectory": trajectory, "content": last.get("content")}
+                "trajectory": trajectory, "content": last.get("content"),
+                "character": self.character if musical else None, "approach": self._approach(fade),
+                "ending": ending, "coming": coming}
 
     def _visual(self, feel: list[dict]) -> list[dict]:
         """The listener's words for how the music feels -> the visual moods scenes carry (vocab.yaml music_moods: each
@@ -444,7 +554,7 @@ class BeliefState:
 
 
 # -- verdict -> InsightData ----------------------------------------------------------------------------------------------
-def word_of(v: Any, allowed: Any, default: str) -> str:
+def word_of(v: Any, allowed: Any, default: Optional[str]) -> Optional[str]:
     """A model's word in one of ``allowed``: case, spaces and hyphens don't matter ("Pre-chorus" -> "pre_chorus",
     "winding down" -> "winding_down"); anything else is ``default``."""
     if not isinstance(v, str):
@@ -459,6 +569,38 @@ def _obj(v: Any) -> dict:
 
 def _items(v: Any) -> list:
     return v if isinstance(v, list) else []
+
+
+def _words(v: Any, n: int) -> str:
+    return " ".join(str(v or "").split()[:n])[:160]
+
+
+def _conf(v: Any) -> float:
+    return round(_clamp(_f(v, 0.0), 0.0, 1.0), 3)
+
+
+def _coming(items: Any) -> list[dict]:
+    """The forecasts, cleaned: a kind outside COMING_KINDS is a new_section; a missing end takes the other end; the
+    window is ordered and cut to 0..COMING_MAX_ETA_S; signs outside COMING_SIGNS are dropped; size defaults medium."""
+    out = []
+    for c in _items(items)[:2]:
+        c = _obj(c)
+        lo, hi = _f(c.get("eta_min_s")), _f(c.get("eta_max_s"))
+        if lo is None and hi is None:
+            continue
+        lo = hi if lo is None else lo
+        hi = lo if hi is None else hi
+        lo, hi = sorted((_clamp(lo, 0.0, COMING_MAX_ETA_S), _clamp(hi, 0.0, COMING_MAX_ETA_S)))
+        signs: list[str] = []
+        for x in _items(c.get("signs")):
+            w = word_of(x, contract.COMING_SIGNS, None)
+            if w and w not in signs:
+                signs.append(w)
+        out.append({"kind": word_of(c.get("kind"), contract.COMING_KINDS, "new_section"),
+                    "eta_min_s": round(lo, 1), "eta_max_s": round(hi, 1), "signs": signs[:4],
+                    "size": word_of(c.get("size"), contract.COMING_SIZES, "medium"),
+                    "confidence": _conf(c.get("confidence"))})
+    return sorted(out, key=lambda c: c["eta_min_s"])
 
 
 def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms: float, window: tuple[float, float],
@@ -479,36 +621,26 @@ def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms:
         w = str(w).strip().lower()
         if w in moods_ok and w not in words:
             words.append(w)
-    instruments: list[str] = []
-    for w in _items(data.get("instrumentation")):
-        w = re.sub(r"\s+", " ", str(w).strip().lower())[:40]
-        if w and w not in instruments:
-            instruments.append(w)
-    sec = _obj(data.get("section"))
-    sec_label = word_of(sec.get("label"), contract.SECTION_LABELS, "unknown")
+    ap = _obj(data.get("approach"))
+    inten = _f(ap.get("intensity"))
     tr = _obj(data.get("trajectory"))
-    tr_state = word_of(tr.get("state"), contract.TRAJECTORY_STATES, "steady")
-    eta = _f(tr.get("eta_to_change_s"))
-    content = word_of(data.get("content"), contract.INSIGHT_CONTENT, "music")
-    vocals = word_of(data.get("vocals"), VOCALS, "unknown")
-    same = data.get("same_track_as_previous")
-    evidence = " ".join(str(data.get("evidence") or "").split()[:25])
     return {"t_ms": round(t_ms, 1), "window": {"t0_ms": round(window[0] * 1000.0, 1),
                                               "t1_ms": round(window[1] * 1000.0, 1)},
             "segment_id": None, "stream": stream, "model": model, "latency_ms": round(latency_ms, 1),
-            "content": content,
-            "genre": {"label": label, "detail": detail[:80],
-                      "confidence": round(_clamp(_f(g.get("confidence"), 0.0), 0.0, 1.0), 3)},
-            "instrumentation": instruments[:8], "vocals": vocals,
-            "mood": {"words": words[:3],
-                     "confidence": round(_clamp(_f(_obj(data.get("mood")).get("confidence"), 0.0), 0.0, 1.0), 3)},
-            "section": {"segment_id": None, "label": sec_label,
-                        "confidence": round(_clamp(_f(sec.get("confidence"), 0.0), 0.0, 1.0), 3)},
-            "trajectory": {"state": tr_state, "eta_to_change_s": round(eta, 1) if eta is not None and eta >= 0 else None,
-                           "confidence": round(_clamp(_f(tr.get("confidence"), 0.0), 0.0, 1.0), 3)},
+            "content": word_of(data.get("content"), contract.INSIGHT_CONTENT, "music"),
+            "character": _words(data.get("character"), CHARACTER_WORDS),
+            "genre": {"label": label, "detail": detail[:80], "confidence": _conf(g.get("confidence"))},
+            "mood": {"words": words[:3], "confidence": _conf(_obj(data.get("mood")).get("confidence"))},
+            "approach": {"intensity": round(_clamp(inten, 0.0, 1.0), 3) if inten is not None else None,
+                         "change": word_of(ap.get("change"), contract.APPROACH_CHANGE, None),
+                         "transitions": word_of(ap.get("transitions"), contract.APPROACH_TRANSITIONS, None),
+                         "confidence": _conf(ap.get("confidence"))},
+            "trajectory": {"state": word_of(tr.get("state"), contract.TRAJECTORY_STATES, "steady"),
+                           "confidence": _conf(tr.get("confidence"))},
+            "ending": word_of(data.get("ending"), contract.ENDINGS, "unknown"),
+            "coming": _coming(data.get("coming")),
             "track_change": bool(data.get("track_change")),
-            "same_track_as_previous": same if isinstance(same, bool) else None,
-            "evidence": evidence}
+            "why": _words(data.get("why"), WHY_WORDS)}
 
 
 # -- audio: loudness and encoding -----------------------------------------------------------------------------------------
@@ -742,8 +874,7 @@ class Listener:
         self.set_at: Optional[float] = None
         self.beliefs_state = BeliefState()
         self._timeline: collections.deque = collections.deque(maxlen=int(TIMELINE_S) + 8)
-        self._task: Any = None
-        self._task_stream: Optional[str] = None
+        self._tasks: list = []                    # calls in flight (at most listener.max_in_flight)
         self._last_start: Optional[float] = None
         self._last_end: Optional[float] = None
         self._calls = 0
@@ -759,6 +890,12 @@ class Listener:
         self._why: Optional[str] = WHY_OFF
         self._stream: Optional[str] = None
         self._due: Optional[float] = None
+        self._fast: Optional[str] = None            # README S5.22: why the fast cadence is on now
+        self._end_at: Optional[float] = None        # structure's armed song end (track_end_armed's at_ms, s)
+        self._boundary_s: Optional[float] = None    # when the last confirmed section boundary was heard
+        self._eff_s = 0.0                           # seconds of effective listening since start ...
+        self._fast_s = 0.0                          # ... and of those at the fast cadence (the estimate's share)
+        self._acc_t: Optional[float] = None
         self._beliefs: dict = self.beliefs_state.view(0.0)
         self._view: dict = {}
         self._snap: dict = {}
@@ -789,11 +926,17 @@ class Listener:
                     cfg[k] = v
                 else:
                     problems.append(f"listener.{k}: {v!r} is not true/false")
-            elif k == "agree_reads":
+            elif k in INT_KEYS:
                 if isinstance(v, int) and not isinstance(v, bool) and v >= 1:
                     cfg[k] = v
                 else:
-                    problems.append(f"listener.agree_reads: {v!r} is not a whole number >= 1")
+                    problems.append(f"listener.{k}: {v!r} is not a whole number >= 1")
+            elif k in SHARE_KEYS:
+                fv = _f(v)
+                if fv is not None and 0.0 <= fv <= 1.0:
+                    cfg[k] = fv
+                else:
+                    problems.append(f"listener.{k}: {v!r} is not 0..1")
             else:
                 fv = _f(v)
                 if fv is not None and fv > 0:
@@ -881,15 +1024,18 @@ class Listener:
             self._note_models()
         self._beliefs = self.beliefs_state.view(now_s)
         self._section_tick(now_s)
+        self._fast = self._developing(now_s)
         self._why, self._stream = self._gate(now_s)
+        self._account(now_s)
         self._due = self._next_due(now_s)
-        if self._why is None and self._task is None and self._section_due is not None and \
+        free = len(self._tasks) < int(self.cfg["max_in_flight"])
+        if self._why is None and free and self._section_due is not None and \
                 now_s >= self._section_due and self._section_allowed(now_s):
             due, self._section_due = self._section_due, None
             self._section_calls += 1
             self._last_section_start = now_s
             self._launch(self._stream, now_s, t_end=due, kind="section")
-        elif self._why is None and self._task is None and self._due is not None and now_s >= self._due:
+        elif self._why is None and free and self._due is not None and now_s >= self._due:
             self._launch(self._stream, now_s)
         if self._section_due is not None and now_s > self._section_due + float(self.cfg["cadence_s"]):
             self._log_event({"kind": "skipped", "call": "section", "why": self._why or "no window for it in time",
@@ -900,8 +1046,7 @@ class Listener:
     def _refresh(self, now_s: float) -> None:
         self._view = self._build_view(now_s)
         lt = ((self._status or {}).get("tasks") or {}).get("listen") or {}
-        self._snap = dict(self._view, beliefs=self._beliefs, in_flight=self._task is not None,
-                          agreeing=self._agree, problems=list(self.problems), vocab_error=self.vocab.error,
+        self._snap = dict(self._view, beliefs=self._beliefs, agreeing=self._agree, problems=list(self.problems), vocab_error=self.vocab.error,
                           llm_error=self._llm_error, ced=dict(self._ced_state, **self.ced_cfg),
                           llm={"usable": list(lt.get("usable") or []), "resolved": list(lt.get("resolved") or [])},
                           sections={"known": len(self._sections), "current": self._sections[-1]["id"]
@@ -924,7 +1069,7 @@ class Listener:
         """The AI listening switch (PUT /api/v1/listening). Off cancels any call in flight."""
         self.on = bool(on)
         self.set_at = self._wall()
-        if not self.on and self._task is not None:
+        if not self.on and self._tasks:
             self._cancel()                        # every upload needs the switch, test streams included
         if self.ctx.persist is not None:
             try:
@@ -1241,7 +1386,9 @@ class Listener:
 
     def on_music_event(self, ev: dict) -> None:
         """structure's room.event (show-brain): a confirmed section_change makes one extra call due at its boundary +
-        section_call_after_s (never a predicted one); a track_change lets the next verdict's genre win at once."""
+        section_call_after_s (never a predicted one) and turns the fast cadence on for fast_after_section_s; a
+        track_end_armed's end (README S5.22: the fast cadence within fast_end_s of it); a track_change lets the next
+        verdict's genre win at once."""
         if not isinstance(ev, dict):
             return
         kind = ev.get("kind")
@@ -1253,7 +1400,14 @@ class Listener:
                                    start_ms / 1000.0)
             if not ev.get("predicted") and start_ms is not None:
                 self._section_due = start_ms / 1000.0 + float(self.cfg["section_call_after_s"])
+                self._boundary_s = self._mono()
+        elif kind == "track_end_armed":
+            at = _f(ev.get("at_ms"))
+            self._end_at = at / 1000.0 if at is not None and ev.get("eta_s") is not None else None
+        elif kind == "track_end":
+            self._end_at = None
         elif kind == "track_change":
+            self._end_at = None
             self.beliefs_state.track_changed()
             self._log_event({"kind": "track_change", "via": ev.get("via"), "track_id": ev.get("track_id")})
 
@@ -1308,8 +1462,7 @@ class Listener:
     def _segment_text(segs: list[dict]) -> str:
         parts = [f"#{x['id']}{' ' + x['letter'] if x['letter'] else ''} {x['from_s']:.0f}-{x['to_s']:.0f} s" for x in segs]
         return ("Segment map, from the room's own section detector (seconds from the clip's start; a repeated letter "
-                "is the same section again): " + ", ".join(parts) + ". The section you report is the one at the "
-                "clip's end.")
+                "is the same section again): " + ", ".join(parts) + ".")
 
     def _arm(self, on: bool) -> None:
         """The ring records only while a clip could go (the switch, Auto, the mic and the vibe allow it): no
@@ -1322,41 +1475,67 @@ class Listener:
                 pass
 
     def _section_allowed(self, now_s: float) -> bool:
-        """A section call follows the cadence's own slowing (relaxed after agreeing verdicts, x3 over the daily
-        budget, backed off after failures): at least min_gap_s after the last call ended, at least half the current
-        interval after the last call started, and at most one section call per interval. So false boundaries never
-        become a stream of uploads."""
+        """A section call follows the cadence's own slowing (x3 over the daily budget, backed off after failures): at
+        least min_gap_s and half the current interval after the last call started, and at most one section call per
+        interval. So false boundaries never become a stream of uploads."""
         iv = self.interval()
-        if self._last_end is not None and now_s < self._last_end + float(self.cfg["min_gap_s"]):
-            return False
-        if self._last_start is not None and now_s < self._last_start + iv / 2.0:
+        if self._last_start is not None and now_s < self._last_start + max(float(self.cfg["min_gap_s"]), iv / 2.0):
             return False
         return self._last_section_start is None or now_s >= self._last_section_start + iv
 
+    def _developing(self, now_s: float) -> Optional[str]:
+        """README S5.22: why the fast cadence is on (page words), or None: structure says build or outro; a forecast
+        window is open or opens within fast_lookahead_s; structure's armed song end is within fast_end_s; a confirmed
+        section boundary came in the last fast_after_section_s."""
+        mc = self._context(now_s)
+        sec = mc.get("section") if mc is not None and isinstance(mc.get("section"), dict) else {}
+        if sec.get("phase") == "build":
+            return "a build"
+        if sec.get("phase") == "outro":
+            return "the music is fading"
+        ahead = float(self.cfg["fast_lookahead_s"])
+        for c in (self._beliefs or {}).get("coming") or []:
+            if isinstance(c, dict) and _f(c.get("t0_s")) is not None and _f(c.get("t1_s")) is not None \
+                    and c["t0_s"] - now_s <= ahead and c["t1_s"] >= now_s:
+                return "a forecast window"
+        if self._end_at is not None:
+            if 0.0 <= self._end_at - now_s <= float(self.cfg["fast_end_s"]):
+                return "the song's end is near"
+            if self._end_at < now_s - float(self.cfg["fast_end_s"]):
+                self._end_at = None
+        if self._boundary_s is not None and now_s - self._boundary_s <= float(self.cfg["fast_after_section_s"]):
+            return "a new section"
+        return None
+
+    def _account(self, now_s: float) -> None:
+        """The share of effective listening spent at the fast cadence (the estimate's, once an hour is measured)."""
+        if self._acc_t is not None and self._why is None:
+            dt = min(2.0, max(0.0, now_s - self._acc_t))
+            self._eff_s += dt
+            if self._fast:
+                self._fast_s += dt
+        self._acc_t = now_s
+
     def interval(self) -> float:
-        """Seconds between call starts now (README S3.12's cadence)."""
-        base = float(self.cfg["relaxed_cadence_s"] if self._agree >= int(self.cfg["agree_reads"])
-                     else self.cfg["cadence_s"])
+        """Seconds between call starts now (README S5.22's cadence): fast_cadence_s while something develops, else
+        cadence_s; x3 over the daily budget; backed off after failures in a row."""
+        base = float(self.cfg["fast_cadence_s"] if self._fast else self.cfg["cadence_s"])
         if self._budget_hit:                      # utils.llm.over_budget("listen"), read each tick
             base *= BUDGET_SLOWDOWN
         if self._errors_row:
             base = max(base, min(float(self.cfg["cadence_s"]) * 2.0 ** self._errors_row, ERROR_BACKOFF_MAX_S))
-        return base
+        return max(base, float(self.cfg["min_gap_s"]))
 
     def _next_due(self, now_s: float) -> Optional[float]:
         if self._last_start is None:
             return now_s
-        due = self._last_start + self.interval()
-        if self._last_end is not None:
-            due = max(due, self._last_end + float(self.cfg["min_gap_s"]))
-        return due
+        return self._last_start + self.interval()
 
     def _launch(self, stream: Optional[str], now_s: float, *, t_end: Optional[float] = None,
                 kind: str = "cadence") -> None:
         if stream is None:
             return
         self._last_start = now_s
-        self._task_stream = stream
         coro = self._one_call(stream, t_end, kind)
         try:
             loop = asyncio.get_running_loop()
@@ -1368,33 +1547,29 @@ class Listener:
             task = asyncio.run_coroutine_threadsafe(coro, self.ctx.loop)
         else:
             coro.close()
-            self._task = None
             return
-        self._task = task
+        self._tasks.append(task)
         task.add_done_callback(self._done)        # also runs for a task cancelled before it started
 
     def _done(self, task: Any) -> None:
-        if self._task is task:
-            self._task = None
-            self._task_stream = None
+        if task in self._tasks:
+            self._tasks.remove(task)
             self._last_end = self._mono()
 
     def _cancel(self) -> None:
-        t = self._task
-        if t is None:
-            return
-        try:
-            loop = t.get_loop() if hasattr(t, "get_loop") else None
+        for t in list(self._tasks):
             try:
-                running = asyncio.get_running_loop()
-            except RuntimeError:
-                running = None
-            if loop is not None and loop is not running:
-                loop.call_soon_threadsafe(t.cancel)
-            else:
-                t.cancel()
-        except Exception:                         # noqa: BLE001
-            pass
+                loop = t.get_loop() if hasattr(t, "get_loop") else None
+                try:
+                    running = asyncio.get_running_loop()
+                except RuntimeError:
+                    running = None
+                if loop is not None and loop is not running:
+                    loop.call_soon_threadsafe(t.cancel)
+                else:
+                    t.cancel()
+            except Exception:                     # noqa: BLE001
+                pass
 
     async def _one_call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
         try:
@@ -1452,6 +1627,9 @@ class Listener:
         segs = self._segments(clip.t0_s, t1)
         if segs:
             user.append(self._segment_text(segs))
+        now_line = self._now_text(t1)
+        if now_line:
+            user.append(now_line)
         if self._prev is not None and self._calls % PREV_EVERY != PREV_EVERY - 1:
             user.append(self._prev_text(self._prev))
         self._calls += 1
@@ -1468,11 +1646,10 @@ class Listener:
         now = self._mono()
         ins = to_insight(res.data or {}, vocab=self.vocab, stream=stream, model=res.model or "",
                          latency_ms=res.latency_ms, window=(clip.t0_s, t1), t_ms=now * 1000.0)
-        seg = self._segment_at(t1)                # README S4.8: the section at the clip's end (structure's id)
-        ins["segment_id"] = seg
-        ins["section"]["segment_id"] = seg
+        ins["segment_id"] = self._segment_at(t1)  # README S4.8: the section at the clip's end (structure's id)
         self._agree_update(ins)
-        self._prev = ins
+        if self._prev is None or _t1_s(ins) >= _t1_s(self._prev) - 1e-6:
+            self._prev = ins                      # two in flight: an older clip's verdict never becomes the hypothesis
         self.beliefs_state.add(ins, now)
         self._beliefs = self.beliefs_state.view(now)
         try:
@@ -1521,31 +1698,53 @@ class Listener:
         genres = ", ".join(self.vocab.genre) or "(none: use unknown)"
         moods = ", ".join(self.vocab.music_moods or self.vocab.moods) or "(none: leave the list empty)"
         return (
-            "You listen to a short clip of what is playing in a home's drawing room and describe it for the room's "
-            "lighting and visuals director. Answer only by calling the tool.\n\n"
+            "You listen to a short clip of what is playing in a home's drawing room, for the room's lighting and "
+            "visuals director: describe it, recommend how the visuals should treat it, and forecast what comes next. "
+            "Answer only by calling the tool, briefly.\n\n"
             "Fields:\n"
-            "- content: what the clip mostly is: music, speech, mixed (music under talk), silence or noise.\n"
-            f"- genre.label: one word from this list, or \"unknown\": {genres}. genre.detail: a few free words for "
-            "the style (for example \"bossa nova\", \"Afro house\"). genre.confidence: 0 to 1.\n"
-            "- instrumentation: up to 8 instruments you clearly hear, as plain lowercase words.\n"
-            "- vocals: none, male, female, mixed, choir or unknown.\n"
-            f"- mood.words: how the music feels, up to 3 words from this list: {moods}. mood.confidence: 0 to 1.\n"
-            "- section: what the clip's last seconds are in the piece: intro, verse, pre_chorus, chorus, bridge, "
-            "breakdown, build, drop, solo, outro or unknown. section.confidence: 0 to 1.\n"
-            "- trajectory.state: where the music is heading: building, peak, sustaining, releasing, steady or "
-            "winding_down. trajectory.eta_to_change_s: seconds from the clip's end to the next big change if you can "
-            "tell, else null. trajectory.confidence: 0 to 1.\n"
+            "- content: music, speech, mixed (music under talk), silence or noise.\n"
+            "- character: the music in at most 12 plain words, e.g. \"soft late-night jazz trio\".\n"
+            f"- genre.label: one of {genres}, or unknown. genre.detail: the style in a few words. confidence 0-1.\n"
+            f"- mood.words: up to 3 of {moods}. confidence 0-1.\n"
+            "- approach: how the visuals should treat this music. intensity 0-1 (0 still and gentle, 1 wild and "
+            "intense); change: slow, medium or fast (how often the looks should change); transitions: gentle, lively "
+            "or wild; confidence 0-1.\n"
+            "- trajectory.state: building, peak, sustaining, releasing, steady or winding_down. confidence 0-1.\n"
+            "- ending: how this piece will most likely end: cold (a sudden stop), fade (fades out), segue (runs "
+            "straight into the next piece) or unknown.\n"
+            "- coming: up to 2 changes you expect, soonest first, else []. kind: chorus, drop, climax, breakdown, "
+            "key_lift, band_in, vocal_in, stop, outro, end or new_section. eta_min_s and eta_max_s: when, in seconds "
+            "from the clip's end. signs: what will announce it, from louder, low_in, busier, stop_return, "
+            "timbre_change, key_change, drums_in, drums_out, vocal_in, vocal_out, phrase_line. size: small, medium "
+            "or big (how big a visual moment it deserves). confidence 0-1.\n"
             "- track_change: true if a different piece starts inside the clip.\n"
-            "- same_track_as_previous: compared with the previous verdict when one is given, else null.\n"
-            "- evidence: at most 25 words on what you heard that decided this.\n\n"
+            "- why: at most 12 words on what decided this.\n\n"
             "Rules:\n"
-            "- Trust the measured numbers in the message (loudness, tempo, key and the timeline): they come from the "
-            "room's own signal processing.\n"
-            "- \"unknown\" is always a valid answer. Don't guess.\n"
-            "- Never estimate tempo, key, beats or loudness yourself. Never name the track, the artist or any "
-            "lyrics.\n"
+            "- Trust the measured numbers in the message (loudness, tempo, key, the timeline and the sections): they "
+            "come from the room's own signal processing.\n"
+            "- \"unknown\" is always a valid answer, and [] is a valid coming. Don't guess.\n"
+            "- Never give tempo, key, BPM or beat numbers yourself. Never name the track, the artist or any lyrics.\n"
             "- Ignore what people say; describe only the sound.\n"
             "- A previous verdict, when given, is a hypothesis and may be wrong.")
+
+    def _now_text(self, t_end: float) -> Optional[str]:
+        """README S5.22: what structure knows at the clip's end, for the forecast (its phase, how far into the
+        section, a known repeat's length, the probable chorus, an armed song end)."""
+        mc = self._context(self._mono())
+        sec = mc.get("section") if mc is not None and isinstance(mc.get("section"), dict) else None
+        bits = []
+        if sec is not None:
+            if isinstance(sec.get("phase"), str):
+                bits.append(f"phase {sec['phase']}")
+            if isinstance(sec.get("bars_in_section"), int):
+                exp = sec.get("expected_bars")
+                bits.append(f"{sec['bars_in_section']} bars into this section" +
+                            (f" (it lasted {exp} bars last time)" if isinstance(exp, int) else ""))
+            if sec.get("chorus"):
+                bits.append("this section is the probable chorus")
+        if self._end_at is not None and self._end_at >= t_end:
+            bits.append(f"the player says this piece ends about {self._end_at - t_end:.0f} s after the clip")
+        return ("Now, from the room's own analysis: " + "; ".join(bits) + ".") if bits else None
 
     def _timeline_text(self, t_end: float, clip: Any, lufs: Optional[float]) -> str:
         lines = [f"Measured by the room's DSP. The audio is the last {clip.pcm.shape[0] / clip.fs:.0f} s; its true "
@@ -1592,9 +1791,10 @@ class Listener:
     @staticmethod
     def _prev_text(prev: dict) -> str:
         g = prev["genre"]
-        bits = [f"genre {g['label']}" + (f" ({g['detail']})" if g.get("detail") else ""),
+        bits = [f"character {prev.get('character') or 'unknown'}",
+                f"genre {g['label']}" + (f" ({g['detail']})" if g.get("detail") else ""),
                 "moods " + (", ".join(prev["mood"]["words"]) or "none"),
-                f"section {prev['section']['label']}", f"trajectory {prev['trajectory']['state']}",
+                f"trajectory {prev['trajectory']['state']}", f"ending {prev.get('ending') or 'unknown'}",
                 f"content {prev['content']}"]
         return "Previous verdict (a hypothesis, may be wrong): " + "; ".join(bits) + "."
 
@@ -1639,29 +1839,50 @@ class Listener:
             nxt = round(max(0.0, self._due - now_s), 1)
         budget = (st.get("budgets") or {}).get("listen")
         est = self.estimate_view()
+        b = self._beliefs if isinstance(self._beliefs, dict) else {}
+        ap = b.get("approach") if isinstance(b.get("approach"), dict) else None
         return {"on": self.on, "effective": self._why is None, "why": self._why, "stream": self._stream,
-                "next_in_s": nxt, "cadence_s": round(self.interval(), 1),
+                "next_in_s": nxt, "cadence_s": round(self.interval(), 1), "fast": self._fast,
+                "in_flight": len(self._tasks),
                 "calls_today": int((st.get("calls_today") or {}).get("listen", 0)),
                 "spend_today_usd": round(float((st.get("spend_today_usd") or {}).get("listen", 0.0)), 4),
                 "budget_usd": float(budget) if budget is not None else None,
                 "model": self._first_model(), "last": self._prev, "errors": self.errors,
                 "provider": est["provider"] if est else None,
-                "est_evening_usd": est["per_evening_usd"] if est else None, "estimate": est}
+                "est_evening_usd": est["per_evening_usd"] if est else None, "estimate": est,
+                "character": b.get("character") if isinstance(b.get("character"), str) else None,
+                "approach": {k: ap.get(k) for k in ("intensity", "change", "transitions", "conf")} if ap else None,
+                "armed": self._armed()}
+
+    def _armed(self) -> list:
+        """The cue engine's sheet (ctx.cue_sheet; README S5.22), [] without it."""
+        got = self._call_or_none(getattr(self.ctx, "cue_sheet", None))
+        return [dict(x) for x in got if isinstance(x, dict)] if isinstance(got, list) else []
 
     def estimate_view(self) -> Optional[dict]:
-        """README S5.20: what listening costs, shown even while the switch is off: {per_call_usd, per_hour_usd,
-        per_evening_usd, evening_h, cadence_s, model, provider (page words: "Google", "OpenAI"), basis: "ledger" |
-        "price table"}. Calls an hour = 3600 / show.yaml's cadence_s (the relaxed cadence and the budget's slowing
-        only make it cheaper). None when no model is usable or its cost isn't known."""
+        """README S5.20/S5.22: what listening costs, shown even while the switch is off: {per_call_usd (a clip_s clip),
+        per_hour_usd, per_evening_usd, evening_h, cadence_s (the blend the arithmetic uses), steady_cadence_s,
+        fast_cadence_s, fast_share, fast_share_basis ("measured" once an hour of effective listening is behind it, else
+        "assumed": show.yaml est_fast_share), clip_s, model, provider (page words: "Google", "OpenAI"), basis:
+        "ledger" | "price table"}. Calls an hour = 3600 x ((1 - share) / cadence_s + share / fast_cadence_s); the
+        budget's slowing only makes it cheaper. None when no model is usable or its cost isn't known."""
         e = self._estimate
         usd = _f((e or {}).get("usd"))
         if not e or usd is None or not e.get("model"):
             return None
-        cadence = float(self.cfg["cadence_s"])
+        steady = max(float(self.cfg["cadence_s"]), float(self.cfg["min_gap_s"]))
+        fast = max(float(self.cfg["fast_cadence_s"]), float(self.cfg["min_gap_s"]))
+        if self._eff_s >= FAST_SHARE_MIN_S:
+            share, sbasis = self._fast_s / self._eff_s, "measured"
+        else:
+            share, sbasis = float(self.cfg["est_fast_share"]), "assumed"
+        per_hour_calls = 3600.0 * ((1.0 - share) / steady + share / fast)
+        per_hour = usd * per_hour_calls
         hours = float(self.cfg["evening_h"])
-        per_hour = usd * 3600.0 / cadence
         return {"per_call_usd": round(usd, 5), "per_hour_usd": round(per_hour, 3),
-                "per_evening_usd": round(per_hour * hours, 2), "evening_h": hours, "cadence_s": cadence,
+                "per_evening_usd": round(per_hour * hours, 2), "evening_h": hours,
+                "cadence_s": round(3600.0 / per_hour_calls, 1), "steady_cadence_s": steady, "fast_cadence_s": fast,
+                "fast_share": round(share, 3), "fast_share_basis": sbasis, "clip_s": float(self.cfg["clip_s"]),
                 "model": e["model"], "provider": e.get("label") or e.get("provider"), "basis": e.get("basis")}
 
     def _note_models(self) -> None:

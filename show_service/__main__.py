@@ -17,8 +17,8 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
  [show-dns]  started by Receiver.start(): sender names re-resolved every 30 s (at once after set_senders)
  [show-bus]  Bus (bus.py): WS fan-out, show.state 25 Hz, /healthz, /api/v1/state (state() below, from snapshots),
              and api.py's routes and /v1/events (they reach the brain only through Brain.call and snapshots)
- [show-brain] Brain (brain.py): room, situations, autopilot, sources, ml, listener (1 Hz), structure and director
-             (10 Hz); ml (mllink.MLLink) spawns and supervises the worker child (python -m show_service.ml.worker in
+ [show-brain] Brain (brain.py): room, situations, autopilot, sources, ml, listener (1 Hz), structure, cues and
+             director (10 Hz); ml (mllink.MLLink) spawns and supervises the worker child (python -m show_service.ml.worker in
              ~/.venvs/sm-show-ml, nice 19), attaches its stdin to the MLFeed, and turns Beat This! votes into
              Clock.apply_integer_correction
  [show-artnet], [show-artnet-poll]  artnet_out.VirtualMaestro, only with a target (off by default): reads
@@ -111,10 +111,11 @@ GUARD_LOG_S = 30.0
 PIANO_VEL_TAU_S = 2.0         # PianoView.velocity: EMA of strike velocities (README S3.4)
 PIANO_RATE_WINDOW_S = 4.0     # PianoView.notes_per_s: strikes in the last 4 s / 4
 RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on_tick (the state's rx_ms; ~16 s)
-#: Brain component modules, in add order (README S3.2, S4.2 and S5.4: room, situations, autopilot, sources, ml,
-#: structure, listener, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
-#: outputs.attach the rig, after the director: it reads the director's palette_fn and look_fn)
-BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "director", "outputs")
+#: Brain component modules, in add order (README S3.2, S4.2, S5.4 and S5.22: room, situations, autopilot, sources, ml,
+#: structure, listener, cues, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
+#: cues.attach the cue engine (it fires what the listener arms), outputs.attach the rig, after the director: it reads
+#: the director's palette_fn and look_fn)
+BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "cues", "director", "outputs")
 NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
                                           "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
@@ -396,7 +397,7 @@ class Show:
     def _log_files(self) -> dict:
         d = pathlib.Path(self.opts.state_dir)
         return {"director": d / "director.jsonl", "autopilot": d / "autopilot.jsonl",
-                "listener": d / "listener.jsonl"}
+                "listener": d / "listener.jsonl", "cues": d / "cues.jsonl"}
 
     def _component_kw(self, name: str, patch_path: Any) -> dict:
         logs = self._log_files()
@@ -404,6 +405,7 @@ class Show:
             "autopilot": {"log_path": logs["autopilot"]},
             "sources": {"log_dir": pathlib.Path(self.opts.state_dir)},
             "listener": {"log_path": logs["listener"]},
+            "cues": {"log_path": logs["cues"]},
             "mllink": {"log_path": pathlib.Path(self.opts.state_dir) / "ml-worker.log"},
             "director": {"log_path": logs["director"], "vibes_path": pathlib.Path(self.opts.vibes_file),
                          **({"patch_path": pathlib.Path(patch_path)} if patch_path else {})},

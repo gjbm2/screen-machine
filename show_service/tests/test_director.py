@@ -869,7 +869,7 @@ def _names_from_config() -> set[str]:
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
                                     "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py",
                                     "fixtures.py", "ofl.py", "outputs.py", "looks.py", "colour_mix.py", "hue_out.py",
-                                    "artnet_lan.py"])
+                                    "artnet_lan.py", "cues.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
     if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
         pytest.skip(f"{module} isn't there yet")
@@ -929,7 +929,7 @@ def test_snapshot_has_the_readme_keys_and_serialises(tmp_path):
 
 
 @pytest.mark.parametrize("module", ["director.py", "situations.py", "listener.py", "api.py", "mllink.py",
-                                    "structure.py"])
+                                    "structure.py", "cues.py"])
 def test_no_genre_family_names_in_code(module):
     """README S4.0: Discogs parent -> vocab genre is config (show.yaml genre_map); no code names a parent."""
     if not (SRC / module).exists():
@@ -1271,7 +1271,7 @@ def test_a_line_called_off_releases_its_token_and_a_missed_one_refunds_it(tmp_pa
     assert [x["decision"] for x in tok] == ["reserved", "released", "reserved", "spent", "refunded"]
 
 
-def test_room_direction_takes_the_local_mls_genre_over_the_listeners(tmp_path):
+def test_room_direction_takes_the_local_mls_genre_without_a_sure_listener(tmp_path):
     r = stage4_rig(tmp_path)
     r.sec["genre"] = {"word": "jazz", "conf": 0.8, "parent": "Jazz", "parent_p": 0.8, "via": "ml"}
     r.run(1.0)
@@ -2707,3 +2707,88 @@ def test_without_a_feel_the_direction_reads_the_music_and_the_band_rows_change_r
     assert rig.d.snapshot()["neutral"] is True
     assert d["energy"] == pytest.approx(rig.d.music["band_energy"], abs=1e-3) and d["energy"] > 0.8
     assert d["change_rate"] == 0.75 and d["moods"] == ["euphoric"]
+
+
+# -- README S5.22: the listener guides the art director ------------------------------------------------------------------
+def guide_beliefs(word="jazz", gconf=0.9, intensity=None, change=None, trans=None, conf=0.9, state="fresh"):
+    """listener.beliefs() with a genre and an approach (contract.Beliefs)."""
+    ap = {"intensity": intensity, "intensity_conf": conf if intensity is not None else 0.0,
+          "change": change, "change_conf": conf if change else 0.0,
+          "transitions": trans, "transitions_conf": conf if trans else 0.0}
+    ap["conf"] = min(ap["intensity_conf"], ap["change_conf"], ap["transitions_conf"])
+    return {"state": state, "age_s": 5.0, "genre": {"word": word, "conf": gconf} if word else None, "moods": [],
+            "feel": [], "trajectory": None, "content": "music", "character": "soft late-night jazz trio",
+            "approach": ap if (intensity is not None or change or trans) else None, "ending": None, "coming": []}
+
+
+def test_a_confident_listener_genre_beats_the_local_mls(tmp_path):
+    """Owner, 18 Oct: the AI "can characterise 'this is soft jazz', which otherwise the system generally won't know":
+    its confident genre (fresh or holding) leads room.direction's genre and genres; the local ML is the fallback."""
+    r = stage4_rig(tmp_path)
+    r.sec["genre"] = {"word": "soul", "conf": 0.8, "parent": "x", "parent_p": 0.8, "via": "ml",
+                      "words": {"soul": 0.7, "house": 0.3}}
+    b = guide_beliefs("jazz", 0.9)
+    r.ctx.beliefs = lambda: b
+    r.run(1.0)
+    assert r.d.direction["genre"] == "jazz" and r.d.direction["genres"] == {"jazz": 1.0}
+    assert r.d.snapshot()["words_from"]["genre"] == "listener" and r.d.snapshot()["guide"]["genre"] == "jazz"
+    b["genre"]["conf"] = 0.5                                          # not sure: the ML's word and shares
+    r.run(1.0)
+    assert r.d.direction["genre"] == "soul" and r.d.direction["genres"] == {"soul": 0.7, "house": 0.3}
+    b["genre"]["conf"], b["state"] = 0.9, "fading"                    # fading beliefs don't lead
+    r.run(1.0)
+    assert r.d.snapshot()["words_from"]["genre"] == "ml"
+
+
+def test_the_listeners_intensity_is_the_band_bases_genre_term_slewed(rig):
+    s = json.loads(json.dumps(SETTINGS))
+    s["director"]["bands"]["base"] = {"genre_energy": {"jazz": 0.3, "house": 0.8}, "rate_full": 12,
+                                      "weights": {"genre": 1.0}, "swing": 0.0, "swing_window_s": 60}
+    d = rig.d
+    d.configure(s)
+    d._mc = {"genre": {"words": {"house": 1.0}}}
+    none = {"genre": None, "intensity": None, "change": None, "transitions": None}
+    d._guide = dict(none)
+    assert d._band_heard(0.5, 1.0, 100.0) == pytest.approx(0.8) and d._gterm_from == "ml"   # the ML's house
+    d._guide = dict(none, genre="jazz")                               # the listener's confident jazz: 0.3
+    got = [d._band_heard(0.5, 1.0, 100.0 + 0.1 * k) for k in range(1, 61)]
+    assert got[0] == pytest.approx(0.79) and got[-1] == pytest.approx(0.3)   # slewed 0.1 a second
+    assert all(a >= b for a, b in zip(got, got[1:])) and d._gterm_from == "listener genre"
+    d._guide = dict(none, genre="jazz", intensity=0.9)                # its approach.intensity wins over the genre's
+    got = [d._band_heard(0.5, 1.0, 106.0 + 0.1 * k) for k in range(1, 81)]
+    assert got[-1] == pytest.approx(0.9) and d._gterm_from == "listener approach"
+    d._guide = dict(none)                                             # the listener lapses: the ML's again
+    assert d._band_heard(0.5, 1.0, 115.0) == pytest.approx(0.8) and d._gterm_from == "ml"
+    assert d._llm_guide(guide_beliefs("jazz", gconf=0.5, intensity=0.2, conf=0.5)) == dict(none)   # unsure
+    assert d._llm_guide(guide_beliefs("jazz", intensity=0.2, change="slow", trans="gentle")) == \
+        {"genre": "jazz", "intensity": 0.2, "change": "slow", "transitions": "gentle"}
+    assert d._llm_guide(guide_beliefs("jazz", state="fading")) == dict(none)
+
+
+def test_the_listeners_transitions_and_change_apply_under_a_persons_or_a_feels_own(rig):
+    """human > feel > listener > bands: approach.transitions -> transition_style and approach.change -> change_rate
+    while no person or feel sets them; the band row's otherwise."""
+    s = json.loads(json.dumps(SETTINGS))
+    for row, cr in zip(("low", "mid_a", "mid_b", "high", "top"), (0.15, 0.3, 0.45, 0.6, 0.75)):
+        s["director"]["bands"]["words"][row]["change_rate"] = cr
+    rig.d.configure(s)
+    b = guide_beliefs(None, change="slow", trans="gentle")
+    rig.ctx.beliefs = lambda: b
+    rig.energy = 1.0
+    rig.run(20.0)                                                     # no feel; the top band says wild, 0.75
+    d = rig.d.direction
+    assert d["transition_style"] == "gentle" and d["change_rate"] == 0.15
+    wf = rig.d.snapshot()["words_from"]
+    assert wf["transition_style"] == "listener" and wf["change_rate"] == "listener"
+    b["approach"].update(change_conf=0.3, transitions_conf=0.3)       # unsure: the band row's
+    rig.run(1.0)
+    assert rig.d.direction["transition_style"] == "wild" and rig.d.direction["change_rate"] == 0.75
+    b["approach"].update(change_conf=0.9, transitions_conf=0.9)
+    rig.d.set_target("alpha")                                         # a feel: its own change_rate (0.5) wins;
+    rig.run(12.0)                                                     # alpha leaves transitions to the music
+    assert rig.d.direction["change_rate"] == 0.5 and rig.d.direction["transition_style"] == "gentle"
+    rig.d.set_target({"vibe": "alpha", "listening": True, "overrides": {"transition_style": "lively"}})
+    rig.run(1.0)                                                      # a person's own word wins
+    assert rig.d.direction["transition_style"] == "lively"
+    assert rig.d.snapshot()["words_from"]["transition_style"] == "feel"
+    assert rig.d.provides()["held"]() is False
