@@ -80,6 +80,16 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
     goes to every live screen through the room (PATCH /api/v1/screens/{id}/look {palette, palette_transition_s});
     an art palette has no renderer name, so the screens keep their own (the snapshot says so).
 
+**Light scenes** (README S5.24; light_scenes.py, the scenes builder's, 18 Oct). While a palette resolves (a feel, or
+director.no_feel), the director picks the lamps' light scene from config/live/light_scenes.yaml: a weighted random
+draw (seeded) by how well each scene's tags fit room.direction (stream_service/tags.py's rule), never the one showing
+now. It picks when a feel is set, at each look that lands, at a song change and on a person's Next look (with no feel
+no look lands, so those two pick at once), and when none is set yet; never while Keep this look holds (a person's own
+Next look still picks). The pick and its why go in room.look (``light_scene``, ``light_scene_why``) and the
+snapshot's ``light_scene``; no scenes: null, and the look engine runs show.yaml's looks.layers. Every drop the director
+hears (structure's drop, a cue's forecast drop at its at_ms) goes to the look engine as LookData ``light_scene_drop``
+(one a beat), whatever the peak tokens say, so a scene with drop hits flashes at the line.
+
 **The screens' hand-pick hold** (Stage 5, README S5.8; agreed with 2f, 16 Oct). Our look PATCHes carry
 ``source: "show_service"`` unless this room boot refused it (the probe: a 2xx with it, or any ``screen.look`` event
 carrying a ``source``, is ``yes``; a 400 ``bad_request`` is the old room: ``no``, and the PATCH goes again at once
@@ -134,6 +144,7 @@ import logging
 import math
 import os
 import pathlib
+import random
 import statistics
 import time
 import urllib.parse
@@ -141,6 +152,7 @@ from typing import Any, Callable, Optional
 
 from . import compose as comp
 from . import contract
+from . import light_scenes as lscenes
 from . import palette as pal
 from .vibes import Vibes
 
@@ -176,6 +188,9 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
                      "drop": "the drop", "track": "a new song", "dwell": "time for a change",
                      "novelty": "the music changed", "relax": "the room went quiet", "between_pieces": "between pieces",
                      "next": "someone pressed Next look", "palette": "someone picked a palette"}
+#: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
+LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed"}
+LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
@@ -625,9 +640,20 @@ class Director:
                  catalog: Optional[pal.Catalog] = None, patch_path: pathlib.Path = contract.PATCH_FILE,
                  log_path: Optional[pathlib.Path] = contract.DIRECTOR_LOG,
                  wall: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
-                 vibes_path: Optional[pathlib.Path] = None) -> None:
+                 vibes_path: Optional[pathlib.Path] = None, light_scenes: Optional[lscenes.Catalogue] = None,
+                 rng: Optional[random.Random] = None) -> None:
         self.ctx = ctx
         self._mono = mono
+        # light scenes (README S5.24): the process's catalogue (the rig's look engine reads the same one)
+        self.light_scenes = light_scenes if light_scenes is not None else lscenes.shared()
+        self._ls_rng = rng if rng is not None else random.Random(LIGHT_SCENE_SEED)
+        self.light_scene: Optional[str] = None
+        self.light_scene_why: Optional[str] = None
+        self._ls_at: Optional[float] = None               # when it was picked (monotonic s)
+        self._ls_reason = "first"                         # why the next automatic pick happens (none set yet)
+        self._ls_drop: Optional[contract.LightSceneDrop] = None   # LookData.light_scene_drop: the last drop line
+        self._ls_n = 0
+        self._ls_stats = {"picks": 0, "drops": 0}
         self.palettes = catalog if catalog is not None else pal.Catalog()
         self.vibes = vibes if vibes is not None else Vibes(pathlib.Path(vibes_path) if vibes_path is not None
                                                            else contract.VIBES_FILE, palette_names=self.palettes.names)
@@ -1243,6 +1269,7 @@ class Director:
         self.palettes.poll()
         self.vibes.poll(force=True)
         self._check_patch(force=True)
+        self._poll_light_scenes()
 
     def stop(self) -> None:
         for t in list(self._tasks):
@@ -1266,6 +1293,7 @@ class Director:
             self.vibes.poll()
             self._check_patch()
             self._check_response()
+            self._poll_light_scenes()
         self._check_rig()
         self._fetches(now_s)
 
@@ -1303,6 +1331,8 @@ class Director:
         self._music_events(now_s, vs, grid)
         self._armed_tick(now_s, vs, grid)
         self._changes(now_s, vs, grid, cutting)
+        if self.light_scene is None and self.pal_on and self.light_scenes.scenes:
+            self._pick_light_scene(self._ls_reason, now_s)   # none set yet (or it left the catalogue)
         self._phase_tick(now_s, vs, grid)
         self._compose_plan(now_s, dt, room)
         self._compose(now_s, vs, known, grid, room)
@@ -1493,6 +1523,7 @@ class Director:
         self._art_next = 0.0                               # the first look may come from the art: fetch now
         self._stage4_reset()
         self._log_event("vibe", {"from": old, "to": name})
+        self._pick_light_scene("feel", now_s)              # a new feel is a new look: the lamps' scene too (S5.24)
 
     # -- when looks change (§8.5) ----------------------------------------------------------------------------------------
     def _min_bars(self, vs: dict) -> float:
@@ -1500,6 +1531,15 @@ class Director:
 
     def _changes(self, now_s: float, vs: dict, grid: Grid, cutting: bool) -> None:
         if self._vibe_name is None:
+            # no feel: nothing changes looks on a cadence, but a change already announced (a person's Next look, a
+            # song change) lands with no_feel's palettes, or is dropped when no colours resolve. Left pending, it
+            # never landed and _held() read true for ever (every track event held, room.direction.hold stuck)
+            pd = self.pending
+            if pd is not None and now_s >= pd["at_s"] - 1e-6 and not cutting:
+                if self.pal_on:
+                    self._land(pd, now_s, self.vp, grid)
+                else:
+                    self.pending, self.next_pending = None, False
             return
         if not self._phrase_passed and self.entered_s is not None and grid.phrase_s and grid.gate in ("beat", "dmx") \
                 and now_s - self.entered_s >= grid.phrase_s:     # §8.6: locked (DMX's from middle confidence, §5.4)
@@ -1655,6 +1695,7 @@ class Director:
         self._log_event("look_change", detail)
         self._look_why = {"why": LOOK_REASON_WORDS.get(pd["reason"], str(pd["reason"]).replace("_", " ")),
                           "t": now_s}
+        self._pick_light_scene(pd["reason"], now_s, human=pd["by"] == "human")   # README S5.24
 
     def _transition(self, vs: dict) -> dict:
         style = self._words(vs)["transition_style"]
@@ -1776,6 +1817,7 @@ class Director:
             self._on_drop_armed(ev, at_ms / 1000.0, now_s, vs, grid)
         elif kind == "drop":
             self._phase_hint = ("drop", now_s)
+            self._light_drop(ev, at_ms / 1000.0, now_s, grid)   # the light scene's drop hits (S5.24), token or not
             self._on_drop(ev, at_ms / 1000.0, now_s, vs, grid)
 
     def _section_info(self, ev: dict) -> dict:
@@ -1841,6 +1883,8 @@ class Director:
                 "prev_track_id": ev.get("prev_track_id"), "transition": tr}
         self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "transition": tr,
                                   "held": bool(ev.get("held")), "context": self._ctx_brief()})
+        if self._vibe_name is None:                       # no feel: no look of ours lands, so the lamps' light scene
+            self._pick_light_scene("track", now_s)        # changes with the song here (README S5.24)
         # relaxed by the gap itself (quiet, no audio): the new song is the sound coming back, so its look lands;
         # relaxed because people talk over the music: it holds (§8.5)
         talk_hold = self._relaxed and bool(vs["relax_on_talk"]) and self._situation("talking") is True
@@ -2074,6 +2118,65 @@ class Director:
                            section=info)
         self._log_event("token", {"decision": "spent", "at": "an unarmed drop", "event": info, "left": left - 1,
                                   "per_hour": n, "context": self._ctx_brief()})
+
+    # -- light scenes (README S5.24) -----------------------------------------------------------------------------------
+    def _poll_light_scenes(self) -> None:
+        """Re-read config/live/light_scenes.yaml when it changed (the look engine hears it as a subscriber, on this
+        thread). A scene that left the catalogue is dropped; the next tick picks again."""
+        try:
+            self.light_scenes.poll()
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("light scenes: poll failed")
+        if self.light_scene is not None and self.light_scene not in self.light_scenes.scenes:
+            self._log_event("light_scene", {"scene": None, "was": self.light_scene,
+                                            "why": "it left config/live/light_scenes.yaml"})
+            self.light_scene, self.light_scene_why, self._ls_reason = None, None, "scenes"
+
+    def _pick_light_scene(self, reason: str, now_s: float, *, human: bool = False) -> None:
+        """The lamps' light scene for a new look (``reason``: a LOOK_REASON_WORDS or LIGHT_REASON_WORDS key): a
+        weighted random draw by the scenes' tags against room.direction, never the one showing now. Not while no
+        palette resolves (neutral: hands off), nor while Keep this look holds unless it is a person's own change."""
+        if not self.pal_on or (self.keep_until is not None and not human):
+            return
+        try:
+            got = self.light_scenes.pick(self.direction, self._ls_rng, avoid=self.light_scene)
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("light scenes: pick failed")
+            got = None
+        if got is None:                                   # no scenes: show.yaml's looks.layers
+            if self.light_scene is not None:
+                self._log_event("light_scene", {"scene": None, "was": self.light_scene, "why": "no light scenes"})
+            self.light_scene, self.light_scene_why = None, None
+            return
+        name, why, ws = got
+        words = LIGHT_REASON_WORDS.get(reason) or LOOK_REASON_WORDS.get(reason) or str(reason).replace("_", " ")
+        was = self.light_scene
+        self.light_scene, self.light_scene_why, self._ls_at = name, f"{words}: {why}", now_s
+        self._ls_reason = "first"
+        self._ls_stats["picks"] += 1
+        d = self.direction or {}
+        self._log_event("light_scene", {"scene": name, "was": was, "why": self.light_scene_why, "reason": reason,
+                                        "weights": {k: round(v, 4) for k, v in ws.items()},
+                                        "direction": {k: d.get(k) for k in ("energy", "moods", "genre", "valence",
+                                                                            "organic", "density")}})
+
+    def _light_drop(self, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
+        """Every drop the director hears (structure's, or a cue's forecast at its at_ms) goes to the look engine as
+        LookData.light_scene_drop, whatever the peak tokens say: the running light scene's drop hits flash at the line.
+        One a beat: a forecast and structure's own drop at the same line are one drop. Nothing while neutral."""
+        if not self.pal_on:
+            return
+        beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
+        last = self._ls_drop
+        if last is not None and abs(last["at_ms"] / 1000.0 - at_s) <= beat + 0.05:
+            return
+        self._ls_n += 1
+        self._ls_drop = {"id": f"drop:{self._ls_n}", "at_ms": round(at_s * 1000.0, 1), "strength": 1.0}
+        self._ls_stats["drops"] += 1
+        self._log_event("light_drop", {"drop": dict(self._ls_drop), "scene": self.light_scene,
+                                       "event": {**self._section_info(ev), "id": ev.get("id"),
+                                                 "detail": ev.get("detail")},
+                                       "ahead_s": round(at_s - now_s, 3)})
 
     def _build_begin(self, start_s: float, grid: Grid) -> None:
         bar = grid.bar_at(start_s)
@@ -2658,6 +2761,8 @@ class Director:
                 self._hit_want = None
         accents = {"style": vs["accents"], "density": round(_c01(density), 3), "subdivision": sub,
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
+        if not pal_on and self.light_scene is not None:   # neutral: hands off, the lamps run show.yaml's looks.layers
+            self.light_scene, self.light_scene_why, self._ls_reason = None, None, "first"
         tr = self._look_transition or self._transition(vs)
         self.look = {"t_ms": round(now_s * 1000.0, 1), "seq": self._look_seq, "look_id": f"L{self.look_n}",
                      "vibe": self._vibe_name, "mode": self.mode, "palette": look_pal, "level": round(level, 3),
@@ -2669,7 +2774,9 @@ class Director:
                      "lamps": lamps, "screens": screens,
                      "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house
                                  and not self.low),
-                     "hit": self._hit_view(), "compose": self._cblock}
+                     "hit": self._hit_view(), "compose": self._cblock,
+                     "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
+                     "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None}
         bars = 0
         if grid.ok and self.look_bar is not None:
             bars = max(0, grid.bar_at(now_s) - self.look_bar)
@@ -3073,7 +3180,8 @@ class Director:
             a = self._last_look
             changed = self._force_look or self._differs(
                 a, lk, ("level", "floor", "saturation", "contrast", "motion.speed", "motion.amount",
-                        "accents.density", "spread"), ("look_id", "vibe", "house", "low", "palette")) or (
+                        "accents.density", "spread"), ("look_id", "vibe", "house", "low", "palette",
+                                                       "light_scene")) or (
                 a is not None and (a.get("accents", {}).get("beat_lock") != lk["accents"]["beat_lock"]
                                    or self._lamps_moved(a, lk)))
             self._force_look = False
@@ -3364,6 +3472,8 @@ class Director:
         now = self._now()
         if do == "next":
             self._human_change("next", advance=self.palette_pick == contract.PALETTE_AUTO)
+            if self._vibe_name is None:                   # no feel: no look lands, so the light scene moves on now
+                self._pick_light_scene("next", now, human=True)
         elif do == "keep":
             self.keep_until = now + float(self.cfg["keep_s"])
         elif do == "house":
@@ -3623,7 +3733,12 @@ class Director:
                                 "look_source": self._look_source, "boot": self._look_boot},
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
                       "gobo_steps": self.gobo_steps, "log_error": self._log_error},
-            "compose": self._compose_view()}
+            "compose": self._compose_view(),
+            "light_scene": {"name": self.light_scene, "label": self.light_scenes.label(self.light_scene),
+                            "why": self.light_scene_why,
+                            "age_s": int(max(0.0, now_s - self._ls_at)) if self._ls_at is not None else None,
+                            "drop": dict(self._ls_drop) if self._ls_drop else None, **self._ls_stats,
+                            "catalogue": self.light_scenes.view()}}
 
     def _compose_view(self) -> dict:
         """The snapshot's composer (README S5.18): the mode, whose limits, the problems (the limits' validator, the

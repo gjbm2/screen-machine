@@ -43,6 +43,19 @@ artnet_lan.ArtNetLan), each fed by its own runner thread ``show-out-<id>``:
 * **Hue off** (fixtures.yaml ``outputs.<hue>.enabled: false``, 68's contract): the driver is stopped at the next
   reconcile (its frames at once, then the area). A release in the next moments waits for that stop plus
   ``rig.hue.release_settle_s`` (the bridge's post-entertainment write), so ``released`` still means writable.
+* **The Lights page** (README S5.23), each on show-brain through ``brain.call``: ``add_fixture``, ``update_fixture``,
+  ``remove_fixture`` write config/room/fixtures.added.yaml (fixtures.Registrar: checked with the loader first, never
+  fixtures.yaml) and reload the registry at once (no debounce: the file was replaced whole), so an output made for a
+  new light starts at that reconcile. ``identify`` asks the look engine for full white on one fixture for a few seconds
+  (``LookEngine.identify``) and wakes its runner. ``set_follow`` keeps who follows the music (room's DMX-lights device:
+  FOLLOW_WORDS or a static colour) in ``follow_file`` (atomic) and hands the whole mapping to ``LookEngine.set_follow``
+  at once, after every engine configure, and on each change. An engine without those methods degrades: identify
+  answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any thread) is the rig
+  view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
+* **Online** (thread ``show-rig-online``, off the frame path): one ``ping -c1 -W1`` per node address every
+  ONLINE_CHECK_S; a row's ``online`` is its node's last answer. Art-Net goes out unicast whenever the output is on,
+  whatever ping says, so a node works the moment it is plugged in; sending to an absent one is a counted, logged
+  send error at most (artnet_lan).
 """
 
 from __future__ import annotations
@@ -51,8 +64,13 @@ import asyncio
 import collections
 import importlib
 import inspect
+import ipaddress
+import json
 import logging
 import math
+import os
+import re
+import subprocess
 import sys
 import threading
 import time
@@ -86,6 +104,12 @@ RATE_WINDOW_S = 5.0
 HUE_RELEASE_TIMEOUT_S = 15.0       # show.yaml rig.hue.release_timeout_s's starting point (hue_out's RIG_HUE_DEFAULTS)
 HUE_SETTLE_S = 1.0                 # show.yaml rig.hue.release_settle_s's starting point (§9.4: the bridge's own write)
 FIXTURES_FILE_WORDS = "config/room/fixtures.yaml"
+IDENTIFY_S = 3.0                   # README S5.23: identify's full white, unless the call says how long
+IDENTIFY_MAX_S = 30.0              # starting point: a longer ask is cut to this (the answer's ``seconds`` says so)
+ONLINE_CHECK_S = 10.0              # README S5.23: each node address pinged this often (show-rig-online)
+PING_WAIT_S = 1                    # ping -W: one echo's wait, s
+FOLLOW_BRI_DEFAULT = 100           # a static colour sent with no ``bri``: as written (full)
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def _load(spec: str) -> Any:
@@ -126,6 +150,76 @@ def hue_off(output: Optional[str], detail: str, asked: Optional[list] = None) ->
     """The HueStatus with no hue output running (the routes answer room ``idle``: contract.hue_answer). ``asked``:
     the set room asked, kept for on again (the routes' ``lights``)."""
     return contract.hue_off_status(output, detail, asked)
+
+
+# -- the Lights page's pieces (README S5.23) ---------------------------------------------------------------------------
+def parse_follow(v: Any) -> Any:
+    """One fixture's follow value, normalised: a contract.FOLLOW_WORDS word, or {"hex": "#rrggbb", "bri": 0..100}
+    (``bri`` unset: FOLLOW_BRI_DEFAULT). ValueError otherwise."""
+    if isinstance(v, str) and v in contract.FOLLOW_WORDS:
+        return v
+    if isinstance(v, Mapping) and set(v) <= {"hex", "bri"}:
+        hx, bri = v.get("hex"), v.get("bri", FOLLOW_BRI_DEFAULT)
+        n = _num(bri)
+        if isinstance(hx, str) and _HEX.match(hx) and n is not None and 0.0 <= n <= 100.0:
+            return {"hex": hx.lower(), "bri": int(n) if n == int(n) else round(n, 2)}
+    raise ValueError(f"{v!r} isn't " + " or ".join(f'"{w}"' for w in contract.FOLLOW_WORDS)
+                     + ' or {"hex": "#rrggbb", "bri": 0..100}')
+
+
+def ping_once(ip: str) -> Optional[bool]:
+    """One ICMP echo to an IPv4 address (``ping -c1 -W1``, no shell): True answered, False not; None when it can't be
+    asked here (not an address, no ping)."""
+    try:
+        addr = str(ipaddress.IPv4Address(str(ip)))
+    except ValueError:
+        return None
+    try:
+        r = subprocess.run(["ping", "-c1", f"-W{PING_WAIT_S}", addr], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=PING_WAIT_S + 2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.returncode == 0
+
+
+class _Online:
+    """Thread ``show-rig-online``: every ``every_s``, one ``ping_fn`` per address ``ips_fn`` gives (the rig's node
+    addresses), one after another; ``results`` (address -> answered) is swapped by reference after each round."""
+
+    def __init__(self, ips_fn: Callable[[], Any], ping_fn: Callable[[str], Optional[bool]], every_s: float) -> None:
+        self.ips_fn, self.ping_fn, self.every_s = ips_fn, ping_fn, max(0.05, float(every_s))
+        self.results: dict[str, bool] = {}
+        self.rounds = 0
+        self._stop = threading.Event()
+        self.thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        if self.thread is None:
+            self.thread = threading.Thread(target=self._run, name="show-rig-online", daemon=True)
+            self.thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                ips = sorted({str(x) for x in self.ips_fn() or ()})
+            except Exception:                                            # noqa: BLE001  the view moved under it
+                ips = []
+            got: dict[str, bool] = {}
+            for ip in ips:
+                if self._stop.is_set():
+                    return
+                try:
+                    ok = self.ping_fn(ip)
+                except Exception:                                        # noqa: BLE001
+                    ok = None
+                if isinstance(ok, bool):
+                    got[ip] = ok
+            self.results = got
+            self.rounds += 1
+            self._stop.wait(self.every_s)
 
 
 # -- the runner (show-out-<id>) -----------------------------------------------------------------------------------------
@@ -307,6 +401,8 @@ class Rig:
                  driver_kw: Optional[Mapping[str, Mapping[str, Any]]] = None,
                  fixtures_path: Optional[Path] = None, types_dir: Optional[Path] = None,
                  latency_path: Optional[Path] = None, patch_path: Optional[Path] = None,
+                 added_path: Optional[Path] = None, follow_file: Optional[Path] = None,
+                 ping_fn: Optional[Callable[[str], Optional[bool]]] = None, online_check_s: float = ONLINE_CHECK_S,
                  mono: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> None:
         self.ctx = ctx
         self.clock = clock
@@ -320,7 +416,8 @@ class Rig:
             try:
                 cls = _load(REGISTRY_MODULE)
                 kw: dict[str, Any] = {}
-                for k, v in (("types_dir", types_dir), ("latency_path", latency_path), ("patch_path", patch_path)):
+                for k, v in (("types_dir", types_dir), ("latency_path", latency_path), ("patch_path", patch_path),
+                             ("added_path", added_path)):
                     if v is not None:
                         kw[k] = Path(v)
                 self.registry = cls(Path(fixtures_path) if fixtures_path is not None else contract.FIXTURES_FILE,
@@ -372,6 +469,12 @@ class Rig:
         self.engine_problems: list[str] = []
         self.ticks = 0
         self.tick_ms: collections.deque = collections.deque(maxlen=120)
+        # the Lights page (README S5.23)
+        self._force_reload = False                          # an API write: the next registry poll reloads at once
+        self.follow_file = Path(follow_file) if follow_file is not None else None   # None: kept in memory only
+        self.follow_error: Optional[str] = None
+        self._follow: dict[str, Any] = self._load_follow()  # fixture id -> FOLLOW_WORDS | {hex, bri}; swapped whole
+        self._online = _Online(self._node_addresses, ping_fn or ping_once, online_check_s)
 
     # -- Component ----------------------------------------------------------------------------------------------------
     def provides(self) -> dict:
@@ -426,6 +529,7 @@ class Rig:
     def start(self) -> None:
         self._started = True
         self._sync(self.mono())
+        self._online.start()
 
     def tick(self, now_s: float) -> None:
         t0 = time.perf_counter()
@@ -437,6 +541,7 @@ class Rig:
         """Runners, then drivers (module docstring). Returns an awaitable when a driver's stop is still running on
         show-brain (hue's PUT stop), which brain.py awaits."""
         self._stopped = True
+        self._online.stop()
         outs = list(self._outs.values())
         for o in outs:                                     # the final state.json keeps what each driver had
             st = self._driver_state(o.driver)
@@ -683,6 +788,246 @@ class Rig:
         return {"released": released, "state": contract.hue_room_state(self.hue_status()), "why": why,
                 "still_following": [], "waited_ms": round((self.mono() - t0) * 1000.0, 1), "via": "show"}
 
+    # -- the Lights page (README S5.23) -------------------------------------------------------------------------------
+    @staticmethod
+    def _fixtures_module() -> Any:
+        try:
+            from . import fixtures as fx
+        except Exception:                                                # noqa: BLE001  degrade: no labels
+            return None
+        return fx
+
+    def _registrar(self) -> Any:
+        """fixtures.Registrar over the registry's own files (show.yaml's looks and lamps for its check)."""
+        fx = self._fixtures_module()
+        reg = self.registry
+        paths = [getattr(reg, k, None) for k in ("path", "added_path", "types_dir")]
+        if fx is None or any(p is None for p in paths):
+            raise ValueError("no_registry: The fixture registry isn't loaded here, so lights can't be added.")
+        return fx.Registrar(paths[0], added_path=paths[1], types_dir=paths[2], looks=self._looks, lamps=self._lamps)
+
+    def _reload_now(self) -> None:
+        """After an API write (show-brain): reload the registry and reconcile now, so an output made for a new light
+        starts here and a removed one stops."""
+        self._force_reload = True
+        self._sync(self.mono())
+
+    def _row_after(self, fid: str, candidate: Any) -> Optional[dict]:
+        """The written light's row: from the rig's view once it has it, else from the Registrar's check (the rig
+        off)."""
+        v = self._view
+        if v is not None and fid in (v.get("fixtures") or {}):
+            rows = self.fixture_rows()
+        else:
+            rows = self._rows(candidate, frozenset((fid,)))
+        return next((r for r in rows if r["id"] == fid), None)
+
+    def add_fixture(self, body: Any) -> dict:
+        """POST /api/v1/rig/fixtures (show-brain): ``{fixture: RigFixtureRow, problems}``. fixtures.Refused (a
+        ValueError with ``code``) when it can't be added as asked: nothing is written."""
+        fid, probs, cand = self._registrar().add(body)
+        self._reload_now()
+        return {"fixture": self._row_after(fid, cand), "problems": probs}
+
+    def update_fixture(self, fid: str, body: Any) -> dict:
+        """PUT /api/v1/rig/fixtures/{id} (show-brain): the same keys, each optional."""
+        fid, probs, cand = self._registrar().update(fid, body)
+        self._reload_now()
+        return {"fixture": self._row_after(fid, cand), "problems": probs}
+
+    def remove_fixture(self, fid: str) -> dict:
+        """DELETE /api/v1/rig/fixtures/{id} (show-brain): ``{removed: id, outputs, nodes, types}``; its follow entry
+        goes too."""
+        got = self._registrar().remove(fid)
+        if fid in self._follow:
+            self._follow = {k: v for k, v in self._follow.items() if k != fid}
+            self._save_follow()
+            self._apply_follow()
+        self._reload_now()
+        return got
+
+    def types_view(self) -> list[dict]:
+        """GET /api/v1/rig/types (any thread): fixtures.type_rows over the current view."""
+        fx = self._fixtures_module()
+        return fx.type_rows(self._view) if fx is not None else []
+
+    def identify(self, fid: str, seconds: Any = None) -> dict:
+        """POST /api/v1/rig/fixtures/{id}/identify (show-brain): the fixture shows full white for ``seconds``
+        (IDENTIFY_S unset, at most IDENTIFY_MAX_S) whatever it was doing, through its running output: ``{ok: true,
+        seconds}``, else ``{ok: false, why}`` in page words."""
+        s = IDENTIFY_S if seconds is None else _num(seconds)
+        if s is None or s <= 0:
+            raise ValueError("bad_request: seconds must be a number above 0")
+        s = min(s, IDENTIFY_MAX_S)
+        v = self._view
+        f = ((v or {}).get("fixtures") or {}).get(fid)
+        if f is None:
+            return {"ok": False, "why": f"There's no light {fid!r} in the rig." if v is not None else
+                    "The rig is off (show.yaml rig.enabled), so nothing can flash."}
+        if f.get("kind") == "screen":
+            return {"ok": False, "why": "A screen isn't flashed from here."}
+        oid = f.get("output")
+        o = self._outs.get(oid) if oid else None
+        if o is None:
+            why = self._why.get(oid) if oid else None
+            return {"ok": False, "why": f"Its output isn't running: {why[1]}" if why and why[1] else
+                    "It isn't on an output that runs."}
+        hs = getattr(o.driver, "hue_status", None)                       # a streamed lamp: only while it follows
+        st = self._guard("driver.hue_status", hs) if callable(hs) else None
+        if isinstance(st, dict) and fid not in (st.get("wanted") or []):
+            return {"ok": False, "why": "This lamp isn't following the music from here right now, so it can't flash."}
+        fn = getattr(self.engine, "identify", None)
+        if not callable(fn):
+            return {"ok": False, "why": "The look engine can't flash a light yet."}
+        try:
+            got = fn(fid, s)
+        except Exception as e:                                           # noqa: BLE001
+            log.exception("rig: identify %s failed", fid)
+            return {"ok": False, "why": f"The flash didn't start ({type(e).__name__})."}
+        if o.runner is not None:
+            o.runner.wake.set()
+        if got is False:                                                 # kept by the engine, not evaluated yet
+            return {"ok": False, "why": "The look engine doesn't drive this light yet; it flashes once it does."}
+        return {"ok": True, "seconds": s}
+
+    def follow_view(self) -> dict:
+        """GET /api/v1/rig/follow (any thread): ``{fixtures: {id: value}}``."""
+        return {"fixtures": dict(self._follow)}
+
+    def set_follow(self, fixtures: Any) -> dict:
+        """POST /api/v1/rig/follow (show-brain): ``fixtures`` {id: "dmx" | "off" | {hex, bri} | null (forget it)} is
+        merged into the mapping (all or nothing: one bad value is a ValueError and nothing changes), saved, and handed
+        whole to the look engine; every runner re-plans. ``{accepted: true, fixtures: the whole mapping, unknown: ids
+        not in the registry (kept), saved}``."""
+        if not isinstance(fixtures, Mapping) or not all(isinstance(k, str) for k in fixtures):
+            raise ValueError('bad_request: fixtures must be {<fixture id>: "dmx" | "off" | {"hex": "#rrggbb", '
+                             '"bri": 0..100}}')
+        new = dict(self._follow)
+        for fid, val in fixtures.items():
+            if val is None:
+                new.pop(fid, None)
+                continue
+            try:
+                new[fid] = parse_follow(val)
+            except ValueError as e:
+                raise ValueError(f"bad_follow: {fid}: {e}") from None
+        if new != self._follow:
+            self._follow = new
+            self._save_follow()
+        self._apply_follow()
+        known = (self._view or {}).get("fixtures") or {}
+        return {"accepted": True, "fixtures": dict(self._follow), "unknown": sorted(k for k in fixtures
+                                                                                     if k not in known),
+                "saved": self.follow_file is not None and self.follow_error is None}
+
+    def _apply_follow(self) -> None:
+        """The whole mapping to the look engine (``LookEngine.set_follow``, when it has it), then every runner wakes."""
+        fn = getattr(self.engine, "set_follow", None)
+        if callable(fn):
+            self._guard("engine.set_follow", fn, dict(self._follow))
+        for o in list(self._outs.values()):
+            if o.runner is not None:
+                o.runner.wake.set()
+
+    def _load_follow(self) -> dict[str, Any]:
+        p = self.follow_file
+        if p is None:
+            return {}
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as e:
+            self.follow_error = f"{p.name} not read ({e}): nobody follows until room says again"
+            log.warning("rig: %s", self.follow_error)
+            return {}
+        got = raw.get("fixtures") if isinstance(raw, dict) else None
+        out: dict[str, Any] = {}
+        for fid, val in (got.items() if isinstance(got, dict) else ()):
+            try:
+                out[str(fid)] = parse_follow(val)
+            except ValueError:
+                log.warning("rig: %s: %s's %r isn't a follow value: dropped", p.name, fid, val)
+        return out
+
+    def _save_follow(self) -> None:
+        """follow.json, atomically (tmp, fsync, os.replace). A failure keeps the mapping in memory."""
+        p = self.follow_file
+        if p is None:
+            return
+        try:
+            p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"v": 1, "fixtures": self._follow}, f, indent=1, sort_keys=True)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, p)
+            self.follow_error = None
+        except OSError as e:
+            self.follow_error = f"{p.name} not written ({e}): who follows holds until a restart"
+            log.warning("rig: %s", self.follow_error)
+
+    def _node_addresses(self) -> list[str]:
+        """show-rig-online: every node address the view sends to (discovery's, else last_ip; virtual ones none)."""
+        v = self._view
+        n = self._shared.get(NODES_KEY)
+        return [ip for nid, nc in ((v or {}).get("nodes") or {}).items()
+                if (ip := self._node_ip(nid, nc, n)) is not None]
+
+    def _node_ip(self, nid: Any, nc: Any, nodes: Any) -> Optional[str]:
+        if not isinstance(nc, Mapping) or nc.get("virtual") is True:
+            return None
+        dest = getattr(nodes, "dest", None) if nodes is not None else None
+        d = self._guard("nodes.dest", dest, nid) if callable(dest) else None
+        if isinstance(d, tuple) and d and isinstance(d[0], str):
+            return d[0]
+        ip = nc.get("last_ip")
+        return ip if isinstance(ip, str) and ip else None
+
+    def fixture_rows(self) -> list[dict]:
+        """GET /api/v1/rig ``fixtures`` (any thread): contract.RigFixtureRow per fixture of the current view."""
+        return self._rows(self._view, getattr(self.registry, "added_ids", None) or frozenset())
+
+    def _rows(self, v: Any, editable: Any) -> list[dict]:
+        if not isinstance(v, Mapping):
+            return []
+        fx = self._fixtures_module()
+        outs, nodes, types = (v.get(k) or {} for k in ("outputs", "nodes", "types"))
+        n = self._shared.get(NODES_KEY)
+        follow, online = self._follow, self._online.results
+        rows = []
+        for fid, f in (v.get("fixtures") or {}).items():
+            if not isinstance(f, Mapping):
+                continue
+            oid = f.get("output")
+            oc = outs.get(oid) if oid else None
+            oc = oc if isinstance(oc, Mapping) else {}
+            nid = oc.get("node")
+            ip = self._node_ip(nid, nodes.get(nid), n) if nid else None
+            t = types.get(f.get("type"))
+            t = t if isinstance(t, Mapping) else {}
+            role = f.get("role")
+            if fx is not None:
+                role = fx.role_of(dict(f), self._lamps)
+            rows.append({"id": fid, "label": f.get("label") or fid, "kind": f.get("kind"), "type": f.get("type"),
+                         "type_label": fx.type_label(dict(t)) if fx is not None and t else None, "output": oid,
+                         "driver": oc.get("driver"), "node_ip": ip, "universe": oc.get("port_address") if nid else None,
+                         "address": f.get("address"), "footprint": int(t.get("footprint") or 0),
+                         "placement": f.get("placement"), "role": role, "zone": f.get("zone"),
+                         "follow": follow.get(fid), "online": online.get(ip) if ip else None,
+                         "last_rgb": self._last_hex(oid, fid), "editable": fid in editable})
+        return rows
+
+    def _last_hex(self, oid: Any, fid: str) -> Optional[str]:
+        o = self._outs.get(oid) if oid else None
+        frame = o.runner.last_frame if o is not None and o.runner is not None else None
+        ff = (frame.get("fixtures") or {}).get(fid) if isinstance(frame, dict) else None
+        rgb = ff.get("rgb") if isinstance(ff, dict) else None
+        if not isinstance(rgb, (list, tuple)) or len(rgb) != 3 or any(_num(c) is None for c in rgb):
+            return None
+        return "#%02x%02x%02x" % tuple(max(0, min(255, round(float(c) * 255))) for c in rgb)
+
     # -- show-brain ---------------------------------------------------------------------------------------------------
     def _guard(self, site: str, fn: Optional[Callable], *a: Any, **kw: Any) -> Any:
         if fn is None:
@@ -709,7 +1054,11 @@ class Rig:
             self._why = {}
             self._build_snapshot(now_s)
             return
-        changed = bool(self._guard("registry.poll", reg.poll, self._looks, lamps=self._lamps))
+        poll_kw: dict[str, Any] = {"lamps": self._lamps}
+        if self._force_reload:                               # an API write replaced fixtures.added.yaml whole
+            poll_kw["force"] = True
+            self._force_reload = False
+        changed = bool(self._guard("registry.poll", reg.poll, self._looks, **poll_kw))
         view = reg.view()
         was = self._view
         self._view = view
@@ -718,6 +1067,7 @@ class Rig:
             if got is not None:
                 self.engine_problems = list(got)
                 self._engine_dirty = False
+            self._apply_follow()                             # README S5.23: the follow mapping, after every configure
         if view is not None:
             self._reconcile(view, reconfigure=changed or view is not was or self._settings_dirty)
         self._settings_dirty = False
@@ -904,11 +1254,16 @@ class Rig:
         return {"enabled": self.enabled, "registry": summary, "outputs": outputs, "nodes": nodes, "engine": eng,
                 "errors": dict(self.errors), "problems": list(self._problems), "modules": dict(self.modules),
                 "tick_ms_p95": round(tick[min(len(tick) - 1, int(0.95 * len(tick)))], 3) if tick else None,
-                "hue": dict(self.hue_status())}
+                "hue": dict(self.hue_status()),
+                # README S5.23: the Lights page's rows, and where who-follows is kept
+                "fixtures": self.fixture_rows(),
+                "follow": {"file": str(self.follow_file) if self.follow_file is not None else None,
+                           "error": self.follow_error, "count": len(self._follow)},
+                "online": {"rounds": self._online.rounds, "every_s": self._online.every_s}}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Rig:
     """The brain's ``rig`` (README S5.4). __main__ passes ``palette_fn`` (the director's), ``look_fn``, ``clock``,
-    ``features_fn``, ``neutral`` (artnet_out's colour and depth), the registry's paths and ``driver_kw``; tests pass
-    fakes (``registry``, ``engine``, ``driver_factories``)."""
+    ``features_fn``, ``neutral`` (artnet_out's colour and depth), the registry's paths, ``driver_kw`` and
+    ``follow_file`` (README S5.23); tests pass fakes (``registry``, ``engine``, ``driver_factories``, ``ping_fn``)."""
     return Rig(ctx, **kw)

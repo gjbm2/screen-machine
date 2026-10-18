@@ -1,0 +1,259 @@
+# Light scenes: the ways the lamps can move (show_service/light_scenes.py; README S5.24; docs/SHOW_ENGINE.md §9.1).
+# Hot-reloaded (show_service re-reads it within a few seconds of a save; a bad edit keeps the last good scenes, and
+# GET /show/api/v1/state shows the problems under director.light_scene and rig.engine.scenes).
+#
+# The art director picks one at each new look, each new song and each Next look (never while Keep this look holds),
+# weighted by how well its tags fit the music (room.direction), and never the same one twice running. The pick is
+# room.look's light_scene; the look engine runs that scene's layers instead of show.yaml's looks.layers, crossfading
+# over the look's transition. Delete every scene (or this file) and the lamps run show.yaml's looks.layers as before.
+#
+# Each scene:
+#   label    page words
+#   layers   show.yaml looks.layers entries, the same keys and words (looks.py): fx sine|saw|square|triangle|swell,
+#            phase beat|bar|phrase|time, subdivide, period_bars / period_s (a number or [slow, fast] by the look's
+#            motion.speed), depth / spread (a number 0..1 or swell|motion.amount|motion.speed|accents.density|
+#            look.spread|energy), depth_scale, needs beat|grid|none, without_beat energy|none, attack_ms, decay_ms,
+#            select (fixtures.py selectors: "kind:lamp", "group:around", "driver:artnet", ...). [] = steady.
+#   hits     optional, show.yaml looks.hits' keys (select, styles, bands, min_strength, depth, decay_ms): music.hit
+#            flashes, DMX only (Hue never takes hits). styles [] = none. drop: {depth, decay_ms}: a flash at every
+#            drop line the director hears (structure's drop, a cue's forecast drop), whatever the peak tokens say.
+#            No hits key: no flashes.
+#   caps     optional: this scene's own looks.caps (flash_hz_max). Unset: show.yaml's looks.caps.
+#   tags     the screens' preset scales (stream_service/tags.py): energy [lo, hi] 0..1; moods from
+#            config/live/vocab.yaml moods; genre_fit {vocab genre word: 0..1}, "*" = every genre word not listed;
+#            valence (sad 0 .. happy 1), organic (synthetic 0 .. acoustic 1), density (sparse 0 .. busy 1); weight.
+# Hue lamps keep their own caps whatever a scene says: attack >= 80 ms, nothing cycles faster than 160 ms, no hits.
+# Every depth, period, attack and decay below is a STARTING POINT, chosen by eye on paper: tune by watching the room.
+
+version: 1
+
+scenes:
+  still-glow:
+    label: Still glow
+    layers: []                                  # steady colour: no pulse, no movement
+    tags:
+      energy: [0.0, 0.3]
+      moods: [calm, warm, elegant, dreamy]
+      genre_fit: {classical: 0.9, piano: 0.9, ambient: 0.85, jazz: 0.7, singer-songwriter: 0.7, folk: 0.65,
+                  soundtrack: 0.7, downtempo: 0.6, blues: 0.6, gospel: 0.55, soul: 0.5, "*": 0.2}
+      valence: 0.5
+      organic: 0.8
+      density: 0.1
+
+  slow-breathe:
+    label: Slow breathe
+    layers:
+      - id: breathe
+        fx: sine
+        phase: bar
+        period_bars: [8, 2]                     # the look's motion.speed: 0 -> 8 bars a breath, 1 -> 2 bars
+        depth: 0.3
+        needs: none                             # on the bars when the clock has them, else free-running
+        select: "kind:lamp"
+    tags:
+      energy: [0.05, 0.45]
+      moods: [calm, mellow, dreamy, liquid]
+      genre_fit: {ambient: 0.9, downtempo: 0.85, classical: 0.7, piano: 0.7, jazz: 0.7, soundtrack: 0.75, soul: 0.6,
+                  rnb: 0.6, folk: 0.55, singer-songwriter: 0.6, "*": 0.3}
+      valence: 0.5
+      organic: 0.6
+      density: 0.2
+
+  downbeat-swell:
+    label: Gentle swell on the downbeats
+    layers:
+      - id: downbeat
+        fx: swell
+        phase: bar
+        period_bars: 1                          # once a bar, on the one
+        depth: 0.4
+        needs: beat
+        without_beat: energy                    # no beat: the level follows the smoothed energy
+        attack_ms: 150
+        decay_ms: 900
+        select: "kind:lamp"
+    tags:
+      energy: [0.25, 0.6]
+      moods: [warm, mellow, elegant, organic]
+      genre_fit: {soul: 0.85, rnb: 0.8, jazz: 0.75, gospel: 0.75, blues: 0.75, reggae: 0.7, funk: 0.65, pop: 0.6,
+                  latin: 0.6, afrobeat: 0.6, folk: 0.6, singer-songwriter: 0.6, indie: 0.6, country: 0.6, "*": 0.35}
+      valence: 0.6
+      organic: 0.6
+      density: 0.4
+
+  beat-pulse:
+    label: Beat pulse
+    layers:
+      - id: pulse                               # show.yaml's own pulse: the virtual Maestro's swell
+        fx: swell
+        phase: beat
+        subdivide: true                         # x the look's accents.subdivision
+        depth: swell                            # the director's accent depth for the feel's accents
+        needs: beat
+        without_beat: energy
+        attack_ms: 80
+        decay_ms: 250
+        select: "kind:lamp"
+    hits:                                       # show.yaml's looks.hits (DMX only)
+      select: "kind:lamp"
+      styles: [beat, full]
+      min_strength: 0.3
+      depth: 0.5
+      decay_ms: 120
+    tags:
+      energy: [0.4, 0.85]
+      moods: [bright, playful, warm, hypnotic]
+      genre_fit: {house: 0.9, disco: 0.9, funk: 0.85, pop: 0.8, afrobeat: 0.8, latin: 0.8, techno: 0.75,
+                  electronic: 0.75, hip-hop: 0.7, rnb: 0.65, rock: 0.65, indie: 0.6, reggae: 0.6, "*": 0.4}
+      valence: 0.65
+      organic: 0.4
+      density: 0.6
+
+  half-time-swell:
+    label: Half-time swell
+    layers:
+      - id: half
+        fx: swell
+        phase: bar
+        period_bars: 0.5                        # every other beat in 4/4
+        depth: 0.55
+        needs: beat
+        without_beat: energy
+        attack_ms: 120
+        decay_ms: 600
+        select: "kind:lamp"
+    tags:
+      energy: [0.35, 0.75]
+      moods: [hypnotic, dark, tense, cosmic]
+      genre_fit: {dubstep: 0.9, hip-hop: 0.8, downtempo: 0.75, drum-and-bass: 0.7, electronic: 0.7, trance: 0.6,
+                  rnb: 0.6, metal: 0.5, rock: 0.5, "*": 0.35}
+      valence: 0.4
+      organic: 0.3
+      density: 0.5
+
+  chase-around:
+    label: Chase around the room
+    layers:
+      - id: chase
+        fx: swell
+        phase: bar
+        period_bars: 1                          # once round the room a bar
+        spread: 1.0                             # each lamp its share of the bar behind the one before, in the
+                                                # group's order (clockwise for group:around)
+        depth: 0.7
+        needs: grid                             # any clock grid; none: the smoothed energy
+        without_beat: energy
+        attack_ms: 60
+        decay_ms: 350
+        select: "group:around"
+    tags:
+      energy: [0.5, 0.95]
+      moods: [playful, euphoric, bright, retro, geometric]
+      genre_fit: {disco: 0.9, house: 0.85, latin: 0.8, techno: 0.8, trance: 0.8, electronic: 0.8, funk: 0.75,
+                  pop: 0.75, afrobeat: 0.7, "*": 0.3}
+      valence: 0.75
+      organic: 0.3
+      density: 0.75
+
+  slow-wave:
+    label: Slow wave across the room
+    layers:
+      - id: wave
+        fx: sine
+        phase: phrase                           # one wave a phrase
+        spread: 1.0                             # walking round the group's order
+        depth: 0.45
+        needs: none
+        select: "group:around"
+    tags:
+      energy: [0.15, 0.55]
+      moods: [dreamy, liquid, cosmic, hypnotic, calm]
+      genre_fit: {ambient: 0.9, downtempo: 0.85, soundtrack: 0.8, trance: 0.7, electronic: 0.65, classical: 0.6,
+                  world: 0.6, piano: 0.5, "*": 0.3}
+      valence: 0.5
+      organic: 0.5
+      density: 0.3
+
+  sparkle:
+    label: Sparkle
+    layers:
+      - id: shimmer
+        fx: triangle
+        phase: time
+        period_s: [3, 1]                        # the look's motion.speed: 0 -> 3 s, 1 -> 1 s
+        spread: 1.0
+        depth: 0.12
+        needs: none
+        select: "group:around"
+    hits:                                       # small, frequent flashes on the DMX fixtures
+      select: "kind:lamp"
+      styles: [soft, downbeat, beat, full]
+      min_strength: 0.15
+      depth: 0.35
+      decay_ms: 90
+    tags:
+      energy: [0.35, 0.8]
+      moods: [bright, playful, glitchy, icy, euphoric]
+      genre_fit: {electronic: 0.8, disco: 0.8, pop: 0.7, house: 0.7, funk: 0.6, latin: 0.6, indie: 0.6, jazz: 0.5,
+                  "*": 0.35}
+      valence: 0.7
+      organic: 0.3
+      density: 0.7
+
+  drop-hit:
+    label: Drop hit
+    layers:
+      - id: pulse
+        fx: swell
+        phase: beat
+        subdivide: true
+        depth: swell
+        needs: beat
+        without_beat: energy
+        attack_ms: 80
+        decay_ms: 250
+        select: "kind:lamp"
+    hits:
+      select: "kind:lamp"
+      styles: []                                # no music.hit flashes...
+      drop: {depth: 1.0, decay_ms: 700}         # ...one big flash at each drop line (DMX)
+    tags:
+      energy: [0.55, 1.0]
+      moods: [euphoric, tense, aggressive, fiery]
+      genre_fit: {dubstep: 0.95, drum-and-bass: 0.9, trance: 0.9, techno: 0.85, electronic: 0.85, house: 0.8,
+                  hip-hop: 0.6, metal: 0.6, pop: 0.5, rock: 0.5, "*": 0.15}
+      valence: 0.6
+      organic: 0.2
+      density: 0.8
+
+  peak-strobe:
+    label: Peak flashes
+    layers:
+      - id: stab
+        fx: square
+        phase: beat                             # on the beat (not subdivided)
+        depth: 0.6
+        needs: beat
+        without_beat: energy
+        attack_ms: 0
+        decay_ms: 250
+        select: "kind:lamp"
+    hits:
+      select: "kind:lamp"
+      styles: [beat, full]
+      min_strength: 0.2
+      depth: 1.0
+      decay_ms: 60
+      drop: {depth: 1.0, decay_ms: 400}
+    caps:
+      flash_hz_max: 3                           # starting point: WCAG 2.3.1's three flashes a second. A big rise
+                                                # (over half) comes at most this often per light; one sooner rises
+                                                # only half way (degraded, never stopped)
+    tags:
+      energy: [0.75, 1.0]
+      moods: [euphoric, aggressive, fiery, glitchy]
+      genre_fit: {techno: 0.9, drum-and-bass: 0.9, dubstep: 0.9, trance: 0.85, electronic: 0.85, house: 0.8,
+                  metal: 0.8, punk: 0.75, rock: 0.6, "*": 0.15}
+      valence: 0.6
+      organic: 0.15
+      density: 0.9

@@ -653,3 +653,267 @@ def test_a_runner_builds_ahead_by_its_own_evaluate_cost(monkeypatch):
         assert rig.snapshot_now()["outputs"]["o-hue"]["extra"]["runner"]["build_ahead_ms"] > 1.0
     finally:
         rig.stop()
+
+
+# -- README S5.23: the Lights page (registration, identify, follow, online) --------------------------------------------
+class FakeSock:
+    """artnet_lan's socket, faked: what would have gone out (nothing touches the network). ``fail``: every send raises
+    it (an absent node: no route)."""
+
+    def __init__(self, fail=None):
+        self.sent, self.fail = [], fail
+
+    def setblocking(self, flag):
+        pass
+
+    def sendto(self, data, addr):
+        if self.fail is not None:
+            raise self.fail
+        self.sent.append((bytes(data), addr))
+        return len(data)
+
+    def recvfrom(self, n):
+        raise BlockingIOError
+
+    def close(self):
+        pass
+
+
+class LightsEngine(FakeEngine):
+    """A FakeEngine with the scenes builder's hand-off methods (looks.LookEngine.identify / set_follow)."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.identified, self.follows = [], []
+
+    def identify(self, fid, seconds, rgb=(255, 255, 255)):
+        self.identified.append((fid, seconds))
+
+    def set_follow(self, mapping):
+        self.follows.append(mapping)
+
+
+HAND = """
+version: 1
+outputs:
+  o-hue: {driver: hue, enabled: false}
+types:
+  sm-hue: {source: builtin}
+fixtures:
+  hue.a: {type: sm-hue, output: o-hue, light: aaa, placement: above}
+"""
+
+BODY = {"label": "Ball spot", "type": "generic-rgbw", "node_ip": "192.0.2.10", "universe": 3, "address": 1,
+        "zone": "north"}
+
+
+def lights_rig(tmp_path, engine=None, sock=None, settings=None, **kw):
+    """A Rig on the real registry (tmp files) and the real Art-Net driver on a fake socket."""
+    (tmp_path / "fixtures.yaml").write_text(HAND)
+    (tmp_path / "patch.yaml").write_text("hue: {}\n")
+    ctx = contract.BrainContext(publish=lambda m: None)
+    kw.setdefault("ping_fn", lambda ip: None)
+    eng = {"engine": engine} if engine is not None else {"palette_fn": lambda t: {"*": [1.0, 0.0, 0.0]},
+                                                         "features_fn": None}
+    rig = om.attach(ctx, fixtures_path=tmp_path / "fixtures.yaml", types_dir=tmp_path / "types",
+                    latency_path=tmp_path / "latency.json", patch_path=tmp_path / "patch.yaml",
+                    driver_kw={"artnet": {"state_file": tmp_path / "nodes.json", "sock": sock or FakeSock()}},
+                    follow_file=tmp_path / "state" / "follow.json", **eng, **kw)
+    rig.configure(settings or {"rig": {"enabled": True, "artnet": {"keepalive_s": 0.2, "idle_eval_hz": 20}},
+                               "looks": {"layers": []}})               # no layers: the palette's colour as it is
+    return rig
+
+
+def stop(rig):
+    aw = rig.stop()
+    if aw is not None:
+        asyncio.run(aw)
+
+
+def test_a_registered_light_starts_sending_at_once_and_stops_when_removed(tmp_path):
+    sock = FakeSock()
+    rig = lights_rig(tmp_path, sock=sock)
+    rig.start()
+    try:
+        assert threads() == [] and rig.snapshot_now()["fixtures"][0]["id"] == "hue.a"
+        got = rig.add_fixture(BODY)
+        fid, oid = "dmx.ball-spot", "dmx-192-0-2-10-u3"
+        assert got["problems"] == [] and got["fixture"]["id"] == fid
+        assert threads() == [f"show-out-{oid}"]                          # no debounce: it runs at once
+        row = got["fixture"]
+        assert set(row) == set(contract.RigFixtureRow.__annotations__)
+        assert (row["node_ip"], row["universe"], row["address"], row["footprint"], row["driver"]) == \
+            ("192.0.2.10", 3, 1, 4, "artnet")
+        assert row["editable"] is True and row["type_label"] == "RGBW light (4 channels)" and row["zone"] == "north"
+        rig.tick(time.monotonic())                                      # show-brain's 1 Hz: an ArtPoll goes out
+        dmx = wait_for(lambda: [d for d, a in sock.sent if d[8:10] == b"\x00\x50"], what="ArtDmx frames")
+        assert all(a == ("192.0.2.10", 6454) for _, a in sock.sent)
+        assert any(d[8:10] == b"\x00\x20" for d, _ in sock.sent)        # ArtPoll, unicast to the node
+        assert dmx[-1][14] == 3 and dmx[-1][15] == 0 and list(dmx[-1][18:22]) == [255, 0, 0, 0]   # red on RGBW
+        rows = {r["id"]: r for r in wait_for(lambda: [r for r in rig.fixture_rows() if r["last_rgb"]] and
+                                             rig.fixture_rows(), what="a row with its last colour")}
+        assert rows[fid]["last_rgb"] == "#ff0000" and rows["hue.a"]["editable"] is False
+        assert rows["hue.a"]["node_ip"] is None and rows["hue.a"]["role"] is None      # no lamps given: own role only
+        assert rig.snapshot_now()["outputs"][oid]["state"] == "sending"
+        if callable(getattr(rig.engine, "identify", None)):            # the real engine's hand-off (looks.py)
+            assert rig.identify(fid, 0.5) == {"ok": True, "seconds": 0.5}
+            wait_for(lambda: [d for d, _ in sock.sent[-3:] if list(d[18:22]) == [0, 0, 0, 255]],
+                     what="full white on RGBW (the W channel)")
+            wait_for(lambda: list(sock.sent[-1][0][18:22]) == [255, 0, 0, 0], what="back to red after it")
+        if callable(getattr(rig.engine, "set_follow", None)):
+            assert rig.set_follow({fid: "off"})["accepted"] is True
+            wait_for(lambda: list(sock.sent[-1][0][18:22]) == [0, 0, 0, 0], what="dark when it doesn't follow")
+            rig.set_follow({fid: None})                                 # forgotten: it follows again
+            wait_for(lambda: list(sock.sent[-1][0][18:22]) == [255, 0, 0, 0], what="red again")
+        got = rig.remove_fixture(fid)
+        assert got == {"removed": fid, "outputs": [oid], "nodes": ["node-192-0-2-10"], "types": ["generic-rgbw"]}
+        assert threads() == [] and [r["id"] for r in rig.fixture_rows()] == ["hue.a"]
+    finally:
+        stop(rig)
+
+
+def test_sending_to_an_absent_node_is_harmless(tmp_path):
+    rig = lights_rig(tmp_path, sock=FakeSock(fail=OSError(113, "No route to host")))
+    rig.start()
+    try:
+        rig.add_fixture(BODY)
+        rig.tick(time.monotonic())
+        d = rig.drivers_of("artnet")[0]
+        wait_for(lambda: d.send_errors >= 3, what="failed sends")
+        st = rig.snapshot_now()["outputs"]["dmx-192-0-2-10-u3"]
+        assert st["state"] == "error" and "No route to host" in st["detail"]
+        assert st["extra"]["runner"]["alive"] is True and st["extra"]["runner"]["errors"] == 0   # it carries on
+    finally:
+        stop(rig)
+
+
+def test_registration_refusals_and_a_rig_without_a_registry(tmp_path):
+    from show_service import fixtures as fx
+    rig = lights_rig(tmp_path)
+    rig.start()
+    try:
+        with pytest.raises(fx.Refused) as e:
+            rig.add_fixture({**BODY, "address": 510})
+        assert e.value.code == "not_added" and e.value.extra["problems"]
+        with pytest.raises(fx.Refused) as e:
+            rig.update_fixture("hue.a", {"label": "x"})
+        assert e.value.code == "in_hand_file"
+        assert not (tmp_path / fx.ADDED_NAME).exists() and threads() == []
+        fid = rig.add_fixture(BODY)["fixture"]["id"]
+        got = rig.update_fixture(fid, {"universe": 4, "label": "Spot"})
+        assert got["fixture"]["universe"] == 4 and got["fixture"]["label"] == "Spot"
+        assert threads() == ["show-out-dmx-192-0-2-10-u4"]
+        assert [t["id"] for t in rig.types_view()][:1] == ["generic-dimmer"]
+    finally:
+        stop(rig)
+    bare = make(FakeRegistry(view({})), FakeEngine())
+    with pytest.raises(ValueError, match="^no_registry: "):
+        bare.add_fixture(BODY)
+    assert bare.types_view()[0]["id"] == "generic-dimmer"
+
+
+def test_identify_through_a_running_output(tmp_path):
+    eng = LightsEngine()
+    rig = lights_rig(tmp_path, engine=eng)
+    rig.start()
+    try:
+        assert rig.identify("nope") == {"ok": False, "why": "There's no light 'nope' in the rig."}
+        no = rig.identify("hue.a")
+        assert no["ok"] is False and "outputs.o-hue.enabled is false" in no["why"]
+        fid = rig.add_fixture(BODY)["fixture"]["id"]
+        assert rig.identify(fid) == {"ok": True, "seconds": om.IDENTIFY_S}
+        assert rig.identify(fid, 600) == {"ok": True, "seconds": om.IDENTIFY_MAX_S}
+        assert eng.identified == [(fid, om.IDENTIFY_S), (fid, om.IDENTIFY_MAX_S)]
+        with pytest.raises(ValueError, match="^bad_request"):
+            rig.identify(fid, "soon")
+        del LightsEngine.identify                                       # an engine without it: degrade
+        try:
+            assert rig.identify(fid) == {"ok": False, "why": "The look engine can't flash a light yet."}
+        finally:
+            LightsEngine.identify = lambda self, fid, seconds, rgb=(255, 255, 255): self.identified.append(
+                (fid, seconds))
+    finally:
+        stop(rig)
+
+
+def test_identify_on_a_hue_lamp_only_while_it_follows():
+    class Hue(FakeDriver):
+        wanted: list = []
+
+        def hue_status(self):
+            return {**om.hue_off(self.output_id, "fake"), "state": "streaming", "wanted": list(self.wanted)}
+    eng = LightsEngine()
+    reg = FakeRegistry(view({"o-hue": out("o-hue", "hue")}))
+    rig = make(reg, eng, factories={"hue": lambda oid, **k: Hue(oid, kind="hue", **k)})
+    rig.start()
+    try:
+        assert rig.identify("lamp.a")["ok"] is False and eng.identified == []
+        Hue.wanted = ["lamp.a"]
+        assert rig.identify("lamp.a", 2) == {"ok": True, "seconds": 2.0} and eng.identified == [("lamp.a", 2.0)]
+        assert rig.identify("screen.x") == {"ok": False, "why": "A screen isn't flashed from here."}
+    finally:
+        Hue.wanted = []
+        rig.stop()
+
+
+def test_follow_is_validated_merged_saved_and_handed_to_the_engine(tmp_path):
+    eng = LightsEngine()
+    rig = lights_rig(tmp_path, engine=eng)
+    rig.start()
+    try:
+        assert eng.follows == [{}]                                      # applied after the first configure
+        fid = rig.add_fixture(BODY)["fixture"]["id"]
+        got = rig.set_follow({fid: "dmx", "dmx.later": {"hex": "#FFAA00", "bri": 40}})
+        assert got == {"accepted": True, "fixtures": {fid: "dmx", "dmx.later": {"hex": "#ffaa00", "bri": 40}},
+                       "unknown": ["dmx.later"], "saved": True}
+        assert eng.follows[-1] == got["fixtures"]
+        saved = json.loads((tmp_path / "state" / "follow.json").read_text())
+        assert saved == {"v": 1, "fixtures": got["fixtures"]}
+        for bad in ({fid: "on"}, {fid: {"hex": "red"}}, {fid: {"hex": "#000000", "bri": 101}},
+                    {fid: {"hex": "#000000", "extra": 1}}, ["dmx"]):
+            with pytest.raises(ValueError):
+                rig.set_follow(bad)
+        assert rig.follow_view()["fixtures"] == got["fixtures"]        # all or nothing: unchanged
+        assert rig.set_follow({"dmx.later": None, fid: {"hex": "#102030"}})["fixtures"] == \
+            {fid: {"hex": "#102030", "bri": 100}}
+        assert next(r for r in rig.fixture_rows() if r["id"] == fid)["follow"] == {"hex": "#102030", "bri": 100}
+        n = len(eng.follows)
+        rig.configure({"rig": {"enabled": True}, "looks": {"master": 0.5}})   # a new look config: re-applied
+        assert len(eng.follows) == n + 1 and eng.follows[-1] == {fid: {"hex": "#102030", "bri": 100}}
+        rig.remove_fixture(fid)                                         # its follow entry goes with it
+        assert rig.follow_view() == {"fixtures": {}}
+    finally:
+        stop(rig)
+    (tmp_path / "state" / "follow.json").write_text(json.dumps({"v": 1, "fixtures": {"a": "off", "b": "junk"}}))
+    rig2 = lights_rig(tmp_path, engine=LightsEngine())                   # a restart reads what was kept
+    assert rig2.follow_view() == {"fixtures": {"a": "off"}}
+    rig3 = make(FakeRegistry(view({})), FakeEngine())                    # no follow_file: memory only, no engine
+    assert rig3.set_follow({"x": "dmx"})["saved"] is False and rig3.follow_view() == {"fixtures": {"x": "dmx"}}
+
+
+def test_online_pings_each_node_address_off_the_frame_path(tmp_path):
+    asked = []
+
+    def ping(ip):
+        asked.append((threading.current_thread().name, ip))
+        return ip == "192.0.2.10"
+    rig = lights_rig(tmp_path, ping_fn=ping, online_check_s=0.05)
+    rig.start()
+    try:
+        rig.add_fixture(BODY)
+        rig.add_fixture({**BODY, "label": "Far", "node_ip": "192.0.2.99"})
+        rows = wait_for(lambda: (lambda rs: rs if all(r["online"] is not None for r in rs if r["node_ip"]) else None)(
+            rig.fixture_rows()), what="both nodes checked")
+        on = {r["id"]: r["online"] for r in rows}
+        assert on == {"hue.a": None, "dmx.ball-spot": True, "dmx.far": False}
+        assert {n for n, _ in asked} == {"show-rig-online"} and {ip for _, ip in asked} >= {"192.0.2.10", "192.0.2.99"}
+        assert rig.snapshot_now()["online"]["rounds"] >= 1
+    finally:
+        stop(rig)
+    time.sleep(0.1)
+    assert not [t for t in threading.enumerate() if t.name == "show-rig-online" and t.is_alive()]
+
+
+def test_ping_once():
+    assert om.ping_once("not-an-ip") is None and om.ping_once("-c9") is None
+    assert om.ping_once("127.0.0.1") in (True, None)                     # None: no ping on this machine

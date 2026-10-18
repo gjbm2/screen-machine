@@ -73,8 +73,9 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
   artnet_out's neutral colour and depth. ``ctx.set_look_out`` fans out to Art-Net out's ``set_look`` and the rig's
   (each guarded, each with only its own keys: the composer's ``plan`` is Art-Net out's, ``beat_depth`` the rig's;
   README S5.18); the ``music.hit`` bodies that reach ``Clock.observe_hit`` also reach ``Rig.on_hit`` (guard
-  "rig.hit"). The registry reads config/room/fixtures.yaml, the latency file (``--latency-file``) and artnet_out's
-  patch.yaml; nodes.json goes to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the brain
+  "rig.hit"). The registry reads config/room/fixtures.yaml (with the Lights page's fixtures.added.yaml merged under
+  it, README S5.23), the latency file (``--latency-file``) and artnet_out's patch.yaml; nodes.json and follow.json
+  (who follows the music) go to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the brain
   stops the rig first (runners, then drivers: Hue gives its area back), then Art-Net out, rx, bus.
 """
 
@@ -438,7 +439,8 @@ class Show:
                 "clock": c if c is not None and hasattr(c, "snapshot") else None,
                 "features_fn": f.latest if f is not None else None, "neutral": neutral,
                 "latency_path": pathlib.Path(self.cfg.latency_file),
-                **({"patch_path": pathlib.Path(patch_path)} if patch_path else {}), "driver_kw": driver_kw}
+                **({"patch_path": pathlib.Path(patch_path)} if patch_path else {}), "driver_kw": driver_kw,
+                "follow_file": pathlib.Path(self.opts.state_dir) / "follow.json"}       # README S5.23
 
     def _build_brain(self, patch_path: Any) -> None:
         """README S3.4 steps 3-5: the ring and the note tap (show-rx writers), the context, the Brain and its

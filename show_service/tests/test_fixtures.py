@@ -95,7 +95,7 @@ def test_the_real_fixtures_yaml_loads_clean_and_matches_patch_yaml():
         assert f["latency"]["source"]["rise"] == "unset"                     # nothing measured for a lamp yet
     assert all(o["enabled"] is False for o in v["outputs"].values())
     assert v["groups"]["around"] == ["hue.ne", "hue.se", "hue.sw", "hue.nw"]
-    assert v["nodes"] == {} and sorted(v["types"]) == sorted(fx.BUILTIN_TYPES)
+    assert v["nodes"] == {} and sorted(v["types"]) == ["sm-hue", "sm-screen"]
     assert all(fx._is_id(x) for k in ("outputs", "types", "fixtures", "groups") for x in v[k])
     hs = fx.hue_settings(v["outputs"]["hue"], patch)
     assert hs == {**{k: patch["hue"][k] for k in fx.HUE_KEYS}, "streamer": patch["hue"].get("streamer", "room"),
@@ -119,7 +119,8 @@ def test_builtin_types():
     assert fx.BUILTIN_TYPES["sm-screen"]["kind"] == "screen" and fx.BUILTIN_TYPES["sm-screen"]["attrs"] == ["colour"]
     assert fx.BUILTIN_TYPES["sm-hue"]["kind"] == "lamp"
     assert fx.BUILTIN_TYPES["sm-hue"]["attrs"] == ["intensity", "colour"]
-    assert all(t["footprint"] == 0 and t["channels"] == [] for t in fx.BUILTIN_TYPES.values())
+    assert all(fx.BUILTIN_TYPES[t]["footprint"] == 0 and fx.BUILTIN_TYPES[t]["channels"] == []
+               for t in ("sm-screen", "sm-hue"))
 
 
 # -- OFL types through the registry ------------------------------------------------------------------------------------
@@ -601,3 +602,235 @@ def test_no_config_names_in_code(module):
     hits = [n.value for n in ast.walk(ast.parse(src.read_text()))
             if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in names]
     assert hits == [], f"{module} names config things in code: {sorted(set(hits))}"
+
+
+# -- README S5.23: the generic types, the added file and the Registrar -------------------------------------------------
+def test_generic_types_have_channels_labels_and_encode():
+    from show_service import colour_mix
+    for tid, (label, chans) in fx.GENERIC_TYPES.items():
+        t = fx.BUILTIN_TYPES[tid]
+        assert t["source"] == "builtin" and t["kind"] == "lamp" and fx.TYPE_LABELS[tid] == label
+        assert t["footprint"] == len(chans) == len(t["channels"]) and f"({len(chans)} channel" in label
+        assert [c["name"] for c in t["channels"]] == list(chans) and all(c["default"] == 0 for c in t["channels"])
+        assert set(t) == set(contract.TypeInfo.__annotations__)
+    assert fx.BUILTIN_TYPES["generic-dimmer"]["attrs"] == ["intensity"]
+    assert fx.BUILTIN_TYPES["generic-mover"]["attrs"] == ["intensity", "colour"]
+    assert [c["attr"] for c in fx.BUILTIN_TYPES["generic-mover"]["channels"]] == ["pan", "tilt", "intensity",
+                                                                                "emitter", "emitter", "emitter"]
+    f = {"id": "x", "wb": {}, "pin": {}, "curve": None}
+    assert colour_mix.encode(f, fx.BUILTIN_TYPES["generic-rgbw"], 1.0, [1.0, 0.0, 0.0]) == bytes([255, 0, 0, 0])
+    assert colour_mix.encode(f, fx.BUILTIN_TYPES["generic-rgbw"], 1.0, [1.0, 1.0, 1.0]) == bytes([0, 0, 0, 255])
+    assert colour_mix.encode(f, fx.BUILTIN_TYPES["generic-drgbs"], 0.5, [0.0, 0.0, 1.0])[:4] == bytes([128, 0, 0, 255])
+    assert colour_mix.encode(f, fx.BUILTIN_TYPES["generic-drgbs"], 1.0, [0.0, 0.0, 1.0])[4] == 0     # no strobe
+    uv = colour_mix.encode(f, fx.BUILTIN_TYPES["generic-rgbwauv"], 1.0, [1.0, 0.5, 0.0])
+    assert len(uv) == 6 and uv[5] == 0 and uv[0] == 255                                     # uv never takes part
+
+
+HAND = """
+version: 1
+outputs:
+  lamps: {driver: hue, enabled: false}
+  dmx-a: {driver: artnet, enabled: false, node: node-1, port_address: 1}
+nodes:
+  node-1: {last_ip: 192.0.2.10}
+types:
+  sm-hue: {source: builtin}
+  par: {source: ofl, file: ofl/test/par.json, mode: "Pro 7"}
+fixtures:
+  l1: {type: sm-hue, output: lamps, light: aaa, placement: above}
+"""
+
+
+@pytest.fixture
+def hand(rigdir):
+    (rigdir / "fixtures.yaml").write_text(HAND)
+    return rigdir
+
+
+def registrar(d, **kw):
+    kw.setdefault("lamps", LAMPS)
+    return fx.Registrar(d / "fixtures.yaml", types_dir=d / "types", **kw)
+
+
+def added(d) -> dict:
+    return yaml.safe_load((d / fx.ADDED_NAME).read_text())
+
+
+def test_merge_added_hand_wins_and_reports():
+    probs: list[str] = []
+    h = {"version": 1, "fixtures": {"a": {"type": "t"}}, "outputs": {"o": {}}}
+    a = {"version": 2, "fixtures": {"a": {"type": "other"}, "b": {"type": "t"}}, "nodes": {"n": {}}, "groups": {}}
+    raw, ids = fx.merge_added(h, a, probs)
+    assert raw["fixtures"] == {"a": {"type": "t"}, "b": {"type": "t"}} and raw["nodes"] == {"n": {}}
+    assert ids == {"b"} and h["fixtures"] == {"a": {"type": "t"}}                    # never changes its inputs
+    assert "fixtures.added.yaml: fixtures.a: also in fixtures.yaml: the hand file's is used" in probs
+    assert any("version: 2" in p for p in probs) and any(p.startswith("fixtures.added.yaml: groups:") for p in probs)
+
+
+def test_the_registry_merges_the_added_file_and_reloads_on_it(hand):
+    r = fx.Registry(hand / "fixtures.yaml", types_dir=hand / "types", latency_path=hand / "l.json",
+                    patch_path=hand / "p.yaml")
+    assert r.added_path == hand / fx.ADDED_NAME and r.poll() is True and r.added_ids == frozenset()
+    rev0 = r.view()["revision"]
+    fid, probs, _ = registrar(hand).add({"label": "Ball spot", "type": "generic-rgbw", "node_ip": "192.0.2.10",
+                                         "universe": 1, "address": 1})
+    assert settle(r) is True
+    v = r.view()
+    assert v["error"] is None and v["problems"] == [] and v["revision"] != rev0
+    assert v["fixtures"][fid]["output"] == "dmx-a" and r.added_ids == {fid}
+    assert fx.load(hand / "fixtures.yaml", types_dir=hand / "types")["fixtures"].keys() == {"l1"}   # hand alone
+    bump(hand / fx.ADDED_NAME, "fixtures: [oops")                       # a broken added file: the hand file alone
+    assert settle(r) is True
+    v = r.view()
+    assert v["error"] is None and set(v["fixtures"]) == {"l1"} and r.added_ids == frozenset()
+    assert any(p.startswith("fixtures.added.yaml: ") and "left out" in p for p in v["problems"])
+
+
+def test_add_makes_the_node_output_and_type_once_and_never_touches_the_hand_file(hand):
+    before = (hand / "fixtures.yaml").read_bytes()
+    r = registrar(hand)
+    fid, probs, view = r.add({"label": "Ball spot", "type": "generic-rgbw", "node_ip": " 192.168.1.50 ",
+                              "universe": "2", "address": 1, "placement": "above", "zone": "north", "role": ""})
+    assert fid == "dmx.ball-spot" and probs == []
+    doc = added(hand)
+    assert list(doc) == ["version", "nodes", "outputs", "types", "fixtures"] and doc["version"] == 1
+    assert doc["nodes"] == {"node-192-168-1-50": {"last_ip": "192.168.1.50"}}
+    assert doc["outputs"] == {"dmx-192-168-1-50-u2": {"driver": "artnet", "enabled": True,
+                                                      "node": "node-192-168-1-50", "port_address": 2}}
+    assert doc["types"] == {"generic-rgbw": {"source": "builtin"}}
+    assert doc["fixtures"][fid] == {"label": "Ball spot", "type": "generic-rgbw", "output": "dmx-192-168-1-50-u2",
+                                    "address": 1, "placement": "above", "zone": "north"}
+    assert (hand / fx.ADDED_NAME).read_text().startswith(fx.ADDED_HEADER)
+    assert view["fixtures"][fid]["kind"] == "lamp" and view["outputs"]["dmx-192-168-1-50-u2"]["enabled"] is True
+    # a second light on the same node and universe reuses both; the same label gets a new id; an overlap is a line
+    fid2, probs2, _ = r.add({"label": "Ball spot", "type": "par", "node_ip": "192.168.1.50", "universe": 2,
+                             "address": 3})
+    assert fid2 == "dmx.ball-spot-2" and len(added(hand)["outputs"]) == 1 and len(added(hand)["nodes"]) == 1
+    assert probs2 == ["fixtures.dmx.ball-spot-2: channels 3-9 overlap fixtures.dmx.ball-spot (1-4): both kept; the "
+                      "later address wins on the shared channels"]
+    assert "par" not in added(hand)["types"]                              # the hand file's OFL type: used as is
+    # the hand file's node and output (switched off there) are reused, with a line saying where to switch it on
+    fid3, probs3, _ = r.add({"label": "Hand node", "type": "generic-rgb", "node_ip": "192.0.2.10", "universe": 1,
+                             "address": 100})
+    assert added(hand)["fixtures"][fid3]["output"] == "dmx-a" and "node-1" not in added(hand)["nodes"]
+    assert probs3 == ["outputs.dmx-a: switched off in config/room/fixtures.yaml (enabled: false): switch it on there "
+                      "and this light sends"]
+    assert (hand / "fixtures.yaml").read_bytes() == before
+    assert not [p for p in hand.iterdir() if p.name.endswith(".tmp")]
+    v = fx.load(hand / "fixtures.yaml", types_dir=hand / "types", added_path=hand / fx.ADDED_NAME)
+    assert {fid, fid2, fid3} <= set(v["fixtures"])
+
+
+@pytest.mark.parametrize("body,code,where", [
+    ("not a mapping", "bad_request", "The body"),
+    ({"type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 1, "address": 1}, "bad_request", "label"),
+    ({"label": "x", "type": "sm-hue", "node_ip": "192.0.2.9", "universe": 1, "address": 1}, "unknown_type", "type"),
+    ({"label": "x", "type": "nope", "node_ip": "192.0.2.9", "universe": 1, "address": 1}, "unknown_type", "type"),
+    ({"label": "x", "type": "generic-rgb", "node_ip": "127.0.0.1", "universe": 1, "address": 1}, "bad_request",
+     "node_ip"),
+    ({"label": "x", "type": "generic-rgb", "node_ip": "lamp.local", "universe": 1, "address": 1}, "bad_request",
+     "node_ip"),
+    ({"label": "x", "type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 0, "address": 1}, "bad_request",
+     "universe"),
+    ({"label": "x", "type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 1, "address": 513}, "bad_request",
+     "address"),
+    ({"label": "x", "type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 1, "address": 1, "zone": 5},
+     "bad_request", "zone"),
+    ({"label": "x", "type": "par", "node_ip": "192.0.2.9", "universe": 1, "address": 510}, "not_added",
+     "That light can't be added as asked: fixtures.dmx.x: address 510 + footprint 7 runs past 512: left out"),
+])
+def test_add_refuses_and_writes_nothing(hand, body, code, where):
+    with pytest.raises(fx.Refused) as e:
+        registrar(hand).add(body)
+    assert e.value.code == code and where in e.value.detail, e.value.detail
+    assert str(e.value).startswith(f"{code}: ")
+    assert not (hand / fx.ADDED_NAME).exists()
+    if code == "unknown_type":
+        assert [c["id"] for c in e.value.extra["choices"]][:2] == ["generic-dimmer", "generic-rgb"]
+        assert "par" in [c["id"] for c in e.value.extra["choices"]]
+    if code == "not_added":
+        assert e.value.extra["problems"] == [where.split("asked: ")[1]]
+
+
+def test_update_moves_clears_and_prunes(hand):
+    r = registrar(hand)
+    fid, _, _ = r.add({"label": "Spot", "type": "generic-drgb", "node_ip": "192.0.2.50", "universe": 1,
+                       "address": 1, "zone": "south"})
+    fid2, probs, view = r.update(fid, {"universe": 4, "zone": None, "label": "Ball spot", "colour": "red"})
+    assert fid2 == fid and probs == ["colour: not something a light takes here: ignored"]
+    doc = added(hand)
+    assert doc["fixtures"][fid] == {"label": "Ball spot", "type": "generic-drgb", "output": "dmx-192-0-2-50-u4",
+                                    "address": 1}
+    assert list(doc["outputs"]) == ["dmx-192-0-2-50-u4"] and list(doc["nodes"]) == ["node-192-0-2-50"]  # u1 went
+    assert view["fixtures"][fid]["label"] == "Ball spot" and view["fixtures"][fid]["zone"] is None
+    r.update(fid, {"type": "generic-rgbw", "node_ip": "192.0.2.51"})
+    doc = added(hand)
+    assert list(doc["types"]) == ["generic-rgbw"] and list(doc["nodes"]) == ["node-192-0-2-51"]
+    assert doc["outputs"]["dmx-192-0-2-51-u4"]["node"] == "node-192-0-2-51"
+    with pytest.raises(fx.Refused) as e:
+        r.update("l1", {"label": "x"})
+    assert e.value.code == "in_hand_file"
+    with pytest.raises(fx.Refused) as e:
+        r.update("dmx.nope", {"label": "x"})
+    assert e.value.code == "unknown_fixture" and e.value.extra["choices"] == [fid]
+    before = (hand / fx.ADDED_NAME).read_bytes()
+    with pytest.raises(fx.Refused):
+        r.update(fid, {"address": 511})                                   # 4 channels from 511: past 512
+    assert (hand / fx.ADDED_NAME).read_bytes() == before
+
+
+def test_remove_prunes_what_only_it_used(hand):
+    r = registrar(hand)
+    a, _, _ = r.add({"label": "A", "type": "generic-rgb", "node_ip": "192.0.2.60", "universe": 1, "address": 1})
+    b, _, _ = r.add({"label": "B", "type": "generic-rgb", "node_ip": "192.0.2.60", "universe": 2, "address": 1})
+    c, _, _ = r.add({"label": "C", "type": "generic-rgb", "node_ip": "192.0.2.10", "universe": 1, "address": 9})
+    assert r.remove(a) == {"removed": a, "outputs": ["dmx-192-0-2-60-u1"], "nodes": [], "types": []}
+    assert r.remove(b) == {"removed": b, "outputs": ["dmx-192-0-2-60-u2"], "nodes": ["node-192-0-2-60"],
+                           "types": []}
+    assert r.remove(c) == {"removed": c, "outputs": [], "nodes": [], "types": ["generic-rgb"]}   # dmx-a is the hand's
+    doc = added(hand)
+    assert doc == {"version": 1, "nodes": {}, "outputs": {}, "types": {}, "fixtures": {}}
+    with pytest.raises(fx.Refused) as e:
+        r.remove(a)
+    assert e.value.code == "unknown_fixture"
+    with pytest.raises(fx.Refused) as e:
+        r.remove("l1")
+    assert e.value.code == "in_hand_file"
+
+
+def test_a_broken_hand_or_added_file_refuses_writes(hand):
+    (hand / fx.ADDED_NAME).write_text("fixtures: [oops")
+    with pytest.raises(fx.Refused) as e:
+        registrar(hand).add({"label": "x", "type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 1, "address": 1})
+    assert e.value.code == "added_unreadable" and (hand / fx.ADDED_NAME).read_text() == "fixtures: [oops"
+    (hand / fx.ADDED_NAME).unlink()
+    (hand / "fixtures.yaml").write_text("outputs: [oops")
+    with pytest.raises(fx.Refused) as e:
+        registrar(hand).add({"label": "x", "type": "generic-rgb", "node_ip": "192.0.2.9", "universe": 1, "address": 1})
+    assert e.value.code == "fixtures_unreadable" and not (hand / fx.ADDED_NAME).exists()
+
+
+def test_type_rows_and_labels(rigdir):
+    rows = fx.type_rows(None)
+    assert [r["id"] for r in rows] == list(fx.GENERIC_TYPES)
+    assert rows[2] == {"id": "generic-rgbw", "label": "RGBW light (4 channels)", "source": "builtin", "footprint": 4,
+                       "channels": ["Red", "Green", "Blue", "White"], "kind": "lamp"}
+    assert all(set(r) == set(contract.RigTypeRow.__annotations__) for r in rows)
+    v = load(rigdir, DMX)
+    ids = [r["id"] for r in fx.type_rows(v)]
+    assert ids[-2:] == ["par", "spot"] and "sm-hue" not in ids
+    par = next(r for r in fx.type_rows(v) if r["id"] == "par")
+    assert par["label"] == "par (Pro 7, 7 channels)" and par["source"] == "ofl" and len(par["channels"]) == 7
+    assert fx.type_label(fx.BUILTIN_TYPES["sm-hue"]) == "Hue colour lamp" and fx.type_label(None) is None
+    assert fx.role_of({"kind": "lamp", "role": "key"}) == "key" and fx.role_of({"kind": "screen"}) is None
+
+
+def test_the_real_added_file_reads():
+    """The repo's config/room/fixtures.added.yaml: the header, version 1, and the real registry with it merged."""
+    p = contract.FIXTURES_ADDED_FILE
+    assert p == fx.added_path_for(contract.FIXTURES_FILE)
+    assert p.read_text().startswith(fx.ADDED_HEADER)
+    doc = yaml.safe_load(p.read_text())
+    assert doc["version"] == 1 and set(doc) <= {"version", *fx.ADDED_SECTIONS}
+    v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=p)
+    assert v["error"] is None and not [x for x in v["problems"] if x.startswith(fx.ADDED_NAME)], v["problems"]

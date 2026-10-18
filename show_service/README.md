@@ -4573,6 +4573,7 @@ The builtin types:
 |---|---|---|---|
 | `sm-screen` | screen | colour | `showbus` (P4). Never evaluated in Stage 5 |
 | `sm-hue` | lamp | intensity, colour | `hue`: `FixtureFrame.rgb` → room_service.hue.stream's `xy_bri(rgb, gamma)` |
+| `generic-*` | lamp | intensity, colour (the dimmer: intensity) | `artnet`: channelled types with no OFL file (RGB, RGBW, ..., a mover; S5.23) |
 
 **OFL → channels** (`fixtures.load_ofl`; OFL's schema: `availableChannels`, `modes[].channels`, `wheels`):
 - Each mode channel becomes an `AttrChannel` by its first capability:
@@ -6756,3 +6757,120 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
   fire a bar, the phrase_line sign, key_change, settings and the real show.yaml); test_director (the listener's genre
   over the ML's, intensity as the slewed genre term, transitions and change under a person's or the feel's own);
   test_api (the card's listening block); test_main (the `cues` component and its log path).
+
+### S5.23 Registering lights (18 Oct; the owner's ask; the registry builder)
+
+The Lights page (`/lights`, frontend) registers DMX lights without hand-editing fixtures.yaml; room_service's
+DMX-lights device says which of them follow the music. Docs: SHOW_ENGINE §9.2 "Registering lights". Files:
+fixtures.py, outputs.py, api.py, contract.py (FIXTURES_ADDED_FILE, FOLLOW_STATE_FILE, FOLLOW_WORDS, RigFixtureRow,
+RigTypeRow), `__main__` (follow.json), `config/room/fixtures.added.yaml` (new).
+
+- **The added file** `config/room/fixtures.added.yaml`: fixtures.yaml's schema (S5.2), its `nodes`, `outputs`, `types`
+  and `fixtures` only, written **only by the API** (fixtures.Registrar), whole and atomically (tmp, fsync,
+  os.replace), with a header saying so. The Registry merges it under the hand file (the hand file wins on an id clash,
+  a problem line; one that doesn't read is a problem line and the hand file loads alone) and hot-reloads on it. Code
+  never writes fixtures.yaml. Every write is checked first with the loader itself (`_Builder`): a light it would leave
+  out is refused with its problem lines and nothing is written.
+- **A light** is `{label, type, node_ip, universe (1..32767: the Art-Net Port-Address; 0 is room's own), address
+  (1..512), placement?, role?, zone?}`. Its id is `dmx.<label, slugged>` (unique). The node with that `last_ip` (the
+  hand file's first) is used, else `node-<ip dashed>` is made (`last_ip` only: any reply there counts); the artnet
+  output for (node, universe) is used, else `dmx-<ip dashed>-u<universe>` is made, `enabled: true`. A hand-file output
+  that is off stays off (a problem line says to switch it on there). Removing or moving a light removes the added
+  file's outputs, nodes and generic type declarations nothing uses any more. Hand-file lights are read only (409).
+- **Generic types** (builtin, no OFL file; `fixtures.GENERIC_TYPES`): `generic-dimmer` (D), `generic-rgb`,
+  `generic-rgbw`, `generic-rgba`, `generic-rgbwa`, `generic-rgbwauv`, `generic-drgb`, `generic-drgbw`, `generic-drgbs`
+  (D, R, G, B, Strobe), `generic-mover` (Pan, Tilt, D, R, G, B), each with a plain label ("RGBW light (4 channels)").
+  Every channel defaults to 0: Strobe is a shutter held at 0 ("no strobe"), Pan and Tilt aren't driven (a fixture's
+  `pin` sets them), UV never takes part. The colour solve is colour_mix's (RGBW: the shared white; RGBA and the rest:
+  least squares on the starting-point emitters).
+- **Routes** (show_service :8703; the pages reach them through room_service's `/show/*` pass-through, any method,
+  with CORS preflight: `<room>/show/api/v1/...`, `/rs/show/...` over HTTPS):
+  - `GET /api/v1/rig` gains `fixtures`: one contract.RigFixtureRow per fixture, `{id, label, kind, type, type_label,
+    output, driver, node_ip, universe, address, footprint, placement, role, zone, follow, online, last_rgb ("#rrggbb"
+    or null), editable}`, plus `follow` {file, error, count} and `online` {rounds, every_s}.
+  - `GET /api/v1/rig/types` -> `[{id, label, source, footprint, channels: [name], kind}]`: the generic types, then
+    fixtures.yaml's OFL types with DMX channels.
+  - `POST /api/v1/rig/fixtures` -> `{fixture: <row>, problems: [line]}`; `PUT /api/v1/rig/fixtures/{id}` (the same
+    keys, each optional; null clears placement, role or zone) -> the same; `DELETE /api/v1/rig/fixtures/{id}` ->
+    `{removed: id, outputs, nodes, types}`. Refusals: `{error, detail, problems?, choices?}`, 400 (`bad_request`,
+    `unknown_type` with the type rows as `choices`, `not_added` with `problems`), 404 `unknown_fixture`, 409
+    `in_hand_file`, 503 `unavailable`/`no_registry`. The registry reloads at once (no debounce: the file was replaced
+    whole), so an output made for a light starts sending in the same call.
+  - `POST /api/v1/rig/fixtures/{id}/identify {seconds?: 3}` (at most 30) -> `{ok: true, seconds}` or `{ok: false,
+    why}`: `LookEngine.identify` (full white for the seconds, whatever it was doing) and a runner wake. Only through a
+    running output; a Hue lamp only while it follows the music from here.
+  - `POST /api/v1/rig/follow {fixtures: {id: "dmx" | "off" | {hex: "#rrggbb", bri: 0..100} | null}}` (room's
+    DMX-lights device) -> `{accepted: true, fixtures: <the whole mapping>, unknown: [ids not registered, kept], saved}`;
+    merged (null forgets an id, which then follows: the engine's default), all or nothing (400 `bad_follow` with
+    `choices`), saved in the state dir's `follow.json` (atomic, read at start) and handed whole to
+    `LookEngine.set_follow` at once and after every engine configure. `GET /api/v1/rig/follow` -> `{fixtures}`.
+- **Online**: thread `show-rig-online` pings each node address (`ping -c1 -W1`, no shell) every 10 s
+  (`outputs.ONLINE_CHECK_S`), off the frame path; a row's `online` is the last answer (null: no node address, or not
+  checked yet). It gates nothing.
+- **What sends**: show.yaml `rig.enabled` (true) and the output's `enabled` (true for a made one). Art-Net goes out
+  unicast whenever the output is on (house look or follow value with no vibe, keepalive 1 s; the beat grid with one),
+  whatever ping or ArtPollReplies say (replies only through WSL NAT until ca's relay sets `reply_bind`), so a node
+  works the moment it is plugged in. Sending to an absent node is a counted send error logged at most every 30 s
+  (state `error` after 3 in a row); the runner carries on.
+- **Tests:** test_fixtures (generic types and their encode, the merge and its clash lines, the registry reloading on
+  the added file and a broken one, add / update / remove with reuse, pruning and refusals that write nothing, the
+  hand file untouched, type rows, the real added file); test_outputs (a registered light sending at once on a fake
+  socket and stopping when removed, identify and follow through the real engine, an absent node, refusals, identify
+  on Hue and through fakes, follow saved and restored, online pings on their own thread); test_api (every new route,
+  with and without a rig).
+
+### S5.24 Light scenes (18 Oct; the owner's ask; the scenes builder)
+
+The lamps get scenes the way the screens do: named ways to move, tagged on the screens' preset scales, picked by the
+director from the music. Docs: SHOW_ENGINE §9.1 "Light scenes". Files: `show_service/light_scenes.py` (new),
+`config/live/light_scenes.yaml` (new), looks.py, director.py, contract.py (LookData's three fields).
+
+- **The catalogue** (`config/live/light_scenes.yaml`, hot-reloaded; `light_scenes.Catalogue`, one per process:
+  `shared()`): `scenes.<name>` = `label`, `layers` (show.yaml `looks.layers` entries, the same keys and words), optional
+  `hits` (`looks.hits`' keys plus `drop: {depth, decay_ms}`; no `hits`: no flashes), optional `caps.flash_hz_max`, and
+  `tags` (energy [lo, hi], vocab moods, `genre_fit` over the vocab genre words with `"*"` filling the rest, valence,
+  organic, density, weight). A bad file keeps the last good scenes; a bad scene is left out with a problem line. Ten
+  starting scenes: still glow, slow breathe, gentle swell on the downbeats, beat pulse (show.yaml's own pulse and
+  hits), half-time swell, chase around the room (`group:around`, spread 1), slow wave across the room (phrase), sparkle
+  (DMX hits), drop hit (a drop flash only), peak flashes (a beat square, DMX hits, a drop flash, `flash_hz_max` 3).
+  Every number is a starting point to tune by eye.
+- **Scoring and the pick**: stream_service/tags.py's `scene_weight` against room.direction, the module loaded by file
+  path (never `import stream_service`); a weighted random draw (`random.Random(LIGHT_SCENE_SEED)`), never the scene
+  showing now while another is there. The why is short words: what fits ("energy 0.6, euphoric, techno"), else "a
+  change", after the reason ("a new song: ...").
+- **The director** picks while a palette resolves (a feel, or `director.no_feel`): when a feel is set, at every look
+  that lands (`_land`), at a song change and on Next look (with no feel no look lands, so those two pick at once),
+  and when none is set yet or the one showing left the catalogue. Never while Keep this look holds, except a person's
+  own Next look. Neutral (no palette): null. room.look gains `light_scene`, `light_scene_why` and
+  `light_scene_drop` (contract.LightSceneDrop {id, at_ms, strength}); a scene change publishes room.look at once. The
+  snapshot gains `light_scene` {name, label, why, age_s, drop, picks, drops, catalogue}; each pick and drop is logged
+  (`light_scene`, `light_drop`, with the weights and the direction).
+- **Drops**: every drop the director hears (structure's `drop`, and a cue's forecast `drop` at its at_ms once 3a hands
+  cues to `ctx.on_music_event`) becomes `light_scene_drop` (one a beat: a forecast and structure's own drop at the
+  same line are one), whatever the peak tokens say. The engine takes it once per id (`trigger_hit(at_s, strength)`):
+  the running scene's `hits.drop` flashes its fixtures on outputs that take hits (DMX; Hue never), held for each
+  fixture's min_pulse from the line at its own latency (a line ahead lands on it), then decaying; over the pre-drop dip,
+  never under House, Low or a held frame. The director's own token-gated unison hit (LookData.hit) is unchanged.
+- **The engine** compiles one program per scene at `configure` and again when the catalogue changes (a subscriber,
+  called on show-brain by whoever polls). The look's `light_scene` picks the program: its layers replace
+  `looks.layers`, its hits `looks.hits` and its `flash_hz_max` looks.caps'; none, or a name that isn't compiled: exactly
+  as before. A change crossfades per output over the look's transition (the old scene's depths fade out as the new
+  one's fade in; the larger share's hits). Scene layer ids are `<scene>/<id>`. A scene's problems are
+  `stats()["program"]["scenes"]["problems"]`, never `configure`'s return. Hue keeps its caps whatever a scene says.
+- **The registry builder's hand-off** (contract A): `LookEngine.identify(fixture_id, seconds, rgb=(255, 255, 255))`
+  (that fixture at full rgb until it expires, inactive frames too, bypassing layers, hits, master and caps; seconds
+  <= 0 ends it; True when the engine evaluates it now) and `LookEngine.set_follow(mapping, *, merge=False)` (outputs.Rig
+  hands its whole mapping: "dmx" follows, "off" is dark, {hex, bri} is that colour steady, still through the output's
+  rise limit; an id not in it follows; returns what was accepted). `follow()` reads it back; `stats()` gains
+  `identify`, `follow` and `drops`, and each output's `light_scene`.
+- **Not changed:** artnet_out.py (the virtual Maestro, room's Hue path today) and show.yaml. Until Hue moves to the rig
+  (fixtures.yaml `outputs.hue.enabled`), the scenes reach only rig outputs (the Lights page's DMX lights).
+- **Costs** (loaded host, A/B against the committed looks.py in the same run): `evaluate` p50 +5-15 µs for 4 Hue lamps
+  (~80 -> ~90 µs) and +10-35 µs for 32 RGBW pars (~525 -> ~550 µs); p95 on this host was all noise (0.2-10 ms).
+- **Tests:** test_light_scenes (new: load, labels, the genre fill, tags.py by path, problems, the last good on a
+  broken file, hot reload and weak subscribers, scoring, the seeded draw and no repeats, the why, the real catalogue
+  loading clean and compiling against the real rig and picking by the music, the engine recompiling on a change; the
+  director picking on a feel, Next look under Keep, a song change and Next with no feel, Keep holding, an empty
+  catalogue, a scene leaving, and drops once a beat into the engine); test_looks (scenes replacing layers, the
+  crossfade, a scene's hits and cap, drop flashes and LookData's drop once per id, identify, follow and its rise
+  limit; the stats shape); test_director (the name scan covers light_scenes.py, and the scenes' names and layer ids).

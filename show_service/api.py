@@ -29,6 +29,14 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
   re-sync; the driver's own word and the rest stay in ``GET /api/v1/rig`` ``.hue``. With no hue output
   on, stream and status answer ``idle`` with a ``detail`` naming the switch, and release answers as Stage 3 did.
   Without a rig component: ``GET /api/v1/rig`` answers ``{"enabled": false, "why"}``.
+  - The Lights page (README S5.23): ``GET /api/v1/rig`` carries ``fixtures`` (contract.RigFixtureRow each), ``GET
+    /api/v1/rig/types`` (a list of contract.RigTypeRow), ``POST /api/v1/rig/fixtures`` and ``PUT``/``DELETE
+    /api/v1/rig/fixtures/{id}`` (fixtures.added.yaml through Rig.add_fixture etc.: ``{fixture, problems}``,
+    ``{removed}``; a light that can't be added as asked is 400 with ``problems``, an unknown id 404, a hand-written one
+    409),
+    ``POST /api/v1/rig/fixtures/{id}/identify {seconds?}`` (``{ok, seconds}`` or ``{ok: false, why}``), and room's
+    DMX-lights device's ``POST``/``GET /api/v1/rig/follow`` (``{fixtures: {id: "dmx" | "off" | {hex, bri}}}``).
+    Without a rig component the writes answer 503 ``unavailable`` (room's adapter retries).
   - Machine routes (``PUT``/``DELETE /api/v1/vibe``, the room adapter's) answer 503 ``unavailable`` without a
     director, so the adapter retries. ``PUT /api/v1/vibe`` keeps any target as asked (an unknown vibe plays neutral, a
     bad override is dropped; the read-back's ``known`` and ``problems`` say so) and 400s only a body that isn't a
@@ -93,6 +101,9 @@ DIRECTOR, AUTOPILOT, LISTENER, SITUATIONS, SOURCES, ROOM = ("director", "autopil
 STRUCTURE = "structure"                              # Stage 4 (README S4.7): music.context for the hearing line
 RIG = "rig"                                          # Stage 5 (README S5.4): outputs.Rig
 NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
+#: README S5.23: the Lights page's writes answer 400 for a light that can't be added as asked, except these
+RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500}
+FOLLOW_CHOICES: list = [*contract.FOLLOW_WORDS, {"hex": "#rrggbb", "bri": "0..100"}]
 HUE_ROOM = {"released": True, "state": "idle", "via": "room",                  # no hue output runs here
             "detail": "nothing streams Hue from show_service (room_service streams, or the hue output is off)"}
 HUE_STARTING = {"released": False, "state": "idle", "why": "starting", "still_following": [], "waited_ms": 0.0,
@@ -124,6 +135,9 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/api/v1/hue/release"), ("POST", "/api/v1/hue/stream"), ("GET", "/api/v1/hue/status"),
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
     ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"),
+    ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
+    ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
+    ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
     ("GET", "/api/v1/situations"),
@@ -789,6 +803,13 @@ class Api:
             ("GET", "/api/v1/rig/frame", self._rig_frame),
             ("GET", "/api/v1/rig/dmx", self._rig_dmx),
             ("POST", "/api/v1/rig/nodes/{id}/record-failsafe", self._record_failsafe),
+            ("GET", "/api/v1/rig/types", self._rig_types),
+            ("POST", "/api/v1/rig/fixtures", self._rig_add),
+            ("PUT", "/api/v1/rig/fixtures/{id}", self._rig_update),
+            ("DELETE", "/api/v1/rig/fixtures/{id}", self._rig_remove),
+            ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
+            ("GET", "/api/v1/rig/follow", self._rig_follow_get),
+            ("POST", "/api/v1/rig/follow", self._rig_follow_post),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
         ]
@@ -1267,6 +1288,95 @@ class Api:
             return _err(404, "unknown_node", f"No node {nid!r} in config/room/fixtures.yaml.",
                         choices=sorted((view or {}).get("nodes") or {}))
         return _json(await self._call(brain, rig.record_failsafe, nid))
+
+    # -- the Lights page (README S5.23) --------------------------------------------------------------------------------
+    @staticmethod
+    def _rig_refused(e: ValueError) -> web.Response:
+        """fixtures.Refused (``code``, ``detail``, ``extra``: choices, problems) or a "code: words" ValueError."""
+        code, detail, extra = getattr(e, "code", None), getattr(e, "detail", None), getattr(e, "extra", None)
+        if not isinstance(code, str):
+            code, detail = _code(e, "bad_request")
+            extra = None
+        return _err(RIG_ERROR_STATUS.get(code, 400), code, detail or "That light can't be changed as asked.",
+                    **(extra if isinstance(extra, dict) else {}))
+
+    async def _rig_types(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "types_view", None) if rig is not None else None
+        if callable(fn):
+            return _json(fn())
+        try:
+            from . import fixtures as fx                 # no rig: the generic types still list
+            return _json(fx.type_rows(None))
+        except Exception:                                # noqa: BLE001
+            return _json([])
+
+    async def _rig_write(self, request: web.Request, brain: Any, method: str, *args: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, method, None) if rig is not None else None
+        if not callable(fn):
+            return _err(503, "unavailable", NO_RIG)
+        try:
+            return _json(await self._call(brain, fn, *args))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _rig_add(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        return await self._rig_write(request, brain, "add_fixture", body)
+
+    async def _rig_update(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        return await self._rig_write(request, brain, "update_fixture", request.match_info["id"], body)
+
+    async def _rig_remove(self, request: web.Request, brain: Any) -> web.Response:
+        return await self._rig_write(request, brain, "remove_fixture", request.match_info["id"])
+
+    async def _rig_identify(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        fid = request.match_info["id"]
+        seconds = body.get("seconds") if isinstance(body, dict) else None
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "identify", None)):
+            return _json({"ok": False, "why": NO_RIG})
+        view = rig.view() if callable(getattr(rig, "view", None)) else None
+        known = (view or {}).get("fixtures") or {}
+        if view is not None and fid not in known:
+            return _err(404, "unknown_fixture", f"No light {fid!r} in the rig.", choices=sorted(known))
+        try:
+            return _json(await self._call(brain, rig.identify, fid, seconds))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _rig_follow_get(self, request: web.Request, brain: Any) -> web.Response:
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "follow_view", None) if rig is not None else None
+        return _json(fn() if callable(fn) else {"fixtures": {}})
+
+    async def _rig_follow_post(self, request: web.Request, brain: Any) -> web.Response:
+        """room's DMX-lights device: ``{fixtures: {id: "dmx" | "off" | {hex, bri} | null}}``, merged (null forgets
+        one) -> ``{accepted: true, fixtures: the whole mapping, unknown, saved}``."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        fixtures = body.get("fixtures") if isinstance(body, dict) else None
+        if not isinstance(fixtures, dict):
+            return _err(400, "bad_request", 'The body is {"fixtures": {<fixture id>: "dmx" | "off" | {"hex": '
+                                            '"#rrggbb", "bri": 0..100}}}.', choices=FOLLOW_CHOICES)
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "set_follow", None)):
+            return _err(503, "unavailable", NO_RIG)
+        try:
+            return _json(await self._call(brain, rig.set_follow, fixtures))
+        except ValueError as e:
+            code, detail = _code(e, "bad_follow")
+            return _err(400, code, detail or "That isn't something a light can follow.", choices=FOLLOW_CHOICES)
 
     async def _hue_stream(self, request: web.Request, brain: Any) -> web.Response:
         """room's hue adapter (mode show): ``{lights, on}``, the complete set of hue.* lamps that follow the show (not a
