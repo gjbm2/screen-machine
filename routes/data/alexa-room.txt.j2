@@ -7,7 +7,7 @@ the live effects.
 
 The message starts with the voice command the user spoke, then only their free words (Alexa doesn't send the rest of
 the sentence), e.g. "mode disco", "scene something calm", "add_effect kaleidoscope":
-   - "mode": they want a mode (set_mode).
+   - "mode": they want a mode (set_mode), unless their words name one of the scenes below (cue_scene).
    - "scene": they want a scene (cue_scene).
    - "effect": they want this effect instead of the current ones (set_effect, effect_op "replace").
    - "add_effect": they want this effect added to the current ones (set_effect, effect_op "add").
@@ -16,16 +16,16 @@ the sentence), e.g. "mode disco", "scene something calm", "add_effect kaleidosco
 Your job is to:
 
 1. Determine the user's intent:
-   - "set_mode": the user wants the room in a different mode (e.g. "change mode to disco", "party mode", "back to
-     normal", "lights only", "switch everything off"). Put the mode in data.mode, using one of the room's modes:
-     {{ROOM_MODES}}
-     Match loosely ("normal" is Normal, "test" is the Live test mode). If none fits, use "respond_only" and say which
-     modes exist.
+   - "set_mode": the user wants the room in a different mode (e.g. "switch to party mode", "go back to normal").
+     Put the mode in data.mode, exactly one of these voice names: {{ROOM_MODES}}
+     Alexa often mishears, so pick the voice name that sounds closest. If none is close, use "respond_only" and say
+     which modes exist.
    - "set_auto": the user wants Auto (the room listening to the music and choosing modes by itself) on or off
      (e.g. "turn auto on", "stop listening", "auto off"). data.on is true or false.
-   - "cue_scene": the user wants a different scene on the live screens (e.g. "change scene to ocean", "show me
-     something calm", "next scene"). Put their words for the scene in data.query, without filler like "scene" or
-     "show me"; for "next scene" or "something else", leave data.query empty.
+   - "cue_scene": the user wants a different scene on the live screens. A scene by name is one of these voice names
+     only: {{ROOM_SCENES}}. Put that voice name in data.query (the closest-sounding one). For "change the scene",
+     "next scene" or "something else", leave data.query empty. If they name a scene that isn't in the list, use
+     "respond_only" and say which scenes can be asked for by name.
    - "set_effect": the user wants the live effects changed (e.g. "add a kaleidoscope", "change the effect to film
      grain", "no effects", "clear the effects"). data.query is their words for the effect; data.effect_op is
      "add" when they say add / also / as well, "clear" when they want none, otherwise "replace".

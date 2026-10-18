@@ -1,5 +1,5 @@
 {
-  "_note": "Alexa interaction-model intents for the room (routes/alexa.py). Alexa sends only the {utterance} words, so mode, scene, effect and add_effect are separate intents that the room prompt reads by name; the rest are fixed phrases handled directly. Merge into languageModel.intents (Alexa console > Build > Interaction Model > JSON Editor), then Save Model and Build Model.",
+  "_note": "Alexa interaction-model additions for the room (routes/alexa.py). Phrased to follow the skill's own pattern, \"computer, use AI to ...\". No config in the model: mode is free text, read by the room prompt against the modes' voice names (modes.json); the rest are fixed phrases handled directly. Merge into languageModel.intents (Alexa console > Build > Interaction Model > JSON Editor), then Save Model and Build Model.",
   "intents": [
     {
       "name": "mode",
@@ -10,73 +10,28 @@
         }
       ],
       "samples": [
-        "change mode to {utterance}",
-        "change the mode to {utterance}",
-        "set the mode to {utterance}",
         "switch to {utterance} mode",
+        "change the mode to {utterance}",
+        "change mode to {utterance}",
+        "set the mode to {utterance}",
         "go to {utterance} mode",
-        "put on {utterance} mode",
+        "go back to {utterance} mode",
         "go back to {utterance}",
-        "mode {utterance}"
-      ]
-    },
-    {
-      "name": "scene",
-      "slots": [
-        {
-          "name": "utterance",
-          "type": "AMAZON.SearchQuery"
-        }
-      ],
-      "samples": [
-        "change scene to {utterance}",
-        "change the scene to {utterance}",
-        "switch the scene to {utterance}",
-        "put on a {utterance} scene",
-        "scene {utterance}"
-      ]
-    },
-    {
-      "name": "effect",
-      "slots": [
-        {
-          "name": "utterance",
-          "type": "AMAZON.SearchQuery"
-        }
-      ],
-      "samples": [
-        "change the effect to {utterance}",
-        "change effect to {utterance}",
-        "switch the effect to {utterance}",
-        "use the {utterance} effect",
-        "effect {utterance}"
-      ]
-    },
-    {
-      "name": "add_effect",
-      "slots": [
-        {
-          "name": "utterance",
-          "type": "AMAZON.SearchQuery"
-        }
-      ],
-      "samples": [
-        "add a {utterance} effect",
-        "add the {utterance} effect",
-        "add {utterance} effect",
-        "add effect {utterance}",
-        "add {utterance}"
+        "put the room in {utterance} mode",
+        "turn on {utterance} mode"
       ]
     },
     {
       "name": "next_scene",
       "slots": [],
       "samples": [
-        "next scene",
-        "another scene",
         "change the scene",
         "skip this scene",
-        "new scene"
+        "skip the scene",
+        "pick another scene",
+        "try another scene",
+        "go to the next scene",
+        "move on to the next scene"
       ]
     },
     {
@@ -85,8 +40,9 @@
       "samples": [
         "clear the effects",
         "remove the effects",
-        "no effects",
         "turn off the effects",
+        "turn the effects off",
+        "get rid of the effects",
         "lose the effects"
       ]
     },
@@ -94,32 +50,35 @@
       "name": "auto_on",
       "slots": [],
       "samples": [
-        "auto on",
-        "turn auto on",
-        "switch auto on",
+        "follow the music",
+        "listen to the music",
         "start listening",
-        "listen to the music"
+        "turn auto on",
+        "turn on auto",
+        "switch auto on"
       ]
     },
     {
       "name": "auto_off",
       "slots": [],
       "samples": [
-        "auto off",
+        "stop following the music",
+        "stop listening",
         "turn auto off",
-        "switch auto off",
-        "stop auto",
-        "stop listening"
+        "turn off auto",
+        "switch auto off"
       ]
     },
     {
       "name": "which_mode",
       "slots": [],
       "samples": [
+        "tell me the mode",
+        "tell me what mode we're in",
+        "tell me which mode we're in",
         "what mode are we in",
-        "which mode is it",
-        "what's the mode",
-        "what mode is on"
+        "what mode we're in",
+        "which mode we're in"
       ]
     }
   ]

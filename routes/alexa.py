@@ -375,7 +375,10 @@ def process(data):
         # The room (modes, Auto) for the room intents: set_mode, set_auto, cue_scene, set_effect (routes/room_client.py)
         room_modes = room_client.modes_cached()
         room_facts = room_client.room_facts()
-        subs["ROOM_MODES"] = ", ".join(room_modes.values()) or "(the room isn't answering)"
+        # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
+        # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
+        subs["ROOM_MODES"] = ", ".join(room_client.voice_modes()) or "(no mode has a voice name)"
+        subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
         subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
         subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
         
@@ -780,20 +783,22 @@ def process(data):
                 else:
                     response_ssml = Brianize("Auto on, or auto off? I can't do both.")
             case "cue_scene":
+                # By voice name only (config/live/voice_names.yaml); a named pick pauses the director's own scene
+                # changes on those screens until "change the scene" or a mode change (owner 18 Oct).
                 query = ((result.get("data") or {}).get("query") or "").strip()
                 screens = room_client.live_targets(closest_screen)
-                preset = room_client.find("scenes", query) if query else None
+                preset = room_client.resolve_voice_scene(query) if query else None
                 if not screens:
                     response_ssml = Brianize("Nothing is live. Put a mode with live screens on first.")
                 elif query and preset is None:
-                    response_ssml = Brianize(f"I couldn't find a scene like {query}.")
+                    named = ", ".join(room_client.voice_scenes())
+                    response_ssml = Brianize((f"The scenes I know by name are: {named}. " if named else "")
+                                             + "Or say: change the scene.")
                 else:
-                    to = preset["name"] if preset else "auto"
-                    fails = [d for sid in screens for ok, d in [room_client.cue_scene(sid, to)] if not ok]
+                    pick = (lambda sid: room_client.pick_scene(sid, preset)) if preset else room_client.next_scene
+                    fails = [d for sid in screens for ok, d in [pick(sid)] if not ok or d]
                     if fails:
                         response_ssml = Brianize(f"The scene didn't change. {fails[0]}.")
-                    elif preset:
-                        response_ssml = Brianize(f"{preset.get('label', to)}. Brace yourself.")
             case "set_effect":
                 data = result.get("data") or {}
                 query, op = (data.get("query") or "").strip(), data.get("effect_op") or "replace"
