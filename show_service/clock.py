@@ -12,30 +12,57 @@ out to ``features.process`` first, then ``clock.process`` (the same block, untou
 ``clock.observe_hit(t_ms / 1000, band, strength)``.
 Methods marked *any thread* only append to a deque, which show-rx drains at its next ``process`` or ``tick``.
 
-**show-beat** (README S4.6; ``Clock(beat_thread=True)``, ``SHOW_BEAT_THREAD=on``; off by default since the
-integration measured it at 0.17-0.19 of a core in the real process, S4.12). The activation (madmom's 2 LSTMs, 1-6 ms
-a frame) runs on its own daemon thread, so a madmom frame no longer holds show-rx:
+**show-beat** (README S4.6). The activation (madmom's 2 LSTMs, 1-6 ms a frame) can run off show-rx, two ways, behind
+one transport face (``send_hop``, ``send_reset``, ``poll``, ``out``), so the hop and drain paths are one:
+- ``Clock(beat_proc=True)`` (``SHOW_BEAT_PROC=on``; beatproc.py): in a child process, so a madmom frame takes neither
+  show-rx's time nor the GIL. It wins over ``beat_thread``; it is for madmom (and beatproc's test activation) only.
+- ``Clock(beat_thread=True)`` (``SHOW_BEAT_THREAD=on``): on the show-beat daemon thread. The integration measured it at
+  0.17-0.19 of a core in the real process (S4.12: every BLAS call hands the GIL over and back).
+- Neither (the default, as config.Options) runs it inline on show-rx, exactly as in Stage 3.
+How the hand-off works:
 - show-rx keeps the AGC, soxr and hop assembly. For each full hop it computes the frame's time (the sound's, from the
-  block's ``t0_host_s``/``n0``, as inline) and puts ``(hop, epoch, seq, hop copy, time, put time)`` on a
-  ``queue.SimpleQueue`` (``put`` never blocks), then returns.
-- show-beat ``get``s it, runs ``act.process_hop`` and appends ``(epoch, seq, a, time, put time)`` to a deque (an
-  activation error comes back as ``a = None`` and is counted).
-- show-rx drains that deque (``popleft`` until empty, never waiting) at the start of every ``process`` and ``tick``
-  and runs peaks, tempogram and estimator on each ``a``, in ``seq`` order. So clock state never leaves show-rx and
-  the activation object never leaves show-beat (show-rx only reads its constant ``name``, ``lag_s``, ``floor``).
-- **Resets.** A new segment (``_lane_reset``) bumps the epoch and queues a reset marker: show-beat resets the
-  activation when it reaches it, and results of an older epoch are dropped (``beat_stale``; at most the hops in
-  flight, about one).
-- **Back-pressure.** At most BEAT_Q_MAX hops (0.5 s) may be in flight (put by show-rx and not yet drained by it; both
-  counters are show-rx's). Beyond that a hop is dropped (``beat_drops``), and a reset marker goes before the next one
-  that is sent, so madmom never sees a splice; the reset comes back through the result deque in order and resets
-  the peak picker there. The tempogram's gap fill covers the missing frames by their times.
-- **Degrade.** If show-beat ever dies, or after ``stop()`` once it has exited, show-rx runs the activation inline.
-- ``beat_thread=False`` (the default, as config.Options) runs the activation inline on show-rx, exactly as in Stage 3.
-  The frames, and so every count and the published line, are the same either way; threaded, a frame's results are
-  published at the next ``process`` or ``tick`` (a few ms later) rather than in the same ``process``.
-- ``stop()`` (any thread, idempotent) ends show-beat; ``wait_beat()`` blocks until show-beat has caught up, for
-  offline runs and tests only (never on show-rx live).
+  block's ``t0_host_s``/``n0``, as inline) and sends ``(epoch, seq, hop, time, send time)``: threaded a
+  ``queue.SimpleQueue`` put (never blocks), to the process one non-blocking 1796 B pipe write. Then it returns.
+- The other side runs ``act.process_hop`` and hands back ``(epoch, seq, a, time, send time)`` (an activation error
+  comes back as ``a = None`` and is counted).
+- show-rx drains them (never waiting) at the start of every ``process`` and ``tick`` and runs peaks, tempogram and
+  estimator on each ``a``, in ``seq`` order. So clock state never leaves show-rx (it only reads the activation's
+  constant ``name``, ``lag_s``, ``floor``). Silent frames (a quiet room, a hole) wait behind the hops still in
+  flight, so every frame reaches the peaks and the tempogram in time order.
+- **Resets.** A new segment (``_lane_reset``) bumps the epoch and sends a reset: the other side resets the activation
+  when it gets there (to the process the reset rides the next hop), and results of an older epoch are dropped
+  (``beat_stale``; at most the hops in flight, about one).
+- **Back-pressure.** At most BEAT_Q_MAX hops (0.5 s) may be in flight (sent by show-rx and not yet drained by it; both
+  counters are show-rx's). Beyond that, or when the process's pipe is full (``beat_pipe_full``), a hop is dropped
+  (``beat_drops``) and a reset goes with the next one that is sent, so madmom never sees a splice; the reset comes
+  back in order and resets the peak picker there. The tempogram's gap fill covers the missing frames by their times.
+- **The process's lifecycle** (degrade, never refuse). The parent builds its own activation either way: it is the
+  fallback. Until the child's HELLO (about 1.5 s after the spawn) hops run inline (``beat_inline_hops``); at hello
+  the next hop switches over (epoch + 1, a reset rides it, the peaks start over: ``beat_proc_switches``). A child
+  lost (EPIPE, EOF: ``beat_proc_lost``) or stalled (hops in flight and no record for BEAT_STALL_S: ``beat_stalls``;
+  it is killed) puts show-rx back inline at once, from a clean start; the supervisor respawns it with a backoff and
+  the next hello switches back. Each switch is one LSTM restart (1-2 s of weaker activation); the grid holds.
+- **Degrade.** If show-beat ever dies, or after ``stop()`` once it (or the process) has exited, show-rx runs the
+  activation inline for good. The frames, and so every count and the published line, are the same either way; off
+  show-rx, a frame's results are published at the next ``process`` or ``tick`` (a few ms later).
+- ``stop()`` (any thread, idempotent; after show-rx stops, as Show.stop) ends show-beat or the process (EOF, then
+  SIGTERM, SIGKILL; reaped). ``wait_beat()`` blocks until the other side has caught up and ``wait_beat_ready()``
+  until the process has said hello: offline runs and tests only (never on show-rx live). ``beat_pid()`` is the
+  child's pid (for CPU accounting).
+
+Blocks and holes (contract.OnAudio: a block may be up to COALESCE_MAX_FRAMES contiguous frames):
+- Any block length gives the frames (within float noise) that the same audio gives in 128-frame packets: the AGC
+  steps per AGC_CHUNK frames aligned on ``n``, soxr is chunk-invariant, and each hop takes its time from its block's
+  ``t0``/``n0``. A RESUME block's peak suppression spans at most RESUME_MAX_FRAMES (one VBAN packet), so a longer
+  block doesn't stretch it. ``cost_ms_per_10ms`` is per 10 ms of real audio (holes left out); ``block_ms`` is per call.
+- An AUDIO_GAP block (zero-fill; its pcm may be a read-only view, never written here) of a hop or less goes through
+  the lane as zeros, as before (madmom's state runs on). A longer one computes nothing: soxr is cleared, the lane
+  moves on by the hole (a fractional carry in its origin keeps every later time exact), each hop it completes is a
+  silent frame (no activation: ``gap_hops_skipped``), and the next hop that reaches the activation resets it first
+  (a splice; to a thread or the process the reset rides that hop). Never a segment, a lane reset or an n0 jump.
+- Rollbacks (both on by default): ``Clock(gap_skip=False)`` zero-fills every hole through soxr and the activation
+  (as before), ``Clock(agc_chunks=False)`` steps the AGC once per block and gains that block with the new gain (as
+  before; then a coalesced block no longer gives the 128-frame packets' gains exactly).
 
 Pipeline
 --------
@@ -150,10 +177,13 @@ Corrections (*any thread*)
 - ``tap(t_s)``, ``half()``, ``double()`` and ``one(t_s)`` are the show console's human actions: high-confidence
   observations, not overrides.
 
-Costs and hot-thread rules: numpy buffers are preallocated where it is cheap, there is no I/O, and an exception
-inside ``process``/``tick`` is counted and never propagates. ``stats()["cost_ms_per_10ms"]`` reports the measured
-cost of show-rx's part per 10 ms of audio, ``stats()["block_ms"]`` show-rx's cost per ``process`` call, and
-``stats()["beat_thread"]`` show-beat's (``act_ms`` a frame, ``lag_ms`` from put to drain).
+Costs and hot-thread rules: numpy buffers are preallocated where it is cheap (soxr's output is its own), there is no
+I/O but the process's non-blocking pipe ends, and an exception inside ``process``/``tick`` is counted and never
+propagates. ``stats()["cost_ms_per_10ms"]`` reports the measured cost of show-rx's part per 10 ms of audio,
+``stats()["block_ms"]`` show-rx's cost per ``process`` call, and ``stats()["beat_thread"]`` show-beat's or the
+process's: ``act_ms`` a frame, ``lag_ms`` from send to drain, ``mode`` (inline, thread or process), ``via`` (hops
+leave show-rx now), and for the process ``pid``, ``state``, ``restarts``, ``failures_in_row``, ``last_exit``,
+``cpu`` (the child's share of a core), ``inline_hops``, ``switches``, ``stalls``, ``pipe_full``, ``proc_lost``.
 """
 
 from __future__ import annotations
@@ -161,6 +191,7 @@ from __future__ import annotations
 import collections
 import logging
 import math
+import os
 import queue
 import threading
 import time
@@ -230,7 +261,12 @@ LOW_MIN_HITS = 4            # on-beat low hits in the window before they count a
 LOW_MERGE_S = 0.06          # a sub and a bass hit this close are one kick
 LOW_TOL = 0.15              # a hit within 15 % of a period of a beat lands on it
 # show-beat (README S4.6)
-BEAT_Q_MAX = 50             # hops in flight to show-beat (0.5 s of frames); beyond this show-rx drops hops
+BEAT_Q_MAX = 50             # hops in flight to show-beat or the process (0.5 s of frames); beyond this show-rx drops hops
+BEAT_STALL_S = 2.0          # the process: hops in flight and no record for this long -> killed, inline at once
+BEAT_HELLO_S = 30.0         # ... no hello this long after a spawn -> killed and respawned (beatproc.HELLO_S)
+# blocks and holes (contract.OnAudio: up to COALESCE_MAX_FRAMES contiguous frames a call)
+AGC_CHUNK = 128             # the AGC steps once per this many frames (aligned on n), so any block cut gives one gain
+RESUME_MAX_FRAMES = 256     # a RESUME block is one packet (VBAN: at most 256 frames); its suppression spans no more
 # integer corrections (the slow lane, Beat This!)
 BAR_LEN_MIN, BAR_LEN_MAX = 2, 16   # a bar length outside this is not a bar: the correction is ignored
 SLOW_OCT_HOLD_S = 30.0      # after a slow-lane or human octave word, the clock's own octave check waits this long
@@ -386,19 +422,63 @@ class _BeatThread:
     """show-beat: the activation on its own daemon thread (see the module docstring). It holds no reference to the
     Clock (a dropped Clock's finalizer stops it). Items in ``q`` (put by show-rx):
     ``("hop", epoch, seq, hop, t_raw, t_put)``, ``("reset", epoch)``, or None (stop). Items in ``out`` (popped by
-    show-rx): ``("a", epoch, seq, a | None, t_raw, t_put)``, and each reset marker as it was reached."""
+    show-rx): ``("a", epoch, seq, a | None, t_raw, t_put)``, and each reset marker as it was reached. Its transport
+    face (``send_hop`` .. ``stop``) is beatproc.BeatProc's, so the Clock drives both the same way."""
+    respawns = False                    # a dead show-beat stays dead: the Clock runs inline for good
+    pid = None
+    gen = 0
 
     def __init__(self, act: Activation) -> None:
         self.act = act
         self.q: queue.SimpleQueue = queue.SimpleQueue()
         self.out: collections.deque = collections.deque()
         self.done = 0                                   # hops computed (written here only)
+        self.sent = 0                                   # hops put (show-rx only)
         self.errors = 0
         self.cost: collections.deque = collections.deque(maxlen=2000)     # ms per process_hop (written here only)
         self.idle = threading.Event()                   # set when the queue runs dry (wait_beat only)
+        self.last_progress = 0.0                        # (BeatProc's stall clock; a thread is never killed)
         self._err_logged = -1e9
+        self._stopped = False
         self.thread = threading.Thread(target=self._run, name="show-beat", daemon=True)
         self.thread.start()
+
+    # -- the transport (show-rx) ---------------------------------------------------------------------------------------
+    @property
+    def alive(self) -> bool:
+        return self.thread.is_alive()
+
+    ready = alive
+
+    @property
+    def inflight(self) -> int:
+        return self.sent - self.done
+
+    def send_hop(self, epoch: int, seq: int, hop: np.ndarray, t_raw: float, t_put: float) -> int:
+        self.q.put(("hop", epoch, seq, hop.copy(), t_raw, t_put))
+        self.sent += 1
+        return 0
+
+    def send_reset(self, epoch: int) -> None:
+        self.q.put(("reset", epoch))
+
+    def poll(self) -> None:
+        """Nothing to read: show-beat appends to ``out`` itself."""
+
+    def wait(self, dt: float) -> None:
+        self.idle.wait(dt)
+        self.idle.clear()
+
+    def snapshot(self) -> dict:
+        return {"pid": None, "state": "running" if self.thread.is_alive() else "stopped", "why": None, "restarts": 0,
+                "failures_in_row": 0, "last_exit": None, "cpu": None}
+
+    def stop(self, timeout: float = 1.0) -> None:
+        if not self._stopped:
+            self._stopped = True
+            self.q.put(None)
+        if self.thread is not threading.current_thread():
+            self.thread.join(max(0.0, float(timeout)))
 
     def _run(self) -> None:
         q, out, act = self.q, self.out, self.act
@@ -604,26 +684,52 @@ def _whole(v: object) -> Optional[int]:
 # -- the clock ---------------------------------------------------------------------------------------------------------
 class Clock:
     """One room's beat clock. ``process`` = contract.OnAudio, ``tick`` from on_tick, both on show-rx. With
-    ``beat_thread`` the activation runs on show-beat; False (the default, as show_service runs) runs it inline on
-    show-rx (Stage 3)."""
+    ``beat_proc`` the activation runs in a child process (beatproc.py; ``beat_nice`` its nice, ``beat_log`` its
+    stderr log, appended), with ``beat_thread`` on show-beat; neither (the default, as show_service runs) runs it
+    inline on show-rx (Stage 3). ``beat_proc`` wins over ``beat_thread``, and needs madmom (or beatproc's fake): with
+    another activation it is ignored. ``gap_skip`` and ``agc_chunks`` (on) are the block paths' rollbacks (see the
+    module docstring)."""
 
     def __init__(self, publish: Optional[Publish] = None, *, activation: "Activation | str" = "auto", nets: int = 2,
                  beats_per_bar: int = 4, phrase_bars: int = 8, prior_bpm: float = PRIOR_BPM,
-                 publish_hz: float = PUBLISH_HZ, resample_quality: str = "HQ", beat_thread: bool = False) -> None:
+                 publish_hz: float = PUBLISH_HZ, resample_quality: str = "HQ", beat_thread: bool = False,
+                 beat_proc: bool = False, beat_nice: int = 0,
+                 beat_log: "Optional[os.PathLike | str]" = None, gap_skip: bool = True,
+                 agc_chunks: bool = True) -> None:
         self._publish = publish
+        self._gap_skip = bool(gap_skip)                 # False: every hole is zero-filled through the lane (as before)
+        self._agc_chunks = bool(agc_chunks)             # False: one AGC step per block, its new gain on it (as before)
+        self._counts = collections.Counter()
         self.act: Activation = make_activation(activation, nets) if isinstance(activation, str) else activation
-        # show-beat (all of these but the thread's own fields are show-rx's)
-        self._bt: Optional[_BeatThread] = None
+        # show-beat or the beat process (all of these but the transport's own fields are show-rx's)
+        self._bt = None                                 # _BeatThread | beatproc.BeatProc | None
         self._bt_epoch = 0
-        self._bt_put = 0                                # hops put (their seq), show-rx
+        self._bt_put = 0                                # hops sent (their seq), show-rx
         self._bt_got = 0                                # hop results drained (any epoch), show-rx
         self._bt_seq_next = 1
         self._bt_splice = False                         # hops were dropped: reset the activation before the next
         self._bt_stopped = False
-        self._bt_lag: collections.deque = collections.deque(maxlen=2000)    # ms from put to drain
+        self._bt_via = False                            # the process: hops go to it now (else inline, on show-rx)
+        self._bt_gen = 0                                # ... to this generation of it
+        self._act_splice = False                        # inline: reset the activation before the next hop (a hole)
+        self._zq: collections.deque = collections.deque()   # silent frames waiting behind hops in flight: (seq, t)
+        self._bt_lag: collections.deque = collections.deque(maxlen=2000)    # ms from send to drain
         self._blk: collections.deque = collections.deque(maxlen=2000)       # ms per process() call
         self._corr_last: Optional[dict] = None
-        if beat_thread:
+        if beat_proc and getattr(self.act, "name", None) in ("madmom", "fake"):
+            try:
+                from .beatproc import BeatProc
+                self._bt = BeatProc(self.act.name, int(getattr(self.act, "nets", 2) or 0), nice=int(beat_nice),
+                                    log_path=beat_log, hello_s=BEAT_HELLO_S)
+                weakref.finalize(self, self._bt.close)
+            except Exception:                           # degrade: the thread (if asked for) or inline
+                self._counts["beat_proc_failed"] += 1
+                log.exception("the beat process could not be set up: %s",
+                              "show-beat instead" if beat_thread else "inline on show-rx")
+                self._bt = None
+        elif beat_proc:
+            log.info("beat process: not for the %s activation (madmom only)", getattr(self.act, "name", "?"))
+        if self._bt is None and beat_thread:
             self._bt = _BeatThread(self.act)
             weakref.finalize(self, self._bt.q.put, None)
         self._prior_bpm = float(prior_bpm)
@@ -639,7 +745,6 @@ class Clock:
         self._cost: collections.deque = collections.deque(maxlen=2000)
         self._err_n = 0
         self._err_logged = -1e9
-        self._counts = collections.Counter()
         self._snapshot: Optional[ClockData] = None
         self._last_pub_s = -1e9
         self._next_hb = -1e9
@@ -649,6 +754,12 @@ class Clock:
         self._agc_pow = 0.0
         self._agc_init = False
         self._agc_acc_p = self._agc_acc_t = 0.0
+        self._agc_k: tuple = (None, 0.0, 0.0, 0.0)     # (dt, the three smoothing steps at that dt): exp() once a size
+        self._agc_g = np.float32(1.0)                  # the gain now (from the chunks before)
+        self._agc_sp, self._agc_sn = 0.0, 0            # the chunk in progress: sum of squares, frames
+        self._gbuf = np.zeros(4096, np.float32)        # the lane's gained mono block (grows once if a block is longer)
+        self._mbuf = np.zeros(4096, np.float32)        # ... its mono mix of a multichannel block
+        self._zbuf = np.zeros(4096, np.float32)        # zeros for a short hole (never written)
         self._lvl_dec = math.exp(-1.0 / (LEVEL_TAU_S * FPS))
         self.reset()
 
@@ -738,7 +849,8 @@ class Clock:
         if frames and fs:
             ms = (time.perf_counter() - c0) * 1000.0
             self._blk.append(ms)
-            self._cost.append(ms / (frames / fs / 0.01))
+            if not int(flags) & AUDIO_GAP:              # per 10 ms of real audio: a skipped hole would read as free
+                self._cost.append(ms / (frames / fs / 0.01))
 
     def tick(self, now_s: float) -> None:
         """on_tick: show-beat's results, coasting without audio, corrections, and the 10 Hz music.clock."""
@@ -764,31 +876,42 @@ class Clock:
             self._error()
 
     def stop(self, timeout: float = 1.0) -> None:
-        """Ends show-beat (a sentinel, then a join of at most ``timeout``); any thread, idempotent. Audio that still
-        arrives runs the activation inline once show-beat has exited (degrade, never refuse)."""
+        """Ends show-beat (a sentinel, then a join of at most ``timeout``) or the beat process (EOF, ``timeout``,
+        SIGTERM, ``timeout``, SIGKILL; reaped, every fd closed); any thread, idempotent, after show-rx has stopped
+        (Show.stop's order). Audio that still arrives runs the activation inline (degrade, never refuse)."""
         bt = self._bt
         if bt is None:
             return
-        if not self._bt_stopped:
-            self._bt_stopped = True
-            bt.q.put(None)
-        if bt.thread is not threading.current_thread():
-            bt.thread.join(max(0.0, float(timeout)))
+        self._bt_stopped = True
+        bt.stop(timeout)
 
     def wait_beat(self, timeout: float = 5.0) -> bool:
-        """Blocks until show-beat has computed every hop put so far (their results then wait for the next ``process``
-        or ``tick``). For offline runs and tests only: it waits, so never call it on show-rx live. False on timeout
-        or with show-beat gone; True at once when the activation runs inline."""
+        """Blocks until show-beat or the process has computed every hop sent so far (their results then wait for the
+        next ``process`` or ``tick``). For offline runs and tests only: it waits, so never call it on show-rx live.
+        False on timeout or with the other side gone; True at once when the activation runs inline."""
         bt = self._bt
         if bt is None:
             return True
         end = time.monotonic() + timeout
-        while bt.done < self._bt_put:
-            if not bt.thread.is_alive() or time.monotonic() > end:
+        while bt.inflight > 0:
+            if not bt.alive or (bt.respawns and not bt.ready) or time.monotonic() > end:
                 return False
-            bt.idle.wait(0.002)
-            bt.idle.clear()
+            bt.wait(0.002)
         return True
+
+    def wait_beat_ready(self, timeout: float = 30.0) -> bool:
+        """Blocks until the beat process has said hello, so the next hop goes to it (show-rx's side adopts it here).
+        For offline runs and tests only. True at once inline or threaded; False on timeout."""
+        bt = self._bt
+        if bt is None or not bt.respawns:
+            return True
+        return bt.wait_ready(timeout)
+
+    def beat_pid(self) -> Optional[int]:
+        """The beat process's pid while one runs (from its spawn, before its hello), else None (mllink adds its CPU
+        to show_service's); any thread."""
+        bt = self._bt
+        return bt.pid if bt is not None else None
 
     # ---- public: any thread (reads the last published body, swapped by reference; never a lock) ---------------------
     def snapshot(self) -> Optional[ClockData]:
@@ -841,13 +964,19 @@ class Clock:
             self._emit(t_s)
 
     def _act_reset(self) -> None:
-        if self._bt is not None:
+        if self._off_rx():
             self._bt_epoch += 1
             self._bt_splice = False
-            self._bt.q.put(("reset", self._bt_epoch))
+            self._bt.send_reset(self._bt_epoch)
         else:
             self.act.reset()
+            self._act_splice = False
         self._pk.reset()
+
+    def _off_rx(self) -> bool:
+        """Do hops leave show-rx now (show-beat, or the process after its hello)?"""
+        bt = self._bt
+        return bt is not None and (not bt.respawns or self._bt_via)
 
     @property
     def beats_per_bar(self) -> int:
@@ -888,11 +1017,22 @@ class Clock:
         c = _arr(self._cost)
         b = _arr(self._blk)
         bt = self._bt
-        beat = {"on": bt is not None and bt.thread.is_alive(), "queued": self._bt_put - self._bt_got,
-                "drops": self._counts.get("beat_drops", 0), "lag_ms_p95": _pct(_arr(self._bt_lag), 95, 3),
+        k = self._counts
+        beat = {"on": bt is not None and bt.alive, "queued": self._bt_put - self._bt_got,
+                "drops": k.get("beat_drops", 0), "lag_ms_p95": _pct(_arr(self._bt_lag), 95, 3),
                 "act_ms_p50": _pct(_arr(bt.cost), 50, 3) if bt is not None else 0.0,
                 "act_ms_p95": _pct(_arr(bt.cost), 95, 3) if bt is not None else 0.0,
-                "act_errors": bt.errors if bt is not None else 0}
+                "act_errors": bt.errors if bt is not None else 0,
+                "mode": "inline" if bt is None else ("process" if bt.respawns else "thread"),
+                "via": self._off_rx(),
+                "pid": None, "state": "inline", "restarts": 0, "failures_in_row": 0, "last_exit": None, "cpu": None,
+                "inline_hops": k.get("beat_inline_hops", 0), "switches": k.get("beat_proc_switches", 0),
+                "stalls": k.get("beat_stalls", 0), "pipe_full": k.get("beat_pipe_full", 0),
+                "proc_lost": k.get("beat_proc_lost", 0)}
+        if bt is not None:
+            s = bt.snapshot()
+            beat.update({key: s.get(key) for key in ("pid", "state", "restarts", "failures_in_row", "last_exit",
+                                                      "cpu")})
         return {"source": self.act.name, "state": self._state, "gate": self._gate, "conf": round(self._conf, 3),
                 "bpm": round(60.0 / self._T, 3) if self._grid else 0.0, "epoch": self._epoch,
                 "lag_adj_ms": round(self._lag_adj * 1000.0, 2), "agc_db": round(self._agc_db, 1),
@@ -912,19 +1052,22 @@ class Clock:
                 self._rs = False
         elif self._rs:
             self._rs.clear()
-        self._n_origin = n0
+        self._n_origin = n0                             # input index of lane sample 0 (a float after a skipped hole)
         self._n_expect = n0
         self._m_done = 0
         self._hopfill = 0
         self._last_n0 = n0
         self._last_t0 = t0 if t0 is not None else 0.0
         self._suppress_until = (t0 + SUPPRESS_S) if t0 is not None else -1e9
-        if self._bt is not None:                        # show-beat resets the activation when it gets there; the
-            self._bt_epoch += 1                         # results still in flight belong to the old segment
+        self._zq.clear()                                # the old segment's silent frames go with its results
+        self._agc_sp, self._agc_sn = 0.0, 0             # n restarts: so do the AGC's chunks (its level carries on)
+        if self._off_rx():                              # the other side resets the activation when it gets there;
+            self._bt_epoch += 1                         # the results still in flight belong to the old segment
             self._bt_splice = False
-            self._bt.q.put(("reset", self._bt_epoch))
+            self._bt.send_reset(self._bt_epoch)
         else:
             self.act.reset()
+            self._act_splice = False
         self._pk.reset()
 
     def _process(self, n0: int, t0: float, pcm: np.ndarray, fs: int, flags: int) -> None:
@@ -940,14 +1083,22 @@ class Clock:
             self._lane_reset(fs, n0, t0)
         self._n_expect = n0 + frames
         self._last_n0, self._last_t0 = n0, t0
-        x = pcm if pcm.ndim == 1 else (pcm[:, 0] if pcm.shape[1] == 1 else pcm.mean(axis=1))
-        x = np.asarray(x, np.float32)
-        if flags & (AUDIO_GAP | AUDIO_RESUME):
+        if flags & AUDIO_GAP:                           # zero-fill, alone in its block (contract): never read or written
+            self._counts["gap_blocks"] += 1
             self._suppress_until = max(self._suppress_until, t0 + frames / fs + SUPPRESS_S)
-        if not flags & AUDIO_GAP:
-            self._agc(x, frames / fs)
-        g = 10.0 ** (self._agc_db / 20.0)
-        x = x * np.float32(g)
+            if self._gap_skip and frames * FS > HOP * fs:   # longer than a hop: nothing to compute (see _gap)
+                changed |= self._gap(n0 + frames, fs)
+                if changed:
+                    self._emit(t0 + frames / fs)
+                return
+            if self._zbuf.shape[0] < frames:
+                self._zbuf = np.zeros(frames, np.float32)
+            x = self._zbuf[:frames]                     # a hop or less: zeros through the lane (madmom's state runs on)
+        else:
+            if flags & AUDIO_RESUME:                    # one packet's span, however long the block
+                self._suppress_until = max(self._suppress_until,
+                                           t0 + min(frames, RESUME_MAX_FRAMES) / fs + SUPPRESS_S)
+            x = self._lane_in(pcm, n0, fs)
         y = self._rs.resample_chunk(x) if self._rs else x
         pos, ny = 0, y.shape[0]
         hb = self._hopbuf
@@ -962,10 +1113,47 @@ class Clock:
         if changed:
             self._emit(t0 + frames / fs)
 
-    def _agc(self, x: np.ndarray, dt: float) -> None:
+    def _lane_in(self, pcm: np.ndarray, n0: int, fs: int) -> np.ndarray:
+        """The block's mono mix, through the AGC, gained, in a preallocated buffer (``pcm`` is only read). The AGC
+        steps once per AGC_CHUNK frames, aligned on ``n``, and a sample takes the gain of the chunks before its own
+        (a chunk's power adds up across calls): so however the audio is cut into blocks, every sample gets the same
+        gain (to float noise), and one 4096-frame block gets the gains its 32 packets would."""
+        frames = pcm.shape[0]
+        if self._gbuf.shape[0] < frames:                # a longer block than any yet: grow once
+            self._gbuf = np.zeros(frames, np.float32)
+            self._mbuf = np.zeros(frames, np.float32)
+        if pcm.ndim == 1:
+            x = pcm
+        elif pcm.shape[1] == 1:
+            x = pcm[:, 0]
+        else:
+            x = np.mean(pcm, axis=1, out=self._mbuf[:frames])
+        if x.dtype != np.float32:
+            x = np.asarray(x, np.float32)
+        out = self._gbuf[:frames]
+        if not self._agc_chunks:                        # the rollback: one step per block, its new gain on all of it
+            self._agc(float(np.dot(x, x)) / frames, frames / fs)
+            np.multiply(x, np.float32(10.0 ** (self._agc_db / 20.0)), out=out)
+            return out
+        pos, n = 0, n0
+        while pos < frames:
+            take = min(frames - pos, AGC_CHUNK - n % AGC_CHUNK)    # to the next chunk boundary
+            seg = x[pos:pos + take]
+            np.multiply(seg, self._agc_g, out=out[pos:pos + take])
+            self._agc_sp += float(np.dot(seg, seg))
+            self._agc_sn += take
+            pos += take
+            n += take
+            if n % AGC_CHUNK == 0:                      # a chunk is complete: one AGC step, a new gain from here
+                self._agc(self._agc_sp / self._agc_sn, self._agc_sn / fs)
+                self._agc_sp, self._agc_sn = 0.0, 0
+                self._agc_g = np.float32(10.0 ** (self._agc_db / 20.0))
+        return out
+
+    def _agc(self, p: float, dt: float) -> None:
         """Slow, bounded pre-gain for the tracker lane only (§4): aim AGC_TARGET_DB RMS; up tau 10 s, down 3 s;
-        -20..+36 dB; frozen below -65 dBFS. The first fix comes from the first 0.5 s of signal, not from 0 dB."""
-        p = float(np.dot(x, x)) / max(1, x.shape[0])
+        -20..+36 dB; frozen below -65 dBFS. The first fix comes from the first 0.5 s of signal, not from 0 dB. One
+        step: ``p`` the mean power of the last ``dt`` s (a chunk)."""
         if not self._agc_init:
             if 10.0 * math.log10(p + 1e-20) < -65.0:
                 return
@@ -977,53 +1165,177 @@ class Clock:
             self._agc_db = min(36.0, max(-20.0, AGC_TARGET_DB - 10.0 * math.log10(self._agc_pow + 1e-20)))
             self._agc_init = True
             return
-        self._agc_pow += (p - self._agc_pow) * (1.0 - math.exp(-dt / 0.4))
+        k = self._agc_k
+        if k[0] != dt:                                  # the three smoothing steps, once per chunk length
+            k = self._agc_k = (dt, 1.0 - math.exp(-dt / 0.4), 1.0 - math.exp(-dt / 10.0), 1.0 - math.exp(-dt / 3.0))
+        self._agc_pow += (p - self._agc_pow) * k[1]
         lvl = 10.0 * math.log10(self._agc_pow + 1e-20)
         if lvl < -65.0:
             return                                       # frozen in silence
         want = min(36.0, max(-20.0, AGC_TARGET_DB - lvl))
         err = want - self._agc_db
-        self._agc_db += err * (1.0 - math.exp(-dt / (10.0 if err > 0 else 3.0)))
+        self._agc_db += err * (k[2] if err > 0 else k[3])
 
-    def _hop(self, hop: np.ndarray) -> bool:
-        """One full hop (``hop`` is the reused buffer). Its time is fixed here, from the newest block's times: the
-        input position of its last sample, as host seconds (before the activation's lag). Inline, the frame runs at
-        once; threaded, a copy goes to show-beat (or is dropped under back-pressure)."""
+    def _gap(self, n_next: int, fs: int) -> bool:
+        """A zero-filled hole longer than one hop (AUDIO_GAP), computing nothing. soxr is cleared (the ~14 ms of the
+        sound before the hole that it still held goes too: all of it inside the hole's peak suppression). The lane
+        moves on to ``n_next`` (the next real sample): its 44.1 kHz position takes a whole number of zero samples
+        and the origin keeps the fraction, so every later time is exact. Each hop it completes is a silent frame
+        (as a quiet room's: no activation; the partial hop's sound goes with it), and the next hop that reaches the
+        activation resets it first (a splice: madmom never sees the jump). Never a lane reset: that would also
+        reset the peaks and the epoch."""
+        if self._rs:
+            self._rs.clear()
+        m_next = (n_next - self._n_origin) * FS / fs
+        m = max(self._m_done + self._hopfill, math.ceil(m_next - 1e-6))
+        hops, rem = divmod(m - self._m_done, HOP)
+        changed = False
+        for _ in range(hops):
+            changed |= self._silent(self._hop_t())
+        if hops:
+            self._hopbuf[:rem] = 0.0
+        else:
+            self._hopbuf[self._hopfill:rem] = 0.0
+        self._hopfill = rem
+        self._n_origin = n_next - m * fs / FS
+        self._counts["gap_hops_skipped"] += hops
+        if self._off_rx():
+            self._bt_splice = True
+        else:
+            self._act_splice = True
+        return changed
+
+    def _hop_t(self) -> float:
+        """The next hop's time, from the newest block's times: the input position of its last sample, as host
+        seconds (before the activation's lag)."""
         self._m_done += HOP
         fs = self._lane_fs
         n_in = self._n_origin + self._m_done * fs / FS
-        t_raw = self._last_t0 + (n_in - self._last_n0) / fs
+        return self._last_t0 + (n_in - self._last_n0) / fs
+
+    def _hop(self, hop: np.ndarray) -> bool:
+        """One full hop (``hop`` is the reused buffer). Its time is fixed here (``_hop_t``). Inline, the frame runs at
+        once; off show-rx, the hop is sent (or dropped under back-pressure) and its frame runs when it comes back."""
+        t_raw = self._hop_t()
         bt = self._bt
         changed = False
-        if bt is not None and self._bt_stopped and not bt.thread.is_alive():
+        if bt is not None and self._bt_stopped and not bt.alive:
             changed = self._inline_again()
             bt = None
         if self._quiet:                                 # a quiet room: silence, and madmom isn't run
-            return self._frame(0.0, t_raw) or changed
+            return self._silent(t_raw) or changed
         if bt is None:
-            return self._frame(self.act.process_hop(hop), t_raw) or changed
+            return self._inline(hop, t_raw) or changed
+        if bt.respawns:                                 # the process: inline until its hello, and whenever it's lost
+            if self._bt_via and (not bt.ready or bt.gen != self._bt_gen):     # gone (or replaced unseen)
+                changed |= self._to_inline("beat_proc_lost")
+            if not bt.ready:
+                self._counts["beat_inline_hops"] += 1
+                return self._inline(hop, t_raw) or changed
+            if not self._bt_via:
+                changed |= self._to_proc()
+            elif self._bt_put > self._bt_got and time.perf_counter() - bt.last_progress > BEAT_STALL_S:
+                bt.request_kill()                       # wedged: the supervisor kills it and respawns
+                changed |= self._to_inline("beat_stalls")
+                self._counts["beat_inline_hops"] += 1
+                return self._inline(hop, t_raw) or changed
         if self._bt_put - self._bt_got >= BEAT_Q_MAX:
-            changed = self._drain_beats()               # whatever came back since this process() began
+            changed |= self._drain_beats()              # whatever came back since this process() began
             if self._bt_put - self._bt_got >= BEAT_Q_MAX:
-                if not bt.thread.is_alive():            # show-beat is gone: run inline from here (degrade)
+                if not bt.respawns and not bt.alive:    # show-beat is gone: run inline from here (degrade)
                     changed |= self._inline_again()
-                    return self._frame(self.act.process_hop(hop), t_raw) or changed
+                    return self._inline(hop, t_raw) or changed
                 self._counts["beat_drops"] += 1
                 self._bt_splice = True
                 return changed
         if self._bt_splice:                             # dropped hops before this one: madmom never sees a splice
             self._bt_splice = False
-            bt.q.put(("reset", self._bt_epoch))
-        self._bt_put += 1
-        bt.q.put(("hop", self._bt_epoch, self._bt_put, hop.copy(), t_raw, time.perf_counter()))
+            bt.send_reset(self._bt_epoch)
+        r = bt.send_hop(self._bt_epoch, self._bt_put + 1, hop, t_raw, time.perf_counter())
+        if r == 0:
+            self._bt_put += 1
+            return changed
+        if r == 1:                                      # the process's pipe is full: dropped like the cap's
+            self._counts["beat_drops"] += 1
+            self._counts["beat_pipe_full"] += 1
+            self._bt_splice = True
+            return changed
+        changed |= self._to_inline("beat_proc_lost")    # 2: the process has gone
+        self._counts["beat_inline_hops"] += 1
+        return self._inline(hop, t_raw) or changed
+
+    def _inline(self, hop: np.ndarray, t_raw: float) -> bool:
+        if self._act_splice:                            # after a skipped hole: the activation starts clean
+            self._act_splice = False
+            self.act.reset()
+            self._pk.reset()
+        return self._frame(self.act.process_hop(hop), t_raw)
+
+    def _silent(self, t_raw: float) -> bool:
+        """A frame with no activation (a quiet room, a skipped hole): at once, or behind the hops still in flight,
+        so frames reach the peaks and the tempogram in time order."""
+        if self._bt_put > self._bt_got:
+            self._zq.append((self._bt_put, t_raw))
+            return False
+        return self._frame(0.0, t_raw)
+
+    def _flush_silent(self, upto: Optional[int] = None) -> bool:
+        """Run the waiting silent frames whose hops before them have come back (``upto``: that seq), or all."""
+        zq = self._zq
+        changed = False
+        while zq and (upto is None or zq[0][0] <= upto):
+            t = zq.popleft()[1]
+            try:
+                changed |= self._frame(0.0, t)
+            except Exception:                           # never take show-rx down; the next frame goes on
+                self._error()
+        return changed
+
+    def _to_proc(self) -> bool:
+        """The process has said hello: hops go to it from this one (a clean start there, and for the peaks)."""
+        changed = self._flush_silent()
+        self._bt_via = True
+        self._bt_gen = self._bt.gen                     # this child: another one means this one was lost
+        self._bt_epoch += 1
+        self._bt_put = self._bt_got = 0
+        self._bt_seq_next = 1
+        self._bt_splice = self._act_splice = False
+        self._bt.send_reset(self._bt_epoch)
+        self._pk.reset()
+        self._counts["beat_proc_switches"] += 1
+        return changed
+
+    def _to_inline(self, why: str) -> bool:
+        """The process is lost (``beat_proc_lost``) or stalled (``beat_stalls``): what came back runs, the hops still
+        out there are given up, and the activation runs on show-rx from this hop, from a clean start, until the
+        respawned process says hello."""
+        changed = self._drain_beats()
+        changed |= self._flush_silent()
+        self._counts[why] += 1
+        self._bt_via = False
+        self._bt_epoch += 1                             # anything that still came from it is stale
+        self._bt_put = self._bt_got = 0
+        self._bt_seq_next = 1
+        self._bt_splice = self._act_splice = False
+        self.act.reset()
+        self._pk.reset()
+        if why == "beat_stalls":
+            log.warning("the beat process stalled (%.0f s with hops in flight): inline on show-rx until it is back",
+                        BEAT_STALL_S)
+        else:
+            log.warning("the beat process has gone: inline on show-rx until it is back")
         return changed
 
     def _inline_again(self) -> bool:
-        """show-beat has exited (``stop()``, or it died): drain what it left, then run the activation on show-rx."""
+        """show-beat has exited (``stop()``, or it died), or the process was stopped: drain what it left, then run
+        the activation on show-rx for good."""
         changed = self._drain_beats()
+        changed |= self._flush_silent()
         self._bt = None
+        self._bt_via = False
         self._bt_put = self._bt_got = 0
         self._bt_seq_next = 1
+        self._bt_splice = self._act_splice = False
         self.act.reset()                                # a splice either way
         self._pk.reset()
         if self._bt_stopped:
@@ -1034,12 +1346,14 @@ class Clock:
         return changed
 
     def _drain_beats(self) -> bool:
-        """show-rx: run the rest of each frame show-beat has finished, in order (never waits). True if the published
-        line was re-anchored."""
+        """show-rx: run the rest of each frame show-beat or the process has finished, in order (never waits), and the
+        silent frames that waited behind them. True if the published line was re-anchored."""
         bt = self._bt
         if bt is None:
             return False
+        bt.poll()
         out = bt.out
+        zq = self._zq
         changed = False
         perf = time.perf_counter
         while out:
@@ -1051,19 +1365,22 @@ class Clock:
             _, ep, seq, a, t_raw, t_put = item
             self._bt_got += 1
             self._bt_lag.append((perf() - t_put) * 1000.0)
-            if seq != self._bt_seq_next:                # never expected: SimpleQueue and the deque are FIFO
+            if seq != self._bt_seq_next:                # never expected: the queue, the pipe and the deque are FIFO
                 self._counts["beat_order"] += 1
             self._bt_seq_next = seq + 1
             if ep != self._bt_epoch:
                 self._counts["beat_stale"] += 1
-                continue
-            if a is None:                               # the activation failed (show-beat logged it)
+            elif a is None:                             # the activation failed (the other side logged it)
                 self._err_n += 1
-                continue
-            try:
-                changed |= self._frame(a, t_raw)
-            except Exception:                           # never take show-rx down; the next frame goes on
-                self._error()
+            else:
+                try:
+                    changed |= self._frame(a, t_raw)
+                except Exception:                       # never take show-rx down; the next frame goes on
+                    self._error()
+            if zq and zq[0][0] <= seq:
+                changed |= self._flush_silent(seq)
+        if zq and self._bt_got >= self._bt_put:
+            changed |= self._flush_silent()
         return changed
 
     def _frame(self, a: float, t_raw: float) -> bool:
