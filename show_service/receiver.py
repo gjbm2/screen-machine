@@ -89,6 +89,10 @@ log = logging.getLogger("show_service.receiver")
 
 RCVBUF_WANT = 4 << 20
 RECV_BUF = 2048
+# Each wake drains up to this many datagrams that are already queued (non-blocking), then handles the batch's MIDI and
+# control packets before its audio, so a note never waits behind a backlog of audio work: at most one batch (about
+# 85 ms of audio at 128 frames). The batch's own sizes are in health (socket.batch_max, socket.backlogs).
+RX_BATCH_MAX = 32
 BIND_RETRY_S = 2.0
 SUBSCRIBE_EVERY_S = vban.SUBSCRIBE_EVERY_S       # 1 s
 DNS_EVERY_S = 30.0
@@ -248,6 +252,7 @@ class Receiver:
         self._rcvbuf: Optional[int] = None
         self._bound: Optional[str] = None
         self._rx = self._junk = self._sub_rx = self._bytes = 0
+        self._batch_max = self._backlogs = 0             # show-rx's drained batches: the largest, how many were full
         self._errors = {"audio": 0, "midi": 0, "tick": 0, "handle": 0}
         self._err_logged = -math.inf
         self._streams: dict[str, _Stream] = {}
@@ -389,10 +394,17 @@ class Receiver:
                     arrival = self._clock()
                     if self._sock_error is not None:     # a transient error (ICMP, ENOBUFS) has passed
                         self._sock_error = None
-                    try:
-                        self.handle(mv[:n], addr, arrival)
-                    except Exception:                    # noqa: BLE001 - never let one datagram stop show-rx
-                        self._error("handle")
+                    batch = [(bytes(mv[:n]), addr, arrival)]
+                    try:                                 # whatever else is already queued, without waiting
+                        sock.settimeout(0.0)
+                        while len(batch) < RX_BATCH_MAX:
+                            n, addr = sock.recvfrom_into(buf)
+                            if not n:
+                                break
+                            batch.append((bytes(mv[:n]), addr, self._clock()))
+                    except (socket.timeout, BlockingIOError, InterruptedError, OSError):
+                        pass
+                    self.handle_batch(batch)
             now = self._clock()
             if self._holding:
                 self._expire_all(now)
@@ -511,20 +523,53 @@ class Receiver:
     def active_audio(self) -> Optional[str]:
         return self._active
 
+    def handle_batch(self, batch: list[tuple[bytes, tuple[str, int], float]]) -> None:
+        """Datagrams drained together (show-rx): MIDI and control packets first, in arrival order, then the audio in
+        arrival order, so a note is never held behind the batch's audio work. Each keeps its own arrival time."""
+        k = len(batch)
+        if k > self._batch_max:
+            self._batch_max = k
+        if k >= RX_BATCH_MAX:
+            self._backlogs += 1
+        audio = []
+        for buf, addr, arrival in batch:
+            try:
+                pkt = self._parse(buf)
+                if pkt is None:
+                    continue
+                if isinstance(pkt, vban.AudioPacket):
+                    audio.append((pkt, addr, arrival, len(buf)))
+                else:
+                    self._dispatch(pkt, addr, arrival, len(buf))
+            except Exception:                            # noqa: BLE001 - never let one datagram stop show-rx
+                self._error("handle")
+        for pkt, addr, arrival, n in audio:
+            try:
+                self._dispatch(pkt, addr, arrival, n)
+            except Exception:                            # noqa: BLE001
+                self._error("handle")
+
     def handle(self, buf: bytes | bytearray | memoryview, addr: tuple[str, int], arrival_s: float) -> None:
         """One datagram (show-rx; tests call it directly with fake times)."""
+        pkt = self._parse(buf)
+        if pkt is not None:
+            self._dispatch(pkt, addr, arrival_s, len(buf))
+
+    def _parse(self, buf: bytes | bytearray | memoryview):
         self._rx += 1
         self._bytes += len(buf)
         pkt = vban.parse(buf)
         if pkt is None:
             self._junk += 1
-            return
+        return pkt
+
+    def _dispatch(self, pkt: Any, addr: tuple[str, int], arrival_s: float, nbytes: int) -> None:
         keys = self._addr_index.get((addr[0], addr[1])) if self._addr_index else None
         if keys:                                         # a configured host answered (the host fallback)
             for k in keys:
                 self._answered[k] = arrival_s
         if isinstance(pkt, vban.AudioPacket):
-            self._audio(pkt, addr, arrival_s, len(buf))
+            self._audio(pkt, addr, arrival_s, nbytes)
             return
         o = pkt.obj
         if "subscribe" in o:                             # vban.classify's order, parsing once
@@ -547,7 +592,7 @@ class Receiver:
         if msg is None:
             self._junk += 1
             return
-        self._midi(self._stream(pkt.stream, addr, arrival_s), pkt, msg, arrival_s, len(buf))
+        self._midi(self._stream(pkt.stream, addr, arrival_s), pkt, msg, arrival_s, nbytes)
 
     def tick(self, now_s: float) -> None:
         """SUBSCRIBE when due, held-hole deadlines, states/active (10 Hz), health (2 Hz), then on_tick (show-rx)."""
@@ -1104,7 +1149,7 @@ class Receiver:
             "t_ms": round(now * 1000.0, 3), "active_audio": self._active,
             "socket": {"bind": self._bound or "{}:{}".format(*self.cfg.vban_bind), "error": self._sock_error,
                        "rx": self._rx, "junk": self._junk, "subscribe_rx": self._sub_rx, "bytes": self._bytes,
-                       "rcvbuf": self._rcvbuf},
+                       "rcvbuf": self._rcvbuf, "batch_max": self._batch_max, "backlogs": self._backlogs},
             "errors": dict(self._errors),
             "senders": senders,
             "priority": list(self._priority), "choice": list(self._choice), "device_hints": dict(self._device_hints),
