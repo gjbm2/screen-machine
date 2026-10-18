@@ -1,0 +1,69 @@
+# Session start times from /home/gjbm2/.local/state/screen-machine/logs/stream_service.log (read 18:50 18 Oct). starting = the session.state starting event (after decode, before Session.start); created = the 'created:' log line (after start: context, sound alloc, warm, anchor+scene prepare, engine start incl. ffmpeg spawn); ready = session.ready (first IDR muxed). All in a WARM process (service already up, GPUs warmed by --warm).
+all: n=390 starting->created p50 0.16 p90 0.53 max 3.64 s | starting->ready p50 0.85 p90 1.95 max 5.70 s
+2160p (hevc-2160*): n=156 starting->created p50 0.25 p90 0.81 max 3.64 s | starting->ready p50 1.21 p90 3.07 max 5.70 s
+720p (h264-720*): n=234 starting->created p50 0.13 p90 0.24 max 2.41 s | starting->ready p50 0.69 p90 1.13 max 3.25 s
+gpu0 2160p: n=108 starting->created p50 0.25 p90 0.83 max 3.64 s | starting->ready p50 1.26 p90 3.39 max 5.70 s
+gpu1 2160p: n=48 starting->created p50 0.25 p90 0.55 max 2.01 s | starting->ready p50 1.18 p90 1.89 max 5.50 s
+first 2026-10-14 21:57:27.500000 last 2026-10-18 14:56:55.611000
+
+# last 20 sessions
+10-17 09:41:31 s-2316bdee gallery-check ('1', 'hevc-2160p60', 'gallery-on-the-bar') created 0.55 ready 1.43
+10-17 10:13:41 s-9cbd79b2 devtest ('0', 'hevc-2160p30', 'star-nest-ember-voids') created 0.19 ready 1.98
+10-17 10:25:48 s-16b6891a fxlat-check ('1', 'hevc-2160p30', 'isf-fft-filled-waveform') created 0.31 ready 1.51
+10-17 10:29:56 s-148c59ac fxlat-check ('1', 'hevc-2160p30', 'isf-fft-color-lines') created 0.14 ready 0.94
+10-17 10:31:29 s-1ccb2c23 south-screen ('1', 'hevc-2160p30', 'piano-waterfall-ember') created 0.26 ready 1.04
+10-17 10:31:30 s-e79fa17b north-screen ('0', 'hevc-2160p30', 'piano-waterfall-ember') created 0.21 ready 1.50
+10-17 12:49:56 s-955be3c8 north-screen ('0', 'hevc-2160p30', 'note-fluid-prism') created 0.33 ready 2.62
+10-17 12:50:10 s-99cd0dd0 south-screen ('1', 'hevc-2160p30', 'note-fluid-prism') created 0.25 ready 2.52
+10-17 13:00:50 s-4d84b8ec hudcheck ('1', 'hevc-2160p30', 'st-star-nest-retro') created 0.30 ready 1.11
+10-17 13:01:58 s-16d1d42c hudcheck ('1', 'hevc-2160p30', 'st-rotational-symmetry') created 0.12 ready 0.73
+10-17 13:04:02 s-425b716d devtest ('1', 'hevc-2160p30', 'warp-liquid') created 0.19 ready 0.85
+10-17 13:05:46 s-1f25ce11 devtest ('1', 'hevc-2160p30', 'fluid-ink-neon-swirl') created 0.39 ready 1.00
+10-18 13:40:00 s-8c17c7a9 south-screen ('1', 'hevc-2160p30', 'note-fluid-dusk-pool') created 2.01 ready 5.50
+10-18 13:40:00 s-d94f7518 north-screen ('0', 'hevc-2160p30', 'live-score-scroll-night') created 1.78 ready 5.70
+10-18 13:52:16 s-bdd67a93 north-screen ('0', 'hevc-2160p30', 'piano-waterfall-classic') created 0.82 ready 2.04
+10-18 13:52:17 s-1aecf116 south-screen ('1', 'hevc-2160p30', 'piano-waterfall-classic') created 0.25 ready 1.32
+10-18 14:25:41 s-b02ad403 south-screen ('1', 'hevc-2160p30', 'live-score-scroll-paper') created 0.63 ready 1.89
+10-18 14:25:43 s-3fb217db north-screen ('0', 'hevc-2160p30', 'live-score-scroll-paper') created 0.22 ready 2.10
+10-18 14:56:52 s-58436e03 north-screen ('0', 'hevc-2160p30', 'live-score-night') created 0.62 ready 2.04
+10-18 14:56:55 s-419fc151 south-screen ('1', 'hevc-2160p30', 'live-score-night') created 0.39 ready 2.28
+
+# GPU warm (service start, --warm: throwaway 1280x720 RenderContext + transitions + live_art pinned 2x4K)
+2026-10-17 12:59:31,708 INFO stream_service.sessions: GPU 0 warm in 1.1 s
+2026-10-17 12:59:31,934 INFO stream_service.sessions: GPU 1 warm in 0.2 s
+2026-10-17 13:07:54,956 INFO stream_service.sessions: GPU 0 warm in 0.4 s
+2026-10-17 13:07:55,176 INFO stream_service.sessions: GPU 1 warm in 0.2 s
+2026-10-17 21:18:24,567 INFO stream_service.sessions: GPU 0 warm in 1.3 s
+2026-10-17 21:18:24,994 INFO stream_service.sessions: GPU 1 warm in 0.4 s
+2026-10-17 21:19:26,519 INFO stream_service.sessions: GPU 0 warm in 0.4 s
+2026-10-17 21:19:26,711 INFO stream_service.sessions: GPU 1 warm in 0.2 s
+2026-10-18 13:52:11,312 INFO stream_service.sessions: GPU 0 warm in 4.8 s
+2026-10-18 13:52:12,340 INFO stream_service.sessions: GPU 1 warm in 1.0 s
+2026-10-18 14:25:34,422 INFO stream_service.sessions: GPU 0 warm in 1.7 s
+2026-10-18 14:25:36,289 INFO stream_service.sessions: GPU 1 warm in 1.8 s
+2026-10-18 14:55:43,276 INFO stream_service.sessions: GPU 0 warm in 0.9 s
+2026-10-18 14:55:43,611 INFO stream_service.sessions: GPU 1 warm in 0.3 s
+2026-10-18 15:44:00,391 INFO stream_service.sessions: GPU 0 warm in 1.8 s
+2026-10-18 15:44:00,902 INFO stream_service.sessions: GPU 1 warm in 0.5 s
+2026-10-18 16:31:21,943 INFO stream_service.sessions: GPU 0 warm in 2.9 s
+2026-10-18 16:31:22,623 INFO stream_service.sessions: GPU 1 warm in 0.7 s
+2026-10-18 16:49:57,916 INFO stream_service.sessions: GPU 0 warm in 0.8 s
+2026-10-18 16:49:59,774 INFO stream_service.sessions: GPU 1 warm in 1.9 s
+
+# service start sequence 16:49:52 (ctl start) -> scan -> listening -> buses -> warm
+=== 2026-10-18T16:49:52+01:00 ctl start stream (:8702) ===
+2026-10-18 16:49:54,489 INFO stream_service.plugins: plug-in scan: 850 added, 0 reloaded, 0 removed, 0 broken (1174 ms)
+2026-10-18 16:49:54,503 INFO stream_service.tags: loaded vocab from config/live/vocab.yaml
+2026-10-18 16:49:54,654 INFO stream_service.music_feed: music response: {'energy_on': True, 'attack_s': 0.3, 'release_s': 0.6, 'follow': 0.7, 'follow_ease_s': 1
+2026-10-18 16:49:54,898 INFO stream_service.tag_overlay: loaded tag overlay tags.generated.json: {'scene': (0, 570), 'effect': (0, 302), 'transition': (0, 178)}
+2026-10-18 16:49:54,946 INFO stream_service.presets: loaded 12 effect presets from config/live/effects.yaml
+2026-10-18 16:49:54,960 INFO stream_service.presets: loaded 15 scene presets from config/live/scenes.yaml
+2026-10-18 16:49:54,965 INFO stream_service.presets: loaded 13 transition presets from config/live/transitions.yaml
+2026-10-18 16:49:54,972 INFO stream_service.presets: scene plug-in preset 'cal-flash': tags dropped: tags.weight must be a number > 0
+2026-10-18 16:49:56,111 INFO stream_service: listening on 0.0.0.0:8702 (dev page: /dev)
+2026-10-18 16:49:57,157 INFO stream_service.showbus: show bus up: ws://127.0.0.1:8701/v1/show (room_service)
+2026-10-18 16:49:57,162 INFO stream_service.showbus: music bus up: ws://127.0.0.1:8703/v1/show (show_service)
+2026-10-18 16:49:57,916 INFO stream_service.sessions: GPU 0 warm in 0.8 s
+2026-10-18 16:49:59,774 INFO stream_service.sessions: GPU 1 warm in 1.9 s
+
+# 'first scene (auto)' pick log line -> session.state starting (anchor PNG decode + Session() construction; scene auto only): n=28 p50 0.43 p90 0.79 max 1.80 s

@@ -1,0 +1,334 @@
+{
+ "notes": {
+  "drvbench": "WSL2 GPU-PV, raw CUDA driver API via ctypes, nice 19, no screen live, 18:51:27, clean (no sibling GPU job)",
+  "clkramp": "18:52:48; 4060 phases clean; P4000 phases overlapped sibling NVENC bursts (det_* 18:53:13-18:53:28) -> P4000 clock numbers [U]",
+  "tags": "all values [M] unless noted"
+ },
+ "drvbench": {
+  "NVIDIA GeForce RTX 4060": {
+   "launch_noop_us": {
+    "p50": 15.52,
+    "p99": 405.57
+   },
+   "launch_noop_hiprio_us": {
+    "p50": 15.07,
+    "p99": 497.62
+   },
+   "launch_burst256_per_launch_us": {
+    "p50": 29.61,
+    "p99": 61.36
+   },
+   "event_record_us": {
+    "p50": 6.8,
+    "p99": 232.33
+   },
+   "stream_query_idle_us": {
+    "p50": 1.16,
+    "p99": 1.97
+   },
+   "roundtrip_launch_sync_us": {
+    "p50": 84.62,
+    "p99": 2766.58
+   },
+   "ctx_sync_idle_us": {
+    "p50": 1.29,
+    "p99": 20.13
+   },
+   "h2d_2KB_pinned_us": {
+    "p50": 10.21,
+    "p99": 287.83
+   },
+   "graph50_launch_call_us": {
+    "p50": 47.47,
+    "p99": 11639.29
+   },
+   "individual50_enqueue_us": {
+    "p50": 846.07,
+    "p99": 6858.64
+   },
+   "graph50_roundtrip_us": {
+    "p50": 122.86,
+    "p99": 2242.51
+   },
+   "individual50_roundtrip_us": {
+    "p50": 956.55,
+    "p99": 10938.69
+   },
+   "priority_range": {
+    "least": 0,
+    "greatest": -5
+   },
+   "globaltimer": [
+    {
+     "cycles_budget": 2000000,
+     "globaltimer_delta_ns": 802816,
+     "clock64_delta": 2000036,
+     "implied_sm_mhz": 2491.3,
+     "g0": 1792345872121441280
+    },
+    {
+     "cycles_budget": 8000000,
+     "globaltimer_delta_ns": 3221504,
+     "clock64_delta": 8000010,
+     "implied_sm_mhz": 2483.3,
+     "g0": 1792345872127421440
+    }
+   ],
+   "priority_contention": null
+  },
+  "Quadro P4000": {
+   "launch_noop_us": {
+    "p50": 15.15,
+    "p99": 270.67
+   },
+   "launch_noop_hiprio_us": {
+    "p50": 17.27,
+    "p99": 152.9
+   },
+   "launch_burst256_per_launch_us": {
+    "p50": 44.31,
+    "p99": 122.33
+   },
+   "event_record_us": {
+    "p50": 9.31,
+    "p99": 125.76
+   },
+   "stream_query_idle_us": {
+    "p50": 1.21,
+    "p99": 6.94
+   },
+   "roundtrip_launch_sync_us": {
+    "p50": 52.46,
+    "p99": 436.74
+   },
+   "ctx_sync_idle_us": {
+    "p50": 1.23,
+    "p99": 1.73
+   },
+   "h2d_2KB_pinned_us": {
+    "p50": 30.16,
+    "p99": 179.83
+   },
+   "graph50_launch_call_us": {
+    "p50": 135.55,
+    "p99": 10952.04
+   },
+   "individual50_enqueue_us": {
+    "p50": 2001.9,
+    "p99": 15292.8
+   },
+   "graph50_roundtrip_us": {
+    "p50": 233.21,
+    "p99": 10236.32
+   },
+   "individual50_roundtrip_us": {
+    "p50": 2077.32,
+    "p99": 13799.25
+   },
+   "priority_range": {
+    "least": 0,
+    "greatest": -5
+   },
+   "globaltimer": [
+    {
+     "cycles_budget": 2000000,
+     "globaltimer_delta_ns": 1662976,
+     "clock64_delta": 2000023,
+     "implied_sm_mhz": 1202.7,
+     "g0": 1792345809934268384
+    },
+    {
+     "cycles_budget": 8000000,
+     "globaltimer_delta_ns": 6653952,
+     "clock64_delta": 8000096,
+     "implied_sm_mhz": 1202.3,
+     "g0": 1792345809936354272
+    }
+   ],
+   "priority_contention": {
+    "blocks": 560,
+    "sms": 14,
+    "normal_ms": {
+     "n": 8,
+     "p50": 8.896,
+     "min": 5.182,
+     "max": 15.321
+    },
+    "high_ms": {
+     "n": 8,
+     "p50": 0.643,
+     "min": 0.433,
+     "max": 1.065
+    },
+    "bg_alone_ms": {
+     "n": 16,
+     "p50": 12.624,
+     "min": 7.249,
+     "max": 16.123
+    }
+   }
+  }
+ },
+ "clkramp": {
+  "NVIDIA GeForce RTX 4060": {
+   "cold_first": [
+    {
+     "t": 8.326,
+     "gpu_ms": 2.409,
+     "mhz": 2490.0,
+     "host_ms": 2.842
+    }
+   ],
+   "p60": {
+    "mhz_p50": 960.0,
+    "mhz_p10": 945.0,
+    "mhz_p90": 975.0,
+    "gpu_ms_p50": 6.2,
+    "first8_mhz": [
+     2489.0,
+     2489.0,
+     704.0,
+     720.0,
+     720.0,
+     720.0,
+     720.0,
+     720.0
+    ]
+   },
+   "p30": {
+    "mhz_p50": 645.0,
+    "mhz_p10": 540.0,
+    "mhz_p90": 885.0,
+    "gpu_ms_p50": 9.3,
+    "first8_mhz": [
+     975.0,
+     975.0,
+     975.0,
+     975.0,
+     975.0,
+     975.0,
+     975.0,
+     930.0
+    ]
+   },
+   "hz10": {
+    "mhz_p50": 330.0,
+    "mhz_p10": 255.0,
+    "mhz_p90": 495.0,
+    "gpu_ms_p50": 18.2,
+    "first8_mhz": [
+     525.0,
+     525.0,
+     525.0,
+     495.0,
+     495.0,
+     465.0,
+     465.0,
+     450.0
+    ]
+   },
+   "b2b": {
+    "mhz_p50": 2714.0,
+    "mhz_p10": 2481.0,
+    "mhz_p90": 2715.0,
+    "gpu_ms_p50": 2.2,
+    "first8_mhz": [
+     240.0,
+     240.0,
+     240.0,
+     240.0,
+     240.0,
+     240.0,
+     240.0,
+     240.0
+    ]
+   }
+  },
+  "Quadro P4000": {
+   "cold_first": [
+    {
+     "t": 26.251,
+     "gpu_ms": 2.341,
+     "mhz": 1709.0,
+     "host_ms": 2.67
+    }
+   ],
+   "p60": {
+    "mhz_p50": 1707.0,
+    "mhz_p10": 1707.0,
+    "mhz_p90": 1708.0,
+    "gpu_ms_p50": 2.3,
+    "first8_mhz": [
+     1708.0,
+     1708.0,
+     1708.0,
+     1708.0,
+     1708.0,
+     1708.0,
+     1708.0,
+     1708.0
+    ]
+   },
+   "p30": {
+    "mhz_p50": 1707.0,
+    "mhz_p10": 1707.0,
+    "mhz_p90": 1707.0,
+    "gpu_ms_p50": 2.3,
+    "first8_mhz": [
+     1707.0,
+     1707.0,
+     1706.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0
+    ]
+   },
+   "hz10": {
+    "mhz_p50": 1226.0,
+    "mhz_p10": 1223.0,
+    "mhz_p90": 1707.0,
+    "gpu_ms_p50": 3.3,
+    "first8_mhz": [
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0
+    ]
+   },
+   "b2b": {
+    "mhz_p50": 1707.0,
+    "mhz_p10": 1707.0,
+    "mhz_p90": 1708.0,
+    "gpu_ms_p50": 2.3,
+    "first8_mhz": [
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1707.0,
+     1708.0,
+     1708.0,
+     1707.0
+    ]
+   }
+  }
+ },
+ "system": {
+  "driver": "566.14 (CUDA 12.7)",
+  "windows": "11 24H2 26100.7171",
+  "hags": "HwSchMode=2; D3DKMT HwSchEnabled=1 both adapters",
+  "wsl": "2.4.12.0, kernel 5.15.167.4 HZ=100 PREEMPT_NONE (no PREEMPT_DYNAMIC)",
+  "wslconfig": "none (defaults)",
+  "uptime": "Windows 95.2 d (boot 2026-07-15 14:50)",
+  "p4000": "Display Mode/Active Disabled, WDDM current/pending, only PID 4 on it, P8 idle",
+  "4060": "Display Active Enabled, WDDM, desktop+Brave+Slack etc on it, FB 5769/8188 MiB used idle",
+  "tdr": "TdrDelay unset (default 2 s); kernelExecTimeoutEnabled=1 both",
+  "nvsmi_dm_options": "0/WDDM 1/TCC 2/MCDM"
+ }
+}
