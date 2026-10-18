@@ -286,6 +286,7 @@ STATE_FILE = STATE_DIR / "state.json"               # brain.py, atomic (tmp + fs
 AUTOPILOT_LOG = STATE_DIR / "autopilot.jsonl"       # every Auto decision with its evidence (rotated at 1 MB)
 DIRECTOR_LOG = STATE_DIR / "director.jsonl"         # every look change and nudge with the music context (1 MB)
 LISTENER_LOG = STATE_DIR / "listener.jsonl"         # every listener verdict, failure, skip and Describe it (1 MB)
+CUES_LOG = STATE_DIR / "cues.jsonl"                 # every cue armed, fired, disarmed, missed, and its outcome (1 MB)
 LLM_LEDGER = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "llm" / "ledger.jsonl"
 TEST_MUSIC_DIR = pathlib.Path.home() / ".cache" / "screen-machine" / "test-music"   # tools/show/fetch_test_music.py
 ROOM_URL = "http://127.0.0.1:8700"                  # room_service in the Flask process, over loopback (show.yaml
@@ -834,41 +835,57 @@ INSIGHT_CONTENT: tuple[str, ...] = ("music", "speech", "mixed", "silence", "nois
 SECTION_LABELS: tuple[str, ...] = ("intro", "verse", "pre_chorus", "chorus", "bridge", "breakdown", "build", "drop",
                                    "solo", "outro", "unknown")
 TRAJECTORY_STATES: tuple[str, ...] = ("building", "peak", "sustaining", "releasing", "steady", "winding_down")
+# README S5.22 (owner, 18 Oct): the listener's recommended approach, how the piece will end, and what it sees coming
+APPROACH_CHANGE: tuple[str, ...] = ("slow", "medium", "fast")          # how often the looks should change
+APPROACH_TRANSITIONS: tuple[str, ...] = ("gentle", "lively", "wild")   # vocab.yaml's transition_style words
+ENDINGS: tuple[str, ...] = ("cold", "fade", "segue", "unknown")        # a sudden stop | fades out | runs into the next
+COMING_KINDS: tuple[str, ...] = ("chorus", "drop", "climax", "breakdown", "key_lift", "band_in", "vocal_in", "stop",
+                                 "outro", "end", "new_section")
+COMING_SIGNS: tuple[str, ...] = ("louder", "low_in", "busier", "stop_return", "timbre_change", "key_change",
+                                 "drums_in", "drums_out", "vocal_in", "vocal_out", "phrase_line")
+COMING_SIZES: tuple[str, ...] = ("small", "medium", "big")
 
 
 class InsightData(TypedDict):
-    """music.insight: one listener verdict as validated (§7.3 output), with its window. The model's own words are
-    checked against vocab.yaml; a word outside it becomes "unknown" (genre) or is dropped (moods)."""
+    """music.insight: one listener verdict as validated (§7.3 output; README S5.22), with its window. The model's own
+    words are checked against vocab.yaml and the tuples above after the call (lenient): a word outside its list becomes
+    "unknown" (genre, ending), the field's neutral word, or is dropped (moods, signs)."""
     t_ms: float                    # publish time
     window: dict[str, float]       # {"t0_ms", "t1_ms"}: the clip's acoustic span
-    segment_id: Optional[int]      # P3's DSP segment the clip covered (None in Stage 3)
+    segment_id: Optional[int]      # structure's section at the clip's end (None without structure)
     stream: str
     model: str
     latency_ms: float
     content: str                   # INSIGHT_CONTENT
+    character: str                 # <= 12 free words ("soft late-night jazz trio"); "" when none
     genre: dict[str, Any]          # {"label": vocab genre | "unknown", "detail": str, "confidence": 0..1}
-    instrumentation: list[str]
-    vocals: str                    # "none" | "male" | "female" | "mixed" | "choir" | "unknown"
     mood: dict[str, Any]           # {"words": [<= 3 vocab moods], "confidence"}
-    section: dict[str, Any]        # {"segment_id": int | None, "label": SECTION_LABELS, "confidence"}
-    trajectory: dict[str, Any]     # {"state": TRAJECTORY_STATES, "eta_to_change_s": float | None, "confidence"}
+    approach: dict[str, Any]       # {"intensity": 0..1 | None, "change": APPROACH_CHANGE | None,
+                                   #  "transitions": APPROACH_TRANSITIONS | None, "confidence"}
+    trajectory: dict[str, Any]     # {"state": TRAJECTORY_STATES, "confidence"}
+    ending: str                    # ENDINGS
+    coming: list[dict[str, Any]]   # <= 2: {"kind": COMING_KINDS, "eta_min_s", "eta_max_s" (from the clip's end),
+                                   #  "signs": [COMING_SIGNS], "size": COMING_SIZES, "confidence"}
     track_change: bool
-    same_track_as_previous: Optional[bool]
-    evidence: str                  # <= 25 words
+    why: str                       # <= 12 words
 
 
 class Beliefs(TypedDict):
-    """listener.beliefs(): the fused, decaying view the director (L2), the card and situations read (§7.1)."""
+    """listener.beliefs(): the fused, decaying view the director (L2), the cue engine, the card and situations read
+    (§7.1; README S5.22)."""
     state: str                     # "none" | "fresh" | "holding" | "fading"
     age_s: Optional[float]         # since the last verdict
     genre: Optional[dict]          # {"word", "conf"}: changes only on two agreeing reads (or a track change)
     moods: list[dict]              # [{"word", "conf"}]: vocab.yaml visual moods (feel through music_moods), top 3
     feel: list[dict]               # [{"word", "conf"}]: the listener's own music_moods words, conf decays (45 s)
-    instruments: list[str]
-    vocals: Optional[str]
-    section: Optional[dict]        # {"label", "conf"}
-    trajectory: Optional[dict]     # {"state", "conf", "eta_s"}
+    trajectory: Optional[dict]     # {"state", "conf"}
     content: Optional[str]
+    character: Optional[str]       # the latest verdict's (music only)
+    approach: Optional[dict]       # {"intensity", "intensity_conf", "change", "change_conf", "transitions",
+                                   #  "transitions_conf", "conf" (the least of the three)}: agreement over time, as moods
+    ending: Optional[str]          # ENDINGS less "unknown": the latest word that said something, for ENDING_HOLD_S
+    coming: list[dict]             # the latest verdict's forecasts still ahead: {"id", "kind", "t0_s", "t1_s" (acoustic
+                                   #  monotonic s), "in_s": [lo, hi] from now, "signs", "size", "conf"}
 
 
 class ListenerView(TypedDict):
@@ -879,7 +896,10 @@ class ListenerView(TypedDict):
                                    # "this feel doesn't listen", "people are talking", "too quiet", ...
     stream: Optional[str]
     next_in_s: Optional[float]
-    cadence_s: float
+    cadence_s: float               # seconds between call starts now (fast_cadence_s while something develops)
+    fast: Optional[str]            # README S5.22: why the fast cadence is on ("a build", "a forecast window", "the song's
+                                   # end is near", "a new section"), else None
+    in_flight: int                 # calls in flight now (at most show.yaml listener.max_in_flight)
     calls_today: int
     spend_today_usd: float
     budget_usd: Optional[float]
@@ -888,9 +908,23 @@ class ListenerView(TypedDict):
     errors: int
     provider: Optional[str]        # README S5.20: who that model is with, in page words ("Google", "OpenAI")
     est_evening_usd: Optional[float]   # estimate.per_evening_usd (shown even while the switch is off)
-    estimate: Optional[dict]       # {"per_call_usd", "per_hour_usd", "per_evening_usd", "evening_h", "cadence_s",
-                                   #  "model", "provider", "basis": "ledger" | "price table"}, or None (no usable
-                                   #  model, or its cost isn't known)
+    estimate: Optional[dict]       # {"per_call_usd", "per_hour_usd", "per_evening_usd", "evening_h", "cadence_s" (the
+                                   #  blend the arithmetic uses), "steady_cadence_s", "fast_cadence_s", "fast_share",
+                                   #  "fast_share_basis": "measured" | "assumed", "clip_s", "model", "provider",
+                                   #  "basis": "ledger" | "price table"}, or None (no usable model, or its cost isn't
+                                   #  known)
+    character: Optional[str]       # README S5.22: the beliefs' character line ("soft late-night jazz trio")
+    approach: Optional[dict]       # {"intensity", "change", "transitions", "conf"}: the listener's recommended approach
+    armed: list[dict]              # the cue engine's sheet (cues.py): [CueLine]
+
+
+class CueLine(TypedDict):
+    """One armed cue on the cue sheet (cues.Cues.sheet; README S5.22), for the card's listening block."""
+    kind: str                      # COMING_KINDS, or a standing cue: "stop" | "fade" | "segue"
+    words: str                     # a plain line: "Big change at the chorus, likely in 10-25 s", "Ready: slow fade if
+                                   # the music fades"
+    window_s: Optional[list[float]]   # [lo, hi] seconds from now (a forecast), None (a standing cue)
+    size: Optional[str]            # COMING_SIZES (a forecast), None (a standing cue)
 
 
 class DescribeIntent(TypedDict):
@@ -957,8 +991,10 @@ class CardData(TypedDict):
     low: bool
     chips: list[ChipData]
     listening: dict[str, Any]      # {"on": bool, "effective": bool, "why": str | None, "spend_today_usd": float,
-                                   #  "est_evening_usd": float | None, "provider": "Google" | "OpenAI" | None}
-                                   #  (README S5.20: the price shows even while the switch is off)
+                                   #  "est_evening_usd": float | None, "provider": "Google" | "OpenAI" | None,
+                                   #  "character": str | None, "approach": {...} | None, "armed": [CueLine]}
+                                   #  (README S5.20: the price shows even while the switch is off; S5.22: the
+                                   #  listener's character and approach, and the cue sheet)
     describe: dict[str, Any]       # {"state": "idle" | "working" | "done", "text": str | None, "reply": str | None,
                                    #  "suggest": {"mode", "label"} | None}
     auto: dict[str, Any]           # {"on": bool | None, "state", "line", "chip": AutoAnnouncement | None,
@@ -1039,6 +1075,11 @@ class BrainContext:
                                                                        # show-brain, guarded; brain.add appends
     # Song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends"). None: no director, and the track events carry no
     # "transition" (the renderer keeps the mode's default).
+    # README S5.22: the cue engine (cues.py) and the hold it respects
+    held: Optional[Callable[[], bool]] = None                          # director: a person holds the look (Keep this
+                                                                       # look, or their change pending): room.direction's
+                                                                       # ``hold`` (any thread)
+    cue_sheet: Optional[Callable[[], list]] = None                     # cues.Cues.sheet: [CueLine] (any thread)
     track_transition: Optional[Callable[[dict, dict], Optional[dict]]] = None   # director.Director.track_transition:
                                                                        # structure calls it (show-brain, synchronous,
                                                                        # guarded) while it builds a TRACK_EVENT_KINDS
@@ -1371,7 +1412,9 @@ EVENT_KINDS_STAGE4: tuple[str, ...] = ("breakdown", "track_change", "track_end_a
 # -- song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends", 17 Oct; the event shape agreed with 04) ------------------
 TRACK_EVENT_KINDS: tuple[str, ...] = ("track_end_armed", "track_end", "track_change")   # each carries "transition"
 TRACK_VIA: tuple[str, ...] = ("sonos", "dsp")
-TRACK_END_DETAILS: tuple[str, ...] = ("disarmed", "sound_back")   # track_end_armed called off; track_end: sound again
+TRACK_END_DETAILS: tuple[str, ...] = ("disarmed", "sound_back", "stop", "fade")   # track_end_armed called off;
+                                   # track_end: sound again; cues.py's standing cues (README S5.22): an abrupt stop, a
+                                   # fade-out
 TRANSITION_STYLES: tuple[str, ...] = ("fade-dark", "crossfade", "cut")
 TRANSITION_ON: tuple[str, ...] = ("downbeat", "now")
 CHANGE_SIZES: tuple[str, ...] = ("big", "small")

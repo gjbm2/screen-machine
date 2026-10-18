@@ -19,15 +19,21 @@ from utils.llm.core import LLMResult
 VOCAB = "moods: [calm, mellow, warm, bright, euphoric, dreamy]\ngenre: [soul, jazz, house]\n"
 
 
+COMING = [{"kind": "Chorus", "eta_min_s": 25, "eta_max_s": 10, "signs": ["louder", "drums-in", "wobble"],
+           "size": "big", "confidence": 0.7}]
+
+
 def verdict(genre="soul", conf=0.8, moods=("warm", "mellow", "sparkly"), content="music", track_change=False,
-            section="chorus", traj="building", eta=20.0):
-    return {"content": content, "genre": {"label": genre, "detail": "neo soul", "confidence": conf},
-            "instrumentation": ["Piano", "bass", "piano"], "vocals": "female",
+            traj="building", ending="fade", intensity=0.3, change="slow", transitions="gentle", coming=None):
+    """README S5.22's answer (the model's tool arguments)."""
+    return {"content": content,
+            "character": "soft late-night soul band with brushed drums and a long tail of extra words here",
+            "genre": {"label": genre, "detail": "neo soul", "confidence": conf},
             "mood": {"words": list(moods), "confidence": 0.7},
-            "section": {"label": section, "confidence": 0.6},
-            "trajectory": {"state": traj, "eta_to_change_s": eta, "confidence": 0.5},
-            "track_change": track_change, "same_track_as_previous": True,
-            "evidence": " ".join(["word"] * 40)}
+            "approach": {"intensity": intensity, "change": change, "transitions": transitions, "confidence": 0.7},
+            "trajectory": {"state": traj, "confidence": 0.5}, "ending": ending,
+            "coming": [dict(x) for x in (COMING if coming is None else coming)],
+            "track_change": track_change, "why": " ".join(["word"] * 20)}
 
 
 def ok(data, model="gpt-x"):
@@ -102,7 +108,7 @@ class Rig:
         self.lis = L.Listener(ctx, llm=self.llm, mono=lambda: self.now, wall=lambda: 1.79e9 + self.now,
                               log_path=self.log_path, vocab_path=vocab, encoder=self._encode)
         self.lis.configure(dict({"senders": SENDERS}, **(settings or {
-            "listener": {"cadence_s": 20, "clip_s": 24, "min_gap_s": 8, "relaxed_cadence_s": 45, "agree_reads": 3,
+            "listener": {"cadence_s": 15, "fast_cadence_s": 5, "clip_s": 10, "min_gap_s": 4, "max_in_flight": 2,
                          "music_gate": "classifier", "describe_timeout_s": 0.5},
             "situations": {"music": {"dsp_min_gate": 0.3}}})))
         self.lis.on = bool(on)                            # as restored from state.json (set_on would persist)
@@ -130,9 +136,9 @@ class Rig:
         self.now += dt
         self.lis.tick(self.now)
         for _ in range(3):
-            t = self.lis._task
-            if t is not None:
-                await asyncio.wait([t], timeout=5)
+            ts = list(self.lis._tasks)
+            if ts:
+                await asyncio.wait(ts, timeout=5)
             await asyncio.sleep(0)
 
     async def ticks(self, n, dt=1.0):
@@ -252,17 +258,20 @@ def test_a_room_sound_false_stream_is_listened_to_with_the_switch_on(tmp_path):
     assert kw["tool"] is L.LISTEN_TOOL and "soul, jazz, house" in kw["system"]
     assert "Timeline" in kw["user"][0] and len(kw["user"]) == 1          # no previous verdict yet
     pcm, fs, enc = rig.encoded[0]
-    assert fs == 16000 and pcm.dtype == np.int16 and len(pcm) == 24 * 16000
+    assert fs == 16000 and pcm.dtype == np.int16 and len(pcm) == 10 * 16000          # README S5.22: a 10 s clip
     assert enc == {"fmt": "mp3", "sample_rate": 24000, "bitrate": "64k"}
     assert [m["type"] for m in rig.pub] == [c.MUSIC_INSIGHT]
     ins = rig.pub[0]["data"]
     assert set(ins) == set(c.InsightData.__annotations__)
     assert ins["genre"] == {"label": "unknown", "detail": "neo soul", "confidence": 0.8}   # rock isn't in vocab
     assert ins["mood"]["words"] == ["warm", "mellow"]                                      # sparkly dropped
-    assert ins["instrumentation"] == ["piano", "bass"]
-    assert len(ins["evidence"].split()) == 25 and ins["stream"] == "test-audio"
-    assert ins["window"]["t1_ms"] - ins["window"]["t0_ms"] == pytest.approx(24000.0, abs=1.0)
-    assert ins["segment_id"] is None and ins["section"]["segment_id"] is None
+    assert len(ins["character"].split()) == 12 and len(ins["why"].split()) == 12
+    assert ins["approach"] == {"intensity": 0.3, "change": "slow", "transitions": "gentle", "confidence": 0.7}
+    assert ins["ending"] == "fade" and ins["stream"] == "test-audio"
+    assert ins["coming"] == [{"kind": "chorus", "eta_min_s": 10.0, "eta_max_s": 25.0, "signs": ["louder", "drums_in"],
+                              "size": "big", "confidence": 0.7}]                       # ordered, cleaned
+    assert ins["window"]["t1_ms"] - ins["window"]["t0_ms"] == pytest.approx(10000.0, abs=1.0)
+    assert ins["segment_id"] is None
     assert rig.notified == ["card"]
     v = rig.lis.view()
     assert v["last"] == ins and v["model"] == "gpt-x" and v["budget_usd"] == 15.0
@@ -344,54 +353,83 @@ def test_why(tmp_path, case, why):
     assert rig.llm.calls == []
 
 
-# -- cadence -----------------------------------------------------------------------------------------------------------
-def test_cadence_min_gap_and_one_in_flight(tmp_path):
+# -- cadence (README S5.22) ---------------------------------------------------------------------------------------------
+def test_cadence_steady_and_starts_min_gap_apart(tmp_path):
     rig = Rig(tmp_path)
     rig.fill()
+    rig.llm.results = [ok(verdict(coming=[])) for _ in range(20)]      # nothing coming: the steady cadence
 
     async def go():
         await rig.tick()
         assert len(rig.llm.calls) == 1
-        await rig.ticks(19)
-        assert len(rig.llm.calls) == 1 and rig.lis.view()["next_in_s"] == 1.0
+        await rig.ticks(14)
+        assert len(rig.llm.calls) == 1 and rig.lis.view()["next_in_s"] == 1.0 and rig.lis.view()["fast"] is None
         await rig.tick()
-        assert len(rig.llm.calls) == 2
-        # a slow call: one in flight at most, and min_gap after it ends
-        rig.llm.delay = 0.2
-        rig.lis.cfg["cadence_s"] = 1.0
-        rig.now += 30
-        rig.lis.tick(rig.now)
-        assert rig.lis._task is not None
-        rig.lis.tick(rig.now + 1)
-        await asyncio.wait([rig.lis._task], timeout=5)
-        await asyncio.sleep(0)
-        assert len(rig.llm.calls) == 3 and rig.lis._task is None
-        end = rig.lis._last_end
-        rig.llm.delay = 0.0
-        while len(rig.llm.calls) == 3:
-            await rig.tick()
-        assert rig.now - end >= 8.0
-    run(go())
-
-
-def test_relaxed_after_agreeing_confident_reads_and_back(tmp_path):
-    rig = Rig(tmp_path)
-    rig.fill()
-
-    async def go():
+        assert len(rig.llm.calls) == 2 and rig.lis.view()["cadence_s"] == 15.0
+        rig.lis.cfg["cadence_s"] = 1.0                    # never closer than min_gap_s (4) between starts
         times = []
-        for _ in range(200):
+        for _ in range(12):
             n = len(rig.llm.calls)
-            if n == 3:
-                rig.llm.results = [ok(verdict(genre="jazz"))]
             await rig.tick()
             if len(rig.llm.calls) > n:
                 times.append(rig.now)
-            if len(times) == 5:
-                break
-        gaps = [round(b - a) for a, b in zip(times, times[1:])]
-        assert gaps == [20, 20, 45, 20], gaps          # 3 agreeing soul reads -> 45 s; jazz resets it
+        assert [round(b - a) for a, b in zip(times, times[1:])] == [4, 4]
     run(go())
+
+
+def test_up_to_two_calls_in_flight(tmp_path):
+    rig = Rig(tmp_path)
+    rig.fill()
+    rig.lis.cfg["cadence_s"] = 4.0
+    rig.llm.delay = 0.3
+
+    async def go():
+        for _ in range(3):
+            rig.now += 4.0
+            rig.lis.tick(rig.now)
+            await asyncio.sleep(0.01)
+        assert len(rig.lis._tasks) == 2 and rig.lis.view()["in_flight"] == 2   # the third waits for a free slot
+        assert len(rig.llm.calls) == 2
+        await asyncio.wait(list(rig.lis._tasks), timeout=5)
+        await asyncio.sleep(0)
+        assert rig.lis._tasks == [] and len(rig.pub) == 2
+        rig.now += 4.0
+        rig.lis.tick(rig.now)
+        await asyncio.sleep(0.01)
+        assert len(rig.llm.calls) == 3
+        await asyncio.wait(list(rig.lis._tasks), timeout=5)
+    run(go())
+
+
+def test_fast_cadence_while_something_develops(tmp_path):
+    rig = stage4_rig(tmp_path, stream="test-audio")
+    lis = rig.lis
+    now = rig.now
+    assert lis._developing(now) is None and lis.interval() == 15.0
+    rig.mc = {"t_ms": now * 1000.0, "section": {"id": 1, "phase": "build"}}
+    assert lis._developing(now) == "a build"
+    lis._fast = lis._developing(now)
+    assert lis.interval() == 5.0
+    rig.mc["section"]["phase"] = "outro"
+    assert lis._developing(now) == "the music is fading"
+    rig.mc = None
+    lis._beliefs = {"coming": [{"t0_s": now + 25.0, "t1_s": now + 40.0}]}
+    assert lis._developing(now) is None                                  # opens more than 20 s ahead
+    lis._beliefs = {"coming": [{"t0_s": now + 15.0, "t1_s": now + 30.0}]}
+    assert lis._developing(now) == "a forecast window"
+    lis._beliefs = {"coming": [{"t0_s": now - 10.0, "t1_s": now - 1.0}]}
+    assert lis._developing(now) is None                                  # already passed
+    lis._beliefs = {}
+    lis.on_music_event({"kind": "track_end_armed", "at_ms": (now + 25.0) * 1000.0, "eta_s": 25.0, "id": "e"})
+    assert lis._developing(now) == "the song's end is near"
+    lis.on_music_event({"kind": "track_end_armed", "at_ms": (now + 25.0) * 1000.0, "eta_s": None, "id": "e",
+                        "detail": "disarmed"})
+    assert lis._developing(now) is None
+    lis.on_music_event({"kind": "section_change", "at_ms": now * 1000.0, "boundary_ms": (now - 4) * 1000.0,
+                        "section_id": 2, "predicted": False})
+    assert lis._developing(now) == "a new section" and lis._developing(now + 11.0) is None
+    lis.on_music_event({"kind": "section_change", "at_ms": (now + 30) * 1000.0, "section_id": 3, "predicted": True})
+    assert lis._developing(now + 20.0) is None                           # a predicted line is no boundary yet
 
 
 def test_budget_slows_and_errors_back_off(tmp_path):
@@ -401,15 +439,15 @@ def test_budget_slows_and_errors_back_off(tmp_path):
     async def go():
         rig.llm.budget = True
         await rig.tick()
-        assert rig.lis.view()["cadence_s"] == 60.0
+        assert rig.lis.view()["cadence_s"] == 45.0
         rig.llm.budget = False
         rig.llm.results = [failed(), failed()]
         await rig.ticks(60)
         assert rig.lis.errors >= 2
-        assert rig.lis.view()["cadence_s"] == 80.0          # 20 x 2^2 after two failures in a row
+        assert rig.lis.view()["cadence_s"] == 60.0          # 15 x 2^2 after two failures in a row
         assert [e["kind"] for e in rig.lis.log(10)].count("error") == 2
         await rig.ticks(80)
-        assert rig.lis._errors_row == 0 and rig.lis.view()["cadence_s"] == 20.0
+        assert rig.lis._errors_row == 0 and rig.lis.view()["cadence_s"] == 15.0
     run(go())
 
 
@@ -423,12 +461,11 @@ def test_switching_off_cancels_a_room_call_in_flight(tmp_path):
         rig.now += 1
         rig.lis.tick(rig.now)
         await asyncio.sleep(0.05)
-        task = rig.lis._task
-        assert task is not None
+        task = rig.lis._tasks[0]
         rig.lis.set_on(False)
         await asyncio.wait([task], timeout=2)
         await asyncio.sleep(0)
-        assert task.cancelled() and rig.lis._task is None and rig.pub == []
+        assert task.cancelled() and rig.lis._tasks == [] and rig.pub == []
         assert rig.lis.view()["why"] == L.WHY_OFF
     run(go())
 
@@ -442,8 +479,7 @@ def test_switching_off_cancels_a_test_stream_call_too(tmp_path):
         rig.now += 1
         rig.lis.tick(rig.now)
         await asyncio.sleep(0.05)
-        task = rig.lis._task
-        assert task is not None
+        task = rig.lis._tasks[0]
         rig.lis.set_on(False)
         await asyncio.wait([task], timeout=2)
         await asyncio.sleep(0)
@@ -474,10 +510,12 @@ def test_persist_restore(tmp_path):
 
 
 def test_bad_settings_fall_back_to_design_defaults(tmp_path):
-    rig = Rig(tmp_path, settings={"listener": {"cadence_s": -1, "music_gate": "maybe", "agree_reads": 0}})
-    assert rig.lis.cfg["quiet_gate"] == 0.1 and rig.lis.cfg["min_clip_s"] == 10.0          # design defaults
-    assert rig.lis.cfg["cadence_s"] == 20.0 and rig.lis.cfg["music_gate"] == "classifier"
-    assert rig.lis.cfg["agree_reads"] == 3 and len(rig.lis.problems) == 3
+    rig = Rig(tmp_path, settings={"listener": {"cadence_s": -1, "music_gate": "maybe", "max_in_flight": 0,
+                                               "est_fast_share": 2}})
+    assert rig.lis.cfg["quiet_gate"] == 0.1 and rig.lis.cfg["min_clip_s"] == 6.0           # design defaults
+    assert rig.lis.cfg["cadence_s"] == 15.0 and rig.lis.cfg["music_gate"] == "classifier"
+    assert rig.lis.cfg["max_in_flight"] == 2 and rig.lis.cfg["est_fast_share"] == 0.5 and len(rig.lis.problems) == 4
+    assert L.DEFAULTS["clip_s"] == 10.0 and L.DEFAULTS["fast_cadence_s"] == 5.0 and L.DEFAULTS["min_gap_s"] == 4.0
 
 
 # -- beliefs -----------------------------------------------------------------------------------------------------------
@@ -513,17 +551,57 @@ def test_confidence_from_agreement_decay_and_expiry(tmp_path):
     v = b.view(20.0)
     assert v["state"] == "fresh" and v["genre"]["conf"] == 1.0
     assert [m["word"] for m in v["moods"]] == ["warm", "mellow"] and v["moods"][0]["conf"] == 1.0
-    assert v["instruments"] == ["piano", "bass"] and v["vocals"] == "female"
-    assert v["trajectory"]["eta_s"] == 5.0                 # 20 s from the clip's end (5 s), read at 20 s
-    assert v["section"] == {"label": "chorus", "conf": 0.6}
-    v = b.view(65.0)                                        # 45 s on: mood votes halved, section lapsed
+    assert v["trajectory"] == {"state": "building", "conf": 0.5} and v["ending"] == "fade"
+    assert v["approach"] == {"intensity": 0.3, "intensity_conf": 1.0, "change": "slow", "change_conf": 1.0,
+                             "transitions": "gentle", "transitions_conf": 1.0, "conf": 1.0}
+    assert v["character"].startswith("soft late-night soul band")
+    # the chorus window: 10-25 s from the clip's end (5 s) on the acoustic clock
+    assert [(x["kind"], x["t0_s"], x["t1_s"], x["in_s"], x["size"]) for x in v["coming"]] == \
+        [("chorus", 15.0, 30.0, [0.0, 10.0], "big")]
+    v = b.view(65.0)                                        # 45 s on: mood votes halved; the window passed
     assert v["state"] == "holding" and v["moods"][0]["conf"] == pytest.approx(0.5, abs=0.01)
-    assert v["section"] is None and v["trajectory"]["eta_s"] == 0.0
+    assert v["coming"] == [] and v["approach"]["intensity_conf"] == pytest.approx(0.5, abs=0.01)
+    assert v["ending"] == "fade"                            # 45 s < ENDING_HOLD_S
+    v = b.view(81.0)
+    assert v["ending"] is None                              # held 60 s
     v = b.view(110.0)                                       # 90 s: fading, half way
     assert v["state"] == "fading" and v["genre"]["conf"] < 0.5
     v = b.view(141.0)
-    assert v["state"] == "none" and v["genre"] is None and v["moods"] == []
+    assert v["state"] == "none" and v["genre"] is None and v["moods"] == [] and v["approach"] is None
     assert b.view(150.0)["age_s"] is None
+
+
+def test_approach_agreement_and_the_latest_word_that_says_something(tmp_path):
+    rig = Rig(tmp_path)
+    rig.lis.vocab.poll(0.0)
+    b = L.BeliefState()
+    b.add(_ins(rig, intensity=0.2, change="slow", transitions="gentle", ending="cold"), 0.0)
+    v = b.view(0.0)["approach"]
+    assert v["intensity_conf"] == 0.5 and v["conf"] == 0.5      # one read: half confident, as a mood
+    b.add(_ins(rig, intensity=0.9, change="fast", transitions="wild", ending="unknown"), 1.0)
+    v = b.view(1.0)
+    ap = v["approach"]
+    assert ap["intensity"] == pytest.approx(0.55, abs=0.01) and ap["intensity_conf"] == 0.0   # 0.35 apart: no agreement
+    assert ap["change_conf"] < 0.6 and v["ending"] == "cold"   # unknown never clears what was said
+    b.add(_ins(rig, intensity=0.3, change="slow", transitions="gentle", ending="segue", track_change=True), 2.0)
+    v = b.view(2.0)                                         # a new song: the votes start again
+    assert v["approach"]["intensity"] == 0.3 and v["approach"]["change"] == "slow" and v["ending"] == "segue"
+
+
+def test_an_older_clips_verdict_replaces_nothing_newer(tmp_path):
+    rig = Rig(tmp_path)
+    rig.lis.vocab.poll(0.0)
+    b = L.BeliefState()
+    new = _ins(rig, ending="cold", coming=[{"kind": "drop", "eta_min_s": 5, "eta_max_s": 9, "signs": ["low_in"],
+                                            "size": "big", "confidence": 0.8}])
+    new["window"] = {"t0_ms": 10000.0, "t1_ms": 20000.0}
+    old = _ins(rig, ending="fade", coming=[])
+    old["window"] = {"t0_ms": 5000.0, "t1_ms": 15000.0}
+    b.add(new, 22.0)
+    b.add(old, 23.0)                                        # two in flight: the older clip came back second
+    v = b.view(23.0)
+    assert v["ending"] == "cold" and [x["kind"] for x in v["coming"]] == ["drop"] and v["age_s"] == 0.0
+    assert b.votes["mood"]["warm"] == pytest.approx(1.0 + 0.5 ** (1 / 45.0), abs=1e-3)   # its votes still count
 
 
 def test_speech_adds_no_votes(tmp_path):
@@ -532,7 +610,8 @@ def test_speech_adds_no_votes(tmp_path):
     b = L.BeliefState()
     b.add(_ins(rig, content="speech"), 0.0)
     v = b.view(0.0)
-    assert v["genre"] is None and v["moods"] == [] and v["content"] == "speech" and v["vocals"] is None
+    assert v["genre"] is None and v["moods"] == [] and v["content"] == "speech"
+    assert v["character"] is None and v["approach"] is None and v["ending"] is None and v["coming"] == []
 
 
 # -- Describe it -------------------------------------------------------------------------------------------------------
@@ -657,8 +736,12 @@ def ml_view(rows, stream="room-mic"):
             "ages": {}, "hello": None}
 
 
-def stage4_rig(tmp_path, stream="room-mic") -> Rig:
-    rig = Rig(tmp_path, stream=stream)
+CED24 = {"listener": {"cadence_s": 15, "fast_cadence_s": 5, "clip_s": 24, "min_gap_s": 4, "min_clip_s": 10,
+                      "music_gate": "classifier"}}          # the run arithmetic below was written for 24 s clips
+
+
+def stage4_rig(tmp_path, stream="room-mic", settings=None) -> Rig:
+    rig = Rig(tmp_path, stream=stream, settings=settings)
     rig.ml = None
     rig.mc = None
     rig.lis.ctx.ml = lambda: rig.ml
@@ -699,7 +782,7 @@ def test_ced_gate_reasons(tmp_path):
 
 
 def test_the_clip_is_the_longest_music_run_talking_in_the_middle(tmp_path):
-    rig = stage4_rig(tmp_path)
+    rig = stage4_rig(tmp_path, settings=CED24)
     rig.fill(seconds=35.0)
     rig.ml = ml_view(readings(rig, [(12, 0.8, 0.1), (3, 0.7, 0.6), (9, 0.9, 0.05)]))
     t_first = rig.now - 24 + 1
@@ -718,7 +801,7 @@ def test_the_clip_is_the_longest_music_run_talking_in_the_middle(tmp_path):
 
 
 def test_a_tie_goes_to_the_latest_run(tmp_path):
-    rig = stage4_rig(tmp_path)
+    rig = stage4_rig(tmp_path, settings=CED24)
     rig.fill(seconds=35.0)
     rig.ml = ml_view(readings(rig, [(11, 0.8, 0.1), (2, 0.1, 0.6), (11, 0.8, 0.1)]))
     run(rig.tick(0.0))
@@ -728,7 +811,7 @@ def test_a_tie_goes_to_the_latest_run(tmp_path):
 
 
 def test_babble_and_conversation_under_music_count_as_talking(tmp_path):
-    rig = stage4_rig(tmp_path)
+    rig = stage4_rig(tmp_path, settings=CED24)
     rig.fill(seconds=35.0)
     rows = readings(rig, [(20, 0.8, 0.1)])
     for r in rows:
@@ -780,13 +863,14 @@ def fill_until(rig, t_end, seconds=38.0):
 
 def test_section_call_at_the_boundary_plus_8_s_with_min_gap_and_the_segment_map(tmp_path):
     rig = stage4_rig(tmp_path, stream="test-audio")                    # room_sound false: no CED gate here
+    rig.lis.cfg["fast_cadence_s"] = 15.0                               # (the section call alone, not the fast cadence)
     fill_until(rig, rig.now + 14.0)
     rig.mc = {"t_ms": rig.now * 1000.0, "section": {"id": 2, "letter": "A", "started_ms": (rig.now - 20) * 1000.0}}
 
     async def go():
         await rig.tick()                                               # the regular call (t = 1001)
         assert len(rig.llm.calls) == 1
-        first_end = rig.lis._last_end
+        first_start = rig.lis._last_start
         rig.mc["t_ms"] = rig.now * 1000.0
         boundary = rig.now + 3.0
         rig.lis.on_music_event({"kind": "section_change", "at_ms": (boundary + 1.5) * 1000.0, "t_ms": rig.now * 1e3,
@@ -801,48 +885,48 @@ def test_section_call_at_the_boundary_plus_8_s_with_min_gap_and_the_segment_map(
             await rig.tick()
         assert len(rig.llm.calls) == 1                                 # not before it is due
         await rig.tick()
-        assert len(rig.llm.calls) == 2 and rig.now - first_end >= 8.0
+        assert len(rig.llm.calls) == 2 and rig.now - first_start >= 8.0
         user = rig.llm.calls[1][1]["user"]
         seg = next(u for u in user if u.startswith("Segment map"))
         assert "#2 A 0-" in seg and "#3 " in seg
         ins = rig.pub[-1]["data"]
         assert ins["window"]["t1_ms"] == pytest.approx((boundary + 8.0) * 1000.0, abs=1.0)
-        assert ins["segment_id"] == 3 and ins["section"]["segment_id"] == 3
+        assert ins["segment_id"] == 3
         assert rig.lis.snapshot()["sections"]["section_calls"] == 1
-        # min_gap: a boundary right after a call waits for min_gap_s after that call ended
+        # a boundary right after a call waits for half the interval (7.5 s) after that call started
         rig.rings = Rings(seconds=40.0)                               # (a fresh ring: times only move forward)
         rig.lis.ctx.rings = rig.rings
         fill_until(rig, rig.now + 12.0)
-        end = rig.lis._last_end
+        start = rig.lis._last_start
         rig.lis.on_music_event({"kind": "section_change", "at_ms": rig.now * 1e3, "t_ms": rig.now * 1e3, "seq": 3,
                                 "section_id": 4, "letter": None, "predicted": False,
                                 "boundary_ms": (rig.now - 7.5) * 1000.0})
         due = rig.lis._section_due
-        assert due < end + 8.0
+        assert due < start + 7.5
         n = len(rig.llm.calls)
-        while len(rig.llm.calls) == n and rig.now < end + 20.0:
+        while len(rig.llm.calls) == n and rig.now < start + 20.0:
             await rig.tick()
-        assert len(rig.llm.calls) == n + 1 and rig.now >= end + 8.0
+        assert len(rig.llm.calls) == n + 1 and rig.now >= start + 7.5
         assert rig.lis.snapshot()["sections"]["section_calls"] == 2
     run(go())
 
 
 def test_section_calls_slow_down_with_the_cadence(tmp_path):
-    """Relaxed after agreeing verdicts (45 s) or over the daily budget (x3): a section call waits at least half the
-    interval after the last call, and there is at most one per interval, so false boundaries don't become uploads."""
+    """Over the daily budget (x3) or backed off: a section call waits at least min_gap_s and half the interval after
+    the last call started, and there is at most one per interval, so false boundaries don't become uploads."""
     lis = stage4_rig(tmp_path, stream="test-audio").lis
-    lis._last_start, lis._last_end = 1000.0, 1004.0
-    assert lis.interval() == 20.0
-    assert not lis._section_allowed(1011.0)                            # min_gap_s (8) after the call ended
-    assert lis._section_allowed(1012.0)                                # >= 20 / 2 after it started
-    lis._agree = int(lis.cfg["agree_reads"])                           # relaxed: every 45 s
-    assert not lis._section_allowed(1012.0) and lis._section_allowed(1022.5)
-    lis._last_section_start = 1022.5
-    lis._last_start = 1022.5
-    assert not lis._section_allowed(1060.0)                            # one section call per interval at most
-    assert lis._section_allowed(1067.5)
+    lis._last_start = 1000.0
+    assert lis.interval() == 15.0
+    assert not lis._section_allowed(1007.0)                            # under 15 / 2 after the call started
+    assert lis._section_allowed(1007.5)
+    lis._fast = "a new section"                                        # fast: every 5 s, but min_gap_s (4) holds
+    assert lis.interval() == 5.0 and not lis._section_allowed(1003.9) and lis._section_allowed(1004.0)
+    lis._fast = None
+    lis._last_section_start = lis._last_start = 1007.5
+    assert not lis._section_allowed(1020.0)                            # one section call per interval at most
+    assert lis._section_allowed(1022.5)
     lis._budget_hit = True                                             # over budget: x3
-    assert lis.interval() == 135.0 and not lis._section_allowed(1080.0)
+    assert lis.interval() == 45.0 and not lis._section_allowed(1040.0)
 
 
 def test_track_change_lets_the_next_verdict_win_at_once(tmp_path):
@@ -965,11 +1049,11 @@ def _real_llm(tmp_path, monkeypatch, answer):
 
 
 def test_off_vocabulary_words_are_kept_and_never_sent_to_the_fallback(tmp_path, monkeypatch):
-    """Audit, 17 Oct: a section word outside the list ("sustaining") failed the whole answer, and the same clip was
-    then charged again on the fallback. The words are plain strings now and the call is lenient: one call, cleaned."""
-    v = verdict(section="sustaining", traj="Winding down", content="Music")
+    """Audit, 17 Oct: a word outside its list failed the whole answer, and the same clip was then charged again on the
+    fallback. The words are plain strings and the call is lenient: one call, cleaned (README S5.20, S5.22)."""
+    v = verdict(traj="Winding down", content="Music", ending="Fade out", change="glacial")
     v["genre"]["confidence"] = 1.4                                 # out of range: soft, clamped
-    v["instrumentation"] = [f"inst{i}" for i in range(11)]         # too many: soft, cut to 8
+    v["coming"] = [dict(COMING[0], kind=f"thing{i}") for i in range(3)]   # too many: soft, cut to 2
     m, client = _real_llm(tmp_path, monkeypatch, v)
     try:
         rig = Rig(tmp_path)
@@ -978,35 +1062,46 @@ def test_off_vocabulary_words_are_kept_and_never_sent_to_the_fallback(tmp_path, 
         run(rig.tick())
         assert [r["model"] for r in client.requests] == ["m1"]     # no second, paid call to m2
         ins = rig.pub[0]["data"]
-        assert ins["section"]["label"] == "unknown" and ins["trajectory"]["state"] == "winding_down"
-        assert ins["content"] == "music" and ins["genre"]["confidence"] == 1.0 and len(ins["instrumentation"]) == 8
+        assert ins["trajectory"]["state"] == "winding_down" and ins["ending"] == "unknown"
+        assert ins["approach"]["change"] is None and ins["approach"]["transitions"] == "gentle"
+        assert ins["content"] == "music" and ins["genre"]["confidence"] == 1.0
+        assert [x["kind"] for x in ins["coming"]] == ["new_section", "new_section"]
         verdict_log = [e for e in rig.lis.log(20) if e["kind"] == "verdict"][0]
-        assert verdict_log["problems"] and any("more than 8" in p for p in verdict_log["problems"])
+        assert verdict_log["problems"] and any("more than 2" in p for p in verdict_log["problems"])
         assert m.status()["calls_today"]["listen"] == 1
         sent = client.requests[0]["tools"][0]["function"]["parameters"]["properties"]
-        assert "enum" not in sent["section"]["properties"]["label"] and "enum" not in sent["content"]
-        assert "sustaining" in sent["trajectory"]["properties"]["state"]["description"]   # the words, as a hint
+        assert "enum" not in sent["ending"] and "enum" not in sent["content"]
+        assert "winding_down" in sent["trajectory"]["properties"]["state"]["description"]   # the words, as a hint
+        assert "phrase_line" in client.requests[0]["messages"][0]["content"]
     finally:
         m.configure()
 
 
 def test_the_tool_has_no_word_lists_left_to_fail_on():
     from utils.llm import check
-    v = verdict(section="sustaining", traj="climbing", content="music with talking")
-    v["vocals"] = "a tenor"
+    v = verdict(traj="climbing", content="music with talking", ending="abrupt", change="glacial",
+                transitions="explosive", coming=[dict(COMING[0], kind="riff", size="huge", signs=["sparkle"])])
     assert check(v, L.LISTEN_TOOL["parameters"]) == ([], [])
+    assert set(L.LISTEN_TOOL["parameters"]["required"]) == {"content", "character", "genre", "mood", "approach",
+                                                            "trajectory", "ending", "coming", "track_change", "why"}
     assert L.word_of("Pre-chorus", c.SECTION_LABELS, "unknown") == "pre_chorus"
     assert L.word_of(7, c.SECTION_LABELS, "unknown") == "unknown"
+    assert L.word_of("Key lift", c.COMING_KINDS, None) == "key_lift"
 
 
 def test_a_garbled_answer_never_crashes_to_insight(tmp_path):
     rig = Rig(tmp_path)
     rig.lis.vocab.poll(0.0)
-    ins = L.to_insight({"genre": "jazz", "mood": ["calm"], "section": None, "trajectory": "up",
-                        "instrumentation": "piano"}, vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
+    ins = L.to_insight({"genre": "jazz", "mood": ["calm"], "approach": "wild", "trajectory": "up", "coming": "soon",
+                        "ending": 3, "character": None}, vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
                        window=(0.0, 1.0), t_ms=0.0)
-    assert ins["genre"]["label"] == "unknown" and ins["mood"]["words"] == [] and ins["section"]["label"] == "unknown"
-    assert ins["trajectory"]["state"] == "steady" and ins["instrumentation"] == []
+    assert ins["genre"]["label"] == "unknown" and ins["mood"]["words"] == [] and ins["coming"] == []
+    assert ins["trajectory"]["state"] == "steady" and ins["ending"] == "unknown" and ins["character"] == ""
+    assert ins["approach"] == {"intensity": None, "change": None, "transitions": None, "confidence": 0.0}
+    one = L.to_insight({"coming": [{"kind": "drop", "eta_max_s": 400, "signs": "low_in"}, {"kind": "chorus"}]},
+                       vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0, window=(0.0, 1.0), t_ms=0.0)
+    assert one["coming"] == [{"kind": "drop", "eta_min_s": 120.0, "eta_max_s": 120.0, "signs": [], "size": "medium",
+                              "confidence": 0.0}]                  # one end, cut to 120 s; no window: dropped
 
 
 class EstLLM(FakeLLM):
@@ -1035,24 +1130,66 @@ class EstLLM(FakeLLM):
 
 
 def test_the_estimate_shows_per_hour_and_per_evening_even_while_off(tmp_path):
-    rig = Rig(tmp_path, on=False, settings={"listener": {"cadence_s": 20, "clip_s": 24, "evening_h": 4}})
+    rig = Rig(tmp_path, on=False, settings={"listener": {"cadence_s": 20, "fast_cadence_s": 5, "clip_s": 10,
+                                                         "evening_h": 4, "est_fast_share": 0.5}})
     rig.lis._llm = rig.llm = EstLLM(usd=0.004026)
     run(rig.tick())
     v = rig.lis.view()
     assert v["on"] is False and v["why"] == L.WHY_OFF
-    assert rig.llm.est_args[-1] == ("listen", 24.0)                    # the clip's length prices its audio
-    # 4 h x 3600 / 20 s = 720 clips x $0.004026
-    assert v["estimate"] == {"per_call_usd": 0.00403, "per_hour_usd": 0.725, "per_evening_usd": 2.9,
-                             "evening_h": 4.0, "cadence_s": 20.0, "model": "gemini-3.8-flash",
-                             "provider": "Google", "basis": "price table"}
-    assert v["est_evening_usd"] == 2.9 and v["provider"] == "Google"
+    assert rig.llm.est_args[-1] == ("listen", 10.0)                    # the clip's length prices its audio
+    # half the time every 20 s, half every 5 s: 3600 x (0.5 / 20 + 0.5 / 5) = 450 clips an hour x $0.004026
+    assert v["estimate"] == {"per_call_usd": 0.00403, "per_hour_usd": 1.812, "per_evening_usd": 7.25,
+                             "evening_h": 4.0, "cadence_s": 8.0, "steady_cadence_s": 20.0, "fast_cadence_s": 5.0,
+                             "fast_share": 0.5, "fast_share_basis": "assumed", "clip_s": 10.0,
+                             "model": "gemini-3.8-flash", "provider": "Google", "basis": "price table"}
+    assert v["est_evening_usd"] == 7.25 and v["provider"] == "Google"
     assert set(v) == set(c.ListenerView.__annotations__)
-    rig.lis.configure({"senders": SENDERS, "listener": {"evening_h": 3, "cadence_s": 45}})
+    rig.lis.configure({"senders": SENDERS, "listener": {"evening_h": 3, "cadence_s": 45, "est_fast_share": 0}})
     run(rig.tick())
     assert rig.lis.view()["estimate"]["per_evening_usd"] == round(0.004026 * 3600 / 45 * 3, 2)
+    rig.lis._eff_s, rig.lis._fast_s = 3600.0, 900.0                   # an hour measured: a quarter of it fast
+    run(rig.tick())
+    e = rig.lis.view()["estimate"]
+    assert e["fast_share_basis"] == "measured" and e["fast_share"] == pytest.approx(0.25, abs=0.01)
     rig.llm.est = dict(rig.llm.est, usd=None, basis=None)               # a model with no price: no estimate
     run(rig.tick())
     assert rig.lis.view()["estimate"] is None and rig.lis.view()["est_evening_usd"] is None
+
+
+def test_the_view_carries_character_approach_and_the_cue_sheet(tmp_path):
+    rig = Rig(tmp_path)
+    rig.fill()
+    sheet = [{"kind": "chorus", "words": "Big change at the chorus, likely in 10-25 s", "window_s": [10.0, 25.0],
+              "size": "big"}]
+    rig.lis.ctx.cue_sheet = lambda: sheet
+    rig.llm.results = [ok(verdict(coming=[])), ok(verdict(coming=[]))]
+    run(rig.tick())
+    run(rig.ticks(15))
+    v = rig.lis.view()
+    assert v["character"].startswith("soft late-night soul band") and v["armed"] == sheet
+    assert {k: v["approach"][k] for k in ("intensity", "change", "transitions")} == \
+        {"intensity": 0.3, "change": "slow", "transitions": "gentle"}
+    assert v["approach"]["conf"] == pytest.approx(0.9, abs=0.01)       # two agreeing reads, 15 s apart
+    rig.lis.ctx.cue_sheet = lambda: 1 / 0                              # a failing cue engine: an empty sheet
+    run(rig.tick())
+    assert rig.lis.view()["armed"] == []
+
+
+def test_the_message_says_what_structure_knows_now(tmp_path):
+    rig = stage4_rig(tmp_path, stream="test-audio")
+    rig.fill()
+    rig.mc = {"t_ms": rig.now * 1000.0, "section": {"id": 3, "phase": "build", "bars_in_section": 6,
+                                                     "expected_bars": 8, "chorus": True, "started_ms": 0.0}}
+    rig.lis.on_music_event({"kind": "track_end_armed", "at_ms": (rig.now + 40.0) * 1000.0, "eta_s": 40.0})
+
+    async def go():
+        rig.mc["t_ms"] = (rig.now + 1) * 1000.0
+        await rig.tick()
+    run(go())
+    user = rig.llm.calls[0][1]["user"]
+    line = next(u for u in user if u.startswith("Now, from the room's own analysis"))
+    assert "phase build" in line and "6 bars into this section (it lasted 8 bars last time)" in line
+    assert "probable chorus" in line and "ends about" in line
 
 
 def test_the_snapshot_and_the_log_show_what_the_models_resolved_to(tmp_path):

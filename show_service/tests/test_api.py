@@ -955,7 +955,8 @@ def test_card_maps_every_component(brain):
     assert cd["palette"]["choices"][1]["label"] == "From the art" and cd["palette"]["pick"] == "auto"
     assert cd["look"] == {"id": "L3", "keep_in_s": None, "next_pending": False}
     assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off", "spend_today_usd": 0.0,
-                               "est_evening_usd": None, "provider": None}
+                               "est_evening_usd": None, "provider": None, "character": None, "approach": None,
+                               "armed": []}
     assert cd["auto"]["state"] == "off" and cd["auto"]["line"] == "Auto is off"
     assert set(cd["tests"]) == {"piano", "audio"} and cd["describe"]["state"] == "idle"
 
@@ -999,7 +1000,17 @@ def test_card_and_listening_show_the_cost_even_while_off(brain):
                  "model": "gemini-3.8-flash"}
     cd = card(snap_of(brain), ENGINE)
     assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off",
-                               "spend_today_usd": 0.1235, "est_evening_usd": 2.9, "provider": "Google"}
+                               "spend_today_usd": 0.1235, "est_evening_usd": 2.9, "provider": "Google",
+                               "character": None, "approach": None, "armed": []}
+    # README S5.22: the listener's line, its approach and the cue sheet ride on the card's listening block
+    sheet = [{"kind": "chorus", "words": "Big change at the chorus, likely in 10-25 s", "window_s": [10.0, 25.0],
+              "size": "big"}]
+    lis.extra = dict(lis.extra, character="soft late-night jazz trio", armed=sheet,
+                     approach={"intensity": 0.2, "change": "slow", "transitions": "gentle", "conf": 0.8})
+    li = card(snap_of(brain), ENGINE)["listening"]
+    assert li["character"] == "soft late-night jazz trio" and li["armed"] == sheet
+    assert li["approach"] == {"intensity": 0.2, "change": "slow", "transitions": "gentle", "conf": 0.8}
+    lis.extra = {k: v for k, v in lis.extra.items() if k not in ("character", "armed", "approach")}
 
     async def go():
         async with served(make_api(brain)) as cl:

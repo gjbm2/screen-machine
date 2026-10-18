@@ -444,7 +444,7 @@ def test_python_m_show_service_with_the_brain(tmp_path):
             code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
             assert code == 200 and body["brain"]["running"] is True, body.get("brain")
             assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "ml",
-                                                        "structure", "listener", "director", "rig"}
+                                                        "structure", "listener", "cues", "director", "rig"}
             assert body["ml"]["state"] in ("failed", "backoff"), body["ml"]   # HOME is tmp: no ML venv there
             # Stage 5: the rig reads the real fixtures.yaml (read only): six fixtures, every output off, no problems
             rig = body["rig"]
@@ -609,6 +609,7 @@ def install_brain_fakes(monkeypatch) -> dict:
             CALLS.append("ml.feed")
     sys.modules["show_service.mllink"].MLFeed = MLFeed
     module("listener", lambda ctx, kw: FakeComp("listener", 1.0, kw, {"beliefs": lambda: None}))
+    module("cues", lambda ctx, kw: FakeComp("cues", 10.0, kw, {"cue_sheet": lambda: []}))   # README S5.22
     module("director", lambda ctx, kw: FakeDirector("director", 10.0, kw, {"vibe": lambda: None}))
     module("outputs", lambda ctx, kw: FakeRig("rig", 1.0, kw, {"rig": lambda: None}))
     monkeypatch.setitem(sys.modules, "show_service.ring", ring)
@@ -666,13 +667,14 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert all(v == "ok" for v in show.modules.values()), show.modules
         assert {"api", "ring", "situations", "brain", "autopilot", "sources", "listener", "director"} <= set(show.modules)
         assert show.brain.running and list(show.brain.components) == ["room", "situations", "autopilot", "sources",
-                                                                      "ml", "structure", "listener", "director",
-                                                                      "rig"]
+                                                                      "ml", "structure", "listener", "cues",
+                                                                      "director", "rig"]
         # files come from the options, test kwargs on top
         sd = tmp_path / "state"
         assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
                                        "patch_path": __import__("pathlib").Path("p.yaml")}
         assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
+        assert made["cues"].kw == {"log_path": sd / "cues.jsonl"} and ctx.cue_sheet() == []
         assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
         assert made["mllink"].kw == {"log_path": sd / "ml-worker.log"} and made["structure"].kw == {}
         # Stage 5: the rig, after the director, fed by reference (the fake clock has no snapshot: no clock)
@@ -745,8 +747,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
     finally:
         show.stop()
     assert CALLS.index("stop:director") < CALLS.index("artnet.stop")      # the brain stops before Art-Net
-    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:rig", "stop:director", "stop:listener",
-                                                          "stop:structure",
+    assert [c for c in CALLS if c.startswith("stop:")] == ["stop:rig", "stop:director", "stop:cues",
+                                                          "stop:listener", "stop:structure",
                                                           "stop:ml", "stop:sources", "stop:autopilot",
                                                           "stop:situations", "stop:room"]   # ml's stop awaited
     assert (tmp_path / "state" / "state.json").exists()
