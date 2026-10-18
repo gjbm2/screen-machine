@@ -543,9 +543,9 @@ class LiveScore(Source):
         self.Lh = np.zeros(MAX_LIVE * 8, np.float32)
         # the room's one transcription, shared with its other screens (score/room.py: one builder, one analysis
         # worker, fed by whichever screen leads; owner, 18 Oct: both screens transcribed the same MIDI twice)
-        from stream_service.score.room import RoomScore
+        from stream_service.score.room import RoomScore, Shared
         self.room = RoomScore.join(ROOM_KEY, self)
-        self.builder = self.room.builder
+        self.builder = Shared(self.room.builder, self.room.lock)     # each call under the room's lock, CPU only
         self.seen_rev = 0
         self.engraver = None
         try:
@@ -700,16 +700,15 @@ class LiveScore(Source):
         t = float(f.t_ms) / 1000.0
         self.t_sound = t
         b, room = self.builder, self.room
-        if room.leads(self):                              # the room's notes go in once, from the screen that leads
-            room.feed(f, t)
+        bars, rev = room.tick(self, f, t)                 # the room's notes go in once, from the screen that leads
         self._births()
-        if room.rev != self.seen_rev:                     # an analysis reply: the glows re-lay
-            self.seen_rev = room.rev
+        if rev != self.seen_rev:                          # an analysis reply: the glows re-lay
+            self.seen_rev = rev
             self._dirty()
         ph = self.ph
         if ph.metre is None and not ph.killing and b.position(t) is not None:    # the metre is known: lay it out
             self._metre(ph, b.beats, b.unit)
-        for bar in room.take(self):
+        for bar in bars:
             if bar.rewrite:                                   # the metre turned: the phrase is written again
                 self._rewrite()
                 continue
@@ -2171,17 +2170,16 @@ class LiveScore(Source):
         self.kick += (pulse - self.kick) * a
         Ph = self.Ph
         Ph[0:12] = palette_coeffs(p["palette"]) if p.get("palette") else palette_coeffs("ember")
-        with self.room.lock:                              # the room's builder is shared with the other screens
-            f = self._listen()
-            self._take_renders()
-            glow_s = max(0.05, float(p["ink_glow"]))
-            if self.layout == "scroll":
-                self._scroll_step(dt, glow_s, e, big)
-            else:
-                if big:
-                    self.turn.snap()
-                self._page_step(dt, glow_s, e)
-            nl = self._glows_step(f, dt, big)
+        f = self._listen()                                # the room's builder: short CPU-only holds of its lock
+        self._take_renders()
+        glow_s = max(0.05, float(p["ink_glow"]))
+        if self.layout == "scroll":
+            self._scroll_step(dt, glow_s, e, big)
+        else:
+            if big:
+                self.turn.snap()
+            self._page_step(dt, glow_s, e)
+        nl = self._glows_step(f, dt, big)
         Ph[12], Ph[13] = self.w, self.h
         Ph[14] = LOOKS.index(p["look"])
         Ph[15] = self.breath % (2.0 * math.pi)

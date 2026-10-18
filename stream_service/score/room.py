@@ -7,8 +7,10 @@ to every member's queue.  Leading goes to whoever is rendering: a member that ti
 LEAD_STALE_S takes over (the leader switched scene, or a member was prepared but isn't on screen yet).  A member that
 joins mid-phrase is handed the phrase's bars so far.  The last to leave closes the worker.
 
-The screens render on their own threads: every use of ``builder`` goes through ``lock`` (live_score holds it over
-its whole per-frame score step).  Each scene keeps its own engraver and drawing (sizes and layouts can differ).
+The screens render on their own threads: every use of the builder goes through ``lock``, held only for CPU work,
+never across a GPU wait (one screen's wait would stall the other's render thread): a scene feeds and takes its
+bars in one short hold, and reads the builder through :class:`Shared`, which takes the lock for each call.  Each
+scene keeps its own engraver and drawing (sizes and layouts can differ).
 
 Rooms are keyed by the music they hear; show_service hears one room today, so the scenes use one key.
 """
@@ -25,6 +27,28 @@ from .quantize import ScoreBuilder
 log = logging.getLogger("stream_service.score")
 
 LEAD_STALE_S = 0.25
+
+
+class Shared:
+    """The room's builder for one scene: each method call under the room's lock, attributes read as they are."""
+
+    def __init__(self, builder: ScoreBuilder, lock) -> None:
+        object.__setattr__(self, "_b", builder)
+        object.__setattr__(self, "_lock", lock)
+
+    def __getattr__(self, name: str) -> Any:
+        v = getattr(self._b, name)
+        if not callable(v):
+            return v
+        lock = self._lock
+
+        def call(*a, **k):
+            with lock:
+                return v(*a, **k)
+        return call
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("the room's builder is fed by RoomScore.feed")
 
 
 class RoomScore:
@@ -118,6 +142,14 @@ class RoomScore:
                 self.phrase_bars.append(bar)
             for q in self.queues.values():
                 q.append(bar)
+
+    def tick(self, member: Any, frame: Any, t: float) -> tuple[list, int]:
+        """A scene's frame: it feeds if it leads, then takes its bars -> (bars, analysis replies so far).  One short
+        hold of the lock, CPU only."""
+        with self.lock:
+            if self.leads(member):
+                self.feed(frame, t)
+            return self.take(member), self.rev
 
     def take(self, member: Any) -> list:
         """The bars written since ``member`` last took them."""
