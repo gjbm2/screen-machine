@@ -83,11 +83,11 @@ def _licence(cls: type) -> str:
 
 
 def _artifacts(name: str) -> dict:
-    d = FXTEST_OUT / name
+    d = os.path.join(FXTEST_OUT, name)            # os, not pathlib: ~3x cheaper over ~1000 items x 3 files
     out: dict = {}
     for key, fname in (("sheet", "sheet.png"), ("video", "video.mp4"), ("summary", "summary.json")):
         try:
-            out[key] = (d / fname).stat().st_mtime
+            out[key] = os.stat(os.path.join(d, fname)).st_mtime
         except OSError:
             pass
     return out
@@ -139,7 +139,12 @@ _vet: dict[str, tuple] = {}                  # str(FXTEST_OUT) -> (loaded at, fr
 _vet_busy: set[str] = set()
 
 
+_vet_parsed: dict[str, tuple] = {}     # summary.json path -> ((mtime_ns, size), harness 4K ms): parsed only on change
+
+
 def _load_vetting(root: pathlib.Path) -> tuple:
+    """Background thread: ~1,050 harness dirs; a summary.json is parsed only when its mtime / size changed (a full
+    re-read was ~67 ms of GIL every VET_TTL_S while the directors pick)."""
     sheets: set[str] = set()
     est: dict[str, float] = {}
     try:
@@ -149,9 +154,17 @@ def _load_vetting(root: pathlib.Path) -> tuple:
     for d in dirs:
         if os.path.exists(os.path.join(d.path, "sheet.png")):
             sheets.add(d.name)
+        path = os.path.join(d.path, "summary.json")
         try:
-            with open(os.path.join(d.path, "summary.json")) as f:
-                ms = harness_ms_4k(json.load(f))
+            st = os.stat(path)
+            sig = (st.st_mtime_ns, st.st_size)
+            hit = _vet_parsed.get(path)
+            if hit is not None and hit[0] == sig:
+                ms = hit[1]
+            else:
+                with open(path) as f:
+                    ms = harness_ms_4k(json.load(f))
+                _vet_parsed[path] = (sig, ms)
         except (OSError, ValueError):
             ms = None
         if ms is not None:

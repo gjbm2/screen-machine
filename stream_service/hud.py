@@ -260,13 +260,13 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     # stream
     add(f"{s.screen} {p.w}x{p.h}@{p.fps} {p.name} GPU{s.gpu}")
     ws = eng.window_stats(2.0) if hasattr(eng, "window_stats") else {}
-    rm = ws.get("render_ms") or {}
+    rm = ws.get("gpu_span_ms") or ws.get("render_ms") or {}       # render_ms is the frame's GPU span (old key)
     late = ws.get("late_pct")
-    add(f"render {_f(rm.get('p50'))}/{_f(rm.get('p95'))} ms  late {_f(late, 0)}%  {_f(ws.get('mbps'))} Mb/s",
+    add(f"gpu span {_f(rm.get('p50'))}/{_f(rm.get('p95'))} ms  late {_f(late, 0)}%  {_f(ws.get('mbps'))} Mb/s",
         bad=bool(late and late > 5))
     gs = eng.guard_stats() if hasattr(eng, "guard_stats") else {}
     trips = int(gs.get("trips") or 0) + int(gs.get("slow_trips") or 0)
-    add(f"guard {_f(gs.get('ema_ms') or gs.get('frame_ms'))}/{_f(ws.get('budget_ms'))} ms  trips {trips}"
+    add(f"guard {_f(gs.get('frame_gpu_ms'))}/{_f(ws.get('budget_ms'))} ms  trips {trips}"
         f"  details {_f(hud_ms, 2)} ms", bad=trips > 0)
     # glass (the TV's own player)
     glass = None

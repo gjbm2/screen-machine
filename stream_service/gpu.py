@@ -12,7 +12,7 @@ written as 255.
 from __future__ import annotations
 
 import threading
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -233,9 +233,29 @@ class GpuOps:
         self.ctx.kernels.crossfade(a, b, out, float(p))
 
 
+RENDER_PRIORITY = -5     # W1.9: the render stream first (CUDA clamps it to the device's greatest, most negative)
+LOW_PRIORITY = 0         # prepare, prime and upload streams (the lowest)
+
+
+def priority_stream(cp: Any, priority: int) -> Any:
+    """A non-blocking stream at ``priority``; a plain one if priorities are unavailable (degrade, never refuse)."""
+    try:
+        return cp.cuda.Stream(non_blocking=True, priority=priority)
+    except Exception:
+        return cp.cuda.Stream(non_blocking=True)
+
+
+def stream_priority(cp: Any, stream: Any) -> Optional[int]:
+    try:
+        return int(cp.cuda.runtime.streamGetPriority(stream.ptr))
+    except Exception:
+        return None
+
+
 class RenderContext:
-    """Per-session GPU context.  ``stream`` is the session's render stream; plug-ins launch on the current
-    stream (the render thread makes it current), so they need not pass it explicitly."""
+    """Per-session GPU context.  ``stream`` is the session's render stream (highest priority, so a short render
+    kernel never queues behind a prepare's full grid); plug-ins launch on the current stream (the render thread
+    makes it current), so they need not pass it explicitly."""
 
     def __init__(self, gpu: int, width: int, height: int, fps: int, *, prealloc_buffers: int = 2):
         import cupy as cp
@@ -245,7 +265,8 @@ class RenderContext:
         self.width, self.height, self.fps = width, height, fps
         self.device = cp.cuda.Device(gpu)
         with self.device:
-            self.stream = cp.cuda.Stream(non_blocking=True)
+            self.stream = priority_stream(cp, RENDER_PRIORITY)
+            self.stream_priority = stream_priority(cp, self.stream)   # as the device clamped it
             self.kernels = CoreKernels()
             self.pool = BufferPool(width, height, prealloc_buffers)
 

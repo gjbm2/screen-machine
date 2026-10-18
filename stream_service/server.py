@@ -456,12 +456,14 @@ async def dev_rate(request: web.Request) -> web.Response:
 
 
 async def rescan_now(app: web.Application, reason: str) -> dict:
-    """Rescan the plug-in packages (worker thread), rebuild the presets, tell the consoles if anything moved."""
+    """Rescan the plug-in packages (worker thread; a no-op when nothing in their directories moved, a manual one
+    always looks), re-read the plug-in presets files after a full pass, tell the consoles if anything moved."""
     reg, presets = app[REGISTRY], app[PRESETS]
-    rev0, prev0 = reg.rev, presets.rev
+    rev0, prev0, scans0 = reg.rev, presets.rev, reg.scans
     loop = asyncio.get_running_loop()
-    res = await loop.run_in_executor(None, reg.rescan)
-    await loop.run_in_executor(None, lambda: presets.reload_if_changed(plugin_files=True, wait=True))
+    res = await loop.run_in_executor(None, lambda: reg.rescan(force=reason == "manual"))
+    if reg.scans != scans0:      # else no presets.yaml moved either (same directories); presets_watch does the rest
+        await loop.run_in_executor(None, lambda: presets.reload_if_changed(plugin_files=True, wait=True))
     if reg.rev != rev0 or presets.rev != prev0:
         app[EVENTS].emit({"type": "catalog.changed", "reason": reason, "rev": reg.rev,
                           "added": res["added"], "reloaded": res["reloaded"], "removed": res["removed"],

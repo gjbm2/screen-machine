@@ -18,6 +18,7 @@ import threading
 import time
 from typing import Callable, Optional, Sequence
 
+from ..stats import set_thread_name
 from .bitstream import FlvVideoPacket, SampleFixer, StreamConfig, iter_flv_video
 
 F_SETPIPE_SZ = 1031
@@ -36,7 +37,7 @@ class NvencPipeline:
                  bitrate: str = "8M", gop_seconds: float = 1.0, preset: str = "p1",
                  profile: Optional[str] = None,
                  vbv_frames: Optional[float] = None, fix_reorder: bool = True, slices: Optional[int] = None,
-                 extra_args: Sequence[str] = (), delay: int = 0,
+                 extra_args: Sequence[str] = (), delay: int = 0, name: str = "",
                  clock: Callable[[], float],
                  on_config: Callable[[StreamConfig], None],
                  on_frame: Callable[[int, bool, bytes, float], None],
@@ -78,6 +79,7 @@ class NvencPipeline:
         _grow_pipe(self.proc.stdout.fileno())
         self._stderr_tail: list[str] = []
         self._closed = False
+        self.tag = name             # OS thread names (top -H): enc-<tag>, encerr-<tag>
         self.frames_out = 0
         self.last_frame_id = -1
         self.reader = threading.Thread(target=self._read_loop, name=f"nvenc-read-{codec}", daemon=True)
@@ -114,6 +116,7 @@ class NvencPipeline:
 
     # -- output ------------------------------------------------------------
     def _read_loop(self) -> None:
+        set_thread_name(f"enc-{self.tag}")
         err = None
         try:
             for pkt in iter_flv_video(self.proc.stdout):
@@ -151,6 +154,7 @@ class NvencPipeline:
         self.on_frame(frame_id, pkt.keyframe, self.fixer.fix_sample(pkt.payload), t)
 
     def _stderr_loop(self) -> None:
+        set_thread_name(f"encerr-{self.tag}")
         for line in iter(self.proc.stderr.readline, b""):
             s = line.decode(errors="replace").rstrip()
             if s:

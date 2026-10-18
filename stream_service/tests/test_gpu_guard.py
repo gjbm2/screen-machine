@@ -336,7 +336,9 @@ def test_exit_over_an_over_budget_scene_freezes_too_but_a_healthy_one_renders():
     eng, _ = make_engine()
     gpu = FakeGpu()
     timer = timer_for(gpu)
-    timer.total_ema = 45.0                               # > the 33.3 ms frame period, not tripped yet
+    timer.total_ema = 45.0                               # > the 33.3 ms frame period, not tripped yet ...
+    from stream_service.guard import _Frame
+    timer.fifo.append(_Frame())                          # ... and a frame still on the GPU: it really lags
     eng.timer = timer
     src = Heavy(gpu, 45.0)
     eng.root = SourceLayer(src, 0.0)
@@ -574,10 +576,41 @@ def test_a_lone_slow_render_does_not_drop_the_frame_rate():
     lay.source = SimpleNamespace(name="x")
     fc = SimpleNamespace(fps=30.0, t=0.0)
     for i, ms in enumerate((3.0, 90.0, 3.0, 3.0), 1):
-        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms)
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms, cpu_ms=1.0, gpu_bound_ms=ms)
         lay._adapt_rate(fc)
         assert lay.rate_div == 1                                     # the 90 ms one alone: still every frame
     for i, ms in enumerate((90.0, 90.0), 5):
-        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms)
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=ms, cpu_ms=1.0, gpu_bound_ms=ms)
         lay._adapt_rate(fc)
     assert lay.rate_div > 1                                          # two in a row: it is the scene
+
+
+def test_a_span_inflated_by_host_stalls_never_drops_the_frame_rate():
+    """Diagnosis 18 Oct: spans of 8-107 ms against a calibrated 0.7-3.2 ms were the host's lock waits between
+    launches (the GPU idle), and demoted scenes 513 times in 25 min.  Only own CPU or a span that outlasted the
+    host's submit (gpu_bound_ms) counts."""
+    from types import SimpleNamespace
+
+    from stream_service.layers import SourceLayer
+    lay = SourceLayer.__new__(SourceLayer)
+    lay.cost_ema, lay._prev_ms, lay._samples_seen, lay.rate_div, lay._low_since = None, None, 0, 1, None
+    lay.source = SimpleNamespace(name="x")
+    fc = SimpleNamespace(fps=30.0, t=0.0)
+    for i in range(1, 30):                                           # 90 ms spans, but the GPU waited on the host
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=90.0, cpu_ms=2.0, gpu_bound_ms=0.0)
+        lay._adapt_rate(fc)
+    assert lay.rate_div == 1
+    for i in range(30, 33):                                          # the scene's own CPU is the cost: that counts
+        lay.gpu_stat = SimpleNamespace(samples=i, last_ms=60.0, cpu_ms=60.0, gpu_bound_ms=0.0)
+        lay._adapt_rate(fc)
+    assert lay.rate_div > 1
+
+
+def test_guard_pairs_each_calls_cpu_and_real_gpu_span():
+    gpu = FakeGpu()
+    timer = timer_for(gpu)
+    src = Heavy(gpu, 80.0)                                           # the GPU's own work: outlasts the submit
+    layer = SourceLayer(src, 0.0)
+    drive(layer, timer, gpu, 0, 10, guard=False)
+    st = layer.gpu_stat
+    assert st.gpu_bound_ms == pytest.approx(80.0) and 0.0 <= st.cpu_ms < 50.0
