@@ -5,12 +5,16 @@ One ``Features`` lives on the hot thread ("show-rx"). ``__main__`` passes ``Feat
 calls ``Features.tick`` from ``on_tick``. Nothing here locks, waits, logs or does I/O, and nothing is thread-safe
 except ``latest()``, ``rhythm()`` and ``stats()``, which hand out snapshots swapped in by reference. Every buffer is allocated
 when the sample rate or channel count is first seen; a steady stream allocates no sample buffers (only numpy view
-headers, the 50 Hz and 10 Hz message dicts built in tick, a hit's dict, and a medium frame's few small scalars).
+headers, the 50 Hz and 10 Hz message dicts built in tick, a hit's dict, and a medium frame's few small scalars),
+whatever its block sizes up to CHUNK.
 
   process(stream, n0, t0_host_s, pcm, fs, flags)     = contract.OnAudio
-      pcm float32 (frames, channels) or (frames,), any block size. Blocks over CHUNK (1024) frames are handled in
-      1024-frame pieces. Channels are averaged to mono for everything except loudness: R128 measures the interleaved
-      channels, as the standard does. Sample i of a block sounds at t0_host_s + i / fs (acoustic host seconds).
+      pcm float32 (frames, channels) or (frames,), any block size: one packet, or the receiver's run of contiguous
+      packets in one block (receiver.COALESCE_MAX_FRAMES). Blocks over CHUNK (4096) frames are handled in 4096-frame
+      pieces. The outputs are the same (to float rounding) whether a span comes as 128-frame packets or as one block:
+      the hit path and the fast lane batch their work, never their arithmetic. Channels are averaged to mono for
+      everything except loudness: R128 measures the interleaved channels, as the standard does. Sample i of a block
+      sounds at t0_host_s + i / fs (acoustic host seconds). pcm is only read (a gap block may be a read-only view).
       A new fs or channel count rebuilds every rate-dependent table: band filters, envelopes, mel bank, FFT bins
       and the R128 state. 48 kHz filters never run on 44.1 kHz audio.
   tick(now_s)          publishes music.features at publish_hz when a hop arrived since the last one; when the
@@ -30,13 +34,17 @@ headers, the 50 Hz and 10 Hz message dicts built in tick, a hit's dict, and a me
   gate_ref_lufs        the mode's expected loudness (the director sets it; §6.3), default -30
   stats()              blocks, hops, gaps, publishes (music.features), fades, hits per band, hop_ms_p50/p95 (a hop's
                        blocks included, its medium frame not), block_ms_p95 (everything), tick_ms_p95 (a publish),
-                       fs, channels, stream, kernel; medium_frames, medium_ms_p50/p95, rhythm_publishes, onsets
+                       fs, channels, stream, kernel; medium_frames, medium_ms_p50/p95, rhythm_publishes, onsets;
+                       batch (the constructor's switch: the batched hit path and multi-hop fast lane on), batch_fallbacks
+                       (a batched pass that raised and was redone the per-piece / per-hop way, from the state before
+                       it: 0 always, unless numpy or scipy misbehave)
 
 Flags (contract):
   AUDIO_GAP      zero-fill for packets that never came. It advances time only (the next block brings its own
                  t0): no filter, ring, loudness, level, onset or hit sees it. Counted in ``gaps``.
-  AUDIO_RESUME   the first real block after a gap: no hit fires in it or in the hop after it, and no onset until
-                 the splice has passed the 2048 window's centre (+ a hop): the splice is not a transient.
+  AUDIO_RESUME   the first real block after a gap: no hit fires in its first HIT_BLOCK samples (a packet; the
+                 receiver sends it alone, and a longer block doesn't stretch it) or the hop after them, and no onset
+                 until the splice has passed the 2048 window's centre (+ a hop): the splice is not a transient.
   AUDIO_SEGMENT  reset() (the receiver also sets it on the first block after the active stream switches).
 
 Hit path, every block (§4: per packet, 2.7 ms at 128 frames), ungated:
@@ -45,6 +53,9 @@ Hit path, every block (§4: per packet, 2.7 ms at 128 frames), ungated:
   slow_b  = 1-pole (tau 150 ms) at block rate on the block's mean fast_b             the adaptive threshold's
                                                                                      baseline, and the band's level
   Detection runs in pieces of at most HIT_BLOCK (128) samples whatever the block size, so hits don't depend on it.
+  A block of several pieces runs in one pass (_hit_block): the filters over the whole block (their state carried),
+  each piece's max/min/sum from one reduction, the slow envelope stepped per piece by the same kernel, and the
+  hits fired after the scans in today's (piece, band) order; a short tail piece goes through the per-piece path.
   A band fires when it is armed and fast > max(slow x on_b, -70 dB) at least 60 ms after its last hit, with slow
   as it stood at the piece's start (it moves under 2 % in 2.7 ms). on_b is +10 dB on sub, +8 on bass and low_mid,
   +7 above: a narrow band's envelope swings more in noise (in pink noise sub fired 55 times in 30 s at +7 dB, 3 at
@@ -65,7 +76,9 @@ Fast lane, every hop (256 samples, 5.3 ms at 48 kHz):
   the window less where the Hann passes 0.5, in hops), a 3-band max filter. A transient peaks the flux when it
   reaches the window's middle, a quarter window (512 samples, 2 hops) after the sound, so an onset's time is the
   hop's end - 2048/4/fs (the 512-hop diagnostic log ``_olog_t/_olog_v`` keeps that). The publish takes the
-  largest flux since the previous publish.
+  largest flux since the previous publish. A block that completes MULTI_HOPS (3) or more hops writes the ring once
+  and runs its hops' windows (one strided view), FFTs (one rfft over the rows) and SuperFlux at once, the log-mel
+  bank row by row (bit-identical to a hop at a time), then the per-hop stores and medium frames in order.
 
 At publish (tick, 50 Hz), from the latest hop:
   spectrum32  4096-point FFT of a 2048-sample Hann (the newest samples, zero-padded: SPEC_WIN_N). Band k = the
@@ -153,7 +166,8 @@ not behaviour thresholds).
               the share of the pattern's strength on levels 2-3 whose next stronger step (the next step, going
               round the bar, of a lower level) carries less than half of it; 0 with no onsets; else None.
   low_db      10 log10(slow_sub + slow_bass) + 3.01 (the hit path's envelopes, dB re a full-scale sine), floored
-              -120.
+              -120: the envelopes as they stood at the end of the piece holding the frame's hop (not at the end of
+              the block, which read up to 13 dB off for 4096-frame blocks).
   mfcc13      the orthonormal DCT-II of the fast lane's 40 log-mel bands (dB), c1..c13, of their mean over the
               hops of the last 10 frames (1 s): the DCT is linear, so this is the mean MFCC.
   gate        the loudness gate of the latest music.features (0 during the fade).
@@ -165,7 +179,10 @@ not behaviour thresholds).
 
 Budget (README): a hop, its blocks included, <= 0.45 ms p95 under render load. The band filters run through scipy's
 in-place ``_sosfilt`` kernel (about 3 us a call; the public ``sosfilt`` costs about 60 us in argument checks). It
-is checked against ``sosfilt`` at import, and the public function is the fallback.
+is checked against ``sosfilt`` at import, and the public function is the fallback. A call's cost is mostly fixed
+(numpy and kernel calls), so a coalesced block costs far less per packet than packets one by one: a 32-packet
+block about a third (measured, scratch bench), with the same numbers out. ``Features(batch=False)`` turns both batched
+passes off (a rollback switch: packet-sized pieces and one hop at a time, the same numbers at today's cost).
 """
 
 from __future__ import annotations
@@ -177,6 +194,7 @@ from typing import Callable, Optional
 
 import numpy as np
 import pyebur128
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.ndimage import median_filter
 from scipy.signal import butter, sosfilt
 
@@ -186,15 +204,20 @@ from .contract import (AUDIO_GAP, AUDIO_RESUME, AUDIO_SEGMENT, BAND_EDGES_HZ, BA
 
 # -- constants --------------------------------------------------------------------------------------------------------
 HOP = 256
-CHUNK = 1024                    # the largest piece one pass handles; bigger blocks are split
+CHUNK = 4096                    # the largest piece one pass handles (32 packets: the receiver's coalesced run); bigger
+                                # blocks are split
 HIT_BLOCK = 128                 # hit detection runs in pieces of at most this, so hits don't depend on block size
+HOP_MAX = 1024                  # the largest hop Features takes
+DITHER_N = 1024                 # the dither's period (samples): tiled, so any block reads it as one slice
+MULTI_HOPS = 3                  # a block that completes this many hops runs the fast lane over them at once ...
+MULTI_MAX = 16                  # ... in groups of at most this many (CHUNK / HOP at 256)
 FAST_N = 2048                   # fast-lane FFT (log-mel, SuperFlux)
 SPEC_N = 4096                   # spectrum32 / brightness / noisiness FFT (the lowest spectrum band is 7 Hz wide)...
 SPEC_WIN_N = 2048               # ...over a Hann of the newest 2048 samples, zero-padded (owner, 17 Oct: sound to glass
                                 # under 0.5 s; the window's centre is 21 ms back, not 43; bins stay 4096's, so the
                                 # bass bands interpolate instead of stair-stepping; the bass blurs over ~+-47 Hz)
 PUBLISH_HZ = 50.0               # music.features (owner, 17 Oct: the publish phase costs up to a period; 25 Hz before)
-RING_N = 16384                  # analysis ring: > SPEC_N + a hop + CHUNK, and >= the medium lane's N_M
+RING_N = 16384                  # analysis ring: >= the longest read-back (SPEC_N, the medium lane's n_raw) + CHUNK + a hop
 MEL_BANDS = 40
 MEL_LO_HZ, MEL_HI_HZ = 30.0, 16000.0
 MEL_FLOOR = 1e-8                # -80 dB: silence makes no flux
@@ -239,7 +262,9 @@ SPEC_GATE_FAST_LU = 6.0
 # skipped) over the last FLOOR_WINDOW_S, once FLOOR_MIN_S of them are in; a new stream starts over. Short bins find
 # the room's own floor between notes even under continuous music. A quiet or distant mic still opens the gate on music
 # over its own noise (degrade, never refuse); noise within FLOOR_ABOVE_LU of the floor stays shut; an input at the
-# mode's loudness is gated exactly as before.
+# mode's loudness is gated exactly as before. A bin closes at exactly round(FLOOR_BIN_S x fs) samples (4800 at 48 kHz)
+# whatever the block size, split inside a block (it closed at the first block boundary past it before: 4864 samples
+# with 128-frame packets, up to 8192 with 4096-frame blocks).
 FLOOR_BIN_S = 0.1
 FLOOR_WINDOW_S = 600.0
 FLOOR_MIN_S = 30.0
@@ -300,6 +325,13 @@ SWING_RANGE = (1.0, 3.0)
 SYNC_BARS = 4
 SYNC_HALF = 0.5
 MFCC_N = 13
+
+
+# The ring must hold the longest read-back behind a hop that a whole CHUNK has been written past (the multi-hop fast
+# lane writes the block first): the medium lane's n_raw (_Tables: n_m <= the power of two under (RING_N - 2) / dec,
+# so at most 8194 at any rate), SPEC_N or FAST_N, plus CHUNK and a hop.
+_N_RAW_MAX = max(1 << int(math.log2(RING_N - 2)), 2 * (1 << int(math.log2((RING_N - 2) // 2))) + 2)
+assert RING_N >= max(_N_RAW_MAX, SPEC_N, FAST_N) + CHUNK + HOP_MAX, "RING_N too small for CHUNK"
 
 
 def _dct_c1_c13() -> np.ndarray:
@@ -459,7 +491,13 @@ class _Tables:
         self.sos_fast = np.array([[(1.0 - a) ** 2, 0.0, 0.0, 1.0, -2.0 * a, a * a]])
         self.peak_n = max(1, int(round(HIT_PEAK_S * fs)))
         self.slow_n = ENV_SLOW_S * fs
+        # the slow envelope's steady-state step per HIT_BLOCK piece, slow <- slow (1 - w) + sum(fast) w / HIT_BLOCK,
+        # as a one-pole section for the kernel (a block's pieces in one call): y = b0 x + a y_prev, rounded exactly as
+        # the per-piece numpy steps are (two products, one sum)
+        self.w_slow = w = 1.0 - math.exp(-HIT_BLOCK / self.slow_n)
+        self.sos_slow = np.array([[w / HIT_BLOCK, 0.0, 0.0, 1.0, -(1.0 - w), 0.0]])
         self.reset_supp_n = int(round(RESET_HIT_SUPPRESS_S * fs))
+        self.floor_bin_n = max(1, int(round(FLOOR_BIN_S * fs)))   # the noise floor's bin: exactly 100 ms of samples
 
         self.hann_fast = _hann(FAST_N)
         freqs_f = np.fft.rfftfreq(FAST_N, 1.0 / fs)
@@ -585,6 +623,58 @@ class _Views:
         self.rowbool = f._rowbool[:n]
 
 
+class _Pieces:
+    """Per number of HIT_BLOCK pieces P (a block of P x HIT_BLOCK): views onto flat preallocated buffers. f2 is the
+    block's fast envelope as (6P, HIT_BLOCK) rows (band-major: row b P + p); the reductions come out (6, P); sb is
+    (6, P + 1): the slow envelope at each piece's start, column P after the block."""
+    __slots__ = ("f2", "pmax", "pmin", "psum", "pmax2", "pmin2", "psum2", "sb", "sb0", "sb1", "st", "stc", "kon",
+                 "ton", "toff", "aon", "aoff")
+
+    def __init__(self, f: "Features", P: int) -> None:
+        k = NB * P
+        self.f2 = f._fast_buf[:k * HIT_BLOCK].reshape(k, HIT_BLOCK)
+        self.pmax, self.pmin, self.psum = f._pmax[:k], f._pmin[:k], f._psum[:k]
+        self.pmax2, self.pmin2, self.psum2 = (a.reshape(NB, P) for a in (self.pmax, self.pmin, self.psum))
+        self.sb = f._sb[:NB * (P + 1)].reshape(NB, P + 1)
+        self.sb0, self.sb1, self.st = self.sb[:, 0], self.sb[:, 1:], self.sb[:, :P]
+        # every operand below (6, P) and C-contiguous: numpy 2 buffers (allocates) for broadcast or strided 2-D
+        self.stc = f._stc[:k].reshape(NB, P)
+        self.kon = np.ascontiguousarray(np.repeat(f._k_on[:, None], P, axis=1))
+        self.ton, self.toff = f._ton[:k].reshape(NB, P), f._toff[:k].reshape(NB, P)
+        self.aon, self.aoff = f._aon[:k].reshape(NB, P), f._aoff[:k].reshape(NB, P)
+
+
+class _Hops:
+    """Per group of g hops (the multi-hop fast lane) at one rate: views onto Features' (MULTI_MAX, .) buffers,
+    built once (rebuilt with the rate: the mel bank's bins). Every 2-D operand is C-contiguous and the same shape
+    as its partner, and the max filter runs on flattened rows: numpy 2 allocates a buffer for broadcast or strided
+    2-D operands."""
+    __slots__ = ("F", "hann", "S", "RE", "IM", "PW", "TP", "pw_rows", "MEL", "mel_rows", "MF", "mf_in", "cur",
+                 "cur_rows", "melf0", "melf1", "mx", "mx0", "mx1", "cur_mid", "cur0", "cur1", "mx_first", "mx_last",
+                 "DF", "FL")
+
+    def __init__(self, f: "Features", g: int, nb: int) -> None:
+        lag, mb = f._sf_lag, MEL_BANDS
+        self.F, self.hann = f._mF[:g], f._hann_rows[:g]
+        self.S, self.RE, self.IM = f._mS[:g], f._mRE[:g], f._mIM[:g]
+        self.PW, self.TP = f._mPW[:g], f._mTP[:g]
+        self.pw_rows = tuple(self.PW[k, :nb] for k in range(g))
+        self.MEL = f._mMEL[:g]
+        self.mel_rows = tuple(self.MEL[k] for k in range(g))
+        mf = f._mMF[:g + lag]                          # rows: frames j0 - lag .. j0 + g - 1, max-filtered
+        self.MF = mf[:g]                               # hop j's reference: frame j - lag
+        self.mf_in = tuple(mf[q] for q in range(lag))  # the lag frames before this group (from _mf)
+        self.cur = cur = mf[lag:]                      # this group's frames
+        self.cur_rows = tuple(cur[k] for k in range(g))
+        melf, curf, mx = self.MEL.reshape(-1), cur.reshape(-1), f._mMX[:g * mb - 1]
+        self.melf0, self.melf1 = melf[:-1], melf[1:]
+        self.mx, self.mx0, self.mx1 = mx, mx[:-1], mx[1:]
+        self.cur_mid = curf[1:g * mb - 1]
+        self.cur0, self.cur1 = cur[:, 0], cur[:, -1]
+        self.mx_first, self.mx_last = mx[0::mb], mx[mb - 2::mb]
+        self.DF, self.FL = f._mDF[:g], f._mFL[:g]
+
+
 def _clamp01(x: float) -> float:
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
@@ -608,10 +698,15 @@ class Features:
     gate_ref_lufs: float = -30.0
     clock_fn: Optional[Callable[[], Optional[ClockData]]] = None      # set by __main__: clock.snapshot
 
-    def __init__(self, *, publish: Optional[Publish] = None, hop: int = HOP, publish_hz: float = PUBLISH_HZ) -> None:
-        if not 32 <= hop <= CHUNK:
-            raise ValueError(f"hop must be 32..{CHUNK}")
+    def __init__(self, *, publish: Optional[Publish] = None, hop: int = HOP, publish_hz: float = PUBLISH_HZ,
+                 batch: bool = True) -> None:
+        """``batch`` (default on): a block of several packets runs the batched hit path and, completing MULTI_HOPS
+        or more hops, the multi-hop fast lane; off, it runs packet-sized pieces and hop by hop as before (the same
+        numbers either way, to float rounding: the off switch is a rollback, not a mode)."""
+        if not 32 <= hop <= HOP_MAX:
+            raise ValueError(f"hop must be 32..{HOP_MAX}")
         self._publish = publish
+        self._batch_hits = self._batch_hops = bool(batch)
         self.hop = int(hop)
         self._period = 1.0 / float(publish_hz)
         self._tables: dict[int, _Tables] = {}
@@ -635,12 +730,33 @@ class Features:
         self._ones = np.ones(CHUNK)
         self._rowbool = np.zeros(CHUNK, dtype=bool)
         self._views: dict[int, _Views] = {}
-        self._dither = np.random.default_rng(0x5EED).standard_normal(2 * CHUNK) * DITHER
+        pm = CHUNK // HIT_BLOCK                       # the batched hit path (_hit_block): per piece, per band
+        self._pieces: dict[int, _Pieces] = {}
+        self._pmax, self._pmin, self._psum = np.zeros(NB * pm), np.zeros(NB * pm), np.zeros(NB * pm)
+        self._sb = np.zeros(NB * (pm + 1))
+        self._ton, self._toff, self._stc = np.zeros(NB * pm), np.zeros(NB * pm), np.zeros(NB * pm)
+        self._aon, self._aoff = np.zeros(NB * pm, dtype=bool), np.zeros(NB * pm, dtype=bool)
+        self._ones_h = np.ones(HIT_BLOCK)
+        self._rb_h = self._rowbool[:HIT_BLOCK]
+        self._zi_slow = np.zeros((NB, 1, 2))
+        self._zs0, self._zs1 = self._zi_slow[:, 0, 0], self._zi_slow[:, 0, 1]
+        self._pend: list = []                         # a block's hits, fired in today's (piece, band) order
+        self._batch_fallbacks = 0                     # batched passes that raised: redone the per-piece/per-hop way
+        self._sat_p = 0                               # _medium's slow: the current chunk's pieces (0: self._slow)
+        self._sat_n0 = 0
+        self._sat_sb: Optional[np.ndarray] = None
+        # the dither: a period of DITHER_N (today's first 1024 values), tiled so a block of up to CHUNK reads one slice
+        base = np.random.default_rng(0x5EED).standard_normal(2 * DITHER_N)[:DITHER_N] * DITHER
+        self._dither = np.tile(base, CHUNK // DITHER_N + 2)
         self._dpos = 0
         self._zi_band = np.zeros((NB, 1, 2, 2))
         self._zi_rows = tuple(self._zi_band[b] for b in range(NB))
         self._zi_fast = np.zeros((NB, 1, 2))
         self._slow = np.zeros(NB)                     # mean square; also the band level
+        self._bk_zi_band, self._bk_zi_fast, self._bk_slow = (np.zeros_like(a) for a in
+                                                             (self._zi_band, self._zi_fast, self._slow))
+        self._bk_armed: list = [False] * NB           # the hit path's state before a batched pass (its fallback)
+        self._bk_ok: list = [0.0] * NB
         self._fmax = np.zeros(NB)
         self._fmin = np.zeros(NB)
         self._fsum = np.zeros(NB)
@@ -669,6 +785,22 @@ class Features:
         self._dflux = np.zeros(MEL_BANDS)
         self._sf_lag = SF_LAG or max(1, int(round((FAST_N / 4) / self.hop)))
         self._mf = np.full((self._sf_lag + 1, MEL_BANDS), 10.0 * math.log10(MEL_FLOOR))   # max-filtered frames
+        # the multi-hop fast lane (_hops_multi): up to MULTI_MAX hops' windows, spectra and log-mel at once
+        self._swv = sliding_window_view(self._ring, FAST_N)   # every window of the double ring, as one strided view
+        hm = MULTI_MAX
+        self._mF = np.zeros((hm, FAST_N))
+        self._mS = np.zeros((hm, FAST_N // 2 + 1), dtype=np.complex128)
+        self._mRE, self._mIM = self._mS.real, self._mS.imag
+        self._mPW = np.zeros((hm, FAST_N // 2 + 1))
+        self._mTP = np.zeros((hm, FAST_N // 2 + 1))
+        self._mMEL = np.zeros((hm, MEL_BANDS))
+        self._mMF = np.zeros((hm + self._sf_lag, MEL_BANDS))
+        self._mMX = np.zeros(hm * MEL_BANDS)
+        self._mDF = np.zeros((hm, MEL_BANDS))
+        self._mFL = np.zeros(hm)
+        self._hann_rows = np.tile(_hann(FAST_N), (hm, 1))
+        self._hops_v: dict[int, _Hops] = {}
+        self._mf_rows = tuple(self._mf[q] for q in range(self._sf_lag + 1))
         self._olog_t = np.zeros(512)                  # (onset time, flux) of the last 512 hops: tests, diagnosis
         self._olog_v = np.zeros(512)
         self._olog_i = 0
@@ -778,16 +910,24 @@ class Features:
             self._gaps += 1
             self._timing(tp, 0)
             return
-        x0 = pcm if pcm.ndim == 1 else pcm[:, 0]       # the noise floor's 100 ms bins (the gate's reference)
-        self._fl_ss += float(np.dot(x0, x0))
-        self._fl_n += frames
-        if self._fl_n >= FLOOR_BIN_S * fs:
-            p = self._fl_ss / self._fl_n
-            self._floor_vals.append(10.0 * math.log10(p) if p > 1e-12 else DBFS_FLOOR)
-            self._fl_ss, self._fl_n = 0.0, 0
-        if flags & AUDIO_RESUME:
-            self._supp_hit_n = max(self._supp_hit_n, self._n + frames + self.hop)
-            self._supp_onset_n = max(self._supp_onset_n, self._n + frames + FAST_N // 2 + self.hop)
+        x0 = pcm if pcm.ndim == 1 else pcm[:, 0]       # the noise floor's 100 ms bins (the gate's reference): a bin
+        bin_n = self._T.floor_bin_n                    # closes at exactly floor_bin_n samples, whatever the blocks
+        i = 0
+        while i < frames:
+            take = min(frames - i, bin_n - self._fl_n)
+            if take > 0:
+                seg = x0[i:i + take] if take < frames else x0
+                self._fl_ss += float(np.dot(seg, seg))
+                self._fl_n += take
+                i += take
+            if self._fl_n >= bin_n:
+                p = self._fl_ss / self._fl_n
+                self._floor_vals.append(10.0 * math.log10(p) if p > 1e-12 else DBFS_FLOOR)
+                self._fl_ss, self._fl_n = 0.0, 0
+        if flags & AUDIO_RESUME:                       # the splice: its first packet's worth, whatever the block
+            r = min(frames, HIT_BLOCK)
+            self._supp_hit_n = max(self._supp_hit_n, self._n + r + self.hop)
+            self._supp_onset_n = max(self._supp_onset_n, self._n + r + FAST_N // 2 + self.hop)
         if self._t_first is None:
             self._t_first = t0
 
@@ -904,7 +1044,8 @@ class Features:
                 "fs": self._fs, "channels": self._ch, "stream": self._stream, "kernel": KERNEL,
                 "medium_frames": self._med_frames, "medium_ms_p50": pct(self._med_ms, self._med_i, 50),
                 "medium_ms_p95": pct(self._med_ms, self._med_i, 95), "rhythm_publishes": self._rhythm_pubs,
-                "onsets": self._onsets_total, "gate_ref_lufs": round(self._gate_ref_eff, 1),
+                "onsets": self._onsets_total, "batch": self._batch_hits, "batch_fallbacks": self._batch_fallbacks,
+                "gate_ref_lufs": round(self._gate_ref_eff, 1),
                 "floor_lufs": None if self._floor_lufs is None else round(self._floor_lufs, 1)}
 
     # -- state -------------------------------------------------------------------------------------------------------
@@ -913,6 +1054,7 @@ class Features:
         if T is None:
             T = self._tables[fs] = _Tables(fs)
         self._T, self._fs, self._ch = T, fs, ch
+        self._hops_v.clear()                           # the multi-hop views hold the rate's mel bins
         try:
             self._r128 = pyebur128.R128State(ch, fs, _MODES)
         except Exception:                              # noqa: BLE001 - an unsupported rate: no loudness, still hits
@@ -1094,12 +1236,72 @@ class Features:
         self._nacc += n
         if n <= HIT_BLOCK:
             self._hit_path(work, n, t0, self._n)
-        else:
-            fs = self._fs
-            for h0 in range(0, n, HIT_BLOCK):
-                h1 = min(n, h0 + HIT_BLOCK)
-                self._hit_path(work[h0:h1], h1 - h0, t0 + h0 / fs, self._n + h0)
+            self._sat_p = 0
+        else:                                          # whole pieces in one pass, then a short tail as today
+            P, r = divmod(n, HIT_BLOCK)
+            m = n - r
+            if self._batch_hits:
+                self._hit_pieces(work, m, P, t0)
+            else:
+                self._hit_pieces_1(work, m, P, t0)
+            if r:
+                self._hit_path(work[m:], r, t0 + m / self._fs, self._n + m)
         return self._analysis(work, n, t0)
+
+    def _hit_pieces(self, work: np.ndarray, m: int, P: int, t0: float) -> None:
+        """The first m = P x HIT_BLOCK samples of the chunk: one batched pass, its hits fired after it in order. If
+        the pass raises, the hit path's state is put back and the pieces run one by one (degrade, never refuse)."""
+        np.copyto(self._bk_zi_band, self._zi_band)
+        np.copyto(self._bk_zi_fast, self._zi_fast)
+        np.copyto(self._bk_slow, self._slow)
+        self._bk_armed[:] = self._armed
+        self._bk_ok[:] = self._ok_t
+        d = self._dpos
+        pend = self._pend
+        try:
+            self._hit_block(work[:m], m, P, t0, self._n)
+            self._sat_p, self._sat_n0, self._sat_sb = P, self._n, self._pieces[P].sb
+        except Exception:                              # noqa: BLE001 - today's per-piece path, from the same state
+            self._batch_fallbacks += 1
+            pend.clear()
+            np.copyto(self._zi_band, self._bk_zi_band)
+            np.copyto(self._zi_fast, self._bk_zi_fast)
+            np.copyto(self._slow, self._bk_slow)
+            self._armed[:] = self._bk_armed
+            self._ok_t[:] = self._bk_ok
+            self._dpos = d
+            self._hit_pieces_1(work, m, P, t0)
+            return
+        if pend:                                       # today's publish order: piece by piece, band by band
+            if len(pend) > 1:
+                pend.sort()
+            for _p, b, t, pk in pend:
+                self._fire(b, t, pk)
+            pend.clear()
+
+    def _hit_pieces_1(self, work: np.ndarray, m: int, P: int, t0: float) -> None:
+        """The same m = P x HIT_BLOCK samples piece by piece, today's way (batch=False, and the batched pass's
+        fallback), each hit fired as found; the slow envelopes at each piece's end are kept for _medium all the same."""
+        pc = self._pieces.get(P)
+        if pc is None:
+            pc = self._pieces[P] = _Pieces(self, P)
+        sb, fs = pc.sb, self._fs
+        for k, h0 in enumerate(range(0, m, HIT_BLOCK)):
+            np.copyto(sb[:, k], self._slow)
+            self._hit_path(work[h0:h0 + HIT_BLOCK], HIT_BLOCK, t0 + h0 / fs, self._n + h0)
+        np.copyto(sb[:, P], self._slow)
+        self._sat_p, self._sat_n0, self._sat_sb = P, self._n, sb
+
+    def _slow_for(self, n_end: int) -> np.ndarray:
+        """The slow envelopes as the hit path left them at the end of the piece holding sample n_end - 1 of the
+        current chunk (what per-packet delivery reads at that hop): a column of the batched path's sb, else
+        self._slow."""
+        P = self._sat_p
+        if P:
+            k = -(-(n_end - self._sat_n0) // HIT_BLOCK)
+            if 0 <= k <= P:
+                return self._sat_sb[:, k]
+        return self._slow
 
     def _hit_path(self, x: np.ndarray, n: int, t0: float, n_base: int) -> None:
         """One piece of <= HIT_BLOCK samples starting at real-sample index ``n_base`` (since the reset)."""
@@ -1108,7 +1310,7 @@ class Features:
         d = self._dpos
         np.add(x, self._dither[d:d + n], out=v.row0)           # mono + dither into all six rows
         np.copyto(v.rest, v.row0)                              # (a broadcasting out= would allocate)
-        self._dpos = (d + n) % CHUNK
+        self._dpos = (d + n) % DITHER_N
         sos, rows, zi = T.sos, v.rows, self._zi_rows
         for b in range(NB):
             _filt(sos[b], rows[b], zi[b])
@@ -1147,9 +1349,15 @@ class Features:
 
     def _scan(self, b: int, armed: bool, v: _Views, n: int, t0: float, n_base: int) -> None:
         """Walk band b's block sample by sample (vectorised per state): arm, fire, disarm."""
-        row, rb = v.frows[b], v.rowbool
-        on_thr, off_thr = float(self._thr_on[b]), float(self._thr_off[b])
+        self._armed[b] = self._scan_row(b, armed, v.frows[b], v.rowbool, float(self._thr_on[b]),
+                                        float(self._thr_off[b]), t0, n_base, None, 0)
+
+    def _scan_row(self, b: int, armed: bool, row: np.ndarray, rb: np.ndarray, on_thr: float, off_thr: float,
+                  t0: float, n_base: int, pend: Optional[list], key: int) -> bool:
+        """Band b's piece ``row`` (fast envelope) sample by sample: arm, fire, disarm; returns the armed state. A hit
+        fires at once, or with ``pend`` is kept as (key, b, t, peak) for the caller to fire in order."""
         fs = self._fs
+        n = row.shape[0]
         i = 0
         while i < n:
             if armed:
@@ -1161,7 +1369,11 @@ class Features:
                 t = t0 + k / fs
                 if n_base + k >= self._supp_hit_n and t >= self._ok_t[b]:
                     self._ok_t[b] = t + REFRACTORY_S
-                    self._fire(b, t, float(row[k:k + self._T.peak_n].max()))
+                    pk = float(row[k:k + self._T.peak_n].max())
+                    if pend is None:
+                        self._fire(b, t, pk)
+                    else:
+                        pend.append((key, b, t, pk))
             else:
                 np.less(row, off_thr, out=rb)
                 k = i + int(rb[i:].argmax())
@@ -1169,7 +1381,80 @@ class Features:
                     break
                 armed = True
             i = k + 1
-        self._armed[b] = armed
+        return armed
+
+    def _hit_block(self, x: np.ndarray, n: int, P: int, t0: float, n_base: int) -> None:
+        """The hit path over P >= 1 whole HIT_BLOCK pieces in one pass, with exactly the per-piece arithmetic: the
+        filters run over the block with their state carried (the recursion is sequential, so this is the pieces
+        one after another), each piece's max, min and sum come from one reduction over (6P, HIT_BLOCK) rows, the
+        slow envelope steps piece by piece (the kernel, as a one-pole section; the running mean after a reset in a
+        loop), the thresholds from slow at each piece's start, and only a band and piece whose max (armed) or min
+        (disarmed) crosses is scanned. Hits go to self._pend as (piece, band, t, peak): the caller fires them."""
+        T = self._T
+        v = self._view(n)
+        pc = self._pieces.get(P)
+        if pc is None:
+            pc = self._pieces[P] = _Pieces(self, P)
+        d = self._dpos
+        np.add(x, self._dither[d:d + n], out=v.row0)           # mono + dither into all six rows
+        np.copyto(v.rest, v.row0)
+        self._dpos = (d + n) % DITHER_N
+        sos, rows, zi = T.sos, v.rows, self._zi_rows
+        for b in range(NB):
+            _filt(sos[b], rows[b], zi[b])
+        fast = v.fast
+        np.multiply(v.band, v.band, out=fast)
+        _filt(T.sos_fast, fast, self._zi_fast)
+        f2 = pc.f2
+        np.maximum.reduce(f2, axis=1, out=pc.pmax)
+        np.minimum.reduce(f2, axis=1, out=pc.pmin)
+        np.dot(f2, self._ones_h, out=pc.psum)
+
+        # the slow envelope at each piece's start (sb[:, p]) and after the block (sb[:, P])
+        slow, sb = self._slow, pc.sb
+        H = HIT_BLOCK
+        if n_base + H >= T.slow_n:                     # steady state: y = b0 sum + a y_prev from y = slow
+            np.copyto(pc.sb1, pc.psum2)
+            pc.sb0.fill(0.0)
+            np.copyto(self._zs0, slow)
+            self._zs1.fill(0.0)
+            _filt(T.sos_slow, sb, self._zi_slow)
+            np.copyto(slow, sb[:, P])
+        else:                                          # after a reset: the running mean, piece by piece
+            np.copyto(pc.sb0, slow)
+            fsum = self._fsum
+            seen = n_base
+            for p in range(P):
+                seen += H
+                w = H / seen if seen < T.slow_n else T.w_slow
+                np.multiply(pc.psum2[:, p], w / H, out=fsum)
+                slow *= 1.0 - w
+                slow += fsum
+                np.copyto(sb[:, p + 1], slow)
+
+        stc, ton, toff, aon, aoff = pc.stc, pc.ton, pc.toff, pc.aon, pc.aoff
+        np.copyto(stc, pc.st)
+        np.multiply(stc, pc.kon, out=ton)
+        np.maximum(ton, self._floor_p, out=ton)
+        np.multiply(stc, self._k_off, out=toff)
+        np.greater(pc.pmax2, ton, out=aon)
+        np.less(pc.pmin2, toff, out=aoff)
+        pend = self._pend
+        fs, rb, armed_l = self._fs, self._rb_h, self._armed
+        for b in range(NB):                            # per band: the next piece that can change its state
+            armed = armed_l[b]
+            on_b, off_b, row_b = aon[b], aoff[b], fast[b]
+            p = 0
+            while p < P:
+                m = on_b if armed else off_b
+                p = p + int(m[p:].argmax())
+                if not m[p]:
+                    break
+                p0 = p * H
+                armed = self._scan_row(b, armed, row_b[p0:p0 + H], rb, float(ton[b, p]), float(toff[b, p]),
+                                       t0 + p0 / fs, n_base + p0, pend, p)
+                p += 1
+            armed_l[b] = armed
 
     def _fire(self, b: int, t: float, pk: float) -> None:
         pk_db = 10.0 * math.log10(pk + 1e-30) + DB_SINE
@@ -1191,6 +1476,9 @@ class Features:
     # -- the analysis ring and the fast lane ------------------------------------------------------------------------
     def _analysis(self, x: np.ndarray, n: int, t0: float) -> int:
         hop, fs, ring = self.hop, self._fs, self._ring
+        first = hop - self._hop_fill                  # samples into the block at which its first hop ends
+        if self._batch_hops and n >= first + (MULTI_HOPS - 1) * hop:
+            return self._analysis_multi(x, n, t0, first)
         hops = 0
         i = 0
         while i < n:
@@ -1216,6 +1504,145 @@ class Features:
                 hops += 1
         self._n += n
         return hops
+
+    def _analysis_multi(self, x: np.ndarray, n: int, t0: float, first: int) -> int:
+        """The ring and the fast lane for a block that completes MULTI_HOPS or more hops: the whole block into the
+        ring at once (RING_N leaves CHUNK of room behind every read), then its hops in groups of MULTI_MAX."""
+        hop, ring = self.hop, self._ring
+        p0 = self._rpos
+        end = p0 + n
+        if end <= RING_N:
+            ring[p0:end] = x
+            ring[p0 + RING_N:end + RING_N] = x
+        else:
+            k = RING_N - p0
+            ring[p0:RING_N] = x[:k]
+            ring[p0 + RING_N:] = x[:k]
+            ring[:n - k] = x[k:]
+            ring[RING_N:RING_N + n - k] = x[k:]
+        self._rpos = end % RING_N
+        H = (n - first) // hop + 1
+        self._hop_fill = n - (first + hop * (H - 1))
+        h = 0
+        while h < H:
+            g = min(MULTI_MAX, H - h)
+            i0 = first + hop * h
+            try:
+                hv = self._hops_flux(p0, i0, g)
+            except Exception:                          # noqa: BLE001 - these hops the per-hop way (nothing changed)
+                self._batch_fallbacks += 1
+                fs, end_pos = self._fs, self._rpos
+                for i in range(i0, i0 + hop * g, hop):
+                    self._rpos = (p0 + i) % RING_N
+                    self._fast_lane(t0 + (i - 1) / fs, self._n + i)
+                self._rpos = end_pos
+            else:
+                self._hops_multi(hv, t0, p0, i0, g)
+            h += g
+        self._n += n
+        return H
+
+    def _hops_flux(self, p0: int, i0: int, g: int) -> _Hops:
+        """g hops ending at block indices i0, i0 + hop, ... (the block starting at ring position p0): their log-mel
+        rows and SuperFlux, exactly _fast_lane's numbers hop by hop, into scratch only (no state changes). The
+        windows are one strided view of the double ring (copied, never np.take on it: that copies every window),
+        one rfft over the rows (row by row identical), the log-mel bank row by row (np.dot as _fast_lane:
+        bit-identical; one matmul would save ~7 us a hop for 4e-16 relative), SuperFlux against the carried
+        max-filtered frames (hv.cur: this group's, for _hops_multi to keep)."""
+        T = self._T
+        hop = self.hop
+        hv = self._hops_v.get(g)
+        if hv is None:
+            hv = self._hops_v[g] = _Hops(self, g, T.nb_fast)
+        q0 = p0 + i0                                   # ring positions after the hops, unwrapped: q0 .. qL
+        qL = q0 + hop * (g - 1)
+        s0 = q0 + (RING_N if qL <= RING_N else 0) - FAST_N
+        F = hv.F
+        np.copyto(F, self._swv[s0:s0 + hop * (g - 1) + 1:hop])
+        np.multiply(F, hv.hann, out=F)
+        np.fft.rfft(F, axis=-1, out=hv.S)
+        PW = hv.PW
+        np.multiply(hv.RE, hv.RE, out=PW)
+        np.multiply(hv.IM, hv.IM, out=hv.TP)
+        PW += hv.TP
+        MEL = hv.MEL
+        mel_w = T.mel_w
+        for pw_k, mel_k in zip(hv.pw_rows, hv.mel_rows):
+            np.dot(mel_w, pw_k, out=mel_k)
+        MEL += MEL_FLOOR
+        np.log10(MEL, out=MEL)
+        MEL *= 10.0
+        # SuperFlux: hop j against frame j - lag max-filtered; the lag frames before this group come from _mf
+        lag = self._sf_lag
+        slots = lag + 1
+        j0 = self._hops_rs
+        mf = self._mf_rows
+        for q, row in enumerate(hv.mf_in):
+            np.copyto(row, mf[(j0 - lag + q) % slots])
+        # the 3-band max filter on the flattened rows (1-D: no buffer): mx[j] = max(mel[j], mel[j + 1]); the pairs
+        # that straddle two rows land only on each row's ends, which are then set from mx as _fast_lane's are
+        mx = hv.mx
+        np.maximum(hv.melf0, hv.melf1, out=mx)
+        np.maximum(hv.mx0, hv.mx1, out=hv.cur_mid)
+        np.copyto(hv.cur0, hv.mx_first)
+        np.copyto(hv.cur1, hv.mx_last)
+        DF, FL = hv.DF, hv.FL
+        np.subtract(MEL, hv.MF, out=DF)
+        np.maximum(DF, 0.0, out=DF)
+        np.add.reduce(DF, axis=1, out=FL)
+        return hv
+
+    def _hops_multi(self, hv: _Hops, t0: float, p0: int, i0: int, g: int) -> None:
+        """The state for the g hops _hops_flux computed: the newest max-filtered frames into _mf, the counters, then
+        per hop, in order, _fast_lane's stores and the medium frame (given that hop's ring position and slow)."""
+        T = self._T
+        hop, fs = self.hop, self._fs
+        lag = self._sf_lag
+        slots = lag + 1
+        j0 = self._hops_rs
+        mf = self._mf_rows
+        for q in range(min(slots, g)):                 # the newest frames back into _mf
+            np.copyto(mf[(j0 + g - 1 - q) % slots], hv.cur_rows[g - 1 - q])
+        FL = hv.FL
+        self._hops_rs += g
+        self._hops += g
+        self._hops_since_pub += g
+
+        # per hop, in order: suppression, the onset accumulator and log, the medium lane's rings, a medium frame
+        nb0 = self._n
+        supp = self._supp_onset_n
+        delay = T.onset_delay_s
+        olog_t, olog_v, on = self._olog_t, self._olog_v, self._olog_t.size
+        fx, ft, fn = self._fx, self._ft, self._fx_n
+        mel_acc, mel_rows = self._mel_acc, hv.mel_rows
+        acc = self._onset_acc
+        i = i0
+        t_end = n_end = 0
+        for k, flux in enumerate(FL.tolist()):
+            t_end = t0 + (i - 1) / fs
+            n_end = nb0 + i
+            if n_end <= supp:
+                flux = 0.0
+            if flux > acc:
+                acc = flux
+            t_on = t_end - delay
+            ko = self._olog_i % on
+            olog_t[ko] = t_on
+            olog_v[ko] = flux
+            self._olog_i += 1
+            fi = self._fx_i & (fn - 1)
+            fx[fi] = fx[fi + fn] = flux
+            ft[fi] = ft[fi + fn] = t_on
+            self._fx_i += 1
+            np.add(mel_acc, mel_rows[k], out=mel_acc)
+            self._mel_cnt_acc += 1
+            if n_end * MED_HZ >= self._med_k * fs:
+                self._onset_acc = acc
+                self._medium(t_end, n_end, (p0 + i) % RING_N, self._slow_for(n_end))
+            i += hop
+        self._onset_acc = acc
+        self._t_hop = t_end
+        self._hop_rpos = (p0 + i - hop) % RING_N
 
     def _fast_lane(self, t_end: float, n_end: int) -> None:
         T = self._T
@@ -1262,7 +1689,7 @@ class Features:
         np.add(self._mel_acc, mel, out=self._mel_acc)
         self._mel_cnt_acc += 1
         if n_end * MED_HZ >= self._med_k * self._fs:
-            self._medium(t_end, n_end)
+            self._medium(t_end, n_end, p, self._slow_for(n_end))
 
     # -- the medium lane ------------------------------------------------------------------------------------------------
     def _med3(self, a: np.ndarray, b: np.ndarray, c: np.ndarray, out: np.ndarray) -> None:
@@ -1274,8 +1701,11 @@ class Features:
         np.minimum(out, c, out=out)
         np.maximum(out, t, out=out)
 
-    def _medium(self, t_end: float, n_end: int) -> None:
-        """One medium frame (the module docstring has every formula). Numbers only: tick builds the message."""
+    def _medium(self, t_end: float, n_end: int, p: int, slow: np.ndarray) -> None:
+        """One medium frame at the hop ending at real sample n_end (the module docstring has every formula), its
+        spectrum read from the ring back from ``p`` (the ring position after that hop) and low_db from ``slow``
+        (the hit path's envelopes at that hop: _slow_for), so neither depends on how much of the block was
+        processed before. Numbers only: tick builds the message."""
         tp = time.perf_counter()
         T = self._T
         self._med_k = n_end * MED_HZ // self._fs + 1
@@ -1284,7 +1714,6 @@ class Features:
             self._med_t0 = t_end
 
         # the spectrum: |X|^2 up to 8 kHz (at 44.1/48 kHz: [1 3 3 1], every other sample, a 4096-point FFT)
-        p = self._rpos
         n = T.n_m
         y = self._m_frame
         if T.m_dec == 2:
@@ -1409,7 +1838,6 @@ class Features:
                 self._m_swing = self._m_sync = None
                 self._bs_reset()
 
-        slow = self._slow
         self._m_low = max(DBFS_FLOOR, 10.0 * math.log10(float(slow[0]) + float(slow[1]) + 1e-30) + DB_SINE)
         self._m_t = t_end
         self._m_hdb = hdb
