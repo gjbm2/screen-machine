@@ -15,6 +15,9 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
                      thread)          SHOW_BEAT_NICE  the child's nice (default 0, as madmom has inside show_service)
   SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
                      packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
+  SHOW_AUDIO_CAL_FILE config/room/audio_cal.json (the room calibration: streams.<stream>.summary.music_lufs, the
+                     median lufs_s of music at party volume on that mic; local, hot-reloaded -> each stream's gate
+                     offset = music_lufs - (-30): dsp.Features.gate_offsets)
   SHOW_RX_OFF        "" (default) | any of coalesce,stamps,split,batch,gapskip,agc (comma list): turns that hot-path
                      change off, the rollback switch: one on_audio per packet / arrival after recv / MIDI on the audio
                      socket (receiver.py); per-piece hits and per-hop spectra (dsp.py); holes zero-filled through
@@ -68,7 +71,7 @@ import os
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Mapping, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 from . import contract
 from .contract import Config, Sender
@@ -101,6 +104,7 @@ class Options:
     beat_nice: int = 0                                   # clock.Clock(beat_nice=)
     rx_coalesce_min: int = 1                             # receiver.Receiver(coalesce_min=)
     rx_off: frozenset = frozenset()                      # SHOW_RX_OFF: receive-path changes turned off (RX_FEATURES)
+    audio_cal_file: pathlib.Path = contract.REPO_ROOT / "config/room/audio_cal.json"   # gate_offsets (GateOffsetWatch)
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -338,7 +342,8 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
                    state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread,
                    beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min,
-                   rx_off=rx_off)
+                   rx_off=rx_off,
+                   audio_cal_file=path_opt(None, "SHOW_AUDIO_CAL_FILE", contract.REPO_ROOT / "config/room/audio_cal.json"))
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:
@@ -372,6 +377,36 @@ def _read_offsets(path: pathlib.Path) -> Optional[dict[str, float]]:
     return out
 
 
+GATE_OFFSET_MIN_DB, GATE_OFFSET_MAX_DB = -40.0, 20.0   # a gate offset outside this is clamped
+
+
+def _read_gate_offsets(path: pathlib.Path) -> Optional[dict[str, float]]:
+    """audio_cal.json's ``streams.<stream>.summary.music_lufs`` as each stream's gate offset in dB (music_lufs -
+    contract.GATE_REF_DEFAULT_LUFS: the loudness gate expects the mode's loudness_ref_lufs from a mic that hears party
+    music at -30), clamped to GATE_OFFSET_MIN_DB..MAX; ``{}`` if the file or its streams are absent, None if it exists
+    but isn't valid JSON."""
+    try:
+        text = pathlib.Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return None
+    try:
+        obj = json.loads(text)
+    except Exception:
+        return None
+    streams = obj.get("streams") if isinstance(obj, dict) else None
+    out: dict[str, float] = {}
+    if isinstance(streams, dict):
+        for name, entry in streams.items():
+            summ = entry.get("summary") if isinstance(entry, dict) else None
+            v = summ.get("music_lufs") if isinstance(summ, dict) else None
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
+                off = float(v) - contract.GATE_REF_DEFAULT_LUFS
+                out[str(name)] = round(max(GATE_OFFSET_MIN_DB, min(GATE_OFFSET_MAX_DB, off)), 2)
+    return out
+
+
 def acoustic_offsets(path: pathlib.Path) -> dict[str, float]:
     """``sources.<stream>.acoustic_offset_ms`` (signed ms, + = the sound reaches the listener later); ``{}`` if
     absent or unreadable; never raises."""
@@ -381,13 +416,19 @@ def acoustic_offsets(path: pathlib.Path) -> dict[str, float]:
         return {}
 
 
+def GateOffsetWatch(path: pathlib.Path) -> "LatencyWatch":
+    """A LatencyWatch over audio_cal.json that returns each stream's gate offset (``_read_gate_offsets``)."""
+    return LatencyWatch(path, _read_gate_offsets)
+
+
 class LatencyWatch:
     """Polls latency.json: ``poll()`` returns the offsets when the file changed (mtime or size; appearing or
     disappearing counts), else None. An invalid file (a torn write) returns None and is retried at the next poll, so
     the last good offsets stay. Main thread only."""
 
-    def __init__(self, path: pathlib.Path) -> None:
+    def __init__(self, path: pathlib.Path, reader: Optional[Callable[[pathlib.Path], Optional[dict]]] = None) -> None:
         self.path = pathlib.Path(path)
+        self._read = reader or _read_offsets
         self._stamp: object = object()          # nothing seen yet
         self.last: dict[str, float] = {}
         self.errors = 0
@@ -404,7 +445,7 @@ class LatencyWatch:
         if not force and stamp == self._stamp:
             return None
         try:
-            offsets = _read_offsets(self.path) if stamp is not None else {}
+            offsets = self._read(self.path) if stamp is not None else {}
         except Exception:
             offsets = None
         if offsets is None:

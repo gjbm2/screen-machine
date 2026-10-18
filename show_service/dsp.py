@@ -32,6 +32,8 @@ whatever its block sizes up to CHUNK.
                        A new ``stream`` name clears the history too (percentiles, presence, punch/drive, the
                        spectrum's smoothing).
   gate_ref_lufs        the mode's expected loudness (the director sets it; §6.3), default -30
+  gate_offsets         {stream: dB} added to gate_ref_lufs for that stream: its mic's calibration (audio_cal.json's
+                       music_lufs - (-30); __main__ swaps the dict in by reference); a stream not in it: 0
   stats()              blocks, hops, gaps, publishes (music.features), fades, hits per band, hop_ms_p50/p95 (a hop's
                        blocks included, its medium frame not), block_ms_p95 (everything), tick_ms_p95 (a publish),
                        fs, channels, stream, kernel; medium_frames, medium_ms_p50/p95, rhythm_publishes, onsets;
@@ -707,6 +709,7 @@ class Features:
             raise ValueError(f"hop must be 32..{HOP_MAX}")
         self._publish = publish
         self._batch_hits = self._batch_hops = bool(batch)
+        self.gate_offsets: dict[str, float] = {}       # {stream: dB} over gate_ref_lufs (the mic's calibration)
         self.hop = int(hop)
         self._period = 1.0 / float(publish_hz)
         self._tables: dict[int, _Tables] = {}
@@ -1046,6 +1049,7 @@ class Features:
                 "medium_ms_p95": pct(self._med_ms, self._med_i, 95), "rhythm_publishes": self._rhythm_pubs,
                 "onsets": self._onsets_total, "batch": self._batch_hits, "batch_fallbacks": self._batch_fallbacks,
                 "gate_ref_lufs": round(self._gate_ref_eff, 1),
+                "gate_offset_db": self.gate_offsets.get(self._stream, 0.0),
                 "floor_lufs": None if self._floor_lufs is None else round(self._floor_lufs, 1)}
 
     # -- state -------------------------------------------------------------------------------------------------------
@@ -2061,7 +2065,7 @@ class Features:
             self._floor_t = t
             if len(self._floor_vals) >= FLOOR_MIN_S / FLOOR_BIN_S:
                 self._floor_lufs = max(LUFS_FLOOR, float(np.percentile(np.fromiter(self._floor_vals, float), FLOOR_PCT)))
-        ref_l = float(self.gate_ref_lufs)
+        ref_l = float(self.gate_ref_lufs) + self.gate_offsets.get(self._stream, 0.0)
         if self._floor_lufs is not None:
             ref_l = min(ref_l, self._floor_lufs + FLOOR_ABOVE_LU + GATE_SPAN_LU)
         self._gate_ref_eff = ref_l

@@ -191,3 +191,18 @@ def test_rx_off_turns_receive_path_changes_off():
     assert config.load_options([], {}).rx_off == frozenset()
     o = config.load_options([], {"SHOW_RX_OFF": " Coalesce, split ,bogus"})
     assert o.rx_off == {"coalesce", "split"} and any("bogus" in n for n in o.notes)
+
+
+def test_gate_offsets_from_audio_cal(tmp_path):
+    """audio_cal.json's streams.<stream>.summary.music_lufs -> the stream's gate offset (music_lufs + 30, clamped);
+    a missing file or entry -> nothing; a torn file keeps the last offsets."""
+    p = tmp_path / "audio_cal.json"
+    w = config.GateOffsetWatch(p)
+    assert w.poll(force=True) == {}
+    _write(p, {"streams": {"pc22-mic": {"summary": {"music_lufs": -47.5}}, "room-mic": {"summary": {}},
+                           "odd": {"summary": {"music_lufs": -200}}, "bad": {"summary": {"music_lufs": "x"}}}})
+    assert w.poll() == {"pc22-mic": -17.5, "odd": -40.0}
+    _write(p, '{"streams": ')
+    os.utime(p, ns=(1, 1))
+    assert w.poll() is None and w.last == {"pc22-mic": -17.5, "odd": -40.0}
+    assert config.load_options([], {}).audio_cal_file.name == "audio_cal.json"
