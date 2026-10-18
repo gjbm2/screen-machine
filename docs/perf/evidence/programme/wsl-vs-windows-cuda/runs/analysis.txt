@@ -1,0 +1,220 @@
+runs: {'wsl': ['wsl_r1', 'wsl_r3', 'wsl_r5'], 'win': ['win_r2', 'win_r4', 'win_r6']}
+metric                                                                            WSL median [runs]                  WIN median [runs]  WIN/WSL
+alone.per_op.event_record.p50 (us)                                        13.22 [13.22,12.45,17.55]              15.2 [17.4,14.5,15.2]     1.15
+alone.per_op.event_record.p90 (us)                                          43.52 [38.3,43.52,55.1]                45.3 [57,41.4,45.3]     1.04
+alone.per_op.event_record.p99 (us)                                    231.82 [166.07,231.82,302.09]          237.6 [401.1,114.5,237.6]     1.02
+alone.per_op.event_record.max (us)                                3283.01 [11199.5,3128.96,3283.01]      7562.4 [7562.4,253.7,56271.1]      2.3
+alone.per_op.event_record.mean (us)                                       35.74 [35.74,28.05,36.71]             48.2 [48.2,23.63,84.7]     1.35
+alone.per_op.event_record.frac_over_1ms (us)                            0.002 [0.0035,0.0015,0.002]             0.004 [0.004,0,0.0035]      2.0
+alone.per_op.elementwise_launch.p50 (us)                                     60.4 [60.4,59.79,76.4]              50.8 [56.5,50.3,50.8]     0.84
+alone.per_op.elementwise_launch.p90 (us)                              164.41 [120.63,164.41,178.68]             99.4 [164.5,86.2,99.4]      0.6
+alone.per_op.elementwise_launch.p99 (us)                              885.35 [940.19,725.01,885.35]         508.3 [1049.8,197.2,508.3]     0.57
+alone.per_op.elementwise_launch.max (us)                         12548.11 [32622.7,6244.89,12548.1]      2609.7 [19787.9,644.9,2609.7]     0.21
+alone.per_op.elementwise_launch.mean (us)                             120.78 [120.78,107.21,127.94]         72.05 [121.78,59.52,72.05]      0.6
+alone.per_op.elementwise_launch.frac_over_1ms (us)                     0.009 [0.0095,0.0065,0.0085]            0.003 [0.0105,0,0.0025]     0.33
+alone.per_op.rawkernel_launch.p50 (us)                                    34.68 [34.68,33.38,47.54]              33.5 [38.8,33.4,33.5]     0.97
+alone.per_op.rawkernel_launch.p90 (us)                                  111.19 [87.3,111.19,130.02]             75.1 [126.2,61.3,75.1]     0.68
+alone.per_op.rawkernel_launch.p99 (us)                               686.03 [686.03,535.11,1070.99]          380.5 [815.9,157.8,380.5]     0.55
+alone.per_op.rawkernel_launch.max (us)                            7870.93 [5165.26,11287.4,7870.93]        2669.1 [20365.7,707,2669.1]     0.34
+alone.per_op.rawkernel_launch.mean (us)                                  74.75 [74.75,72.96,102.18]           54.5 [107.97,41.36,54.5]     0.73
+alone.per_op.rawkernel_launch.frac_over_1ms (us)                         0.008 [0.008,0.005,0.0115]            0.004 [0.0085,0,0.0035]      0.5
+alone.per_op.set_2KB_pageable.p50 (us)                                    55.34 [55.34,53.57,68.28]              51.8 [56.7,51.1,51.8]     0.94
+alone.per_op.set_2KB_pageable.p90 (us)                                158.73 [121.45,158.73,180.74]             99.7 [174.1,83.8,99.7]     0.63
+alone.per_op.set_2KB_pageable.p99 (us)                             1184.74 [1184.74,728.32,1295.03]           480.7 [1229.2,186,480.7]     0.41
+alone.per_op.set_2KB_pageable.max (us)                            5200.61 [6703.52,5200.61,3581.93]   10430.9 [17080.7,1276.4,10430.9]     2.01
+alone.per_op.set_2KB_pageable.mean (us)                                107.42 [107.42,95.54,121.95]         80.57 [125.99,57.64,80.57]     0.75
+alone.per_op.set_2KB_pageable.frac_over_1ms (us)                       0.013 [0.0125,0.0045,0.0135]         0.004 [0.013,0.0005,0.004]     0.31
+alone.per_op.h2d_2KB_pinned_async.p50 (us)                                   35.9 [35.9,33.92,48.1]              28.2 [31.1,27.6,28.2]     0.79
+alone.per_op.h2d_2KB_pinned_async.p90 (us)                             105.02 [86.65,105.02,121.29]              65.7 [97.5,58.9,65.7]     0.63
+alone.per_op.h2d_2KB_pinned_async.p99 (us)                            699.94 [699.94,362.67,764.54]            309.1 [822.4,166,309.1]     0.44
+alone.per_op.h2d_2KB_pinned_async.max (us)                        7966.75 [7966.75,48917.9,5181.84]        3397.3 [8620,1027.3,3397.3]     0.43
+alone.per_op.h2d_2KB_pinned_async.mean (us)                               85.42 [76.02,86.59,85.42]          49.13 [83.77,38.13,49.13]     0.58
+alone.per_op.h2d_2KB_pinned_async.frac_over_1ms (us)                   0.007 [0.0075,0.0025,0.0075]        0.003 [0.008,0.0005,0.0025]     0.43
+alone.per_op.sync_empty_stream.p50 (us)                                         4.4 [4.38,4.4,5.17]                  3.7 [4.1,3.7,3.7]     0.84
+alone.per_op.sync_empty_stream.p90 (us)                                   11.54 [10.83,11.54,14.14]                    6.0 [8.1,5.2,6]     0.52
+alone.per_op.sync_empty_stream.p99 (us)                                  88.89 [53.32,88.89,104.11]                55.3 [73,21.2,55.3]     0.62
+alone.per_op.sync_empty_stream.max (us)                            1624.44 [1624.44,332.02,3951.26]       1092.4 [1092.4,123.2,2416.2]     0.67
+alone.per_op.sync_empty_stream.mean (us)                                     8.54 [8.54,8.17,12.77]                7.7 [8.11,4.38,7.7]      0.9
+alone.per_op.sync_empty_stream.frac_over_1ms (us)                           0.001 [0.0005,0,0.0005]             0.001 [0.0005,0,0.001]      1.0
+alone.per_op.perf_counter_null.p50 (us)                                        0.29 [0.28,0.29,0.3]                  0.5 [0.5,0.4,0.5]     1.72
+alone.per_op.perf_counter_null.p90 (us)                                        0.44 [0.44,0.43,0.5]                  0.7 [0.7,0.6,0.7]     1.59
+alone.per_op.perf_counter_null.p99 (us)                                        2.26 [2.07,2.26,2.6]                  1.1 [1.2,0.9,1.1]     0.49
+alone.per_op.perf_counter_null.max (us)                                  79.65 [333.72,59.05,79.65]              42.0 [1782.3,42,28.4]     0.53
+alone.per_op.perf_counter_null.mean (us)                                       0.49 [0.52,0.4,0.49]                0.54 [1.5,0.5,0.54]      1.1
+alone.per_op.perf_counter_null.frac_over_1ms (us)                                       0.0 [0,0,0]                   0.0 [0.0005,0,0]     None
+alone.per_op.cpu.thread_cpu_per_iter_us (7 calls)                       452.2 [452.2,426.01,520.97]      265.62 [304.69,226.56,265.62]     0.59
+alone.per_op.cpu.proc_user_per_iter_us (7 calls)                                340.0 [340,270,370]      148.44 [156.25,140.62,148.44]     0.44
+alone.per_op.cpu.proc_sys_per_iter_us (7 calls)                                 150.0 [110,160,150]       117.19 [148.44,85.94,117.19]     0.78
+alone.per_op.cpu.proc_sys_share (7 calls)                                 0.288 [0.244,0.372,0.288]          0.441 [0.487,0.379,0.441]     1.53
+alone.per_op.loop_wall_per_iter_us (7 calls)                                452.4 [452.4,427.8,521]            372.2 [536,247.3,372.2]     0.82
+alone.frame50_elementwise.wall.p50 (ms)                                       2.11 [1.99,2.11,2.18]              2.36 [3.33,2.36,1.74]     1.12
+alone.frame50_elementwise.wall.p90 (ms)                                       8.24 [8.86,6.51,8.24]              3.95 [9.97,3.95,2.26]     0.48
+alone.frame50_elementwise.wall.p99 (ms)                                   12.99 [13.71,11.02,12.99]             6.65 [92.92,6.65,4.25]     0.51
+alone.frame50_elementwise.wall.max (ms)                                   17.96 [17.96,12.01,44.47]          10.98 [164.35,10.98,5.08]     0.61
+alone.frame50_elementwise.wall.mean (ms)                                      3.47 [3.47,3.01,3.72]              2.68 [7.71,2.68,1.84]     0.77
+alone.frame50_elementwise.gpu_span.p50 (ms)                                    2.02 [1.89,2.02,2.1]               2.31 [3.23,2.31,1.7]     1.14
+alone.frame50_elementwise.cpu.thread_cpu_per_iter_us              3526.48 [3526.48,3073.81,3718.34]  1822.92 [3043.83,1822.92,1718.75]     0.52
+alone.frame50_elementwise.cpu.proc_sys_share                              0.272 [0.229,0.272,0.339]            0.333 [0.3,0.571,0.333]     1.22
+alone.frame50_rawkernel.wall.p50 (ms)                                         1.23 [1.23,1.12,1.94]              1.53 [2.55,1.41,1.53]     1.24
+alone.frame50_rawkernel.wall.p90 (ms)                                           4.3 [4.29,4.3,5.41]              2.31 [6.83,2.02,2.31]     0.54
+alone.frame50_rawkernel.wall.p99 (ms)                                     10.49 [11.66,10.49,10.48]             3.63 [19.23,3.49,3.63]     0.35
+alone.frame50_rawkernel.wall.max (ms)                                     12.14 [12.87,11.31,12.14]             5.91 [84.22,5.91,5.32]     0.49
+alone.frame50_rawkernel.wall.mean (ms)                                         1.99 [1.99,1.9,2.66]              1.69 [3.82,1.55,1.69]     0.85
+alone.frame50_rawkernel.gpu_span.p50 (ms)                                     1.11 [1.11,1.04,1.85]                1.5 [2.48,1.38,1.5]     1.35
+alone.frame50_rawkernel.cpu.thread_cpu_per_iter_us                    2056.0 [2056,1960.87,2721.74]  1614.58 [2239.58,1354.17,1614.58]     0.79
+alone.frame50_rawkernel.cpu.proc_sys_share                                0.355 [0.355,0.305,0.378]              0.5 [0.395,0.5,0.548]     1.41
+alone.frame50_mixed.wall.p50 (ms)                                             1.44 [1.44,1.29,1.57]               2.25 [2.84,1.7,2.25]     1.56
+alone.frame50_mixed.wall.p90 (ms)                                                 6.14 [7,4.8,6.14]                3.8 [7.67,2.65,3.8]     0.62
+alone.frame50_mixed.wall.p99 (ms)                                         12.63 [13.19,10.53,12.63]             8.88 [13.94,3.79,8.88]      0.7
+alone.frame50_mixed.wall.max (ms)                                         21.09 [21.09,11.56,22.98]            10.94 [98.5,4.58,10.94]     0.52
+alone.frame50_mixed.wall.mean (ms)                                            2.75 [2.75,2.21,2.76]              2.56 [4.24,1.84,2.56]     0.93
+alone.frame50_mixed.gpu_span.p50 (ms)                                          1.34 [1.34,1.21,1.5]               2.17 [2.8,1.66,2.17]     1.62
+alone.frame50_mixed.cpu.thread_cpu_per_iter_us                    2788.97 [2810.13,2252.52,2788.97]  2083.33 [2416.82,1614.58,2083.33]     0.75
+alone.frame50_mixed.cpu.proc_sys_share                                      0.25 [0.259,0.25,0.238]            0.326 [0.326,0.161,0.5]      1.3
+alone.frame50_graph.wall.p50 (ms)                                             0.12 [0.14,0.12,0.12]               0.11 [0.16,0.1,0.11]     0.92
+alone.frame50_graph.wall.p90 (ms)                                             0.33 [0.33,0.34,0.31]              0.22 [0.58,0.15,0.22]     0.67
+alone.frame50_graph.wall.p99 (ms)                                             1.24 [1.32,1.24,1.19]               0.37 [3.1,0.25,0.37]      0.3
+alone.frame50_graph.wall.max (ms)                                             3.06 [4.31,2.42,3.06]               0.68 [7.9,0.39,0.68]     0.22
+alone.frame50_graph.wall.mean (ms)                                            0.19 [0.23,0.19,0.19]              0.14 [0.34,0.11,0.14]     0.74
+alone.frame50_graph.gpu_span.p50 (ms)                                         0.05 [0.05,0.05,0.05]              0.07 [0.11,0.06,0.07]      1.4
+alone.frame50_graph.cpu.thread_cpu_per_iter_us                        219.03 [262.75,209.01,219.03]       156.25 [312.5,156.25,156.25]     0.71
+alone.frame50_graph.cpu.proc_sys_share                                      0.286 [0.286,0.167,0.5]              0.667 [0.667,0.667,1]     2.33
+alone.d2h_12.4MB.enq+sync.p50 (ms)                                            2.16 [2.16,2.14,2.17]              2.04 [2.24,2.01,2.04]     0.94
+alone.d2h_12.4MB.enq+sync.p99 (ms)                                           5.69 [5.69,4.78,10.64]             11.4 [14.34,2.18,11.4]      2.0
+alone.d2h_12.4MB.enq+sync.max (ms)                                         12.27 [12.27,5.66,13.13]              15.4 [15.4,2.2,16.88]     1.26
+alone.d2h_12.4MB.GBps_p50                                                     5.76 [5.76,5.82,5.73]                6.1 [5.56,6.19,6.1]     1.06
+with_cpu_thread.per_op.event_record.p50 (us)                              17.23 [11.98,36.46,17.23]             52.6 [52.6,15436.4,38]     3.05
+with_cpu_thread.per_op.event_record.p90 (us)                        6290.42 [41.52,6684.87,6290.42]    17384.9 [17384.9,16365.7,19289]     2.76
+with_cpu_thread.per_op.event_record.p99 (us)                      9554.28 [8803.58,9554.28,16209.2]    31495.8 [31495.8,17300,89373.4]      3.3
+with_cpu_thread.per_op.event_record.max (us)                     16233.77 [9929.08,16233.8,17159.4]    47351.5 [47351.5,17300,99034.6]     2.92
+with_cpu_thread.per_op.event_record.mean (us)                      1542.94 [269.51,1968.92,1542.94]  6644.67 [5081.02,13556.1,6644.67]     4.31
+with_cpu_thread.per_op.event_record.frac_over_1ms (us)                 0.161 [0.0367,0.2833,0.1607]        0.271 [0.2714,0.875,0.2556]     1.68
+with_cpu_thread.per_op.elementwise_launch.p50 (us)                       74.18 [56.16,159.03,74.18]        2832.6 [2832.6,15523.5,104]    38.19
+with_cpu_thread.per_op.elementwise_launch.p90 (us)                 6348.36 [217.22,6852.57,6348.36]  21108.9 [21417.8,16360.3,21108.9]     3.33
+with_cpu_thread.per_op.elementwise_launch.p99 (us)               11668.86 [7182.98,11668.9,16267.3]   65675.1 [50922.1,65675.1,102835]     5.63
+with_cpu_thread.per_op.elementwise_launch.max (us)               16894.51 [29417.7,16105.3,16894.5]   110300.4 [177027,65675.1,110300]     6.53
+with_cpu_thread.per_op.elementwise_launch.mean (us)                1871.66 [622.06,2444.73,1871.66] 11586.71 [11586.7,15672.2,6549.78]     6.19
+with_cpu_thread.per_op.elementwise_launch.frac_over_1ms (us)           0.189 [0.0733,0.3417,0.1893]        0.529 [0.5286,0.925,0.1889]      2.8
+with_cpu_thread.per_op.rawkernel_launch.p50 (us)                         41.19 [31.86,109.54,41.19]         230.4 [230.4,15217.7,69.2]     5.59
+with_cpu_thread.per_op.rawkernel_launch.p90 (us)                   6752.18 [119.12,6752.18,8387.82]  16774.7 [18659.2,16227.1,16774.7]     2.48
+with_cpu_thread.per_op.rawkernel_launch.p99 (us)                 10854.58 [10360.9,10854.6,16180.9]  49711.7 [49711.7,17075.5,61371.4]     4.58
+with_cpu_thread.per_op.rawkernel_launch.max (us)                 20538.15 [20538.2,11945.8,21579.7]   71149.2 [71149.2,17075.5,146217]     3.46
+with_cpu_thread.per_op.rawkernel_launch.mean (us)                  2083.56 [594.41,2178.86,2083.56]  6815.21 [6815.21,14576.2,6616.45]     3.27
+with_cpu_thread.per_op.rawkernel_launch.frac_over_1ms (us)             0.186 [0.0667,0.3083,0.1857]         0.343 [0.3429,0.95,0.2333]     1.84
+with_cpu_thread.per_op.set_2KB_pageable.p50 (us)                         70.71 [51.88,154.86,70.71]            293.3 [293.3,15599,163]     4.15
+with_cpu_thread.per_op.set_2KB_pageable.p90 (us)                   6855.73 [195.46,6855.73,6959.24]  16950.9 [16950.9,16915.6,18978.4]     2.47
+with_cpu_thread.per_op.set_2KB_pageable.p99 (us)                   11958.95 [9936.25,11959,16312.7]    31897.1 [31897.1,30640,41713.7]     2.67
+with_cpu_thread.per_op.set_2KB_pageable.max (us)                   14328.01 [12816.5,14328,20790.5]     46165.5 [46165.5,30640,107030]     3.22
+with_cpu_thread.per_op.set_2KB_pageable.mean (us)                  1947.19 [530.89,2314.18,1947.19]  5837.98 [5292.34,16093.9,5837.98]      3.0
+with_cpu_thread.per_op.set_2KB_pageable.frac_over_1ms (us)             0.182 [0.0533,0.3125,0.1821]         0.314 [0.3143,0.95,0.2556]     1.73
+with_cpu_thread.per_op.h2d_2KB_pinned_async.p50 (us)                      45.18 [32.86,84.41,45.18]         123.2 [123.2,15513.6,70.3]     2.73
+with_cpu_thread.per_op.h2d_2KB_pinned_async.p90 (us)                6290.17 [94.44,6490.51,6290.17]      19580.0 [19580,29131,15356.2]     3.11
+with_cpu_thread.per_op.h2d_2KB_pinned_async.p99 (us)             13258.86 [7121.11,13258.9,16308.1]    73266.7 [74727,46755.1,73266.7]     5.53
+with_cpu_thread.per_op.h2d_2KB_pinned_async.max (us)               27280.08 [27280.1,15482,30829.4]   111279.6 [112959,46755.1,111280]     4.08
+with_cpu_thread.per_op.h2d_2KB_pinned_async.mean (us)              1765.14 [461.71,2068.88,1765.14]  8590.45 [8590.45,17131.1,5561.97]     4.87
+with_cpu_thread.per_op.h2d_2KB_pinned_async.frac_over_1ms (us)           0.179 [0.05,0.2917,0.1786]         0.329 [0.3286,0.95,0.2444]     1.84
+with_cpu_thread.per_op.sync_empty_stream.p50 (us)                            5.23 [4.27,11.08,5.23]              10.7 [10.7,15201.8,8]     2.05
+with_cpu_thread.per_op.sync_empty_stream.p90 (us)                   6010.95 [12.49,6045.99,6010.95]  15936.3 [17659.1,15936.3,14627.2]     2.65
+with_cpu_thread.per_op.sync_empty_stream.p99 (us)                  14048.43 [7519.11,14048.4,15907]  52360.5 [62378.2,16659.8,52360.5]     3.73
+with_cpu_thread.per_op.sync_empty_stream.max (us)                16244.21 [9818.32,16268.9,16244.2]   110819.0 [143903,16659.8,110819]     6.82
+with_cpu_thread.per_op.sync_empty_stream.mean (us)                 1369.62 [229.61,1390.29,1369.62]  5783.58 [5783.58,11040.4,3764.83]     4.22
+with_cpu_thread.per_op.sync_empty_stream.frac_over_1ms (us)              0.132 [0.03,0.2042,0.1321]        0.186 [0.1857,0.725,0.1444]     1.41
+with_cpu_thread.per_op.perf_counter_null.p50 (us)                               0.4 [0.31,0.56,0.4]                  0.8 [0.8,1.1,0.7]      2.0
+with_cpu_thread.per_op.perf_counter_null.p90 (us)                             1.06 [0.59,1.97,1.06]                  1.3 [1.3,1.5,1.2]     1.23
+with_cpu_thread.per_op.perf_counter_null.p99 (us)                             3.07 [1.19,4.23,3.07]                   2.2 [2,14.5,2.2]     0.72
+with_cpu_thread.per_op.perf_counter_null.max (us)                          21.49 [3.24,21.49,57.78]              26.7 [26.7,14.5,63.5]     1.24
+with_cpu_thread.per_op.perf_counter_null.mean (us)                            0.77 [0.38,0.92,0.77]              1.44 [1.21,1.44,1.48]     1.87
+with_cpu_thread.per_op.perf_counter_null.frac_over_1ms (us)                             0.0 [0,0,0]                        0.0 [0,0,0]     None
+with_cpu_thread.per_op.cpu.thread_cpu_per_iter_us (7 calls)          770.25 [513.18,1056.35,770.25]   1041.67 [446.43,1171.88,1041.67]     1.35
+with_cpu_thread.per_op.cpu.proc_user_per_iter_us (7 calls)       10428.57 [2433.33,12166.7,10428.6] 24776.79 [24776.8,75781.2,19270.8]     2.38
+with_cpu_thread.per_op.cpu.proc_sys_per_iter_us (7 calls)                   571.43 [400,875,571.43]  2008.93 [2008.93,3515.62,1041.67]     3.52
+with_cpu_thread.per_op.cpu.proc_sys_share (7 calls)                       0.067 [0.141,0.067,0.052]          0.051 [0.075,0.044,0.051]     0.76
+with_cpu_thread.per_op.loop_wall_per_iter_us (7 calls)               10856.7 [2768,12639.8,10856.7]  44281.9 [44281.9,89596.8,36526.8]     4.08
+with_cpu_thread.frame50_rawkernel.wall.p50 (ms)                            24.72 [3.42,24.72,77.69]      349.74 [192.07,633.42,349.74]    14.15
+with_cpu_thread.frame50_rawkernel.wall.p90 (ms)                           99.72 [57.82,99.72,135.5]      403.62 [403.62,666.38,381.74]     4.05
+with_cpu_thread.frame50_rawkernel.wall.p99 (ms)                       197.58 [249.55,197.58,179.18]      525.33 [525.33,666.38,430.99]     2.66
+with_cpu_thread.frame50_rawkernel.wall.max (ms)                       197.58 [249.55,197.58,179.18]      525.33 [525.33,666.38,430.99]     2.66
+with_cpu_thread.frame50_rawkernel.wall.mean (ms)                          44.39 [27.83,44.39,76.64]      293.07 [233.32,497.85,293.07]      6.6
+with_cpu_thread.frame50_rawkernel.gpu_span.p50 (ms)                        24.51 [1.48,24.51,73.66]      349.68 [169.53,600.97,349.68]    14.27
+with_cpu_thread.frame50_rawkernel.cpu.thread_cpu_per_iter_us        4094.6 [4094.6,4062.31,6516.49]    4687.5 [4687.5,11718.8,1953.12]     1.14
+with_cpu_thread.frame50_rawkernel.cpu.proc_sys_share                      0.064 [0.072,0.064,0.058]          0.061 [0.071,0.061,0.043]     0.95
+with_cpu_thread.frame50_mixed.wall.p50 (ms)                               24.36 [1.57,126.87,24.36]      265.02 [265.02,314.61,223.31]    10.88
+with_cpu_thread.frame50_mixed.wall.p90 (ms)                              79.36 [40.95,296.26,79.36]         429.58 [427.06,429.58,600]     5.41
+with_cpu_thread.frame50_mixed.wall.p99 (ms)                              95.92 [57.89,300.74,95.92]      640.15 [640.15,529.46,998.91]     6.67
+with_cpu_thread.frame50_mixed.wall.max (ms)                              95.92 [57.89,300.74,95.92]      640.15 [640.15,529.46,998.91]     6.67
+with_cpu_thread.frame50_mixed.wall.mean (ms)                             34.76 [12.61,135.77,34.76]      342.69 [336.43,342.69,399.98]     9.86
+with_cpu_thread.frame50_mixed.gpu_span.p50 (ms)                           21.68 [1.46,126.66,21.68]      264.61 [264.61,314.31,217.77]    12.21
+with_cpu_thread.frame50_mixed.cpu.thread_cpu_per_iter_us          4207.04 [2894.79,10008.9,4207.04]   5208.33 [7812.5,5208.33,2604.17]     1.24
+with_cpu_thread.frame50_mixed.cpu.proc_sys_share                          0.071 [0.071,0.031,0.093]            0.021 [0.01,0.04,0.021]      0.3
+with_cpu_thread.frame50_graph.wall.p50 (ms)                                   0.44 [0.18,23.2,0.44]           31.55 [2.49,31.55,45.36]     71.7
+with_cpu_thread.frame50_graph.wall.p90 (ms)                                18.55 [0.53,24.59,18.55]          61.63 [66.82,61.63,60.81]     3.32
+with_cpu_thread.frame50_graph.wall.p99 (ms)                               26.02 [20.46,26.02,35.98]            75.6 [75.6,63.31,83.85]     2.91
+with_cpu_thread.frame50_graph.wall.max (ms)                               26.02 [20.46,26.02,35.98]            75.6 [75.6,63.31,83.85]     2.91
+with_cpu_thread.frame50_graph.wall.mean (ms)                                 4.65 [0.93,19.24,4.65]          31.36 [22.82,31.36,37.32]     6.74
+with_cpu_thread.frame50_graph.gpu_span.p50 (ms)                               0.27 [0.1,11.83,0.27]           15.79 [0.43,15.79,25.09]    58.48
+with_cpu_thread.frame50_graph.cpu.thread_cpu_per_iter_us             695.68 [281.93,1009.13,695.68]                   0.0 [520.83,0,0]      0.0
+with_cpu_thread.frame50_graph.cpu.proc_sys_share                          0.111 [0.333,0.052,0.111]          0.019 [0.148,0.015,0.019]     0.17
+with_cpu_thread.d2h_12.4MB.enq+sync.p50 (ms)                               11.73 [8.44,11.73,14.23]           31.04 [10.8,31.96,31.04]     2.65
+with_cpu_thread.d2h_12.4MB.enq+sync.p99 (ms)                               24.34 [24.34,18.83,56.6]          46.38 [44.05,46.38,60.38]     1.91
+with_cpu_thread.d2h_12.4MB.enq+sync.max (ms)                               24.34 [24.34,18.83,56.6]          46.38 [44.05,46.38,60.38]     1.91
+with_cpu_thread.d2h_12.4MB.GBps_p50                                           1.06 [1.47,1.06,0.87]                0.4 [1.15,0.39,0.4]     0.38
+sleep4ms.alone.p50 (ms late)                                                  0.12 [0.12,0.12,0.12]              0.64 [1.18,0.53,0.64]     5.33
+sleep4ms.alone.p90 (ms late)                                                  0.19 [0.18,0.19,0.19]             4.11 [16.62,0.97,4.11]    21.63
+sleep4ms.alone.p99 (ms late)                                                  2.12 [3.01,2.12,1.66]            18.1 [117.67,5.11,18.1]     8.54
+sleep4ms.alone.max (ms late)                                              21.01 [21.01,14.85,21.43]          193.89 [478,59.53,193.89]     9.23
+sleep4ms.alone.mean (ms late)                                                  0.21 [0.24,0.2,0.21]              2.08 [8.41,0.74,2.08]      9.9
+sleep4ms.alone.frac_over_1ms (ms late)                                    0.022 [0.031,0.022,0.017]        0.343 [0.5377,0.096,0.3425]    15.59
+sleep4ms.alone.n (ms late)                                                    2000 [2000,2000,2000]              2000 [1590,2000,2000]      1.0
+sleep4ms.with_cpu_thread.p50 (ms late)                                            6.0 [6.11,5.98,6]            11.5 [25.51,11.5,11.39]     1.92
+sleep4ms.with_cpu_thread.p90 (ms late)                                         8.38 [8.87,8.38,7.3]          13.88 [58.39,13.88,13.33]     1.66
+sleep4ms.with_cpu_thread.p99 (ms late)                                    15.22 [15.78,12.55,15.22]         43.69 [589.07,43.69,21.54]     2.87
+sleep4ms.with_cpu_thread.max (ms late)                                    17.86 [17.86,15.36,20.84]           81.5 [589.07,81.5,21.98]     4.56
+sleep4ms.with_cpu_thread.mean (ms late)                                       6.45 [6.84,6.45,6.39]          13.01 [41.37,13.01,11.68]     2.02
+sleep4ms.with_cpu_thread.frac_over_1ms (ms late)                            0.992 [1,0.9917,0.9917]                        1.0 [1,1,1]     1.01
+sleep4ms.with_cpu_thread.n (ms late)                                              240 [220,240,240]                   140 [50,140,150]     0.58
+sleep4ms.alone_timeBeginPeriod1.p50 (ms late)                                               None []              0.57 [0.65,0.53,0.57]     None
+sleep4ms.alone_timeBeginPeriod1.p90 (ms late)                                               None []                3.1 [4.31,0.95,3.1]     None
+sleep4ms.alone_timeBeginPeriod1.p99 (ms late)                                               None []           14.03 [25.92,7.67,14.03]     None
+sleep4ms.alone_timeBeginPeriod1.max (ms late)                                               None []           50.31 [71.69,8.72,50.31]     None
+sleep4ms.alone_timeBeginPeriod1.mean (ms late)                                              None []               1.68 [2.28,0.7,1.68]     None
+sleep4ms.alone_timeBeginPeriod1.frac_over_1ms (ms late)                                     None []         0.283 [0.3733,0.09,0.2833]     None
+sleep4ms.alone_timeBeginPeriod1.n (ms late)                                                 None []                  300 [300,300,300]     None
+win_C_timeBeginPeriod1.per_op.event_record.p50 (us)                                         None []          836.3 [60.1,836.3,4890.4]     None
+win_C_timeBeginPeriod1.per_op.event_record.p90 (us)                                         None []      6189.6 [6189.6,6134.9,6268.4]     None
+win_C_timeBeginPeriod1.per_op.event_record.p99 (us)                                         None []     9588.3 [19298.2,9588.3,7908.7]     None
+win_C_timeBeginPeriod1.per_op.event_record.max (us)                                         None []     10123.0 [28178.9,10123,9987.7]     None
+win_C_timeBeginPeriod1.per_op.event_record.frac_over_1ms (us)                               None []       0.492 [0.3133,0.4917,0.5167]     None
+win_C_timeBeginPeriod1.per_op.elementwise_launch.p50 (us)                                   None []       5141.3 [244.7,5141.3,5274.2]     None
+win_C_timeBeginPeriod1.per_op.elementwise_launch.p90 (us)                                   None []      6607.2 [6607.2,6190.8,7151.6]     None
+win_C_timeBeginPeriod1.per_op.elementwise_launch.p99 (us)                                   None []  12375.2 [17564.5,10395.2,12375.2]     None
+win_C_timeBeginPeriod1.per_op.elementwise_launch.max (us)                                   None []  25729.3 [25729.3,59528.6,12419.8]     None
+win_C_timeBeginPeriod1.per_op.elementwise_launch.frac_over_1ms (us)                            None []               0.55 [0.38,0.55,0.6]     None
+win_C_timeBeginPeriod1.per_op.rawkernel_launch.p50 (us)                                     None []         4987.2 [142,4987.2,5372.5]     None
+win_C_timeBeginPeriod1.per_op.rawkernel_launch.p90 (us)                                     None []      6828.7 [6908.1,6740.7,6828.7]     None
+win_C_timeBeginPeriod1.per_op.rawkernel_launch.p99 (us)                                     None []  18307.7 [15855.4,19926.4,18307.7]     None
+win_C_timeBeginPeriod1.per_op.rawkernel_launch.max (us)                                     None []  26006.4 [71950.4,26006.4,18603.5]     None
+win_C_timeBeginPeriod1.per_op.rawkernel_launch.frac_over_1ms (us)                            None []       0.542 [0.3733,0.5417,0.6083]     None
+win_C_timeBeginPeriod1.per_op.set_2KB_pageable.p50 (us)                                     None []       5106.3 [227.4,5106.3,5406.5]     None
+win_C_timeBeginPeriod1.per_op.set_2KB_pageable.p90 (us)                                     None []      7298.8 [7148.7,7298.8,7507.6]     None
+win_C_timeBeginPeriod1.per_op.set_2KB_pageable.p99 (us)                                     None []   16819.4 [122505,16819.4,11940.4]     None
+win_C_timeBeginPeriod1.per_op.set_2KB_pageable.max (us)                                     None []     28451.0 [155722,28451,24692.4]     None
+win_C_timeBeginPeriod1.per_op.set_2KB_pageable.frac_over_1ms (us)                            None []         0.567 [0.42,0.5667,0.6083]     None
+win_C_timeBeginPeriod1.per_op.h2d_2KB_pinned_async.p50 (us)                                 None []         4919.8 [120,5025.9,4919.8]     None
+win_C_timeBeginPeriod1.per_op.h2d_2KB_pinned_async.p90 (us)                                 None []      7692.7 [7953.7,7692.7,6989.6]     None
+win_C_timeBeginPeriod1.per_op.h2d_2KB_pinned_async.p99 (us)                                 None []  14088.1 [14088.1,16896.7,13432.5]     None
+win_C_timeBeginPeriod1.per_op.h2d_2KB_pinned_async.max (us)                                 None []  26772.6 [26772.6,69981.6,19051.3]     None
+win_C_timeBeginPeriod1.per_op.h2d_2KB_pinned_async.frac_over_1ms (us)                            None []       0.533 [0.3267,0.5333,0.5583]     None
+win_C_timeBeginPeriod1.per_op.sync_empty_stream.p50 (us)                                    None []               23.7 [9.3,23.7,55.2]     None
+win_C_timeBeginPeriod1.per_op.sync_empty_stream.p90 (us)                                    None []      5926.4 [5829.7,5926.4,6107.2]     None
+win_C_timeBeginPeriod1.per_op.sync_empty_stream.p99 (us)                                    None []     9651.8 [9651.8,9159.2,12566.8]     None
+win_C_timeBeginPeriod1.per_op.sync_empty_stream.max (us)                                    None []   11399.3 [11399.3,9194.9,22669.6]     None
+win_C_timeBeginPeriod1.per_op.sync_empty_stream.frac_over_1ms (us)                            None []            0.35 [0.22,0.35,0.4167]     None
+win_C_timeBeginPeriod1.frame50_mixed.wall.p50 (ms)                                          None []      128.27 [195.25,114.28,128.27]     None
+win_C_timeBeginPeriod1.frame50_mixed.wall.p90 (ms)                                          None []      321.69 [254.28,321.69,324.11]     None
+win_C_timeBeginPeriod1.frame50_mixed.wall.p99 (ms)                                          None []      334.42 [316.97,334.42,392.26]     None
+win_C_timeBeginPeriod1.frame50_mixed.wall.max (ms)                                          None []      334.42 [316.97,334.42,392.26]     None
+cpu_ref_ms_start                                                      36.832 [40.069,27.372,36.832]      36.096 [35.348,36.096,56.293]     0.98
+cpu_ref_ms_end                                                        44.291 [44.291,39.007,59.651]      49.294 [39.545,66.479,49.294]     1.11
+gpu_phase_s                                                                11.98 [7.66,11.98,12.31]          19.58 [19.61,18.68,19.58]     1.63
+elapsed_s                                                                 24.13 [19.93,24.13,24.64]          39.75 [47.53,35.28,39.75]     1.65
+setup_s                                                                   0.637 [1.035,0.417,0.637]          0.466 [0.476,0.466,0.417]     0.73

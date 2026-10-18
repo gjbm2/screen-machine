@@ -1,0 +1,33 @@
+# The seam: every place the loop side (sessions.py, fx_state.py, hud.py, server.py) reaches into the Engine or a GPU object.
+# The engine already talks through a command queue + listener callbacks posted to the loop (renderer.py:17-19, 84-117); these are the leaks
+# an EngineProxy (control side) + object table (worker side) must cover. [M] code read 18 Oct; replacement column is [I] design.
+where	what it does today	replacement over IPC
+sessions.py:215	Engine(profile, gpu, post=mgr.post, listener=self)	EngineProxy(profile, gpu, worker) with the same method names; listener callbacks arrive as worker events
+sessions.py:239-248	runtime.feed = mgr.music_feed; engine.sound = Sound(feed=scope_feed); engine.frame_hook = _frame_hook; engine.bus.runtime = runtime	all built inside the worker at create_context (worker-side SessionRuntime, Sound, frame hook)
+sessions.py:449-450 _run	run_in_executor(None, fn) (shared default pool with catalog/library/rescan)	await proxy RPC (worker runs it on its own prepare thread)
+sessions.py:452-457 decode	load_png in a worker thread -> ImageSource(pixels) (4K RGB = 24.9 MB)	send the PNG bytes (or a /dev/shm file name) once; the worker decodes and prepares; returns a handle
+sessions.py:462-499 _make_scene	cls(); src.modulation = Modulation(self.runtime, props, live, key); engine.prepare(src, params); effects: prepare_effect, EffectSlot, src.fx_chain = EffectChain(slots), src.fx_specs	one prepare_scene command {source, module+mtime, params, live bindings, key, effects:[{effect, module, params, live, key, slot meta}]} -> handle (+ per-effect failures); fx_specs stays control-side metadata on the handle
+sessions.py:429-443 _transition_ready	t = registry.transition(spec)(params); t.frozen_spec = spec; engine.prepare_transition(t); later reads trans.duration_s	prepare_transition {name, params} -> handle {id, duration_s}; frozen_spec kept on the control-side handle
+sessions.py:509-513 prepare_effect	engine.prepare_effect(eff, params)	part of prepare commands
+sessions.py:524-530 retire	engine.submit(Retire(obj))	retire {handle}
+sessions.py:758-759 _pts_now	engine.frames / fps	frames counter from the worker's stats (1-2 Hz) + local extrapolation, or an explicit pts reply on dispatch
+sessions.py:766-776 _frame_hook, _alloc_sound	runtime.begin_frame + sound.update on the render thread; sound.alloc on the device	worker-internal
+sessions.py:778-786 start	create_context; alloc_sound; ctx.screen = screen; ensure_warm (warm_plugins on the GPU); prepare anchor; _make_scene; engine.start	start {gpu, w, h, fps, screen, profile, anchor still, first scene spec, warm transitions list}; reply when started; session.ready follows as today (first IDR)
+sessions.py:806, 921, 1040	engine.submit(StartTransition(kind, tid, src, trans, at_mono))	start_transition {kind, tid, src handle, trans handle, at_mono}; at_mono is CLOCK_MONOTONIC: same clock in WSL, needs a clock bridge for a Windows worker
+sessions.py:889	engine.submit(UpdateParams(current_scene, params, bindings))	update_params {handle, params, bindings}
+sessions.py:961, 2312	engine.stop (worker thread)	stop {} -> worker releases GPU state, then lingers 30 s
+sessions.py:962-968	obj.close() on leftover prepared objects (loop thread)	retire handles
+sessions.py:1582	piano.step(now, sound.view.tap())	worker pushes tap() at 10 Hz; control caches the latest
+sessions.py:397-408 _heard_now	sound.present	from the tap stream
+sessions.py:1820-1866 hud	engine.hud.on / .fade / .lamp / .set(encode(lines)); hud.failed	hud {on, grid 1,024 B + tone 16 B} at <=2 Hz; worker reports hud.failed/fade in stats; lamp is read worker-side from its runtime
+sessions.py:2046-2074 _update_lead	engine.server_ms ring p50 + media client stats -> sampler.lead	server_ms p50 in worker stats; control sends lead at 1 Hz
+sessions.py:2177-2240 listener callbacks	on_encoder_config(cfg, config_msg, init), on_media, on_transition, on_fx, on_plugin_error (info.obj_id == id(current_scene): 2245), on_failed	worker events; obj_id becomes the handle id
+sessions.py:2315-2359 summary	engine.summary() (frames, rendered, repeats, resyncs, Ring summaries, encode_queue, bitrate, gpu_guard)	worker stats snapshot (1-2 Hz), cached in control: also removes the 18.3 ms per-call GIL cost from the render process (report B1)
+fx_state.py:314, 355	engine.submit(FxUpdate(rev, add=[EffectSlot with prepared effect], update=[SlotUpdate], fade_s, master))	fx_update {rev, add:[{slot_id, handle, name, preset, stage, mix, level, target, fade_s, where, label, modulation spec}], update:[SlotUpdate dicts], fade_s, master}
+fx_state.py:322-337 _prepare_slot	cls(); prepare_effect; Modulation(s.runtime, ...); EffectSlot(...)	prepare_effect command -> handle; the slot itself is assembled worker-side from fx_update
+fx_state.py:374-376 _master_out	engine.bus.level	bus level in worker stats
+hud.py:253-297	eng.window_stats(2.0), eng.guard_stats(), _first_source_layer(eng.root).rate_div/cost_ema	worker stats include window_stats, guard_stats and a layer summary {source name, rate_div, cost_ema}
+hud.py:335	current_scene.modulation.describe()	worker stats include the current scene's modulation describe (on request or while the panel is on)
+server.py:695, 714-715	engine.frame_records(since), window_stats, guard_stats	frames: on-demand RPC; window/guard: from stats
+sessions.py:2537-2596 warm_plugins / warm_gpu / ensure_warm	per-GPU warm in this process	worker-internal at start (or skipped: owner accepts a few seconds of cold start)
+sessions.py:2959-2964 gpu_names	cupy getDeviceCount (initialises the CUDA driver in the control)	NVML or nvidia-smi in the control, so the control never loads CUDA [I]

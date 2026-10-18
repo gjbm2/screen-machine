@@ -1,0 +1,24 @@
+==== bus :8703  1475 msgs over 12.0 s = 123.4/s, 72.1 KiB/s
+type                 n  rate/s bytes p50    max  gap p50  gap p95  gap max  lag p50  lag p95  lag max
+music.features     396   33.14       809    817    21.21   126.14   305.69   193.93   492.86   640.22
+show.state         300   25.10      1112   1120    39.95    55.89    91.15      1.9    15.27    37.65
+music.note         159   13.31       139    139     16.8   297.66   928.34   280.85   538.73   644.84
+music.pedal        158   13.22       142    142    26.09   237.63  1572.71   299.15   536.04   747.43
+music.clock        125   10.46       320    323    94.65   209.31   366.77     7.02    50.32   287.21
+music.harmony      111    9.29       272    278   101.12   203.69   309.11     6.18    25.74   278.83
+music.notes         94    7.87       253    326   108.34   229.36   366.29     3.48    17.65   278.79
+music.rhythm        58    4.85       475    545   204.57   347.53    417.1   207.39   393.95   627.34
+room.direction      39    3.26       593    645   295.55   604.56   703.97    13.69    39.63   196.32
+music.context       12    1.00       901   1384  1001.96  1027.45  1027.45    16.94    23.43    35.33
+room.why            12    1.00       296    296  1011.43  1093.36  1093.36 -1783771855135.66 -1783771855119.62 -1783771855060.57
+room.look           11    0.92      2192   2195   491.18  2801.08  2801.08    12.46  1386.61  1386.61
+  all-message gaps: p50 4.09 ms, share <1 ms 35%, max 84.9 ms
+  per-second counts: [132, 138, 136, 132, 110, 114, 105, 119, 123, 135, 126, 105]
+==== bus :8701  451 msgs over 12.0 s = 37.7/s, 24.4 KiB/s
+type                 n  rate/s bytes p50    max  gap p50  gap p95  gap max  lag p50  lag p95  lag max
+show.state         451   37.72       664    667     25.1    45.87   101.01     1.23     9.18    63.45
+  all-message gaps: p50 25.1 ms, share <1 ms 2%, max 101.0 ms
+  per-second counts: [38, 38, 38, 39, 37, 38, 34, 37, 37, 41, 39, 35]
+features t_ms step p5/p50/p95/max 5.34 16.0 181.39 647.56 negative steps 1
+clock samples [{'anchor_ms': 8559604731.326838, 'bpm': 91.45054696376654, 'gate': 'none', 'state': 'holding', 'conf': 0.0}, {'anchor_ms': 8559605387.41914, 'bpm': 91.45054696376654, 'gate': 'none', 'state': 'holding', 'conf': 0.0}, {'anchor_ms': 8559605387.41914, 'bpm': 91.45054696376654, 'gate': 'none', 'state': 'holding', 'conf': 0.0}] ... {'anchor_ms': 8559617253.263841, 'bpm': 91.05288424811428, 'gate': 'none', 'state': 'holding', 'conf': 0.0341}
+notes 159 [(213.4, {'pitch': 69, 'vel': 59, 'on': True, 'seq': 46526}), (211.1, {'pitch': 63, 'vel': 50, 'on': True, 'seq': 46527}), (209.2, {'pitch': 53, 'vel': 47, 'on': True, 'seq': 46528}), (234.7, {'pitch': 69, 'vel': 0, 'on': False, 'seq': 46529}), (301.9, {'pitch': 53, 'vel': 0, 'on': False, 'seq': 46530}), (298.7, {'pitch': 63, 'vel': 0, 'on': False, 'seq': 46531}), (363.4, {'pitch': 74, 'vel': 79, 'on': True, 'seq': 46532}), (375.0, {'pitch': 69, 'vel': 65, 'on': True, 'seq': 46533}), (367.2, {'pitch': 65, 'vel': 49, 'on': True, 'seq': 46534}), (332.1, {'pitch': 63, 'vel': 20, 'on': True, 'seq': 46535}), (477.8, {'pitch': 65, 'vel': 0, 'on': False, 'seq': 46536}), (529.6, {'pitch': 63, 'vel': 0, 'on': False, 'seq': 46542})]

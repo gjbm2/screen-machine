@@ -1,0 +1,163 @@
+# PROPOSAL ONLY (not applied). Read-only analysis, 18 Oct 2026, against the working tree at ~18:50.
+# Owners: room_service screens.py (room_service owner), display page (display-page owner, vacant),
+# stream_service media.py / diag.py / hud.py (stream_service owner).  All fields are additive: an old page,
+# an old room_service or an old stream_service ignores them.
+#
+# PART A: the HUD/diag client mis-pick (task item 4)
+# ----------------------------------------------------------------------------------------------
+# Bug 1  diag.py:111-125 client_stats() takes max(presented) over ALL media clients, ignoring role.  A plain
+#        /display/<id> is role "kiosk" (src/pages/DisplayPage/index.tsx:66-70), so the owner's Brave tabs on PC22
+#        are role=kiosk too [M W1: sessions_end.json, clients 172.28.240.1 (TV) and 127.0.0.1 (Brave) both
+#        role "kiosk"].  The pick is the page with the bigger cumulative counter: whoever connected first or
+#        reconnected least, not the TV.
+# Bug 2  diag.py:117-123 keeps the dropped/s baseline on the SESSION (session._diag_prev), so when the pick flips
+#        between two clients the rate is computed across two different counters (clipped to 0 or a spike).
+# Bug 3  hud.py:271-278 takes the FIRST role in (None,"kiosk") client in connection order and breaks on it, so
+#        a Brave tab that connected before the TV's (e.g. the TV page reloaded) is shown as "glass".
+# Root   stream_service cannot tell the TV from another kiosk-role page.  room_service can: it drives exactly
+#        one glass page per screen (screens.py _driven; glass_device = the TV's UA, pages.py:10-14, 62-66)
+#        and every other page is a subscriber whose attach carries rejoin:true (screens.py:724-727).
+#
+# Fix: room_service marks the driven page's attach glass:true; the page echoes it (and its visibility) in its
+#      media stats; stream_service picks glass first, never by presented count, and keeps rate baselines per
+#      client.  No address heuristics (every socket arrives via the port proxy; owner: no hard-coded IPs).
+
+--- room_service/screens.py   (driven-glass attach sites: entry handshake, headless join, promotion)
+@@ ~1737 (entry handshake)
+-            self._send(page, "live.attach", {"session": sid, **{k: attach.get(k) for k in (
+-                "url", "codec", "w", "h", "fps", "target_buffer_ms")}})
++            self._send(page, "live.attach", {"session": sid, **{k: attach.get(k) for k in (
++                "url", "codec", "w", "h", "fps", "target_buffer_ms")}, "glass": True})
+@@ ~690 (_join_page)
+-            page.send("live.attach", {"session": info["session"], **info["attach"]})
++            page.send("live.attach", {"session": info["session"], **info["attach"], "glass": True})
+@@ ~1192 (_promote)
+-                c.send("live.attach", {"session": info["session"], **info["attach"], "rejoin": True})
++                c.send("live.attach", {"session": info["session"], **info["attach"], "rejoin": True, "glass": True})
+@@ ~727 (_sub_attach: subscribers, incl. standby glass and viewers)
+-        return {"session": sub["session"], **sub["attach"], "rejoin": True}
++        return {"session": sub["session"], **sub["attach"], "rejoin": True, "glass": False}
+#   (A page demoted to standby while it plays gets the next subscriber attach for the same session with
+#    glass:false; a promoted one gets glass:true.  See the LiveController change below.)
+
+--- src/pages/DisplayPage/control/protocol.ts  (LiveAttach, additive)
++  /** Additive: room_service sets it on the attach of the one page that drives this screen (the TV). */
++  glass?: boolean;
+
+--- src/pages/DisplayPage/live/LiveController.ts:116  (same-session re-attach updates the flag, no new socket)
+-    if (prev?.attach.session === a.session) return; // idempotent (welcome after a reconnect)
++    if (prev?.attach.session === a.session) {           // idempotent (welcome after a reconnect) ...
++      if (typeof a.glass === "boolean") prev.player.glass = a.glass;   // ... but a promotion/demotion moves glass
++      return;
++    }
+
+--- src/pages/DisplayPage/live/MseLivePlayer.ts
++  /** The driven TV page (room_service's attach.glass); updated in place on promotion/demotion. */
++  glass = false;
+@@ constructor body (after the parameter properties are set; a field initializer reading this.attach can hit TS2729)
++    this.glass = attach.glass === true;
+@@ sendStats (:485-495)
+           stalls: this.stalls,
++          glass: this.glass,
++          hidden: document.visibilityState !== "visible",
+           ...(this.role ? { role: this.role } : {}),
+
+--- stream_service/media.py
+ STATS_KEYS = ("presented", "dropped", "buffered_ms", "edge_jumps", "stalls")
++STATS_FLAGS = ("glass", "hidden")      # booleans; _finite_number() rejects bools, so they are read separately
+@@ serve() stats branch (:176-180)
+                     c.stats = {k: _finite_number(data.get(k)) for k in STATS_KEYS}
++                    c.stats.update({k: data[k] for k in STATS_FLAGS if isinstance(data.get(k), bool)})
++                    c.stats_at = time.monotonic()
+                     if data.get("role") in STATS_ROLES:
+@@ new helper (shared by diag and hud)
++def glass_client(clients) -> "Optional[MediaClient]":
++    """The TV's own player: the page room_service drives (glass), else a visible kiosk-role page, else a kiosk
++    page, else None.  Never chosen by presented count; ties go to the most recent stats."""
++    def rank(c):
++        st = c.stats or {}
++        return (st.get("glass") is True, st.get("role") in (None, "kiosk") and st.get("hidden") is not True,
++                st.get("role") in (None, "kiosk"), getattr(c, "stats_at", 0.0))
++    have = [c for c in clients if c.stats]
++    if not have:
++        return None
++    best = max(have, key=rank)
++    return best if rank(best)[2] or rank(best)[0] else None     # a viewer/lab page is never "the glass"
+
+--- stream_service/diag.py:111-125
+-    stats = [c.stats for c in session.media.clients.values() if c.stats]
+-    if not stats:
+-        return None
+-    st = max(stats, key=lambda x: x.get("presented") or 0)
+-    prev = getattr(session, "_diag_prev", None)
++    from .media import glass_client
++    c = glass_client(list(session.media.clients.values()))
++    if c is None:
++        return None
++    st = c.stats
++    prev = getattr(c, "_diag_prev", None)                 # per CLIENT: a pick change never mixes counters
+@@
+-    if prev is None or now - prev[0] >= 1.0:
+-        session._diag_prev = (now, dropped)
+-    return {k: st.get(k) for k in ("presented", "dropped", "buffered_ms", "edge_jumps", "stalls")} | \
+-        {"dropped_per_s": rate}
++    if prev is None or now - prev[0] >= 1.0:
++        c._diag_prev = (now, dropped)
++    return {k: st.get(k) for k in ("presented", "dropped", "buffered_ms", "edge_jumps", "stalls")} | \
++        {"dropped_per_s": rate, "client": c.id, "glass": st.get("glass"), "hidden": st.get("hidden")}
+
+--- stream_service/hud.py:271-278
+-    glass = None
+-    for c in list(getattr(s.media, "clients", {}).values()):
+-        st = getattr(c, "stats", None) or {}
+-        if st.get("role") in (None, "kiosk") and st:
+-            glass = (c, st)
+-            if st.get("role") == "kiosk":
+-                break
++    from .media import glass_client
++    gc = glass_client(list(getattr(s.media, "clients", {}).values()))
++    glass = (gc, gc.stats) if gc is not None else None
+#   (and the "bad" test at :292-293 should compare fps against the CURRENT cadence once a 60->30 step exists)
+
+# PART B: measurement hooks to join glass stalls to server frames (task item 5) -- T3 in the diagnosis
+# ----------------------------------------------------------------------------------------------
+# Key fact: the frame id IS the media time.  renderer.py:853 writes tfdt = frame_id * frame_dur (90 kHz,
+# fmp4.py:19) and the page already maps fid -> time as fid / fps (MseLivePlayer.ts:266).  So on the page:
+#     fid_on_glass = Math.round(meta.mediaTime * fps)          (rVFC metadata, MseLivePlayer.ts:419-424)
+#     fid_due      = Math.round(video.currentTime * fps)       (at a 'waiting' event)
+# Keep frame ids on a fixed tick grid of the profile's fps (60) even after a 60->30 step (fid += 2), so this
+# mapping never changes.
+#
+# Page (MseLivePlayer), all bounded, O(1) per frame:
+#   per message:  rx_last_fid, rx_last_at (performance.now()), rx_hole when fid != last+1 (server drop-to-key
+#                 or encoder skip): push {k:"hole", from, to}
+#   per frame:    arrival margin = due time of that fid on the playhead clock - its arrival time; keep the
+#                 per-second min (the single best "how close to a stall" number) and p50
+#   per rVFC:     a presented-fid jump > 1 (missed frame on glass): push {k:"skip", from, to}
+#   'waiting':    push {k:"stall", fid: fid_due, t, buf_ms, rx_fid: rx_last_fid, rx_age_ms: now - rx_last_at};
+#                 on the next presented frame fill dur_ms
+#   seeks:        gap skip / edge jump / kick each push {k:"gap"|"edge"|"kick", from_fid, to_fid}
+#   clock:        answer the server's {"type":"ping","t":<server ns>} (a new TEXT type: MseLivePlayer.onMessage
+#                 ignores unknown types today, :240-249, so old pages are safe) with pong {t, at: performance.now()}
+#                 in the next stats; the server computes RTT and offset (min-RTT filter).  Powerline idle ping
+#                 p50 2.4 ms / p99 8.7 ms (24 h soak, 13-14 Oct) => offset error ~1-4 ms.
+#   stats (1 Hz, additive keys): fid_shown, rx_fid, margin_ms_min, margin_ms_p50, arr_gap_ms_p95/max,
+#                 bytes, ev: [... at most 16 events since the last stats ...], pong
+#   Do NOT add bits to the binary frame header: the page tests key as u8[1] !== 0 (:261), so a "repeat" flag
+#   there would make every repeat look like a keyframe.
+#
+# stream_service (media.py MediaClient), per client, ring of 512 by fid:
+#   t_queued (on_frame), t_handed (send_bytes start), t_drained (transport backlog back under WRITE_HIGH),
+#   dropped (reason backlog|needs_key, backlog bytes), and ping/pong RTT + offset.  The engine already has
+#   per-fid t_start / host_ms / t_written / encode_ms / repeat / held (renderer records).
+#   Store the events and the ring OUTSIDE the session summary (summary() is polled ~1 Hz and stays small):
+#   GET /api/sessions/<sid>/glass?since=<fid> (cached, read-only).
+#
+# Join (per page stall, by fid):  upstream  = packet out late vs its slot (t_written+encode vs deadline)
+#                                 fan-out   = t_handed - packet_out large
+#                                 network   = page arrival (offset-corrected) - t_handed large
+#                                 decode/compositor = arrived with margin > 0 but rVFC skipped it
+#                                 seek      = within 100 ms after an edge/gap/kick the page itself made
+#                                 hole      = due fid inside a rx_hole (drop-to-key)
+#   plus the freeze the page cannot see: server repeats and rate_div-held frames (renderer records), so the
+#   "glass fps" line must be new pictures/s = sent - repeats - held, not the page's presented/s.

@@ -1,0 +1,168 @@
+{
+ "n": 20,
+ "step_us_p50_median": 51.25,
+ "min": 27.9,
+ "max": 55.9,
+ "per_plugin": [
+  {
+   "plugin": "st_04_3_d_raymarching_metaballs",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 7.2,
+   "step_us_p50": 50.2,
+   "step_us_p99": 117.8
+  },
+  {
+   "plugin": "st_290_min_char_hyper_swirls",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 2.1,
+   "step_us_p50": 51.8,
+   "step_us_p99": 149.2
+  },
+  {
+   "plugin": "st_3_d_evergreen",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 29.2,
+   "step_us_p50": 53.0,
+   "step_us_p99": 185.3
+  },
+  {
+   "plugin": "st_3_d_wavelet_noise",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 10.2,
+   "step_us_p50": 27.9,
+   "step_us_p99": 103.5
+  },
+  {
+   "plugin": "st_4_d_rounded_box",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 18.4,
+   "step_us_p50": 52.8,
+   "step_us_p99": 148.6
+  },
+  {
+   "plugin": "st_a_battered_alien_planet",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 32.5,
+   "step_us_p50": 31.0,
+   "step_us_p99": 133.1
+  },
+  {
+   "plugin": "st_airplane_modelling_exercise",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 16.0,
+   "step_us_p50": 50.3,
+   "step_us_p99": 140.0
+  },
+  {
+   "plugin": "st_alpha_tower",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 37.7,
+   "step_us_p50": 50.8,
+   "step_us_p99": 159.4
+  },
+  {
+   "plugin": "st_apollian_with_a_twist",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 10.5,
+   "step_us_p50": 55.7,
+   "step_us_p99": 228.4
+  },
+  {
+   "plugin": "st_arc_circle_segment_2_d_sdf",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 9.0,
+   "step_us_p50": 44.4,
+   "step_us_p99": 158.4
+  },
+  {
+   "plugin": "st_arc_distance_l_inf",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 8.7,
+   "step_us_p50": 54.5,
+   "step_us_p99": 156.6
+  },
+  {
+   "plugin": "st_arrow_distance",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 7.6,
+   "step_us_p50": 51.7,
+   "step_us_p99": 130.7
+  },
+  {
+   "plugin": "st_atmospheric_scattering_explained",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 20.9,
+   "step_us_p50": 28.1,
+   "step_us_p99": 104.7
+  },
+  {
+   "plugin": "st_ben_s_first_sdf_shader",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 12.6,
+   "step_us_p50": 31.3,
+   "step_us_p99": 104.1
+  },
+  {
+   "plugin": "st_biomorph",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 3.9,
+   "step_us_p50": 53.6,
+   "step_us_p99": 122.3
+  },
+  {
+   "plugin": "st_blotting",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 12.0,
+   "step_us_p50": 32.6,
+   "step_us_p99": 127.8
+  },
+  {
+   "plugin": "st_box_closest_3_d",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 27.3,
+   "step_us_p50": 50.5,
+   "step_us_p99": 476.3
+  },
+  {
+   "plugin": "st_box_gradient_2_d",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 4.3,
+   "step_us_p50": 54.5,
+   "step_us_p99": 137.7
+  },
+  {
+   "plugin": "st_box_parametrization",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 8.6,
+   "step_us_p50": 53.9,
+   "step_us_p99": 209.3
+  },
+  {
+   "plugin": "st_boy_s_surface_implicit",
+   "n_uniforms": 14,
+   "n_params": 10,
+   "translate_ms": 62.3,
+   "step_us_p50": 55.9,
+   "step_us_p99": 399.2
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+Process layout for the renderer split (design [I], built on the code map in the other files here). 18 Oct 2026.
+
+WHERE TO CUT
+Cut B (recommended): render-only workers. The control keeps every Session object, the directors, rooms, upnext, catalog,
+library, ratings, presets, mappings, events and media fan-out. A worker holds only what runs per frame: the Engine (render,
+writer, encoder threads), prepared plug-in instances, SessionRuntime + Modulation, Sound/SoundView, Sampler/ShowInputs and
+MusicFeed copies, HudDraw, the GPU guard. The seam already exists: renderer.py:17-19 ("the asyncio side talks to it through a
+thread-safe command queue, and the engine reports back through post"); seam_leaks.tsv lists the ~25 places that cross it.
+Cut A (rejected): the whole Session per worker. It keeps per-frame state local, but room direction is direct object calls
+between sessions (leader -> follower.follow_prepare / follow_cue / _apply_direction / follow_fx: sessions.py:578-750; summary
+reads the leader's director: sessions.py:2318), and `wants_scope`, `room_ok`, `fx_source` scan all sessions. Cut A means a
+cross-process room protocol plus duplicated bus parsing, directors and HTTP in every worker GIL.
+
+CONTROL PROCESS (WSL, :8702, always on; Spectre "stream" card via scripts/ctl, unchanged)
+  threads: asyncio loop (aiohttp API, events WS, media WS fan-out, show bus + music bus + levels clients, 10 Hz ticker,
+           reaper, presets 1 Hz, rescan 20 s), executor (catalog body, library index, rescan, PNG header checks),
+           one reader per worker channel (or asyncio streams)
+  owns: SessionManager, Session (state machine, directors, cue slot, upnext, fx state, hud text), rooms, MediaHub, EventHub,
+        Registry (full), Presets, Mappings, Ratings, Library, Calibration, WorkerPool, room-score children
+  needs no CUDA if gpu_names / AV1 check use NVML or nvidia-smi (sessions.py:2959-2964, 2804-2805)
+RENDER WORKER (one per session; pooled by GPU; linger 30 s; WSL child for A, Windows process for B)
+  threads: render (paced), writer (until GPU-resident encode), encoder reader + stderr, closer, command/bus reader,
+           prepare thread(s), per-plug-in helpers (live_art poller, engraver/gallery readers)
+  owns: Engine, object table (handle -> plug-in instance), SessionRuntime, Sound/SoundView, Sampler + ShowInputs copy,
+        MusicFeed copy, ScopeState, HudDraw, GpuTimer, NvencPipeline (or in-process NVENC after P3)
+  imports: numpy, cupy, renderer/gpu/encode/layers/effects/modulation/music_feed/inputs/sound/sound_view/scope_feed/hud,
+           plus only the plug-in modules it prepares; no aiohttp needed
+ROOM-SCORE CHILD (WSL, one per room while a live-score scene is prepared; CPU only)
+  ScoreBuilder + the PM2S Analyser grandchild (~/.venvs/sm-score-ml, nice 19, last 4 CPUs: score/client.py:172-176, 56-66);
+  fed by the room's notes; publishes bars to each member worker. Needs the live-score owner (screen-machine-b0) to confirm
+  that feeding from bus notes instead of the leading screen's photon-time SoundView frame (score/room.py:117-139) is fine.
+
+WHAT LEAVES THE RENDER GIL (today all share one GIL: report section 4.1)
+  - the other screen's render + writer + encoder threads (the cross-screen convoy: 45 of 56 north spikes within 0.25 s of a
+    south spike, report W1)
+  - the asyncio loop: 29.9% GIL hold incl. 18.3 ms per session-summary GET (report W2), bus parsing (7.3% of a core idle [M])
+  - executor work: rescan bursts every ~21 s, library index, catalog build (0.25 s, 2.07 MB: discover_timing.txt), prepares
+    of the other session
+  stays: its own render thread (6.6 ms of GIL per frame, report W2), its writer until P3, its prepares, bus-copy parsing (~1%)
+
+ORDER OF WORK (fits the report's P-phases; no gates)
+  1. EngineProxy + worker object table behind the existing Engine interface, WSL first (architecture A transport).
+  2. Bus forwarding + runtime/lead/hud updates + stats snapshot; summaries served from the cached snapshot (also B1).
+  3. Media socket worker -> control MediaHub; re-measure egress (T3).
+  4. WorkerPool lifecycle (linger 30 s), room-score child, cold-start trims (lazy plug-ins, no aiohttp in workers).
+  5. Only then a Windows-native worker (architecture B): windows_portability.tsv + clock bridge + TCP transport.
