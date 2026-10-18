@@ -7,7 +7,8 @@
 //     "Auto → Piano · the piano is playing · Undo" chip after a switch. Nothing else on the page is called "Auto".
 //   - Listening: the Room mic switch and its input, then AI listening (short clips to an online AI). Both
 //     listening switches live here, together; the menu has no controls.
-//   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar, and "following loosely".
+//   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar, and "following loosely";
+//     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
 //   - Calmer · Wilder, the palette, Next look · Keep this look · House lights.
 //   - The active nudges as chips, each with an ×, and Back to auto.
 //   - More: Lamp brightness (the Lights low toggle, c8's ruling, S3.9) and Describe it.
@@ -693,6 +694,7 @@ export function MusicCard({
             {/* show_service's catch-all "Listening" (sound, but nothing it recognises) would read like the mic's state */}
             {card ? (!hearing?.text || hearing.text === "Listening" ? "Not sure yet" : hearing.text) : "Nothing yet"}
           </p>
+          {answering && <AiHears listening={card?.listening} />}
           {!mic && <MicPicker api={api} />}
           {/* The live meter and spectrum only when asked for (owner, 17 Oct): rolled up, nothing is drawn or fetched. */}
           <Unroll title="Levels and spectrum" className="mt-1" testId="music-levels">
@@ -885,6 +887,34 @@ export function MusicCard({
         </Unroll>
       </div>
     </section>
+  );
+}
+
+/** What the online AI makes of the music (README S5.22), in show_service's words: its line ("soft late-night jazz
+ *  trio") and the cues it has armed ("Big change at the chorus, likely in 10-25 s"). Nothing until it has said something. */
+function AiHears({ listening }: { listening: ShowCard["listening"] }) {
+  const character = listening?.character?.trim();
+  const armed = (listening?.armed ?? []).filter((c) => c?.words?.trim());
+  if (!character && !armed.length) return null;
+  return (
+    <div className="mt-1 space-y-1" data-testid="music-ai-hears">
+      {character && (
+        <p className="text-base leading-snug text-stone-700" data-testid="music-character">
+          <span className="text-muted-foreground">The AI hears </span>
+          {character}
+        </p>
+      )}
+      {armed.length > 0 && (
+        <ul className="space-y-0.5" data-testid="music-armed">
+          {armed.map((c, i) => (
+            <li key={`${c.kind}-${i}`} className="flex items-start gap-2 text-sm leading-snug text-teal-900">
+              <span aria-hidden className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
+              <span className="min-w-0">{c.words}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
