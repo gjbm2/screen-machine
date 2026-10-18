@@ -36,6 +36,7 @@ log = logging.getLogger("stream_service.guard")
 
 TRIP_BUDGET_X = 1.5          # the budget reported against: 1.5 x the frame period (nothing stops on it)
 HANG_MS = 3000.0             # a call on the GPU this long is a hang, not a slow frame: the one stop
+GPU_BOUND_MARGIN_MS = 1.0    # a span this much longer than the host's submit of the same call is real GPU work
 MAX_GPU_BACKLOG = 2          # rendered frames the GPU may lag the host before the engine repeats instead
 TOTAL_EMA = 0.3
 WHY_TEXT = {"frame": "a single frame", "stuck": "still running"}
@@ -56,11 +57,13 @@ class SlowPlugin(RuntimeError):
 
 class Stat:
     """Per call-site timing state, kept on the owner (``owner.gpu_stat``)."""
-    __slots__ = ("samples", "last_ms", "n_over", "sum_over", "tripped", "probation")
+    __slots__ = ("samples", "last_ms", "n_over", "sum_over", "tripped", "probation", "cpu_ms", "gpu_bound_ms")
 
     def __init__(self) -> None:
         self.samples = 0
-        self.last_ms = 0.0
+        self.last_ms = 0.0              # the GPU span (event to event): includes the host's stalls between launches
+        self.cpu_ms = 0.0               # that call's own CPU on the host (thread time: no lock or run-queue waits)
+        self.gpu_bound_ms = 0.0         # the span when it outlasted the host's submit (real GPU work), else 0
         self.n_over = 0
         self.sum_over = 0.0
         self.tripped = False
@@ -111,12 +114,14 @@ class CudaEvents:
 
 
 class _Rec:
-    __slots__ = ("owner", "kind", "obj", "ev0", "ev1", "seen0")
+    __slots__ = ("owner", "kind", "obj", "ev0", "ev1", "seen0", "cpu0", "wall0", "cpu_ms", "wall_ms")
 
     def __init__(self, owner: Any, kind: str, obj: Any, ev0: Any):
         self.owner, self.kind, self.obj, self.ev0 = owner, kind, obj, ev0
         self.ev1: Any = None
         self.seen0: Optional[float] = None
+        self.cpu0, self.wall0 = time.thread_time(), time.perf_counter()
+        self.cpu_ms = self.wall_ms = 0.0
 
 
 class _Frame:
@@ -182,6 +187,8 @@ class GpuTimer:
         ev = self._ev()
         self.be.record(ev)
         rec.ev1 = ev
+        rec.cpu_ms = (time.thread_time() - rec.cpu0) * 1000.0      # host: own CPU, and wall for the submit
+        rec.wall_ms = (time.perf_counter() - rec.wall0) * 1000.0
 
     def frame_end(self) -> None:
         fr, self.cur = self.cur, None
@@ -244,6 +251,8 @@ class GpuTimer:
         if st.probation:
             st.probation = False
             self.probation -= 1
+        st.cpu_ms = rec.cpu_ms
+        st.gpu_bound_ms = ms if ms > rec.wall_ms + GPU_BOUND_MARGIN_MS else 0.0   # else the GPU waited on the host
         n_over = st.n_over
         why = self.mon.feed(st, ms, getattr(rec.owner, "rate_div", 1))
         if st.n_over > n_over:
@@ -278,10 +287,12 @@ class GpuTimer:
 
     # -- reporting ---------------------------------------------------------------------
     def over_budget(self) -> bool:
-        """The tree costs more than a frame period on the GPU (smoothed), or the GPU is behind / stuck."""
+        """The GPU is behind / stuck, or the tree's GPU spans are over a frame period while the GPU really lags (a
+        frame still on it).  Spans alone overstate: they include the host's own stalls (lock waits) between launches,
+        while the GPU sits idle (docs/perf/DIAGNOSIS_2026-10-18.md §3)."""
         if len(self.fifo) >= MAX_GPU_BACKLOG:
             return True
-        if self.total_ema is not None and self.total_ema > self.mon.period_ms:
+        if self.total_ema is not None and self.total_ema > self.mon.period_ms and self.fifo:
             return True
         if self.fifo:
             fr = self.fifo[0]

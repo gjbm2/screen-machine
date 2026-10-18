@@ -78,7 +78,9 @@ LIVE_BUFFER_MS = 120
 PROFILES: dict[str, Profile] = {p.name: p for p in (
     Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "50M", preset="p4", nvenc_delay=2, extra=AQ,
             target_buffer_ms=LIVE_BUFFER_MS),
-    Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", extra=AQ, target_buffer_ms=LIVE_BUFFER_MS),
+    # nvenc_delay 1 (+33 ms): ffmpeg reads the next frame while NVENC works; interim until GPU-resident encode (W1.6)
+    Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", nvenc_delay=1, extra=AQ,
+            target_buffer_ms=LIVE_BUFFER_MS),
     Profile("hevc-1080p60", "hevc", 1920, 1080, 60, "16M", preset="p5", extra=AQ, target_buffer_ms=LIVE_BUFFER_MS),
     Profile("hevc-1080p30", "hevc", 1920, 1080, 30, "10M", preset="p5", extra=AQ,    # devtest: a busy browser
             target_buffer_ms=LIVE_BUFFER_MS),

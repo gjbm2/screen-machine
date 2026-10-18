@@ -25,6 +25,7 @@ is rebuilt when a file changes or the registry's ``rev`` moves (live plug-in dis
 from __future__ import annotations
 
 import logging
+import os
 import pathlib
 import threading
 from dataclasses import dataclass, field
@@ -144,6 +145,7 @@ class Presets:
         self.music_response = ResponseFile(self.dir)   # how hard the room's sound drives them (music_feed.py)
         self.overlay = TagOverlay(self.dir)       # reviewed tags over the plug-ins' own (tag_overlay.py)
         self.overlay_errors: list[str] = []
+        self._ocache: dict[tuple[str, str], tuple] = {}   # (kind, name) -> the last _overlaid inputs and result
         self.reload_if_changed(force=True)
 
     # -- loading ------------------------------------------------------------
@@ -194,22 +196,33 @@ class Presets:
         return changed
 
     def _rebuild(self) -> None:
-        merged, errs, probs = {}, [], []
+        merged, errs, probs, ocache = {}, [], [], {}
         for kind in KINDS:
             out = self._plugin_entries(kind, errs) if self.plugin_presets else {}
             out.update(self._file[kind])           # a config/live preset wins a name clash
-            merged[kind] = {n: self._overlaid(kind, n, e, n in self._file[kind], probs) for n, e in out.items()}
+            merged[kind] = {n: self._overlaid(kind, n, e, n in self._file[kind], probs, ocache)
+                            for n, e in out.items()}
+        self._ocache = ocache
         self.scenes, self.transitions, self.effects = merged["scene"], merged["transition"], merged["effect"]
         self.plugin_errors = errs
         self.overlay_errors = self.overlay.errors + probs
         self.rev += 1
 
-    def _overlaid(self, kind: str, name: str, entry: dict, authored: bool, probs: list[str]) -> dict:
-        """A preset with the reviewed tags layered on (tag_overlay.py; a config/live preset's own fields win)."""
-        tags, p = self.overlay.apply(kind, name, entry.get(KIND_KEY[kind]), entry.get("tags"), self.vocab.words,
-                                     authored)
+    def _overlaid(self, kind: str, name: str, entry: dict, authored: bool, probs: list[str], cache: dict) -> dict:
+        """A preset with the reviewed tags layered on (tag_overlay.py; a config/live preset's own fields win).
+        Reused while the entry, the overlay and the vocab are the same objects (they are replaced, never edited),
+        so a rescan's rebuild redoes only what moved."""
+        ov, words = self.overlay, self.vocab.words
+        hit = self._ocache.get((kind, name))
+        if hit is not None and hit[0] is entry and hit[1] == authored and hit[2] is ov.plugins and \
+                hit[3] is ov.presets and hit[4] is words:
+            out, p = hit[5], hit[6]
+        else:
+            tags, p = ov.apply(kind, name, entry.get(KIND_KEY[kind]), entry.get("tags"), words, authored)
+            out = entry if tags is entry.get("tags") else {**entry, "tags": tags}
+        cache[(kind, name)] = (entry, authored, ov.plugins, ov.presets, words, out, p)
         probs += p
-        return entry if tags is entry.get("tags") else {**entry, "tags": tags}
+        return out
 
     # -- plug-in presets: <id>.presets.yaml next to the plug-in, else an automatic one ----------------------
     _SIG_MAP = {"energy": "activity_slow", "activity": "activity", "beat": "beat", "pulse": "pulse", "level": "level",
@@ -217,22 +230,23 @@ class Presets:
                 "punch": "punch", "tempo": "tempo", "section": "section",
                 **{s: s for s in PIANO_SIGNALS}}           # note_on, note_rate, velocity, ... (piano.py)
 
-    @staticmethod
-    def _plugin_files() -> list[pathlib.Path]:
-        out: list[pathlib.Path] = []
-        for d in KIND_DIR.values():
-            out += sorted((PLUGIN_ROOT / d).glob("*.presets.yaml"))
-        return out
-
     def _plugin_sig(self) -> tuple:
         if not self.plugin_presets:
             return (self.registry.rev,)
         out = []
-        for f in self._plugin_files():
+        for d in KIND_DIR.values():            # os.scandir: ~5x cheaper than glob + Path.stat over ~830 files
+            found = []
             try:
-                out.append((f.name, f.stat().st_mtime_ns))
+                with os.scandir(PLUGIN_ROOT / d) as it:
+                    for e in it:
+                        if e.name.endswith(".presets.yaml"):
+                            try:
+                                found.append((e.name, e.stat().st_mtime_ns))
+                            except OSError:
+                                pass
             except OSError:
                 pass
+            out += sorted(found)
         return (self.registry.rev, hash(tuple(out)))
 
     def _binding(self, prop: dict, value, b: dict):
@@ -273,13 +287,13 @@ class Presets:
         key = KIND_KEY[kind]
         have = {v.get(key) for v in self._file[kind].values()}
         out: dict[str, dict] = {}
+        root = os.path.join(PLUGIN_ROOT, KIND_DIR[kind])
         for name in sorted(reg):
             cls = reg[name]
             if getattr(cls, "internal", False):
                 continue
-            path = PLUGIN_ROOT / KIND_DIR[kind] / f"{name}.presets.yaml"
             try:
-                ymt = path.stat().st_mtime_ns
+                ymt = os.stat(os.path.join(root, f"{name}.presets.yaml")).st_mtime_ns
             except OSError:
                 ymt = None
             named = name in have
@@ -287,6 +301,7 @@ class Presets:
             if hit is not None and hit[0] is cls and hit[1] == ymt and hit[2] == named:
                 entries, errs = hit[3], hit[4]
             else:
+                path = PLUGIN_ROOT / KIND_DIR[kind] / f"{name}.presets.yaml"
                 entries, errs = self._one_plugin(kind, name, cls, path if ymt is not None else None, named)
                 self._pcache[(kind, name)] = (cls, ymt, named, entries, errs)
             errors += errs

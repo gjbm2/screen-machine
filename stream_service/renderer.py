@@ -39,6 +39,11 @@ While the GPU lags the host by ``MAX_GPU_BACKLOG`` rendered frames (1 while a ne
 filled with a repeat instead of more GPU work (``backlog_repeats``).  An exit that starts while the tree is
 tripped or over budget crossfades from a frozen copy of the last rendered frame (``frozen_exits``) instead of
 rendering the scene, so it reaches the held still promptly.
+
+A run of repeats is a freeze on the glass: after ``MAX_REPEAT_RUN`` repeats in a row the next slot that would repeat
+is rendered instead (a probe frame, ``probe_frames``), so at most 3 repeats come in a row.  Each rendered frame
+records its host time split into own CPU, run-queue wait and the rest (blocked: GIL, locks, syscalls), and whether
+the scene was drawn or held (rate_div), so content fps is known.
 """
 from __future__ import annotations
 
@@ -59,7 +64,7 @@ from .encode.fmp4 import TIMESCALE, init_segment, media_fragment
 from .guard import CudaEvents, GpuTimer, SlowPlugin
 from .layers import RATE_HOLD_FRAMES, FrameCtx, Layer, SourceLayer, StillLayer, TransitionLayer
 from .profiles import Profile
-from .stats import Ring, pct
+from .stats import Ring, ThreadMeter, pct_sorted, set_thread_name, split_ms
 
 log = logging.getLogger("stream_service.renderer")
 
@@ -70,6 +75,7 @@ RENDER_BOUND = 0.85   # repeats only when the recent render cost exceeds this fr
 RESYNC_S = 0.25
 STARTUP_GRACE_S = 2.0  # at most this long after the first encoded frame, start-up catch-up is not counted late
 RECORD_KEEP = 4096
+MAX_REPEAT_RUN = 3    # repeats in a row before a slot that would repeat is rendered anyway (a probe frame)
 MSG_INIT = 0x01
 MSG_FRAME = 0x02
 
@@ -77,6 +83,27 @@ MSG_FRAME = 0x02
 def pace_clock() -> float:
     # CLOCK_MONOTONIC on this WSL host has run ~2 % fast (kernel tick); RAW tracks real time (lab finding)
     return time.clock_gettime(getattr(time, "CLOCK_MONOTONIC_RAW", time.CLOCK_MONOTONIC))
+
+
+def slot_action(late: bool, have_last: bool, cost_ema_ms: float, period_ms: float, gpu_behind: Callable[[], bool],
+                run: int) -> str:
+    """What a frame slot does: "render"; "repeat" (late and render-bound); "backlog" (the GPU is behind); or
+    "probe": a slot that would repeat, rendered because ``run`` repeats came in a row already."""
+    if not have_last:
+        return "render"
+    if late and cost_ema_ms > RENDER_BOUND * period_ms:
+        why = "repeat"
+    elif gpu_behind():
+        why = "backlog"       # the GPU is still on earlier frames: queueing more work would only stall longer
+    else:
+        return "render"
+    return "probe" if run >= MAX_REPEAT_RUN else why
+
+
+def _low_stream(ctx: Any) -> Any:
+    from .gpu import LOW_PRIORITY, priority_stream
+
+    return priority_stream(ctx.cp, LOW_PRIORITY)
 
 
 # -- commands (asyncio side -> render thread) ---------------------------------
@@ -137,8 +164,8 @@ class _Rec:
     """Per-frame timing record (ms unless noted)."""
     n: int
     repeat: bool
-    slip_ms: float
-    host_ms: float = 0.0
+    slip_ms: float                         # before any resync re-bases the schedule
+    host_ms: Optional[float] = None        # rendered frames only (a repeat renders nothing)
     wait_ms: float = 0.0                   # render thread blocked waiting for a free slot / write queue
     t_start: float = 0.0                   # pace_clock() seconds when the slot was handled
     render_ms: Optional[float] = None
@@ -148,6 +175,12 @@ class _Rec:
     encode_ms: Optional[float] = None      # written -> packet out of ffmpeg
     size: Optional[int] = None
     key: Optional[bool] = None
+    cpu_ms: Optional[float] = None         # the render thread's own CPU over host_ms (time.thread_time)
+    runq_ms: Optional[float] = None        # runnable but not running (schedstat); None if unavailable
+    blocked_ms: Optional[float] = None     # host - cpu - runq (>= 0): GIL, locks, syscalls
+    div: Optional[int] = None              # the scene's rate_div this frame
+    held: Optional[bool] = None            # the scene's last frame was shown again (rate_div), nothing drawn
+    probe: bool = False                    # rendered after MAX_REPEAT_RUN repeats in a row
 
 
 class Engine:
@@ -177,6 +210,11 @@ class Engine:
         self.rendered = 0
         self.late_frames = 0      # frame slots started more than one period after their deadline
         self.repeats = 0          # of those, slots filled by re-submitting the previous frame
+        self.probe_frames = 0     # slots that would have repeated, rendered after MAX_REPEAT_RUN repeats in a row
+        self.content_frames = 0   # rendered frames whose scene was drawn (not held by rate_div)
+        self.held_frames = 0      # rendered frames whose scene was held
+        self._repeat_run = 0
+        self._meter: Optional[ThreadMeter] = None   # the render thread's (opened on it)
         self.render_cost_ema = 0.0  # ms: max(GPU render, host enqueue) per rendered frame (EMA)
         self.resyncs = 0
         self.frames_written = 0
@@ -189,6 +227,9 @@ class Engine:
         self.slip_ms = Ring(RECORD_KEEP)
         self.host_ms = Ring(RECORD_KEEP)
         self.encode_ms = Ring(RECORD_KEEP)
+        self.cpu_ms = Ring(RECORD_KEEP)
+        self.runq_ms = Ring(RECORD_KEEP)
+        self.blocked_ms = Ring(RECORD_KEEP)
         self._pending: collections.deque = collections.deque()   # (n, slot, rendered)
         self._cv = threading.Condition()
         self._retiring: collections.deque = collections.deque()  # (cuda event, obj)
@@ -239,7 +280,7 @@ class Engine:
         if self.sound is not None:
             source.sound = self.sound
         with ctx.device:
-            s = cp.cuda.Stream(non_blocking=True)
+            s = _low_stream(ctx)
             with s:
                 source.setup(ctx, params)
             s.synchronize()
@@ -253,7 +294,7 @@ class Engine:
         here, so the render thread only starts it."""
         ctx = self.ctx
         with ctx.device:
-            s = ctx.cp.cuda.Stream(non_blocking=True)
+            s = _low_stream(ctx)
             with s:
                 transition.setup(ctx)
             s.synchronize()
@@ -267,7 +308,7 @@ class Engine:
         if self.sound is not None:
             effect.sound = self.sound
         with ctx.device:
-            s = ctx.cp.cuda.Stream(non_blocking=True)
+            s = _low_stream(ctx)
             with s:
                 effect.setup(ctx, params)
             s.synchronize()
@@ -280,7 +321,7 @@ class Engine:
         lazily in render() are compiled here, never on the render thread.  Raises what the plug-in raises."""
         ctx = self.ctx
         with self._prime_lock, ctx.device:
-            st = ctx.cp.cuda.Stream(non_blocking=True)
+            st = _low_stream(ctx)
             with st:
                 if self._scratch is None:
                     self._scratch = [ctx.new_frame() for _ in range(3)]
@@ -338,7 +379,7 @@ class Engine:
         p = self.profile
         self.pipeline = NvencPipeline(
             p.codec, self.w, self.h, self.fps, gpu=str(self.gpu), bitrate=p.bitrate, gop_seconds=p.gop_s,
-            preset=p.preset, extra_args=p.encoder_args(), delay=p.nvenc_delay, clock=pace_clock,
+            preset=p.preset, extra_args=p.encoder_args(), delay=p.nvenc_delay, name=self._tag(), clock=pace_clock,
             on_config=self._on_config, on_frame=self._on_frame, on_exit=self._on_exit)
         self.started_at = pace_clock()
         self._closer_thread = threading.Thread(target=self._closer_loop, name=f"{self.name}-closer", daemon=True)
@@ -347,6 +388,10 @@ class Engine:
         self._render_thread = threading.Thread(target=self._render_loop, name=f"{self.name}-render", daemon=True)
         self._writer_thread.start()
         self._render_thread.start()
+
+    def _tag(self) -> str:
+        """The session in OS thread names (15 bytes with a role prefix)."""
+        return self.name[2:] if self.name.startswith("s-") else self.name
 
     def submit(self, cmd: Any) -> None:
         self.cmds.put(cmd)
@@ -417,7 +462,10 @@ class Engine:
         period = 1.0 / self.fps
         from .gpu import GpuOps
 
-        fc = FrameCtx(0, self.fps, ctx.pool, retire=self._retire, ops=GpuOps(ctx), report=self._report)
+        fc = FrameCtx(0, self.fps, ctx.pool, retire=self._retire, ops=GpuOps(ctx), report=self._report,
+                      name=self.name)
+        set_thread_name(f"render-{self._tag()}")
+        self._meter = ThreadMeter()
         ctx.device.use()
         try:
             self.timer = fc.timer = GpuTimer(CudaEvents(ctx.cp, ctx.stream), self.fps, clock=pace_clock)
@@ -431,12 +479,12 @@ class Engine:
                 counting, n_first_enc = False, None   # late-frame accounting (start-up excluded, see below)
                 while not self.stop_evt.is_set():
                     deadline = start + n * period
-                    while True:
+                    while True:                       # one sleep to the deadline (again only if woken early)
                         delta = deadline - pace_clock()
                         if delta <= 0:
                             break
-                        time.sleep(delta - 0.0015 if delta > 0.002 else 0)
-                    slip = pace_clock() - deadline
+                        time.sleep(delta)
+                    slip = slip_seen = pace_clock() - deadline   # recorded as seen, before any resync
                     if slip > RESYNC_S:
                         # far behind (encoder / pipe slower than real time): re-base instead of repeating forever
                         start += slip
@@ -461,17 +509,19 @@ class Engine:
                         counting = not late or n - n_first_enc >= STARTUP_GRACE_S * self.fps
                     if late and counting:
                         self.late_frames += 1
-                    if late and self._last_slot is not None and \
-                            self.render_cost_ema > RENDER_BOUND * period * 1000:
+                    act = slot_action(late, self._last_slot is not None, self.render_cost_ema, period * 1000,
+                                      self._gpu_behind, self._repeat_run)
+                    if act == "repeat" or act == "backlog":
                         self.repeats += 1
-                        self._submit_repeat(n, slip)
-                    elif self._last_slot is not None and self._gpu_behind():
-                        # the GPU is still on earlier frames: queueing more work would only stall longer
-                        self.repeats += 1
-                        self.backlog_repeats += 1
-                        self._submit_repeat(n, slip)
+                        if act == "backlog":
+                            self.backlog_repeats += 1
+                        self._repeat_run += 1
+                        self._submit_repeat(n, slip_seen)
                     else:
-                        self._render_frame(fc, slip)
+                        if act == "probe":
+                            self.probe_frames += 1
+                        self._repeat_run = 0
+                        self._render_frame(fc, slip_seen, probe=act == "probe")
                     n += 1
                     self.frames = n
         except Exception as e:
@@ -480,6 +530,8 @@ class Engine:
                 log.error("[%s] %s\n%s", self.name, detail, traceback.format_exc())
                 self._fail(detail)
         finally:
+            if self._meter is not None:
+                self._meter.close()
             with self._cv:
                 self._pending.append(None)  # writer: stop
                 self._cv.notify_all()
@@ -647,7 +699,7 @@ class Engine:
                 self._poll_timer()            # a stuck plug-in trips while we wait for the GPU
         return None
 
-    def _render_frame(self, fc: FrameCtx, slip: float) -> None:
+    def _render_frame(self, fc: FrameCtx, slip: float, probe: bool = False) -> None:
         cp = self.ctx.cp
         stream = self.ctx.stream
         tw = pace_clock()
@@ -655,6 +707,10 @@ class Engine:
         if slot is None:
             return
         t0 = pace_clock()
+        meter = self._meter
+        m0 = meter.sample() if meter is not None else None
+        fc.drawn = fc.held = 0
+        fc.div = 1
         if self.frame_hook is not None and not self._hook_failed:
             try:
                 self.frame_hook(self.frame_mono)
@@ -699,7 +755,19 @@ class Engine:
             self._out_layer = None
         host_ms = (pace_clock() - t0) * 1000
         self.rendered += 1
-        rec = _Rec(fc.n, False, slip * 1000, host_ms, wait_ms=(t0 - tw) * 1000, t_start=tw)
+        held = fc.held > 0 and fc.drawn == 0
+        rec = _Rec(fc.n, False, slip * 1000, host_ms, wait_ms=(t0 - tw) * 1000, t_start=tw, div=fc.div, held=held,
+                   probe=probe)
+        if m0 is not None:
+            rec.cpu_ms, rec.runq_ms, rec.blocked_ms = split_ms(host_ms, m0, meter.sample())
+            self.cpu_ms.add(rec.cpu_ms)
+            self.blocked_ms.add(rec.blocked_ms)
+            if rec.runq_ms is not None:
+                self.runq_ms.add(rec.runq_ms)
+        if held:
+            self.held_frames += 1
+        else:
+            self.content_frames += 1
         self._keep(rec)
         self.slip_ms.add(rec.slip_ms)
         self.host_ms.add(host_ms)
@@ -763,6 +831,7 @@ class Engine:
 
     def _closer_loop(self) -> None:
         ctx = self.ctx
+        set_thread_name(f"closer-{self._tag()}")
         ctx.device.use()
         while True:
             obj = self._closer_q.get()
@@ -789,6 +858,7 @@ class Engine:
     # ------------------------------------------------------------------------
     def _writer_loop(self) -> None:
         cp = self.ctx.cp
+        set_thread_name(f"writer-{self._tag()}")
         self.ctx.device.use()
         try:
             while True:
@@ -927,6 +997,12 @@ class Engine:
             "encode_queue": backlog + in_encoder,
             "bitrate_mbps": self._recent_bitrate(),
             "gpu_guard": self.guard_stats(),
+            # W0.2: rendered frames' host time split, and the scene's own frame rate
+            "cpu_ms": self.cpu_ms.summary(), "runq_ms": self.runq_ms.summary(),
+            "blocked_ms": self.blocked_ms.summary(),
+            "content_fps": self._content_fps(self._recent(2.0), 2.0),
+            "content_frames": self.content_frames, "held_frames": self.held_frames,
+            "probe_frames": self.probe_frames,
         }
 
     def guard_stats(self) -> dict:
@@ -935,8 +1011,8 @@ class Engine:
                 "enabled": t is not None, "slow_trips": self.slow_trips, "backlog_repeats": self.backlog_repeats,
                 "frozen_exits": self.frozen_exits}
 
-    def window_stats(self, seconds: float = 2.0) -> dict:
-        """Diagnostics over the last ``seconds`` (records whose slot started in the window; loop thread)."""
+    def _recent(self, seconds: float) -> list:
+        """Records whose slot started in the last ``seconds``, newest first."""
         now = pace_clock()
         recs = []
         for n in reversed(list(self.order)[-(int(self.fps * seconds) + self.fps):]):
@@ -944,18 +1020,37 @@ class Engine:
             if r is None or now - r.t_start > seconds:
                 break
             recs.append(r)
+        return recs
+
+    def _content_fps(self, recs: list, seconds: float) -> Optional[float]:
+        """Frames per second whose scene was actually drawn (not repeated, not held)."""
+        if not recs:
+            return None
+        span = seconds if self.started_at is None else max(1.0 / self.fps, min(seconds, pace_clock() - self.started_at))
+        return round(sum(1 for r in recs if not r.repeat and not r.held) / span, 1)
+
+    def window_stats(self, seconds: float = 2.0) -> dict:
+        """Diagnostics over the last ``seconds`` (records whose slot started in the window; loop thread).  Render,
+        host and CPU figures are over rendered slots only; repeats are counted as repeats."""
+        recs = self._recent(seconds)
+        now = pace_clock()
+        rendered = [r for r in recs if not r.repeat]
         period_ms = 1000.0 / self.fps
 
-        def dist(key: str) -> dict:
-            vals = [getattr(r, key) for r in recs if getattr(r, key) is not None]
+        def dist(key: str, rows: Optional[list] = None) -> dict:
+            vals = sorted(getattr(r, key) for r in (recs if rows is None else rows) if getattr(r, key) is not None)
             rnd = lambda v: None if v is None else round(v, 2)  # noqa: E731
-            return {"p50": rnd(pct(vals, 50)), "p95": rnd(pct(vals, 95)), "max": rnd(max(vals) if vals else None)}
+            return {"p50": rnd(pct_sorted(vals, 50)), "p95": rnd(pct_sorted(vals, 95)),
+                    "max": rnd(vals[-1] if vals else None)}
 
         sizes = sum(r.size for r in recs if r.size)
         return {
-            "window_s": seconds, "frames": len(recs), "budget_ms": round(period_ms, 2),
-            "render_ms": dist("render_ms"), "write_ms": dist("write_ms"), "encode_ms": dist("encode_ms"),
-            "slip_ms": dist("slip_ms"), "host_ms": dist("host_ms"),
+            "window_s": seconds, "frames": len(recs), "rendered": len(rendered), "budget_ms": round(period_ms, 2),
+            "render_ms": dist("render_ms", rendered), "write_ms": dist("write_ms"), "encode_ms": dist("encode_ms"),
+            "slip_ms": dist("slip_ms"), "host_ms": dist("host_ms", rendered),
+            "cpu_ms": dist("cpu_ms", rendered), "runq_ms": dist("runq_ms", rendered),
+            "blocked_ms": dist("blocked_ms", rendered),
+            "content_fps": self._content_fps(recs, seconds), "probe_frames": sum(1 for r in recs if r.probe),
             "late_pct": round(100.0 * sum(1 for r in recs if r.slip_ms > period_ms) / len(recs), 1) if recs else None,
             "repeats": sum(1 for r in recs if r.repeat),
             "resyncs": sum(1 for t in self.resync_times if now - t <= seconds),

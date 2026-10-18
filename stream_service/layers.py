@@ -83,6 +83,11 @@ class FrameCtx:
     report: Optional[Callable[[str, Any, BaseException, str], None]] = None
     errors: list = field(default_factory=list)
     timer: Any = None       # guard.GpuTimer (engine) or None: begin(owner, kind, obj) -> token, end(token)
+    name: str = ""          # the session (logs)
+    # this frame's scene sources (the engine resets them per frame): rendered, held (rate_div) and the largest div
+    drawn: int = 0
+    held: int = 0
+    div: int = 1
 
     @property
     def t(self) -> float:
@@ -133,12 +138,16 @@ class SourceLayer(Layer):
         self._low_since: Optional[float] = None
 
     def _adapt_rate(self, fc: FrameCtx) -> None:
-        """Pick rate_div from the guard's measurements of this scene (gpu_stat, read a frame or two late)."""
+        """Pick rate_div from this scene's real cost (gpu_stat, read a frame or two late): the larger of its render
+        call's own CPU on the host and its GPU span when that outlasted the host's submit (guard: gpu_bound_ms).  A
+        span no longer than the submit is the GPU waiting on the host's lock and run-queue stalls, which a slower
+        scene rate does not fix (docs/perf/DIAGNOSIS_2026-10-18.md §3: 513 rate changes in 25 min)."""
         st = getattr(self, "gpu_stat", None)
         if st is None or st.samples == self._samples_seen:
             return
         self._samples_seen = st.samples
-        ms, self._prev_ms = (st.last_ms if self._prev_ms is None else min(st.last_ms, self._prev_ms)), st.last_ms
+        cost = max(float(getattr(st, "cpu_ms", 0.0) or 0.0), float(getattr(st, "gpu_bound_ms", 0.0) or 0.0))
+        ms, self._prev_ms = (cost if self._prev_ms is None else min(cost, self._prev_ms)), cost
         # up at once on a costly render (two in a row: a lone spike is a busy host, not the scene), down smoothly
         self.cost_ema = ms if self.cost_ema is None else max(ms, self.cost_ema + RATE_EMA * (ms - self.cost_ema))
         per = RATE_TARGET * 1000.0 / fc.fps
@@ -154,9 +163,9 @@ class SourceLayer(Layer):
             self._low_since = None
 
     def _set_rate(self, div: int, fc: FrameCtx) -> None:
-        log.info("scene %s: %.1f ms per render on the GPU: renders every %s (%.1f fps)",
-                 getattr(self.source, "name", type(self.source).__name__), self.cost_ema,
-                 "frame" if div == 1 else f"{div} frames", fc.fps / div)
+        log.info("[%s] scene %s: %.1f ms per render (own CPU or real GPU): renders every %s (%.1f fps)",
+                 getattr(fc, "name", "") or "-", getattr(self.source, "name", type(self.source).__name__),
+                 self.cost_ema, "frame" if div == 1 else f"{div} frames", fc.fps / div)
         self.rate_div, self._low_since = div, None
 
     def render(self, fc: FrameCtx, out: Any) -> None:
@@ -165,6 +174,8 @@ class SourceLayer(Layer):
             if self.rate_div > 1 and self.hold is not None and self.n_rendered is not None \
                     and 0 <= fc.n - self.n_rendered < self.rate_div:
                 fc.ops.copy(self.hold, out)                 # between renders: the last frame again (dt accrues)
+                fc.held += 1
+                fc.div = max(fc.div, self.rate_div)
                 return
         t_local = fc.t - self.t0
         dt = 0.0 if self.last_t is None else max(0.0, t_local - self.last_t)
@@ -195,6 +206,8 @@ class SourceLayer(Layer):
             if tok is not None:
                 fc.timer.end(tok)
         self.n_rendered = fc.n
+        fc.drawn += 1
+        fc.div = max(fc.div, self.rate_div)
         if dst is not out:
             fc.ops.copy(dst, out)
 

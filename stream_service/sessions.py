@@ -51,7 +51,6 @@ import logging
 import math
 import re
 import secrets
-import subprocess
 import time
 from typing import Any, Callable, Optional
 
@@ -2328,8 +2327,10 @@ class Session(EngineListener):
             "transitions": {"in": self.t_in.name, "out": self.t_out.name},
             "hold_pts": self.hold_pts, "error": self.error, "end_reason": self.end_reason,
             "expires_in_s": None if self.state == "ended" else round(self.expires_at - time.monotonic(), 1),
-            "stats": {k: e[k] for k in ("rendered", "repeats", "resyncs", "frames_encoded", "write_ms", "slip_ms",
-                                         "host_ms", "encode_ms", "bitrate_mbps")},
+            "stats": {**{k: e[k] for k in ("rendered", "repeats", "resyncs", "frames_encoded", "write_ms", "slip_ms",
+                                           "host_ms", "encode_ms", "bitrate_mbps")},
+                      **{k: e.get(k) for k in ("cpu_ms", "runq_ms", "blocked_ms", "content_fps", "content_frames",
+                                               "held_frames", "probe_frames")}},     # W0.2, W1.7
             "client_stats": self.media.summary(),
             # LIVE_V1 1.1 (R22)
             "current_scene": self.current_name, "scene_bindings": self.scene_spec.bindings,
@@ -2964,17 +2965,17 @@ class SessionManager:
         return self._devices
 
     def gpu_state(self) -> list[dict]:
-        """[{index, name, mem_used_mb}] via nvidia-smi (no CUDA context needed), cached for 2 s."""
+        """[{index, name, mem_used_mb}] via NVML (diag.py: no fork; nvidia-smi only without NVML), cached for 2 s."""
         t, cached = self._gpu_cache
         if time.monotonic() - t < 2.0:
             return cached
+        from .diag import _query_gpus
+
         by_bus: dict[int, int] = {}
         try:
-            out = subprocess.run(["nvidia-smi", "--query-gpu=pci.bus_id,memory.used", "--format=csv,noheader,nounits"],
-                                 capture_output=True, text=True, timeout=5).stdout
-            for line in out.strip().splitlines():
-                bus, mem = (x.strip() for x in line.split(","))
-                by_bus[int(bus.split(":")[-2], 16)] = int(float(mem))
+            for g in _query_gpus():
+                if g.get("mem_used_mb") is not None:
+                    by_bus[g["pci_bus"]] = int(g["mem_used_mb"])
         except Exception:
             pass
         res = [{"index": d["index"], "name": d["name"], "mem_used_mb": by_bus.get(d["pci_bus"])}
