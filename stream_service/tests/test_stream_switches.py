@@ -19,7 +19,7 @@ def write(path, data, bump=0):
 
 def test_no_file_means_ffmpeg_everywhere(tmp_path):
     s = StreamSwitches(tmp_path / "stream_switches.json")
-    assert s.encoder("south-screen") == "ffmpeg" and s.for_screen("x") == {"encoder": "ffmpeg"}
+    assert s.encoder("south-screen") == "ffmpeg" and s.for_screen("x") == {"encoder": "ffmpeg", "workers": "inproc"}
 
 
 def test_default_and_per_screen_values(tmp_path):
@@ -56,13 +56,24 @@ def test_bad_json_keeps_the_last_good_copy(tmp_path):
 
 def test_unknown_values_and_shapes_are_ignored(tmp_path):
     p = tmp_path / "stream_switches.json"
-    write(p, {"default": {"encoder": "x264", "workers": "proc"}, "screens": {"a": "nvenc", "b": {"encoder": "NVENC"},
+    write(p, {"default": {"encoder": "x264", "workers": "threads"}, "screens": {"a": "nvenc", "b": {"encoder": "NVENC"},
                                                                            "c": {"encoder": "nvenc"}}})
     s = StreamSwitches(p)
     assert [s.encoder(k) for k in "abcd"] == ["ffmpeg", "ffmpeg", "nvenc", "ffmpeg"]
+    assert [s.workers(k) for k in "abcd"] == ["inproc"] * 4
     assert len(s.errors) == 4
     write(p, {"screens": ["devtest"]}, bump=10**9)
     assert s.encoder("devtest") == "ffmpeg" and s.errors == ["screens: not an object"]
+
+
+def test_workers_per_screen(tmp_path):
+    p = tmp_path / "stream_switches.json"
+    write(p, {"default": {"workers": "inproc"}, "screens": {"devtest": {"workers": "proc"},
+                                                           "south-screen": {"workers": "PROC"}, "x": {"wk": 1}}})
+    s = StreamSwitches(p)
+    assert [s.workers(k) for k in ("devtest", "south-screen", "north-screen", "x")] == ["proc", "inproc", "inproc",
+                                                                                         "inproc"]
+    assert s.encoder("devtest") == "ffmpeg" and len(s.errors) == 2
 
 
 def test_in_dir_and_the_shipped_file():
@@ -71,6 +82,8 @@ def test_in_dir_and_the_shipped_file():
     assert s.path.exists()                                            # shipped: ffmpeg, nvenc on the P4000's screens
     assert [s.encoder(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["ffmpeg", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
+    assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
+        ["inproc", "inproc", "proc", "inproc"]                        # change 3: devtest renders in a worker
 
 
 async def test_a_session_takes_its_encoder_from_the_file_at_creation(client, tmp_path):  # noqa: F811

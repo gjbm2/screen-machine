@@ -73,8 +73,9 @@ class GpuEncoder:
         if not ctx:
             raise RuntimeError("no current CUDA context")
         self._dev = cp.cuda.Device()
+        # gpu_id: the context's device (PCI order), else PyNvVideoCodec assumes 0 and refuses a GPU 1 context
         self.enc = nvc.CreateEncoder(width, height, "NV12", False, cudacontext=ctx, cudastream=int(stream.ptr),
-                                     **self.opts)
+                                     gpu_id=str(self._dev.id), **self.opts)
         if self.enc.GetNumBFrames():
             raise RuntimeError(f"encoder has {self.enc.GetNumBFrames()} B-frames")
         self._idr = int(nvc.NV_ENC_PIC_FLAGS.FORCEIDR.value) | int(nvc.NV_ENC_PIC_FLAGS.OUTPUT_SPSPPS.value)

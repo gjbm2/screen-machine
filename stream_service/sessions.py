@@ -212,8 +212,12 @@ class Session(EngineListener):
         self.error: Optional[str] = None
         self.end_reason: Optional[str] = None
         self.media = MediaHub(sid, profile.fps)
-        self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
         sw = getattr(mgr, "switches", None)     # stream_switches.json, read now: this screen's encoder (plan change 2)
+        pool = getattr(mgr, "workers", None)     # ... and where it renders (plan change 3): "proc" = a worker process
+        if pool is not None and sw is not None and sw.workers(screen) == "proc":
+            self.engine = pool.engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
+        else:
+            self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
         self.engine.encoder = sw.encoder(screen) if sw is not None else "ffmpeg"
         self.media.want_key = getattr(self.engine, "request_keyframe", None)   # a joining player gets an IDR at once
         self.lock = asyncio.Lock()
@@ -774,7 +778,7 @@ class Session(EngineListener):
 
     def _alloc_sound(self) -> None:
         ctx = getattr(self.engine, "ctx", None)
-        if self.sound is not None and ctx is not None:
+        if self.sound is not None and ctx is not None and not getattr(self.engine, "remote", False):   # a worker: its own
             with ctx.device:
                 self.sound.alloc(ctx.cp)
 
@@ -2331,6 +2335,7 @@ class Session(EngineListener):
             "transitions": {"in": self.t_in.name, "out": self.t_out.name},
             "hold_pts": self.hold_pts, "error": self.error, "end_reason": self.end_reason,
             "encoder": e.get("encoder"), "encoder_fallback": e.get("encoder_fallback"),     # nvenc | ffmpeg (change 2)
+            "worker": getattr(self.engine, "worker", None),        # change 3: {mode proc|inproc, pid, fallback} or None
             "expires_in_s": None if self.state == "ended" else round(self.expires_at - time.monotonic(), 1),
             "stats": {**{k: e[k] for k in ("rendered", "repeats", "resyncs", "frames_encoded", "write_ms", "slip_ms",
                                            "host_ms", "encode_ms", "bitrate_mbps")},
@@ -2405,6 +2410,7 @@ class SessionManager:
         self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)
         self.room_why: Optional[tuple[dict, float]] = None    # show_service's room.why (data, arrival)
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
+        self.workers: Any = None                         # workers.WorkerPool (make_app); None: every screen in-process
         self._broken_names: tuple = (None, frozenset())
 
     def note_plugin_error(self, kind: Optional[str], name: Optional[str], detail: Optional[str], sid: str) -> int:
@@ -2632,7 +2638,11 @@ class SessionManager:
             log.warning("room.direction: bad field(s) %s took their defaults", sorted(set(dropped) - warned))
             warned.update(dropped)
         groove = data.get("groove")
-        self.music_feed.on_room_direction(data)
+        t = time.monotonic()
+        self.music_feed.on_room_direction(data, t)
+        w = getattr(self, "workers", None)           # the render workers' copies of the feed
+        if w is not None:
+            w.on_room_direction(data, t)
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
                                "beat_lock": data.get("beat_lock"), "hold": data.get("hold") is True,
@@ -2718,8 +2728,12 @@ class SessionManager:
 
     def broadcast_sound(self, msg: dict) -> None:
         """Any thread (the bus loop): append-only on each view."""
+        t = time.monotonic()
         if str(msg.get("type") or "").startswith("music."):
-            self.music_feed.on_message(msg)
+            self.music_feed.on_message(msg, t)
+        w = getattr(self, "workers", None)           # the render workers' copies (their feed and their session's view)
+        if w is not None:
+            w.on_sound(msg, t)
         for s in list(self.sessions.values()):
             if s.sound is not None and s.state not in ("ended", "failed"):
                 s.sound.on_message(msg)
@@ -2904,9 +2918,13 @@ class SessionManager:
             s.attach = self.attach_for(s, host)
             anchor = await s.decode(p["png"], p["rgb"])   # ParamError (400) before the session exists
             self.sessions[sid] = s
+            remote = getattr(s.engine, "remote", False)
             try:
                 s.emit("session.state", state="starting")
-                await s.start(anchor)
+                if remote:          # a render worker (plan change 3): 201 at starting, its cold start counts against
+                    s._start_task = asyncio.create_task(self._start_remote(s, anchor))   # room's session_ready_s
+                else:
+                    await s.start(anchor)
             except Exception as e:
                 log.exception("[%s] start failed", sid)
                 await self._discard(s, "error", f"{type(e).__name__}: {e}")
@@ -2920,6 +2938,20 @@ class SessionManager:
         log.info("[%s] created: screen=%s gpu=%d profile=%s scene=%s", sid, s.screen, s.gpu, s.profile.name,
                  s.scene_spec.name)
         return s, True
+
+    async def _start_remote(self, s: Session, anchor: Any) -> None:
+        """A worker session's start, after its 201: a failure ends it (session.error, then ended), as a failed create
+        would have."""
+        try:
+            await s.start(anchor)
+        except Exception as e:
+            if s.state == "ended":
+                return
+            log.exception("[%s] start failed", s.id)
+            detail = f"start failed: {type(e).__name__}: {e}"
+            s.error = detail
+            s.emit("session.error", detail=detail)
+            await self._discard(s, "error", detail)
 
     async def _discard(self, s: Session, reason: str, detail: Optional[str] = None) -> None:
         try:

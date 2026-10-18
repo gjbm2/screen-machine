@@ -1,12 +1,13 @@
-"""Per-screen stream switches: config/live/stream_switches.json (4K60 plan change 2), re-read when it changes.
+"""Per-screen stream switches: config/live/stream_switches.json (4K60 plan changes 2 and 3), re-read when it changes.
 
-    {"default": {"encoder": "ffmpeg"}, "screens": {"south-screen": {"encoder": "nvenc"}}}
+    {"default": {"encoder": "ffmpeg"}, "screens": {"south-screen": {"encoder": "nvenc", "workers": "proc"}}}
 
 ``encoder``: ``nvenc`` (GPU-resident, encode/nvenc.py) or ``ffmpeg`` (raw NV12 piped into ffmpeg's hevc_nvenc, the
-fallback).  A screen's values override the default's.  Read when a session is created (the file's mtime is checked
-each time), so a flip applies at that screen's next session, with no restart.  No file: ffmpeg everywhere; an
-unreadable or malformed one keeps the last good copy; an unknown value is ffmpeg.  Each problem is logged once.
-Plain file, no auth.
+fallback).  ``workers``: ``inproc`` (the render engine in the service process, as before) or ``proc`` (the screen's
+sessions render in a worker process of their own, workers.py).  A screen's values override the default's.  Read when
+a session is created (the file's mtime is checked each time), so a flip applies at that screen's next session, with
+no restart.  No file: ffmpeg and inproc everywhere; an unreadable or malformed one keeps the last good copy; an unknown
+value takes the default.  Each problem is logged once.  Plain file, no auth.
 """
 from __future__ import annotations
 
@@ -20,7 +21,9 @@ log = logging.getLogger("stream_service.switches")
 FILE = "stream_switches.json"
 DEFAULT_DIR = pathlib.Path(__file__).resolve().parent.parent / "config" / "live"
 ENCODERS = ("nvenc", "ffmpeg")
-DEFAULTS = {"encoder": "ffmpeg"}
+WORKERS = ("inproc", "proc")
+DEFAULTS = {"encoder": "ffmpeg", "workers": "inproc"}
+KNOWN = {"encoder": ENCODERS, "workers": WORKERS}
 
 
 def _parse(raw: Any) -> tuple[dict, dict, list[str]]:
@@ -33,10 +36,12 @@ def _parse(raw: Any) -> tuple[dict, dict, list[str]]:
             return {}
         out = {}
         for k, x in v.items():
-            if k == "encoder" and x in ENCODERS:
+            if x in KNOWN.get(k, ()):
                 out[k] = x
+            elif k in KNOWN:
+                errs.append(f"{where}.{k}: {x!r} ignored ({k} must be one of {list(KNOWN[k])})")
             else:
-                errs.append(f"{where}.{k}: {x!r} ignored (encoder must be one of {list(ENCODERS)})")
+                errs.append(f"{where}.{k}: unknown switch ignored (known: {sorted(KNOWN)})")
         return out
 
     if not isinstance(raw, dict):
@@ -91,3 +96,6 @@ class StreamSwitches:
 
     def encoder(self, screen: str) -> str:
         return self.for_screen(screen)["encoder"]
+
+    def workers(self, screen: str) -> str:
+        return self.for_screen(screen)["workers"]

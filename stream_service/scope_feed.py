@@ -173,6 +173,7 @@ class ScopeFeed:
         self.last_error: Optional[str] = None
         self.band_lo_hz: float = FFT_LO_HZ
         self.band_hi_hz: float = FFT_HI_HZ
+        self.taps: list = []                # f(frame) for each new ``latest``: the render workers' copies (workers.py)
 
     @classmethod
     def from_music_bus(cls, music_bus: Any) -> Optional["ScopeFeed"]:
@@ -200,6 +201,11 @@ class ScopeFeed:
             self.band_lo_hz, self.band_hi_hz = lo, hi
         self.latest = fr                    # one reference swap: readers see the old tuple or the new one
         self.frames += 1
+        for f in self.taps:
+            try:
+                f(fr)
+            except Exception:
+                log.debug("scope feed: tap failed", exc_info=True)
         return True
 
     def is_wanted(self, now: Optional[float] = None) -> bool:

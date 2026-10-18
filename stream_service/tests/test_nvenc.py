@@ -217,6 +217,8 @@ class FakeCp:
         cp = self
 
         class Device:
+            id = 1                          # a GPU 1 context: GpuEncoder passes it as gpu_id
+
             def __enter__(self):
                 return self
 
@@ -270,6 +272,7 @@ def test_gpu_encoder_options_frames_and_forced_idr(monkeypatch):
                      on_frame=lambda *a: got.append(a))
     kw = nvc.made[0].kw
     assert kw["cudacontext"] == 1234 and kw["cudastream"] == 99 and kw["fmt"] == "NV12" and kw["cpu"] is False
+    assert kw["gpu_id"] == "1"                  # the context's own device, not PyNvVideoCodec's default 0
     assert {k: kw[k] for k in ("codec", "preset", "tuning_info", "rc", "fps", "gop", "idrperiod", "bf", "bitrate",
                                "maxbitrate", "vbvbufsize", "repeatspspps", "aq")} == {
         "codec": "hevc", "preset": "P4", "tuning_info": "ultra_low_latency", "rc": "cbr", "fps": "30", "gop": "30",
