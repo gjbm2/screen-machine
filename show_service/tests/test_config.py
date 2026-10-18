@@ -185,3 +185,9 @@ def test_beat_process_and_rx_coalesce_options():
     assert config.load_options(["--beat-proc", "off"], {"SHOW_BEAT_PROC": "on"}).beat_proc is False
     o = config.load_options([], {"SHOW_BEAT_PROC": "maybe", "SHOW_BEAT_NICE": "-3", "SHOW_RX_COALESCE_MIN": "x"})
     assert (o.beat_proc, o.beat_nice, o.rx_coalesce_min) == (False, 0, 1) and len(o.notes) == 3
+
+
+def test_rx_off_turns_receive_path_changes_off():
+    assert config.load_options([], {}).rx_off == frozenset()
+    o = config.load_options([], {"SHOW_RX_OFF": " Coalesce, split ,bogus"})
+    assert o.rx_off == {"coalesce", "split"} and any("bogus" in n for n in o.notes)
