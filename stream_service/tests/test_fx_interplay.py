@@ -92,8 +92,9 @@ def test_the_table_reloads(looks, tmp_path):
     assert before == pytest.approx(0.3) and fit(looks, "mosh", "ink", genre="ambient").parts["music"] == 0.5
 
 
-def test_an_effect_that_draws_what_it_hears_follows_what_there_is(looks):
-    looks.listens_of = {"notes_fx": ("notes",), "bars": ("fft",), "both": ("notes", "fft")}.get
+def test_an_effect_drawn_from_the_sound_follows_what_there_is(looks):
+    for pl, kinds in {"notes_fx": ["notes"], "bars": ["fft"], "both": ["notes", "fft"]}.items():
+        looks.roles[pl] = {"role": "add", "draws": kinds}
     entry = lambda pl: {"effect": pl}
     def mult(pl, heard):
         return looks.fit_in(looks.context(scene("ink"), [], {"energy": 0.5}, heard), pl, entry(pl)).mult
@@ -103,7 +104,10 @@ def test_an_effect_that_draws_what_it_hears_follows_what_there_is(looks):
     assert mult("bars", {"fft": 0.5}) == pytest.approx(0.9)
     assert mult("both", {"notes": 0.0, "fft": 1.0}) == pytest.approx(1.5)   # the best of its kinds
     assert mult("halftone", {"notes": 0.0}) == pytest.approx(looks.fit("halftone", PRESETS["halftone"], scene("ink"), [],
-                                                                        {"energy": 0.5}).mult)   # deaf: unchanged
+                                                                        {"energy": 0.5}).mult)   # draws nothing: unchanged
+    looks.roles["bad"] = {"role": "add", "draws": "notes"}                   # not a list: no opinion
+    assert mult("bad", {"notes": 0.0}) == looks.fit_in(looks.context(scene("ink"), [], {"energy": 0.5}), "bad",
+                                                       entry("bad")).mult
     f = looks.fit_in(looks.context(scene("ink"), [], {"energy": 0.5}, {"notes": 0.0}), "notes_fx", entry("notes_fx"))
     assert "heard x0.15" in f.why()
 
@@ -165,7 +169,7 @@ def test_a_section_change_lets_the_scene_move_first(looks, monkeypatch):
 
 
 def test_the_director_asks_what_is_heard(looks):
-    looks.listens_of = {"notes_fx": ("notes",)}.get
+    looks.roles["notes_fx"] = {"role": "add", "draws": ["notes"]}
     d = fxd(looks, ["ink"])
     d.heard = lambda: {"notes": 0.0}
     assert d.fit("notes_fx", {"notes_fx": {"effect": "notes_fx"}}).mult == pytest.approx(0.15)

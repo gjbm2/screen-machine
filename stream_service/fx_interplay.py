@@ -10,8 +10,9 @@ ceiling on an effect's level, from:
   * the music: which roles suit its genre (roles_by_music, p-weighted over direction.genres / genre) and how much
     the effects may take over (load: a budget from direction.energy plus a genre bias, part of it used by the
     scene's busyness and by the other effects' strength);
-  * what there is to hear now, for an effect that draws it (its plug-in's ``listens``: "notes" from the piano,
-    "scope" / "fft" from the room's music; fx_interplay.yaml listens): a note stream with no piano is an empty slot.
+  * what there is to hear now, for an effect drawn from the sound (its ``draws`` in effect_roles.generated.json:
+    "notes" from the piano, "scope" / "fft" from the room's music; fx_interplay.yaml listens): a note stream with
+    no piano is an empty slot.  Not the plug-in's ``listens``: the GLSL host declares those for every shader.
 Every factor stays within multiplier_range (listens has its own numbers: it is a fact, not a guess) and a missing
 number means no opinion (1): nothing is ever excluded, a poor fit is just less likely or plays at a lower level.  All the numbers are in config/live/fx_interplay.yaml,
 hot-reloaded (checked at most once a second) like the other config/live files.
@@ -26,7 +27,7 @@ import math
 import pathlib
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -100,7 +101,6 @@ class Interplay:
         self.scenes: dict[str, dict] = {}
         self.effects: dict[str, dict] = {}
         self.errors: list[str] = []
-        self.listens_of: Callable[[Optional[str]], Any] = lambda plugin: ()   # effect plug-in -> its ``listens``
         self._mt: dict[str, Optional[int]] = {}
         self._checked = -math.inf
         self.reload_if_changed(force=True)
@@ -153,6 +153,11 @@ class Interplay:
             return ov
         r = (self.roles.get(plugin or "") or {}).get("role")
         return r if r in ROLES else None
+
+    def draws(self, plugin: Optional[str]) -> tuple[str, ...]:
+        """What the effect draws from the sound ("notes", "scope", "fft", ...): nothing without it."""
+        d = (self.roles.get(plugin or "") or {}).get("draws")
+        return tuple(k for k in d if isinstance(k, str)) if isinstance(d, (list, tuple)) else ()
 
     def scene_props(self, name: Optional[str], entry: Optional[dict]) -> dict[str, float]:
         """The scene's properties, 0..1 (absent = unknown)."""
@@ -243,13 +248,10 @@ class Interplay:
         return Ctx(per_role, budget, used, float(cfg.get("level_min", DEFAULTS["level_min"])), heard)
 
     def heard_mult(self, ctx: "Ctx", plugin: Optional[str]) -> float:
-        """x the weight of an effect that draws what it hears, by how much of it there is (the best of its kinds)."""
+        """x the weight of an effect drawn from the sound, by how much of it there is (the best of its kinds)."""
         if not ctx.heard:
             return 1.0
-        try:
-            kinds = tuple(self.listens_of(plugin) or ())
-        except Exception:
-            kinds = ()
+        kinds = self.draws(plugin)
         table = self.cfg.get("listens") or {}
         got = [_lerp_pair(table[k], ctx.heard[k]) for k in kinds if k in table and k in ctx.heard]
         got = [v for v in got if v is not None and v > 0.0]
