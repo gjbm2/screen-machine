@@ -36,13 +36,14 @@ version: 1
 #   captures only while something needs it: Auto is on, or the mode follows the music. The Room page's Mute wins.
 #   Otherwise its sender keeps it closed (README S5.16, show_service/mic.py).
 senders:
-  # GO-LIVE STEP (not yet: owner's call). Uncommenting kiosk makes show_service subscribe the room's mic and piano;
-  # whenever 98's show-sender.service runs on the kiosk, the room's sound then drives the lamps' and screens' Art-Net
-  # (on in production). Announce it, then uncomment (README S3.14).
-  # kiosk:                                    # screen-machine-drawingroom, 98's show-sender.service
-  #   hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
-  #   port: 6980
-  #   streams: [room-mic, room-piano]
+  # LIVE 18 Oct (owner: "plug the MIDI cable / a mic into the mini-PC and it Just Works"): the kiosk's show-sender
+  # (a systemd --user unit, tools/show_sender/deploy.sh) sends the Steinway's USB MIDI and a USB mic whenever they are
+  # plugged in; with neither, its heartbeats say no_device. The mic still captures only on demand (mic.py).
+  kiosk:                                    # screen-machine-drawingroom, 98's show_sender.py
+    hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
+    port: 6980
+    streams: [room-mic, room-piano]
+    label: Drawing room                     # the Room page's Mic list groups this sender's inputs under it
   pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
     hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
     port: 6984                              # Spectre's audio-agent card (d4, 16 Oct; SHOW_ENGINE §3.2 "PC22")
@@ -188,6 +189,10 @@ director:
     wild:   {style: cut, seconds: 0.05}
   # The listener's trajectory word nudges the energy by this much (times its confidence; §8.2's L2). Starting points.
   listener_bias: {building: 0.05, peak: 0.1, sustaining: 0.0, steady: 0.0, releasing: -0.05, winding_down: -0.1}
+  # README S5.22: the listener's approach.change word -> room.direction's change_rate while no feel sets one (the
+  # band rows' own values). Its approach.intensity is the band base's genre term, its transitions the
+  # transition_style (under a person's or the feel's own). Starting points.
+  listener_change: {slow: 0.15, medium: 0.45, fast: 0.75}
   # The L1 music table (§8.2): energy bands and the words they bring. Copied as a starting point from
   # stream_service/music_direction.py BANDS (the renderer's own table today), so screens read the same words.
   bands:
@@ -343,18 +348,29 @@ director:
         lamps: {level: 0.6, pulse: 0.7}
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
-  cadence_s: 20                             # a clip every 20 s...
-  clip_s: 24                                # ...of the last 24 s (16 kHz mono from the ring)
-  min_gap_s: 8
-  relaxed_cadence_s: 45                     # after agree_reads agreeing, confident verdicts
-  agree_reads: 3
+  # README S5.22 (owner, 18 Oct: "24 s every 20 s is too long a round trip"): a 10 s clip every 15 s while the music
+  # is steady; every 5 s while something develops (structure's build or outro, a forecast window open or opening
+  # within fast_lookahead_s, an armed song end within fast_end_s, a section boundary in the last
+  # fast_after_section_s); up to max_in_flight calls at once, starts at least min_gap_s apart
+  cadence_s: 15
+  fast_cadence_s: 5
+  clip_s: 10                                # the last 10 s (16 kHz mono from the ring)
+  min_gap_s: 4
+  max_in_flight: 2
+  fast_lookahead_s: 20
+  fast_end_s: 30
+  fast_after_section_s: 10
+  est_fast_share: 0.5                       # the cost estimate's share of time at the fast cadence until an hour of
+                                            # listening has measured it (forecasts open fast windows often)
   quiet_gate: 0.1                           # the loudness gate's mean over the last 10 s must reach this
   requires_auto: true                       # owner, 17 Oct: no audio goes to any provider unless Auto is on (cost, and
   requires_mic: true                        # it's intrusive) and the room's mic is on; re-checked right before each
                                             # upload. The mode's show.main "listening" no longer gates (17 Oct)
   evening_h: 4                              # README S5.20: the evening the Music card's estimate covers (starting
-                                            # point): est_evening_usd = evening_h x 3600 / cadence_s x the cost a clip
-  min_clip_s: 10                            # the ring records only while a clip could go: a first clip waits this long
+                                            # point): est_evening_usd = evening_h x the calls an hour (the blend of
+                                            # cadence_s and fast_cadence_s by est_fast_share) x the cost a clip
+  min_clip_s: 6                             # the ring records only while a clip could go: a first clip waits this
+                                            # long; a room clip needs at least this much music without talking
   music_gate: classifier                    # room-mic clips go only while a music/speech classifier says music, with
                                             # speech under 0.3. The classifier is CED, in P1. "dsp" would allow a DSP
                                             # guess instead (a steady beat over the loudness gate): that is the owner's
@@ -367,6 +383,60 @@ listener:                                   # §7.3, §7.5. Starting points, all
                                             # talking over music show as conversation and babble, not only Speech)
     speaks_s: 1.0                           # README S4.8: each CED reading vouches for the last second of its window
   section_call_after_s: 8                   # Stage 4 (§7.3): one extra call this long after a section boundary
+
+# The cue engine (cues.py; README S5.22, owner 18 Oct): the listener arms, a real-time component fires. Standing cues
+# (an abrupt stop, a fade-out) run while music plays, the listener's `ending` picking which; forecast cues come from
+# its `coming`. Starting points, all of them.
+cues:
+  stop:                                     # an abrupt stop -> track_end "stop" (fade-dark), "sound_back" if it returns
+    collapse_db: 20                         # the fast level (20 ms rms) falls this far under the 2 s median before...
+    fall_s: 0.3                             # ...within this long...
+    ref_s: 2
+    loud_db: 6                              # (a "loud" tick: within this of the median)
+    quiet_ticks: 2                          # ...stays down this many 10 Hz ticks...
+    floor_margin_db: 12                     # ...and ends within this of the stream's floor (the median level of its
+    floor_gate: 0.05                        # recent quiet seconds: the loudness gate under floor_gate throughout)
+    quiet_dbfs: -45                         # (before the floor is known: under this)
+    back_db: 15                             # sound back: within this of the median before the stop, for back_ticks
+    back_ticks: 2
+    watch_s: 15                             # watched this long (structure's own track_end takes over before that)
+    out_s: 0.2
+    in_s: 1.0
+    dark_max_s: 8
+  fade:                                     # structure's outro phase -> track_end "fade" (fade-dark)
+    slope_s: 4                              # out_s = the time to the floor at lufs_s's slope over this long...
+    min_s: 3                                # ...clamped to min_s..max_s
+    max_s: 12
+    floor_above_db: 6                       # "the floor" = the stream's floor + this (none yet: floor_lufs)
+    floor_lufs: -50
+    back_db: 3                              # sound back: lufs_s this far over where it was when the fade began...
+    back_s: 1                               # ...for this long
+    in_s: 2.0
+    dark_max_s: 8
+    watch_s: 30
+  forecast:                                 # the listener's coming -> drop (big) / section_change (medium) events
+    min_conf: 0.6                           # at this confidence, with an early sign, a phrase line in the window...
+    phrase16_conf: 0.5                      # (16 bars at the clock's phrase_conf, else 8)
+    grid_conf: 0.5                          # (the clock's bar_conf for its bar lines)
+    lead_bars: 1                            # ...is fired AT the line, published this far ahead (>= min_lead_s)
+    min_lead_s: 1.1                         # else the next downbeat at least this far ahead once a sign is seen
+    slack_s: 2                              # the window's ends, widened by this
+    rise_db_s: 0.15                         # an early sign: lufs_s rising this fast over rise_s
+    rise_s: 6
+  signs:
+    louder_db: 4                            # lufs_m: the last 0.3 s over the 2 s before
+    low_in_db: 6                            # music.rhythm low_db: the same
+    busier_rate: 0.75                       # onset_rate up this much (per s) on 3-4 s before...
+    busier_ratio: 1.3                       # ...and by this factor
+    perc_jump: 0.15                         # percussive_ratio up (drums_in) or down (drums_out) by this
+    voice_on: 0.6                           # the ML worker's voice_p crossing up through this (vocal_in)...
+    voice_off: 0.4                          # ...or down through this (vocal_out)...
+    voice_window_s: 6                       # ...within this long
+    stop_return_db: 15                      # a dip this deep...
+    stop_return_min_s: 0.15                 # ...this long at least...
+    stop_return_max_s: 3                    # ...and at most, then back
+    key_min_strength: 0.3                   # music.context's key at this strength, other than at arm time
+    seen_s: 4                               # a sign counts this long after it is seen
 
 # ---- Stage 4 (README "Stage 4") ------------------------------------------------------------------------------------
 # The local ML worker (§6): a child of show_service in its own venv, fed the measured stream at 16 kHz over a pipe,
