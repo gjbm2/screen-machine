@@ -1,0 +1,49 @@
+note-stream-rising:
+  label: Rising notes (a piano roll floating up through the picture)
+  effect: note_stream
+  params: {amount: 0.9, angle: 90.0, travel: 0.2, warp: 0.25, depth: 0.3, width: 16.0, glow: 0.7, trail: 0.08,
+           linger: 4.0, opacity: 0.85, palette: neon, palette_period: 0.8, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [elegant, dreamy, bright]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [light, warp]
+    weight: 1.0
+
+note-stream-river:
+  label: River of notes (flat, flowing sideways, softly bending)
+  effect: note_stream
+  params: {amount: 0.85, angle: 0.0, travel: 0.13, warp: 0.6, depth: 0.0, spread: 0.8, width: 14.0, glow: 0.9,
+           trail: 0.12, linger: 6.0, opacity: 0.85, hue: 0.1, mirror: true, palette: ocean, palette_period: 1.4,
+           drift_speed: 0.015}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, liquid, mellow]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [light, warp]
+    weight: 0.9
+
+note-stream-cascade:
+  label: Cascade (notes pouring down a tilted plane into the distance)
+  effect: note_stream
+  params: {amount: 1.0, angle: 270.0, travel: 0.4, warp: 0.15, depth: 0.75, spread: 1.1, width: 22.0, glow: 1.0,
+           trail: 0.18, linger: 2.5, opacity: 0.9, mirror: true, palette: ember, palette_period: 1.2,
+           drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [euphoric, fiery, cosmic]
+    style: lively
+    family: overlay
+    dims: 3d
+    technique: [light, projection]
+    weight: 0.8
