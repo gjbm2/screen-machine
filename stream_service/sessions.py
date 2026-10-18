@@ -78,6 +78,7 @@ from .plugins.sources.image import ImageSource, load_png
 from .presets import Presets, SceneSpec, TransitionSpec
 from .profiles import PROFILES, Profile
 from .renderer import Engine, EngineListener, Retire, StartTransition, UpdateParams
+from .switches import StreamSwitches
 
 log = logging.getLogger("stream_service.sessions")
 
@@ -212,6 +213,9 @@ class Session(EngineListener):
         self.end_reason: Optional[str] = None
         self.media = MediaHub(sid, profile.fps)
         self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
+        sw = getattr(mgr, "switches", None)     # stream_switches.json, read now: this screen's encoder (plan change 2)
+        self.engine.encoder = sw.encoder(screen) if sw is not None else "ffmpeg"
+        self.media.want_key = getattr(self.engine, "request_keyframe", None)   # a joining player gets an IDR at once
         self.lock = asyncio.Lock()
         self.pending_scene: Any = None      # set up, shown on go
         self.current_scene: Any = None      # the scene source that is (or is becoming) visible
@@ -2326,11 +2330,13 @@ class Session(EngineListener):
             "scene_params": self.scene_spec.params,
             "transitions": {"in": self.t_in.name, "out": self.t_out.name},
             "hold_pts": self.hold_pts, "error": self.error, "end_reason": self.end_reason,
+            "encoder": e.get("encoder"), "encoder_fallback": e.get("encoder_fallback"),     # nvenc | ffmpeg (change 2)
             "expires_in_s": None if self.state == "ended" else round(self.expires_at - time.monotonic(), 1),
             "stats": {**{k: e[k] for k in ("rendered", "repeats", "resyncs", "frames_encoded", "write_ms", "slip_ms",
                                            "host_ms", "encode_ms", "bitrate_mbps")},
                       **{k: e.get(k) for k in ("cpu_ms", "runq_ms", "blocked_ms", "content_fps", "content_frames",
-                                               "held_frames", "probe_frames")}},     # W0.2, W1.7
+                                               "held_frames", "probe_frames")},     # W0.2, W1.7
+                      **{k: e.get(k) for k in ("encode_cpu_ms", "slot_to_packet_ms", "forced_idrs")}},   # change 2
             "client_stats": self.media.summary(),
             # LIVE_V1 1.1 (R22)
             "current_scene": self.current_name, "scene_bindings": self.scene_spec.bindings,
@@ -2393,6 +2399,7 @@ class SessionManager:
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
+        self.switches = StreamSwitches.in_dir(getattr(presets, "dir", None))   # stream_switches.json (change 2)
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
         self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)

@@ -1,0 +1,83 @@
+{
+ "w": 320,
+ "h": 180,
+ "fps": 30,
+ "opts": {
+  "codec": "hevc",
+  "preset": "P4",
+  "tuning_info": "ultra_low_latency",
+  "rc": "cbr",
+  "fps": "30",
+  "gop": "30",
+  "idrperiod": "30",
+  "bf": "0",
+  "bitrate": "1000000",
+  "maxbitrate": "1000000",
+  "vbvbufsize": "2000000",
+  "repeatspspps": "1",
+  "aq": "12"
+ },
+ "seq_params": "0000000140010c01ffff01400000030090000003000003003fac090000000142010101400000030090000003000003003fa00a080c1f3e5ad290964b8c04040000030004000003007980177944001e8480007a1204000000014401c0f7c0cc90",
+ "packets": [
+  {
+   "ts": 0,
+   "picture_type": 3,
+   "size": 4857
+  },
+  {
+   "ts": 1,
+   "picture_type": 0,
+   "size": 1409
+  },
+  {
+   "ts": 2,
+   "picture_type": 0,
+   "size": 854
+  },
+  {
+   "ts": 3,
+   "picture_type": 0,
+   "size": 778
+  },
+  {
+   "ts": 4,
+   "picture_type": 0,
+   "size": 743
+  },
+  {
+   "ts": 5,
+   "picture_type": 0,
+   "size": 925
+  },
+  {
+   "ts": 6,
+   "picture_type": 0,
+   "size": 701
+  },
+  {
+   "ts": 7,
+   "picture_type": 3,
+   "size": 8030
+  },
+  {
+   "ts": 8,
+   "picture_type": 0,
+   "size": 570
+  },
+  {
+   "ts": 9,
+   "picture_type": 0,
+   "size": 448
+  },
+  {
+   "ts": 10,
+   "picture_type": 0,
+   "size": 625
+  },
+  {
+   "ts": 11,
+   "picture_type": 0,
+   "size": 415
+  }
+ ]
+}

@@ -22,6 +22,18 @@ WebSocket fan-out with drop-to-keyframe are reused here.
   previous frame is repeated in that slot (`repeats`), so the timeline never shifts; if the pipe/encoder is
   behind, the right content is rendered late and the stream catches up. More than 0.25 s behind re-bases the
   schedule (`resyncs`): the stream then runs that much later than real time, which the player's buffer absorbs.
+* **Encoder per screen** (`config/live/stream_switches.json`, 4K60 plan change 2): `nvenc` = GPU-resident
+  (`encode/nvenc.py`: PyNvVideoCodec encodes the slot's NV12 surface on the render stream, no host copy, no
+  ffmpeg; HEVC only), `ffmpeg` = the pipe above. Read when a session is created (no restart to flip a screen):
+  `{"default": {"encoder": "ffmpeg"}, "screens": {"south-screen": {"encoder": "nvenc"}}}`. The GPU encoder forces
+  IDRs on the GOP grid as before, on the frame at `hold_pts` and when a player joins. If it cannot be created the
+  session starts on ffmpeg; if it fails mid-session the session switches to ffmpeg and keeps playing (players get
+  the new init, then its IDR; a freeze of about 1.2 s while ffmpeg's NVENC starts). Either way `encoder_fallback`
+  says why in `/api/sessions` and on the details panel. `/api/sessions` also reports `encoder` and, in `stats`,
+  `encode_cpu_ms` (the encode /
+  writer thread's own CPU per slot), `slot_to_packet_ms` and `forced_idrs`. Bounded P4000 run, 18 Oct (real Engine,
+  synthetic scene): 2160p30 29.8 fps, encode thread 2.2 ms CPU per frame (p95 3.2), slot to packet p50 105 ms;
+  2160p60 59.5 fps, 2.2 ms, 55 ms; 0 decode errors; whole process 4.2-4.4 ms CPU per frame.
 
 ## Run
 
@@ -46,8 +58,9 @@ cd ~/dev/screen-machine
   stops the beats (a breakdown) and jumps to the next section, and shows the synth's tempo next to the beat
   follower's, timing how long the follower takes to re-lock. It goes through `/dev/synth`, which proxies
   show-synth's `GET/POST /v1/control` (see the docstring in `tools/show_synth.py`).
-* Venv: `~/.venvs/sm-stream` (cupy-cuda12x, aiohttp, numpy, pyyaml, pillow, jsonschema; tests add pytest,
-  pytest-asyncio, playwright). Needs the distro `ffmpeg` (6.1, NVENC API 12) on PATH.
+* Venv: `~/.venvs/sm-stream` (cupy-cuda12x, aiohttp, numpy, pyyaml, pillow, jsonschema, PyNvVideoCodec==2.2.3
+  for the GPU encoder; tests add pytest, pytest-asyncio, playwright). Needs the distro `ffmpeg` (6.1, NVENC API 12)
+  on PATH (the ffmpeg encoder, and the GPU encoder's fallback).
 
 ## API (LIVE_V1 §1) and what is additive
 
@@ -247,7 +260,8 @@ Before these changes (3 slots, `-delay 0`, repeat on any lateness) the same runs
   difference. If it shows on the TVs, room_service can cut on the first keyframe at or after `hold_pts`
   (IDRs are at frame ids that are multiples of `gop_s * fps`, i.e. on whole stream seconds, so the exit takes
   up to 1 s longer: within the programme's "transition plus about a second"). The real fix is a forced IDR
-  at `hold_pts`, which needs the GPU-resident encoder (the ffmpeg pipe cannot force one per frame).
+  at `hold_pts`, which needs the GPU-resident encoder (the ffmpeg pipe cannot force one per frame): the `nvenc`
+  encoder now sends one there.
 * **Big request bodies.** A 4K PNG is ~10-30 MB of base64 in the JSON. Plain `json.loads` + `b64decode` held
   the GIL for ~125 ms on a 21 MB body (other threads stalled up to 81 ms), which made every live session's
   render thread late (~7 frames at 60 fps) at the start of each exit. `bodies.parse_body` (worker thread;

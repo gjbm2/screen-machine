@@ -44,6 +44,15 @@ A run of repeats is a freeze on the glass: after ``MAX_REPEAT_RUN`` repeats in a
 is rendered instead (a probe frame, ``probe_frames``), so at most 3 repeats come in a row.  Each rendered frame
 records its host time split into own CPU, run-queue wait and the rest (blocked: GIL, locks, syscalls), and whether
 the scene was drawn or held (rate_div), so content fps is known.
+
+GPU-resident encode (4K60 plan change 2; ``encoder = "nvenc"``, set by the session from stream_switches.json): the
+slots are NV12 device surfaces instead of pinned host memory, the render thread converts straight into the slot (no
+D2H copy) and the writer thread becomes the encode thread (encode.nvenc.GpuEncoder: Encode() on that surface, then
+fMP4 as today).  It forces IDRs on the profile's GOP grid (frame ids that are multiples of gop_s * fps, as today),
+on the frame at ``hold_pts`` (the exit's last frame) and when a player joins.  If the GPU encoder cannot be created
+the session starts on today's ffmpeg path; if it fails mid-session the encode thread copies the surfaces down and
+feeds a new ffmpeg pipeline (frame ids continue; the frames NVENC held back are re-sent as the current one) and the
+session keeps playing: ``encoder_fallback`` says why (summary, details panel).  Degrade, never refuse.
 """
 from __future__ import annotations
 
@@ -157,6 +166,8 @@ class _Slot:
     ev_copied: Any = None
     refs: int = 0           # pending writes + "last frame" reference
     frame_id: int = -1
+    dev: Any = None         # GPU encoder: the slot's NV12 device surface (host/pinned are then None)
+    surface: Any = None     # ... as the encoder takes it (nvenc.Surface)
 
 
 @dataclass
@@ -181,6 +192,7 @@ class _Rec:
     div: Optional[int] = None              # the scene's rate_div this frame
     held: Optional[bool] = None            # the scene's last frame was shown again (rate_div), nothing drawn
     probe: bool = False                    # rendered after MAX_REPEAT_RUN repeats in a row
+    enc_cpu_ms: Optional[float] = None     # the writer / encode thread's own CPU for this slot (pipe write or Encode)
 
 
 class Engine:
@@ -259,6 +271,19 @@ class Engine:
         # -- GPU frame-time guard (guard.py) --
         self.timer: Optional[GpuTimer] = None
         self._fc: Optional[FrameCtx] = None
+        # -- encoder (4K60 plan change 2): "nvenc" | "ffmpeg", set by the session before start() --
+        self.encoder = "ffmpeg"
+        self.encoder_active: Optional[str] = None
+        self.encoder_fallback: Optional[str] = None   # why this session runs on ffmpeg although nvenc was wanted
+        self._gpu_enc: Any = None
+        self._gop = max(1, round(profile.gop_s * profile.fps))
+        self._idr_frames: set[int] = set()            # render thread: frame ids that go out as IDRs (hold_pts)
+        self._idr_req = self._idr_seen = 0            # loop thread asks (a player joined); encode thread serves
+        self._next_id = 0                             # the next frame id the players expect
+        self.forced_idrs = 0                          # IDRs off the grid: hold frames and joining players
+        self._fb_host: Any = None                     # mid-session fallback: one pinned frame + a copy stream
+        self._fb_stream: Any = None
+        self.enc_cpu_ms = Ring(RECORD_KEEP)
         self.backlog_repeats = 0
         self.frozen_exits = 0
         self.slow_trips = 0
@@ -360,11 +385,17 @@ class Engine:
         cp = ctx.cp
         with ctx.device:
             self.frame = ctx.new_frame()
-            self.d_nv12 = cp.empty(self.nv12_bytes, cp.uint8)
+            gpu_enc = self._make_gpu_encoder() if self.encoder == "nvenc" else None
+            self.d_nv12 = None if gpu_enc is not None else cp.empty(self.nv12_bytes, cp.uint8)
             self.slots: list[_Slot] = []
             import numpy as np
 
             for i in range(N_SLOTS):
+                if gpu_enc is not None:                  # NV12 surfaces on the GPU: NVENC reads them there
+                    dev = cp.empty(self.nv12_bytes, cp.uint8)
+                    self.slots.append(_Slot(i, None, None, cp.cuda.Event(), cp.cuda.Event(),
+                                            cp.cuda.Event(block=True), dev=dev, surface=gpu_enc.surface(dev)))
+                    continue
                 pinned = cp.cuda.alloc_pinned_memory(self.nv12_bytes)
                 host = np.frombuffer(pinned, np.uint8, self.nv12_bytes)
                 self.slots.append(_Slot(i, host, pinned, cp.cuda.Event(), cp.cuda.Event(),
@@ -376,15 +407,14 @@ class Engine:
                 log.exception("[%s] details panel unavailable", self.name)
                 self.hud = None
         self.root = SourceLayer(anchor, 0.0)
-        p = self.profile
-        self.pipeline = NvencPipeline(
-            p.codec, self.w, self.h, self.fps, gpu=str(self.gpu), bitrate=p.bitrate, gop_seconds=p.gop_s,
-            preset=p.preset, extra_args=p.encoder_args(), delay=p.nvenc_delay, name=self._tag(), clock=pace_clock,
-            on_config=self._on_config, on_frame=self._on_frame, on_exit=self._on_exit)
+        self._gpu_enc = gpu_enc
+        self.pipeline = gpu_enc if gpu_enc is not None else self._ffmpeg_pipeline()
+        self.encoder_active = "nvenc" if gpu_enc is not None else "ffmpeg"
         self.started_at = pace_clock()
         self._closer_thread = threading.Thread(target=self._closer_loop, name=f"{self.name}-closer", daemon=True)
         self._closer_thread.start()
-        self._writer_thread = threading.Thread(target=self._writer_loop, name=f"{self.name}-writer", daemon=True)
+        self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True,
+                                               name=f"{self.name}-{'nvenc' if gpu_enc is not None else 'writer'}")
         self._render_thread = threading.Thread(target=self._render_loop, name=f"{self.name}-render", daemon=True)
         self._writer_thread.start()
         self._render_thread.start()
@@ -392,6 +422,34 @@ class Engine:
     def _tag(self) -> str:
         """The session in OS thread names (15 bytes with a role prefix)."""
         return self.name[2:] if self.name.startswith("s-") else self.name
+
+    def _ffmpeg_pipeline(self, id_base: int = 0) -> NvencPipeline:
+        p = self.profile
+        return NvencPipeline(
+            p.codec, self.w, self.h, self.fps, gpu=str(self.gpu), bitrate=p.bitrate, gop_seconds=p.gop_s,
+            preset=p.preset, extra_args=p.encoder_args(), delay=p.nvenc_delay, name=self._tag(), id_base=id_base,
+            clock=pace_clock, on_config=self._on_config, on_frame=self._on_frame, on_exit=self._on_exit)
+
+    def _make_gpu_encoder(self) -> Any:
+        """The GPU encoder on this engine's context and render stream (worker thread, device current), or None
+        and ``encoder_fallback`` set: the session then starts on the ffmpeg pipe."""
+        p = self.profile
+        try:
+            from .encode.nvenc import GpuEncoder
+
+            return GpuEncoder(p.codec, self.w, self.h, self.fps, cp=self.ctx.cp, stream=self.ctx.stream,
+                              bitrate=p.bitrate, gop_seconds=p.gop_s, colr=p.colr(), name=self._tag(),
+                              clock=pace_clock, on_config=self._on_config, on_frame=self._on_frame)
+        except Exception as e:
+            self.encoder_fallback = f"NVENC unavailable: {type(e).__name__}: {e}"[:300]
+            log.error("[%s] encoder fallback to ffmpeg at start: %s", self.name, self.encoder_fallback)
+            return None
+
+    def request_keyframe(self) -> None:
+        """A player joined (loop thread): the GPU encoder sends an IDR on its next frame instead of the player
+        waiting up to gop_s for one.  The ffmpeg pipe cannot force one; nothing to do before the first packet."""
+        if self.frames_encoded > 0:
+            self._idr_req += 1
 
     def submit(self, cmd: Any) -> None:
         self.cmds.put(cmd)
@@ -736,22 +794,25 @@ class Engine:
             retired = self.bus.chain.retire_done(fc)
             if retired and not self.stop_evt.is_set():
                 self.post(self.listener.on_fx, {"retired": retired})
-        self.ctx.kernels.rgba_to_nv12(self.frame, self.d_nv12, self.w, self.h)
+        nv12 = slot.dev if slot.dev is not None else self.d_nv12   # GPU encoder: straight into the slot's surface
+        self.ctx.kernels.rgba_to_nv12(self.frame, nv12, self.w, self.h)
         hud = self.hud
         if hud is not None and hud.failed is None and (hud.on or hud.fade > 0.0):
             try:                                # on the encoded copy only: self.frame (the frozen exit) stays clean
-                hud.draw(self.d_nv12, 0.0 if self.bus.sealed else smoothstep(self.bus.level), fc.n, stream)
+                hud.draw(nv12, 0.0 if self.bus.sealed else smoothstep(self.bus.level), fc.n, stream)
             except Exception:
                 hud._fail("stopped after an error")
                 log.exception("[%s] details panel stopped", self.name)
         slot.ev_rendered.record(stream)
         if timer is not None and self.timer is timer:
             timer.frame_end()
-        cp.cuda.runtime.memcpyAsync(slot.host.ctypes.data, self.d_nv12.data.ptr, self.nv12_bytes,
-                                    cp.cuda.runtime.memcpyDeviceToHost, stream.ptr)
-        slot.ev_copied.record(stream)
+        if slot.dev is None:
+            cp.cuda.runtime.memcpyAsync(slot.host.ctypes.data, self.d_nv12.data.ptr, self.nv12_bytes,
+                                        cp.cuda.runtime.memcpyDeviceToHost, stream.ptr)
+        slot.ev_copied.record(stream)           # GPU encoder: no copy, so this marks the frame done (blocking sync)
         self.root = self.root.collapse(fc)
         if self._out_layer is not None and self._out_layer.done:
+            self._idr_frames.add(fc.n)          # the exit's last frame (hold_pts) goes out as an IDR (GPU encoder)
             self._out_layer = None
         host_ms = (pace_clock() - t0) * 1000
         self.rendered += 1
@@ -858,7 +919,7 @@ class Engine:
     # ------------------------------------------------------------------------
     def _writer_loop(self) -> None:
         cp = self.ctx.cp
-        set_thread_name(f"writer-{self._tag()}")
+        set_thread_name(f"{'nvenc' if self._gpu_enc is not None else 'writer'}-{self._tag()}")
         self.ctx.device.use()
         try:
             while True:
@@ -878,17 +939,21 @@ class Engine:
                     cost = max(rec.render_ms, rec.host_ms)
                     self.render_cost_ema += 0.2 * (cost - self.render_cost_ema)
                 t0 = pace_clock()
+                c0 = time.thread_time()
                 try:
-                    self.pipeline.submit(memoryview(slot.host))
+                    self._submit(n, slot)
                 except (BrokenPipeError, ValueError, OSError) as e:
                     if not self.stop_evt.is_set():
                         self._fail(f"encoder input closed: {type(e).__name__}: {e}")
                     return
                 t1 = pace_clock()
+                enc_cpu = (time.thread_time() - c0) * 1000
+                self.enc_cpu_ms.add(enc_cpu)
                 self.frames_written += 1
                 if rec is not None:
                     rec.write_ms = (t1 - t0) * 1000
                     rec.t_written = t1
+                    rec.enc_cpu_ms = enc_cpu
                     self.write_ms.add(rec.write_ms)
                 with self._cv:
                     self._pending.popleft()
@@ -898,8 +963,67 @@ class Engine:
             with self._cv:
                 self._cv.notify_all()
 
+    def _submit(self, n: int, slot: _Slot) -> None:
+        """One slot to the encoder (writer thread).  GPU encoder: Encode() on the slot's surface, an IDR where due;
+        an error there falls back to ffmpeg for the rest of the session, starting with this frame."""
+        gpu = self._gpu_enc
+        if gpu is not None:
+            try:
+                gpu.submit(slot.surface, n, self._idr_due(n))
+                return
+            except Exception as e:
+                if self.stop_evt.is_set():
+                    return
+                self._fall_back(n, slot, f"NVENC failed mid-session: {type(e).__name__}: {e}"[:300])
+        self.pipeline.submit(memoryview(self._download(slot) if slot.dev is not None else slot.host))
+
+    def _idr_due(self, n: int) -> bool:
+        if n % self._gop == 0:                  # today's grid (NVENC's own GOP restarts at a forced IDR)
+            self._idr_frames.discard(n)
+            return True
+        req = self._idr_req
+        if n in self._idr_frames or req != self._idr_seen:
+            self._idr_frames.discard(n)
+            self._idr_seen = req
+            self.forced_idrs += 1
+            return True
+        return False
+
+    def _download(self, slot: _Slot) -> Any:
+        """A GPU-encoder slot's frame into the fallback's pinned buffer (writer thread; the frame is done)."""
+        cp = self.ctx.cp
+        cp.cuda.runtime.memcpyAsync(self._fb_host.ctypes.data, slot.dev.data.ptr, self.nv12_bytes,
+                                    cp.cuda.runtime.memcpyDeviceToHost, self._fb_stream.ptr)
+        self._fb_stream.synchronize()
+        return self._fb_host
+
+    def _fall_back(self, n: int, slot: _Slot, reason: str) -> None:
+        """NVENC failed at frame n (writer thread): the rest of the session goes through a new ffmpeg pipeline fed by
+        copies of the device surfaces.  Its frame ids start at the next one the players expect; the frames NVENC
+        held back are re-sent as frame n (a freeze of up to 3 frames) so the timeline stays whole.  The players get
+        the new init segment (MediaHub.set_config), then its first IDR."""
+        log.error("[%s] encoder fallback to ffmpeg at frame %d: %s", self.name, n, reason)
+        self.encoder_fallback, self.encoder_active = reason, "ffmpeg"
+        gpu, self._gpu_enc = self._gpu_enc, None
+        try:
+            gpu.close()
+        except Exception:
+            log.exception("[%s] closing the GPU encoder failed", self.name)
+        import numpy as np
+
+        cp = self.ctx.cp
+        self._fb_pinned = cp.cuda.alloc_pinned_memory(self.nv12_bytes)
+        self._fb_host = np.frombuffer(self._fb_pinned, np.uint8, self.nv12_bytes)
+        self._fb_stream = cp.cuda.Stream(non_blocking=True)
+        base = self._next_id
+        self.pipeline = self._ffmpeg_pipeline(id_base=base)
+        if n > base:
+            frame = memoryview(self._download(slot))
+            for _ in range(n - base):
+                self.pipeline.submit(frame)
+
     # ------------------------------------------------------------------------
-    # encoder callbacks (reader thread)
+    # encoder callbacks (reader thread; the encode thread for the GPU encoder)
     # ------------------------------------------------------------------------
     def _on_config(self, scfg: StreamConfig) -> None:
         self.stream_cfg = scfg
@@ -911,6 +1035,7 @@ class Engine:
 
     def _on_frame(self, frame_id: int, key: bool, sample: bytes, t_encoded: float) -> None:
         self.frames_encoded += 1
+        self._next_id = frame_id + 1
         self.bytes_encoded += len(sample)
         rec = self.records.get(frame_id)
         if rec is not None:
@@ -972,6 +1097,7 @@ class Engine:
                 self.frame = None
                 self.d_nv12 = None
                 self.slots = []
+                self._fb_host = self._fb_pinned = self._fb_stream = None
                 self._last_slot = None
                 ctx.pool.free.clear()
                 ctx.cp.get_default_memory_pool().free_all_blocks()
@@ -1003,6 +1129,10 @@ class Engine:
             "content_fps": self._content_fps(self._recent(2.0), 2.0),
             "content_frames": self.content_frames, "held_frames": self.held_frames,
             "probe_frames": self.probe_frames,
+            # change 2: which encoder, why not the wanted one, its thread's CPU per slot, render start -> packet
+            "encoder": self.encoder_active or self.encoder, "encoder_fallback": self.encoder_fallback,
+            "encode_cpu_ms": self.enc_cpu_ms.summary(), "slot_to_packet_ms": self.server_ms.summary(),
+            "forced_idrs": self.forced_idrs,
         }
 
     def guard_stats(self) -> dict:
@@ -1049,14 +1179,14 @@ class Engine:
             "render_ms": dist("render_ms", rendered), "write_ms": dist("write_ms"), "encode_ms": dist("encode_ms"),
             "slip_ms": dist("slip_ms"), "host_ms": dist("host_ms", rendered),
             "cpu_ms": dist("cpu_ms", rendered), "runq_ms": dist("runq_ms", rendered),
-            "blocked_ms": dist("blocked_ms", rendered),
+            "blocked_ms": dist("blocked_ms", rendered), "enc_cpu_ms": dist("enc_cpu_ms"),
             "content_fps": self._content_fps(recs, seconds), "probe_frames": sum(1 for r in recs if r.probe),
             "late_pct": round(100.0 * sum(1 for r in recs if r.slip_ms > period_ms) / len(recs), 1) if recs else None,
             "repeats": sum(1 for r in recs if r.repeat),
             "resyncs": sum(1 for t in self.resync_times if now - t <= seconds),
             "encode_queue": len(self._pending) + max(0, self.frames_written - self.frames_encoded),
             "mbps": round(sizes * 8 / 1e6 / seconds, 2),
-            "nvenc_delay_frames": self.profile.nvenc_delay,
+            "nvenc_delay_frames": getattr(self._gpu_enc, "delay_frames", self.profile.nvenc_delay),   # the active one
         }
 
     def _recent_bitrate(self) -> Optional[float]:

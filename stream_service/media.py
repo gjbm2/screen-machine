@@ -1,10 +1,12 @@
 """Media WebSocket fan-out for one session (LIVE_V1 §1.4), ported from the lab's Hub/Client.
 
 Server -> client: one ``config`` text message, ``[0x01][init]``, then ``[0x02][key][frame_id u32 BE][moof+mdat]``
-from the next keyframe on, and ``{"type": "eos"}`` when the session ends.  A client that falls 0.5 s of frames
-behind (frames queued here plus one stuck in the transport; 2 s in its first 2 s, while a new viewer's decoder
-warms up, which is exactly when a transition starts) is dropped to the next keyframe.  Small kernel
-send buffers keep the backlog in the asyncio transport, where it is visible (lab finding: otherwise the
+from the next keyframe on, and ``{"type": "eos"}`` when the session ends.  A second config (the GPU encoder fell
+back to ffmpeg mid-session) is announced again to everyone, who then waits for its first keyframe; ``want_key`` (the
+session's engine.request_keyframe) is called for each announced player, so the GPU encoder sends an IDR at once.
+A client that falls 0.5 s of frames behind (frames queued here plus one stuck in the transport; 2 s in its first
+2 s, while a new viewer's decoder warms up, which is exactly when a transition starts) is dropped to the next keyframe.
+Small kernel send buffers keep the backlog in the asyncio transport, where it is visible (lab finding: otherwise the
 kernel buffers megabytes of stale frames that drop-to-key cannot see).
 """
 from __future__ import annotations
@@ -16,7 +18,7 @@ import logging
 import math
 import socket
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from aiohttp import web
 
@@ -95,12 +97,18 @@ class MediaHub:
         self.config_msg: Optional[str] = None
         self.init_msg: Optional[bytes] = None
         self.ended = False
+        self.want_key: Optional[Callable[[], None]] = None   # engine.request_keyframe (GPU encoder)
 
     # -- producer side (loop thread) ---------------------------------------------
     def set_config(self, config_msg: dict, init_msg: bytes) -> None:
+        again = self.init_msg is not None
         self.config_msg = json.dumps({**config_msg, "session": self.session_id})
         self.init_msg = init_msg
         for c in self.clients.values():
+            if again and c.announced:     # a new encoder: its init, then its first keyframe (the old frames go)
+                c.announced, c.needs_key = False, True
+                c.dropped += len(c.media)
+                c.media.clear()
             self._announce(c)
 
     def _announce(self, c: MediaClient) -> None:
@@ -109,6 +117,8 @@ class MediaHub:
         c.announced = True
         c.push_control(self.config_msg)
         c.push_control(self.init_msg)
+        if self.want_key is not None:
+            self.want_key()
 
     def on_frame(self, frame_id: int, key: bool, msg: bytes) -> None:
         for c in self.clients.values():

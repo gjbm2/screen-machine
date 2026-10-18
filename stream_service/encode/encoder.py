@@ -37,7 +37,7 @@ class NvencPipeline:
                  bitrate: str = "8M", gop_seconds: float = 1.0, preset: str = "p1",
                  profile: Optional[str] = None,
                  vbv_frames: Optional[float] = None, fix_reorder: bool = True, slices: Optional[int] = None,
-                 extra_args: Sequence[str] = (), delay: int = 0, name: str = "",
+                 extra_args: Sequence[str] = (), delay: int = 0, name: str = "", id_base: int = 0,
                  clock: Callable[[], float],
                  on_config: Callable[[StreamConfig], None],
                  on_frame: Callable[[int, bool, bytes, float], None],
@@ -81,15 +81,17 @@ class NvencPipeline:
         self._closed = False
         self.tag = name             # OS thread names (top -H): enc-<tag>, encerr-<tag>
         self.frames_out = 0
-        self.last_frame_id = -1
+        self.id_base = id_base      # frame ids continue from here (a fallback from the GPU encoder mid-session)
+        self.last_frame_id = id_base - 1
         self.reader = threading.Thread(target=self._read_loop, name=f"nvenc-read-{codec}", daemon=True)
         self.errlog = threading.Thread(target=self._stderr_loop, name="nvenc-stderr", daemon=True)
         self.errlog.start()  # first: the reader joins it on exit
         self.reader.start()
 
     # -- input -------------------------------------------------------------
-    def submit(self, frame: memoryview) -> float:
-        """Write one NV12 frame; blocks until the pipe has taken all of it.
+    def submit(self, frame: memoryview, frame_id: int = -1, idr: bool = False) -> float:
+        """Write one NV12 frame; blocks until the pipe has taken all of it.  ``frame_id`` and ``idr`` are the GPU
+        encoder's (nvenc.GpuEncoder): frame ids here are the input order, and the pipe cannot force an IDR.
 
         Returns the clock() time at which the write completed."""
         if len(frame) != self.frame_bytes:
@@ -146,7 +148,7 @@ class NvencPipeline:
             return
         if pkt.is_end:
             return
-        frame_id = round(pkt.timestamp_ms * self.fps / 1000)
+        frame_id = self.id_base + round(pkt.timestamp_ms * self.fps / 1000)
         if frame_id <= self.last_frame_id:  # FLV ms rounding can never legitimately go backwards
             frame_id = self.last_frame_id + 1
         self.last_frame_id = frame_id

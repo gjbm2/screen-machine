@@ -591,3 +591,327 @@ def nal_types(sample: bytes, codec: str) -> list[int]:
 
 def u32(v: int) -> bytes:
     return struct.pack(">I", v)
+
+
+# --------------------------------------------------------------------------
+# HEVC Annex B -> MP4 (the GPU encoder, encode/nvenc.py)
+#
+# Ported from ffmpeg 6.1 (libavformat/hevc.c ff_isom_write_hvcc, avc.c nal_parse_units) so that, for the same
+# coded packets, the hvcC and the samples are byte-identical to what today's ffmpeg FLV path delivers
+# (tests/test_nvenc.py, the golden test).
+# --------------------------------------------------------------------------
+
+HEVC_VPS, HEVC_SPS, HEVC_PPS, HEVC_SEI_PREFIX, HEVC_SEI_SUFFIX = 32, 33, 34, 39, 40
+_HVCC_ARRAYS = (HEVC_VPS, HEVC_SPS, HEVC_PPS, HEVC_SEI_PREFIX, HEVC_SEI_SUFFIX)   # ffmpeg 6.1's fixed order
+_MAX_SPATIAL_SEGMENTATION = 4096
+
+
+def annexb_nals(data: bytes) -> list[bytes]:
+    """NAL units of an Annex B buffer, cut as ffmpeg's nal_parse_units cuts them: after each 00 00 01, up to the
+    next start code less one zero byte before it (a 4-byte start code)."""
+    out = []
+    i = data.find(b"\x00\x00\x01")
+    while i >= 0:
+        s = i + 3
+        j = data.find(b"\x00\x00\x01", s)
+        if j < 0:
+            if s < len(data):
+                out.append(data[s:])
+            break
+        e = j - 1 if j - 1 >= s and data[j - 1] == 0 else j
+        if e > s:
+            out.append(data[s:e])
+        i = j
+    return out
+
+
+def hevc_nal_type(nal: bytes) -> int:
+    return (nal[0] >> 1) & 0x3F
+
+
+def _hvcc_rec() -> dict:
+    return {"space": 0, "tier": 0, "idc": 0, "compat": 0xFFFFFFFF, "cons": 0xFFFFFFFFFFFF, "level": 0,
+            "min_ss": _MAX_SPATIAL_SEGMENTATION + 1, "par": 0, "chroma": 0, "bdl": 0, "bdc": 0, "layers": 0,
+            "nested": 0}
+
+
+def _hevc_ptl(r: BitReader, rec: dict, max_sub_layers_minus1: int) -> None:
+    space, tier, idc = r.u(2), r.u(1), r.u(5)
+    compat, cons, level = r.u(32), r.u(48), r.u(8)
+    rec["space"] = space
+    rec["level"] = level if rec["tier"] < tier else max(rec["level"], level)
+    rec["tier"] = max(rec["tier"], tier)
+    rec["idc"] = max(rec["idc"], idc)
+    rec["compat"] &= compat
+    rec["cons"] &= cons
+    flags = [(r.u(1), r.u(1)) for _ in range(max_sub_layers_minus1)]
+    if max_sub_layers_minus1 > 0:
+        for _ in range(max_sub_layers_minus1, 8):
+            r.u(2)
+    for prof, lev in flags:
+        if prof:
+            r.u(32); r.u(32); r.u(24)
+        if lev:
+            r.u(8)
+
+
+def _hevc_skip_hrd(r: BitReader, cprms_present: int, max_sub_layers_minus1: int) -> None:
+    nal = vcl = sub_pic = 0
+    if cprms_present:
+        nal, vcl = r.u(1), r.u(1)
+        if nal or vcl:
+            sub_pic = r.u(1)
+            if sub_pic:
+                r.u(19)
+            r.u(8)
+            if sub_pic:
+                r.u(4)
+            r.u(15)
+    for _ in range(max_sub_layers_minus1 + 1):
+        within = 1 if r.u(1) else r.u(1)   # fixed_pic_rate_general_flag (1 implies within_cvs) / within_cvs_flag
+        low_delay = 0
+        if within:
+            r.ue()                         # elemental_duration_in_tc_minus1
+        else:
+            low_delay = r.u(1)
+        cpb = 0 if low_delay else r.ue()
+        if cpb > 31:
+            raise ValueError("bad HRD cpb_cnt")
+        for present in (nal, vcl):
+            if present:
+                for _ in range(cpb + 1):
+                    r.ue(); r.ue()
+                    if sub_pic:
+                        r.ue(); r.ue()
+                    r.u(1)
+
+
+def _hevc_vui(r: BitReader, rec: dict, max_sub_layers_minus1: int, pos: dict) -> None:
+    if r.u(1) and r.u(8) == 255:   # aspect_ratio_info_present_flag, aspect_ratio_idc
+        r.u(32)
+    if r.u(1):                     # overscan_info_present_flag
+        r.u(1)
+    pos["vst"] = r.pos
+    if r.u(1):                     # video_signal_type_present_flag
+        pos["video_format"] = r.u(3)
+        r.u(1)
+        if r.u(1):                 # colour_description_present_flag
+            r.u(24)
+    pos["vst_end"] = r.pos
+    if r.u(1):                     # chroma_loc_info_present_flag
+        r.ue(); r.ue()
+    r.u(3)                         # neutral_chroma_indication, field_seq, frame_field_info_present
+    if r.u(1):                     # default_display_window_flag
+        r.ue(); r.ue(); r.ue(); r.ue()
+    if r.u(1):                     # vui_timing_info_present_flag
+        r.u(32); r.u(32)
+        if r.u(1):
+            r.ue()
+        if r.u(1):
+            _hevc_skip_hrd(r, 1, max_sub_layers_minus1)
+    if r.u(1):                     # bitstream_restriction_flag
+        r.u(3)
+        rec["min_ss"] = min(rec["min_ss"], r.ue())
+        r.ue(); r.ue(); r.ue(); r.ue()
+
+
+def _hevc_skip_scaling_list(r: BitReader) -> None:
+    for size_id in range(4):
+        for _ in range(2 if size_id == 3 else 6):
+            if not r.u(1):
+                r.ue()
+            else:
+                if size_id > 1:
+                    r.se()
+                for _ in range(min(64, 1 << (4 + (size_id << 1)))):
+                    r.se()
+
+
+def _hevc_skip_rps(r: BitReader, idx: int, num: int, num_delta_pocs: list[int]) -> None:
+    if idx and r.u(1):             # inter_ref_pic_set_prediction_flag
+        r.u(1); r.ue()
+        num_delta_pocs[idx] = 0
+        for _ in range(num_delta_pocs[idx - 1] + 1):
+            used = r.u(1)
+            if used or r.u(1):
+                num_delta_pocs[idx] += 1
+    else:
+        neg, posn = r.ue(), r.ue()
+        num_delta_pocs[idx] = neg + posn
+        for _ in range(neg + posn):
+            r.ue(); r.u(1)
+
+
+def _hevc_vps(r: BitReader, rec: dict) -> None:
+    r.u(12)
+    msl = r.u(3)
+    rec["layers"] = max(rec["layers"], msl + 1)
+    r.u(17)
+    _hevc_ptl(r, rec, msl)
+
+
+def _hevc_sps(r: BitReader, rec: dict, pos: dict) -> None:
+    r.u(4)
+    msl = r.u(3)
+    rec["layers"] = max(rec["layers"], msl + 1)
+    rec["nested"] = r.u(1)
+    _hevc_ptl(r, rec, msl)
+    r.ue()
+    rec["chroma"] = r.ue()
+    if rec["chroma"] == 3:
+        r.u(1)
+    r.ue(); r.ue()
+    if r.u(1):                     # conformance_window_flag
+        r.ue(); r.ue(); r.ue(); r.ue()
+    rec["bdl"], rec["bdc"] = r.ue(), r.ue()
+    log2_poc = r.ue()
+    for _ in range(0 if r.u(1) else msl, msl + 1):
+        r.ue(); r.ue(); r.ue()
+    for _ in range(6):
+        r.ue()
+    if r.u(1) and r.u(1):          # scaling_list_enabled_flag, sps_scaling_list_data_present_flag
+        _hevc_skip_scaling_list(r)
+    r.u(1); r.u(1)                 # amp, sample_adaptive_offset
+    if r.u(1):                     # pcm_enabled_flag
+        r.u(4); r.u(4); r.ue(); r.ue(); r.u(1)
+    nst = r.ue()
+    if nst > 64:
+        raise ValueError("bad SPS num_short_term_ref_pic_sets")
+    ndp = [0] * nst
+    for i in range(nst):
+        _hevc_skip_rps(r, i, nst, ndp)
+    if r.u(1):                     # long_term_ref_pics_present_flag
+        nlt = r.ue()
+        if nlt > 31:
+            raise ValueError("bad SPS num_long_term_ref_pics_sps")
+        for _ in range(nlt):
+            r.u(min(log2_poc + 4, 16)); r.u(1)
+    r.u(1); r.u(1)                 # sps_temporal_mvp, strong_intra_smoothing
+    pos["vui_flag"] = r.pos
+    if r.u(1):
+        _hevc_vui(r, rec, msl, pos)
+    pos["vui_end"] = r.pos
+
+
+def _hevc_pps(r: BitReader, rec: dict) -> None:
+    r.ue(); r.ue(); r.u(7); r.ue(); r.ue(); r.se(); r.u(2)
+    if r.u(1):                     # cu_qp_delta_enabled_flag
+        r.ue()
+    r.se(); r.se(); r.u(4)
+    tiles, wpp = r.u(1), r.u(1)
+    rec["par"] = 0 if tiles and wpp else 3 if wpp else 2 if tiles else 1
+
+
+def build_hvcc(nals: list[bytes], ps_array_completeness: int = 0) -> bytes:
+    """hvcC (version 1, 4-byte lengths) from parameter-set NAL units, as ffmpeg 6.1's FLV muxer writes it."""
+    rec = _hvcc_rec()
+    arrays: dict[int, list[bytes]] = {t: [] for t in _HVCC_ARRAYS}
+    for nal in nals:
+        t = hevc_nal_type(nal)
+        if t not in arrays:
+            continue
+        arrays[t].append(nal)
+        r = BitReader(unescape_rbsp(nal[2:]))
+        if t == HEVC_VPS:
+            _hevc_vps(r, rec)
+        elif t == HEVC_SPS:
+            _hevc_sps(r, rec, {})
+        elif t == HEVC_PPS:
+            _hevc_pps(r, rec)
+    if not (arrays[HEVC_VPS] and arrays[HEVC_SPS] and arrays[HEVC_PPS]):
+        raise ValueError("hvcC needs a VPS, an SPS and a PPS")
+    min_ss = rec["min_ss"] if rec["min_ss"] <= _MAX_SPATIAL_SEGMENTATION else 0
+    out = bytearray([1, rec["space"] << 6 | rec["tier"] << 5 | rec["idc"]])
+    out += rec["compat"].to_bytes(4, "big") + rec["cons"].to_bytes(6, "big") + bytes([rec["level"]])
+    out += (0xF000 | min_ss).to_bytes(2, "big")
+    out += bytes([0xFC | (rec["par"] if min_ss else 0), 0xFC | rec["chroma"], 0xF8 | rec["bdl"], 0xF8 | rec["bdc"]])
+    out += b"\0\0"                                               # avgFrameRate: unspecified
+    out.append(rec["layers"] << 3 | rec["nested"] << 2 | 3)      # constantFrameRate 0, lengthSizeMinusOne 3
+    out.append(sum(1 for t in _HVCC_ARRAYS if arrays[t]))
+    for t in _HVCC_ARRAYS:
+        if not arrays[t]:
+            continue
+        done = ps_array_completeness if t in (HEVC_VPS, HEVC_SPS, HEVC_PPS) else 0
+        out.append(done << 7 | t)
+        out += len(arrays[t]).to_bytes(2, "big")
+        for nal in arrays[t]:
+            out += len(nal).to_bytes(2, "big") + nal
+    return bytes(out)
+
+
+def _stop_bit(rbsp: bytes) -> int:
+    i = len(rbsp) - 1
+    while i >= 0 and rbsp[i] == 0:
+        i -= 1
+    if i < 0:
+        raise ValueError("RBSP without a stop bit")
+    b = rbsp[i]
+    return i * 8 + 7 - ((b & -b).bit_length() - 1)
+
+
+def hevc_sps_with_colour(sps: bytes, colr: tuple[int, int, int, bool]) -> bytes:
+    """The SPS with VUI video_signal_type = these (primaries, transfer, matrix, full_range) code points, as today's
+    ffmpeg path writes them (-color_primaries/-color_trc/-colorspace/-color_range); every other bit is copied (a
+    missing VUI is added).  PyNvVideoCodec 2.2.3 has no VUI colour option (unknown keys are silently ignored)."""
+    primaries, transfer, matrix, full = colr
+    rbsp = unescape_rbsp(sps[2:])
+    pos: dict = {}
+    _hevc_sps(BitReader(rbsp), _hvcc_rec(), pos)
+    stop = _stop_bit(rbsp)
+    w = BitWriter()
+
+    def signal(video_format: int) -> None:
+        w.u(1, 1); w.u(3, video_format); w.u(1, 1 if full else 0)
+        w.u(1, 1); w.u(8, primaries); w.u(8, transfer); w.u(8, matrix)
+
+    if "vst" in pos:
+        w.copy_bits(rbsp, 0, pos["vst"])
+        signal(pos.get("video_format", 5))
+        w.copy_bits(rbsp, pos["vst_end"], stop)
+    else:                                      # no VUI: one with only the video signal type
+        w.copy_bits(rbsp, 0, pos["vui_flag"])
+        w.u(1, 1); w.u(1, 0); w.u(1, 0)        # vui present; no aspect ratio, no overscan
+        signal(5)
+        w.u(1, 0); w.u(3, 0); w.u(1, 0); w.u(1, 0); w.u(1, 0)   # chroma loc, 3 flags, display window, timing, restriction
+        w.copy_bits(rbsp, pos["vui_flag"] + 1, stop)
+    return sps[:2] + escape_rbsp(w.trailing())
+
+
+class HevcAnnexB:
+    """NVENC's Annex B access units -> the config record and the length-prefixed samples today's FLV path gives
+    (``hev1``: parameter sets stay in band).  With ``colr`` every SPS (the record's and the in-band copies on IDRs)
+    carries that VUI colour description."""
+
+    def __init__(self, width: int, height: int, colr: Optional[tuple[int, int, int, bool]] = None):
+        self.width, self.height, self.colr = width, height, colr
+        self._sps: dict[bytes, bytes] = {}
+        self.config: Optional[StreamConfig] = None
+        self.inband_param_sets = 0
+
+    def _fix_sps(self, nal: bytes) -> bytes:
+        if self.colr is None:
+            return nal
+        out = self._sps.get(nal)
+        if out is None:
+            out = self._sps[nal] = hevc_sps_with_colour(nal, self.colr)
+        return out
+
+    def on_param_sets(self, annexb: bytes) -> StreamConfig:
+        nals = [self._fix_sps(n) if hevc_nal_type(n) == HEVC_SPS else n for n in annexb_nals(annexb)]
+        rec = build_hvcc(nals)
+        self.config = StreamConfig("hevc", "hev1", "hvcC", rec, hevc_codec_string(rec, "hev1"), self.width,
+                                   self.height, [])
+        return self.config
+
+    def sample(self, au: bytes) -> tuple[bytes, bool]:
+        """-> (length-prefixed sample, keyframe: an IRAP picture)."""
+        nals = annexb_nals(au)
+        key = False
+        for k, n in enumerate(nals):
+            t = hevc_nal_type(n)
+            if 16 <= t <= 23:
+                key = True
+            elif t == HEVC_SPS:
+                self.inband_param_sets += 1
+                nals[k] = self._fix_sps(n)
+        return join_length_prefixed(nals), key
