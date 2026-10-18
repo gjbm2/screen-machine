@@ -588,7 +588,7 @@ def test_test_audio_child_streams_to_the_receiver_over_localhost(tmp_path):
         deadline = t_start + 10.0
         while time.monotonic() < deadline:
             st = rx.health().get("streams", {}).get("test-audio", {})
-            if len(blocks) * 128 >= 1.5 * 48000 and (st.get("sender") or {}).get("sess"):
+            if sum(len(b[3]) for b in blocks) >= 1.5 * 48000 and (st.get("sender") or {}).get("sess"):
                 break
             time.sleep(0.05)
         elapsed = time.monotonic() - t_start
@@ -598,14 +598,15 @@ def test_test_audio_child_streams_to_the_receiver_over_localhost(tmp_path):
         assert h["sender"]["dev"] == "file:tone.wav" and h["sender"]["state"] == "ok"
         assert rx.active_audio() == "test-audio"
         assert blocks[0][5] & AUDIO_SEGMENT and blocks[0][4] == 48000
-        runs: list[list[int]] = []                                         # n0 per receiver segment
-        for b in blocks:
+        runs: list[list[tuple[int, int]]] = []                             # (n0, frames) per receiver segment
+        for b in blocks:                                                   # (a block may hold several packets)
             if b[5] & AUDIO_SEGMENT:
                 runs.append([])
-            runs[-1].append(b[1])
-        assert all(r == [i * 128 for i in range(len(r))] for r in runs)    # contiguous, nothing lost
+            runs[-1].append((b[1], len(b[3])))
+        assert all(r[0][0] == 0 and all(r[i + 1][0] == r[i][0] + r[i][1] for i in range(len(r) - 1))
+                   for r in runs)                                          # contiguous from 0, nothing lost
         assert len(runs) <= 3                                              # a new sess only if the child stalled
-        assert len(blocks) * 128 / 48000 <= elapsed + 0.2                 # paced in real time, not a flood
+        assert sum(len(b[3]) for b in blocks) / 48000 <= elapsed + 0.2     # paced in real time, not a flood
         pcm = np.concatenate([b[3] for b in blocks])
         assert np.abs(pcm).max() > 0.1 and all(math.isfinite(b[2]) for b in blocks)   # the tone, looping past 0.7 s
     finally:
