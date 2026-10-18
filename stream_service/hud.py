@@ -13,9 +13,10 @@ Three parts, on three threads:
   blends the panel into the NV12 frame over a fixed rectangle, only while the master bus is open (``bus.level``:
   0 until art->live is done, faded on exit, 0 once sealed, so anchor, cut and hold frames carry no panel) and the
   toggle's own fade is up.  A new grid is uploaded asynchronously into the spare buffer when its previous upload
-  is done.  Self-timed with a CUDA event pair read via ``Event.done`` (never a sync): over 0.5 ms (EMA) for 2 s,
-  or any frame over 5 ms, switches it off ("too slow"); any exception latches it off ("stopped after an error").
-  The stream never depends on it.
+  is done.  Self-timed with a CUDA event pair read via ``Event.done`` (never a sync): its cost is reported (the
+  ``details`` figure), never acted on (owner 18 Oct: no gates; it's there to understand performance).  An
+  exception skips that frame's panel and is logged (at most once a minute); the next frame tries again.  The
+  stream never depends on it.
 """
 from __future__ import annotations
 
@@ -36,9 +37,9 @@ CELL_DIV = 60                               # cell height = frame height / 60 (3
 INSET = 64                                  # px from the top-left, a multiple of 32 (HEVC CTU)
 ALIGN = 32
 FADE_S = 0.3                                # the toggle's own fade
-SLOW_EMA_MS, SLOW_FOR_S, HARD_MS = 0.5, 2.0, 5.0
 EMA_A = 0.1
-BUILD_SLOW_MS = 5.0                         # a model build over this drops it to 1 Hz
+BUILD_SLOW_MS = 5.0                         # a model build over this updates it at 1 Hz instead of 2 (degrades)
+ERROR_LOG_S = 60.0                          # an error drawing the panel is logged at most this often
 FALLBACK = {"·": ".", "•": "*", "→": ">", "←": "<", "↑": "^", "↓": "v", "×": "x", "–": "-", "—": "-",
             "★": "*", "♪": "~", "…": "...", "°": "o", "µ": "u", "≥": ">=", "≤": "<="}
 
@@ -128,9 +129,10 @@ class HudDraw:
         self.active = 0
         self.ready = False
         self.fade = 0.0
-        self.failed: Optional[str] = None
+        self.failed: Optional[str] = None     # always None: the panel never turns itself off (kept for callers)
         self.ema_ms: Optional[float] = None
-        self.slow_since: Optional[float] = None
+        self.errors = 0
+        self.last_error_log = -1e9
         self.lamp = None                     # () -> 0..1 (the session's beat at photon time)
 
     def set(self, grid: bytes, tone: bytes) -> None:
@@ -139,15 +141,11 @@ class HudDraw:
 
     def draw(self, nv12, gate: float, frame_no: int, stream) -> None:
         """Render thread, after rgba_to_nv12.  ``gate``: the master bus's open level (0 = no panel)."""
-        if self.failed is not None:
-            return
         dt = 1.0 / self.fps
         target = 1.0 if self.on else 0.0
         step = dt / FADE_S
         self.fade = min(target, self.fade + step) if self.fade < target else max(target, self.fade - step)
         self._read_timing()
-        if self.failed is not None:
-            return
         pend = self.pending
         if pend is not None:
             spare = 1 - self.active
@@ -196,21 +194,15 @@ class HudDraw:
         self.timing = False
         ms = self.cp.cuda.get_elapsed_time(self.t0, self.t1)
         self.ema_ms = ms if self.ema_ms is None else self.ema_ms + EMA_A * (ms - self.ema_ms)
-        now = time.monotonic()
-        if ms > HARD_MS:
-            self._fail("too slow", ms)
-        elif self.ema_ms > SLOW_EMA_MS:
-            if self.slow_since is None:
-                self.slow_since = now
-            elif now - self.slow_since >= SLOW_FOR_S:
-                self._fail("too slow", self.ema_ms)
-        else:
-            self.slow_since = None
 
     def _fail(self, why: str, ms: Optional[float] = None) -> None:
-        if self.failed is None:
-            self.failed = why
-            log.warning("details panel off: %s%s", why, f" ({ms:.2f} ms)" if ms is not None else "")
+        """An error drawing the panel (the renderer calls this): that frame goes without it, the next tries again.
+        Logged with its count at most once every ERROR_LOG_S."""
+        self.errors += 1
+        now = time.monotonic()
+        if now - self.last_error_log >= ERROR_LOG_S:
+            self.last_error_log = now
+            log.warning("details panel: %s (%d so far)%s", why, self.errors, f" ({ms:.2f} ms)" if ms is not None else "")
 
 
 # -- the model (loop thread) -------------------------------------------------------------------------------------

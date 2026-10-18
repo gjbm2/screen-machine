@@ -20,7 +20,6 @@ class CalFlash(Source):
     name = "cal_flash"
     label = "Calibration flash"
     description = "Full-frame black or white on command, for latency calibration."
-    hud = False          # the details panel stays off while it shows: the calibration frame stays clean
     params = {
         "white": {"type": "integer", "minimum": 0, "maximum": 1, "default": 0, "x-ease": False,
                   "x-ui": {"label": "White", "widget": "slider"}},
