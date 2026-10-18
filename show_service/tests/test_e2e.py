@@ -174,13 +174,13 @@ def test_end_to_end(tmp_path, monkeypatch):
     assert msgs[0][1]["type"] == "welcome"
     report = []
 
-    # -- music.features: ~25 Hz, spectrum32 of 32 in 0..1 ------------------------------------------------------------
+    # -- music.features: ~50 Hz (dsp.PUBLISH_HZ since 17 Oct), spectrum32 of 32 in 0..1 -----------------------------
     feats = [(t, m["data"]) for t, m in by.get(contract.MUSIC_FEATURES, [])]
     assert len(feats) > 20 * SECONDS * 0.8, len(feats)
     steady = [t for t, _ in feats if t_start + 2.0 <= t <= t_start + SECONDS - 1.0]
     rate = (len(steady) - 1) / (steady[-1] - steady[0])
     report.append(f"features {rate:.1f} Hz")
-    assert 22.0 <= rate <= 27.0, rate
+    assert 40.0 <= rate <= 52.0, rate
     for _, d in feats:
         s = d["spectrum32"]
         assert len(s) == 32 and all(0.0 <= v <= 1.0 for v in s), s
@@ -243,7 +243,8 @@ def test_end_to_end(tmp_path, monkeypatch):
     assert code == 200 and h["ok"] is True and h["active_audio"] == "room-mic"
     assert h["streams"] == {"room-mic": "streaming", "test-piano": "streaming"}
     code, body = mid["state"]
-    assert code == 200 and all(v == "ok" for v in body["modules"].values()) and len(body["modules"]) == 6
+    assert code == 200 and all(v == "ok" for v in body["modules"].values())
+    assert {"clock", "dsp", "midi", "receiver"} <= set(body["modules"])          # (and mic, since 17 Oct)
     assert body["errors"] == {} and body["piano"]["present"] is True
     assert body["artnet"]["state"] == "sending" and body["clock"]["stats"]["errors"] == 0
     assert 38.0 <= body["artnet"]["rate_hz"] <= 44.5                           # the send side's own rate
