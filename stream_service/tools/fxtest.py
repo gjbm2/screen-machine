@@ -35,6 +35,7 @@ import pathlib
 import subprocess
 import sys
 import time
+from typing import Optional
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
@@ -242,13 +243,18 @@ class FxSound(ScopeFields):
         self.scope_upload()
 
 
-def listen(obj, ctx):
+def listen(obj, ctx, at: Optional[float] = None):
     """Give a plug-in that ``listens`` (any token: notes, spectrum, chroma, scope, fft) a test piano (before setup,
-    as Engine.prepare does), ticked per render."""
+    as Engine.prepare does), ticked per render.  ``at``: tick once to that time instead and leave render alone (the
+    effect bench: a sounding moment, with no host synth inside the GPU timing)."""
     if not getattr(type(obj), "listens", None):
         return
     snd = FxSound(ctx.cp, PIANO)
     obj.sound = snd
+    if at is not None:
+        for k in range(int(at * 30) + 1):              # the piano's state at ``at`` (30 Hz steps, as a session would)
+            snd.tick(k / 30.0)
+        return
     orig = obj.render
 
     def render(t_local, dt, *a):
@@ -555,6 +561,7 @@ def preview_effect(cls, preset, bindings, ctx, outdir, video_s=0.0):
     ident = []
     for t in (1.0, 3.0, 6.5):
         x = cls()
+        listen(x, ctx)                                # listening effects hear the test piano (amount 0: still src)
         x.setup(ctx, cls.validate({**preset, "amount": 0.0}))
         f = ctx.new_frame()
         for i in range(6):
@@ -562,6 +569,7 @@ def preview_effect(cls, preset, bindings, ctx, outdir, video_s=0.0):
             x.render(t + i / FPS, 1 / FPS, src, f)
         ident.append(mad(cp, f, src))
     e = cls()
+    listen(e, ctx)
     e.setup(ctx, cls.validate(preset))
     drive(e, bindings, sig)
     base_amount = float(cls.validate(preset).get("amount", 1.0))
@@ -606,10 +614,12 @@ def preview_effect(cls, preset, bindings, ctx, outdir, video_s=0.0):
         pair = []
         for v in (prop["minimum"], prop["maximum"]):
             x = cls()
+            listen(x, ctx)
             x.setup(ctx, cls.validate({**SWEEP_HOLD(cls), **preset, k: v}))
             f = ctx.new_frame()
+            t0 = 3.0 if getattr(cls, "listens", None) else 0.0   # listening: a moment the test piano is sounding
             for i in range(10):
-                x.render(i / FPS, 1 / FPS, src, f)
+                x.render(t0 + i / FPS, 1 / FPS, src, f)
             pair.append(f)
         m = mad(cp, pair[0], pair[1])
         if m < 0.75:
@@ -656,6 +666,7 @@ def bench(cls, kind, preset, size):
                 run = lambda i: x.render(0.2 + 0.6 * (i % 60) / 60, a, b, out)
             else:
                 x = cls()
+                listen(x, ctx, at=3.0)                # a sounding moment; the synth stays out of the GPU timing
                 x.setup(ctx, cls.validate(preset))
                 run = lambda i: x.render(i / 60, 1 / 60, a, out)
             for i in range(10):
