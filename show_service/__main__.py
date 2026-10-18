@@ -27,7 +27,8 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
              Clock.apply_integer_correction
  [show-artnet], [show-artnet-poll]  artnet_out.VirtualMaestro, only with a target (off by default): reads
              Features.latest, the clock and Director.palette_fn by reference
- [main]      signals; latency.json polled every 2 s -> Receiver.set_offsets; gc.freeze() (no collect) after warm-up
+ [main]      signals; latency.json polled every 2 s -> Receiver.set_offsets, audio_cal.json -> Features.gate_offsets;
+             gc.freeze() (no collect) after warm-up
 ```
 
 * **The brain** (README "Stage 3", S3.4) is on unless ``--no-brain`` / ``SHOW_BRAIN=off``; off, the process is exactly
@@ -676,6 +677,12 @@ class Show:
             log.warning("Hue lead not updated (%s): keeping %.1f ms", e,
                         getattr(self.artnet, "hue_latency_s", 0.0) * 1000)
 
+    def set_gate_offsets(self, offsets: dict[str, float]) -> None:
+        """Each stream's loudness-gate offset (its mic's calibration, config.GateOffsetWatch over audio_cal.json) to
+        Features, swapped in by reference (main thread; show-rx reads it)."""
+        if self.features is not None:
+            self.features.gate_offsets = dict(offsets)
+
     def set_offsets(self, offsets: dict[str, float]) -> None:
         self.offsets = dict(offsets)
         if self.rx is not None:
@@ -997,6 +1004,11 @@ def main(argv: list[str] | None = None) -> int:
     show.set_hue_lead()
     if offsets:
         log.info("acoustic offsets from %s: %s", cfg.latency_file, offsets)
+    gwatch = config.GateOffsetWatch(opts.audio_cal_file)
+    gates = gwatch.poll(force=True)
+    show.set_gate_offsets(gates or {})
+    if gates:
+        log.info("loudness gate offsets from %s (dB): %s", opts.audio_cal_file, gates)
     t_start, frozen, errors_seen = time.monotonic(), False, 0
     while not stop.wait(RELOAD_S):
         offsets = watch.poll()
@@ -1004,6 +1016,10 @@ def main(argv: list[str] | None = None) -> int:
             log.info("latency.json changed: acoustic offsets %s", offsets or "none (all 0)")
             show.set_offsets(offsets)
             show.set_hue_lead()
+        gates = gwatch.poll()
+        if gates is not None:
+            log.info("audio_cal.json changed: loudness gate offsets (dB) %s", gates or "none (all 0)")
+            show.set_gate_offsets(gates)
         if watch.errors != errors_seen:
             errors_seen = watch.errors
             if errors_seen == 1 or errors_seen % 30 == 0:

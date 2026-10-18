@@ -521,3 +521,23 @@ def test_the_gate_follows_a_quiet_mics_own_floor_down():
     msgs, g = collect()
     feed(g, loud, block=1024)
     assert g.stats()["gate_ref_lufs"] == -30.0 and g.latest()["gate"] > 0.9
+
+
+def test_a_calibrated_mic_gets_its_own_gate_offset():
+    """gate_offsets {stream: dB} (audio_cal.json's music_lufs - (-30)): a mic that hears party music at about -47 LUFS
+    opens the gate on it at once, before the floor-following has the minutes of history it needs; other streams and a
+    stream with no entry are gated as before."""
+    music = coloured(8 * FS, 1, 10 ** (-45 / 20), seed=6)             # room music on a quiet mic, no floor history
+    msgs, f = collect()
+    feed(f, music, block=1024)
+    assert f.latest()["gate"] < 0.1 and f.stats()["gate_offset_db"] == 0.0     # the -45..-30 gate shuts it
+    msgs, g = collect()
+    g.gate_offsets = {"room-mic": -17.5, "other": 5.0}
+    feed(g, music, block=1024)
+    st = g.stats()
+    assert st["gate_offset_db"] == -17.5 and st["gate_ref_lufs"] == pytest.approx(-47.5, abs=0.05)
+    assert g.latest()["gate"] > 0.9
+    msgs, h = collect()
+    h.gate_offsets = {"other": -17.5}                                 # not this stream: as before
+    feed(h, music, block=1024)
+    assert h.latest()["gate"] < 0.1
