@@ -7,13 +7,13 @@ rendered frame with one more event.  At the start of the next frame (and while t
 it never blocks the host.  A frame still running on the GPU is looked into: the plug-in whose start event has
 passed but whose end has not is "in progress", and how long it has been seen so is a lower bound on its cost.
 
-Trip rules (:class:`TripMonitor`, per plug-in call site):
-  * ``sustained``: consecutive samples over ``TRIP_BUDGET_X`` (1.5) x the frame period that add up to
-    ``TRIP_WINDOW_S`` (0.5 s) of GPU time, or span 0.5 s worth of frames;
-  * ``frame``: any single frame over ``TRIP_FRAME_MS`` (0.5 s);
-  * ``stuck``: a call still running on the GPU 0.5 s after it was seen to start (a frame that may never end).
-A scene rendering only every ``rate_div``-th frame (layers.py: a struggling GPU drops the scene's frame rate) gets
-``rate_div`` x the budget per render.  A trip calls the owner's ``trip(fc, SlowPlugin)``, which substitutes through the failure paths the layers already
+No gates (owner, 18 Oct 2026: "rip all your gates out"; graceful degradation): a slow plug-in keeps playing.
+A scene over its frame time drops its frame rate (layers.py ``rate_div``), the engine repeats frames while the GPU
+is behind (below), and the cost is reported (``stats()``: the worst call, how many samples were over the budget,
+the details panel and the log).  The one stop (:class:`TripMonitor`) is a hang:
+  * ``stuck``: a call still running on the GPU ``HANG_MS`` (3 s) after it was seen to start;
+  * ``frame``: a call that took ``HANG_MS`` or more (read after it finished).
+A stop calls the owner's ``trip(fc, SlowPlugin)``, which substitutes through the failure paths the layers already
 have (layers.py, effects.py): a scene shows black and the session cues a recovery, a transition finishes as a cut,
 an effect is dropped.  Internal plug-ins (the anchor / exit stills) are never timed.
 
@@ -34,12 +34,11 @@ from typing import Any, Callable, Optional
 
 log = logging.getLogger("stream_service.guard")
 
-TRIP_BUDGET_X = 1.5          # a plug-in over 1.5 x the frame period ...
-TRIP_WINDOW_S = 0.5          # ... for ~0.5 s of frames trips
-TRIP_FRAME_MS = 500.0        # any single frame over 0.5 s trips (also while it is still running)
+TRIP_BUDGET_X = 1.5          # the budget reported against: 1.5 x the frame period (nothing stops on it)
+HANG_MS = 3000.0             # a call on the GPU this long is a hang, not a slow frame: the one stop
 MAX_GPU_BACKLOG = 2          # rendered frames the GPU may lag the host before the engine repeats instead
 TOTAL_EMA = 0.3
-WHY_TEXT = {"frame": "a single frame", "stuck": "still running", "sustained": f"over budget for {TRIP_WINDOW_S:g} s"}
+WHY_TEXT = {"frame": "a single frame", "stuck": "still running"}
 
 
 def trip_budget_ms(fps: float) -> float:
@@ -72,12 +71,11 @@ class TripMonitor:
     def __init__(self, fps: float):
         self.period_ms = 1000.0 / fps
         self.budget_ms = trip_budget_ms(fps)
-        self.window_frames = max(1, math.ceil(TRIP_WINDOW_S * fps))
-        self.window_ms = TRIP_WINDOW_S * 1000.0
-        self.frame_ms = TRIP_FRAME_MS
+        self.frame_ms = HANG_MS
 
     def feed(self, st: Stat, ms: float, scale: float = 1.0) -> Optional[str]:
-        """One measured sample -> the trip reason, or None.  ``scale``: the call site's frames per render."""
+        """One measured sample -> "frame" for a hang, else None (over the budget is counted, never stopped).
+        ``scale``: the call site's frames per render."""
         st.samples += 1
         st.last_ms = ms
         if st.tripped:
@@ -87,10 +85,6 @@ class TripMonitor:
         if ms > self.budget_ms * scale:
             st.n_over += 1
             st.sum_over += ms
-            if st.n_over >= self.window_frames or st.sum_over >= self.window_ms:
-                return "sustained"
-        else:
-            st.n_over, st.sum_over = 0, 0.0
         return None
 
     def stuck(self, st: Stat, running_ms: float) -> bool:
@@ -154,6 +148,8 @@ class GpuTimer:
         self.trips = 0
         self.total_ema: Optional[float] = None
         self.last_trip: Optional[dict] = None
+        self.over = 0                   # samples over the budget (reported; nothing stops on them)
+        self.worst: Optional[dict] = None   # the slowest call so far {kind, name, ms}
 
     # -- recording (render thread, inside a frame) ----------------------------------
     def _ev(self) -> Any:
@@ -248,9 +244,14 @@ class GpuTimer:
         if st.probation:
             st.probation = False
             self.probation -= 1
+        n_over = st.n_over
         why = self.mon.feed(st, ms, getattr(rec.owner, "rate_div", 1))
+        if st.n_over > n_over:
+            self.over += 1
+        if self.worst is None or ms > self.worst["ms"]:
+            self.worst = {"kind": rec.kind, "name": plugin_name(rec.kind, rec.owner, rec.obj), "ms": round(ms, 1)}
         if why is not None:
-            self._trip(fc, rec, ms if why != "sustained" else st.sum_over / max(1, st.n_over), why)
+            self._trip(fc, rec, ms, why)
 
     def _trip(self, fc: Any, rec: _Rec, ms: float, why: str) -> None:
         st = rec.owner.gpu_stat
@@ -261,7 +262,7 @@ class GpuTimer:
         self.trips += 1
         self.last_trip = {"kind": rec.kind, "name": name, "ms": round(ms, 1), "why": why}
         exc = SlowPlugin(rec.kind, name, ms, self.mon.budget_ms * getattr(rec.owner, "rate_div", 1), why)
-        log.warning("GPU guard: %s %s tripped: %s", rec.kind, name, exc)
+        log.warning("GPU guard: %s %s stopped (a hang): %s", rec.kind, name, exc)
         try:
             rec.owner.trip(fc, exc)
         except Exception:              # the guard must never take a frame down
@@ -291,4 +292,5 @@ class GpuTimer:
     def stats(self) -> dict:
         return {"samples": self.samples, "trips": self.trips, "backlog": len(self.fifo),
                 "frame_gpu_ms": None if self.total_ema is None else round(self.total_ema, 2),
-                "budget_ms": round(self.mon.budget_ms, 2), "last_trip": self.last_trip}
+                "budget_ms": round(self.mon.budget_ms, 2), "last_trip": self.last_trip, "over_budget": self.over,
+                "worst": self.worst}

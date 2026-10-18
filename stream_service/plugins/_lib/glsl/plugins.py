@@ -96,18 +96,17 @@ log = logging.getLogger("stream_service.plugins.glsl")
 
 # Frame-time thresholds (GPU ms per render call).  Imported shaders are untrusted for cost: a shader over its
 # "slow" threshold is shrunk (render scale) until it fits.  At the minimum scale it keeps running (owner, 15 Oct:
-# degrade, never refuse): the engine then lowers a scene's frame rate (layers.py rate_div) and its guard (guard.py)
-# decides.  Only a shader over "hard" for a few frames in a row raises GpuTooSlow here, and the engine substitutes it
-# (scene -> black + recovery cue, transition -> crossfade, effect -> passthrough).  The kernels themselves are bounded
+# degrade, never refuse; 18 Oct: no gates): the engine then lowers a scene's frame rate (layers.py rate_div); its
+# guard (guard.py) stops only a hang.  The kernels themselves are bounded
 # too: every loop carries a per-pixel iteration cap and an SM-clock budget (glsl_compat.cuh), so no launch can hang
 # the GPU.
-SCENE_SLOW_MS, EFFECT_SLOW_MS, TRANSITION_SLOW_MS, HARD_MS = 20.0, 12.0, 25.0, 200.0
+SCENE_SLOW_MS, EFFECT_SLOW_MS, TRANSITION_SLOW_MS = 20.0, 12.0, 25.0
 SCENE_MIN_SCALE, EFFECT_MIN_SCALE = 0.25, 0.35
 SLOW_RUN = 3          # slow samples in a row before the render scale shrinks (one spike is a busy host, not the shader)
 GOOD_RUN = 90         # samples under half the budget in a row before it steps back up (x 1/0.85, to the asked scale)
 
 
-class GpuTooSlow(RuntimeError):
+class GpuTooSlow(RuntimeError):         # (tools/calibrate.py reads the name; nothing raises it at render time)
     pass
 
 
@@ -141,7 +140,7 @@ class _Watch:
 
     def judge(self, scale: float, min_scale: float, max_scale: Optional[float] = None) -> Optional[float]:
         """None = fine; a smaller scale to switch to (after SLOW_RUN slow samples in a row), or a larger one back
-        towards ``max_scale`` (after GOOD_RUN cheap ones); raises GpuTooSlow when shrinking cannot help."""
+        towards ``max_scale`` (after GOOD_RUN cheap ones); at the minimum scale it keeps running (no gates)."""
         ms = self.poll()
         if ms is None:
             return None
@@ -166,13 +165,7 @@ class _Watch:
             new = max(min_scale, round(scale * (self.slow_ms / ms) ** 0.5 * 0.9, 2))
             log.warning("%s: %.1f ms on the GPU, render scale %.2f -> %.2f", self.name, ms, scale, new)
             return new
-        if ms <= HARD_MS:                      # slow but workable: the engine degrades the frame rate instead
-            self.strikes = 0
-            return None
-        self.strikes += 1
-        if self.strikes >= 3:
-            raise GpuTooSlow(f"{self.name}: {ms:.1f} ms on the GPU at render scale {scale:.2f}")
-        return None
+        return None                            # at the minimum scale: the engine degrades the frame rate instead
 
 
 def _date() -> tuple[float, float, float, float]:
