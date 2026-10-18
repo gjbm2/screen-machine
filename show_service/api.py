@@ -37,6 +37,16 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
     ``POST /api/v1/rig/fixtures/{id}/identify {seconds?}`` (``{ok, seconds}`` or ``{ok: false, why}``), and room's
     DMX-lights device's ``POST``/``GET /api/v1/rig/follow`` (``{fixtures: {id: "dmx" | "off" | {hex, bri}}}``).
     Without a rig component the writes answer 503 ``unavailable`` (room's adapter retries).
+  - Moving lights, the Room map and the live view (docs/LIGHTS.md §8.1, README S5.30): ``POST
+    /api/v1/rig/fixtures/{id}/jog`` (Rig.jog, direct: no brain hop), ``.../setup`` (home, beam, limits and the rest of
+    fixtures.setup.yaml; "here" reads the light's hold: 409 ``not_held`` without one), ``.../positions`` (+ ``DELETE
+    .../positions/{name}``; a calibrated mover's new name becomes a room point where its beam lands), ``.../teach`` (+
+    ``DELETE .../teach/{n}``, ``DELETE .../teach``: the samples and the pose solve), ``GET /api/v1/rig/space`` (the
+    SpaceView and every aimable ``targets``), ``PUT /api/v1/rig/space/room``, ``PUT``/``DELETE
+    /api/v1/rig/space/{appliances|points|regions}/{id}`` and ``GET /api/v1/rig/live``. ``GET /api/v1/rig`` gains
+    ``lights_ui`` (show.yaml ``lights.jog``) and each row's ``caps`` and ``setup``. Writes run on show-brain, then
+    ``Rig.reload_now``. A missing piece degrades: no space module, an empty map with ``error``; no hold in the rig,
+    ``{held: false, why}``; the fixture routes answer 503 without a rig, the map's work without one.
   - Machine routes (``PUT``/``DELETE /api/v1/vibe``, the room adapter's) answer 503 ``unavailable`` without a
     director, so the adapter retries. ``PUT /api/v1/vibe`` keeps any target as asked (an unknown vibe plays neutral, a
     bad override is dropped; the read-back's ``known`` and ``problems`` say so) and 400s only a body that isn't a
@@ -58,6 +68,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import datetime
 import inspect
 import json
 import logging
@@ -102,7 +113,9 @@ STRUCTURE = "structure"                              # Stage 4 (README S4.7): mu
 RIG = "rig"                                          # Stage 5 (README S5.4): outputs.Rig
 NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
 #: README S5.23: the Lights page's writes answer 400 for a light that can't be added as asked, except these
-RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500}
+RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500,
+                                    "not_held": 409, "unavailable": 503, "not_found": 404, "added_unreadable": 409,
+                                    "setup_unreadable": 409}
 FOLLOW_CHOICES: list = [*contract.FOLLOW_WORDS, {"hex": "#rrggbb", "bri": "0..100"}]
 HUE_ROOM = {"released": True, "state": "idle", "via": "room",                  # no hue output runs here
             "detail": "nothing streams Hue from show_service (room_service streams, or the hue output is off)"}
@@ -138,6 +151,15 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
     ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
+    ("POST", "/api/v1/rig/fixtures/{id}/jog"), ("POST", "/api/v1/rig/fixtures/{id}/setup"),
+    ("POST", "/api/v1/rig/fixtures/{id}/positions"), ("DELETE", "/api/v1/rig/fixtures/{id}/positions/{name}"),
+    ("POST", "/api/v1/rig/fixtures/{id}/teach"), ("DELETE", "/api/v1/rig/fixtures/{id}/teach/{n}"),
+    ("DELETE", "/api/v1/rig/fixtures/{id}/teach"),
+    ("GET", "/api/v1/rig/space"), ("PUT", "/api/v1/rig/space/room"),
+    ("PUT", "/api/v1/rig/space/appliances/{id}"), ("DELETE", "/api/v1/rig/space/appliances/{id}"),
+    ("PUT", "/api/v1/rig/space/points/{name}"), ("DELETE", "/api/v1/rig/space/points/{name}"),
+    ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
+    ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
     ("GET", "/api/v1/situations"),
@@ -526,6 +548,238 @@ def neutral_source(source: str, why: Optional[str] = None) -> dict:
             "sender": "", "pid": None, "since_s": None, "error": why}
 
 
+# -- moving lights and the Room map (docs/LIGHTS.md §8.1; pure) ------------------------------------------------------------
+#: show.yaml ``lights.jog``'s page keys (GET /api/v1/rig ``lights_ui``). Starting points, as in show.yaml's own block
+#: (docs/LIGHTS.md §12): show.yaml wins, key by key.
+JOG_UI: dict[str, Any] = {"send_hz": 20.0, "idle_s": 60.0, "nudge_deg": {"fine": 1.0, "coarse": 5.0},
+                          "drag_deg_per_px": {"fine": 0.1, "coarse": 0.5}}
+#: POST .../setup's keys. PASS_KEYS go to fixtures.SetupStore.patch as sent (it validates them).
+SETUP_BODY_KEYS: tuple[str, ...] = ("home", "beam", "limit", "limits", "slots", "max_speed", "range", "jog_flip",
+                                    "strobe_hz_max")
+PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max")
+BEAM_ATTRS: tuple[str, ...] = ("zoom", "focus", "iris", "frost")     # setup ``beam: "here"`` keeps these
+AXES: tuple[str, ...] = ("pan", "tilt")
+LIMIT_ENDS: tuple[str, ...] = ("here", "low", "high")   # here: the end nearer the held value (docs/LIGHTS.md §8.1)
+AXIS_WORDS: dict[str, str] = {"pan": "turn", "tilt": "tilt"}
+#: a light's full pan/tilt range when neither its type nor its setup ``range`` says: ofl.py's UNKNOWN_PAN_DEG and
+#: UNKNOWN_TILT_DEG (docs/LIGHTS.md §2.2), read from there when it has them
+UNKNOWN_RANGE_DEG: dict[str, float] = {"pan": 540.0, "tilt": 270.0}
+FRONTS: tuple[str, ...] = ("north", "east", "south", "west")
+ROOM_KEYS: tuple[str, ...] = ("size", "front")
+APPLIANCE_KEYS: tuple[str, ...] = ("at", "mount", "plane")
+POINT_KEYS: tuple[str, ...] = ("at", "label", "device")
+REGION_KEYS: tuple[str, ...] = ("surface", "centre", "size", "label")
+NO_SPACE = "The Room map isn't available yet (show_service needs updating)."
+NO_SETUP = "This light's settings can't be kept yet (show_service needs updating)."
+NOT_HELD = "Open Move it first."
+CANT_MOVE = "This light can't be moved from here yet."
+NO_LIVE = "The live view isn't available yet (show_service needs updating)."
+_PLACE_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")      # fixtures.ID_RE: fixture, point and region ids
+_SLUG = re.compile(r"[^a-z0-9]+")
+_ARTICLE = re.compile(r"^(the|a|an)\s+")
+
+
+class Refusal(ValueError):
+    """A moving-light route's own refusal, shaped like fixtures.Refused (``code``, ``detail``, ``extra``)."""
+
+    def __init__(self, code: str, detail: str, **extra: Any) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail, self.extra = code, detail, extra
+
+
+def place_id(words: str) -> str:
+    """A place's or a position's id from its words, as the page makes them: "The piano" -> "piano", "Dance floor" ->
+    "dance-floor" (lower case, a leading the/a/an dropped, runs of anything else one dash; at most 64). An id already
+    in fixtures.py's ID_RE shape is kept as it is."""
+    s = words.strip()
+    if _PLACE_ID.match(s):
+        return s
+    s = _ARTICLE.sub("", s.lower())
+    return _SLUG.sub("-", s).strip("-")[:64].strip("-")
+
+
+def place_words(name: str) -> str:
+    """Page words for a name with no label: "mirror_ball" -> "Mirror ball"."""
+    s = re.sub(r"[-_.]+", " ", name).strip()
+    return s[:1].upper() + s[1:] if s else name
+
+
+def _pair(v: Any) -> Optional[tuple[float, float]]:
+    if isinstance(v, (list, tuple)) and len(v) == 2:
+        a, b = _num(v[0], None), _num(v[1], None)
+        if a is not None and b is not None:
+            return (min(a, b), max(a, b))
+    return None
+
+
+def _vec3(v: Any) -> Optional[tuple[float, float, float]]:
+    if isinstance(v, (list, tuple)) and len(v) == 3:
+        xs = [_num(x, None) for x in v]
+        if all(x is not None for x in xs):
+            return (float(xs[0]), float(xs[1]), float(xs[2]))      # type: ignore[arg-type]
+    return None
+
+
+def _deg(x: float) -> float:
+    return round(float(x), 2)
+
+
+def axis_ranges(caps: Any, setup: Any) -> dict[str, tuple[float, float]]:
+    """(lo, hi) centred degrees per axis: the light's caps (``pan``/``tilt`` min and max), else ± half its setup
+    ``range``, else ± half UNKNOWN_RANGE_DEG."""
+    out: dict[str, tuple[float, float]] = {}
+    for ax in AXES:
+        c = _d(_d(caps).get(ax))
+        lo, hi = _num(c.get("min"), None), _num(c.get("max"), None)
+        if lo is None or hi is None or hi <= lo:
+            full = _num(_d(_d(setup).get("range")).get(ax), None)
+            full = full if full is not None and full > 0 else _unknown_range(ax)
+            lo, hi = -full / 2.0, full / 2.0
+        out[ax] = (float(lo), float(hi))
+    return out
+
+
+def _unknown_range(ax: str) -> float:
+    try:
+        from . import ofl
+        v = _num(getattr(ofl, "UNKNOWN_PAN_DEG" if ax == "pan" else "UNKNOWN_TILT_DEG", None), None)
+    except Exception:                                    # noqa: BLE001
+        v = None
+    return v if v is not None and v > 0 else UNKNOWN_RANGE_DEG[ax]
+
+
+def held_position(here: Optional[Mapping[str, Any]]) -> tuple[float, float]:
+    """The held (pan, tilt), or Refusal ``no_position`` for a light that doesn't report both."""
+    h = _d(here)
+    pan, tilt = _num(h.get("pan"), None), _num(h.get("tilt"), None)
+    if pan is None or tilt is None:
+        raise Refusal("no_position", "This light doesn't turn and tilt, so it has no position to keep.")
+    return _deg(pan), _deg(tilt)
+
+
+def setup_patch(body: Mapping[str, Any], current: Mapping[str, Any], here: Optional[Mapping[str, Any]],
+                caps: Any) -> dict:
+    """POST .../setup's body -> fixtures.SetupStore.patch's patch. ``"here"`` reads the held values (``here``: the
+    hold's target over its now). ``limit: {axis, end}`` moves one end of that axis's limits to the held value: ``low``
+    or ``high`` that end, ``here`` the end nearer it (docs/LIGHTS.md §8.1); with no limits set the ends start at the
+    full range, and the result is always sorted, so two taps at either end make that span. Refusal on a bad shape."""
+    patch: dict[str, Any] = {k: body[k] for k in PASS_KEYS if k in body}
+    if "home" in body:
+        v = body["home"]
+        if v == "here":
+            pan, tilt = held_position(here)
+            v = {"pan": pan, "tilt": tilt}
+        patch["home"] = v
+    if "beam" in body:
+        v = body["beam"]
+        if v == "here":
+            h = _d(here)
+            v = {a: round(float(h[a]), 3) for a in BEAM_ATTRS if _num(h.get(a), None) is not None}
+            if not v:
+                raise Refusal("no_beam", "This light has no beam settings to keep.")
+        patch["beam"] = v
+    if "limits" in body:
+        patch["limits"] = body["limits"]
+    if "limit" in body:
+        lim = body["limit"]
+        if not isinstance(lim, Mapping) or lim.get("axis") not in AXES or lim.get("end", "here") not in LIMIT_ENDS:
+            raise Refusal("bad_request", 'A limit is {"axis": "pan" | "tilt", "end": "here" | "low" | "high"}.',
+                          choices=list(LIMIT_ENDS))
+        ax, end = str(lim["axis"]), str(lim.get("end", "here"))
+        v = _num(_d(here).get(ax), None)
+        if v is None:
+            raise Refusal("no_position", f"This light doesn't {AXIS_WORDS[ax]}, so it has no {ax} limit.")
+        base = patch["limits"] if "limits" in body else current.get("limits")
+        base = dict(base) if isinstance(base, Mapping) else {}
+        lo, hi = _pair(base.get(ax)) or axis_ranges(caps, current)[ax]
+        if end == "low" or (end == "here" and abs(v - lo) <= abs(v - hi)):
+            lo = v
+        else:
+            hi = v
+        base[ax] = [_deg(min(lo, hi)), _deg(max(lo, hi))]
+        patch["limits"] = base
+    return patch
+
+
+def setup_notes(setup: Any) -> list[str]:
+    """Page words about a light's setup as it now stands: a home outside its limits."""
+    s = _d(setup)
+    home, lim = _d(s.get("home")), _d(s.get("limits"))
+    out = []
+    for ax in AXES:
+        h, p = _num(home.get(ax), None), _pair(lim.get(ax))
+        if h is not None and p is not None and not p[0] - 0.01 <= h <= p[1] + 0.01:
+            out.append(f"Its home is outside where it may {AXIS_WORDS[ax]}, so it rests at the nearest limit.")
+    return out
+
+
+def neutral_space(why: Optional[str]) -> dict:
+    """GET /api/v1/rig/space with no room space: contract.SpaceView's shape, empty (the frame's own default front)."""
+    return {"revision": "", "error": why, "problems": [],
+            "room": {"size": None, "front": "north", "centre": None, "right": [1.0, 0.0, 0.0]},
+            "surfaces": {}, "points": {}, "regions": {}, "appliances": {}, "extent": None, "targets": []}
+
+
+def _surface_centre(s: Mapping[str, Any]) -> Optional[list[float]]:
+    """A bounded surface's centre (origin + u w/2 + v h/2); None when it has no size."""
+    o, u, v, size = _vec3(s.get("origin")), _vec3(s.get("u")), _vec3(s.get("v")), s.get("size")
+    wh = [_num(x, None) for x in size] if isinstance(size, (list, tuple)) and len(size) == 2 else []
+    if o is None or u is None or v is None or len(wh) != 2 or None in wh:
+        return None
+    w, h = float(wh[0]), float(wh[1])                     # type: ignore[arg-type]
+    return [round(o[i] + u[i] * w / 2.0 + v[i] * h / 2.0, 4) for i in range(3)]
+
+
+def space_targets(view: Mapping[str, Any], rows: Mapping[str, Mapping[str, Any]]) -> list[dict]:
+    """Every name a light can be pointed at, with page words, in the order the page lists them: the room's places, its
+    areas, the placed things (a screen as "Centre of the north screen"), then the room's surfaces (their centres).
+    ``[{name, label, kind: point | region | screen | appliance | surface, at}]``."""
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(name: Any, label: Any, kind: str, at: Any) -> None:
+        if not isinstance(name, str) or name in seen:
+            return
+        seen.add(name)
+        xyz = _vec3(at)
+        out.append({"name": name, "label": label if isinstance(label, str) and label else place_words(name),
+                    "kind": kind, "at": list(xyz) if xyz else None})
+
+    for n, p in _d(view.get("points")).items():
+        add(n, _d(p).get("label"), "point", _d(p).get("at"))
+    for n, r in _d(view.get("regions")).items():
+        add(n, _d(r).get("label"), "region", _d(r).get("centre"))
+    for n, a in _d(view.get("appliances")).items():
+        at = _d(a).get("at")
+        if _vec3(at) is None:
+            continue
+        row = _d(rows.get(n))
+        label = row.get("label") if isinstance(row.get("label"), str) else None
+        if row.get("kind") == "screen" or _d(a).get("plane"):
+            zone = row.get("zone")
+            add(n, f"Centre of the {zone} screen" if isinstance(zone, str) and zone else
+                f"Centre of {label or place_words(n)}", "screen", at)
+        else:
+            add(n, label, "appliance", at)
+    for n, s in _d(view.get("surfaces")).items():
+        c = _surface_centre(_d(s))
+        if c is not None:
+            add(n, _d(s).get("label"), "surface", c)
+    return out
+
+
+def front_word(v: Any) -> Optional[str]:
+    """"n" | "north" (any case) -> "north"; None for anything else."""
+    if not isinstance(v, str):
+        return None
+    w = v.strip().lower()
+    return next((f for f in FRONTS if w in (f, f[0])), None)
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
 # -- the /v1/events hub (show-bus) ---------------------------------------------------------------------------------------
 class _EvClient:
     __slots__ = ("ws", "queue", "wake", "seq", "closing", "task", "since", "sent", "overflows", "peer")
@@ -754,8 +1008,12 @@ class Api:
                  clock_action: Optional[contract.ClockAction] = None, log_files: Optional[Mapping[str, Path]] = None,
                  max_clients: int = MAX_EVENT_CLIENTS, queue_max: int = CLIENT_QUEUE, card_hz: float = CARD_HZ,
                  late_refresh_s: float = LATE_REFRESH_S, patch_path: Optional[Path] = None,
-                 fixtures_path: Optional[Path] = None) -> None:
+                 fixtures_path: Optional[Path] = None, setup_store: Any = None, space_mod: Any = None) -> None:
         self.brain_ref, self.engine_ref = brain_ref, engine_ref
+        # the moving-light routes (docs/LIGHTS.md §8.1): fixtures.SetupStore and the space module, found lazily
+        # (tests: fakes on tmp files)
+        self.setup_store, self.space_mod = setup_store, space_mod
+        self._setup_made: Optional[tuple[Any, Any]] = None     # (path, the SetupStore made for it)
         # read only by a Hue release before the brain runs (_hue_handed_to_show)
         self.patch_path = Path(patch_path) if patch_path is not None else contract.PATCH_FILE
         self.fixtures_path = Path(fixtures_path) if fixtures_path is not None else contract.FIXTURES_FILE
@@ -810,6 +1068,22 @@ class Api:
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
+            ("POST", "/api/v1/rig/fixtures/{id}/jog", self._rig_jog),
+            ("POST", "/api/v1/rig/fixtures/{id}/setup", self._rig_setup),
+            ("POST", "/api/v1/rig/fixtures/{id}/positions", self._rig_position_add),
+            ("DELETE", "/api/v1/rig/fixtures/{id}/positions/{name}", self._rig_position_remove),
+            ("POST", "/api/v1/rig/fixtures/{id}/teach", self._rig_teach),
+            ("DELETE", "/api/v1/rig/fixtures/{id}/teach/{n}", self._rig_untaught),
+            ("DELETE", "/api/v1/rig/fixtures/{id}/teach", self._rig_untaught),
+            ("GET", "/api/v1/rig/space", self._space_get),
+            ("PUT", "/api/v1/rig/space/room", self._space_room),
+            ("PUT", "/api/v1/rig/space/appliances/{id}", self._space_appliance_put),
+            ("DELETE", "/api/v1/rig/space/appliances/{id}", self._space_appliance_delete),
+            ("PUT", "/api/v1/rig/space/points/{name}", self._space_point_put),
+            ("DELETE", "/api/v1/rig/space/points/{name}", self._space_point_delete),
+            ("PUT", "/api/v1/rig/space/regions/{name}", self._space_region_put),
+            ("DELETE", "/api/v1/rig/space/regions/{name}", self._space_region_delete),
+            ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
         ]
@@ -1262,6 +1536,10 @@ class Api:
         snap = dict(fn()) if callable(fn) else {}
         view = getattr(rig, "view", None)
         snap["registry_view"] = view() if callable(view) else None
+        snap["lights_ui"] = self.lights_ui(brain)                       # docs/LIGHTS.md §8.1: Move it's numbers
+        rows = snap.get("fixtures")
+        if isinstance(rows, list) and any(isinstance(r, dict) and ("caps" not in r or "setup" not in r) for r in rows):
+            snap["fixtures"] = await self._rows_with_setup(rig, rows, snap["registry_view"])
         return _json(snap)
 
     async def _rig_frame(self, request: web.Request, brain: Any) -> web.Response:
@@ -1317,9 +1595,13 @@ class Api:
         if not callable(fn):
             return _err(503, "unavailable", NO_RIG)
         try:
-            return _json(await self._call(brain, fn, *args))
+            got = await self._call(brain, fn, *args)
         except ValueError as e:
             return self._rig_refused(e)
+        row = got.get("fixture") if isinstance(got, dict) else None
+        if isinstance(row, dict) and ("caps" not in row or "setup" not in row):     # docs/LIGHTS.md §2.3's row
+            got = {**got, "fixture": (await self._rows_with_setup(rig, [row], self._view_of(rig)))[0]}
+        return _json(got)
 
     async def _rig_add(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)
@@ -1377,6 +1659,595 @@ class Api:
         except ValueError as e:
             code, detail = _code(e, "bad_follow")
             return _err(400, code, detail or "That isn't something a light can follow.", choices=FOLLOW_CHOICES)
+
+    # -- moving lights: Move it, setup, positions and teach (docs/LIGHTS.md §8.1) --------------------------------------
+    @staticmethod
+    def _lights_cfg(brain: Any) -> dict:
+        """show.yaml ``lights`` (docs/LIGHTS.md §12), {} without it."""
+        return _d(_d(getattr(getattr(brain, "ctx", None), "settings", None)).get("lights"))
+
+    def lights_ui(self, brain: Any) -> dict:
+        """GET /api/v1/rig ``lights_ui``: show.yaml ``lights.jog``'s send_hz, idle_s, nudge_deg and drag_deg_per_px,
+        each key that isn't a positive number filled from JOG_UI."""
+        jog = _d(self._lights_cfg(brain).get("jog"))
+        out: dict[str, Any] = {}
+        for k, dflt in JOG_UI.items():
+            if isinstance(dflt, dict):
+                got = _d(jog.get(k))
+                out[k] = {w: n if (n := _num(got.get(w), None)) is not None and n > 0 else d for w, d in dflt.items()}
+            else:
+                n = _num(jog.get(k), None)
+                out[k] = n if n is not None and n > 0 else dflt
+        return out
+
+    @staticmethod
+    def _view_of(rig: Any) -> Optional[dict]:
+        fn = getattr(rig, "view", None) if rig is not None else None
+        try:
+            v = fn() if callable(fn) else None
+        except Exception:                                # noqa: BLE001
+            return None
+        return v if isinstance(v, dict) else None
+
+    def _no_light(self, rig: Any, fid: str) -> Optional[web.Response]:
+        """404 ``unknown_fixture`` for an id the rig's view doesn't have (no view: the rig's own call says)."""
+        v = self._view_of(rig)
+        known = _d((v or {}).get("fixtures"))
+        if v is None or fid in known:
+            return None
+        return _err(404, "unknown_fixture", f"No light {fid!r} in the rig.", choices=sorted(known))
+
+    def _rig_for(self, brain: Any, fid: str) -> tuple[Any, Optional[web.Response]]:
+        """(the rig, None), or (None, the 503 / 404 answer)."""
+        rig = _components(brain).get(RIG)
+        if rig is None:
+            return None, _err(503, "unavailable", NO_RIG)
+        return rig, self._no_light(rig, fid)
+
+    @staticmethod
+    def _held(rig: Any, fid: str) -> Optional[dict]:
+        """The light's hold (Rig.holds, docs/LIGHTS.md §5.7) as one mapping, its target over its smoothed now; None
+        when it isn't held (or the rig has no holds yet)."""
+        fn = getattr(rig, "holds", None)
+        try:
+            hv = _d(fn()).get(fid) if callable(fn) else None
+        except Exception:                                # noqa: BLE001
+            return None
+        return {**_d(hv.get("now")), **_d(hv.get("target"))} if isinstance(hv, dict) else None
+
+    def _caps(self, rig: Any, fid: str) -> dict:
+        """Rig.caps_of(fid), else fixture_encode.caps over the view's type and setup, else {}."""
+        fn = getattr(rig, "caps_of", None)
+        if callable(fn):
+            try:
+                got = fn(fid)
+            except Exception:                            # noqa: BLE001
+                got = None
+            if isinstance(got, dict):
+                return got
+        v = self._view_of(rig)
+        f = _d(_d((v or {}).get("fixtures")).get(fid))
+        t = _d((v or {}).get("types")).get(f.get("type"))
+        if not f or not isinstance(t, dict):
+            return {}
+        try:
+            from . import fixture_encode as fe
+            got = fe.caps(t, f.get("setup") or None)
+        except Exception:                                # noqa: BLE001 (encode not built yet: the page shows less)
+            return {}
+        return dict(got) if isinstance(got, Mapping) else {}
+
+    def _setup_of(self, rig: Any) -> Any:
+        """fixtures.SetupStore (docs/LIGHTS.md §2.6): the injected one, the registry's own, else one made for the
+        registry's ``setup_path`` (contract.FIXTURES_SETUP_FILE). None when fixtures.py has none yet."""
+        if self.setup_store is not None:
+            return self.setup_store
+        reg = getattr(rig, "registry", None)
+        own = getattr(reg, "setup_store", None)
+        if callable(getattr(own, "patch", None)) and callable(getattr(own, "read", None)):
+            return own
+        path = getattr(reg, "setup_path", None) or getattr(contract, "FIXTURES_SETUP_FILE", None) \
+            or contract.CONFIG_ROOM_DIR / "fixtures.setup.yaml"
+        if self._setup_made is not None and self._setup_made[0] == path:
+            return self._setup_made[1]
+        try:
+            from . import fixtures as fx
+            store = fx.SetupStore(path=Path(path))
+        except Exception:                                # noqa: BLE001
+            return None
+        self._setup_made = (path, store)
+        return store
+
+    @staticmethod
+    def _setup_for(store: Any, fid: str) -> dict:
+        """One light's setup from the store, {} when there's none or the file doesn't read (ranges then fall back)."""
+        try:
+            return _d(_d(store.read()).get(fid)) if store is not None else {}
+        except ValueError:
+            return {}
+
+    def _space_mod(self) -> Any:
+        if self.space_mod is not None:
+            return self.space_mod
+        try:
+            from . import space as sp
+        except Exception:                                # noqa: BLE001 (not built yet: the map degrades)
+            return None
+        return sp
+
+    def _space_store(self) -> Any:
+        sp = self._space_mod()
+        fn = getattr(sp, "shared", None) if sp is not None else None
+        if not callable(fn):
+            return None
+        try:
+            return fn()
+        except Exception:                                # noqa: BLE001
+            log.exception("api: space.shared() failed")
+            return None
+
+    @staticmethod
+    def _reload(rig: Any) -> None:
+        """Rig.reload_now (show-brain): the engine re-reads the registry and the space at its next sync."""
+        fn = getattr(rig, "reload_now", None) or getattr(rig, "_reload_now", None)
+        if callable(fn):
+            fn()
+
+    async def _rows_with_setup(self, rig: Any, rows: list, view: Any) -> list:
+        """GET /api/v1/rig's rows with ``caps`` (Rig.caps_of) and ``setup`` (the registry's FixtureInfo.setup, else
+        the setup file) where the rig's own rows don't carry them yet."""
+        fixtures = _d(_d(view).get("fixtures"))
+        stored: Optional[dict] = None
+        if any(isinstance(r, dict) and "setup" not in r and "setup" not in _d(fixtures.get(r.get("id")))
+               for r in rows):
+            store = self._setup_of(rig)
+            if store is not None:
+                try:
+                    stored = _d(await asyncio.to_thread(store.read))
+                except Exception:                        # noqa: BLE001
+                    stored = None
+        out = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            r = dict(r)
+            fid = r.get("id")
+            if "caps" not in r:
+                r["caps"] = self._caps(rig, fid) or None
+            if "setup" not in r:
+                own = _d(fixtures.get(fid)).get("setup")
+                r["setup"] = dict(own) if isinstance(own, dict) else dict(_d(_d(stored).get(fid)))
+            out.append(r)
+        return out
+
+    async def _rig_jog(self, request: web.Request, brain: Any) -> web.Response:
+        """POST .../jog ``{values?: {attr: value}, release?, free?}`` -> Rig.jog's answer, called here on show-bus (any
+        thread, no brain hop: docs/LIGHTS.md §8.1). Without the rig's hold: ``{held: false, why}``."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        body = {} if body is None else body
+        values = body.get("values") if isinstance(body, dict) else None
+        values = {} if values is None else values
+        release, free = (body.get(k, False) if isinstance(body, dict) else None for k in ("release", "free"))
+        if not isinstance(body, dict) or not isinstance(values, dict) or not isinstance(release, bool) \
+                or not isinstance(free, bool):
+            return _err(400, "bad_request", 'The body is {"values": {<what>: <value>}, "release": true | false, '
+                                            '"free": true | false}.')
+        fid = request.match_info["id"]
+        rig, no = self._rig_for(brain, fid)
+        if no is not None:
+            return no
+        fn = getattr(rig, "jog", None)
+        if not callable(fn):
+            return _json({"held": False, "until_s": None, "idle_s": self.lights_ui(brain)["idle_s"], "target": {},
+                          "now": {}, "unknown": sorted(values), "why": CANT_MOVE})
+        try:
+            got = fn(fid, values, release=release, free=free)
+        except ValueError as e:
+            return self._rig_refused(e)
+        return _json(got if isinstance(got, dict) else {"held": False, "why": CANT_MOVE})
+
+    async def _rig_setup(self, request: web.Request, brain: Any) -> web.Response:
+        """POST .../setup: any of ``home``/``beam`` ("here" | a value | null), ``limit: {axis, end}``, ``limits``
+        (null: none), ``slots``, ``max_speed``, ``range``, ``jog_flip``, ``strobe_hz_max`` -> ``{setup, problems}``.
+        "here" and ``limit`` read the light's hold: 409 ``not_held`` ("Open Move it first.") without one."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        if not isinstance(body, dict) or not body:
+            return _err(400, "bad_request", "Say what to keep for this light.", choices=list(SETUP_BODY_KEYS))
+        extra = sorted(k for k in body if k not in SETUP_BODY_KEYS)
+        if extra:
+            return _err(400, "bad_request", f"A light doesn't keep {', '.join(extra)}.", choices=list(SETUP_BODY_KEYS))
+        fid = request.match_info["id"]
+        rig, no = self._rig_for(brain, fid)
+        if no is not None:
+            return no
+        store = self._setup_of(rig)
+        if store is None:
+            return _err(503, "unavailable", NO_SETUP)
+        here = self._held(rig, fid)
+        if here is None and ("limit" in body or "here" in (body.get("home"), body.get("beam"))):
+            return _err(409, "not_held", NOT_HELD)
+        caps = self._caps(rig, fid)
+
+        def run() -> dict:
+            patch = setup_patch(body, _d(_d(store.read()).get(fid)), here, caps)
+            new = _d(store.patch(fid, patch))
+            self._reload(rig)
+            return {"setup": new, "problems": setup_notes(new)}
+
+        try:
+            return _json(await self._call(brain, run))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _rig_position_add(self, request: web.Request, brain: Any) -> web.Response:
+        """POST .../positions ``{name, label?, at?: "here" | {pan, tilt}}`` -> ``{positions, point, problems}``. The
+        name is kept as a place id (place_id: "The piano" -> "piano"). A calibrated mover's new name (one the room map
+        doesn't have) becomes a room point where its beam lands (space.ray_hit from its pose, docs/LIGHTS.md §3.6)."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        name = self._word(body, "name") if isinstance(body, dict) else None
+        pid = place_id(name) if name else ""
+        if not pid:
+            return _err(400, "bad_request", 'Give the position a name: {"name": "Over the piano"}.')
+        label = self._word(body, "label") or (name if name != pid else None)
+        at = body.get("at", "here")
+        fid = request.match_info["id"]
+        rig, no = self._rig_for(brain, fid)
+        if no is not None:
+            return no
+        store = self._setup_of(rig)
+        if store is None:
+            return _err(503, "unavailable", NO_SETUP)
+        if at == "here":
+            here = self._held(rig, fid)
+            if here is None:
+                return _err(409, "not_held", NOT_HELD)
+            pos = here
+        elif isinstance(at, dict):
+            pos = at
+        else:
+            return _err(400, "bad_request", '"at" is "here" (where Move it holds it) or {"pan": <°>, "tilt": <°>}.')
+        try:
+            pan, tilt = held_position(pos)
+        except ValueError as e:
+            return self._rig_refused(e)
+
+        def run() -> dict:
+            new = _d(store.patch(fid, {"positions": {pid: {"pan": pan, "tilt": tilt}}}))
+            point, problems = self._point_from_beam(fid, pid, label, pan, tilt)
+            self._reload(rig)
+            return {"positions": _d(new.get("positions")), "point": point, "problems": problems}
+
+        try:
+            return _json(await self._call(brain, run))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    def _point_from_beam(self, fid: str, pid: str, label: Optional[str], pan: float,
+                         tilt: float) -> tuple[Optional[dict], list[str]]:
+        """show-brain: a calibrated light's position ``pid`` as a room point where its beam lands (set_point with
+        source = the light), when the room map has no place by that name. (None, []) for an uncalibrated light."""
+        sp, st = self._space_mod(), self._space_store()
+        if sp is None or st is None:
+            return None, []
+        view = _d(st.view())
+        pose = _d(_d(view.get("appliances")).get(fid)).get("pose")
+        origin = _vec3(_d(pose).get("at"))
+        if not isinstance(pose, dict) or origin is None:
+            return None, []
+        try:
+            if sp.resolve(view, pid) is not None:                 # the map's own place: a light never moves it
+                return None, []
+            hit = sp.ray_hit(view, origin, sp.beam_dir(pose, pan, tilt))
+            if not hit:
+                return None, ["Its beam doesn't land on the room's floor, walls or ceiling here, so it isn't a place "
+                              "on the map."]
+            at = [round(float(x), 3) for x in hit[0]]
+            st.set_point(pid, at, label, source=fid)
+        except ValueError as e:
+            return None, [str(getattr(e, "detail", "") or e)]
+        return {"name": pid, "at": at, "surface": hit[1]}, []
+
+    async def _rig_position_remove(self, request: web.Request, brain: Any) -> web.Response:
+        """DELETE .../positions/{name} -> ``{positions}`` (a room point it made stays on the map)."""
+        fid, pid = request.match_info["id"], request.match_info["name"]
+        rig, no = self._rig_for(brain, fid)
+        if no is not None:
+            return no
+        store = self._setup_of(rig)
+        if store is None:
+            return _err(503, "unavailable", NO_SETUP)
+
+        def run() -> dict:
+            new = _d(store.patch(fid, {"positions": {pid: None}}))
+            self._reload(rig)
+            return {"positions": _d(new.get("positions"))}
+
+        try:
+            return _json(await self._call(brain, run))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    def _fit(self, sp: Any, view: Mapping[str, Any], fid: str, samples: list, ranges: dict,
+             cfg: Optional[dict]) -> dict:
+        """space.solve_pose over the light's samples (its map placement and mount as the hint); a solver that fails
+        is a "bad" fit in words, and the samples stay."""
+        app = _d(_d(view.get("appliances")).get(fid))
+        try:
+            kw: dict[str, Any] = {"at_hint": _vec3(app.get("at")), "mount": app.get("mount"),
+                                  "pan_range": ranges["pan"], "tilt_range": ranges["tilt"], "cfg": cfg}
+            if "view" in inspect.signature(sp.solve_pose).parameters:     # the room's centre as the prior
+                kw["view"] = view
+            fit = sp.solve_pose(list(samples), **kw)
+        except Exception as e:                           # noqa: BLE001
+            log.exception("api: solve_pose for %s failed", fid)
+            fit = {"pose": None, "rms_deg": None, "worst_deg": None, "worst_index": None, "spread_deg": 0.0,
+                   "samples": len(samples), "level": "bad",
+                   "words": f"It couldn't work out where it hangs just now ({type(e).__name__}); the places it "
+                            f"learnt are kept."}
+        return dict(fit) if isinstance(fit, Mapping) else {"pose": None, "samples": len(samples), "level": "bad",
+                                                            "words": "It couldn't work out where it hangs just now."}
+
+    def _teach_parts(self, brain: Any, fid: str) -> tuple[Any, Any, Optional[web.Response]]:
+        rig, no = self._rig_for(brain, fid)
+        if no is not None:
+            return None, None, no
+        sp, st = self._space_mod(), self._space_store()
+        if sp is None or st is None or not callable(getattr(sp, "solve_pose", None)):
+            return None, None, _err(503, "unavailable", NO_SPACE)
+        return rig, (sp, st), None
+
+    async def _rig_teach(self, request: web.Request, brain: Any) -> web.Response:
+        """POST .../teach ``{point}`` (a room map name) -> ``{samples, fit, problems}``: the held pan/tilt pointed at
+        that place is a TeachSample (and the light's position by that name); from 3 samples the pose is solved and set
+        (docs/LIGHTS.md §3.6). 409 ``not_held`` without Move it, 400 ``unknown_point`` with the map's names."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        point = self._word(body, "point") if isinstance(body, dict) else None
+        fid = request.match_info["id"]
+        rig, parts, no = self._teach_parts(brain, fid)
+        if no is not None:
+            return no
+        sp, st = parts
+        names = [t["name"] for t in space_targets(_d(st.view()), {})]
+        if point is None:
+            return _err(400, "bad_request", 'Say which place it points at: {"point": <name>}.', choices=names)
+        here = self._held(rig, fid)
+        if here is None:
+            return _err(409, "not_held", NOT_HELD)
+        try:
+            pan, tilt = held_position(here)
+        except ValueError as e:
+            return self._rig_refused(e)
+        caps, store, cfg = self._caps(rig, fid), self._setup_of(rig), self._lights_cfg(brain).get("calibration")
+
+        def add() -> tuple[list, dict, list]:
+            view = _d(st.view())
+            at = _vec3(sp.resolve(view, point))
+            if at is None:
+                raise Refusal("unknown_point", f"There's no place called “{point}” on the Room map.", choices=names)
+            samples = list(st.add_sample(fid, {"pan": pan, "tilt": tilt, "point": point,
+                                               "at": [round(x, 4) for x in at], "t": _now_iso()}))
+            problems, setup = [], {}
+            if store is not None:
+                try:
+                    setup = _d(store.patch(fid, {"positions": {point: {"pan": pan, "tilt": tilt}}}))
+                except ValueError as e:
+                    problems.append(str(getattr(e, "detail", "") or e))
+            return samples, setup, problems
+
+        try:
+            samples, setup, problems = await self._call(brain, add)
+            fit = await self._solve_and_keep(brain, rig, sp, st, fid, samples, axis_ranges(caps, setup), cfg)
+        except ValueError as e:
+            return self._rig_refused(e)
+        return _json({"samples": samples, "fit": fit, "problems": problems})
+
+    async def _solve_and_keep(self, brain: Any, rig: Any, sp: Any, st: Any, fid: str, samples: list, ranges: dict,
+                              cfg: Any) -> dict:
+        """The pose solve on a worker thread (scipy: ~0.3 s, the first one ~1 s: never on show-brain), then set_pose
+        and Rig.reload_now on show-brain, unless the light's samples changed meanwhile (that change solves again)."""
+        fit = await asyncio.to_thread(self._fit, sp, _d(st.view()), fid, samples, ranges, _d(cfg) or None)
+
+        def keep() -> None:
+            now = list(_d(_d(_d(st.view()).get("appliances")).get(fid)).get("teach") or [])
+            if now == list(samples):
+                st.set_pose(fid, fit.get("pose"))
+            self._reload(rig)
+
+        await self._call(brain, keep)
+        return fit
+
+    async def _rig_untaught(self, request: web.Request, brain: Any) -> web.Response:
+        """DELETE .../teach/{n} (forget sample n, 0-based) or DELETE .../teach (forget them all) -> ``{samples,
+        fit}``; the pose is solved again (fewer than 3: none). A sample that isn't there: what is true now."""
+        fid, n = request.match_info["id"], request.match_info.get("n")
+        index: Optional[int] = None
+        if n is not None:
+            try:
+                index = int(n)
+            except ValueError:
+                return _err(400, "bad_request", "Say which place to forget by its number (0 is the first).")
+        rig, parts, no = self._teach_parts(brain, fid)
+        if no is not None:
+            return no
+        sp, st = parts
+        caps, store, cfg = self._caps(rig, fid), self._setup_of(rig), self._lights_cfg(brain).get("calibration")
+
+        def forget() -> tuple[list, dict]:
+            samples: list = list(_d(_d(_d(st.view()).get("appliances")).get(fid)).get("teach") or [])
+            if index is None:
+                st.clear_samples(fid)
+                samples = []
+            elif 0 <= index < len(samples):
+                samples = list(st.remove_sample(fid, index))
+            return samples, self._setup_for(store, fid)
+
+        try:
+            samples, setup = await self._call(brain, forget)
+            fit = await self._solve_and_keep(brain, rig, sp, st, fid, samples, axis_ranges(caps, setup), cfg)
+        except ValueError as e:
+            return self._rig_refused(e)
+        return _json({"samples": samples, "fit": fit})
+
+    # -- the Room map and the live view (docs/LIGHTS.md §3, §8.1) -------------------------------------------------------
+    @staticmethod
+    def _rows_by_id(rig: Any) -> dict[str, dict]:
+        fn = getattr(rig, "fixture_rows", None) if rig is not None else None
+        try:
+            rows = fn() if callable(fn) else []
+        except Exception:                                # noqa: BLE001
+            rows = []
+        return {r["id"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)}
+
+    def _space_out(self, view: Any, rig: Any) -> dict:
+        v = dict(_d(view))
+        v["targets"] = space_targets(v, self._rows_by_id(rig))
+        return v
+
+    async def _space_write(self, brain: Any, fn: Callable[[Any], Any]) -> web.Response:
+        """A Room map write on show-brain: ``fn(store)``'s answer (the store writes space.added.yaml and polls), then
+        Rig.reload_now when a rig runs. 503 without the space module; space.Refused -> 400 in its words."""
+        st = self._space_store()
+        if st is None:
+            return _err(503, "unavailable", NO_SPACE)
+        rig = _components(brain).get(RIG)
+
+        def run() -> Any:
+            got = fn(st)
+            self._reload(rig)
+            return got
+
+        try:
+            return _json(await self._call(brain, run))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _space_get(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/rig/space -> SpaceView + ``targets`` (space_targets). Polled on show-brain first, so a hand edit
+        to space.yaml shows. No space module: neutral_space with ``error``."""
+        st = self._space_store()
+        rig = _components(brain).get(RIG)
+        if st is None:
+            return _json(neutral_space(NO_SPACE))
+        poll = getattr(st, "poll", None)
+        if callable(poll):
+            await self._call(brain, poll)
+        return _json(self._space_out(st.view(), rig))
+
+    async def _space_room(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/room ``{size?: [x, y, z] | null, front?: n | e | s | w | north ...}`` -> SpaceView (+
+        targets). A key left out keeps what the map has."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        if not isinstance(body, dict) or not body or any(k not in ROOM_KEYS for k in body):
+            return _err(400, "bad_request", 'The body is {"size": [<east-west m>, <north-south m>, <height m>], '
+                                            '"front": "north" | "east" | "south" | "west"}.', choices=list(ROOM_KEYS))
+        front = front_word(body["front"]) if "front" in body else None
+        if "front" in body and front is None:
+            return _err(400, "bad_request", "Say which wall people face: north, east, south or west.",
+                        choices=list(FRONTS))
+        size = _vec3(body.get("size"))
+        if body.get("size") is not None and (size is None or min(size) <= 0):
+            return _err(400, "bad_request", "The room's size is three lengths in metres: east-west, north-south and "
+                                            "floor to ceiling.")
+        rig = _components(brain).get(RIG)
+
+        def write(st: Any) -> dict:
+            # space.Store.set_room: None leaves that as it is, a size of [] clears it
+            st.set_room((list(size) if size else []) if "size" in body else None, front)
+            return self._space_out(st.view(), rig)
+
+        return await self._space_write(brain, write)
+
+    async def _space_appliance_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/appliances/{id} ``{at?, mount?, plane?}`` (null clears one) -> the appliance."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        if not isinstance(body, dict) or not body or any(k not in APPLIANCE_KEYS for k in body):
+            return _err(400, "bad_request", 'Say where it is: {"at": [x, y, z], "mount": ..., "plane": ...}.',
+                        choices=list(APPLIANCE_KEYS))
+        aid = request.match_info["id"]
+        return await self._space_write(brain, lambda st: st.set_appliance(aid, **body))
+
+    async def _space_appliance_delete(self, request: web.Request, brain: Any) -> web.Response:
+        aid = request.match_info["id"]
+
+        def write(st: Any) -> dict:
+            st.remove_appliance(aid)
+            return {"removed": aid}
+
+        return await self._space_write(brain, write)
+
+    async def _space_point_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/points/{name} ``{at, label?, device?}`` -> the point (source "page")."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        if not isinstance(body, dict) or "at" not in body or any(k not in POINT_KEYS for k in body):
+            return _err(400, "bad_request", 'Say where the place is: {"at": [x, y, z], "label": "The piano"}.',
+                        choices=list(POINT_KEYS))
+        name = request.match_info["name"]
+
+        def write(st: Any) -> Any:
+            kw: dict[str, Any] = {"source": "page"}
+            if body.get("device") is not None and "device" in inspect.signature(st.set_point).parameters:
+                kw["device"] = body["device"]
+            return st.set_point(name, body["at"], body.get("label"), **kw)
+
+        return await self._space_write(brain, write)
+
+    async def _space_point_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+
+        def write(st: Any) -> dict:
+            st.remove_point(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
+
+    async def _space_region_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/regions/{name} ``{surface, centre, size, label?}`` -> the region."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        if not isinstance(body, dict) or any(k not in body for k in ("surface", "centre", "size")) \
+                or any(k not in REGION_KEYS for k in body):
+            return _err(400, "bad_request", 'An area is {"surface": "floor", "centre": [x, y, z], "size": [w, d]}.',
+                        choices=list(REGION_KEYS))
+        name = request.match_info["name"]
+        return await self._space_write(brain, lambda st: st.set_region(name, body["surface"], body["centre"],
+                                                                       body["size"], body.get("label")))
+
+    async def _space_region_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+        st = self._space_store()
+        if st is not None and not callable(getattr(st, "remove_region", None)):
+            return _err(503, "unavailable", "Removing an area isn't possible yet (show_service needs updating).")
+
+        def write(store: Any) -> dict:
+            store.remove_region(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
+
+    async def _rig_live(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/rig/live -> Rig.live_view() (contract LiveView, any thread); without it an empty view with
+        ``why``."""
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "live_view", None) if rig is not None else None
+        if not callable(fn):
+            return _json({"t_ms": round(time.time() * 1000.0, 1), "flow": None, "programs": {}, "fixtures": {},
+                          "why": NO_RIG if rig is None else NO_LIVE})
+        return _json(fn())
 
     async def _hue_stream(self, request: web.Request, brain: Any) -> web.Response:
         """room's hue adapter (mode show): ``{lights, on}``, the complete set of hue.* lamps that follow the show (not a
@@ -1705,5 +2576,7 @@ def routes(brain_ref: Callable[[], Any], engine_ref: Optional[Callable[[], Optio
     ``engine_ref()``: ``{"active_audio", "features": {"energy", "age_ms", "stream"}, "clock": ClockData | None}``.
     Keywords: ``clock_action`` (else ``brain.ctx.clock_action``), ``log_files``, ``max_clients``, ``queue_max``,
     ``card_hz``, ``patch_path`` and ``fixtures_path`` (a Hue release before the brain runs reads them; tests: tmp
-    files). The result mounts with ``api_obj(app)`` and its ``notify`` goes in ``BrainContext.notify``."""
+    files), ``setup_store`` (a fixtures.SetupStore; default: the registry's, else one on its setup path) and
+    ``space_mod`` (the space module; default: show_service.space, imported lazily). The result mounts with
+    ``api_obj(app)`` and its ``notify`` goes in ``BrainContext.notify``."""
     return Api(brain_ref, engine_ref, **kw)

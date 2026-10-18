@@ -1,0 +1,33 @@
+# config/room/space.yaml: the room in metres (docs/LIGHTS.md §3). x east, y north, z up; origin the south-west floor
+# corner. Hand-written; the Lights page's Room map writes config/room/space.added.yaml (merged under this file: this
+# file wins on a clash). show_service re-reads both when they change. Nothing here is measured yet: set the room on the
+# Room map (or here), never guess. Anything set here can't be moved on the page (it shows as fixed), so leave a thing
+# commented while it is placed on the map.
+#
+# The drawing room as known (owner, 14 Oct; config/room/patch.yaml and fixtures.yaml): the two Frame TVs hang on the
+# north and south walls, facing each other across the room; the four Hue lamps are named for the room's corners (NE
+# above the north screen and NW opposite it; SE above the south screen and SW opposite it); the Steinway and the
+# glitterball (room device mirror_ball: its motor turns with the flow, docs/LIGHTS.md §4.4) are in the room. Every
+# measurement below is a commented starting point in <angle brackets>: measure it, or place it on the Room map.
+# Ids are fixtures.yaml's (screen.north, hue.ne, ...) and the Lights page's lights (dmx.*).
+version: 1
+room:
+  # size: [<east-west m>, <north-south m>, <floor to ceiling m>]   # measure
+  # front: north                   # the wall people face (left/right are as seen facing it). Unset: north, the frame's
+  #                                # own convention; set it on the Room map ("Which wall do people face?") or here
+appliances: {}                     # fixture id or room device -> where it is (the page writes these; the room's own:)
+  # screen.north: {at: [<x: the picture's centre along the wall>, <Y: the room's north-south length>, <z: centre
+  #               height>], plane: {normal: [0, -1, 0], up: [0, 0, 1], size: [<picture width m>, <height m>]}}
+  # screen.south: {at: [<x>, 0, <z>], plane: {normal: [0, 1, 0], up: [0, 0, 1], size: [<width m>, <height m>]}}
+  # hue.ne: {at: [<x>, <y>, <z>]}                  # by the NE corner, above the north screen
+  # hue.nw: {at: [<x>, <y>, <z>]}                  # by the NW corner, opposite the north screen
+  # hue.se: {at: [<x>, <y>, <z>]}                  # by the SE corner, above the south screen
+  # hue.sw: {at: [<x>, <y>, <z>]}                  # by the SW corner, opposite the south screen
+  # dmx.mover-1: {at: [<x>, <y>, <z>], mount: ceiling}            # ceiling | floor | wall | truss (the solve's hint)
+points: {}                         # named places lights can aim at (the page writes these too; the room's own:)
+  # piano: {label: The piano, at: [<x>, <y>, <z: the lid>]}
+  # mirror-ball: {label: Mirror ball, at: [<x>, <y>, <z>], device: mirror_ball}
+regions: {}                        # named areas on a surface, e.g. a dance floor (centre + size on that surface)
+  # dance-floor: {label: Dance floor, surface: floor, centre: [<x>, <y>, 0], size: [<w>, <d>]}
+surfaces: {}                       # extra planes beyond floor, ceiling and the four walls
+  # tv-wall: {label: TV wall, origin: [...], normal: [...], up: [...], size: [<w>, <h>]}

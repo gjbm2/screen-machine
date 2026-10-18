@@ -52,6 +52,12 @@ artnet_lan.ArtNetLan), each fed by its own runner thread ``show-out-<id>``:
   at once, after every engine configure, and on each change. An engine without those methods degrades: identify
   answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any thread) is the rig
   view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
+* **Movers** (docs/LIGHTS.md §5.8): show.yaml ``lights`` and the room's space (``space.shared()``, polled on
+  show-brain; a new revision reconfigures) reach ``LookEngine.configure``. ``jog`` (any thread, no brain hop: the
+  page's Move it) holds or releases one light through the engine and wakes its runner; a frame that says ``busy`` (a
+  held light, a mover gliding home) keeps its runner at the active rate. ``holds``, ``caps_of``, ``live_view`` (the
+  Room map's beams) read the engine; ``reload_now`` (show-brain, after a setup or Room map write) re-reads the
+  registry and the space at once. ``frame_view`` adds each mover's ``attrs``.
 * **Online** (thread ``show-rig-online``, off the frame path): one ``ping -c1 -W1`` per node address every
   ONLINE_CHECK_S; a row's ``online`` is its node's last answer. Art-Net goes out unicast whenever the output is on,
   whatever ping says, so a node works the moment it is plugged in; sending to an absent one is a counted, logged
@@ -109,6 +115,10 @@ IDENTIFY_MAX_S = 30.0              # starting point: a longer ask is cut to this
 ONLINE_CHECK_S = 10.0              # README S5.23: each node address pinged this often (show-rig-online)
 PING_WAIT_S = 1                    # ping -W: one echo's wait, s
 FOLLOW_BRI_DEFAULT = 100           # a static colour sent with no ``bri``: as written (full)
+JOG_IDLE_S = 60.0                  # starting point (show.yaml lights.jog.idle_s): Move it hands a light back after this
+JOG_SMOOTH_MS = 80.0               # starting point (show.yaml lights.jog.smooth_ms): the glide toward each jog target
+SPACE_MODULE = "show_service.space"   # docs/LIGHTS.md §3.4: the room's space (space.shared()), imported lazily
+SPACE_RETRY_S = 30.0               # space.py not there: tried again at most this often
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -132,6 +142,19 @@ def _params(fn: Callable) -> int:
     if any(p.kind == p.VAR_POSITIONAL for p in ps):
         return 99
     return sum(1 for p in ps if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD))
+
+
+def _plain(v: Any) -> Any:
+    """A frame's attrs for JSON: numbers rounded, mappings and lists copied, anything else as words."""
+    if isinstance(v, bool) or v is None or isinstance(v, str):
+        return v
+    if isinstance(v, (int, float)):
+        return round(float(v), 4) if math.isfinite(v) else None
+    if isinstance(v, Mapping):
+        return {str(k): _plain(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_plain(x) for x in v]
+    return str(v)
 
 
 def _pcts(xs: list[float]) -> dict[str, Optional[float]]:
@@ -329,7 +352,7 @@ class _Runner:
                 self._sends_n += 1
                 self.frames += 1
                 self.last_frame, self.last_frame_t = frame, sent
-                active = bool(frame.get("active"))
+                active = bool(frame.get("active") or frame.get("busy"))   # a held or gliding light: the active rate
                 t_last = t
                 if self._run_errs:
                     self._run_errs.clear()
@@ -403,7 +426,8 @@ class Rig:
                  latency_path: Optional[Path] = None, patch_path: Optional[Path] = None,
                  added_path: Optional[Path] = None, follow_file: Optional[Path] = None,
                  ping_fn: Optional[Callable[[str], Optional[bool]]] = None, online_check_s: float = ONLINE_CHECK_S,
-                 mono: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> None:
+                 mono: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+                 space_store: Any = None) -> None:
         self.ctx = ctx
         self.clock = clock
         self.mono, self.sleep = mono, sleep
@@ -475,6 +499,26 @@ class Rig:
         self.follow_error: Optional[str] = None
         self._follow: dict[str, Any] = self._load_follow()  # fixture id -> FOLLOW_WORDS | {hex, bri}; swapped whole
         self._online = _Online(self._node_addresses, ping_fn or ping_once, online_check_s)
+        # movers, room space and the jog (docs/LIGHTS.md §5.8)
+        self._lights: Optional[dict] = None                 # show.yaml lights (groups, motion, jog, ...)
+        self._space_src = space_store                       # None: space.shared() (lazily); False: no space
+        self._space_view: Optional[dict] = None             # the last SpaceView handed to the engine
+        self._space_rev: Any = None
+        self._force_space = False
+        self._space_next_try = 0.0
+        self._engine_kw = self._configure_kw(self.engine)   # which of lights/space the engine's configure takes
+
+    @staticmethod
+    def _configure_kw(engine: Any) -> frozenset:
+        """The keyword arguments the engine's ``configure`` takes beyond ``lamps`` (a fake engine may take none)."""
+        fn = getattr(engine, "configure", None)
+        try:
+            ps = inspect.signature(fn).parameters.values() if callable(fn) else ()
+        except (TypeError, ValueError):
+            return frozenset()
+        if any(p.kind == p.VAR_KEYWORD for p in ps):
+            return frozenset({"lights", "space"})
+        return frozenset(p.name for p in ps if p.name in ("lights", "space"))
 
     # -- Component ----------------------------------------------------------------------------------------------------
     def provides(self) -> dict:
@@ -502,7 +546,7 @@ class Rig:
         return got if isinstance(got, dict) else None
 
     def configure(self, settings: dict) -> None:
-        """show.yaml ``rig``, ``looks`` and ``lamps`` (hot-reloaded)."""
+        """show.yaml ``rig``, ``looks``, ``lamps`` and ``lights`` (hot-reloaded)."""
         s = settings if isinstance(settings, dict) else {}
         probs: list[str] = []
         rig = s.get("rig")
@@ -517,11 +561,12 @@ class Rig:
             en = False
         looks = s.get("looks") if isinstance(s.get("looks"), dict) else None
         lamps = s.get("lamps") if isinstance(s.get("lamps"), dict) else None
-        if looks != self._looks or lamps != self._lamps:
+        lights = s.get("lights") if isinstance(s.get("lights"), dict) else None   # docs/LIGHTS.md §12
+        if looks != self._looks or lamps != self._lamps or lights != self._lights:
             self._engine_dirty = True
         if rig != self._rig:
             self._settings_dirty = True
-        self.enabled, self._rig, self._looks, self._lamps = en, rig, looks, lamps
+        self.enabled, self._rig, self._looks, self._lamps, self._lights = en, rig, looks, lamps, lights
         self._problems = probs
         if self._started and not self._stopped:
             self._sync(self.mono())
@@ -632,6 +677,8 @@ class Rig:
                                  "hex": "#%02x%02x%02x" % tuple(max(0, min(255, round(c * 255))) for c in rgb),
                                  "rgb": rgb, "dmx": list(dmx) if dmx is not None else None,
                                  "t_eval_ms": round(float(ff.get("t_eval_ms", 0.0)), 1)}
+                if isinstance(ff.get("attrs"), dict):            # docs/LIGHTS.md §5.8: a mover's normalised values
+                    fixtures[fid]["attrs"] = _plain(ff["attrs"])
         uv = getattr(o.driver, "universe_view", None) if o is not None else None
         universe = self._guard("universe_view", uv) if callable(uv) else None
         return {"output": output_id, "seq": frame.get("seq") if isinstance(frame, dict) else None,
@@ -811,6 +858,140 @@ class Rig:
         starts here and a removed one stops."""
         self._force_reload = True
         self._sync(self.mono())
+
+    # -- movers: the jog, the room space and the live view (docs/LIGHTS.md §5.7, §5.8, §8.1) -------------------------
+    def reload_now(self) -> None:
+        """show-brain, after a Lights page write (setup, positions, teach, the Room map): the registry (with
+        fixtures.setup.yaml) and the room's space are re-read now and the engine recompiled on any change."""
+        self._force_reload = True
+        self._force_space = True
+        self._sync(self.mono())
+
+    def _space_store(self) -> Any:
+        """space.shared() (the one Store per process), imported lazily; None while space.py isn't there (retried at
+        most every SPACE_RETRY_S) or with ``space_store=False``."""
+        src = self._space_src
+        if src is False:
+            return None
+        if src is not None:
+            return src
+        now = self.mono()
+        if now < self._space_next_try:
+            return None
+        try:
+            sp = importlib.import_module(SPACE_MODULE)
+            st = sp.shared()
+        except Exception as e:                                           # noqa: BLE001  degrade: no positions
+            self._space_next_try = now + SPACE_RETRY_S
+            self.modules["space"] = f"missing: {type(e).__name__}: {e}"
+            return None
+        self.modules["space"] = "ok"
+        self._space_src = st
+        return st
+
+    def _poll_space(self) -> None:
+        """show-brain: poll the room's space (mtime and size of space.yaml and space.added.yaml; ``reload_now``
+        forces it); a new revision marks the engine for a reconfigure, so positions and poses reach the movers."""
+        st = self._space_store()
+        if st is None:
+            return
+        force, self._force_space = self._force_space, False
+        poll = getattr(st, "poll", None)
+        if callable(poll):
+            self._guard("space.poll", poll, force=force)
+        sv = self._guard("space.view", getattr(st, "view", None))
+        sv = sv if isinstance(sv, Mapping) else None
+        rev = sv.get("revision") if sv is not None else None
+        if rev != self._space_rev or (sv is None) != (self._space_view is None):
+            self._space_view, self._space_rev = (dict(sv) if sv is not None else None), rev
+            self._engine_dirty = True
+
+    def _jog_cfg(self) -> tuple[float, float]:
+        """show.yaml ``lights.jog``'s idle_s and smooth_ms (their starting points when unset)."""
+        j = (self._lights or {}).get("jog")
+        j = j if isinstance(j, Mapping) else {}
+        idle, smooth = _num(j.get("idle_s")), _num(j.get("smooth_ms"))
+        return (idle if idle is not None and idle > 0 else JOG_IDLE_S,
+                smooth if smooth is not None and smooth >= 0 else JOG_SMOOTH_MS)
+
+    def jog(self, fid: str, values: Any = None, *, release: bool = False, free: bool = False) -> dict:
+        """POST /api/v1/rig/fixtures/{id}/jog (any thread, no brain hop): the Lights page's Move it. ``values``
+        {attr: value} merge into the light's hold (the engine clamps them to its range, and to its soft limits unless
+        ``free``; an attr it can't show is listed in ``unknown``), or ``release`` hands it back; its runner wakes at
+        once. -> {held, until_s, idle_s, target, now, unknown, why}; ``why`` in page words when it isn't held.
+        ValueError("bad_request: ...") when ``values`` isn't a mapping."""
+        if values is None:
+            values = {}
+        if not isinstance(values, Mapping):
+            raise ValueError("bad_request: values must be {attr: value}")
+        idle, smooth = self._jog_cfg()
+        out: dict[str, Any] = {"held": False, "until_s": None, "idle_s": idle, "target": {}, "now": {},
+                               "unknown": [], "why": None}
+        v = self._view
+        f = ((v or {}).get("fixtures") or {}).get(fid)
+        if f is None:
+            out["why"] = (f"There's no light {fid!r} in the rig." if v is not None else
+                          "The rig is off (show.yaml rig.enabled), so nothing can move.")
+            return out
+        if f.get("kind") == "screen":
+            out["why"] = "A screen isn't moved from here."
+            return out
+        hold, rel = getattr(self.engine, "hold", None), getattr(self.engine, "release", None)
+        if not callable(hold) or not callable(rel):
+            out["why"] = "This light can't be moved from here yet."
+            return out
+        oid = f.get("output")
+        o = self._outs.get(oid) if oid else None
+        if release:
+            self._guard("engine.release", rel, fid)
+        else:
+            got = hold(fid, values, idle_s=idle, smooth_ms=smooth, free=bool(free))
+            if isinstance(got, Mapping):
+                for k in ("held", "until_s", "target", "now", "unknown", "why"):
+                    if k in got:
+                        out[k] = got[k]
+            if o is None and out["held"]:
+                why = self._why.get(oid) if oid else None
+                out["held"] = False
+                out["why"] = (f"Its output isn't running: {why[1]}" if why and why[1] else
+                              "It isn't on an output that runs, so it can't move yet.")
+        if o is not None and o.runner is not None:
+            o.runner.wake.set()                                          # a frame now, then the active rate (busy)
+        return out
+
+    def holds(self) -> dict:
+        """{fixture: contract.HoldView} (any thread): the lights held by Move it now."""
+        fn = getattr(self.engine, "holds", None)
+        got = self._guard("engine.holds", fn) if callable(fn) else None
+        return got if isinstance(got, dict) else {}
+
+    def caps_of(self, fid: str) -> Optional[dict]:
+        """contract.FixtureCaps for a light (any thread): the engine's (setup applied), else fixtures.caps_of over the
+        current view; None for an unknown light or with no encoder."""
+        fn = getattr(self.engine, "caps_of", None)
+        got = self._guard("engine.caps_of", fn, fid) if callable(fn) else None
+        if isinstance(got, dict):
+            return got
+        v = self._view
+        f = ((v or {}).get("fixtures") or {}).get(fid)
+        t = ((v or {}).get("types") or {}).get(f.get("type")) if isinstance(f, Mapping) else None
+        fx = self._fixtures_module()
+        cf = getattr(fx, "caps_of", None) if fx is not None else None
+        if not isinstance(t, Mapping) or not callable(cf):
+            return None
+        got = self._guard("fixtures.caps_of", cf, t, f.get("setup"))
+        return got if isinstance(got, dict) else None
+
+    def live_view(self) -> dict:
+        """GET /api/v1/rig/live (any thread): contract.LiveView from the runners' last frames and the space's poses
+        (the engine's ``live_view``)."""
+        frames = {oid: o.runner.last_frame for oid, o in list(self._outs.items())
+                  if o.runner is not None and isinstance(o.runner.last_frame, dict)}
+        fn = getattr(self.engine, "live_view", None)
+        got = self._guard("engine.live_view", fn, frames) if callable(fn) else None
+        if isinstance(got, dict):
+            return got
+        return {"t_ms": self.mono() * 1000.0, "flow": None, "programs": {}, "fixtures": {}}
 
     def _row_after(self, fid: str, candidate: Any) -> Optional[dict]:
         """The written light's row: from the rig's view once it has it, else from the Registrar's check (the rig
@@ -1016,7 +1197,11 @@ class Rig:
                          "address": f.get("address"), "footprint": int(t.get("footprint") or 0),
                          "placement": f.get("placement"), "role": role, "zone": f.get("zone"),
                          "follow": follow.get(fid), "online": online.get(ip) if ip else None,
-                         "last_rgb": self._last_hex(oid, fid), "editable": fid in editable})
+                         "last_rgb": self._last_hex(oid, fid), "editable": fid in editable,
+                         # docs/LIGHTS.md §2.3: what it can do (its setup applied) and its setup, for the page
+                         "caps": fx.caps_of(t, f.get("setup")) if fx is not None and t and hasattr(fx, "caps_of")
+                         else None,
+                         "setup": dict(f.get("setup") or {})})
         return rows
 
     def _last_hex(self, oid: Any, fid: str) -> Optional[str]:
@@ -1062,8 +1247,14 @@ class Rig:
         view = reg.view()
         was = self._view
         self._view = view
+        self._poll_space()                                   # docs/LIGHTS.md §5.8: a new space revision reconfigures
         if view is not None and self.engine is not None and (changed or self._engine_dirty or view is not was):
-            got = self._guard("engine.configure", self.engine.configure, self._looks, view, lamps=self._lamps)
+            ekw: dict[str, Any] = {"lamps": self._lamps}
+            if "lights" in self._engine_kw:
+                ekw["lights"] = self._lights
+            if "space" in self._engine_kw:
+                ekw["space"] = self._space_view
+            got = self._guard("engine.configure", self.engine.configure, self._looks, view, **ekw)
             if got is not None:
                 self.engine_problems = list(got)
                 self._engine_dirty = False
@@ -1259,7 +1450,9 @@ class Rig:
                 "fixtures": self.fixture_rows(),
                 "follow": {"file": str(self.follow_file) if self.follow_file is not None else None,
                            "error": self.follow_error, "count": len(self._follow)},
-                "online": {"rounds": self._online.rounds, "every_s": self._online.every_s}}
+                "online": {"rounds": self._online.rounds, "every_s": self._online.every_s},
+                # docs/LIGHTS.md §5.8: the room's space the movers aim through (the engine's stats carry ``motion``)
+                "space": {"revision": self._space_rev, "module": self.modules.get("space")}}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Rig:

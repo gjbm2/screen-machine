@@ -512,6 +512,10 @@ class LookData(TypedDict):
     light_scene: Optional[str]     # the scene the look engine runs (its layers and hits); None: show.yaml looks.layers
     light_scene_why: Optional[str]  # short words: why it was picked ("a new song: energy 0.6, euphoric, techno")
     light_scene_drop: Optional["LightSceneDrop"]   # the last drop line the director heard (the scene's drop flash)
+    # docs/LIGHTS.md §4, §7 (18 Oct): the room's flow, and one light program per light group (show.yaml lights.groups).
+    # light_scene above stays: it is the scene of the group lights.scene_group names (compat)
+    flow: "FlowData"               # the same object as room.direction's
+    light_programs: dict[str, "LightProgram"]   # light group -> its program; {} while neutral (the compat path)
 
 
 class LightSceneDrop(TypedDict):
@@ -520,6 +524,93 @@ class LightSceneDrop(TypedDict):
     id: str                        # "drop:<n>": +1 per drop line the director passes on
     at_ms: float                   # the line, host time (CLOCK_MONOTONIC ms), as LookData.t_ms; ahead for a forecast
     strength: float                # 0..1 (1.0: the events carry no strength)
+
+
+# -- light programs and flow (docs/LIGHTS.md §4, §7; the catalogue builder's, 18 Oct) ---------------------------------
+#: FlowData.source: what decided the flow (flow.py). "event": a drop, a build or a new song bypassed the dwell
+FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moods", "none")
+FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
+LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
+LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
+                                          "outro", "every_bars")
+#: a light layer's ``kind`` (docs/LIGHTS.md §5.2; a layer without one takes its ``attr``, else intensity). Shutter
+#: layers live in light_effects.yaml only (a scene never strobes)
+LIGHT_LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism", "colour", "colour_wheel",
+                                      "cct", "shutter")
+#: the attrs that make a light's look (cap_fit, docs/LIGHTS.md §6.1): an entry driving more of a group's wins there
+EXPRESSIVE_ATTRS: tuple[str, ...] = ("pan", "tilt", "gobo", "prism", "zoom", "colour_slot", "intensity")
+
+
+class FlowData(TypedDict):
+    """room.direction.flow and room.look.flow: one direction of travel for every appliance (docs/LIGHTS.md §4.1). The
+    shared phase every consumer evaluates at its own photon time:
+      wave(t, p) = frac((beat(t) - anchor_beat) / period_beats - spread x flow_coord(p))      with a grid
+                 = frac((t - at_ms / 1000) / period_s - spread x flow_coord(p))               without"""
+    id: int                        # +1 per change of dir, at or symmetry (not of speed or spread)
+    dir: str                       # FLOW_DIRS
+    at: Optional[str]              # a Room map name: towards/away's target, cw/ccw/outward/inward's centre; None = the
+                                   # room's centre (show.yaml lights.flow.centre)
+    at_xyz: Optional[list[float]]  # that point resolved (m), else the room's centre; None without a space
+    speed: float                   # 0..1
+    spread: float                  # 0..1: 0 unison, 1 one whole cycle across the room
+    coherence: float               # 0..1: how strictly every appliance should follow it (events 1.0)
+    symmetry: str                  # FLOW_SYMMETRY
+    period_beats: Optional[float]  # the wave's crossing time, a power of two of beats; None without a clock grid
+    period_s: float                # the same in seconds (with no grid, the one to use)
+    anchor_beat: Optional[float]   # the clock's beat number at at_ms (a bar line): phase 0 leaves the start then
+    at_ms: float                   # when it takes effect (host time, >= the screens' lead ahead, on a bar line)
+    source: str                    # FLOW_SOURCES
+    why: str                       # short words: "the song builds", "rising melody", "a drop"
+    screens: dict[str, "ScreenFlow"]   # the renderer's screen name (FixtureInfo.screen) -> the flow in its plane
+
+
+class LightEffectRun(TypedDict):
+    """One effect running over a group's scene (light_effects.yaml), fired on the music's events."""
+    id: str                        # "fx:<n>": +1 per effect fired
+    name: str
+    label: str
+    at_ms: float                   # host time: the event's line
+    until_ms: Optional[float]      # None: while its phase holds (then set to when it left, and dropped after its fade)
+    strength: float                # 0..1
+    why: str                       # "the drop", "a new section"
+
+
+class LightTransitionRun(TypedDict):
+    """How a group crosses to its new scene (light_transitions.yaml), at the screens' own moment."""
+    name: str
+    kind: str                      # LIGHT_TRANSITION_KINDS
+    params: dict[str, Any]         # resolved: {beats, seconds, out_s, in_s, in_at_ms, wave_beats, dark_move}
+    at_ms: float
+
+
+class LightProgram(TypedDict):
+    """LookData.light_programs[group]: what one light group runs (docs/LIGHTS.md §7.2). Until ``at_ms`` the group still
+    shows what it showed: the program is published ahead so every output switches at its own photon time."""
+    group: str
+    label: str
+    members: list[str]
+    caps: list[str]
+    scene: Optional[str]           # light_scenes.yaml; None: no scene fits (the engine's compat path)
+    scene_label: Optional[str]
+    scene_why: Optional[str]
+    effects: list[LightEffectRun]
+    transition: LightTransitionRun
+    flow: FlowData                 # the room's, or for a scene that doesn't honour flow its first tagged dir with the
+                                   # room's speed, spread and timing
+    since_ms: float                # when the scene was picked
+    at_ms: float                   # when it lands (the look change's at_ms: the screens' too)
+    why: str
+
+
+class GroupInfo(TypedDict):
+    """light_scenes.group_members: one light group (show.yaml lights.groups; "*" holds the lights no group takes)."""
+    id: str
+    label: str
+    members: list[str]             # lamp fixture ids, in the selector's order
+    caps: list[str]                # the union of the members' attrs
+    follows: Optional[str]         # runs that group's program
+    dark_level: Any                # "floor" | 0..1: where fade_dark goes
+    member_caps: NotRequired[dict[str, list[str]]]   # each member's attrs (an entry's needs: one member has them all)
 
 
 class ComposeView(TypedDict):
@@ -585,6 +676,8 @@ class DirectionData(TypedDict):
     organic: Optional[float]       # 0 (synthetic) .. 1 (acoustic): music.context acoustic (None without the ML)
     beat_lock: bool                # the vibe allows it and the clock's gate is "beat"
     loose: bool                    # the card's "following loosely": the vibe wants the beat, the clock is unsure
+    flow: "FlowData"               # docs/LIGHTS.md §4: the room's direction of travel (still while neutral); published at
+                                   # once on a new flow.id
     # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
     pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
     peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
@@ -616,6 +709,9 @@ class EventData(TypedDict):
     phrase: NotRequired[int]
     strength: NotRequired[float]
     detail: NotRequired[str]
+    # docs/LIGHTS.md §7.3, §9 (18 Oct): on look_change and the track events, so the screens cross with the lights
+    flow_id: NotRequired[int]      # the FlowData.id this change goes with
+    sweep_beats: NotRequired[float]   # a sweep: each appliance starts at at_ms + its flow phase x this many beats
 
 
 #: artnet_out's palette_fn (README "artnet_out.py"): (t_s) -> (r, g, b) | {device id | screen | "*": (r, g, b)} | None,
@@ -1593,6 +1689,9 @@ NODES_STATE_FILE = STATE_DIR / "nodes.json"         # artnet_lan: what discovery
 FIXTURES_ADDED_FILE = CONFIG_ROOM_DIR / "fixtures.added.yaml"   # the Lights page's lights (README S5.23): written
                                                     # only by the rig API (fixtures.Registrar), merged under
                                                     # fixtures.yaml
+FIXTURES_SETUP_FILE = CONFIG_ROOM_DIR / "fixtures.setup.yaml"   # per-light settings from the Lights page (home, limits,
+                                                    # beam, slot names, positions; docs/LIGHTS.md §2.6): written only
+                                                    # by the rig API (fixtures.SetupStore); any fixture, hand-file too
 FOLLOW_STATE_FILE = STATE_DIR / "follow.json"       # outputs.Rig: who follows the music (POST /api/v1/rig/follow;
                                                     # atomic)
 HUE_SECRETS_DIR = pathlib.Path.home() / ".config" / "screen-machine" / "hue"   # room_service.hue.pair writes
@@ -1635,11 +1734,26 @@ FX_PHASES: tuple[str, ...] = ("beat", "bar", "phrase", "time")                # 
 FX_NEEDS: tuple[str, ...] = ("beat", "grid", "none")   # beat: the clock's gate beat (dmx: hit outputs only, reduced);
                                                     # grid: any clock grid; none: free-runs on time without one
 #: Inputs a show.yaml looks layer may take a number from (``depth``, ``spread``); anything else must be a number.
-LOOK_INPUTS: tuple[str, ...] = ("swell", "motion.amount", "motion.speed", "accents.density", "look.spread", "energy")
+#: ``flow.*``: room.look's flow (docs/LIGHTS.md §4.1, §5.2; 0 without one).
+LOOK_INPUTS: tuple[str, ...] = ("swell", "motion.amount", "motion.speed", "accents.density", "look.spread", "energy",
+                                "flow.speed", "flow.spread", "flow.coherence")
 #: OFL ColorIntensity colours -> our emitter names (lower snake case). An OFL colour not listed is an "other" channel.
 EMITTERS: tuple[str, ...] = ("red", "green", "blue", "white", "warm_white", "cold_white", "amber", "lime", "cyan",
                              "magenta", "yellow", "indigo", "uv")
-CHANNEL_ATTRS: tuple[str, ...] = ("intensity", "emitter", "wheel", "shutter", "pan", "tilt", "other")
+#: The attribute vocabulary (docs/LIGHTS.md §2.1): what layers, the hold (jog) and the frame set on a fixture, each in
+#: its normalised unit (pan/tilt centred degrees, zoom beam degrees, spins -1..1, slots 1-based). A fixture has an
+#: attribute when its type has a DMX range serving it (fixture_encode.caps); ``macro`` is the page's "More" only.
+ATTRS: tuple[str, ...] = ("intensity", "colour", "colour_slot", "colour_spin", "cct", "shutter", "pan", "tilt",
+                          "pan_spin", "tilt_spin", "pt_speed", "zoom", "focus", "iris", "frost", "gobo", "gobo2",
+                          "gobo_spin", "gobo2_spin", "gobo_shake", "gobo2_shake", "gobo_scroll", "prism", "prism_spin",
+                          "macro")
+SHUTTER_MODES: tuple[str, ...] = ("open", "closed", "strobe", "pulse", "random", "ramp", "burst")   # shutter.mode
+#: A channel's ``attr``: what drives it (colour_mix: intensity, emitter, wheel; fixture_encode: the rest, by its
+#: ``ranges``), from its first capability that isn't NoFunction; "other": mixed functions, a fine byte, macros.
+CHANNEL_ATTRS: tuple[str, ...] = ("intensity", "emitter", "wheel", "shutter", "pan", "tilt", "pan_spin", "tilt_spin",
+                                  "pt_speed", "zoom", "focus", "iris", "frost", "cct", "colour_spin", "gobo", "gobo2",
+                                  "gobo_spin", "gobo2_spin", "gobo_shake", "gobo2_shake", "gobo_scroll", "prism",
+                                  "prism_spin", "other")
 CURVES: tuple[str, ...] = ("srgb", "linear")        # emitter curve: linear light -> DMX fraction; also "gamma:<g>"
 NUDGE_KINDS_STAGE5: tuple[str, ...] = ("screen_pick",)   # a person's palette pick on a screen holds the screens' palette
 SCREEN_PICK = "screen_pick"                         # its chip id and kind (DELETE /api/v1/nudge/screen_pick clears it)
@@ -1700,6 +1814,9 @@ class AttrChannel(TypedDict):
     fine: NotRequired[int]         # the offset of its fine (LSB) channel, when the mode carries it
     default: int                   # 0..255: OFL defaultValue; a shutter with none: its "Open" capability's DMX value;
                                    # otherwise 0. What an undriven channel sends
+    ranges: NotRequired[list["CapRange"]]   # every capability on the channel, normalised (docs/LIGHTS.md §2.2);
+                                   # absent on fine and switching channels
+    res: NotRequired[int]          # bytes per value of ``ranges``' dmx (2: 16-bit, MSB first); absent = 1
 
 
 class TypeInfo(TypedDict):
@@ -1709,13 +1826,20 @@ class TypeInfo(TypedDict):
     file: Optional[str]            # ofl: relative to FIXTURE_TYPES_DIR
     mode: Optional[str]            # ofl: the mode's name or shortName
     footprint: int                 # DMX channels (0 for the builtin types)
-    attrs: list[str]               # what the engine may drive: "intensity", "colour" (and later "position")
+    attrs: list[str]               # the ATTRS this type can show, in ATTRS order ("intensity", "colour" as before:
+                                   # from its driven intensity, emitter and wheel channels; the rest: a range serves it)
     channels: list[AttrChannel]
     emitters: dict[str, dict[str, Any]]   # emitter -> {"xy": [x, y], "Y": relative luminance, "source": "type" |
                                    # "starting point"}
     wheel: list[dict[str, Any]]    # colour slots only: [{"dmx": int, "hex": "#rrggbb", "name": str}]
     curve: str                     # CURVES or "gamma:<g>"; neutral "srgb" (the palette's values straight across)
     problems: list[str]
+    wheels: dict[str, dict[str, Any]]   # the mode's wheels: name -> {"kind": colour | gobo | prism | other, "attr":
+                                   # the ATTRS word its slots set or None, "slots": [{"slot", "type", "name", "hex"?,
+                                   # "facets"?}]}
+    physical: dict[str, Any]       # {"lens_deg": [min, max] | None, "pan_deg": float | None, "tilt_deg": float | None,
+                                   # "zoom_deg": [min, max] | None}: None = the file doesn't say (setup ``range`` and
+                                   # the starting points stand in)
 
 
 class FixtureInfo(TypedDict):
@@ -1737,6 +1861,7 @@ class FixtureInfo(TypedDict):
     pin: dict[str, int]            # OFL channel name -> DMX value (an undriven channel held there)
     house: Optional[dict[str, Any]]   # {"intensity": 0..1, "hex": "#rrggbb"}: what it shows with no look; None = dark
     latency: LatencyView
+    setup: "FixtureSetup"          # fixtures.setup.yaml's entry for it (the Lights page's; docs/LIGHTS.md §2.6); {}
 
 
 class RigView(TypedDict):
@@ -1775,6 +1900,9 @@ class RigFixtureRow(TypedDict):
                                    # address, or not checked yet
     last_rgb: Optional[str]        # "#rrggbb": the last frame sent for it (colour x intensity); None: none yet
     editable: bool                 # it is in fixtures.added.yaml: the Lights page may change or remove it
+    caps: Optional["FixtureCaps"]  # what it can do, its setup applied (fixture_encode.caps): the page builds its
+                                   # controls from this alone; None: no type, or fixture_encode can't be imported
+    setup: "FixtureSetup"          # its fixtures.setup.yaml entry ({} = nothing set)
 
 
 class RigTypeRow(TypedDict):
@@ -1785,6 +1913,60 @@ class RigTypeRow(TypedDict):
     footprint: int
     channels: list[str]            # channel names in DMX order
     kind: str                      # FIXTURE_KINDS
+    caps: Optional["FixtureCaps"]  # the type's capabilities with no setup (None: fixture_encode can't be imported)
+
+
+# -- fixture capabilities (docs/LIGHTS.md §2) ----------------------------------------------------------------------------
+class CapRange(TypedDict):
+    """One OFL capability on a channel, normalised (ofl.parse; fixtures.GENERIC_RANGES for the generic types)."""
+    dmx: list[int]                 # [lo, hi] at the channel's full resolution (0..65535 for 16-bit: AttrChannel.res)
+    cap: str                       # the OFL capability type ("Pan", "WheelSlot", "WheelShake", ...)
+    attr: str                      # the ATTRS word it serves ("macro" for page-only ones)
+    lo: float                      # the attr's value at dmx lo (centred degrees, -1..1 spin, 0..1, kelvin, Hz, slot)
+    hi: float                      # ...and at dmx hi (equal for a stepped capability)
+    slot: NotRequired[int]         # WheelSlot / WheelShake / WheelSlotRotation / Prism: the slot number
+    mode: NotRequired[str]         # shutter: SHUTTER_MODES
+    word: NotRequired[str]         # page words: the OFL comment, effectName, shutterEffect or the slot's name
+
+
+class FixtureCaps(TypedDict):
+    """What one fixture can show (fixture_encode.caps(type, setup)): the Lights page's controls, the engine's
+    capability-aware layers and the catalogue's ``needs`` read this alone, never a type or channel name."""
+    attrs: list[str]               # ATTRS this fixture can show (after setup overrides), in ATTRS order
+    pan: Optional[dict]            # {"min": deg, "max": deg, "fine": bool, "limits": [lo, hi] | None}: centred degrees
+    tilt: Optional[dict]           # the same
+    pt_speed: bool
+    zoom: Optional[dict]           # {"min": deg, "max": deg, "known": bool} (known: the file's degrees, not a guess)
+    focus: bool
+    iris: bool
+    frost: bool
+    colour: str                    # "mix" (emitters) | "wheel" | "none"
+    colour_slots: list[dict]       # [{"slot", "name", "hex"}] (setup names and colours win)
+    gobo_slots: list[dict]         # [{"slot", "name", "shake": bool, "open": bool}] (setup names win); [] = no wheel
+    gobo2_slots: list[dict]
+    prism_slots: list[dict]        # [{"slot", "name", "facets"}]; a plain Prism channel: [{"slot": 1, "name": "Prism"}]
+    spins: list[str]               # the spin attrs present: gobo_spin, gobo2_spin, prism_spin, colour_spin, ...
+    cct: Optional[dict]            # {"min_k", "max_k"}
+    shutter: list[str]             # the SHUTTER_MODES it has
+    strobe_hz: Optional[list[float]]   # [lo, hi] (setup strobe_hz_max caps hi)
+    macros: list[dict]             # [{"channel", "name", "choices": [{"word", "dmx"}]}]: the page's "More" only
+    moves: bool                    # has pan and tilt
+
+
+class FixtureSetup(TypedDict, total=False):
+    """config/room/fixtures.setup.yaml ``fixtures.<id>`` (fixtures.SetupStore; docs/LIGHTS.md §2.6). Every key is
+    owner-set on the Lights page; an absent key means "not set" (no default limits, speeds or names are invented)."""
+    home: dict                     # {"pan": deg, "tilt": deg}: where it rests (house, inactive, uncalibrated patterns)
+    limits: dict                   # {"pan": [lo, hi], "tilt": [lo, hi]}: soft limits, centred degrees; absent = the
+                                   # full range
+    max_speed: dict                # {"pan": deg_s, "tilt": deg_s}: measured; absent = show.yaml lights.motion's
+    range: dict                    # {"pan": deg, "tilt": deg}: the full mechanical range when the type doesn't say
+    beam: dict                     # {"zoom": deg, "focus": 0..1, "iris": 0..1, "frost": 0..1}: its default beam
+    slots: dict                    # {"gobo": {"<n>": "Stars"}, "gobo2": {...}, "colour": {"<n>": {"name", "hex"}},
+                                   #  "prism": {...}, "count": {"gobo": n, "colour": n}} (count: generic types only)
+    positions: dict                # {"<name>": {"pan": deg, "tilt": deg, "label"?: str}}: named, in its own pan/tilt
+    strobe_hz_max: float           # owner-set, per light; absent = none
+    jog_flip: dict                 # {"pan": bool, "tilt": bool}: the page's drag direction (page convenience only)
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
@@ -1794,6 +1976,8 @@ class FixtureFrame(TypedDict):
     rgb: list[float]               # colour x intensity: what room's Hue path took from Art-Net (hue's xy_bri input)
     dmx: NotRequired[bytes]        # types with channels: the footprint, encoded (len = footprint)
     t_eval_ms: float               # when its intensity was evaluated (t_send + rise), for previz and logs
+    attrs: NotRequired[dict[str, Any]]   # docs/LIGHTS.md §5.8: the normalised values sent (pan, tilt, zoom, gobo, ...),
+                                   # for a type with ranges beyond intensity, colour and the colour wheel
 
 
 class Frame(TypedDict):
@@ -1805,6 +1989,8 @@ class Frame(TypedDict):
     why: Optional[str]             # inactive: "no_features" | "quiet" | "no_vibe" (caps.idle_without_vibe) |
                                    # "no_look" | "rig_off"
     fixtures: dict[str, FixtureFrame]   # this output's fixtures (kind screen never appears)
+    busy: bool                     # docs/LIGHTS.md §5.5: a fixture moves under a hold or a glide home: the runner plans
+                                   # at its active rate (outputs._Runner), active or not
 
 
 class DriverCaps(TypedDict):
@@ -1818,6 +2004,41 @@ class DriverCaps(TypedDict):
                                            # "never strobes", §5.4); the engine coarsens a faster layer
     idle_without_vibe: NotRequired[bool]   # no vibe -> the house look (artnet: nothing room-side gates DMX, §8.6);
                                            # False (hue): room's hue adapter decides which lamps follow
+
+
+# -- motion and the hold (docs/LIGHTS.md §5) ------------------------------------------------------------------------------
+class HoldView(TypedDict):
+    """LookEngine.holds() / Rig.holds(): a light held by the Lights page's Move it (§5.7). Out of everything else
+    (layers, effects, hits, master, caps, follow, identify) until released or idle."""
+    target: dict[str, Any]         # what was asked (attr -> value), after clamping
+    now: dict[str, Any]            # the smoothed values on the last frame
+    until_s: float                 # monotonic: released at this time unless another hold call comes
+    free: bool                     # soft limits ignored (the page's Set limits panel)
+
+
+class LiveFixture(TypedDict):
+    """Rig.live_view()'s per light (§8.1): where it is and where its beam lands, for the Room map."""
+    at: Optional[list[float]]      # its room position (m); None: not placed
+    dir: Optional[list[float]]     # the beam's direction (calibrated movers)
+    hit: Optional[list[float]]     # where the beam lands on a room surface
+    surface: Optional[str]
+    pan: Optional[float]           # centred degrees, as sent
+    tilt: Optional[float]
+    zoom_deg: Optional[float]
+    gobo: Optional[str]            # the gobo slot's name
+    prism: bool
+    intensity: float
+    hex: Optional[str]             # colour x intensity, "#rrggbb"
+    held: bool
+    calibrated: bool               # it has a solved pose
+
+
+class LiveView(TypedDict):
+    """GET /api/v1/rig/live (§8.1): from the runners' last frames and the space's poses."""
+    t_ms: float
+    flow: Optional["FlowData"]
+    programs: dict[str, dict]      # group -> {"label", "scene_label", "effects": [label]}
+    fixtures: dict[str, LiveFixture]
 
 
 #: A smoothstep's peak slope. No intensity rise is steeper than SLEW_PEAK / min_attack (per second): the look engine's
@@ -1990,3 +2211,108 @@ class Driver(Protocol):
     def set_frame(self, frame: Frame) -> None: ...     # runner: encode and send now; never blocks over 1 ms
     def tick(self, now_s: float) -> None: ...          # show-brain, 1 Hz: discovery, takeover checks, health
     def status(self) -> OutputStatus: ...              # any thread
+
+
+# -- room space (docs/LIGHTS.md §3) ------------------------------------------------------------------------------------
+# One room frame in metres: x east, y north, z up, origin the south-west floor corner. space.py reads config/room/
+# space.yaml (hand) with space.added.yaml (the Lights page's Room map and Move it) under it; every appliance kind reads
+# directions and places through it, so "upwards" or "the piano" means the same thing to a screen, a lamp and a mover.
+#: A flow's direction (FlowData.dir). left/right are as seen facing the room's front; cw/ccw as seen from above (the
+#: floor plan, N -> E -> S -> W); towards/away are about the flow's ``at`` (cw/ccw/outward/inward turn round it).
+FLOW_DIRS: tuple[str, ...] = ("still", "up", "down", "left", "right", "cw", "ccw", "outward", "inward", "towards",
+                              "away")
+FLOW_OPPOSITE: dict[str, str] = {"up": "down", "down": "up", "left": "right", "right": "left", "cw": "ccw", "ccw": "cw",
+                                 "outward": "inward", "inward": "outward", "towards": "away", "away": "towards"}
+SPACE_FILE = CONFIG_ROOM_DIR / "space.yaml"         # hand-written: the room, its places and appliances (space.py)
+SPACE_ADDED_FILE = CONFIG_ROOM_DIR / "space.added.yaml"   # written only by the rig API (the Room map, Move it's teach
+                                                    # points and poses), whole and atomically; merged under space.yaml
+MOUNTS: tuple[str, ...] = ("ceiling", "floor", "wall", "truss")   # how a mover hangs (the pose solve's hint)
+
+
+class Surface(TypedDict):
+    """A plane in the room: the floor, the ceiling, wall-n/e/s/w (from the room's size) or a named one (space.yaml
+    ``surfaces``). A point on it is origin + u·û + v·v̂ (space.surface_point)."""
+    name: str
+    label: str                     # page words ("Floor", "North wall", "TV wall")
+    origin: list[float]            # m
+    normal: list[float]            # unit, into the room (the floor's is up, the ceiling's down)
+    u: list[float]                 # unit, along it: left to right as seen from inside facing it (floor, ceiling: east)
+    v: list[float]                 # unit: up on a wall; north on the floor and ceiling
+    size: Optional[list[float]]    # [w, h] along u, v from origin; None = unbounded
+
+
+class SpaceView(TypedDict):
+    """space.Store.view(): the last good space.yaml + space.added.yaml, merged and resolved. Swapped by reference,
+    never mutated after the swap; GET /api/v1/rig/space answers it (+ the page's ``targets``)."""
+    revision: str                  # sha1 of what's in use, 12 hex ("" before the first load)
+    error: Optional[str]           # the last load error (the last good view stays)
+    problems: list[str]            # page words, one per thing it couldn't use as written
+    room: dict                     # {"size": [X, Y, Z] | None, "front": "north"|"east"|"south"|"west",
+                                   #  "centre": [x, y, z] | None, "right": [x, y, z], "front_vec": [x, y, z]}
+    surfaces: dict[str, Surface]
+    points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
+    regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
+    appliances: dict[str, dict]    # id -> {"at": [x, y, z] | None, "kind"?, "label"?, "mount"?, "plane"?: {normal,
+                                   #        up, size}, "teach": [TeachSample], "pose": MoverPose | None,
+                                   #        "editable": bool}  (editable: its place isn't set in the hand file)
+    extent: Optional[list[list[float]]]   # [[min xyz], [max xyz]]: the room box, else the placed things' bounding
+                                   # box; None: nothing is placed and the room's size isn't set
+
+
+class TeachSample(TypedDict):
+    """One taught place for a mover (Move it's "Point it at…"): where it was held when its beam was on the place."""
+    pan: float                     # centred degrees, as it was held
+    tilt: float
+    point: Optional[str]           # the space name it was pointed at
+    at: list[float]                # that place's room position when taught (kept if the place moves later)
+    t: str                         # ISO time
+
+
+class MoverPose(TypedDict):
+    """A mover's solved mounting (space.solve_pose): the beam for (pan, tilt) is rot · b_f(pan_sign·pan,
+    tilt_sign·tilt + tilt_offset), b_f(θ, φ) = (sin φ cos θ, sin φ sin θ, cos φ) in its own frame (z = the pan axis)."""
+    at: list[float]                # solved position, m
+    rot: list[float]               # rotation vector (axis × angle, rad): fixture frame -> room
+    tilt_offset_deg: float
+    pan_sign: int                  # +1 | -1 (pan turns the other way)
+    tilt_sign: int                 # +1 | -1
+    rms_deg: float                 # the fit over its samples
+    worst_deg: float
+    samples: int
+    solved_at: str                 # ISO time
+
+
+class PoseFit(TypedDict):
+    """space.solve_pose's answer (the teach route's ``fit``)."""
+    pose: Optional[MoverPose]      # None while it needs more places
+    rms_deg: Optional[float]
+    worst_deg: Optional[float]
+    worst_index: Optional[int]     # the sample that fits worst (the page can offer to drop it)
+    spread_deg: float              # the widest angle between two taught directions
+    samples: int
+    level: str                     # "good" | "ok" | "rough" | "bad" | "need_more"
+    words: str                     # page words ("Spot on (within 1.5°).")
+    pos_m: Optional[float]         # how far its solved position may be off (m; taught angles good to
+                                   # calibration.angle_sigma_deg); over pos_sigma_m the fit reads rough. None: unknown
+
+
+class Aim(TypedDict):
+    """space.aim's answer: the pan and tilt (centred degrees) that put the beam on a room point."""
+    pan: float
+    tilt: float
+    reachable: bool                # False: the nearest it can get inside its range and limits (never refused)
+    error_deg: float               # the angle between that beam and the point (0 when reachable)
+
+
+class ScreenFlow(TypedDict):
+    """The flow as one screen sees it (space.screen_flow; FlowData.screens values, docs/LIGHTS.md §3.5, §9)."""
+    fixture: str                   # the screen fixture id ("screen.north")
+    x: float                       # the flow in the screen's plane: x right, y up, as a viewer facing it sees
+    y: float
+    angle_deg: float               # atan2(y, x): 0 = towards its right, 90 = up (counter-clockwise as seen)
+    inplane: float                 # 0..1: |(x, y)|
+    depth: float                   # -1..1: + toward the viewer (out of the screen), - into it
+    radial: int                    # +1 expand from the screen's centre (outward, away), -1 contract (inward, towards),
+                                   # 0 otherwise
+    spin: int                      # +1 cw, -1 ccw (cw/ccw flows; the same sense on every screen), else 0
+    phase: float                   # 0..1: the screen's place along the flow (flow_coord of its centre)

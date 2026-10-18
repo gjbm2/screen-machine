@@ -90,6 +90,23 @@ snapshot's ``light_scene``; no scenes: null, and the look engine runs show.yaml'
 hears (structure's drop, a cue's forecast drop at its at_ms) goes to the look engine as LookData ``light_scene_drop``
 (one a beat), whatever the peak tokens say, so a scene with drop hits flashes at the line.
 
+**Light programs and the flow** (docs/LIGHTS.md §4, §7; the catalogue builder's, 18 Oct). The lights are split into
+groups (show.yaml ``lights.groups``, light_scenes.group_members: first match wins, the rest in "*"), and each group
+runs one program {scene, effects, transition, flow}, published as LookData ``light_programs``; ``light_scene`` stays,
+the scene of ``lights.scene_group``'s program. Scenes are picked per group wherever a light scene was (Catalogue.pick_for:
+the tags, the group's capabilities, the flow); a ``follows`` group copies its leader's program. A look change picks its
+programs when it is announced, so they go out ahead with the look_change's at_ms and every output switches at its own
+photon time (lockstep with the screens); a change that never lands takes them back. The transition is the screens'
+own decision (a look's cut -> cut or dark_move, a crossfade -> crossfade or sweep, a song through dark -> fade_dark);
+the look_change carries ``flow_id`` and, for a sweep, ``sweep_beats``. Effects (light_effects.yaml) fire per group on
+structure's events (at their lines), on the phase entering peak or outro, and on every_bars, with each effect's
+chance, at most lights.programs.effects_max at once and effect_gap_bars apart (a drop always may); never while
+neutral, House, Low or Keep. The flow (flow.FlowDecider, on show-brain) votes from the section phase, the pitch
+contour, the listener's trajectory and the moods, with dwell and hysteresis, events bypassing them; FlowData goes on
+room.direction (published at once on a new flow.id) and room.look, with each screen's view from space.py when the room
+is placed. While a flow turns (cw/ccw) and the glitterball is already spinning, its motor follows at most once per
+min_gap_s on a bar line (it never powers it); the blinds follow a big song change only when switched on.
+
 **The screens' hand-pick hold** (Stage 5, README S5.8; agreed with 2f, 16 Oct). Our look PATCHes carry
 ``source: "show_service"`` unless this room boot refused it (the probe: a 2xx with it, or any ``screen.look`` event
 carrying a ``source``, is ``yes``; a 400 ``bad_request`` is the old room: ``no``, and the PATCH goes again at once
@@ -152,6 +169,7 @@ from typing import Any, Callable, Optional
 
 from . import compose as comp
 from . import contract
+from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
 from .vibes import Vibes
@@ -191,6 +209,13 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
 #: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
 LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed"}
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
+LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
+LIGHT_FX_LOG = 10                   # effects fired, kept for the snapshot
+ROOM_TARGETS_PATH = "/api/v1/room/targets"   # room's PUT {values: {target: value}, source}: the glitterball, the blinds
+ROOM_TARGETS_SOURCE = "show"        # the source on those PUTs (docs/LIGHTS.md §4.4)
+#: a look's transition style -> the light transition kinds it may pick among (docs/LIGHTS.md §7.3); a song change's
+#: style (contract.TRANSITION_STYLES) maps the same way, fade-dark to fade_dark
+LIGHT_KINDS_FOR = {"cut": ("cut", "dark_move"), "crossfade": ("crossfade", "sweep"), "fade-dark": ("fade_dark",)}
 BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
@@ -654,6 +679,41 @@ class Director:
         self._ls_drop: Optional[contract.LightSceneDrop] = None   # LookData.light_scene_drop: the last drop line
         self._ls_n = 0
         self._ls_stats = {"picks": 0, "drops": 0}
+        # light programs and the flow (docs/LIGHTS.md §4, §7), all on show-brain
+        self.lights_cfg: dict = lscenes.parse_lights(None, [])
+        self._lights_gen = 0                              # +1 per configure: the groups' cache key
+        self._fx_rng = random.Random(LIGHT_FX_SEED)
+        self._groups: dict[str, contract.GroupInfo] = {}  # light_scenes.group_members, cached
+        self._groups_key: Optional[tuple] = None
+        self._groups_rig: Any = None                      # the registry view the groups were read from
+        self._groups_problems: list[str] = []
+        self._lp_tried: Optional[tuple] = None            # the last (catalogue, groups, look) a scene-less group tried
+        self._lp: dict[str, dict] = {}                    # group -> its program (scene, why, transition, since, at)
+        self._lp_next: Optional[dict] = None              # an announced look's programs, until it lands
+        self._lp_rev = 0                                  # +1 per change a reader must see (room.look goes at once)
+        self._lp_rev_pub = 0
+        self._fx: dict[str, list] = {}                    # leading group -> its running LightEffectRuns
+        self._fx_meta: dict[str, dict] = {}               # run id -> {"phase", "out_s"} (never published)
+        self._fx_last: dict[str, float] = {}              # leading group -> when its last effect fired (its line, s)
+        self._fx_seen: dict[str, float] = {}              # trigger -> its last line (one a beat: a forecast and
+                                                          # structure's own drop are one)
+        self._fx_n = 0
+        self._fx_log: collections.deque = collections.deque(maxlen=LIGHT_FX_LOG)
+        self._fx_phase: Optional[str] = None
+        self._fx_bar: Optional[int] = None
+        self._flow_dec = flowmod.FlowDecider(self.lights_cfg["flow"])
+        self._flow_dec.listener_min_conf = LLM_CONF
+        self._flow_key: Optional[tuple] = None            # (dir, at, symmetry): a change bumps flow.id
+        self._flow_anchor: Optional[tuple] = None         # (at_s, anchor_beat, period key)
+        self._flow_n: Optional[tuple[str, int]] = None    # ("beats" | "s", the period's halvings): flow.period's
+                                                          # hysteresis
+        self._flow_scr: tuple[Any, dict] = (None, {})     # (key, FlowData.screens)
+        self._flow_ev: collections.deque = collections.deque(maxlen=32)   # event ids the flow has heard
+        self._space: Any = None                           # space.py's module once it is there (False: not there)
+        self._flow: contract.FlowData = self._flow_still(0.0)
+        self._mb: dict[str, Any] = {"sent": None, "sent_s": None, "due_s": None, "sends": 0, "error": None,
+                                    "busy": False}        # the glitterball's motor (docs/LIGHTS.md §4.4)
+        self._blinds: dict[str, Any] = {"sent": None, "sends": 0, "error": None}
         self.palettes = catalog if catalog is not None else pal.Catalog()
         self.vibes = vibes if vibes is not None else Vibes(pathlib.Path(vibes_path) if vibes_path is not None
                                                            else contract.VIBES_FILE, palette_names=self.palettes.names)
@@ -905,7 +965,7 @@ class Director:
                                        "style": style, "transition": tr, "facts": {
                                            k: facts.get(k) for k in ("silent", "phase", "gate", "back")},
                                        "old": facts.get("old"), "new": facts.get("new")})
-        return {"transition": tr}
+        return {"transition": tr, **self._flow_track_event(ev)}       # docs/LIGHTS.md §7.2: flow_id, sweep_beats
 
     def on_room_event(self, type_: str, data: dict) -> None:
         """A room WS event (autopilot.RoomLink, on show-brain). Only ``screen.look`` matters here (README S5.8): one
@@ -1142,6 +1202,9 @@ class Director:
             probs.append(f"lamps.default_role: {dr!r} is not a role")
         self.lamps_cfg = {"placement_roles": {str(k): v for k, v in pr.items() if v in clean_roles},
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
+        self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
+        self._flow_dec.configure(self.lights_cfg["flow"])
+        self._lights_gen += 1
         self.settings_problems = probs
         self._roles_key = None
         self._cfg_gen += 1
@@ -1294,6 +1357,7 @@ class Director:
             self._check_patch()
             self._check_response()
             self._poll_light_scenes()
+            self._poll_space()
         self._check_rig()
         self._fetches(now_s)
 
@@ -1331,9 +1395,8 @@ class Director:
         self._music_events(now_s, vs, grid)
         self._armed_tick(now_s, vs, grid)
         self._changes(now_s, vs, grid, cutting)
-        if self.light_scene is None and self.pal_on and self.light_scenes.scenes:
-            self._pick_light_scene(self._ls_reason, now_s)   # none set yet (or it left the catalogue)
         self._phase_tick(now_s, vs, grid)
+        self._lights_tick(now_s, grid, room)              # docs/LIGHTS.md: groups, programs, effects, the flow
         self._compose_plan(now_s, dt, room)
         self._compose(now_s, vs, known, grid, room)
         self._outputs(now_s, vs, known, grid)
@@ -1643,6 +1706,7 @@ class Director:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
             ev["phrase"] = math.floor(ev["bar"] / grid.pb)
+        self._announce_programs(ev, now_s, reason, by, at_s, transition, section)   # docs/LIGHTS.md §7.3
         self._publish(contract.ROOM_EVENT, ev)
         self.events += 1
 
@@ -1695,7 +1759,7 @@ class Director:
         self._log_event("look_change", detail)
         self._look_why = {"why": LOOK_REASON_WORDS.get(pd["reason"], str(pd["reason"]).replace("_", " ")),
                           "t": now_s}
-        self._pick_light_scene(pd["reason"], now_s, human=pd["by"] == "human")   # README S5.24
+        self._land_programs(pd, now_s)                    # README S5.24; docs/LIGHTS.md §7.3: picked when announced
 
     def _transition(self, vs: dict) -> dict:
         style = self._words(vs)["transition_style"]
@@ -1797,6 +1861,7 @@ class Director:
         if at_ms is None:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
+        self._light_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/LIGHTS.md: the flow's events, light effects
         if kind == "track_end_armed":                     # the composer's fade cue (README S5.18); a call-off ends it
             self._end_armed = None if ("eta_s" in ev and ev["eta_s"] is None) else at_ms / 1000.0
         elif kind == "track_change":
@@ -2119,46 +2184,675 @@ class Director:
         self._log_event("token", {"decision": "spent", "at": "an unarmed drop", "event": info, "left": left - 1,
                                   "per_hour": n, "context": self._ctx_brief()})
 
-    # -- light scenes (README S5.24) -----------------------------------------------------------------------------------
+    # -- light scenes (README S5.24) and light programs (docs/LIGHTS.md §7) -------------------------------------------
     def _poll_light_scenes(self) -> None:
-        """Re-read config/live/light_scenes.yaml when it changed (the look engine hears it as a subscriber, on this
-        thread). A scene that left the catalogue is dropped; the next tick picks again."""
+        """Re-read the light files (scenes, effects, transitions) when they changed (the look engine hears it as a
+        subscriber, on this thread). A scene that left the catalogue is dropped from every program; the next tick
+        picks again."""
         try:
             self.light_scenes.poll()
         except Exception:                                 # a broken catalogue never fails the tick
             log.exception("light scenes: poll failed")
-        if self.light_scene is not None and self.light_scene not in self.light_scenes.scenes:
+        scenes = self.light_scenes.scenes
+        for progs in (self._lp, (self._lp_next or {}).get("programs") or {}):
+            for p in progs.values():
+                if p.get("scene") is not None and p["scene"] not in scenes:
+                    p["scene"] = p["scene_why"] = None
+                    p["why"] = LIGHT_REASON_WORDS["scenes"]
+                    self._lp_rev += 1
+        if self.light_scene is not None and self.light_scene not in scenes:
             self._log_event("light_scene", {"scene": None, "was": self.light_scene,
                                             "why": "it left config/live/light_scenes.yaml"})
             self.light_scene, self.light_scene_why, self._ls_reason = None, None, "scenes"
 
     def _pick_light_scene(self, reason: str, now_s: float, *, human: bool = False) -> None:
-        """The lamps' light scene for a new look (``reason``: a LOOK_REASON_WORDS or LIGHT_REASON_WORDS key): a
-        weighted random draw by the scenes' tags against room.direction, never the one showing now. Not while no
-        palette resolves (neutral: hands off), nor while Keep this look holds unless it is a person's own change."""
-        if not self.pal_on or (self.keep_until is not None and not human):
+        """The light groups' scenes now, with no look change to wait for (``reason``: a LOOK_REASON_WORDS or
+        LIGHT_REASON_WORDS key): ``_pick_programs``, committed at once (``light_scene`` follows the scene group's).
+        Not while no palette resolves (neutral: hands off), nor for a group showing a scene while Keep this look holds
+        unless it is a person's own change."""
+        got = self._pick_programs(reason, now_s, human=human)
+        if got is not None:
+            self._commit_programs(got, now_s)
+
+    def _pick_programs(self, reason: str, now_s: float, *, human: bool = False, at_s: Optional[float] = None,
+                       transition: Optional[dict] = None, track: Optional[dict] = None,
+                       only: Optional[set] = None) -> Optional[tuple[dict, list[str]]]:
+        """Every live group's program (docs/LIGHTS.md §7.3): a weighted draw per leading group (Catalogue.pick_for:
+        the tags against room.direction, the group's capabilities, the flow), never the scene it shows while another
+        fits; a ``follows`` group copies its leader's. The transition is the screens' decision (``transition``: the
+        look's; ``track``: a song change's TrackTransition). ``at_s``: when it lands (a look change's at_ms), else the
+        next bar line the screens' lead allows. ``only``: re-pick just these groups. (programs, the groups picked), or
+        None when nothing is picked (neutral, held by Keep, no groups)."""
+        if not self.pal_on:
+            return None
+        self._groups_refresh()
+        held = self.keep_until is not None and not human
+        at = at_s if at_s is not None else self._next_line_s(now_s)
+        at_ms = round(at * 1000.0, 1)
+        words = LIGHT_REASON_WORDS.get(reason) or LOOK_REASON_WORDS.get(reason) or str(reason).replace("_", " ")
+        tr = self._light_transition(transition if transition is not None else self._transition(self.vs), at, track)
+        cur = self._lp
+        new: dict[str, dict] = {}
+        picked: list[str] = []
+        for gid, g in self._groups.items():
+            if g.get("follows") or not self._group_live(gid):
+                continue
+            old = cur.get(gid)
+            if (only is not None and gid not in only) or (held and old is not None and old.get("scene")):
+                if old is not None:
+                    new[gid] = old
+                continue
+            try:
+                got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
+                                                 avoid=old.get("scene") if old else None)
+            except Exception:                             # a broken catalogue never fails the tick
+                log.exception("light scenes: pick failed")
+                got = None
+            name, why, ws = got if got is not None else (None, None, {})
+            new[gid] = {"group": gid, "scene": name, "scene_why": why,
+                        "why": f"{words}: {why}" if name else "no light scene fits these lights", "reason": reason,
+                        "weights": {k: round(v, 4) for k, v in ws.items()}, "transition": dict(tr),
+                        "since_ms": round(now_s * 1000.0, 1), "at_ms": at_ms}
+            picked.append(gid)
+        if not picked:
+            return None
+        for gid in self._groups:                          # a follower runs its leader's program
+            lead = self._root(gid)
+            if lead != gid and lead in new and self._groups[gid]["members"]:
+                new[gid] = {**new[lead], "group": gid}
+                if lead in picked:
+                    picked.append(gid)
+        return new, picked
+
+    def _commit_programs(self, got: tuple[dict, list[str]], now_s: float) -> None:
+        """The programs show from now on (their at_ms); ``light_scene`` (compat) is the scene group's."""
+        progs, picked = got
+        self._lp = progs
+        self._lp_rev += 1
+        sg = self._scene_group()
+        p = progs.get(sg)
+        if sg in picked and p is not None:
+            was = self.light_scene
+            if p["scene"] is None:                        # no scenes: show.yaml's looks.layers
+                if was is not None:
+                    self._log_event("light_scene", {"scene": None, "was": was, "why": "no light scenes"})
+                self.light_scene, self.light_scene_why = None, None
+            else:
+                self.light_scene, self.light_scene_why, self._ls_at = p["scene"], p["why"], now_s
+                self._ls_reason = "first"
+                self._ls_stats["picks"] += 1
+                d = self.direction or {}
+                self._log_event("light_scene", {"scene": p["scene"], "was": was, "why": p["why"],
+                                                "reason": p["reason"], "weights": dict(p["weights"]),
+                                                "direction": {k: d.get(k) for k in ("energy", "moods", "genre",
+                                                                                    "valence", "organic", "density")}})
+        self._log_event("light_program", {
+            "groups": {gid: {"scene": progs[gid]["scene"], "why": progs[gid]["why"],
+                             "transition": progs[gid]["transition"]["name"], "at_ms": progs[gid]["at_ms"]}
+                       for gid in picked if gid in progs},
+            "flow": {k: self._flow.get(k) for k in ("id", "dir", "source")}})
+
+    def _announce_programs(self, ev: dict, now_s: float, reason: str, by: str, at_s: float,
+                           transition: Optional[dict], section: Optional[dict]) -> None:
+        """A look change is announced: its programs are picked now and published ahead (LookData.light_programs, at
+        its at_ms), so every output switches with the screens at its own photon time (docs/LIGHTS.md §7.3). A
+        re-announced change keeps its picks and moves their at_ms. The event gets ``flow_id`` and, for a sweep,
+        ``sweep_beats``."""
+        look_id = ev.get("look_id")
+        nxt = self._lp_next
+        if self.pal_on:
+            at_ms = round(at_s * 1000.0, 1)
+            if nxt is not None and (nxt["look_id"], nxt["reason"], nxt["by"]) == (look_id, reason, by):
+                for p in nxt["programs"].values():
+                    tr = {**p["transition"], "at_ms": at_ms}
+                    if tr["params"].get("in_at_ms") is not None:
+                        tr["params"] = {**tr["params"], "in_at_ms": at_ms}
+                    p["at_ms"], p["transition"] = at_ms, tr
+            else:
+                track = (section or {}).get("transition") if reason == "track" else None
+                got = self._pick_programs(reason, now_s, human=by == "human", at_s=at_s, transition=transition,
+                                          track=track if isinstance(track, dict) else None)
+                self._lp_next = {"look_id": look_id, "reason": reason, "by": by, "programs": got[0],
+                                 "picked": got[1]} if got is not None else None
+            self._lp_rev += 1
+        ev["flow_id"] = int(self._flow["id"])
+        progs = (self._lp_next or {}).get("programs") or {}
+        sw = next((p["transition"]["params"].get("wave_beats") for p in progs.values()
+                   if p["transition"]["kind"] == "sweep"), None)
+        if sw:
+            ev["sweep_beats"] = float(sw)
+
+    def _land_programs(self, pd: dict, now_s: float) -> None:
+        """The look change lands: the programs announced with it show; none announced (nothing fitted then): a pick
+        now, as before."""
+        nxt, self._lp_next = self._lp_next, None
+        if nxt is not None and nxt["look_id"] == f"L{self.look_n}":
+            self._commit_programs((nxt["programs"], nxt["picked"]), now_s)
+        else:
+            self._pick_light_scene(pd["reason"], now_s, human=pd["by"] == "human")
+
+    def _light_transition(self, look_tr: Any, at_s: float, track: Optional[dict] = None
+                          ) -> contract.LightTransitionRun:
+        """The groups' transition for a change at ``at_s``: the screens' own decision mapped to light kinds (a look's
+        cut -> cut | dark_move, a crossfade -> crossfade | sweep; a song change's fade-dark -> fade_dark), picked among
+        them by the feel's transition_style and the flow; a crossfade or sweep takes the look's beats and seconds.
+        No transition of those kinds in the catalogue: the first kind, with the look's numbers."""
+        lt = look_tr if isinstance(look_tr, dict) else {}
+        src = track if isinstance(track, dict) else lt
+        kinds = LIGHT_KINDS_FOR.get(src.get("style")) or LIGHT_KINDS_FOR["crossfade"]
+        try:
+            name = self.light_scenes.pick_transition(kinds, (self.direction or {}).get("transition_style"),
+                                                     self.direction, self._flow, self._fx_rng)
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("light transitions: pick failed")
+            name = None
+        e = self.light_scenes.transitions.get(name) if name else None
+        kind = e["kind"] if e else kinds[0]
+        at_ms = round(at_s * 1000.0, 1)
+        params: dict[str, Any] = {k: (e or {}).get(k) for k in ("beats", "seconds", "out_s", "in_s", "wave_beats")}
+        params["dark_move"] = bool((e or {}).get("dark_move", False))
+        if kind in LIGHT_KINDS_FOR["crossfade"] and (src.get("beats") is not None or src.get("seconds") is not None):
+            params["beats"] = _num(src.get("beats"))
+            params["seconds"] = _num(src.get("seconds"))
+        for k in ("out_s", "in_s"):
+            if _num(src.get(k)) is not None:
+                params[k] = float(src[k])
+        params["in_at_ms"] = at_ms if kind == "fade_dark" else None
+        return {"name": name or kind, "kind": kind, "params": params, "at_ms": at_ms}
+
+    # -- light groups --------------------------------------------------------------------------------------------------
+    def _groups_refresh(self) -> None:
+        """light_scenes.group_members against the registry (ctx.rig) and the room's space, when either or show.yaml's
+        lights changed (cached: the same membership the look engine computes)."""
+        rig = self._rig_seen if isinstance(self._rig_seen, dict) else None
+        sp, view = self._space_now()
+        key = (id(rig), (rig or {}).get("revision"), self._lights_gen, (view or {}).get("revision"))
+        if key == self._groups_key:
+            return
+        self._groups_key = key
+        self._groups_rig = rig                            # held, so its id names it while it is the key
+        spatial = None
+        if sp is not None and view is not None:
+            try:
+                spatial = sp.spatial_fn(view)
+            except Exception:                             # the space's own bug: no sides or heights
+                log.debug("light groups: space.spatial_fn failed", exc_info=True)
+        probs: list[str] = []
+        try:
+            groups = lscenes.group_members(self.lights_cfg["groups"], rig, lamps=self.lamps_cfg, spatial=spatial,
+                                           problems=probs)
+        except Exception as e:                            # never fail the tick: every light in "*"
+            log.exception("light groups: group_members failed")
+            probs.append(f"light groups: {type(e).__name__}: {e}")
+            groups = lscenes.group_members({}, rig, lamps=self.lamps_cfg)
+        before = {g: i["members"] for g, i in self._groups.items()}
+        self._groups, self._groups_problems = groups, probs
+        if before != {g: i["members"] for g, i in groups.items()}:
+            self._lp_rev += 1
+            self._log_event("light_groups", {"groups": {g: list(i["members"]) for g, i in groups.items()},
+                                             "problems": probs})
+
+    def _scene_group(self) -> str:
+        sg = self.lights_cfg["scene_group"]
+        return sg if sg in self._groups else lscenes.OTHER_GROUP
+
+    def _root(self, gid: str) -> str:
+        """The group whose program ``gid`` runs (its ``follows`` chain; parse_lights broke any loop)."""
+        seen = {gid}
+        while True:
+            fo = (self._groups.get(gid) or {}).get("follows")
+            if not fo or fo in seen or fo not in self._groups:
+                return gid
+            seen.add(fo)
+            gid = fo
+
+    def _group_live(self, gid: str) -> bool:
+        """A group gets a program when it has lights (or a follower of it has), and the scene group always does."""
+        g = self._groups.get(gid)
+        if g is None:
+            return False
+        if g["members"] or gid == self._scene_group():
+            return True
+        return any(o["members"] and o.get("follows") and self._root(o["id"]) == gid for o in self._groups.values())
+
+    def _lead_s(self) -> float:
+        return max(LOOK_MIN_LEAD_S, self._ev_lead)
+
+    def _next_line_s(self, now_s: float, grid: Optional[Grid] = None) -> float:
+        """The first bar line the screens' lead allows (no grid: now + the lead): where an unannounced change lands."""
+        grid = grid if grid is not None else self._grid(now_s)
+        t0 = now_s + self._lead_s()
+        return grid.next_line(t0, 1)[0] if grid.ok else t0
+
+    # -- the lights' tick ------------------------------------------------------------------------------------------------
+    def _lights_tick(self, now_s: float, grid: Grid, room: Any) -> None:
+        """docs/LIGHTS.md §4, §7: the groups, a look change that never landed (its programs go), a group with no scene
+        yet (picked), the effects, the flow and the glitterball."""
+        self._groups_refresh()
+        nxt = self._lp_next
+        if nxt is not None and (self.pending is None or nxt["look_id"] != f"L{self.look_n + 1}"):
+            self._lp_next = None
+            self._lp_rev += 1
+            self._log_event("light_program", {"cancelled": nxt["look_id"], "why": "the look change didn't land"})
+        if not self.pal_on:                               # neutral: hands off (the engine's compat path)
+            if self._lp or self._fx:
+                self._lp, self._fx = {}, {}
+                self._fx_meta.clear()
+                self._lp_rev += 1
+            self._flow_dec.reset(now_s)
+        else:
+            if self.light_scenes.scenes:                  # none set yet, or it left the catalogue
+                missing = {gid for gid, g in self._groups.items() if not g.get("follows") and self._group_live(gid)
+                           and not (self._lp.get(gid) or {}).get("scene")}
+                key = (self.light_scenes.revision, self._groups_key, self.look_n, self._ls_reason)
+                if missing and key != self._lp_tried:
+                    self._lp_tried = key
+                    got = self._pick_programs(self._ls_reason, now_s, only=missing)
+                    if got is not None:
+                        self._commit_programs(got, now_s)
+            self._fx_tick(now_s, grid)
+            self._flow_tick(now_s, grid)
+        self._flow_build(now_s, grid)
+        self._mirror_ball(now_s, grid, room)
+        if self._lp_rev != self._lp_rev_pub:
+            self._lp_rev_pub = self._lp_rev
+            self._force_look = True                       # room.look goes at once with a new program or effect
+
+    # -- light effects (docs/LIGHTS.md §6.3, §7.3) ----------------------------------------------------------------------
+    def _light_event(self, kind: str, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
+        """One of structure's events: the flow's (lights.flow.events), an effect trigger, and the blinds."""
+        if not self.pal_on:
+            return
+        if kind in self.lights_cfg["flow"]["events"] and self._flow_heard(ev):
+            self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
+        if kind in contract.LIGHT_EFFECT_TRIGGERS:
+            self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
+        if kind in contract.TRACK_EVENT_KINDS:
+            self._blinds_follow(ev)
+
+    def _fx_trigger(self, trigger: str, at_s: float, now_s: float, grid: Grid, *, strength: Optional[float] = None,
+                    bar: Optional[int] = None) -> None:
+        """Fire an effect on each live leading group for ``trigger`` at its line ``at_s`` (Catalogue.pick_effect: its
+        chance, its fit), at most lights.programs.effects_max at once and effect_gap_bars apart per group (a drop
+        always may). Never while neutral, House, Low or Keep (owner, 17 Oct). One trigger a beat."""
+        if not self.pal_on or self.house or self.low or self.keep_until is not None or not self.light_scenes.effects:
+            return
+        beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
+        bar_s = grid.bar_s if grid.has_grid and grid.bar_s else flowmod.NO_GRID_BAR_S
+        if bar is None:
+            last = self._fx_seen.get(trigger)
+            if last is not None and abs(last - at_s) <= beat + 0.05:
+                return
+            self._fx_seen[trigger] = at_s
+        pc = self.lights_cfg["programs"]
+        now_ms = now_s * 1000.0
+        for gid, g in self._groups.items():
+            if g.get("follows") or not self._group_live(gid):
+                continue
+            runs = self._fx.setdefault(gid, [])
+            active = [r for r in runs if r["until_ms"] is None or r["until_ms"] > now_ms]
+            if len(active) >= int(pc["effects_max"]):
+                continue
+            last = self._fx_last.get(gid)
+            if trigger != "drop" and last is not None and at_s - last < float(pc["effect_gap_bars"]) * bar_s - 1e-6:
+                continue
+            try:
+                got = self.light_scenes.pick_effect(g, trigger, self.direction, self._flow, self._fx_rng,
+                                                    running=[r["name"] for r in active], bar=bar)
+            except Exception:                             # a broken catalogue never fails the tick
+                log.exception("light effects: pick failed")
+                got = None
+            if got is None:
+                continue
+            name, why = got
+            fx = self.light_scenes.effects[name]
+            until = None
+            if fx["length"] != lscenes.LENGTH_WHILE:
+                (k, n), = fx["length"].items()
+                until = at_s + float(n) * (bar_s if k == "bars" else beat if k == "beats" else 1.0)
+            self._fx_n += 1
+            run: contract.LightEffectRun = {
+                "id": f"fx:{self._fx_n}", "name": name, "label": fx["label"], "at_ms": round(at_s * 1000.0, 1),
+                "until_ms": round(until * 1000.0, 1) if until is not None else None,
+                "strength": round(_c01(strength if strength is not None else 1.0), 3), "why": why}
+            self._fx_meta[run["id"]] = {"phase": trigger if trigger in contract.SECTION_PHASES
+                                        else self._phase_eff(now_s),
+                                        "out_s": float(fx["fade"]["out_beats"]) * beat}
+            runs.append(run)
+            self._fx_last[gid] = at_s
+            self._fx_log.append({"group": gid, **run})
+            self._lp_rev += 1
+            self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": trigger, "bar": bar})
+
+    def _fx_tick(self, now_s: float, grid: Grid) -> None:
+        """``while`` effects end when the phase that fired them leaves (then fade out); finished ones go; the phase
+        entering a trigger word no event announces (peak, outro) fires; every_bars counts the clock's bars."""
+        now_ms = now_s * 1000.0
+        phase = self._phase_eff(now_s)
+        for gid, runs in list(self._fx.items()):
+            keep = []
+            for r in runs:
+                meta = self._fx_meta.get(r["id"]) or {}
+                if r["until_ms"] is None and now_ms >= r["at_ms"] and phase != meta.get("phase"):
+                    r["until_ms"] = round(now_ms, 1)
+                    self._lp_rev += 1
+                if r["until_ms"] is not None and now_ms > r["until_ms"] + 1000.0 * float(meta.get("out_s", 0.0)):
+                    self._fx_meta.pop(r["id"], None)
+                    self._lp_rev += 1
+                    continue
+                keep.append(r)
+            self._fx[gid] = keep
+        if phase != self._fx_phase:
+            prev, self._fx_phase = self._fx_phase, phase
+            if prev is not None and phase in contract.LIGHT_EFFECT_TRIGGERS and phase not in contract.MUSIC_EVENT_KINDS:
+                self._fx_trigger(phase, self._next_line_s(now_s, grid), now_s, grid)
+        if grid.ok:
+            t_line, bar = grid.next_line(now_s + self._lead_s(), 1)
+            if self._fx_bar is not None and bar != self._fx_bar:
+                self._fx_trigger("every_bars", t_line, now_s, grid, bar=bar)
+            self._fx_bar = bar
+        else:
+            self._fx_bar = None
+
+    # -- the flow (docs/LIGHTS.md §4) -----------------------------------------------------------------------------------
+    def _flow_still(self, t_s: float) -> contract.FlowData:
+        fb = flowmod.FLOW_FALLBACK
+        return {"id": 0, "dir": flowmod.STILL, "at": None, "at_xyz": None, "speed": 0.0, "spread": 0.0,
+                "coherence": float(fb["coherence"]["floor"]), "symmetry": fb["symmetry"], "period_beats": None,
+                "period_s": float(fb["cross_s"][0]), "anchor_beat": None, "at_ms": round(t_s * 1000.0, 1),
+                "source": "none", "why": "nothing leads yet", "screens": {}}
+
+    def _flow_heard(self, ev: dict) -> bool:
+        """True the first time the flow hears this event (track_transition and on_music_event both see a song change)."""
+        key = ev.get("id") or f"{ev.get('kind')}@{ev.get('at_ms')}"
+        if key in self._flow_ev:
+            return False
+        self._flow_ev.append(key)
+        return True
+
+    def _flow_tick(self, now_s: float, grid: Grid) -> None:
+        """This tick's votes (the phase, harmony's register while it is fresh and the sound is on, the listener's
+        trajectory, room.direction's moods) and the decision."""
+        m = self.music
+        reg = None
+        h = _call(self.ctx.harmony)
+        if isinstance(h, dict):
+            ht, r = _num(h.get("t_ms")), _num(h.get("register"))
+            sounding = (_num(m.get("gate"), 0.0) or 0.0) >= SILENT_GATE or bool(m.get("playing"))
+            if ht is not None and r is not None and now_s - ht / 1000.0 <= HARMONY_STALE_S and sounding:
+                reg = (now_s, _c01(r), _c01(_num(h.get("conf"), 0.0) or 0.0))
+        b = m.get("beliefs")
+        traj = b.get("trajectory") if isinstance(b, dict) and b.get("state") in ("fresh", "holding") else None
+        d = self.direction or {}
+        e = _num(d.get("energy"), _num(m.get("energy")))
+        votes = self._flow_dec.votes(phase=self._phase_eff(now_s), register=reg,
+                                     trajectory=traj if isinstance(traj, dict) else None,
+                                     moods=list(d.get("moods") or []), energy=e if e is not None else 0.5)
+        self._flow_dec.step(now_s, votes)
+
+    def _look_value(self, word: Any, energy: float) -> Optional[float]:
+        """A LOOK_INPUTS word read from the last room.look (lights.flow.spread: look.spread)."""
+        lk = self.look or {}
+        if word == "energy":
+            return energy
+        if word == "look.spread":
+            return _num(lk.get("spread"))
+        if isinstance(word, str) and "." in word:
+            a, b = word.split(".", 1)
+            v = lk.get(a)
+            return _num(v.get(b)) if isinstance(v, dict) else None
+        return None
+
+    def _flow_build(self, now_s: float, grid: Grid) -> None:
+        """FlowData from the decision (contract.FlowData): a new id on a change of dir, at or symmetry, landing at the
+        event's line or the next bar line the screens' lead allows (anchor_beat there); speed from the pace and the
+        energy; the period from cross_beats (a grid) or cross_s, a power of two, re-anchored when it moves; at_xyz and
+        each screen's view from space.py once the room is placed."""
+        fc = self.lights_cfg["flow"]
+        dec = self._flow_dec
+        m = self.music
+        d = self.direction or {}
+        e = _c01(_num(d.get("energy"), _num(m.get("energy"), 0.0)) or 0.0)
+        pace = _c01(_num(m.get("pace"), 0.0) or 0.0)
+        speed = _c01(float(fc["speed"]["pace"]) * pace + float(fc["speed"]["energy"]) * e)
+        sp = fc["spread"]
+        spread = _c01(float(sp) if _num(sp) is not None else (self._look_value(sp, e) or 0.0))
+        kind = "beats" if grid.ok and grid.beat_s else "s"
+        n_prev = self._flow_n[1] if self._flow_n is not None and self._flow_n[0] == kind else None
+        p, n = flowmod.period(fc["cross_beats"] if kind == "beats" else fc["cross_s"], speed, n_prev)
+        self._flow_n = (kind, n)
+        period_beats = p if kind == "beats" else None
+        period_s = p * grid.beat_s if kind == "beats" else p
+        key = (dec.dir, fc["centre"], fc["symmetry"])
+        moved = key != self._flow_key
+        fid = int(self._flow["id"])
+        anc = self._flow_anchor
+        if moved or anc is None or anc[2] != (kind, n):
+            at_s = dec.change_at_s if moved and dec.change_at_s is not None else self._next_line_s(now_s, grid)
+            anc = self._flow_anchor = (at_s, round(grid.beat_at(at_s), 3) if grid.ok else None, (kind, n))
+            if moved:
+                if self._flow_key is not None:
+                    fid += 1
+                    self._log_event("flow", {"id": fid, "dir": dec.dir, "was": self._flow_key[0],
+                                             "source": dec.source, "why": dec.why, "at_ms": round(at_s * 1000.0, 1),
+                                             "votes": {k: round(v, 3) for k, v in dec.last_votes.items()}})
+                self._flow_key = key
+        at_xyz, screens = self._flow_space(dec.dir, fc["centre"])
+        self._flow = {"id": fid, "dir": dec.dir, "at": fc["centre"], "at_xyz": at_xyz, "speed": round(speed, 3),
+                      "spread": round(spread, 3), "coherence": round(float(dec.coherence), 3),
+                      "symmetry": fc["symmetry"], "period_beats": period_beats, "period_s": round(period_s, 4),
+                      "anchor_beat": anc[1], "at_ms": round(anc[0] * 1000.0, 1), "source": dec.source, "why": dec.why,
+                      "screens": screens}
+
+    def _flow_space(self, d: str, at_name: Optional[str]) -> tuple[Optional[list[float]], dict]:
+        """(at_xyz, FlowData.screens) from space.py, cached by the dir, the centre's name, the space's revision and
+        the screens; (None, {}) until the room is placed (or space.py is there)."""
+        sp, view = self._space_now()
+        if sp is None or view is None:
+            return None, {}
+        key = (d, at_name, view.get("revision"), tuple(sorted(self.screens)))
+        if key == self._flow_scr[0]:
+            return self._flow_scr[1]
+        at_xyz, screens = None, {}
+        try:
+            p = sp.resolve(view, at_name) if at_name else (view.get("room") or {}).get("centre")
+            at_xyz = [round(float(x), 3) for x in p] if p is not None else None
+            centre = tuple(at_xyz) if at_xyz else None
+            for fid, dev in sorted(self.screens.items()):
+                sf = sp.screen_flow(view, fid, d, centre)
+                if sf is not None:
+                    screens[dev.get("screen") or fid] = sf
+        except Exception:                                 # the space's own bug: no positions
+            log.debug("flow: space failed", exc_info=True)
+        self._flow_scr = (key, (at_xyz, screens))
+        return at_xyz, screens
+
+    def _flow_track_event(self, ev: dict) -> dict:
+        """What a track event carries for the lights (docs/LIGHTS.md §7.2): ``flow_id``, and for a song change with
+        lights.flow.events.<kind> its ``sweep_beats``; the voted flow lands at its line (no dwell)."""
+        kind = ev.get("kind")
+        out: dict[str, Any] = {}
+        spec = self.lights_cfg["flow"]["events"].get(kind) if self.pal_on else None
+        if spec is not None:
+            now = self._now()
+            grid = self._grid(now)
+            if self._flow_heard(ev):
+                self._flow_dec.event(kind, (_num(ev.get("at_ms")) or now * 1000.0) / 1000.0,
+                                     grid.bar_s if grid.has_grid else None)
+                self._flow_dec.step(now, self._flow_dec.last_votes)
+                self._flow_build(now, grid)
+            if spec.get("sweep_beats"):
+                out["sweep_beats"] = float(spec["sweep_beats"])
+        out["flow_id"] = int(self._flow["id"])
+        return out
+
+    @staticmethod
+    def _flow_moved(a: Optional[dict], b: dict) -> bool:
+        """room.direction / room.look go at once on a new flow (its id) or a new anchor."""
+        fa = a.get("flow") if isinstance(a, dict) else None
+        fb = b.get("flow")
+        if not isinstance(fa, dict) or not isinstance(fb, dict):
+            return False
+        return fa.get("id") != fb.get("id") or fa.get("at_ms") != fb.get("at_ms")
+
+    def _program_flow(self, scene: Optional[str]) -> contract.FlowData:
+        """A program's flow: the room's, or for a scene tagged for other flows that doesn't honour it, its first
+        tagged dir with the room's speed, spread and timing (no screens: it is the lights')."""
+        f = self._flow
+        sc = self.light_scenes.scenes.get(scene) if scene else None
+        ft = ((sc or {}).get("tags") or {}).get("flow")
+        if not ft or ft.get("honours") or not ft.get("dirs") or f["dir"] in ft["dirs"]:
+            return f
+        return {**f, "dir": ft["dirs"][0], "screens": {}}
+
+    def _programs_view(self) -> dict[str, contract.LightProgram]:
+        """LookData.light_programs: the announced look's programs until it lands, else the ones showing."""
+        src = self._lp_next["programs"] if self._lp_next is not None else self._lp
+        out: dict[str, contract.LightProgram] = {}
+        for gid, p in src.items():
+            g = self._groups.get(gid)
+            if g is None:
+                continue
+            out[gid] = {"group": gid, "label": g["label"], "members": list(g["members"]), "caps": list(g["caps"]),
+                        "scene": p["scene"], "scene_label": self.light_scenes.label(p["scene"]),
+                        "scene_why": p["scene_why"], "effects": [dict(r) for r in self._fx.get(self._root(gid), ())],
+                        "transition": p["transition"], "flow": self._program_flow(p["scene"]),
+                        "since_ms": p["since_ms"], "at_ms": p["at_ms"], "why": p["why"]}
+        return out
+
+    # -- the room's space (space.py: the space builder's) ---------------------------------------------------------------
+    def _space_mod(self) -> Any:
+        if self._space is None:
+            try:
+                from . import space as spmod
+                self._space = spmod if hasattr(spmod, "shared") else False
+            except Exception:                             # not there yet: no positions (docs/LIGHTS.md §1)
+                self._space = False
+        return self._space or None
+
+    def _poll_space(self) -> None:
+        sp = self._space_mod()
+        if sp is None:
             return
         try:
-            got = self.light_scenes.pick(self.direction, self._ls_rng, avoid=self.light_scene)
-        except Exception:                                 # a broken catalogue never fails the tick
-            log.exception("light scenes: pick failed")
-            got = None
-        if got is None:                                   # no scenes: show.yaml's looks.layers
-            if self.light_scene is not None:
-                self._log_event("light_scene", {"scene": None, "was": self.light_scene, "why": "no light scenes"})
-            self.light_scene, self.light_scene_why = None, None
+            sp.shared().poll()
+        except Exception:                                 # a broken space never fails the tick
+            log.exception("space: poll failed")
+
+    def _space_now(self) -> tuple[Any, Optional[dict]]:
+        sp = self._space_mod()
+        if sp is None:
+            return None, None
+        try:
+            view = sp.shared().view()
+        except Exception:
+            log.debug("space: view failed", exc_info=True)
+            return None, None
+        return (sp, view) if isinstance(view, dict) else (None, None)
+
+    # -- the glitterball and the blinds (docs/LIGHTS.md §4.4) ------------------------------------------------------------
+    def _mirror_ball(self, now_s: float, grid: Grid, room: Any) -> None:
+        """While the flow turns (a dir lights.flow.mirror_ball.directions names) and the room believes the ball is
+        already on (power_member reads power_on), its motor follows: direction and speed word, on a bar line, at most
+        once per min_gap_s. It never powers it; other dirs leave it as it is; a failed PUT waits for the next change."""
+        mb = self.lights_cfg["flow"]["mirror_ball"]
+        st = self._mb
+        member = (room.get("members") or {}).get(mb["power_member"]) if isinstance(room, dict) else None
+        word = mb["directions"].get(self._flow["dir"])
+        if not mb["enabled"] or not self.pal_on or word is None or not isinstance(member, dict) \
+                or member.get("believed") != mb["power_on"]:
+            st["due_s"] = None
             return
-        name, why, ws = got
-        words = LIGHT_REASON_WORDS.get(reason) or LOOK_REASON_WORDS.get(reason) or str(reason).replace("_", " ")
-        was = self.light_scene
-        self.light_scene, self.light_scene_why, self._ls_at = name, f"{words}: {why}", now_s
-        self._ls_reason = "first"
-        self._ls_stats["picks"] += 1
-        d = self.direction or {}
-        self._log_event("light_scene", {"scene": name, "was": was, "why": self.light_scene_why, "reason": reason,
-                                        "weights": {k: round(v, 4) for k, v in ws.items()},
-                                        "direction": {k: d.get(k) for k in ("energy", "moods", "genre", "valence",
-                                                                            "organic", "density")}})
+        want: dict[str, Any] = {}
+        if mb["direction_target"]:
+            want[mb["direction_target"]] = word
+        sw = flowmod.speed_word(mb["speeds"], float(self._flow["speed"]))
+        if mb["speed_target"] and sw is not None:
+            want[mb["speed_target"]] = sw
+        if not want or want == st["sent"] or st["busy"]:
+            st["due_s"] = None
+            return
+        if st["sent_s"] is not None and now_s - st["sent_s"] < float(mb["min_gap_s"]):
+            return
+        if st["due_s"] is None:
+            st["due_s"] = grid.next_line(now_s, 1)[0] if grid.ok else now_s
+        if now_s < st["due_s"] - 1e-6:
+            return
+        st["due_s"] = None
+        if self._put_targets(want, st):
+            st["sent"], st["sent_s"] = want, now_s
+            st["sends"] += 1
+            self._log_event("mirror_ball", {"values": want, "flow": self._flow["dir"], "speed": self._flow["speed"]})
+
+    def _blinds_follow(self, ev: dict) -> None:
+        """lights.flow.blinds (off by default): a big song change with the flow up or down moves them."""
+        bc = self.lights_cfg["flow"]["blinds"]
+        tr = ev.get("transition") if isinstance(ev.get("transition"), dict) else {}
+        if not bc["enabled"] or ev.get("kind") != "track_change" or ev.get("held") or tr.get("change") != "big":
+            return
+        d = self._flow["dir"]
+        want = {t: v[d] for t, v in bc["targets"].items() if d in v}
+        if want and self._put_targets(want, self._blinds):
+            self._blinds["sent"] = want
+            self._blinds["sends"] += 1
+            self._log_event("blinds", {"values": want, "flow": d})
+
+    def _put_targets(self, values: dict, st: dict) -> bool:
+        """PUT room's targets on show-brain's loop (a task); False when there is no room link."""
+        loop, put = self.ctx.loop, getattr(self.ctx, "room_put", None)
+        if loop is None or put is None:
+            return False
+        coro = self._put_targets_async(dict(values), st)
+        try:
+            task = loop.create_task(coro)
+        except Exception:
+            coro.close()
+            return False
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return True
+
+    async def _put_targets_async(self, values: dict, st: dict) -> None:
+        st["busy"] = True
+        try:
+            code, body = await self.ctx.room_put(ROOM_TARGETS_PATH, {"values": values, "source": ROOM_TARGETS_SOURCE})
+            if isinstance(code, int) and 200 <= code < 300:
+                st["error"] = None
+            else:
+                err = body.get("error") if isinstance(body, dict) else None
+                st["error"] = f"PUT {ROOM_TARGETS_PATH}: {code or 'no answer'}" + (f" {err}" if err else "")
+                self._log_event("room_targets", {"values": values, "error": st["error"]})
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:                            # logged; the next change tries again (no retry storm)
+            st["error"] = f"{type(e).__name__}: {e}"
+            self._log_event("room_targets", {"values": values, "error": st["error"]})
+        finally:
+            st["busy"] = False
+
+    def _lights_view(self, now_s: float) -> dict:
+        """The snapshot's ``lights``: the groups, each program in words, the announced look's scenes, the flow and its
+        votes, the last effects fired, the glitterball."""
+        mb, st = self.lights_cfg["flow"]["mirror_ball"], self._mb
+        gap = float(mb["min_gap_s"])
+        return {"groups": {g: {"label": i["label"], "members": list(i["members"]), "caps": list(i["caps"]),
+                               "follows": i.get("follows")} for g, i in self._groups.items()},
+                "scene_group": self._scene_group(), "problems": list(self._groups_problems),
+                "programs": {g: {"scene": p["scene"], "scene_label": self.light_scenes.label(p["scene"]),
+                                 "why": p["why"], "transition": p["transition"]["name"], "at_ms": p["at_ms"],
+                                 "effects": [r["label"] for r in self._fx.get(self._root(g), ())]}
+                             for g, p in self._lp.items()},
+                "next": ({"look_id": self._lp_next["look_id"],
+                          "scenes": {g: p["scene"] for g, p in self._lp_next["programs"].items()}}
+                         if self._lp_next else None),
+                "flow": {k: v for k, v in self._flow.items() if k != "screens"},
+                "flow_screens": sorted(self._flow["screens"]), "votes": self._flow_dec.view(),
+                "effects": list(self._fx_log),
+                "mirror_ball": {"enabled": mb["enabled"], "sent": st["sent"], "sends": st["sends"],
+                                "error": st["error"],
+                                "next_allowed_in_s": (round(max(0.0, st["sent_s"] + gap - now_s), 1)
+                                                      if st["sent_s"] is not None else 0.0)},
+                "blinds": {"enabled": self.lights_cfg["flow"]["blinds"]["enabled"], **self._blinds}}
 
     def _light_drop(self, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
         """Every drop the director hears (structure's, or a cue's forecast at its at_ms) goes to the look engine as
@@ -2776,7 +3470,8 @@ class Director:
                                  and not self.low),
                      "hit": self._hit_view(), "compose": self._cblock,
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
-                     "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None}
+                     "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
+                     "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2
         bars = 0
         if grid.ok and self.look_bar is not None:
             bars = max(0, grid.bar_at(now_s) - self.look_bar)
@@ -2827,7 +3522,8 @@ class Director:
                           "valence": _r3((self._mc or {}).get("valence")),
                           "organic": _r3((self._mc or {}).get("acoustic")),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
-                          "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat"}
+                          "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat",
+                          "flow": self._flow}                    # docs/LIGHTS.md §4.1
         if self.cfg["compose"]["mode"] == comp.DRIVE:
             self._drive_direction(self.direction, vs)     # README S5.18: drive only
         self._words_now = words
@@ -3168,7 +3864,8 @@ class Director:
                                     ("vibe", "moods", "genre", "transition_style", "palette_family", "beat_lock",
                                      "loose", "peak")) or \
                 sec_a.get("id") != d["section"]["id"] or sec_a.get("label") != d["section"]["label"] or \
-                (self._last_direction or {}).get("fx", {}).get("moods") != d["fx"]["moods"]
+                (self._last_direction or {}).get("fx", {}).get("moods") != d["fx"]["moods"] or \
+                self._flow_moved(self._last_direction, d)            # docs/LIGHTS.md §4.2: a new flow at once
             if changed or now_s - self._dir_pub_s >= rep:
                 self._dir_seq += 1
                 d["seq"] = self._dir_seq
@@ -3183,7 +3880,7 @@ class Director:
                         "accents.density", "spread"), ("look_id", "vibe", "house", "low", "palette",
                                                        "light_scene")) or (
                 a is not None and (a.get("accents", {}).get("beat_lock") != lk["accents"]["beat_lock"]
-                                   or self._lamps_moved(a, lk)))
+                                   or self._lamps_moved(a, lk))) or self._flow_moved(a, lk)
             self._force_look = False
             if changed or now_s - self._look_pub_s >= rep:
                 self._look_seq += 1
@@ -3738,7 +4435,8 @@ class Director:
                             "why": self.light_scene_why,
                             "age_s": int(max(0.0, now_s - self._ls_at)) if self._ls_at is not None else None,
                             "drop": dict(self._ls_drop) if self._ls_drop else None, **self._ls_stats,
-                            "catalogue": self.light_scenes.view()}}
+                            "catalogue": self.light_scenes.view()},
+            "lights": self._lights_view(now_s)}                  # docs/LIGHTS.md §7.3
 
     def _compose_view(self) -> dict:
         """The snapshot's composer (README S5.18): the mode, whose limits, the problems (the limits' validator, the

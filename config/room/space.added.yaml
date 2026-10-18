@@ -1,0 +1,11 @@
+# config/room/space.added.yaml: the room as set on the Lights page (the Room map, and Move it's "Point it at…"). WRITTEN
+# BY show_service's rig API (/show/api/v1/rig/space/..., .../teach; docs/LIGHTS.md §3, §8.1), whole, on every change:
+# don't edit it by hand. show_service merges it under config/room/space.yaml (the hand file, the same keys), which wins
+# on a clash (a problem line), and re-reads both when they change. appliances.<id>.teach are a mover's taught places
+# and .pose its solved mounting (space.solve_pose).
+version: 1
+room: {}
+appliances: {}
+points: {}
+regions: {}
+surfaces: {}

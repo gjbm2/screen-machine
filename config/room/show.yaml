@@ -986,3 +986,73 @@ looks:                                      # the look engine (looks.py; §9.1).
     min_strength: 0.3                       # starting point
     depth: 0.5                              # starting point: the flash reaches level + this x strength (HTP)
     decay_ms: 120                           # starting point
+
+# ---- Lights: groups, flow, motion, the jog and calibration (docs/LIGHTS.md). Starting points unless marked. -----------
+lights:
+  scene_group: lamps                        # room.look's light_scene (compat) is this group's scene
+  groups:                                   # a light runs the program of the FIRST group here that selects it
+    movers:
+      label: Moving lights
+      select: "cap:pan"
+      dark_level: 0                         # fade_dark goes to this (0..1), or floor (the look's floor)
+    lamps:
+      label: Lamps
+      select: "kind:lamp"
+      dark_level: floor
+    # movers-north: {label: North movers, select: "cap:pan side:north", follows: movers}   # put above movers
+  programs:
+    effects_max: 2                          # effects running at once per group
+    effect_gap_bars: 4                      # a new effect at most this often per group (a drop always may)
+  flow:
+    centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
+    sources: {structure: 1.0, pitch: 0.6, listener: 0.5, moods: 0.3}
+    structure: {build: up, peak: cw, drop: outward, breakdown: inward, outro: down, calm: still}
+    listener: {building: up, peak: outward, releasing: down, winding_down: inward}
+    moods: {euphoric: up, bright: up, cosmic: cw, hypnotic: cw, liquid: right, dreamy: still, calm: still,
+            dark: down, tense: inward, aggressive: outward}
+    pitch: {window_s: 4, slope: 0.03, min_conf: 0.5}   # register (A0 0 .. C8 1) per second that reads as rising
+    events:
+      drop: {dir: outward, bars: 1, then: down}
+      build: {dir: up}
+      track_change: {sweep_beats: 4}
+    min_score: 0.25
+    margin: 0.15
+    dwell_s: 8
+    still_below_energy: 0.15
+    cross_beats: [16, 2]                    # the wave's crossing time at speed 0 .. 1 (powers of two)
+    cross_s: [8, 1]                         # the same without a clock grid
+    speed: {pace: 0.6, energy: 0.4}
+    spread: look.spread
+    coherence: {events: 1.0, floor: 0.3}
+    symmetry: none                          # none | mirror
+    mirror_ball:
+      enabled: true                         # it turns the glitterball with the flow; it never switches it on
+      power_member: mirror_ball.main
+      power_on: spinning
+      direction_target: mirror_ball_motor.direction
+      speed_target: mirror_ball_motor.speed
+      directions: {cw: clockwise, ccw: anticlockwise}   # cw = clockwise seen from ABOVE: check by eye, swap if wrong
+      speeds: [[0.0, low], [0.4, medium], [0.75, high]]   # flow.speed from -> the remote's speed word
+      min_gap_s: 120                        # §9.3: one change at most this often (the motor reverses)
+    blinds:
+      enabled: false                        # true: big song changes move the blinds with an up/down flow
+      # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
+  motion:
+    default_max_speed_deg_s: {pan: 180, tilt: 120}   # until measured (each light's own max_speed wins)
+    accel_s: 0.12
+    pt_speed: 1.0                           # the light's own pan/tilt speed channel (1 = fastest; the engine smooths)
+    max_travel_share: 0.8                   # a beat-locked hop may spend at most this share of its period moving
+    dark_move_min_deg: 30                   # a jump bigger than this travels dark when the transition says so
+    settle_ms: 120
+    min_size_share: 0.4                     # a pattern too fast for a light shrinks to this, then slows
+    dark_max_s: 8                           # fade_dark never stays dark longer (director.track_transitions.gap's)
+  jog:
+    idle_s: 60                              # Move it hands the light back after this long with no moves
+    smooth_ms: 80
+    send_hz: 20
+    nudge_deg: {fine: 1, coarse: 5}
+    drag_deg_per_px: {fine: 0.1, coarse: 0.5}
+  calibration:
+    fit_deg: [1.5, 4.0, 8.0]                # good | ok | rough edges of the solve's rms error
+    min_spread_deg: 20                      # taught points closer than this together: "point it at places further apart"
+    pos_sigma_m: 0.3                        # how far the solve may move a light from where the map puts it

@@ -409,7 +409,8 @@ def test_everything_answers_starting_before_the_brain_runs(tmp_path):
             for method, path in apimod.ROUTES:
                 if path in (c.EVENTS_PATH, "/api/v1/hue/release"):
                     continue
-                path = path.replace("{id}", "all").replace("{source}", "piano")
+                path = path.replace("{id}", "all").replace("{source}", "piano").replace("{name}", "piano") \
+                    .replace("{n}", "0")
                 r = await cl.request(method, path, json={})
                 assert r.status == 503, (method, path)
                 b = await body(r)
@@ -1691,3 +1692,710 @@ def test_lights_routes_with_a_rig(brain, tmp_path):
         aw = rig.stop()
         if aw is not None:
             asyncio.run(aw)
+
+
+# -- docs/LIGHTS.md §8.1: moving lights, the Room map and the live view ---------------------------------------------------
+# The rig's hooks (engine), fixtures.SetupStore (encode) and the space module (space) are fakes to the spec's
+# interfaces, on tmp files: nothing under config/ is written.
+import copy
+import math
+
+from show_service import fixtures as fxmod
+
+CONFIG_FILES = (c.CONFIG_ROOM_DIR / "fixtures.setup.yaml", c.CONFIG_ROOM_DIR / "space.added.yaml",
+                c.CONFIG_ROOM_DIR / "space.yaml")
+MOVER_CAPS = {"attrs": ["intensity", "colour", "pan", "tilt", "zoom", "gobo"], "moves": True,
+              "pan": {"min": -270.0, "max": 270.0, "fine": True, "limits": None},
+              "tilt": {"min": -135.0, "max": 135.0, "fine": True, "limits": None},
+              "zoom": {"min": 10.0, "max": 40.0, "known": False}, "colour": "wheel",
+              "gobo_slots": [{"slot": 1, "name": "Open", "shake": False, "open": True}]}
+PAR_CAPS = {"attrs": ["intensity", "colour"], "moves": False, "pan": None, "tilt": None, "colour": "mix"}
+
+
+def _config_stamp() -> dict:
+    return {str(p): (p.stat().st_mtime_ns if p.exists() else None) for p in CONFIG_FILES}
+
+
+class FakeSetupStore:
+    """fixtures.SetupStore (docs/LIGHTS.md §2.6) on a tmp file: null removes a key, positions/slots merge per entry."""
+
+    def __init__(self, path) -> None:
+        self.path, self.data, self.threads = path, {}, []
+
+    def read(self) -> dict:
+        return copy.deepcopy(self.data)
+
+    def patch(self, fid: str, patch: dict) -> dict:
+        self.threads.append(_thread())
+        cur = copy.deepcopy(self.data.get(fid, {}))
+        for k, v in patch.items():
+            if k in ("positions", "slots") and isinstance(v, dict):
+                merged = dict(cur.get(k) or {})
+                for n, e in v.items():
+                    if e is None:
+                        merged.pop(n, None)
+                    else:
+                        merged[n] = e
+                cur[k] = merged
+            elif v is None:
+                cur.pop(k, None)
+            else:
+                cur[k] = v
+        home = cur.get("home")
+        if home is not None and not (isinstance(home, dict) and all(isinstance(home.get(a), (int, float))
+                                                                    for a in ("pan", "tilt"))):
+            raise fxmod.Refused("bad_request", "home is {pan, tilt} in degrees")
+        self.data[fid] = cur
+        self.path.write_text(yaml.safe_dump(self.data))
+        return copy.deepcopy(cur)
+
+
+class FakeSpaceRefused(ValueError):
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail = code, detail
+
+
+def _finite3(v) -> bool:
+    return isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) and math.isfinite(x) for x in v)
+
+
+class FakeSpaceStore:
+    """space.Store (docs/LIGHTS.md §3.4) on a tmp file, with SpaceView's shape. No remove_region (an older store)."""
+
+    def __init__(self, path) -> None:
+        self.path, self.polls, self.threads = path, [], []
+        self.doc: dict = {"room": {"size": [6.0, 8.0, 3.0], "front": "north"},
+                          "points": {"piano": {"label": "The piano", "at": [3.0, 2.0, 0.8], "from": "page"},
+                                     "mirror-ball": {"label": "Mirror ball", "at": [3.0, 4.0, 2.8], "from": "page"}},
+                          "regions": {"dance-floor": {"label": "Dance floor", "surface": "floor",
+                                                      "centre": [3.0, 5.0, 0.0], "size": [2.0, 2.0]}},
+                          "appliances": {"screen.north": {"at": [3.0, 8.0, 1.5],
+                                                          "plane": {"normal": [0, -1, 0], "up": [0, 0, 1]}},
+                                         "dmx.mover": {"at": [2.0, 3.0, 2.9], "mount": "ceiling"}}}
+        self._write()
+
+    def _write(self) -> None:
+        self.threads.append(_thread())
+        self.path.write_text(yaml.safe_dump(self.doc))
+
+    def poll(self, force: bool = False) -> bool:
+        self.polls.append(_thread())
+        return False
+
+    def view(self) -> dict:
+        size = self.doc["room"]["size"]
+        surfaces = {}
+        if size:
+            x, y, z = size
+            surfaces = {"floor": {"name": "floor", "label": "The floor", "origin": [0, 0, 0], "normal": [0, 0, 1],
+                                  "u": [1, 0, 0], "v": [0, 1, 0], "size": [x, y]},
+                        "wall-n": {"name": "wall-n", "label": "The north wall", "origin": [0, y, 0],
+                                   "normal": [0, -1, 0], "u": [1, 0, 0], "v": [0, 0, 1], "size": None}}
+        apps = {k: {"teach": [], "pose": None, "editable": True, **copy.deepcopy(v)}
+                for k, v in self.doc["appliances"].items()}
+        return {"revision": "s1", "error": None, "problems": [],
+                "room": {"size": size, "front": self.doc["room"]["front"], "centre": None, "right": [1, 0, 0]},
+                "surfaces": surfaces, "points": copy.deepcopy(self.doc["points"]),
+                "regions": copy.deepcopy(self.doc["regions"]), "appliances": apps, "extent": None}
+
+    @staticmethod
+    def _id(name: str) -> None:
+        if not fxmod._ID.match(name):
+            raise FakeSpaceRefused("bad_request", f"{name!r} isn't an id")
+
+    def set_room(self, size=None, front=None) -> dict:
+        """None leaves that as it is; a size of [] clears it (space.Store's rule)."""
+        if front is not None and front not in ("north", "east", "south", "west"):
+            raise FakeSpaceRefused("bad_request", "front")
+        if size is not None:
+            self.doc["room"]["size"] = size or None
+        if front is not None:
+            self.doc["room"]["front"] = front
+        self._write()
+        return self.view()
+
+    def set_appliance(self, aid, *, at=..., mount=..., plane=...) -> dict:
+        self._id(aid)
+        a = self.doc["appliances"].setdefault(aid, {})
+        for k, v in (("at", at), ("mount", mount), ("plane", plane)):
+            if v is ...:
+                continue
+            if v is None:
+                a.pop(k, None)
+            elif k == "at" and not _finite3(v):
+                raise FakeSpaceRefused("bad_request", "at is [x, y, z] in metres")
+            else:
+                a[k] = v
+        self._write()
+        return copy.deepcopy(a)
+
+    def remove_appliance(self, aid) -> None:
+        self.doc["appliances"].pop(aid, None)
+        self._write()
+
+    def set_point(self, name, at, label=None, source="page") -> dict:
+        self._id(name)
+        if not _finite3(at):
+            raise FakeSpaceRefused("bad_request", "at is [x, y, z] in metres")
+        self.doc["points"][name] = {"label": label or name, "at": list(at), "from": source}
+        self._write()
+        return copy.deepcopy(self.doc["points"][name])
+
+    def remove_point(self, name) -> None:
+        self.doc["points"].pop(name, None)
+        self._write()
+
+    def set_region(self, name, surface, centre, size, label=None) -> dict:
+        self._id(name)
+        self.doc["regions"][name] = {"label": label or name, "surface": surface, "centre": centre, "size": size}
+        self._write()
+        return copy.deepcopy(self.doc["regions"][name])
+
+    def _app(self, aid) -> dict:
+        return self.doc["appliances"].setdefault(aid, {})
+
+    def add_sample(self, aid, s) -> list:
+        self._app(aid).setdefault("teach", []).append(dict(s))
+        self._write()
+        return copy.deepcopy(self._app(aid)["teach"])
+
+    def remove_sample(self, aid, index) -> list:
+        self._app(aid).setdefault("teach", []).pop(index)
+        self._write()
+        return copy.deepcopy(self._app(aid)["teach"])
+
+    def clear_samples(self, aid) -> None:
+        self._app(aid)["teach"] = []
+        self._write()
+
+    def set_pose(self, aid, pose) -> None:
+        self._app(aid)["pose"] = copy.deepcopy(pose)
+        self._write()
+
+
+def fake_space(path):
+    """The space module's surface the routes use: shared(), resolve, solve_pose, beam_dir, ray_hit."""
+    store = FakeSpaceStore(path)
+    ns = types.SimpleNamespace(store=store, solves=[])
+
+    def resolve(view, name):
+        for sect, key in (("points", "at"), ("regions", "centre"), ("appliances", "at")):
+            got = (view.get(sect) or {}).get(name)
+            if got and got.get(key):
+                return tuple(got[key])
+        return None
+
+    def solve_pose(samples, *, at_hint, mount, pan_range, tilt_range, cfg=None):
+        ns.solves.append({"n": len(samples), "at_hint": at_hint, "mount": mount, "pan_range": pan_range,
+                          "tilt_range": tilt_range, "cfg": cfg})
+        n = len(samples)
+        if n < 3:
+            return {"pose": None, "rms_deg": None, "worst_deg": None, "worst_index": None, "spread_deg": 0.0,
+                    "samples": n, "level": "need_more",
+                    "words": f"Point it at 3 places so it learns where it hangs ({n} so far)."}
+        pose = {"at": list(at_hint or (3.0, 4.0, 2.9)), "rot": [0.0, 0.0, 0.0], "tilt_offset_deg": 0.0,
+                "pan_sign": 1, "tilt_sign": 1, "rms_deg": 0.4, "worst_deg": 0.7, "samples": n, "solved_at": "t"}
+        return {"pose": pose, "rms_deg": 0.4, "worst_deg": 0.7, "worst_index": 1, "spread_deg": 60.0, "samples": n,
+                "level": "good", "words": "Spot on (within 1°)."}
+
+    ns.shared = lambda: store
+    ns.resolve = resolve
+    ns.solve_pose = solve_pose
+    ns.beam_dir = lambda pose, pan, tilt: (0.0, 0.0, -1.0)                 # straight down, whatever the angles
+    ns.ray_hit = lambda view, origin, d: ((origin[0], origin[1], 0.0), "floor") if d[2] < 0 else None
+    ns.Refused = FakeSpaceRefused
+    return ns
+
+
+class FakeLightsRig:
+    """outputs.Rig's hooks for the page (docs/LIGHTS.md §5.8): jog (any thread), holds, caps_of, reload_now,
+    live_view, view, snapshot, fixture_rows."""
+    name, tick_hz = "rig", 0.0
+
+    def __init__(self) -> None:
+        self.fixtures = {"dmx.mover": {"id": "dmx.mover", "label": "Mover", "kind": "lamp", "type": "generic-mover"},
+                         "dmx.par": {"id": "dmx.par", "label": "Par", "kind": "lamp", "type": "generic-rgb"},
+                         "screen.north": {"id": "screen.north", "label": "North Frame", "kind": "screen",
+                                          "type": "sm-screen", "zone": "north"}}
+        self._holds: dict = {}
+        self.jogs: list = []
+        self.reloads: list = []
+
+    def view(self) -> dict:
+        return {"revision": "r1", "fixtures": self.fixtures, "types": {}, "outputs": {}, "nodes": {}}
+
+    def fixture_rows(self) -> list:
+        return [{"id": f["id"], "label": f["label"], "kind": f["kind"], "zone": f.get("zone")}
+                for f in self.fixtures.values()]
+
+    def snapshot(self) -> dict:
+        return {"enabled": True, "outputs": {}, "fixtures": self.fixture_rows()}
+
+    def caps_of(self, fid):
+        return {"dmx.mover": MOVER_CAPS, "dmx.par": PAR_CAPS}.get(fid)
+
+    def jog(self, fid, values, *, release=False, free=False) -> dict:
+        self.jogs.append((fid, dict(values), release, free, _thread()))
+        if release:
+            self._holds.pop(fid, None)
+            return {"held": False, "until_s": None, "idle_s": 60.0, "target": {}, "now": {}, "unknown": [],
+                    "why": None}
+        attrs = (self.caps_of(fid) or {}).get("attrs") or []
+        start = {"intensity": 1.0, **({"pan": 0.0, "tilt": 0.0} if "pan" in attrs else {})}
+        h = self._holds.setdefault(fid, {"target": start, "now": dict(start), "until_s": 0.0, "free": free})
+        unknown = sorted(k for k in values if k not in attrs)
+        h["target"].update({k: v for k, v in values.items() if k not in unknown})
+        h["free"], h["until_s"] = free, 160.0
+        return {"held": True, "until_s": 160.0, "idle_s": 60.0, "target": dict(h["target"]), "now": dict(h["now"]),
+                "unknown": unknown, "why": None}
+
+    def holds(self) -> dict:
+        return copy.deepcopy(self._holds)
+
+    def reload_now(self) -> None:
+        self.reloads.append(_thread())
+
+    def live_view(self) -> dict:
+        return {"t_ms": 1.0, "flow": None, "programs": {},
+                "fixtures": {"dmx.mover": {"at": [2.0, 3.0, 2.9], "dir": [0, 0, -1], "hit": [2.0, 3.0, 0.0],
+                                           "surface": "floor", "pan": 0.0, "tilt": 0.0, "zoom_deg": 20.0,
+                                           "gobo": None, "prism": False, "intensity": 1.0, "hex": "#ffffff",
+                                           "held": False, "calibrated": False}}}
+
+
+class NoHoldRig(FakeLightsRig):
+    """A rig from before the engine's hold landed."""
+    jog = None
+    holds = None
+
+
+def lights_api(brain, tmp_path, *, space=True):
+    setup = FakeSetupStore(tmp_path / "fixtures.setup.yaml")
+    sp = fake_space(tmp_path / "space.added.yaml") if space else types.SimpleNamespace()
+    return make_api(brain, setup_store=setup, space_mod=sp), setup, sp
+
+
+def test_place_ids_and_setup_patch_are_plain():
+    assert [apimod.place_id(w) for w in ("The piano", "Dance floor", "dmx.mover-1", "A spot by the door!")] == \
+        ["piano", "dance-floor", "dmx.mover-1", "spot-by-the-door"]
+    assert apimod.front_word("E") == "east" and apimod.front_word("west") == "west" and apimod.front_word("up") is None
+    here = {"pan": 40.0, "tilt": -10.0, "zoom": 20.0}
+    # no limits yet: the full range, the nearer end moves; then the other end by name; sorted either way
+    p = apimod.setup_patch({"limit": {"axis": "pan", "end": "here"}}, {}, here, MOVER_CAPS)
+    assert p == {"limits": {"pan": [-270.0, 40.0]}}
+    p = apimod.setup_patch({"limit": {"axis": "pan", "end": "low"}}, p, {"pan": -100.0}, MOVER_CAPS)
+    assert p == {"limits": {"pan": [-100.0, 40.0]}}
+    p = apimod.setup_patch({"limit": {"axis": "tilt", "end": "high"}}, {"limits": {"pan": [-100, 40]}},
+                           {"tilt": -150.0}, {})                          # no caps: ± half the unknown range, sorted
+    assert p["limits"] == {"pan": [-100, 40], "tilt": [-150.0, -135.0]}
+    assert apimod.setup_patch({"home": "here", "beam": "here", "max_speed": {"pan": 90}}, {}, here, MOVER_CAPS) == \
+        {"max_speed": {"pan": 90}, "home": {"pan": 40.0, "tilt": -10.0}, "beam": {"zoom": 20.0}}
+    for bad, code in (({"home": "here"}, "no_position"), ({"beam": "here"}, "no_beam"),
+                      ({"limit": {"axis": "roll"}}, "bad_request")):
+        with pytest.raises(apimod.Refusal) as e:
+            apimod.setup_patch(bad, {}, {"intensity": 1.0}, PAR_CAPS)
+        assert e.value.code == code
+    assert apimod.setup_notes({"home": {"pan": 100, "tilt": 0}, "limits": {"pan": [-10, 50]}}) == \
+        ["Its home is outside where it may turn, so it rests at the nearest limit."]
+
+
+def test_moving_light_routes_without_a_rig_or_a_space(brain, tmp_path):
+    before = _config_stamp()
+    api, _, _ = lights_api(brain, tmp_path, space=False)
+
+    async def go():
+        async with served(api) as cl:
+            for method, path, body_ in (("POST", "/api/v1/rig/fixtures/dmx.mover/jog", {}),
+                                        ("POST", "/api/v1/rig/fixtures/dmx.mover/setup", {"max_speed": {"pan": 1}}),
+                                        ("POST", "/api/v1/rig/fixtures/dmx.mover/positions", {"name": "x"}),
+                                        ("POST", "/api/v1/rig/fixtures/dmx.mover/teach", {"point": "piano"}),
+                                        ("DELETE", "/api/v1/rig/fixtures/dmx.mover/positions/piano", None),
+                                        ("DELETE", "/api/v1/rig/fixtures/dmx.mover/teach/0", None),
+                                        ("DELETE", "/api/v1/rig/fixtures/dmx.mover/teach", None)):
+                r = await cl.request(method, path, json=body_)
+                b = await body(r)
+                assert r.status == 503 and b["error"] == "unavailable" and "isn't running" in b["detail"], path
+            live = await body(await cl.get("/api/v1/rig/live"))
+            assert live["fixtures"] == {} and "isn't running" in live["why"]
+            sp = await body(await cl.get("/api/v1/rig/space"))
+            assert sp["error"] == apimod.NO_SPACE and sp["targets"] == [] and sp["room"]["size"] is None
+            if hasattr(c, "SpaceView"):                                     # the space builder's shape, once landed
+                assert set(c.SpaceView.__annotations__) <= set(sp)
+            for method, path, b_ in (("PUT", "/api/v1/rig/space/room", {"front": "n"}),
+                                     ("PUT", "/api/v1/rig/space/points/piano", {"at": [1, 1, 1]}),
+                                     ("DELETE", "/api/v1/rig/space/regions/stage", None)):
+                r = await cl.request(method, path, json=b_)
+                assert r.status == 503 and (await body(r))["detail"] == apimod.NO_SPACE, path
+    run(go())
+    assert _config_stamp() == before
+
+
+def test_jog_is_direct_and_degrades(brain, tmp_path):
+    rig = FakeLightsRig()
+    brain.components["rig"] = rig
+    api, _, _ = lights_api(brain, tmp_path)
+
+    async def go():
+        async with served(api) as cl:
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={}))
+            assert b["held"] is True and b["target"] == {"intensity": 1.0, "pan": 0.0, "tilt": 0.0}
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/jog",
+                                         json={"values": {"pan": 30, "warp": 1}, "free": True}))
+            assert b["target"]["pan"] == 30 and b["unknown"] == ["warp"]
+            assert rig.jogs[-1][:4] == ("dmx.mover", {"pan": 30, "warp": 1}, False, True)
+            assert all(j[4] != "show-brain" for j in rig.jogs)               # no brain hop
+            assert brain.calls == 0
+            for bad in ({"values": [1]}, {"release": "yes"}, ["x"]):
+                r = await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json=bad)
+                assert r.status == 400 and (await body(r))["error"] == "bad_request", bad
+            r = await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", data=b"{nope")
+            assert r.status == 400
+            r = await cl.post("/api/v1/rig/fixtures/dmx.nope/jog", json={})
+            b = await body(r)
+            assert r.status == 404 and b["error"] == "unknown_fixture" and "dmx.mover" in b["choices"]
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"release": True}))
+            assert b["held"] is False and rig.holds() == {}
+            brain.components["rig"] = NoHoldRig()
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": {"pan": 5}}))
+            assert b["held"] is False and b["why"] == apimod.CANT_MOVE and b["idle_s"] == 60.0
+            r = await cl.post("/api/v1/rig/fixtures/dmx.mover/setup", json={"home": "here"})
+            assert r.status == 409 and (await body(r))["detail"] == "Open Move it first."
+    run(go())
+
+
+def test_setup_route_keeps_home_beam_limits_and_the_rest(brain, tmp_path):
+    before = _config_stamp()
+    rig = FakeLightsRig()
+    brain.components["rig"] = rig
+    api, setup, _ = lights_api(brain, tmp_path)
+
+    async def go():
+        async with served(api) as cl:
+            async def post(b_, status=200, fid="dmx.mover"):
+                r = await cl.post(f"/api/v1/rig/fixtures/{fid}/setup", json=b_)
+                got = await body(r)
+                assert r.status == status, (b_, got)
+                return got
+
+            assert (await post({}, 400))["choices"] == list(apimod.SETUP_BODY_KEYS)
+            assert "warp" in (await post({"warp": 1}, 400))["detail"]
+            got = await post({"home": "here"}, 409)
+            assert got == {"error": "not_held", "detail": "Open Move it first."}
+            assert (await post({"limit": {"axis": "pan", "end": "here"}}, 409))["error"] == "not_held"
+            got = await post({"max_speed": {"pan": 200}, "jog_flip": {"pan": True}})   # no hold needed
+            assert got["setup"] == {"max_speed": {"pan": 200}, "jog_flip": {"pan": True}} and got["problems"] == []
+            assert setup.threads == ["show-brain"] and rig.reloads == ["show-brain"]
+            await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": {"pan": 40, "tilt": -10, "zoom": 20}})
+            assert (await post({"home": "here"}))["setup"]["home"] == {"pan": 40.0, "tilt": -10.0}
+            assert (await post({"beam": "here"}))["setup"]["beam"] == {"zoom": 20.0}
+            assert (await post({"limit": {"axis": "pan", "end": "here"}}))["setup"]["limits"] == {"pan": [-270.0, 40.0]}
+            await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": {"pan": -100}, "free": True})
+            got = await post({"limit": {"axis": "pan", "end": "low"}})
+            assert got["setup"]["limits"] == {"pan": [-100.0, 40.0]} and got["problems"] == []
+            got = await post({"home": {"pan": 100, "tilt": 0}})
+            assert got["problems"] == ["Its home is outside where it may turn, so it rests at the nearest limit."]
+            assert (await post({"limit": {"axis": "roll"}}, 400))["choices"] == list(apimod.LIMIT_ENDS)
+            kept = setup.read()
+            got = await post({"home": "far"}, 400)                       # the store refuses: nothing written
+            assert got["error"] == "bad_request" and setup.read() == kept
+            assert "limits" not in (await post({"limits": None}))["setup"]
+            await cl.post("/api/v1/rig/fixtures/dmx.par/jog", json={})
+            assert (await post({"home": "here"}, 400, "dmx.par"))["error"] == "no_position"
+            assert (await post({"home": "here"}, 404, "dmx.nope"))["error"] == "unknown_fixture"
+            api.setup_store = None                                        # no SetupStore in fixtures.py yet: 503
+            if not hasattr(fxmod, "SetupStore"):
+                assert (await post({"max_speed": {"pan": 1}}, 503))["detail"] == apimod.NO_SETUP
+    run(go())
+    assert _config_stamp() == before
+    assert yaml.safe_load((tmp_path / "fixtures.setup.yaml").read_text())["dmx.mover"]["home"] == {"pan": 100,
+                                                                                                    "tilt": 0}
+
+
+def test_teach_and_positions_routes(brain, tmp_path):
+    before = _config_stamp()
+    brain.ctx.settings = {"lights": {"calibration": {"fit_deg": [1.5, 4.0, 8.0], "min_spread_deg": 20}}}
+    rig = FakeLightsRig()
+    brain.components["rig"] = rig
+    api, setup, sp = lights_api(brain, tmp_path)
+    teach = "/api/v1/rig/fixtures/dmx.mover/teach"
+
+    async def go():
+        async with served(api) as cl:
+            r = await cl.post(teach, json={"point": "piano"})
+            assert r.status == 409 and (await body(r))["error"] == "not_held"
+            await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": {"pan": 10, "tilt": 20}})
+            r = await cl.post(teach, json={"point": "nowhere"})
+            b = await body(r)
+            assert r.status == 400 and b["error"] == "unknown_point" and {"piano", "mirror-ball", "dance-floor",
+                                                                          "screen.north"} <= set(b["choices"])
+            assert (await body(await cl.post(teach, json={})))["error"] == "bad_request"
+            b = await body(await cl.post(teach, json={"point": "piano"}))
+            assert len(b["samples"]) == 1 and b["samples"][0]["at"] == [3.0, 2.0, 0.8]
+            assert b["samples"][0]["pan"] == 10.0 and b["samples"][0]["point"] == "piano"
+            assert b["fit"]["level"] == "need_more" and "(1 so far)" in b["fit"]["words"]
+            assert setup.read()["dmx.mover"]["positions"] == {"piano": {"pan": 10.0, "tilt": 20.0}}
+            await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": {"pan": -30}})
+            await body(await cl.post(teach, json={"point": "mirror-ball"}))
+            b = await body(await cl.post(teach, json={"point": "dance-floor"}))
+            assert len(b["samples"]) == 3 and b["fit"]["level"] == "good" and b["fit"]["pose"]["at"] == [2.0, 3.0, 2.9]
+            last = sp.solves[-1]
+            assert last["pan_range"] == (-270.0, 270.0) and last["tilt_range"] == (-135.0, 135.0)
+            assert last["at_hint"] == (2.0, 3.0, 2.9) and last["mount"] == "ceiling"
+            assert last["cfg"] == {"fit_deg": [1.5, 4.0, 8.0], "min_spread_deg": 20}
+            assert sp.store.view()["appliances"]["dmx.mover"]["pose"]["samples"] == 3
+            assert set(sp.store.threads[1:]) == {"show-brain"}
+            # a calibrated mover's new name becomes a room point where its beam lands
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/positions", json={"name": "Over the sofa"}))
+            assert b["positions"]["over-the-sofa"] == {"pan": -30.0, "tilt": 20.0}
+            assert b["point"] == {"name": "over-the-sofa", "at": [2.0, 3.0, 0.0], "surface": "floor"}
+            assert sp.store.doc["points"]["over-the-sofa"] == {"label": "Over the sofa", "at": [2.0, 3.0, 0.0],
+                                                               "from": "dmx.mover"}
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/positions", json={"name": "piano"}))
+            assert b["point"] is None and sp.store.doc["points"]["piano"]["at"] == [3.0, 2.0, 0.8]  # never moved
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/positions",
+                                         json={"name": "Door", "at": {"pan": 5, "tilt": 6}}))
+            assert b["positions"]["door"] == {"pan": 5.0, "tilt": 6.0}
+            for bad in ({}, {"name": "x", "at": "there"}):
+                r = await cl.post("/api/v1/rig/fixtures/dmx.mover/positions", json=bad)
+                assert r.status == 400, bad
+            b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.mover/positions/over-the-sofa"))
+            assert "over-the-sofa" not in b["positions"] and "piano" in b["positions"]
+            # forgetting places: the pose goes below 3
+            b = await body(await cl.delete(teach + "/1"))
+            assert [s["point"] for s in b["samples"]] == ["piano", "dance-floor"] and b["fit"]["level"] == "need_more"
+            assert sp.store.view()["appliances"]["dmx.mover"]["pose"] is None
+            b = await body(await cl.delete(teach + "/9"))                  # not there: what is true now
+            assert len(b["samples"]) == 2
+            assert (await cl.delete(teach + "/x")).status == 400
+            b = await body(await cl.delete(teach))
+            assert b["samples"] == [] and b["fit"]["level"] == "need_more"
+            # a light that doesn't turn has no position to keep
+            await cl.post("/api/v1/rig/fixtures/dmx.par/jog", json={})
+            r = await cl.post("/api/v1/rig/fixtures/dmx.par/positions", json={"name": "x"})
+            assert r.status == 400 and (await body(r))["error"] == "no_position"
+            # a solver that breaks: a "bad" fit in words, the samples kept
+            sp.solve_pose = lambda *a, **k: 1 / 0
+            b = await body(await cl.post(teach, json={"point": "piano"}))
+            assert b["fit"]["level"] == "bad" and "ZeroDivisionError" in b["fit"]["words"] and len(b["samples"]) == 1
+    run(go())
+    assert _config_stamp() == before
+
+
+def test_space_routes(brain, tmp_path):
+    before = _config_stamp()
+    rig = FakeLightsRig()
+    brain.components["rig"] = rig
+    api, _, sp = lights_api(brain, tmp_path)
+
+    async def go():
+        async with served(api) as cl:
+            v = await body(await cl.get("/api/v1/rig/space"))
+            assert sp.store.polls == ["show-brain"] and v["room"]["front"] == "north"
+            targets = {t["name"]: t for t in v["targets"]}
+            assert [t["kind"] for t in v["targets"]] == ["point", "point", "region", "screen", "appliance", "surface"]
+            assert targets["piano"]["label"] == "The piano"
+            assert targets["screen.north"]["label"] == "Centre of the north screen"
+            assert targets["dmx.mover"]["label"] == "Mover"
+            assert targets["floor"] == {"name": "floor", "label": "The floor", "kind": "surface",
+                                        "at": [3.0, 4.0, 0.0]}
+            assert "wall-n" not in targets                                  # unbounded: no centre to point at
+            v = await body(await cl.put("/api/v1/rig/space/room", json={"front": "E"}))
+            assert v["room"]["front"] == "east" and v["room"]["size"] == [6.0, 8.0, 3.0] and "targets" in v
+            for bad in ({"front": "up"}, {"size": [6, -1, 3]}, {"size": [6, 8]}, {"walls": 4}, {}):
+                r = await cl.put("/api/v1/rig/space/room", json=bad)
+                assert r.status == 400, bad
+            v = await body(await cl.put("/api/v1/rig/space/room", json={"size": None}))
+            assert v["room"]["size"] is None and v["room"]["front"] == "east"
+            v = await body(await cl.put("/api/v1/rig/space/room", json={"size": [5, 7, 2.6], "front": "north"}))
+            assert v["room"]["size"] == [5.0, 7.0, 2.6]
+            n = len(rig.reloads)
+            a = await body(await cl.put("/api/v1/rig/space/appliances/dmx.par", json={"at": [1, 2, 2.5],
+                                                                                      "mount": "ceiling"}))
+            assert a == {"at": [1, 2, 2.5], "mount": "ceiling"} and len(rig.reloads) == n + 1
+            assert await body(await cl.put("/api/v1/rig/space/appliances/dmx.par", json={"mount": None})) == \
+                {"at": [1, 2, 2.5]}
+            for path, bad in (("dmx.par", {"warp": 1}), ("dmx.par", {"at": [1, 2]}), ("Bad Id", {"at": [1, 1, 1]})):
+                r = await cl.put(f"/api/v1/rig/space/appliances/{path}", json=bad)
+                assert r.status == 400, (path, bad)
+            assert await body(await cl.delete("/api/v1/rig/space/appliances/dmx.par")) == {"removed": "dmx.par"}
+            assert "dmx.par" not in sp.store.doc["appliances"]
+            p = await body(await cl.put("/api/v1/rig/space/points/sofa", json={"at": [1, 1, 0.5], "label": "Sofa",
+                                                                               "device": "ignored"}))
+            assert p == {"label": "Sofa", "at": [1, 1, 0.5], "from": "page"}
+            r = await cl.put("/api/v1/rig/space/points/sofa", data=b'{"at": [NaN, 1, 1]}',
+                             headers={"Content-Type": "application/json"})
+            assert r.status == 400
+            assert (await cl.put("/api/v1/rig/space/points/sofa", json={"label": "no at"})).status == 400
+            assert await body(await cl.delete("/api/v1/rig/space/points/sofa")) == {"removed": "sofa"}
+            g = await body(await cl.put("/api/v1/rig/space/regions/stage", json={
+                "surface": "floor", "centre": [2, 2, 0], "size": [2, 1], "label": "Stage"}))
+            assert g["label"] == "Stage" and g["size"] == [2, 1]
+            assert (await cl.put("/api/v1/rig/space/regions/stage", json={"surface": "floor"})).status == 400
+            r = await cl.delete("/api/v1/rig/space/regions/stage")             # this store can't remove one yet
+            assert r.status == 503 and "isn't possible yet" in (await body(r))["detail"]
+            del brain.components["rig"]                                        # the map works without a rig
+            p = await body(await cl.put("/api/v1/rig/space/points/door", json={"at": [0, 4, 1]}))
+            assert p["at"] == [0, 4, 1]
+            v = await body(await cl.get("/api/v1/rig/space"))
+            assert "door" in {t["name"] for t in v["targets"]}
+    run(go())
+    assert _config_stamp() == before
+
+
+def test_rig_view_carries_the_jog_numbers_caps_and_setup_and_the_live_view(tmp_path):
+    b = FakeBrain(settings={"lights": {"jog": {"send_hz": 10, "nudge_deg": {"fine": 2, "coarse": "x"}}}})
+    try:
+        rig = FakeLightsRig()
+        b.components["rig"] = rig
+        api, setup, _ = lights_api(b, tmp_path)
+        setup.data = {"dmx.mover": {"home": {"pan": 1, "tilt": 2}}}
+
+        async def go():
+            async with served(api) as cl:
+                snap = await body(await cl.get("/api/v1/rig"))
+                assert snap["lights_ui"] == {"send_hz": 10, "idle_s": 60.0, "nudge_deg": {"fine": 2, "coarse": 5.0},
+                                             "drag_deg_per_px": {"fine": 0.1, "coarse": 0.5}}
+                rows = {r["id"]: r for r in snap["fixtures"]}
+                assert rows["dmx.mover"]["caps"] == MOVER_CAPS and rows["dmx.par"]["caps"] == PAR_CAPS
+                assert rows["screen.north"]["caps"] is None
+                assert rows["dmx.mover"]["setup"] == {"home": {"pan": 1, "tilt": 2}} and rows["dmx.par"]["setup"] == {}
+                rig.fixtures["dmx.par"]["setup"] = {"home": {"pan": 0, "tilt": 0}}  # the registry's merge wins
+                rows = {r["id"]: r for r in (await body(await cl.get("/api/v1/rig")))["fixtures"]}
+                assert rows["dmx.par"]["setup"] == {"home": {"pan": 0, "tilt": 0}}
+                live = await body(await cl.get("/api/v1/rig/live"))
+                assert live["fixtures"]["dmx.mover"]["hit"] == [2.0, 3.0, 0.0]
+        run(go())
+    finally:
+        b.close()
+
+
+def test_the_page_flows_against_the_real_room_space(brain, tmp_path):
+    """Room map -> Move it -> Point it at… -> Save as…, through the routes with the real space module on tmp files:
+    the angles come from a synthetic hung mover (space.aim), the solve recovers it, a saved position lands on the
+    floor where its beam does."""
+    space = pytest.importorskip("show_service.space")
+    pytest.importorskip("scipy")
+    before = _config_stamp()
+    store = space.Store(tmp_path / "space.yaml", added_path=tmp_path / "space.added.yaml")
+    sp = types.SimpleNamespace(shared=lambda: store, resolve=space.resolve, solve_pose=space.solve_pose,
+                               beam_dir=space.beam_dir, ray_hit=space.ray_hit, Refused=space.Refused)
+    rig = FakeLightsRig()
+    brain.components["rig"] = rig
+    setup = FakeSetupStore(tmp_path / "fixtures.setup.yaml")
+    api = make_api(brain, setup_store=setup, space_mod=sp)
+    yaw = math.radians(37.0)        # hung (z_f down: 180° about x), then turned 37° about the room's up
+    rot = [math.pi * math.cos(yaw / 2.0), math.pi * math.sin(yaw / 2.0), 0.0]
+    true = {"at": [2.0, 3.0, 2.9], "rot": rot, "tilt_offset_deg": 3.0, "pan_sign": -1, "tilt_sign": 1,
+            "rms_deg": 0.0, "worst_deg": 0.0, "samples": 0, "solved_at": ""}
+    places = {"corner": [0.5, 0.5, 0.0], "piano": [5.0, 1.5, 0.8], "rug": [4.0, 7.0, 0.0], "door": [0.0, 6.0, 1.5]}
+
+    def angles(q):
+        a = space.aim(true, q, current=(0.0, 0.0), pan_range=(-270.0, 270.0), tilt_range=(-135.0, 135.0))
+        assert a["reachable"], q
+        return {"pan": round(a["pan"], 3), "tilt": round(a["tilt"], 3)}
+
+    async def go():
+        async with served(api) as cl:
+            v = await body(await cl.put("/api/v1/rig/space/room", json={"size": [6, 8, 3], "front": "n"}))
+            assert v["room"]["size"] == [6.0, 8.0, 3.0] and v["room"]["front"] == "north"
+            a = await body(await cl.put("/api/v1/rig/space/appliances/dmx.mover", json={"at": [2.1, 2.9, 2.9],
+                                                                                        "mount": "ceiling"}))
+            assert a["at"] == [2.1, 2.9, 2.9]
+            for n, at in places.items():
+                p = await body(await cl.put(f"/api/v1/rig/space/points/{n}", json={"at": at}))
+                assert p["at"] == at
+            v = await body(await cl.get("/api/v1/rig/space"))
+            kinds = {t["name"]: t["kind"] for t in v["targets"]}
+            assert {n: "point" for n in places}.items() <= kinds.items() and kinds["floor"] == "surface"
+            fit = None
+            for i, (n, at) in enumerate(places.items()):
+                r = await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": angles(at)})
+                assert (await body(r))["held"] is True
+                b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/teach", json={"point": n}))
+                assert len(b.get("samples") or ()) == i + 1, b
+                fit = b["fit"]
+                assert (fit["level"] == "need_more") == (i < 2), fit
+            assert fit["level"] == "good" and fit["rms_deg"] < 1.0 and fit["words"]
+            got = store.view()["appliances"]["dmx.mover"]["pose"]
+            assert math.dist(got["at"], true["at"]) < 0.1
+            # a calibrated mover's new position becomes a place on the floor where its beam lands
+            await cl.post("/api/v1/rig/fixtures/dmx.mover/jog", json={"values": angles([3.0, 5.0, 0.0])})
+            b = await body(await cl.post("/api/v1/rig/fixtures/dmx.mover/positions",
+                                         json={"name": "By the sofa"}))
+            assert b["point"]["name"] == "by-the-sofa" and b["point"]["surface"] == "floor"
+            assert math.dist(b["point"]["at"], [3.0, 5.0, 0.0]) < 0.05
+            assert store.view()["points"]["by-the-sofa"]["from"] == "dmx.mover"
+            b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.mover/teach/7"))   # not there: as it is
+            assert len(b["samples"]) == 4
+            b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.mover/teach/0"))
+            assert len(b["samples"]) == 3 and b["fit"]["pose"] is not None
+            b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.mover/teach"))
+            assert b["samples"] == [] and b["fit"]["level"] == "need_more"
+            assert store.view()["appliances"]["dmx.mover"]["pose"] is None
+            g = await body(await cl.put("/api/v1/rig/space/regions/dance-floor", json={
+                "surface": "floor", "centre": [3, 5, 0], "size": [2, 2], "label": "Dance floor"}))
+            assert g["label"] == "Dance floor"
+            assert await body(await cl.delete("/api/v1/rig/space/regions/dance-floor")) == {"removed": "dance-floor"}
+            r = await cl.put("/api/v1/rig/space/points/Bad Name", json={"at": [1, 1, 1]})
+            assert r.status == 400
+    run(go())
+    assert _config_stamp() == before
+
+
+def test_move_it_on_the_real_rig(brain, tmp_path):
+    """Add a mover, hold it, move it, keep its home and a limit, place it, read it back: the real Rig, registry, look
+    engine, setup store and space store on tmp files, the real Art-Net driver on a fake socket. Crash level."""
+    space = pytest.importorskip("show_service.space")
+    pytest.importorskip("show_service.fixture_encode")
+    from show_service import looks
+    from show_service.tests import test_outputs as to
+    if not all(hasattr(looks.LookEngine, k) for k in ("hold", "release", "holds")):
+        pytest.skip("the look engine's hold hasn't landed")
+    before = _config_stamp()
+    store = space.Store(tmp_path / "space.yaml", added_path=tmp_path / "space.added.yaml")
+    rig = to.lights_rig(tmp_path, space_store=store)
+    rig.start()
+    brain.components["rig"] = rig
+    sp = types.SimpleNamespace(shared=lambda: store, resolve=space.resolve, solve_pose=space.solve_pose,
+                               beam_dir=space.beam_dir, ray_hit=space.ray_hit, Refused=space.Refused)
+    api = make_api(brain, space_mod=sp)                   # the setup store: the registry's own file, next to tmp's
+    mover = {"label": "Mover", "type": "generic-mover-full", "node_ip": "192.0.2.10", "universe": 1, "address": 1}
+    try:
+        async def go():
+            async with served(api) as cl:
+                r = await cl.post("/api/v1/rig/fixtures", json=mover)
+                got = await body(r)
+                assert r.status == 200, got
+                fid, row = got["fixture"]["id"], got["fixture"]
+                assert row["caps"]["moves"] is True and "pan" in row["caps"]["attrs"] and row["setup"] == {}
+                b = await body(await cl.post(f"/api/v1/rig/fixtures/{fid}/jog", json={}))
+                assert b["held"] is True, b
+                b = await body(await cl.post(f"/api/v1/rig/fixtures/{fid}/jog",
+                                             json={"values": {"pan": 30, "tilt": -10, "zoom": 20}}))
+                assert b["held"] is True and b["target"]["pan"] == 30 and b["unknown"] == []
+                b = await body(await cl.post(f"/api/v1/rig/fixtures/{fid}/setup", json={"home": "here"}))
+                assert b["setup"]["home"] == {"pan": 30.0, "tilt": -10.0}, b
+                b = await body(await cl.post(f"/api/v1/rig/fixtures/{fid}/setup",
+                                             json={"limit": {"axis": "pan", "end": "here"}}))
+                assert b["setup"]["limits"]["pan"][1] == 30.0, b
+                snap = await body(await cl.get("/api/v1/rig"))
+                rows = {x["id"]: x for x in snap["fixtures"]}
+                assert rows[fid]["setup"]["home"] == {"pan": 30.0, "tilt": -10.0}
+                assert snap["lights_ui"]["idle_s"] > 0
+                assert (tmp_path / "fixtures.setup.yaml").exists()
+                v = await body(await cl.put("/api/v1/rig/space/room", json={"size": [6, 8, 3]}))
+                assert v["room"]["size"] == [6.0, 8.0, 3.0]
+                a = await body(await cl.put(f"/api/v1/rig/space/appliances/{fid}", json={"at": [2, 3, 2.9],
+                                                                                         "mount": "ceiling"}))
+                assert a["at"] == [2.0, 3.0, 2.9]
+                live = await body(await cl.get("/api/v1/rig/live"))
+                assert isinstance(live["fixtures"], dict)
+                b = await body(await cl.post(f"/api/v1/rig/fixtures/{fid}/jog", json={"release": True}))
+                assert b["held"] is False
+                r = await cl.post(f"/api/v1/rig/fixtures/{fid}/setup", json={"beam": "here"})
+                assert r.status == 409 and (await body(r))["detail"] == "Open Move it first."
+        run(go())
+    finally:
+        to.stop(rig)
+    assert _config_stamp() == before

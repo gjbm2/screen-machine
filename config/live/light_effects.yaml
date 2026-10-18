@@ -1,0 +1,101 @@
+# Light effects: overlays the director fires over a group's scene on the music's events (docs/LIGHTS.md §6.3;
+# show_service/light_scenes.py). Hot-reloaded with light_scenes.yaml (a bad edit keeps the last good effects; the
+# problems are under director.lights in GET /show/api/v1/state).
+#   on        drop | build | breakdown | peak | section_change | track_change | outro | every_bars
+#   every_bars, chance (0..1 per trigger), length {bars|beats|seconds} | while (as long as the phase that fired it)
+#   fade {in_beats, out_beats}, needs, layers (§5.2), hits, caps, tags (energy band, moods, flow; weight)
+# At most show.yaml lights.programs.effects_max run at once on a group, a new one at most every effect_gap_bars (a drop
+# always may). None fire with no feel, under House lights or Lights low, or while Keep this look holds.
+# Strobe only lives here. Each light's own strobe_hz_max (set on the Lights page) caps it; Hue never strobes.
+# Every number below is a STARTING POINT, chosen on paper: tune by watching the room.
+version: 1
+effects:
+  strobe-burst:
+    label: Strobe burst
+    on: [drop]
+    length: {bars: 1}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [shutter]
+    layers: [{id: strobe, kind: shutter, mode: strobe, hz: [6, 10]}]
+    tags: {energy: [0.7, 1.0], moods: [euphoric, aggressive, glitchy], weight: 1.0}
+  drop-flash:
+    label: Flash on the drop
+    on: [drop]
+    length: {beats: 2}
+    layers: []
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
+    tags: {energy: [0.5, 1.0], weight: 1.0}
+  downbeat-snap:
+    label: Snap to a new place each bar
+    on: [peak]
+    length: while
+    needs: [pan, tilt]
+    layers: [{id: bar-hop, kind: position, mode: bounce, points: [dance-floor, piano, mirror-ball, centre], hop: bar,
+              spread_mode: unison}]
+    tags: {energy: [0.65, 1.0], moods: [euphoric, playful], flow: {dirs: [still], honours: false}}
+  converge-on-drop:
+    label: Every beam to one place on the drop
+    on: [drop]
+    length: {bars: 1}
+    fade: {in_beats: 0, out_beats: 1}
+    needs: [pan, tilt]
+    layers:
+      - {id: aim, kind: position, mode: aim, centre: [mirror-ball, flow, dance-floor, centre]}
+      - {id: beam, kind: beam, zoom: narrow}
+    tags: {energy: [0.6, 1.0], moods: [euphoric, tense], flow: {dirs: [inward, towards, outward], honours: true}}
+  gobo-shake:
+    label: Shaking patterns
+    on: [build, every_bars]
+    every_bars: 8
+    chance: 0.4
+    length: {bars: 2}
+    needs: [gobo]
+    layers: [{id: shake, kind: gobo, slot: auto, shake: 0.7}]
+    tags: {energy: [0.5, 1.0], moods: [tense, glitchy, playful]}
+  prism-burst:
+    label: Split beams
+    on: [section_change]
+    chance: 0.6
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 1}
+    needs: [prism]
+    layers: [{id: prism, kind: prism, in: true, spin: flow, spin_scale: 0.8}]
+    tags: {energy: [0.45, 1.0], moods: [euphoric, cosmic, glitchy], flow: {dirs: [cw, ccw], honours: true}}
+  colour-bump:
+    label: Colour kick on the beats
+    on: [section_change, every_bars]
+    every_bars: 16
+    chance: 0.5
+    length: {bars: 1}
+    layers:
+      - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
+      - {id: wheel, kind: colour_wheel, mode: step, step_on: beat}
+    tags: {energy: [0.45, 1.0], moods: [bright, playful, euphoric]}
+  peak-chase:
+    label: Fast chase
+    on: [peak]
+    length: while
+    fade: {in_beats: 1, out_beats: 2}
+    layers: [{id: chase, fx: square, phase: beat, subdivide: true, depth: 0.7, needs: beat, without_beat: energy,
+              order: flow, spread: 1.0}]
+    tags: {energy: [0.7, 1.0], moods: [euphoric, aggressive], flow: {dirs: [left, right, cw, ccw], honours: true}}
+  up-wave:
+    label: Light climbing upwards
+    on: [build]
+    length: while
+    fade: {in_beats: 2, out_beats: 1}
+    layers:
+      - {id: climb, fx: saw, phase: beat, depth: 0.6, needs: grid, without_beat: energy, order: flow, flow_dir: up,
+         spread: 1.0}
+      - {id: lift, kind: position, mode: lift, lift: 2.0, flow_dir: up, depth: 0.8}
+    tags: {energy: [0.4, 1.0], moods: [tense, euphoric], flow: {dirs: [up], honours: false}}
+  down-wave:
+    label: Light falling away
+    on: [breakdown, outro]
+    length: {bars: 4}
+    fade: {in_beats: 1, out_beats: 4}
+    layers:
+      - {id: falling, fx: saw, phase: bar, depth: 0.5, needs: grid, without_beat: energy, order: flow, flow_dir: down,
+         spread: 1.0}
+      - {id: sink, kind: position, mode: lift, lift: 1.5, flow_dir: down, depth: 0.6}
+    tags: {energy: [0.1, 0.7], moods: [dreamy, dark, calm], flow: {dirs: [down, inward], honours: false}}

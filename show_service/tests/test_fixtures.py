@@ -614,7 +614,7 @@ def test_generic_types_have_channels_labels_and_encode():
         assert [c["name"] for c in t["channels"]] == list(chans) and all(c["default"] == fx.GENERIC_DEFAULTS.get(c["name"], 0) for c in t["channels"])
         assert set(t) == set(contract.TypeInfo.__annotations__)
     assert fx.BUILTIN_TYPES["generic-dimmer"]["attrs"] == ["intensity"]
-    assert fx.BUILTIN_TYPES["generic-mover"]["attrs"] == ["intensity", "colour"]
+    assert fx.BUILTIN_TYPES["generic-mover"]["attrs"] == ["intensity", "colour", "pan", "tilt"]   # driven now
     assert [c["attr"] for c in fx.BUILTIN_TYPES["generic-mover"]["channels"]] == ["pan", "tilt", "intensity",
                                                                                 "emitter", "emitter", "emitter"]
     f = {"id": "x", "wb": {}, "pin": {}, "curve": None}
@@ -813,8 +813,11 @@ def test_a_broken_hand_or_added_file_refuses_writes(hand):
 def test_type_rows_and_labels(rigdir):
     rows = fx.type_rows(None)
     assert [r["id"] for r in rows] == list(fx.GENERIC_TYPES)
-    assert rows[2] == {"id": "generic-rgbw", "label": "RGBW light (4 channels)", "source": "builtin", "footprint": 4,
-                       "channels": ["Red", "Green", "Blue", "White"], "kind": "lamp"}
+    assert {k: v for k, v in rows[2].items() if k != "caps"} == {
+        "id": "generic-rgbw", "label": "RGBW light (4 channels)", "source": "builtin", "footprint": 4,
+        "channels": ["Red", "Green", "Blue", "White"], "kind": "lamp"}
+    assert rows[2]["caps"]["colour"] == "mix" and rows[2]["caps"]["moves"] is False
+    assert next(r for r in rows if r["id"] == "generic-mover-full")["caps"]["moves"] is True
     assert all(set(r) == set(contract.RigTypeRow.__annotations__) for r in rows)
     v = load(rigdir, DMX)
     ids = [r["id"] for r in fx.type_rows(v)]
@@ -841,3 +844,162 @@ def test_generic_mover_rests_at_centre():
     t = fx._generic("generic-mover", fx.GENERIC_TYPES["generic-mover"][1])
     d = {c["name"]: c["default"] for c in t["channels"]}
     assert d["Pan"] == 128 and d["Tilt"] == 128 and d["Dimmer"] == 0 and d["Red"] == 0
+
+
+# -- docs/LIGHTS.md §2: the movers, capability selectors and the setup file --------------------------------------------
+def test_generic_mover_full_is_sixteen_bit_and_rests_centred_and_open():
+    t = fx.BUILTIN_TYPES["generic-mover-full"]
+    ch = {c["name"]: c for c in t["channels"]}
+    assert t["footprint"] == 13 and set(t) == set(contract.TypeInfo.__annotations__)
+    assert (ch["Pan"]["fine"], ch["Tilt"]["fine"], ch["Pan"]["res"]) == (1, 3, 2)
+    assert ch["Pan"]["ranges"][0]["dmx"] == [0, 65535] and ch["Pan fine"]["attr"] == "other"
+    assert (ch["Pan"]["default"], ch["Tilt"]["default"], ch["Shutter"]["default"]) == (128, 128, 8)
+    assert [c["attr"] for c in t["channels"]] == ["pan", "other", "tilt", "other", "pt_speed", "intensity", "shutter",
+                                                  "wheel", "gobo", "gobo_spin", "prism", "zoom", "focus"]
+    assert set(t["wheels"]) == {"Colour wheel", "Gobo"} and len(t["wheels"]["Gobo"]["slots"]) == fx.GENERIC_SLOTS
+    assert all(set(a for r in c.get("ranges") or () for a in [r["attr"]]) <= set(contract.ATTRS)
+               for c in t["channels"])
+    assert all(c["attr"] in contract.CHANNEL_ATTRS for tid in fx.GENERIC_TYPES
+               for c in fx.BUILTIN_TYPES[tid]["channels"])
+    assert fx.generic_type("generic-mover-full") is t and fx.generic_type("generic-mover-full", {"gobo": 8}) is t
+    six = fx.generic_type("generic-mover-full", {"gobo": 6, "colour": 3, "nope": 2})
+    assert six is fx.generic_type("generic-mover-full", {"colour": 3, "gobo": 6}) and six is not t
+    assert len(six["wheels"]["Gobo"]["slots"]) == 6 and len(six["wheels"]["Colour wheel"]["slots"]) == 3
+    gob = {c["name"]: c for c in six["channels"]}["Gobo"]["ranges"]
+    assert [r["dmx"] for r in gob if r["attr"] == "gobo"] == [[0, 9], [10, 20], [21, 31], [32, 41], [42, 52],
+                                                             [53, 63]]
+    assert fx.generic_type("generic-rgbw", {"gobo": 4}) is fx.BUILTIN_TYPES["generic-rgbw"]
+    assert fx.generic_type("par") is None
+
+
+def test_cap_side_and_height_selectors(view):
+    s = fx.select
+    assert s("cap:pan", view) == ["s1"] and s("cap:gobo", view) == ["s1"] and s("cap:gob*", view) == ["s1"]
+    assert s("cap:shutter", view) == ["p1", "p2", "s1"] and s("kind:lamp !cap:pan", view) == ["l2", "l1", "p1", "p2"]
+    assert s("cap:colour", view) == s("kind:lamp", view)
+    north = {"l1", "s1"}
+
+    def spatial(fid, key, value):
+        return (key, value) == ("side", "north") and fid in north or (key, value) == ("height", "high") and fid == "p1"
+    assert s("side:north", view) == [] and s("height:high", view) == []        # unplaced: on no side
+    assert s("side:north", view, spatial=spatial) == ["l1", "s1"]
+    assert s("cap:pan side:north", view, spatial=spatial) == ["s1"]
+    assert s("height:high | side:north", view, spatial=spatial) == ["l1", "p1", "s1"]
+    assert s("!side:north", view, spatial=spatial) == ["l2", "p1", "p2"]
+
+    def broken(fid, key, value):
+        raise RuntimeError("no room")
+    assert s("side:north", view, spatial=broken) == []
+    for bad in ("cap:wings", "height:loft", "cap:"):
+        with pytest.raises(ValueError, match="bad_selector"):
+            fx.parse_selector(bad)
+
+
+def test_a_fixtures_yaml_group_can_select_by_capability(rigdir):
+    groups = '  balls: {select: "ball"}'
+    v = load(rigdir, DMX.replace(groups, groups + '\n  movers: {select: "cap:pan"}'))
+    assert v["groups"]["movers"] == ["s1"] and v["problems"] == [], v["problems"]
+
+
+@pytest.fixture
+def store(tmp_path):
+    return fx.SetupStore(tmp_path / fx.SETUP_NAME), tmp_path / fx.SETUP_NAME
+
+
+def test_setup_store_patches_merges_and_removes(store):
+    st, path = store
+    assert st.read() == {} and not path.exists()
+    got = st.patch("dmx.spot", {"home": {"pan": 10, "tilt": -20}, "beam": {"zoom": 18},
+                                "slots": {"gobo": {"3": "Stars", 4: "Leaves"}, "count": {"gobo": 6}},
+                                "positions": {"piano": {"pan": 40, "tilt": -60, "label": "The piano"}}})
+    assert got == {"home": {"pan": 10.0, "tilt": -20.0}, "beam": {"zoom": 18.0},
+                   "slots": {"gobo": {"3": "Stars", "4": "Leaves"}, "count": {"gobo": 6}},
+                   "positions": {"piano": {"pan": 40.0, "tilt": -60.0, "label": "The piano"}}}
+    text = path.read_text()
+    assert text.startswith(fx.SETUP_HEADER) and yaml.safe_load(text) == {"version": 1, "fixtures": {"dmx.spot": got}}
+    got = st.patch("dmx.spot", {"home": {"tilt": None}, "beam": {"focus": 0.3},
+                                "slots": {"gobo": {"3": None, "5": "Dots"}},
+                                "positions": {"door": {"pan": 0, "tilt": 0}}, "limits": {"pan": [-90, 90]}})
+    assert got["home"] == {"pan": 10.0} and got["beam"] == {"zoom": 18.0, "focus": 0.3}
+    assert got["slots"] == {"gobo": {"4": "Leaves", "5": "Dots"}, "count": {"gobo": 6}}
+    assert set(got["positions"]) == {"piano", "door"} and got["limits"] == {"pan": [-90.0, 90.0]}
+    got = st.patch("dmx.spot", {"positions": {"piano": None}, "limits": None, "slots": {"colour": {"2": {
+        "name": "Deep red", "hex": "#CC0000"}}}, "strobe_hz_max": 8, "jog_flip": {"pan": True}})
+    assert set(got["positions"]) == {"door"} and "limits" not in got and got["strobe_hz_max"] == 8.0
+    assert got["slots"]["colour"] == {"2": {"name": "Deep red", "hex": "#cc0000"}} and got["jog_flip"] == {"pan": True}
+    assert st.read()["dmx.spot"] == got and st.get("dmx.spot") == got and st.get("nope") == {}
+    st.patch("other", {"range": {"pan": 630}})
+    assert st.patch("dmx.spot", {k: None for k in fx.SETUP_KEYS}) == {}
+    assert set(st.read()) == {"other"}                                        # nothing left: the id goes
+    assert st.remove("other") is True and st.remove("other") is False and st.read() == {}
+
+
+@pytest.mark.parametrize("patch, where", [
+    ({"home": {"pan": "left"}}, "home.pan"), ({"limits": {"pan": [90, -90]}}, "limits.pan"),
+    ({"limits": {"roll": [0, 1]}}, "limits.roll"), ({"max_speed": {"pan": 0}}, "max_speed.pan"),
+    ({"beam": {"iris": 2}}, "beam.iris"), ({"beam": {"zoom": -1}}, "beam.zoom"),
+    ({"slots": {"wheel9": {"1": "x"}}}, "slots.wheel9"), ({"slots": {"gobo": {"x": "y"}}}, "slots.gobo"),
+    ({"slots": {"count": {"gobo": 99}}}, "slots.count.gobo"), ({"slots": {"colour": {"2": {"hex": "red"}}}}, "hex"),
+    ({"positions": {"Over the sofa": {"pan": 1, "tilt": 2}}}, "positions"),
+    ({"positions": {"sofa": {"pan": 1}}}, "positions.sofa"), ({"strobe_hz_max": -3}, "strobe_hz_max"),
+    ({"jog_flip": {"pan": "yes"}}, "jog_flip.pan"), ({"wings": 2}, "wings"),
+    ({"range": {"pan": float("nan")}}, "range.pan")])
+def test_setup_store_refuses_and_writes_nothing(store, patch, where):
+    st, path = store
+    st.patch("dmx.spot", {"home": {"pan": 1}})
+    before = path.read_bytes()
+    with pytest.raises(fx.Refused) as e:
+        st.patch("dmx.spot", patch)
+    assert e.value.code == "bad_request" and where in e.value.detail and e.value.extra["problems"]
+    assert path.read_bytes() == before
+
+
+def test_setup_store_refuses_bad_ids_bodies_and_an_unreadable_file(store):
+    st, path = store
+    for fid, body in (("Bad Id", {}), ("ok", ["home"])):
+        with pytest.raises(fx.Refused, match="bad_request"):
+            st.patch(fid, body)
+    path.write_text("fixtures: [oops")
+    with pytest.raises(fx.Refused) as e:
+        st.patch("dmx.spot", {"home": {"pan": 1}})
+    assert e.value.code == "setup_unreadable" and path.read_text() == "fixtures: [oops"
+    assert fx.slug_id("Over the Sofa!") == "over-the-sofa" and fx.slug_id("  ") == "place"
+    assert fx.slug_id("Mirror ball") == "mirror-ball" and fx._is_id(fx.slug_id("x" * 99))
+
+
+def test_the_registry_merges_the_setup_file_and_reloads_on_it(reg):
+    r, d = reg
+    path = d / fx.SETUP_NAME
+    assert r.setup_path == path and all(f["setup"] == {} for f in r.view()["fixtures"].values())
+    st = fx.SetupStore(path)
+    st.patch("s1", {"home": {"pan": 15}, "slots": {"gobo": {"2": "Stars"}}})
+    st.patch("ghost", {"home": {"pan": 1}})
+    rev = r.view()["revision"]
+    assert settle(r) is True
+    v = r.view()
+    assert v["fixtures"]["s1"]["setup"] == {"home": {"pan": 15.0}, "slots": {"gobo": {"2": "Stars"}}}
+    assert v["fixtures"]["p1"]["setup"] == {} and v["revision"] != rev
+    assert f"{fx.SETUP_NAME}: setup for ghost: no such light (kept)" in v["problems"]
+    assert fx.caps_of(v["types"]["spot"], v["fixtures"]["s1"]["setup"])["gobo_slots"][1]["name"] == "Stars"
+    bump(path, path.read_text().replace("pan: 15.0", "pan: left") + "")          # a hand edit: that key dropped
+    assert settle(r) is True
+    v = r.view()
+    assert v["fixtures"]["s1"]["setup"] == {"slots": {"gobo": {"2": "Stars"}}}
+    assert any(p.startswith(f"{fx.SETUP_NAME}: s1.home.pan") and p.endswith("ignored") for p in v["problems"])
+    bump(path, "fixtures: [broken")                                              # unreadable: the last good stays
+    assert settle(r) is True
+    v = r.view()
+    assert v["error"] is None and v["fixtures"]["s1"]["setup"] == {"slots": {"gobo": {"2": "Stars"}}}
+    assert f"{fx.SETUP_NAME}: the lights' last good settings stay in use" in v["problems"]
+    one = fx.load(d / "fixtures.yaml", types_dir=d / "types", setup_path=d / "nope.yaml")
+    assert one["error"] is None and all(f["setup"] == {} for f in one["fixtures"].values())
+
+
+def test_the_real_setup_file_reads():
+    """The repo's config/room/fixtures.setup.yaml: the header, version 1, every id a light in the real registry."""
+    p = contract.FIXTURES_SETUP_FILE
+    assert p == fx.setup_path_for(contract.FIXTURES_FILE) and p.read_text().startswith(fx.SETUP_HEADER)
+    doc = yaml.safe_load(p.read_text())
+    assert doc["version"] == 1 and isinstance(doc["fixtures"], dict)
+    v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=contract.FIXTURES_ADDED_FILE, setup_path=p)
+    assert v["error"] is None and not [x for x in v["problems"] if x.startswith(fx.SETUP_NAME)], v["problems"]

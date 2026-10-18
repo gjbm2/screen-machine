@@ -97,7 +97,7 @@ are show.yaml structure.fastled):
              the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
              that went dark come back. A later silence after music sends track_end (the same id) again.
   transition each track_end_armed, track_end and track_change is handed to ``ctx.track_transition`` (the
-             director's, synchronous) with contract.TrackFacts while it is built: its {"transition"} or {"held"} goes
+             director's, synchronous) with contract.TrackFacts while it is built: its {"transition"} or {"held"} (and the lights' ``flow_id`` / ``sweep_beats``) go
              on the event. One room.event per change; no second event.
   track_change's at_ms is the new song's first beat while the clock's gate is beat|dmx, else its first sound (via
   dsp after a gap: the sound's return; via sonos: the armed end, a short gap's end, or the first sound waited for).
@@ -2116,6 +2116,9 @@ class Structure:
                     ev["held"] = True
                 elif isinstance(got.get("transition"), dict):
                     ev["transition"] = dict(got["transition"])
+                for k in ("flow_id", "sweep_beats"):               # docs/LIGHTS.md §7.2: the flow it goes with
+                    if k in got:
+                        ev[k] = got[k]
         self.event_counts[kind] += 1
         try:
             self.ctx.publish({"type": contract.ROOM_EVENT, "data": ev})
