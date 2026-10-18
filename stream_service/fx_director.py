@@ -18,6 +18,14 @@ per bar)), the cadence is whole phrases (FX_BARS bars, FX_MIN_BARS .. FX_MAX_BAR
 (:meth:`on_event`, by ``direction.fx.follow``, 0 = never): a drop or a new track brings a move at once (a drop's
 effect fades in over a beat, and a drop always has at least one), a section change sometimes, and a breakdown
 thins the bus by one auto effect until the music lifts again (a drop, a section change or a new track).
+
+Scenes and effects together (docs/SCENE_FX_INTERPLAY.md, fx_interplay.py; ``looks`` and ``scene`` set by the
+session): each candidate's weight is also x its fit with the scene on screen (its role against the scene's measured
+busyness, motion, brightness, symmetry, colour source), with the other effects on the bus and with the music's
+genre, and the retag's per-preset guess counts only as weight ** tag_prior; the effect comes in at a level the
+music's load budget and the scene leave it (never below level_min).  One layer moves at a time: a section change
+waits SECTION_WAIT_S for the scene director, and when the scene changes the carried auto effects are re-checked
+against the new scene (the one that fits worst is swapped once its fit fell below refit_below of what it was).
 """
 from __future__ import annotations
 
@@ -29,6 +37,7 @@ from typing import Any, Callable, Optional
 
 from .director import AUTO_FX_DEFAULTS, FX_DIRECTION_DEFAULTS, resolve_pool
 from .effects import MAX_BUS_SLOTS
+from .fx_interplay import Fit
 from .plugins.base import STAGES
 from .tags import match_weight
 
@@ -50,6 +59,7 @@ FX_LIFTS = ("drop", "section_change", "track_change")   # the music lifts: a bre
 FX_EVENT_GAP_S = 8.0           # no event move this soon after the last move
 FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
 FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
+SECTION_WAIT_S = 4.0           # a section change: the scene director moves first; if it did, only re-check the bus
 
 
 @dataclass
@@ -58,6 +68,7 @@ class FxMove:
     add: Optional[str]          # effect preset to add
     remove: Optional[str]       # slot id to remove
     why: str
+    level: float = 1.0          # the added effect's level (x its amount): the interplay's ceiling
 
 
 def interval_for(rate: float) -> float:
@@ -87,6 +98,12 @@ class FxDirector:
         self.event: Optional[str] = None                      # the room.event the pending move answers
         self.thin_until: Optional[float] = None               # a breakdown thins the bus until a lift or then
         self.last_move_at: Optional[float] = None
+        self.looks: Any = None      # fx_interplay.Interplay (set by the session): roles, measured looks, the table
+        self.scene: Optional[Callable[[], tuple[Optional[str], Optional[dict]]]] = None   # the scene on screen
+        self._scene_seen: Optional[str] = None
+        self._event_scene: Optional[str] = None               # the scene when a section change came in
+        self._fit_at_add: dict[str, float] = {}                # preset -> its fit when it came in
+        self.last_fit: Optional[str] = None
 
     # -- configuration -------------------------------------------------------------
     def configure(self, auto_fx: Optional[dict], direction: dict) -> None:
@@ -151,6 +168,12 @@ class FxDirector:
         """Armed only in live with the bus open, not exited, auto.fx enabled (every tick: the clock is read here).
         -> changed?"""
         self.grid = self._read_clock(now)
+        name = self._scene()[0]
+        if name != self._scene_seen:
+            prev, self._scene_seen = self._scene_seen, name
+            if prev is not None and name is not None and self.armed and self.enabled and self.event is None:
+                self.event = "scene_change"                  # re-check what the bus carries onto the new scene
+                self.next_at = now
         if armed == self.armed:
             return False
         self.armed = armed
@@ -174,6 +197,9 @@ class FxDirector:
             return False
         self.event = kind
         self.next_at = now
+        if kind == "section_change":                      # the scene director gets the first say
+            self._event_scene = self._scene_seen
+            self.next_at = now + SECTION_WAIT_S
         return True
 
     def due(self, now: float) -> bool:
@@ -260,31 +286,105 @@ class FxDirector:
             v = None
         return FX_UNKNOWN_COST_MS if v is None else float(v)
 
-    def _pick(self, names: list[str], presets: dict[str, dict]) -> Optional[tuple[str, str]]:
+    def _scene(self) -> tuple[Optional[str], Optional[dict]]:
+        try:
+            got = self.scene() if self.scene is not None else None
+            return (got[0], got[1]) if got else (None, None)
+        except Exception:
+            return None, None
+
+    def _ctx(self, stack: list = (), freed: Any = None) -> Any:
+        """The pick's context (fx_interplay.Interplay.context): the scene, the bus minus ``freed``, the music."""
+        if self.looks is None:
+            return None
+        others = [(getattr(s.spec, "preset", None) or getattr(s.spec, "effect", None), getattr(s.spec, "effect", None))
+                  for s in stack if s is not freed]
+        try:
+            return self.looks.context(self._scene(), others, self.direction)
+        except Exception:
+            return None
+
+    def fit(self, name: str, presets: dict[str, dict], stack: list = (), freed: Any = None, ctx: Any = None) -> Fit:
+        """How ``name`` fits the scene on screen, the other bus effects and the music (fx_interplay.py)."""
+        ctx = ctx if ctx is not None else self._ctx(stack, freed)
+        if ctx is None or name not in presets:
+            return Fit()
+        try:
+            return self.looks.fit_in(ctx, name, presets[name])
+        except Exception:
+            return Fit()
+
+    def _prior(self) -> float:
+        try:
+            return float((self.looks.cfg if self.looks is not None else {}).get("tag_prior", 1.0))
+        except (TypeError, ValueError):
+            return 1.0
+
+    def _pick(self, names: list[str], presets: dict[str, dict], stack: list = (),
+              freed: Any = None) -> Optional[tuple[str, str, Fit]]:
         if not names:
             return None
         recent = set(list(self.recent)[-NOVELTY_WINDOW:])
-        w = [max(1e-6, self.weight(presets[n].get("tags") or {}) * (NOVELTY_WEIGHT if n in recent else 1.0)
-                 * self._rated(presets[n].get("effect"))) for n in names]
-        name = self.rng.choices(names, weights=w)[0]
-        p = w[names.index(name)] / sum(w)
-        return name, f"{name} (p {p:.2f} of {len(names)}, {presets[name].get('stage')})"
+        prior = self._prior()
+        ctx = self._ctx(stack, freed)
+        fits = [self.fit(n, presets, ctx=ctx) for n in names]
+        w = [max(1e-6, self.weight(presets[n].get("tags") or {}) ** prior * f.mult
+                 * (NOVELTY_WEIGHT if n in recent else 1.0) * self._rated(presets[n].get("effect")))
+             for n, f in zip(names, fits)]
+        i = names.index(self.rng.choices(names, weights=w)[0])
+        name, f = names[i], fits[i]
+        return name, f"{name} (p {w[i] / sum(w):.2f} of {len(names)}, {presets[name].get('stage')}; {f.why()})", f
 
-    def _choose(self, names: list[str], presets: dict[str, dict], prefer: tuple) -> Optional[tuple[str, str]]:
+    def _choose(self, names: list[str], presets: dict[str, dict], prefer: tuple, stack: list = (),
+                freed: Any = None) -> Optional[tuple[str, str, Fit]]:
         """The first queued effect (upnext.py) that fits now, else a weighted pick."""
         for n in prefer:
             if n in names:
-                return n, f"{n} (up next, {presets[n].get('stage')})"
-        return self._pick(names, presets)
+                f = self.fit(n, presets, stack, freed)
+                return n, f"{n} (up next, {presets[n].get('stage')}; {f.why()})", f
+        return self._pick(names, presets, stack, freed)
+
+    def _move(self, op: str, got: tuple, remove: Optional[str], why: str) -> FxMove:
+        name, _, f = got
+        self._fit_at_add[name] = f.mult
+        self.last_fit = f.why()
+        return FxMove(op, name, remove, why, level=f.level)
+
+    def _refit(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
+               pixels_ratio: float, prefer: tuple, on: str) -> Optional[FxMove]:
+        """A new scene: swap the carried auto effect that now fits it worst, if its fit fell below refit_below of
+        what it was when it came in (else leave the bus as it is)."""
+        try:
+            below = float((self.looks.cfg if self.looks is not None else {}).get("refit_below", 0.5))
+        except (TypeError, ValueError):
+            below = 0.5
+        worst, worst_ratio, worst_fit = None, 1.0, None
+        for s in (s for s in stack if getattr(s, "origin", "manual") == "auto"):
+            name = getattr(s.spec, "preset", None)
+            if not name:
+                continue
+            f = self.fit(name, presets, stack, freed=s)
+            ratio = f.mult / max(1e-6, self._fit_at_add.get(name, f.mult))
+            if ratio < worst_ratio:
+                worst, worst_ratio, worst_fit = s, ratio, f
+        if worst is None or worst_ratio >= below:
+            return None
+        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=worst), presets, prefer,
+                           stack, worst)
+        if got is None:
+            return None
+        return self._move("swap", got, worst.id, f"swap: {got[1]} for {worst.spec.name}, which no longer suits the "
+                          f"scene (fit x{worst_fit.mult:.2f}, {worst_ratio:.0%} of when it came in){on}")
 
     def ahead(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
               pixels_ratio: float, queued: tuple) -> Optional[tuple[str, str]]:
         """One more effect for the queue: what could come in at the next move (the oldest auto effect freed),
         not already queued.  None when nothing else fits."""
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
-        names = [n for n in self.candidates(now, stack, presets, cost, pixels_ratio, freed=autos[0] if autos else None)
-                 if n not in queued]
-        return self._pick(names, presets)
+        freed = autos[0] if autos else None
+        names = [n for n in self.candidates(now, stack, presets, cost, pixels_ratio, freed=freed) if n not in queued]
+        got = self._pick(names, presets, stack, freed)
+        return None if got is None else (got[0], got[1])
 
     def plan(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
              pixels_ratio: float = 1.0, prefer: tuple = ()) -> Optional[FxMove]:
@@ -295,6 +395,8 @@ class FxDirector:
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         ev = self.event
         on = f" (on the {ev.replace('_', ' ')})" if ev else ""
+        if ev == "scene_change" or (ev == "section_change" and self._scene_seen != self._event_scene):
+            return self._refit(now, stack, presets, cost, pixels_ratio, prefer, on)   # one layer at a time
         k = self.target_count()
         if ev == "drop":
             k = max(k, min(1, int(self.auto_fx.get("max", 2))))      # a drop always brings an effect
@@ -309,13 +411,14 @@ class FxDirector:
         if len(autos) < k:
             if len(stack) >= MAX_BUS_SLOTS:
                 return None
-            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer)
-            return None if got is None else FxMove("add", got[0], None, f"add: {got[1]}{on}")
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer, stack)
+            return None if got is None else self._move("add", got, None, f"add: {got[1]}{on}")
         if k > 0 and (ev in FX_LIFTS or self.rng.random() < SWAP_P):   # the music's events always change
             old = autos[0]
-            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer)
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer,
+                               stack, old)
             if got is not None:
-                return FxMove("swap", got[0], old.id, f"swap: {got[1]} for {old.spec.name}{on}")
+                return self._move("swap", got, old.id, f"swap: {got[1]} for {old.spec.name}{on}")
         return None
 
     def next_move(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
@@ -325,12 +428,13 @@ class FxDirector:
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         if autos:
             old = autos[0]
-            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer)
-            return None if got is None else FxMove("swap", got[0], old.id, f"next: {got[1]} for {old.spec.name}")
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer,
+                               stack, old)
+            return None if got is None else self._move("swap", got, old.id, f"next: {got[1]} for {old.spec.name}")
         if len(stack) >= MAX_BUS_SLOTS:
             return None
-        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer)
-        return None if got is None else FxMove("add", got[0], None, f"next: {got[1]}")
+        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer, stack)
+        return None if got is None else self._move("add", got, None, f"next: {got[1]}")
 
     def status(self, now: float) -> dict:
         fxd = self.fxd
@@ -338,4 +442,5 @@ class FxDirector:
                 "armed": self.armed,
                 "next_in_s": None if self.next_at is None or not self.enabled else round(max(0.0, self.next_at - now), 1),
                 "on_the_bar": self.grid is not None, "event": self.event,
-                "thinned": self.thin_until is not None and now < self.thin_until, "last": self.last}
+                "thinned": self.thin_until is not None and now < self.thin_until, "last": self.last,
+                "scene": self._scene_seen, "last_fit": self.last_fit}

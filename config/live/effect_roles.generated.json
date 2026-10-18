@@ -1,0 +1,1413 @@
+{
+ "format": 1,
+ "gen": {
+  "by": "screen-machine-2b (one agent read every effect's source; docs/SCENE_FX_INTERPLAY.md \u00a71.1)",
+  "at": "2026-10-18T14:24:49+01:00"
+ },
+ "roles": {
+  "afterimage_ghost": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Bright areas leave fading, hue-rotating ghost tails from a history buffer"
+  },
+  "ascii_mode": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture rebuilt from monospaced glyphs"
+  },
+  "bass_vibrate": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Whole frame vibrates on kicks as a blurred double image"
+  },
+  "beat_stutter": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Grabs and repeats frames from a ring buffer on the beat"
+  },
+  "block_glitch": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Macroblock damage; frozen blocks come from a held past frame"
+  },
+  "bloom": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Highlights bleed into wide tinted halos"
+  },
+  "bulge_pinch": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Lens bulge/pinch displaces pixels radially"
+  },
+  "chroma": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Radial per-channel offsets, lens-style colour fringing"
+  },
+  "crt_monitor": {
+   "role": "texture",
+   "secondary": "reframe",
+   "changes_over_time": false,
+   "_why": "Scanlines, aperture grille and phosphor, inside a curved bezelled tube"
+  },
+  "cube_grid": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture mapped onto a wall of flipping 3D cubes"
+  },
+  "dither": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Posterise plus ordered dither at chunky virtual pixels"
+  },
+  "dolly_zoom": {
+   "role": "camera",
+   "secondary": "reshape",
+   "changes_over_time": false,
+   "_why": "Vertigo dolly move done as a perspective FOV warp"
+  },
+  "droste": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Log-spiral recursive self-copy zoom"
+  },
+  "edge_glow": {
+   "role": "light",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Edges glow neon over a dimmed source"
+  },
+  "feedback_echo": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Last frame zoomed/rotated/warped under the new one"
+  },
+  "film_stock": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Process-film colour emulation with halation and grain"
+  },
+  "flag_wave": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture as waving shaded cloth"
+  },
+  "flash": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Brightens the frame toward white/tint on beats"
+  },
+  "frame_cube": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture on the face of a spinning glossy cube"
+  },
+  "globe_wrap": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture wrapped onto a lit spinning globe"
+  },
+  "god_rays": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Volumetric light shafts from bright areas"
+  },
+  "grade": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Saturation, contrast, warmth and lift"
+  },
+  "halftone": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Rotated print screens of dots sized by the picture"
+  },
+  "handheld_drift": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Noise pan/tilt/roll/zoom like a handheld operator"
+  },
+  "hue_drift": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Continuous hue rotation and saturation changes"
+  },
+  "isf_analog_glitch_9": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Scanline warp, vertical roll, skew and sync distortion"
+  },
+  "isf_ascii_art": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture rebuilt as ASCII characters"
+  },
+  "isf_auto_color_tone": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Maps luma to generated tones of a base colour"
+  },
+  "isf_auto_levels": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Auto-stretches levels from measured min/max"
+  },
+  "isf_bad_tv": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Noise-driven line offsets, scroll, scanlines and noise"
+  },
+  "isf_boxinator": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Animated grid of noise boxes blended over picture"
+  },
+  "isf_broken_lcd": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Row glitches and noise patches like a cracked LCD"
+  },
+  "isf_bump_distortion": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Bump lens bends the image"
+  },
+  "isf_chromatic_aberration": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Red/blue channels displaced radially, lens-style"
+  },
+  "isf_circle_splash_distortion": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Circular splash distortion of coordinates"
+  },
+  "isf_circle_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Warps image to fit a circle"
+  },
+  "isf_circle_wrap_distortion": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Wraps image into a circular shape"
+  },
+  "isf_circular_feedback_mask": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Persistent feedback buffer inside/outside a circular remapped mask"
+  },
+  "isf_circular_screen": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Concentric-circle halftone screen"
+  },
+  "isf_city_lights": {
+   "role": "light",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Sobel edges dilated and blurred into glowing lights"
+  },
+  "isf_cmyk_halftone": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "CMYK halftone dot screens"
+  },
+  "isf_cmyk_halftone_lookaround": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "CMYK halftone dot screens"
+  },
+  "isf_collage": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Shuffles and flips cells of the picture"
+  },
+  "isf_color_levels": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Levels adjustment"
+  },
+  "isf_color_monochrome": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Tinted monochrome"
+  },
+  "isf_color_posterize": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Posterises colour levels"
+  },
+  "isf_color_relookup": {
+   "role": "grade",
+   "secondary": "corrupt",
+   "changes_over_time": false,
+   "_why": "Replaces colours using the picture itself as LUT"
+  },
+  "isf_colormap": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Gradient colormap by luminance"
+  },
+  "isf_comet_tails": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Brightness-weighted feedback motion blur"
+  },
+  "isf_convergence": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random per-channel offset jitter, misconverged colour"
+  },
+  "isf_corner_color_tint": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Tints corners different colours"
+  },
+  "isf_cube_map_2": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture on faces of a spinning cube"
+  },
+  "isf_cubic_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Cubic lens distortion"
+  },
+  "isf_cv_edge_flow_pixel_sort": {
+   "role": "reshape",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Progressive neighbour sort on persistent buffer along flow"
+  },
+  "isf_cv_flow_divergence_crack": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Accumulating cracks where optical flow diverges"
+  },
+  "isf_cv_flow_smear": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Accumulated smear buffer along optical flow"
+  },
+  "isf_cv_motion_freeze_shards": {
+   "role": "trails",
+   "secondary": "corrupt",
+   "changes_over_time": true,
+   "_why": "Frozen shards from a held buffer update on motion"
+  },
+  "isf_cv_motion_heat_datamosh": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Datamosh from delayed frames, block offsets, quantisation"
+  },
+  "isf_cv_motion_rgb_tear": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Motion-gated RGB tearing with persistent tear buffer"
+  },
+  "isf_cv_optical_feedback_tunnel": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Feedback tunnel pulled by optical flow"
+  },
+  "isf_cv_saliency_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Warps salient regions of the current frame"
+  },
+  "isf_cv_vector_block_mosh": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Motion-vector block mosh on persistent buffer"
+  },
+  "isf_diagonalize": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Averages along diagonal bands into streaks"
+  },
+  "isf_dilate_fast": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Morphological dilate spreads bright areas"
+  },
+  "isf_disco_spinner": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Four rotating offset copies max-blended"
+  },
+  "isf_dither_bayer": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Bayer ordered dither"
+  },
+  "isf_dot_screen": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Halftone dot screen"
+  },
+  "isf_duotone": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Two-colour gradient map"
+  },
+  "isf_edge_blowout": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Stretches edge pixels outward from a box"
+  },
+  "isf_edge_blur": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Blur masked by edge strength"
+  },
+  "isf_edge_distort": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Radial displacement driven by edges and brightness"
+  },
+  "isf_edge_trace": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Blurred picture with traced edge lines"
+  },
+  "isf_edges": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Sobel edge outlines on black"
+  },
+  "isf_emboss": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Emboss relief filter"
+  },
+  "isf_erode_fast": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Morphological erode spreads dark areas"
+  },
+  "isf_expansive_reaction_diffusion": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Reaction-diffusion sim replaces picture; input only lights it"
+  },
+  "isf_exposure_adjust": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Exposure adjustment"
+  },
+  "isf_false_color": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "False-colour map by luminance"
+  },
+  "isf_fast_blur": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Blur"
+  },
+  "isf_fast_mosh": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Fake datamosh from persistent previous frame"
+  },
+  "isf_flip_h": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Horizontal flip"
+  },
+  "isf_flip_v": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Vertical flip"
+  },
+  "isf_flipbook": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Grabs and holds frames, flipping like a flipbook"
+  },
+  "isf_frosted_glass": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random spline jitter like frosted glass"
+  },
+  "isf_ghosting": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Lens ghosts from thresholded highlights; not temporal"
+  },
+  "isf_glitch_shifter": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random band shifts and zooms"
+  },
+  "isf_glow": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Glow"
+  },
+  "isf_glow_fast": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Glow"
+  },
+  "isf_gn_broke_in_bad": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Luma-masked random row displacement plus noise pattern"
+  },
+  "isf_gn_brutalist_crush": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "XOR bitcrush plus directional feedback smear"
+  },
+  "isf_gn_datamosh": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Fake datamosh from persistent last frame"
+  },
+  "isf_gn_edge_turbulence": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Noise/vortex feedback buffer with edge colour"
+  },
+  "isf_gn_flow_map_1_0_0": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Feedback smear steered by picture-colour flow map"
+  },
+  "isf_gn_glitch_flow_map": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Feedback smear steered by flow map, blocky jitter"
+  },
+  "isf_gn_modulation_synth": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture rebuilt as modulated carrier-wave lines"
+  },
+  "isf_gn_pixel_melt": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Persistent melt buffer drips pixels by luma"
+  },
+  "isf_gn_pixel_repeat": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Masked pixels repeated into directional streaks"
+  },
+  "isf_gn_pixel_sort_clean": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Single-pass pixel sort along rows/columns"
+  },
+  "isf_gn_pixel_sorting": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Feedback melt of in-range pixels, not a true sort"
+  },
+  "isf_gn_pixort": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Single-pass threshold pixel streaking"
+  },
+  "isf_gn_pixort_ae": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Directional feedback smear on persistent buffer"
+  },
+  "isf_gn_pixort_flow_map": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Flow-map-steered feedback smear"
+  },
+  "isf_gn_pixort_s3": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Vector-field feedback smear with glow/dither"
+  },
+  "isf_gn_q_smear_noise": {
+   "role": "trails",
+   "secondary": "corrupt",
+   "changes_over_time": true,
+   "_why": "Unstable feedback smear with quantised angles and noise"
+  },
+  "isf_gn_signal_trinity": {
+   "role": "trails",
+   "secondary": "corrupt",
+   "changes_over_time": true,
+   "_why": "Frame-hold feedback plus synth/glitch by luma bands"
+  },
+  "isf_gn_slit_scan": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Slit-scan built in a persistent buffer"
+  },
+  "isf_gn_topo_scan": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Luminance contour lines"
+  },
+  "isf_gn_xormear": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "XOR bit corruption on a directional smear"
+  },
+  "isf_gn_xorter": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "XOR bitcrush plus feedback smear"
+  },
+  "isf_god_rays": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Radial god-ray light shafts"
+  },
+  "isf_hyperspace": {
+   "role": "reshape",
+   "secondary": "reframe",
+   "changes_over_time": false,
+   "_why": "Squeezes and scrolls picture into receding corridor walls"
+  },
+  "isf_im_mr_blob": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Raymarched fluorescent blob; input image is never sampled"
+  },
+  "isf_interlace": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Alternate lines from previous frame, interlace combing"
+  },
+  "isf_interlace_mirror": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Alternate lines mirrored"
+  },
+  "isf_jpeg_block_corruption": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Over-compressed / corrupted JPEG blocks"
+  },
+  "isf_kaleidoscope": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Kaleidoscope fold"
+  },
+  "isf_kaleidoscope_tile": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Kaleidoscope tiling"
+  },
+  "isf_key_frame_artifacts": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Accumulates difference since a key frame, codec-style"
+  },
+  "isf_lens_flare": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Lens flare"
+  },
+  "isf_line_screen": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Line halftone screen"
+  },
+  "isf_long_exposure": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Bright objects burn in and decay"
+  },
+  "isf_luminance_posterize": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Posterises luminance"
+  },
+  "isf_mattias_crt": {
+   "role": "texture",
+   "secondary": "reshape",
+   "changes_over_time": false,
+   "_why": "CRT scanlines, bleed, vignette with curved screen warp"
+  },
+  "isf_median": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Median filter smoothing"
+  },
+  "isf_meta_image": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Mosaic of tiny copies tinted by cell colour"
+  },
+  "isf_mirror": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Mirror"
+  },
+  "isf_mirror_edge": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Mirror-tiles the picture"
+  },
+  "isf_monochrome_channelmix": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Black-and-white channel mix"
+  },
+  "isf_motion_data_mosh": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Optical-flow datamosh from persistent frame buffers"
+  },
+  "isf_multi_frame_2x2": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "2x2 grid of current and last three frames"
+  },
+  "isf_multi_frame_3x3": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Grid of current and delayed frames"
+  },
+  "isf_multi_pass_gaussian_blur": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Deep gaussian blur"
+  },
+  "isf_multi_pixellate": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Pixellate with random cell sizes"
+  },
+  "isf_neon": {
+   "role": "light",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Edge outlines with radial ray glow"
+  },
+  "isf_noise_adapt": {
+   "role": "corrupt",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Changed pixels become noise until they re-match"
+  },
+  "isf_noise_pixellate": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Pixellated cells modulated by noise"
+  },
+  "isf_old_film": {
+   "role": "grade",
+   "secondary": "add",
+   "changes_over_time": false,
+   "_why": "Sepia false colour, flicker, vignette, plus scratches/grain"
+  },
+  "isf_optical_flow_distort": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Motion-mask-driven displacement of current frame"
+  },
+  "isf_oscilloscope_analysis_luminance": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture redrawn as oscilloscope luminance traces"
+  },
+  "isf_palettes": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Cosine palette recolour"
+  },
+  "isf_pattern_glitch": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random rectangles replaced by patterns"
+  },
+  "isf_physarum_polycephalum_simulation": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Slime-mould trail sim seeded by picture brightness"
+  },
+  "isf_pixel_shifter": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Shifts rows/columns by sine or ramp offsets"
+  },
+  "isf_pixellate": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Pixellate"
+  },
+  "isf_poly_glitch": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random triangles filled with centroid colour"
+  },
+  "isf_posterize": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Posterise"
+  },
+  "isf_quad_tile": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Tiles picture in quads"
+  },
+  "isf_radial_replicate": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Replicates a radial slice around centre"
+  },
+  "isf_random_freeze": {
+   "role": "trails",
+   "secondary": "corrupt",
+   "changes_over_time": true,
+   "_why": "Only random rectangles update; rest stays frozen"
+  },
+  "isf_replicate": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Tile replication"
+  },
+  "isf_replicate_random": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Randomised tile replication"
+  },
+  "isf_rgb_halftone": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "RGB halftone dots"
+  },
+  "isf_rgb_halftone_lookaround": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "RGB halftone dots"
+  },
+  "isf_rgb_trails_3_0": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Persistent per-channel motion trails"
+  },
+  "isf_ripples": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Ripple displacement"
+  },
+  "isf_saturation_bleed": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Blurs saturation channel only"
+  },
+  "isf_sepia_tone": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Sepia"
+  },
+  "isf_sharpen_luminance": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Luma sharpening: local contrast, shapes unmoved"
+  },
+  "isf_sharpen_rgb": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "RGB sharpening: local contrast, shapes unmoved"
+  },
+  "isf_shockwave_pulse": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Expanding shockwave ring displacement"
+  },
+  "isf_sine_warp_tile": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Sine-warped kaleidoscopic tiling"
+  },
+  "isf_sketch": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Edge-darkened blur like a pencil sketch"
+  },
+  "isf_slit_scan": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Pixels update only along slit lines over time"
+  },
+  "isf_smoke_screen": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Draws drifting fractal smoke over the picture"
+  },
+  "isf_smudged_lens": {
+   "role": "texture",
+   "secondary": "add",
+   "changes_over_time": false,
+   "_why": "Noise-masked patchy blur like a smudged lens"
+  },
+  "isf_soft_blur": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Soft blur"
+  },
+  "isf_soft_flip": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Mirrors one side across a soft line"
+  },
+  "isf_solarize": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Solarise tone curve"
+  },
+  "isf_sorting_smear": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Feedback buffer with neighbour swaps smears by brightness"
+  },
+  "isf_sphere_map": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture mapped onto a sphere"
+  },
+  "isf_stylize_glitch": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Random rectangles get random stylise treatments"
+  },
+  "isf_suture_fluid": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Fluid sim colours replace picture; input only forces flow"
+  },
+  "isf_texture_displace": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Sine/cosine displacement"
+  },
+  "isf_texture_displace_02": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Sine, star and jagged displacement"
+  },
+  "isf_thermal_camera": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Thermal false-colour map"
+  },
+  "isf_toon": {
+   "role": "texture",
+   "secondary": "grade",
+   "changes_over_time": false,
+   "_why": "Black edge lines plus quantised colour"
+  },
+  "isf_trail_mask": {
+   "role": "trails",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Mixes fresh and stale frames by picture-luma mask"
+  },
+  "isf_triangle_mosaic": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Jittered triangle mesh mosaic"
+  },
+  "isf_triangle_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Warps image to fit a triangle"
+  },
+  "isf_triangles": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Triangle-cell mosaic"
+  },
+  "isf_trio_tone": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Three-colour gradient map"
+  },
+  "isf_unsharp_mask": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Unsharp mask: local contrast, shapes unmoved"
+  },
+  "isf_v002_crosshatch": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Crosshatch line rendering"
+  },
+  "isf_v002_crt_displacement": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Curved-CRT barrel displacement"
+  },
+  "isf_v002_dilate": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Morphological dilate"
+  },
+  "isf_v002_erode": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Morphological erode"
+  },
+  "isf_v002_glitch_analog": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Analog interference, distortion and sync faults"
+  },
+  "isf_v002_technicolor": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Technicolor colour process"
+  },
+  "isf_v002_vignette": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Darkens edges; tone only"
+  },
+  "isf_vertical_tearing": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Tears between old and new frame, VBL-off look"
+  },
+  "isf_vhs_chaos_master_github": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "VHS spikes, burnouts and eject disruptions"
+  },
+  "isf_vhs_glitch": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "VHS glitch"
+  },
+  "isf_video_snake": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Grid of frame-delayed copies"
+  },
+  "isf_waveform_displace": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Audio waveform displaces pixels"
+  },
+  "isf_waveform_displace_audio_as_image": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Audio waveform displaces pixels"
+  },
+  "isf_zooming_feedback": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Zooming feedback loop"
+  },
+  "jpeg_crush": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "DCT blocking/ringing; P-frame smear drifts blocks from previous output"
+  },
+  "kaleido_mirror": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Folds picture into a rotating mirrored mandala"
+  },
+  "kuwahara": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Kuwahara filter turns picture into oil brush strokes"
+  },
+  "led_wall": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture rendered as discrete LED emitters with gaps"
+  },
+  "lens_fisheye": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Barrel/pincushion/fisheye lens distortion"
+  },
+  "lens_flare": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Ghosts, halo and starburst from bright spots"
+  },
+  "light_leaks": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Soft coloured film light leaks screened from edges"
+  },
+  "liquid_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Flowing noise field displaces the picture"
+  },
+  "luma_terrain": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture becomes a textured 3D landscape flyover"
+  },
+  "mesh_wobble": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Coarse-mesh jelly zoom, rotation and sine bends"
+  },
+  "mirror_ball": {
+   "role": "reframe",
+   "secondary": "light",
+   "changes_over_time": false,
+   "_why": "Picture reflected in a disco ball throwing light specks"
+  },
+  "neon_contours": {
+   "role": "light",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Brightness contours drawn as glowing tubes over darkened source"
+  },
+  "ocean_mirror": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture as sky reflected in a perspective ocean"
+  },
+  "palette_map": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Recolours into the shared palette; shapes untouched"
+  },
+  "pixel_sort": {
+   "role": "reshape",
+   "secondary": "trails",
+   "changes_over_time": true,
+   "_why": "Real span sort on a persistent buffer; streaks grow"
+  },
+  "polar_wrap": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Polar remap into tiny planet or ring"
+  },
+  "pool_view": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture as a swimming-pool floor under waves"
+  },
+  "rain_on_glass": {
+   "role": "add",
+   "secondary": "reshape",
+   "changes_over_time": false,
+   "_why": "Draws refracting raindrops and fog on glass"
+  },
+  "rain_ripples": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Interfering ripple rings displace the picture"
+  },
+  "rotate_wobble": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Frame rocks like a pendulum, tilt plus card pitch/yaw"
+  },
+  "rutt_etra": {
+   "role": "reframe",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Picture as luminance-lifted scanlines on a 3D plane"
+  },
+  "shake": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Camera sway with beat kicks"
+  },
+  "shockwave": {
+   "role": "reshape",
+   "secondary": "light",
+   "changes_over_time": false,
+   "_why": "Refracting ring ripples out with chromatic glow edge"
+  },
+  "sketch_hatch": {
+   "role": "texture",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Ink lines and hatching on paper"
+  },
+  "smear_drag": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Pixels drip along a direction via a history buffer"
+  },
+  "snowfall": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Draws parallax snowflakes over the picture"
+  },
+  "spark_overlay": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Draws spark particles thrown from highlights"
+  },
+  "split_tone_grade": {
+   "role": "grade",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Shadow/mid/highlight palette tints, duotone/tritone map"
+  },
+  "spring_punch": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Spring zoom punches, jolts and squashes on kicks"
+  },
+  "strobe_flash": {
+   "role": "light",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Beat flashes frame white/colour/inverted"
+  },
+  "sync_fault": {
+   "role": "corrupt",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "V-roll, H-tear, jitter; interlace lines from previous frame"
+  },
+  "tile_split": {
+   "role": "reshape",
+   "secondary": "reframe",
+   "changes_over_time": false,
+   "_why": "Tiles picture on a bezelled video wall that slides"
+  },
+  "time_slice": {
+   "role": "trails",
+   "secondary": "reshape",
+   "changes_over_time": true,
+   "_why": "Slit-scan: each region shows a different past frame"
+  },
+  "trauma_shake": {
+   "role": "camera",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Trauma-decay camera shake in x/y/roll"
+  },
+  "tunnel_wall": {
+   "role": "reframe",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Picture tiles the inside of a flown-through tube"
+  },
+  "twirl": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Whirlpool rotations around orbiting centres"
+  },
+  "vhs": {
+   "role": "corrupt",
+   "secondary": "texture",
+   "changes_over_time": false,
+   "_why": "Tracking bands, static, chroma bleed, scanlines"
+  },
+  "wave_warp": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Travelling wave trains displace the picture"
+  }
+ }
+}

@@ -225,7 +225,8 @@ class SessionFx:
             if move.add is not None:
                 if len(items) >= MAX_BUS_SLOTS:
                     return None
-                items.append(_Item(None, self.presets.resolve_effect(move.add), 1.0, False, origin="auto",
+                level = max(0.0, min(1.0, float(getattr(move, "level", 1.0))))   # the interplay's ceiling
+                items.append(_Item(None, self.presets.resolve_effect(move.add), level, False, origin="auto",
                                    index=len(items)))
             return await self._apply(items, fade_s, None, "auto", move.why)
 

@@ -55,7 +55,7 @@ import subprocess
 import time
 from typing import Any, Callable, Optional
 
-from . import binding, palettes, rooms
+from . import binding, fx_interplay, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction, weighted_pick
@@ -299,6 +299,8 @@ class Session(EngineListener):
         self.director.vet = self.fx_director.vet = self.room_ok
         self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
         self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
+        self.fx_director.looks = fx_interplay.shared(self.mgr.presets.dir)   # scenes and effects together
+        self.fx_director.scene = lambda: (self.current_name, self.mgr.presets.scenes.get(self.current_name or ""))
         # -- room-level direction (rooms.py): set by the manager on create --
         self.room: Optional[str] = None
         self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
@@ -1925,7 +1927,8 @@ class Session(EngineListener):
             if move is None:
                 raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
             if rep is not None:
-                move = FxMove("add" if rep == "none" else "swap", move.add, None if rep == "none" else rep, move.why)
+                move = FxMove("add" if rep == "none" else "swap", move.add, None if rep == "none" else rep, move.why,
+                              level=move.level)
         else:
             old = None if rep == "none" else rep if rep is not None else (autos[0].id if autos else None)
             move = FxMove("swap" if old else "add", eff, old, f"chosen: {eff}")

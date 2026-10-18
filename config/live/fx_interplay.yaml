@@ -1,0 +1,87 @@
+# Scenes and effects together (docs/SCENE_FX_INTERPLAY.md; stream_service/fx_interplay.py). Hot-reloaded.
+# Starting values from 2b's reasoning, 18 Oct, for the owner to judge and tune. Every number is a gentle multiplier
+# on how likely the FX director is to pick an effect, or a ceiling on how strongly it plays. Nothing is ever
+# excluded: a poor fit is just less likely, or plays at a lower level. A property that is unknown has no say.
+#
+# Roles (what an effect does to the picture: config/live/effect_roles.generated.json, one per effect plug-in):
+#   grade, light, texture, reshape, trails, corrupt, reframe, camera, add.
+# Scene properties (0..1, from config/live/look_stats.generated.json, measured from a short render of each preset):
+#   busy (fine detail), motion (how much moves), brightness, symmetric (already mirrored or radial),
+#   self_coloured (brings its own colours rather than the room's palette),
+#   plus the lists under scene_props: legible, own_trails, own_glitch.
+
+level_min: 0.35            # an effect never plays below this share of its amount
+multiplier_range: [0.25, 1.5]
+tag_prior: 0.5             # the retag's per-preset guess (moods, genre, style) counts as weight ** this: a mild hint
+refit_below: 0.5           # on a new scene, a carried effect whose fit fell below this share is swapped
+symmetric_from: [0.3, 0.9] # mirror/rotation correlation mapped to symmetric 0..1
+
+scene_props:
+  legible: [live_score, gallery, image]            # content that must stay readable: the score, photos, art stills
+  own_trails: [fluid_ink, ink_marbling, physarum, strange_attractors, harmonograph_3d, curl_particles]
+  own_glitch: []
+
+# role -> scene property -> [at 0, at 1] or [at 0, at 0.5, at 1]
+roles:
+  grade:   {self_coloured: [0.9, 1.3]}                        # ties a photo into the room's colours
+  light:   {brightness: [1.25, 0.45]}                         # glow on a bright scene blows out
+  texture: {busy: [1.25, 0.35], legible: [1.0, 0.5]}          # halftone of a fractal is static
+  reshape: {busy: [1.15, 0.5], symmetric: [1.0, 0.4], motion: [1.0, 0.7], legible: [1.0, 0.4]}
+  trails:  {motion: [0.7, 1.15, 0.45], busy: [1.0, 0.6], own_trails: [1.0, 0.35]}   # middling motion is best
+  corrupt: {busy: [1.1, 0.7], legible: [1.0, 0.3], own_glitch: [1.0, 0.4]}
+  reframe: {brightness: [0.55, 1.1], busy: [0.85, 1.2], legible: [1.0, 0.35]}      # a dark sphere on black is nothing
+  camera:  {motion: [1.15, 0.4]}                              # shake on a fly-through is queasy
+  add:     {busy: [1.3, 0.5]}                                 # rain on a busy scene is clutter
+
+# role + role (either order) on the same bus: a number, or by genre group with a default
+pairs:
+  reshape+reshape: 0.5
+  reshape+reframe: 0.6
+  reframe+reframe: 0.4
+  texture+texture: 0.5
+  trails+trails: 0.5
+  corrupt+corrupt: 0.6
+  camera+camera: 0.4
+  light+light: 0.7
+  grade+grade: 0.6
+  reshape+texture: 0.8
+  reframe+texture: 0.7
+  trails+corrupt: {techno: 1.0, house: 0.9, default: 0.6}
+  texture+corrupt: {rock: 1.0, hiphop: 1.0, default: 0.7}
+
+# how much the effects may take over: a budget from the music's energy (room.direction energy, the band energy with
+# no feel), plus a genre bias; the scene's busyness uses `scene` x busy of it and each other effect its strength
+load:
+  scene: 0.5
+  by_energy: [[0.0, 0.25], [0.3, 0.35], [0.55, 0.55], [0.75, 0.75], [1.0, 0.95]]
+  genre_bias: {techno: 0.15, house: 0.1, rock: 0.05, ambient: -0.1, classical: -0.1}
+
+# the vocab's genre words in the retag's 10 groups (a word in two groups counts half to each)
+genre_groups:
+  ambient: [ambient, downtempo]
+  classical: [classical, piano, soundtrack]
+  jazz: [jazz, blues]
+  soul: [soul, rnb, funk, gospel, disco]
+  pop: [pop, indie, singer-songwriter, folk, country]
+  rock: [rock, metal, punk]
+  house: [house, disco, trance, electronic]
+  techno: [techno, trance, drum-and-bass, dubstep, electronic]
+  hiphop: [hip-hop]
+  world: [world, latin, afrobeat, reggae]
+
+# which roles suit the music (p-weighted over the genre groups heard; default when no genre is known)
+roles_by_music:
+  default:   {grade: 1.0, light: 1.0, texture: 1.0, reshape: 1.0, trails: 1.0, corrupt: 1.0, reframe: 1.0, camera: 1.0, add: 1.0}
+  ambient:   {grade: 1.2, light: 1.2, texture: 0.7, reshape: 0.8, trails: 1.0, corrupt: 0.3, reframe: 0.5, camera: 0.4, add: 1.0}
+  classical: {grade: 1.2, light: 1.1, texture: 0.8, reshape: 0.6, trails: 0.8, corrupt: 0.25, reframe: 0.5, camera: 0.4, add: 0.8}
+  jazz:      {grade: 1.2, light: 0.9, texture: 1.3, reshape: 0.7, trails: 0.8, corrupt: 0.35, reframe: 0.7, camera: 0.9, add: 0.7}
+  soul:      {grade: 1.2, light: 1.0, texture: 1.2, reshape: 0.8, trails: 0.8, corrupt: 0.4, reframe: 0.8, camera: 1.0, add: 0.8}
+  pop:       {grade: 1.0, light: 1.3, texture: 0.9, reshape: 1.1, trails: 0.9, corrupt: 0.6, reframe: 1.0, camera: 1.0, add: 1.1}
+  rock:      {grade: 1.1, light: 1.0, texture: 1.1, reshape: 0.8, trails: 0.9, corrupt: 1.2, reframe: 0.8, camera: 1.3, add: 0.7}
+  house:     {grade: 1.0, light: 1.3, texture: 0.8, reshape: 1.2, trails: 1.1, corrupt: 0.7, reframe: 1.1, camera: 0.9, add: 1.0}
+  techno:    {grade: 0.7, light: 1.1, texture: 0.8, reshape: 1.3, trails: 1.3, corrupt: 1.2, reframe: 1.0, camera: 0.8, add: 0.6}
+  hiphop:    {grade: 1.1, light: 0.9, texture: 1.3, reshape: 0.9, trails: 0.9, corrupt: 1.1, reframe: 0.8, camera: 1.2, add: 0.7}
+  world:     {grade: 1.2, light: 1.1, texture: 1.0, reshape: 1.0, trails: 0.9, corrupt: 0.4, reframe: 0.9, camera: 1.0, add: 1.0}
+
+# a plug-in's role by hand, over the generated file
+role_overrides: {}
