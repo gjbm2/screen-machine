@@ -425,3 +425,20 @@ def test_the_real_show_yaml_has_every_cues_key(tmp_path):
     assert r.c.problems == []
     for sec, keys in C.CUES_FALLBACK.items():
         assert set(sh["cues"][sec]) == set(keys), sec
+
+
+def test_cue_events_reach_the_other_music_event_listeners_but_not_cues_itself(tmp_path):
+    r = Rig(tmp_path)
+    heard: list = []
+    r.ctx.on_music_event.extend([r.c.on_music_event, heard.append, lambda ev: 1 / 0])   # cues, the director, a bad one
+    r.learn_floor()
+    r.run(5.0)
+    r.level = -64.0
+    r.run(0.5)
+    assert [(e["kind"], e["detail"], e["via"]) for e in heard] == [("track_end", "stop", "cues")]
+    assert heard[0] == r.events("track_end")[0] and heard[0] is not r.events("track_end")[0]
+    assert r.c.snapshot()["counts"]["callback_errors"] == 1
+    assert "handed" not in r.kinds()                                    # cues never took its own stop for structure's
+    r.level = -20.0
+    r.run(1.0)
+    assert [e["detail"] for e in heard] == ["stop", "sound_back"]

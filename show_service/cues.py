@@ -4,7 +4,9 @@ real-time component fires (owner, 18 Oct).
 One component, ``cues``, ticked at 10 Hz on show-brain (after structure and the listener, before the director). It
 reads music.features and music.rhythm (the DSP, by reference), the clock, music.context (structure), the ML worker's
 voice reading, situations' music_audible, the listener's beliefs and the director's hold, and publishes room.events
-the renderer already knows (stream_service/sessions.py ``room_event`` / ``_track_event``).
+the renderer already knows (stream_service/sessions.py ``room_event`` / ``_track_event``), each also handed to every
+other ``ctx.on_music_event`` (the director and its lamps, the listener), as structure's are; its own come back to
+nobody (``on_music_event`` skips via "cues").
 
 **Standing cues**, armed while music plays (no listener needed):
   stop      an abrupt stop: the fast level (features.rms_dbfs, one 20 ms block a tick) falls ``stop.collapse_db`` (20)
@@ -260,7 +262,7 @@ class Cues:
 
     # -- structure's events (show-brain) ---------------------------------------------------------------------------------
     def on_music_event(self, ev: dict) -> None:
-        if not isinstance(ev, dict):
+        if not isinstance(ev, dict) or ev.get("via") == "cues":    # our own events: _publish already knows them
             return
         kind = ev.get("kind")
         now = self._mono()
@@ -753,6 +755,14 @@ class Cues:
             self.ctx.publish({"type": contract.ROOM_EVENT, "data": ev})
         except Exception:                             # noqa: BLE001
             log.debug("cues: publish failed", exc_info=True)
+        for cb in list(getattr(self.ctx, "on_music_event", None) or []):     # the director (and its lamps) hear
+            if getattr(cb, "__self__", None) is self:                          # cues as they hear structure's
+                continue
+            try:
+                cb(dict(ev))
+            except Exception:                         # noqa: BLE001
+                self.counts["callback_errors"] += 1
+                log.debug("cues: an on_music_event callback failed", exc_info=True)
 
     def _words(self, cue: dict, now_s: float) -> str:
         a, b = max(0, round(cue["t0"] - now_s)), max(0, round(cue["t1"] - now_s))
