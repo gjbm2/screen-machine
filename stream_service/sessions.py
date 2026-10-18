@@ -1800,15 +1800,6 @@ class Session(EngineListener):
             log.exception("[%s] song-end cue failed", self.id)
 
     # -- the details panel (hud.py; docs/LIVE_DIAGNOSTICS.md) -------------------------------------------------------
-    def _hud_suppressed(self) -> bool:
-        """A plug-in with ``hud = False`` (cal_flash: latency calibration stays clean) turns it off while it shows."""
-        spec = self.current_spec or self.scene_spec
-        try:
-            cls = self.mgr.registry.source(spec.source) if spec is not None else None
-        except Exception:
-            cls = None
-        return cls is not None and getattr(cls, "hud", True) is False
-
     def _hud_sync(self, now: float) -> None:
         """Loop thread (the tick, ~10 Hz): the panel on / off, and its text at 2 Hz (1 Hz when a build is slow)."""
         h = getattr(self.engine, "hud", None)
@@ -1816,7 +1807,7 @@ class Session(EngineListener):
             return
         if h.lamp is None:
             h.lamp = lambda: (self.runtime.signals or {}).get("beat", 0.0)
-        h.on = bool(self.hud_wanted) and not self._hud_suppressed() and self.state not in ("ended", "failed")
+        h.on = bool(self.hud_wanted) and self.state not in ("ended", "failed")
         if not (h.on or h.fade > 0.0) or now - self._hud_t < self._hud_period:
             return
         self._hud_t = now

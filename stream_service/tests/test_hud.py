@@ -53,7 +53,7 @@ def test_draw_gates_uploads_and_self_timing():
     d.up_ev, d.up_live = [_Ev(), _Ev()], [False, False]
     d.t0, d.t1, d.timing = _Ev(), _Ev(), False
     d.on, d.pending, d.active, d.ready, d.fade = True, None, 0, False, 0.0
-    d.failed, d.ema_ms, d.slow_since, d.lamp = None, None, None, None
+    d.failed, d.ema_ms, d.lamp, d.errors, d.last_error_log = None, None, None, 0, -1e9
     # numpy arrays stand in for device buffers: give them a .data.ptr
     class Buf(np.ndarray):
         @property
@@ -70,13 +70,17 @@ def test_draw_gates_uploads_and_self_timing():
     calls.clear()
     d.draw(nv12, 0.0, 3, stream)                                     # the bus is closed: no panel on the frame
     assert calls == []
-    d.cp.cuda.get_elapsed_time = lambda a, b: 9.0                    # one frame over HARD_MS: off
+    d.cp.cuda.get_elapsed_time = lambda a, b: 9.0                    # a slow frame: reported, never acted on
     d.timing = True
     d.draw(nv12, 1.0, 4, stream)
-    assert d.failed == "too slow"
+    assert d.failed is None and d.ema_ms > 0.5 and calls == ["k"]
+    d._fail("stopped after an error")                                # an error: that frame only
+    calls.clear()
+    d.draw(nv12, 1.0, 5, stream)
+    assert d.failed is None and d.errors == 1 and calls == ["k"]
 
 
-async def test_api_create_patch_get_and_suppression(client):
+async def test_api_create_patch_get_and_switch(client):
     sid, s, eng = await live(client, auto=AUTO)
     # the fake engine has no panel: the API still answers, lines built on request
     r = await client.patch(f"/api/sessions/{sid}", json={"hud": True}, headers=AUTH)
@@ -88,11 +92,11 @@ async def test_api_create_patch_get_and_suppression(client):
     assert (await client.patch(f"/api/sessions/{sid}", json={"hud": "yes"}, headers=AUTH)).status == 400
     summ = (await (await client.get(f"/api/sessions/{sid}", headers=AUTH)).json())["hud"]
     assert set(summ) == {"on", "failed", "rate_hz"}
-    # a fake panel: the tick drives it, cal_flash turns it off
+    # a fake panel: the tick drives it; switched on, it shows (nothing turns it off but the switch)
     s.engine.hud = SimpleNamespace(on=False, fade=0.0, lamp=None, failed=None, ema_ms=None, set=lambda g, t: None)
     s._hud_sync(time.monotonic())
     assert s.engine.hud.on
-    s._hud_suppressed = lambda: True
+    s.hud_wanted = False
     s._hud_sync(time.monotonic() + 1)
     assert not s.engine.hud.on
 
