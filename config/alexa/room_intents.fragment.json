@@ -1,9 +1,14 @@
 {
-  "_note": "Alexa interaction-model intents for the room (routes/alexa.py: 'room' goes through the LLM room prompt; the rest are fixed phrases handled directly). Merge into languageModel.intents of the skill's model (Alexa console > Build > Interaction Model > JSON Editor), then Save Model and Build Model. 'utterance' is AMAZON.SearchQuery, so every 'room' sample keeps a carrier phrase.",
+  "_note": "Alexa interaction-model intents for the room (routes/alexa.py). Alexa sends only the {utterance} words, so mode, scene, effect and add_effect are separate intents that the room prompt reads by name; the rest are fixed phrases handled directly. Merge into languageModel.intents (Alexa console > Build > Interaction Model > JSON Editor), then Save Model and Build Model.",
   "intents": [
     {
-      "name": "room",
-      "slots": [{"name": "utterance", "type": "AMAZON.SearchQuery"}],
+      "name": "mode",
+      "slots": [
+        {
+          "name": "utterance",
+          "type": "AMAZON.SearchQuery"
+        }
+      ],
       "samples": [
         "change mode to {utterance}",
         "change the mode to {utterance}",
@@ -11,26 +16,111 @@
         "switch to {utterance} mode",
         "go to {utterance} mode",
         "put on {utterance} mode",
-        "mode {utterance}",
+        "go back to {utterance}",
+        "mode {utterance}"
+      ]
+    },
+    {
+      "name": "scene",
+      "slots": [
+        {
+          "name": "utterance",
+          "type": "AMAZON.SearchQuery"
+        }
+      ],
+      "samples": [
         "change scene to {utterance}",
         "change the scene to {utterance}",
-        "show me a {utterance} scene",
+        "switch the scene to {utterance}",
         "put on a {utterance} scene",
-        "scene {utterance}",
+        "scene {utterance}"
+      ]
+    },
+    {
+      "name": "effect",
+      "slots": [
+        {
+          "name": "utterance",
+          "type": "AMAZON.SearchQuery"
+        }
+      ],
+      "samples": [
         "change the effect to {utterance}",
         "change effect to {utterance}",
+        "switch the effect to {utterance}",
+        "use the {utterance} effect",
+        "effect {utterance}"
+      ]
+    },
+    {
+      "name": "add_effect",
+      "slots": [
+        {
+          "name": "utterance",
+          "type": "AMAZON.SearchQuery"
+        }
+      ],
+      "samples": [
         "add a {utterance} effect",
         "add the {utterance} effect",
         "add {utterance} effect",
-        "effect {utterance}",
-        "turn auto {utterance}",
-        "set auto {utterance}"
+        "add effect {utterance}",
+        "add {utterance}"
       ]
     },
-    {"name": "next_scene", "slots": [], "samples": ["next scene", "another scene", "change the scene", "skip this scene", "new scene"]},
-    {"name": "clear_effects", "slots": [], "samples": ["clear the effects", "remove the effects", "no effects", "turn off the effects", "lose the effects"]},
-    {"name": "auto_on", "slots": [], "samples": ["auto on", "turn auto on", "start listening", "listen to the music", "switch auto on"]},
-    {"name": "auto_off", "slots": [], "samples": ["auto off", "turn auto off", "stop listening", "switch auto off", "stop auto"]},
-    {"name": "which_mode", "slots": [], "samples": ["what mode are we in", "which mode is it", "what's the mode", "what mode is on"]}
+    {
+      "name": "next_scene",
+      "slots": [],
+      "samples": [
+        "next scene",
+        "another scene",
+        "change the scene",
+        "skip this scene",
+        "new scene"
+      ]
+    },
+    {
+      "name": "clear_effects",
+      "slots": [],
+      "samples": [
+        "clear the effects",
+        "remove the effects",
+        "no effects",
+        "turn off the effects",
+        "lose the effects"
+      ]
+    },
+    {
+      "name": "auto_on",
+      "slots": [],
+      "samples": [
+        "auto on",
+        "turn auto on",
+        "switch auto on",
+        "start listening",
+        "listen to the music"
+      ]
+    },
+    {
+      "name": "auto_off",
+      "slots": [],
+      "samples": [
+        "auto off",
+        "turn auto off",
+        "switch auto off",
+        "stop auto",
+        "stop listening"
+      ]
+    },
+    {
+      "name": "which_mode",
+      "slots": [],
+      "samples": [
+        "what mode are we in",
+        "which mode is it",
+        "what's the mode",
+        "what mode is on"
+      ]
+    }
   ]
 }

@@ -519,7 +519,7 @@ def process(data):
                 use_system_prompt="alexa-load-schedule.txt.j2"
             case "unload_schedule":
                 use_system_prompt="alexa-unload-schedule.txt.j2"
-            case "mode" | "scene" | "effect" | "auto" | "room":
+            case "mode" | "scene" | "effect" | "add_effect" | "auto" | "room":
                 use_system_prompt="alexa-room.txt.j2"
             # The room's fixed phrases (no free text to read): straight to the room intents, no triage
             case "next_scene":
