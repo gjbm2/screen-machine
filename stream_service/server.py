@@ -700,7 +700,26 @@ async def session_frames(request: web.Request) -> web.Response:
 async def state(request: web.Request) -> web.Response:
     mgr = request.app[MANAGER]
     gpus = await asyncio.get_running_loop().run_in_executor(None, mgr.gpu_state)
-    return web.json_response({"sessions": [s.summary() for s in mgr.active()], "gpus": gpus})
+    pool = getattr(mgr, "workers", None)
+    return web.json_response({"sessions": [s.summary() for s in mgr.active()], "gpus": gpus,
+                              "workers": pool.describe() if pool is not None else None})
+
+
+async def workers_warm(request: web.Request) -> web.Response:
+    """POST /api/workers/warm {screen, gpu?}: spawn a render worker ahead of that screen's next session (plan change 3,
+    additive: room may send it at the start of an entry).  A screen on inproc: nothing to do."""
+    mgr = request.app[MANAGER]
+    body = await read_json(request, allow_empty=False)
+    if not isinstance(body, dict) or not isinstance(body.get("screen"), str):
+        raise ParamError("bad_request", "body must be {\"screen\": id, \"gpu\"?: index}")
+    gpu = body.get("gpu")
+    if gpu is not None and (isinstance(gpu, bool) or not isinstance(gpu, int) or gpu < 0):
+        raise ParamError("bad_request", "gpu must be a GPU index")
+    pool = getattr(mgr, "workers", None)
+    if pool is None:
+        return web.json_response({"screen": body["screen"], "workers": "inproc", "spawned": False,
+                                  "why": "no render workers in this process"})
+    return web.json_response(pool.hint(body["screen"], gpu))
 
 
 async def diag(request: web.Request) -> web.Response:
@@ -759,7 +778,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              music_bus: Sequence[str] = (), show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
-             app_url: str = "", warm: bool = False) -> web.Application:
+             app_url: str = "", warm: bool = False, workers: bool = False) -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -771,8 +790,20 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     from .scope_feed import ScopeFeed
 
     mgr.scope_feed = ScopeFeed.from_music_bus(music_bus)   # the fast scope / fft feed (None: no music bus)
+    from . import workers as _workers
+
+    _workers.MUSIC_BUS_URL = next(iter(music_bus), None)   # proc workers' live-score room process subscribes to it
     if mgr.scope_feed is not None:
         mgr.scope_feed.wanted = mgr.wants_scope            # connected only while something on screen listens
+    pool = None
+    if workers:                                            # plan change 3: screens on "proc" render in worker processes
+        from .workers import WorkerPool
+
+        pool = mgr.workers = WorkerPool(mgr, config_dir=config_dir, show_bus=show_bus)
+        if inputs is not None:
+            inputs.taps.append(pool.on_show)               # the control's one subscription, forwarded to the workers
+        if mgr.scope_feed is not None:
+            mgr.scope_feed.taps.append(pool.on_scope)
     app = web.Application(middlewares=[auth_and_errors], client_max_size=MAX_BODY)
     app[REGISTRY] = registry
     app[PRESETS] = presets
@@ -828,6 +859,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_post("/api/sessions/{sid}/upnext", upnext_post)
     r.add_get("/api/sessions/{sid}/frames", session_frames)
     r.add_get("/api/state", state)
+    r.add_post("/api/workers/warm", workers_warm)
     r.add_get("/api/diag", diag)
     r.add_get("/api/events", events_ws)
     r.add_get("/media/{sid}", media_ws)
@@ -857,12 +889,16 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
                                                                want=MUSIC_BUS_WANT)))
         if getattr(mgr, "scope_feed", None) is not None:   # show_service's /v1/levels?wave=1024 (scope_feed.py)
             app[TASKS].append(asyncio.create_task(mgr.scope_feed.run()))
+        if pool is not None:
+            app[TASKS].append(asyncio.create_task(pool.run()))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:
             task.cancel()
         await app[PREVIEWS].close()
         await mgr.shutdown()      # session.ended events go out first ...
+        if pool is not None:
+            await pool.close()    # (the workers' sessions ended: each exits, else is killed)
         await asyncio.sleep(0)
         events.close()            # ... then the events sockets close (else shutdown waits shutdown_timeout)
 

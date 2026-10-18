@@ -538,6 +538,14 @@ class ShowInputs:
         self.frames = 0
         self.last_arrival: Optional[float] = None
         self.last_seq: Optional[int] = None
+        self.taps: list = []             # f(kind, *args): the render workers' copies (workers.py), fed from here
+
+    def _tap(self, *msg) -> None:
+        for f in self.taps:
+            try:
+                f(*msg)
+            except Exception:
+                log.exception("show bus tap failed")
 
     @property
     def configured(self) -> bool:
@@ -552,12 +560,18 @@ class ShowInputs:
     def on_connected(self, welcome: dict) -> None:
         self.connected = True
         self.welcome = welcome
+        if self.taps:
+            self._tap("show_up", welcome)
 
     def on_disconnected(self) -> None:
         self.connected = False
+        if self.taps:
+            self._tap("show_down", None)
 
     def on_frame(self, frame: dict, arrival: Optional[float] = None) -> None:
         arrival = time.monotonic() if arrival is None else arrival
+        if self.taps:
+            self._tap("show", frame, arrival)
         t = _num(frame.get("t_ms"), arrival * 1000.0) / 1000.0
         if abs(t - arrival) > 5.0:       # not CLOCK_MONOTONIC on this host after all: use the arrival time
             t = arrival
