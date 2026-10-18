@@ -103,3 +103,18 @@ async def test_api_create_patch_get_and_switch(client):
 
 def test_long_parts_are_cut_to_fit():
     assert H._cut("drift_speed", 9) == "drift_sp~" and H._cut("ok", 9) == "ok" and H._cut(None, 4) == "-"
+
+
+async def test_a_followers_panel_keeps_updating(client):
+    """18 Oct: north (following south) froze on its first text: the follower's tick returned before the panel."""
+    from .test_rooms import room_pair
+    (_, a, _), (_, b, _) = await room_pair(client)
+    assert b.following() is not None
+    got = []
+    b.hud_wanted = True
+    b.engine.hud = SimpleNamespace(on=False, fade=0.0, lamp=None, failed=None, ema_ms=None,
+                                   set=lambda g, t: got.append(g))
+    now = time.monotonic()
+    for i in range(4):
+        b.tick(now + i * 0.6)
+    assert b.engine.hud.on and len(got) >= 3

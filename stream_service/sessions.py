@@ -1585,6 +1585,7 @@ class Session(EngineListener):
             self._following = True
             self._follow_tick(now, ld)
             self._inputs_tick(now)
+            self._hud_sync(now)     # a follower's panel too (18 Oct: north's froze on its first text)
             return
         if self._following:         # promoted (the leader left): direct from here on
             self._following, self._room_synced = False, None
