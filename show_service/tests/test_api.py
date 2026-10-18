@@ -1600,3 +1600,94 @@ def test_room_why_is_the_cards_words_in_short():
     assert c.ROOM_WHY in c.WANT_ONLY_STAGE5
     w = A.why_of(None, None, wall_ms=0.0)                            # nothing yet: still the shape
     assert w["auto"]["last"] is None and w["look"]["why"] is None
+
+
+# -- README S5.23: the Lights page's routes ----------------------------------------------------------------------------
+def test_lights_routes_without_a_rig_component(brain):
+    async def go():
+        async with served(make_api(brain)) as cl:
+            types_ = await body(await cl.get("/api/v1/rig/types"))
+            assert isinstance(types_, list) and types_[0]["id"] == "generic-dimmer"     # the generic types still list
+            for method, path in (("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/x"),
+                                 ("DELETE", "/api/v1/rig/fixtures/x")):
+                r = await cl.request(method, path, json={"label": "x"})
+                assert r.status == 503 and (await body(r))["error"] == "unavailable", (method, path)
+            r = await cl.post("/api/v1/rig/follow", json={"fixtures": {"dmx.a": "dmx"}})
+            assert r.status == 503 and (await body(r))["error"] == "unavailable"           # room's adapter retries
+            assert (await body(await cl.get("/api/v1/rig/follow"))) == {"fixtures": {}}
+            got = await body(await cl.post("/api/v1/rig/fixtures/x/identify"))
+            assert got["ok"] is False and "isn't running" in got["why"]
+    run(go())
+
+
+def test_lights_routes_with_a_rig(brain, tmp_path):
+    from show_service.tests import test_outputs as to
+    eng = to.LightsEngine()
+    rig = to.lights_rig(tmp_path, engine=eng)
+    rig.start()
+    brain.components["rig"] = rig
+    body_ = dict(to.BODY)
+    try:
+        async def go():
+            async with served(make_api(brain)) as cl:
+                types_ = await body(await cl.get("/api/v1/rig/types"))
+                assert [t["id"] for t in types_][:3] == ["generic-dimmer", "generic-rgb", "generic-rgbw"]
+                assert set(types_[0]) == set(c.RigTypeRow.__annotations__)
+                # add
+                r = await cl.post("/api/v1/rig/fixtures", json=body_)
+                got = await body(r)
+                assert r.status == 200 and got["problems"] == [] and got["fixture"]["id"] == "dmx.ball-spot"
+                assert set(got["fixture"]) == set(c.RigFixtureRow.__annotations__)
+                snap = await body(await cl.get("/api/v1/rig"))
+                rows = {x["id"]: x for x in snap["fixtures"]}
+                assert set(rows) == {"hue.a", "dmx.ball-spot"} and rows["dmx.ball-spot"]["universe"] == 3
+                assert "dmx-192-0-2-10-u3" in snap["outputs"]
+                # refusals: page words, problems, choices; nothing written
+                r = await cl.post("/api/v1/rig/fixtures", json={**body_, "address": 510})
+                b = await body(r)
+                assert r.status == 400 and b["error"] == "not_added" and b["problems"] and "512" in b["detail"]
+                r = await cl.post("/api/v1/rig/fixtures", json={**body_, "type": "sm-hue"})
+                b = await body(r)
+                assert r.status == 400 and b["error"] == "unknown_type" and b["choices"][0]["id"] == "generic-dimmer"
+                r = await cl.post("/api/v1/rig/fixtures", data=b"{nope")
+                assert r.status == 400 and (await body(r))["error"] == "bad_request"
+                r = await cl.put("/api/v1/rig/fixtures/hue.a", json={"label": "x"})
+                assert r.status == 409 and (await body(r))["error"] == "in_hand_file"
+                r = await cl.put("/api/v1/rig/fixtures/dmx.nope", json={"label": "x"})
+                b = await body(r)
+                assert r.status == 404 and b["error"] == "unknown_fixture" and b["choices"] == ["dmx.ball-spot"]
+                # update
+                b = await body(await cl.put("/api/v1/rig/fixtures/dmx.ball-spot", json={"label": "Ball",
+                                                                                         "zone": None}))
+                assert b["fixture"]["label"] == "Ball" and b["fixture"]["zone"] is None
+                # identify
+                b = await body(await cl.post("/api/v1/rig/fixtures/dmx.ball-spot/identify", json={"seconds": 2}))
+                assert b == {"ok": True, "seconds": 2.0} and eng.identified == [("dmx.ball-spot", 2.0)]
+                b = await body(await cl.post("/api/v1/rig/fixtures/dmx.ball-spot/identify"))
+                assert b == {"ok": True, "seconds": 3.0}
+                r = await cl.post("/api/v1/rig/fixtures/zz/identify")
+                b = await body(r)
+                assert r.status == 404 and b["error"] == "unknown_fixture" and "dmx.ball-spot" in b["choices"]
+                r = await cl.post("/api/v1/rig/fixtures/dmx.ball-spot/identify", json={"seconds": "soon"})
+                assert r.status == 400
+                # follow
+                b = await body(await cl.post("/api/v1/rig/follow", json={"fixtures": {
+                    "dmx.ball-spot": {"hex": "#00FF00", "bri": 50}}}))
+                assert b["accepted"] is True and b["fixtures"] == {"dmx.ball-spot": {"hex": "#00ff00", "bri": 50}}
+                assert eng.follows[-1] == b["fixtures"]
+                assert (await body(await cl.get("/api/v1/rig/follow"))) == {"fixtures": b["fixtures"]}
+                for bad in ({"fixtures": {"dmx.ball-spot": "on"}}, {"fixtures": ["x"]}, {"dmx.ball-spot": "dmx"}):
+                    r = await cl.post("/api/v1/rig/follow", json=bad)
+                    b = await body(r)
+                    assert r.status == 400 and b["choices"] == apimod.FOLLOW_CHOICES, bad
+                # remove
+                b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.ball-spot"))
+                assert b["removed"] == "dmx.ball-spot" and b["outputs"] == ["dmx-192-0-2-10-u3"]
+                assert (await body(await cl.get("/api/v1/rig/follow"))) == {"fixtures": {}}
+                r = await cl.delete("/api/v1/rig/fixtures/dmx.ball-spot")
+                assert r.status == 404
+        run(go())
+    finally:
+        aw = rig.stop()
+        if aw is not None:
+            asyncio.run(aw)

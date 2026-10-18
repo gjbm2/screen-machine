@@ -692,7 +692,9 @@ def test_stats_shape():
         e.evaluate("hue", 10 + i * 0.02, DMX_CAPS)
     s = e.stats()
     po = s["per_output"]["hue"]
-    assert set(s) == {"program", "per_output", "errors"} and set(s["program"]) == {"revision", "layers", "problems"}
+    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops"}
+    assert set(s["program"]) == {"revision", "layers", "problems", "scenes"}
+    assert set(s["program"]["scenes"]) == {"revision", "compiled", "problems"}
     assert po["frames"] == 10 and po["eval_us"]["p50"] is not None and po["eval_us"]["p95"] >= po["eval_us"]["p50"]
 
 
@@ -898,3 +900,201 @@ def test_takes_hit_per_output_follows_the_hits_selection():
     h = {"t_ms": 1.0, "band": "bass", "strength": 1.0}
     assert e.takes_hit(h) and e.takes_hit(h, "dmx-a")
     assert not e.takes_hit(h, "dmx-b") and not e.takes_hit(h, "nowhere")
+
+
+# -- light scenes (README S5.24) ------------------------------------------------------------------------------------------
+class FakeScenes:
+    """A light_scenes.Catalogue's shape: ``scenes`` {name: {label, layers, hits, caps, tags}}, ``revision``, ``poll``
+    and ``subscribe`` (the engine recompiles when it is told)."""
+
+    def __init__(self, scenes: dict) -> None:
+        self.scenes, self.revision, self.subs = scenes, "r1", []
+
+    def poll(self) -> bool:
+        return False
+
+    def subscribe(self, fn) -> None:
+        self.subs.append(fn)
+
+    def swap(self, scenes: dict) -> None:
+        self.scenes, self.revision = scenes, self.revision + "+"
+        for fn in self.subs:
+            fn(self)
+
+
+def scene(layers=(), hits=None, caps=None) -> dict:
+    return {"label": "x", "layers": list(layers), "hits": hits, "caps": caps, "tags": {"weight": 1.0}}
+
+
+def _scene_engine(scenes: dict, looks: dict, box: dict, rig=None, **kw):
+    e = LookEngine(palette_fn=lambda t: box.get("pal", {"lamp.0": (1, 1, 1), "lamp.1": (1, 1, 1)}),
+                   look_fn=lambda: box["look"], clock=box.setdefault("clk", SnapClock(anchor=10.0, period=0.5)),
+                   light_scenes=FakeScenes(scenes), **kw)
+    assert e.configure(looks, rig or lamps_rig(2, output="o")) == []
+    return e
+
+
+def test_a_light_scene_replaces_the_layers_and_a_name_that_isnt_compiled_runs_them():
+    box = {"look": look()}
+    e = _scene_engine({"still": scene(), "deep": scene([layer(id="sq")])}, {"layers": [layer(id="base")]}, box)
+    assert [L.id for L in e._program.scenes["deep"].layers] == ["deep/sq"]
+    on, off = 10.1, 10.3                                             # the square's high and low halves of a beat
+    for name, want_off in ((None, 0.0), ("still", 1.0), ("deep", 0.0), ("nowhere", 0.0)):
+        box["look"] = look(light_scene=name)
+        assert inten(e.evaluate("o", on, DMX_CAPS), "lamp.0") == pytest.approx(1.0)
+        assert inten(e.evaluate("o", off, DMX_CAPS), "lamp.0") == pytest.approx(want_off), name
+        assert e.stats()["per_output"]["o"]["light_scene"] == (name if name in ("still", "deep") else None)
+
+
+def test_a_scene_change_crossfades_the_layer_depths_over_the_looks_transition():
+    box = {"look": look(light_scene="deep", transition={"style": "crossfade", "beats": None, "seconds": 2.0})}
+    e = _scene_engine({"still": scene(), "deep": scene([layer(id="sq")])}, {"layers": []}, box)
+    assert inten(e.evaluate("o", 10.3, DMX_CAPS), "lamp.0") == pytest.approx(0.0)
+    box["look"] = {**box["look"], "light_scene": "still"}
+    assert inten(e.evaluate("o", 10.3 + 0.5, DMX_CAPS), "lamp.0") == pytest.approx(0.0)   # x = 0 at the change
+    assert inten(e.evaluate("o", 10.3 + 1.5, DMX_CAPS), "lamp.0") == pytest.approx(0.5)   # half way: depth 0.5
+    assert inten(e.evaluate("o", 10.3 + 2.5, DMX_CAPS), "lamp.0") == pytest.approx(1.0)   # the new scene: steady
+    box["look"] = {**box["look"], "light_scene": None, "transition": {"style": "cut"}}       # no scene: looks.layers
+    assert inten(e.evaluate("o", 10.3 + 3.0, DMX_CAPS), "lamp.0") == pytest.approx(1.0)
+
+
+def test_a_scene_brings_its_own_hits_and_flash_cap():
+    hits = {"select": "kind:lamp", "styles": ["beat"], "min_strength": 0.0, "depth": 0.5, "decay_ms": 100}
+    box = {"look": look(), "pal": {"lamp.0": (0.2, 0.2, 0.2), "lamp.1": (0.2, 0.2, 0.2)}}
+    e = _scene_engine({"quiet": scene(), "flashy": scene(hits={**hits, "depth": 1.0}, caps={"flash_hz_max": 1.0})},
+                      {"layers": [], "hits": hits}, box)
+    h = {"t_ms": 10_000.0, "band": "bass", "strength": 1.0}
+    e.on_hit(h)
+    for name, want, takes in ((None, 0.7, True), ("quiet", 0.2, False), ("flashy", 1.0, True)):
+        box["look"] = look(light_scene=name)
+        assert inten(e.evaluate("o", 10.01, DMX_CAPS), "lamp.0") == pytest.approx(want), name
+        assert e.takes_hit(h) is takes and e.takes_hit(h, "o") is takes
+    # the scene's cap: a second big flash within 1 s rises only half way over its low (README S5.5 step 7)
+    box2 = {"look": look(light_scene="flashy"), "pal": box["pal"]}
+    e2 = _scene_engine({"flashy": scene(hits={**hits, "depth": 1.0}, caps={"flash_hz_max": 1.0})}, {"layers": []},
+                       box2)
+    assert inten(e2.evaluate("o", 20.0, DMX_CAPS), "lamp.0") == pytest.approx(0.2)
+    e2.on_hit({"t_ms": 20_100.0, "band": "bass", "strength": 1.0})
+    assert inten(e2.evaluate("o", 20.11, DMX_CAPS), "lamp.0") == pytest.approx(1.0)
+    low = inten(e2.evaluate("o", 20.5, DMX_CAPS), "lamp.0")          # back down near the level
+    assert low == pytest.approx(0.2 + math.exp(-3.6))
+    e2.on_hit({"t_ms": 20_600.0, "band": "bass", "strength": 1.0})
+    assert inten(e2.evaluate("o", 20.61, DMX_CAPS), "lamp.0") == pytest.approx(low + lk.BIG_RISE)
+    assert e.configure({"layers": []}, lamps_rig(1)) == []           # a scene's problems are never configure's
+    bad = _scene_engine({"b": scene(caps={"flash_hz_max": -1, "zap": 1})}, {"layers": []}, {"look": look()})
+    assert any("caps.flash_hz_max" in p for p in bad._program.scene_problems)
+    assert any("caps.zap" in p for p in bad._program.scene_problems)
+
+
+def _drop_rig():
+    fs = [fx("spot.a", HUE_T, "dmx"), fx("spot.late", HUE_T, "dmx", latency=lat(100.0)), fx("hue.a", HUE_T, "hue")]
+    return rigview(fs, [HUE_T], [out("dmx", "artnet"), out("hue", "hue")])
+
+
+def test_drop_hits_flash_at_the_line_on_outputs_that_take_hits():
+    drop = {"select": "kind:lamp", "styles": [], "drop": {"depth": 1.0, "decay_ms": 200}}
+    box = {"look": look(light_scene="boom"), "pal": {k: (0.2, 0.2, 0.2) for k in ("spot.a", "spot.late", "hue.a")}}
+    e = _scene_engine({"boom": scene(hits=drop), "calm": scene()}, {"layers": []}, box, rig=_drop_rig())
+    assert e.trigger_hit(11.0, key="k") and not e.trigger_hit(11.0, key="k")   # one line, once
+    fr = e.evaluate("dmx", 10.95, DMX_CAPS)
+    assert inten(fr, "spot.a") == pytest.approx(0.2)                 # not yet...
+    assert inten(fr, "spot.late") == pytest.approx(1.0)              # ...but a 100 ms fixture lands on the line
+    assert inten(e.evaluate("dmx", 11.01, DMX_CAPS), "spot.a") == pytest.approx(1.0)
+    assert inten(e.evaluate("dmx", 11.24, DMX_CAPS), "spot.a") == pytest.approx(0.2 + math.exp(-1.0))
+    assert inten(e.evaluate("hue", 11.01, HUE_CAPS), "hue.a") == pytest.approx(0.2)   # Hue never takes hits
+    assert not e.takes_hit({"t_ms": 1.0, "strength": 1.0})           # styles []: no music.hit flashes
+    for lk_, want in ((look(light_scene="boom", dip=True), 1.0),     # over the pre-drop dip
+                      (look(light_scene="boom", house=True), 0.2),   # never under House or Low
+                      (look(light_scene="boom", low=True), 0.2),
+                      (look(light_scene="calm"), 0.2)):              # a scene without drop hits
+        box["look"] = lk_
+        assert inten(e.evaluate("dmx", 11.02, DMX_CAPS), "spot.a") == pytest.approx(want), lk_
+    assert e.stats()["drops"] == 1
+
+
+def test_lookdata_light_scene_drop_is_taken_once_per_id():
+    drop = {"select": "kind:lamp", "styles": [], "drop": {"depth": 1.0, "decay_ms": 200}}
+    box = {"look": look(light_scene="boom", light_scene_drop={"id": "drop:1", "at_ms": 12_000.0, "strength": 0.5}),
+           "pal": {k: (0.2, 0.2, 0.2) for k in ("spot.a", "spot.late", "hue.a")}}
+    e = _scene_engine({"boom": scene(hits=drop)}, {"layers": [], "hits": {**drop, "drop": None}}, box,
+                      rig=_drop_rig())
+    for t in (11.9, 12.01, 12.02):
+        fr = e.evaluate("dmx", t, DMX_CAPS)
+    assert e.drops == 1 and inten(fr, "spot.a") == pytest.approx(0.2 + 0.5)   # strength 0.5 x depth 1
+    e.evaluate("hue", 12.03, HUE_CAPS)
+    assert e.drops == 1
+    box["look"] = {**box["look"], "light_scene_drop": {"id": "drop:2", "at_ms": 13_000.0, "strength": 1.0}}
+    e.evaluate("dmx", 12.5, DMX_CAPS)
+    assert e.drops == 2 and inten(e.evaluate("dmx", 13.01, DMX_CAPS), "spot.a") == pytest.approx(1.0)
+    box["look"] = {**box["look"], "light_scene": None}               # looks.hits with no drop key: no drop flash
+    assert inten(e.evaluate("dmx", 13.02, DMX_CAPS), "spot.a") == pytest.approx(0.2)
+    assert not e.trigger_hit(float("nan")) and not e.trigger_hit("x")
+
+
+def test_identify_is_full_white_whatever_the_frame_until_it_expires():
+    clock = {"now": 10.0}
+    box = {"look": look(), "f": feats(10.0)}
+    e = LookEngine(palette_fn=lambda t: box.get("pal"), look_fn=lambda: box["look"], features_fn=lambda: box["f"],
+                   clock=SnapClock(anchor=10.0, period=0.5), mono=lambda: clock["now"], light_scenes=False)
+    par = par_type()
+    rig = rigview([fx("lamp.0", HUE_T, "o"), fx("lamp.1", HUE_T, "o"), fx("par.0", par, "o", address=1)],
+                  [HUE_T, par], [out("o", "artnet")])
+    assert e.configure({"layers": [layer()]}, rig) == []
+    box["pal"] = {"lamp.0": (0.5, 0, 0), "lamp.1": (0.5, 0, 0), "par.0": (0.5, 0, 0)}
+    assert e.identify("lamp.0", 2.0) is True and e.identify("par.0", 2.0) is True
+    assert e.identify("ghost", 2.0) is False                         # kept, but nothing evaluates it now
+    fr = e.evaluate("o", 10.3, DMX_CAPS)                             # the square's low half: the look is dark
+    assert fr["fixtures"]["lamp.0"]["rgb"] == pytest.approx([1.0, 1.0, 1.0])
+    assert inten(fr, "lamp.1") == pytest.approx(0.0)
+    assert max(fr["fixtures"]["par.0"]["dmx"]) == 255
+    box["pal"], box["f"] = None, feats(0.0)                          # no vibe, stale features: an inactive frame
+    fr = e.evaluate("o", 10.4, DMX_CAPS)
+    assert fr["active"] is False and fr["fixtures"]["lamp.0"]["rgb"] == pytest.approx([1.0, 1.0, 1.0])
+    assert e.stats()["identify"] == {"lamp.0": 2.0, "par.0": 2.0, "ghost": 2.0}
+    box["pal"], box["f"] = {"lamp.0": (0.5, 0, 0)}, feats(12.1)
+    assert inten(e.evaluate("o", 12.1, DMX_CAPS), "lamp.0") == pytest.approx(0.5)   # expired: the look again
+    e.identify("lamp.1", 5.0, rgb=(255, 0, 0))
+    assert e.evaluate("o", 12.3, DMX_CAPS)["fixtures"]["lamp.1"]["rgb"] == pytest.approx([1.0, 0.0, 0.0])
+    e.identify("lamp.1", 0)                                          # ends it
+    assert inten(e.evaluate("o", 12.3, DMX_CAPS), "lamp.1") == pytest.approx(0.0)
+    assert e.identify("lamp.0", "soon") is False
+
+
+def test_follow_values_show_the_house_state_instead_of_the_look():
+    box = {"look": look(), "f": feats(10.0)}
+    e = LookEngine(palette_fn=lambda t: box.get("pal"), look_fn=lambda: box["look"], features_fn=lambda: box["f"],
+                   clock=SnapClock(anchor=10.0, period=0.5), light_scenes=False)
+    assert e.configure({"layers": [layer(fx="sine", depth=0.5)]}, lamps_rig(4, output="o")) == []
+    box["pal"] = {f"lamp.{i}": (0.0, 0.0, 1.0) for i in range(4)}
+    got = e.set_follow({"lamp.0": "off", "lamp.1": {"hex": "#FF8000", "bri": 50}, "lamp.2": "dmx",
+                        "lamp.3": {"hex": "zz"}, "lamp.9": {"hex": "#00ff00"}})
+    assert got == {"lamp.0": "off", "lamp.1": {"hex": "#ff8000", "bri": 50.0}, "lamp.2": "dmx",
+                   "lamp.9": {"hex": "#00ff00", "bri": 100.0}}
+    fr = e.evaluate("o", 10.0, DMX_CAPS)
+    assert inten(fr, "lamp.0") == 0.0 and fr["fixtures"]["lamp.0"]["rgb"] == [0.0, 0.0, 0.0]
+    assert inten(fr, "lamp.1") == pytest.approx(0.5)
+    assert fr["fixtures"]["lamp.1"]["colour"] == pytest.approx([1.0, 128 / 255, 0.0])
+    assert fr["fixtures"]["lamp.2"]["colour"] == pytest.approx([0.0, 0.0, 1.0])   # follows: the look's colour
+    assert fr["fixtures"]["lamp.3"]["colour"] == pytest.approx([0.0, 0.0, 1.0])   # never named: follows
+    box["pal"], box["f"] = None, feats(0.0)                          # inactive: the follow value, not the house look
+    fr = e.evaluate("o", 10.2, DMX_CAPS)
+    assert fr["active"] is False and inten(fr, "lamp.1") == pytest.approx(0.5)
+    assert e.set_follow({"lamp.0": "dmx"}, merge=True) == {"lamp.0": "dmx"}   # merge: lamp.1 keeps its colour
+    assert e.follow() == {"lamp.1": {"hex": "#ff8000", "bri": 50.0}, "lamp.9": {"hex": "#00ff00", "bri": 100.0}}
+    e.set_follow({"lamp.2": "off"})                                  # the whole mapping (outputs.Rig's): the rest follow
+    assert e.follow() == {"lamp.2": "off"} and e.stats()["follow"] == {"lamp.2": "off"}
+    assert e.set_follow("nope") == {}
+    e.identify("lamp.2", 5.0)                                        # identify wins over off
+    assert inten(e.evaluate("o", 10.3, DMX_CAPS), "lamp.2") == 1.0
+
+
+def test_a_follow_colour_still_rises_through_the_hue_rise_limit():
+    e = LookEngine(palette_fn=lambda t: {"lamp.0": (0.0, 0.0, 0.0)}, light_scenes=False)
+    assert e.configure({"layers": []}, lamps_rig(1)) == []
+    e.set_follow({"lamp.0": "off"})
+    e.evaluate("hue", 10.0, HUE_CAPS)
+    e.set_follow({"lamp.0": {"hex": "#ffffff", "bri": 100}})
+    lim = lk.SLEW_PEAK * 0.02 / 0.08
+    assert inten(e.evaluate("hue", 10.02, HUE_CAPS), "lamp.0") == pytest.approx(lim)
+    e.identify("lamp.0", 1.0)                                        # identify is never limited
+    assert inten(e.evaluate("hue", 10.04, HUE_CAPS), "lamp.0") == 1.0

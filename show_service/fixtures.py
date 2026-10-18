@@ -32,6 +32,13 @@ positive ``group:`` terms first, in the group's order (the first such group a fi
 ``outputs.<the output's latency_key>.<attr>``, then fixtures.yaml's hand-set ms, then 0 ("unset"). A measured edge's
 value is its perceived onset ``t10 + (t50 - t10) x (align_pct - 10) / 40`` plus the entry's ``trim_ms``.
 
+**The added file** (README S5.23): config/room/fixtures.added.yaml holds the lights registered on the Lights page, in
+fixtures.yaml's schema (its nodes, outputs, types and fixtures). ``Registry`` merges it under the hand file (the hand
+file wins on an id clash, with a problem line; one that doesn't read is a problem line and the hand file loads alone)
+and reloads on its changes too. Only ``Registrar`` writes it, whole and atomically, after checking the result with the
+loader itself; nothing in code ever writes fixtures.yaml. ``GENERIC_TYPES`` are builtin channelled types (RGB, RGBW,
+..., a mover) for a DMX light with no OFL file.
+
 Config names live in config: nothing here branches on a fixture, output, node, group, zone, screen or role name. A
 driver kind (``contract.DRIVERS``) and a builtin type (``BUILTIN_TYPES``) are fixed vocabulary words.
 """
@@ -44,6 +51,7 @@ import ipaddress
 import json
 import logging
 import math
+import os
 import pathlib
 import re
 from dataclasses import dataclass
@@ -86,11 +94,55 @@ def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
             "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": []}
 
 
+#: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23). Intensity and emitters
+#: are driven (colour_mix; ``uv`` never takes part); a Strobe is a shutter held at 0 ("no strobe" on generic LED
+#: lights); Pan and Tilt are never driven in Stage 5 and sit at 0 until the fixture's ``pin`` says otherwise.
+GENERIC_CHANNELS: dict[str, tuple[str, Optional[str]]] = {
+    "Dimmer": ("intensity", None), "Red": ("emitter", "red"), "Green": ("emitter", "green"),
+    "Blue": ("emitter", "blue"), "White": ("emitter", "white"), "Amber": ("emitter", "amber"),
+    "UV": ("emitter", "uv"), "Strobe": ("shutter", None), "Pan": ("pan", None), "Tilt": ("tilt", None)}
+#: The generic channelled types (README S5.23): a DMX light with no Open Fixture Library file, registered on the
+#: Lights page. id -> (label, its channels in DMX order).
+GENERIC_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "generic-dimmer": ("Dimmer only (1 channel)", ("Dimmer",)),
+    "generic-rgb": ("RGB light (3 channels)", ("Red", "Green", "Blue")),
+    "generic-rgbw": ("RGBW light (4 channels)", ("Red", "Green", "Blue", "White")),
+    "generic-rgba": ("RGBA light (4 channels)", ("Red", "Green", "Blue", "Amber")),
+    "generic-rgbwa": ("RGBWA light (5 channels)", ("Red", "Green", "Blue", "White", "Amber")),
+    "generic-rgbwauv": ("RGBWA + UV light (6 channels)", ("Red", "Green", "Blue", "White", "Amber", "UV")),
+    "generic-drgb": ("Dimmer + RGB light (4 channels)", ("Dimmer", "Red", "Green", "Blue")),
+    "generic-drgbw": ("Dimmer + RGBW light (5 channels)", ("Dimmer", "Red", "Green", "Blue", "White")),
+    "generic-drgbs": ("Dimmer + RGB + strobe light (5 channels)", ("Dimmer", "Red", "Green", "Blue", "Strobe")),
+    "generic-mover": ("Moving head: pan, tilt, dimmer, RGB (6 channels)", ("Pan", "Tilt", "Dimmer", "Red", "Green",
+                                                                          "Blue")),
+}
+
+
+def _generic(tid: str, names: tuple[str, ...]) -> contract.TypeInfo:
+    t = _builtin(tid, "lamp", ())
+    chans: list[contract.AttrChannel] = []
+    for off, n in enumerate(names):
+        attr, em = GENERIC_CHANNELS[n]
+        ch: contract.AttrChannel = {"offset": off, "name": n, "attr": attr, "default": 0}
+        if em is not None:
+            ch["emitter"] = em
+        chans.append(ch)
+    kinds = {c["attr"] for c in chans}
+    t["channels"], t["footprint"] = chans, len(chans)
+    t["attrs"] = (["intensity"] if kinds & {"intensity", "emitter"} else []) + (["colour"] if "emitter" in kinds
+                                                                                 else [])
+    return t
+
+
 #: S5.2's builtin types. A fixtures.yaml type with ``source: builtin`` names one of these by its id.
 BUILTIN_TYPES: dict[str, contract.TypeInfo] = {
     "sm-screen": _builtin("sm-screen", "screen", ("colour",)),           # a Frame TV: showbus (P4); never dimmed
     "sm-hue": _builtin("sm-hue", "lamp", ("intensity", "colour")),      # a Hue colour lamp: the hue driver's xy + bri
+    **{tid: _generic(tid, chans) for tid, (_, chans) in GENERIC_TYPES.items()},
 }
+#: Page words for the builtin types (GET /api/v1/rig/types, the rig's fixture rows).
+TYPE_LABELS: dict[str, str] = {"sm-screen": "Frame TV (a screen)", "sm-hue": "Hue colour lamp",
+                               **{tid: label for tid, (label, _) in GENERIC_TYPES.items()}}
 
 
 # -- value readers -----------------------------------------------------------------------------------------------------
@@ -923,36 +975,50 @@ class _Builder:
 
 
 def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], looks: Optional[dict],
-          lamps: Optional[dict]) -> tuple[contract.RigView, list[pathlib.Path], bool]:
-    """(view, the type files it read, ok). Not ok: ``error`` set and empty maps."""
+          lamps: Optional[dict], added_path: Optional[pathlib.Path] = None
+          ) -> tuple[contract.RigView, list[pathlib.Path], bool, frozenset[str]]:
+    """(view, the type files it read, ok, the fixture ids that came from the added file). Not ok: ``error`` set and
+    empty maps. ``added_path``: fixtures.added.yaml, merged under the hand file (``merge_added``); None: none."""
     try:
         data = path.read_bytes()
     except OSError as e:
-        return _empty_view(path, f"{path.name}: {e.strerror or e}"), [], False
-    revision = hashlib.sha1(data).hexdigest()[:12]
+        return _empty_view(path, f"{path.name}: {e.strerror or e}"), [], False, frozenset()
+    pre: list[str] = []
+    added, added_data = _read_added(added_path, pre) if added_path is not None else (None, b"")
+    h = hashlib.sha1(data)
+    if added_data:
+        h.update(b"\0" + added_data)
+    revision = h.hexdigest()[:12]
     try:
         raw = _yaml(data)
         if not isinstance(raw, dict):
             raise ValueError("the file is not a mapping")
     except Exception as e:
-        return _empty_view(path, f"{path.name}: {type(e).__name__}: {e}", revision), [], False
+        return _empty_view(path, f"{path.name}: {type(e).__name__}: {e}", revision), [], False, frozenset()
+    ids: frozenset[str] = frozenset()
+    if added is not None:
+        raw, ids = merge_added(raw, added, pre)
     b = _Builder(types_dir, latency, looks, lamps)
     try:
         view = b.build(raw, path, revision)
     except Exception as e:                      # a bug here must not take the rig down: the last good view stays
         log.exception("fixtures: building the registry failed")
-        return _empty_view(path, f"{path.name}: {type(e).__name__}: {e}", revision), b.used, False
-    return view, b.used, True
+        return _empty_view(path, f"{path.name}: {type(e).__name__}: {e}", revision), b.used, False, frozenset()
+    if pre:
+        view["problems"] = list(dict.fromkeys(pre + view["problems"]))
+    return view, b.used, True, frozenset(i for i in ids if i in view["fixtures"])
 
 
 def load(path: pathlib.Path = contract.FIXTURES_FILE, *, types_dir: pathlib.Path = contract.FIXTURE_TYPES_DIR,
          latency: Optional[dict] = None, patch: Optional[dict] = None, looks: Optional[dict] = None,
-         lamps: Optional[dict] = None) -> contract.RigView:
+         lamps: Optional[dict] = None, added_path: Optional[pathlib.Path] = None) -> contract.RigView:
     """fixtures.yaml -> RigView. Never raises: a bad file gives ``error`` and empty maps (``Registry`` keeps the last
     good one). ``latency`` is latency.json, ``looks`` show.yaml's looks (align_pct, min_visible_ms), ``lamps``
     show.yaml's lamps (role names). ``patch`` (patch.yaml) isn't needed to build the view: drivers read
-    ``hue_settings(out, patch)``."""
-    return _load(pathlib.Path(path), pathlib.Path(types_dir), latency, looks, lamps)[0]
+    ``hue_settings(out, patch)``. ``added_path``: a fixtures.added.yaml to merge under it (None: the hand file
+    alone; ``Registry`` merges its sibling)."""
+    return _load(pathlib.Path(path), pathlib.Path(types_dir), latency, looks, lamps,
+                 pathlib.Path(added_path) if added_path is not None else None)[0]
 
 
 def summary(view: Optional[contract.RigView]) -> dict:
@@ -962,21 +1028,132 @@ def summary(view: Optional[contract.RigView]) -> dict:
             "counts": {k: len(v[k]) for k in ("outputs", "nodes", "types", "fixtures", "groups")}}
 
 
+# -- the added file (the Lights page's; README S5.23) ------------------------------------------------------------------
+ADDED_NAME = "fixtures.added.yaml"
+ADDED_SECTIONS: tuple[str, ...] = ("nodes", "outputs", "types", "fixtures")   # what it holds, in the order written
+ADDED_HEADER = """\
+# config/room/fixtures.added.yaml: the lights registered on the Lights page (/lights). WRITTEN BY show_service's rig
+# API (POST, PUT and DELETE /show/api/v1/rig/fixtures; show_service/README.md S5.23), whole, on every change: don't
+# edit it by hand. show_service merges it under config/room/fixtures.yaml (the hand file; the same schema, README
+# S5.2), which wins on an id clash (a problem line), and re-reads it when it changes. Removing a light here removes the
+# node and output made for it once nothing else uses them.
+"""
+
+
+def added_path_for(path: pathlib.Path) -> pathlib.Path:
+    """The added file next to a fixtures.yaml (``Registry``'s and ``Registrar``'s default)."""
+    return pathlib.Path(path).parent / ADDED_NAME
+
+
+def _read_added(path: pathlib.Path, problems: list[str]) -> tuple[Optional[dict], bytes]:
+    """(its mapping, its bytes). Missing: (None, b""). One that doesn't read: a problem line and None, so the hand
+    file loads alone (a machine-written file is never half there: it is replaced whole)."""
+    lost = "the lights added on the Lights page are left out"
+    try:
+        data = pathlib.Path(path).read_bytes()
+    except FileNotFoundError:
+        return None, b""
+    except OSError as e:
+        problems.append(f"{ADDED_NAME}: {e.strerror or e}: {lost}")
+        return None, b""
+    try:
+        raw = _yaml(data)
+    except Exception as e:
+        problems.append(f"{ADDED_NAME}: {type(e).__name__}: {e}: {lost}")
+        return None, data
+    if raw is None:
+        return {}, data
+    if not isinstance(raw, dict):
+        problems.append(f"{ADDED_NAME}: not a mapping: {lost}")
+        return None, data
+    return raw, data
+
+
+def merge_added(hand: dict, added: dict, problems: list[str]) -> tuple[dict, frozenset[str]]:
+    """The hand file's mapping with the added file's nodes, outputs, types and fixtures merged in (a new dict, neither
+    input changed): the hand file wins on an id clash, with a problem line. Also the fixture ids taken from the added
+    file."""
+    out = dict(hand)
+    v = added.get("version", VERSION)
+    if v != VERSION:
+        problems.append(f"{ADDED_NAME}: version: {v!r} (this reader knows {VERSION})")
+    for k in added:
+        if k != "version" and k not in ADDED_SECTIONS:
+            problems.append(f"{ADDED_NAME}: {k}: not a section it holds ({', '.join(ADDED_SECTIONS)}): ignored")
+    ids: set[str] = set()
+    for sec in ADDED_SECTIONS:
+        a = added.get(sec)
+        if a is None:
+            continue
+        if not isinstance(a, dict):
+            problems.append(f"{ADDED_NAME}: {sec}: not a mapping: ignored")
+            continue
+        h = hand.get(sec)
+        if h is not None and not isinstance(h, dict):
+            continue                                     # the hand file's own problem line says so (_Builder)
+        merged = dict(h or {})
+        for eid, e in a.items():
+            if eid in merged:
+                problems.append(f"{ADDED_NAME}: {sec}.{eid}: also in fixtures.yaml: the hand file's is used")
+                continue
+            merged[eid] = e
+            if sec == "fixtures":
+                ids.add(eid)
+        out[sec] = merged
+    return out, frozenset(ids)
+
+
+def type_label(t: Any) -> Optional[str]:
+    """A type in page words: a builtin's TYPE_LABELS, else "<id> (<mode>, <n> channels)"."""
+    if not isinstance(t, dict):
+        return None
+    tid = t.get("id")
+    if t.get("source") == "builtin" and tid in TYPE_LABELS:
+        return TYPE_LABELS[tid]
+    fp = t.get("footprint") or 0
+    mode = f"{t['mode']}, " if t.get("mode") else ""
+    return f"{tid} ({mode}{fp} channel{'' if fp == 1 else 's'})"
+
+
+def type_rows(view: Optional[contract.RigView]) -> list[dict]:
+    """GET /api/v1/rig/types: every type a DMX light can be registered with, [{id, label, source, footprint, channels:
+    [name], kind}]: the generic types (GENERIC_TYPES), then the view's own types with DMX channels (an OFL type in
+    fixtures.yaml). A type with none (a screen, a Hue lamp, an inert matrix mode) isn't one."""
+    def row(t: contract.TypeInfo) -> dict:
+        return {"id": t["id"], "label": type_label(t), "source": t["source"], "footprint": t["footprint"],
+                "channels": [c["name"] for c in sorted(t["channels"], key=lambda c: c["offset"])], "kind": t["kind"]}
+    rows = [row(BUILTIN_TYPES[tid]) for tid in GENERIC_TYPES]
+    for tid, t in ((view or {}).get("types") or {}).items():
+        if tid not in GENERIC_TYPES and isinstance(t, dict) and t.get("footprint") and t.get("kind") == "lamp":
+            rows.append(row(t))
+    return rows
+
+
+def role_of(f: dict, lamps: Optional[dict] = None) -> Optional[str]:
+    """A fixture's role as the director decides it (selectors' ``role:``): its own, else its placement's (show.yaml
+    ``lamps``), else ``lamps.default_role`` for a lamp."""
+    return _Matcher({}, {}, lambda g: None, (), lamps).role(f)
+
+
 # -- the hot-reloaded registry -----------------------------------------------------------------------------------------
 class Registry:
-    """fixtures.yaml, hot-reloaded (module docstring). ``poll`` on show-brain; ``view`` from any thread."""
+    """fixtures.yaml with fixtures.added.yaml merged under it, hot-reloaded (module docstring). ``poll`` on show-brain;
+    ``view`` from any thread."""
 
     def __init__(self, path: pathlib.Path = contract.FIXTURES_FILE, *,
                  types_dir: pathlib.Path = contract.FIXTURE_TYPES_DIR,
                  latency_path: pathlib.Path = contract.LATENCY_FILE,
-                 patch_path: pathlib.Path = contract.PATCH_FILE) -> None:
+                 patch_path: pathlib.Path = contract.PATCH_FILE,
+                 added_path: Optional[pathlib.Path] = None) -> None:
         self.path = pathlib.Path(path)
+        self.added_path = pathlib.Path(added_path) if added_path is not None else added_path_for(self.path)
         self.types_dir = pathlib.Path(types_dir)
         self.latency_path = pathlib.Path(latency_path)
         self.patch_path = pathlib.Path(patch_path)
         self.generation = 0                         # +1 per new view (good or the last good with a new error)
         self.patch: Optional[dict] = None           # patch.yaml as last read (hue_settings' input), None: unreadable
         self.latency: Optional[dict] = None
+        self.added_ids: frozenset[str] = frozenset()   # the view's fixtures from the added file (the page edits them)
         self._view: Optional[contract.RigView] = None
         self._good: Optional[contract.RigView] = None
         self._type_files: tuple[pathlib.Path, ...] = ()
@@ -995,7 +1172,7 @@ class Registry:
         lk = looks if isinstance(looks, dict) else {}
         inputs = json.dumps({"align_pct": lk.get("align_pct"), "min_visible_ms": lk.get("min_visible_ms"),
                              "lamps": lamps}, sort_keys=True, default=str)
-        files = (self.path, self.latency_path, self.patch_path) + self._type_files
+        files = (self.path, self.added_path, self.latency_path, self.patch_path) + self._type_files
         return tuple((str(p), self._stat(p)) for p in files) + (inputs,)
 
     def _read_side(self, problems: list[str]) -> None:
@@ -1036,11 +1213,12 @@ class Registry:
         self._seen = None
         side: list[str] = []
         self._read_side(side)
-        view, used, ok = _load(self.path, self.types_dir, self.latency, looks, lamps)
+        view, used, ok, added_ids = _load(self.path, self.types_dir, self.latency, looks, lamps, self.added_path)
         if ok:
             view["problems"] = list(dict.fromkeys(side + view["problems"]))
             self._type_files = tuple(dict.fromkeys(used))
             self._good = view
+            self.added_ids = added_ids
             new = view
             log.info("fixtures: loaded %d fixtures, %d outputs (%s), %d problem(s)", len(view["fixtures"]),
                      len(view["outputs"]), view["revision"], len(view["problems"]))
@@ -1066,3 +1244,321 @@ class Registry:
     def hue_settings(self, out: Optional[contract.OutputConfig]) -> dict:
         """``hue_settings`` over the patch.yaml this registry last read."""
         return hue_settings(out, self.patch)
+
+
+# -- writing the added file (the rig API, on show-brain; README S5.23) -------------------------------------------------
+ADDED_ID_PREFIX = "dmx."            # a registered light's id: dmx.<its label, slugged>, made unique
+NODE_ID_PREFIX = "node-"            # a node made for an address: node-<its IP, dashed>
+OUTPUT_ID_PREFIX = "dmx-"           # an output made for a universe on a node: dmx-<the IP, dashed>-u<universe>
+LABEL_MAX = 80                      # characters in a light's name
+WORD_MAX = 64                       # characters in a placement, role or zone word
+SPEC_KEYS: tuple[str, ...] = ("label", "type", "node_ip", "universe", "address", "placement", "role", "zone")
+OPTIONAL_KEYS: tuple[str, ...] = ("placement", "role", "zone")
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+class Refused(ValueError):
+    """A registration that can't be made as asked: nothing is written. ``code`` is the API's error word (400; 404
+    ``unknown_fixture``; 409 ``in_hand_file``), ``detail`` page words, ``extra`` more fields (``choices``,
+    ``problems``)."""
+
+    def __init__(self, code: str, detail: str, **extra: Any) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail, self.extra = code, detail, extra
+
+
+def write_added(path: pathlib.Path, doc: dict) -> None:
+    """The added file, whole and atomically (a tmp file in the same directory, fsync, os.replace): ADDED_HEADER, then
+    ``version`` and ADDED_SECTIONS in order. Raises OSError."""
+    import yaml
+    body = {"version": VERSION, **{s: dict(doc.get(s) or {}) for s in ADDED_SECTIONS}}
+    text = ADDED_HEADER + yaml.safe_dump(body, sort_keys=False, default_flow_style=False, allow_unicode=True,
+                                         width=120)
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _whole(v: Any) -> Optional[int]:
+    """A whole number, or one written as digits (a form field); None otherwise."""
+    if isinstance(v, str) and v.strip().isdigit():
+        return int(v.strip())
+    return _int(v)
+
+
+def _node_ip(v: Any) -> str:
+    """A node's address: an IPv4 unicast literal, normalised (never this machine: loopback is room_service's own
+    Art-Net receiver). Refused otherwise."""
+    try:
+        a = ipaddress.IPv4Address(v.strip()) if isinstance(v, str) else None
+    except ValueError:
+        a = None
+    if a is None or a.is_unspecified or a.is_multicast or a.is_reserved or a.is_loopback:
+        raise Refused("bad_request", f"node_ip: {v!r} isn't the node's IPv4 address on the LAN (like 192.168.1.50)")
+    return str(a)
+
+
+def _same_ip(v: Any, ip: str) -> bool:
+    try:
+        return str(ipaddress.IPv4Address(str(v).strip())) == ip
+    except ValueError:
+        return False
+
+
+class Registrar:
+    """The rig API's writer (README S5.23). Each call reads the hand file and the added file, checks the result with the
+    loader itself (``_Builder``: a light it would leave out is refused, with its problem lines), and only then writes
+    the added file whole (``write_added``). Never writes fixtures.yaml. Only on show-brain: one write at a time.
+
+    A light names ``node_ip`` and ``universe``: the artnet output for that node's universe is found (the hand file's
+    first) or made in the added file, on, with its node (``last_ip``, no match: any reply there counts). An output or
+    node the added file made goes again once nothing uses it; a generic type is declared there as it is first used."""
+
+    def __init__(self, path: pathlib.Path = contract.FIXTURES_FILE, *, added_path: Optional[pathlib.Path] = None,
+                 types_dir: pathlib.Path = contract.FIXTURE_TYPES_DIR, looks: Optional[dict] = None,
+                 lamps: Optional[dict] = None) -> None:
+        self.path = pathlib.Path(path)
+        self.added_path = pathlib.Path(added_path) if added_path is not None else added_path_for(self.path)
+        self.types_dir = pathlib.Path(types_dir)
+        self.looks = looks if isinstance(looks, dict) else None
+        self.lamps = lamps if isinstance(lamps, dict) else None
+
+    # -- the calls -----------------------------------------------------------------------------------------------------
+    def add(self, body: Any) -> tuple[str, list[str], contract.RigView]:
+        """POST /api/v1/rig/fixtures: (the new light's id, its problem lines, the view as the loader now builds it)."""
+        hand, added = self._read()
+        spec, probs = self._spec(body, self._build(hand, added), partial=False)
+        new = copy.deepcopy(added)
+        fid = self._free(ADDED_ID_PREFIX + (_SLUG.sub("-", spec["label"].lower()).strip("-")[:48] or "light"),
+                         dict(self._items(hand, new, "fixtures")))
+        oid = self._place(hand, new, spec["node_ip"], spec["universe"], probs)
+        entry: dict[str, Any] = {"label": spec["label"], "type": spec["type"], "output": oid,
+                                 "address": spec["address"]}
+        entry.update({k: spec[k] for k in OPTIONAL_KEYS if spec.get(k) is not None})
+        new["fixtures"][fid] = entry
+        self._declare_type(hand, new, spec["type"])
+        view, mine = self._check(hand, new, fid, oid)
+        self._write(new)
+        return fid, list(dict.fromkeys(probs + mine)), view
+
+    def update(self, fid: str, body: Any) -> tuple[str, list[str], contract.RigView]:
+        """PUT /api/v1/rig/fixtures/{id}: the same keys, each optional; null clears placement, role or zone. A new
+        node_ip or universe moves the light to that output (found or made)."""
+        hand, added = self._read()
+        self._editable(fid, hand, added)
+        spec, probs = self._spec(body, self._build(hand, added), partial=True)
+        new = copy.deepcopy(added)
+        entry = dict(new["fixtures"][fid]) if isinstance(new["fixtures"][fid], dict) else {}
+        o = dict(self._items(hand, new, "outputs")).get(entry.get("output"))
+        n = dict(self._items(hand, new, "nodes")).get(o.get("node")) if isinstance(o, dict) else None
+        ip = spec.get("node_ip") or (n.get("last_ip") if isinstance(n, dict) else None)
+        universe = spec.get("universe") or (_whole(o.get("port_address")) if isinstance(o, dict) else None)
+        if ip is None or universe is None:
+            raise Refused("bad_request", "Say node_ip and universe: this light has no node or universe yet.")
+        oid = self._place(hand, new, _node_ip(ip), universe, probs)
+        entry["output"] = oid
+        for k in ("label", "type", "address"):
+            if k in spec:
+                entry[k] = spec[k]
+        for k in OPTIONAL_KEYS:
+            if k in spec:
+                if spec[k] is None:
+                    entry.pop(k, None)
+                else:
+                    entry[k] = spec[k]
+        new["fixtures"][fid] = entry
+        self._declare_type(hand, new, entry.get("type"))
+        self._prune(hand, new)
+        view, mine = self._check(hand, new, fid, oid)
+        self._write(new)
+        return fid, list(dict.fromkeys(probs + mine)), view
+
+    def remove(self, fid: str) -> dict:
+        """DELETE /api/v1/rig/fixtures/{id}: ``{removed: id, outputs: [...], nodes: [...], types: [...]}`` (what went
+        with it: the added file's entries nothing uses any more)."""
+        hand, added = self._read()
+        self._editable(fid, hand, added)
+        new = copy.deepcopy(added)
+        del new["fixtures"][fid]
+        gone = self._prune(hand, new)
+        self._write(new)
+        return {"removed": fid, **gone}
+
+    # -- reading and checking ------------------------------------------------------------------------------------------
+    def _read(self) -> tuple[dict, dict]:
+        try:
+            hand = _yaml(self.path.read_bytes())
+        except FileNotFoundError:
+            hand = {}
+        except Exception as e:
+            raise Refused("fixtures_unreadable", f"{self.path.name} doesn't read ({type(e).__name__}: {e}): fix it "
+                                                 f"first, then try again")
+        hand = {} if hand is None else hand
+        if not isinstance(hand, dict):
+            raise Refused("fixtures_unreadable", f"{self.path.name} isn't a mapping: fix it first, then try again")
+        probs: list[str] = []
+        added, _ = _read_added(self.added_path, probs)
+        if probs:
+            raise Refused("added_unreadable", f"{probs[0]}: fix or remove it first, then try again")
+        added = copy.deepcopy(added) if added is not None else {}
+        for s in ADDED_SECTIONS:
+            if not isinstance(added.get(s), dict):
+                added[s] = {}
+        return hand, added
+
+    def _build(self, hand: dict, added: dict) -> contract.RigView:
+        pre: list[str] = []
+        raw, _ = merge_added(hand, added, pre)
+        view = _Builder(self.types_dir, None, self.looks, self.lamps).build(raw, self.path, "candidate")
+        view["problems"] = list(dict.fromkeys(pre + view["problems"]))
+        return view
+
+    @staticmethod
+    def _items(hand: dict, added: dict, sec: str) -> list[tuple[str, Any]]:
+        """A section's entries as the loader merges them: the hand file's first, then the added file's new ids."""
+        h = hand.get(sec) if isinstance(hand.get(sec), dict) else {}
+        a = added.get(sec) if isinstance(added.get(sec), dict) else {}
+        return list(h.items()) + [(k, v) for k, v in a.items() if k not in h]
+
+    def _editable(self, fid: str, hand: dict, added: dict) -> None:
+        if fid in (hand.get("fixtures") if isinstance(hand.get("fixtures"), dict) else {}):
+            raise Refused("in_hand_file", f"{fid} is written by hand in config/room/fixtures.yaml: change it there")
+        if fid not in added["fixtures"]:
+            raise Refused("unknown_fixture", f"There's no light {fid!r} added on the Lights page.",
+                          choices=sorted(added["fixtures"]))
+
+    def _spec(self, body: Any, view: contract.RigView, *, partial: bool) -> tuple[dict, list[str]]:
+        if not isinstance(body, dict):
+            raise Refused("bad_request", "The body is {label, type, node_ip, universe, address, placement?, role?, "
+                                         "zone?}.")
+        probs = [f"{k}: not something a light takes here: ignored" for k in body if k not in SPEC_KEYS]
+        out: dict[str, Any] = {}
+
+        def asked(k: str) -> bool:
+            return k in body or not partial
+        if asked("label"):
+            v = body.get("label")
+            if not isinstance(v, str) or not v.strip() or len(v.strip()) > LABEL_MAX:
+                raise Refused("bad_request", f"label: give the light a name (1 to {LABEL_MAX} characters)")
+            out["label"] = v.strip()
+        if asked("type"):
+            rows = type_rows(view)
+            if body.get("type") not in {r["id"] for r in rows}:
+                raise Refused("unknown_type", f"type: {body.get('type')!r} isn't a light type here: pick one from "
+                                              f"the list", choices=rows)
+            out["type"] = body["type"]
+        if asked("node_ip"):
+            out["node_ip"] = _node_ip(body.get("node_ip"))
+        if asked("universe"):
+            u = _whole(body.get("universe"))
+            if u is None or not 1 <= u <= PORT_ADDRESS_MAX:
+                raise Refused("bad_request", f"universe: {body.get('universe')!r} isn't 1..{PORT_ADDRESS_MAX} (the "
+                                             f"node's Art-Net universe; 0 is room_service's own)")
+            out["universe"] = u
+        if asked("address"):
+            a = _whole(body.get("address"))
+            if a is None or not 1 <= a <= UNIVERSE:
+                raise Refused("bad_request", f"address: {body.get('address')!r} isn't a DMX start channel "
+                                             f"(1..{UNIVERSE})")
+            out["address"] = a
+        for k in OPTIONAL_KEYS:
+            if k in body:
+                v = body.get(k)
+                if v is None or (isinstance(v, str) and not v.strip()):
+                    out[k] = None
+                elif isinstance(v, str) and len(v.strip()) <= WORD_MAX:
+                    out[k] = v.strip()
+                else:
+                    raise Refused("bad_request", f"{k}: {v!r} isn't a word (up to {WORD_MAX} characters)")
+        return out, probs
+
+    @staticmethod
+    def _free(base: str, taken: dict) -> str:
+        """``base`` cut to an id, or with -2, -3, ... until it isn't taken."""
+        base = base[:58].rstrip("-.") or "light"
+        if base not in taken:
+            return base
+        n = 2
+        while f"{base}-{n}" in taken:
+            n += 1
+        return f"{base}-{n}"
+
+    def _place(self, hand: dict, new: dict, ip: str, universe: int, probs: list[str]) -> str:
+        """The artnet output for universe ``universe`` on the node at ``ip``: one already there (the hand file's
+        first), else a node (if none has that address) and an output made in ``new``, on."""
+        nodes = self._items(hand, new, "nodes")
+        nid = next((k for k, n in nodes if isinstance(n, dict) and _same_ip(n.get("last_ip"), ip)), None)
+        if nid is None:
+            nid = self._free(NODE_ID_PREFIX + ip.replace(".", "-"), dict(nodes))
+            new["nodes"][nid] = {"last_ip": ip}
+        outs = self._items(hand, new, "outputs")
+        oid = next((k for k, o in outs if isinstance(o, dict) and o.get("driver") in UNIVERSE_DRIVERS
+                    and o.get("node") == nid and _whole(o.get("port_address")) == universe), None)
+        if oid is None:
+            oid = self._free(f"{OUTPUT_ID_PREFIX}{ip.replace('.', '-')}-u{universe}", dict(outs))
+            new["outputs"][oid] = {"driver": UNIVERSE_DRIVERS[0], "enabled": True, "node": nid,
+                                   "port_address": universe}
+        elif dict(outs)[oid].get("enabled") is not True:
+            if oid in (hand.get("outputs") if isinstance(hand.get("outputs"), dict) else {}):
+                probs.append(f"outputs.{oid}: switched off in config/room/fixtures.yaml (enabled: false): switch it "
+                             f"on there and this light sends")
+            else:
+                new["outputs"][oid] = {**new["outputs"][oid], "enabled": True}
+        return oid
+
+    def _declare_type(self, hand: dict, new: dict, tid: Any) -> None:
+        if tid in GENERIC_TYPES and tid not in dict(self._items(hand, new, "types")):
+            new["types"][tid] = {"source": "builtin"}
+
+    def _prune(self, hand: dict, new: dict) -> dict[str, list[str]]:
+        """The added file's outputs, nodes and types nothing uses any more, removed from ``new``."""
+        gone: dict[str, list[str]] = {"outputs": [], "nodes": [], "types": []}
+        fixtures = [f for _, f in self._items(hand, new, "fixtures") if isinstance(f, dict)]
+        used = {f.get("output") for f in fixtures}
+        for oid in [k for k in new["outputs"] if k not in used]:
+            del new["outputs"][oid]
+            gone["outputs"].append(oid)
+        used = {o.get("node") for _, o in self._items(hand, new, "outputs") if isinstance(o, dict)}
+        for nid in [k for k in new["nodes"] if k not in used]:
+            del new["nodes"][nid]
+            gone["nodes"].append(nid)
+        used = {f.get("type") for f in fixtures}
+        for tid in [k for k in new["types"] if k not in used]:
+            del new["types"][tid]
+            gone["types"].append(tid)
+        return gone
+
+    def _check(self, hand: dict, new: dict, fid: str, oid: str) -> tuple[contract.RigView, list[str]]:
+        """Build the result with the loader; a light it leaves out (or doesn't route to ``oid``, or with no DMX
+        channels) is refused with its problem lines."""
+        view = self._build(hand, new)
+        nid = (view["outputs"].get(oid) or {}).get("node")
+        names = [f"fixtures.{fid}", f"outputs.{oid}"] + ([f"nodes.{nid}"] if nid else [])
+        pat = re.compile("|".join(re.escape(n) for n in names) + r"(?![a-z0-9_-])")
+        mine = [p for p in view["problems"] if pat.search(p) or p.startswith(ADDED_NAME)]
+        f = view["fixtures"].get(fid)
+        if f is None or f["output"] != oid:
+            raise Refused("not_added", "That light can't be added as asked: " + ("; ".join(mine) or
+                                                                                  "the registry leaves it out"),
+                          problems=mine)
+        if not (view["types"].get(f["type"]) or {}).get("footprint"):
+            raise Refused("not_dmx", f"type {f['type']} has no DMX channels here", problems=mine)
+        return view, mine
+
+    def _write(self, new: dict) -> None:
+        try:
+            write_added(self.added_path, new)
+        except OSError as e:
+            raise Refused("not_saved", f"{ADDED_NAME} couldn't be written ({e.strerror or e}): nothing changed")

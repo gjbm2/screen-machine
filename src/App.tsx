@@ -15,6 +15,7 @@ import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import LightSense from './pages/LightSense';
 import AndroidApp from './pages/AndroidApp';
 import AdminPanel from './pages/AdminPanel';
+import LightsPage from './pages/Lights';
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />
             <Route path="/adminadmin" element={<AdminPanel />} />
+            <Route path="/lights" element={<LightsPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

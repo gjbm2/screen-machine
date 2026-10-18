@@ -259,6 +259,28 @@ def test_with_no_feel_the_colours_still_resolve_from_no_feel_palettes(tmp_path):
     assert r.d.palette_fn(r.t) is not None
 
 
+
+def test_with_no_feel_next_look_lands_and_does_not_hold_the_room(tmp_path):
+    """No feel: a person's Next look (and a song change) still lands with no_feel's palettes. It used to stay pending
+    for ever, so _held() read true: every track event held and room.direction.hold stuck."""
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["ember", "gold"]}
+    r = Rig(tmp_path, settings=st)
+    r.run(2.0)
+    before = (r.d.look or {}).get("palette", {}).get("name")
+    r.d.action("next")
+    r.run(6.0)
+    assert r.d.pending is None and not r.d.next_pending and not r.d._held()
+    assert r.d.direction["hold"] is False
+    assert (r.d.look or {}).get("palette", {}).get("name") != before        # the palette moved on
+    st["director"]["no_feel"] = {"palettes": []}                             # no colours: a change is dropped
+    (tmp_path / "b").mkdir()
+    r2 = Rig(tmp_path / "b", settings=st)
+    r2.run(1.0)
+    r2.d.action("next")
+    r2.run(6.0)
+    assert r2.d.pending is None and not r2.d._held()
+
 def test_art_without_colour_to_give_falls_through_to_the_next_palette(tmp_path):
     st = json.loads(json.dumps(SETTINGS))
     st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
@@ -862,6 +884,11 @@ def _names_from_config() -> set[str]:
             names |= {f[k] for k in ("zone", "screen", "placement", "role") if isinstance(f.get(k), str)}
             names |= {t for t in f.get("tags") or [] if isinstance(t, str)}
     names |= {L["id"] for L in ((sh.get("looks") or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
+    # README S5.24: the light scenes' names and their layer ids are config too
+    ls_doc = yaml.safe_load((contract.REPO_ROOT / "config" / "live" / "light_scenes.yaml").read_text()) or {}
+    for sname, sc in (ls_doc.get("scenes") or {}).items():
+        names.add(sname)
+        names |= {L["id"] for L in ((sc or {}).get("layers") or []) if isinstance(L, dict) and "id" in L}
     names -= set(fxmod.BUILTIN_TYPES)
     return (names - _fixed_vocabulary()) | {"piano"}
 
@@ -869,7 +896,7 @@ def _names_from_config() -> set[str]:
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
                                     "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py",
                                     "fixtures.py", "ofl.py", "outputs.py", "looks.py", "colour_mix.py", "hue_out.py",
-                                    "artnet_lan.py", "cues.py"])
+                                    "artnet_lan.py", "cues.py", "light_scenes.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
     if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
         pytest.skip(f"{module} isn't there yet")

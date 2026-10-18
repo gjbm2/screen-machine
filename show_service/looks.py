@@ -79,6 +79,24 @@ reach a frame.
   8. **Encode.** ``FixtureFrame{intensity, colour, rgb = colour x intensity, t_eval_ms}``, plus ``dmx`` =
      ``colour_mix.encode`` for a type with channels.
 
+**Light scenes** (README S5.24; light_scenes.py). The engine also compiles every scene of config/live/light_scenes.yaml
+(its layers and hits, with show.yaml ``looks.layers`` and ``looks.hits``' keys, and its ``caps.flash_hz_max``) against
+the registry, one program per scene: at ``configure``, and again on show-brain when the catalogue changes (it
+subscribes). The look's ``light_scene`` names the one that runs: its layers replace ``looks.layers`` and its hits
+``looks.hits`` (a scene without ``hits`` flashes nothing). No name, or one that isn't compiled: ``looks.layers`` and
+``looks.hits`` exactly as before. A change of scene crossfades per output over the look's transition: the old scene's
+layer depths fade out as the new one's fade in, and the hits are the larger share's. A scene's problems are its own
+(``stats()["program"]["scenes"]``), never ``configure``'s.
+**Drop hits.** A hits block's ``drop: {depth, decay_ms}`` flashes its fixtures (on outputs that take hits) at each drop
+line: ``trigger_hit(at_s, strength)``, or LookData ``light_scene_drop`` (the director's, read each frame, taken once
+per id). The flash is held for the fixture's min_pulse from the line, at the fixture's own latency (a line ahead shows
+on it), then decays; HTP like a hit; it shows over the pre-drop dip, but never under House, Low or a held frame.
+**Identify and follow** (outputs.Rig calls them). ``identify(fixture_id, seconds, rgb)``: that fixture at full
+``rgb`` (white) until it expires, whatever the frame (inactive too), bypassing layers, hits, master and caps.
+``set_follow({id: "dmx" | "off" | {hex, bri}})``: a fixture not following the music shows its house state instead of
+the look (dark, or the static colour at bri %), still through the output's rise limit; an id never named follows, so
+nothing changes until room sends a mapping.
+
 **Parity with the virtual Maestro.** With no vibe, the neutral colour and depth (artnet_out's ``DEFAULT_RGB`` /
 ``HUE_DEPTH``, or what outputs.py passes as ``neutral``) and show.yaml's ``pulse`` layer (or this module's default
 layer when ``looks.layers`` is absent), a Hue lamp's ``rgb`` equals artnet_out's hue channels / 255 for the same clock,
@@ -96,9 +114,10 @@ import itertools
 import json
 import logging
 import math
+import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
 from . import colour_mix, contract
@@ -141,9 +160,14 @@ HIT_TAIL_DECAYS = 8.0           # a flash is over this many decay constants afte
 EVAL_RING = 256                 # evaluate() timings kept per output for stats()
 ERROR_LOG_S = 30.0              # a failing input is logged once, then at most this often
 LAMP = "lamp"                   # contract.FIXTURE_KINDS: the only kind the engine evaluates (never "screen")
+DEFAULT_DROP_DEPTH = 1.0        # starting point: a drop flash reaches full (level + 1, HTP)
+DROP_RING = 16                  # recent drop lines kept (trigger_hit)
+SCENE_FADE = "\x00light_scene"  # the per-output crossfade between light scenes (an _OutState fade key no layer has)
+_BASE_MIX: list = [(1.0, None)]  # no light scene: looks.layers and looks.hits at full weight
 _LAYER_KEYS = frozenset({"id", "enabled", "attr", "fx", "phase", "subdivide", "period_bars", "period_s", "depth",
                          "depth_scale", "spread", "needs", "without_beat", "attack_ms", "decay_ms", "select"})
-_HIT_KEYS = frozenset({"select", "styles", "bands", "min_strength", "depth", "decay_ms"})
+_HIT_KEYS = frozenset({"select", "styles", "bands", "min_strength", "depth", "decay_ms", "drop"})
+_DROP_KEYS = frozenset({"depth", "decay_ms"})
 _LOOKS_KEYS = frozenset({"align_pct", "min_visible_ms", "middle_depth", "master", "caps", "layers", "hits"})
 
 
@@ -256,6 +280,7 @@ class _Hits:
     min_strength: float
     depth: float
     decay_s: float
+    drop: Optional[tuple[float, float]] = None  # (depth, decay_s): a flash at each drop line (trigger_hit)
 
 
 @dataclass(frozen=True)
@@ -283,6 +308,18 @@ class _OutProg:
     slots: tuple[_Slot, ...]
     hit_horizon_s: float
     hit_members: bool                           # any of its fixtures is in looks.hits.select (takes_hit per output)
+    max_pulse_s: float = 0.0                    # its fixtures' longest min_pulse (a drop flash's horizon)
+
+
+@dataclass(frozen=True)
+class _Scene:
+    """One light scene (light_scenes.yaml), compiled like looks.layers and looks.hits."""
+    name: str
+    layers: tuple[_Layer, ...]                  # ids "<scene>/<layer id>": their own glides and fades
+    hits: Optional[_Hits]                       # None: no flashes in this scene
+    flash_hz_max: Optional[float]               # the scene's caps.flash_hz_max (None: looks.caps')
+    hit_members: Mapping[str, bool]             # output id -> any of its fixtures is in the scene's hits selection
+    hit_horizon_s: Mapping[str, float]          # output id -> a music flash's horizon there
 
 
 @dataclass(frozen=True)
@@ -296,6 +333,9 @@ class _Program:
     outputs: Mapping[str, _OutProg]
     zones: Mapping[str, Optional[str]]          # fixture id -> zone (role donors' ordering)
     problems: tuple[str, ...]
+    scenes: Mapping[str, _Scene] = field(default_factory=dict)   # light scenes by name (README S5.24)
+    scene_revision: str = ""                    # the catalogue's revision they were compiled from
+    scene_problems: tuple[str, ...] = ()
 
 
 _EMPTY = _Program(revision="", layers=(), hits=None, master=DEFAULT_MASTER, middle_depth=DEFAULT_MIDDLE_DEPTH,
@@ -399,13 +439,16 @@ class _LayerNow:
 # -- the engine -------------------------------------------------------------------------------------------------------
 class LookEngine:
     """README S5.5. ``configure`` on show-brain; ``evaluate`` only from that output's runner; ``set_look``, ``on_hit``,
-    ``active`` and ``stats`` from any thread."""
+    ``active``, ``stats``, ``identify``, ``set_follow`` and ``trigger_hit`` from any thread.
+
+    ``light_scenes``: a light_scenes.Catalogue (tests); None: the process's shared one (light_scenes.shared());
+    False: no light scenes."""
 
     def __init__(self, *, palette_fn: Optional[Callable[[float], Any]] = None,
                  look_fn: Optional[Callable[[], Any]] = None, clock: Any = None,
                  features_fn: Optional[Callable[[], Any]] = None,
                  neutral: tuple[Sequence[float], float] = (NEUTRAL_RGB, HUE_DEPTH),
-                 mono: Callable[[], float] = time.monotonic) -> None:
+                 mono: Callable[[], float] = time.monotonic, light_scenes: Any = None) -> None:
         self.palette_fn = palette_fn
         self.look_fn = look_fn
         self.features_fn = features_fn
@@ -436,6 +479,22 @@ class LookEngine:
         self._outs: dict[str, _OutState] = {}
         self.errors: dict[str, int] = {}
         self._log_next: dict[str, float] = {}
+        # light scenes (README S5.24): the catalogue, resolved at the first configure; the last configure's inputs,
+        # so a catalogue change recompiles the scenes on show-brain
+        self._scenes_src = light_scenes
+        self._scenes_cat: Any = None
+        self._scenes_err: Optional[str] = None
+        self._configured: Optional[tuple] = None
+        self._configuring = False
+        # identify and follow (any thread; each swapped by reference, read once per frame)
+        self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
+        self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
+        self._follow_view: dict[str, Any] = {}                       # fixture -> "off" | {hex, bri}, as accepted
+        # drop lines (trigger_hit; any thread)
+        self._drops: collections.deque = collections.deque(maxlen=DROP_RING)   # (key, at_s, strength)
+        self._drop_lock = threading.Lock()
+        self._drop_seen: Any = None                                  # the last LookData.light_scene_drop id taken
+        self.drops = 0
 
     # -- show-brain ---------------------------------------------------------------------------------------------------
     def configure(self, looks: Optional[Mapping[str, Any]], rig: Optional[Mapping[str, Any]], *,
@@ -478,29 +537,7 @@ class LookEngine:
 
         fixtures = rig.get("fixtures") or {}
         types = rig.get("types") or {}
-
-        def lamp(fid: str) -> bool:
-            f = fixtures.get(fid)
-            t = types.get(f.get("type")) if isinstance(f, Mapping) else None
-            return isinstance(t, Mapping) and t.get("kind") == LAMP and f.get("kind", LAMP) == LAMP
-
-        def select(expr: Any, where: str) -> Optional[list[str]]:
-            if self._select is None:
-                probs.append(f"{where}: fixtures.py can't be imported ({self._select_err}): it selects nothing")
-                return None
-            try:
-                ids = self._select(expr, rig, lamps=dict(lamps) if lamps else None) if isinstance(expr, str) \
-                    else None
-            except ValueError as e:
-                probs.append(f"{where}: selector {expr!r} doesn't read ({e}): it selects nothing")
-                return None
-            except Exception as e:                               # a broken selector module: degrade
-                probs.append(f"{where}: selector {expr!r} failed ({type(e).__name__}): it selects nothing")
-                return None
-            if ids is None:
-                probs.append(f"{where}: select must be a selector string: it selects nothing")
-                return None
-            return [i for i in ids if lamp(i)]                   # the screens rule: never a screen
+        select = self._select_fn(rig, lamps, probs)
 
         # layers
         raw_layers = looks.get("layers", DEFAULT_LAYERS)
@@ -547,17 +584,133 @@ class LookEngine:
                 slots.append(self._slot(fid, f, t, infos, types, min_visible, lamps, probs))
             ma = oc.get("min_attack_ms")
             hz = hits.decay_s * HIT_TAIL_DECAYS if hits else 0.0
+            mp = max((s.min_pulse_s for s in slots), default=0.0)
             outputs[oid] = _OutProg(
                 id=oid, hits=oc.get("hits") if isinstance(oc.get("hits"), bool) else None,
                 min_attack_ms=float(ma) if _isnum(ma) and ma > 0 else None, slots=tuple(slots),
-                hit_horizon_s=hz + max((s.min_pulse_s for s in slots), default=0.0),
-                hit_members=bool(hits is not None and any(s.id in hits.members for s in slots)))
+                hit_horizon_s=hz + mp, hit_members=bool(hits is not None and any(s.id in hits.members for s in slots)),
+                max_pulse_s=mp)
         blob = json.dumps({"looks": looks, "rig": rig.get("revision")}, sort_keys=True, default=str)
+        # light scenes (README S5.24): the catalogue is polled here (show-brain) and compiled against the same rig
+        self._configuring = True
+        try:
+            cat = self._scene_catalogue()
+            if cat is not None:
+                self._call("light_scenes.poll", cat.poll)
+        finally:
+            self._configuring = False
+        self._configured = (rig, lamps, outputs)
+        scenes, sprobs, srev = self._compile_scenes(rig, lamps, outputs)
         prog = _Program(revision=hashlib.sha1(blob.encode()).hexdigest()[:12], layers=tuple(layers), hits=hits,
                         master=master, middle_depth=middle, flash_hz_max=flash_hz, outputs=outputs, zones=zones,
-                        problems=tuple(probs))
+                        problems=tuple(probs), scenes=scenes, scene_revision=srev, scene_problems=tuple(sprobs))
         self._program = prog
         return list(probs)
+
+    def _select_fn(self, rig: Mapping[str, Any], lamps: Optional[Mapping[str, Any]], probs: list[str]
+                   ) -> Callable[[Any, str], Optional[list[str]]]:
+        """The selector for one compile: fixtures.select over ``rig``, lamps only (the screens rule); a selector that
+        can't be used selects nothing, with a line in ``probs``."""
+        fixtures = rig.get("fixtures") or {}
+        types = rig.get("types") or {}
+
+        def lamp(fid: str) -> bool:
+            f = fixtures.get(fid)
+            t = types.get(f.get("type")) if isinstance(f, Mapping) else None
+            return isinstance(t, Mapping) and t.get("kind") == LAMP and f.get("kind", LAMP) == LAMP
+
+        def select(expr: Any, where: str) -> Optional[list[str]]:
+            if self._select is None:
+                probs.append(f"{where}: fixtures.py can't be imported ({self._select_err}): it selects nothing")
+                return None
+            try:
+                ids = self._select(expr, rig, lamps=dict(lamps) if lamps else None) if isinstance(expr, str) \
+                    else None
+            except ValueError as e:
+                probs.append(f"{where}: selector {expr!r} doesn't read ({e}): it selects nothing")
+                return None
+            except Exception as e:                               # a broken selector module: degrade
+                probs.append(f"{where}: selector {expr!r} failed ({type(e).__name__}): it selects nothing")
+                return None
+            if ids is None:
+                probs.append(f"{where}: select must be a selector string: it selects nothing")
+                return None
+            return [i for i in ids if lamp(i)]                   # the screens rule: never a screen
+        return select
+
+    # -- light scenes (README S5.24; show-brain) -------------------------------------------------------------------------
+    def _scene_catalogue(self) -> Any:
+        """The light-scene catalogue (``light_scenes`` at construction; None: the shared one), subscribed once."""
+        if self._scenes_cat is not None or self._scenes_src is False:
+            return self._scenes_cat
+        cat = self._scenes_src
+        if cat is None:
+            try:
+                from . import light_scenes
+                cat = light_scenes.shared()
+            except Exception as e:                               # degrade: looks.layers only
+                self._scenes_err = f"light_scenes.py can't be imported: {type(e).__name__}: {e}"
+                self._scenes_src = False
+                return None
+        sub = getattr(cat, "subscribe", None)
+        if callable(sub):
+            sub(self._on_scenes)
+        self._scenes_cat = cat
+        return cat
+
+    def _on_scenes(self, cat: Any) -> None:
+        """The catalogue changed (its poller's thread: show-brain): recompile the scenes against the last configure's
+        registry and swap them into the program by reference."""
+        if self._configuring or self._configured is None:
+            return                                               # configure compiles them itself
+        rig, lamps, outputs = self._configured
+        scenes, sprobs, srev = self._compile_scenes(rig, lamps, outputs)
+        self._program = replace(self._program, scenes=scenes, scene_revision=srev, scene_problems=tuple(sprobs))
+
+    def _compile_scenes(self, rig: Mapping[str, Any], lamps: Optional[Mapping[str, Any]],
+                        outputs: Mapping[str, _OutProg]) -> tuple[dict[str, _Scene], list[str], str]:
+        """Every catalogue scene as a program part: its layers (ids ``<scene>/<id>``), its hits and its flash cap. A
+        layer or block that can't be used is left out with a problem line (the scene's own list), the rest runs."""
+        cat = self._scene_catalogue()
+        probs: list[str] = []
+        if cat is None:
+            if self._scenes_err:
+                probs.append(self._scenes_err)
+            return {}, probs, ""
+        raw = getattr(cat, "scenes", None)
+        if not isinstance(raw, Mapping):
+            return {}, probs, ""
+        select = self._select_fn(rig, lamps, probs)
+        out: dict[str, _Scene] = {}
+        for name, sc in raw.items():
+            if not isinstance(sc, Mapping):
+                continue
+            where = f"light_scenes.{name}"
+            seen: set[str] = set()
+            layers = []
+            for n, rl in enumerate(sc.get("layers") or ()):
+                L = self._compile_layer(rl, n, seen, select, probs, where=f"{where}.layers", ns=str(name))
+                if L is not None:
+                    layers.append(L)
+            hits = self._compile_hits(sc["hits"], select, probs, where=f"{where}.hits") \
+                if sc.get("hits") is not None else None
+            fz = None
+            caps = sc.get("caps")
+            if isinstance(caps, Mapping):
+                for k, v in caps.items():
+                    if k != "flash_hz_max":
+                        probs.append(f"{where}.caps.{k}: not a cap the look engine has: ignored")
+                    elif v is not None and not (_isnum(v) and v > 0):
+                        probs.append(f"{where}.caps.flash_hz_max: {v!r} isn't a positive number: looks.caps' is used")
+                    elif v is not None:
+                        fz = float(v)
+            members = {oid: bool(hits is not None and any(s.id in hits.members for s in op.slots))
+                       for oid, op in outputs.items()}
+            horizon = {oid: (hits.decay_s * HIT_TAIL_DECAYS if hits else 0.0) + op.max_pulse_s
+                       for oid, op in outputs.items()}
+            out[str(name)] = _Scene(name=str(name), layers=tuple(layers), hits=hits, flash_hz_max=fz,
+                                    hit_members=members, hit_horizon_s=horizon)
+        return out, probs, str(getattr(cat, "revision", "") or "")
 
     @staticmethod
     def _num(d: Mapping, key: str, default: Optional[float], lo: Optional[float], hi: Optional[float], where: str,
@@ -580,16 +733,19 @@ class LookEngine:
         probs.append(f"{where}: {v!r} is neither a number in 0..1 nor one of {', '.join(contract.LOOK_INPUTS)}")
         return False, None
 
-    def _compile_layer(self, raw: Any, n: int, seen: set[str], select: Callable, probs: list[str]
-                       ) -> Optional[_Layer]:
+    def _compile_layer(self, raw: Any, n: int, seen: set[str], select: Callable, probs: list[str], *,
+                       where: str = "looks.layers", ns: str = "") -> Optional[_Layer]:
+        """One layer entry (``where`` names its list in problem lines; ``ns``, a light scene's name, prefixes its id
+        so its glides and fades are its own)."""
+        base = where
         if not isinstance(raw, Mapping):
-            probs.append(f"looks.layers[{n}]: not a mapping: left out")
+            probs.append(f"{base}[{n}]: not a mapping: left out")
             return None
         lid = raw.get("id")
         if not isinstance(lid, str) or not lid:
-            probs.append(f"looks.layers[{n}]: no id: left out")
+            probs.append(f"{base}[{n}]: no id: left out")
             return None
-        where = f"looks.layers.{lid}"
+        where = f"{base}.{lid}"
         if lid in seen:
             probs.append(f"{where}: the id is used twice: left out")
             return None
@@ -664,27 +820,28 @@ class LookEngine:
             probs.append(f"{where}: no select: it selects nothing")
         ids = select(raw.get("select"), f"{where}.select") or []
         members = {fid: (i, len(ids)) for i, fid in enumerate(ids)}
-        return _Layer(id=lid, fx=fx, phase=phase, subdivide=bool(sub), period=period, depth=depth,
-                      depth_scale=float(ds), spread=spread, needs=needs, without_beat=wob, attack_s=float(att) / 1000.0,
-                      decay_s=float(dec) / 1000.0, members=members)
+        return _Layer(id=f"{ns}/{lid}" if ns else lid, fx=fx, phase=phase, subdivide=bool(sub), period=period,
+                      depth=depth, depth_scale=float(ds), spread=spread, needs=needs, without_beat=wob,
+                      attack_s=float(att) / 1000.0, decay_s=float(dec) / 1000.0, members=members)
 
-    def _compile_hits(self, raw: Any, select: Callable, probs: list[str]) -> Optional[_Hits]:
+    def _compile_hits(self, raw: Any, select: Callable, probs: list[str], *, where: str = "looks.hits"
+                      ) -> Optional[_Hits]:
         if not isinstance(raw, Mapping):
-            probs.append("looks.hits: not a mapping: no hits")
+            probs.append(f"{where}: not a mapping: no hits")
             return None
         for k in raw:
             if k not in _HIT_KEYS:
-                probs.append(f"looks.hits.{k}: not a hits key: ignored")
+                probs.append(f"{where}.{k}: not a hits key: ignored")
         styles_raw = raw.get("styles")
         if not isinstance(styles_raw, (list, tuple)):
-            probs.append("looks.hits.styles: not a list of accent styles: no hits")
+            probs.append(f"{where}.styles: not a list of accent styles: no hits")
             return None
         styles = set()
         for s in styles_raw:
             if s in contract.ACCENT_STYLES:
                 styles.add(s)
             else:
-                probs.append(f"looks.hits.styles: {s!r} isn't one of {', '.join(contract.ACCENT_STYLES)}: dropped")
+                probs.append(f"{where}.styles: {s!r} isn't one of {', '.join(contract.ACCENT_STYLES)}: dropped")
         bands = None
         if raw.get("bands") is not None:
             if isinstance(raw["bands"], (list, tuple)):
@@ -693,18 +850,31 @@ class LookEngine:
                     if b in contract.BAND_NAMES:
                         bands.add(b)
                     else:
-                        probs.append(f"looks.hits.bands: {b!r} isn't one of {', '.join(contract.BAND_NAMES)}: dropped")
+                        probs.append(f"{where}.bands: {b!r} isn't one of {', '.join(contract.BAND_NAMES)}: dropped")
             else:
-                probs.append("looks.hits.bands: not a list: every band")
-        ms = self._num(raw, "min_strength", DEFAULT_HIT_MIN_STRENGTH, 0.0, 1.0, "looks.hits", probs)
-        depth = self._num(raw, "depth", DEFAULT_HIT_DEPTH, 0.0, 1.0, "looks.hits", probs)
-        dec = self._num(raw, "decay_ms", DEFAULT_HIT_DECAY_MS, 0.0, None, "looks.hits", probs, positive=True)
+                probs.append(f"{where}.bands: not a list: every band")
+        ms = self._num(raw, "min_strength", DEFAULT_HIT_MIN_STRENGTH, 0.0, 1.0, where, probs)
+        depth = self._num(raw, "depth", DEFAULT_HIT_DEPTH, 0.0, 1.0, where, probs)
+        dec = self._num(raw, "decay_ms", DEFAULT_HIT_DECAY_MS, 0.0, None, where, probs, positive=True)
+        drop = None
+        rd = raw.get("drop")
+        if rd is not None:                               # README S5.24: a flash at each drop line
+            if not isinstance(rd, Mapping):
+                probs.append(f"{where}.drop: not a mapping: no drop flash")
+            else:
+                for k in rd:
+                    if k not in _DROP_KEYS:
+                        probs.append(f"{where}.drop.{k}: not a drop key: ignored")
+                dd = self._num(rd, "depth", DEFAULT_DROP_DEPTH, 0.0, 1.0, f"{where}.drop", probs)
+                ddec = self._num(rd, "decay_ms", DEFAULT_HIT_DECAY_MS, 0.0, None, f"{where}.drop", probs,
+                                 positive=True)
+                drop = (dd, ddec / 1000.0)
         if "select" not in raw:
-            probs.append("looks.hits: no select: it selects nothing")
-        ids = select(raw.get("select"), "looks.hits.select") or []
+            probs.append(f"{where}: no select: it selects nothing")
+        ids = select(raw.get("select"), f"{where}.select") or []
         return _Hits(members=frozenset(ids), styles=frozenset(styles),
                      bands=frozenset(bands) if bands is not None else None, min_strength=ms, depth=depth,
-                     decay_s=dec / 1000.0)
+                     decay_s=dec / 1000.0, drop=drop)
 
     def _slot(self, fid: str, f: Mapping[str, Any], t: Mapping[str, Any], infos: Mapping[str, Mapping],
               types: Mapping[str, Mapping], min_visible_ms: float, lamps: Optional[Mapping[str, Any]],
@@ -787,28 +957,119 @@ class LookEngine:
         if math.isfinite(t) and math.isfinite(s):
             self._hits.append((next(self._hit_n), t, d.get("band"), s))
 
+    def trigger_hit(self, at_s: float, strength: float = 1.0, key: Any = None) -> bool:
+        """A drop line at ``at_s`` (monotonic s, the runners' clock; ahead or just passed): the running light scene's
+        drop flash (its hits block's ``drop``) shows from it on every output that takes hits (README S5.24). ``key``
+        (LookData.light_scene_drop's id) takes each line once. False when it was already taken or doesn't read."""
+        try:
+            at, s = float(at_s), float(strength)
+        except (TypeError, ValueError):
+            return False
+        if not (math.isfinite(at) and math.isfinite(s)):
+            return False
+        with self._drop_lock:
+            if key is not None and any(k == key for k, _a, _s in self._drops):
+                return False
+            self._drops.append((key, at, _c01(s)))
+            self.drops += 1
+        return True
+
+    def _take_drop(self, dl: Any) -> None:
+        """LookData.light_scene_drop (read each frame by every runner): a new id goes to ``trigger_hit`` once."""
+        if not isinstance(dl, Mapping):
+            return
+        key = dl.get("id")
+        if key is None or key == self._drop_seen:
+            return
+        self._drop_seen = key
+        at, s = dl.get("at_ms"), dl.get("strength", 1.0)
+        if _isnum(at):
+            self.trigger_hit(at / 1000.0, s if _isnum(s) else 1.0, key=key)
+
+    def identify(self, fixture_id: str, seconds: float, rgb: Sequence[float] = (255, 255, 255)) -> bool:
+        """That fixture at full ``rgb`` (0..255 each; white) for ``seconds`` from now, whatever it was doing: layers,
+        hits, master, caps and its follow value are bypassed, inactive frames included. ``seconds`` <= 0 ends it.
+        True when the engine evaluates that fixture now (a lamp in the program; the request is kept either way, so a
+        fixture compiled a moment later still lights)."""
+        try:
+            secs = float(seconds)
+            r, g, b = (float(x) for x in rgb)
+        except (TypeError, ValueError):
+            return False
+        if not (math.isfinite(secs) and all(math.isfinite(x) for x in (r, g, b))):
+            return False
+        now = self._mono()
+        new = {k: v for k, v in self._ident.items() if v[0] > now and k != fixture_id}
+        if secs > 0.0:
+            m = max(r, g, b)
+            col = [_c01(r / m), _c01(g / m), _c01(b / m)] if m > 0 else [0.0, 0.0, 0.0]
+            new[str(fixture_id)] = (now + secs, col)
+        self._ident = new
+        return any(s.id == fixture_id for op in self._program.outputs.values() for s in op.slots)
+
+    def set_follow(self, mapping: Mapping[str, Any], *, merge: bool = False) -> dict[str, Any]:
+        """Who follows the music (room's DMX-lights adapter, through outputs.Rig, which hands its whole mapping):
+        {fixture id: "dmx" (follows the look) | "off" (dark) | {"hex": "#rrggbb", "bri": 0..100} (that colour,
+        steady)}. An id not in it follows (so nothing changes until room sends one); ``merge``: only the ids given
+        change. Returns what was accepted ("dmx" included); a value that doesn't read is left out."""
+        if not isinstance(mapping, Mapping):
+            return {}
+        cur = dict(self._follow) if merge else {}
+        view = dict(self._follow_view) if merge else {}
+        accepted: dict[str, Any] = {}
+        for fid, v in mapping.items():
+            fid = str(fid)
+            if v == "dmx":
+                cur.pop(fid, None)
+                view.pop(fid, None)
+                accepted[fid] = "dmx"
+            elif v == "off":
+                cur[fid] = (0.0, [0.0, 0.0, 0.0])
+                view[fid] = accepted[fid] = "off"
+            elif isinstance(v, Mapping):
+                c = _hex_rgb(v.get("hex"))
+                bri = v.get("bri", 100)
+                if c is None or not _isnum(bri):
+                    continue
+                k = _c01(float(bri) / 100.0)
+                m = max(c)
+                cur[fid] = (k * m, [x / m for x in c] if m > 0 else [0.0, 0.0, 0.0])
+                h = "#" + "".join(f"{round(x * 255):02x}" for x in c)
+                view[fid] = accepted[fid] = {"hex": h, "bri": round(k * 100.0, 1)}
+        self._follow, self._follow_view = cur, view
+        return accepted
+
+    def follow(self) -> dict[str, Any]:
+        """The fixtures not following the music, as accepted ({id: "off" | {hex, bri}}); every other id follows."""
+        return dict(self._follow_view)
+
     def takes_hit(self, d: Mapping[str, Any], output_id: Optional[str] = None) -> bool:
         """Any thread (show-rx, a few µs): would this music.hit flash now? The program's hits block (strength, band),
         the look's accents style, House lights, Lights low and the pre-drop dip, and the clock's gate, as
         ``evaluate`` reads them; with ``output_id``, also whether any of that output's fixtures is in the hits
         selection (README S5.14). outputs.Rig wakes a hit output's runner (a frame pulled forward) only for these, so
         the hits a look or an output doesn't show never knock DMX off its beat grid (c8's integration ruling, 16
-        Oct)."""
+        Oct). While the look names a compiled light scene, that scene's hits block is the one (README S5.24)."""
         prog = self._program
-        hp = prog.hits
+        look = self._call("look", self.look_fn) if (prog.hits is not None or prog.scenes) else None
+        sc = prog.scenes.get(look.get("light_scene")) if prog.scenes and isinstance(look, Mapping) else None
+        hp = prog.hits if sc is None else sc.hits
         if hp is None:
             return False
         if output_id is not None:
-            op = prog.outputs.get(output_id)
-            if op is None or not op.hit_members:
-                return False
+            if sc is not None:
+                if not sc.hit_members.get(output_id):
+                    return False
+            else:
+                op = prog.outputs.get(output_id)
+                if op is None or not op.hit_members:
+                    return False
         try:
             s = float(d.get("strength", 1.0))
         except (AttributeError, TypeError, ValueError):
             return False
         if not s >= hp.min_strength or (hp.bands is not None and d.get("band") not in hp.bands):
             return False
-        look = self._call("look", self.look_fn)
         if not isinstance(look, Mapping) or look.get("house") or look.get("low") or look.get("dip") or \
                 (look.get("accents") or {}).get("style") not in hp.styles:
             return False
@@ -828,12 +1089,19 @@ class LookEngine:
         for oid, st in list(self._outs.items()):
             n = min(st.n_eval, EVAL_RING)
             xs = sorted(st.eval_us[:n]) if n else []
+            sf = st.fades.get(SCENE_FADE)
             per[oid] = {"eval_us": {"p50": round(xs[n // 2], 1) if xs else None,
                                     "p95": round(xs[min(n - 1, int(0.95 * n))], 1) if xs else None},
                         "frames": st.seq, "hits": st.hits, "held": st.held, "why": st.why,
-                        "coarsened": sorted(st.coarsened)}
-        return {"program": {"revision": p.revision, "layers": [L.id for L in p.layers], "problems": list(p.problems)},
-                "per_output": per, "errors": dict(self.errors)}
+                        "coarsened": sorted(st.coarsened), "light_scene": sf.new if sf is not None else None}
+        now = self._mono()
+        return {"program": {"revision": p.revision, "layers": [L.id for L in p.layers], "problems": list(p.problems),
+                            "scenes": {"revision": p.scene_revision,
+                                       "compiled": {n: [L.id for L in s.layers] for n, s in p.scenes.items()},
+                                       "problems": list(p.scene_problems)}},
+                "per_output": per, "errors": dict(self.errors),
+                "identify": {k: round(v[0] - now, 1) for k, v in self._ident.items() if v[0] > now},
+                "follow": dict(self._follow_view), "drops": self.drops}
 
     # -- inputs --------------------------------------------------------------------------------------------------------
     def _call(self, name: str, fn: Optional[Callable], *a: Any) -> Any:
@@ -953,6 +1221,10 @@ class LookEngine:
 
         look = self._call("look", self.look_fn)
         look = look if isinstance(look, Mapping) else None
+        if look is not None:
+            dl = look.get("light_scene_drop")
+            if dl is not None:
+                self._take_drop(dl)                              # a new drop line, once per id (README S5.24)
         drop = self._drop_hit(look, caps_hits)
         pals: dict[float, Any] = {}
 
@@ -974,9 +1246,15 @@ class LookEngine:
             active, why, held = False, "no_vibe", None           # nothing room-side gates this output (§8.6)
         st.held, st.why = held, why
         fixtures: dict[str, dict] = frame["fixtures"]
+        ident, follow = self._ident, self._follow                 # identify and follow, read once a frame
+        ov = bool(ident) or bool(follow)
         if not active:
             te = t * 1000.0
             for s in op.slots:
+                o = self._override(s.id, ident, follow, t) if ov else None
+                if o is not None:
+                    fixtures[s.id] = self._fixed(s, o[0], o[1], te)
+                    continue
                 hi, hcol, hrgb, hdmx = s.house
                 ff = {"intensity": hi, "colour": list(hcol), "rgb": list(hrgb), "t_eval_ms": te}
                 if hdmx is not None:
@@ -1009,30 +1287,53 @@ class LookEngine:
         # S5.14; the director's own swell depth and drop hit are already off under them)
         steady = held is not None or (look is not None and bool(look.get("house") or look.get("low")))
 
-        # layers, once per frame
+        # the light scene (README S5.24): the look names one; a change crossfades over the look's transition. No
+        # scene (or one that isn't compiled): looks.layers and looks.hits
+        scenes = prog.scenes
+        mix = _BASE_MIX
+        if scenes or SCENE_FADE in st.fades:
+            sname = look.get("light_scene") if look is not None else None
+            mix = st.fade(SCENE_FADE, sname if sname in scenes else None, t, trans_s)
+        dom = mix[-1][1] if mix[-1][0] >= 0.5 else mix[0][1]
+        sc = scenes.get(dom) if dom is not None else None
+
+        # layers, once per frame (a fading scene's depths x its share)
         nows: list[_LayerNow] = []
         if not steady:
-            for L in prog.layers:
-                ln = self._layer_now(L, st, t, snap, gate, caps_hits, min_attack_s, look, vibe, energy, trans_s,
-                                     prog.middle_depth, min_period_s)
-                if ln is not None:
-                    nows.append(ln)
+            for w, sn in mix:
+                scn = scenes.get(sn) if sn is not None else None
+                for L in (prog.layers if scn is None else scn.layers):
+                    ln = self._layer_now(L, st, t, snap, gate, caps_hits, min_attack_s, look, vibe, energy, trans_s,
+                                         prog.middle_depth, min_period_s)
+                    if ln is not None:
+                        if w < 1.0:
+                            ln.d *= w
+                        nows.append(ln)
 
-        # hits, once per frame (never over the pre-drop dip either: LookData.dip)
+        # hits, once per frame (never over the pre-drop dip either: LookData.dip): the scene's own, else looks.hits
         flashes: list[tuple[float, float]] = []
-        hp = prog.hits
+        hp = prog.hits if sc is None else sc.hits
+        horizon = op.hit_horizon_s if sc is None else sc.hit_horizon_s.get(output_id, 0.0)
         if hp is not None and caps_hits and not steady and gate != "none" and look is not None and \
                 (look.get("accents") or {}).get("style") in hp.styles and not look.get("dip"):
             for seq, th, band, strength in tuple(self._hits):
                 if strength < hp.min_strength or (hp.bands is not None and band not in hp.bands):
                     continue
                 age = t - th
-                if age > op.hit_horizon_s:
+                if age > horizon:
                     continue
                 if seq > st.hit_seq:
                     st.hit_seq = seq
                     st.hits += 1
                 flashes.append((max(0.0, age), hp.depth * min(1.0, strength)))
+        # drop lines (trigger_hit): the hits block's drop flash, over the dip, never steady
+        drops: list[tuple[float, float, float]] = []
+        if hp is not None and hp.drop is not None and caps_hits and not steady and self._drops:
+            dd, ddec = hp.drop
+            dz = ddec * HIT_TAIL_DECAYS + op.max_pulse_s
+            for _k, at, strength in tuple(self._drops):
+                if t - at <= dz and dd * strength > 0.0:
+                    drops.append((at, dd * strength, ddec))
 
         # the role map from the director's look (a fixture it doesn't name takes a same-role lamp's colour)
         if look is not st.role_look:
@@ -1047,10 +1348,22 @@ class LookEngine:
             st.role_map = rm
 
         master = prog.master
-        flash_hz = prog.flash_hz_max
+        flash_hz = prog.flash_hz_max if sc is None or sc.flash_hz_max is None else sc.flash_hz_max
         memo: dict[tuple, float] = {}                            # one oscillator value per (layer, time, lag)
         fl_memo: dict[float, float] = {}
         for s in op.slots:
+            if ov:
+                o = self._override(s.id, ident, follow, t)
+                if o is not None:                                # identify, or not following: no look at all
+                    inten, col, idn = o
+                    fs = st.fix.get(s.id)
+                    if fs is None:
+                        fs = st.fix[s.id] = _FixState()
+                    if not idn and min_attack_s > 0.0 and fs.prev is not None and t >= fs.t_prev:
+                        inten = min(inten, fs.prev + SLEW_PEAK * (t - fs.t_prev) / min_attack_s)   # the rise limit
+                    fs.prev, fs.t_prev = inten, t
+                    fixtures[s.id] = self._fixed(s, inten, col, t * 1000.0)
+                    continue
             ti = t + s.rise_s
             tc = t + s.colour_s
             pi = pal_at(ti)
@@ -1079,7 +1392,7 @@ class LookEngine:
                         memo[key] = val
                 inten *= 1.0 - ln.d + ln.d * val
             # hits: highest takes precedence (one flash value per frame for each min_pulse)
-            if flashes and s.id in hp.members:
+            if (flashes or drops) and s.id in hp.members:
                 fl = fl_memo.get(s.min_pulse_s)
                 if fl is None:
                     fl = 0.0
@@ -1088,6 +1401,12 @@ class LookEngine:
                         if v > fl:
                             fl = v
                     fl_memo[s.min_pulse_s] = fl
+                for at, F, dec in drops:                         # at the fixture's own latency: a line ahead lands
+                    age = ti - at                                # on it
+                    if age >= 0.0:
+                        v = F if age < s.min_pulse_s else F * math.exp(-(age - s.min_pulse_s) / dec)
+                        if v > fl:
+                            fl = v
                 hv = min(1.0, level + fl)
                 if hv > inten:
                     inten = hv
@@ -1118,6 +1437,25 @@ class LookEngine:
             fixtures[s.id] = ff
         self._record(st, c0)
         return frame
+
+    @staticmethod
+    def _override(fid: str, ident: Mapping[str, tuple], follow: Mapping[str, tuple], t: float
+                  ) -> Optional[tuple[float, list, bool]]:
+        """(intensity, colour, identify?) for a fixture identifying at ``t`` or not following the music; else None."""
+        i = ident.get(fid)
+        if i is not None and t < i[0]:
+            return 1.0, i[1], True
+        f = follow.get(fid)
+        return (f[0], f[1], False) if f is not None else None
+
+    @staticmethod
+    def _fixed(s: _Slot, inten: float, col: Sequence[float], te: float) -> dict:
+        """A FixtureFrame at ``inten`` x ``col`` (identify, a follow value): no layer, hit, master or cap."""
+        ff = {"intensity": inten, "colour": list(col), "rgb": [col[0] * inten, col[1] * inten, col[2] * inten],
+              "t_eval_ms": te}
+        if s.channels:
+            ff["dmx"] = colour_mix.encode(s.info, s.type, inten, list(col))
+        return ff
 
     def _record(self, st: _OutState, c0: float) -> None:
         st.eval_us[st.n_eval % EVAL_RING] = (time.perf_counter() - c0) * 1e6

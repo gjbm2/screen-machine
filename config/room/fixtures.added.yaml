@@ -1,0 +1,10 @@
+# config/room/fixtures.added.yaml: the lights registered on the Lights page (/lights). WRITTEN BY show_service's rig
+# API (POST, PUT and DELETE /show/api/v1/rig/fixtures; show_service/README.md S5.23), whole, on every change: don't
+# edit it by hand. show_service merges it under config/room/fixtures.yaml (the hand file; the same schema, README
+# S5.2), which wins on an id clash (a problem line), and re-reads it when it changes. Removing a light here removes the
+# node and output made for it once nothing else uses them.
+version: 1
+nodes: {}
+outputs: {}
+types: {}
+fixtures: {}

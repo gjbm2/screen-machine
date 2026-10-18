@@ -1168,6 +1168,18 @@ Per output and tick, in show_rt's output thread:
 
 Groups are by tag. This follows Afterglow's assigner model (EPL) and LX's tag groups, as references.
 
+**Light scenes** (18 Oct; as built: show_service/README.md S5.24). The lamps' movement comes in named scenes, as the
+screens' does: `config/live/light_scenes.yaml` (hot-reloaded), each a set of layers (the same keys as show.yaml's
+`looks.layers`), optional hits (with a `drop` flash) and a flash cap, tagged on the screens' preset scales (energy band,
+moods, genre fit, valence, organic, density). The director picks one at each look that lands, a song change and a
+person's Next look, never while Keep this look holds: a weighted random draw by the renderer's own matching rule
+(stream_service/tags.py) against room.direction, never the same one twice running. It goes out in room.look
+(`light_scene`, `light_scene_why`); the look engine runs that scene's layers and hits in place of `looks.layers`, and
+crossfades between scenes over the look's transition. No scenes: `looks.layers` as before. Every drop the director
+hears (structure's, a cue's forecast) reaches the engine as `light_scene_drop`, so a scene with drop hits flashes DMX
+on the line, whatever the peak tokens say. Hue keeps its caps (attack ≥ 80 ms, no hits, nothing faster than 160 ms)
+whatever a scene says.
+
 **Later, with the first moving fixture:** pan/tilt, aim at room points, spatial waves.
 
 ### 9.2 Fixtures: `config/room/fixtures.yaml` (hot-reloaded)
@@ -1196,6 +1208,17 @@ fixtures:
 - RGBA and RGBAW use non-negative least squares on the emitter chromaticities;
 - colour wheels take the nearest slot;
 - then per-fixture white-balance gains and a dimmer curve.
+
+**Registering lights** (18 Oct; as built: show_service/README.md S5.23). The Lights page (`/lights`) adds, changes,
+identifies and removes DMX lights through show_service's rig routes (`/show/api/v1/rig/fixtures`, `/types`,
+`/fixtures/{id}/identify`). A light is a name, a type (a generic RGB/RGBW/RGBA/... type, or an OFL type from
+fixtures.yaml), the node's IP, its universe (Port-Address ≥ 1) and a start address, with an optional placement, role
+and zone. The API writes them to `config/room/fixtures.added.yaml` (machine-owned, same schema, checked with the loader
+before it is written), which the registry merges under the hand-written fixtures.yaml; the hand file wins on a clash
+and is never written by code. A light's node and Art-Net output are found or made (on), so it sends the moment it is
+registered and works the moment its node is plugged in. room_service's DMX-lights device says which lights follow the
+music (`POST /show/api/v1/rig/follow`: "dmx", "off" or a steady colour; kept in the state dir). Each node's address is
+pinged every 10 s for the page's online dot.
 
 ### 9.3 Art-Net out (P5, when a node is bought)
 

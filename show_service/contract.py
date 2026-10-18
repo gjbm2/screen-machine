@@ -508,6 +508,18 @@ class LookData(TypedDict):
     hit: Optional["LookHit"]       # the drop's unison hit, applied per output from its caps (looks.py); None: none
     # README S5.18 (17 Oct): the composer's plan, for monitoring (dsp_monitor), never the Room page
     compose: "ComposeView"
+    # README S5.24 (18 Oct): the lamps' light scene (config/live/light_scenes.yaml), lamps and DMX only
+    light_scene: Optional[str]     # the scene the look engine runs (its layers and hits); None: show.yaml looks.layers
+    light_scene_why: Optional[str]  # short words: why it was picked ("a new song: energy 0.6, euphoric, techno")
+    light_scene_drop: Optional["LightSceneDrop"]   # the last drop line the director heard (the scene's drop flash)
+
+
+class LightSceneDrop(TypedDict):
+    """LookData.light_scene_drop: a drop line (structure's drop, a cue's forecast drop) for the light scene's drop
+    flash (looks.LookEngine.trigger_hit, taken once per ``id``), whatever the peak tokens say."""
+    id: str                        # "drop:<n>": +1 per drop line the director passes on
+    at_ms: float                   # the line, host time (CLOCK_MONOTONIC ms), as LookData.t_ms; ahead for a forecast
+    strength: float                # 0..1 (1.0: the events carry no strength)
 
 
 class ComposeView(TypedDict):
@@ -1578,6 +1590,11 @@ FIXTURE_TYPES_DIR = CONFIG_ROOM_DIR / "fixture-types"   # c8: OFL fixture JSON (
                                                     # ``file`` is relative to this directory
 LATENCY_FILE = CONFIG_ROOM_DIR / "latency.json"     # 10's schema v2, read-only for us: outputs.<key>.<attribute>
 NODES_STATE_FILE = STATE_DIR / "nodes.json"         # artnet_lan: what discovery last saw per node (atomic); never config
+FIXTURES_ADDED_FILE = CONFIG_ROOM_DIR / "fixtures.added.yaml"   # the Lights page's lights (README S5.23): written
+                                                    # only by the rig API (fixtures.Registrar), merged under
+                                                    # fixtures.yaml
+FOLLOW_STATE_FILE = STATE_DIR / "follow.json"       # outputs.Rig: who follows the music (POST /api/v1/rig/follow;
+                                                    # atomic)
 HUE_SECRETS_DIR = pathlib.Path.home() / ".config" / "screen-machine" / "hue"   # room_service.hue.pair writes
                                                     # <bridge_id>.json (0600); hue_out reads it only through room's
                                                     # BridgeSecrets.load (room_service.hue.client), read-only
@@ -1595,6 +1612,9 @@ ATTR_KINDS: tuple[str, ...] = ("intensity", "colour", "position")   # what a lat
 LATENCY_ATTRS: dict[str, tuple[str, ...]] = {"intensity": ("intensity", "brightness"), "colour": ("colour",),
                                              "position": ("position",)}
 FAILSAFE_MODES: tuple[str, ...] = ("hold", "zero", "full", "scene")   # a node's ArtAddress AcFail* (§9.3)
+#: POST /api/v1/rig/follow, per fixture (README S5.23): "dmx" follows the music (the Room page's "Follows the music"),
+#: "off" is dark; or a static colour {"hex": "#rrggbb", "bri": 0..100}. room_service's DMX-lights device sends them.
+FOLLOW_WORDS: tuple[str, ...] = ("dmx", "off")
 #: OutputStatus.state words (HueStatus.state too). Room's hue adapter never sees these: the Hue routes answer the four
 #: HUE_ROOM_STATES words (hue_room_state), and the richer word stays in /api/v1/rig.
 OUTPUT_STATES: tuple[str, ...] = (
@@ -1731,6 +1751,40 @@ class RigView(TypedDict):
     types: dict[str, TypeInfo]
     fixtures: dict[str, FixtureInfo]
     groups: dict[str, list[str]]   # group -> fixture ids in order
+
+
+class RigFixtureRow(TypedDict):
+    """GET /api/v1/rig ``fixtures`` (README S5.23): one row per fixture in the registry, in its order, for the Lights
+    page and room_service's DMX-lights device."""
+    id: str
+    label: str
+    kind: str                      # its type's (FIXTURE_KINDS)
+    type: str
+    type_label: Optional[str]      # page words (fixtures.type_label)
+    output: Optional[str]
+    driver: Optional[str]          # its output's (DRIVERS); None: unrouted
+    node_ip: Optional[str]         # artnet: where frames go (discovery's address, else last_ip); None otherwise
+    universe: Optional[int]        # artnet: its output's Port-Address; None otherwise
+    address: Optional[int]
+    footprint: int
+    placement: Optional[str]
+    role: Optional[str]            # as the director decides it: its own, else its placement's, else the default role
+    zone: Optional[str]
+    follow: Any                    # FOLLOW_WORDS or {"hex", "bri"}; None: never set (the look engine's default)
+    online: Optional[bool]         # its node's address answered the last ping (every ONLINE_CHECK_S); None: no node
+                                   # address, or not checked yet
+    last_rgb: Optional[str]        # "#rrggbb": the last frame sent for it (colour x intensity); None: none yet
+    editable: bool                 # it is in fixtures.added.yaml: the Lights page may change or remove it
+
+
+class RigTypeRow(TypedDict):
+    """GET /api/v1/rig/types (README S5.23): a type a DMX light can be registered with."""
+    id: str
+    label: str                     # page words: "RGBW light (4 channels)"
+    source: str                    # "builtin" (fixtures.GENERIC_TYPES) | "ofl" (a fixtures.yaml type)
+    footprint: int
+    channels: list[str]            # channel names in DMX order
+    kind: str                      # FIXTURE_KINDS
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
