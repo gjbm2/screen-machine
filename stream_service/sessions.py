@@ -405,9 +405,10 @@ class Session(EngineListener):
             out["notes"] = out["chroma"] = 1.0 if snd.present else 0.0
         music = self.mgr.music_feed.presence(time.monotonic())
         if music is not None:
-            out["spectrum"] = music if snd is None or snd.spectrum_live else 0.0
-            if snd is not None:
-                out["scope"] = out["fft"] = music if snd.scope_live else 0.0
+            spec, scope = getattr(snd, "spectrum_live", None), getattr(snd, "scope_live", None)
+            out["spectrum"] = music if snd is None or spec is None or spec else 0.0
+            if scope is not None:
+                out["scope"] = out["fft"] = music if scope else 0.0
         return out
 
     def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:
