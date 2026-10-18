@@ -52,10 +52,10 @@ RANKED = {"scenes": ("busy", "motion", "brightness", "colourful"), "effects": ("
 
 
 def live_sessions() -> bool:
-    """Any stream session at all (fail closed: unknown = yes)."""
+    """Any stream session that hasn't ended (fail closed: unknown = yes)."""
     try:
         with urllib.request.urlopen("http://localhost:8702/api/sessions", timeout=5) as r:
-            return bool(json.load(r).get("sessions"))
+            return any(x.get("state") != "ended" for x in json.load(r).get("sessions") or [])
     except Exception:
         return True
 
