@@ -34,6 +34,17 @@ WebSocket fan-out with drop-to-keyframe are reused here.
   writer thread's own CPU per slot), `slot_to_packet_ms` and `forced_idrs`. Bounded P4000 run, 18 Oct (real Engine,
   synthetic scene): 2160p30 29.8 fps, encode thread 2.2 ms CPU per frame (p95 3.2), slot to packet p50 105 ms;
   2160p60 59.5 fps, 2.2 ms, 55 ms; 0 decode errors; whole process 4.2-4.4 ms CPU per frame.
+* **60 fps and the degradation controller** (4K60 plan change 5). `"fps": 30 | 60` per screen in the switches file
+  (default 30): a session's profile becomes its sibling at that rate (`hevc-2160p30` asked -> `hevc-2160p60` live;
+  `/api/sessions` keeps `profile` as asked and adds `profile_live`). `hevc-2160p60` is 40M CBR with a 1 s buffer at
+  HEVC Main tier level 5.1 (`hev1.1.2.L153.90`; a 2 s buffer would be High tier). `degrade.py`, one per session where
+  its Engine runs (`"degrade": "on" | "off"`), decides once a second from the frame records (render-thread host time,
+  real GPU span, encode time, repeats, late slots) and steps down at most once a second: fewer effects (the FX
+  director's trim), then the scene every 2nd slot (a floor under the scene's own `rate_div`), then 60 -> 30 fps (GPU
+  encoder only: NVENC Reconfigure, frame ids stay on the 60 Hz grid, fMP4 samples of 2 ticks, the in-band SPS pinned
+  to the init's). Up after 10 s (fps 30 s) when the load without the step projects under 0.7 of the period; a failed
+  step up doubles its wait. Frozen across entry and exit. Reported as `degrade{level, step, why, since, text, ...}` in
+  `/api/sessions`, a `session.degrade` event and one line on the details panel ("60 -> 30 fps: computer busy").
 
 ## Run
 

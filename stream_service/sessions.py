@@ -76,7 +76,7 @@ from .plugins import Registry
 from .plugins.base import ParamError
 from .plugins.sources.image import ImageSource, load_png
 from .presets import Presets, SceneSpec, TransitionSpec
-from .profiles import PROFILES, Profile
+from .profiles import PROFILES, Profile, at_fps
 from .renderer import Engine, EngineListener, Retire, StartTransition, UpdateParams
 from .switches import StreamSwitches
 
@@ -219,6 +219,8 @@ class Session(EngineListener):
         else:
             self.engine = Engine(profile=profile, gpu=gpu, post=mgr.post, listener=self, name=sid)
         self.engine.encoder = sw.encoder(screen) if sw is not None else "ffmpeg"
+        self.engine.degrade_mode = sw.degrade(screen) if sw is not None else "on"   # change 5: degrade.py
+        self.degrade: Optional[dict] = None         # its last state (on_degrade): the panel, the summary's fallback
         self.media.want_key = getattr(self.engine, "request_keyframe", None)   # a joining player gets an IDR at once
         self.lock = asyncio.Lock()
         self.pending_scene: Any = None      # set up, shown on go
@@ -2219,6 +2221,20 @@ class Session(EngineListener):
             self.set_state("held")
             self.emit("session.held", hold_pts=self.hold_pts)
 
+    def on_degrade(self, info: dict) -> None:
+        """The degradation controller stepped (degrade.py, in the engine): session.degrade, the panel's line; its fx
+        step reaches the FX director here (fewer, cheaper bus effects), its fps step the media hub's backlog."""
+        if self.state in ("ended", "failed"):
+            return
+        self.degrade = dict(info)
+        now = time.monotonic()
+        autos = sum(1 for st in self.fx.stack if getattr(st, "origin", "manual") == "auto")
+        self.fx_director.set_trim(bool(info.get("fx_trim")), now, autos)
+        if info.get("out_fps"):
+            self.media.fps = info["out_fps"]
+        self.emit("session.degrade", **{k: info.get(k) for k in ("level", "step", "steps", "why", "since", "text",
+                                                                  "out_fps", "floor", "load")})
+
     def on_fx(self, info: dict) -> None:
         if self.state in ("ended", "failed"):
             return
@@ -2324,7 +2340,10 @@ class Session(EngineListener):
         ds = self.following() or self                  # who directs this screen (the room's leader, else itself)
         nx = ds.director.next_eligible(time.monotonic())
         return {
-            "session": self.id, "screen": self.screen, "state": self.state, "profile": self.profile.name,
+            # "profile" as asked (room matches it when it adopts a session); "profile_live" what runs, after the
+            # screen's fps switch (change 5: hevc-2160p30 asked, hevc-2160p60 live on a 60 fps screen)
+            "session": self.id, "screen": self.screen, "state": self.state,
+            "profile": getattr(self, "profile_asked", None) or self.profile.name, "profile_live": self.profile.name,
             "created_at": _iso(self.created_at), "scene": self.scene_spec.name,
             "clients": len(self.media.clients), "frames": e["frames"], "late_frames": e["late_frames"],
             "render_ms": e["render_ms"], "encode_queue": e["encode_queue"],
@@ -2368,6 +2387,8 @@ class Session(EngineListener):
             "plugin_errors": self.plugin_error_count,
             # GPU frame-time guard
             "slow_trips": self.slow_trips, "gpu_guard": e.get("gpu_guard"),
+            # change 5: the degradation controller {level, step, why, since, text, out_fps, ...} (degrade.py)
+            "degrade": e.get("degrade") or self.degrade,
         }
 
     def snapshot_events(self) -> list[dict]:
@@ -2809,8 +2830,10 @@ class SessionManager:
         pname = body.get("profile", "hevc-2160p60")
         if pname not in PROFILES:
             raise ParamError("unknown_profile", f"unknown profile {pname!r} (known: {sorted(PROFILES)})")
+        sw = getattr(self, "switches", None)     # change 5: the screen's frame rate (stream_switches.json "fps")
         try:
-            profile = PROFILES[pname].with_trc(body.get("color_trc"))
+            profile = at_fps(PROFILES[pname], sw.fps(screen)) if sw is not None else PROFILES[pname]
+            profile = profile.with_trc(body.get("color_trc"))
         except ValueError as e:
             raise ParamError("bad_request", str(e)) from None
         if "width" in body or "height" in body:
@@ -2876,7 +2899,7 @@ class SessionManager:
         if not isinstance(hud, bool):
             raise ParamError("bad_request", "hud must be true or false")
         return dict(screen=screen, gpu=gpu, profile=profile, scene=scene, t_in=t_in, t_out=t_out, ttl_s=ttl,
-                    idempotency_key=key, png=png, rgb=rgb, look=look, room=look_room, hud=hud)
+                    idempotency_key=key, png=png, rgb=rgb, look=look, room=look_room, hud=hud, profile_asked=pname)
 
     def attach_for(self, s: Session, host: str) -> dict:
         base = self.public_base or f"ws://{host}"
@@ -2915,6 +2938,7 @@ class SessionManager:
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
             s.room = p["room"]
             s.hud_wanted = p["hud"]
+            s.profile_asked = p.get("profile_asked")
             s.attach = self.attach_for(s, host)
             anchor = await s.decode(p["png"], p["rgb"])   # ParamError (400) before the session exists
             self.sessions[sid] = s

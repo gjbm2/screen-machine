@@ -4,13 +4,21 @@ No host copy and no ffmpeg: the renderer converts each frame into one of its NV1
 stream, and the encode thread hands that surface to ``Encode()`` (the GIL is released inside it).  The encoder is
 created on CuPy's context with the render stream, so its input copy is stream-ordered after the frame's kernels;
 the encode thread still waits for the slot's event first (never the render thread).  HEVC P4, ultra-low-latency
-tuning, spatial AQ 12, CBR at the profile's bitrate (VBV 2 s, as ffmpeg's default), GOP as the profile, no B-frames,
-parameter sets repeated on every IDR.  ``submit(..., idr=True)`` forces an IDR with VPS/SPS/PPS.
+tuning, spatial AQ 12, CBR at the profile's bitrate (VBV 2 s, as ffmpeg's default, or the profile's ``vbv_s``), GOP as
+the profile, no B-frames, parameter sets repeated on every IDR.  ``submit(..., idr=True)`` forces an IDR with
+VPS/SPS/PPS.  A profile's ``level`` is held at Main tier (``level``/``tier`` options): NVENC otherwise re-derives the level
+from the frame rate, bitrate and buffer (4K60 at 40M with a 2 s buffer is High tier 5.1).
+
+``set_fps(fps)`` (the degradation controller's fps step, degrade.py): Reconfigure() the frame rate, no IDR, same
+bitrate and buffer (1.2 ms on the P4000).  With the level held, the only change in the stream is the SPS's VUI
+timing, which bitstream.HevcAnnexB pins back to the record's.
 
 Packets become what today's ffmpeg FLV path delivers (bitstream.HevcAnnexB): an hvcC from GetSequenceParams(), the
 same length-prefixed samples, and the profile's colour in the SPS VUI (rewritten; PyNvVideoCodec has no VUI colour
 option) as well as in the init segment's colr box.  Byte-identical for the same coded packets
 (tests/test_nvenc.py).  PyNvVideoCodec holds its output back by 3 frames (measured: 54 ms at 60p, 100 ms at 30p).
+Its packets' ``timestamp`` is its own input count, whatever ``inputTimeStamp`` says (measured, 19 Oct), so each
+packet gets back the frame id it was submitted with: no B-frames, so packets come out in input order.
 
 Same interface as encoder.NvencPipeline for the renderer: on_config / on_frame callbacks (here called on the
 thread that calls submit()), ``submit(frame, frame_id, idr)`` and ``close()``.  It raises instead of exiting: the
@@ -18,6 +26,8 @@ renderer then falls back to the ffmpeg pipeline for the rest of the session.
 """
 from __future__ import annotations
 
+import collections
+import time
 from typing import Any, Callable, Optional
 
 from .bitstream import HevcAnnexB, StreamConfig
@@ -53,6 +63,7 @@ class Surface:
 class GpuEncoder:
     def __init__(self, codec: str, width: int, height: int, fps: int, *, cp: Any, stream: Any, bitrate: str,
                  gop_seconds: float = 1.0, colr: Optional[tuple[int, int, int, bool]] = None, name: str = "",
+                 vbv_s: Optional[float] = None, level: Optional[str] = None,
                  clock: Callable[[], float],
                  on_config: Callable[[StreamConfig], None],
                  on_frame: Callable[[int, bool, bytes, float], None]):
@@ -68,7 +79,13 @@ class GpuEncoder:
         self.gop = max(1, round(gop_seconds * fps))
         self.opts = {"codec": "hevc", "preset": PRESET, "tuning_info": TUNING, "rc": "cbr", "fps": str(fps),
                      "gop": str(self.gop), "idrperiod": str(self.gop), "bf": "0", "bitrate": str(bits),
-                     "maxbitrate": str(bits), "vbvbufsize": str(2 * bits), "repeatspspps": "1", "aq": AQ}
+                     "maxbitrate": str(bits), "vbvbufsize": str(int((vbv_s or 2.0) * bits)), "repeatspspps": "1",
+                     "aq": AQ}
+        if level:
+            self.opts.update(level=str(level), tier="main")
+        self.fps_now = fps
+        self.reconfigures = 0
+        self._ids: collections.deque[int] = collections.deque()    # frame ids in, in order: packets out map back
         ctx = int(cp.cuda.driver.ctxGetCurrent())
         if not ctx:
             raise RuntimeError("no current CUDA context")
@@ -101,11 +118,30 @@ class GpuEncoder:
         pkts = enc.Encode(frame, pp)
         t = self.clock()
         self.frames_in += 1
+        ids = self._ids
+        ids.append(frame_id)
         for p in pkts:
             sample, key = self.mux.sample(p["data"])
             self.frames_out += 1
-            self.on_frame(int(p["timestamp"]), key, sample, t)
+            self.on_frame(ids.popleft() if ids else int(p["timestamp"]), key, sample, t)
         return t
+
+    def set_fps(self, fps: int) -> float:
+        """Reconfigure() to this frame rate (the encode thread, between two Encode() calls; no IDR).  -> ms.  Raises
+        if the encoder refuses: the caller keeps encoding at the old rate's bits per frame."""
+        enc = self.enc
+        if enc is None:
+            raise RuntimeError("encoder closed")
+        if fps == self.fps_now:
+            return 0.0
+        rp = enc.GetEncodeReconfigureParams()
+        rp.frameRateNum, rp.frameRateDen = int(fps), 1
+        t0 = time.perf_counter()
+        if enc.Reconfigure(rp) is False:
+            raise RuntimeError(f"Reconfigure to {fps} fps refused")
+        self.fps_now = int(fps)
+        self.reconfigures += 1
+        return (time.perf_counter() - t0) * 1000.0
 
     def close(self) -> None:
         enc, self.enc = self.enc, None

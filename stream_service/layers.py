@@ -30,6 +30,11 @@ in between, so a struggling GPU drops the scene's frame rate (e.g. 15 fps in a 3
 behind or tripping; transitions, effects and the stream itself still run every frame.  The guard's budget for the
 scene scales with ``rate_div``: it trips only a scene that cannot keep up even at ``RATE_MAX_DIV``.  The rate comes
 back up once the cost has stayed low enough for ``RATE_UP_S``.
+
+The degradation controller (degrade.py, plan change 5) bounds it from below: ``FrameCtx.rate_floor`` (2 = new content
+every 2nd slot) is a floor under every scene's own ``rate_div``; the scene's own logic is unchanged.  ``FrameCtx.step``
+is the controller's fps step: frame ids stay on the profile's grid (``t = n / fps``) and advance by ``step`` per output
+slot, so a rate divider counts output slots (``div * step`` ids) and the scene's budget is the output period.
 """
 from __future__ import annotations
 
@@ -88,6 +93,8 @@ class FrameCtx:
     drawn: int = 0
     held: int = 0
     div: int = 1
+    step: int = 1           # frame ids per output slot (2: the degradation controller's fps step, 60 -> 30)
+    rate_floor: int = 1     # the degradation controller's floor under every scene's rate_div (2: every 2nd slot)
 
     @property
     def t(self) -> float:
@@ -136,6 +143,7 @@ class SourceLayer(Layer):
         self._prev_ms: Optional[float] = None       # the sample before: one spike alone never demotes
         self._samples_seen = 0
         self._low_since: Optional[float] = None
+        self.div_now = 1                            # what it renders at: rate_div or the controller's floor
 
     def _adapt_rate(self, fc: FrameCtx) -> None:
         """Pick rate_div from this scene's real cost (gpu_stat, read a frame or two late): the larger of its render
@@ -150,7 +158,7 @@ class SourceLayer(Layer):
         ms, self._prev_ms = (cost if self._prev_ms is None else min(cost, self._prev_ms)), cost
         # up at once on a costly render (two in a row: a lone spike is a busy host, not the scene), down smoothly
         self.cost_ema = ms if self.cost_ema is None else max(ms, self.cost_ema + RATE_EMA * (ms - self.cost_ema))
-        per = RATE_TARGET * 1000.0 / fc.fps
+        per = RATE_TARGET * 1000.0 * max(1, getattr(fc, "step", 1)) / fc.fps   # of an output slot
         want = min(RATE_MAX_DIV, max(1, math.ceil(self.cost_ema / per)))
         if want > self.rate_div:
             self._set_rate(want, fc)
@@ -165,18 +173,24 @@ class SourceLayer(Layer):
     def _set_rate(self, div: int, fc: FrameCtx) -> None:
         log.info("[%s] scene %s: %.1f ms per render (own CPU or real GPU): renders every %s (%.1f fps)",
                  getattr(fc, "name", "") or "-", getattr(self.source, "name", type(self.source).__name__),
-                 self.cost_ema, "frame" if div == 1 else f"{div} frames", fc.fps / div)
+                 self.cost_ema, "frame" if div == 1 else f"{div} frames",
+                 fc.fps / max(1, getattr(fc, "step", 1)) / div)
         self.rate_div, self._low_since = div, None
 
     def render(self, fc: FrameCtx, out: Any) -> None:
         if not self.failed:
             self._adapt_rate(fc)
-            if self.rate_div > 1 and self.hold is not None and self.n_rendered is not None \
-                    and 0 <= fc.n - self.n_rendered < self.rate_div:
-                fc.ops.copy(self.hold, out)                 # between renders: the last frame again (dt accrues)
-                fc.held += 1
-                fc.div = max(fc.div, self.rate_div)
-                return
+        div = self.rate_div
+        floor = getattr(fc, "rate_floor", 1)
+        if floor > div and not getattr(self.source, "internal", False):
+            div = floor                                     # the degradation controller's floor (degrade.py)
+        self.div_now = div
+        if not self.failed and div > 1 and self.hold is not None and self.n_rendered is not None \
+                and 0 <= fc.n - self.n_rendered < div * max(1, getattr(fc, "step", 1)):
+            fc.ops.copy(self.hold, out)                     # between renders: the last frame again (dt accrues)
+            fc.held += 1
+            fc.div = max(fc.div, div)
+            return
         t_local = fc.t - self.t0
         dt = 0.0 if self.last_t is None else max(0.0, t_local - self.last_t)
         self.last_t = t_local
@@ -188,9 +202,9 @@ class SourceLayer(Layer):
         if self.failed:
             fc.ops.fill(out, (0, 0, 0))
             return
-        if self.rate_div > 1 and self.hold is None:
+        if div > 1 and self.hold is None:
             self.hold = fc.pool.acquire()
-        elif self.rate_div == 1 and self.hold is not None:
+        elif div == 1 and self.hold is not None:
             fc.pool.release(self.hold)
             self.hold = None
         dst = out if self.hold is None else self.hold
@@ -207,7 +221,7 @@ class SourceLayer(Layer):
                 fc.timer.end(tok)
         self.n_rendered = fc.n
         fc.drawn += 1
-        fc.div = max(fc.div, self.rate_div)
+        fc.div = max(fc.div, div)
         if dst is not out:
             fc.ops.copy(dst, out)
 

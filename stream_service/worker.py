@@ -73,6 +73,7 @@ class _Listener:
     def on_failed(self, *a): ...
     def on_plugin_error(self, *a): ...
     def on_fx(self, *a): ...
+    def on_degrade(self, *a): ...
 
 
 _LISTENER = _Listener()
@@ -368,6 +369,8 @@ class Worker:
         if anchor is None:
             raise RuntimeError("anchor handle unknown")
         eng.encoder = d.get("encoder") or "ffmpeg"
+        # the degradation controller runs here; a control that predates it sends no "degrade": none, as before
+        eng.degrade_mode = d.get("degrade", "off")
         eng.start(anchor)
         h = eng.hud
         if h is not None:
@@ -584,7 +587,8 @@ class Worker:
                 "encoder_active": eng.encoder_active, "encoder_fallback": eng.encoder_fallback,
                 "bus_level": float(eng.bus.level),
                 "hud": None if h is None else {"fade": h.fade, "ema_ms": h.ema_ms, "failed": h.failed, "on": h.on},
-                "layer": None if lay is None else {"rate_div": lay.rate_div, "cost_ema": lay.cost_ema},
+                "layer": None if lay is None else {"rate_div": getattr(lay, "div_now", lay.rate_div),
+                                                   "cost_ema": lay.cost_ema},
                 "slots": slots, "mods": mods, "proc": self._proc(eng)}
 
     def _proc(self, eng: Any) -> dict:

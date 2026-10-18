@@ -37,11 +37,22 @@ class Profile:
     color_range: str = "tv"
     target_buffer_ms: int = 300
     extra: tuple[str, ...] = field(default=())
+    # Rate-control buffer in seconds of the bitrate (None: 2 s on the GPU path, ffmpeg's own default on the pipe) and
+    # an HEVC level held at Main tier ("5.1"): a 2 s buffer at 40M puts 4K60 in High tier, and without a fixed level
+    # NVENC re-derives it after an fps Reconfigure (4K30 at 40M: High tier 5.0).  Measured on the P4000, 18 Oct.
+    vbv_s: Optional[float] = None
+    level: Optional[str] = None
 
     def encoder_args(self) -> list[str]:
-        """Extra ffmpeg output args: VUI colour tags (written into the SPS / sequence header)."""
-        return ["-color_primaries", self.color_primaries, "-color_trc", self.color_trc,
-                "-colorspace", self.colorspace, "-color_range", self.color_range, *self.extra]
+        """Extra ffmpeg output args: VUI colour tags (written into the SPS / sequence header), the buffer and level."""
+        out = ["-color_primaries", self.color_primaries, "-color_trc", self.color_trc,
+               "-colorspace", self.colorspace, "-color_range", self.color_range]
+        if self.vbv_s:
+            from .encode.encoder import _parse_rate
+            out += ["-bufsize", str(int(_parse_rate(self.bitrate) * self.vbv_s))]
+        if self.level:
+            out += ["-level", self.level, "-tier", "main"]
+        return [*out, *self.extra]
 
     def colr(self) -> tuple[int, int, int, bool]:
         """(primaries, transfer, matrix, full_range) for the init segment's colr/nclx box."""
@@ -54,7 +65,8 @@ class Profile:
                 # additive (not in LIVE_V1's example): how the stream is tagged
                 "color": {"primaries": self.color_primaries, "trc": self.color_trc,
                           "matrix": self.colorspace, "range": self.color_range},
-                "target_buffer_ms": self.target_buffer_ms, "nvenc_delay_frames": self.nvenc_delay}
+                "target_buffer_ms": self.target_buffer_ms, "nvenc_delay_frames": self.nvenc_delay,
+                "vbv_s": self.vbv_s, "level": self.level}
 
     def with_trc(self, trc: Optional[str]) -> "Profile":
         if not trc or trc == self.color_trc:
@@ -76,8 +88,9 @@ AQ = ("-spatial-aq", "1", "-aq-strength", "12")
 LIVE_BUFFER_MS = 120
 
 PROFILES: dict[str, Profile] = {p.name: p for p in (
-    Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "50M", preset="p4", nvenc_delay=2, extra=AQ,
-            target_buffer_ms=LIVE_BUFFER_MS),
+    # 4K60 (plan change 5): 40M CBR with a 1 s buffer is HEVC Main tier level 5.1 (its 40 Mbit/s limit); 50M is not
+    Profile("hevc-2160p60", "hevc", 3840, 2160, 60, "40M", preset="p4", nvenc_delay=2, extra=AQ,
+            target_buffer_ms=LIVE_BUFFER_MS, vbv_s=1.0, level="5.1"),
     # nvenc_delay 1 (+33 ms): ffmpeg reads the next frame while NVENC works; interim until GPU-resident encode (W1.6)
     Profile("hevc-2160p30", "hevc", 3840, 2160, 30, "30M", preset="p5", nvenc_delay=1, extra=AQ,
             target_buffer_ms=LIVE_BUFFER_MS),
@@ -89,3 +102,16 @@ PROFILES: dict[str, Profile] = {p.name: p for p in (
 )}
 
 DEFAULT_PROFILE = "hevc-2160p60"
+
+
+def at_fps(p: Profile, fps: int) -> Profile:
+    """The same picture at another frame rate (stream_switches.json ``fps``): the sibling profile of that rate
+    (hevc-2160p30 <-> hevc-2160p60: its bitrate, preset, delay, buffer and level) with this one's size and colour.
+    Itself when it has that rate already or no sibling (h264-720p30)."""
+    if p.fps == fps:
+        return p
+    base, _, _ = p.name.rpartition("p")
+    sib = PROFILES.get(f"{base}p{fps}")
+    if sib is None or sib.codec != p.codec:
+        return p
+    return replace(sib, w=p.w, h=p.h, color_trc=p.color_trc)
