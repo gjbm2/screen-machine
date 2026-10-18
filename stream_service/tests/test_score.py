@@ -151,7 +151,7 @@ def test_builder_writes_the_analysed_metre():
     bars = [b for b in sb.poll(now) if not b.marker]
     assert len(bars) >= 8 and all(b.units == 12 and b.meter == (3, 4) for b in bars)
     assert bars[1].staves[1][0].pitches and bars[1].staves[1][0].start == 0    # the bass note on beat 1
-    assert sb.key()[2] == -1
+    assert sb.key()[2] == 0                          # the reply's flat is never played (its G chords play B natural)
     from stream_service.score.mei import bar_doc, header_doc
     assert 'meter.count="3" meter.unit="4"' in bar_doc(bars[1], -1)
     assert 'meter.count="6" meter.unit="8"' in header_doc(0, meter=True, sig=(6, 8))
@@ -427,3 +427,27 @@ def test_change_doc_engraves():
     for doc in (change_doc(3, (3, 4)), change_doc(-2), change_doc(0, (6, 8))):
         meta, ink = engrave(tk, {"id": 1, "mei": doc, "space_px": 14.0})
         assert meta["ok"] and meta["measures"] and len(ink) == meta["w"] * meta["h"]
+
+
+def test_a_signature_waits_for_its_sharps_and_flats_to_be_played():
+    """The reply's key is written less its outermost sharps or flats not yet played (an early C D E F isn't F major)."""
+    sb = ScoreBuilder()
+    t = 0.0
+    for p in (60, 62, 64, 65, 67, 69):                       # C to A: no B or B flat yet
+        sb.note_on(p, 0.6, t)
+        sb.note_off(p, t + 0.3)
+        t += 0.3
+    sb._key_vote(-1)
+    assert sb.key()[2] == 0
+    sb.note_on(70, 0.6, t)                                   # the B flat
+    sb.note_off(70, t + 0.3)
+    assert sb.key()[2] == -1
+    sb2 = ScoreBuilder()
+    for i, p in enumerate((62, 64, 66, 67, 69, 71)):         # D major's first six: F sharp, no C sharp yet
+        sb2.note_on(p, 0.6, i * 0.3)
+        sb2.note_off(p, i * 0.3 + 0.3)
+    sb2._key_vote(2)
+    assert sb2.key()[2] == 1
+    sb2.note_on(73, 0.6, 2.0)
+    sb2.note_off(73, 2.3)
+    assert sb2.key()[2] == 2

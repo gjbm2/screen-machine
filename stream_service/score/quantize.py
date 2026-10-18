@@ -70,19 +70,20 @@ LINE_TREBLE_LOW, LINE_BASS_HIGH = 57, 64   # a single line changes staff only pa
 KEY_TAU_S = 30.0
 DYNAMICS = ((0.30, "pp"), (0.42, "p"), (0.54, "mp"), (0.66, "mf"), (0.80, "f"), (2.0, "ff"))
 # the analysis
-ANALYSE_S = 1.5                    # a request at most this often while notes come
+ANALYSE_S = 1.0                    # a request at most this often while notes come
 WINDOW_S = 24.0                    # the notes sent (the networks were checked on 24 s windows) ...
 MAX_NOTES = 600                    # ... at most the newest this many (dense playing: a shorter window, a quick reply)
 MIN_NOTES = 12
-MIN_DECIDE_S = 6.0                 # the metre is taken once the phrase has this much playing and ...
+MIN_DECIDE_S = 3.0                 # the metre is taken once the phrase has this much playing and ...
 DECIDE_P = 0.7                     # ... the evidence is this confident, or
-MAX_DECIDE_S = 14.0                # ... anyway after this much
+MAX_DECIDE_S = 6.0                 # ... anyway after this much (early, then corrected by a rewrite: owner, 18 Oct,
+                                   # sooner on the page even if it sometimes self-adjusts)
 EV_DECAY = 0.75                    # each reply's weight in the evidence, against the next one's
 REWRITE_P = 0.85                   # the evidence for another metre that rewrites the phrase ...
 REWRITE_RUN = 2                    # ... in this many replies running ...
 REWRITE_S = 45.0                   # ... while the phrase is younger than this
 HISTORY_S = 60.0                   # the phrase's notes kept (the analysis window, and a rewrite)
-TRUST_S = 1.2                      # a bar is written once it ends this long before the newest analysed note
+TRUST_S = 0.6                      # a bar is written once it ends this long before the newest analysed note
 FAST_BEAT_S = 0.28                 # an analysed beat faster than this (215 bpm: a beat on every note of a fast
                                    # run) is written at half the rate; jazz at 180 keeps its quarters
 PAUSE_BEATS = 3.0                  # a silence this long inside a phrase (a break): playing resumes on a beat
@@ -91,6 +92,9 @@ LOCAL_BEATS = 8                    # the tempo a merge goes by: our last this ma
 EVEN_IOI, EVEN_VEL = 0.08, 0.05     # metreless: onsets within 8 % of even, velocities within 0.05 of one swell
 BREAK_IOI = 2.5                    # metreless: a gap this many times the usual onset interval ends a run
 KEY_HOLD = 2                       # replies in a row a new key signature needs
+KEY_SHOWN = 0.02                   # a signature's outermost sharp or flat is written once played this much (of the
+                                   # most played pitch class): an early C to A doesn't take F major's flat
+SHARPS, FLATS = (6, 1, 8, 3, 10, 5, 0), (10, 3, 8, 1, 6, 11, 4)    # pitch classes, in signature order
 
 # Krumhansl-Kessler key profiles (major, minor), tonic first
 KK_MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
@@ -680,7 +684,7 @@ class ScoreBuilder:
         tonic and mode stay Krumhansl's)."""
         w = self.pc_weight
         if sum(w) <= 0:
-            return 0, False, self.key_fifths or 0
+            return 0, False, self._shown(self.key_fifths or 0)
         best = (-2.0, 0, False)
         for tonic in range(12):
             for minor, prof in ((False, KK_MAJOR), (True, KK_MINOR)):
@@ -690,12 +694,21 @@ class ScoreBuilder:
                     best = (r, tonic, minor)
         _, tonic, minor = best
         if self.key_fifths is not None:
-            return tonic, minor, self.key_fifths
+            return tonic, minor, self._shown(self.key_fifths)
         major_tonic = (tonic + 3) % 12 if minor else tonic
         fifths = (major_tonic * 7) % 12
         if fifths > 6:
             fifths -= 12                      # prefer flats from F# / Gb (6 -> keep 6 sharps), Db = -5 ...
-        return tonic, minor, fifths
+        return tonic, minor, self._shown(fifths)
+
+    def _shown(self, fifths: int) -> int:
+        """The signature less its outermost sharps or flats not yet played (the metre comes after 3 s now, often
+        before them): a step back only drops an alteration nobody played, so no played note is spelled worse."""
+        w = self.pc_weight
+        floor = KEY_SHOWN * max(w)
+        while fifths and w[(SHARPS if fifths > 0 else FLATS)[abs(fifths) - 1]] <= floor:
+            fifths -= 1 if fifths > 0 else -1
+        return fifths
 
     # -- output --------------------------------------------------------------------------------------------------
     def bars_ahead(self, t: float) -> Optional[float]:

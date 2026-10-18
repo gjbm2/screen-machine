@@ -13,7 +13,7 @@ Listens to the piano (``listens = ("notes",)``, CONVENTIONS §2b).  stream_servi
 worker (score/analyse.py, its own venv and process) finds the beats, the metre (2/4 3/4 4/4 6/8 9/8 12/8 and where
 the bar lines fall), the key signature and each note's hand from the last 24 s of playing; the quantiser writes
 bars on those beats (16ths, swing read straight) once they're a little behind the newest notes.  A phrase's first
-bar waits for the metre (6-12 s); without the worker it writes 4/4 on a beat clock of its own, hands split at
+bar waits for the metre (3-6 s, corrected by a rewrite if it turns); without the worker it writes 4/4 on a beat clock of its own, hands split at
 middle C.  Each bar is engraved on its own (no clefs or signatures, mei.bar_doc) and each
 line's start once (brace, clefs, key, and the time signature when a phrase starts: mei.header_doc), all at one
 fixed staff size, by a worker process (Verovio -> SVG -> resvg), so the render thread never waits.
