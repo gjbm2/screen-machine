@@ -11,12 +11,16 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
   SHOW_FILE          config/room/show.yaml       SHOW_VIBES_FILE  config/room/vibes.yaml
   SHOW_STATE_DIR     ~/.local/state/screen-machine/show (state.json, the jsonl logs, the test children's logs)
   SHOW_BEAT_THREAD   off (default: inline on show-rx) | on: Stage 4's show-beat thread for madmom's activation
+  SHOW_BEAT_PROC     off (default) | on: madmom's activation in its own child process (beatproc.py; wins over the
+                     thread)          SHOW_BEAT_NICE  the child's nice (default 0, as madmom has inside show_service)
+  SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
+                     packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
 args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
   --artnet-target HOST[:PORT]|off (over SHOW_ARTNET_TARGET; default off)   --stream-priority a,b,c
   --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --vibes-file PATH   --state-dir PATH
-  --beat-thread on|off (over SHOW_BEAT_THREAD; default off)
+  --beat-thread on|off (over SHOW_BEAT_THREAD; default off)   --beat-proc on|off (over SHOW_BEAT_PROC; default off)
 ```
 
 * **Sender spec:** ``NAME=HOST[:PORT][/STREAM,STREAM…]``. ``HOST`` is a DNS name in committed config (no literal
@@ -43,6 +47,11 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   on show-rx, as in Stage 3. Measured in the real process (16 Oct), the show-beat thread cost +0.14-0.15 of a core
   in GIL hand-overs and made dsp's hop p95 2-3x worse, which put show_service + the ML worker over the owner's 0.8.
   ``on`` turns it on (a restart).
+* **The beat process** (18 Oct, show-rx over capacity: the thread adds no capacity under the GIL): ``Options.beat_proc``,
+  ``--beat-proc`` over ``SHOW_BEAT_PROC``, off by default (and in code): ``clock.Clock(beat_proc=True)`` runs madmom
+  in a child (``python -m show_service.beatproc``, nice ``SHOW_BEAT_NICE``, default 0), inline until it says hello
+  and whenever it is gone. ``Options.rx_coalesce_min`` (``SHOW_RX_COALESCE_MIN``, an int >= 1, default 1) is the
+  receiver's ``coalesce_min``.
 """
 
 from __future__ import annotations
@@ -82,6 +91,9 @@ class Options:
     vibes_file: pathlib.Path = contract.VIBES_FILE
     state_dir: pathlib.Path = contract.STATE_DIR
     beat_thread: bool = False                            # Stage 4: clock.Clock(beat_thread=); off (inline) by default
+    beat_proc: bool = False                              # clock.Clock(beat_proc=): madmom in a child; off by default
+    beat_nice: int = 0                                   # clock.Clock(beat_nice=)
+    rx_coalesce_min: int = 1                             # receiver.Receiver(coalesce_min=)
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -176,6 +188,8 @@ def _parser() -> argparse.ArgumentParser:
                                                         "screen-machine/show)")
     ap.add_argument("--beat-thread", metavar="on|off", help="the clock's activation on its own thread (default off; "
                                                             "over SHOW_BEAT_THREAD)")
+    ap.add_argument("--beat-proc", metavar="on|off", help="the clock's activation in its own process (default off; "
+                                                          "over SHOW_BEAT_PROC)")
     return ap
 
 
@@ -277,6 +291,31 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
         elif word not in ("off", "0", "false", "no", "none"):
             notes.append(f"beat thread {bt_text!r} isn't on or off; it stays off")
 
+    beat_proc = False
+    bp_text = args.beat_proc if args.beat_proc is not None else env.get("SHOW_BEAT_PROC")
+    if bp_text is not None and bp_text.strip():
+        word = bp_text.strip().lower()
+        if word in ("on", "1", "true", "yes"):
+            beat_proc = True
+        elif word not in ("off", "0", "false", "no", "none"):
+            notes.append(f"beat process {bp_text!r} isn't on or off; it stays off")
+
+    def int_env(key: str, default: int, lo: int, hi: int) -> int:
+        text = env.get(key)
+        if text is None or not text.strip():
+            return default
+        try:
+            v = int(text.strip())
+        except ValueError:
+            notes.append(f"{key} {text!r} isn't a whole number; using {default}")
+            return default
+        if not lo <= v <= hi:
+            notes.append(f"{key} {v} outside {lo}..{hi}; using {max(lo, min(hi, v))}")
+        return max(lo, min(hi, v))
+
+    beat_nice = int_env("SHOW_BEAT_NICE", 0, 0, 19)
+    rx_coalesce_min = int_env("SHOW_RX_COALESCE_MIN", 1, 1, 32)
+
     def path_opt(arg: Optional[str], key: str, default: pathlib.Path) -> pathlib.Path:
         text = arg if arg is not None else env.get(key)
         return _path(text) if text and text.strip() else default
@@ -286,7 +325,8 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
     return Options(config=cfg, stream_priority=priority, artnet_target=artnet, notes=tuple(notes), brain=brain,
                    show_file=path_opt(args.show_file, "SHOW_FILE", contract.SHOW_FILE),
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
-                   state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread)
+                   state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread,
+                   beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min)
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:
