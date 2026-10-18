@@ -6745,8 +6745,8 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
   so with a 10 s clip and ~3.3 s latency much of a window is close when it arrives; big sizes were rare (none here).
 - **Cost** at the new cadence (the ledger's mean, $0.00256 a call; `utils.llm.estimate` now reads "ledger"): steady
   (every 15 s, 240 calls an hour) $0.62 an hour, $2.46 an evening; all fast (every 5 s, 720) $1.85 an hour, $7.38 an
-  evening; the card's blend (half fast, assumed until an hour is measured; 450 an hour) $1.15 an hour, **about $4.61
-  an evening** (4 h). Before: $2.90 an evening on the price table (a 24 s clip every 20 s).
+  evening; the card's blend (half fast, assumed until an hour is measured; 480 an hour) $1.23 an hour, **about $4.92
+  an evening** (4 h; the live estimate shows the same). Before: $2.90 an evening on the price table (a 24 s clip every 20 s).
 - **Tests:** test_listener (the new answer and its cleaning, the beliefs' approach agreement, ending hold, coming
   windows, an older clip arriving second, the cadence steady and fast and its reasons, two in flight, min gap between
   starts, the section call's slowing, the estimate's blend and measured share, the view's character, approach and
