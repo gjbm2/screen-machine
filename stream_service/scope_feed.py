@@ -6,8 +6,10 @@ opens it once per process:
 
   ScopeFeed   one per process (server.make_app: ``mgr.scope_feed``).  An asyncio task connects to the levels WS
               derived from the first --music-bus URL (same scheme / host / port; path /v1/levels, or the bus path
-              with its /v1/show replaced; query wave=WAVE_N).  No music bus = no feed.  Reconnects with full-jitter
-              backoff 0.5 s doubling to 5 s (as showbus.py).  The newest frame is ONE immutable tuple, swapped by
+              with its /v1/show replaced; query wave=WAVE_N).  No music bus = no feed.  Connected only while
+              ``wanted()`` (server.make_app: a live session shows a plug-in that listens "scope" / "fft"), and for
+              LINGER_S after (3a, 18 Oct: the meter costs show_service ~25 % of its bus loop while a client is on).
+              Reconnects with full-jitter backoff 0.5 s doubling to 5 s (as showbus.py).  The newest frame is ONE immutable tuple, swapped by
               reference, so render threads read ``feed.latest`` without a lock:
                   (arrival_mono, wave float32 [WAVE_N] -1..1 or None, bands float32 [FFT_BANDS] dBFS or None, peak_dbfs)
               ``arrival_mono`` is show_service's time.monotonic() of the packet (``a``; same host, same
@@ -24,6 +26,8 @@ Nothing here gates or trips: a dead feed eases to zeros (wave) or to the smoothe
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import math
@@ -63,6 +67,8 @@ TRIG_HYST = 0.05
 
 BACKOFF_MIN_S = 0.5
 BACKOFF_MAX_S = 5.0
+WANT_POLL_S = 0.5            # how often a disconnected feed asks whether anything listens
+LINGER_S = 30.0              # stays connected this long after the last listener left (no reconnect churn)
 
 Frame = tuple  # (arrival_mono, wave | None, bands | None, peak_dbfs)
 
@@ -93,8 +99,8 @@ def _finite(v: Any) -> Optional[float]:
 def parse_frame(raw: Any, local_now: float) -> Optional[Frame]:
     """One levels frame (a str or a decoded dict) -> the immutable Frame tuple, or None when it is malformed.
 
-    ``pk`` is required (a number).  ``w`` and ``f`` are optional (an older show_service, or a ring not yet full);
-    present, they must be lists of numbers (``f`` exactly FFT_BANDS long).  A ``w`` of another length is fitted to
+    ``pk`` is required (a number).  The waveform (optional) is ``wb``, base64 little-endian int16, or the older
+    ``w``, a list of ints; ``f`` (optional) is a list of FFT_BANDS numbers.  A waveform of another length is fitted to
     WAVE_N (the newest samples, zeros before).  A ``pong`` reply is not a frame (None)."""
     try:
         d = json.loads(raw) if isinstance(raw, (str, bytes, bytearray)) else raw
@@ -106,8 +112,19 @@ def parse_frame(raw: Any, local_now: float) -> Optional[Frame]:
     if pk is None:
         return None
     wave = bands = None
-    w = d.get("w")
-    if w is not None:
+    a = None
+    wb, w = d.get("wb"), d.get("w")
+    if wb is not None:
+        if not isinstance(wb, str) or not wb:
+            return None
+        try:
+            raw16 = base64.b64decode(wb, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if len(raw16) < 2 or len(raw16) % 2:
+            return None
+        a = np.frombuffer(raw16, "<i2").astype(np.float32)
+    elif w is not None:
         if not isinstance(w, list) or not w:
             return None
         try:
@@ -116,6 +133,7 @@ def parse_frame(raw: Any, local_now: float) -> Optional[Frame]:
             return None
         if a.ndim != 1 or not np.isfinite(a).all():
             return None
+    if a is not None:
         a *= 1.0 / 32767.0
         if a.size >= WAVE_N:
             wave = np.ascontiguousarray(a[-WAVE_N:])
@@ -146,6 +164,8 @@ class ScopeFeed:
     def __init__(self, url: Optional[str]) -> None:
         self.url = url
         self.latest: Optional[Frame] = None
+        self.wanted: Any = None             # () -> bool: something listens (None: always connected)
+        self._wanted_at = -1e9              # monotonic time it was last wanted
         self.up = False
         self.frames = 0
         self.bad = 0
@@ -182,6 +202,21 @@ class ScopeFeed:
         self.frames += 1
         return True
 
+    def is_wanted(self, now: Optional[float] = None) -> bool:
+        """Something listens now, or did within LINGER_S (``wanted`` None: always).  Never raises."""
+        now = time.monotonic() if now is None else now
+        if self.wanted is None:
+            return True
+        try:
+            if self.wanted():
+                self._wanted_at = now
+                return True
+        except Exception:
+            log.debug("scope feed: wanted() failed", exc_info=True)
+            self._wanted_at = now               # unknown: stay as if wanted
+            return True
+        return now - self._wanted_at <= LINGER_S
+
     async def run(self) -> None:
         if not self.url:
             return
@@ -190,6 +225,12 @@ class ScopeFeed:
         backoff = BACKOFF_MIN_S
         was_up: Optional[bool] = None
         while True:
+            if not self.is_wanted():
+                if was_up:
+                    log.info("scope feed idle: nothing listens (disconnected from %s)", self.url)
+                    was_up = None
+                await asyncio.sleep(WANT_POLL_S)
+                continue
             reason = ""
             try:
                 async with aiohttp.ClientSession() as http:
@@ -198,14 +239,28 @@ class ScopeFeed:
                         if was_up is not True:
                             log.info("scope feed up: %s", self.url)
                         was_up = True
-                        async for msg in ws:
+                        idle = False
+                        while True:
+                            try:
+                                msg = await ws.receive(timeout=1.0)
+                            except asyncio.TimeoutError:
+                                msg = None
+                            if not self.is_wanted():
+                                idle = True
+                                break
+                            if msg is None:
+                                continue
                             if msg.type == aiohttp.WSMsgType.TEXT:
                                 try:
                                     self.on_text(msg.data)
                                 except Exception:
                                     self.bad += 1
-                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                            elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING,
+                                              aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
+                        if idle:
+                            self.up = False
+                            continue                    # closed on purpose: back to waiting for a listener
                         reason = f"closed ({ws.close_code})"
             except asyncio.CancelledError:
                 self.up = False
@@ -224,7 +279,7 @@ class ScopeFeed:
     def stats(self) -> dict:
         fr = self.latest
         age = None if fr is None else round(max(0.0, time.monotonic() - fr[0]), 3)
-        return {"url": self.url, "up": self.up, "frames": self.frames, "bad": self.bad,
+        return {"url": self.url, "up": self.up, "wanted": self.is_wanted(), "frames": self.frames, "bad": self.bad,
                 "reconnects": self.reconnects, "age_s": age, "last_error": self.last_error,
                 "wave": fr is not None and fr[1] is not None, "bands": fr is not None and fr[2] is not None}
 

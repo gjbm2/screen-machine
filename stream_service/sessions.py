@@ -2690,6 +2690,28 @@ class SessionManager:
             return None
         return anchor, 60.0 / bpm
 
+    SCOPE_LISTENS = frozenset(("scope", "fft"))
+
+    def wants_scope(self) -> bool:
+        """A live session shows a plug-in that reads the fast feed (listens "scope" / "fft": its scene, the scene's
+        effects or the bus): scope_feed.ScopeFeed connects only then (3a, 18 Oct: the meter costs show_service ~25 %
+        of its bus loop while a client is on).  Loop thread; loop-owned state only."""
+        reg = self.registry
+
+        def hears(table: dict, name: Any) -> bool:
+            return bool(self.SCOPE_LISTENS.intersection(getattr(table.get(name or ""), "listens", ()) or ()))
+
+        for s in list(self.sessions.values()):
+            if s.state in ("ended", "failed"):
+                continue
+            sp = s.current_spec
+            if sp is not None and (hears(reg.sources, sp.source) or any(hears(reg.effects, e.effect)
+                                                                       for e in sp.effects)):
+                return True
+            if any(hears(reg.effects, st.spec.effect) for st in list(s.fx.stack)):
+                return True
+        return False
+
     def broadcast_sound(self, msg: dict) -> None:
         """Any thread (the bus loop): append-only on each view."""
         if str(msg.get("type") or "").startswith("music."):

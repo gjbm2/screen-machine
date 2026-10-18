@@ -769,6 +769,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     from .scope_feed import ScopeFeed
 
     mgr.scope_feed = ScopeFeed.from_music_bus(music_bus)   # the fast scope / fft feed (None: no music bus)
+    if mgr.scope_feed is not None:
+        mgr.scope_feed.wanted = mgr.wants_scope            # connected only while something on screen listens
     app = web.Application(middlewares=[auth_and_errors], client_max_size=MAX_BODY)
     app[REGISTRY] = registry
     app[PRESETS] = presets

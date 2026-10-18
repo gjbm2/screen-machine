@@ -349,3 +349,109 @@ def test_sound_without_feed():
     for k in range(3):
         snd.update(float(k))
     assert not snd.scope_live and np.allclose(snd.fft, 0.5) and not snd.wave.any()
+
+
+# -- 3a, 18 Oct: base64 waveform, and connected only while something listens ----------------------------------------
+def test_parse_wb_base64_int16():
+    import base64
+    x = np.array([0, 16384, -16384, 32767, -32767] * 300, "<i2")
+    fr = parse_frame(frame_json(w=..., wb=base64.b64encode(x.tobytes()).decode()), 100.0)
+    assert fr is not None and fr[1].shape == (WAVE_N,)
+    assert fr[1][-5:] == pytest.approx(x[-5:] / 32767.0, abs=1e-6)
+    for bad in ("", "!!notbase64!!", base64.b64encode(b"\x01").decode(), 123):
+        assert parse_frame(frame_json(w=..., wb=bad), 100.0) is None
+
+
+def test_is_wanted_lingers_then_lets_go():
+    f = ScopeFeed("ws://h/v1/levels?wave=1024")
+    assert f.is_wanted(0.0)                                   # no hook: always
+    on = {"v": True}
+    f.wanted = lambda: on["v"]
+    assert f.is_wanted(10.0)
+    on["v"] = False
+    assert f.is_wanted(10.0 + sf.LINGER_S - 1) and not f.is_wanted(10.0 + sf.LINGER_S + 1)
+
+    def boom():
+        raise RuntimeError("x")
+    f.wanted = boom
+    assert f.is_wanted(1e6)                                   # unknown: as if wanted, never raises
+
+
+def test_wants_scope_reads_scene_scene_effects_and_bus():
+    from types import SimpleNamespace as NS
+
+    from stream_service.sessions import SessionManager
+    Scope, Plain = type("Scope", (), {"listens": ("fft",)}), type("Plain", (), {"listens": ("notes",)})
+    reg = NS(sources={"sc": Scope, "pl": Plain}, effects={"osc": Scope, "blur": Plain})
+    spec = lambda src, fx=(): NS(source=src, effects=tuple(NS(effect=e) for e in fx))   # noqa: E731
+    sess = lambda sp, bus=(), st="live": NS(state=st, current_spec=sp,                # noqa: E731
+                                            fx=NS(stack=[NS(spec=NS(effect=e)) for e in bus]))
+    mgr = NS(registry=reg, SCOPE_LISTENS=SessionManager.SCOPE_LISTENS, sessions={})
+    want = lambda: SessionManager.wants_scope(mgr)                                     # noqa: E731
+    assert not want()
+    mgr.sessions = {"a": sess(spec("pl"), ["blur"])}
+    assert not want()
+    mgr.sessions = {"a": sess(spec("sc"))}
+    assert want()
+    mgr.sessions = {"a": sess(spec("pl", ["osc"]))}
+    assert want()
+    mgr.sessions = {"a": sess(spec("pl"), ["blur", "osc"])}
+    assert want()
+    mgr.sessions = {"a": sess(spec("sc"), st="ended")}
+    assert not want()
+
+
+def test_run_connects_only_while_wanted():
+    import asyncio
+
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
+
+    async def go():
+        conns = []
+
+        async def levels(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            conns.append(ws)
+            while not ws.closed:
+                await ws.send_str(frame_json())
+                await asyncio.sleep(0.02)
+            return ws
+
+        app = web.Application()
+        app.router.add_get("/v1/levels", levels)
+        srv = TestServer(app)
+        await srv.start_server()
+        old = sf.LINGER_S, sf.WANT_POLL_S
+        sf.LINGER_S, sf.WANT_POLL_S = 0.3, 0.05
+        try:
+            f = ScopeFeed(f"ws://127.0.0.1:{srv.port}/v1/levels?wave=1024")
+            on = {"v": False}
+            f.wanted = lambda: on["v"]
+            f._wanted_at = -1e9
+            task = asyncio.create_task(f.run())
+            await asyncio.sleep(0.3)
+            assert not conns and not f.up                     # nothing listens: never connects
+            on["v"] = True
+            for _ in range(100):
+                if f.frames:
+                    break
+                await asyncio.sleep(0.02)
+            assert f.up and f.frames and len(conns) == 1
+            on["v"] = False                                   # the listener leaves: disconnects after the linger
+            for _ in range(150):
+                if not f.up:
+                    break
+                await asyncio.sleep(0.02)
+            assert not f.up and f.reconnects == 0             # a deliberate close is not a reconnect
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        finally:
+            sf.LINGER_S, sf.WANT_POLL_S = old
+            await srv.close()
+
+    asyncio.run(go())
