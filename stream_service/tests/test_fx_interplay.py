@@ -21,6 +21,7 @@ CFG = {
     "load": {"scene": 0.5, "by_energy": [[0.0, 0.25], [1.0, 0.95]], "genre_bias": {"techno": 0.15}},
     "genre_groups": {"ambient": ["ambient"], "techno": ["techno", "electronic"], "house": ["house", "electronic"]},
     "roles_by_music": {"default": {}, "ambient": {"corrupt": 0.3, "light": 1.2}, "techno": {"corrupt": 1.2}},
+    "listens": {"notes": [0.15, 3.0], "fft": [0.3, 1.5]},
 }
 ROLES = {"halftone": "texture", "bloom": "light", "kaleido": "reshape", "warp": "reshape", "echo": "trails",
          "mosh": "corrupt", "grade": "grade"}
@@ -91,6 +92,22 @@ def test_the_table_reloads(looks, tmp_path):
     assert before == pytest.approx(0.3) and fit(looks, "mosh", "ink", genre="ambient").parts["music"] == 0.5
 
 
+def test_an_effect_that_draws_what_it_hears_follows_what_there_is(looks):
+    looks.listens_of = {"notes_fx": ("notes",), "bars": ("fft",), "both": ("notes", "fft")}.get
+    entry = lambda pl: {"effect": pl}
+    def mult(pl, heard):
+        return looks.fit_in(looks.context(scene("ink"), [], {"energy": 0.5}, heard), pl, entry(pl)).mult
+    assert mult("notes_fx", {"notes": 1.0}) == pytest.approx(3.0)       # the piano is playing
+    assert mult("notes_fx", {"notes": 0.0}) == pytest.approx(0.15)      # an empty slot: rare, never excluded
+    assert mult("notes_fx", {}) == 1.0 and mult("notes_fx", None) == 1.0   # unknown: no opinion
+    assert mult("bars", {"fft": 0.5}) == pytest.approx(0.9)
+    assert mult("both", {"notes": 0.0, "fft": 1.0}) == pytest.approx(1.5)   # the best of its kinds
+    assert mult("halftone", {"notes": 0.0}) == pytest.approx(looks.fit("halftone", PRESETS["halftone"], scene("ink"), [],
+                                                                        {"energy": 0.5}).mult)   # deaf: unchanged
+    f = looks.fit_in(looks.context(scene("ink"), [], {"energy": 0.5}, {"notes": 0.0}), "notes_fx", entry("notes_fx"))
+    assert "heard x0.15" in f.why()
+
+
 # -- the FX director ---------------------------------------------------------------------------------------------------
 @dataclass
 class St:
@@ -145,6 +162,15 @@ def test_a_section_change_lets_the_scene_move_first(looks, monkeypatch):
     stack = [St("fx-1", "grade")]
     d._fit_at_add = {"grade": 1.0}
     assert d.plan(105.0, stack, PRESETS, lambda n: 0.5) is None
+
+
+def test_the_director_asks_what_is_heard(looks):
+    looks.listens_of = {"notes_fx": ("notes",)}.get
+    d = fxd(looks, ["ink"])
+    d.heard = lambda: {"notes": 0.0}
+    assert d.fit("notes_fx", {"notes_fx": {"effect": "notes_fx"}}).mult == pytest.approx(0.15)
+    d.heard = lambda: 1 / 0                                    # a broken hook: no opinion, never a crash
+    assert d.fit("notes_fx", {"notes_fx": {"effect": "notes_fx"}}).mult == 1.0
 
 
 def test_a_pick_carries_its_level(looks):
