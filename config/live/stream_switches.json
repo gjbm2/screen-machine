@@ -1,0 +1,7 @@
+{
+  "default": {"encoder": "ffmpeg"},
+  "screens": {
+    "south-screen": {"encoder": "nvenc"},
+    "devtest": {"encoder": "nvenc"}
+  }
+}

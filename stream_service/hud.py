@@ -258,8 +258,13 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
         lines.append(text)
 
     # stream
-    add(f"{s.screen} {p.w}x{p.h}@{p.fps} {p.name} GPU{s.gpu}")
     ws = eng.window_stats(2.0) if hasattr(eng, "window_stats") else {}
+    enc = getattr(eng, "encoder_active", None) or ""
+    ec = (ws.get("enc_cpu_ms") or {}).get("p50")
+    add(f"{s.screen} {p.w}x{p.h}@{p.fps} {p.name} GPU{s.gpu} {enc}" + (f" {_f(ec)}ms" if ec is not None else ""))
+    fb = getattr(eng, "encoder_fallback", None)
+    if fb:
+        add(f"encoder fallback: {_cut(fb, COLS - 18)}", bad=True)
     rm = ws.get("gpu_span_ms") or ws.get("render_ms") or {}       # render_ms is the frame's GPU span (old key)
     late = ws.get("late_pct")
     add(f"gpu span {_f(rm.get('p50'))}/{_f(rm.get('p95'))} ms  late {_f(late, 0)}%  {_f(ws.get('mbps'))} Mb/s",
