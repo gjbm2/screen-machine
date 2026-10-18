@@ -29,7 +29,9 @@ drifts up, a sparse dust twinkles and the keyboard's edge line breathes.
 """
 from __future__ import annotations
 
+import logging
 import math
+from collections import OrderedDict
 
 import numpy as np
 
@@ -39,6 +41,8 @@ from stream_service.plugins._lib.palettes import palette_coeffs
 from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
+
+log = logging.getLogger("stream_service.plugins.piano_waterfall")
 
 K = 6                                  # strikes remembered per pitch
 LOW, HIGH = 21, 108                    # A0 .. C8
@@ -281,7 +285,24 @@ void waterfall(uchar4* __restrict__ out, const float* __restrict__ P, const floa
 """
 
 
+_RING = 16                             # pinned upload slots (frames in flight that may still be reading one)
+_GRAPHS = 8                            # captured graphs kept, one per (output buffer, notes table) seen
+_N_PAR = 32
+_N_SEG = 128 * K * 3
+_logged: set = set()
+
+
+def _log_once(key: str, msg: str, *args) -> None:
+    if key not in _logged:
+        _logged.add(key)
+        log.warning(msg, *args)
+
+
 class PianoWaterfall(Source):
+    """Per frame the host issues: one H2D copy of the arena (params + strike ages, from a pinned ring slot), one
+    event record (the slot's reuse fence) and one graph launch (the waterfall kernel + the present).  The graph is
+    captured once per (output buffer, notes table) pair; anything else structural (sizes, seed) only changes in
+    setup.  If capture fails the scene launches directly, as before (logged once)."""
     name = "piano_waterfall"
     label = "Piano waterfall"
     description = "The notes being played rise from a keyboard as glowing bars, with sparks where keys are struck."
@@ -309,10 +330,28 @@ class PianoWaterfall(Source):
         self.info = cp.asarray(info)
         self.wpitch = cp.asarray(wp)
         self.bright = cp.asarray(br)
-        self.P = cp.zeros(32, cp.float32)
-        self.Ph = np.zeros(32, np.float32)
-        self.seg = cp.zeros(128 * K * 3, cp.float32)
-        self.Sh = np.full((128, K, 3), -1.0, np.float32)
+        # the uniform arena: [P (32 floats) | seg (128 x K x 3)] on the device, one copy per frame
+        self.arena = cp.zeros(_N_PAR + _N_SEG, cp.float32)
+        self.P, self.seg = self.arena[:_N_PAR], self.arena[_N_PAR:]
+        try:
+            self._pin = cp.cuda.alloc_pinned_memory(_RING * (_N_PAR + _N_SEG) * 4)
+            host = np.frombuffer(self._pin, np.float32, _RING * (_N_PAR + _N_SEG)).reshape(_RING, -1)
+        except Exception as exc:                          # pageable works too (the driver stages it at once)
+            _log_once("pin", "piano_waterfall: no pinned memory (%s); uploading from pageable memory", exc)
+            self._pin = None
+            host = np.zeros((_RING, _N_PAR + _N_SEG), np.float32)
+        host[:] = 0.0
+        self._spare = np.zeros(_N_PAR + _N_SEG, np.float32)   # pageable: when a ring slot is still in flight
+        self._host = [host[i] for i in range(_RING)] + [self._spare]
+        self._views = [(hb, hb[:_N_PAR], hb[_N_PAR:].reshape(128, K, 3)) for hb in self._host]
+        self._ev = [cp.cuda.Event(block=False, disable_timing=True, interprocess=False) for _ in range(_RING)]
+        self._slot = 0
+        self._age = np.zeros((128, K))
+        self._nan = np.zeros((128, K), bool)
+        self._graphs: OrderedDict = OrderedDict()
+        self._cap = None
+        self._mode = "graph"                              # "direct" after a failed capture
+        self.calls = 0                                    # CUDA calls issued by the last render
         self.quiet = cp.zeros((128, 4), cp.float32)       # the notes table when nothing is heard
         # strike history on the sound clock (ms): slot 0 is the latest
         self.on_ms = np.full((128, K), np.nan)
@@ -360,8 +399,49 @@ class PianoWaterfall(Source):
             self.off_ms[p, 0] = t - (a * 1000.0 if np.isfinite(a) and a >= 0.0 else 0.0)
         return snd.notes_gpu, t
 
+    # -- launches -----------------------------------------------------------------------------------------------
+    def _launch(self, notes, out) -> None:
+        """The frame's static launch sequence (captured into a graph, or issued directly)."""
+        launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.seg, notes, self.info, self.wpitch, self.bright,
+                                           np.uint32(self.seed)))
+        present(self.ctx, self.buf, out)
+
+    def _graph(self, notes, out):
+        """The captured graph for this (out, notes) pair, capturing it on a miss; None to launch directly."""
+        key = (out.data.ptr, notes.data.ptr)
+        g = self._graphs.get(key)
+        if g is not None:
+            self._graphs.move_to_end(key)
+            return g
+        cp = self.ctx.cp
+        try:
+            if self._cap is None:
+                self._cap = cp.cuda.Stream(non_blocking=True)
+            s = self._cap
+            with s:
+                s.begin_capture()                         # relaxed mode: other threads' CUDA calls are unaffected
+                try:
+                    self._launch(notes, out)
+                except BaseException:
+                    try:
+                        s.end_capture()
+                    except Exception:
+                        pass
+                    raise
+                g = s.end_capture()
+        except Exception as exc:                          # degrade, never refuse: today's direct launches
+            self._mode = "direct"
+            _log_once("capture", "piano_waterfall: CUDA graph capture failed (%s: %s); launching directly",
+                      type(exc).__name__, exc)
+            return None
+        self._graphs[key] = g
+        if len(self._graphs) > _GRAPHS:
+            self._graphs.popitem(last=False)              # an in-flight launch of it still completes
+        return g
+
     # -- render -------------------------------------------------------------------------------------------------
     def render(self, t_local: float, dt: float, out) -> None:
+        cp = self.ctx.cp
         p = self.step_params(dt)
         e = min(max(float(p["energy"]), 0.0), 1.0)
         pulse = min(max(float(p["pulse"]), 0.0), 1.0)
@@ -374,15 +454,31 @@ class PianoWaterfall(Source):
         self.spark += (0.35 + 0.25 * e) * spd * dt
         self.drift += float(p["drift_speed"]) * spd * dt
 
-        # relative ages of every remembered strike (NaN slots stay -1: empty)
-        S = self.Sh
-        with np.errstate(invalid="ignore"):
-            S[:, :, 0] = np.where(np.isnan(self.on_ms), -1.0, (t - self.on_ms) / 1000.0)
-            S[:, :, 1] = np.where(np.isnan(self.off_ms), -1.0, np.maximum(0.0, (t - self.off_ms) / 1000.0))
-        S[:, :, 2] = self.vel
-        self.seg.set(S.reshape(-1))
+        # this frame's host slot: a ring slot whose last copy has run, else the pageable spare
+        i = self._slot
+        ev = self._ev[i]
+        calls = 1
+        if ev.done:
+            self._slot = (i + 1) % _RING
+        else:
+            ev, i = None, _RING
+        hb, Ph, S = self._views[i]
 
-        Ph = self.Ph
+        # relative ages of every remembered strike (NaN slots stay -1: empty)
+        age, nan = self._age, self._nan
+        np.subtract(t, self.on_ms, out=age)
+        age /= 1000.0
+        np.isnan(self.on_ms, out=nan)
+        np.copyto(age, -1.0, where=nan)
+        S[:, :, 0] = age
+        np.subtract(t, self.off_ms, out=age)
+        age /= 1000.0
+        np.maximum(age, 0.0, out=age)
+        np.isnan(self.off_ms, out=nan)
+        np.copyto(age, -1.0, where=nan)
+        S[:, :, 1] = age
+        S[:, :, 2] = self.vel
+
         Ph[0:12] = palette_coeffs(p["palette"])
         Ph[12], Ph[13] = self.w, self.h
         Ph[14] = float(p["keyboard"])
@@ -401,10 +497,24 @@ class PianoWaterfall(Source):
         Ph[27] = self.haze % 1000.0
         Ph[28] = self.spark % 1000.0
         Ph[29] = 0.5 + 0.5 * math.sin(0.9 * self.clock)
-        self.P.set(Ph)
-        launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.seg, notes, self.info, self.wpitch, self.bright,
-                                           np.uint32(self.seed)))
-        present(self.ctx, self.buf, out)
+
+        stream = cp.cuda.get_current_stream()
+        rt = cp.cuda.runtime
+        rt.memcpyAsync(self.arena.data.ptr, hb.ctypes.data, hb.nbytes, rt.memcpyHostToDevice, stream.ptr)
+        calls += 1
+        if ev is not None:
+            ev.record(stream)                             # the slot is free again once the copy has run
+            calls += 1
+        g = self._graph(notes, out) if self._mode == "graph" else None
+        if g is not None:
+            g.launch(stream)
+            calls += 1
+        else:
+            self._launch(notes, out)
+            calls += 2
+        self.calls = calls
 
     def close(self) -> None:
-        self.buf = self.P = self.seg = self.info = self.wpitch = self.bright = self.quiet = None
+        self._graphs = OrderedDict()
+        self._cap = self._ev = None
+        self.buf = self.P = self.seg = self.arena = self.info = self.wpitch = self.bright = self.quiet = None

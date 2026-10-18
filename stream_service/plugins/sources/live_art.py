@@ -31,6 +31,12 @@ video`` and, for video, ``X-Art-Next-S`` = seconds until the next frame; JSON 40
   identical frames (304s) never skews the next fades.  A still (an art change) crossfades over ``crossfade_s``
   (smoothstep).  A frame arriving mid-fade freezes what is on screen as the new start, so nothing jumps.
   Otherwise a device copy.
+* Host diet (each CUDA call costs ~45-70 us under WSL/WDDM and holds the GIL): ONE CUDA call per frame (a mix or a
+  copy kernel: a kernel launch is cheaper on the host than a D2D cudaMemcpyAsync), and three on a frame where new
+  art arrives (the H2D copy, its event, then one ``live_art_arrive`` kernel that freezes the running fade, expands
+  RGB -> RGBA and writes the output in one pass; it was five).  The per-frame values (fade, gain, the freeze flag)
+  ride as kernel arguments, which cost no extra call, so there is no uniform upload and no CUDA graph: a graph
+  launch plus its parameter upload would be two calls where one launch does today.
 * setup tries one synchronous fetch so the first frame is already the art (room_service has normally just
   prepared the same art for the cut, so it is cached); otherwise the scene starts black and the poller fills it.
 * The session puts its screen id on the context (``ctx.screen``); without one (fxtest, previews) the scene is
@@ -80,6 +86,13 @@ FREE, FILLING, READY, INFLIGHT = range(4)   # a host buffer's state (changed und
 
 # out = (a + (b - a) * k) * gain.  No __restrict__: `out` may alias `a` (freezing a fade in place).
 _SRC = HELPERS + r"""
+__device__ __forceinline__ uchar4 la_mix(const uchar4 pa, const uchar4 pb, const float k, const float gain)
+{
+    const float q = 1.f - k;
+    return pack(make_float4((q * pa.x + k * pb.x) * gain, (q * pa.y + k * pb.y) * gain,
+                            (q * pa.z + k * pb.z) * gain, 255.f));
+}
+
 extern "C" __global__
 void live_art_mix(const uchar4* a, const uchar4* b, uchar4* out, const int W, const int H,
                   const float k, const float gain)
@@ -87,10 +100,34 @@ void live_art_mix(const uchar4* a, const uchar4* b, uchar4* out, const int W, co
     const int x = blockIdx.x * blockDim.x + threadIdx.x, y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= W || y >= H) return;
     const int i = y * W + x;
-    const uchar4 pa = a[i], pb = b[i];
-    const float q = 1.f - k;
-    out[i] = pack(make_float4((q * pa.x + k * pb.x) * gain, (q * pa.y + k * pb.y) * gain,
-                              (q * pa.z + k * pb.z) * gain, 255.f));
+    out[i] = la_mix(a[i], b[i], k, gain);
+}
+
+// A new frame, in one pass: prev = what is on screen (the running fade, frozen) when `freeze`, else prev is
+// already the old picture (render swapped the buffers); cur = the uploaded RGB frame as RGBA; out = the mix.
+// Each thread reads and writes only its own pixel, so the in-place writes are safe.
+extern "C" __global__
+void live_art_arrive(uchar4* prev, uchar4* cur, const unsigned char* __restrict__ rgb, uchar4* out,
+                     const int W, const int H, const int freeze, const float kf, const float k, const float gain)
+{
+    const int x = blockIdx.x * blockDim.x + threadIdx.x, y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= W || y >= H) return;
+    const int i = y * W + x;
+    uchar4 pa = prev[i];
+    if (freeze) { pa = la_mix(pa, cur[i], kf, 1.f); prev[i] = pa; }
+    const uchar4 pb = make_uchar4(rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2], 255);
+    cur[i] = pb;
+    out[i] = la_mix(pa, pb, k, gain);
+}
+
+// out = src, 16 bytes per thread (n16 of them), then the < 16-byte tail one byte per thread of the first block.
+extern "C" __global__
+void live_art_copy(const uint4* __restrict__ src, uint4* __restrict__ out, const long long n16,
+                   const unsigned char* __restrict__ src_b, unsigned char* __restrict__ out_b, const int tail)
+{
+    const long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n16) out[i] = src[i];
+    if (blockIdx.x == 0 && threadIdx.x < tail) out_b[n16 * 16 + threadIdx.x] = src_b[n16 * 16 + threadIdx.x];
 }
 """
 
@@ -135,9 +172,11 @@ def _video_fade_s(next_s: Optional[float]) -> float:
 
 # Pinned host blocks, process-wide and never freed (see the module docstring): nbytes -> blocks nobody holds, and
 # blocks handed back while their last upload may still run (nbytes, block, event).  deque append / pop are atomic,
-# so no lock: blocks come back from a poller thread as it exits.
-_PINNED_FREE: dict[int, deque] = {}
-_PINNED_PENDING: deque = deque()
+# so no lock: blocks come back from a poller thread as it exits.  Kept across a hot reload (importlib.reload re-runs
+# this module in the same namespace): fresh lists would orphan the reserved blocks (pinned memory never freed) and make
+# the next live_art cudaHostAlloc during a show.
+_PINNED_FREE: dict[int, deque] = globals().get("_PINNED_FREE", {})
+_PINNED_PENDING: deque = globals().get("_PINNED_PENDING", deque())
 
 
 def _pinned_sweep() -> None:
@@ -386,10 +425,18 @@ class LiveArtSource(Source):
         ctx.kernels.fill(self.cur, (0, 0, 0))
         ctx.kernels.fill(self.prev, (0, 0, 0))
         self.staging = cp.zeros((self.H, self.W, 3), cp.uint8)   # the H2D target, expanded into cur
-        self.k = raw_module(_SRC).get_function("live_art_mix")
+        mod = raw_module(_SRC)
+        self.k = mod.get_function("live_art_mix")
+        self.k_arrive = mod.get_function("live_art_arrive")
+        self.k_copy = mod.get_function("live_art_copy")
+        nbytes = self.H * self.W * 4
+        self._n16, self._tail = nbytes // 16, nbytes % 16
+        self._copy_grid = (max(1, (self._n16 + 255) // 256), 1, 1)
+        self._iW, self._iH = np.int32(self.W), np.int32(self.H)
         self.fade = 1.0                  # 1 = no fade running
         self.fade_linear = False         # this fade: linear over fade_len (video) or smoothstep over crossfade_s
         self.fade_len = PERIOD_DEFAULT_S
+        self._kf = 1.0                   # a new frame's frozen fade shape (render passes it to live_art_arrive)
         self.seen = 0
         self.feed: Optional[_ArtFeed] = None
         self.thread: Optional[threading.Thread] = None
@@ -422,53 +469,75 @@ class LiveArtSource(Source):
             _pinned_give_back(bufs)
             raise
 
-    def _upload(self, buf: _HostBuf) -> None:
-        """Pinned buffer -> cur, stream-ordered on the current stream; the event releases ``buf`` (reap)."""
+    def _copy_in(self, buf: _HostBuf) -> None:
+        """Pinned buffer -> staging (RGB), stream-ordered on the current stream; the event releases ``buf``
+        (reap).  Two CUDA calls."""
         cp = self.ctx.cp
         stream = cp.cuda.get_current_stream()
         cp.cuda.runtime.memcpyAsync(self.staging.data.ptr, buf.ptr, buf.host.nbytes,
                                     cp.cuda.runtime.memcpyHostToDevice, stream.ptr)
         buf.event.record(stream)
         self.seen = buf.version
+
+    def _upload(self, buf: _HostBuf) -> None:
+        """setup's first frame: straight into cur (no fade)."""
+        self._copy_in(buf)
         self.ctx.kernels.rgb_to_rgba(self.staging, self.cur)
 
     def _k(self) -> float:
         f = self.fade
         return f if self.fade_linear else f * f * (3.0 - 2.0 * f)
 
-    def _next(self, buf: _HostBuf) -> None:
-        """A new art frame: the current picture becomes the fade's start, the new one its end."""
+    def _next(self, buf: _HostBuf) -> int:
+        """A new art frame: the current picture becomes the fade's start, the new one (in staging; render's
+        ``live_art_arrive`` expands it into cur) its end.  Returns 1 if the running fade must be frozen into prev
+        (mid-fade), with its shape in ``self._kf``; else the buffers are swapped and 0."""
+        freeze = 0
         if self.fade < 1.0:              # mid-fade: freeze what is on screen in place (the running fade's shape)
-            launch_2d(self.k, self.W, self.H, (self.prev, self.cur, self.prev, np.int32(self.W), np.int32(self.H),
-                                               np.float32(self._k()), np.float32(1.0)))
+            freeze, self._kf = 1, self._k()
         else:
             self.prev, self.cur = self.cur, self.prev
-        self._upload(buf)
+            self._kf = 1.0
+        self._copy_in(buf)
         self.fade_linear = buf.kind == "video"
         self.fade_len = buf.fade_s
         self.fade = 0.0
+        return freeze
+
+    def _copy_out(self, out) -> None:
+        """out = cur: one kernel (cheaper on the host than a D2D memcpy); cp.copyto for an odd ``out``."""
+        if out.flags.c_contiguous and out.nbytes == self._n16 * 16 + self._tail and out.data.ptr % 16 == 0:
+            self.k_copy(self._copy_grid, (256, 1, 1), (self.cur, out, np.int64(self._n16), self.cur, out,
+                                                       np.int32(self._tail)))
+        else:
+            self.ctx.cp.copyto(out, self.cur)
 
     def render(self, t_local: float, dt: float, out) -> None:
         p = self.step_params(dt)
         feed = self.feed
+        freeze = -1                      # -1: no new frame this tick
         if feed is not None:
             feed.reap()
             buf = feed.take(self.seen)
             if buf is not None:
-                self._next(buf)
+                freeze = self._next(buf)
         if self.fade < 1.0:
             length = self.fade_len if self.fade_linear else float(p["crossfade_s"])
             self.fade = 1.0 if length <= 1e-3 else min(1.0, self.fade + max(dt, 0.0) / length)
         gain = max(0.0, float(p["intensity"]) * (1.0 + PULSE_KICK * float(p["pulse"])))
-        if self.fade >= 1.0 and abs(gain - 1.0) < 1e-4:
-            self.ctx.cp.copyto(out, self.cur)
-            return
-        launch_2d(self.k, self.W, self.H, (self.prev, self.cur, out, np.int32(self.W), np.int32(self.H),
-                                           np.float32(self._k()), np.float32(gain)))
+        if freeze >= 0:                  # new art: freeze + expand + mix in one launch
+            launch_2d(self.k_arrive, self.W, self.H,
+                      (self.prev, self.cur, self.staging, out, self._iW, self._iH, np.int32(freeze),
+                       np.float32(self._kf), np.float32(self._k()), np.float32(gain)))
+        elif self.fade >= 1.0 and abs(gain - 1.0) < 1e-4:
+            self._copy_out(out)
+        else:
+            launch_2d(self.k, self.W, self.H, (self.prev, self.cur, out, self._iW, self._iH,
+                                               np.float32(self._k()), np.float32(gain)))
 
     def close(self) -> None:
         if self.feed is not None:
             self.feed.close()            # the daemon thread exits at its next wake-up (no join: never block)
         self.feed = self.thread = None
         self.cur = self.prev = self.staging = None
-        self.k = None
+        self.k = self.k_arrive = self.k_copy = None

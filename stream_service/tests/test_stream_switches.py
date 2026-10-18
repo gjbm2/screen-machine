@@ -83,7 +83,7 @@ def test_in_dir_and_the_shipped_file():
     assert [s.encoder(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["ffmpeg", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
     assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
-        ["inproc", "inproc", "proc", "inproc"]                        # change 3: devtest renders in a worker
+        ["inproc", "proc", "proc", "inproc"]                          # change 3: devtest, then south, in a worker
 
 
 async def test_a_session_takes_its_encoder_from_the_file_at_creation(client, tmp_path):  # noqa: F811

@@ -11,6 +11,13 @@
   amount on the beat; ISF ``event`` inputs fire on the beat.
 
 Parameters map to uniforms through each prop's ``x-glsl`` entry (see runtime.apply_params).
+
+**Fast path** (4K60 plan change 4; arena.py): a scene's or effect's frame is ONE captured CUDA graph: the same
+kernels with the same by-value arguments (updated in the graph each frame, host-side), its textures and palette
+in a small arena copied in by the graph's first node.  5 CUDA calls per frame instead of 14-17 (9 -> 1 for a
+transition, which needs no graph: it only drops timing events nothing reads).  Same pixels as the direct path
+(tests/test_glsl_runtime_fast.py).  If capture fails the same launches run directly; on any other error it logs
+once and stays on the direct path (degrade, never refuse).  SM_GLSL_FAST=0 turns it off.
 """
 from __future__ import annotations
 
@@ -29,7 +36,10 @@ from stream_service.plugins._lib.params import num, standard_effect_params, stan
 from stream_service.plugins._lib.upsample import internal_size
 from stream_service.plugins.base import Source, Transition
 
-from .runtime import IsfPasses, Program, ShowTextures, apply_params, sampler
+from . import runtime as _rt
+from .arena import FramePlan, copy_frame, grid_2d, log_once, small_kernels
+from .runtime import (NULL_SAMPLER, ArenaTextures, IsfPasses, ParamMap, Program, ShowTextures, apply_params,
+                      sampler)
 
 _POST_SRC = HELPERS + PALETTE_CUDA + r"""
 extern "C" __global__
@@ -78,6 +88,78 @@ void glsl_mix(const uchar4* __restrict__ a, const uchar4* __restrict__ b, uchar4
 def _kernels():
     mod = raw_module(_POST_SRC)
     return mod.get_function("glsl_post"), mod.get_function("glsl_mix"), mod.get_function("glsl_upmix")
+
+
+def _rec(nbytes: int) -> int:
+    return (nbytes + 15) // 16 * 16
+
+
+class _Fast:
+    """One plug-in instance's fast-path state: its FramePlan, arena textures, param map and kernels.  The arena
+    holds the textures the shader samples and, with ``palette``, the post kernel's 12 palette floats."""
+
+    def __init__(self, plug, n_launches: int, uses: set = frozenset(), palette: bool = False):
+        cp = plug.ctx.cp
+        prog = plug.prog
+        self.prog = prog
+        n = 512
+        tex_bytes = {"music": 2 * n * 4, "fft": n * 4, "wave": n * 4, "notes": 128 * 4 * 4}
+        static = sum(_rec(tex_bytes[u]) for u in uses) + (_rec(48) if palette else 0)   # 0: no upload at all
+        args = (n_launches + 2) * (_rec(prog.usize) + 64) + 256
+        self.plan = FramePlan(cp, static, arg_bytes=args, name=plug.name)
+        self.tex = ArenaTextures(plug.tex, self.plan, uses) if uses and getattr(plug, "tex", None) else None
+        if palette:
+            self.pal_off = self.plan.static(48)
+            self.pal = self.plan.view(self.pal_off, np.float32, (12,))
+            self.pal_ptr = np.uint64(self.plan.dev_ptr + self.pal_off)
+        _, self.k_notes = small_kernels()
+        self.pmap = ParamMap(prog, plug.param_props())
+        plan, stage = self.plan, prog.stage
+        self.launch = lambda buf: stage(plan, buf)
+
+
+class _NoPlan:
+    """A transition's fast path: its one launch needs no graph or arena, only no timing events (below)."""
+    plan = None
+
+
+class _FastMixin:
+    """Puts a GLSL plug-in on the fast path at its first render (see the module docstring)."""
+
+    _fast: Optional[_Fast] = None
+    _fast_off: bool = False
+
+    def _fast_init(self) -> None:
+        self._fast = None
+        self._fast_off = not _rt.FAST
+
+    def _fast_get(self) -> Optional[_Fast]:
+        f = self._fast
+        if f is not None or self._fast_off:
+            return f
+        try:
+            f = self._fast = self._make_fast()
+        except Exception as e:
+            self._fast_fail(e)
+            return None
+        if f.plan is not None:
+            self._watch.poll = f.plan.poll_ms   # GPU time e0 -> fence, read one frame late (same _Watch rules)
+        return f
+
+    def _fast_fail(self, e: BaseException) -> None:
+        log_once(("fast", self.name), "%s: GLSL fast path off (%s: %s); direct launches", self.name,
+                 type(e).__name__, e)
+        if self._fast is not None and self._fast.plan is not None:
+            self._fast.plan.retire()
+        self._fast = None
+        self._fast_off = True
+        self._watch.__dict__.pop("poll", None)
+
+    def close(self) -> None:
+        f = self._fast
+        if f is not None and f.plan is not None:
+            f.plan.retire()
+        super().close()
 
 
 def _smooth_noise(cp, seed: int = 7, n: int = 24):
@@ -175,7 +257,7 @@ def _date() -> tuple[float, float, float, float]:
 
 # ------------------------------------------------------------------------------------------- transitions
 
-class GlslTransition(Transition):
+class GlslTransition(_FastMixin, Transition):
     dialect: ClassVar[str] = "glt"
     GLSL: ClassVar[str] = ""
     default_duration_s: ClassVar[float] = 1.5
@@ -193,20 +275,31 @@ class GlslTransition(Transition):
                 tex = _smooth_noise(cp, seed=len(self._maps) + 7)
                 self._maps.append(tex)
                 self.prog.set(u.name, sampler(tex, wrap="repeat"))
+        self._fast_init()
+
+    def _make_fast(self) -> _NoPlan:
+        return _NoPlan()
 
     def render(self, progress: float, a, b, out) -> None:
         cp = self.ctx.cp
+        f = self._fast_get()
         if progress <= 0.0:
-            cp.copyto(out, a)
+            (copy_frame(cp, out, a) if f is not None else cp.copyto(out, a))
             return
         if progress >= 1.0:
-            cp.copyto(out, b)
+            (copy_frame(cp, out, b) if f is not None else cp.copyto(out, b))
             return
         self._watch.judge(1.0, 1.0)       # transitions run at full size: too slow -> raise (crossfade)
         p = self.prog
         p.set("progress", progress)
         p.set("from", sampler(a))
         p.set("to", sampler(b))
+        if f is not None:
+            # One launch either way (a graph of one node is no cheaper), so the saving is the timing: judge(1.0,
+            # 1.0) above never acts on a sample, and its two fresh events cost four CUDA calls (create, record,
+            # destroy) plus a query and an elapsed-time read per frame.
+            p.launch(out)
+            return
         e0 = self._watch.begin()
         p.launch(out)
         self._watch.end(e0)
@@ -222,7 +315,7 @@ def scene_params(shader_params: dict, *, render_scale: float = 0.5) -> dict:
     return d
 
 
-class GlslSource(Source):
+class GlslSource(_FastMixin, Source):
     dialect: ClassVar[str] = "st"          # "st" (Shadertoy image pass) | "isf" (ISF generator)
     GLSL: ClassVar[str] = ""
     VS: ClassVar[Optional[str]] = None     # ISF vertex shader, if any
@@ -246,6 +339,37 @@ class GlslSource(Source):
         self._beat_was = 0.0
         self.prog.set("iMouse", (0.0, 0.0, 0.0, 0.0))
         self.prog.set("iSampleRate", 44100.0)
+        self._fast_init()
+
+    def _channel_kinds(self) -> list:
+        return [self.channels.get(i) or self.channels.get(str(i)) for i in range(4)]
+
+    def _make_fast(self) -> _Fast:
+        k = self.prog
+        if self.dialect == "st":
+            kinds = self._channel_kinds()
+            uses = {x for x in kinds if x in ("music", "notes")}
+            f = _Fast(self, 1, uses, palette=True)
+            for i, kind in enumerate(kinds):        # static: the arena textures never move
+                if kind in ("music", "noise", "notes"):
+                    k.set(f"iChannel{i}", f.tex.sampler(kind, "repeat" if kind == "noise" else "clamp")
+                          if kind != "noise" else sampler(self.tex.noise, wrap="repeat"))
+                    shp = f.tex.shape(kind) if f.tex is not None else tuple(self.tex.noise.shape)
+                    k.u["iChannelResolution"][i] = (shp[1], shp[0], 1.0)
+                else:
+                    k.set(f"iChannel{i}", NULL_SAMPLER)
+        else:
+            tys = [((u.meta or {}).get("TYPE"), u.name) for u in k.tr.params]
+            uses = {"fft" for ty, _ in tys if ty == "audioFFT"} | {"wave" for ty, _ in tys if ty == "audio"}
+            f = _Fast(self, self.passes.launches(), uses, palette=True)
+            for ty, name in tys:
+                if ty == "audioFFT":
+                    k.set(name, f.tex.sampler("fft"))
+                elif ty == "audio":
+                    k.set(name, f.tex.sampler("wave"))
+                elif ty == "image":
+                    k.set(name, sampler(self.tex.noise, wrap="repeat"))
+        return f
 
     def _alloc(self, scale: float) -> None:
         cp = self.ctx.cp
@@ -271,6 +395,13 @@ class GlslSource(Source):
         step = dt * rate
         self.t += step
         self.drift += p["drift_speed"] * p["speed"] * dt
+        f = self._fast_get()
+        if f is not None:
+            try:
+                self._render_fast(f, p, energy, pulse, step, out)
+                return
+            except Exception as e:
+                self._fast_fail(e)
         k = self.prog
         apply_params(k, self.param_props(), p)
         self.tex.update(self.t, energy, pulse, sound_frame(self))
@@ -303,6 +434,41 @@ class GlslSource(Source):
                                      np.float32(gain), np.float32(contrast), np.float32(p["palette_mix"]),
                                      np.float32(p["palette_period"]), np.float32(self.drift), self._pal))
         self._watch.end(e0)
+
+    def _render_fast(self, f: _Fast, p: dict, energy: float, pulse: float, step: float, out) -> None:
+        """The direct path's frame as one upload + one graph (same uniforms, same textures, same post)."""
+        k, plan = self.prog, f.plan
+        f.pmap.apply(k, p)
+        plan.begin()
+        if f.tex is not None:
+            f.tex.write(self.t, energy, pulse, sound_frame(self), f.k_notes)
+        if self.dialect == "st":
+            k.set("iTime", self.t)
+            k.set("iTimeDelta", step)
+            k.set("iFrame", self.frame)
+            k.set("iFrameRate", float(self.ctx.fps))
+            k.set("iResolution", (self.w, self.h, 1.0))
+            k.set("iDate", _date())
+            k.stage(plan, self.buf)
+        else:
+            fire = pulse > 0.5 and self._beat_was <= 0.5
+            self._beat_was = pulse
+            for name in self.events:
+                k.set(name, 1 if fire else 0)
+            self.passes.render(self.buf, self.t, step, f.launch)
+        rows = self.session_palette()
+        coeffs = palette_coeffs(p["palette"]) if rows is None else np.asarray(rows, np.float32).ravel()
+        f.pal[:] = np.asarray(coeffs, np.float32)
+        gain = p["intensity"] * (1.0 + 0.35 * pulse)
+        contrast = 0.85 + 0.3 * energy
+        W, H = self.ctx.width, self.ctx.height
+        grid, block = grid_2d(W, H)
+        plan.node(self._post, grid, block, (np.uint64(self.buf.data.ptr), np.uint64(out.data.ptr), np.int32(self.w),
+                                            np.int32(self.h), np.int32(W), np.int32(H), np.float32(gain),
+                                            np.float32(contrast), np.float32(p["palette_mix"]),
+                                            np.float32(p["palette_period"]), np.float32(self.drift), f.pal_ptr))
+        plan.run()
+        self.frame += 1
 
     def _isf_inputs(self, k: Program, pulse: float) -> None:
         for u in k.tr.params:
@@ -345,7 +511,7 @@ def pulse_mix(amount: float, pulse: float, hold: float) -> float:
     return min(1.0, base + amount * (PULSE_LIFT + PULSE_HEADROOM * h) * pulse)
 
 
-class GlslEffect(Effect):
+class GlslEffect(_FastMixin, Effect):
     dialect: ClassVar[str] = "isf"
     GLSL: ClassVar[str] = ""
     VS: ClassVar[Optional[str]] = None
@@ -365,6 +531,20 @@ class GlslEffect(Effect):
         self.t = 0.0
         self._beat_was = 0.0
         self._hold = 0.0
+        self._fast_init()
+
+    def _make_fast(self) -> _Fast:
+        k = self.prog
+        tys = [((u.meta or {}).get("TYPE"), u.name) for u in k.tr.params]
+        uses = {"fft" for ty, _ in tys if ty == "audioFFT"} | {"wave" for ty, _ in tys if ty == "audio"}
+        f = _Fast(self, self.passes.launches(), uses)
+        f.images = [name for ty, name in tys if ty == "image"]
+        for ty, name in tys:
+            if ty == "audioFFT":
+                k.set(name, f.tex.sampler("fft"))
+            elif ty == "audio":
+                k.set(name, f.tex.sampler("wave"))
+        return f
 
     def _alloc(self, scale: float) -> None:
         ctx, cp = self.ctx, self.ctx.cp
@@ -384,9 +564,16 @@ class GlslEffect(Effect):
         self._hold = max(float(p["pulse"]), self._hold * decay)
         amount = pulse_mix(float(p["amount"]), float(p["pulse"]), self._hold)
         self.t += dt
+        f = self._fast_get()
         if amount <= 1e-3:
-            cp.copyto(out, src)
+            (copy_frame(cp, out, src) if f is not None else cp.copyto(out, src))
             return
+        if f is not None:
+            try:
+                self._render_fast(f, p, amount, dt, src, out)
+                return
+            except Exception as e:
+                self._fast_fail(e)
         k = self.prog
         apply_params(k, self.param_props(), p)
         self.tex.update(self.t, amount, p["pulse"], sound_frame(self))
@@ -414,3 +601,34 @@ class GlslEffect(Effect):
             self.passes.render(self.tmp, self.t, dt)
             _mix(cp, self._kmix, src, self.tmp, out, amount)
         self._watch.end(e0)
+
+    def _render_fast(self, f: _Fast, p: dict, amount: float, dt: float, src, out) -> None:
+        k, plan = self.prog, f.plan
+        f.pmap.apply(k, p)
+        plan.begin()
+        if f.tex is not None:
+            f.tex.write(self.t, amount, p["pulse"], sound_frame(self))
+        if f.images:
+            s_src = sampler(src)
+            for name in f.images:
+                k.set(name, s_src)
+        fire = p["pulse"] > 0.5 and self._beat_was <= 0.5
+        self._beat_was = p["pulse"]
+        for name in self.events:
+            k.set(name, 1 if fire else 0)
+        W, H = self.ctx.width, self.ctx.height
+        if (self.w, self.h) != (W, H):
+            self.passes.render(self.tmp, self.t, dt, f.launch)
+            grid, block = grid_2d(W, H)
+            plan.node(self._kup, grid, block, (np.uint64(src.data.ptr), np.uint64(self.tmp.data.ptr),
+                                               np.uint64(out.data.ptr), np.int32(self.w), np.int32(self.h),
+                                               np.int32(W), np.int32(H), np.float32(amount)))
+        elif amount >= 0.999:
+            self.passes.render(out, self.t, dt, f.launch)
+        else:
+            self.passes.render(self.tmp, self.t, dt, f.launch)
+            n = out.size // 4
+            plan.node(self._kmix, ((n + 255) // 256,), (256,), (np.uint64(src.data.ptr), np.uint64(self.tmp.data.ptr),
+                                                                np.uint64(out.data.ptr), np.int32(n),
+                                                                np.float32(amount)))
+        plan.run()

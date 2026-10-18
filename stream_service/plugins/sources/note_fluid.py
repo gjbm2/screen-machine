@@ -43,7 +43,17 @@ Licence text of the ported work, quoted from the repository's LICENSE file and s
 Per frame (Pavel's step order): velocity splats + ambient stir + dye buoyancy -> curl -> vorticity confinement ->
 divergence -> 20 Jacobi pressure iterations -> subtract the pressure gradient -> advect velocity -> advect dye (+ dye
 splats, dissipation, top vent, coverage meter) -> display (shading, gain, tonemap) at render_scale -> present.
-29 launches, ~1.8-3.1 ms at 4K on the P4000 (fxtest --bench).  Buoyancy (dye lifts like warm smoke) fades out
+29 launches, ~1.8-3.1 ms at 4K on the P4000 (fxtest --bench).
+
+Host diet (4K60 plan change 4): every per-frame value (the splat list, its count, the step's scalars, shading and
+gain) lives in one small "uniform arena" U, so a frame is ONE H2D copy from a pinned host slot plus fixed launches
+whose arguments never change.  That fixed sequence (copy, the 28 kernels and present) is captured once per
+(arena slot, output buffer) as a CUDA graph, so a frame costs 2 host CUDA calls (graph launch + the slot's event
+record) instead of ~30.  Velocity / dye ping-pong by frame parity (fixed buffers, no pointer swaps), pressure stays
+in pa (JACOBI even).  Four pinned slots, each guarded by an event, so the host never overwrites a slot the GPU has
+not copied yet.  A graph is captured only once an output buffer has been seen two frames running (a pool buffer
+that alternates stays on direct launches).  Capture or launch failing, or no pinned memory: direct launches, the
+same kernels and arena (degrade, never refuse; logged once).  Buoyancy (dye lifts like warm smoke) fades out
 under the ceiling and a vent dissipates dye in the top fifth, so risen colour thins away instead of packing into a
 flat band.
 
@@ -69,6 +79,7 @@ time step (and the stir / sway phases).  intensity is output gain.  palette / pa
 """
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
@@ -81,13 +92,21 @@ from stream_service.plugins._lib.palettes import palette_coeffs
 from stream_service.plugins._lib.params import num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 
+log = logging.getLogger(__name__)
+
 TAU = 2.0 * math.pi
 SIM_DIV = 8                  # sim grid = output / 8 (480x270 at 4K)
-JACOBI = 20                  # pressure iterations
+JACOBI = 20                  # pressure iterations (even: the result lands back in pa, so graphs see fixed buffers)
+assert JACOBI % 2 == 0
 MAX_SPLAT = 64               # splats per frame (onset blooms first, then trickles by level)
 MAX_BLOOM = 40               # blooming splats in flight
 MAX_ONSETS = 24              # onsets taken per frame
-HDR = 16                     # U header floats before the splat list
+HDR = 24                     # U header floats before the splat list
+# U header slots for the per-frame scalars (0..11 the stir modes, 12 vmax, 13 buoyancy)
+U_N, U_EDT, U_SDT, U_VDEC, U_DDEC, U_KFILL, U_VENT, U_SHADE, U_GAIN = 14, 15, 16, 17, 18, 19, 20, 21, 22
+SLOTS = 4                    # pinned arena slots (frames in flight); even, so a slot fixes the frame parity
+GRAPH_MAX = 16               # cached graphs (SLOTS x a few output buffers)
+USE_GRAPHS = True            # False: direct launches only (the A/B check sets it per instance via .graphs)
 DYE_SHARP = 1.6              # dye splat 1/r^2 relative to its velocity splat (dye radius ~0.79x)
 LO_KEY, HI_KEY = 21.0, 108.0
 ONSET_BLOOM_S = 0.15
@@ -114,6 +133,15 @@ _SRC = HELPERS + r"""
 #define NF_MAXS %(maxs)d
 #define NF_SHARP %(sharp)ff
 #define NF_TOE %(toe)ff
+#define NF_N %(u_n)d
+#define NF_EDT %(u_edt)d
+#define NF_SDT %(u_sdt)d
+#define NF_VDEC %(u_vdec)d
+#define NF_DDEC %(u_ddec)d
+#define NF_KFILL %(u_kfill)d
+#define NF_VENT %(u_vent)d
+#define NF_SHADE %(u_shade)d
+#define NF_GAIN %(u_gain)d
 __device__ __forceinline__ float2 ld2(const float2* v, int x, int y, int W, int H) {
     x = min(max(x, 0), W - 1); y = min(max(y, 0), H - 1); return v[y * W + x];
 }
@@ -161,16 +189,20 @@ __device__ __forceinline__ float len3(float4 c) { return sqrtf(c.x * c.x + c.y *
 
 // U: header (NF_HDR floats) then n splats x 8 floats {x, y (sim cells), 1/r^2 (sim cells^-2), fx, fy (cells/s added
 // this frame), r, g, b (dye added this frame)}.  Header: [0..5] stir mode 1 {ax, ay, kx, ky, phx, phy},
-// [6..11] stir mode 2, [12] vmax (cells/s), [13] buoyancy (cells/s added per unit dye this frame).
+// [6..11] stir mode 2, [12] vmax (cells/s), [13] buoyancy (cells/s added per unit dye this frame), then this frame's
+// scalars: [NF_N] splat count, [NF_EDT] vorticity eps x dt, [NF_SDT] sim dt, [NF_VDEC] / [NF_DDEC] velocity / dye
+// decay, [NF_KFILL] coverage dissipation x dt, [NF_VENT] vent x dt, [NF_SHADE] shading, [NF_GAIN] gain.  Every
+// per-frame value is read here, so the launches' own arguments never change (one CUDA graph replays them).
 
 // splatShader (velocity) + the ambient stir: two drifting stream-function modes psi = sin(kx x + px) sin(ky y + py),
 // force = (dpsi/dy, -dpsi/dx), divergence-free so the projection keeps it; dye buoyancy.  Rotates the coverage meter.
 extern "C" __global__
-void nf_vsplat(float2* __restrict__ v, const int W, const int H, const float* __restrict__ U, const int n,
+void nf_vsplat(float2* __restrict__ v, const int W, const int H, const float* __restrict__ U,
                float* __restrict__ mass, const float4* __restrict__ dye, const int DW, const int DH)
 {
     if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) { mass[1] = mass[0]; mass[0] = 0.f; }
     XY
+    const int n = (int)U[NF_N];
     float2 o = v[i];
     const float cx = x + 0.5f, cy = y + 0.5f;
     for (int k = 0; k < n && k < NF_MAXS; ++k) {
@@ -207,10 +239,11 @@ void nf_curl(const float2* __restrict__ v, float* __restrict__ cu, const int W, 
 
 // vorticityShader: f = eps w (N.y, -N.x), N = grad|w| / |grad|w||  (in place: reads only its own velocity)
 extern "C" __global__
-void nf_vort(float2* __restrict__ v, const float* __restrict__ cu, const int W, const int H, const float edt,
-             const float vmax)
+void nf_vort(float2* __restrict__ v, const float* __restrict__ cu, const int W, const int H,
+             const float* __restrict__ U, const float vmax)
 {
     XY
+    const float edt = U[NF_EDT];
     const float L = fabsf(ld1(cu, x - 1, y, W, H)), R = fabsf(ld1(cu, x + 1, y, W, H));
     const float T = fabsf(ld1(cu, x, y - 1, W, H)), B = fabsf(ld1(cu, x, y + 1, W, H));
     const float nx = 0.5f * (R - L), ny = 0.5f * (B - T);
@@ -259,9 +292,10 @@ void nf_gradsub(float2* __restrict__ v, const float* __restrict__ p, const int W
 // advectionShader (velocity through itself), exp dissipation
 extern "C" __global__
 void nf_advect_v(const float2* __restrict__ vin, float2* __restrict__ vout, const int W, const int H,
-                 const float dt, const float decay, const float vmax)
+                 const float* __restrict__ U, const float vmax)
 {
     XY
+    const float dt = U[NF_SDT], decay = U[NF_VDEC];
     const float2 u = vin[i];
     float2 r = bil2(vin, x + 0.5f - dt * u.x, y + 0.5f - dt * u.y, W, H);
     r.x *= decay; r.y *= decay;
@@ -275,10 +309,11 @@ void nf_advect_v(const float2* __restrict__ vin, float2* __restrict__ vout, cons
 extern "C" __global__
 void nf_advect_dye(const float4* __restrict__ din, float4* __restrict__ dout, const float2* __restrict__ vel,
                    const int W, const int H, const int SW, const int SH, const float sx, const float sy,
-                   const float dt, const float decay, const float* __restrict__ U, const int n,
-                   float* __restrict__ mass, const float inv_n, const float target, const float kfill,
-                   const float vent)
+                   const float* __restrict__ U, float* __restrict__ mass, const float inv_n,
+                   const float target)
 {
+    const int n = (int)U[NF_N];
+    const float dt = U[NF_SDT], decay = U[NF_DDEC], kfill = U[NF_KFILL], vent = U[NF_VENT];
     __shared__ int ids[NF_MAXS];
     __shared__ int cnt;
     __shared__ float ws[8];
@@ -331,9 +366,10 @@ void nf_advect_dye(const float4* __restrict__ din, float4* __restrict__ dout, co
 // very dense dye glows towards white; linear -> ~sRGB (sqrt).
 extern "C" __global__
 void nf_display(const float4* __restrict__ dye, uchar4* __restrict__ out, const int W, const int H,
-                const float shading, const float gk, const float gain)
+                const float* __restrict__ U, const float gk)
 {
     XY
+    const float shading = U[NF_SHADE], gain = U[NF_GAIN];
     const float4 c4 = dye[i];
     float3 col = make_float3(c4.x, c4.y, c4.z);
     if (shading > 0.f) {
@@ -362,7 +398,9 @@ void nf_display(const float4* __restrict__ dye, uchar4* __restrict__ out, const 
     out[i] = pack(make_float4(255.f * sqrtf(clamp01(col.x)), 255.f * sqrtf(clamp01(col.y)),
                               255.f * sqrtf(clamp01(col.z)), 255.f));
 }
-""" % {"hdr": HDR, "maxs": MAX_SPLAT, "sharp": DYE_SHARP, "toe": 0.003}
+""" % {"hdr": HDR, "maxs": MAX_SPLAT, "sharp": DYE_SHARP, "toe": 0.003, "u_n": U_N, "u_edt": U_EDT,
+       "u_sdt": U_SDT, "u_vdec": U_VDEC, "u_ddec": U_DDEC, "u_kfill": U_KFILL, "u_vent": U_VENT,
+       "u_shade": U_SHADE, "u_gain": U_GAIN}
 
 
 def _smoothstep(e0: float, e1: float, x):
@@ -407,18 +445,36 @@ class NoteFluid(Source):
         self.sh = max(18, int(round(ctx.height / SIM_DIV)))
         self.dw, self.dh = internal_size(ctx, float(params["render_scale"]))
         f32 = cp.float32
-        self.va = cp.zeros((self.sh, self.sw, 2), f32)
-        self.vb = cp.zeros((self.sh, self.sw, 2), f32)
+        # velocity and dye ping-pong by frame parity: frame f reads [f & 1] and writes [1 - (f & 1)]
+        self.v = [cp.zeros((self.sh, self.sw, 2), f32), cp.zeros((self.sh, self.sw, 2), f32)]
         self.cu = cp.zeros((self.sh, self.sw), f32)
         self.dv = cp.zeros((self.sh, self.sw), f32)
         self.pa = cp.zeros((self.sh, self.sw), f32)
         self.pb = cp.zeros((self.sh, self.sw), f32)
-        self.da = cp.zeros((self.dh, self.dw, 4), f32)
-        self.db = cp.zeros((self.dh, self.dw, 4), f32)
+        self.d = [cp.zeros((self.dh, self.dw, 4), f32), cp.zeros((self.dh, self.dw, 4), f32)]
         self.buf = cp.zeros((self.dh, self.dw, 4), cp.uint8)
         self.mass = cp.zeros(2, f32)
         self.U = cp.zeros(HDR + 8 * MAX_SPLAT, f32)
         self.Uh = np.zeros(HDR + 8 * MAX_SPLAT, np.float32)
+        self.u_bytes = int(self.Uh.nbytes)
+        # the uniform arena's host side: SLOTS pinned copies of Uh, each reused only after its event (the GPU has
+        # copied it).  No pinned memory: U.set from Uh (pageable, synchronous), direct launches.
+        self.fi = 0                         # frames rendered (parity and arena slot)
+        self.pin, self.ev, self.ev_used = [], [], [False] * SLOTS
+        try:
+            for _ in range(SLOTS):
+                mem = cp.cuda.alloc_pinned_memory(self.u_bytes)
+                self.pin.append((mem, np.frombuffer(mem, np.float32, self.Uh.size)))
+                self.ev.append(cp.cuda.Event(block=False, disable_timing=True))
+        except Exception as e:
+            self.pin, self.ev = [], []
+            log.warning("note_fluid: no pinned arena (%s); U.set per frame, direct launches", e)
+        self.graphs = USE_GRAPHS and bool(self.pin)
+        self.graph_cache: dict = {}         # (slot, out ptr, out shape) -> cupy Graph
+        self.cap_stream = None
+        self.last_out = None
+        self.captures = 0
+        self.cuda_calls = 0                 # host CUDA calls the last render issued (launches, copies, records)
         mod = raw_module(_SRC)
         self.k_vsplat = mod.get_function("nf_vsplat")
         self.k_curl = mod.get_function("nf_curl")
@@ -583,7 +639,7 @@ class NoteFluid(Source):
                 S[n:n + k, 5:8] = self._colours(pf, period, coeffs) * (TRICKLE_D * w * dt)[:, None]
                 n += k
 
-        # ---- header: stir modes, velocity clamp
+        # ---- header: stir modes, velocity clamp, this frame's scalars (the uniform arena)
         stir = STIR_F * (0.4 + 0.9 * ep) * (1.0 + 0.6 * kp) * SH * sdt
         self.stir_ph = (self.stir_ph + self.stir_rate * (0.5 + ep) * spd * dt) % TAU
         for m in range(2):
@@ -591,44 +647,128 @@ class NoteFluid(Source):
             ky = TAU * self.stir_n[m, 1] / SH
             amp = stir / max(kx, ky) * (1.0 if m == 0 else 0.6)
             Uh[6 * m:6 * m + 6] = (amp * ky, amp * kx, kx, ky, self.stir_ph[2 * m], self.stir_ph[2 * m + 1])
-        vmax = VMAX * SH
-        Uh[12] = vmax
+        Uh[12] = VMAX * SH
         Uh[13] = BUOY * (0.7 + 0.6 * ep) * SH * sdt
-        self.U.set(Uh)
+        Uh[U_N] = n
+        Uh[U_EDT] = float(p["curl"]) * cmul * SH / 128.0 * sdt
+        Uh[U_SDT] = sdt
+        Uh[U_VDEC] = math.exp(-(0.3 - 0.15 * ep) * sdt)
+        # dye: pedal pools colour; with no piano the ambient splats linger a little longer
+        ddiss = float(p["dissipation"]) * (1.0 - 0.75 * self.ped) * (0.7 + 0.3 * self.pres)
+        Uh[U_DDEC] = math.exp(-ddiss * sdt)
+        Uh[U_KFILL] = FILL_K * dt
+        Uh[U_VENT] = VENT * sdt
+        Uh[U_SHADE] = float(p["shading"])
+        Uh[U_GAIN] = float(p["intensity"]) * (1.0 + 0.25 * ep)
+        self._submit(out)
 
-        # ---- the step (Pavel's order)
+    # ------------------------------------------------------------------ the GPU step
+    def _launch(self, slot: int, out) -> int:
+        """The frame's fixed launch sequence on the current stream (Pavel's order): the arena copy from pinned
+        slot ``slot`` (or none: the caller set U), the step, display and present.  Every argument is fixed for a
+        given (slot, out), so this is also what a graph capture records.  Returns the CUDA calls issued."""
+        cp = self.ctx.cp
+        calls = 0
+        if slot >= 0:
+            cp.cuda.runtime.memcpyAsync(self.U.data.ptr, self.pin[slot][0].ptr, self.u_bytes,
+                                        cp.cuda.runtime.memcpyHostToDevice, cp.cuda.get_current_stream().ptr)
+            calls += 1
+        ph = self.fi & 1 if slot < 0 else slot & 1
+        va, vb = self.v[ph], self.v[1 - ph]
+        da, db = self.d[ph], self.d[1 - ph]
         i32, f32 = np.int32, np.float32
+        SW, SH, DW, DH = self.sw, self.sh, self.dw, self.dh
         W, H = i32(SW), i32(SH)
-        launch_2d(self.k_vsplat, SW, SH, (self.va, W, H, self.U, i32(n), self.mass, self.da, i32(self.dw),
-                                          i32(self.dh)))
-        launch_2d(self.k_curl, SW, SH, (self.va, self.cu, W, H))
-        eps = float(p["curl"]) * cmul * SH / 128.0
-        launch_2d(self.k_vort, SW, SH, (self.va, self.cu, W, H, f32(eps * sdt), f32(vmax)))
-        launch_2d(self.k_div, SW, SH, (self.va, self.dv, W, H))
+        vmax = f32(VMAX * SH)
+        U = self.U
+        launch_2d(self.k_vsplat, SW, SH, (va, W, H, U, self.mass, da, i32(DW), i32(DH)))
+        launch_2d(self.k_curl, SW, SH, (va, self.cu, W, H))
+        launch_2d(self.k_vort, SW, SH, (va, self.cu, W, H, U, vmax))
+        launch_2d(self.k_div, SW, SH, (va, self.dv, W, H))
         p0, p1 = self.pa, self.pb
         for it in range(JACOBI):
             launch_2d(self.k_jac, SW, SH, (p0, p1, self.dv, W, H, f32(0.8 if it == 0 else 1.0)))
             p0, p1 = p1, p0
-        self.pa, self.pb = p0, p1
-        launch_2d(self.k_grad, SW, SH, (self.va, self.pa, W, H, f32(vmax)))
-        vdiss = 0.3 - 0.15 * ep
-        launch_2d(self.k_adv_v, SW, SH, (self.va, self.vb, W, H, f32(sdt), f32(math.exp(-vdiss * sdt)), f32(vmax)))
-        self.va, self.vb = self.vb, self.va
-
-        # ---- dye: pedal pools colour; with no piano the ambient splats linger a little longer
-        ddiss = float(p["dissipation"]) * (1.0 - 0.75 * self.ped) * (0.7 + 0.3 * self.pres)
-        DW, DH = self.dw, self.dh
-        launch_2d(self.k_adv_d, DW, DH, (self.da, self.db, self.va, i32(DW), i32(DH), W, H,
-                                         f32(SW / DW), f32(SH / DH), f32(sdt), f32(math.exp(-ddiss * sdt)),
-                                         self.U, i32(n), self.mass, f32(1.0 / (DW * DH)), f32(FILL_TARGET),
-                                         f32(FILL_K * dt), f32(VENT * sdt)))
-        self.da, self.db = self.db, self.da
-
-        gain = float(p["intensity"]) * (1.0 + 0.25 * ep)
-        launch_2d(self.k_disp, DW, DH, (self.da, self.buf, i32(DW), i32(DH), f32(p["shading"]), f32(self.gk),
-                                        f32(gain)))
+        launch_2d(self.k_grad, SW, SH, (va, self.pa, W, H, vmax))       # JACOBI even: the result is in pa
+        launch_2d(self.k_adv_v, SW, SH, (va, vb, W, H, U, vmax))
+        launch_2d(self.k_adv_d, DW, DH, (da, db, vb, i32(DW), i32(DH), W, H, f32(SW / DW), f32(SH / DH), U,
+                                         self.mass, f32(1.0 / (DW * DH)), f32(FILL_TARGET)))
+        launch_2d(self.k_disp, DW, DH, (db, self.buf, i32(DW), i32(DH), U, f32(self.gk)))
         present(self.ctx, self.buf, out)
+        return calls + 9 + JACOBI
+
+    def _graph_off(self, what: str, e: BaseException) -> None:
+        log.warning("note_fluid: CUDA graph %s failed (%s: %s); direct launches from here on", what,
+                    type(e).__name__, e)
+        self.graphs = False
+        self.graph_cache.clear()
+
+    def _capture(self, slot: int, out):
+        cp = self.ctx.cp
+        if self.cap_stream is None:
+            self.cap_stream = cp.cuda.Stream(non_blocking=True)
+        cs = self.cap_stream
+        with cs:
+            cs.begin_capture(cp.cuda.runtime.streamCaptureModeRelaxed)    # other threads' calls stay legal
+            try:
+                self._launch(slot, out)
+            except BaseException:
+                try:
+                    cs.end_capture()
+                except Exception:
+                    pass
+                raise
+            g = cs.end_capture()
+        self.captures += 1
+        return g
+
+    def _submit(self, out) -> None:
+        """One frame on the GPU: fill an arena slot, then one graph launch (or the direct sequence)."""
+        cp = self.ctx.cp
+        if not self.pin:                                     # no arena: today's pageable upload, direct launches
+            self.U.set(self.Uh)
+            self.cuda_calls = 1 + self._launch(-1, out)
+            self.fi += 1
+            return
+        slot = self.fi % SLOTS
+        ev = self.ev[slot]
+        if self.ev_used[slot] and not ev.done:               # the GPU has not copied this slot yet (rare)
+            ev.synchronize()
+        self.pin[slot][1][:] = self.Uh
+        calls = 0
+        ran = False
+        optr = out.data.ptr
+        if self.graphs and self.fi >= 1:                     # frame 0 runs direct: every kernel loaded first
+            key = (slot, optr, out.shape)
+            g = self.graph_cache.get(key)
+            if g is None and optr == self.last_out:          # this output seen two frames running: capture it
+                try:
+                    g = self._capture(slot, out)
+                except Exception as e:
+                    self._graph_off("capture", e)
+                    g = None
+                if g is not None:
+                    if len(self.graph_cache) >= GRAPH_MAX:
+                        self.graph_cache.pop(next(iter(self.graph_cache)))
+                    self.graph_cache[key] = g
+            if g is not None:
+                try:
+                    g.launch(cp.cuda.get_current_stream())
+                    calls, ran = 1, True
+                except Exception as e:
+                    self._graph_off("launch", e)
+        if not ran:
+            calls = self._launch(slot, out)
+        ev.record()
+        self.ev_used[slot] = True
+        self.cuda_calls = calls + 1
+        self.last_out = optr
+        self.fi += 1
 
     def close(self) -> None:
-        self.va = self.vb = self.cu = self.dv = self.pa = self.pb = None
-        self.da = self.db = self.buf = self.mass = self.U = None
+        self.graph_cache = {}
+        self.cap_stream = None
+        self.v = self.d = None
+        self.cu = self.dv = self.pa = self.pb = None
+        self.buf = self.mass = self.U = None
+        self.pin, self.ev = [], []
