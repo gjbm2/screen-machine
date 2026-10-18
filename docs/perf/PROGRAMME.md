@@ -190,7 +190,8 @@ The per-screen and per-service numbers decide pass or fail. The box numbers expl
 - Sent about 20:30. Replies so far:
   - ff took the stream role.
   - 4e (was 94, gen-AI review) and 7c (signs as b1: Alexa, the LLM prompt work, the tag overlay) hold none of these roles.
-  - 26 has not replied.
+  - 26 (room audio calibration and beat evaluation) holds none of these roles.
+  - Still unclaimed: second builder, room_service, display page, ops/Spectre and kiosk. The owner is asked in one line.
 - Roles still unclaimed after a day go to the owner as one plain line (§0).
 - Nothing waits for this. If a half stays empty, the renderer builder takes it with the owner's OK and tells the peers. Only the renderer role itself is blocking.
 
