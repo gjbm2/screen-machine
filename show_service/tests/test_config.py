@@ -172,3 +172,16 @@ def test_beat_thread_flag_over_env_off_by_default():
     assert config.load_options(["--beat-thread", "on"], {}).beat_thread is True
     o = config.load_options([], {"SHOW_BEAT_THREAD": "sideways"})
     assert o.beat_thread is False and any("beat thread" in n for n in o.notes)
+
+
+def test_beat_process_and_rx_coalesce_options():
+    """SHOW_BEAT_PROC / --beat-proc (off by default and in code), SHOW_BEAT_NICE 0..19 and SHOW_RX_COALESCE_MIN
+    1..32 (default 1: show-rx never waits); bad values are notes, clamped or defaulted."""
+    o = config.load_options([], {})
+    assert (o.beat_proc, o.beat_nice, o.rx_coalesce_min, o.notes) == (False, 0, 1, ())
+    assert config.Options(config=contract.Config()).beat_proc is False
+    o = config.load_options([], {"SHOW_BEAT_PROC": "on", "SHOW_BEAT_NICE": "5", "SHOW_RX_COALESCE_MIN": "4"})
+    assert (o.beat_proc, o.beat_nice, o.rx_coalesce_min) == (True, 5, 4)
+    assert config.load_options(["--beat-proc", "off"], {"SHOW_BEAT_PROC": "on"}).beat_proc is False
+    o = config.load_options([], {"SHOW_BEAT_PROC": "maybe", "SHOW_BEAT_NICE": "-3", "SHOW_RX_COALESCE_MIN": "x"})
+    assert (o.beat_proc, o.beat_nice, o.rx_coalesce_min) == (False, 0, 1) and len(o.notes) == 3
