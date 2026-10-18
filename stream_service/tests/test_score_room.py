@@ -126,3 +126,30 @@ def test_the_last_screen_out_closes_the_analysis():
     assert not closed
     room.leave(b)
     assert closed == [1] and "t-close" not in RoomScore._rooms
+
+
+def test_the_lock_is_only_held_for_cpu_work():
+    """A scene reads the room's builder through Shared (one call, one short hold), and feeds and takes its bars in one
+    tick: room.lock is never held across the scene's GPU waits (one screen's wait would stall the other's thread)."""
+    from stream_service.score.room import Shared
+    a = object()
+    room = RoomScore.join("t-shared", a, analysis=False)
+    s = Shared(room.builder, room.lock)
+    held = []
+    real = room.builder.key
+
+    def key():
+        held.append(room.lock._is_owned())
+        return real()
+    room.builder.key = key
+    s.key()
+    assert held == [True] and not room.lock._is_owned()
+    for t, f in frames()[:50]:
+        bars, rev = room.tick(a, f, t)
+        assert not room.lock._is_owned()
+    try:
+        s.notes = []
+        assert False, "Shared let a scene write the room's builder"
+    except AttributeError:
+        pass
+    room.leave(a)
