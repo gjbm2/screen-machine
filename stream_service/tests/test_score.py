@@ -451,3 +451,32 @@ def test_a_signature_waits_for_its_sharps_and_flats_to_be_played():
     sb2.note_on(73, 0.6, 2.0)
     sb2.note_off(73, 2.3)
     assert sb2.key()[2] == 2
+
+
+def test_the_cached_staff_is_always_the_computed_one():
+    """_staff caches its answer per note until the builder changes (the glows ask every frame): at every frame of a
+    two-hand waltz, with hands arriving and bars written, each answer is what it computes afresh."""
+    sb = ScoreBuilder()
+    ns = _waltz(bars=8)
+    offs, k, t, checked = [], 0, 0.0, 0
+    while t < float(ns[-1, 1]) + 6.0:
+        while k < len(ns) and ns[k, 1] <= t:
+            p, on, d, v = ns[k]
+            i = sb.note_on(int(p), v / 127, float(on))
+            offs.append((float(on + d), int(p)))
+            if k % 5 == 0:
+                sb.hand[i] = 1 if p < 60 else 0                     # hand replies arrive now and then
+                sb.ver += 1
+            k += 1
+        for off in sorted(o for o in offs if o[0] <= t):
+            sb.note_off(off[1], off[0])
+            offs.remove(off)
+        sb.poll(t)
+        for _ in range(2):                                          # asked twice a frame: the second is the cache's
+            got = sb.staves(sb.notes)
+            fresh = [sb.staff_of[n.id] if n.id in sb.staff_of else
+                     sb._staff(n, sb._alone(n, sb.notes, sb.last_event_t or n.t_on), sb.line_staff) for n in sb.notes]
+            assert got == fresh
+            checked += len(got)
+        t += 1 / 30
+    assert checked > 500

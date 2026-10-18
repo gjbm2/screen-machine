@@ -274,6 +274,7 @@ class BuilderView(ScoreBuilder):
             by_id[i] = n
             notes.append(n)
         self._by_id, self.notes = by_id, notes
+        self.ver += 1                                         # its cached staves are the old state's
 
 
 def _marker() -> Bar:

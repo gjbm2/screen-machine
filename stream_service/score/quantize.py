@@ -396,6 +396,8 @@ class ScoreBuilder:
         self.pc_weight = [0.0] * 12
         self.pc_t: Optional[float] = None
         self.last_dynamic: Optional[str] = None
+        self.ver = 0                            # bumped by whatever can change a note's staff (notes, hands, bars)
+        self.staff_seen: dict[int, tuple[int, int]] = {}    # note id -> (ver, staff): _staff's answers this ver
 
     @property
     def timeline(self):
@@ -430,6 +432,7 @@ class ScoreBuilder:
         n = Note(self.next_id, int(pitch), float(vel), t)
         self.next_id += 1
         self.notes.append(n)
+        self.ver += 1
         self.history.append(n)
         while self.history and self.history[0].t_on < t - HISTORY_S:
             self.history.popleft()
@@ -453,6 +456,7 @@ class ScoreBuilder:
                     n.t_off, n.restruck = max(t, n.t_on + 0.02), False
                     break
         self.last_event_t = t
+        self.ver += 1
 
     def pedal(self, value: float, t: float) -> None:
         down = value >= 0.5
@@ -496,6 +500,7 @@ class ScoreBuilder:
         for k, h in (rep.get("hands") or {}).items():
             self.hand[int(k)] = int(h)
         self._key_vote(rep.get("key_fifths"))
+        self.ver += 1
         if rep.get("last_onset") is not None:
             self.trusted_t = t0 + float(rep["last_onset"]) - TRUST_S
         m = rep.get("metre")
@@ -797,6 +802,7 @@ class ScoreBuilder:
         self.trusted_t = None
         self.beats, self.unit = BEATS, GRID
         self.notes = []
+        self.ver += 1
         self.history.clear()
         self.hand.clear()
         self.staff_of.clear()
@@ -832,7 +838,14 @@ class ScoreBuilder:
             written = self.staff_of.get(n.id)
             if written is not None:
                 return written
-            alone, line = self._alone(n, self.notes, self.last_event_t or n.t_on), self.line_staff
+            seen = self.staff_seen.get(n.id)
+            if seen is not None and seen[0] == self.ver:
+                return seen[1]
+            st = self._staff(n, self._alone(n, self.notes, self.last_event_t or n.t_on), self.line_staff)
+            if len(self.staff_seen) > 1024:
+                self.staff_seen.clear()
+            self.staff_seen[n.id] = (self.ver, st)        # (the glows ask every frame; it changes only with ver)
+            return st
         if alone:
             if line == 0 and n.pitch >= LINE_TREBLE_LOW or line == 1 and n.pitch <= LINE_BASS_HIGH:
                 return line
@@ -845,6 +858,10 @@ class ScoreBuilder:
         if h == 1 and n.pitch > BASS_HIGH:
             return 0
         return h
+
+    def staves(self, notes: list) -> list[int]:
+        """_staff for each of ``notes`` (a scene's glows each frame, in one call: one hold of a shared builder's lock)."""
+        return [self._staff(n) for n in notes]
 
     @staticmethod
     def _alone(n: Note, notes: list, now: float) -> bool:
@@ -920,6 +937,7 @@ class ScoreBuilder:
                       if n.t_off is None or self._q(tl.beat(n.t_off)) > hi or self._q(tl.beat(n.t_on)) >= hi]
         live = {n.id for n in self.notes}
         self.staff_of = {i: s for i, s in self.staff_of.items() if i in live}
+        self.ver += 1
         self.pedal_events = [(t, w) for t, w in self.pedal_events if self._q(tl.beat(t)) >= hi]
         return bar
 

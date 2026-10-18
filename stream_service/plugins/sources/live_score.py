@@ -57,6 +57,7 @@ import collections
 import logging
 import math
 import os
+import time
 
 import numpy as np
 
@@ -108,6 +109,14 @@ A_DT = 0.04                    # velocities change by at most a frame's worth of
 PHRASE_GAP_SP, HDR_XFADE_S, NGHOST = 3.0, 0.5, 8
 LANE_W = 4.0                   # the lane's start follows the current phrase's pen through a spring (a new phrase or a
                                # rewrite moves it on smoothly)
+PUMP_S = 0.004                 # a burst of bars (a phrase's first, a rewrite) goes to the engraver over several frames:
+                               # MEI written for at most this long a frame after the first bar (24 ms in one, measured)
+# the frame's parameters in one buffer, uploaded once a frame (float32 offsets, 64-byte aligned)
+UP_P, UP_R = 0, 64
+UP_RI = (UP_R + NROW * 16 + 15) // 16 * 16
+UP_L = (UP_RI + NROW + 15) // 16 * 16
+UP_G = (UP_L + MAX_LIVE * 8 + 15) // 16 * 16
+UP_N = UP_G + NGHOST * 2
 
 _SRC = HELPERS + r"""
 #define NROW """ + str(NROW) + r"""
@@ -534,14 +543,30 @@ class LiveScore(Source):
         self.stage = np.frombuffer(self._pinned, np.uint8, self.stage_bytes)
         self.gstage = cp.zeros(self.stage_bytes, cp.uint8)
         self._stage_done = None                 # the last uploads' event: pinned memory is reused only after it
-        self.P = cp.zeros(64, cp.float32)
+        # the frame's parameters (P, the lines R and RI, the glows L, scroll's ghosts G) go up in one async copy a
+        # frame from pinned memory, double-buffered: the next frame fills the other half while this one's copy may
+        # still be queued (it was four synchronous uploads, ~0.1 ms of host each); the kernels read slices of one buffer
+        self.up_dev = cp.zeros(UP_N, cp.float32)
+        self._up_pin = [cp.cuda.alloc_pinned_memory(4 * UP_N) for _ in range(2)]
+        self.up_host = [np.frombuffer(m, np.float32, UP_N) for m in self._up_pin]
+        self.up_ev = [None, None]
+        self.up_k = 0
+        self.P, self.R = self.up_dev[UP_P:UP_P + 64], self.up_dev[UP_R:UP_R + NROW * 16]
+        self.RI = self.up_dev[UP_RI:UP_RI + NROW].view(cp.int32)
+        self.L = self.up_dev[UP_L:UP_L + MAX_LIVE * 8]
         self.Ph = np.zeros(64, np.float32)
-        self.R = cp.zeros(NROW * 16, cp.float32)
         self.Rh = np.zeros(NROW * 16, np.float32)
-        self.RI = cp.zeros(NROW, cp.int32)
         self.RIh = np.zeros(NROW, np.int32)
-        self.L = cp.zeros(MAX_LIVE * 8, cp.float32)
         self.Lh = np.zeros(MAX_LIVE * 8, np.float32)
+        self.pump_until = 0.0
+        # first uses load kernels and modules (35 ms on the first ink, 12 ms on the first bar, measured): here, in
+        # setup, not on a frame
+        from stream_service.score import mei  # noqa: F401
+        w8 = cp.zeros((2, 16), cp.uint8)
+        cp.maximum(w8[:, :8], w8[:, 8:], out=w8[:, :8])
+        w8[:, :8] *= w8[0, 8:][None, :]
+        w8.fill(0)
+        w8.copy()
         # the room's one transcription, shared with its other screens (score/room.py: one builder, one analysis
         # worker, fed by whichever screen leads; owner, 18 Oct: both screens transcribed the same MIDI twice).  In a
         # proc worker (a render process per screen) it runs in the room's own process (score/room_proc.py)
@@ -781,6 +806,8 @@ class LiveScore(Source):
             ph.sub[key] = k
             ph.t_sub[k] = self.t_sound
             ph.wait.pop(0)
+            if time.perf_counter() > self.pump_until:          # the rest next frame (the engraver takes them in
+                break                                          # turn anyway)
 
     def _phrase_end(self) -> None:
         """The phrase ended: its last line closes where it stopped, a line planned past it is cleared for the next
@@ -1316,7 +1343,7 @@ class LiveScore(Source):
         self.tape = cp.zeros((self.ch, self.TW), cp.uint8)
         self.colok = cp.zeros(self.TW, cp.uint8)
         self.hdr = cp.zeros((2, self.ch, self.HW), cp.uint8)
-        self.G = cp.zeros(NGHOST * 2, cp.float32)
+        self.G = self.up_dev[UP_G:UP_G + NGHOST * 2]
         self.Gh = np.zeros(NGHOST * 2, np.float32)
         ln = _Line(0, sp, None)
         ln.id = 0                                   # the tape (the glows' home 0)
@@ -2028,10 +2055,12 @@ class LiveScore(Source):
         add = []
         lines = set(id(ln) for ln in self.lines)
         tele = TELEPORT_SP * sp
+        cur = [g for g in self.glows if g.phrase is ph and g.state == "live"]
+        if cur:                                         # one call: one hold of the room's lock, cached in the builder
+            for g, st in zip(cur, self.builder.staves([g.note for g in cur])):
+                g.staff = st
         for g in self.glows:
             n = g.note
-            if g.phrase is ph and g.state == "live":
-                g.staff = self.builder._staff(n)
             # envelope: held and the newest of its pitch reads the live level; else it falls to the floor
             if n.t_off is None and newest.get(n.pitch) == n.id and lv is not None and 0 <= n.pitch < 128:
                 g.tgt = 0.55 + 0.45 * float(lv[n.pitch])
@@ -2176,6 +2205,7 @@ class LiveScore(Source):
         self.kick += (pulse - self.kick) * a
         Ph = self.Ph
         Ph[0:12] = palette_coeffs(p["palette"]) if p.get("palette") else palette_coeffs("ember")
+        self.pump_until = time.perf_counter() + PUMP_S
         f = self._listen()                                # the room's builder: short CPU-only holds of its lock
         self._take_renders()
         glow_s = max(0.05, float(p["ink_glow"]))
@@ -2201,19 +2231,35 @@ class LiveScore(Source):
         Ph[29] = self.th
         Ph[30:33] = _pal3(Ph[0:12], self.drift % 10.0 + 0.1)
         Ph[33] = RC_SP * self.sp
-        self.P.set(Ph)
-        if nl:
-            self.L.set(self.Lh)
+        self._upload(nl)
         if self.layout == "scroll":
-            self.G.set(self.Gh)
             launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.tape, self.colok, self.hdr, self.G, self.L,
                                                np.int32(nl), self.page))
         else:
-            self.R.set(self.Rh)
-            self.RI.set(self.RIh)
             launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.canvas, self.R, self.RI, self.L,
                                                np.int32(nl), self.page))
         present(self.ctx, self.buf, out)
+
+    def _upload(self, nl: int) -> None:
+        """The frame's parameters to the GPU: one async copy from this frame's half of the pinned buffer."""
+        cp = self.ctx.cp
+        k = self.up_k = 1 - self.up_k
+        ev = self.up_ev[k]
+        if ev is not None and not ev.done:
+            ev.synchronize()                              # the GPU is two frames behind: this half is still queued
+        h = self.up_host[k]
+        h[UP_P:UP_P + 64] = self.Ph
+        h[UP_R:UP_R + NROW * 16] = self.Rh
+        h[UP_RI:UP_RI + NROW].view(np.int32)[:] = self.RIh
+        if nl:
+            h[UP_L:UP_L + 8 * nl] = self.Lh[:8 * nl]
+        if self.layout == "scroll":
+            h[UP_G:UP_G + NGHOST * 2] = self.Gh
+        st = cp.cuda.get_current_stream()
+        self.up_dev.set(h, stream=st)
+        if ev is None:
+            ev = self.up_ev[k] = cp.cuda.Event(block=False, disable_timing=True)
+        ev.record(st)
 
     def close(self) -> None:
         if self.engraver is not None:
@@ -2223,5 +2269,6 @@ class LiveScore(Source):
         if room is not None:
             room.leave(self)                              # the last screen out closes the room's analysis
         self.buf = self.canvas = self.P = self.R = self.RI = self.L = self.page = self.gstage = None
+        self.up_dev = self.up_host = self._up_pin = self.up_ev = None
         self.tape = self.colok = self.hdr = self.G = None
         self.stage = self._pinned = None
