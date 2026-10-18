@@ -10,6 +10,28 @@
 - **The renderer's own freezes:** its repeat rule and scene-rate divider act on "GPU" numbers that are really host time.
 - **The box:** Windows uses a lot of the CPU, and the CPU runs at about 74% of its rated clock.
 
+## Status, 19 Oct 00:45: all five changes are built and live (ff)
+
+| Change | Commit | Measured (ff's bounded proofs) |
+|---|---|---|
+| 1. True numbers, no self-made freezes | 977b608d | probe frame after 3 repeats; rate divider on real cost; rescan 72 → 0.005 ms |
+| 2. GPU encode | c26c81de, plus the gpu_id fix in 47d1e683 | encode 2.2 ms CPU per frame (was 35-38); slot to packet 105 ms at 30p, 55-58 at 60p |
+| 3. Worker per screen | 47d1e683 | render host p50 2.1 ms (was 8.8-9.8); blocked 0 (was 5-5.6); cold start 1.9-2.3 s |
+| 4. Fewer GPU calls | bb78c069, plus b0's 6e28ab2b | GLSL 15 → 5 calls; note-fluid 30 → 2; live-score worst 78 → 14 ms |
+| 5. 60 fps plus a degrade controller | 237ddd83 | 60.0 content fps, encode 2.1 ms, slot to packet 58 ms; 60 → 30 → 60 decodes |
+
+**Per-screen rollout** (`config/live/stream_switches.json`, read at session start, no restart):
+- devtest: nvenc + proc at 60;
+- south: nvenc + proc at 30;
+- north: ffmpeg + inproc at 30.
+
+**Before the TVs go to 60:**
+- the kiosk 2x4K60 decode check (diagnostic 4);
+- for north, the 4060 NVENC test (diagnostic 1);
+- Chrome playing mixed 30/60 samples, checked on devtest.
+
+**The first real test of changes 2-5 together** is south's next live show. A 24 h watcher captures it.
+
 ## The changes, in order
 
 Each is one build plus one stream restart with no screen live.
