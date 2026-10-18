@@ -73,6 +73,8 @@ LOOKS = ("paper", "night")
 LAYOUTS = ("page", "scroll")
 ROW_SP = 24                    # a line's canvas height in staff spaces
 TOP_SP = 6                     # the treble staff's top line, in staff spaces from the canvas top
+STAVE_GAP_SP = 11.5            # treble top line to bass top line, the same in every bar (owner 18 Oct: room for 3
+                               # ledger lines each side; Verovio's per-bar gap made the staves wander apart and back)
 RESULTS_PER_FRAME = 3
 # page
 NROW = 5                       # lines kept: entering, playing, inking, older, leaving
@@ -386,7 +388,7 @@ class _Line:
         self.placed: dict = {}                      # phrase bar -> (x, width)
         self.heads: dict = {}                       # note id -> engraved head (canvas x, y)
         self.t1 = TOP_SP * sp
-        self.t2 = self.t1 + (t2_off if t2_off is not None else 10 * sp)
+        self.t2 = self.t1 + (t2_off if t2_off is not None else STAVE_GAP_SP * sp)
         self.x = None
         self.pen_x = -1e9
         self.pen_v = 0.0
@@ -512,6 +514,7 @@ class LiveScore(Source):
         size = float(params["staff_size"])
         self.sp = max(4.0, round((SP_SCROLL if scroll else 0.013) * self.h * size, 1))     # staff space (px)
         sp = self.sp
+        self.gap = STAVE_GAP_SP * sp                                                   # treble top -> bass top
         self.cw = max(64, int(self.w * 0.94))                                          # a line's canvas
         self.ch = int(ROW_SP * sp)
         self.x_off = 0 if scroll else int(0.5 * (self.w - self.cw))
@@ -1019,10 +1022,9 @@ class LiveScore(Source):
             dst = plan.slot_x0(j, k)
         if render is not None:
             self._place(ln, (img, m), crop, m["x1"] + 1, dst=dst)
-            dy = int(round(ln.t1 - m["staves"][0][0]))
             hs = meta.get("heads") or []
             for nid, cx, cy in hs:
-                ln.heads[int(nid)] = (dst + cx - crop, cy + dy)
+                ln.heads[int(nid)] = (dst + cx - crop, self._head_y(m, ln.t1, cy))
             if hs:
                 xs = sorted(cx - crop for _n, cx, _c in hs)
                 self.lpads.append(min(4 * self.sp, max(0.3 * self.sp, xs[0])))
@@ -1044,40 +1046,67 @@ class LiveScore(Source):
             ln.open_to = min(float(self.cw), max(ln.open_to, L.end))
 
     def _place(self, ln: _Line, render, x0: float, x1: float, header: bool = False, dst=None) -> None:
-        """Composite columns [x0, x1) of an engraved part at canvas x ``dst`` (default the line's cursor), its
-        treble top line on ln.t1."""
+        """Composite columns [x0, x1) of an engraved part at canvas x ``dst`` (default the line's cursor): its
+        treble's rows with the top line on ln.t1, its bass's one fixed gap below (_rows)."""
         img, m = render
         h, w = img.shape
-        top = m["staves"][0][0]
-        dy = int(round(ln.t1 - top))
         c0, c1 = int(x0), min(int(math.ceil(x1)), w)
+        parts = self._parts(m, ln.t1, h)
         if self.layout == "scroll":                         # onto the ring at tape u = dst
             u = int(round(ln.cursor if dst is None else dst))
             cols = min(c1 - c0, self.TW - 64)
-            r0, r1 = max(0, dy), min(self.ch, dy + h)
-            if cols <= 0 or r1 <= r0:
+            if cols <= 0 or not parts:
                 return
             for d, o, n in ring_slices(u, cols, self.TW):
                 t = self.tape[:, d:d + n]
                 t *= self.colok[d:d + n][None, :]           # a column from an earlier lap starts clean
-                seg = t[r0:r1]
-                self.ctx.cp.maximum(seg, img[r0 - dy:r1 - dy, c0 + o:c0 + o + n], out=seg)
+                for r0, r1, dy in parts:
+                    seg = t[r0:r1]
+                    self.ctx.cp.maximum(seg, img[r0 - dy:r1 - dy, c0 + o:c0 + o + n], out=seg)
                 self.colok[d:d + n] = 1
             ln.cursor = max(ln.cursor, u + cols)
             return
         dst_x = int(round(ln.cursor if dst is None else dst))
         cols = min(c1 - c0, self.cw - dst_x)
-        r0, r1 = max(0, dy), min(self.ch, dy + h)
-        if cols <= 0 or r1 <= r0 or dst_x < 0:
+        if cols <= 0 or not parts or dst_x < 0:
             return
         off = ln.slot * self.ch * self.cw
         cv = self.canvas[off:off + self.ch * self.cw].reshape(self.ch, self.cw)
-        d = cv[r0:r1, dst_x:dst_x + cols]
-        self.ctx.cp.maximum(d, img[r0 - dy:r1 - dy, c0:c0 + cols], out=d)
+        for r0, r1, dy in parts:
+            d = cv[r0:r1, dst_x:dst_x + cols]
+            self.ctx.cp.maximum(d, img[r0 - dy:r1 - dy, c0:c0 + cols], out=d)
         ln.cursor = max(ln.cursor, dst_x + cols)
         if header and len(m["staves"]) > 1:
-            ln.t2 = ln.t1 + (m["staves"][1][0] - top)
-            self.t2_off = ln.t2 - ln.t1
+            ln.t2 = ln.t1 + self.gap
+            self.t2_off = self.gap
+
+    def _rows(self, m: dict, t1: float) -> tuple[float, int, int]:
+        """Where an engraved part's rows go: (the row between its staves, the shift above it, the shift below it).
+        The treble lands with its top line on ``t1``, the bass with its top line one fixed gap lower (STAVE_GAP_SP),
+        whatever gap Verovio gave this bar: it widens a bar with ledger lines between the staves, and placed whole,
+        those bars pushed the bass down locally and the staves wandered apart and back along a line (owner, 18 Oct)."""
+        top = m["staves"][0][0]
+        dy = int(round(t1 - top))
+        if len(m["staves"]) < 2:
+            return math.inf, dy, dy
+        tb, bt = m["staves"][0][1], m["staves"][1][0]         # the treble's bottom line, the bass's top line
+        return (tb + bt) / 2.0, dy, int(round(t1 + self.gap - bt))
+
+    def _parts(self, m: dict, t1: float, h: int) -> list[tuple[int, int, int]]:
+        """The destination rows [r0, r1) and shift of each staff's part of an engraved image ``h`` rows high."""
+        split, dy1, dy2 = self._rows(m, t1)
+        cut = h if split == math.inf else max(0, min(h, int(round(split))))
+        out = []
+        for a, b, dy in ((0, cut, dy1), (cut, h, dy2)):
+            r0, r1 = max(0, a + dy), min(self.ch, b + dy)
+            if r1 > r0:
+                out.append((r0, r1, dy))
+        return out
+
+    def _head_y(self, m: dict, t1: float, cy: float) -> float:
+        """A notehead's row on the canvas (its staff's shift, _rows)."""
+        split, dy1, dy2 = self._rows(m, t1)
+        return cy + (dy1 if cy < split else dy2)
 
     def _staff_fill(self, ln: _Line, x0: float, x1: float, barline: bool) -> None:
         """Ink the ten staff lines over [x0, x1) (an empty bar, or a gap), and its bar line at the right."""
@@ -1365,18 +1394,16 @@ class LiveScore(Source):
         img, meta = render[0], render[1]
         m = meta["measures"][0]
         w = min(self.HW, int(m["x1"] + 1))
-        top = m["staves"][0][0]
-        dy = int(round(self.tape_line.t1 - top))
         h = img.shape[0]
-        r0, r1 = max(0, dy), min(self.ch, dy + h)
         hs = self.hdr[slot]
         hs.fill(0)
-        if r1 > r0 and w > 0:
-            hs[r0:r1, :min(w, img.shape[1])] = img[r0 - dy:r1 - dy, :min(w, img.shape[1])]
+        if w > 0:
+            for r0, r1, dy in self._parts(m, self.tape_line.t1, h):
+                hs[r0:r1, :min(w, img.shape[1])] = img[r0 - dy:r1 - dy, :min(w, img.shape[1])]
         self.slots[slot]["w"] = float(w)
         self.slots[slot]["ready"] = True
         if len(m["staves"]) > 1:
-            self.t2_off = m["staves"][1][0] - top
+            self.t2_off = self.gap
             self.tape_line.t2 = self.tape_line.t1 + self.t2_off
         if slot == self.active:
             self.hw.to(float(w), HDR_XFADE_S)
@@ -1565,10 +1592,9 @@ class LiveScore(Source):
             self.marks.append((ui, ph.ins_info[k], None))
         if render is not None:
             self._place(self.tape_line, (img, m), crop, m["x1"] + 1, dst=u)
-            dy = int(round(self.tape_line.t1 - m["staves"][0][0]))
             hs = meta.get("heads") or []
             for nid, cx, cy in hs:
-                ph.heads[int(nid)] = (u + cx - crop, cy + dy)
+                ph.heads[int(nid)] = (u + cx - crop, self._head_y(m, self.tape_line.t1, cy))
             if hs:
                 xs = sorted(cx - crop for _n, cx, _c in hs)
                 self.lpads.append(min(4 * sp, max(0.3 * sp, xs[0])))

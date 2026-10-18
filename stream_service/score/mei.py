@@ -4,7 +4,9 @@ A note tied into a bar engraved as another document (live_score engraves bar by 
 (<lv>) off the bar line.  Spelling follows the key signature: diatonic notes take the key's letters, chromatic ones sharps in sharp keys
 and flats in flat keys; accidentals are shown once per letter and octave in a bar (later ones are gestural) and a
 natural cancels.  Notes are tied across pieces and bar lines, eighths and shorter are beamed within each beat,
-dynamics go above the treble staff and pedal marks below the bass.  Unfilled slots in the system are invisible
+dynamics go above the treble staff and pedal marks below the bass.  Notes past 3 ledger lines (above F6 on the
+treble, below G1 on the bass) go under an octave line (8va / 15ma, 8vb / 15mb) and are written that much nearer the
+staff, carrying their sounding octave as @oct.ges (owner, 18 Oct: a sweep of every key drew towers of ledger lines).  Unfilled slots in the system are invisible
 spaces, so the bars already shown keep roughly their place as the system fills.  Every note's xml:id is
 ``n<note id>-<piece>``, so a renderer can find where a played note was engraved.
 """
@@ -53,6 +55,24 @@ def spell(pitch: int, fifths: int, sig: dict[str, int]) -> tuple[str, int, int]:
     return letter, alt, octave
 
 
+TREBLE_TOP, BASS_BOTTOM = 89, 31   # the last pitches within 3 ledger lines: F6 over the treble, G1 under the bass
+
+
+def ottava(pitches: list[int], staff: int) -> int:
+    """Octaves an event on ``staff`` (0 treble, 1 bass) is written displaced by: +1 / +2 under an 8va / 15ma line (its
+    highest note past F6), -1 / -2 under an 8vb / 15mb (its lowest past G1); 0 otherwise."""
+    if not pitches:
+        return 0
+    k = 0
+    if staff == 0:
+        while max(pitches) - 12 * k > TREBLE_TOP and k < 2:
+            k += 1
+        return k
+    while min(pitches) + 12 * k < BASS_BOTTOM and k < 2:
+        k += 1
+    return -k
+
+
 ACCID = {1: "s", -1: "f", 0: "n", 2: "x", -2: "ff"}
 
 
@@ -70,12 +90,14 @@ class _BarState:
 
 
 def _note_xml(pitch: int, nid: str, ev_dur: str, dots: int, tie: str, fifths: int, state: _BarState,
-              in_chord: bool) -> str:
-    letter, alt, octave = spell(pitch, fifths, state.sig)
+              in_chord: bool, shift: int = 0) -> str:
+    """``shift``: octaves the note is written displaced by (an octave line over it, see ottava)."""
+    letter, alt, octave = spell(pitch - 12 * shift, fifths, state.sig)
     acc = state.attrs(letter, alt, octave)
     dur = "" if in_chord else f' dur="{ev_dur}"' + (f' dots="{dots}"' if dots else "")
     t = f' tie="{tie}"' if tie else ""
-    return f'<note xml:id="{nid}" pname="{letter}" oct="{octave}"{dur}{acc}{t}/>'
+    ges = f' oct.ges="{octave + shift}"' if shift else ""
+    return f'<note xml:id="{nid}" pname="{letter}" oct="{octave}"{ges}{dur}{acc}{t}/>'
 
 
 def _tie(tin: bool, tout: bool) -> str:
@@ -83,14 +105,26 @@ def _tie(tin: bool, tout: bool) -> str:
 
 
 def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[int, int], *, open_in: bool = True,
-           open_out: bool = True, units: int = 16, unit: int = GRID, lvs: list | None = None) -> str:
+           open_out: bool = True, units: int = 16, unit: int = GRID, lvs: list | None = None, staff: int = 0,
+           octaves: list | None = None) -> str:
+    """``staff`` 0 treble / 1 bass; ``octaves`` collects its octave lines: (shift, first note id, last note id)."""
     state = _BarState(sig)
     items: list[tuple[Event, str]] = []
+    span: list = []                                   # the octave line running: [shift, first id, last id]
+
+    def close_span():
+        if span and octaves is not None:
+            octaves.append(tuple(span))
+        span.clear()
+
     for ev in events:
         dur, dots = DUR[ev.dur]
         if not ev.pitches:
+            close_span()
             items.append((ev, f'<rest dur="{dur}"' + (f' dots="{dots}"' if dots else "") + "/>"))
             continue
+        shift = ottava(list(ev.pitches), staff)
+        first_id = None
         notes = []
         for p, i, tin, tout in sorted(zip(ev.pitches, ev.ids, ev.tie_in, ev.tie_out)):
             # a tie can't reach outside this system's document: drop the ends that would
@@ -101,7 +135,16 @@ def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[i
             pieces[i] = k + 1
             if lv and lvs is not None:
                 lvs.append(f"n{i}-{k}")
-            notes.append(_note_xml(p, f"n{i}-{k}", dur, dots, _tie(tin, tout), fifths, state, len(ev.pitches) > 1))
+            first_id = first_id or f"n{i}-{k}"
+            notes.append(_note_xml(p, f"n{i}-{k}", dur, dots, _tie(tin, tout), fifths, state, len(ev.pitches) > 1,
+                                   shift))
+        if span and span[0] != shift:
+            close_span()
+        if shift:
+            if span:
+                span[2] = first_id
+            else:
+                span.extend([shift, first_id, first_id])
         if len(notes) == 1:
             items.append((ev, notes[0]))
         else:
@@ -127,7 +170,14 @@ def _layer(events: list[Event], fifths: int, sig: dict[str, int], pieces: dict[i
             flush()
             out.append(xml)
     flush()
+    close_span()
     return "".join(out)
+
+
+def _octave_xml(octaves: list, staff_n: int) -> str:
+    """The octave lines' control events for staff ``staff_n`` (1 treble, 2 bass)."""
+    return "".join(f'<octave staff="{staff_n}" startid="#{a}" endid="#{b}" dis="{8 if abs(k) == 1 else 15}" '
+                   f'dis.place="{"above" if k > 0 else "below"}"/>' for k, a, b in octaves)
 
 
 def _tstamp(bar: Bar, pos: int) -> float:
@@ -149,10 +199,11 @@ def system(bars: list[Bar], slots: int, fifths: int, *, title: str = "", meter: 
     pieces: dict[int, int] = {}
     measures = []
     for j, b in enumerate(bars):
+        octs: list = [[], []]
         lay = lambda n: _layer(b.staves[n], fifths, sig, pieces, open_in=j > 0, open_out=j < len(bars) - 1,  # noqa: E731
-                               units=b.units, unit=b.unit)
+                               units=b.units, unit=b.unit, staff=n, octaves=octs[n])
         staves = "".join(f'<staff n="{n + 1}"><layer n="1">{lay(n)}</layer></staff>' for n in (0, 1))
-        ctrl = ""
+        ctrl = _octave_xml(octs[0], 1) + _octave_xml(octs[1], 2)
         if b.dynamic:
             ctrl += f'<dynam staff="1" tstamp="1" place="below">{b.dynamic}</dynam>'
         for pos, what in (b.pedal if pedal else ()):
@@ -194,11 +245,13 @@ def bar_doc(bar: Bar, fifths: int, *, pedal: bool = False) -> str:
     sig = signature(fifths)
     pieces: dict[int, int] = {}
     lvs: list[str] = []
+    octs: list = [[], []]
     staves = "".join(f'<staff n="{n + 1}"><layer n="1">'
-                     f"{_layer(bar.staves[n], fifths, sig, pieces, open_in=False, open_out=False, units=bar.units, unit=bar.unit, lvs=lvs)}"
+                     f"{_layer(bar.staves[n], fifths, sig, pieces, open_in=False, open_out=False, units=bar.units, unit=bar.unit, lvs=lvs, staff=n, octaves=octs[n])}"
                      "</layer></staff>"
                      for n in (0, 1))
     ctrl = f'<dynam staff="1" tstamp="1" place="below">{bar.dynamic}</dynam>' if bar.dynamic else ""
+    ctrl += _octave_xml(octs[0], 1) + _octave_xml(octs[1], 2)
     end = bar.meter[0] + 0.9                                       # just short of the bar line
     ctrl += "".join(f'<lv startid="#{nid}" tstamp2="0m+{end:g}"/>' for nid in lvs)
     for pos, what in (bar.pedal if pedal else ()):

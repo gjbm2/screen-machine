@@ -104,6 +104,7 @@ class Note:
     vel: float
     t_on: float
     t_off: Optional[float] = None
+    restruck: bool = False                         # its end is the key's next strike (its own release not seen yet)
 
 
 @dataclass
@@ -416,6 +417,12 @@ class ScoreBuilder:
                     if len(self.offbeats) >= 12:
                         m = sorted(self.offbeats)[len(self.offbeats) // 2]
                         self.swing = 0.58 <= m <= 0.75
+        # a key struck again while it's held ends its note there (a piano can't sound one key twice at once): two
+        # voices sharing a key get one release for two strikes, and the first note stayed open, tied on and on
+        for m in self.notes:
+            if m.pitch == int(pitch) and m.t_off is None and m.t_on < t:
+                m.t_off, m.restruck = max(t, m.t_on + 0.02), True
+                self._key_weight(m)
         n = Note(self.next_id, int(pitch), float(vel), t)
         self.next_id += 1
         self.notes.append(n)
@@ -426,11 +433,21 @@ class ScoreBuilder:
         return n.id
 
     def note_off(self, pitch: int, t: float) -> None:
+        """Releases the open note of ``pitch`` that began by ``t``.  The bus delivers in clumps (up to ~0.8 s late)
+        and live_score passes a frame's onsets before its releases, so a re-struck key's release and new strike
+        often come together, strike first: taking the newest open note released the new one before it began (a
+        20 ms stub) and left the old one held, tied on bar after bar, and the phrase never ended.  A release for a
+        note the next strike already ended (note_on) moves its end back to the release."""
         for n in reversed(self.notes):
-            if n.pitch == pitch and n.t_off is None:
+            if n.pitch == pitch and n.t_off is None and n.t_on <= t + 1e-3:
                 n.t_off = max(t, n.t_on + 0.02)
                 self._key_weight(n)
                 break
+        else:
+            for n in reversed(self.notes):
+                if n.pitch == pitch and n.restruck and n.t_on <= t + 1e-3 and n.t_off is not None and t < n.t_off:
+                    n.t_off, n.restruck = max(t, n.t_on + 0.02), False
+                    break
         self.last_event_t = t
 
     def pedal(self, value: float, t: float) -> None:
