@@ -1,0 +1,47 @@
+spectrum-bars-glass:
+  label: Glass bars (a row of glowing bars along the bottom, bass to treble)
+  effect: spectrum_bars
+  params: {amount: 0.85, bars: 48, gap: 0.32, height: 0.3, position: 0.0, glow: 0.7, opacity: 0.85,
+           palette: rainbow, palette_period: 0.7, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [bright, playful, elegant]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [analytic, light]
+    weight: 1.0
+
+spectrum-bars-halo:
+  label: Halo (fine bars in a ring around the centre)
+  effect: spectrum_bars
+  params: {amount: 0.8, radial: 1.0, bars: 80, gap: 0.42, height: 0.32, glow: 1.0, opacity: 0.75,
+           palette: dusk, palette_period: 1.0, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [hypnotic, cosmic, euphoric]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [analytic, light]
+    weight: 0.9
+
+spectrum-bars-silk:
+  label: Silk line (a smooth, mirrored spectrum curve across the middle)
+  effect: spectrum_bars
+  params: {amount: 0.8, style: 1.0, mirror: 1.0, position: 0.5, height: 0.22, glow: 0.9, opacity: 0.7,
+           palette: ice, palette_period: 0.85, drift_speed: 0.015}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [calm, elegant, dreamy]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [analytic, light]
+    weight: 0.8

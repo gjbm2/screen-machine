@@ -1,0 +1,50 @@
+note-highway-3d-piano-roll:
+  label: Piano roll on the floor (notes glide away into the distance)
+  effect: note_highway_3d
+  params: {amount: 0.8, opacity: 0.85, tilt: 22.0, height: 0.5, curve: 0.0, depth: 1.8, lane_glow: 0.8,
+           travel: 0.2, glow: 0.6, bar_lines: 0.5, glass: 0.18, sway: 0.6, palette: rainbow, palette_period: 0.8,
+           drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, calm, dreamy]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [analytic, light]
+    weight: 1.0
+
+note-highway-3d-half-pipe:
+  label: Half-pipe (the keyboard curls up into walls, notes race off)
+  effect: note_highway_3d
+  params: {amount: 0.9, opacity: 0.9, tilt: 30.0, height: 0.6, curve: 0.85, depth: 3.2, lane_glow: 0.9,
+           travel: 0.4, glow: 0.8, bar_lines: 0.6, glass: 0.22, sway: 0.9, colours: fifths, palette: neon,
+           palette_period: 1.0, drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 1.0}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [cosmic, hypnotic, geometric]
+    style: lively
+    family: overlay
+    dims: 3d
+    technique: [analytic, light, projection]
+    weight: 0.9
+
+note-highway-3d-arrivals:
+  label: Arrivals (dusky notes appear out in the haze and drift towards you)
+  effect: note_highway_3d
+  params: {amount: 0.85, opacity: 0.85, tilt: 20.0, height: 0.45, curve: 0.3, depth: 2.0, lane_glow: 0.6,
+           travel: 0.45, glow: 0.9, bar_lines: 0.3, glass: 0.15, sway: 0.4, direction: towards, palette: dusk,
+           palette_period: 0.6, hue: 0.7, drift_speed: 0.01}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.1, 0.7]
+    moods: [dreamy, mellow, elegant]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [analytic, light]
+    weight: 0.8

@@ -1,0 +1,47 @@
+spectrum-terrain-3d-pleasures:
+  label: Unknown Pleasures (white ridges stacked deep, dark glass between)
+  effect: spectrum_terrain_3d
+  params: {amount: 0.9, rows: 72, depth: 0.45, height: 0.2, tilt: 0.3, mesh: 0.0, fill: 0.7, opacity: 0.9,
+           glow: 0.5, drift: 0.2, palette: mono, palette_period: 0.05, drift_speed: 0.0}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, dark, hypnotic]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [heightfield, analytic, light]
+    weight: 1.0
+
+spectrum-terrain-3d-neon-grid:
+  label: Neon grid (a glowing wireframe terrain rolling out of the sound)
+  effect: spectrum_terrain_3d
+  params: {amount: 1.0, rows: 48, depth: 1.3, height: 0.22, tilt: 0.6, mesh: 0.85, fill: 0.35, opacity: 0.85,
+           glow: 1.0, drift: 0.5, palette: neon, palette_period: 1.2, drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [retro, euphoric, bright]
+    style: lively
+    family: overlay
+    dims: 3d
+    technique: [wireframe, heightfield, light]
+    weight: 0.9
+
+spectrum-terrain-3d-dusk-hills:
+  label: Dusk hills (low warm ridges drifting along the bottom)
+  effect: spectrum_terrain_3d
+  params: {amount: 0.85, rows: 40, depth: 0.8, height: 0.12, tilt: 0.15, mesh: 0.0, fill: 0.55, opacity: 0.75,
+           glow: 0.8, drift: 0.3, palette: dusk, palette_period: 0.6, drift_speed: 0.015}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [warm, dreamy, mellow]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [heightfield, light]
+    weight: 0.8

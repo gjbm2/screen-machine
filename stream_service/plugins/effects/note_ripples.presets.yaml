@@ -1,0 +1,48 @@
+note-ripples-pond:
+  label: Pond (soft ripples along the keys)
+  effect: note_ripples
+  params: {amount: 0.9, refraction: 0.4, size: 1.0, opacity: 0.65, rings: 2.5, layout: 0.0, height: 0.62,
+           fade: 1.1, sustain: 0.7, palette: ice, palette_period: 0.6, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, liquid]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [displacement, optical, light]
+    weight: 1.0
+
+note-ripples-rain:
+  label: Rain on glass (scattered droplets, one per note)
+  effect: note_ripples
+  params: {amount: 0.9, refraction: 0.25, size: 0.7, opacity: 0.8, rings: 1.6, layout: 1.0, fade: 0.8,
+           sustain: 0.5, palette: neon, palette_period: 0.9, drift_speed: 0.04}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [playful, bright, liquid]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [displacement, light, particles]
+    weight: 0.9
+
+note-ripples-lens:
+  label: Water lens (big slow swells that bend the picture)
+  effect: note_ripples
+  params: {amount: 1.0, refraction: 0.9, size: 1.6, opacity: 0.4, rings: 3.0, layout: 0.35, height: 0.55,
+           fade: 1.5, sustain: 1.0, scene_tint: 0.8, hue: 0.1, palette: dusk, palette_period: 0.5,
+           drift_speed: 0.01, render_scale: 0.35}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [dreamy, liquid, hypnotic]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [displacement, optical]
+    weight: 0.8
