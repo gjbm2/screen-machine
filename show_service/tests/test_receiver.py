@@ -967,3 +967,34 @@ def test_an_off_heartbeat_reads_off_until_audio_comes_again():
     mic.heartbeats = False
     mic.seconds(4.0)
     assert rx.health()["streams"]["room-mic"]["state"] == "streaming" and rx.active_audio() == "room-mic"
+
+
+# -- batches: MIDI is never held behind audio work (show-rx drains the socket, then handles MIDI first) ----------------
+def test_batch_handles_midi_before_the_batch_audio():
+    rx, rec = make()
+    order: list[str] = []
+    rec_audio, rec_midi = rec.on_audio, rec.on_midi
+    rx._on_audio = lambda *a: (order.append("audio"), rec_audio(*a))
+    rx._on_midi = lambda *a: (order.append("midi"), rec_midi(*a))
+    Sim(rx).run(4)                                           # the audio stream is up and delivering
+    order.clear()
+    t = T0 + 1.0
+    audio = [(apkt(100 + i), ADDR, t + i * PKT_S) for i in range(10)]
+    note = (vban.pack_midi_events("room-piano", 1, vban.midi_events_obj(1, [[CAP0, 0x90, 60, 100]], sess="k-1")),
+            ("192.0.2.11", 40001), t + 10 * PKT_S)
+    rx.handle_batch(audio + [note])
+    assert rec.midi, "the note was delivered"
+    assert order and order[0] == "midi", order[:3]           # first, although it arrived last
+    assert rec.midi[-1][2] == pytest.approx(t + 10 * PKT_S)  # with its own arrival time
+    rx._build_health(t + 1)
+    assert rx.health()["socket"]["batch_max"] == 11
+
+
+def test_batch_counts_a_full_batch_as_a_backlog():
+    from show_service.receiver import RX_BATCH_MAX
+    rx, rec = make()
+    t = T0 + 1.0
+    rx.handle_batch([(apkt(i), ADDR, t + i * PKT_S) for i in range(RX_BATCH_MAX)])
+    rx._build_health(t + 1)
+    s = rx.health()["socket"]
+    assert s["batch_max"] == RX_BATCH_MAX and s["backlogs"] == 1 and s["rx"] == RX_BATCH_MAX
