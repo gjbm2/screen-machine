@@ -155,11 +155,25 @@ def drive(obj, bindings: dict, sigsrc: Signals | None, fixed: dict | None = None
 PIANO = "medley"
 
 
-class FxSound:
-    """sound.Sound's shape for the harness: the test piano, polled and evaluated on the harness clock."""
+from stream_service.scope_feed import FFT_BANDS, FFT_HI_HZ, FFT_LO_HZ, FLOOR_DBFS, WAVE_N, ScopeFields  # noqa: E402
+
+SYNTH_SR, SYNTH_FFT_N = 48000, 2048
+SYNTH_GAIN = 0.25              # headroom: a chord of loud notes stays near full scale
+SYNTH_NOISE = 10 ** (-70 / 20)  # the noise floor, ~-70 dBFS
+SYNTH_MAX_NOTES = 24
+
+
+class FxSound(ScopeFields):
+    """sound.Sound's shape for the harness: the test piano, polled and evaluated on the harness clock.
+
+    The fast feed (listens "scope" / "fft") comes from SYNTHETIC audio of the test piano: each tick renders the
+    last SYNTH_FFT_N samples of the sounding notes (LEVEL x (sin f + 0.5 sin 2f + 0.25 sin 3f), fixed random
+    phases, a -70 dB noise floor), takes show_service/levels.py's 48 log bands of them, and runs the same
+    ScopeState the sessions use."""
 
     def __init__(self, cp, material: str):
         from stream_service.piano_replay import TestPiano
+        from stream_service.scope_feed import ScopeState
         from stream_service.sound_view import SoundView
         self.view = SoundView()
         self.piano = (TestPiano.from_file(material, loop=True, start_ms=0.0) if material.endswith(".mid")
@@ -167,10 +181,51 @@ class FxSound:
         self.frame = self.view.frame
         self.notes_gpu = cp.zeros((128, 4), cp.float32)
         self.spectrum_gpu = cp.zeros((32,), cp.float32)
+        self.scope = ScopeState()
+        self.scope_alloc(cp)
+        rng = np.random.default_rng(7)
+        self._phase = rng.uniform(0, 2 * np.pi, (128, 3))
+        self._noise = rng.standard_normal(SYNTH_FFT_N * 4).astype(np.float32) * SYNTH_NOISE
+        self._k = np.arange(SYNTH_FFT_N, dtype=np.float64)
+        self._win = np.hanning(SYNTH_FFT_N).astype(np.float32)
+        edges = np.geomspace(FFT_LO_HZ, min(FFT_HI_HZ, SYNTH_SR / 2 * 0.98), FFT_BANDS + 1)   # levels.py's maths
+        hz = SYNTH_SR / SYNTH_FFT_N
+        self._bins = []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            a, b = int(round(lo / hz)), int(round(hi / hz))
+            self._bins.append((a, max(a + 1, b)))
+        self._last_t = None
+        self._ticks = 0
 
     @property
     def present(self) -> bool:
         return bool(self.frame.present)
+
+    def _synth(self, t_s: float):
+        """The last SYNTH_FFT_N samples up to t_s of the sounding notes -> (wave [WAVE_N], bands dBFS, peak dBFS)."""
+        lv = self.frame.notes[:, 0]
+        on = np.flatnonzero(lv > 1e-3)
+        if on.size > SYNTH_MAX_NOTES:                    # the loudest few (keeps a harness tick ~1 ms)
+            on = on[np.argsort(lv[on])[-SYNTH_MAX_NOTES:]]
+        o = (self._ticks * 997) % (self._noise.size - SYNTH_FFT_N)
+        x = self._noise[o:o + SYNTH_FFT_N].copy()
+        if on.size:
+            hz = 440.0 * 2.0 ** ((on - 69) / 12.0)
+            h = np.arange(1, 4, dtype=np.float64)                        # f, 2f, 3f
+            w = 2 * np.pi * hz[:, None] * h[None, :]                     # [k, 3] rad/s
+            start = np.mod(w * (t_s - (SYNTH_FFT_N - 1) / SYNTH_SR) + self._phase[on], 2 * np.pi)   # float64
+            ph = (start[:, :, None] + (w / SYNTH_SR)[:, :, None] * self._k[None, None, :]).astype(np.float32)
+            amp = (lv[on, None] * np.array([1.0, 0.5, 0.25]) * SYNTH_GAIN).astype(np.float32)
+            np.sin(ph, out=ph)
+            x += np.einsum("kh,khn->n", amp, ph)
+        mag = np.abs(np.fft.rfft(x * self._win)) / (SYNTH_FFT_N / 4.0)
+        bands = np.empty(FFT_BANDS, np.float32)
+        for i, (a, b) in enumerate(self._bins):
+            v = float(mag[a:b].max()) if b > a else 0.0
+            bands[i] = round(max(FLOOR_DBFS, 20.0 * math.log10(v)) if v > 1e-6 else FLOOR_DBFS)
+        wave = np.clip(x[-WAVE_N:], -1.0, 1.0)
+        pk = float(np.abs(wave).max())
+        return wave, bands, (round(20.0 * math.log10(pk), 1) if pk > 1e-6 else FLOOR_DBFS)
 
     def tick(self, t_s: float) -> None:
         ms = t_s * 1000.0
@@ -179,10 +234,17 @@ class FxSound:
         self.frame = self.view.update(ms)
         self.notes_gpu.set(self.frame.notes)
         self.spectrum_gpu.set(self.frame.spectrum)
+        dt = 0.0 if self._last_t is None else max(0.0, t_s - self._last_t)
+        self._last_t = t_s
+        self._ticks += 1
+        wave, bands, pk = self._synth(t_s)
+        self.scope.update(t_s, (t_s, wave, bands, pk), self.frame.spectrum, dt)
+        self.scope_upload()
 
 
 def listen(obj, ctx):
-    """Give a plug-in that ``listens`` a test piano (before setup, as Engine.prepare does), ticked per render."""
+    """Give a plug-in that ``listens`` (any token: notes, spectrum, chroma, scope, fft) a test piano (before setup,
+    as Engine.prepare does), ticked per render."""
     if not getattr(type(obj), "listens", None):
         return
     snd = FxSound(ctx.cp, PIANO)

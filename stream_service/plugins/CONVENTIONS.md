@@ -84,7 +84,7 @@ stream_service/plugins/<kind>/<name>.presets.yaml   1–3 presets for your plug-
 
 Maestro is coming out. show_service (docs/SHOW_ENGINE.md) now hears the room mic and takes the Steinway's MIDI, so every note is exact: pitch, velocity, pedals. Scenes and effects can read it directly.
 
-- **Declare it:** a class attribute `listens = ("notes",)`, or any of `"notes"`, `"spectrum"`, `"chroma"`. The catalog shows it. The director prefers listening scenes while the piano plays (piano mode pools them).
+- **Declare it:** a class attribute `listens = ("notes",)`, or any of `"notes"`, `"spectrum"`, `"chroma"`, `"scope"`, `"fft"` (the fast feed, below). The catalog shows it. The director prefers listening scenes while the piano plays (piano mode pools them).
 - **Read `self.sound`** in `render`. The session refreshes it once per frame, before any plug-in renders, and both scenes of a transition see the same frame.
   - `self.sound.present`: the piano is playing, or played in the last few seconds.
   - `self.sound.notes_gpu`: cupy float32 `[128, 4]`, one row per MIDI pitch (piano keys are 21–108). Columns, from `stream_service.sound_view`:
@@ -108,6 +108,13 @@ Maestro is coming out. show_service (docs/SHOW_ENGINE.md) now hears the room mic
 - **Read-only, no allocation.** Pass `notes_gpu` straight to your kernel. Keep host-side note history in arrays you preallocate in `setup`.
 - **Velocities are already capped** for the v1 adsilent's occasional hot notes (show_rt), so don't filter them again.
 - **Crash check:** fxtest gives listening plug-ins a test piano on its own clock. Use `--piano chords|arpeggios|scale|sweep|repeats|sostenuto|medley`, or `--piano file.mid`.
+- **The fast feed: `"scope"` and `"fft"`** (18 Oct; `stream_service/scope_feed.py`). show_service's raw waveform and 48-band FFT at up to 60 frames/s, for oscilloscope and spectrum overlays. Refreshed with the rest of `self.sound`, once per frame:
+  - `"scope"`: `wave_gpu` cupy float32 `[1024]` (21 ms at 48 kHz, oldest first): DC removed, slow AGC (a quiet room still shows a trace), soft clip, so about −1..1 (never beyond ±1.2). `wave_trigger` (int): the latest rising zero crossing in the first half; draw `wave[trigger : trigger + 512]` for a steady trace. Host copy: `wave`.
+  - `"fft"`: `fft_gpu` float32 `[48]`, 0–1, log bands 40 Hz–16 kHz (−80 dBFS → 0, −12 dBFS → 1), instant attack, release τ 0.12 s. `fft_peak_gpu` `[48]`: peak hold 0.4 s, then falls 1.5/s. `fft_history_gpu` `[128, 48]`: a ring, one row per 1/30 s of real time; `fft_row` is the newest row (row `(fft_row - k) % 128` is k rows back). `level` (0–1): fast overall loudness. Host copies: `fft`, `fft_peak`, `fft_history`.
+  - `scope_live`: the fast feed is fresh (under 0.5 s old). Without it, `fft` follows the smoothed `spectrum` (so FFT effects still move on any setup) and `wave` eases to zeros over 0.3 s.
+  - **Lag:** this is the newest sound there is, not photon-aligned like the notes, so it trails the ear by the render lead (~0.2–0.3 s). Fast-attack visuals (bars, traces, flashes that decay) hide it best.
+  - **All zeros is normal** (no mic, a quiet room). Look fine with no audio: an effect passes the scene through untouched.
+  - The GPU arrays may be `None` if the session could not allocate them: check before launching. Pass them and `fft_row` / `wave_trigger` straight to your kernel.
 
 ## 3. Parameters: tiers and the standard macro interface
 

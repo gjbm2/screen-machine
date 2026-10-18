@@ -238,6 +238,8 @@ class Source(Plugin):
     ease_tau_s: ClassVar[float] = 0.8
 
     listens: ClassVar[tuple] = ()      # what it reads from self.sound: "notes", "spectrum", "chroma" (sound.py)
+    #                                    "scope" (wave_gpu [1024], wave_trigger), "fft" (fft_gpu / fft_peak_gpu [48],
+    #                                    fft_history_gpu [128, 48] + fft_row, level): the fast feed (scope_feed.py)
 
     def __init__(self) -> None:
         self.ctx = None
@@ -365,6 +367,8 @@ class Effect(Plugin):
     internal: ClassVar[bool] = False
     default_bindings: ClassVar[dict] = {"pulse": {"bind": "beat", "range": [0.0, 1.0], "rest": 0.0}}
     listens: ClassVar[tuple] = ()      # what it reads from self.sound: "notes", "spectrum", "chroma" (sound.py)
+    #                                    "scope" (wave_gpu [1024], wave_trigger), "fft" (fft_gpu / fft_peak_gpu [48],
+    #                                    fft_history_gpu [128, 48] + fft_row, level): the fast feed (scope_feed.py)
     beat_clock: Any = None             # the session's beat clock this frame (plugins/_lib/beat.py; EffectSlot)
 
     def __init__(self) -> None:
