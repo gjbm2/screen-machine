@@ -242,7 +242,14 @@ The sender is one Python script (~150 lines) with two capture back ends. It capt
   - It runs as **its own systemd unit** (`show-sender.service`), separate from `light-relay.service`, so an audio or MIDI fault never takes the gallery light mask down.
   - `Restart=always`, `Nice=-5`, packets marked DSCP EF.
   - A Spectre card like kiosk-light-relay's, and a PORTS.md entry.
-- **Still needed** (pending the owner's OK, when the kit arrives): `gjbm2` in the `audio` group, and `alsa-utils` installed.
+- **LIVE, 18 Oct** (the owner: plug the MIDI cable or a mic in and it Just Works). The kiosk has no passwordless sudo, so it runs as a **systemd `--user` unit** (`show-sender.user.service`; `gjbm2` lingers, so it starts at boot without a login):
+  - `arecord` is unpacked from Ubuntu's alsa-utils .deb into `~/show-sender/bin`; nothing is installed system-wide.
+  - The devices come from the seat ACL of the kiosk's own session, which also covers USB devices plugged in later; while that session restarts, the sender retries every 2 s.
+  - `tools/show_sender/deploy.sh` does all this, and still installs the system unit wherever sudo works. `kiosk-ctl.sh` handles both kinds of unit.
+  - `senders.kiosk` is on in show.yaml; the Room page lists it as "Drawing room".
+  - The Mic choice is the Drawing room mic. Until one is plugged in, mic.py's fallback lets PC22's mic listen after `FALLBACK_S`.
+  - The piano: any USB MIDI card, looked for every 2 s and re-found after a power cycle.
+  - Not done (they need sudo): `Nice=-5` and DSCP EF.
 - **Built by:** screen-machine-98, against the wire spec in §3.1 and §3.5.
 - **Powerline:** the kiosk is on powerline (Wi-Fi as fallback). Sample-index stamping turns its jitter into delay only, but expect the 40 ms gap clamp to fire at times. Health shows it.
 
@@ -620,32 +627,37 @@ Normalised features would stretch quiet 8 pm background music to full scale. So:
 
 ## 7. The LLM listener
 
-### 7.1 Role: describe and arm, never fire
+### 7.1 Role: guide the director, arm the cues, never fire *(owner, 18 Oct; README S5.22)*
 
-**Inputs.** The listener only *describes*. It never sees the visual direction or the nudges. Its verdicts are 12–20 s old.
+**Inputs.** The listener only *describes*. It never sees the visual direction or the nudges. Its verdicts are about 13 s old when they arrive (a 10 s clip, then ~3 s for the call).
 
-**Using a verdict.**
-- **Segment-anchored:** a label applies to the DSP segment the clip covered, not to "now".
-- **Arms:**
-  - "building" arms a peak cue that a DSP drop or downbeat fires;
-  - "chorus" recalls the chorus look at the next phrase line.
+**It guides the art director** (§8.2). The owner: the AI "can characterise 'this is soft jazz', which otherwise the system generally won't know, and that should certainly help the a.d. determine wildness, intensity, style etc. of approach". So, while its beliefs are confident (≥ 0.6, fresh or holding):
+- its **genre** leads room.direction's `genre` and `genres` and the band base's `genre_energy` term; the local ML's genre is the fallback;
+- its **approach.intensity** (how wild and intense the visuals should be) *is* the band base's genre term, the style's base wildness, slewed ≤ 0.1 a second;
+- its **approach.transitions** sets `transition_style` and its **approach.change** sets `change_rate` (show.yaml `director.listener_change`: slow 0.15, medium 0.45, fast 0.75), but only where no person and no feel sets them: **human > feel > listener > bands**;
+- its **moods** replace the band moods, as before; its **trajectory** still nudges the energy.
+
+**It arms cues that a real-time component fires** (cues.py, the cue engine, 10 Hz). The listener's `ending` picks the standing cue for the song's end; its `coming` forecasts are armed with their windows and fired on the beat clock when the DSP sees their signs (§8.5 "Cues"). The listener never fires anything itself.
 
 **Confidence comes from agreement over time,** not from the model's self-reported confidence.
-- Votes decay with half-lives: genre 120 s, mood 45 s, instruments 60 s.
-- A word changes only when a new leader wins two reads in a row by a margin, or at once on a DSP track change.
+- Votes decay with half-lives: genre 120 s; mood, and the approach's words and intensity, 45 s. One read is half confident; two agreeing reads are confident.
+- A genre word changes only when a new leader wins two reads in a row by a margin, or at once on a DSP track change.
+- `character` and `coming` are the newest clip's (each window on the acoustic clock, from the clip's end; a passed window is dropped). `ending` is the latest word that said something, held 60 s.
 
 **Expiry:** hold 60 s, then fade to neutral over 60 s.
 
-**What it's asked.**
-- Ask: genre and style in words; instrumentation; vocals; mood words; section function; trajectory; track change.
-- **Never:** BPM, key, beats or energy. Audio LLMs score near zero on those, and the DSP does them. Never the track's identity or lyrics either: those can trigger refusals.
+**What it's asked** (§7.3's output).
+- Ask: what the music is in a line (`character`), genre and style, mood words, the recommended approach, trajectory, how the piece will end, what is coming (with its window, the signs that will announce it, and how big a moment it deserves), track change.
+- **Not any more** (18 Oct): instrumentation and vocals (the local ML worker gives them free), section function, same-track and evidence (nothing used them). Output tokens dominate the cost, so the answer is compact.
+- **Never:** BPM, key, beats or energy numbers. Audio LLMs score near zero on those, and the DSP does them. Never the track's identity or lyrics either: those can trigger refusals.
 
 ### 7.2 Model and cost *(owner, 17 Oct; checked against Google's and OpenAI's own pages that day)*
 
 **Primary, the owner's choice (17 Oct): Gemini Flash** through Gemini's OpenAI-compatible endpoint, on the same client (`gemini-3.8-flash` today; `GEMINI_API_KEY`, paid tier, whose data isn't used to improve Google's products).
 - Gemini 3.x Flash scores 70.7–71.7 on MMAU-Pro music, against 67.3 for gpt-audio.
 - Verified 17 Oct: the endpoint takes `input_audio` parts and tools, and `models.list()` lists the ids (ai.google.dev/gemini-api/docs/openai); 3.8 Flash takes audio in (its model page). With the owner's key, one text-only call with the real tool and prompt answered in 4 s for $0.0014.
-- **Cost:** $0.75 per 1M input tokens, audio included, and $3.75 out including thinking, through 31 Dec 2026 (both double on 1 Jan 2027; ai.google.dev/gemini-api/docs/pricing). Audio is 32 tokens/s. A 24 s clip with ~1.6k text tokens and ~600 out is about **$0.004, so about $3 an evening** at one call every 20 s.
+- **Cost:** $0.75 per 1M input tokens, audio included, and $3.75 out including thinking, through 31 Dec 2026 (both double on 1 Jan 2027; ai.google.dev/gemini-api/docs/pricing). Audio is 32 tokens/s.
+- **Measured 18 Oct** (8 real calls with the new answer on test-music clips, README S5.22): 2.1–2.7k prompt tokens (audio included) and 150–215 out a call, **$0.0022–0.0028 a call (mean $0.00256)**, 2.9–3.6 s. At the new cadence: **$0.62 an hour steady** (every 15 s), $1.85 an hour while everything develops (every 5 s); the card's estimate assumes half the time fast until an hour has measured it: **about $1.15 an hour, $4.61 an evening** (it was $2.90 at a 24 s clip every 20 s).
 - Request: `reasoning_effort: low` (3.x can't turn thinking off), the OpenAI-only `store`/`modalities` left out, tool schemas in OpenAPI's dialect (`nullable`).
 
 **The fallback: OpenAI `gpt-audio-1.5`** through Chat Completions with `input_audio`. Without the Gemini key it is the one used, as before.
@@ -662,21 +674,24 @@ Normalised features would stretch quiet 8 pm background music to full scale. So:
 
 ### 7.3 The call
 
-**Cadence.**
-- A 24 s clip every 20 s, plus one call 8 s after a DSP section boundary, never closer than 8 s apart.
-- Back off to 45 s after 3 agreeing, confident verdicts.
+**Cadence** (owner, 18 Oct: "24 s every 20 s is too long a round trip"; show.yaml `listener`).
+- A **10 s clip every 15 s** while the music is steady.
+- **Every 5 s while something develops:** structure says build or outro; a forecast window is open or opens within 20 s; a predicted song end is within 30 s; a section boundary came in the last 10 s.
+- Up to **2 calls in flight**, starts at least **4 s** apart; plus one call 8 s after a DSP section boundary (at least half the interval after the last start, one per interval).
+- No relaxed back-off any more (it was 45 s after 3 agreeing verdicts).
 - Skip while CED says silence or talk.
 - A daily budget slows the cadence; it never stops the listener.
 
 **Limits.** Timeout 12 s, no retries: the next window is the retry.
 
-**Clip.** Mono, 24 kHz, normalised to −16 LUFS, MP3 96 kbps, encoded in memory (~290 KB). The true LUFS goes in the text.
+**Clip.** Mono, 24 kHz, normalised to −16 LUFS, MP3 64 kbps, encoded in memory (~80 KB for 10 s). The true LUFS goes in the text. A room clip is the longest music-only run in those 10 s, at least 6 s.
 
 **Message.**
 - A static, cacheable system prompt with the field definitions, the vocab words and these rules: trust the measured numbers; "unknown" is valid; ignore speech content.
 - The user content holds:
   - a 120 s DSP timeline at 2 s resolution (<600 tokens);
   - the segment map;
+  - what structure knows now: its phase, how far into the section, a known repeat's length, the probable chorus, an armed song end (README S5.22);
   - the previous verdict marked "hypothesis, may be wrong", left out every 5th call;
   - the audio.
 
@@ -684,12 +699,21 @@ Normalised features would stretch quiet 8 pm background music to full scale. So:
 
 ```
 content: music|speech|mixed|silence|noise
-genre {label (vocab), detail (free text), confidence}, instrumentation[], vocals
+character: ≤12 free words ("soft late-night jazz trio")
+genre {label (vocab), detail (free text), confidence}
 mood {words ≤3 (vocab), confidence}
-section {segment_id, label: intro|verse|pre_chorus|chorus|bridge|breakdown|build|drop|solo|outro|unknown, confidence}
-trajectory {state: building|peak|sustaining|releasing|steady|winding_down, eta_to_change_s, confidence}
-track_change, same_track_as_previous, evidence (≤25 words)
+approach {intensity 0..1, change: slow|medium|fast, transitions: gentle|lively|wild, confidence}
+trajectory {state: building|peak|sustaining|releasing|steady|winding_down, confidence}
+ending: cold|fade|segue|unknown
+coming [≤2] {kind: chorus|drop|climax|breakdown|key_lift|band_in|vocal_in|stop|outro|end|new_section,
+             eta_min_s, eta_max_s (from the clip's end), signs ⊆ [louder, low_in, busier, stop_return,
+             timbre_change, key_change, drums_in, drums_out, vocal_in, vocal_out, phrase_line],
+             size: small|medium|big, confidence}
+track_change
+why: ≤12 words
 ```
+
+`GET /api/v1/listening` and the card's listening block also carry `character`, `approach` {intensity, change, transitions, conf} and `armed`, the cue sheet: [{kind, words ("Big change at the chorus, likely in 10-25 s", "Ready: slow fade if the music fades"), window_s, size}] (README S5.22).
 
 `genre.detail` values ("bossa nova", "Afro house") are logged to grow the vocabulary.
 
@@ -712,10 +736,10 @@ The room mic is the only music source (owner, 15 Oct), so clips would carry gues
 - Clips go only while CED says the audio is music-dominant and speech is below about 0.3. The clip is cut to the music-dominant seconds.
 - A vibe can turn the listener off (`listener: off`). For example, while the piano plays MIDI already gives the harmony and the dynamics.
 - **Owner, 17 Oct: nothing goes to any provider unless Auto is on AND the room's mic is on**, for cost and because it is intrusive. Unknown counts as off, and the gate runs again right before each upload, so a clip cut before Auto or the mic went off is never sent. The ring doesn't even record for the listener while the gate is shut. Config: show.yaml `listener.requires_auto` / `requires_mic` (both true).
-- **The gate, in full** (README S5.20): the AI listening switch ("Identify the music"), Auto on, the mic on, the feel not saying `listener: off`, sound coming in, substantive music (below), the loudness floor, a usable model. **The mode's show.main `listening` no longer gates** (owner, 17 Oct); it stays in the API for readers.
+- **The gate, in full** (README S5.20): the AI listening switch ("AI listening"), Auto on, the mic on, the feel not saying `listener: off`, sound coming in, substantive music (below), the loudness floor, a usable model. **The mode's show.main `listening` no longer gates** (owner, 17 Oct); it stays in the API for readers.
 - **No substantive audio, no upload:** a clip needs the music/speech check (music-dominant, speech under ~0.3, over a continuous run) and the loudness floor (`listener.quiet_gate`) over the last 10 s. Without the classifier running, nothing goes.
-- On the Music card (e1, 17 Oct, one listening block): the **Room mic** switch with its input picker, then **Identify the music** (the AI listening switch: off stops all uploads), then **What it hears**. The menu has no switches. Describe it, the DSP and the local ML carry on whatever these say.
-- To date (17 Oct) one clip has ever been sent ($0.006).
+- On the Music card (e1, 17 Oct, one listening block): the **Room mic** switch with its input picker, then **AI listening** (the switch, called "Identify the music" until 18 Oct: off stops all uploads), then **What it hears**. The menu has no switches. Describe it, the DSP and the local ML carry on whatever these say.
+- To date (17 Oct) one clip has ever been sent ($0.006). On 18 Oct, 8 clips of the test-music files (never room audio) validated the new answer (README S5.22).
 - Requests use `store: false` on OpenAI (Gemini's endpoint has no such field), and never a free tier.
 - The camera on PC22 (Insta360) is **out of scope**: no room stills go to any model.
 
@@ -816,7 +840,7 @@ The same fields serve any other mode. A "quiet jazz" mode could use them; so cou
 f = clamp_to_vibe(vibe.centre + follow·conf·liveness·(music − neutral) + c_llm·llm_bias + steps·step_size)
 ```
 
-**Words**, highest priority first: human pick, then LLM (two agreeing reads at ≥ 0.6), then music bands, then vibe defaults.
+**Words**, highest priority first: human pick, then LLM (two agreeing reads at ≥ 0.6), then music bands, then vibe defaults. The genre: the LLM's, then the local ML's, then the feel's. `transition_style` and `change_rate`: a person's or the feel's own, then the LLM's approach, then the band row's (README S5.22).
 
 ### 8.3 Output: one look, allocated per output
 
@@ -879,6 +903,14 @@ f = clamp_to_vibe(vibe.centre + follow·conf·liveness·(music − neutral) + c_
 - **The sound comes back with no new song** (the same song after a long rest): the screens come back too.
 - **A person's hold wins.** While someone holds the look (Keep this look, or their own change is about to land), the events say "held", there is no transition, and the director's own look stays put.
 - **Lamps.** At a fade-through-dark end the lamps sink to the feel's floor (never off), then the new song's look lands on the first bar line the screens' lead allows, crossing over the same way. This happens at every song change, whatever the feel's change rule.
+
+**Cues: the listener arms, the cue engine fires** (owner, 18 Oct; cues.py, 10 Hz on show-brain; README S5.22). Everything goes out as a room.event the renderer already knows, so 04's side needs no change.
+- **Standing cues**, armed while music plays, with or without the listener:
+  - **an abrupt stop**: the fast level falls 20 dB under the 2 s before within 0.3 s, ends near the stream's floor, after music. The screens go dark at once (`track_end` detail `stop`, fade-dark, out 0.2 s, in 1 s); if the sound comes back before structure's own end takes over, the same id comes again with `sound_back`. structure's gap-based `track_end` (same id) may follow; the renderer, already dark, ignores the second;
+  - **a fade-out**: structure's outro phase. The screens fade to dark over the time the music takes to reach the floor at its present slope (3–12 s), and come back if it comes back up;
+  - the listener's **ending** picks: cold arms the stop only; fade arms the fade (the stop stays armed: a fade never trips it); segue arms neither, so the track_change's crossfade carries it; unknown, or no listener, arms both.
+- **Forecast cues** from the listener's `coming`: one armed per kind (a newer forecast replaces it; its window's end disarms it). Confident (≥ 0.6) with a phrase line of the beat clock inside the window and an early sign (a build, the loudness rising, one of its own signs): it fires AT that line. Otherwise it fires on the next downbeat after one of its signs is seen inside the window (signs from the DSP, structure and the local ML: louder, low_in, busier, stop_return, timbre_change, key_change, drums_in/out, vocal_in/out, phrase_line). Big is a `drop`, medium a `section_change` (detail `forecast: <kind>`, id `cue:<kind>:<n>`); small is logged only. At most one fire a bar; nothing fires while a person holds the look.
+- Every arm, fire, hold, miss and each window's outcome (what structure itself heard in it) is logged (`cues.jsonl`, and the snapshot's ring), to measure the hit rate. The armed sheet is on the card (§7.3).
 
 **Builds and drops.**
 - During a build, every 2–4 bars: step the accent subdivision (½ → ¼ → ⅛), raise saturation, and narrow toward one tension colour.

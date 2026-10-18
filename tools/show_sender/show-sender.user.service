@@ -1,0 +1,17 @@
+# The kiosk unit without root (18 Oct): the same sender as show-sender.service, as a systemd --user unit (the
+# kiosk's gjbm2 lingers, so it runs without a login). The ALSA devices come from the seat ACL of the kiosk's own
+# session (gjbm2 on seat0, always logged in); while that session restarts the sender just retries (every 2 s).
+# arecord comes from Ubuntu's alsa-utils .deb, unpacked into ~/show-sender/bin by deploy.sh (no apt install).
+[Unit]
+Description=Screen Machine show sender (room mic + piano MIDI -> show_service, VBAN udp 6980)
+After=default.target
+
+[Service]
+WorkingDirectory=%h/show-sender
+Environment=PATH=%h/show-sender/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/show-sender/venv/bin/python %h/show-sender/show_sender.py --port 6980
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
