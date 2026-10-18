@@ -9,9 +9,11 @@ ceiling on an effect's level, from:
   * the other effects already on the bus (pairs);
   * the music: which roles suit its genre (roles_by_music, p-weighted over direction.genres / genre) and how much
     the effects may take over (load: a budget from direction.energy plus a genre bias, part of it used by the
-    scene's busyness and by the other effects' strength).
-Every factor stays within multiplier_range and a missing number means no opinion (1): nothing is ever excluded, a
-poor fit is just less likely or plays at a lower level.  All the numbers are in config/live/fx_interplay.yaml,
+    scene's busyness and by the other effects' strength);
+  * what there is to hear now, for an effect that draws it (its plug-in's ``listens``: "notes" from the piano,
+    "scope" / "fft" from the room's music; fx_interplay.yaml listens): a note stream with no piano is an empty slot.
+Every factor stays within multiplier_range (listens has its own numbers: it is a fact, not a guess) and a missing
+number means no opinion (1): nothing is ever excluded, a poor fit is just less likely or plays at a lower level.  All the numbers are in config/live/fx_interplay.yaml,
 hot-reloaded (checked at most once a second) like the other config/live files.
 
 Pure arithmetic and file reads, no GPU: the FX director calls it on the loop thread.
@@ -24,7 +26,7 @@ import math
 import pathlib
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -38,7 +40,7 @@ SCENE_PROPS = ("busy", "motion", "brightness", "symmetric", "self_coloured", "le
 CHECK_S = 1.0
 DEFAULTS: dict = {"level_min": 0.35, "multiplier_range": [0.25, 1.5], "tag_prior": 1.0, "refit_below": 0.5,
                   "symmetric_from": [0.3, 0.9], "scene_props": {}, "roles": {}, "pairs": {}, "role_overrides": {},
-                  "load": {}, "genre_groups": {}, "roles_by_music": {}}
+                  "load": {}, "genre_groups": {}, "roles_by_music": {}, "listens": {}}
 
 
 def _c01(x: float) -> float:
@@ -98,6 +100,7 @@ class Interplay:
         self.scenes: dict[str, dict] = {}
         self.effects: dict[str, dict] = {}
         self.errors: list[str] = []
+        self.listens_of: Callable[[Optional[str]], Any] = lambda plugin: ()   # effect plug-in -> its ``listens``
         self._mt: dict[str, Optional[int]] = {}
         self._checked = -math.inf
         self.reload_if_changed(force=True)
@@ -192,9 +195,10 @@ class Interplay:
         return min(float(hi), max(float(lo), x))
 
     def context(self, scene: tuple[Optional[str], Optional[dict]], others: list[tuple[Optional[str], Optional[str]]],
-                direction: dict) -> "Ctx":
+                direction: dict, heard: Optional[dict] = None) -> "Ctx":
         """Everything that doesn't depend on the candidate, once per pick: ``scene`` (name, entry) on screen,
-        ``others`` (preset, plug-in) of the other effects on the bus, ``direction`` the session's effective one."""
+        ``others`` (preset, plug-in) of the other effects on the bus, ``direction`` the session's effective one,
+        ``heard`` {listens kind: 0..1} what there is to hear now (a kind left out: unknown)."""
         self.reload_if_changed()
         cfg = self.cfg
         props = self.scene_props(*scene)
@@ -235,17 +239,34 @@ class Interplay:
             budget += sum(p * float(bias.get(k, 0.0)) for k, p in groups.items()) / tot
         used = float(load.get("scene", 0.5)) * props.get("busy", 0.5)
         used += sum(self.strength(o) or 0.5 for o, _ in others)
-        return Ctx(per_role, budget, used, float(cfg.get("level_min", DEFAULTS["level_min"])))
+        heard = {k: _c01(v) for k, v in (heard or {}).items() if _num(v) is not None}
+        return Ctx(per_role, budget, used, float(cfg.get("level_min", DEFAULTS["level_min"])), heard)
+
+    def heard_mult(self, ctx: "Ctx", plugin: Optional[str]) -> float:
+        """x the weight of an effect that draws what it hears, by how much of it there is (the best of its kinds)."""
+        if not ctx.heard:
+            return 1.0
+        try:
+            kinds = tuple(self.listens_of(plugin) or ())
+        except Exception:
+            kinds = ()
+        table = self.cfg.get("listens") or {}
+        got = [_lerp_pair(table[k], ctx.heard[k]) for k in kinds if k in table and k in ctx.heard]
+        got = [v for v in got if v is not None and v > 0.0]
+        return max(got) if got else 1.0
 
     def fit_in(self, ctx: "Ctx", preset: str, entry: dict) -> Fit:
         """One candidate effect against a pick's context."""
         role = self.role(entry.get("effect"))
         f = Fit(role=role)
+        m_heard = self.heard_mult(ctx, entry.get("effect"))
+        if m_heard != 1.0:
+            f.parts["heard"] = f.mult = m_heard
         if role is None:
             return f
         m_scene, m_pair, m_music = ctx.per_role[role]
-        f.parts = {"scene": m_scene, "pair": m_pair, "music": m_music}
-        f.mult = m_scene * m_pair * m_music
+        f.parts.update(scene=m_scene, pair=m_pair, music=m_music)
+        f.mult = m_scene * m_pair * m_music * m_heard
         lv, by = 1.0, None
         strength = self.strength(preset)
         if ctx.budget is not None and strength is not None:
@@ -270,6 +291,7 @@ class Ctx:
     budget: Optional[float]
     used: float
     level_min: float
+    heard: dict = field(default_factory=dict)   # listens kind -> 0..1
 
 
 _SHARED: dict[str, Interplay] = {}

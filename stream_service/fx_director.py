@@ -23,7 +23,8 @@ Scenes and effects together (docs/SCENE_FX_INTERPLAY.md, fx_interplay.py; ``look
 session): each candidate's weight is also x its fit with the scene on screen (its role against the scene's measured
 busyness, motion, brightness, symmetry, colour source), with the other effects on the bus and with the music's
 genre, and the retag's per-preset guess counts only as weight ** tag_prior; the effect comes in at a level the
-music's load budget and the scene leave it (never below level_min).  One layer moves at a time: a section change
+music's load budget and the scene leave it (never below level_min).  An effect that draws what it hears (its
+``listens``) is x by how much of it there is now (``heard``, set by the session): no piano, few note streams.  One layer moves at a time: a section change
 waits SECTION_WAIT_S for the scene director, and when the scene changes the carried auto effects are re-checked
 against the new scene (the one that fits worst is swapped once its fit fell below refit_below of what it was).
 """
@@ -100,6 +101,7 @@ class FxDirector:
         self.last_move_at: Optional[float] = None
         self.looks: Any = None      # fx_interplay.Interplay (set by the session): roles, measured looks, the table
         self.scene: Optional[Callable[[], tuple[Optional[str], Optional[dict]]]] = None   # the scene on screen
+        self.heard: Optional[Callable[[], dict]] = None      # -> {listens kind: 0..1} what there is to hear now
         self._scene_seen: Optional[str] = None
         self._event_scene: Optional[str] = None               # the scene when a section change came in
         self._fit_at_add: dict[str, float] = {}                # preset -> its fit when it came in
@@ -300,7 +302,11 @@ class FxDirector:
         others = [(getattr(s.spec, "preset", None) or getattr(s.spec, "effect", None), getattr(s.spec, "effect", None))
                   for s in stack if s is not freed]
         try:
-            return self.looks.context(self._scene(), others, self.direction)
+            heard = self.heard() if self.heard is not None else None
+        except Exception:
+            heard = None
+        try:
+            return self.looks.context(self._scene(), others, self.direction, heard)
         except Exception:
             return None
 

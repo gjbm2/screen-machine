@@ -85,3 +85,14 @@ roles_by_music:
 
 # a plug-in's role by hand, over the generated file
 role_overrides: {}
+
+# effects that draw what they hear (the plug-in's `listens`): x the pick weight by how much there is to hear now,
+# [with nothing, playing]; an effect that listens to several kinds takes the best. A fact, not a guess, so these sit
+# outside multiplier_range. notes/chroma: the piano (sound.present); spectrum: the room's music present; scope/fft:
+# the fast feed live and the music present.
+listens:
+  notes:    [0.15, 3.0]     # a note stream with no piano is an empty slot
+  chroma:   [0.15, 3.0]
+  spectrum: [0.3, 1.5]
+  scope:    [0.3, 1.5]
+  fft:      [0.3, 1.5]
