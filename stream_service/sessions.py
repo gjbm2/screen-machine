@@ -28,12 +28,12 @@ its ``fx_chain``); the master FX bus is ``self.fx`` (fx_state.py: GET / PUT /fx,
 ``session.plugin_error``; a failed bus slot is dropped from the stack, a failed current scene triggers a recovery
 cue (the director's pick, else the entry scene) and is quarantined.  Prepare failures are 500 prepare_failed.
 
-GPU frame-time guard (guard.py, renderer.py): a plug-in the engine trips for staying over its GPU budget arrives
-as a plug-in error with ``reason: "slow"``; it is marked slow process-wide (``SessionManager.slow``: the catalog's
-``slow`` list, /api/diag, the library) and never auto-picked again.  A slow current scene is recovered to the
-previous scene, else a core scene.  Vetted pool (``auto_ok``): the directors only pick plug-ins that are not slow,
-broken or blacklisted and that are core or have rendered at least once (a harness sheet); a calibration entry for
-the session's GPU (library.Calibration) decides instead when there is one (status ok and fits), and its
+GPU frame-time guard (guard.py, renderer.py): no gates (owner, 18 Oct): a slow plug-in keeps playing, degraded; the
+one stop is a hang (a call 3 s on the GPU), which arrives as a plug-in error with ``reason: "slow"``; it is recorded
+process-wide (``SessionManager.slow``: the catalog's ``slow`` list, /api/diag, the library), never benched.  A
+stopped current scene is recovered to the previous scene, else a core scene.  Vetted pool (``auto_ok``): the
+directors only pick plug-ins that are not broken or blacklisted and that are core or have rendered at least once
+(a harness sheet); a calibration entry for the session's GPU (library.Calibration) decides instead when there is one (status ok and fits), and its
 ``fit_scale`` becomes a scene's ``render_scale`` unless the cue sets one.  Manual cues may pick anything.
 """
 from __future__ import annotations
@@ -2211,7 +2211,7 @@ class Session(EngineListener):
         self.plugin_error_count += 1
         slow = info.get("reason") == "slow"
         extra: dict = {}
-        if slow:                                   # the GPU guard tripped it: slow for the whole process
+        if slow:                                   # the GPU guard stopped it (a hang): recorded for the whole process
             self.slow_trips += 1
             self.mgr.note_slow(info, self.id)
             extra = {k: info.get(k) for k in ("reason", "gpu_ms", "budget_ms", "why")}
@@ -2234,11 +2234,9 @@ class Session(EngineListener):
         mgr = self.mgr
 
         def usable(spec: Optional[SceneSpec]) -> bool:
-            return spec is not None and spec.name != failed and spec.source != source \
-                and not mgr.is_slow("source", spec.source)
+            return spec is not None and spec.name != failed and spec.source != source
 
-        slow_fx = {e.effect for sp in (self.prev_spec, self.entry_spec) if sp is not None for e in sp.effects
-                   if mgr.is_slow("effect", e.effect)}
+        slow_fx: set = set()
         if usable(self.prev_spec):
             return spec_body(self.prev_spec, slow_fx)
         if usable(self.entry_spec) and origin_of(self.entry_spec.source) == "core":
@@ -2372,8 +2370,6 @@ class SessionManager:
         self.plugin_errors: dict[tuple[str, str], dict] = {}   # (kind, name) -> {count, sessions, last_*}
         self.library: Any = None                         # library.Library (dev: costs, thumbnails)
         self.slow: dict[tuple[str, str], dict] = {}      # (kind, plug-in) -> the GPU guard's trip (process-wide)
-        self._slow_until: dict[tuple[str, str], float] = {}   # -> monotonic end of its bench
-        self._slow_hist: dict[tuple[str, str], int] = {}      # -> trips so far (the bench doubles per repeat)
         self.slow_trips = 0
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
@@ -2398,36 +2394,18 @@ class SessionManager:
         return [{"kind": k, "name": n, **v} for (k, n), v in sorted(self.plugin_errors.items())]
 
     # -- GPU frame-time guard and the vetted pool ----------------------------------------
-    SLOW_BENCH_S = 1800.0          # a GPU guard trip keeps a plug-in out of the auto pool this long, doubling per
-    SLOW_BENCH_MAX_S = 8 * 3600.0  # repeat up to this (a trip can be a one-off: a busy host, a first compile)
-
     def note_slow(self, info: dict, sid: str) -> dict:
-        """The GPU guard tripped a plug-in (any session): out of the directors' own picks for a while (by hand it
-        still plays, degraded: never refused)."""
+        """The GPU guard stopped a plug-in (a hang, any session): recorded for the catalog and the diagnostics,
+        never benched (owner, 18 Oct: no gates; the directors may pick it again)."""
         key = (str(info.get("kind")), str(info.get("name")))
-        now, wall = time.monotonic(), time.time()
-        n = self._slow_hist.get(key, 0) + 1
-        self._slow_hist[key] = n
-        bench = min(self.SLOW_BENCH_MAX_S, self.SLOW_BENCH_S * 2 ** (n - 1))
-        self._slow_until[key] = now + bench
+        wall = time.time()
         rec = self.slow.setdefault(key, {"count": 0, "first_at": _iso(wall)})
-        rec.update(count=n, ms=info.get("gpu_ms"), budget_ms=info.get("budget_ms"), why=info.get("why"),
-                   profile=info.get("profile"), session=sid, at=_iso(wall), until=_iso(wall + bench))
+        rec.update(count=rec["count"] + 1, ms=info.get("gpu_ms"), budget_ms=info.get("budget_ms"),
+                   why=info.get("why"), profile=info.get("profile"), session=sid, at=_iso(wall))
         self.slow_trips += 1
         return rec
 
-    def _purge_slow(self) -> None:
-        now = time.monotonic()
-        for key in [k for k, t in self._slow_until.items() if t <= now]:
-            self._slow_until.pop(key, None)
-            self.slow.pop(key, None)
-
-    def is_slow(self, kind: str, name: Optional[str]) -> bool:
-        self._purge_slow()
-        return (kind, str(name)) in self.slow
-
     def slow_runtime_list(self) -> list[dict]:
-        self._purge_slow()
         return [{"kind": k, "name": n, "source": "runtime", "status": "slow", **v}
                 for (k, n), v in sorted(self.slow.items())]
 
@@ -2437,7 +2415,6 @@ class SessionManager:
 
     def slow_for(self, kind: str, name: str) -> Optional[dict]:
         """One plug-in's slow mark for the library (a trip, else a calibration entry that is not ok)."""
-        self._purge_slow()
         rec = self.slow.get((kind, name))
         if rec is not None:
             return {"source": "runtime", "status": "slow", **rec}
@@ -2465,15 +2442,14 @@ class SessionManager:
 
     def auto_ok(self, kind: str, plugin: Optional[str], gpu: Optional[int] = None,
                 budget_4k: Optional[float] = None) -> bool:
-        """The vetted pool: may a director pick this plug-in on its own?  Not rejected in the Library, not slow (a GPU
-        guard trip) and not broken; then the calibration entry for this GPU decides when there is one (status ok and
-        fits); otherwise core, or imported with a harness sheet (it rendered at least once) and no harness cost over
+        """The vetted pool: may a director pick this plug-in on its own?  Not rejected in the Library and not
+        broken; then the calibration entry for this GPU decides when there is one (status ok and fits); otherwise core, or imported with a harness sheet (it rendered at least once) and no harness cost over
         the session's budget."""
         if not plugin:
             return True
         if self.rating_weight(kind, plugin) == 0.0:      # rejected in the Library
             return False
-        if self.is_slow(kind, plugin) or plugin in self.broken_names():
+        if plugin in self.broken_names():
             return False
         if gpu is not None:
             e = self.calibration.entry(plugin, gpu)

@@ -14,7 +14,7 @@ from stream_service import library as libmod
 from stream_service.director import Director, validate_direction
 from stream_service.effects import EffectChain, EffectLayer, EffectSlot, MasterBus
 from stream_service.fx_director import FxDirector
-from stream_service.guard import MAX_GPU_BACKLOG, TRIP_FRAME_MS, GpuTimer, SlowPlugin, trip_budget_ms
+from stream_service.guard import HANG_MS, MAX_GPU_BACKLOG, GpuTimer, SlowPlugin, trip_budget_ms
 from stream_service.layers import RATE_MAX_DIV, RATE_UP_S, FrameCtx, SourceLayer, TransitionLayer
 from stream_service.profiles import PROFILES
 from stream_service.renderer import Engine, EngineListener, StartTransition
@@ -119,52 +119,49 @@ def timer_for(gpu, fps=FPS):
     return GpuTimer(gpu, fps, clock=gpu.clock)
 
 
-# -- the trip ----------------------------------------------------------------------------------------------------
-def test_sustained_over_budget_scene_trips_within_half_a_second_and_goes_black():
+# -- no gates (owner, 18 Oct): slow keeps playing, only a hang stops ---------------------------------------------
+def test_a_slow_scene_keeps_playing_degraded_and_is_reported():
     gpu = FakeGpu()
     timer = timer_for(gpu)
-    src = Heavy(gpu, 450.0)        # too slow even every 8th frame: budget at 30 fps 1.5 x 33.3 = 50 ms, x 8
+    src = Heavy(gpu, 450.0)        # over the budget even every 8th frame (30 fps: 1.5 x 33.3 = 50 ms, x 8)
     layer = SourceLayer(src, 0.0)
-    _, vals, errors, repeats = drive(layer, timer, gpu, 0, 60, until=lambda e: bool(e))
-    assert len(errors) == 1
-    kind, obj, exc, action = errors[0]
-    assert kind == "source" and obj is src and action == "solid" and isinstance(exc, SlowPlugin)
-    assert exc.why == "sustained" and exc.ms == pytest.approx(450.0) and exc.budget_ms == pytest.approx(400.0)
-    assert gpu.now <= 1.5                                # 0.5 s of over-budget GPU time, read a frame late
-    assert layer.failed and layer.slow and repeats > 0   # the back-pressure kept the GPU at most 2 frames behind
-    n = max(vals) + 1
-    _, vals, errors, _ = drive(layer, timer, gpu, n, n + 40)
-    assert errors == [] and list(vals.values())[-1] == 0.0             # black, and the plug-in is not rendered
-    assert timer.trips == 1 and timer.stats()["last_trip"]["why"] == "sustained"
+    _, vals, errors, repeats = drive(layer, timer, gpu, 0, 120)
+    assert errors == [] and timer.trips == 0 and not layer.failed
+    assert repeats > 0 and src.renders > 1                # the back-pressure repeats frames; the scene still renders
+    st = timer.stats()
+    assert st["over_budget"] > 0 and st["worst"] == {"kind": "source", "name": "st_heavy", "ms": 450.0}
+    assert list(vals.values())[-1] == 1.0
 
 
-def test_a_frame_still_running_after_half_a_second_trips_and_only_one_is_queued():
+def test_a_hang_is_stopped_while_it_still_runs_and_only_one_is_queued():
     gpu = FakeGpu()
     timer = timer_for(gpu)
-    src = Heavy(gpu, 1400.0)                             # the 20:57 shader (1.4 s per frame)
+    src = Heavy(gpu, 10_000.0)                           # a frame that would take 10 s
     layer = SourceLayer(src, 0.0)
-    _, _, errors, repeats = drive(layer, timer, gpu, 0, 60, until=lambda e: bool(e))
+    _, _, errors, repeats = drive(layer, timer, gpu, 0, 150, until=lambda e: bool(e))
     exc = errors[0][2]
-    assert exc.why == "stuck" and exc.ms >= TRIP_FRAME_MS
-    assert gpu.now <= 0.6 + 1e-9                         # tripped while the frame still runs (seen ~33 ms late)
+    assert exc.why == "stuck" and exc.ms >= HANG_MS
+    assert gpu.now <= HANG_MS / 1000.0 + 0.1             # stopped while the frame still runs (seen ~33 ms late)
     assert src.renders == 1                              # a new plug-in is on probation: nothing more was queued
-    _, _, errors, _ = drive(layer, timer, gpu, 60, 90)
+    _, _, errors, _ = drive(layer, timer, gpu, 150, 180)
     assert errors == [] and src.renders == 1
 
 
-def test_a_single_slow_frame_read_late_trips_as_frame():
-    gpu = FakeGpu()
-    timer = timer_for(gpu)
-    src = Heavy(gpu, 900.0)
-    layer = SourceLayer(src, 0.0)
-    fc = FrameCtx(0, FPS, Pool(), timer=timer)
-    timer.frame_begin()
-    layer.render(fc, np.zeros((1, 1, 4)))
-    timer.frame_end()
-    gpu.now = 1.0                                        # the next poll comes after the frame finished
-    fc = FrameCtx(30, FPS, Pool(), timer=timer)
-    timer.poll(fc)
-    assert fc.errors[0][2].why == "frame" and fc.errors[0][2].ms == pytest.approx(900.0) and layer.failed
+def test_a_single_slow_frame_never_stops_but_a_hang_read_late_does():
+    for ms, stops in ((900.0, False), (HANG_MS + 500.0, True)):    # 900: live_score's first frame, 18 Oct
+        gpu = FakeGpu()
+        timer = timer_for(gpu)
+        layer = SourceLayer(Heavy(gpu, ms), 0.0)
+        fc = FrameCtx(0, FPS, Pool(), timer=timer)
+        timer.frame_begin()
+        layer.render(fc, np.zeros((1, 1, 4)))
+        timer.frame_end()
+        gpu.now = ms / 1000.0 + 0.5                      # the next poll comes after the frame finished
+        fc = FrameCtx(30, FPS, Pool(), timer=timer)
+        timer.poll(fc)
+        assert bool(fc.errors) == stops and layer.failed == stops
+        if stops:
+            assert fc.errors[0][2].why == "frame" and fc.errors[0][2].ms == pytest.approx(ms)
 
 
 def test_fast_plugins_spikes_and_internal_stills_never_trip():
@@ -184,22 +181,21 @@ def test_fast_plugins_spikes_and_internal_stills_never_trip():
     assert gpu2.queries <= 100 and t3.samples == 99 and t3.stats()["frame_gpu_ms"] == pytest.approx(2.0)
 
 
-def test_slow_transition_finishes_as_a_cut():
+def test_a_slow_transition_runs_to_its_end():
     gpu = FakeGpu()
     timer = timer_for(gpu)
     rec = Recorder()
     t = Heavy(gpu, 70.0, name="glt_slow")
     tl = TransitionLayer(SourceLayer(Const(0.0), 0.0), SourceLayer(Const(10.0), 0.0), t, 0, kind="scene", tid=7,
                          notify=rec)
-    root, vals, errors, _ = drive(tl, timer, gpu, 0, 90)
-    tripped = [e for e in errors if e[0] == "transition"]
-    assert len(tripped) == 1 and tripped[0][3] == "cut" and tripped[0][2].why == "sustained"
+    root, vals, errors, _ = drive(tl, timer, gpu, 0, 150)
+    assert errors == [] and timer.trips == 0
     done = [e for e in rec.events if e[1] == "done"]
-    assert len(done) == 1 and not done[0][4] and done[0][2] < 1.5      # done long before its 3 s
-    assert isinstance(root, SourceLayer) and list(vals.values())[-1] == 10.0 and t.closed      # retired
+    assert len(done) == 1 and not done[0][4] and done[0][2] >= 3.0           # its whole 3 s, not cut short
+    assert isinstance(root, SourceLayer) and list(vals.values())[-1] == 10.0
 
 
-def test_slow_effects_are_dropped_from_the_bus_and_the_scene_chain():
+def test_slow_effects_stay_on_the_bus_and_the_scene_chain():
     gpu = FakeGpu()
     timer = timer_for(gpu)
     slow_bus = Heavy(gpu, 90.0, name="isf_slow")
@@ -220,10 +216,10 @@ def test_slow_effects_are_dropped_from_the_bus_and_the_scene_chain():
             return self
 
     _, vals, errors, _ = drive(Root(), timer, gpu, 0, 120)
-    acts = {(e[0], e[1].slot_id, e[3]) for e in errors}
-    assert acts == {("effect", "e1", "removed"), ("effect", "s1", "removed")}
-    assert bus.chain.slots[0].failed and bus.chain.slots[0].slow and scene.chain.slots[0].slow
-    assert list(vals.values())[-1] == 1.0                # both dropped: the scene passes through
+    assert errors == [] and timer.trips == 0
+    assert not bus.chain.slots[0].failed and not scene.chain.slots[0].failed
+    assert list(vals.values())[-1] == 3.0                # both still applied (+1 each)
+    assert timer.stats()["over_budget"] > 0
 
 
 def test_a_struggling_gpu_drops_the_scenes_frame_rate_instead_of_tripping():
@@ -389,16 +385,16 @@ async def test_auto_ok_sheet_rule_calibration_slow_and_broken(client, harness):
     assert mgr.auto_ok("source", "st_cal_ok", 1, budget) and not mgr.auto_ok("source", "st_cal_ok", 0, budget)
     assert not mgr.auto_ok("source", "st_seen", 1, budget) and not mgr.auto_ok("source", "st_hung", 1, budget)
     assert not mgr.auto_ok("source", "fractal_zoom", 1, budget) and mgr.auto_ok("source", "fractal_zoom", 0, budget)
-    # a runtime trip: slow everywhere; a broken module: never
-    mgr.note_slow({"kind": "source", "name": "st_seen", "gpu_ms": 80.0, "budget_ms": 50.0, "why": "sustained"}, "s-x")
-    assert not mgr.auto_ok("source", "st_seen", 0, budget) and mgr.is_slow("source", "st_seen")
+    # a runtime stop (a hang) is recorded, never benched (owner, 18 Oct: no gates); a broken module: never
+    mgr.note_slow({"kind": "source", "name": "st_seen", "gpu_ms": 4000.0, "budget_ms": 50.0, "why": "stuck"}, "s-x")
+    assert mgr.auto_ok("source", "st_seen", 0, budget) and ("source", "st_seen") in mgr.slow
     mgr.registry.broken["x.sources.st_broke"] = {"kind": "source", "name": "st_broke", "error": "nope"}
     try:
         assert not mgr.auto_ok("source", "st_broke", 0, budget)
     finally:
         mgr.registry.broken.pop("x.sources.st_broke")
     rows = {(r["name"], r["source"]): r for r in mgr.slow_list()}
-    assert rows[("st_seen", "runtime")]["ms"] == 80.0
+    assert rows[("st_seen", "runtime")]["ms"] == 4000.0
     assert rows[("st_seen", "calibration")]["status"] == "slow" and rows[("st_hung", "calibration")]["status"] == "broken"
     assert rows[("fractal_zoom", "calibration")]["status"] == "broken"
     cat = await (await client.get("/api/catalog", headers=AUTH)).json()
@@ -481,9 +477,7 @@ async def test_slow_scene_trip_event_marks_recovers_to_previous_and_is_listed(cl
     assert rec and rec[0].source.name == "fractal_zoom" and rec[0].transition.name == "crossfade"   # previous scene
     assert s.cue_info[rec[0].tid]["reason"] == "plugin_error"
     mgr = s.mgr
-    assert mgr.is_slow("source", "warp_stack") and not s.auto_ok("source", "warp_stack")
-    assert all(s.director.pick_scene(mgr.presets.scenes, None, time.monotonic())[0] != "warp-cells"
-               for _ in range(10))
+    assert ("source", "warp_stack") in mgr.slow and s.auto_ok("source", "warp_stack")       # recorded, not benched
     cat = await (await client.get("/api/catalog", headers=AUTH)).json()
     assert cat["slow"] == [{"kind": "source", "name": "warp_stack", "source": "runtime", "status": "slow",
                             **mgr.slow[("source", "warp_stack")]}]
@@ -531,36 +525,26 @@ async def test_fit_scale_becomes_render_scale_unless_the_cue_sets_it(client, har
 
 
 def test_a_slow_shader_at_its_smallest_scale_keeps_running():
-    """Owner, 15 Oct: degrade, never refuse.  The GLSL layer only gives up on a shader over HARD_MS several times."""
-    from stream_service.plugins._lib.glsl.plugins import HARD_MS, GpuTooSlow, _Watch
+    """Owner, 15 Oct: degrade, never refuse; 18 Oct: no gates.  At its smallest scale the GLSL layer never gives up."""
+    from stream_service.plugins._lib.glsl.plugins import _Watch
     w = _Watch(None, "st_ghostly_cavern", 20.0)
-    for ms in [23.1] * 50:                                # over "slow" at the minimum scale: still fine here
+    for ms in [23.1] * 50 + [250.0] * 50 + [2000.0] * 10:
         w.poll = lambda ms=ms: ms
         assert w.judge(0.25, 0.25) is None
-    w.poll = lambda: HARD_MS + 50
-    assert w.judge(0.25, 0.25) is None and w.judge(0.25, 0.25) is None
-    with pytest.raises(GpuTooSlow):
-        w.judge(0.25, 0.25)
 
 
-def test_a_slow_trip_benches_for_a_while_and_doubles():
-    """A guard trip keeps a plug-in out of the auto pool for SLOW_BENCH_S (x2 per repeat), not the process life."""
+def test_a_hang_stop_is_recorded_not_benched():
+    """Owner, 18 Oct: no bans.  A guard stop is counted for the catalog and the diagnostics; the directors may pick
+    the plug-in again."""
     from types import SimpleNamespace
 
     from stream_service.sessions import SessionManager
-    mgr = SimpleNamespace(slow={}, _slow_until={}, _slow_hist={}, slow_trips=0,
-                          SLOW_BENCH_S=SessionManager.SLOW_BENCH_S, SLOW_BENCH_MAX_S=SessionManager.SLOW_BENCH_MAX_S)
-    mgr._purge_slow = lambda: SessionManager._purge_slow(mgr)
-    info = {"kind": "source", "name": "st_x", "gpu_ms": 80.0, "budget_ms": 50.0, "why": "sustained"}
+    mgr = SimpleNamespace(slow={}, slow_trips=0)
+    info = {"kind": "source", "name": "st_x", "gpu_ms": 4000.0, "budget_ms": 50.0, "why": "stuck"}
     SessionManager.note_slow(mgr, info, "s-1")
-    key = ("source", "st_x")
-    assert SessionManager.is_slow(mgr, "source", "st_x")
-    first = mgr._slow_until[key]
-    mgr._slow_until[key] = time.monotonic() - 1                      # the bench is over
-    assert not SessionManager.is_slow(mgr, "source", "st_x") and key not in mgr.slow
-    SessionManager.note_slow(mgr, info, "s-2")                        # again: twice as long
-    assert mgr.slow[key]["count"] == 2 and mgr._slow_until[key] - time.monotonic() > 1.9 * SessionManager.SLOW_BENCH_S
-    assert first > 0
+    SessionManager.note_slow(mgr, info, "s-2")
+    assert mgr.slow[("source", "st_x")]["count"] == 2 and mgr.slow_trips == 2
+    assert "until" not in mgr.slow[("source", "st_x")]
 
 
 def test_one_spike_never_shrinks_and_the_scale_comes_back():
