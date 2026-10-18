@@ -738,7 +738,7 @@ parse_palette(spec) -> (r, g, b) | None              # PALETTES name or "r,g,b" 
   clock=<the Clock>, features_fn=features.latest, palette_fn=<the Director's palette_fn, None without a director>)`,
   then `vm.start()`; `ctx.set_look_out = vm.set_look` and `ctx.section_change = vm.section_change` (Stage 3). It is stopped before rx on
   SIGTERM, and `vm.status()` is the state's `artnet`. Env: `SHOW_ARTNET_TARGET` (`127.0.0.1:6454` in production; empty or
-  `off` = off), `SHOW_PATCH_FILE`, `SHOW_HUE_LATENCY_MS` (0 until P6), `SHOW_ROOM_DMX_URL` (empty = no yield
+  `off` = off), `SHOW_PATCH_FILE`, `SHOW_HUE_LATENCY_MS` (the hand value when latency.json has no `outputs.hue`: S5.25), `SHOW_ROOM_DMX_URL` (empty = no yield
   check), `SHOW_PALETTE` (the P0 colour; a bad value is logged and amber used).
 - *Measured* (niced, under the 4K render): plan + compose 36 µs p50, 58 µs p95; over a real socket, edges land
   0.2-0.4 ms after the beat at 41 Hz (124 bpm).
@@ -6874,3 +6874,14 @@ director from the music. Docs: SHOW_ENGINE §9.1 "Light scenes". Files: `show_se
   catalogue, a scene leaving, and drops once a beat into the engine); test_looks (scenes replacing layers, the
   crossfade, a scene's hits and cap, drop flashes and LookData's drop once per id, identify, follow and its rise
   limit; the stats shape); test_director (the name scan covers light_scenes.py, and the scenes' names and layer ids).
+
+### S5.25 The Hue lead, measured (18 Oct; the owner's ask; e9)
+
+- **Measured** (tools/room/latency_cal/hue_cal.py, dark room, 18 Oct 18:55; run `20261018T175457Z-hue`): Art-Net
+  frame sent -> light at the sensor, all four lamps together, rise t10/t50/t90 80 / 130 / 184 ms (± 7.6 ms on t50,
+  n 10), fall 28 / 79 / 129 ms. The sensor sees only hue.sw (step 0.5 lux alone, 1.0 lux with all four; SNR 40-100).
+  Written to latency.json `outputs.hue.intensity`.
+- **Applied:** `Show.set_hue_lead()` (at start and on every latency.json change) gives the virtual Maestro the rise
+  onset that `fixtures.resolve_latency` gives output "hue" (show.yaml `looks.align_pct`, 25: ~99 ms from this run),
+  else `SHOW_HUE_LATENCY_MS`, else 0, so the virtual Maestro's Hue look runs at `t + 99 ms` like the rig's lamps will.
+  The rig (outputs.py) already reads the same entry through `latency_key: hue`.

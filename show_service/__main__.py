@@ -632,6 +632,30 @@ class Show:
                 log.exception("clock stop failed")
         self.bus.stop()
 
+    def set_hue_lead(self) -> None:
+        """The virtual Maestro's Hue lead (README S5.25), at start and on every latency.json change: the rise onset
+        fixtures.resolve_latency gives output "hue" (latency.json outputs.hue.intensity, from hue_cal.py; show.yaml
+        looks.align_pct), else SHOW_HUE_LATENCY_MS, else 0."""
+        set_ms = getattr(self.artnet, "set_hue_latency_ms", None)
+        fmod = self._import("fixtures") if set_ms is not None else None
+        if fmod is None:
+            return
+        try:
+            import json
+            import yaml
+            path = pathlib.Path(self.cfg.latency_file)
+            doc = json.loads(path.read_text()) if path.exists() else None    # none yet: the hand value
+            show = yaml.safe_load(pathlib.Path(self.opts.show_file).read_text()) or {}
+            align = (show.get("looks") or {}).get("align_pct", fmod.ALIGN_PCT)
+            hand = {"intensity": {"rise_ms": self._out_cfg.get("hue_latency_ms") or 0.0}}
+            lv = fmod.resolve_latency("hue", {"latency_key": "hue", "latency": hand}, doc, align_pct=float(align))
+            set_ms(lv["rise_ms"])
+            src = lv["source"]["rise"]
+            log.info("Hue lead %.1f ms (%s)", lv["rise_ms"], "SHOW_HUE_LATENCY_MS" if src == "fixtures.yaml" else src)
+        except Exception as e:
+            log.warning("Hue lead not updated (%s): keeping %.1f ms", e,
+                        getattr(self.artnet, "hue_latency_s", 0.0) * 1000)
+
     def set_offsets(self, offsets: dict[str, float]) -> None:
         self.offsets = dict(offsets)
         if self.rx is not None:
@@ -950,6 +974,7 @@ def main(argv: list[str] | None = None) -> int:
     watch = config.LatencyWatch(cfg.latency_file)
     offsets = watch.poll(force=True)
     show.set_offsets(offsets or {})
+    show.set_hue_lead()
     if offsets:
         log.info("acoustic offsets from %s: %s", cfg.latency_file, offsets)
     t_start, frozen, errors_seen = time.monotonic(), False, 0
@@ -958,6 +983,7 @@ def main(argv: list[str] | None = None) -> int:
         if offsets is not None:
             log.info("latency.json changed: acoustic offsets %s", offsets or "none (all 0)")
             show.set_offsets(offsets)
+            show.set_hue_lead()
         if watch.errors != errors_seen:
             errors_seen = watch.errors
             if errors_seen == 1 or errors_seen % 30 == 0:
