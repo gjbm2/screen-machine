@@ -16,6 +16,12 @@ arrival time of that packet (time.monotonic). Pages reach it through room_servic
 Nothing is sent while no client is connected. A client may send ``{"ping": x}`` (any number of its own clock); the
 reply ``{"pong": x, "srv": <time.monotonic()>}`` lets it align clocks and show how far behind the room each sample
 reaches it (``a`` is on the same clock as ``srv``).
+
+Opt-in waveform (18 Oct, for the renderer's scope effects: stream_service/scope_feed.py): a client that connects
+with ``?wave=N`` (an int, clamped to WAVE_MIN..WAVE_MAX) also gets ``"w"`` in every frame: the newest N mono
+samples of the ring, oldest first, as ints scaled to +-32767 (clipped; samples the ring does not hold yet read 0).
+Each distinct N is built once per flush, however many clients ask for it.  Clients without ``wave`` get exactly
+the frames they always did.
 """
 
 from __future__ import annotations
@@ -44,12 +50,14 @@ FFT_N = 2048
 SPEC_BANDS = 48
 SPEC_LO_HZ, SPEC_HI_HZ = 40.0, 16000.0
 RING_N = 4096
+WAVE_MIN, WAVE_MAX = 64, 2048                         # ?wave=N clamp (WAVE_MAX <= RING_N)
 
 
 class LevelFeed:
     def __init__(self) -> None:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._clients: set[asyncio.Queue] = set()
+        self._wave: dict[asyncio.Queue, int] = {}        # clients that asked for ?wave=N -> N
         self._lock = threading.Lock()
         self._slot: Optional[list] = None                # [stream, counter, peak, packets, t_cap_ns, arrival]
         self._ring = np.zeros(RING_N, np.float32)       # the newest mono samples (show-rx writes, the loop reads)
@@ -130,6 +138,29 @@ class LevelFeed:
             out.append(int(round(max(FLOOR_DBFS, 20.0 * math.log10(v)) if v > 1e-6 else FLOOR_DBFS)))
         return out
 
+    def _wave_ints(self, n: int) -> list[int]:
+        """The newest ``n`` ring samples, oldest first, as ints scaled to +-32767 (zeros where the ring is empty)."""
+        with self._lock:
+            fill, w = min(self._ring_fill, n), self._ring_w
+            x = np.zeros(n, np.float32)
+            if fill:
+                idx = np.arange(w - fill, w) % RING_N
+                x[n - fill:] = self._ring[idx]
+        np.multiply(x, 32767.0, out=x)
+        np.clip(x, -32767.0, 32767.0, out=x)
+        return np.rint(x).astype(np.int16).tolist()
+
+    @staticmethod
+    def wave_param(raw: Optional[str]) -> Optional[int]:
+        """``?wave=N`` -> N clamped to WAVE_MIN..WAVE_MAX, or None (absent or not an int)."""
+        if raw is None:
+            return None
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return max(WAVE_MIN, min(WAVE_MAX, n))
+
     def _flush(self) -> None:
         with self._lock:
             s, self._slot, self._scheduled = self._slot, None, False
@@ -145,11 +176,17 @@ class LevelFeed:
             body["f"] = spec
             body["fl"], body["fh"] = SPEC_LO_HZ, round(min(SPEC_HI_HZ, self._sr / 2 * 0.98))
         frame = json.dumps(body, separators=(",", ":"))
+        waved: dict[int, str] = {}
+        if self._wave:
+            for n in set(self._wave.values()):            # each distinct N once per flush
+                body["w"] = self._wave_ints(n)
+                waved[n] = json.dumps(body, separators=(",", ":"))
         for q in self._clients:
             if q.full():
                 self.dropped += 1
             else:
-                q.put_nowait(frame)
+                n = self._wave.get(q)
+                q.put_nowait(frame if n is None else waved.get(n, frame))
 
     def routes(self, app: web.Application) -> None:
         app.router.add_get(PATH, self._ws)
@@ -168,6 +205,9 @@ class LevelFeed:
         ws = web.WebSocketResponse(heartbeat=10.0)
         await ws.prepare(request)
         q: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX)
+        n_wave = self.wave_param(request.query.get("wave"))
+        if n_wave is not None:
+            self._wave[q] = n_wave
         self._clients.add(q)
 
         async def reader() -> None:                       # pings (clock alignment); notice the close
@@ -196,6 +236,7 @@ class LevelFeed:
             pass
         finally:
             self._clients.discard(q)
+            self._wave.pop(q, None)
             rd.cancel()
             await ws.close()
         return ws
