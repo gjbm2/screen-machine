@@ -18,15 +18,17 @@ reply ``{"pong": x, "srv": <time.monotonic()>}`` lets it align clocks and show h
 reaches it (``a`` is on the same clock as ``srv``).
 
 Opt-in waveform (18 Oct, for the renderer's scope effects: stream_service/scope_feed.py): a client that connects
-with ``?wave=N`` (an int, clamped to WAVE_MIN..WAVE_MAX) also gets ``"w"`` in every frame: the newest N mono
-samples of the ring, oldest first, as ints scaled to +-32767 (clipped; samples the ring does not hold yet read 0).
-Each distinct N is built once per flush, however many clients ask for it.  Clients without ``wave`` get exactly
-the frames they always did.
+with ``?wave=N`` (an int, clamped to WAVE_MIN..WAVE_MAX) also gets ``"wb"`` in every frame: the newest N mono
+samples of the ring, oldest first, as little-endian int16 (scaled to +-32767, clipped; samples the ring does not hold
+yet read 0), base64-encoded.  Each distinct N is built once per flush, however many clients ask for it, and is
+spliced onto the frame already serialised (no second json.dumps; 3a, 18 Oct: a JSON int list cost ~11 % of the bus
+loop).  Clients without ``wave`` get exactly the frames they always did.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import math
@@ -138,8 +140,9 @@ class LevelFeed:
             out.append(int(round(max(FLOOR_DBFS, 20.0 * math.log10(v)) if v > 1e-6 else FLOOR_DBFS)))
         return out
 
-    def _wave_ints(self, n: int) -> list[int]:
-        """The newest ``n`` ring samples, oldest first, as ints scaled to +-32767 (zeros where the ring is empty)."""
+    def _wave_b64(self, n: int) -> str:
+        """The newest ``n`` ring samples, oldest first, as base64 little-endian int16 scaled to +-32767 (zeros where
+        the ring is empty)."""
         with self._lock:
             fill, w = min(self._ring_fill, n), self._ring_w
             x = np.zeros(n, np.float32)
@@ -148,7 +151,7 @@ class LevelFeed:
                 x[n - fill:] = self._ring[idx]
         np.multiply(x, 32767.0, out=x)
         np.clip(x, -32767.0, 32767.0, out=x)
-        return np.rint(x).astype(np.int16).tolist()
+        return base64.b64encode(np.rint(x).astype("<i2").tobytes()).decode("ascii")
 
     @staticmethod
     def wave_param(raw: Optional[str]) -> Optional[int]:
@@ -178,9 +181,8 @@ class LevelFeed:
         frame = json.dumps(body, separators=(",", ":"))
         waved: dict[int, str] = {}
         if self._wave:
-            for n in set(self._wave.values()):            # each distinct N once per flush
-                body["w"] = self._wave_ints(n)
-                waved[n] = json.dumps(body, separators=(",", ":"))
+            for n in set(self._wave.values()):            # each distinct N once per flush, spliced onto the frame
+                waved[n] = f'{frame[:-1]},"wb":"{self._wave_b64(n)}"}}'
         for q in self._clients:
             if q.full():
                 self.dropped += 1
