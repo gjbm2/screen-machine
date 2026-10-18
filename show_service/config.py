@@ -15,8 +15,10 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
                      thread)          SHOW_BEAT_NICE  the child's nice (default 0, as madmom has inside show_service)
   SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
                      packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
-  SHOW_RX_OFF        "" (default) | any of coalesce,stamps,split (comma list): turns that receive-path change off
-                     (one on_audio per packet / arrival after recv / MIDI on the audio socket), the rollback switch
+  SHOW_RX_OFF        "" (default) | any of coalesce,stamps,split,batch,gapskip,agc (comma list): turns that hot-path
+                     change off, the rollback switch: one on_audio per packet / arrival after recv / MIDI on the audio
+                     socket (receiver.py); per-piece hits and per-hop spectra (dsp.py); holes zero-filled through
+                     madmom / one AGC step per block (clock.py)
 args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
@@ -77,8 +79,8 @@ DEFAULT_SENDER_PORT = 6980
 ARTNET_PORT = 6454                # Art-Net's UDP port, when a target names only a host
 STREAM_NAME_MAX = 16              # vban.STREAM_NAME_MAX (16-byte VBAN stream name)
 LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-RX_FEATURES = ("coalesce", "stamps", "split")    # SHOW_RX_OFF's words: receiver.Receiver(coalesce=, kernel_stamps=,
-                                                 # split_midi=)
+RX_FEATURES = ("coalesce", "stamps", "split",   # SHOW_RX_OFF's words: receiver.Receiver(coalesce=, kernel_stamps=,
+               "batch", "gapskip", "agc")       # split_midi=), dsp.Features(batch=), clock.Clock(gap_skip=, agc_chunks=)
 _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _HOST = re.compile(r"^[A-Za-z0-9_.-]{1,253}$")
 

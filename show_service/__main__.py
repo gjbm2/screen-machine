@@ -14,6 +14,10 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
              Features.clock_fn = Clock.snapshot (the medium lane's swing and syncopation)
  [show-beat] Clock's activation (madmom) off show-rx: only with --beat-thread on / SHOW_BEAT_THREAD=on (Stage 4;
              off by default: measured, it cost more than it saved; README S4.12)
+ [show-beat-sup] with --beat-proc on / SHOW_BEAT_PROC=on (wins over the thread): madmom in a child, python -m
+             show_service.beatproc (<state_dir>/beat-worker.log); show-rx feeds it hops through a pipe, inline until
+             it says hello and whenever it is gone; mllink counts its CPU in show_service's share (child_pids)
+ Receiver, Features and Clock take SHOW_RX_OFF's rollbacks (config.RX_FEATURES) and SHOW_RX_COALESCE_MIN.
  [show-dns]  started by Receiver.start(): sender names re-resolved every 30 s (at once after set_senders)
  [show-bus]  Bus (bus.py): WS fan-out, show.state 25 Hz, /healthz, /api/v1/state (state() below, from snapshots),
              and api.py's routes and /v1/events (they reach the brain only through Brain.call and snapshots)
@@ -309,11 +313,15 @@ class Show:
             log.error("bus not bound yet (%s): it keeps retrying", self.bus.bind_error)
         cmod = self._import("clock")         # before dsp: Features' hits feed the clock
         if cmod is not None:
-            self.clock = self._make("clock", lambda: cmod.Clock(publish=self.publish,
-                                                                beat_thread=self.opts.beat_thread))
+            off = self.opts.rx_off
+            self.clock = self._make("clock", lambda: cmod.Clock(
+                publish=self.publish, beat_thread=self.opts.beat_thread, beat_proc=self.opts.beat_proc,
+                beat_nice=self.opts.beat_nice, beat_log=pathlib.Path(self.opts.state_dir) / "beat-worker.log",
+                gap_skip="gapskip" not in off, agc_chunks="agc" not in off))
         dsp = self._import("dsp")
         if dsp is not None:
-            self.features = self._make("dsp", lambda: dsp.Features(publish=self._features_publish))
+            self.features = self._make("dsp", lambda: dsp.Features(publish=self._features_publish,
+                                                                   batch="batch" not in self.opts.rx_off))
         if self.features is not None and self.clock is not None and hasattr(self.clock, "snapshot"):
             try:
                 self.features.clock_fn = self.clock.snapshot     # the medium lane's swing/syncopation (S4.6)
@@ -325,9 +333,14 @@ class Show:
             self.harmony = self._make("harmony", lambda: hmod.Harmony(self.publish))
         rmod = self._import("receiver")
         if rmod is not None:
+            off = self.opts.rx_off
             self.rx = self._make("receiver", lambda: rmod.Receiver(self.cfg, on_audio=self.on_audio,
                                                                     on_midi=self.on_midi, on_tick=self.on_tick,
-                                                                    on_level=self.levels.push))
+                                                                    on_level=self.levels.push,
+                                                                    coalesce="coalesce" not in off,
+                                                                    coalesce_min=self.opts.rx_coalesce_min,
+                                                                    kernel_stamps="stamps" not in off,
+                                                                    split_midi="split" not in off))
         if self.rx is not None:
             self.inputs.attach(self.rx)
             if self.mic is not None:
@@ -407,7 +420,8 @@ class Show:
             "sources": {"log_dir": pathlib.Path(self.opts.state_dir)},
             "listener": {"log_path": logs["listener"]},
             "cues": {"log_path": logs["cues"]},
-            "mllink": {"log_path": pathlib.Path(self.opts.state_dir) / "ml-worker.log"},
+            "mllink": {"log_path": pathlib.Path(self.opts.state_dir) / "ml-worker.log",
+                       "child_pids": self._child_pids},
             "director": {"log_path": logs["director"], "vibes_path": pathlib.Path(self.opts.vibes_file),
                          **({"patch_path": pathlib.Path(patch_path)} if patch_path else {})},
         }.get(name, {})
@@ -421,6 +435,12 @@ class Show:
             kw["driver_kw"] = dk
         kw.update(extra)
         return kw
+
+    def _child_pids(self) -> list:
+        """mllink's ``child_pids``: show_service's other children counted in its CPU share (the owner's 0.8): the
+        clock's beat process (None while it is down or not in use)."""
+        fn = getattr(self.clock, "beat_pid", None)
+        return [fn()] if fn is not None else []
 
     def _rig_kw(self, patch_path: Any) -> dict:
         """Stage 5 (README S5.4): the rig's inputs, all by reference. ``neutral`` is artnet_out's own colour
