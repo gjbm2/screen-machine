@@ -33,8 +33,10 @@ exactly; c8's integration ruling, 16 Oct: mllink wraps them rather than repeatin
     octave goes alone (bar and one wait for a run under the new numbering). A new bar length needs a one and
     ``bar_agree_runs`` runs in a row. A vote that agrees with the clock in full is sent too (at most every
     ``cooldown_s``): the clock raises its bar_conf on an agreeing one, which it otherwise never hears (B9's open point).
-  - **CPU** every ``CPU_EVERY_S`` from ``/proc``: ``cpu`` = {worker, service, total} in cores. The owner's 0.8 is
-    enforced by degrading: while the 60 s total is over ``TOTAL_WARN``, the worker's cpu_max (a config frame) is
+  - **CPU** every ``CPU_EVERY_S`` from ``/proc``: ``cpu`` = {worker, service, total, children} in cores. ``service``
+    is show_service's own process plus its other children (``child_pids``: __main__ passes the clock's beat process,
+    ``Clock.beat_pid()``, None while it is down); a respawned child's CPU counts from its first reading. The owner's
+    0.8 is enforced by degrading: while the 60 s total is over ``TOTAL_WARN``, the worker's cpu_max (a config frame) is
     0.8 less show_service's own 60 s share, within [ml.cpu_floor, ml.cpu_max]; the worker's guard then stretches its
     intervals. It goes back once show_service leaves room again (``cpu_limit`` in the snapshot).
   - **The log** (``ml-worker.log``) is appended per run (a header line each) and rotated (to ``.1``) past
@@ -282,8 +284,10 @@ class MLLink:
 
     def __init__(self, ctx: contract.BrainContext, *, log_path: Optional[pathlib.Path] = None,
                  python: Optional[str] = None, extra_args: tuple = (), mono: Callable[[], float] = time.monotonic,
-                 cpu_every_s: float = CPU_EVERY_S) -> None:
+                 cpu_every_s: float = CPU_EVERY_S,
+                 child_pids: Optional[Callable[[], Any]] = None) -> None:
         self.ctx = ctx
+        self._child_pids = child_pids                # show_service's other children (the beat process), counted as it
         self._mono = mono
         self.log_path = pathlib.Path(log_path) if log_path else contract.ML_LOG
         self._python = python                        # tests: the interpreter to run (over ml.python)
@@ -317,7 +321,11 @@ class MLLink:
         self._started = False
         self._cpu_every = float(cpu_every_s)
         self._cpu_last: Optional[tuple] = None       # (wall, service cpu s, worker pid, worker cpu s)
-        self.cpu: dict = {"worker": None, "service": None, "total": None}
+        self.cpu: dict = {"worker": None, "service": None, "total": None, "children": None}
+        self._kids: dict[int, float] = {}            # child pid -> its last cpu s
+        self._kids_s = 0.0                           # the children's cpu s summed from their readings (monotonic)
+        self._kids_share: Optional[float] = None
+        self._kids_last: Optional[tuple] = None      # (now, the children's cpu s) at the last measure
         self._over_since: Optional[float] = None
         self._over_logged = -math.inf
         self._log_checked = -math.inf
@@ -622,8 +630,31 @@ class MLLink:
         log.info("ML beat vote applied: %s (conf %.2f)", args, vote["conf"])
 
     # -- CPU and the log ---------------------------------------------------------------------------------------------
+    def _children_cpu_s(self) -> float:
+        """The other children's cpu seconds since we first read each (a new or respawned pid starts at its first
+        reading), summed so it only grows; a pid that's gone keeps what it had."""
+        try:
+            pids = [p for p in (self._child_pids() or ()) if isinstance(p, int) and p > 0]
+        except Exception:                            # the clock mid-restart: this reading counts none
+            pids = []
+        seen: dict[int, float] = {}
+        for p in pids:
+            c = _proc_cpu_s(p)
+            if c is None:
+                continue
+            last = self._kids.get(p)
+            if last is not None and c >= last:
+                self._kids_s += c - last
+            seen[p] = c
+        self._kids = seen
+        return self._kids_s
+
     def _measure_cpu(self, now_s: float) -> None:
         svc = _proc_cpu_s(os.getpid())
+        kids_s = self._children_cpu_s() if self._child_pids is not None else 0.0
+        kids_last, self._kids_last = self._kids_last, (now_s, kids_s)
+        if svc is not None:
+            svc += kids_s
         pid = self.sup.pid
         wk = _proc_cpu_s(pid) if pid else None
         last = self._cpu_last
@@ -639,8 +670,11 @@ class MLLink:
         worker = (max(0.0, (wk - last[3]) / dt) if wk is not None and last[3] is not None and pid == last[2]
                   else (0.0 if pid is None else None))
         total = service + (worker or 0.0)
+        if self._child_pids is not None and kids_last is not None and now_s > kids_last[0]:
+            self._kids_share = max(0.0, (kids_s - kids_last[1]) / (now_s - kids_last[0]))
         self.cpu = {"worker": None if worker is None else round(worker, 3), "service": round(service, 3),
-                    "total": round(total, 3)}
+                    "total": round(total, 3),
+                    "children": None if self._kids_share is None else round(self._kids_share, 3)}
         if total > TOTAL_WARN:
             self._over_since = self._over_since if self._over_since is not None else now_s
             if now_s - self._over_since >= TOTAL_WARN_FOR_S and now_s - self._over_logged >= TOTAL_WARN_LOG_S:
@@ -750,6 +784,7 @@ class MLLink:
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> MLLink:
-    """The brain's ``ml``. __main__ passes ``log_path`` (<state_dir>/ml-worker.log); tests pass ``python``,
+    """The brain's ``ml``. __main__ passes ``log_path`` (<state_dir>/ml-worker.log) and ``child_pids`` (the beat
+    process's pid, counted in show_service's share); tests pass ``python``,
     ``extra_args`` (``("--fake",)``), ``mono`` and ``cpu_every_s``."""
     return MLLink(ctx, **kw)

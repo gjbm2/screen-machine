@@ -377,6 +377,34 @@ def test_the_owners_0_8_cuts_the_workers_cpu_max_and_gives_it_back():
     assert L.link.cpu_limit is None and sent[-1]["cpu_max"] == 0.35 and L.link.snapshot()["cpu_limit"]["cut"] is False
 
 
+def test_the_beat_process_counts_in_show_services_share(monkeypatch):
+    """child_pids (the clock's beat process) adds to cpu.service; a respawned child counts from its first reading,
+    one that is down (None) counts nothing, and the share never goes negative."""
+    os_pid = M.os.getpid()
+    cpu = {os_pid: 100.0, 501: 5.0}
+    monkeypatch.setattr(M, "_proc_cpu_s", lambda pid: cpu.get(pid))
+    kids = [501]
+    ctx = C.BrainContext(publish=lambda m: None)
+    link = M.MLLink(ctx, mono=lambda: 0.0, child_pids=lambda: list(kids))
+    link._measure_cpu(0.0)
+    cpu[os_pid], cpu[501] = 104.0, 7.0                      # 0.4 core own + 0.2 core the beat child over 10 s
+    link._measure_cpu(10.0)
+    assert link.cpu["service"] == pytest.approx(0.6) and link.cpu["children"] == pytest.approx(0.2)
+    kids[:] = [777]                                         # respawned: the new pid counts from its first reading
+    cpu[os_pid], cpu[777] = 108.0, 0.5
+    link._measure_cpu(20.0)
+    assert link.cpu["service"] == pytest.approx(0.4) and link.cpu["children"] == pytest.approx(0.0)
+    cpu[os_pid], cpu[777] = 112.0, 1.5
+    link._measure_cpu(30.0)
+    assert link.cpu["service"] == pytest.approx(0.5) and link.cpu["children"] == pytest.approx(0.1)
+    kids[:] = [None]                                        # down
+    cpu[os_pid] = 116.0
+    link._measure_cpu(40.0)
+    assert link.cpu["service"] == pytest.approx(0.4) and link.cpu["children"] == pytest.approx(0.0)
+    hist = [h[1] for h in link._cpu_hist]
+    assert hist == sorted(hist)                             # cumulative: the 60 s share never sees a drop
+
+
 # -- MLLink against the fake worker --------------------------------------------------------------------------------------
 def ml_cfg(tmp_path, **kw):
     cfg = {"enabled": True, "models_dir": str(tmp_path / "models"), "nice": 19,
