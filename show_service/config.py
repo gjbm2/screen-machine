@@ -15,6 +15,8 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
                      thread)          SHOW_BEAT_NICE  the child's nice (default 0, as madmom has inside show_service)
   SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
                      packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
+  SHOW_RX_OFF        "" (default) | any of coalesce,stamps,split (comma list): turns that receive-path change off
+                     (one on_audio per packet / arrival after recv / MIDI on the audio socket), the rollback switch
 args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
@@ -75,6 +77,8 @@ DEFAULT_SENDER_PORT = 6980
 ARTNET_PORT = 6454                # Art-Net's UDP port, when a target names only a host
 STREAM_NAME_MAX = 16              # vban.STREAM_NAME_MAX (16-byte VBAN stream name)
 LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+RX_FEATURES = ("coalesce", "stamps", "split")    # SHOW_RX_OFF's words: receiver.Receiver(coalesce=, kernel_stamps=,
+                                                 # split_midi=)
 _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _HOST = re.compile(r"^[A-Za-z0-9_.-]{1,253}$")
 
@@ -94,6 +98,7 @@ class Options:
     beat_proc: bool = False                              # clock.Clock(beat_proc=): madmom in a child; off by default
     beat_nice: int = 0                                   # clock.Clock(beat_nice=)
     rx_coalesce_min: int = 1                             # receiver.Receiver(coalesce_min=)
+    rx_off: frozenset = frozenset()                      # SHOW_RX_OFF: receive-path changes turned off (RX_FEATURES)
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -315,6 +320,10 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
 
     beat_nice = int_env("SHOW_BEAT_NICE", 0, 0, 19)
     rx_coalesce_min = int_env("SHOW_RX_COALESCE_MIN", 1, 1, 32)
+    words = {w.strip().lower() for w in (env.get("SHOW_RX_OFF") or "").split(",") if w.strip()}
+    if words - set(RX_FEATURES):
+        notes.append(f"SHOW_RX_OFF: unknown {sorted(words - set(RX_FEATURES))} (known: {', '.join(RX_FEATURES)})")
+    rx_off = frozenset(words & set(RX_FEATURES))
 
     def path_opt(arg: Optional[str], key: str, default: pathlib.Path) -> pathlib.Path:
         text = arg if arg is not None else env.get(key)
@@ -326,7 +335,8 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
                    show_file=path_opt(args.show_file, "SHOW_FILE", contract.SHOW_FILE),
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
                    state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread,
-                   beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min)
+                   beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min,
+                   rx_off=rx_off)
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:
