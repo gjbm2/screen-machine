@@ -48,7 +48,7 @@ Read-only investigation, 18 Oct 2026.
 | **W1 baseline (reference)** | 14:27:07-14:28:37 (90 s) | PID 818235 (a peer restarted it at 14:25:26), note-fluid-ice-silk then note-fluid-dusk-pool, 2160p30 | every frame record, per-thread CPU, GPU and Windows counters | probe cost: 6.9% of a core, plus 2.5% for nvidia-smi |
 | W2 | 14:44-14:52 | PID 818235, piano-waterfall then live-score-night | py-spy GIL split, media tap, Hyper-V counters (14:51) | **perturbed:** analysts' pipe, ffmpeg and GPU benches pushed guest busy to 71-80% |
 | discarded | 14:54-14:57 | none | none | Flask down, a vite build ran, stream restarted 14:55:37 (new PID 861326) |
-| W3 | 14:58-15:04 | PID 861326, live-score (-paper/-night). The scene spawns score.analyse and score.engrave, plus an extra ffmpeg per screen | frame dumps, syscall sampler, py-spy | 3-9 min after a restart; light analyst load: CUDA micro-benches on both GPUs around 15:02, Windows counter batches 15:02-15:03, py-spy at 15:04 |
+| W3 | 14:58-15:04 | PID 861326, live-score (-paper/-night). The scene spawns score.analyse and score.engrave. An extra ffmpeg per screen was also seen, but live-score starts none (b0, 18 Oct), so it was another session's encoder | frame dumps, syscall sampler, py-spy | 3-9 min after a restart; light analyst load: CUDA micro-benches on both GPUs around 15:02, Windows counter batches 15:02-15:03, py-spy at 15:04 |
 | W4 | 15:06-16:30 | no screen live | encode-chain, 60p NVENC, pipe and Hyper-V benches | none |
 
 **Later code changes:** live-score changed after W3. It now runs one transcription per room (ace1bda5, 15:04:55), and its lock is no longer held across GPU waits (e252a370). New scope/FFT inputs landed 15:43-16:45. None of these was measured.
@@ -273,7 +273,7 @@ Two adversarial verifiers checked each hypothesis. All seven came back partly ve
 | CPU clock / thermal | 62-67% of nominal; CPU temperatures never read | Open: biggest unknown lever |
 | Windows memory | Commit 180.6 of 195 GB (93%); 7.6-7.9 GB free of 63.7; 750-2,400 pages/s; Brave 53.6 GB private; vmmemWSL working set 18.2 GB [M 14:51-15:02] | Risk of host paging stalls [U impact] |
 | Wake-up latency | 1 kHz probe, screens live: p50 67 us, p99 6.0 ms, p99.9 15 ms, max 46 ms. Screens off: p99 0.3 ms, max 45 ms. Pacing sleep woke p99 9.6-12.7 ms late (W1). Kernel HZ=100, PREEMPT_NONE [M] | Real-time jitter floor: up to 1/3 of a 60p slot |
-| live-score child processes | score.analyse, score.engrave and an extra ffmpeg per screen, never measured | Measure after ace1bda5 |
+| live-score child processes | score.analyse (one per room since ace1bda5) and score.engrave (one per screen), never measured. The extra ffmpeg seen is not live-score's | Measure after ace1bda5 |
 | Python GC, lookstats | GC not measured; lookstats 0.2% of a core | lookstats is not a factor |
 
 ## 6. The measurement tool to build
