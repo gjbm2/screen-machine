@@ -212,7 +212,8 @@ def show_settings() -> dict:
         return {}
 
 
-STACK_FILES = ("show_service/clock.py", "show_service/dsp.py", "show_service/mllink.py", "show_service/contract.py",
+STACK_FILES = ("show_service/clock.py", "show_service/beatdbn.py", "show_service/beatdbn_conf.json",
+               "show_service/beatproc.py", "show_service/dsp.py", "show_service/mllink.py", "show_service/contract.py",
                "show_service/vban.py", "show_service/artnet_out.py", "show_service/ml/models.py",
                "show_service/ml/worker.py", "config/room/show.yaml")
 
