@@ -76,10 +76,11 @@ Estimators (``Clock(estimator=...)``; config ``SHOW_CLOCK_ESTIMATOR``; README S4
   (bpm, anchor, beat count) and ``epoch`` are Clock's, on the tracker's line with step 6's discipline
   (``_dbn_publish``; README S4.15 "Publishing"): the tracker's own line re-anchors on every DBN beat, the published
   one slews to it (gated beat: half the phase error per beat, at most 10 % tempo; dmx, none: all of it per beat;
-  none also snaps forward), its count never goes back at a consumer's now and never jumps a whole beat within an
-  epoch, and ``epoch`` + 1 only for a new grid (the first line, an octave or a tap, a tempo jump over 8 % that holds
-  3 line updates on a grid that was gated, or a whole-beat step); the tracker's beat k is published beat
-  ``k + _off``. ``beats_per_bar``, ``bar_anchor_beat``, ``phrase_bars``, ``bar_conf`` and ``phrase_conf`` come from
+  none also snaps forward; the slew is judged again at each of the line's beats that passes with no DBN beat, as
+  legacy's after every judged beat), its count never goes back at a consumer's now and never jumps a whole beat
+  within an epoch, and ``epoch`` + 1 only for a new grid (the first line, an octave or a tap, a tempo jump over 8 %
+  that holds 3 line updates on a grid that was gated, a whole-beat step, or the first beat or dmx gate after a
+  quiet room: a new song); the tracker's beat k is published beat ``k + _off``. ``beats_per_bar``, ``bar_anchor_beat``, ``phrase_bars``, ``bar_conf`` and ``phrase_conf`` come from
   the bar and phrase code below (confirmation, ``_bar_phrase``, ``_apply_pending``), fed the tracker's judged beats
   (``DbnTracker.events``) as the legacy estimator feeds it its own; once started the bars keep their anchor (a
   tempo jump drops bar_conf to 0.1). **conf there is P(the next beat lands within 70 ms)**, the gate beat
@@ -89,8 +90,8 @@ Estimators (``Clock(estimator=...)``; config ``SHOW_CLOCK_ESTIMATOR``; README S4
   off for beatdbn.HOLD_S; one, the bar length and the slow lane's one go to the bar code as before. No audio for
   NO_AUDIO_S: ``free``, gate ``none``, the line's beats pass as misses on tick time. ``stats()["estimator"]``,
   ``stats()["source"]`` (``madmom-dbn2``), ``stats()["dbn"]`` (the tracker's counts; its ``epoch`` counts its own
-  re-phases) and the publisher's ``pub_grids``, ``pub_slews``, ``pub_snaps``, ``pub_far_waits``; ``stats()["epoch"]``
-  is the published one.
+  re-phases) and the publisher's ``pub_grids``, ``pub_slews``, ``pub_snaps``, ``pub_far_waits``, ``pub_resyncs``,
+  ``pub_cold_grids``; ``stats()["epoch"]`` is the published one.
 - ``"legacy"``: the estimator below (steps 3-6), exactly as before: the rollback.
 
 Pipeline (steps 3-6 and their conf, gate and corrections: the legacy estimator)
@@ -890,6 +891,7 @@ class Clock:
         self._pub_base = 0.0                        # dbn: the tracker's bpm the published line last followed
         self._pub_real = False                      # dbn: the published grid was gated (beat|dmx) since its epoch
         self._pub_far = 0                           # dbn: line updates in a row DBN_NEW_TEMPO off the tempo followed
+        self._pub_cold = False                      # dbn: the room went quiet: the next grid gated is a new one
         self._trk = self._make_tracker() if self._estimator == "dbn" else None
         self.tg.reset()
         self._pk.reset()
@@ -947,6 +949,7 @@ class Clock:
                     trk = self._trk
                     k0, b0 = trk.key(), self._bar_key()
                     trk.coast(self._t_known + (now_s - self._w_known) - 0.5)
+                    self._dbn_missed(now_s)             # (pivots at the consumers' now: the coast's beats lag it)
                     if trk.events:
                         self._dbn_beats()
                     if trk.key() != k0 or self._bar_key() != b0:
@@ -1552,8 +1555,9 @@ class Clock:
 
     # ---- the dbn estimator (module docstring, "Estimators") ----------------------------------------------------------
     def _bar_key(self) -> tuple:
+        """dbn: what the body carries besides the tracker's key: the bars, and the published line and epoch."""
         return (self._bpb, self._bar_anchor, self._phrase_bars, round(self._bar_conf, 4), round(self._phrase_conf, 4),
-                self._confirmed)
+                self._confirmed, self._pub_k, self._pub_t, self._pub_bpm, self._epoch)
 
     def _frame_dbn(self, a: float, t_raw: float) -> bool:
         """A frame for the tracker, with the flags its caller set (``silent``: no activation; ``fresh``: the LSTM's
@@ -1572,11 +1576,38 @@ class Clock:
         self._counts["frames"] += 1
         if trk.line != ln:
             self._dbn_publish(trk.t_last)
-        if trk.gate != "none" and not trk.quiet:
+        else:
+            self._dbn_missed(trk.t_last)
+        if trk.quiet:                                   # a quiet room: the grid gated after it is a new one
+            if self._pub_ok:
+                self._pub_cold, self._pub_real = True, False
+        elif trk.gate != "none":
+            if self._pub_cold:
+                self._dbn_cold_grid()
             self._pub_real = True
         if trk.events:
             self._dbn_beats()
         return trk.key() != k0 or self._bar_key() != b0
+
+    def _dbn_missed(self, u: float) -> None:
+        """A beat of the tracker's line passed with no DBN beat (a miss among its events): the published line's slew
+        is judged again at ``u``, as legacy judges it after every beat, hit or miss; otherwise a slew set to close
+        the error in one beat (or half of it per beat) would run on, overshooting, until the next DBN beat."""
+        if any(e[1] == "miss" for e in self._trk.events):
+            self._dbn_publish(u, resync=True)
+
+    def _dbn_cold_grid(self) -> None:
+        """The first beat or dmx gate after a quiet room (a new song, or the same one after a pause): a new grid,
+        epoch + 1 once, unless a new grid on the way had it already (``_dbn_publish``). The line itself followed the
+        tracker ungated meanwhile; the bars keep their anchor, bar_conf drops to DBN_NEW_BAR_CONF; a waiting
+        correction is stale."""
+        self._pub_cold = False
+        self._epoch += 1
+        self._numbering_break(self._upcoming())
+        if self._confirmed:
+            self._bar_conf = min(self._bar_conf, DBN_NEW_BAR_CONF)
+            self._bar_votes = 0
+        self._counts["pub_cold_grids"] += 1
 
     def _dbn_beats(self) -> None:
         """The tracker's judged beats, in order and each once, numbered in the published count (its beat k is
@@ -1604,7 +1635,7 @@ class Clock:
                 self._bar_phrase(k, kind, strength, entry)
             self._apply_pending(k)
 
-    def _dbn_publish(self, u: float, explicit: bool = False) -> None:
+    def _dbn_publish(self, u: float, explicit: bool = False, resync: bool = False) -> None:
         """The tracker's line moved, at ``u`` (now, as heard): the published line follows it with step 6's discipline
         (README S4.15 "Publishing"). The tracker's beat k is published beat ``k + _off``. A consumer's now is at or
         after ``u``: from ``u`` to ``u + DBN_PIVOT_S`` the new line's count is never behind the old one's.
@@ -1619,10 +1650,12 @@ class Clock:
           window where it can. ``epoch`` + 1 for the first line, a correction, a jump away from a grid that was gated
           since its epoch, or a step of a whole beat; a line that was never gated (the room's noise before the music)
           wanders without one. A waiting slow-lane correction is stale; after a tempo jump the bars keep their anchor
-          and bar_conf drops to DBN_NEW_BAR_CONF."""
+          and bar_conf drops to DBN_NEW_BAR_CONF.
+        ``resync`` (``_dbn_missed``): the tracker's line has not moved, a beat of it passed with no DBN beat: only the
+        slew is judged again (or the ungated line snaps on); a tempo jump is judged on the line's own updates."""
         trk = self._trk
         ln = trk.line
-        if ln is None:
+        if ln is None or (resync and not self._pub_ok):
             return
         k0, t0, T = ln
         bpm_e = 60.0 / T
@@ -1633,6 +1666,7 @@ class Clock:
             self._pub_base = bpm_e
             self._pub_real = gate != "none"
             self._pub_far = 0
+            self._pub_cold = False
             self._epoch += 1
             self._numbering_break(k0)
             self._counts["pub_grids"] += 1
@@ -1640,6 +1674,8 @@ class Clock:
         if gate != "none":
             self._pub_real = True
         far = abs(bpm_e / self._pub_base - 1.0) > DBN_NEW_TEMPO
+        if resync and far:                              # (a jump waits for the tracker's own line updates)
+            return
         self._pub_far = self._pub_far + 1 if far else 0
         if far and not explicit and self._pub_real and self._pub_far < DBN_NEW_N:
             self._counts["pub_far_waits"] += 1          # not yet: the published line holds (its count goes on)
@@ -1654,6 +1690,7 @@ class Clock:
             self._pub_far = 0
             if explicit or self._pub_real or step >= 1.0:
                 self._epoch += 1
+                self._pub_cold = False
                 if not explicit and self._pub_real and self._confirmed:
                     self._bar_conf = min(self._bar_conf, DBN_NEW_BAR_CONF)
                     self._bar_votes = 0
@@ -1664,6 +1701,8 @@ class Clock:
         if gate == "none":                              # nothing beat-locked reads it: ahead, it snaps on
             off = int(round(self._pub_beat(u) - (k0 + (u - t0) / T)))
             if all(k0 + (t - t0) / T + off >= self._pub_beat(t) for t in (u, u + DBN_PIVOT_S)):
+                if resync and (k0 + off, t0, bpm_e) == (self._pub_k, self._pub_t, self._pub_bpm):
+                    return                              # (snapped on already)
                 self._off = off
                 self._set_pub(k0 + off, t0, bpm_e)
                 self._pub_base = bpm_e
@@ -1681,6 +1720,10 @@ class Clock:
             p = u + DBN_PIVOT_S
         if p > u:
             bpm = min(bpm, self._pub_bpm)               # ahead of now only ever slower: the count never goes back
+        if resync:
+            if abs(bpm / self._pub_bpm - 1.0) < 2e-4:   # the line already goes there: nothing to publish
+                return
+            self._counts["pub_resyncs"] += 1
         self._off = off
         ka = math.floor(pp)
         self._set_pub(ka, p - (pp - ka) * 60.0 / bpm, bpm)

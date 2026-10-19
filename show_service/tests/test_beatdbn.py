@@ -10,7 +10,7 @@
 - the published line (README S4.15 "Publishing"), on synthetic activations fed frame by frame (``act_clock``): the
   count only goes forward across a re-phase and a tempo jump; next_beat moves about half as much as the tracker's own
   line under a jittered DBN beat train; the downbeat stays put across a re-lock and a tempo jump; the epoch moves only
-  on a real tempo jump.
+  on a real tempo jump, and once for a song after a quiet room; a slew is judged again at a beat the DBN missed.
 Signals and feeders are test_clock's (48 kHz receiver blocks, 10 ms ticks, ``wait_beat`` after each block).
 """
 
@@ -339,10 +339,17 @@ def test_no_audio_goes_free_with_the_gate_off_coasts_and_comes_back():
     clk, pubs, beats = locked_clock()
     before = dict(pubs[-1])
     last = before["t_ms"] / 1000.0
+    ln0, n0 = clk._trk.line, len(pubs)
     for i in range(1, 400):                                 # 4 s of ticks, no audio
         clk.tick(last + 0.01 * i)
     d = clk.snapshot()
-    assert d["state"] == "free" and d["gate"] == "none" and d["bpm"] == pytest.approx(before["bpm"], abs=1e-9)
+    # the tracker's line coasts unchanged; the published one stays on it (a slew in force is judged again at each
+    # coasted beat, as legacy's: it doesn't run on for the whole coast), its count never going back
+    assert d["state"] == "free" and d["gate"] == "none" and clk._trk.line == ln0
+    assert d["bpm"] == pytest.approx(60.0 / ln0[2], rel=1e-3) and d["epoch"] == before["epoch"]
+    for (_, p), (t, q) in zip([(0.0, before)] + [(x["t_ms"] / 1000.0, x) for x in pubs[n0:]],
+                              [(x["t_ms"] / 1000.0, x) for x in pubs[n0:]]):
+        assert C.beat_at(q, t) >= C.beat_at(p, t) - 1e-9, t
     assert clk.stats()["dbn"]["no_audio"] == 1 and clk.stats()["dbn"]["n_line"] >= 1
     more(clk, 16.0, 6.0, first_flags=AUDIO_SEGMENT)        # audio again, on the same grid
     d2 = clk.snapshot()
@@ -503,10 +510,12 @@ def act_train(segs: list[tuple[float, float, float]], t_end: float, lag: float, 
     return np.clip(a, 0.0, 1.0)
 
 
-def act_clock(a: np.ndarray, at: dict | None = None) -> tuple[C.Clock, list[tuple[float, dict, tuple]]]:
+def act_clock(a: np.ndarray, at: dict | None = None,
+              level: np.ndarray | None = None) -> tuple[C.Clock, list[tuple[float, dict, tuple]]]:
     """A dbn Clock fed ``a`` one activation frame at a time (``Clock._frame``: the dbn path from the activation on),
-    published on every change and ticked every 10 ms as show-rx does; ``at``: {time: fn(clock, t)} actions. Returns
-    the clock and every body with its time and the tracker's own line then."""
+    published on every change and ticked every 10 ms as show-rx does; ``at``: {time: fn(clock, t)} actions; ``level``:
+    dsp's gate per frame (``Clock.set_level``: a quiet room's frames are silent, the first after it fresh, as
+    ``_hop``/``_inline`` make them). Returns the clock and every body with its time and the tracker's own line then."""
     pubs: list[tuple[float, dict, tuple]] = []
     holder: list[C.Clock] = []
 
@@ -521,6 +530,12 @@ def act_clock(a: np.ndarray, at: dict | None = None) -> tuple[C.Clock, list[tupl
         t = (i + 1) / D.FPS
         for ta in sorted(x for x in todo if x <= t):
             todo.pop(ta)(clk, t)
+        if level is not None:
+            clk.set_level(float(level[i]), t)
+            if clk._quiet:
+                clk._f_silent, v = True, 0.0
+            elif clk._act_fresh:
+                clk._f_fresh, clk._act_fresh = True, False
         if clk._frame(float(v), t):
             clk._emit(t)
         clk.tick(t)
@@ -669,6 +684,73 @@ def test_the_epoch_moves_only_on_a_real_tempo_jump():
     last = pubs[-1][1]
     assert last["bpm"] == pytest.approx(156.0, rel=0.03)
     assert clk.stats()["pub_slews"] > 50
+
+
+def test_a_song_after_a_quiet_room_is_one_new_grid_even_at_a_near_tempo():
+    """120 bpm (a human one at 14 s), 4 s of silence (dsp's gate 0: a quiet room 3 s in), then 118 bpm on another
+    phase, within the 8 % that would make it a tempo jump: one new epoch, at the first gate after the quiet; the
+    count never goes back; the bars keep their anchor, bar_conf a guess again (_dbn_cold_grid)."""
+    lag = C.AubioActivation.lag_s
+    a = act_train([(120.0, 0.3, 30.0), (118.0, 34.21, 50.0)], 50.0, lag, seed=23)
+    t = (np.arange(len(a)) + 1) / D.FPS
+    sil = (t >= 30.0) & (t < 34.0)
+    a[sil] = 0.0
+    clk, pubs = act_clock(a, {14.0: lambda c, t: c.one(t)}, level=np.where(sil, 0.0, 0.4))
+    st = clk.stats()
+    assert st["quiet_starts"] == 1 and st.get("pub_cold_grids") == 1 and st["errors"] == 0
+    assert all(d["gate"] == "none" for t, d, _ in pubs if 33.1 <= t < 34.0)
+    t_up = next(t for t, d, _ in pubs if t >= 34.0 and d["gate"] != "none")
+    e = max(epochs(pubs, 12.0, 30.0))
+    assert epochs(pubs, 12.0, t_up) == {e}
+    assert epochs(pubs, t_up, 50.0) == {e + 1}
+    for (_, p, _), (t, q, _) in zip(pubs, pubs[1:]):
+        if p["bpm"]:
+            assert C.beat_at(q, t) >= C.beat_at(p, t) - 1e-9, t
+    before = next(d for t, d, _ in reversed(pubs) if t < 30.0)
+    first = next(d for t, d, _ in pubs if t >= t_up)
+    assert before["bar_conf"] >= 0.8 and first["bar_conf"] == pytest.approx(C.DBN_NEW_BAR_CONF)
+    assert first["bar_anchor_beat"] % 4 == before["bar_anchor_beat"] % 4
+    assert pubs[-1][1]["bpm"] == pytest.approx(118.0, rel=0.03)
+
+
+def test_a_slew_is_judged_again_at_a_beat_the_dbn_missed():
+    """The tracker's line moves only on a DBN beat. A beat of it that passes with no DBN beat (a miss) judges the
+    published slew again (_dbn_missed, as legacy after every beat), so a slew set for one beat does not run on until
+    the next DBN beat; the count stays continuous; a far tracker tempo is left to the tracker's own line updates."""
+    lag = C.AubioActivation.lag_s
+    clk, _ = act_clock(act_train([(120.0, 0.3, 12.0)], 12.0, lag))
+    trk = clk._trk
+    assert clk.snapshot()["gate"] == "beat"
+    k0, t0, T = trk.line
+    u = trk.t_last
+    pp = clk._pub_beat(u)                               # a slew in force: 10 % fast, through the count at u
+    clk._set_pub(math.floor(pp), u - (pp - math.floor(pp)) * T / 1.1, 60.0 / T * 1.1)
+    old = (clk._pub_k, clk._pub_t, clk._pub_bpm)
+    u2 = u + 1.4 * T                                    # a beat and a bit on with no DBN beat
+
+    def err(x: float) -> float:                         # published - tracker's line, in beats, at the nearest beat
+        e = clk._pub_beat(x) - (k0 + (x - t0) / T)
+        return e - round(e)
+
+    w = (u2, u2 + C.DBN_PIVOT_S)
+    b_old, e_old = [clk._pub_beat(x) for x in w], err(u2 + 2 * T)
+    trk.events.append((trk._k_judged + 1, "miss", 0.0))
+    clk._dbn_missed(u2)
+    trk.events.clear()
+    assert clk.stats().get("pub_resyncs") == 1
+    assert 60.0 / T * 0.9 - 1e-9 <= clk._pub_bpm < 60.0 / T      # ahead of the tracker's line: it slows, <= 10 %
+    b_new = [clk._pub_beat(x) for x in w]
+    assert b_new[0] >= b_old[0] - 1e-9 and b_new[1] == pytest.approx(b_old[1], abs=1e-9)   # never back
+    assert e_old > 0.3 and abs(err(u2 + 2 * T)) < 0.25 * e_old    # closed, where the old slew ran on 0.34 ahead
+    pub = (clk._pub_k, clk._pub_t, clk._pub_bpm)
+    assert pub != old
+    trk._line = (k0, t0, T / 1.2)                       # the tracker 20 % faster: a jump, not a slew to re-judge
+    far0 = clk._pub_far
+    trk.events.append((trk._k_judged + 1, "miss", 0.0))
+    clk._dbn_missed(u2 + T)
+    trk.events.clear()
+    assert (clk._pub_k, clk._pub_t, clk._pub_bpm) == pub and clk._pub_far == far0
+    assert clk.stats().get("pub_resyncs") == 1
 
 
 # -- the body, stats, the estimator switch -----------------------------------------------------------------------------
