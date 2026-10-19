@@ -194,3 +194,16 @@ def test_real_worker_on_ten_seconds_of_music(tmp_path):
     assert top in C.DISCOGS_PARENTS
     beats = [o for o in lines if o["type"] == "beats"]
     assert beats[-1]["bpm"] is not None and 60 < beats[-1]["bpm"] < 200
+
+
+def test_beat_this_hears_a_quiet_mic_at_its_own_level():
+    """26, 19 Oct: Beat This! has no gain stage, and PC22's mic gives music at about -48 dBFS (no beats found); each
+    window is scaled to -20 dBFS RMS first, by at most +40 dB, and a louder one is left alone."""
+    rng = np.random.default_rng(3)
+    quiet = (rng.standard_normal(16000) * 10 ** (-48 / 20)).astype(np.float32)
+    up = M.beats_level(quiet)
+    assert up.dtype == np.float32 and M.level_dbfs(up) == pytest.approx(-20.0, abs=0.1)
+    hush = (rng.standard_normal(16000) * 10 ** (-90 / 20)).astype(np.float32)
+    assert M.level_dbfs(M.beats_level(hush)) == pytest.approx(-50.0, abs=0.1)          # +40 dB at most
+    loud = (rng.standard_normal(16000) * 10 ** (-12 / 20)).astype(np.float32)
+    assert M.beats_level(loud) is loud

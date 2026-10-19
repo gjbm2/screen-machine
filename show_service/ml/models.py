@@ -514,6 +514,21 @@ class KeyTask:
         return {"key": to_key_name(key), "mode": mode, "strength": min(1.0, max(0.0, strength))}
 
 
+BEATS_LEVEL_DBFS = -20.0       # Beat This! has no gain stage of its own: each window's RMS goes to this first
+BEATS_GAIN_MAX_DB = 40.0       # ... by at most this much (the worker's silence rule has already read the raw level)
+
+
+def beats_level(pcm: np.ndarray) -> np.ndarray:
+    """The window scaled so its RMS is BEATS_LEVEL_DBFS (at most BEATS_GAIN_MAX_DB up; a louder one is left as it is). 26, 19 Oct
+    (tools/room/beat_eval/alt/bt_lane.py): through PC22's mic music arrives at about -48 dBFS, where Beat This! found
+    no beats in most windows (0 in a 30 s ChaChaCha window at -48.8); scaled to -20 dBFS it found the right tempo."""
+    lvl = level_dbfs(pcm)
+    gain_db = min(BEATS_GAIN_MAX_DB, BEATS_LEVEL_DBFS - lvl)
+    if gain_db <= 0.0:
+        return pcm
+    return (pcm * np.float32(10.0 ** (gain_db / 20.0))).astype(np.float32)
+
+
 class BeatsTask:
     """A beat tracker on log-mel frames (Beat This!, exported to ONNX): 16 kHz -> its rate (soxr), the log-mel, the
     model, then the minimal post-processing. Times are seconds from the window's first sample."""
@@ -535,6 +550,7 @@ class BeatsTask:
 
     def run(self, pcm: np.ndarray, budget: Budget, **_: Any) -> dict:
         import soxr
+        pcm = beats_level(pcm)
         x = soxr.resample(pcm.astype(np.float32), FS, self.fs, quality="HQ") if self.fs != FS else pcm
         budget.check()
         spect = beat_logmel(x, **self.mel_kw)
