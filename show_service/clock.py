@@ -64,8 +64,28 @@ Blocks and holes (contract.OnAudio: a block may be up to COALESCE_MAX_FRAMES con
   (as before), ``Clock(agc_chunks=False)`` steps the AGC once per block and gains that block with the new gain (as
   before; then a coalesced block no longer gives the 128-frame packets' gains exactly).
 
-Pipeline
---------
+Estimators (``Clock(estimator=...)``; config ``SHOW_CLOCK_ESTIMATOR``; README S4.15)
+------------------------------------------------------------------------------------
+- ``"dbn"`` (the default since 19 Oct): beatdbn.DbnTracker (madmom's online DBN rebuilt in numpy, our line, a fitted
+  conf: 26's measured candidate best2) takes every frame after the activation, in place of steps 3-6 below. The front
+  end is untouched: steps 1-2, the quiet gate, the activation inline, on show-beat or in the beat process, holes and
+  segments. Each frame goes to the tracker with two flags from the path it came by: ``silent`` (no activation: a
+  quiet room, a skipped hole, an activation error) and ``fresh`` (the first activation after the LSTM was reset:
+  show-rx's own reset inline, or the reset marker that came back ahead of it from show-beat or the child, whose
+  REC_RESET_DONE record precedes the hop's). The published line (bpm, anchor, beat count), conf, state, gate, epoch
+  and stability are the tracker's; ``beats_per_bar``, ``bar_anchor_beat``, ``phrase_bars``, ``bar_conf`` and
+  ``phrase_conf`` come from the bar and phrase code below (confirmation, ``_bar_phrase``, ``_apply_pending``), fed
+  the tracker's judged beats (``DbnTracker.events``) as the legacy estimator feeds it its own. **conf there is P(the
+  next beat lands within 70 ms)**, the gate beat 0.80/0.60, dmx 0.60/0.35 (2-bar dwell). Corrections: a tap
+  re-phases the line (a run of 4+ even taps also sets its tempo); half/double and the slow lane's octave scale its
+  period at the upcoming beat (the bar line once bar_conf >= 0.5), the DBN re-seeded there and its disagreement held
+  off for beatdbn.HOLD_S; one, the bar length and the slow lane's one go to the bar code as before. No audio for
+  NO_AUDIO_S: ``free``, gate ``none``, the line's beats pass as misses on tick time. ``stats()["estimator"]``,
+  ``stats()["source"]`` (``madmom-dbn2``) and ``stats()["dbn"]`` (the tracker's counts).
+- ``"legacy"``: the estimator below (steps 3-6), exactly as before: the rollback.
+
+Pipeline (steps 3-6 and their conf, gate and corrections: the legacy estimator)
+--------------------------------------------------------------------------------
 1. **Rhythm lane:** mono mix, then a slow, bounded AGC (aim -12 dBFS RMS, up tau 10 s, down 3 s, -20..+36 dB, frozen
    below -65 dBFS; madmom needs mastered-music level, see AGC_TARGET_DB), then soxr to 44.1 kHz. soxr's output is
    delay-compensated: 44.1 k sample m is input time m/44100. Time comes from each block's ``t0_host_s`` and ``n0``,
@@ -201,6 +221,7 @@ from typing import Literal, Optional, Protocol
 
 import numpy as np
 
+from . import beatdbn
 from .contract import AUDIO_GAP, AUDIO_RESUME, AUDIO_SEGMENT, MUSIC_CLOCK, ClockData, Publish
 
 log = logging.getLogger("show_service.clock")
@@ -270,6 +291,9 @@ RESUME_MAX_FRAMES = 256     # a RESUME block is one packet (VBAN: at most 256 fr
 # integer corrections (the slow lane, Beat This!)
 BAR_LEN_MIN, BAR_LEN_MAX = 2, 16   # a bar length outside this is not a bar: the correction is ignored
 SLOW_OCT_HOLD_S = 30.0      # after a slow-lane or human octave word, the clock's own octave check waits this long
+# the estimator after the activation (module docstring, "Estimators")
+ESTIMATORS = ("dbn", "legacy")
+DBN_CONFIRM_N = 3           # dbn: the bars start (bar_anchor at that beat, bar_conf 0.1) at the 3rd DBN beat on a line
 
 ClockState = Literal["searching", "locked", "holding", "free"]
 Gate = Literal["beat", "dmx", "none"]
@@ -688,15 +712,26 @@ class Clock:
     stderr log, appended), with ``beat_thread`` on show-beat; neither (the default, as show_service runs) runs it
     inline on show-rx (Stage 3). ``beat_proc`` wins over ``beat_thread``, and needs madmom (or beatproc's fake): with
     another activation it is ignored. ``gap_skip`` and ``agc_chunks`` (on) are the block paths' rollbacks (see the
-    module docstring)."""
+    module docstring). ``estimator``: ``"dbn"`` (the default: beatdbn's tracker after the activation) or
+    ``"legacy"`` (the PLL estimator, exactly as before: the rollback); anything else is logged and runs ``"dbn"``,
+    and a tracker that can't be built runs ``"legacy"`` (degrade, never refuse)."""
 
     def __init__(self, publish: Optional[Publish] = None, *, activation: "Activation | str" = "auto", nets: int = 2,
                  beats_per_bar: int = 4, phrase_bars: int = 8, prior_bpm: float = PRIOR_BPM,
                  publish_hz: float = PUBLISH_HZ, resample_quality: str = "HQ", beat_thread: bool = False,
                  beat_proc: bool = False, beat_nice: int = 0,
                  beat_log: "Optional[os.PathLike | str]" = None, gap_skip: bool = True,
-                 agc_chunks: bool = True) -> None:
+                 agc_chunks: bool = True, estimator: str = "dbn") -> None:
         self._publish = publish
+        est = str(estimator).strip().lower() if isinstance(estimator, str) else ""
+        if est not in ESTIMATORS:
+            log.warning("clock estimator %r unknown (known: %s): dbn", estimator, ", ".join(ESTIMATORS))
+            est = "dbn"
+        self._estimator = est
+        self._trk: Optional[beatdbn.DbnTracker] = None   # the dbn estimator's tracker (reset() makes it), or None
+        self._act_fresh = True                          # inline: the activation was reset since its last hop
+        self._bt_fresh = False                          # show-beat / the process: a reset came back, its hop next
+        self._f_silent = self._f_fresh = False          # the next _frame's flags (the dbn tracker reads them)
         self._gap_skip = bool(gap_skip)                 # False: every hole is zero-filled through the lane (as before)
         self._agc_chunks = bool(agc_chunks)             # False: one AGC step per block, its new gain on it (as before)
         self._counts = collections.Counter()
@@ -832,11 +867,33 @@ class Clock:
         self._ph_pick: Optional[tuple[int, int]] = None
         self._miss_run = 0
         self._beat_strengths: collections.deque = collections.deque(maxlen=16)
+        self._dbn_k = -(1 << 62)                    # dbn: the last of the tracker's beats the bar code has had
+        self._trk = self._make_tracker() if self._estimator == "dbn" else None
         self.tg.reset()
         self._pk.reset()
         self._pk.L = 0.0
         self._pk.L_floor = 0.0
         self._lane_reset(self._lane_fs or 48000, 0, None)
+
+    def _make_tracker(self) -> Optional[beatdbn.DbnTracker]:
+        """The dbn estimator's tracker for this activation: best2's settings, the activation's net count (it picks
+        the conf weights), its lag (madmom's tuned 15 ms; another activation's own) and floor. None, and the legacy
+        estimator from here on, if it can't be built."""
+        act = self.act
+        name = getattr(act, "name", "?")
+        nets = int(getattr(act, "nets", 0) or 0)
+        over = {"nets": nets or beatdbn.SETTINGS["nets"]}
+        if name != "madmom":
+            over["lag_ms"] = float(getattr(act, "lag_s", 0.0)) * 1000.0
+        try:
+            trk = beatdbn.DbnTracker(beatdbn.settings(**over), act_floor=float(getattr(act, "floor", 0.0)))
+        except Exception:                               # degrade: the legacy estimator
+            log.exception("the dbn beat estimator could not be built: the legacy estimator instead")
+            self._estimator = "legacy"
+            self._counts["dbn_failed"] += 1
+            return None
+        self._dbn_source = f"{name}-dbn{nets}" if name == "madmom" else f"{name}-dbn"
+        return trk
 
     def process(self, stream: str, n0: int, t0_host_s: float, pcm: np.ndarray, fs: int, flags: int) -> None:
         """contract.OnAudio: one delivered block of the active stream."""
@@ -864,7 +921,15 @@ class Clock:
                 self._no_audio = False
             elif self._w_known is not None and now_s - self._w_known > NO_AUDIO_S:
                 self._no_audio = True
-                if self._grid:                          # keep counting beats (as misses) on tick time
+                if self._trk is not None:               # dbn: "free", gate none, the line's beats pass as misses
+                    trk = self._trk
+                    k0, b0 = trk.key(), self._bar_key()
+                    trk.coast(self._t_known + (now_s - self._w_known) - 0.5)
+                    if trk.events:
+                        self._dbn_beats()
+                    if trk.key() != k0 or self._bar_key() != b0:
+                        self._emit(now_s)
+                elif self._grid:                        # keep counting beats (as misses) on tick time
                     t_eff = self._t_known + (now_s - self._w_known) - 0.5
                     if self._run_beats(t_eff):
                         self._emit(now_s)
@@ -947,7 +1012,10 @@ class Clock:
                 self._quiet, self._quiet_below = False, None
                 self._counts["quiet_ends"] += 1
                 self._act_reset()                       # madmom starts clean on the music, not mid-state
-                self._update_state()
+                if self._trk is not None:
+                    self._trk.set_quiet(False, t_s)     # (its forward state starts over too)
+                else:
+                    self._update_state()
                 self._emit(t_s)
             return
         if gate >= QUIET_GATE_OFF:
@@ -958,9 +1026,12 @@ class Clock:
         elif t_s - self._quiet_below >= QUIET_AFTER_S:
             self._quiet = True
             self._counts["quiet_starts"] += 1
-            if self._state == "locked":
-                self._state = "holding"
-            self._gate, self._gate_t, self._gate_up = "none", t_s, False
+            if self._trk is not None:
+                self._trk.set_quiet(True, t_s)          # gate none at once, a line reads "holding"
+            else:
+                if self._state == "locked":
+                    self._state = "holding"
+                self._gate, self._gate_t, self._gate_up = "none", t_s, False
             self._emit(t_s)
 
     def _act_reset(self) -> None:
@@ -969,9 +1040,14 @@ class Clock:
             self._bt_splice = False
             self._bt.send_reset(self._bt_epoch)
         else:
-            self.act.reset()
+            self._reset_act()
             self._act_splice = False
         self._pk.reset()
+
+    def _reset_act(self) -> None:
+        """show-rx resets its own activation (inline): the next hop's frame is ``fresh`` for the dbn tracker."""
+        self.act.reset()
+        self._act_fresh = True
 
     def _off_rx(self) -> bool:
         """Do hops leave show-rx now (show-beat, or the process after its hello)?"""
@@ -995,9 +1071,13 @@ class Clock:
         self._inbox.append(("corr", beat_is_one, bar_len, octave))
 
     def observe_hit(self, t_s: float, band: str, strength: float = 1.0) -> None:
-        """A dsp hit (``music.hit``): low-band hits near an activation peak refine its time and the lag; any thread."""
+        """A dsp hit (``music.hit``): low-band hits near an activation peak refine its time and the lag (legacy; the
+        dbn tracker keeps them for its ``hits_w``, off in best2); any thread."""
         if band in ("sub", "bass"):
             self._hitq.append((float(t_s), float(strength)))
+            trk = self._trk
+            if trk is not None:
+                trk.hit(t_s, strength)
 
     def tap(self, t_s: float) -> None:
         """Show console Tap at host time ``t_s``; any thread."""
@@ -1033,13 +1113,19 @@ class Clock:
             s = bt.snapshot()
             beat.update({key: s.get(key) for key in ("pid", "state", "restarts", "failures_in_row", "last_exit",
                                                       "cpu")})
-        return {"source": self.act.name, "state": self._state, "gate": self._gate, "conf": round(self._conf, 3),
-                "bpm": round(60.0 / self._T, 3) if self._grid else 0.0, "epoch": self._epoch,
-                "lag_adj_ms": round(self._lag_adj * 1000.0, 2), "agc_db": round(self._agc_db, 1),
-                "cost_ms_per_10ms": {"p50": _pct(c, 50), "p95": _pct(c, 95), "max": _pct(c, 100)},
-                "block_ms": {"p50": _pct(b, 50), "p95": _pct(b, 95), "max": _pct(b, 100)},
-                "beat_thread": beat, "last_correction": self._corr_last,
-                "errors": self._err_n, **dict(self._counts)}
+        out = {"source": self.act.name, "state": self._state, "gate": self._gate, "conf": round(self._conf, 3),
+               "bpm": round(60.0 / self._T, 3) if self._grid else 0.0, "epoch": self._epoch,
+               "lag_adj_ms": round(self._lag_adj * 1000.0, 2), "agc_db": round(self._agc_db, 1),
+               "cost_ms_per_10ms": {"p50": _pct(c, 50), "p95": _pct(c, 95), "max": _pct(c, 100)},
+               "block_ms": {"p50": _pct(b, 50), "p95": _pct(b, 95), "max": _pct(b, 100)},
+               "beat_thread": beat, "last_correction": self._corr_last,
+               "errors": self._err_n, **dict(self._counts), "estimator": self._estimator}
+        trk = self._trk
+        if trk is not None:                             # the line's labels are the tracker's; its counts nest
+            ts = trk.stats()
+            out.update(source=self._dbn_source, state=ts["state"], gate=ts["gate"], conf=ts["conf"], bpm=ts["bpm"],
+                       epoch=ts["epoch"], dbn=ts)
+        return out
 
     # ---- rhythm lane -------------------------------------------------------------------------------------------------
     def _lane_reset(self, fs: int, n0: int, t0: Optional[float]) -> None:
@@ -1066,7 +1152,7 @@ class Clock:
             self._bt_splice = False
             self._bt.send_reset(self._bt_epoch)
         else:
-            self.act.reset()
+            self._reset_act()
             self._act_splice = False
         self._pk.reset()
 
@@ -1267,9 +1353,11 @@ class Clock:
     def _inline(self, hop: np.ndarray, t_raw: float) -> bool:
         if self._act_splice:                            # after a skipped hole: the activation starts clean
             self._act_splice = False
-            self.act.reset()
+            self._reset_act()
             self._pk.reset()
-        return self._frame(self.act.process_hop(hop), t_raw)
+        a = self.act.process_hop(hop)
+        self._f_fresh, self._act_fresh = self._act_fresh, False
+        return self._frame(a, t_raw)
 
     def _silent(self, t_raw: float) -> bool:
         """A frame with no activation (a quiet room, a skipped hole): at once, or behind the hops still in flight,
@@ -1277,6 +1365,7 @@ class Clock:
         if self._bt_put > self._bt_got:
             self._zq.append((self._bt_put, t_raw))
             return False
+        self._f_silent = True
         return self._frame(0.0, t_raw)
 
     def _flush_silent(self, upto: Optional[int] = None) -> bool:
@@ -1286,6 +1375,7 @@ class Clock:
         while zq and (upto is None or zq[0][0] <= upto):
             t = zq.popleft()[1]
             try:
+                self._f_silent = True
                 changed |= self._frame(0.0, t)
             except Exception:                           # never take show-rx down; the next frame goes on
                 self._error()
@@ -1300,6 +1390,7 @@ class Clock:
         self._bt_put = self._bt_got = 0
         self._bt_seq_next = 1
         self._bt_splice = self._act_splice = False
+        self._bt_fresh = False                          # (the child's reset comes back as a marker: fresh then)
         self._bt.send_reset(self._bt_epoch)
         self._pk.reset()
         self._counts["beat_proc_switches"] += 1
@@ -1317,7 +1408,8 @@ class Clock:
         self._bt_put = self._bt_got = 0
         self._bt_seq_next = 1
         self._bt_splice = self._act_splice = False
-        self.act.reset()
+        self._bt_fresh = False
+        self._reset_act()
         self._pk.reset()
         if why == "beat_stalls":
             log.warning("the beat process stalled (%.0f s with hops in flight): inline on show-rx until it is back",
@@ -1336,7 +1428,8 @@ class Clock:
         self._bt_put = self._bt_got = 0
         self._bt_seq_next = 1
         self._bt_splice = self._act_splice = False
-        self.act.reset()                                # a splice either way
+        self._bt_fresh = False
+        self._reset_act()                               # a splice either way
         self._pk.reset()
         if self._bt_stopped:
             self._counts["beat_inline_after_stop"] += 1
@@ -1361,6 +1454,7 @@ class Clock:
             if item[0] != "a":                          # a reset marker, reached: the peak picker starts over too
                 if item[1] == self._bt_epoch:
                     self._pk.reset()
+                    self._bt_fresh = True               # ... and the next activation is the LSTM's first (dbn)
                 continue
             _, ep, seq, a, t_raw, t_put = item
             self._bt_got += 1
@@ -1372,8 +1466,15 @@ class Clock:
                 self._counts["beat_stale"] += 1
             elif a is None:                             # the activation failed (the other side logged it)
                 self._err_n += 1
+                if self._trk is not None:               # dbn: a silent frame, so the line still judges its beats
+                    try:
+                        self._f_silent = True
+                        changed |= self._frame(0.0, t_raw)
+                    except Exception:
+                        self._error()
             else:
                 try:
+                    self._f_fresh, self._bt_fresh = self._bt_fresh, False
                     changed |= self._frame(a, t_raw)
                 except Exception:                       # never take show-rx down; the next frame goes on
                     self._error()
@@ -1384,7 +1485,11 @@ class Clock:
         return changed
 
     def _frame(self, a: float, t_raw: float) -> bool:
-        """The rest of a frame, on show-rx: activation ``a`` of the hop whose last sample sounds at ``t_raw``."""
+        """The rest of a frame, on show-rx: activation ``a`` of the hop whose last sample sounds at ``t_raw``. Its
+        ``silent``/``fresh`` flags (dbn) are set by the caller just before (``_f_silent``, ``_f_fresh``), so this
+        keeps its signature for the legacy path, the tests' spies and subclasses."""
+        if self._trk is not None:
+            return self._frame_dbn(a, t_raw)
         t = t_raw - self.act.lag_s - self._lag_adj
         tg = self.tg
         if tg.filled and not math.isnan(tg.t_last):     # keep the tempogram on one time axis across segments
@@ -1422,6 +1527,121 @@ class Clock:
             self._no_audio = False
             self._update_state()
         return changed
+
+    # ---- the dbn estimator (module docstring, "Estimators") ----------------------------------------------------------
+    def _bar_key(self) -> tuple:
+        return (self._bpb, self._bar_anchor, self._phrase_bars, round(self._bar_conf, 4), round(self._phrase_conf, 4),
+                self._confirmed)
+
+    def _frame_dbn(self, a: float, t_raw: float) -> bool:
+        """A frame for the tracker, with the flags its caller set (``silent``: no activation; ``fresh``: the LSTM's
+        first after a reset); then its judged beats to the bar and phrase code. True if the published body moved."""
+        silent, fresh = self._f_silent, self._f_fresh and not self._f_silent
+        self._f_silent = self._f_fresh = False
+        trk = self._trk
+        k0, b0 = trk.key(), self._bar_key()
+        if self._no_audio:                              # audio again: no longer coasting
+            self._no_audio = False
+            trk.set_no_audio(False, t_raw - trk.lag_s)
+        trk.frame(a, t_raw, silent=silent, fresh=fresh)
+        self._t_known = t_raw - self.act.lag_s
+        self._counts["frames"] += 1
+        if trk.events:
+            self._dbn_beats()
+        return trk.key() != k0 or self._bar_key() != b0
+
+    def _dbn_beats(self) -> None:
+        """The tracker's judged beats, in order and each once, through what ``_process_beat``/``_after_beat`` do for
+        the legacy estimator's: the miss run and entries, the bars' start (DBN_CONFIRM_N beats on a line: that beat
+        is a one, bar_conf 0.1), the phrase evidence (``_bar_phrase``, the beat's activation peak as its strength) and
+        the waiting corrections (``_apply_pending``). A DBN beat that moved the line is a numbering break (``new``, a
+        tempo change, also restarts the bars)."""
+        trk = self._trk
+        while trk.events:
+            k, kind, strength = trk.events.popleft()
+            if kind in ("new", "rephase"):
+                self._numbering_break(k)
+                if kind == "new" and self._confirmed:
+                    self._confirmed = False             # another tempo: its bars start afresh
+                    self._counts["dbn_bars_restarted"] += 1
+            if k <= self._dbn_k:
+                continue
+            self._dbn_k = k
+            entry = kind == "hit" and self._miss_run >= self._bpb
+            self._miss_run = 0 if kind == "hit" else self._miss_run + 1
+            if not self._confirmed and kind != "miss" and trk.n_line >= DBN_CONFIRM_N and trk.state == "locked":
+                self._confirmed = True
+                self._bar_anchor = k
+                self._bar_conf = 0.1
+                self._counts["confirmed"] += 1
+            if self._confirmed:
+                self._bar_phrase(k, kind, strength, entry)
+            self._apply_pending(k)
+
+    def _dbn_octave(self, f: float) -> bool:
+        """``_apply_octave`` for the dbn estimator: the line's period / f from the upcoming beat (it keeps its time and
+        number); out of 45-200 bpm is refused (counted)."""
+        trk = self._trk
+        ln = trk.line
+        if ln is None or not MIN_BPM <= 60.0 / ln[2] * f <= MAX_BPM:
+            self._counts["octave_refused"] += 1
+            return False
+        K = self._dbn_k + 1
+        if not trk.set_octave(f, K):
+            self._counts["octave_refused"] += 1
+            return False
+        self._numbering_break(K)                        # beats from K on are the new octave's
+        return True
+
+    def _on_tap_dbn(self, t: float) -> None:
+        """A tap for the dbn estimator (beatdbn.DbnTracker.tap): the run of taps it ends counts when 4 or more are
+        evenly spaced (as the legacy rule), and a tap that moved the line is a numbering break; a run's line starts
+        the bars at its first tap (as a legacy tap seed)."""
+        taps = self._taps
+        if taps and t - taps[-1] > 2.0:
+            taps.clear()
+        taps.append(t)
+        self._counts["taps"] += 1
+        run = None
+        if len(taps) >= 4:
+            tt = np.fromiter(taps, float, len(taps))
+            iv = np.diff(tt)
+            T = float(np.median(iv))
+            if 60.0 / MAX_BPM <= T <= 60.0 / MIN_BPM and float(np.std(iv)) <= 0.1 * T:
+                run = [float(v) for v in tt]
+        kind, k = self._trk.tap(t, run)
+        if kind in ("phase", "tempo"):
+            self._numbering_break(k)
+            self._dbn_k = max(self._dbn_k, k)
+            if kind == "tempo":
+                self._confirmed = True
+                self._bar_anchor = k - (len(run) - 1)       # the first tap of the run is a one
+            self._emit(t)
+
+    def _line_beat(self, t: float) -> float:
+        """The published line's beat (float) at host time ``t``, either estimator (NaN without a line)."""
+        if self._trk is not None:
+            return self._trk.beat_at(t)
+        return self._pub_beat(t) if self._pub_ok else math.nan
+
+    def _has_grid(self) -> bool:
+        """A confirmed grid (corrections need one): legacy's, or the dbn line once its bars have started."""
+        if self._trk is not None:
+            return self._trk.line is not None and self._confirmed
+        return self._grid and self._confirmed
+
+    def _upcoming(self) -> int:
+        """The next beat to be judged, in the published numbering."""
+        return self._dbn_k + 1 if self._trk is not None else self._k_next + self._off
+
+    def _data_dbn(self, now_s: float) -> ClockData:
+        trk = self._trk
+        trk.set_quiet(self._quiet, now_s)                # (as the candidate: every body re-reads the quiet flag)
+        d = trk.body(now_s, self._dbn_source)
+        d.update(beats_per_bar=self._bpb, bar_anchor_beat=int(self._bar_anchor), phrase_bars=self._phrase_bars,
+                 bar_conf=round(self._bar_conf if self._confirmed else 0.0, 4),
+                 phrase_conf=round(self._phrase_conf if self._confirmed else 0.0, 4))
+        return d
 
     # ---- estimator ---------------------------------------------------------------------------------------------------
     def _prior(self, t: float) -> np.ndarray:
@@ -2006,8 +2226,9 @@ class Clock:
                 self._oct_lock_t = self._t_known + SLOW_OCT_HOLD_S
                 self._counts["human_octave"] += 1
             elif kind == "one":
-                if self._pub_ok:
-                    K = round(self._pub_beat(item[1]))
+                b = self._line_beat(item[1])
+                if not math.isnan(b):
+                    K = round(b)
                     self._bar_anchor = K
                     self._bar_conf = max(self._bar_conf, 0.8)
                     self._counts["human_one"] += 1
@@ -2015,7 +2236,10 @@ class Clock:
                         self._pending = None                # the human said where the one is
                         self._corr_done("superseded")
             elif kind == "tap":
-                self._on_tap(item[1])
+                if self._trk is not None:
+                    self._on_tap_dbn(item[1])
+                else:
+                    self._on_tap(item[1])
 
     def _on_correction(self, one_in: object, L_in: object, oct_in: object) -> None:
         """A slow-lane vote, on show-rx: checked, gated, then waiting for its bar line (``_apply_pending``)."""
@@ -2031,10 +2255,10 @@ class Clock:
             self._corr_done("bad", {"one": None, "L": None, "oct": None})
             return
         p = {"one": one, "L": L, "oct": octv, "age": 0}
-        if not (self._grid and self._confirmed):
+        if not self._has_grid():
             self._corr_done("no_grid", p)
             return
-        K = self._k_next + self._off                    # the upcoming beat, published numbering
+        K = self._upcoming()                            # the upcoming beat, published numbering
         if one is not None and not self._break_k <= one <= K + (L or self._bpb):
             self._corr_done("stale", p)                 # another grid's count, or not from the window (the past)
             return
@@ -2100,10 +2324,14 @@ class Clock:
         self._emit(t)
 
     def _apply_pending(self, k: int) -> bool:
-        """Integer corrections switch at the upcoming beat (``k + 1``) when it is a bar line."""
-        if not self._grid:
+        """Integer corrections switch at the upcoming beat (``k + 1``) when it is a bar line (either estimator: the
+        dbn one calls this after each of the line's judged beats, ``_dbn_beats``)."""
+        if self._trk is not None:
+            if self._trk.line is None:
+                return False
+        elif not self._grid:
             return False
-        K = self._k_next + self._off                    # the upcoming beat, published numbering
+        K = self._upcoming()                            # the upcoming beat, published numbering
         changed = False
         if self._pending_oct is not None and self._pending is None:
             if self._bar_conf < 0.5 or (K - self._bar_anchor) % self._bpb == 0:
@@ -2151,7 +2379,9 @@ class Clock:
         """The upcoming beat keeps its time; the period becomes T / f; the published line re-anchors there. An octave
         that would leave 45-200 bpm is refused (counted). ``kick`` (a kick-voted halving): an estimator beat that
         carries kicks; when the upcoming beat is of the other parity, the new grid starts one beat later, on the
-        kicks (the count goes on: that beat keeps its number)."""
+        kicks (the count goes on: that beat keeps its number). The dbn estimator: ``_dbn_octave``."""
+        if self._trk is not None:
+            return self._dbn_octave(f)
         if not MIN_BPM <= 60.0 / self._T * f <= MAX_BPM:
             self._counts["octave_refused"] += 1
             return False
@@ -2229,6 +2459,8 @@ class Clock:
         return abs(b_new - b_old) * 60.0 / bpm_e > 1e-4 or abs(b0_new - b0_old) * 60.0 / bpm_e > 1e-4
 
     def _data(self, now_s: float) -> ClockData:
+        if self._trk is not None:
+            return self._data_dbn(now_s)
         return {"bpm": self._pub_bpm if self._pub_ok else 0.0,
                 "anchor_ms": self._pub_t * 1000.0 if self._pub_ok else 0.0,
                 "beat_at_anchor": self._pub_k if self._pub_ok else 0,

@@ -187,6 +187,21 @@ def test_beat_process_and_rx_coalesce_options():
     assert (o.beat_proc, o.beat_nice, o.rx_coalesce_min) == (False, 0, 1) and len(o.notes) == 3
 
 
+def test_clock_estimator_dbn_by_default_legacy_the_rollback():
+    """README S4.15: SHOW_CLOCK_ESTIMATOR / --clock-estimator, dbn by default (and in code); legacy rolls back; any
+    other word is a note and stays dbn. __main__ passes it to clock.Clock(estimator=)."""
+    o = config.load_options([], {})
+    assert o.clock_estimator == "dbn" and o.notes == ()
+    assert config.Options(config=contract.Config()).clock_estimator == "dbn"
+    assert config.load_options([], {"SHOW_CLOCK_ESTIMATOR": " Legacy "}).clock_estimator == "legacy"
+    assert config.load_options(["--clock-estimator", "dbn"], {"SHOW_CLOCK_ESTIMATOR": "legacy"}).clock_estimator == "dbn"
+    assert config.load_options(["--clock-estimator", "legacy"], {}).clock_estimator == "legacy"
+    o = config.load_options([], {"SHOW_CLOCK_ESTIMATOR": "pll"})
+    assert o.clock_estimator == "dbn" and any("clock estimator" in n for n in o.notes)
+    from show_service import clock
+    assert clock.ESTIMATORS == ("dbn", "legacy")
+
+
 def test_rx_off_turns_receive_path_changes_off():
     assert config.load_options([], {}).rx_off == frozenset()
     o = config.load_options([], {"SHOW_RX_OFF": " Coalesce, split ,bogus"})

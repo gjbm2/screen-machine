@@ -10,6 +10,10 @@ each beat (as a consumer with a lead would see it).
 Every clock here runs as production does: the activation on its show-beat thread (the default). The feeders call
 ``wait_beat()`` after each block, so show-beat keeps up with an unpaced feed (live, the audio paces it) and the frames
 are exactly the inline ones (tests/test_clock_thread.py checks that, and the hand-off itself).
+
+These are the legacy estimator's tests (``Clock(estimator="legacy")``, the rollback since 19 Oct): its thresholds,
+counts and internals. The dbn estimator (the default) has its own, in tests/test_beatdbn.py; the estimator-free
+tests here (the consumer helpers, snapshot reads, errors) run on the default.
 """
 
 from __future__ import annotations
@@ -106,6 +110,7 @@ class Run:
             self.msgs.append(m)
             self.pubs.append(m["data"])
 
+        kw.setdefault("estimator", "legacy")
         self.clk = C.Clock(pub, activation=source, **kw)
         self.cpu_s = 0.0
         self.audio_s = len(x) / FS
@@ -485,7 +490,7 @@ def feed(clk: C.Clock, x: np.ndarray, t_start: float, n_start: int = 0, block: i
 
 def loop_clock(source: str = "aubio", secs: float = 14.0) -> tuple[C.Clock, list[dict], list[float]]:
     pubs: list[dict] = []
-    clk = C.Clock(lambda m: pubs.append(m["data"]), activation=source)
+    clk = C.Clock(lambda m: pubs.append(m["data"]), activation=source, estimator="legacy")
     beats = grid(120.0, 0.3, secs - 0.2)
     feed(clk, finish(kick_loop(beats, secs)), T0, flags_first=AUDIO_SEGMENT)
     assert pubs[-1]["state"] == "locked"
@@ -542,7 +547,7 @@ def test_human_one_half_double():
 
 def test_tap_tempo_without_audio_is_free():
     pubs: list[dict] = []
-    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio")
+    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio", estimator="legacy")
     for i in range(6):
         clk.tap(100.0 + 0.6 * i + (0.01 if i % 2 else -0.01))
     clk.tick(103.1)
@@ -633,7 +638,7 @@ def test_errors_never_reach_show_rx():
 
 def test_observe_hit_refines_phase_and_learns_the_lag():
     pubs: list[dict] = []
-    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio")
+    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio", estimator="legacy")
     beats = grid(120.0, 0.3, 15.8)
     x = finish(kick_loop(beats, 16.0))
     true_lag_err = 0.008                              # pretend the activation sits 8 ms late on this timbre
@@ -725,7 +730,7 @@ def hit_run(x: np.ndarray, kicks: list[float], source: str = "madmom") -> Run:
         r.msgs.append(m)
         r.pubs.append(m["data"])
 
-    r.clk = C.Clock(pub, activation=source)
+    r.clk = C.Clock(pub, activation=source, estimator="legacy")
     hits = sorted([(T0 + k + 0.003, "bass") for k in kicks] + [(T0 + k + 0.012, "sub") for k in kicks])
     nt, hi = T0, 0
     for n0 in range(0, len(x), 256):
@@ -779,7 +784,8 @@ def test_the_kicks_vote_the_octave_on_fast_grids():
 
 def test_a_quiet_room_drops_the_gate_and_skips_the_activation():
     from show_service import clock as clock_mod
-    c = clock_mod.Clock(None, activation="aubio") if hasattr(clock_mod, "AubioActivation") else None
+    c = clock_mod.Clock(None, activation="aubio", estimator="legacy") if hasattr(clock_mod, "AubioActivation") \
+        else None
     if c is None:
         pytest.skip("no activation")
     calls = []

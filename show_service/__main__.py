@@ -318,7 +318,8 @@ class Show:
             self.clock = self._make("clock", lambda: cmod.Clock(
                 publish=self.publish, beat_thread=self.opts.beat_thread, beat_proc=self.opts.beat_proc,
                 beat_nice=self.opts.beat_nice, beat_log=pathlib.Path(self.opts.state_dir) / "beat-worker.log",
-                gap_skip="gapskip" not in off, agc_chunks="agc" not in off))
+                gap_skip="gapskip" not in off, agc_chunks="agc" not in off,
+                estimator=getattr(self.opts, "clock_estimator", "dbn")))
         dsp = self._import("dsp")
         if dsp is not None:
             self.features = self._make("dsp", lambda: dsp.Features(publish=self._features_publish,

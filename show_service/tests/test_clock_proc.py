@@ -12,6 +12,8 @@ tests, with real children (each one is closed and, failing that, killed at teard
   on the next hop (inline, and as a flag riding the hop to the process);
 - the measurement (``-s`` prints it): CPU on the calling thread per 10 ms of audio, inline vs process (and the child's
   own), with 128- and 1024-frame blocks. ``SHOW_CLOCK_MEASURE_S`` sets the seconds per run (default 6).
+The transport tests run on the default (dbn) estimator; those that compare the legacy estimator's line and counts
+build ``estimator="legacy"``. tests/test_beatdbn.py checks the dbn estimator inline against the process.
 """
 
 from __future__ import annotations
@@ -332,13 +334,14 @@ def test_hops_before_the_hello_run_inline_and_the_frames_are_the_inline_ones(mad
     assert np.allclose([t for _, t, _ in rec], [t for _, t, _ in rec_ref], rtol=0, atol=1e-9)   # ... times, order
 
 
-def proc_run(x: np.ndarray, made: list, proc: bool, block: int = 256) -> tuple[C.Clock, list[dict]]:
+def proc_run(x: np.ndarray, made: list, proc: bool, block: int = 256,
+             estimator: str = "legacy") -> tuple[C.Clock, list[dict]]:
     pubs: list[dict] = []
     if proc:
-        clk = proc_clock(made, lambda m: pubs.append(m["data"]))
+        clk = proc_clock(made, lambda m: pubs.append(m["data"]), estimator=estimator)
         assert clk.wait_beat_ready(60)
     else:
-        clk = C.Clock(lambda m: pubs.append(m["data"]), activation="madmom")
+        clk = C.Clock(lambda m: pubs.append(m["data"]), activation="madmom", estimator=estimator)
     TT.feed(clk, x, block=block)
     TT.settle(clk, T0 + len(x) / FS)
     return clk, pubs
@@ -376,7 +379,7 @@ def test_a_killed_child_goes_inline_at_once_stays_locked_and_is_switched_back_on
                                                                                            tmp_path):
     monkeypatch.setattr(B.BeatProc, "backoff_s", (0.3,))
     pubs: list[dict] = []
-    clk = proc_clock(made, lambda m: pubs.append(m["data"]), beat_log=tmp_path / "beat.log")
+    clk = proc_clock(made, lambda m: pubs.append(m["data"]), beat_log=tmp_path / "beat.log", estimator="legacy")
     assert clk.wait_beat_ready(60)
     secs = 30.0
     x = TC.finish(TC.kick_loop(TC.grid(120.0, 0.3, secs - 0.2), secs))
@@ -419,6 +422,7 @@ def same_line(a: tuple, b: tuple) -> bool:
 def blocks_run(x: np.ndarray, sizes, source: str, **kw) -> tuple[C.Clock, list[tuple], list[dict]]:
     """Feed ``x`` in blocks of ``sizes`` (cycled), each with its exact t0, and 10 ms ticks of stream time."""
     pubs: list[dict] = []
+    kw.setdefault("estimator", "legacy")
     clk = C.Clock(lambda m: pubs.append(m["data"]), activation=source, **kw)
     rec = TT.spy_frames(clk)
     n0, i, nt = 0, 0, T0
@@ -540,7 +544,8 @@ def test_a_250ms_hole_computes_nothing_keeps_every_time_and_resets_the_activatio
 
 def test_the_rollbacks_zero_fill_every_hole_and_step_the_agc_per_block():
     pubs: list[dict] = []
-    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio", gap_skip=False, agc_chunks=False)
+    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio", gap_skip=False, agc_chunks=False,
+                  estimator="legacy")
     TC.feed(clk, TC.finish(TC.kick_loop(TC.grid(120.0, 0.3, 13.8), 14.0)), T0, flags_first=AUDIO_SEGMENT)
     assert pubs[-1]["state"] == "locked"                # the per-block AGC still tracks
     calls: list[int] = []

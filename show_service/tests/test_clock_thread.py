@@ -8,6 +8,9 @@ so they get real tests:
   (bar length and one, octave 2 and 0.5), never a phase or a tempo, expired rather than applied off a bar line;
 - the measurement (``-s`` prints it): show-rx's block cost and latency, inline vs threaded, paced in real time on
   this host (with the 4K render running). ``SHOW_CLOCK_MEASURE_S`` sets the seconds per mode (default 6).
+The hand-off tests run on the default (dbn) estimator; those that compare the legacy estimator's internals
+(``_line``, its counts, its corrections' bookkeeping) build ``estimator="legacy"`` (directly or through
+test_clock's Run and loop_clock). tests/test_beatdbn.py has the dbn ones.
 """
 
 from __future__ import annotations
@@ -88,7 +91,7 @@ def spy_frames(clk: C.Clock) -> list[tuple]:
 
     def frame(a, t_raw):
         rec.append((a, t_raw, threading.current_thread().name))
-        return orig(a, t_raw)
+        return orig(a, t_raw)                           # (the dbn flags ride the clock, set just before)
 
     clk._frame = frame
     return rec
@@ -279,7 +282,7 @@ def test_corrections_must_be_whole_numbers_in_range():
 
 
 def test_no_grid_no_correction():
-    clk = C.Clock(None, activation="aubio")
+    clk = C.Clock(None, activation="aubio", estimator="legacy")
     clk.apply_integer_correction(8, 4, 1.0)
     clk.tick(T0)
     assert clk.stats()["corr_no_grid"] == 1 and clk._pending is None

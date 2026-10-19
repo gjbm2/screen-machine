@@ -4561,6 +4561,83 @@ Cost of Features.process (ms of CPU per second of audio, PC22 under load):
 
 Rollback: `Features(batch=False)` turns both batched paths off and gives the same numbers at the old cost. `stats()` shows `batch` and `batch_fallbacks`. A batched pass that fails is redone the old way and counted in `batch_fallbacks`; it never drops audio.
 
+### S4.15 The DBN beat estimator (19 Oct, screen-machine-3a)
+
+**Why.** screen-machine-26 measured candidate beat trackers offline against the room model
+(`tools/room/beat_eval/IMPROVE_2026-10-19.md`; tuned on the DEV subset, measured on the held-out baseline subset: 46
+steady tracks, 30 s of room sound first, the slow lane off). madmom's own online DBN with our line and a fitted conf
+(`alt/madmom_dbn.py`, variant `best2`: today's 2 nets) beat the clock we had in both conditions:
+
+| | F | coverage | gated precision | wrong-lock | time to lock | locked |
+|---|---|---|---|---|---|---|
+| room model (C), old clock | 0.36 | 0.08 | 0.89 | 0.067 | 15.3 s | 0.28 |
+| room model (C), **best2** | **0.54** | **0.21** | 0.89 | 0.068 | **12.3 s** | **0.46** |
+| clean (A), old clock | 0.75 | 0.61 | 0.88 | 0.068 | 7.8 s | 0.89 |
+| clean (A), **best2** | **0.83** | **0.77** | **0.91** | 0.053 | **3.8 s** | **0.93** |
+
+No expressive piece (5) false-locked in either condition. On the real calibration recording (rec.wav: 164 s of room
+sound, 18 s of seeking, then the track) the old clock never locked; best2 gates no flash in the room sound and then
+has a gated flash within 70 ms of 0.82 of the track's beats (the parity reference). CPU: 122 ms of a core per second
+of music against 106 (madmom's LSTMs are most of both). 26 recommended the room-tuned beatnet, which needs a
+fine-tune per mic (to be redone for the boundary mic); the clock's owner chose best2 (3a, 19 Oct): today's nets, no
+fine-tune, and on clean audio, where a better mic should land, it meets every bar.
+
+**What changed.**
+- `show_service/beatdbn.py` (new): the candidate's tracker ported (BeatHMM: madmom's beat state space, transitions
+  and observation model in numpy; DbnTracker: the forward filter, madmom's online beat rule, the published line,
+  the conf features and logistic, the state and the gate), settings = the candidate's defaults + `best2`. Its conf
+  weights are `show_service/beatdbn_conf.json` (a copy of `alt/madmom_dbn_conf.json`: 2, 4 and 8 nets).
+- `clock.Clock(estimator="dbn")` is the default (`config.Options.clock_estimator`, `SHOW_CLOCK_ESTIMATOR`,
+  `--clock-estimator`; `__main__` passes it). The front end is untouched: the AGC, soxr, hops, the quiet gate,
+  holes, segments, and the activation inline, on show-beat or in the beat process. Every frame reaches the tracker
+  with a `silent` flag (no activation: a quiet room, a skipped hole, an activation error) and a `fresh` flag (the
+  LSTM's first activation after a reset: show-rx's own reset inline; the reset marker that comes back ahead of the
+  hop from show-beat, or the child's REC_RESET_DONE record). test_beatdbn checks the three paths give the tracker the
+  same frames and publish the same lines.
+- Published (`music.clock`, same fields): bpm, anchor, beat count, conf, state, gate, epoch and stability (the
+  posterior's tempo mass) are the tracker's. `beats_per_bar`, `bar_anchor_beat`, `phrase_bars`, `bar_conf` and
+  `phrase_conf` come from Clock's existing bar and phrase code, fed the tracker's judged beats (hits, misses,
+  re-phases) as the legacy estimator feeds it: the bars start at the 3rd DBN beat on a line (bar_conf 0.1), the
+  phrase evidence uses each beat's activation peak, and the slow lane's and the human's one and bar length apply at
+  bar lines as before. The candidate published bar_conf 0; this is the one addition, and it never moves a flash.
+- **conf now means P(the line's next beat lands within 70 ms of a real one)**, a logistic of what the DBN knows
+  (hit rates, posterior tempo and phase mass, the predictive likelihood against a beatless model, salience, the
+  tempogram's clarity, the tempo), not the old "P(within 25 ms)" score: a 25 ms label made the room's conf collapse.
+  **The gate:** beat on 0.80 / off 0.60, dmx on 0.60 / off 0.35 (0.70 let rubato piano through), 2-bar dwell; `none`
+  at once while searching, quiet or with no audio. contract.ClockData's comments (25 ms; 0.70/0.60, 0.45/0.35;
+  source madmom | aubio) describe the legacy estimator; under dbn `source` is `madmom-dbn2`.
+- **Corrections** (any thread, as before): a tap that agrees with the line (within 0.15 beat) is one more hit;
+  otherwise the line's nearest beat moves to the tap, and a run of 4+ evenly spaced taps also sets its tempo (with
+  no line it starts one, `free` and gated dmx until a DBN beat lands). Half/double and the slow lane's octave scale
+  the line's period at the upcoming beat (the bar line once bar_conf >= 0.5; 45-200 bpm or refused); the DBN's
+  forward state is re-seeded on the new line and its disagreement held off for 6 s (`beatdbn.HOLD_S`), so it never
+  snaps straight back. A correction is an observation, not an override: on music whose beat clearly says the other
+  octave the DBN takes it back after the hold (on the synthetic 120 bpm kick loop, ~6 s after a half). One sets the
+  bar anchor through the bar code.
+- **No audio** for 1.5 s: `free`, gate `none`, the line's beats pass as misses on tick time; audio back resumes it.
+- `stats()["estimator"]` (`dbn` | `legacy`), `stats()["source"]` (`madmom-dbn2`; `aubio-dbn` on the fallback),
+  `stats()["dbn"]` (the tracker's counts: dbn_beats, rephases, hmm_resets, silent_frames, holds, held_beats,
+  octaves, taps_*, n_line, conf_w, held). state/gate/conf/bpm/epoch at the top are the tracker's.
+- Tests: `tests/test_beatdbn.py` (BeatHMM against madmom's DBNBeatTrackingProcessor frame for frame; the 2-net
+  activation bit for bit; lock on the steady loops within 5 s; inline vs thread vs process; quiet; no audio; the
+  corrections; bars on a 4/4 loop; a fuzz). test_clock / test_clock_thread / test_clock_proc pin
+  `estimator="legacy"` where they assert the legacy internals; their transport tests run on dbn.
+
+**Parity with the measured candidate.** `tools/room/beat_eval/run_stack.py` on the live Clock against `madmom_dbn.py
+run --variant best2` on the same input (3a's dbn scratch: `rerun_live.sh`, `compare_flashes.py`): rec-music
+(105 flashes) and disco-C (68, with the quiet gate) identical flash for flash (|dt| 0.000 ms, same k, gate, conf,
+state, epoch, bpm); the parity stage runs all 8 reference cases. `madmom_dbn.py run` itself still reproduces its
+reference on the new Clock.
+
+**Rollback.** `SHOW_CLOCK_ESTIMATOR=legacy` in deploy/sm-show.env (or `--clock-estimator legacy`) and a show restart:
+exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker that cannot be built runs legacy
+(counted `dbn_failed`). **Live** at the next show restart (none was done for this).
+
+**Known limits.** The aubio fallback (no madmom) runs the 2-net weights and aubio's own lag, untuned. The slow lane's
+octave votes can meet a DBN that takes the octave back after the hold (watch `octave_votes` against `dbn.rephases`
+live). `run_stack.py`'s STACK_FILES does not list beatdbn.py or beatdbn_conf.json (26's file): a change there alone
+keeps the same `stack.id`.
+
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
 **Interfaces, 16 Oct (c8).** This section defines Stage 5 so that five builders can work in parallel, each in its own
