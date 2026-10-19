@@ -4618,8 +4618,8 @@ fine-tune, and on clean audio, where a better mic should land, it meets every ba
 - `stats()["estimator"]` (`dbn` | `legacy`), `stats()["source"]` (`madmom-dbn2`; `aubio-dbn` on the fallback),
   `stats()["dbn"]` (the tracker's counts: dbn_beats, rephases, hmm_resets, silent_frames, holds, held_beats,
   octaves, taps_*, n_line, conf_w, held; its `epoch` counts its own re-phases). state/gate/conf/bpm at the top are
-  the tracker's, `epoch` the published one; `pub_grids`, `pub_slews`, `pub_snaps`, `pub_far_waits` count the
-  publisher's moves.
+  the tracker's, `epoch` the published one; `pub_grids`, `pub_slews`, `pub_snaps`, `pub_far_waits`, `pub_resyncs`
+  (slews judged again at a missed beat), `pub_cold_grids` (new grids after a quiet room) count the publisher's moves.
 - Tests: `tests/test_beatdbn.py` (BeatHMM against madmom's DBNBeatTrackingProcessor frame for frame; the 2-net
   activation bit for bit; lock on the steady loops within 5 s; inline vs thread vs process; quiet; no audio; the
   corrections; bars on a 4/4 loop; a fuzz; the published line on synthetic activations: the count only goes forward
@@ -4636,6 +4636,10 @@ legacy step 6's discipline on the tracker's line, which keeps tracking underneat
   gated beat, half of it per beat and at most 10 % (legacy's 4 % lagged the room model's real corrections: F -0.03 on
   jive-C); dmx, all of it per beat, at most 25 %; none, all of it, at most 50 %, and a line that is behind snaps
   forward (nothing beat-locked reads it). The anchor is an integer beat near now. A re-phase of the tracker is a slew.
+  The tracker's line moves only on a DBN beat, so a beat of it that passes with no DBN beat (a miss) judges the slew
+  again (`_dbn_missed`, as legacy judges it after every beat, hit or miss): otherwise a slew set to close the error
+  in one beat ran on, overshooting by as much again per missed beat, until the next DBN beat (verified 19 Oct: on a
+  gapped dmx line the error swung +98 -> -107 ms over two missed beats; -23 ms with it).
 - **The count only goes forward**: a faster line keeps the count at "now as heard", a slower one 150 ms later
   (`DBN_PIVOT_S`: a consumer's now is later than the clock's), so at any consumer's now the count is never behind
   the last body's, and within an epoch it never moves a whole beat. The tracker's beat k is published beat
@@ -4643,8 +4647,11 @@ legacy step 6's discipline on the tracker's line, which keeps tracking underneat
 - **epoch + 1 only for a new grid**: the first line; an octave or a tap; a tracker tempo more than 8 % off the one
   followed (on a grid that was gated, only once 3 line updates in a row say so, the published line holding
   meanwhile: a re-phase's first beats can read 10 % off, and the DBN's octave flips can last one beat); a whole-beat
-  step. A line that was never gated (the room's noise before the music) wanders without one. A new grid is numbered
-  on so that the count steps forward by less than a beat where it can.
+  step; the first beat or dmx gate after a quiet room (`_dbn_cold_grid`: a new song, or the same one after a pause;
+  once, unless a jump on the way had one; bar_conf drops to 0.1). Without that, a song at a tempo within 8 % of the
+  last one, after a silence, slewed in with no epoch (verified 19 Oct: 120 -> 118 bpm after 4 s of silence). A line
+  that was never gated (the room's noise before the music) wanders without one. A new grid is numbered on so that
+  the count steps forward by less than a beat where it can.
 - **Bars**: once started they keep their anchor through re-phases and new grids; a tempo jump drops bar_conf to 0.1
   (the slow lane's next vote sets it); an octave keeps the bar line on its beat. No more re-picks at the 3rd beat of
   each new line.
@@ -4673,6 +4680,16 @@ legacy step 6's discipline on the tracker's line, which keeps tracking underneat
   its 3 updates on the half-tempo line); amwoman-C two more hits but 15 more flashes, 13 of them gated dmx (the dmx
   slews and the 3-update waits on the room model's tempo excursions). Constants: `DBN_SLEW`, `DBN_NEW_TEMPO`,
   `DBN_NEW_N`, `DBN_PIVOT_S`, `DBN_NEW_BAR_CONF` (clock.py).
+- Verified (19 Oct, an independent re-run, bit-identical): the jitter column above is a p95 over every 10 Hz pair,
+  most of them heartbeats at 0 ms, that skips the pairs whose next beat changes number. Over the switches that moved
+  a beat-gated line only, on the same beat number, the p95 at +99 ms is (step 1 -> step 2) rec-music 14.9 -> 8.4,
+  rec-full 15.7 -> 10.2, jive-A 17.4 -> 9.6, jive-C 55 -> 33, disco-A 10.9 -> 5.8, disco-C 17.8 -> 9.9, amwoman-A
+  12.0 -> 7.0, amwoman-C 29.2 -> 13.7 ms: about halved, under 10 ms on 5 of the 8. The pulses a +99 or +300 ms
+  consumer fires (artnet_lan's rule) never repeat, skip or go back in number within an epoch. The bpm field carries
+  the slew: while gated beat it is over 4 % off the local tempo (nearest octave) up to 15 % of the time (jive-A;
+  2.8 % in step 1), over 10 % only on rec-music (1 %). The two fixes above (`_dbn_missed`, `_dbn_cold_grid`) leave
+  every beat-gated number of the 8 cases as it was; the all-gate jitter maxima fall (rec-full +300 ms 329 -> 174
+  ms).
 
 **Parity with the measured candidate.** `tools/room/beat_eval/run_stack.py` on the live Clock against `madmom_dbn.py
 run --variant best2` on the same input (3a's dbn scratch: `rerun_live.sh`, `compare_flashes.py`): rec-music
