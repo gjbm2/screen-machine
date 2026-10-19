@@ -13,6 +13,8 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
   SHOW_BEAT_THREAD   off (default: inline on show-rx) | on: Stage 4's show-beat thread for madmom's activation
   SHOW_BEAT_PROC     off (default) | on: madmom's activation in its own child process (beatproc.py; wins over the
                      thread)          SHOW_BEAT_NICE  the child's nice (default 0, as madmom has inside show_service)
+  SHOW_CLOCK_ESTIMATOR dbn (default: beatdbn.py, madmom's DBN after the activation) | legacy: the PLL estimator as
+                     before 19 Oct, the rollback (clock.py "Estimators", README S4.15)
   SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
                      packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
   SHOW_AUDIO_CAL_FILE config/room/audio_cal.json (the room calibration: streams.<stream>.summary.music_lufs, the
@@ -28,6 +30,7 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --artnet-target HOST[:PORT]|off (over SHOW_ARTNET_TARGET; default off)   --stream-priority a,b,c
   --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --vibes-file PATH   --state-dir PATH
   --beat-thread on|off (over SHOW_BEAT_THREAD; default off)   --beat-proc on|off (over SHOW_BEAT_PROC; default off)
+  --clock-estimator dbn|legacy (over SHOW_CLOCK_ESTIMATOR; default dbn)
 ```
 
 * **Sender spec:** ``NAME=HOST[:PORT][/STREAM,STREAM…]``. ``HOST`` is a DNS name in committed config (no literal
@@ -59,6 +62,10 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   in a child (``python -m show_service.beatproc``, nice ``SHOW_BEAT_NICE``, default 0), inline until it says hello
   and whenever it is gone. ``Options.rx_coalesce_min`` (``SHOW_RX_COALESCE_MIN``, an int >= 1, default 1) is the
   receiver's ``coalesce_min``.
+* **The clock's estimator** (19 Oct, README S4.15): ``Options.clock_estimator``, ``--clock-estimator`` over
+  ``SHOW_CLOCK_ESTIMATOR``: ``dbn`` by default (and in code), ``clock.Clock(estimator="dbn")``: madmom's online DBN
+  (beatdbn.py, 26's measured best2) after the same front end and activation; ``legacy`` is the clock as it was before
+  (the rollback; a restart). Any other word is a note and stays ``dbn``.
 """
 
 from __future__ import annotations
@@ -102,6 +109,7 @@ class Options:
     beat_thread: bool = False                            # Stage 4: clock.Clock(beat_thread=); off (inline) by default
     beat_proc: bool = False                              # clock.Clock(beat_proc=): madmom in a child; off by default
     beat_nice: int = 0                                   # clock.Clock(beat_nice=)
+    clock_estimator: str = "dbn"                         # clock.Clock(estimator=): dbn (default) | legacy (rollback)
     rx_coalesce_min: int = 1                             # receiver.Receiver(coalesce_min=)
     rx_off: frozenset = frozenset()                      # SHOW_RX_OFF: receive-path changes turned off (RX_FEATURES)
     audio_cal_file: pathlib.Path = contract.REPO_ROOT / "config/room/audio_cal.json"   # gate_offsets (GateOffsetWatch)
@@ -201,6 +209,8 @@ def _parser() -> argparse.ArgumentParser:
                                                             "over SHOW_BEAT_THREAD)")
     ap.add_argument("--beat-proc", metavar="on|off", help="the clock's activation in its own process (default off; "
                                                           "over SHOW_BEAT_PROC)")
+    ap.add_argument("--clock-estimator", metavar="dbn|legacy", help="the beat clock's estimator (default dbn; legacy: "
+                                                                    "the rollback; over SHOW_CLOCK_ESTIMATOR)")
     return ap
 
 
@@ -311,6 +321,15 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
         elif word not in ("off", "0", "false", "no", "none"):
             notes.append(f"beat process {bp_text!r} isn't on or off; it stays off")
 
+    clock_estimator = "dbn"
+    ce_text = args.clock_estimator if args.clock_estimator is not None else env.get("SHOW_CLOCK_ESTIMATOR")
+    if ce_text is not None and ce_text.strip():
+        word = ce_text.strip().lower()
+        if word in ("dbn", "legacy"):
+            clock_estimator = word
+        else:
+            notes.append(f"clock estimator {ce_text!r} isn't dbn or legacy; it stays dbn")
+
     def int_env(key: str, default: int, lo: int, hi: int) -> int:
         text = env.get(key)
         if text is None or not text.strip():
@@ -342,7 +361,7 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
                    state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread,
                    beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min,
-                   rx_off=rx_off,
+                   rx_off=rx_off, clock_estimator=clock_estimator,
                    audio_cal_file=path_opt(None, "SHOW_AUDIO_CAL_FILE", contract.REPO_ROOT / "config/room/audio_cal.json"))
 
 
