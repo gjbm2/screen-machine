@@ -31,7 +31,8 @@ What it is
     LS fit over the last 8 beats on it (the DBN's integer-frame intervals jitter by a frame), or the posterior-mean
     interval while there are too few or the fit disagrees with the DBN by > 6 %. A beat more than 1/4 beat off the
     line, or at a tempo > 15 % off, re-phases it (``epoch`` + 1); the count goes on across missed beats and
-    re-phases. Frame time - ``lag_ms`` (15) is a beat's time.
+    re-phases. Frame time - ``lag_ms`` (15) is a beat's time. This is the tracker's own estimate: the clock publishes
+    a smoothed line on it, with its own count and epoch (clock.Clock._dbn_publish; README S4.15 "Publishing").
   - **conf** = P(the line's next beat lands within 70 ms of a real one): a logistic (``beatdbn_conf.json``, per net
     count; dbn_sweep.py ``calib`` on the DEV subset, A + C) of 20 of 22 features of what the DBN knows: the hit rate
     of its beats on the line (4/8/16 beats), the beats on this line, the posterior's tempo mass, phase concentration
@@ -735,7 +736,7 @@ class DbnTracker:
         self._judge(t)
         self._flush_events(t)
 
-    # -- the published body (contract.ClockData's fields; Clock fills the bar and phrase ones)
+    # -- the body (contract.ClockData's fields; Clock fills the bar and phrase ones, and its published line and epoch)
     def body(self, now_s: float, source: str = "madmom-dbn2") -> dict:
         ln = self._line
         return {"bpm": round(60.0 / ln[2], 6) if ln else 0.0, "anchor_ms": ln[1] * 1000.0 if ln else 0.0,

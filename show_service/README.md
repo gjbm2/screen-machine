@@ -4594,8 +4594,8 @@ fine-tune, and on clean audio, where a better mic should land, it meets every ba
   LSTM's first activation after a reset: show-rx's own reset inline; the reset marker that comes back ahead of the
   hop from show-beat, or the child's REC_RESET_DONE record). test_beatdbn checks the three paths give the tracker the
   same frames and publish the same lines.
-- Published (`music.clock`, same fields): bpm, anchor, beat count, conf, state, gate, epoch and stability (the
-  posterior's tempo mass) are the tracker's. `beats_per_bar`, `bar_anchor_beat`, `phrase_bars`, `bar_conf` and
+- Published (`music.clock`, same fields): conf, state, gate and stability (the posterior's tempo mass) are the
+  tracker's; the line (bpm, anchor, beat count) and epoch are the publisher's ("Publishing" below). `beats_per_bar`, `bar_anchor_beat`, `phrase_bars`, `bar_conf` and
   `phrase_conf` come from Clock's existing bar and phrase code, fed the tracker's judged beats (hits, misses,
   re-phases) as the legacy estimator feeds it: the bars start at the 3rd DBN beat on a line (bar_conf 0.1), the
   phrase evidence uses each beat's activation peak, and the slow lane's and the human's one and bar length apply at
@@ -4604,8 +4604,8 @@ fine-tune, and on clean audio, where a better mic should land, it meets every ba
   (hit rates, posterior tempo and phase mass, the predictive likelihood against a beatless model, salience, the
   tempogram's clarity, the tempo), not the old "P(within 25 ms)" score: a 25 ms label made the room's conf collapse.
   **The gate:** beat on 0.80 / off 0.60, dmx on 0.60 / off 0.35 (0.70 let rubato piano through), 2-bar dwell; `none`
-  at once while searching, quiet or with no audio. contract.ClockData's comments (25 ms; 0.70/0.60, 0.45/0.35;
-  source madmom | aubio) describe the legacy estimator; under dbn `source` is `madmom-dbn2`.
+  at once while searching, quiet or with no audio. contract.ClockData's comments give both estimators' meanings;
+  under dbn `source` is `madmom-dbn2`.
 - **Corrections** (any thread, as before): a tap that agrees with the line (within 0.15 beat) is one more hit;
   otherwise the line's nearest beat moves to the tap, and a run of 4+ evenly spaced taps also sets its tempo (with
   no line it starts one, `free` and gated dmx until a DBN beat lands). Half/double and the slow lane's octave scale
@@ -4617,17 +4617,69 @@ fine-tune, and on clean audio, where a better mic should land, it meets every ba
 - **No audio** for 1.5 s: `free`, gate `none`, the line's beats pass as misses on tick time; audio back resumes it.
 - `stats()["estimator"]` (`dbn` | `legacy`), `stats()["source"]` (`madmom-dbn2`; `aubio-dbn` on the fallback),
   `stats()["dbn"]` (the tracker's counts: dbn_beats, rephases, hmm_resets, silent_frames, holds, held_beats,
-  octaves, taps_*, n_line, conf_w, held). state/gate/conf/bpm/epoch at the top are the tracker's.
+  octaves, taps_*, n_line, conf_w, held; its `epoch` counts its own re-phases). state/gate/conf/bpm at the top are
+  the tracker's, `epoch` the published one; `pub_grids`, `pub_slews`, `pub_snaps`, `pub_far_waits` count the
+  publisher's moves.
 - Tests: `tests/test_beatdbn.py` (BeatHMM against madmom's DBNBeatTrackingProcessor frame for frame; the 2-net
   activation bit for bit; lock on the steady loops within 5 s; inline vs thread vs process; quiet; no audio; the
-  corrections; bars on a 4/4 loop; a fuzz). test_clock / test_clock_thread / test_clock_proc pin
+  corrections; bars on a 4/4 loop; a fuzz; the published line on synthetic activations: the count only goes forward
+  across a re-phase and a tempo jump, next_beat moves about half as much as the tracker's line under a jittered DBN
+  beat train, the downbeat stays put, the epoch moves only on a real tempo jump). test_clock / test_clock_thread /
+  test_clock_proc pin
   `estimator="legacy"` where they assert the legacy internals; their transport tests run on dbn.
+
+**Publishing (19 Oct, step 2; the lighting owner's six requirements, e9).** The tracker's own line re-anchors on
+every DBN beat (an LS fit over the last 8), so every pulse moved by that beat's error, and a re-phase stepped the count
+and bumped the epoch. The published line (bpm, anchor, beat count) and `epoch` are now Clock's (`_dbn_publish`):
+legacy step 6's discipline on the tracker's line, which keeps tracking underneath.
+- **A slew** (the tracker's tempo within 8 % of the one followed): the phase error closes as a temporary tempo change:
+  gated beat, half of it per beat and at most 10 % (legacy's 4 % lagged the room model's real corrections: F -0.03 on
+  jive-C); dmx, all of it per beat, at most 25 %; none, all of it, at most 50 %, and a line that is behind snaps
+  forward (nothing beat-locked reads it). The anchor is an integer beat near now. A re-phase of the tracker is a slew.
+- **The count only goes forward**: a faster line keeps the count at "now as heard", a slower one 150 ms later
+  (`DBN_PIVOT_S`: a consumer's now is later than the clock's), so at any consumer's now the count is never behind
+  the last body's, and within an epoch it never moves a whole beat. The tracker's beat k is published beat
+  `k + _off`; the bar code and corrections work in the published count.
+- **epoch + 1 only for a new grid**: the first line; an octave or a tap; a tracker tempo more than 8 % off the one
+  followed (on a grid that was gated, only once 3 line updates in a row say so, the published line holding
+  meanwhile: a re-phase's first beats can read 10 % off, and the DBN's octave flips can last one beat); a whole-beat
+  step. A line that was never gated (the room's noise before the music) wanders without one. A new grid is numbered
+  on so that the count steps forward by less than a beat where it can.
+- **Bars**: once started they keep their anchor through re-phases and new grids; a tempo jump drops bar_conf to 0.1
+  (the slow lane's next vote sets it); an octave keeps the bar line on its beat. No more re-picks at the 3rd beat of
+  each new line.
+- Unchanged: every field and method; conf, state, gate (words and best2's thresholds) are the tracker's.
+- Measured (the 8 parity cases through `run_stack.py --all-bodies`, step 1 -> step 2; 3a's dbn scratch
+  `stability.py`): next-beat jitter p95 while gated beat, at +99 ms 4.8-19.3 -> 2.4-8.1 ms and at +300 ms 4.8-19.3
+  -> 2.9-8.1 ms (max 320 -> 24 ms on amwoman-C); the fired beats' second difference p95 halves (e.g. jive-C 64 ->
+  35 ms); count decreases at a consumer's now 22-208 per case -> 0; whole-beat jumps outside an epoch 0 -> 0; epochs
+  per minute of music 1.6-104 -> 1.1-11 (the cold start, the tracker's tempo jumps and octave flips, whole-beat
+  steps of the room-noise line before rec-full's music); downbeat moves 0-15 per minute -> 0. Scores (F; gated
+  precision and coverage are unchanged or better, time to lock unchanged):
+
+| case | F step 1 | F step 2 | jitter p95 +99 ms (beat) | epochs/min | downbeat moves/min |
+|---|---|---|---|---|---|
+| rec-music | 0.894 | 0.899 | 8.5 -> 4.2 | 5.7 -> 1.1 | 0 -> 0 |
+| rec-full | 0.424 | 0.432 | 7.7 -> 3.3 | 104 -> 11 | 14.8 -> 0 |
+| jive-A | 0.945 | 0.939 | 10.2 -> 4.5 | 8.3 -> 6.2 | 0 -> 0 |
+| jive-C | 0.540 | 0.524 | 19.3 -> 8.1 | 35 -> 2.1 | 8.3 -> 0 |
+| disco-A | 0.971 | 0.971 | 6.2 -> 2.9 | 4.1 -> 2.1 | 0 -> 0 |
+| disco-C | 0.771 | 0.792 | 7.4 -> 3.3 | 21 -> 4.1 | 4.1 -> 0 |
+| amwoman-A | 0.890 | 0.890 | 4.8 -> 2.4 | 1.6 -> 1.1 | 0.8 -> 0 |
+| amwoman-C | 0.780 | 0.768 | 10.0 -> 4.6 | 16 -> 3.0 | 1.4 -> 0 |
+
+  The cost (each case within -0.02 F): jive-C one annotated beat net (its gated line lags a real 60 ms move of the
+  room model's beat by a beat or two: half the error per beat is the smoothing); jive-A one (an octave flip waits
+  its 3 updates on the half-tempo line); amwoman-C two more hits but 15 more flashes, 13 of them gated dmx (the dmx
+  slews and the 3-update waits on the room model's tempo excursions). Constants: `DBN_SLEW`, `DBN_NEW_TEMPO`,
+  `DBN_NEW_N`, `DBN_PIVOT_S`, `DBN_NEW_BAR_CONF` (clock.py).
 
 **Parity with the measured candidate.** `tools/room/beat_eval/run_stack.py` on the live Clock against `madmom_dbn.py
 run --variant best2` on the same input (3a's dbn scratch: `rerun_live.sh`, `compare_flashes.py`): rec-music
 (105 flashes) and disco-C (68, with the quiet gate) identical flash for flash (|dt| 0.000 ms, same k, gate, conf,
 state, epoch, bpm); the parity stage runs all 8 reference cases. `madmom_dbn.py run` itself still reproduces its
-reference on the new Clock.
+reference on the new Clock. Since the publisher (step 2) the flashes are the smoothed line's, so the parity is the
+tracker's underneath: on all 8 cases the gate's runs and switch times are step 1's to 0.000 ms.
 
 **Rollback.** `SHOW_CLOCK_ESTIMATOR=legacy` in deploy/sm-show.env (or `--clock-estimator legacy`) and a show restart:
 exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker that cannot be built runs legacy
@@ -4635,8 +4687,7 @@ exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker tha
 
 **Known limits.** The aubio fallback (no madmom) runs the 2-net weights and aubio's own lag, untuned. The slow lane's
 octave votes can meet a DBN that takes the octave back after the hold (watch `octave_votes` against `dbn.rephases`
-live). `run_stack.py`'s STACK_FILES does not list beatdbn.py or beatdbn_conf.json (26's file): a change there alone
-keeps the same `stack.id`.
+live).
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 

@@ -233,14 +233,14 @@ class ClockData(TypedDict):
     beats_per_bar: int
     bar_anchor_beat: int  # a beat that starts a bar and a phrase
     phrase_bars: int      # 4 | 8 | 16
-    conf: float           # 0..1 ~P(the next beat lands within 25 ms)
+    conf: float           # 0..1: dbn (the default) P(the next beat lands within 70 ms); legacy ~P(within 25 ms)
     bar_conf: float
     phrase_conf: float    # <= bar_conf
     state: str            # searching | locked | holding | free
-    gate: str             # beat (conf on 0.70 / off 0.60) | dmx (0.45 / 0.35) | none; 2-bar dwell
-    epoch: int            # +1 per published jump
-    stability: float      # tempogram clarity at the clock's tempo
-    source: str           # the activation: madmom | aubio
+    gate: str             # beat (conf on 0.80 / off 0.60) | dmx (0.60 / 0.35) | none; 2-bar dwell (legacy 0.70, 0.45)
+    epoch: int            # +1 per new grid (first line, tempo jump, octave, tap): the count runs on within one
+    stability: float      # dbn: the posterior's tempo mass; legacy: tempogram clarity at the clock's tempo
+    source: str           # dbn: madmom-dbn2 (aubio-dbn on the fallback); legacy: the activation, madmom | aubio
     t_ms: float           # publish time
 
 
