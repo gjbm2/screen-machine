@@ -6,7 +6,11 @@
   show-beat thread and the beat process hand the tracker the same frames (silent and fresh flags included) and so
   publish the same beats; the quiet gate (gate none at once, silent frames, the forward state restarted when it
   ends); no audio (free, gate none, coasting, back); the corrections (half, double, out of range, tap, a run of taps,
-  one, the slow lane's bar and octave votes); bar and phrase fields on a 4/4 loop; the body and stats; a fuzz.
+  one, the slow lane's bar and octave votes); bar and phrase fields on a 4/4 loop; the body and stats; a fuzz;
+- the published line (README S4.15 "Publishing"), on synthetic activations fed frame by frame (``act_clock``): the
+  count only goes forward across a re-phase and a tempo jump; next_beat moves about half as much as the tracker's own
+  line under a jittered DBN beat train; the downbeat stays put across a re-lock and a tempo jump; the epoch moves only
+  on a real tempo jump.
 Signals and feeders are test_clock's (48 kHz receiver blocks, 10 ms ticks, ``wait_beat`` after each block).
 """
 
@@ -393,11 +397,13 @@ def test_a_tap_rephases_the_line_and_one_that_agrees_moves_nothing():
     clk.tick(T0 + 12.3)
     assert clk.snapshot()["epoch"] == e0 and clk.stats()["dbn"]["taps_agree"] == 1
     t_off = t_on + 0.5 + 0.2                                # 0.4 of a beat off the next beat
+    bpm_trk = 60.0 / clk._trk.line[2]                       # (the published bpm also carries its slew, if any)
     clk.tap(t_off)
     clk.tick(T0 + 12.31)
     d2 = clk.snapshot()
     b = C.beat_at(d2, t_off)
-    assert abs(b - round(b)) < 1e-6 and d2["epoch"] == e0 + 1 and d2["bpm"] == pytest.approx(d["bpm"])
+    assert abs(b - round(b)) < 1e-6 and d2["epoch"] == e0 + 1 and d2["bpm"] == pytest.approx(bpm_trk)
+    assert d2["bpm"] == pytest.approx(d["bpm"], rel=0.01)
     assert clk.stats()["dbn"]["taps_phase"] == 1 and clk.stats()["dbn"]["held"]
     more(clk, 12.0, 3.0)                                    # within the hold: the DBN's disagreement waits
     d3 = clk.snapshot()
@@ -468,6 +474,201 @@ def test_bar_and_phrase_fields_come_from_the_bar_code_on_a_4_4_loop():
     assert early and all(p["bar_conf"] == 0.0 for p in early)
     pos = C.position_at(d, d["t_ms"] / 1000.0)
     assert pos is not None and 0.0 <= pos["beat_in_bar"] < 4.0
+
+
+# -- the published line (README S4.15 "Publishing") --------------------------------------------------------------------
+def act_train(segs: list[tuple[float, float, float]], t_end: float, lag: float, *, jitter_s: float = 0.0,
+              seed: int = 5, noise_until: float = 0.0) -> np.ndarray:
+    """A beat activation at 100 fps, frame i sounding at (i + 1) / FPS: a 15 ms peak on every beat of ``segs``
+    ((bpm, from, to) each), ``lag`` late as the activation's own lag, plus N(0, ``jitter_s``); a smaller one on each
+    off-beat; noise; random onsets with no pulse before ``noise_until``."""
+    rng = np.random.default_rng(seed)
+    n = int(round(t_end * D.FPS))
+    t = (np.arange(n) + 1) / D.FPS
+    a = 0.02 + 0.04 * rng.random(n)
+    beats: list[float] = []
+    for bpm, t0, t1 in segs:
+        beats += list(np.arange(t0, t1, 60.0 / bpm))
+    for b in beats:
+        bj = b + lag + (float(rng.normal(0.0, jitter_s)) if jitter_s else 0.0)
+        m = np.abs(t - bj) < 0.08
+        a[m] += 0.8 * np.exp(-0.5 * ((t[m] - bj) / 0.015) ** 2)
+    for b0, b1 in zip(beats, beats[1:]):
+        if b1 - b0 < 1.0:
+            m = np.abs(t - (0.5 * (b0 + b1) + lag)) < 0.08
+            a[m] += 0.2 * np.exp(-0.5 * ((t[m] - 0.5 * (b0 + b1) - lag) / 0.015) ** 2)
+    if noise_until > 0.0:
+        m = t < noise_until
+        a[m] = 0.02 + 0.5 * rng.random(int(m.sum())) ** 4
+    return np.clip(a, 0.0, 1.0)
+
+
+def act_clock(a: np.ndarray, at: dict | None = None) -> tuple[C.Clock, list[tuple[float, dict, tuple]]]:
+    """A dbn Clock fed ``a`` one activation frame at a time (``Clock._frame``: the dbn path from the activation on),
+    published on every change and ticked every 10 ms as show-rx does; ``at``: {time: fn(clock, t)} actions. Returns
+    the clock and every body with its time and the tracker's own line then."""
+    pubs: list[tuple[float, dict, tuple]] = []
+    holder: list[C.Clock] = []
+
+    def pub(m: dict) -> None:
+        d = m["data"]
+        pubs.append((d["t_ms"] / 1000.0, d, holder[0]._trk.line))
+
+    clk = C.Clock(pub, activation="aubio")
+    holder.append(clk)
+    todo = dict(at or {})
+    for i, v in enumerate(a):
+        t = (i + 1) / D.FPS
+        for ta in sorted(x for x in todo if x <= t):
+            todo.pop(ta)(clk, t)
+        if clk._frame(float(v), t):
+            clk._emit(t)
+        clk.tick(t)
+    return clk, pubs
+
+
+_SYN: dict = {}
+
+
+def synth_run() -> tuple[C.Clock, list[tuple[float, dict, tuple]]]:
+    """Room noise (random onsets) to 6 s, then 120 bpm; at 18.2 s the beat moves 0.4 of a beat later (the tracker
+    re-phases); at 26 s 150 bpm (a tempo jump). A human "one" at 14.0 s (bar_conf 0.8)."""
+    if "run" not in _SYN:
+        lag = C.AubioActivation.lag_s
+        a = act_train([(120.0, 6.3, 18.0), (120.0, 18.2, 26.0), (150.0, 26.0, 36.0)], 36.0, lag, noise_until=6.0)
+        _SYN["run"] = act_clock(a, {14.0: lambda c, t: c.one(t)})
+    return _SYN["run"]
+
+
+def epochs(pubs, t0: float, t1: float) -> set:
+    return {d["epoch"] for t, d, _ in pubs if t0 <= t < t1}
+
+
+def test_the_published_count_only_goes_forward_across_a_rephase_and_a_tempo_jump():
+    clk, pubs = synth_run()
+    st = clk.stats()
+    assert st["dbn"]["rephases"] >= 2 and st["pub_far_waits"] >= 1 and st["errors"] == 0
+    t_gated = next(t for t, d, _ in pubs if d["gate"] == "beat")
+    assert t_gated < 12.0
+    worst_slew = 0.0
+    for (_, p, _), (t, q, _) in zip(pubs, pubs[1:]):
+        if not p["bpm"]:
+            continue
+        for dt in (0.0, 0.05, 0.1):                     # at the switch, and a consumer that reads it later
+            d = C.beat_at(q, t + dt) - C.beat_at(p, t + dt)
+            assert d >= -1e-9, (t, dt, d)               # never back
+            assert d < 1.0 or q["epoch"] != p["epoch"], (t, dt, d)   # a whole beat only with a new epoch
+        if t > t_gated and p["epoch"] == q["epoch"] and p["gate"] == q["gate"] == "beat":
+            worst_slew = max(worst_slew, C.beat_at(q, t) - C.beat_at(p, t))
+    assert worst_slew < 0.03, worst_slew                # slewed, not stepped (15 ms at 120 bpm)
+    e = max(epochs(pubs, 11.0, 12.0))
+    assert epochs(pubs, 12.0, 26.0) == {e}              # the re-phase at 18.2 s: no epoch
+    assert e + 1 <= max(epochs(pubs, 26.0, 36.0)) <= e + 2     # the tempo jump: a new grid
+    t_end, last, _ = pubs[-1]
+    assert last["bpm"] == pytest.approx(150.0, rel=0.03) and last["gate"] == "beat"
+
+
+def line_next(line: tuple, q: float) -> tuple[int, float]:
+    k0, t0, T = line
+    k = math.ceil(k0 + (q - t0) / T - 1e-9)
+    return k, t0 + (k - k0) * T
+
+
+def body_line(d: dict) -> tuple:
+    return d["beat_at_anchor"], d["anchor_ms"] / 1000.0, 60.0 / d["bpm"]
+
+
+def jitter_ms(seq: list[tuple[float, tuple]], lead: float) -> list[float]:
+    """|change| of each line's next beat after t + lead, between consecutive lines that differ and name the same
+    beat (clock.next_beat at the moment of the switch)."""
+    out = []
+    for (_, a), (t, b) in zip(seq, seq[1:]):
+        if a == b:
+            continue
+        ka, ta = line_next(a, t + lead)
+        kb, tb = line_next(b, t + lead)
+        if ka == kb:
+            out.append(abs(tb - ta) * 1000.0)
+    return out
+
+
+def crossings(seq: list[tuple[float, tuple]], t_end: float) -> list[float]:
+    """The integer-beat crossings of the line in force (each line from its time to the next one's), a crossing within
+    0.35 of a period after the last one being the same beat re-phased (run_stack's flashes, artnet_out's rule)."""
+    out: list[float] = []
+    for i, (t, ln) in enumerate(seq):
+        t1 = seq[i + 1][0] if i + 1 < len(seq) else t_end
+        k, tk = line_next(ln, t)
+        while tk < t1:
+            if not out or tk > out[-1] + 0.35 * ln[2]:
+                out.append(tk)
+            k += 1
+            tk = ln[1] + (k - ln[0]) * ln[2]
+    return out
+
+
+def spacing_ms(fl: list[float], T: float) -> np.ndarray:
+    """|t[k+1] - 2 t[k] + t[k-1]| (ms) over consecutive fired beats about a period apart: how steady they are."""
+    f = np.asarray(fl)
+    iv = np.diff(f)
+    ok = (np.abs(iv[1:] / T - 1.0) < 0.3) & (np.abs(iv[:-1] / T - 1.0) < 0.3)
+    return np.abs(np.diff(iv))[ok] * 1000.0
+
+
+def test_next_beat_is_smooth_under_a_jittered_dbn_beat_train():
+    """The DBN's beats 12 ms rms off a steady 120 bpm: the tracker's own line (re-anchored on every DBN beat, what
+    was published before) jitters with them; the published line's next beat moves by about half as much at Hue's
+    +99 ms and the screens' +300 ms, the beats it fires are as much steadier, and they land where the raw line's do."""
+    lag = C.AubioActivation.lag_s
+    clk, pubs = act_clock(act_train([(120.0, 0.3, 40.0)], 40.0, lag, jitter_s=0.012, seed=9))
+    gated = [(t, d, ln) for t, d, ln in pubs if t >= 10.0 and d["gate"] == "beat"]
+    assert len(gated) > 250 and gated[-1][0] > 39.0
+    pub = [(t, body_line(d)) for t, d, _ in gated]
+    raw = [(t, ln) for t, _, ln in gated]
+    for lead in (0.099, 0.300):
+        jp, jr = np.percentile(jitter_ms(pub, lead), 95), np.percentile(jitter_ms(raw, lead), 95)
+        assert jp <= 0.65 * jr and jp < 10.0, (lead, jp, jr)
+    fp, fr = crossings(pub, 40.0), crossings(raw, 40.0)
+    sp, sr = np.percentile(spacing_ms(fp, 0.5), 95), np.percentile(spacing_ms(fr, 0.5), 95)
+    assert sp <= 0.85 * sr and sp < 10.0, (sp, sr)      # the fired beats' spacing: steadier
+    err = {k: np.array([tk - (round((tk - 0.3) / 0.5) * 0.5 + 0.3) for tk in f if tk > 12.0]) * 1000.0
+           for k, f in (("pub", fp), ("raw", fr))}
+    med = {k: float(np.median(v)) for k, v in err.items()}
+    assert abs(med["pub"] - med["raw"]) < 3.0, med      # on the beat where the raw line is (the DBN's own offset)
+    assert np.percentile(np.abs(err["pub"] - med["pub"]), 95) < 25.0
+    assert clk.stats()["errors"] == 0
+
+
+def test_the_downbeat_stays_put_across_a_relock_and_a_tempo_jump():
+    clk, pubs = synth_run()
+    barred = [(t, d) for t, d, _ in pubs if d["bar_conf"] > 0.0]
+    assert barred and barred[0][0] < 12.0
+    t_one = 14.0
+    after_one = [(t, d) for t, d in barred if t > t_one + 0.1]
+    assert len({d["bar_anchor_beat"] % 4 for _, d in after_one}) == 1      # the re-phase and the jump: kept
+    assert len({d["bar_anchor_beat"] % 4 for t, d in barred if t < t_one}) == 1
+    assert all(d["bar_conf"] >= 0.8 for t, d in after_one if t < 26.0)    # a re-lock keeps bar_conf
+    assert after_one[-1][1]["bar_conf"] == pytest.approx(C.DBN_NEW_BAR_CONF)   # a new grid: a guess again
+    assert all(d["beats_per_bar"] == 4 for _, d in barred)
+
+
+def test_the_epoch_moves_only_on_a_real_tempo_jump():
+    """Random onsets (never gated), then 120 bpm, a 4 % step to 125, a 25 % jump to 156: one epoch for the jump,
+    none for the noise's wandering line, the music's first grid after it or the small step."""
+    lag = C.AubioActivation.lag_s
+    a = act_train([(120.0, 8.3, 20.0), (125.0, 20.0, 30.0), (156.0, 30.0, 40.0)], 40.0, lag, noise_until=8.0,
+                  seed=12)
+    clk, pubs = act_clock(a)
+    assert not any(d["gate"] != "none" for t, d, _ in pubs if t < 8.0)    # the noise is never gated
+    assert epochs(pubs, 0.0, 8.0) <= {0, 1}
+    t_gated = next(t for t, d, _ in pubs if d["gate"] == "beat")
+    assert t_gated < 16.0
+    e = max(epochs(pubs, t_gated, t_gated + 0.01))
+    assert epochs(pubs, t_gated, 30.0) == {e}          # the 4 % step at 20 s is a slew
+    assert e + 1 <= max(epochs(pubs, 30.0, 40.0)) <= e + 2
+    last = pubs[-1][1]
+    assert last["bpm"] == pytest.approx(156.0, rel=0.03)
+    assert clk.stats()["pub_slews"] > 50
 
 
 # -- the body, stats, the estimator switch -----------------------------------------------------------------------------
