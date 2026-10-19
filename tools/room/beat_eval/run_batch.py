@@ -167,6 +167,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--out", type=pathlib.Path, default=None, help="the results dir")
     ap.add_argument("--no-score", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="list what would run")
+    ap.add_argument("--runner", type=pathlib.Path, default=HERE / "run_stack.py",
+                    help="the per-track replay (default run_stack.py; a candidate clock's runner in alt/ that takes "
+                         "run_stack.py's options and writes the same JSON)")
+    ap.add_argument("--runner-python", type=pathlib.Path, default=SHOW_PY,
+                    help=f"the interpreter for --runner (default {SHOW_PY})")
     ap.epilog = "After --: more run_stack.py options for every track, e.g. -- --preroll-s 10 --rx-latency-ms 40"
     argv = list(sys.argv[1:] if argv is None else argv)
     cut = argv.index("--") if "--" in argv else len(argv)      # argparse can't take "--" after the positional
@@ -204,7 +209,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             failed += 1
             continue
         seed = track_seed(a.seed, e) if a.track_seeds else a.seed
-        cmd = ["flock", str(LOCK), "nice", "-n", "19", str(SHOW_PY), str(HERE / "run_stack.py"), str(e["audio"]),
+        cmd = ["flock", str(LOCK), "nice", "-n", "19", str(a.runner_python.expanduser()),
+               str(a.runner.expanduser().resolve()), str(e["audio"]),
                "--out", str(res), "--id", e["id"], "--dataset", e["dataset"], "--genre", e["genre"],
                "--seed", str(seed)]
         if e["beats"] and pathlib.Path(e["beats"]).exists():
