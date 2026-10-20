@@ -8,14 +8,18 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   clip may go (``why``: the first failing reason, in page words); when one is due, start a call (up to
   ``max_in_flight`` in flight).
 * **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch ("AI
-  listening"; persisted; default off: nothing is uploaded until the owner turns it on); Auto on and the room's mic on
+  listening"; persisted; default off: nothing is uploaded until the owner turns it on); the mode's permission (owner,
+  20 Oct: "it's intrusive and expensive to have it running by default if e.g. people are just in the room talking
+  normally": room_service's per-mode device ``show.ai`` PUTs ``{"mode": bool}``, as ``show.mic`` claims the mic;
+  persisted; default off, so only the modes whose row turns it on (the live ones) listen; ``requires_mode``; "AI
+  listening is off in <the mode's label>"); Auto on and the room's mic on
   (owner, 17 Oct; ``requires_auto`` / ``requires_mic``; unknown = off); the vibe's own ``listener`` (a feel can say
   off); sound coming in (fresh features, audio in the ring); the music gate (``classifier``: CED from the ML worker,
   below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``), skipped only for a stream whose show.yaml
   sender says ``room_sound: false`` (a music file: no one's speech in it); gate >= ``quiet_gate`` over the last 10 s; a
   usable model in config/llm.yaml. The mode's show target no longer gates (owner, 17 Oct: its ``listening`` stays in
-  the API for readers). The ring records only while the switch, Auto, the mic and the vibe allow a clip
-  (``Rings.armed``).
+  the API for readers; the permission above is a separate, explicit per-mode row). The ring records only while the
+  switch, the mode's permission, Auto, the mic and the vibe allow a clip (``Rings.armed``).
 * **The CED gate** (Stage 4, README S4.8; ``music_gate: classifier``, room-sound streams only): no fresh CED reading
   for the stream (``ctx.ml``; MLView.stale_s, at least ``ml.results_stale_s``): "the music/speech check isn't
   running"; the latest reading's speech >= ``listener.ced.speech_max``: "people are talking" (speech is the max over
@@ -113,6 +117,10 @@ DEFAULTS: dict[str, Any] = {"cadence_s": 15.0, "clip_s": 10.0, "min_gap_s": 4.0,
                             # on (cost, and it's intrusive); unknown reads as off. show.yaml listener.requires_auto /
                             # requires_mic
                             "requires_auto": True, "requires_mic": True,
+                            # owner, 20 Oct: and nothing unless the mode allows it (room_service's show.ai: PUT
+                            # /api/v1/listening {"mode": bool}); never set reads as off. show.yaml
+                            # listener.requires_mode
+                            "requires_mode": True,
                             # README S5.20: the evening the Music card's estimate covers (hours; starting point);
                             # S5.22: the share of the time at the fast cadence the estimate assumes until it has
                             # measured an hour of its own listening
@@ -175,6 +183,14 @@ WHY_NO_MODEL = "no model configured"
 WHY_MIC_OFF = "the mic is off"                              # the mic on demand (README S5.16)
 WHY_MIC_WENT_OFF = "the mic went off"                       # a clip cut before that is never uploaded
 WHY_AUTO_OFF = "Auto is off"                                  # owner, 17 Oct: no uploads unless Auto is on
+WHY_MODE_OFF = "AI listening is off in {mode}"                # owner, 20 Oct: the mode's permission (show.ai) is off
+THIS_MODE = "this mode"                                       # {mode} when the room doesn't say its label (as mic.py)
+
+
+def why_mode(label: Optional[str]) -> str:
+    """WHY_MODE_OFF in page words: "AI listening is off in Normal", else "... in this mode"."""
+    return WHY_MODE_OFF.format(mode=label.strip() if isinstance(label, str) and label.strip() else THIS_MODE)
+
 
 def _one_of(words: Any) -> str:
     return "One of: " + ", ".join(words) + "."
@@ -872,6 +888,7 @@ class Listener:
         self.problems: list[str] = []
         self.on = False
         self.set_at: Optional[float] = None
+        self.mode = False                         # owner, 20 Oct: this mode lets the AI listen (show.ai; persisted)
         self.beliefs_state = BeliefState()
         self._timeline: collections.deque = collections.deque(maxlen=int(TIMELINE_S) + 8)
         self._tasks: list = []                    # calls in flight (at most listener.max_in_flight)
@@ -921,7 +938,7 @@ class Listener:
                     cfg[k] = v
                 else:
                     problems.append(f"listener.music_gate: {v!r} is not one of {', '.join(MUSIC_GATES)}")
-            elif k in ("requires_auto", "requires_mic"):
+            elif k in ("requires_auto", "requires_mic", "requires_mode"):
                 if isinstance(v, bool):
                     cfg[k] = v
                 else:
@@ -983,6 +1000,7 @@ class Listener:
         self.on = bool(saved.get("on", False))
         at = _f(saved.get("set_at"))
         self.set_at = at
+        self.mode = saved.get("mode") is True     # never saved, or not a bool: off (fail closed)
 
     def start(self) -> None:
         if self._warm and self._llm is None:
@@ -1059,7 +1077,7 @@ class Listener:
         return self._snap
 
     def persist(self) -> Optional[dict]:
-        return {"on": self.on, "set_at": self.set_at}
+        return {"on": self.on, "set_at": self.set_at, "mode": self.mode}
 
     def stop(self) -> None:
         self._cancel()
@@ -1080,6 +1098,27 @@ class Listener:
         self._why, self._stream = self._gate(now)
         self._refresh(now)
         self._log_event({"kind": "switch", "on": self.on})
+        return self._view
+
+    def set_mode(self, mode: bool) -> dict:
+        """The mode's permission (owner, 20 Oct; PUT /api/v1/listening {"mode": bool}, room_service's per-mode device
+        ``show.ai``, as ``show.mic`` claims the mic). The Room page's switch stays the master: both must be on. Off
+        cancels any call in flight, as the switch going off does. Room re-sends it on every re-sync, so only a change
+        is persisted and logged."""
+        mode = bool(mode)
+        changed, self.mode = mode != self.mode, mode
+        if not self.mode and self.cfg["requires_mode"] and self._tasks:
+            self._cancel()                        # every upload needs the mode's permission too, test streams included
+        if changed and self.ctx.persist is not None:
+            try:
+                self.ctx.persist()
+            except Exception:                     # noqa: BLE001
+                log.exception("persist failed")
+        now = self._mono()
+        self._why, self._stream = self._gate(now)
+        self._refresh(now)
+        if changed:
+            self._log_event({"kind": "mode", "mode": self.mode})
         return self._view
 
     def view(self) -> dict:
@@ -1232,6 +1271,18 @@ class Listener:
         """The room mic's state (mic.Mic.state: {"on": bool, ...}). Unset or unknown: off."""
         self._mic_fn = fn
 
+    def _mode_label(self) -> Optional[str]:
+        """The mode's label for WHY_MODE_OFF (ctx.room's RoomView, read by reference; the mode it is going to, else the
+        one it is in), None when the room doesn't say. Words only: nothing branches on it."""
+        view = self._call_or_none(self.ctx.room)
+        if not isinstance(view, dict):
+            return None
+        name = view.get("target") or view.get("current")
+        modes = view.get("modes") if isinstance(view.get("modes"), dict) else {}
+        row = modes.get(name) if isinstance(name, str) else None
+        lab = row.get("label") if isinstance(row, dict) else None
+        return lab if isinstance(lab, str) and lab.strip() else None
+
     def _auto_is_on(self) -> bool:
         try:
             return self._auto_fn is not None and self._auto_fn() is True
@@ -1247,13 +1298,16 @@ class Listener:
 
     def _gate(self, now_s: float) -> tuple[Optional[str], Optional[str]]:
         """(the first failing reason in page words, or None; the stream a clip would come from). Every stream, test
-        or not, needs the AI listening switch, Auto and the mic on (owner, 17 Oct) and a vibe that doesn't say
-        ``listener: off``; the mode's show target no longer gates (owner, 17 Oct). Only a stream whose sender says
-        ``room_sound: false`` skips the music/speech check (it can't carry anyone's speech)."""
+        or not, needs the AI listening switch, the mode's permission (owner, 20 Oct: show.ai), Auto and the mic on
+        (owner, 17 Oct) and a vibe that doesn't say ``listener: off``; the mode's show target no longer gates (owner,
+        17 Oct). Only a stream whose sender says ``room_sound: false`` skips the music/speech check (it can't carry
+        anyone's speech). The upload re-checks all of it (_call)."""
         stream = self._active_stream(now_s)
         why = None
         if not self.on:
             why = WHY_OFF
+        elif self.cfg["requires_mode"] and self.mode is not True:
+            why = why_mode(self._mode_label())        # owner, 20 Oct: off by default, the live modes turn it on
         elif self.cfg["requires_auto"] and not self._auto_is_on():
             why = WHY_AUTO_OFF                        # owner, 17 Oct: cost, and it's intrusive; checked again at upload
         elif self.cfg["requires_mic"] and not self._mic_is_on():
@@ -1465,7 +1519,7 @@ class Listener:
                 "is the same section again): " + ", ".join(parts) + ".")
 
     def _arm(self, on: bool) -> None:
-        """The ring records only while a clip could go (the switch, Auto, the mic and the vibe allow it): no
+        """The ring records only while a clip could go (the switch, the mode, Auto, the mic and the vibe allow it): no
         resampling on show-rx for nothing. A first clip then waits for the ring to fill (min_clip_s)."""
         rings = self.ctx.rings
         if rings is not None and getattr(rings, "armed", on) != on:
@@ -1842,7 +1896,8 @@ class Listener:
         est = self.estimate_view()
         b = self._beliefs if isinstance(self._beliefs, dict) else {}
         ap = b.get("approach") if isinstance(b.get("approach"), dict) else None
-        return {"on": self.on, "effective": self._why is None, "why": self._why, "stream": self._stream,
+        return {"on": self.on, "mode": self.mode, "effective": self._why is None, "why": self._why,
+                "stream": self._stream,
                 "next_in_s": nxt, "cadence_s": round(self.interval(), 1), "fast": self._fast,
                 "in_flight": len(self._tasks),
                 "calls_today": int((st.get("calls_today") or {}).get("listen", 0)),

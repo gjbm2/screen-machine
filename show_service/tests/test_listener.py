@@ -78,11 +78,11 @@ SENDERS = {"test-audio": {"hosts": ["localhost"], "port": 40001, "streams": ["te
 
 
 class Rig:
-    """A listener on a fake ctx. By default it may listen: the switch on, a mode that listens, and a test-audio
-    stream whose sender says room_sound: false (so only the music check is skipped)."""
+    """A listener on a fake ctx. By default it may listen: the switch on, the mode's permission on (show.ai), a mode
+    that listens, and a test-audio stream whose sender says room_sound: false (so only the music check is skipped)."""
 
     def __init__(self, tmp_path, stream="test-audio", settings=None, on=True,
-                 target=({"vibe": "home", "listening": True},)):
+                 target=({"vibe": "home", "listening": True},), mode=True, room=None):
         self.now = 1000.0
         self.rings = Rings(seconds=40.0)
         self.pub: list = []
@@ -95,12 +95,13 @@ class Rig:
         self.harmony = {"key": None, "mode": None, "conf": 0.0}
         self.notified: list = []
         self.encoded: list = []
+        self.room = room                                  # a RoomView (the mode's label for WHY_MODE_OFF), or None
         ctx = c.BrainContext(
             publish=self.pub.append,
             features=lambda: dict(self.feats, t_ms=self.now * 1000.0, stream=self.health.get("active_audio")),
             clock=lambda: self.clock, harmony=lambda: self.harmony, health=lambda: self.health,
             rings=self.rings, target=lambda: self.target, vibe=lambda: self.vibe,
-            persist=self._persist, notify=lambda k, p: self.notified.append(k))
+            persist=self._persist, notify=lambda k, p: self.notified.append(k), room=lambda: self.room)
         self.llm = FakeLLM()
         vocab = tmp_path / "vocab.yaml"
         vocab.write_text(VOCAB)
@@ -112,6 +113,7 @@ class Rig:
                          "music_gate": "classifier", "describe_timeout_s": 0.5},
             "situations": {"music": {"dsp_min_gate": 0.3}}})))
         self.lis.on = bool(on)                            # as restored from state.json (set_on would persist)
+        self.lis.mode = bool(mode)                        # owner, 20 Oct: the mode's permission, as restored
         self.auto_on, self.mic = True, {"on": True}         # owner, 17 Oct: uploads need Auto on and the mic on
         self.lis.set_auto(lambda: self.auto_on)
         self.lis.set_mic(lambda: self.mic)
@@ -161,7 +163,7 @@ def test_switch_off_sends_nothing_from_the_room(tmp_path):
     v = rig.lis.view()
     assert v["on"] is False and v["effective"] is False and v["why"] == L.WHY_OFF
     assert rig.llm.calls == [] and rig.pub == []
-    assert rig.lis.persist() == {"on": False, "set_at": None}
+    assert rig.lis.persist() == {"on": False, "set_at": None, "mode": True}
 
 
 @pytest.mark.parametrize("stream", ["test-audio", "phone-test", "test-anything", "room-mic"])
@@ -199,7 +201,7 @@ def test_the_modes_listening_no_longer_gates(tmp_path, target):
     run(rig.tick())
     assert rig.lis.view()["effective"] is True and rig.rings.armed is True
     assert len(rig.llm.calls) == 1 and [m["type"] for m in rig.pub] == [c.MUSIC_INSIGHT]
-    assert not hasattr(L, "WHY_MODE")
+    assert not hasattr(L, "WHY_MODE")                  # the show target's old "this mode doesn't listen"
 
 
 def test_rule_0_still_holds_for_room_sound_without_the_music_check(tmp_path):
@@ -503,9 +505,14 @@ def test_gate_is_checked_again_right_before_the_upload(tmp_path):
 def test_persist_restore(tmp_path):
     rig = Rig(tmp_path)
     rig.lis.restore({})
-    assert rig.lis.on is False
+    assert rig.lis.on is False and rig.lis.mode is False  # never saved: off (fail closed)
     rig.lis.restore({"on": True, "set_at": 1.79e9})
-    assert rig.lis.persist() == {"on": True, "set_at": 1.79e9}
+    assert rig.lis.persist() == {"on": True, "set_at": 1.79e9, "mode": False}
+    rig.lis.restore({"on": True, "set_at": 1.79e9, "mode": True})
+    assert rig.lis.persist() == {"on": True, "set_at": 1.79e9, "mode": True}
+    for bad in ("yes", 1, None, [True]):                 # a bad value: off
+        rig.lis.restore({"on": True, "mode": bad})
+        assert rig.lis.mode is False, bad
     assert rig.lis.provides()["beliefs"]() == rig.lis.beliefs()
 
 
@@ -996,6 +1003,112 @@ def test_nothing_goes_to_openai_unless_auto_and_the_mic_are_on(tmp_path):
     assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
     r.lis.configure({"senders": SENDERS, "listener": {"requires_auto": False, "requires_mic": False}})
     assert r.lis._gate(r.now)[0] not in (L.WHY_AUTO_OFF, L.WHY_MIC_OFF)   # config can relax it (not the default)
+
+
+# -- owner, 20 Oct: the mode's permission (room_service's show.ai) -----------------------------------------------------
+NORMAL = {"current": "normal", "target": None, "modes": {"normal": {"label": "Normal"}, "live": {"label": "Live"}}}
+
+
+def test_the_mode_must_allow_it(tmp_path):
+    """Owner, 20 Oct: "the default should be that it doesn't send except on a live mode". With the switch, Auto and
+    the mic on, a mode that hasn't allowed it sends nothing, says so in the mode's words, and records nothing."""
+    for room, want in ((None, "AI listening is off in this mode"), (NORMAL, "AI listening is off in Normal"),
+                       (dict(NORMAL, target="live"), "AI listening is off in Live")):   # going to Live: its label
+        rig = Rig(tmp_path, stream="test-audio", mode=False, room=room)
+        rig.fill()
+
+        async def go():
+            await rig.ticks(25)
+        run(go())
+        v = rig.lis.view()
+        assert rig.llm.calls == [] and rig.pub == [] and rig.rings.armed is False
+        assert v["why"] == want and v["mode"] is False and v["on"] is True and v["effective"] is False
+    assert L.why_mode(None) == L.why_mode("  ") == "AI listening is off in this mode"
+
+
+def test_the_switch_is_still_the_master_and_the_mode_comes_before_auto(tmp_path):
+    rig = Rig(tmp_path, on=False, mode=True)
+    assert rig.lis._gate(rig.now)[0] == L.WHY_OFF        # the Room page's switch off: off, whatever the mode says
+    rig = Rig(tmp_path, mode=False, room=NORMAL)
+    rig.auto_on, rig.mic = False, {"on": False}
+    assert rig.lis._gate(rig.now)[0] == "AI listening is off in Normal"
+
+
+def test_a_mode_that_allows_it_listens(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio", mode=False, room=NORMAL)
+    rig.fill()
+    run(rig.tick())
+    assert rig.lis.view()["effective"] is False and rig.rings.armed is False
+    v = rig.lis.set_mode(True)                           # room_service's show.ai: this mode lets the AI listen
+    assert v["mode"] is True and rig.rings.armed is True and rig.persisted == 1
+    assert rig.lis.persist()["mode"] is True and rig.lis.log(1)[0]["kind"] == "mode"
+    rig.lis.set_mode(True)                               # room's re-sync: no change, nothing persisted or logged
+    assert rig.persisted == 1 and len([e for e in rig.lis.log(50) if e["kind"] == "mode"]) == 1
+    rig.fill()
+
+    async def go():
+        await rig.ticks(12)
+    run(go())
+    assert rig.lis.view()["effective"] is True and len(rig.llm.calls) >= 1 and rig.pub
+
+
+def test_requires_mode_false_relaxes_it_and_a_bad_value_keeps_the_default(tmp_path):
+    rig = Rig(tmp_path, mode=False)
+    assert rig.lis._gate(rig.now)[0] == "AI listening is off in this mode"
+    rig.lis.configure({"senders": SENDERS, "listener": {"requires_mode": False}})
+    assert not rig.lis._gate(rig.now)[0].startswith("AI listening is off")
+    rig.lis.configure({"senders": SENDERS, "listener": {"requires_mode": "yes"}})
+    assert rig.lis.cfg["requires_mode"] is True
+    assert "listener.requires_mode: 'yes' is not true/false" in rig.lis.problems
+    assert rig.lis._gate(rig.now)[0] == "AI listening is off in this mode"
+
+
+def test_the_mode_going_off_cancels_a_call_in_flight(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio", room=NORMAL)
+    rig.fill()
+    rig.llm.delay = 5.0
+
+    async def go():
+        rig.now += 1
+        rig.lis.tick(rig.now)
+        await asyncio.sleep(0.05)
+        task = rig.lis._tasks[0]
+        v = rig.lis.set_mode(False)                      # the room left the live mode
+        await asyncio.wait([task], timeout=2)
+        await asyncio.sleep(0)
+        assert task.cancelled() and rig.lis._tasks == [] and rig.pub == []
+        assert v["why"] == "AI listening is off in Normal" and rig.rings.armed is False
+    run(go())
+
+
+def test_the_mode_is_checked_again_right_before_the_upload(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio")
+    rig.fill()
+
+    async def enc(pcm, fs, **kw):
+        rig.lis.mode = False                             # the mode's permission went while the clip was encoded
+        return b"MP3", "mp3"
+    rig.lis._encode = enc
+    run(rig.tick())
+    assert rig.llm.calls == [] and rig.lis.log(1)[0]["kind"] == "skipped"
+    assert rig.lis.log(1)[0]["why"] == "AI listening is off in this mode"
+
+
+def test_the_modes_permission_survives_a_restart(tmp_path):
+    """Persisted next to the switch (state.json's "listener"): a show_service restart keeps what room last said."""
+    from show_service.state_store import StateStore
+    rig = Rig(tmp_path, mode=False)
+    rig.lis.set_mode(True)
+    store = StateStore(tmp_path / "state.json")
+    assert store.save({"listener": rig.lis.persist()})
+    again = Rig(tmp_path, mode=False)                    # a fresh listener: off until restored
+    assert again.lis._gate(again.now)[0] == "AI listening is off in this mode"
+    again.lis.restore(StateStore(tmp_path / "state.json").load()["listener"])
+    assert again.lis.mode is True and not (again.lis._gate(again.now)[0] or "").startswith("AI listening is off")
+    rig.lis.set_mode(False)
+    assert store.save({"listener": rig.lis.persist()})
+    again.lis.restore(StateStore(tmp_path / "state.json").load()["listener"])
+    assert again.lis.mode is False
 
 
 # -- README S5.20: provider, cost, reliability -------------------------------------------------------------------------

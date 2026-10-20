@@ -368,6 +368,11 @@ listener:                                   # §7.3, §7.5. Starting points, all
   requires_auto: true                       # owner, 17 Oct: no audio goes to any provider unless Auto is on (cost, and
   requires_mic: true                        # it's intrusive) and the room's mic is on; re-checked right before each
                                             # upload. The mode's show.main "listening" no longer gates (17 Oct)
+  requires_mode: true                       # owner, 20 Oct: "the default should be that it doesn't send except on a
+                                            # live mode ... it's intrusive and expensive to have it running by default
+                                            # if e.g. people are just in the room talking normally". A mode lets it
+                                            # listen only through its own row (room_service's show.ai, like show.mic);
+                                            # never set = off. The Room page's AI listening switch stays the master
   evening_h: 4                              # README S5.20: the evening the Music card's estimate covers (starting
                                             # point): est_evening_usd = evening_h x the calls an hour (the blend of
                                             # cadence_s and fast_cadence_s by est_fast_share) x the cost a clip
