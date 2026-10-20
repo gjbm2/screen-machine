@@ -1101,7 +1101,8 @@ class CardData(TypedDict):
     house: bool
     low: bool
     chips: list[ChipData]
-    listening: dict[str, Any]      # {"on": bool, "effective": bool, "why": str | None, "spend_today_usd": float,
+    listening: dict[str, Any]      # {"on": bool, "effective": bool, "why": str | None, "mode": bool (the mode's own
+                                   #  permission, show.ai; owner 20 Oct), "spend_today_usd": float,
                                    #  "est_evening_usd": float | None, "provider": "Google" | "OpenAI" | None,
                                    #  "character": str | None, "approach": {...} | None, "armed": [CueLine]}
                                    #  (README S5.20: the price shows even while the switch is off; S5.22: the

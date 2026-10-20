@@ -488,6 +488,7 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     if LISTENER in comps:          # README S5.20: today's spend and the evening's estimate, even while it is off
         est = _num(lview.get("est_evening_usd"), None)
         listening = {"on": bool(lview.get("on")), "effective": bool(lview.get("effective")), "why": lview.get("why"),
+                     "mode": bool(lview.get("mode")),     # owner, 20 Oct: the mode's own permission (show.ai)
                      "spend_today_usd": round(_num(lview.get("spend_today_usd"), 0.0) or 0.0, 4),
                      "est_evening_usd": None if est is None else round(est, 2),
                      "provider": lview.get("provider") if isinstance(lview.get("provider"), str) else None,
@@ -496,7 +497,7 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
                      "approach": dict(lview["approach"]) if isinstance(lview.get("approach"), dict) else None,
                      "armed": [dict(x) for x in lview.get("armed") or [] if isinstance(x, dict)]}
     else:
-        listening = {"on": False, "effective": False, "why": MISSING[LISTENER], "spend_today_usd": 0.0,
+        listening = {"on": False, "effective": False, "why": MISSING[LISTENER], "mode": False, "spend_today_usd": 0.0,
                      "est_evening_usd": None, "provider": None, "character": None, "approach": None, "armed": []}
 
     if AUTOPILOT in comps:
