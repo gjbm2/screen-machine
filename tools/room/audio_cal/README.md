@@ -37,7 +37,14 @@ $P $C record stop
   clock actually did. Ask the session that owns show_service to hold restarts while the track plays.
 - Start recording before the music, and let the room be as it normally is: talk and other sound are part of the
   measurement (the model's room sound comes from the parts without music).
-- Only `pc22-mic` is recordable yet. `room-mic` (the kiosk) needs a kiosk-side recorder, to come with the new mic.
+- **Any other stream, e.g. `room-mic` (the kiosk's boundary mic):** `record start --stream room-mic` records it
+  *through show_service* (`--via show`, the default for every stream but pc22-mic). The kiosk's sender holds its
+  mic exclusively (`arecord` on `plughw`), so nothing else can open it there; instead `_showtap` reads show_service's
+  levels feed (`WS /v1/levels?wave=2048`: the active stream's newest 2048 INT16 samples, up to 60 frames a second)
+  and stitches the overlapping frames on their samples (exact match, the packet counter as a guide), so rec.wav is
+  what the receiver decoded, gaps and all. The stream must be show_service's active stream. `tapmap.jsonl` maps
+  recording samples to show_service's clock (the bus log's). Measured 20 Oct: 41 s, 0 gaps, within one packet of
+  the counter; about 1 % of a core.
 
 ### 2. Fetch the original
 
