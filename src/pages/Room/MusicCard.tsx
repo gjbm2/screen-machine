@@ -955,6 +955,11 @@ function IdentifyMusicRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed;
         <span className="min-w-0">
           <span className="block text-base font-semibold leading-snug">AI listening</span>
           <span className="block text-sm leading-snug text-muted-foreground">{sub}</span>
+          {on && l?.mode === false && (
+            <span className="block text-sm leading-snug text-stone-700" data-testid="music-identify-mode">
+              To allow it in this mode, use the mode's ⋯
+            </span>
+          )}
           {cost && (
             <span className="block text-sm leading-snug text-amber-800" data-testid="music-identify-cost">
               {cost}
