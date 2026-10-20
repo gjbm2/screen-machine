@@ -56,7 +56,6 @@ from __future__ import annotations
 import collections
 import logging
 import math
-import os
 import time
 
 import numpy as np
@@ -567,16 +566,12 @@ class LiveScore(Source):
         w8[:, :8] *= w8[0, 8:][None, :]
         w8.fill(0)
         w8.copy()
-        # the room's one transcription, shared with its other screens (score/room.py: one builder, one analysis
-        # worker, fed by whichever screen leads; owner, 18 Oct: both screens transcribed the same MIDI twice).  In a
-        # proc worker (a render process per screen) it runs in the room's own process (score/room_proc.py)
-        from stream_service.score.room import RemoteRoom, RoomScore, Shared
-        if os.environ.get("SM_STREAM_WORKER") or getattr(ctx, "worker", False):
-            self.room = RemoteRoom.join(ROOM_KEY, self)
-            self.builder = self.room.builder                         # a replica: the scene's reads stay local
-        else:
-            self.room = RoomScore.join(ROOM_KEY, self)
-            self.builder = Shared(self.room.builder, self.room.lock)     # each call under the room's lock, CPU only
+        # the room's one transcription, shared with its other screens (owner, 18 Oct: both screens transcribed the
+        # same MIDI twice): it runs in the room's own process (score/room_proc.py: one builder, one analysis worker),
+        # whether this screen renders in the control process or a worker of its own (a mix ran two, 20 Oct)
+        from stream_service.score.room import RemoteRoom
+        self.room = RemoteRoom.join(ROOM_KEY, self)
+        self.builder = self.room.builder                             # a replica: the scene's reads stay local
         self.seen_rev = 0
         self.engraver = None
         try:

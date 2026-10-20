@@ -1,7 +1,8 @@
 """The room's live-score transcription in a process of its own, shared by the screens' render workers (proc workers,
 one render process per screen, can't share score/room.py's RoomScore in memory).  RemoteRoom starts it.
 
-    python -m stream_service.score.room_proc --key room [--music-bus ws://127.0.0.1:8703/v1/show] [--linger 30]
+    python -m stream_service.score.room_proc --key room [--sock PATH] [--music-bus ws://127.0.0.1:8703/v1/show]
+                                             [--linger 30]
 
 It hears the music bus itself (showbus.run into a SoundView, the path a scene's notes take) and feeds the room's one
 RoomScore (its builder and the PM2S analysis worker) every TICK_S, on host monotonic time: the bus's t_ms is
@@ -17,6 +18,7 @@ import asyncio
 import collections
 import logging
 import os
+import pathlib
 import pickle
 import signal
 import time
@@ -32,8 +34,8 @@ MAX_BACKLOG = 4 << 20                  # bytes queued to one client before it's 
 STATS_S = 60.0
 
 
-async def serve(key: str, music_bus: str, linger_s: float, analysis: bool = True) -> None:
-    path = sock_path(key)
+async def serve(key: str, music_bus: str, linger_s: float, analysis: bool = True, sock: str | None = None) -> None:
+    path = pathlib.Path(sock) if sock else sock_path(key)       # (the screen that starts it names its path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     s = try_connect(path)
     if s is not None:                                         # another one is serving this room
@@ -129,12 +131,13 @@ async def serve(key: str, music_bus: str, linger_s: float, analysis: bool = True
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--key", default="room")
+    ap.add_argument("--sock", default=None, help="the socket to serve (default: room.sock_path(key))")
     ap.add_argument("--music-bus", default=os.environ.get("SM_MUSIC_BUS") or MUSIC_BUS)
     ap.add_argument("--linger", type=float, default=LINGER_S)
     ap.add_argument("--no-analysis", action="store_true", help="the beat clock only (tests)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    asyncio.run(serve(a.key, a.music_bus, a.linger, analysis=not a.no_analysis))
+    asyncio.run(serve(a.key, a.music_bus, a.linger, analysis=not a.no_analysis, sock=a.sock))
 
 
 if __name__ == "__main__":
