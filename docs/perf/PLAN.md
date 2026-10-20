@@ -63,6 +63,9 @@ Each is one build plus one stream restart with no screen live.
 - With sound playing and madmom running: Recv-Q max 5 KB, 0 drops, show-rx at 33% of a core, 0% stream loss.
 - Before: 320-420 KB queued, about 76 drops/s, show-rx at 45-52% plus 34% waiting for the lock.
 - **Piano MIDI**, measured by 3a on 20 Oct: the kiosk's room-piano MIDI arrives on its own :6980 socket with kernel timestamps. Arrival to dispatch is p50 0.44 ms, p95 1.13 ms, max 2.23 ms (58 packets, no notes played yet). 0 drops and 0 misrouted on both sockets.
+- **Real playing**, 20 Oct 19:49-20:09: 1,306 note-ons. Bus receipt minus the note's t_ms: p50 −4.8 ms, p95 5.5 ms, max 30.6 ms; 0.6% over 20 ms; 0 bus seq gaps.
+  - The negative median is the time map: t_ms dates a key on the room-mic audio path.
+  - Key to bus is well under the 20 ms target. Before the fix it was about 1.1-1.4 s.
 - **Audio**: socket queue p95 2.4 ms. room-mic (the kiosk boundary mic) is active with 0 loss.
 - Still to check: show with both screens live.
 
