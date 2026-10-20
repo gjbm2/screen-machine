@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  Stand-in for /display/<id>?artonly=1 (LIVE_V1 §2.3), used by test_snapshot.py while the
+  real page is built. Same contract: window.__smArtReady, window.__smRenderArt(ArtState).
+  Layers: base (img, fit = contain / fill = cover), warm (multiply), brightness (black, 1-b).
+  A base_url ending in /hang never resolves (to exercise the snapshot timeout).
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>art-only fixture</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+  .layer { position: absolute; inset: 0; width: 100%; height: 100%; transition: none !important; }
+  #base { object-fit: contain; }
+  #warm { mix-blend-mode: multiply; opacity: 0; }
+  #bright { background: rgba(0, 0, 0, 0); }
+</style>
+</head>
+<body>
+<img id="base" class="layer" alt="">
+<div id="warm" class="layer"></div>
+<div id="bright" class="layer"></div>
+<script>
+  window.__smRenderCount = 0;
+  window.__smRenderArt = async (s) => {
+    const img = document.getElementById("base");
+    const flags = s.flags || {};
+    const mask = s.mask || {};
+    if (s.base_url && s.base_url.endsWith("/hang")) {
+      await new Promise(() => {});
+    }
+    img.style.objectFit = flags.fit === "fill" ? "cover" : "contain";
+    img.src = s.base_url;
+    await img.decode();
+    const b = flags.nomask ? 1 : (mask.brightness ?? 1);
+    document.getElementById("bright").style.background = `rgba(0, 0, 0, ${1 - b})`;
+    const warm = document.getElementById("warm");
+    warm.style.background = mask.warm_hex || "#FFFFFF";
+    warm.style.opacity = flags.nocolour ? 0 : (mask.warm_alpha || 0);
+    window.__smRenderCount += 1;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  };
+  window.__smArtReady = true;
+</script>
+</body>
+</html>
