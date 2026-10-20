@@ -14,9 +14,14 @@ one the room listens to. Nothing is hard-coded: the inputs are show.yaml's sende
 * **Persisted** in ``STATE_DIR/input.json`` (``{"v": 1, "stream", "devices": {stream: device}}``), written atomically,
   read at start. A bad file starts automatic; nothing here raises into the service.
 
+* **Pianos** (owner, 20 Oct: the Room page shows the piano's MIDI is coming in) are the same senders' MIDI streams,
+  test streams left out: ``{stream, sender, label, state}``, the state the receiver's health gives (``streaming``: a
+  key or pedal in the last 30 s; ``quiet``: connected, nothing played; ``stale``/``down``: nothing arriving). Not
+  choosable; the page reads them only.
+
 Routes, on show-bus (pages reach them through room's ``/show/*`` pass-through):
   GET /api/v1/inputs   {active, choice: {stream, device} | null, inputs: [{stream, sender, label, state, device,
-                       devices}]}
+                       devices}], pianos: [{stream, sender, label, state}]}
   PUT /api/v1/input    {stream: str | null, device?: str | null} -> the GET body. ``stream`` null: automatic.
                        ``device`` absent or null: that sender's default. 400 for a stream that isn't an input.
 """
@@ -127,9 +132,29 @@ class Inputs:
     def choice(self) -> Optional[dict]:
         return {"stream": self._stream, "device": self._devices.get(self._stream)} if self._stream else None
 
+    def pianos(self, h: Optional[dict] = None) -> list[dict]:
+        h = self._h() if h is None else h
+        spec = _d(self._settings().get("senders"))
+        streams = _d(h.get("streams"))
+        out = []
+        for name, s in _d(h.get("senders")).items():
+            if not isinstance(s, dict) or s.get("on_demand"):
+                continue
+            label = _d(spec.get(name)).get("label")
+            label = label.strip() if isinstance(label, str) and label.strip() else name
+            for st in s.get("streams") or []:
+                if not isinstance(st, str) or st in contract.TEST_STREAMS:
+                    continue
+                m = _d(streams.get(st))
+                kind = m.get("kind")
+                if (kind == "midi" or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)) and not m.get("test"):
+                    out.append({"stream": st, "sender": name, "label": label, "state": m.get("state") or "down"})
+        return out
+
     def body(self) -> dict:
         h = self._h()
-        return {"active": h.get("active_audio"), "choice": self.choice(), "inputs": self.inputs(h)}
+        return {"active": h.get("active_audio"), "choice": self.choice(), "inputs": self.inputs(h),
+                "pianos": self.pianos(h)}
 
     def mic(self, h: Optional[dict] = None) -> Optional[dict]:
         """The card's hearing.mic: the active stream and the device its sender says it uses; ``chosen`` when that is

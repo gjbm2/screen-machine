@@ -61,6 +61,14 @@ def test_lists_room_sound_inputs_only(make):
     assert got[1]["device"] == "Dell" and got[1]["devices"] == ["Dell", "Insta360 Link"] and got[0]["devices"] == []
 
 
+
+def test_lists_pianos(make):
+    assert make().pianos() == [{"stream": "room-piano", "sender": "kiosk", "label": "Drawing room", "state": "streaming"}]
+    h = health()
+    del h["streams"]["room-piano"]                       # before its first packet: known MIDI name, down
+    assert make(h).body()["pianos"] == [{"stream": "room-piano", "sender": "kiosk", "label": "Drawing room",
+                                         "state": "down"}]
+
 def test_choice_applies_persists_and_reloads(make, tmp_path):
     inp, rx = make(), FakeRx()
     inp.attach(rx)

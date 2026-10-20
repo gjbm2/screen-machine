@@ -5,8 +5,8 @@
 // whole card, then RFC 7386 merge patches at 2 Hz, chip changes at once), with a 5 s poll while that socket is down.
 //   - Auto, the room-level one (it picks the mode by itself): its switch, its line, Resume, and the
 //     "Auto → Piano · the piano is playing · Undo" chip after a switch. Nothing else on the page is called "Auto".
-//   - Listening: the Room mic switch and its input, then AI listening (short clips to an online AI). Both
-//     listening switches live here, together; the menu has no controls.
+//   - Listening: the Room mic switch and its input, the piano's MIDI (connected, and each key as it arrives), then AI
+//     listening (short clips to an online AI). Both listening switches live here, together; the menu has no controls.
 //   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar, and "following loosely";
 //     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
 //   - Calmer · Wilder, the palette, Next look · Keep this look · House lights.
@@ -25,6 +25,7 @@ import { RoomApi, RoomApiError } from "./api";
 import { Pill, Spinner, Unroll } from "./bits";
 import { LevelTrace } from "./LevelTrace";
 import { MicPicker } from "./MicPicker";
+import { PianoRow } from "./PianoRow";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, type Tone } from "./tones";
 import type { ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowMicState, ShowPaletteChoice } from "./types";
@@ -678,6 +679,7 @@ export function MusicCard({
               <MicPicker api={api} />
             </div>
           )}
+          <PianoRow api={api} />
           <IdentifyMusicRow api={api} feed={feed} addLog={addLog} />
         </div>
 
