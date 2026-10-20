@@ -88,7 +88,9 @@ situations:
     min_notes: 12                           # starting point
     min_span_s: 6                           # starting point
     min_pitches: 4                          # starting point
-    heard_min_lufs: -45                     # starting point: the short-term loudness the mic must reach in the window
+    heard_min_lufs: -55                     # measured 20 Oct (NEEWER UM04 on the console, room-mic): the acoustic piano's
+                                            # 10 s max short-term loudness was -43..-52 over 98 s of playing (median
+                                            # lufs_s -51); the quiet room reads -58..-70. -45 failed most real playing.
     idle_note_s: 1.0                        # starting point: piano_idle needs no note-on for this long
   music:                                    # music_audible
     stream: room-mic

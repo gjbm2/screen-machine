@@ -33,7 +33,7 @@ const CONNECTED = ["streaming", "quiet"];
 type Piano = { stream: string; sender?: string; label?: string; state?: string };
 type Key = { name: string; vel: number; at: number; test: boolean };
 type Candidate = { mode: string; kind: string; rule?: string; held_s?: number | null; needs_s?: number | null; blocked?: string | null; holds?: boolean };
-type Autopilot = { on?: boolean; candidates?: Candidate[] };
+type Autopilot = { on?: boolean; state?: string; line?: string; candidates?: Candidate[] };
 type RuleMode = { mode: string; label?: string; enter?: string | null };
 type Reading = { value?: boolean | null; evidence?: Record<string, unknown> | null };
 type Word = { id: string; label?: string; params?: Record<string, { default?: unknown }> };
@@ -220,6 +220,8 @@ export function PianoRow({ api }: { api: RoomApi }) {
   if (target && auto) {
     const needs = num(cand?.needs_s);
     if (auto.on === false) autoLine = `Auto is off, so it won't switch to ${modeLabel} by itself.`;
+    // paused, waiting after a switch that didn't finish, switching now: Auto's own line says it (with Resume above)
+    else if (auto.state && auto.state !== "watching" && auto.line) autoLine = `${auto.line}.`;
     else if (cand?.blocked === "it's the current mode") autoLine = `Auto: in ${modeLabel} now.`;
     else if (cand?.blocked) autoLine = `Auto won't switch to ${modeLabel}: ${cand.blocked}.`;
     else if (cand?.holds && needs !== null)
