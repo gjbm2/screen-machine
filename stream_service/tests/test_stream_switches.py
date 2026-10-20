@@ -82,9 +82,9 @@ def test_in_dir_and_the_shipped_file():
     assert s.path == sw_mod.DEFAULT_DIR / "stream_switches.json"
     assert s.path.exists()                                            # shipped: ffmpeg, nvenc on the P4000's screens
     assert [s.encoder(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
-        ["ffmpeg", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
+        ["nvenc", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
     assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
-        ["proc", "proc", "proc", "inproc"]                            # change 3: every TV in a worker (north: ffmpeg)
+        ["proc", "proc", "proc", "inproc"]                            # change 3: every TV in a worker
     assert [s.fps(k) for k in ("north-screen", "south-screen", "devtest", "other")] == [30, 30, 60, 30]   # change 5
     assert {s.degrade(k) for k in ("north-screen", "south-screen", "devtest", "other")} == {"on"}
 
