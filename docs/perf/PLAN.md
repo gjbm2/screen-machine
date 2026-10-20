@@ -42,11 +42,10 @@ This is the same 90 s capture as the baseline. The like-for-like comparison is t
 **Per-screen rollout** (`config/live/stream_switches.json`, read at session start, no restart):
 - devtest: nvenc + proc at 60;
 - south: nvenc + proc at 30;
-- north: ffmpeg + inproc at 30.
+- north: nvenc + proc at 30 (since fc81da71).
 
 **Before the TVs go to 60:**
 - the kiosk 2x4K60 decode check (diagnostic 4);
-- for north, the 4060 NVENC test (diagnostic 1);
 - Chrome playing mixed 30/60 samples, checked on devtest.
 
 **The first real test of changes 2-5 together** is south's next live show. A 24 h watcher captures it.
@@ -90,9 +89,10 @@ Each is one build plus one stream restart with no screen live.
 
 ## Diagnostics still open, and how to get each
 
-1. **The 4060's encoder at 4K60 beside your desktop.** It's a 10-second test. My permission rules blocked it, because GPU 0 is the desktop card. With no screen live, run this in a WSL terminal:
-   `D=/home/gjbm2/dev/screen-machine/docs/perf/evidence/programme/encode-spike; CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 timeout 70 nice -n 19 <venv>/bin/python $D/nvenc_spike.py --name g0 --json /tmp/g0.json --extra aq=12 --mode paced --frames 600 --fps 60 --bitrate 40000000`
-   The venv needs `pip install PyNvVideoCodec==2.2.3 cupy-cuda12x numpy`. Read `fps_achieved` and `submit_to_packet_ms_steady` in /tmp/g0.json. Alternatively, allow the run and I'll do it.
+1. **Done, 20 Oct 23:08: the 4060's encoder at 4K60 beside the desktop** (owner OK).
+   - 60.07 fps at P4 + AQ 12 and 40 Mbit/s; NVENC busy p50 66%, max 78%; video clock steady at 2,130 MHz.
+   - Encode CPU 2.2 ms per frame; slot to packet 54 ms.
+   - North is now nvenc + proc (ff, fc81da71).
 2. **Why the CPU runs at 74% of its clock.** It isn't the power plan (Balanced, 100% max, aggressive boost). HWiNFO64 in sensors-only mode, under load, shows the cause: CPU package power against PL1, the "power limit" and "thermal throttling" flags, and core temperatures. If it's a power limit, the fix is in the BIOS; if it's thermal, it's cooling.
-3. **What else Windows is spending CPU on.** Measured at 20:22: Carbonite backup 1.6 CPUs, a `node.exe` 1.7 (its command line is hidden, so it's probably Spectre's elevated backend), Slack 1.0, Defender 0.2, Brave about 0.9. Pausing Carbonite during shows is the quick win.
+3. **What else Windows is spending CPU on.** Measured at 20:22: Carbonite backup 1.6 CPUs, a `node.exe` 1.7 (its command line is hidden, so it's probably Spectre's elevated backend), Slack 1.0, Defender 0.2, Brave about 0.9. **Done:** Spectre's `screen-machine-carbonite` card stops CarboniteService while a TV is live, and starts it 60 s after (owner, 20 Oct).
 4. **The kiosk at 2x4K60.** Play two recorded 4K60 files on the kiosk in a quiet window, and read the dropped frames.
