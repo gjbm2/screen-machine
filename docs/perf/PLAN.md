@@ -10,6 +10,25 @@
 - **The renderer's own freezes:** its repeat rule and scene-rate divider act on "GPU" numbers that are really host time.
 - **The box:** Windows uses a lot of the CPU, and the CPU runs at about 74% of its rated clock.
 
+## Measured on the TVs, 20 Oct 22:50 (both live, live-score-paper, 30 fps)
+
+This is the same 90 s capture as the baseline. The like-for-like comparison is the 18 Oct live-score window (W3, old code).
+
+| | North, W3 | North, now (still ffmpeg, in-process) | South, W3 | South, now (GPU encode, own process) |
+|---|---|---|---|---|
+| New frames/s (of 30) | 7.3-7.6 | **29.7** | 13.4-13.8 | **29.8** |
+| Repeated slots | 72-73% | **0%** | 51-53% | **0%** |
+| Freezes of 10+ slots | 51-54, longest 173 | **0** | 37-43, longest 129 | **0** |
+| Render host ms p50 / p95 | 24-26 / 115-124 | **5.9 / 22** | 19.4 / 88-96 | **5.0 / 13** |
+| Lateness (slip) ms p95 | 222-224 | **2.5** | 182-192 | **0.6** |
+| TV stalls in 90 s | 120 (W1) | **8** | 120 (W1) | **0** |
+| TV dropped frames in 90 s | 108 (W1) | **8** | 113 (W1) | **0** |
+| Resyncs | 4-6 per 90 s (W1) | **0** | 4-6 (W1) | **0** |
+
+- **CPU:** stream_service plus encoders went from 3.1 cores (W1, at 19-24 fps) to 1.6 cores (at 30 fps): control 0.72, south worker 0.45, north ffmpeg 0.41.
+- **Degrade controllers:** both at level 0 (full rate). North's host load is 0.82 of budget on the old path; south's is 0.57.
+- **Data:** `evidence/after1/`.
+
 ## Status, 19 Oct 00:45: all five changes are built and live (ff)
 
 | Change | Commit | Measured (ff's bounded proofs) |
