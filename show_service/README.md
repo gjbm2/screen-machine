@@ -2131,8 +2131,8 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
 | `PUT /api/v1/vibe` (the show adapter; modes) | `VibeTarget` (also `{"name"}`); `{"vibe": null}` = no feel | `VibeReadback`, the target as asked: an unknown vibe plays neutral (`known: false`), a bad override is dropped; `problems` says what | 400 `bad_target` `{choices}` only for a body that isn't a target |
 | `DELETE /api/v1/vibe` | none | `VibeReadback` with `vibe: null` (no feel: the director neutral) | none |
 | `POST /api/v1/describe` | `{"text": str}` (up to 300 chars; longer is cut) | `DescribeResult`, also sent as EV_DESCRIBE; within `describe_timeout_s` + 1 s. Empty text: 200 with a hint in `reply` | 400 `bad_request` only when the body isn't JSON or `text` isn't a string |
-| `GET /api/v1/listening` | none | `ListenerView` | none |
-| `PUT /api/v1/listening` | `{"on": bool}` | `ListenerView` | 400 `bad_request` |
+| `GET /api/v1/listening` | none | `ListenerView` (with `mode`) and `boot_id` | none |
+| `PUT /api/v1/listening` | `{"on"?: bool, "mode"?: bool}`, at least one (a bare bool = `{"on"}`): `on` the Room page's switch, `mode` room_service's per-mode `show.ai` (owner, 20 Oct) | `ListenerView` and `boot_id` | 400 `bad_request` |
 | `POST /api/v1/hue/release` | none | `{"released": true, "via": "room", "detail": "room_service streams Hue until P5"}` | none |
 | `GET /api/v1/autopilot` | none | `AutopilotState` | none |
 | `PUT /api/v1/autopilot` | `{"on": bool}` | `AutopilotState` once the room accepts (the room target `autopilot.main` is the truth) | 502 `room_unreachable`; the room's own 4xx passed through as `{error, detail}`. Its `brain.call` waits `AUTO_CALL_TIMEOUT_S` (12 s), as Undo's does |
@@ -2548,6 +2548,7 @@ Readers use a seqlock: they read the write count before and after the copy, and 
 def attach(ctx: contract.BrainContext) -> Listener
 class Listener:                                        # Component "listener", tick_hz 1
     def set_on(self, on: bool) -> contract.ListenerView    # the AI listening switch (persisted; default False)
+    def set_mode(self, mode: bool) -> contract.ListenerView  # the mode's permission, show.ai (persisted; default False)
     def view(self) -> contract.ListenerView
     def beliefs(self) -> contract.Beliefs | None       # any thread (snapshot)
     async def describe(self, text: str, context: dict) -> tuple[contract.DescribeIntent, str]   # (intent, "llm" | "keywords")
@@ -2559,6 +2560,12 @@ class Listener:                                        # Component "listener", t
 16 Oct: privacy was decided by a stream's name, so `phone-test` or any `test-*` stream would have uploaded clips with
 AI listening off):
 - the AI listening switch is on (the switch stops every upload; nothing is uploaded until the owner turns it on);
+- the mode allows it (owner, 20 Oct: "the default should be that it doesn't send except on a live mode ... it's
+  intrusive and expensive to have it running by default if e.g. people are just in the room talking normally").
+  room_service's per-mode device `show.ai` PUTs `{"mode": bool}` to `/api/v1/listening`, exactly as `show.mic` claims
+  the mic; persisted; never set counts as off, so only the modes whose row turns it on (the live ones) listen. The Room
+  page's switch stays the master. Turning it off cancels a call in flight; the upload re-checks it. show.yaml
+  `listener.requires_mode` (true);
 - Auto is on and the room's mic is on (owner, 17 Oct; unknown counts as off);
 - ~~`ctx.target().listening` (the mode's own wish)~~: no longer a gate since 17 Oct (S5.20; the field stays in the API);
 - `ctx.vibe().listener`;
@@ -2576,6 +2583,7 @@ clip waits `min_clip_s` (10 s).
 
 `why` holds the first failing reason, in page words:
 - "AI listening is off"
+- "AI listening is off in <the mode's label>" ("in this mode" when the room doesn't say; owner, 20 Oct)
 - "Auto is off", "the mic is off" (owner, 17 Oct)
 - "this feel doesn't listen"
 - "waiting for the music/speech check (P1)"

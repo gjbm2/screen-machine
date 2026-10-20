@@ -999,9 +999,12 @@ class Beliefs(TypedDict):
 class ListenerView(TypedDict):
     """GET /api/v1/listening and state's "listener"."""
     on: bool                       # the AI listening switch (persisted; default False until the owner turns it on)
+    mode: bool                     # owner, 20 Oct: the mode's permission as room_service's show.ai last PUT it
+                                   # (persisted; False until set). The API's answers add "boot_id"
     effective: bool                # clips are going now
-    why: Optional[str]             # page words when not: "AI listening is off", "Auto is off", "the mic is off",
-                                   # "this feel doesn't listen", "people are talking", "too quiet", ...
+    why: Optional[str]             # page words when not: "AI listening is off", "AI listening is off in Normal",
+                                   # "Auto is off", "the mic is off", "this feel doesn't listen", "people are
+                                   # talking", "too quiet", ...
     stream: Optional[str]
     next_in_s: Optional[float]
     cadence_s: float               # seconds between call starts now (fast_cadence_s while something develops)

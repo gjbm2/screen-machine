@@ -173,6 +173,7 @@ class FakeListener:
 
     def __init__(self) -> None:
         self.on = False
+        self.mode = False                               # owner, 20 Oct: the mode's permission (show.ai)
         self.delay_s = 0.0
         self.intent = {"steps": -1, "palette": None, "moods": ["mellow"], "keep": False, "switch_mode": "party",
                        "reply": "Calmer, and mellow."}
@@ -183,10 +184,15 @@ class FakeListener:
         self.extra: dict = {}                           # README S5.20: spend, provider, estimate
 
     def view(self) -> dict:
-        return {**apimod.neutral_listener(None if self.on else "AI listening is off"), "on": self.on, **self.extra}
+        return {**apimod.neutral_listener(None if self.on else "AI listening is off"), "on": self.on,
+                "mode": self.mode, **self.extra}
 
     def set_on(self, on: bool) -> dict:
         self.on = on
+        return self.view()
+
+    def set_mode(self, mode: bool) -> dict:
+        self.mode = mode
         return self.view()
 
     def beliefs(self) -> dict:
@@ -735,6 +741,54 @@ def test_listening_routes(brain):
             assert r.status == 400 and (await body(r))["error"] == "bad_request"
 
     run(go())
+
+
+def test_listening_takes_the_modes_permission_and_carries_boot_id(brain):
+    """Owner, 20 Oct: room_service's per-mode show.ai PUTs {"mode": bool}; the Room page's {"on": bool} (or a bare
+    bool) stays the master switch. Every answer carries "mode" and this process's boot_id (room's re-sync)."""
+    lis = brain.components["listener"]
+
+    async def go():
+        api = make_api(brain)
+        async with served(api) as cl:
+            b = await body(await cl.get("/api/v1/listening"))
+            assert b["mode"] is False and b["on"] is False and b["boot_id"] == api.boot_id    # never set: off
+            r = await cl.put("/api/v1/listening", json={"mode": True})
+            b = await body(r)
+            assert r.status == 200 and b["mode"] is True and b["on"] is False and b["boot_id"] == api.boot_id
+            assert lis.mode is True and lis.on is False
+            r = await cl.put("/api/v1/listening", json={"on": True})
+            b = await body(r)
+            assert r.status == 200 and b["on"] is True and b["mode"] is True and lis.mode is True
+            r = await cl.put("/api/v1/listening", data="false", headers={"Content-Type": "application/json"})
+            b = await body(r)
+            assert r.status == 200 and b["on"] is False and lis.on is False and lis.mode is True   # bare bool = on
+            r = await cl.put("/api/v1/listening", json={"on": True, "mode": False})
+            b = await body(r)
+            assert r.status == 200 and (b["on"], b["mode"]) == (True, False) and (lis.on, lis.mode) == (True, False)
+            for bad in ({}, {"mode": "x"}, {"on": True, "mode": 1}, {"mode": None}, "yes", None, [True]):
+                r = await cl.put("/api/v1/listening", json=bad)
+                assert r.status == 400 and (await body(r))["error"] == "bad_request", bad
+            r = await cl.put("/api/v1/listening")                            # no body at all
+            assert r.status == 400
+            assert (lis.on, lis.mode) == (True, False)                        # nothing changed by a bad body
+    run(go())
+
+
+def test_listening_without_a_listener_is_neutral_with_mode_off():
+    b = FakeBrain([])
+
+    async def go():
+        api = make_api(b)
+        async with served(api) as cl:
+            for r in (await cl.get("/api/v1/listening"), await cl.put("/api/v1/listening", json={"mode": True})):
+                got = await body(r)
+                assert r.status == 200 and got["mode"] is False and got["on"] is False
+                assert got["why"] == apimod.MISSING["listener"] and got["boot_id"] == api.boot_id
+    try:
+        run(go())
+    finally:
+        b.close()
 
 
 def test_hue_release(brain):

@@ -469,7 +469,8 @@ def test_python_m_show_service_with_the_brain(tmp_path):
                 p.wait()
     saved = json.loads((state_dir / "state.json").read_text())
     assert saved["v"] == 1 and saved["director"]["target"] is None and saved["listener"] == {"on": False,
-                                                                                             "set_at": None}
+                                                                                             "set_at": None,
+                                                                                             "mode": False}
     assert "stopped" in log_path.read_text() and "Traceback" not in log_path.read_text(), log_path.read_text()
 
 

@@ -51,6 +51,10 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
     director, so the adapter retries. ``PUT /api/v1/vibe`` keeps any target as asked (an unknown vibe plays neutral, a
     bad override is dropped; the read-back's ``known`` and ``problems`` say so) and 400s only a body that isn't a
     target; ``{"vibe": null}`` and DELETE are no feel. Every read-back carries ``boot_id`` (this process).
+  - ``GET``/``PUT /api/v1/listening`` (owner, 20 Oct): the PUT takes ``{"on"?: bool, "mode"?: bool}`` (at least
+    one; a bare bool is ``{"on": ...}``): ``on`` is the Room page's AI listening switch, ``mode`` the mode's
+    permission (room_service's per-mode device ``show.ai``). Both answer the ListenerView (with ``mode``) and
+    ``boot_id``, so room re-sends ``mode`` after a show_service restart.
   - Auto on/off and Undo each wait on one room PUT (up to contract.ROOM_PUT_TIMEOUT_S): their ``brain.call`` gets
     contract.AUTO_CALL_TIMEOUT_S, so a slow room never cuts the PUT off mid-way.
   - Auto's rules in page words (README S5.19; the Room page's Auto editor): ``GET /api/v1/autopilot/rules`` (every
@@ -529,10 +533,10 @@ def neutral_catalog(why: str) -> dict:
 
 
 def neutral_listener(why: str) -> dict:
-    return {"on": False, "effective": False, "why": why, "stream": None, "next_in_s": None, "cadence_s": 0.0,
-            "fast": None, "in_flight": 0, "calls_today": 0, "spend_today_usd": 0.0, "budget_usd": None, "model": None,
-            "last": None, "errors": 0, "provider": None, "est_evening_usd": None, "estimate": None,
-            "character": None, "approach": None, "armed": []}
+    return {"on": False, "mode": False, "effective": False, "why": why, "stream": None, "next_in_s": None,
+            "cadence_s": 0.0, "fast": None, "in_flight": 0, "calls_today": 0, "spend_today_usd": 0.0,
+            "budget_usd": None, "model": None, "last": None, "errors": 0, "provider": None, "est_evening_usd": None,
+            "estimate": None, "character": None, "approach": None, "armed": []}
 
 
 def neutral_autopilot(line: str) -> dict:
@@ -1507,25 +1511,38 @@ class Api:
         return result
 
     # -- listening -------------------------------------------------------------------------------------------------------------
+    def _listening(self, view: Any) -> dict:
+        """The listener's view with this process's ``boot_id``: room's show.ai adapter re-sends ``mode`` when it
+        changes (a show_service restart), as it does for the vibe."""
+        return {**(view if isinstance(view, dict) else neutral_listener(MISSING[LISTENER])), "boot_id": self.boot_id}
+
     async def _listening_get(self, request: web.Request, brain: Any) -> web.Response:
         listener = _components(brain).get(LISTENER)
         if listener is None:
-            return _json(neutral_listener(MISSING[LISTENER]))
-        return _json(await self._call(brain, listener.view))
+            return _json(self._listening(neutral_listener(MISSING[LISTENER])))
+        return _json(self._listening(await self._call(brain, listener.view)))
 
     async def _listening_put(self, request: web.Request, brain: Any) -> web.Response:
+        """``{"on"?: bool, "mode"?: bool}``, at least one: ``on`` the Room page's AI listening switch (the master),
+        ``mode`` the mode's permission (owner, 20 Oct; room_service's per-mode device ``show.ai``). A bare true/false
+        is ``{"on": ...}`` (the Room page's older body). Other keys are ignored."""
         body, bad = await self._body(request)
         if bad:
             return bad
-        on = body.get("on") if isinstance(body, dict) else body
-        if not isinstance(on, bool):
-            return _err(400, "bad_request", 'Say {"on": true} or {"on": false}.')
+        o = body if isinstance(body, dict) else {"on": body}
+        on, mode = o.get("on"), o.get("mode")
+        if (on is None and mode is None) or any(v is not None and not isinstance(v, bool) for v in (on, mode)):
+            return _err(400, "bad_request", 'Say {"on": true|false} and/or {"mode": true|false}.')
         listener = _components(brain).get(LISTENER)
         if listener is None:
-            return _json(neutral_listener(MISSING[LISTENER]))
-        out = await self._call(brain, listener.set_on, on)
+            return _json(self._listening(neutral_listener(MISSING[LISTENER])))
+        out = None
+        if on is not None:
+            out = await self._call(brain, listener.set_on, on)
+        if mode is not None:
+            out = await self._call(brain, listener.set_mode, mode)
         self._changed()
-        return _json(out)
+        return _json(self._listening(out))
 
     # -- the rig (Stage 5) -------------------------------------------------------------------------------------------------------
     async def _rig(self, request: web.Request, brain: Any) -> web.Response:
