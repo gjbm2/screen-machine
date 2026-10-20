@@ -246,6 +246,195 @@ def record_stop(a) -> None:
           f"Next: fetch \"<the track's URL or name>\"")
 
 
+# ---------------------------------------------------------------------------------------------------- sonos run
+
+ROOM_API = "http://127.0.0.1:8700/api/v1/room"
+SONOS_JSON = REPO / "config" / "room" / "sonos.json"
+VOLUME_CAP = 50             # the owner, 20 Oct: party is about 70, "you don't need that much to test it"
+
+
+def _env(key: str) -> str | None:
+    try:
+        for line in (REPO / ".env").read_text().splitlines():
+            if line.startswith(key + "="):
+                return line.split("=", 1)[1].strip().strip('"\'') or None
+    except OSError:
+        pass
+    return None
+
+
+def _put_targets(values: dict) -> dict:
+    req = urllib.request.Request(ROOM_API + "/targets", method="PUT",
+                                 data=json.dumps({"values": values, "source": "audio-cal (screen-machine-26)"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.load(r)
+
+
+def _levels_stream(timeout_s: float = 4.0) -> str | None:
+    """The stream show_service's levels feed carries now (its active stream), or None."""
+    import aiohttp
+
+    async def one() -> str | None:
+        url = SHOW_API.replace("http://", "ws://").replace("/api/v1", "") + "/v1/levels"
+        async with aiohttp.ClientSession() as http:
+            async with http.ws_connect(url) as ws:
+                m = await ws.receive(timeout=timeout_s)
+                return json.loads(m.data).get("s") if m.type == aiohttp.WSMsgType.TEXT else None
+    try:
+        return asyncio.run(one())
+    except Exception:
+        return None
+
+
+def sonos_run(a) -> None:
+    """Play a calibration programme (tools/room/audio_cal/programme.py's: programme.flac + manifest.json) through
+    the Sonos while recording the room's mic through show_service and logging the live beat clock.
+
+    Device output goes through room_service (AV_PROGRAMME section 11): PUT /api/v1/room/targets with the zone's
+    playback (a URI on this PC's Flask, which serves output/) and volume; volume cues are issued at their programme
+    times (room_service ramps a change over 4 s while playing: the manifest puts each cue at the start of a silent
+    gap). The programme clock comes from the Sonos' own position (read-only SoCo polls: the first second's tick
+    dates the start to about 0.1 s). Afterwards the volume goes back to what it was and playback is paused; on any
+    error or Ctrl-C too. ``--dry-run`` checks everything and plays nothing."""
+    import soco
+
+    pdir = pathlib.Path(a.programme).expanduser()
+    man = read_json(pdir / "manifest.json")
+    if not man:
+        sys.exit(f"no manifest.json in {pdir}")
+    flac = pdir / man.get("file", "programme.flac")
+    zones = read_json(SONOS_JSON).get("zones", {})
+    zone = a.zone or next(iter(zones), None)
+    if zone not in zones:
+        sys.exit(f"no Sonos zone {zone!r} in {SONOS_JSON}")
+    tvol, tplay = f"sonos.{zone}.volume", f"sonos.{zone}.playback"
+    host = _env("SM_LAN_HOST")
+    problems = []
+    cues = sorted(man.get("volume_cues", []), key=lambda c: c["t"])
+    if any(not 0 <= int(c["volume"]) <= a.max_volume for c in cues) or not cues:
+        problems.append(f"volume cues missing or above {a.max_volume}: {[c['volume'] for c in cues]}")
+    if not flac.exists():
+        problems.append(f"no {flac}")
+    if not host:
+        problems.append("no SM_LAN_HOST in .env (the address the Sonos fetches the programme from)")
+    # the programme on Flask (output/ is served at /output/...)
+    pub = REPO / "output" / "audio-cal" / f"{man['name']}.flac"
+    url = f"http://{host}:8080/output/audio-cal/{man['name']}.flac"
+    if flac.exists():
+        pub.parent.mkdir(parents=True, exist_ok=True)
+        if not pub.exists() or pub.stat().st_size != flac.stat().st_size:
+            shutil.copy2(flac, pub)
+        try:
+            req = urllib.request.Request(url, headers={"Range": "bytes=0-1023"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                cr = r.headers.get("Content-Range", "")
+                if r.status != 206 or not cr.endswith("/%d" % flac.stat().st_size):
+                    problems.append(f"{url}: status {r.status}, Content-Range {cr!r}")
+        except Exception as e:
+            problems.append(f"{url}: {e}")
+    # show_service, the stream, the clock
+    try:
+        st = show_state()
+        sm = st["streams"].get(a.stream) or {}
+        if sm.get("state") not in ("streaming", "quiet"):
+            problems.append(f"{a.stream}: state {sm.get('state')!r}")
+        live = _levels_stream()
+        if live != a.stream:
+            problems.append(f"show_service's active stream is {live!r}, not {a.stream!r}")
+        device = (sm.get("sender") or {}).get("dev")
+    except Exception as e:
+        problems.append(f"show_service: {e}")
+        device = None
+    # room_service and the Sonos
+    try:
+        with urllib.request.urlopen(ROOM_API + "/describe", timeout=8) as r:
+            targets = json.load(r).get("targets", {})
+        for t in (tvol, tplay):
+            if t not in targets:
+                problems.append(f"room_service has no target {t}")
+    except Exception as e:
+        problems.append(f"room_service: {e}")
+    try:
+        dev = soco.SoCo(zones[zone]["ip"])
+        co = dev.group.coordinator
+        vol_before = dev.volume
+        state_before = co.get_current_transport_info()["current_transport_state"]
+        title_before = co.get_current_track_info().get("title") or ""
+    except Exception as e:
+        problems.append(f"Sonos {zones.get(zone, {}).get('ip')}: {e}")
+        vol_before = state_before = title_before = None
+    cur = CURRENT.read_text().strip() if CURRENT.exists() else ""
+    if cur and read_json(RUNS / cur / "run.json").get("state") == "recording":
+        problems.append(f"{cur} is still recording")
+    print(f"programme {man['name']}: {man.get('duration_s', 0) / 60:.1f} min, {len(man.get('segments', []))} segments, "
+          f"volumes {[c['volume'] for c in cues]} (cap {a.max_volume}); {url}")
+    print(f"Sonos {zone}: {state_before}, volume {vol_before}, {title_before!r}; mic {a.stream} ({device})")
+    if problems:
+        print("PROBLEMS:\n  " + "\n  ".join(problems))
+        sys.exit(1)
+    if a.dry_run:
+        print("dry run: all checks passed; nothing played")
+        return
+
+    # record, play, cue, restore
+    subprocess.run([sys.executable, str(HERE / "calibrate.py"), "record", "start", "--stream", a.stream,
+                    "--max-s", str(man["duration_s"] + 120), "--note",
+                    f"Sonos programme {man['name']} at {[c['volume'] for c in cues]} ({zone}); {a.note}"], check=True)
+    d = RUNS / CURRENT.read_text().strip()
+    log = {"programme": man["name"], "programme_dir": str(pdir), "url": url, "zone": zone,
+           "before": {"volume": vol_before, "state": state_before, "title": title_before}, "cues": []}
+    try:
+        time.sleep(2.0)                                     # a little room tone before the play command
+        log["play_cmd_mono"] = time.monotonic()
+        _put_targets({tplay: {"uri": url, "volume": int(cues[0]["volume"])}})
+        t_start, ticks, last_pos = None, [], None
+        deadline = time.monotonic() + 30
+        while t_start is None and time.monotonic() < deadline:   # date the start from the first position ticks
+            info = co.get_current_track_info()
+            w = time.monotonic()
+            if url in (info.get("uri") or ""):
+                h, m, s = (int(x) for x in (info.get("position") or "0:00:00").split(":"))
+                pos = h * 3600 + m * 60 + s
+                if last_pos is not None and pos != last_pos and pos > 0:
+                    ticks.append(w - pos - 0.05)
+                    if len(ticks) >= 2:
+                        t_start = sum(ticks) / len(ticks)
+                last_pos = pos
+            time.sleep(0.1)
+        if t_start is None:
+            raise RuntimeError("the Sonos did not start the programme within 30 s")
+        log["t_start_mono"], log["start_ticks"] = t_start, ticks
+        print(f"playing since {t_start - log['play_cmd_mono']:.1f} s after the command")
+        for c in cues[1:]:
+            wait = t_start + float(c["t"]) - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            _put_targets({tvol: int(c["volume"])})
+            log["cues"].append({"t": c["t"], "volume": c["volume"], "issued_prog_s": round(time.monotonic() - t_start, 2)})
+            print(f"  {time.monotonic() - t_start:6.1f} s: volume {c['volume']}")
+        end = t_start + float(man["duration_s"]) + 2.0
+        while time.monotonic() < end:
+            time.sleep(min(1.0, max(0.0, end - time.monotonic())))
+    except BaseException as e:
+        log["error"] = f"{type(e).__name__}: {e}"
+        print(f"stopped early: {log['error']}")
+    finally:
+        try:
+            _put_targets({tplay: "paused", tvol: int(vol_before)})
+            log["restored"] = {"volume": vol_before, "playback": "paused"}
+        except Exception as e:
+            log["restore_error"] = str(e)
+            print(f"RESTORE FAILED ({e}): the Sonos may still be playing the programme")
+        time.sleep(1.0)
+        subprocess.run([sys.executable, str(HERE / "calibrate.py"), "record", "stop"], check=False)
+        run = read_json(d / "run.json")
+        run["sonos"] = log
+        run["programme"] = {"name": man["name"], "dir": str(pdir)}
+        write_json(d / "run.json", run)
+    print(f"run {d.name}: programme {man['name']} done. Next: programme_analyse.py {d} --programme {pdir}")
+
+
 # ---------------------------------------------------------------------------------------------------- show tap
 
 TAP_N = 2048                # samples a levels frame carries (levels.WAVE_MAX)
@@ -492,6 +681,13 @@ def main() -> None:
     an = sub.add_parser("analyse")
     an.add_argument("--run")
     an.add_argument("--no-config", action="store_true")
+    sr = sub.add_parser("sonos-run", help="play a calibration programme through the Sonos and record the mic")
+    sr.add_argument("--programme", required=True, help="a programme dir (programme.py: manifest.json + programme.flac)")
+    sr.add_argument("--stream", default="room-mic")
+    sr.add_argument("--zone", help="config/room/sonos.json zone (default: the first)")
+    sr.add_argument("--max-volume", type=int, default=VOLUME_CAP)
+    sr.add_argument("--note", default="")
+    sr.add_argument("--dry-run", action="store_true", help="check everything, play nothing")
     sub.add_parser("_buslog").add_argument("dir")
     t = sub.add_parser("_showtap")
     t.add_argument("dir")
@@ -504,6 +700,8 @@ def main() -> None:
         fetch(a)
     elif a.cmd == "analyse":
         analyse(a)
+    elif a.cmd == "sonos-run":
+        sonos_run(a)
     elif a.cmd == "_buslog":
         asyncio.run(_buslog(pathlib.Path(a.dir)))
     elif a.cmd == "_showtap":
