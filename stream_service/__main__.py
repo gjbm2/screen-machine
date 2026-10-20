@@ -53,6 +53,8 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=args.log_level.upper(), stream=sys.stderr,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)  # access lines would log ?token= / ?k=
+    from .gpu import no_thp_stalls
+    no_thp_stalls()                                                # 4K anchors decode without compaction stalls
 
     from aiohttp import web
 

@@ -425,3 +425,208 @@ async def test_inproc_screens_never_touch_the_pool(monkeypatch):
         assert mgr.workers.conns == [] and mgr.workers.spawned == 0
         r = await c.get(f"/api/sessions/{s.id}")
         assert (await r.json())["worker"] is None
+
+
+# -- a session ended while its start was in flight; the re-claim after it (20 Oct) ----------------------------------
+def test_a_stop_while_the_start_is_in_flight_leaves_nothing_watched():
+    px, conn = _proxy()
+    in_start, go_on = threading.Event(), threading.Event()
+
+    def call(op, data, timeout=None):
+        conn.calls.append((op, data))
+        if op == "start":
+            in_start.set()
+            go_on.wait(5)
+        return {}
+    conn.call = call
+    th = threading.Thread(target=px.start, args=(TSource(),))
+    th.start()
+    assert in_start.wait(5)
+    px.stop()                                       # the room's DELETE, mid-start (stop is queued behind it there)
+    go_on.set()
+    th.join(5)
+    assert [op for op, _ in conn.calls] == ["start", "stop"]
+    assert px not in px.pool.watched                # was: added after the stop's discard, ticked for ever
+    px2, conn2 = _proxy()
+    px2.start(TSource())
+    assert px2 in px2.pool.watched
+    px2.stop()
+    assert px2 not in px2.pool.watched
+
+
+class FakeEnc:
+    def __init__(self, key):
+        self.key, self.closed, self.adopted = key, False, None
+
+    def close(self):
+        self.closed = True
+
+    def adopt(self, name, on_config, on_frame):
+        self.adopted = (name, on_frame)
+        on_config("cfg")
+
+
+def _enc_worker(monkeypatch):
+    from concurrent.futures import Future
+    w, socks = _worker()
+    made = []
+
+    def enc_new(self, profile, key):
+        f = Future()
+        f.set_result(FakeEnc(key))
+        ent = {"key": key, "stream": f"stream-{len(made)}", "fut": f}
+        made.append(ent)
+        return ent
+    monkeypatch.setattr(type(w), "_enc_new", enc_new)
+    return w, socks, made
+
+
+def test_the_encoder_made_ahead_is_taken_at_bind_kept_for_the_next_and_closed_when_unwanted(monkeypatch):
+    from stream_service.profiles import PROFILES
+    p30, p60 = PROFILES["hevc-2160p30"], PROFILES["hevc-2160p60"]
+    w, socks, made = _enc_worker(monkeypatch)
+    w._enc_ahead(p30)                               # a warm hint / the last session's stop
+    w._enc_ahead(p30)                               # held already: nothing new
+    assert len(made) == 1 and w._enc is made[0]
+    ent = w._enc_take(p30)                          # bind: that one, now the bound session's
+    assert ent is made[0] and w._enc is None and w._enc_bound is ent
+    w._enc_ahead(p30)                               # the hello's "enc" after the bind: it has one
+    assert len(made) == 1
+    w._enc_ahead(p60)                               # another screen's profile: made, held
+    assert len(made) == 2 and w._enc is made[1]
+    ent2 = w._enc_take(p30)                         # a p30 bind: the p60 one is closed, a p30 one made now
+    assert ent2 is made[2] and made[1]["fut"].result().closed and not made[0]["fut"].result().closed
+    for s in socks:
+        s.close()
+
+
+def test_a_session_ended_before_its_start_gives_its_encoder_to_the_next(monkeypatch):
+    from stream_service.profiles import PROFILES
+    p30 = PROFILES["hevc-2160p30"]
+    w, socks, made = _enc_worker(monkeypatch)
+
+    class Eng(FakeWorkerEngine):
+        profile, encoder, encoder_fallback, ctx = p30, "ffmpeg", None, None
+
+        def __init__(self, ready):
+            super().__init__()
+            self.gpu_encoder_ready = ready
+
+        def stop(self, timeout=5.0):
+            pass
+    ent = w._enc_take(p30)
+    w.engine = Eng(lambda: ent["fut"].result())     # bound, never started (deleted mid-prepare)
+    w._stop({"sid": "s-test"})
+    assert w._enc is ent and w._enc_bound is None and not ent["fut"].result().closed
+    w.engine, w.sid = Eng(None), "s-2"              # started on nvenc: the next one is made ahead at its stop
+    w.engine.encoder = "nvenc"
+    w._enc_take(p30)
+    w._stop({"sid": "s-2"})
+    assert len(made) == 2 and w._enc is made[1]
+    for s in socks:
+        s.close()
+
+
+def test_the_engine_takes_the_encoder_made_ahead_else_makes_its_own(monkeypatch):
+    import sys
+    from stream_service.profiles import PROFILES
+    from stream_service.renderer import Engine
+    lis = types.SimpleNamespace(on_encoder_config=lambda *a: None)
+    e = Engine(profile=PROFILES["hevc-2160p30"], gpu=1, post=lambda fn, *a: fn(*a), listener=lis, name="s-t")
+    cfgs = []
+    monkeypatch.setattr(e, "_on_config", cfgs.append)
+    enc = FakeEnc("k")
+    e.gpu_encoder_ready = lambda: enc
+    assert e._make_gpu_encoder() is enc and enc.adopted == ("t", e._on_frame) and cfgs == ["cfg"]
+    assert e.gpu_encoder_ready is None               # taken once
+
+    def late():
+        raise TimeoutError("not made in time")
+    e.gpu_encoder_ready = late
+    monkeypatch.setitem(sys.modules, "PyNvVideoCodec", None)     # ... and making one fails too: ffmpeg, as before
+    e.ctx = types.SimpleNamespace(cp=None, stream=None)
+    assert e._make_gpu_encoder() is None and e.encoder_fallback.startswith("NVENC unavailable")
+
+
+def test_the_warm_waits_for_the_first_packet():
+    w, socks = _worker()
+    w._warm_spec = {"transitions": []}
+    subs = []
+    w.prep.submit = lambda fn, *a: subs.append(fn.__name__)
+    w.engine.started_at = None
+    w._warm_now()                                    # bound, starting: later
+    w.engine.started_at = 1.0
+    w._warm_on_media = True
+    w._warm_now()                                    # started, its first packet not out: later
+    assert subs == []
+    w._post("s-test", on_media, 0, True, b"\x02\x01\x00\x00\x00\x00")
+    assert subs == ["_warm"] and w._warmed
+    w._post("s-test", on_media, 1, False, b"\x02\x00\x00\x00\x00\x01")
+    assert subs == ["_warm"]
+    for s in socks:
+        s.close()
+
+
+def on_media(*a):                                   # the engine's callback, by name (Worker._post)
+    pass
+
+
+def test_no_thp_stalls_turns_numpys_huge_page_advice_off():
+    import numpy._core.multiarray as m
+    from stream_service.gpu import no_thp_stalls
+    was = m._get_madvise_hugepage()
+    try:
+        m._set_madvise_hugepage(True)
+        no_thp_stalls()
+        assert m._get_madvise_hugepage() is False
+    finally:
+        m._set_madvise_hugepage(was)
+
+
+def test_a_warm_hint_finds_the_screens_gpu_and_profile_in_its_config(monkeypatch, tmp_path):
+    import dataclasses
+    import json
+    from stream_service import workers as W
+    from stream_service.profiles import PROFILES
+    dest = tmp_path / "publish-destinations.json"
+    dest.write_text(json.dumps([{"id": "south-screen", "live": {"enabled": True, "gpu": 1, "profile": "hevc-2160p30"}},
+                                {"id": "art-only"}]))
+    monkeypatch.setattr(W, "DESTINATIONS", dest)
+    assert W.screen_live("south-screen")["gpu"] == 1 and W.screen_live("art-only") == {} and W.screen_live("x") == {}
+    sw = types.SimpleNamespace(workers=lambda s: "proc", encoder=lambda s: "nvenc", fps=lambda s: 60)
+    pool = W.WorkerPool(types.SimpleNamespace(switches=sw))
+    spawned = []
+
+    def spawn(gpu):
+        c = W.WorkerConn(pool, gpu)
+        spawned.append(c)
+        return c
+    monkeypatch.setattr(pool, "_spawn", spawn)
+    r = pool.hint("south-screen")                    # after a restart: no last GPU, room sends only the screen
+    assert r["spawned"] and r["gpu"] == 1 and spawned[0].gpu == 1
+    assert spawned[0].expect.name == "hevc-2160p60" and spawned[0].expect.w == 3840     # at the switches' fps
+    assert pool.hint("nowhere")["why"].startswith("no GPU known")
+    pool.last_profile["south-screen"] = dataclasses.replace(PROFILES["hevc-2160p30"], w=2160, h=3840)
+    sw.fps = lambda s: 30
+    assert pool._expect("south-screen").w == 2160                     # its last session's (a portrait glass)
+    sw.encoder = lambda s: "ffmpeg"
+    assert pool._expect("south-screen") is None                       # nothing to make ahead on the pipe
+
+
+def test_the_hello_asks_for_the_claiming_sessions_encoder():
+    from stream_service import workers as W
+    from stream_service.profiles import PROFILES
+    sent = []
+    pool = W.WorkerPool(types.SimpleNamespace(post=lambda fn, *a: fn(*a)))
+    pool._warm_spec = lambda: {}
+    c = W.WorkerConn(pool, 1)
+    c.send = sent.append
+    c.cmd = types.SimpleNamespace(send_lossy=sent.append)
+    c.proxy = types.SimpleNamespace(profile=PROFILES["hevc-2160p30"], encoder="nvenc")
+    pool._hello(c)
+    assert sent[0] == ("enc", 0, PROFILES["hevc-2160p30"]) and sent[-1][0] == "warm"
+    sent.clear()
+    c2 = W.WorkerConn(pool, 1)
+    c2.send = sent.append
+    pool._hello(c2)                                  # a hint's spawn with nothing expected: only the warm
+    assert [m[0] for m in sent] == ["warm"]

@@ -105,6 +105,12 @@ def pace_clock() -> float:
     return time.clock_gettime(getattr(time, "CLOCK_MONOTONIC_RAW", time.CLOCK_MONOTONIC))
 
 
+def gpu_encoder_args(p: Profile) -> dict:
+    """encode.nvenc.GpuEncoder's settings for a profile (also a render worker's key for an encoder made ahead)."""
+    return {"codec": p.codec, "width": p.w, "height": p.h, "fps": p.fps, "bitrate": p.bitrate, "gop_seconds": p.gop_s,
+            "colr": p.colr(), "vbv_s": getattr(p, "vbv_s", None), "level": getattr(p, "level", None)}
+
+
 def slot_action(late: bool, have_last: bool, cost_ema_ms: float, period_ms: float, gpu_behind: Callable[[], bool],
                 run: int) -> str:
     """What a frame slot does: "render"; "repeat" (late and render-bound); "backlog" (the GPU is behind); or
@@ -288,6 +294,7 @@ class Engine:
         self.encoder_active: Optional[str] = None
         self.encoder_fallback: Optional[str] = None   # why this session runs on ffmpeg although nvenc was wanted
         self._gpu_enc: Any = None
+        self.gpu_encoder_ready: Optional[Callable[[], Any]] = None   # a render worker's encoder made ahead (worker.py)
         self._gop = max(1, round(profile.gop_s * profile.fps))
         self._idr_frames: set[int] = set()            # render thread: frame ids that go out as IDRs (hold_pts)
         self._idr_req = self._idr_seen = 0            # loop thread asks (a player joined); encode thread serves
@@ -457,15 +464,26 @@ class Engine:
 
     def _make_gpu_encoder(self) -> Any:
         """The GPU encoder on this engine's context and render stream (worker thread, device current), or None
-        and ``encoder_fallback`` set: the session then starts on the ffmpeg pipe."""
-        p = self.profile
+        and ``encoder_fallback`` set: the session then starts on the ffmpeg pipe.  ``gpu_encoder_ready`` (a render
+        worker's, worker.py): one made ahead on this context's render stream, taken instead of a new one."""
+        ready, self.gpu_encoder_ready = self.gpu_encoder_ready, None
+        if ready is not None:
+            enc = None
+            try:
+                enc = ready()
+                enc.adopt(self._tag(), self._on_config, self._on_frame)
+                return enc
+            except Exception as e:
+                log.warning("[%s] the encoder made ahead is unusable (%s: %s): making one now", self.name,
+                            type(e).__name__, e)
+                if enc is not None:
+                    enc.close()
         try:
             from .encode.nvenc import GpuEncoder
 
-            return GpuEncoder(p.codec, self.w, self.h, self.fps, cp=self.ctx.cp, stream=self.ctx.stream,
-                              bitrate=p.bitrate, gop_seconds=p.gop_s, colr=p.colr(), name=self._tag(),
-                              vbv_s=getattr(p, "vbv_s", None), level=getattr(p, "level", None),
-                              clock=pace_clock, on_config=self._on_config, on_frame=self._on_frame)
+            args = {**gpu_encoder_args(self.profile), "width": self.w, "height": self.h, "fps": self.fps}
+            return GpuEncoder(cp=self.ctx.cp, stream=self.ctx.stream, name=self._tag(), clock=pace_clock,
+                              on_config=self._on_config, on_frame=self._on_frame, **args)
         except Exception as e:
             self.encoder_fallback = f"NVENC unavailable: {type(e).__name__}: {e}"[:300]
             log.error("[%s] encoder fallback to ffmpeg at start: %s", self.name, self.encoder_fallback)

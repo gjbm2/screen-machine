@@ -101,6 +101,12 @@ class GpuEncoder:
         self.frames_in = self.frames_out = self.idrs_forced = 0
         on_config(self.config)
 
+    def adopt(self, name: str, on_config: Callable[[StreamConfig], None],
+              on_frame: Callable[[int, bool, bytes, float], None]) -> None:
+        """A session takes this encoder (made ahead by a render worker, worker.py): its callbacks, then its config."""
+        self.tag, self.on_frame = name, on_frame
+        on_config(self.config)
+
     def surface(self, arr: Any) -> Surface:
         return Surface(arr, self.w, self.h)
 

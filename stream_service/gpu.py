@@ -237,6 +237,21 @@ RENDER_PRIORITY = -5     # W1.9: the render stream first (CUDA clamps it to the 
 LOW_PRIORITY = 0         # prepare, prime and upload streams (the lowest)
 
 
+def no_thp_stalls() -> None:
+    """Large NumPy arrays without MADV_HUGEPAGE (a process's start; the service's and each render worker's).  NumPy
+    advises huge pages for every array of 4 MB or more, and with THP defrag "madvise" (this WSL host) each fault in
+    one compacts memory synchronously: on a fragmented host one 4K anchor read took 1.3-3.3 s of system time (16
+    failed compactions, 20 Oct).  Without the advice the kernel still uses a huge page when one is free."""
+    try:
+        from numpy._core.multiarray import _set_madvise_hugepage
+    except ImportError:
+        try:
+            from numpy.core.multiarray import _set_madvise_hugepage
+        except ImportError:
+            return
+    _set_madvise_hugepage(False)
+
+
 def priority_stream(cp: Any, priority: int) -> Any:
     """A non-blocking stream at ``priority``; a plain one if priorities are unavailable (degrade, never refuse)."""
     try:

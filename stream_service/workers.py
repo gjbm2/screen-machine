@@ -48,6 +48,7 @@ from .ipc import BOUND, EXIT, IDLE, LINGERING, SPAWNING, Channel, HandleTable, K
 log = logging.getLogger("stream_service.workers")
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+DESTINATIONS = REPO / "routes" / "data" / "publish-destinations.json"   # each screen's "live" block (room's too)
 LINGER_S = 30.0
 READY_S = 20.0          # spawn -> hello, else the session runs in this process
 CALL_S = 30.0           # a prepare (a cold NVRTC compile can take seconds)
@@ -62,6 +63,18 @@ MUSIC_BUS_URL: Optional[str] = None   # the control's first --music-bus (server.
 
 class WorkerError(RuntimeError):
     pass
+
+
+def screen_live(screen: str, path: Any = None) -> dict:
+    """The screen's configured "live" block ({gpu, profile, ...}; room creates its sessions from it), or {}."""
+    import json
+    try:
+        for d in json.loads(pathlib.Path(path or DESTINATIONS).read_text()):
+            if isinstance(d, dict) and d.get("id") == screen and isinstance(d.get("live"), dict):
+                return d["live"]
+    except (OSError, ValueError, TypeError):
+        pass
+    return {}
 
 
 _REMOTE: dict[str, type] = {}
@@ -120,6 +133,7 @@ class WorkerConn:
         self.exit_asked: Optional[float] = None
         self.stats: Optional[dict] = None
         self.spawn_s: Optional[float] = None
+        self.expect: Any = None                     # a warm hint's profile: its encoder is made at the hello
 
     @property
     def pid(self) -> Optional[int]:
@@ -290,6 +304,7 @@ class WorkerPool:
         self.procs: set = set()                     # every worker process until it is reaped (close() waits on them)
         self.watched: set = set()
         self.last_gpu: dict[str, int] = {}
+        self.last_profile: dict[str, Any] = {}
         self.spawned = 0
         self.fallbacks = 0
         self._room_dir: Optional[tuple] = None
@@ -304,6 +319,7 @@ class WorkerPool:
     # -- sessions (loop thread) ------------------------------------------------------------------------------
     def engine(self, *, profile: Any, gpu: int, post: Callable, listener: Any, name: str) -> "EngineProxy":
         self.last_gpu[getattr(listener, "screen", "")] = gpu
+        self.last_profile[getattr(listener, "screen", "")] = profile
         return EngineProxy(profile=profile, gpu=gpu, post=post, listener=listener, name=name, pool=self)
 
     def acquire(self, gpu: int, proxy: "EngineProxy") -> Optional[WorkerConn]:
@@ -346,7 +362,8 @@ class WorkerPool:
 
     def hint(self, screen: str, gpu: Optional[int] = None) -> dict:
         """POST /api/workers/warm: a worker for this screen's next session, spawned now (additive; room may send it at
-        the start of an entry, so the spawn overlaps the freeze and the snapshot)."""
+        the start of an entry, so the spawn overlaps the freeze and the snapshot), on the GPU asked, else the screen's
+        last, else its configured one; with that session's likely encoder made ahead."""
         sw = getattr(self.mgr, "switches", None)
         mode = sw.workers(screen) if sw is not None else "inproc"
         if mode != "proc":
@@ -354,17 +371,36 @@ class WorkerPool:
         if gpu is None:
             gpu = self.last_gpu.get(screen)
         if gpu is None:
+            g = screen_live(screen).get("gpu")
+            gpu = g if isinstance(g, int) and not isinstance(g, bool) and g >= 0 else None
+        if gpu is None:
             return {"screen": screen, "workers": mode, "spawned": False, "why": "no GPU known for this screen: pass gpu"}
+        expect = self._expect(screen)
         have = [c for c in self.conns if c.gpu == gpu and not c.dead and c.exit_asked is None
                 and c.life.state in (SPAWNING, IDLE, LINGERING) and c.proxy is None]
         if have:
             c = have[0]
             if c.life.state in (IDLE, LINGERING):
                 c.life.since = time.monotonic()          # wanted again: its linger starts over
+            c.expect = expect
+            if expect is not None and c.ready.is_set():
+                c.send(("enc", 0, expect))
             return {"screen": screen, "gpu": gpu, "workers": mode, "spawned": False, "worker": c.n, "state": c.life.state}
         c = self._spawn(gpu)
+        if c is not None:
+            c.expect = expect
         return {"screen": screen, "gpu": gpu, "workers": mode, "spawned": c is not None,
                 **({"worker": c.n} if c is not None else {"why": "spawn failed"})}
+
+    def _expect(self, screen: str) -> Any:
+        """The profile this screen's next session most likely has (its last, else its configured one, at its switches'
+        fps), or None on the ffmpeg encoder: nothing to make ahead."""
+        sw = getattr(self.mgr, "switches", None)
+        if sw is None or sw.encoder(screen) != "nvenc":
+            return None
+        from .profiles import PROFILES, at_fps
+        p = self.last_profile.get(screen) or PROFILES.get(str(screen_live(screen).get("profile")))
+        return at_fps(p, sw.fps(screen)) if p is not None else None
 
     def _hello(self, conn: WorkerConn) -> None:
         now = time.monotonic()
@@ -377,6 +413,10 @@ class WorkerPool:
             conn.cmd.send_lossy(("in", 0, ("show_up", self._show_up)))
         if self._room_dir is not None:
             conn.cmd.send_lossy(("in", 0, ("room_dir",) + self._room_dir))
+        px = conn.proxy                             # claimed while it spawned: its session's encoder, now
+        expect = (px.profile if px.encoder == "nvenc" else None) if px is not None else conn.expect
+        if expect is not None:
+            conn.send(("enc", 0, expect))
         conn.send(("warm", 0, self._warm_spec()))
 
     def _warm_spec(self) -> dict:
@@ -652,7 +692,7 @@ class EngineProxy:
                 raise WorkerError("session stopped")
             s = self.listener
             rt, sp = s.runtime, s.sampler
-            c.call("bind", {"sid": self.name, "profile": self.profile, "screen": s.screen,
+            c.call("bind", {"sid": self.name, "profile": self.profile, "screen": s.screen, "encoder": self.encoder,
                             "fixture": sp.fixture_name, "lead": sp.lead, "follow": sp.follow,
                             "sound": s.sound is not None, "hud": bool(getattr(s, "hud_wanted", False)),
                             "rt": {"speed": rt.speed, "depth": rt.depth, "speed_target": rt.speed_target,
@@ -738,8 +778,10 @@ class EngineProxy:
             h = _Hud(self)
             h._on = bool(getattr(self.listener, "hud_wanted", False))
             self.hud = h
-        self._started = True
-        self.pool.post(self.pool.watched.add, self)
+        with self._lock:                             # a stop while it started posted its discard already: not watched
+            self._started = True
+            if not self._stopped:
+                self.pool.post(self.pool.watched.add, self)
 
     def stop(self, timeout: float = 5.0) -> None:
         if self._local is not None:
@@ -748,7 +790,7 @@ class EngineProxy:
             if self._stopped:
                 return
             self._stopped = True
-        self.pool.post(self.pool.watched.discard, self)
+            self.pool.post(self.pool.watched.discard, self)
         c = self.conn
         if c is None:
             return

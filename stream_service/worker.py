@@ -14,7 +14,8 @@ control's forwarded bus messages, and the details panel (its text comes from the
 
 Threads: the Engine's render / encode / closer threads; one reader for the command socket (inputs and engine commands
 inline, in order); one lifecycle thread (bind, start, stop) and PREPARE_THREADS for prepares, so an exit's prepare
-never waits behind a slow scene compile; this main thread sends stats at STATS_HZ.  Media (and the encoder config)
+never waits behind a slow scene compile; w-enc makes the next session's NVENC encoder ahead (~0.5-0.8 s off its start);
+this main thread sends stats at STATS_HZ.  Media (and the encoder config)
 go out on their own socket, so an IDR never delays an event.  No asyncio loop, no aiohttp, no plug-in discovery: a
 plug-in module is imported when something of it is first prepared (re-imported when its file changed).
 
@@ -46,6 +47,8 @@ log = logging.getLogger("stream_service.worker")
 PREPARE_THREADS = 3
 STATS_HZ = 2.0
 PR_SET_PDEATHSIG = 1
+ENC_WAIT_S = 10.0       # a start waits this long for its encoder being made ahead, else makes its own
+SLOW_RPC_S = 2.0        # an RPC slower than this is logged
 
 
 def die_with_parent(parent: int) -> None:
@@ -100,6 +103,10 @@ class Worker:
         self.media = Channel(media_sock, "w-media")
         self.prep = ThreadPoolExecutor(PREPARE_THREADS, thread_name_prefix="w-prep")
         self.life = ThreadPoolExecutor(1, thread_name_prefix="w-life")
+        self.encx = ThreadPoolExecutor(1, thread_name_prefix="w-enc")
+        self._enc: Optional[dict] = None             # the NVENC encoder made ahead: {key, stream, fut}
+        self._enc_bound: Optional[dict] = None       # ... the one the bound session took
+        self._enc_lock = threading.Lock()
         self.table = HandleTable()
         self.slots: "weakref.WeakValueDictionary[str, Any]" = weakref.WeakValueDictionary()
         self.lock = threading.Lock()
@@ -116,11 +123,12 @@ class Worker:
         self._mtimes: dict[str, Any] = {}
         self._warm_spec: Optional[dict] = None
         self._warmed = False
+        self._warm_on_media = False                  # the warm waits for the session's first packet (session.ready)
         self._import_lock = threading.Lock()
         self._mlock = threading.Lock()
         self.inline = {"submit": self._submit, "sync": self._sync, "hud": self._hud, "hud_text": self._hud_text,
                        "key": self._key, "in": self._input, "gone": self._gone, "warm": self._warm_async,
-                       "exit": lambda _d: self.exit("asked")}
+                       "enc": self._enc_hint, "exit": lambda _d: self.exit("asked")}
         self.rpcs = {"bind": (self.life, self._bind), "prepare": (self.prep, self._prepare),
                      "start": (self.life, self._start), "stop": (self.life, self._stop),
                      "frames": (self.life, self._frames)}
@@ -200,12 +208,17 @@ class Worker:
         fn(data)
 
     def _rpc(self, fn, rid: int, data: Any) -> None:
+        t0 = time.monotonic()
         try:
             res = fn(data)
             self.cmd.send(("reply", rid, True, res))
         except BaseException as e:                 # the control logs it (as a prepare failure, a start failure ...)
             log.debug("rpc %s failed", getattr(fn, "__name__", fn), exc_info=True)
             self.cmd.send(("reply", rid, False, _remote_error(e)))
+        dt = time.monotonic() - t0
+        if dt > SLOW_RPC_S:
+            log.info("%s for %s took %.1f s", getattr(fn, "__name__", fn).strip("_"),
+                     data.get("sid") if isinstance(data, dict) else "-", dt)
 
     # -- the engine's callbacks (its threads) -> the control ----------------------------------------------------
     def _post(self, sid: str, fn, *args) -> None:
@@ -213,6 +226,9 @@ class Worker:
         if name == "on_media":
             from .ipc import K_MEDIA
             self.media.send_raw(K_MEDIA, args[2])
+            if self._warm_on_media:                 # the first packet is out (session.ready): the warm may run now
+                self._warm_on_media = False
+                self._warm_now()
             return
         if name == "on_encoder_config":           # on the media socket: it must reach the players before frames
             self.media.send(("evt", sid, name, args))
@@ -335,6 +351,13 @@ class Worker:
             self.media.send(("bind", sid, None, None))
         eng.create_context()
         eng.ctx.screen = d.get("screen")
+        if d.get("encoder") == "nvenc":            # its encoder: made ahead, else made now beside the prepares
+            try:
+                ent = self._enc_take(d["profile"])
+                eng.ctx.stream = ent["stream"]     # NVENC reads the slots on the stream it was made with
+                eng.gpu_encoder_ready = functools.partial(self._enc_wait, ent)
+            except Exception:
+                log.exception("[%s] no encoder made ahead: the start makes it", sid)
         if self.sound is not None:
             with eng.ctx.device:
                 self.sound.alloc(eng.ctx.cp)
@@ -371,13 +394,13 @@ class Worker:
         eng.encoder = d.get("encoder") or "ffmpeg"
         # the degradation controller runs here; a control that predates it sends no "degrade": none, as before
         eng.degrade_mode = d.get("degrade", "off")
+        self._warm_on_media = not self._warmed      # after the first packet, in the anchor hold: well before go / exit
         eng.start(anchor)
         h = eng.hud
         if h is not None:
             rt = self.runtime
             h.lamp = lambda: (rt.signals or {}).get("beat", 0.0)
             h.on = self.hud_on
-        self._warm_now()                            # after the start, in the anchor hold: well before go / exit
         return {"hud": h is not None, "encoder_active": eng.encoder_active, "encoder_fallback": eng.encoder_fallback}
 
     def _stop(self, d: dict) -> dict:
@@ -396,6 +419,11 @@ class Worker:
                 self.engine = self.sid = None
                 self.runtime = self.sampler = self.sound = None
             ctx = eng.ctx
+            with self._enc_lock:
+                ent, self._enc_bound = self._enc_bound, None
+            unused = eng.gpu_encoder_ready is not None          # ended before its start: its encoder is untouched
+            again = eng.encoder == "nvenc" and eng.encoder_fallback is None
+            profile = eng.profile
             del eng
             gc.collect()
             if ctx is not None:
@@ -405,6 +433,14 @@ class Worker:
                         ctx.cp.get_default_pinned_memory_pool().free_all_blocks()
                 except Exception:
                     log.exception("freeing the memory pools failed")
+            if not self.stop_evt.is_set():          # the next session here (most likely this screen's) takes it
+                try:
+                    if ent is not None and unused:
+                        self._enc_put(ent)
+                    elif again:
+                        self._enc_ahead(profile)
+                except Exception:
+                    log.exception("making an encoder ahead failed")
         return {"stop_s": round(time.monotonic() - t0, 3)}
 
     def _frames(self, d: dict) -> list:
@@ -520,7 +556,7 @@ class Worker:
 
     def _warm_async(self, d: dict) -> None:
         """The usual transitions, compiled while nothing else runs here: now if still idle shortly (a warm hint), else
-        after the session's start (never alongside its prepares)."""
+        after the session's first packet (never alongside its prepares or ahead of its session.ready)."""
         self._warm_spec = d
         t = threading.Timer(0.5, self._warm_now)
         t.daemon = True
@@ -529,7 +565,7 @@ class Worker:
     def _warm_now(self) -> None:
         with self.lock:
             eng = self.engine
-            starting = eng is not None and eng.started_at is None      # its start's prepares come first
+            starting = eng is not None and (eng.started_at is None or self._warm_on_media)   # its first packet first
             if self._warmed or self._warm_spec is None or starting:
                 return
             self._warmed = True
@@ -559,6 +595,91 @@ class Worker:
             log.info("render worker GPU %d warm in %.1f s", self.gpu, time.monotonic() - t0)
         except Exception:
             log.exception("warming GPU %d failed", self.gpu)
+
+    # -- the NVENC encoder, made ahead ---------------------------------------------------------------------------
+    # CreateEncoder takes ~0.5-0.8 s at 4K.  It is made on the w-enc thread with a render stream of its own, while
+    # nothing waits for it: after a session's stop (for the next one here), on a warm hint ("enc"), else at bind,
+    # beside the prepares.  Bind gives the session that stream and the start takes the encoder (renderer.Engine.
+    # gpu_encoder_ready).  At most one is held; one for another profile is closed.
+    @staticmethod
+    def _enc_key(profile: Any) -> tuple:
+        from .renderer import gpu_encoder_args
+        return tuple(sorted(gpu_encoder_args(profile).items()))
+
+    def _enc_new(self, profile: Any, key: tuple) -> dict:
+        import cupy as cp
+        from .gpu import RENDER_PRIORITY, priority_stream
+        with cp.cuda.Device(self.gpu):
+            stream = priority_stream(cp, RENDER_PRIORITY)
+        return {"key": key, "stream": stream, "fut": self.encx.submit(self._enc_make, profile, stream)}
+
+    def _enc_make(self, profile: Any, stream: Any) -> Any:
+        import cupy as cp
+        from .encode.nvenc import GpuEncoder
+        from .renderer import gpu_encoder_args, pace_clock
+        t0 = time.monotonic()
+        with cp.cuda.Device(self.gpu):
+            stream.synchronize()                   # this thread on the device's context (CreateEncoder takes it)
+            enc = GpuEncoder(cp=cp, stream=stream, name="ahead", clock=pace_clock, on_config=lambda _c: None,
+                             on_frame=lambda *_a: None, **gpu_encoder_args(profile))
+        log.info("render worker GPU %d: %s encoder made ahead in %.2f s", self.gpu, getattr(profile, "name", "?"),
+                 time.monotonic() - t0)
+        return enc
+
+    def _enc_close(self, ent: dict) -> None:
+        """Closed on w-enc once made (an encoder no session took)."""
+        def close(f) -> None:
+            if f.exception() is None:
+                f.result().close()
+
+        def later(f) -> None:
+            try:
+                self.encx.submit(close, f)
+            except RuntimeError:                   # exiting
+                pass
+        ent["fut"].add_done_callback(later)
+
+    def _enc_put(self, ent: dict) -> None:
+        with self._enc_lock:
+            old, self._enc = self._enc, ent
+        if old is not None and old is not ent:
+            self._enc_close(old)
+
+    def _enc_ahead(self, profile: Any) -> None:
+        """One for this profile, unless it is held or the bound session has it already."""
+        key = self._enc_key(profile)
+        with self._enc_lock:
+            if any(e is not None and e["key"] == key for e in (self._enc, self._enc_bound)):
+                return
+            old, self._enc = self._enc, self._enc_new(profile, key)
+        if old is not None:
+            self._enc_close(old)
+
+    def _enc_take(self, profile: Any) -> dict:
+        """Bind (life thread): the one held for this profile, else one made now; the bound session's from here."""
+        key = self._enc_key(profile)
+        with self._enc_lock:
+            old, self._enc = self._enc, None
+            ent = old if old is not None and old["key"] == key else self._enc_new(profile, key)
+            self._enc_bound = ent
+        if old is not None and old is not ent:
+            self._enc_close(old)
+        return ent
+
+    def _enc_wait(self, ent: dict) -> Any:
+        """The start (life thread): the bound session's encoder, once made."""
+        try:
+            return ent["fut"].result(ENC_WAIT_S)
+        except TimeoutError:
+            self._enc_close(ent)                   # closed when it is done; the start makes its own
+            raise
+
+    def _enc_hint(self, profile: Any) -> None:
+        """Reader thread ("enc": a warm hint, or a worker claimed while it spawned)."""
+        try:
+            self._enc_ahead(profile)
+        except Exception:
+            log.exception("making an encoder ahead failed")
 
     # -- stats ---------------------------------------------------------------------------------------------------
     def _snapshot(self, eng: Any) -> dict:
@@ -623,6 +744,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     die_with_parent(args.parent)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     sys.setswitchinterval(0.001)
+    from .gpu import no_thp_stalls
+    no_thp_stalls()                         # a 4K anchor read stalled 1.3-3.3 s in kernel compaction without this
     logging.basicConfig(level=args.log_level.upper(), stream=sys.stderr,
                         format=f"%(asctime)s %(levelname)s %(name)s[w{os.getpid()} gpu{args.gpu}]: %(message)s")
     from .stats import set_thread_name
