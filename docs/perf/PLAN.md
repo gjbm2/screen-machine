@@ -62,7 +62,9 @@ Each is one build plus one stream restart with no screen live.
 **Show: done.** 3a's show-rx fix (madmom in its own process, MIDI on its own socket, kernel timestamps) has been live since 20:21:51.
 - With sound playing and madmom running: Recv-Q max 5 KB, 0 drops, show-rx at 33% of a core, 0% stream loss.
 - Before: 320-420 KB queued, about 76 drops/s, show-rx at 45-52% plus 34% waiting for the lock.
-- Still to check: piano MIDI timing, and the numbers with both screens live.
+- **Piano MIDI**, measured by 3a on 20 Oct: the kiosk's room-piano MIDI arrives on its own :6980 socket with kernel timestamps. Arrival to dispatch is p50 0.44 ms, p95 1.13 ms, max 2.23 ms (58 packets, no notes played yet). 0 drops and 0 misrouted on both sockets.
+- **Audio**: socket queue p95 2.4 ms. room-mic (the kiosk boundary mic) is active with 0 loss.
+- Still to check: show with both screens live.
 
 ## Diagnostics still open, and how to get each
 
