@@ -2970,6 +2970,7 @@ class SessionManager:
             await s.start(anchor)
         except Exception as e:
             if s.state == "ended":
+                log.info("[%s] start abandoned (the session ended first): %s: %s", s.id, type(e).__name__, e)
                 return
             log.exception("[%s] start failed", s.id)
             detail = f"start failed: {type(e).__name__}: {e}"
