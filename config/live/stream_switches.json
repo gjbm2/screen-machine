@@ -8,7 +8,7 @@
   "screens": {
     "south-screen": {
       "encoder": "nvenc",
-      "workers": "inproc"
+      "workers": "proc"
     },
     "devtest": {
       "encoder": "nvenc",
