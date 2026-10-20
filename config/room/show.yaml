@@ -379,7 +379,9 @@ listener:                                   # §7.3, §7.5. Starting points, all
                                             # choice. A sender with room_sound: false skips this check, nothing else.
   describe_timeout_s: 8                     # then the local keyword match answers (§7.4)
   ced:                                      # Stage 4 (§7.5): with music_gate classifier, a room-sound clip is the
-    music_min: 0.5                          # longest run of seconds CED calls music (at least this; starting point)...
+    music_min: 0.4                          # longest run of seconds CED calls music (at least this; 20 Oct, 8f: 0.5
+                                            # opened on 44-100% of ticks over the 9 test tracks at room level, 0.4 on
+                                            # 68-100%; room noise peaks at 0.09)...
     speech_max: 0.3                         # ...with speech under this (§7.5)...
     speech_words: [speech, conversation, crowd]   # ...speech being the max of these CED words (starting point: guests
                                             # talking over music show as conversation and babble, not only Speech)
@@ -500,7 +502,8 @@ ml:
       budget_ms: 5500                       # starting point: about 2x its p95 under the 4K render (2.3-2.8 s, 16 Oct);
                                             # an overrun skips the task's next turn
   ced_groups:                               # CED's AudioSet classes -> the seven words; a word is the max of its classes
-    music: [Music]                          # (design choices, starting points; a class the model lacks is logged)
+    music: [Music, Singing, Choir, A capella]   # (design choices, starting points; a class the model lacks is logged)
+                                            # singing counts as music (owner's 20 Oct test: someone singing)
     speech: [Speech, "Male speech, man speaking", "Female speech, woman speaking", "Child speech, kid speaking",
              "Narration, monologue"]
     conversation: [Conversation]
