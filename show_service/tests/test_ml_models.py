@@ -207,3 +207,29 @@ def test_beat_this_hears_a_quiet_mic_at_its_own_level():
     assert M.level_dbfs(M.beats_level(hush)) == pytest.approx(-50.0, abs=0.1)          # +40 dB at most
     loud = (rng.standard_normal(16000) * 10 ** (-12 / 20)).astype(np.float32)
     assert M.beats_level(loud) is loud
+
+
+def test_ced_hears_a_quiet_mic_at_its_own_level():
+    """8f, 20 Oct: CED-mini reads a quiet window as less musical (the room mic gives music at about -50 dBFS, where it
+    said music in 0-13% of windows for 8 of 9 test tracks), so each window goes to -20 dBFS RMS first, by at most +40 dB."""
+    seen: list[float] = []
+
+    class Sess:
+        def run(self, outputs, feeds, ro):
+            seen.append(M.level_dbfs(feeds["x"][0]))
+            return [np.array([[0.9, 0.1]], dtype=np.float32)]
+
+    class Budget:
+        def check(self):
+            pass
+
+        def run_options(self):
+            return None
+
+    model = type("Mdl", (), {"kind": "audio_tagger", "facts": {}, "labels": ["Music", "Speech"], "sess": Sess(),
+                             "output_name": "p", "input_name": "x"})()
+    task = M.CedTask(model, {"music": ["Music"], "speech": ["Speech"]}, lambda s: None)
+    rng = np.random.default_rng(4)
+    for db, heard in ((-50, -20.0), (-90, -50.0), (-12, -12.0)):
+        out = task.run((rng.standard_normal(32000) * 10 ** (db / 20)).astype(np.float32), Budget())
+        assert seen[-1] == pytest.approx(heard, abs=0.1) and out["music_p"] == pytest.approx(0.9)

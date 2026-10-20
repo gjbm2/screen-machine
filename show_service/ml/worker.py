@@ -85,7 +85,7 @@ DEFAULTS: dict = {
                   "budget_ms": 5500},
     },
     "ced_groups": {
-        "music": ["Music"],
+        "music": ["Music", "Singing", "Choir", "A capella"],
         "speech": ["Speech", "Male speech, man speaking", "Female speech, woman speaking",
                    "Child speech, kid speaking", "Narration, monologue"],
         "conversation": ["Conversation"],

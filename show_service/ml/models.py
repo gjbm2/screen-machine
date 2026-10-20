@@ -342,6 +342,14 @@ def level_dbfs(x: np.ndarray) -> float:
     return max(-150.0, 20.0 * math.log10(rms + 1e-12))
 
 
+def to_level(pcm: np.ndarray, level: float, gain_max_db: float) -> np.ndarray:
+    """The window scaled so its RMS is ``level`` dBFS, at most ``gain_max_db`` up; a louder one is left as it is."""
+    gain_db = min(gain_max_db, level - level_dbfs(pcm))
+    if gain_db <= 0.0:
+        return pcm
+    return (pcm * np.float32(10.0 ** (gain_db / 20.0))).astype(np.float32)
+
+
 # -- the real tasks ---------------------------------------------------------------------------------------------------
 def match_groups(labels: list[str], groups: dict) -> tuple[dict[str, list[int]], list[str]]:
     """show.yaml ml.ced_groups -> {word: [label indices]}, plus the configured classes the model lacks. A class matches
@@ -365,9 +373,15 @@ def match_groups(labels: list[str], groups: dict) -> tuple[dict[str, list[int]],
     return out, lacking
 
 
+CED_LEVEL_DBFS = -20.0         # CED-mini hears loudness as evidence: each window's RMS goes to this first
+CED_GAIN_MAX_DB = 40.0         # ... by at most this much (the worker's silence rule has already read the raw level)
+
+
 class CedTask:
-    """An audio tagger (CED-mini): raw 16 kHz waveform in, per-class probabilities out; each CED_GROUPS word is the
-    max of its classes (show.yaml ml.ced_groups)."""
+    """An audio tagger (CED-mini): 16 kHz waveform in (at CED_LEVEL_DBFS), per-class probabilities out; each
+    CED_GROUPS word is the max of its classes (show.yaml ml.ced_groups). 8f, 20 Oct: through the room mic music arrives
+    at about -50 dBFS, where CED called 8 of the 9 test tracks music (>= 0.5) in 0-13% of 2 s windows (disco 0%), so
+    the listener never found 6 s of music; at -20 dBFS 87-100% (techno 55%), while room noise stays under 0.1."""
 
     def __init__(self, model: Model, groups: dict, log: Callable[[str], None]) -> None:
         if model.kind != "audio_tagger":
@@ -382,6 +396,7 @@ class CedTask:
             log(f"ced_groups: the model has no class for {item}")
 
     def run(self, pcm: np.ndarray, budget: Budget, **_: Any) -> dict:
+        pcm = to_level(pcm, CED_LEVEL_DBFS, CED_GAIN_MAX_DB)
         (p,) = _run(self.m.sess, [self.m.output_name], {self.m.input_name: pcm[None, :].astype(np.float32)}, budget)
         p = np.asarray(p, dtype=np.float64).reshape(-1)
         if self.sigmoid:
@@ -522,11 +537,7 @@ def beats_level(pcm: np.ndarray) -> np.ndarray:
     """The window scaled so its RMS is BEATS_LEVEL_DBFS (at most BEATS_GAIN_MAX_DB up; a louder one is left as it is). 26, 19 Oct
     (tools/room/beat_eval/alt/bt_lane.py): through PC22's mic music arrives at about -48 dBFS, where Beat This! found
     no beats in most windows (0 in a 30 s ChaChaCha window at -48.8); scaled to -20 dBFS it found the right tempo."""
-    lvl = level_dbfs(pcm)
-    gain_db = min(BEATS_GAIN_MAX_DB, BEATS_LEVEL_DBFS - lvl)
-    if gain_db <= 0.0:
-        return pcm
-    return (pcm * np.float32(10.0 ** (gain_db / 20.0))).astype(np.float32)
+    return to_level(pcm, BEATS_LEVEL_DBFS, BEATS_GAIN_MAX_DB)
 
 
 class BeatsTask:
