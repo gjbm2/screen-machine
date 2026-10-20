@@ -1,0 +1,21 @@
+top - 22:17:51 up 7 days,  2:37,  2 users,  load average: 1.80, 0.82, 1.00
+Tasks: 182 total,   2 running, 180 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 32.6 us, 11.6 sy,  0.0 ni, 53.5 id,  0.0 wa,  0.0 hi,  2.3 si,  0.0 st 
+MiB Mem :   7714.8 total,   1205.1 free,   2585.4 used,   5197.8 buff/cache     
+MiB Swap:   4096.0 total,   4096.0 free,      0.0 used.   5129.4 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+   1403 gjbm2     20   0   33.1g 166220 110316 S  27.3   2.1 327:03.09 chrome
+   2348 gjbm2     20   0 1392.6g 468948 175508 S  27.3   5.9     20,14 chrome
+   1622 gjbm2     20   0   33.1g 181616 126212 S  18.2   2.3 291:43.63 chrome
+   1624 gjbm2     20   0   32.6g 167192 141952 S  18.2   2.1 107:43.18 chrome
+   2180 gjbm2     20   0 1392.6g 424604 160956 R  18.2   5.4     21,23 chrome
+1473346 gjbm2     20   0  525196  32128  14720 S  18.2   0.4  47:10.49 python
+   1187 gjbm2     20   0  779840  89412  64452 S   9.1   1.1 177:57.39 sway
+   1412 gjbm2     20   0   32.6g 166740 141724 S   9.1   2.1 107:44.38 chrome
+2179101 gjbm2     20   0   11932   5504   3456 R   9.1   0.1   0:00.02 top
+      1 root      20   0   23076  14332   9468 S   0.0   0.2   1:52.40 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:00.35 kthreadd
+      3 root      20   0       0      0      0 S   0.0   0.0   0:00.00 pool_wo+
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker+
+1.80 0.82 1.00 3/446 2179102

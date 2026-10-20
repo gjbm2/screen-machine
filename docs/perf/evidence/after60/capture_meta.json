@@ -1,0 +1,75 @@
+{
+ "stream_service_pid": 3622683,
+ "ffmpeg": {},
+ "sessions": [
+  {
+   "session": "s-b5421054",
+   "screen": "north-screen",
+   "gpu": 0,
+   "fps": 60,
+   "profile": "hevc-2160p30",
+   "scene": "fractal-zoom"
+  },
+  {
+   "session": "s-b130a41c",
+   "screen": "south-screen",
+   "gpu": 1,
+   "fps": 60,
+   "profile": "hevc-2160p30",
+   "scene": "fractal-zoom"
+  }
+ ],
+ "thread_labels": {
+  "3622683": "ss:main(asyncio loop)",
+  "3622688": "ss:python:3622688",
+  "3622689": "ss:python:3622689",
+  "3622690": "ss:python:3622690",
+  "3622691": "ss:python:3622691",
+  "3622692": "ss:python:3622692",
+  "3622693": "ss:python:3622693",
+  "3622694": "ss:python:3622694",
+  "3622695": "ss:python:3622695",
+  "3622696": "ss:python:3622696",
+  "3622697": "ss:python:3622697",
+  "3622698": "ss:python:3622698",
+  "3622699": "ss:python:3622699",
+  "3622700": "ss:python:3622700",
+  "3622701": "ss:python:3622701",
+  "3622702": "ss:python:3622702",
+  "3622703": "ss:python:3622703",
+  "3622704": "ss:python:3622704",
+  "3622705": "ss:python:3622705",
+  "3622706": "ss:python:3622706",
+  "3622804": "ss:python:3622804",
+  "3622816": "ss:cuda0000280000b:3622816",
+  "3622821": "ss:cuda-EvtHandlr:3622821",
+  "3622879": "ss:cuda-EvtHandlr:3622879",
+  "3622884": "ss:python:3622884",
+  "3641827": "ss:python:3641827",
+  "3641828": "ss:python:3641828",
+  "3641829": "ss:python:3641829",
+  "3641830": "ss:python:3641830",
+  "3641831": "ss:python:3641831",
+  "3641833": "ss:python:3641833",
+  "3641835": "ss:python:3641835",
+  "3641837": "ss:python:3641837",
+  "3641839": "ss:python:3641839",
+  "3641840": "ss:python:3641840",
+  "3641841": "ss:python:3641841"
+ },
+ "clk_tck": 100,
+ "t0_wall": 1792534715.133365,
+ "t0_pace": 8411292.448914226,
+ "seconds": 90,
+ "t_end_wall": 1792534805.221691,
+ "t_end_pace": 8411382.539048875,
+ "wall_s": 90.0613579750061,
+ "errors": [],
+ "state_10hz": {
+  "3622683": {
+   "S:0": 730,
+   "S:futex_wait_queue_me": 15,
+   "R": 183
+  }
+ }
+}
