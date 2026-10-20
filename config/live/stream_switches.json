@@ -16,7 +16,8 @@
       "fps": 60
     },
     "north-screen": {
-      "workers": "proc"
+      "workers": "proc",
+      "encoder": "nvenc"
     }
   }
 }
