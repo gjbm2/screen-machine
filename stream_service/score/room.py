@@ -1,6 +1,10 @@
 """One transcription per room, shared by its screens' live score scenes (owner, 18 Oct: both screens transcribe the
 same MIDI; each ran its own ScoreBuilder and PM2S worker, about 1.3 CPU cores apiece, for the same notes).
 
+The scenes use :class:`RemoteRoom` (below): the room's transcription runs in a process of its own, whichever
+process each screen renders in (score/room_proc.py runs a RoomScore; a scene-side RoomScore served only the screens
+of one process, so a mix of in-process and worker screens ran two, 20 Oct).
+
 A :class:`RoomScore` holds the room's one ScoreBuilder and one analysis worker.  Each frame, the member that leads
 feeds its SoundView frame's notes in, sends the analysis requests and takes the replies, and polls the bars, which go
 to every member's queue.  Leading goes to whoever is rendering: a member that ticks while the leader hasn't fed for
@@ -14,19 +18,20 @@ scene keeps its own engraver and drawing (sizes and layouts can differ).
 
 Rooms are keyed by the music they hear; show_service hears one room today, so the scenes use one key.
 
-In a proc worker (one render process per screen: SM_STREAM_WORKER) the screens can't share a builder in memory, so
-the room's transcription runs in a process of its own (score/room_proc.py: the music bus into a SoundView into a
+Screens in different processes (a render worker per screen) can't share a builder in memory, so the room's
+transcription runs in a process of its own (score/room_proc.py: the music bus into a SoundView into a
 RoomScore, as a scene feeds it) and :class:`RemoteRoom` stands in for RoomScore: the same ``tick`` and ``leave``, and
 a :class:`BuilderView` for the scene's reads.  The room's process sends its bars and, whenever it changes, the
 builder state a scene reads each frame (:func:`view_of`); the view runs ScoreBuilder's own position, where, key and
 _staff on it, so nothing per frame crosses the socket.  A reader thread queues what comes and ``tick`` applies it on
-the render thread, which never waits.  The first worker to need the room's process starts it (under a lock, in its
+the render thread, which never waits.  The first screen to need the room's process starts it (under a lock, in its
 own session); it exits LINGER_S after its last client leaves.
 """
 from __future__ import annotations
 
 import collections
 import fcntl
+import hashlib
 import logging
 import os
 import pathlib
@@ -189,9 +194,22 @@ LOG_FILE = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "logs" 
 _LEN = struct.Struct(">I")
 
 
+def _stamp() -> str:
+    """The transcription's code as this process loaded it.  A screen joins only a room process running the same: after
+    a restart with new code a new one starts, and the old one (in its own session) lingers out unused."""
+    h = hashlib.sha1()
+    for name in ("room.py", "room_proc.py", "quantize.py"):
+        h.update((pathlib.Path(__file__).parent / name).read_bytes())
+    return h.hexdigest()[:8]
+
+
+STAMP = _stamp()
+
+
 def sock_path(key: str) -> pathlib.Path:
-    """The room's process listens here ($XDG_RUNTIME_DIR/screen-machine, 0700)."""
-    return pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "screen-machine" / f"score-room-{key}.sock"
+    """The room's process listens here ($XDG_RUNTIME_DIR/screen-machine, 0700), one per room and code stamp."""
+    return (pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "screen-machine"
+            / f"score-room-{key}-{STAMP}.sock")
 
 
 def pack(obj: Any) -> bytes:
@@ -396,7 +414,8 @@ class RemoteRoom:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(LOG_FILE, "ab") as out:
             p = subprocess.Popen([sys.executable, "-m", "stream_service.score.room_proc", "--key", self.key,
-                                  "--music-bus", self.music_bus, *SPAWN_ARGS], cwd=str(REPO), env=env, stdin=subprocess.DEVNULL,
+                                  "--sock", str(sock_path(self.key)), "--music-bus", self.music_bus, *SPAWN_ARGS],
+                                 cwd=str(REPO), env=env, stdin=subprocess.DEVNULL,
                                  stdout=out, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
         threading.Thread(target=p.wait, name="score-room-reap", daemon=True).start()     # no zombie when it exits
         log.info("live_score: started the room's score process (pid %d, key %s)", p.pid, self.key)

@@ -155,9 +155,14 @@ def _wait(cond, timeout: float) -> bool:
 
 
 @pytest.fixture
-def runtime_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    return tmp_path
+def runtime_dir(monkeypatch):
+    """A short one: a unix socket's path is at most 107 bytes (pytest's tmp_path is too long)."""
+    import shutil
+    import tempfile
+    d = tempfile.mkdtemp(prefix="smr", dir="/tmp")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", d)
+    yield R.pathlib.Path(d)
+    shutil.rmtree(d, ignore_errors=True)
 
 
 def test_two_workers_get_the_same_right_bars_from_the_room_process(runtime_dir):
@@ -219,5 +224,30 @@ def test_the_first_worker_starts_the_room_process_once(runtime_dir, monkeypatch)
     finally:
         for i, r in enumerate(rooms):
             r.leave(i)
+        if pid_file.exists():
+            os.kill(int(pid_file.read_text()), 15)
+
+
+def test_screens_on_new_code_dont_join_a_room_process_on_old_code(runtime_dir, monkeypatch):
+    """After a restart with new transcription code, the old room process (in its own session) may still be lingering:
+    the screens start a new one on their own code's socket, and the old one is left to linger out."""
+    monkeypatch.setenv("SM_MUSIC_BUS", f"ws://127.0.0.1:{_free_port()}/v1/show")
+    monkeypatch.setattr(R, "SPAWN_ARGS", ("--no-analysis", "--linger", "2"))
+    old_sock = str(R.sock_path("t-stamp")).replace(R.STAMP, "0ld0ld00")
+    old = _room_proc("t-stamp", os.environ["SM_MUSIC_BUS"], "--sock", old_sock, "--linger", "3", "--no-analysis")
+    room = None
+    try:
+        assert _wait(lambda: R.try_connect(R.pathlib.Path(old_sock)) is not None, 15)
+        room = RemoteRoom.join("t-stamp", "a")
+        assert _wait(lambda: room.connects == 1, 20)
+        new_pid = int(R.sock_path("t-stamp").with_suffix(".pid").read_text())
+        assert new_pid != old.pid
+        assert old.wait(timeout=15) == 0, "the old room process never lingered out"
+    finally:
+        if room is not None:
+            room.leave("a")
+        if old.poll() is None:
+            old.kill()
+        pid_file = R.sock_path("t-stamp").with_suffix(".pid")
         if pid_file.exists():
             os.kill(int(pid_file.read_text()), 15)
