@@ -163,6 +163,40 @@ flock ~/.cache/screen-machine/cpu.lock nice -n 19 ~/.venvs/sm-roundtrip/bin/pyth
 
 Synthetic runs live in `~/.cache/screen-machine/audio_cal_synth/`.
 
+## Sonos programme runs (room-mic)
+
+For the kiosk's boundary mic the music is driven: `calibrate.py sonos-run --programme <dir>` (screen-machine-26) plays a
+calibration programme (`programme.py build pass1|pass2`: silence, a 4-rung volume ladder at Sonos 20/30/40/50, songs
+at volume 40, a rubato piano) through the Drawing Room Sonos, records room-mic through show_service and logs the live
+clock. `programme_analyse.py` reads that run against the programme:
+
+```bash
+flock ~/.cache/screen-machine/cpu.lock nice -n 19 ~/.venvs/sm-roundtrip/bin/python tools/room/audio_cal/programme_analyse.py \
+    <run dir> --programme ~/.cache/screen-machine/audio-cal/programmes/pass1-YYYYMMDD --gate-test-only [--fast]
+# ... 26 sets the printed music_lufs_test as room-mic's music_lufs for pass 2, then:
+flock ... programme_analyse.py <pass-2 run dir> --programme .../pass2-YYYYMMDD --write-config
+```
+
+- **Alignment:** analyse.py's `align` (offset and drift), the Sonos' position ticks as the cross-check.
+- **Levels:** show_service's stack replayed on the recording (`run_stack.py`): dsp's lufs_s per segment (the live bus's
+  and BS.1770 beside it); room tone from the silences.
+- **Ladder:** lufs_s against volume, a line in volume and in log-volume, the better one predicting party volume (70)
+  with its uncertainty; the rungs' gain (recording over programme) as a cross-check that the room's own sound can't
+  bias. `music_lufs` (party) = the songs' level at 40 + the ladder's rise to 70. dsp's floor clamp (its 100 ms floor
+  + 21 LU caps the gate's reference) is worked out from the recording too.
+- **Live clock per song:** the bus's music.clock flashes, host time to recording by `tapmap.jsonl`'s lower envelope,
+  scored with `beat_eval/score.py` (F, CMLt, AMLt, hit25, cover, precision, wrong lock, lock and gate times, bpm),
+  the offline replay beside it (parity); pass 2 against pass 1 on the songs both played (before and after the gate).
+- Writes `analysis/programme_report.md` (for the owner), `programme_report.json`, `gate.json`, `clock_u.json`,
+  `figs/levels.png`. `--write-config` merges `streams.room-mic` into `config/room/audio_cal.json` (or
+  `--audio-cal-file`), taking pass 1's ladder when pass 2 has none; never from a synthetic run into the real file.
+  `--fast` skips the replay (levels from the live bus).
+
+`programme_synth.py` tests it without playing anything: `programme` builds a small programme, `run --programme <dir>`
+a fake run with known truth (offset, drift, a planted ladder, a host clock with skew and jitter, a bus made from
+run_stack's replay), `check <run dir>` compares the report with `truth.json`. In
+`~/.cache/screen-machine/audio_cal_synth/`.
+
 ## Files
 
 - `analyse.py`: the analysis.
@@ -170,3 +204,6 @@ Synthetic runs live in `~/.cache/screen-machine/audio_cal_synth/`.
 - `beats_offline.py`: the offline beat trackers (madmom offline and online, Beat This!) and dsp's own hit detector, run as subprocesses in show_service's env and the ML worker's env.
 - `synth_run.py`: the synthetic run maker.
 - `calibrate.py`, `pc22_record.py` (screen-machine-26): record and fetch.
+- `programme.py`: the Sonos calibration programmes.
+- `programme_analyse.py`: the analysis of a Sonos programme run (levels, ladder, gate values, live clock).
+- `programme_synth.py`: synthetic programmes and runs with known truth, to test it.
