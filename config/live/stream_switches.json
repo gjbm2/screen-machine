@@ -8,7 +8,8 @@
   "screens": {
     "south-screen": {
       "encoder": "nvenc",
-      "workers": "proc"
+      "workers": "proc",
+      "fps": 60
     },
     "devtest": {
       "encoder": "nvenc",
@@ -17,7 +18,8 @@
     },
     "north-screen": {
       "workers": "proc",
-      "encoder": "nvenc"
+      "encoder": "nvenc",
+      "fps": 60
     }
   }
 }

@@ -85,7 +85,7 @@ def test_in_dir_and_the_shipped_file():
         ["nvenc", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
     assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["proc", "proc", "proc", "inproc"]                            # change 3: every TV in a worker
-    assert [s.fps(k) for k in ("north-screen", "south-screen", "devtest", "other")] == [30, 30, 60, 30]   # change 5
+    assert [s.fps(k) for k in ("north-screen", "south-screen", "devtest", "other")] == [60, 60, 60, 30]   # 4K60 on the TVs
     assert {s.degrade(k) for k in ("north-screen", "south-screen", "devtest", "other")} == {"on"}
 
 
