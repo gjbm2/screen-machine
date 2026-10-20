@@ -453,6 +453,7 @@ def cmd_report(a: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    global STREAM
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=("subset", "run", "report"))
@@ -462,7 +463,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--dur-cap", type=float, default=DUR_CAP_S, help="replay at most this much of each track")
     ap.add_argument("--tag", default="", help="a suffix for the results dirs (a rerun after a stack change)")
     ap.add_argument("--datasets", default=None, help="run: only these datasets' tracks (comma-separated)")
+    ap.add_argument("--stream", default=STREAM, help=f"whose room calibration (model, gate) B-E use (default {STREAM}; "
+                                                    "e.g. room-mic); tag the run to keep the results apart")
     a = ap.parse_args(argv)
+    STREAM = a.stream
     if a.cmd == "subset":
         return cmd_subset(a)
     if a.cmd == "run":
