@@ -10,6 +10,27 @@
 - **The renderer's own freezes:** its repeat rule and scene-rate divider act on "GPU" numbers that are really host time.
 - **The box:** Windows uses a lot of the CPU, and the CPU runs at about 74% of its rated clock.
 
+## Done: both TVs at 4K60 (20 Oct 23:17, owner's quiet window)
+
+Both TVs ran live at 2160p60 through the real path: own worker, GPU encode, 40 Mbit/s. Measured over 90 s:
+
+| | North TV | South TV |
+|---|---|---|
+| Frames presented on the TV | 60.0/s | 60.0/s |
+| TV dropped frames | 18 (0.2/s) | 17 (0.2/s) |
+| TV stalls | 3 | 0 |
+| Repeats | 6 of 5,423 | 1 of 5,390 |
+| New frames/s (renderer) | 60.0 | 58.9 |
+| Render host ms p50 / p95 | 3.1 / 8.5 | 3.0 / 8.4 |
+| Blocked (lock) ms | 0 | 0 |
+| Slot to packet p50 / p95 | 60 / 66 ms | 63 / 72 ms |
+| Encode CPU per frame | 2.3 ms | 2.4 ms |
+
+- **Resyncs and degrade:** 0 resyncs; the degrade controller stayed at "full rate, 60 fps".
+- **Kiosk:** 53% CPU idle. The TV drops without stalls (about 0.3%) are probably the N95's decode or compositor: the one thing to watch.
+- **Switch:** both TVs are at `fps: 60` in `config/live/stream_switches.json` (ff, 6026d1de).
+- **Data:** `evidence/after60/`.
+
 ## Measured on the TVs, 20 Oct 22:50 (both live, live-score-paper, 30 fps)
 
 This is the same 90 s capture as the baseline. The like-for-like comparison is the 18 Oct live-score window (W3, old code).
@@ -44,9 +65,7 @@ This is the same 90 s capture as the baseline. The like-for-like comparison is t
 - south: nvenc + proc at 30;
 - north: nvenc + proc at 30 (since fc81da71).
 
-**Before the TVs go to 60:**
-- the kiosk 2x4K60 decode check (diagnostic 4);
-- Chrome playing mixed 30/60 samples, checked on devtest.
+**Still to check:** Chrome playing mixed 30/60 samples, for the degrade controller's fps step (on devtest).
 
 **The first real test of changes 2-5 together** is south's next live show. A 24 h watcher captures it.
 
@@ -95,4 +114,4 @@ Each is one build plus one stream restart with no screen live.
    - North is now nvenc + proc (ff, fc81da71).
 2. **Why the CPU runs at 74% of its clock.** It isn't the power plan (Balanced, 100% max, aggressive boost). HWiNFO64 in sensors-only mode, under load, shows the cause: CPU package power against PL1, the "power limit" and "thermal throttling" flags, and core temperatures. If it's a power limit, the fix is in the BIOS; if it's thermal, it's cooling.
 3. **What else Windows is spending CPU on.** Measured at 20:22: Carbonite backup 1.6 CPUs, a `node.exe` 1.7 (its command line is hidden, so it's probably Spectre's elevated backend), Slack 1.0, Defender 0.2, Brave about 0.9. **Done:** Spectre's `screen-machine-carbonite` card stops CarboniteService while a TV is live, and starts it 60 s after (owner, 20 Oct).
-4. **The kiosk at 2x4K60.** Play two recorded 4K60 files on the kiosk in a quiet window, and read the dropped frames.
+4. **Done 20 Oct 23:17: the kiosk at 2x4K60.** Both TVs presented 60.0 fps, with about 0.2 dropped frames/s each.
