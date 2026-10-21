@@ -835,23 +835,17 @@ class SituationReading(TypedDict):
 
 
 # -- Auto (§8.9) -----------------------------------------------------------------------------------------------------------
-AUTOPILOT_STATES: tuple[str, ...] = ("off", "watching", "acting", "holding", "paused", "backoff", "blind")
-AutopilotStateName = Literal["off", "watching", "acting", "holding", "paused", "backoff", "blind"]
+AUTOPILOT_STATES: tuple[str, ...] = ("off", "watching", "acting", "holding", "paused", "blind")   # paused: quiet hours
+AutopilotStateName = Literal["off", "watching", "acting", "holding", "paused", "blind"]
 AUTOPILOT_SOURCE = "autopilot"     # PUT /api/v1/mode source for Auto's own switches
 UNDO_SOURCE = "auto-undo"          # PUT /api/v1/mode source for a person's Undo (POST /api/v1/autopilot/undo)
-#: modes.json keys aa validates (room_service/roomstate/schema.py AUTOPILOT_KEYS / MODE_AUTOPILOT_KEYS)
-AUTOPILOT_GLOBAL_KEYS: tuple[str, ...] = ("on", "quiet_hours", "min_dwell_s", "max_switches", "backoff_s", "hold",
-                                          "chips")
+#: modes.json keys aa validates (room_service/roomstate/schema.py AUTOPILOT_KEYS / MODE_AUTOPILOT_KEYS); 21 Oct: the
+#: flap guard and the backoff are gone, so a max_switches or backoff_s left in modes.json is ignored
+AUTOPILOT_GLOBAL_KEYS: tuple[str, ...] = ("on", "quiet_hours", "min_dwell_s", "hold", "chips")
 AUTOPILOT_MODE_KEYS: tuple[str, ...] = ("enter_when", "otherwise_suggest_when", "from", "leave_when", "leave_to",
                                         "skip")
 
 QuietHours = TypedDict("QuietHours", {"from": str, "to": str})     # "HH:MM" local time; from > to wraps midnight
-
-
-class MaxSwitches(TypedDict):
-    count: int
-    per_s: float
-    pause_s: float
 
 
 class HoldSettings(TypedDict):
@@ -872,15 +866,13 @@ class AutopilotSettings(TypedDict):
     on: bool                       # room's autopilot.main wins at run time (aa's adapter keeps it)
     quiet_hours: Optional[QuietHours]
     min_dwell_s: float
-    max_switches: MaxSwitches
-    backoff_s: float
     hold: HoldSettings
     chips: ChipSettings
 
 
 class AutoAnnouncement(TypedDict):
     """EV_AUTO's event and AutopilotState.chip/suggest's source: every switch is said, every time."""
-    kind: str                      # "switch" | "suggest" | "hold" | "undo" | "pause" | "resume" | "backoff" | "failed"
+    kind: str                      # "switch" | "suggest" | "undo" | "pause" (quiet hours) | "resume" | "failed"
     text: str                      # "Auto → Piano · the piano is playing"
     mode: Optional[str]
     previous: Optional[str]
@@ -894,7 +886,7 @@ class AutopilotState(TypedDict):
     """GET /api/v1/autopilot (and state's "autopilot")."""
     on: Optional[bool]
     state: str                     # AUTOPILOT_STATES
-    why: Optional[str]             # code: "quiet_hours" | "flap" | "person" | "undo" | "correction" | "failed" |
+    why: Optional[str]             # code: "quiet_hours" | "person" | "undo" | "correction" |
                                    # "room_unreachable" | "config_error" | None
     line: str                      # the /room Auto line: "Auto · watching", "Auto paused · you chose Disco · Resume"
     since_s: float

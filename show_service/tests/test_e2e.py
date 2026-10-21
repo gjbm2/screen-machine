@@ -485,8 +485,7 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
                           "audio": {"sender": "test-audio", "music": str(music_dir), "rank_first": True}},
                 "room": {"url": room.room.url},
                 "situations": {"midi": {"streams": ["test-piano"], "include_test": True, "channels": None,
-                                         "heard_by": None, "window_s": 6, "min_notes": 6, "min_span_s": 2,
-                                         "min_pitches": 3},
+                                         "window_s": 6, "min_notes": 6, "min_span_s": 2, "min_pitches": 3},
                                "music": {"stream": "test-audio", "dsp_min_gate": 0.3},
                                "quiet": {"stream": "test-audio", "gate_below": 0.05}},
                 "lamps": real.get("lamps"), "director": real.get("director"),
@@ -759,7 +758,7 @@ def test_stage4_end_to_end(tmp_path, monkeypatch):
                 "situations": {**real["situations"], "music": {**real["situations"]["music"], "stream": "test-audio"},
                                "quiet": {**real["situations"]["quiet"], "stream": "test-audio"},
                                "talking": {**real["situations"]["talking"], "stream": "test-audio"},
-                               "midi": {**real["situations"]["midi"], "heard_by": None}},
+                               "midi": real["situations"]["midi"]},
                 "lamps": real["lamps"], "director": real["director"], "listener": real["listener"], "ml": ml,
                 "genre_map": real["genre_map"], "structure": real["structure"]}
     show_file = tmp_path / "show.yaml"

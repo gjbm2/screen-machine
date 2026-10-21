@@ -12,8 +12,8 @@ import pytest
 from aiohttp import web
 
 from show_service import contract as c
-from show_service.situations import (WORDS, Conditions, NoteTap, Situations, check_param, in_window, kleene_all,
-                                     kleene_any, word_label)
+from show_service.situations import (DESIGN_DEFAULTS, PARAM_SCHEMAS, WORDS, Conditions, NoteTap, Situations,
+                                     check_param, in_window, kleene_all, kleene_any, word_label)
 from show_service.vban import MidiBatch, MidiState
 
 
@@ -101,8 +101,8 @@ def test_notetap_cost_per_batch():
 
 # -- the vocabulary -----------------------------------------------------------------------------------------------------
 SETTINGS = {"situations": {
-    "midi": {"streams": ["room-piano"], "channels": [1], "heard_by": "room-mic", "window_s": 10, "min_notes": 12,
-              "min_span_s": 6, "min_pitches": 4, "heard_min_lufs": -45},
+    "midi": {"streams": ["room-piano"], "channels": [1], "window_s": 10, "min_notes": 12, "min_span_s": 6,
+             "min_pitches": 4},
     "music": {"stream": "room-mic", "min_prob": 0.5, "dsp_min_gate": 0.3},
     "sonos": {"now_playing": "sonos.zone.now_playing", "volume": "sonos.zone.volume", "own_change_s": 60},
     "quiet": {"stream": "room-mic", "gate_below": 0.05}}}
@@ -182,17 +182,15 @@ def test_piano_playing_ignores_other_channels_and_test_streams_unless_asked():
     assert e.read("piano_playing", {"channels": None, "streams": None, "include_test": True})["value"] is True
 
 
-def test_piano_playing_must_be_heard_by_the_mic_while_it_is_up():
+def test_piano_playing_reads_midi_alone():
+    """21 Oct (H12): no "the mic must hear it too": a quiet mic (headphones, the mic far away) never vetoes the MIDI."""
     e = Env()
     e.play(20, 0.5)
-    e.feat(lufs_s=-60.0)                             # the mic is up and measured: silent headphone practice
+    e.feat(lufs_s=-60.0)                             # the mic is up and hears next to nothing
     r = e.read("piano_playing")
-    assert r["value"] is False and r["via"] == "midi+mic" and r["evidence"]["heard_lufs"] == -60.0
-    e.feat(lufs_s=-30.0)
-    assert e.read("piano_playing")["value"] is True
-    e.health["streams"]["room-mic"]["state"] = "down"      # the mic is down: MIDI alone decides
-    e.feat(lufs_s=-60.0)
-    assert e.read("piano_playing")["value"] is True
+    assert r["value"] is True and r["via"] == "midi" and "heard_lufs" not in r["evidence"]
+    assert "heard_by" not in PARAM_SCHEMAS and "heard_by" not in DESIGN_DEFAULTS
+    assert "heard_by" not in WORDS["piano_playing"]["params"]
 
 
 def test_a_piano_that_isnt_sending_has_stopped():
@@ -244,11 +242,18 @@ def test_music_audible_unknown_when_the_mic_is_down_and_sonos_unknown():
     assert e.read("music_audible")["value"] is None
     e.room = sonos_room("STOPPED")
     assert e.read("music_audible")["value"] is False
-    e.room = sonos_room("PLAYING", sent_age=5.0)     # the room just changed Sonos itself: ignored
+    e.room = sonos_room("PLAYING", sent_age=5.0)     # the room just changed Sonos itself: Sonos is left out...
     e.health["streams"]["room-mic"]["state"] = "streaming"
+    e.health["active_audio"] = "room-mic"
     e.feat(gate=0.6)
-    r = e.read("music_audible")
-    assert r["value"] is None and "sent_age_s" in r["evidence"]
+    e.clock = {"gate": "beat"}
+    r = e.read("music_audible")                      # ...but the mic still decides (21 Oct, H9)
+    assert r["value"] is True and r["via"] == "dsp" and r["evidence"]["sonos"] is None
+    assert "sent_age_s" in r["evidence"]["sonos_detail"]
+    e.clock = None
+    assert e.read("music_audible")["value"] is False   # the mic hears no music: Sonos's own change doesn't make it so
+    e.feat(gate=0.01)
+    assert e.read("quiet")["value"] is True          # and the room's quiet is the mic's, own change or not
 
 
 def test_sonos_playing():

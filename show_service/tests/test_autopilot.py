@@ -26,12 +26,11 @@ MODES = {
     "lights-only": {"label": "Lights only"},
     "disco": {"label": "Disco"},
 }
-AUTO = {"on": True, "quiet_hours": None, "min_dwell_s": 0, "backoff_s": 600,
-        "max_switches": {"count": 4, "per_s": 1800, "pause_s": 1800},
+AUTO = {"on": True, "quiet_hours": None, "min_dwell_s": 0,
         "hold": {"until": {"all": [{"piano_idle": {}}, {"not": {"music_audible": {}}}], "for_s": 5},
                  "max_s": 3600, "correction_s": 30, "suppress_s": 3600},
         "chips": {"switch_s": 45, "suggest_s": 120}}
-SIT = {"midi": {"streams": ["room-piano"], "channels": [1], "heard_by": None, "window_s": 5, "min_notes": 3,
+SIT = {"midi": {"streams": ["room-piano"], "channels": [1], "window_s": 5, "min_notes": 3,
                  "min_span_s": 2, "min_pitches": 2},
        "music": {"stream": "room-mic", "dsp_min_gate": 0.3},
        "quiet": {"stream": "room-mic", "gate_below": 0.05}}
@@ -362,7 +361,7 @@ def test_piano_starts_auto_switches_after_for_s_with_expect_and_skip(tmp_path):
     run(tmp_path, body)
 
 
-def test_leave_to_previous_when_idle_unless_someone_is_engaged(tmp_path):
+def test_leave_to_previous_when_idle_even_while_someone_nudges(tmp_path):
     async def body(h: H):
         h.room.config["modes"]["piano"]["autopilot"]["from"] = ["gallery", "lights-only"]
         await h.room.person("lights-only")               # Auto off-path: a person picks, Auto holds...
@@ -371,12 +370,7 @@ def test_leave_to_previous_when_idle_unless_someone_is_engaged(tmp_path):
         await enter_piano(h)
         assert h.state()["entered"]["previous"] == "lights-only"
         h.playing = False
-        h.engaged = True                                 # a nudge in the mode: Auto never leaves
-        await h.step(10)
-        assert [p["mode"] for p in h.room.auto_puts()] == ["piano"]
-        assert any(x["kind"] == "leave" and x["blocked"] == "someone is using the controls"
-                   for x in h.state()["candidates"])
-        h.engaged = False
+        h.engaged = True                                 # a nudge in the mode doesn't keep Auto there (21 Oct)
         await h.step_until(lambda: h.room.current == "lights-only")
         put = h.room.auto_puts()[-1]
         assert put["mode"] == "lights-only" and put["reason"] == "the piano has stopped (piano/leave_when)"
@@ -421,7 +415,7 @@ def test_409_stale_stays_watching_without_backoff(tmp_path):
         await h.step_until(lambda: h.room.auto_puts())
         await h.settle()
         s = h.state()
-        assert s["state"] == "watching" and h.ap.backoff_until is None and h.room.current == "gallery"
+        assert s["state"] == "watching" and h.room.current == "gallery"
         await h.step_until(lambda: h.room.current == "piano", limit=3)      # next tick: asks again
         assert len(h.room.auto_puts()) == 2
     run(tmp_path, body)
@@ -435,26 +429,53 @@ def test_404_blocks_the_rule_until_the_config_changes(tmp_path):
         await h.step(5)
         assert len(h.room.auto_puts()) == 1
         cand = [x for x in h.state()["candidates"] if x["rule"] == "piano/enter_when"][0]
-        assert "room refused" in cand["blocked"]
+        assert cand["blocked"] == "the room said no to this switch: open the mode's ⋯"
         h.room.revision = "r2"
         await h.room.push()
         await h.step_until(lambda: h.room.current == "piano")
     run(tmp_path, body)
 
 
-def test_failed_switch_backs_off_until_resume(tmp_path):
+def test_a_failed_switch_waits_for_its_rule_to_go_false_and_leave_rules_still_run(tmp_path):
+    """Owner, 21 Oct: no backoff. A failed switch is said once; that rule isn't tried again until it stops holding,
+    and everything else (another mode's rules, a leave) carries on."""
     async def body(h: H):
         h.room.finish_status = "failed"
         h.playing = True
         await h.step_until(lambda: h.room.auto_puts())
         await h.settle()
         s = h.state()
-        assert s["state"] == "backoff" and s["chip"]["kind"] == "failed" and s["until_in_s"] == 600
-        await h.step(5)
-        assert len(h.room.auto_puts()) == 1
+        assert s["state"] == "watching" and s["chip"]["kind"] == "failed" and s["until_in_s"] is None
+        assert s["chip"]["text"] == "Auto couldn't switch to Piano" and not s["line"].endswith(" Resume")
+        assert any(e["kind"] == "failed" and "failed" in e["reason"] for e in h.ap.log(20))   # the room's word: log only
         h.room.finish_status = "ok"
-        h.ap.resume()
+        await h.step(8)                                  # still playing: not tried again
+        assert len(h.room.auto_puts()) == 1
+        cand = [x for x in h.state()["candidates"] if x["rule"] == "piano/enter_when"][0]
+        assert cand["blocked"] == "the last try didn't work; it tries again the next time the piano is playing"
+        h.playing = False
+        await h.step_until(lambda: "piano/enter_when" not in h.ap._failed, limit=10)   # its rule went false
+        h.playing = True
         await h.step_until(lambda: h.room.current == "piano")
+        assert len(h.room.auto_puts()) == 2
+        # another rule fails while Auto is in Piano: Piano's own leave rule still runs
+        h.room.config["modes"]["disco"]["autopilot"] = {"enter_when": {"between": {"from": "00:00", "to": "23:59"}},
+                                                        "from": ["piano"]}
+        h.room.finish_status = "failed"
+        h.room.revision = "r2"
+        await h.room.push()
+        await h.until(lambda: h.link.view()["revision"] == "r2")
+        await h.step_until(lambda: h.room.auto_puts()[-1]["mode"] == "disco")
+        await h.settle()
+        assert h.room.current == "piano" and h.state()["chip"]["text"] == "Auto couldn't switch to Disco"
+        h.room.finish_status = "ok"
+        await h.step(3)
+        assert [p["mode"] for p in h.room.auto_puts()] == ["piano", "piano", "disco"]
+        h.playing = False
+        await h.step_until(lambda: h.room.current == "gallery")
+        assert [p["mode"] for p in h.room.auto_puts()] == ["piano", "piano", "disco", "gallery"]
+        h.ap.resume()                                    # Resume (and Auto on) forget a failure at once
+        assert h.ap._failed == set()
     run(tmp_path, body)
 
 
@@ -467,7 +488,7 @@ def test_a_partial_switch_landed_so_auto_carries_on(tmp_path):
         await h.step_until(lambda: h.room.auto_puts())
         await h.settle()
         s = h.state()
-        assert h.room.current == "piano" and s["state"] != "backoff" and s["chip"]["kind"] == "switch"
+        assert h.room.current == "piano" and s["state"] == "watching" and s["chip"]["kind"] == "switch"
         assert any(e["kind"] == "partial" for e in h.ap._log)
     run(tmp_path, body)
 
@@ -480,6 +501,8 @@ def test_a_person_s_choice_holds_auto(tmp_path):
         s = h.state()
         assert s["state"] == "holding" and s["hold"]["by"] == "person"
         assert s["line"] == "Auto paused · you chose Lights only · Resume"
+        assert not any(p["kind"] == "hold" for _, p in h.notified) and s["chip"] is None   # logged, not announced
+        assert any(e["kind"] == "hold" and e["reason"] == "person" for e in h.ap.log(20))
         h.playing = True                                 # piano allowed from lights-only, but Auto holds
         await h.step(12)
         assert h.room.auto_puts() == []
@@ -496,6 +519,8 @@ def test_the_hold_ends_when_the_activity_ends(tmp_path):
         assert h.state()["state"] == "holding"
         await h.step(4)                                  # idle and no music: hold.until needs 5 s from the choice
         assert h.state()["state"] == "holding"
+        cand = [x for x in h.state()["candidates"] if x["rule"] == "piano/enter_when"][0]
+        assert cand["blocked"] == "only from Normal or Lights only"
         await h.step_until(lambda: h.state()["state"] == "watching", limit=4)
         assert h.state()["chip"]["kind"] == "resume"
     run(tmp_path, body)
@@ -535,7 +560,8 @@ def test_a_change_within_correction_s_is_a_correction(tmp_path):
         await h.step(10)                                 # still playing, but that pair is suppressed
         assert [p["mode"] for p in h.room.auto_puts()] == ["piano"]
         cand = [x for x in h.state()["candidates"] if x["rule"] == "piano/enter_when"][0]
-        assert cand["holds"] and cand["blocked"].startswith("suppressed")
+        assert cand["holds"] and cand["blocked"] == ("you changed it back right after Auto switched; it'll switch "
+                                                     "again next time")
         h.playing = False                                # the episode ends: enter_when false for 5 s
         await h.step(10)
         assert h.state()["suppressed"] == []
@@ -566,25 +592,6 @@ def test_undo_goes_back_and_suppresses(tmp_path):
     run(tmp_path, body)
 
 
-def test_flap_guard_pauses_auto(tmp_path):
-    async def body(h: H):
-        h.room.config["autopilot"] = {**AUTO, "max_switches": {"count": 2, "per_s": 1800, "pause_s": 900}}
-        h.room.revision = "r2"
-        await h.room.push()
-        await h.until(lambda: h.link.view()["revision"] == "r2")
-        await enter_piano(h)                             # switch 1
-        h.playing = False
-        await h.step_until(lambda: h.room.current == "gallery")   # switch 2 (leave)
-        h.playing = True
-        await h.step_until(lambda: h.state()["state"] == "paused")
-        s = h.state()
-        assert s["why"] == "flap" and s["line"] == "Auto paused · too many changes · Resume" and s["until_in_s"] == 900
-        assert [p["mode"] for p in h.room.auto_puts()] == ["piano", "gallery"]
-        await h.step(10)
-        assert len(h.room.auto_puts()) == 2
-    run(tmp_path, body)
-
-
 def test_never_requests_the_current_mode(tmp_path):
     async def body(h: H):
         h.ap.resume()
@@ -608,7 +615,8 @@ def test_blind_when_the_room_goes_away(tmp_path):
         await h.room.stop()
         await h.step(15)
         s = h.state()
-        assert s["state"] == "blind" and s["why"] == "room_unreachable" and s["line"] == "Auto · not listening"
+        assert s["state"] == "blind" and s["why"] == "room_unreachable"
+        assert s["line"] == "Auto can't reach the room right now"
         h.room.runner = web.AppRunner(web.Application())  # stop() again at teardown is harmless
         await h.room.runner.setup()
     run(tmp_path, body)
@@ -650,8 +658,9 @@ def test_bad_settings_take_the_default_and_say_so(tmp_path):
         await h.until(lambda: h.link.view()["revision"] == "r2")
         await h.step()
         st = h.state()["settings"]
-        assert st["min_dwell_s"] == {"value": 300.0, "source": "default (bad value)"}
-        assert st["hold"]["source"] == "default (bad value)" and st["max_switches"]["source"] == "modes.json"
+        assert st["min_dwell_s"] == {"value": 60.0, "source": "default (bad value)"}
+        assert st["hold"]["source"] == "default (bad value)" and st["chips"]["source"] == "modes.json"
+        assert set(st) == {"on", "quiet_hours", "min_dwell_s", "hold", "chips"}   # no flap guard, no backoff
     run(tmp_path, body)
 
 
@@ -983,9 +992,12 @@ def test_switching_auto_on_waives_the_minimum_stay_in_the_current_mode(tmp_path)
     """Owner, 17 Oct: picking a mode and then turning Auto on must not leave Auto waiting out min_dwell_s."""
     async def body(h: H):
         h.room.since = h.clock.t                          # someone just picked the current mode
+        await h.room.push()
         h.playing = True
         await h.step(15)
         assert h.room.puts == []                          # off: nothing
+        cand = [x for x in h.state()["candidates"] if x["rule"] == "piano/enter_when"][0]
+        assert cand["blocked"].startswith("the room stays in Normal at least 300 s (") and "s to go)" in cand["blocked"]
         await h.ap.set_on(True)
         await h.step_until(lambda: h.room.current == "piano")   # long before the 300 s minimum stay
         assert h.clock.t - h.room.since < 120
