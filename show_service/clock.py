@@ -217,10 +217,20 @@ Corrections (*any thread*)
   - The dbn estimator's octave is the publisher's octave map ("Estimators"): an octave also waits for a beat of both
     grids (past a bar line that is an in-between beat, the first one after it, which then starts the bar), and its
     range is DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM.
+  - **The dbn estimator judges a slow-lane octave on the room's audio** at that switch beat (21 Oct;
+    ``_oct_evidence``, beatdbn.DbnTracker.octave_evidence; README S4.15 "Octave evidence"): Beat This!'s agreement
+    can't pick an octave (one grid's beats are a subset of the other's), so a x2 needs the beats midway to carry real
+    activation peaks (OCT_ADD_MIN of the beats', over the activation's median), and a x0.5 applies when the beats it
+    drops are clearly weaker (OCT_DROP_MAX) or, the audio unable to tell, when the halved tempo is a plausible one
+    (within OCT_PRIOR_OCT octaves of 120 bpm: >= 69). Refused, nothing moves: ``corr_octave_refused_audio``,
+    ``_prior`` or ``_unheard`` (too little activation to judge); ``stats()["oct_evidence"]`` is the latest verdict
+    (``{octave, at_beat, bpm, ratio, n, result}``). The call's ``add_min``, ``drop_max`` and ``prior_oct`` (mllink
+    sends show.yaml's ml.beat_votes ones) replace the defaults. A person's half/double and the legacy estimator are
+    not judged.
   - Every accepted call (it agrees on the octave, or sets one) holds the clock's own octave check off for
     SLOW_OCT_HOLD_S. ``stats()["last_correction"]`` = ``{one, bar_len, octave, result, at_beat}`` for the latest
-    (result ``accepted``, ``applied``, ``bad``, ``no_grid``, ``stale``, ``superseded``, ``refused`` or
-    ``expired``, each also counted as ``corr_<result>``).
+    (result ``accepted``, ``applied``, ``bad``, ``no_grid``, ``stale``, ``superseded``, ``refused``, ``expired``,
+    ``human`` or ``octave_refused_<why>``, each also counted as ``corr_<result>``).
 - ``tap(t_s)``, ``half()``, ``double()`` and ``one(t_s)`` are the show console's human actions: high-confidence
   observations, not overrides.
 
@@ -340,6 +350,15 @@ DBN_NEW_BAR_CONF = 0.1      # a new grid (a tempo jump) keeps the bar anchor; it
 DBN_OCT_SLACK = 0.08
 DBN_OCT_MIN_BPM, DBN_OCT_MAX_BPM = MIN_BPM / (1.0 + DBN_OCT_SLACK), MAX_BPM * (1.0 + DBN_OCT_SLACK)
 DBN_OCT_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
+# dbn, the slow lane's octave evidence (module docstring, "Corrections"; README S4.15 "Octave evidence"): at its switch
+# beat a slow-lane octave also needs the room's audio (beatdbn.DbnTracker.octave_evidence: the activation at the beats
+# it adds or drops over the beats both grids keep) or, for a halving the audio can't confirm, a plausible tempo. The
+# defaults; mllink sends show.yaml's ml.beat_votes values with each octave (measured 21 Oct on 26's replays).
+OCT_ADD_MIN = 0.2           # x2: the beats midway carry real peaks, this share of the beats' (the right x2s: 0.41-1.24;
+                            # nothing there: ~0.03)
+OCT_DROP_MAX = 0.5          # x0.5: the beats it drops are this weak or weaker: the audio confirms it (none measured)
+OCT_PRIOR_OCT = 0.8         # x0.5 otherwise: the halved tempo within this many octaves of the prior (120 bpm): >= 69
+                            # bpm (the pop's wrong halvings 62.5-65, the right ones 73-91)
 
 ClockState = Literal["searching", "locked", "holding", "free"]
 Gate = Literal["beat", "dmx", "none"]
@@ -751,6 +770,14 @@ def _whole(v: object) -> Optional[int]:
     return None
 
 
+def _thr(v: object, default: float) -> float:
+    """A threshold a correction carries: a finite number >= 0, else ``default``."""
+    if isinstance(v, bool) or not isinstance(v, (int, float, np.integer, np.floating)):
+        return default
+    x = float(v)
+    return x if math.isfinite(x) and x >= 0.0 else default
+
+
 # -- the clock ---------------------------------------------------------------------------------------------------------
 class Clock:
     """One room's beat clock. ``process`` = contract.OnAudio, ``tick`` from on_tick, both on show-rx. With
@@ -872,6 +899,7 @@ class Clock:
         self._break_k = -(1 << 62)                  # published beat of the last numbering break (corrections)
         self._pending_oct: Optional[float] = None
         self._human_oct_t: Optional[float] = None       # when a person last said half/double (HUMAN_OCT_HOLD_S)
+        self._oct_ev: Optional[dict] = None             # the last slow-lane octave's evidence (stats, _oct_evidence)
         self._pending_kick: Optional[int] = None   # with a kick-voted halving: an estimator beat that carries kicks
         self._seed_prev: Optional[float] = None
         self._R_s: Optional[np.ndarray] = None
@@ -1125,11 +1153,14 @@ class Clock:
         return {"clock": self._snapshot, "stats": self.stats()}
 
     def apply_integer_correction(self, beat_is_one: Optional[int] = None, bar_len: Optional[int] = None,
-                                 octave: float = 1.0) -> None:
+                                 octave: float = 1.0, *, add_min: Optional[float] = None,
+                                 drop_max: Optional[float] = None, prior_oct: Optional[float] = None) -> None:
         """The slow lane's vote (Beat This!): which published beat is a one, the bar length, the tempo octave
         (1, 2 = the beat is twice as fast, 0.5). Integers only; checked, gated and applied at the next bar line under
-        the new hypothesis on show-rx (module docstring, "Corrections"); any thread."""
-        self._inbox.append(("corr", beat_is_one, bar_len, octave))
+        the new hypothesis on show-rx (module docstring, "Corrections"); any thread. ``add_min``, ``drop_max`` and
+        ``prior_oct``: the octave evidence's thresholds (dbn; None or unusable: OCT_ADD_MIN, OCT_DROP_MAX,
+        OCT_PRIOR_OCT)."""
+        self._inbox.append(("corr", beat_is_one, bar_len, octave, add_min, drop_max, prior_oct))
 
     def observe_hit(self, t_s: float, band: str, strength: float = 1.0) -> None:
         """A dsp hit (``music.hit``): low-band hits near an activation peak refine its time and the lag (legacy; the
@@ -1179,7 +1210,7 @@ class Clock:
                "lag_adj_ms": round(self._lag_adj * 1000.0, 2), "agc_db": round(self._agc_db, 1),
                "cost_ms_per_10ms": {"p50": _pct(c, 50), "p95": _pct(c, 95), "max": _pct(c, 100)},
                "block_ms": {"p50": _pct(b, 50), "p95": _pct(b, 95), "max": _pct(b, 100)},
-               "beat_thread": beat, "last_correction": self._corr_last,
+               "beat_thread": beat, "last_correction": self._corr_last, "oct_evidence": self._oct_ev,
                "errors": self._err_n, **dict(self._counts), "estimator": self._estimator}
         trk = self._trk
         if trk is not None:                             # the line's labels are the tracker's; its counts nest
@@ -2556,7 +2587,8 @@ class Clock:
                 else:
                     self._on_tap(item[1])
 
-    def _on_correction(self, one_in: object, L_in: object, oct_in: object) -> None:
+    def _on_correction(self, one_in: object, L_in: object, oct_in: object, add_min: object = None,
+                       drop_max: object = None, prior_oct: object = None) -> None:
         """A slow-lane vote, on show-rx: checked, gated, then waiting for its bar line (``_apply_pending``)."""
         one = None if one_in is None else _whole(one_in)
         L = None if L_in is None else _whole(L_in)
@@ -2572,7 +2604,8 @@ class Clock:
         if octv != 1.0 and self._human_oct_t is not None and self._t_known - self._human_oct_t < HUMAN_OCT_HOLD_S:
             self._corr_done("human", {"one": one, "L": L, "oct": octv})   # a person set the octave: theirs stands
             return                                      # (the vote's one and bar length assumed its own octave)
-        p = {"one": one, "L": L, "oct": octv, "age": 0}
+        p = {"one": one, "L": L, "oct": octv, "age": 0, "add_min": _thr(add_min, OCT_ADD_MIN),
+             "drop_max": _thr(drop_max, OCT_DROP_MAX), "prior_oct": _thr(prior_oct, OCT_PRIOR_OCT)}
         if not self._has_grid():
             self._corr_done("no_grid", p)
             return
@@ -2681,6 +2714,10 @@ class Clock:
                 self._pending = None
                 into = ((K - self._bar_anchor) // self._bpb) % self._phrase_bars
                 if p["oct"] != 1.0:
+                    why = self._oct_evidence(K, p)          # dbn: the audio's (or the prior's) word on it
+                    if why is not None:                     # refused (counted): nothing moves
+                        self._corr_done(f"octave_refused_{why}", p)
+                        return changed
                     if not self._apply_octave(p["oct"]):    # out of 45-200 bpm (counted): nothing else moves
                         self._corr_done("refused", p)
                         return changed
@@ -2702,6 +2739,47 @@ class Clock:
                 self._pending = None
                 self._corr_done("expired", p)
         return changed
+
+    def _oct_evidence(self, K: int, p: dict) -> Optional[str]:
+        """The dbn estimator's gate on a slow-lane octave ``p["oct"]`` about to switch at published beat ``K`` (a beat
+        of both grids; README S4.15 "Octave evidence"). At an octave Beat This!'s agreement is high whether the octave
+        is right or wrong (one grid's beats are a subset of the other's), so the room's audio judges it, through the
+        tracker's activation on the mapped line (beatdbn.DbnTracker.octave_evidence: K's time from the tracker's
+        anchor beat at the mapped period over the line's last 16 beats, ``DbnTracker.period``, which also gives the
+        tempo the prior reads: the line's own period jitters by 10 % beat to beat in a room):
+        - x2 needs the beats midway to carry real peaks: ratio >= ``add_min``, else ``audio``;
+        - x0.5 applies when the beats it drops are clearly weaker (ratio <= ``drop_max``). Otherwise the audio can't
+          tell (a DBN at the double locked there because those beats carry peaks: 26's replays, right and wrong
+          halvings alike) and the tempo prior decides: the halved tempo within ``prior_oct`` octaves of the clock's
+          prior (120 bpm), else ``prior``;
+        - ``unheard``: too little activation on the line (a quiet room, a hole) to judge.
+        None: it may switch. The legacy estimator: None (its own kick vote and range). Each verdict is kept for
+        ``stats()["oct_evidence"]``."""
+        trk = self._trk
+        if trk is None:
+            return None
+        f = p["oct"]
+        ln = trk.line
+        Tp = trk.period()
+        ev = None
+        bpm = 0.0
+        if ln is not None and Tp:
+            k0, t0, _ = ln
+            x0 = self._om_m + (k0 - self._om_k) * self._om_f   # the tracker's anchor beat, mapped (at 0.5 maybe a half)
+            T = Tp / self._om_f                         # the mapped period, over the line's last 16 beats
+            ev = trk.octave_evidence(t0 + (K - self._off - x0) * T, T, f)
+            bpm = 60.0 / T
+        why: Optional[str] = None
+        if ev is None:
+            why = "unheard"
+        elif f > 1.0:
+            why = None if ev["ratio"] >= p["add_min"] else "audio"
+        elif ev["ratio"] > p["drop_max"]:
+            why = None if abs(math.log2(bpm * f / self._prior_bpm)) <= p["prior_oct"] else "prior"
+        self._oct_ev = {"octave": f, "at_beat": K, "bpm": round(bpm, 2),
+                        "ratio": round(ev["ratio"], 3) if ev is not None else None,
+                        "n": ev["n"] if ev is not None else 0, "result": why or "ok"}
+        return why
 
     def _apply_octave(self, f: float, kick: Optional[int] = None) -> bool:
         """The upcoming beat keeps its time; the period becomes T / f; the published line re-anchors there. An octave

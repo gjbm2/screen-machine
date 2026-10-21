@@ -31,7 +31,9 @@ exactly; c8's integration ruling, 16 Oct: mllink wraps them rather than repeatin
     against the clock's published line where that line holds (the window's last ``local_s``, the line carried back
     from its anchor at Beat This!'s own local period); ``_apply`` then sends ``ctx.clock_correct`` only the parts that
     differ, once the same vote came ``agree_runs`` runs in a row with ``conf >= min_conf`` and ``cooldown_s`` after the
-    last one. An octave goes alone (bar and one wait for a run under the new numbering). A new bar length needs a one
+    last one. An octave goes alone (bar and one wait for a run under the new numbering), with the ``octave_*``
+    thresholds: the clock judges it on the room's audio at its switch beat, since conf can't pick an octave (one
+    grid's beats are a subset of the other's; README S4.15 "Octave evidence"). A new bar length needs a one
     and ``bar_agree_runs`` runs in a row. A vote that agrees with the clock in full is sent too (at most every
     ``cooldown_s``): the clock raises its bar_conf on an agreeing one, which it otherwise never hears (B9's open point).
   - **CPU** every ``CPU_EVERY_S`` from ``/proc``: ``cpu`` = {worker, service, total, children} in cores. ``service``
@@ -79,7 +81,9 @@ HEAVY_EVERY_S = 30.0             # the snapshot's log tail and cost percentiles 
 STAT_N = 2000
 #: S4.9's starting points for what mllink itself reads (show.yaml ml.beat_votes; the same numbers, marked there)
 BEAT_VOTES_FALLBACK: dict = {"match_ms": 70, "octave_tol": 0.06, "min_conf": 0.6, "one_agree": 0.6, "agree_runs": 2,
-                             "bar_agree_runs": 4, "bar_lens": [3, 4], "cooldown_s": 30, "local_s": 10}
+                             "bar_agree_runs": 4, "bar_lens": [3, 4], "cooldown_s": 30, "local_s": 10,
+                             "octave_add_min": 0.2, "octave_drop_max": 0.5, "octave_prior_oct": 0.8}
+# (the octave_* keys go with each octave to the clock, which judges it on the room's audio: clock.OCT_ADD_MIN etc.)
 LOCAL_MIN_BEATS = 6              # beat_vote: Beat This!'s beats in the local span before its tempo counts
 RESULTS_STALE_FALLBACK = 3.0     # starting point (show.yaml ml.results_stale_s)
 STALE_PERIODS_FALLBACK = 1.5     # starting point (show.yaml ml.stale_periods)
@@ -644,8 +648,10 @@ class MLLink:
         now = self._mono()
         cooling = self._last_apply is not None and now - self._last_apply < float(c["cooldown_s"])
         no_one = False
-        if octave != 1.0:
-            args = {"octave": octave}
+        if octave != 1.0:                                     # (the clock judges it on the room's audio at its
+            args = {"octave": octave, "add_min": float(c["octave_add_min"]),       # switch beat, these thresholds:
+                    "drop_max": float(c["octave_drop_max"]),                       # README S4.15 "Octave evidence")
+                    "prior_oct": float(c["octave_prior_oct"])}
         else:
             args = {}
             if meter:

@@ -528,6 +528,15 @@ ml:
                                             # one (§5.3: stronger evidence for what moves every bar line)
     bar_lens: [3, 4]                        # starting point: the bar lengths it may set
     cooldown_s: 30                          # starting point
+    # An octave goes to the clock with these; it judges it on the room's audio at its switch beat (conf can't pick an
+    # octave: one grid's beats are a subset of the other's). Measured 21 Oct on 26's replays (README S4.15 "Octave
+    # evidence"; the activation at the beats an octave adds or drops over the beats both keep, above its median):
+    octave_add_min: 0.2                     # measured: a x2 needs the beats midway at this share or more (the right
+                                            # x2s read 0.41-1.24; nothing there ~0.03)
+    octave_drop_max: 0.5                    # starting point: a x0.5 whose dropped beats are this weak applies on the
+                                            # audio (none measured: the right halvings read 0.59-1.88, the wrong 0.78-1.45)
+    octave_prior_oct: 0.8                   # measured: otherwise the halved tempo within 0.8 octave of 120 bpm (>= 69;
+                                            # the pop's wrong halvings 62.5-65, the right ones 73-91)
   restart:
     backoff_s: [2, 5, 15, 60, 300]          # starting point: the wait after each failure in a row; then 300 s for ever
                                             # (each at least 1 s)
