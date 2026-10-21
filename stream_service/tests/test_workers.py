@@ -630,3 +630,39 @@ def test_the_hello_asks_for_the_claiming_sessions_encoder():
     c2.send = sent.append
     pool._hello(c2)                                  # a hint's spawn with nothing expected: only the warm
     assert [m[0] for m in sent] == ["warm"]
+
+
+# -- a free worker older than the code on disk is retired, not reused (7c, 21 Oct) -----------------------------------
+def test_a_free_worker_with_older_code_is_retired_not_reused(monkeypatch):
+    from stream_service import workers as W
+    stamp = [100]
+    monkeypatch.setattr(W, "code_stamp", lambda: stamp[0])
+    sw = types.SimpleNamespace(workers=lambda s: "proc", encoder=lambda s: "ffmpeg", fps=lambda s: 30)
+    pool = W.WorkerPool(types.SimpleNamespace(switches=sw, post=lambda fn, *a: fn(*a)))
+    spawned, asked = [], []
+
+    def spawn(gpu):
+        c = W.WorkerConn(pool, gpu)
+        c.send = lambda msg, c=c: asked.append((c.n, msg[0]))
+        pool.conns.append(c)
+        spawned.append(c)
+        return c
+    monkeypatch.setattr(pool, "_spawn", spawn)
+    old = spawn(1)
+    old.life.hello(0.0)                              # idle, ready
+    px = types.SimpleNamespace(name="s-test")
+    assert pool.acquire(1, px) is old                # same code: reused
+    pool._release(old, px)
+    assert old.life.state == LINGERING
+    stamp[0] = 200                                   # a commit landed while it lingered
+    got = pool.acquire(1, px)
+    assert got is not old and len(spawned) == 2 and old.exit_asked is not None and (old.n, "exit") in asked
+    assert pool.hint("south-screen", gpu=1)["spawned"]    # the hint skips a retired one too
+    assert old.describe(0.0)["older_code"] and not got.describe(0.0)["older_code"]
+
+
+def test_code_stamp_reads_the_files_a_worker_never_reloads():
+    from stream_service import workers as W
+    W._stamp[0] = -1e9
+    s = W.code_stamp()
+    assert s >= (W._PKG / "workers.py").stat().st_mtime_ns and W.code_stamp() == s

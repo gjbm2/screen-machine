@@ -56,10 +56,41 @@ STOP_S = 10.0
 EXIT_KILL_S = 5.0       # asked to exit, still there after this: killed
 SHM_DIR = pathlib.Path("/dev/shm/sm-stream")
 TICK_S = 0.1
+CODE_STAMP_S = 1.0      # a code_stamp() reading is reused this long
 
 
 
 MUSIC_BUS_URL: Optional[str] = None   # the control's first --music-bus (server.make_app), passed to workers' children
+
+_PKG = REPO / "stream_service"
+_CODE = ((_PKG, False), (_PKG / "score", True), (_PKG / "encode", True), (_PKG / "plugins", False),
+         (_PKG / "plugins" / "_lib", True))
+_stamp: list = [-1e9, 0]
+
+
+def _newest(d: pathlib.Path, recurse: bool) -> int:
+    m = 0
+    try:
+        with os.scandir(d) as it:
+            for e in it:
+                if e.name.endswith(".py") and e.is_file():
+                    m = max(m, e.stat().st_mtime_ns)
+                elif recurse and e.is_dir() and e.name != "__pycache__":
+                    m = max(m, _newest(pathlib.Path(e.path), True))
+    except OSError:
+        pass
+    return m
+
+
+def code_stamp() -> int:
+    """The newest mtime (ns) of the code a worker imports once and never reloads: stream_service/*.py, score/,
+    encode/, plugins/*.py and plugins/_lib/ (the plug-in modules themselves hot-load and don't count).  A free worker
+    whose spawn is older than this is retired, not handed a session, so a commit reaches a screen at its next start
+    (7c, 21 Oct: TVs sent art -> live inside the linger got their old workers back)."""
+    now = time.monotonic()
+    if now - _stamp[0] >= CODE_STAMP_S:
+        _stamp[:] = [now, max(_newest(d, r) for d, r in _CODE)]
+    return _stamp[1]
 
 class WorkerError(RuntimeError):
     pass
@@ -134,6 +165,7 @@ class WorkerConn:
         self.stats: Optional[dict] = None
         self.spawn_s: Optional[float] = None
         self.expect: Any = None                     # a warm hint's profile: its encoder is made at the hello
+        self.code = code_stamp()                    # the code on disk when it was spawned
 
     @property
     def pid(self) -> Optional[int]:
@@ -289,6 +321,7 @@ class WorkerConn:
                 else round(self.life.ready_at - self.life.spawned_at, 3),
                 "binds": self.life.binds, "cpu_s": proc.get("cpu_s"), "rss_mb": proc.get("rss_mb"),
                 "pool_mb": proc.get("pool_mb"), "threads": proc.get("threads"), "dead": self.dead,
+                "older_code": self.code < code_stamp(),
                 "dropped_inputs": self.cmd.dropped if self.cmd is not None else 0}
 
 
@@ -324,7 +357,8 @@ class WorkerPool:
 
     def acquire(self, gpu: int, proxy: "EngineProxy") -> Optional[WorkerConn]:
         now = time.monotonic()
-        free = [c for c in self.conns if c.gpu == gpu and not c.dead and c.exit_asked is None and c.life.free()]
+        free = self._current([c for c in self.conns if c.gpu == gpu and not c.dead and c.exit_asked is None
+                              and c.life.free()])
         free.sort(key=lambda c: (not c.ready.is_set(), c.life.state != LINGERING))   # ready first, warm first
         for c in free:
             if c.life.claim(now):
@@ -335,6 +369,17 @@ class WorkerPool:
             c.life.claim(now)
             c.proxy = proxy
         return c
+
+    def _current(self, conns: list) -> list:
+        """The free workers still running the code on disk; each older one is asked to exit (code_stamp)."""
+        stamp = code_stamp()
+        keep = []
+        for c in conns:
+            if c.code < stamp:
+                c.ask_exit("older code than on disk")
+            else:
+                keep.append(c)
+        return keep
 
     def _spawn(self, gpu: int) -> Optional[WorkerConn]:
         c = WorkerConn(self, gpu)
@@ -376,8 +421,8 @@ class WorkerPool:
         if gpu is None:
             return {"screen": screen, "workers": mode, "spawned": False, "why": "no GPU known for this screen: pass gpu"}
         expect = self._expect(screen)
-        have = [c for c in self.conns if c.gpu == gpu and not c.dead and c.exit_asked is None
-                and c.life.state in (SPAWNING, IDLE, LINGERING) and c.proxy is None]
+        have = self._current([c for c in self.conns if c.gpu == gpu and not c.dead and c.exit_asked is None
+                              and c.life.state in (SPAWNING, IDLE, LINGERING) and c.proxy is None])
         if have:
             c = have[0]
             if c.life.state in (IDLE, LINGERING):
