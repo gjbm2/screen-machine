@@ -146,6 +146,11 @@ def test_an_encoder_waiting_for_a_cpu_is_the_computer_busy():
     ch = r.tick(40.0, enc=20.0, enc_runq=19.0)                                # the host is the busiest: as before
     assert ch.step == "scene_rate" and ch.why == "host"
     assert window([_Rec(0, False, 0.0, 1.0, write_ms=5.0)], 16.7).enc_runq == 0.0    # unreadable: 0
+    r = Run(nvenc_busy=0.4)                                                   # NVENC itself 40% busy: not it
+    ch = r.tick(2.0, enc=20.0, enc_runq=8.0)
+    assert ch.why == "host" and r.c.state()["load"]["nvenc"] == pytest.approx(0.4)
+    r = Run(nvenc_busy=0.95)                                                  # NVENC flat out: the encoder
+    assert r.tick(2.0, enc=20.0, enc_runq=8.0).why == "enc"
 
 
 def test_repeats_and_late_slots_count_as_overload():
