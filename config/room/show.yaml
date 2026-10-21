@@ -28,13 +28,12 @@ version: 1
 # answers, every host gets them. One box with two addresses still streams once, because a sender replies to the
 # latest SUBSCRIBE.
 # on_demand: true means the sender is subscribed only while POST /show/api/v1/test runs that source.
-# room_sound: false means its audio can't carry anyone in the room (a music file): the listener skips the music/speech
-#   check for it. Nothing else changes: every upload still needs AI listening on and a mode that listens. Leave it out
-#   (or true) for anything with a microphone.
+# room_sound: false means its audio can't carry anyone in the room (a music file): the listener skips its talking
+#   check. Leave it out (or true) for anything with a microphone.
 # Senders given with --sender / SHOW_SENDERS (deploy/sm-show.env) still apply. This file wins for a name in both.
 # A room mic (a stream of a sender that isn't on_demand or room_sound: false, other than MIDI and test streams)
-#   captures only while something needs it: Auto is on, or the mode follows the music. The Room page's Mute wins.
-#   Otherwise its sender keeps it closed (README S5.16, show_service/mic.py).
+#   captures only while something needs it: Auto is on, the mode follows the music, or AI listening is on (it claims
+#   the mic itself). The Room page's mic switch wins. Otherwise its sender keeps it closed (README S5.16, mic.py).
 senders:
   # LIVE 18 Oct (owner: "plug the MIDI cable / a mic into the mini-PC and it Just Works"): the kiosk's show-sender
   # (a systemd --user unit, tools/show_sender/deploy.sh) sends the Steinway's USB MIDI and a USB mic whenever they are
@@ -82,19 +81,13 @@ situations:
     streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
                                             # unless they are listed here or a rule sets include_test: true.
     channels: [1]                           # the adsilent: channel 1 is the keys; 2 is its own playback (ignored)
-    heard_by: room-mic                      # while this audio stream is up, the mic must hear the piano too, so silent
-                                            # headphone practice never switches; null turns that check off
     window_s: 10                            # starting point (§8.9)
     min_notes: 12                           # starting point
     min_span_s: 6                           # starting point
     min_pitches: 4                          # starting point
-    heard_min_lufs: -55                     # measured 20 Oct (NEEWER UM04 on the console, room-mic): the acoustic piano's
-                                            # 10 s max short-term loudness was -43..-52 over 98 s of playing (median
-                                            # lufs_s -51); the quiet room reads -58..-70. -45 failed most real playing.
     idle_note_s: 1.0                        # starting point: piano_idle needs no note-on for this long
-  music:                                    # music_audible
-    stream: room-mic
-    min_prob: 0.5                           # starting point: CED's music (the ML worker, Stage 4). Without the
+  music:                                    # music_audible; no stream: it reads the mic the room listens through
+    min_prob: 0.4                           # 8f's 20 Oct measurement, d94a58f2 (was 0.5). CED's music (the ML worker, Stage 4). Without the
                                             # worker, a DSP guess: a steady beat or a clear key, over the gate.
     dsp_min_gate: 0.3                       # starting point
   sonos:                                    # sonos_playing; music_audible's Sonos path
@@ -102,13 +95,11 @@ situations:
     volume: sonos.drawing-room.volume
     own_change_s: 60                        # starting point: ignore Sonos this long after the room itself sent it
                                             # anything (sent_age_s)
-  quiet:                                    # quiet
-    stream: room-mic
+  quiet:                                    # quiet; no stream: the mic the room listens through
     gate_below: 0.05                        # starting point
     music_below: 0.2                        # starting point (Stage 4): with the ML worker's CED, the room is also quiet
     speech_below: 0.2                       # when music and speech are both under these (only noise over the gate)
-  talking:                                  # talking (Stage 4: CED in the ML worker; unknown without it)
-    stream: room-mic
+  talking:                                  # talking (Stage 4: CED in the ML worker; unknown without it); no stream
     min_prob: 0.5                           # starting point (§8.9): CED speech at least this...
     music_below: 0.5                        # ...with music under this (§8.9: speech with no music)
     speech_words: [speech, conversation, crowd]   # starting point: "speech" is the max of these CED words (babble
@@ -364,33 +355,21 @@ listener:                                   # §7.3, §7.5. Starting points, all
   fast_after_section_s: 10
   est_fast_share: 0.5                       # the cost estimate's share of time at the fast cadence until an hour of
                                             # listening has measured it (forecasts open fast windows often)
-  quiet_gate: 0.1                           # the loudness gate's mean over the last 10 s must reach this
-  requires_auto: true                       # owner, 17 Oct: no audio goes to any provider unless Auto is on (cost, and
-  requires_mic: true                        # it's intrusive) and the room's mic is on; re-checked right before each
-                                            # upload. The mode's show.main "listening" no longer gates (17 Oct)
-  requires_mode: true                       # owner, 20 Oct: "the default should be that it doesn't send except on a
-                                            # live mode ... it's intrusive and expensive to have it running by default
-                                            # if e.g. people are just in the room talking normally". A mode lets it
-                                            # listen only through its own row (room_service's show.ai, like show.mic);
-                                            # never set = off. The Room page's AI listening switch stays the master
+  # Owner, 21 Oct: "if I turn this on, I want to see casually within the /room tab what it is returning on each
+  # roundtrip, I don't want to spend my time battling with ... gating code". So: switch on = it sends, every cadence.
+  # The switch is the only on/off and claims the mic itself (7521bd87); the old requires_auto/mic/mode, music_gate,
+  # ced.music_min and ced.speaks_s keys are gone (no code reads them; 09's audit, 21 Oct).
+  quiet_gate: 0.001                         # was 0.1: the loudness gate's mean over the last 10 s had to reach this
   evening_h: 4                              # README S5.20: the evening the Music card's estimate covers (starting
                                             # point): est_evening_usd = evening_h x the calls an hour (the blend of
                                             # cadence_s and fast_cadence_s by est_fast_share) x the cost a clip
   min_clip_s: 6                             # the ring records only while a clip could go: a first clip waits this
                                             # long; a room clip needs at least this much music without talking
-  music_gate: classifier                    # room-mic clips go only while a music/speech classifier says music, with
-                                            # speech under 0.3. The classifier is CED, in P1. "dsp" would allow a DSP
-                                            # guess instead (a steady beat over the loudness gate): that is the owner's
-                                            # choice. A sender with room_sound: false skips this check, nothing else.
   describe_timeout_s: 8                     # then the local keyword match answers (§7.4)
-  ced:                                      # Stage 4 (§7.5): with music_gate classifier, a room-sound clip is the
-    music_min: 0.4                          # longest run of seconds CED calls music (at least this; 20 Oct, 8f: 0.5
-                                            # opened on 44-100% of ticks over the 9 test tracks at room level, 0.4 on
-                                            # 68-100%; room noise peaks at 0.09)...
-    speech_max: 0.3                         # ...with speech under this (§7.5)...
+  ced:                                      # the talking check (listener._decide)
+    speech_max: 1.0                         # owner 21 Oct: never blocks (was 0.3): speech at least this pauses a clip...
     speech_words: [speech, conversation, crowd]   # ...speech being the max of these CED words (starting point: guests
                                             # talking over music show as conversation and babble, not only Speech)
-    speaks_s: 1.0                           # README S4.8: each CED reading vouches for the last second of its window
   section_call_after_s: 8                   # Stage 4 (§7.3): one extra call this long after a section boundary
 
 # The cue engine (cues.py; README S5.22, owner 18 Oct): the listener arms, a real-time component fires. Standing cues
