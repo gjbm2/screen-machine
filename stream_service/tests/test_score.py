@@ -132,7 +132,9 @@ def test_metre_finds_a_waltz_and_its_downbeats():
     assert m is not None and m.beats_per_bar == 3 and m.phase == 0 and not m.compound, m
 
 
-def test_builder_writes_the_analysed_metre():
+def test_builder_writes_the_analysed_metre(monkeypatch):
+    from stream_service.score import quantize
+    monkeypatch.setattr(quantize, "WINDOW_S", 24.0)            # the whole 18 s waltz in one request (live: 12 s)
     sb = ScoreBuilder()
     sb.use_analysis(True)
     ns = _waltz(bars=12)
