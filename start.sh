@@ -40,13 +40,21 @@ MODE="${SCREEN_MACHINE_MODE:-dev}"
 # ── Helpers ───────────────────────────────────────────────────────────
 
 screen_running() {
-  # Returns 0 if the named screen session exists
-  screen -ls 2>/dev/null | grep -q "\\.$1" 2>/dev/null
+  # Returns 0 if the named screen session exists (exact name: "flask" must not match "flask-test")
+  screen -ls 2>/dev/null | grep -q "[0-9]\.$1[[:space:]]" 2>/dev/null
 }
 
 screen_wipe() {
   screen -wipe >/dev/null 2>&1 || true
 }
+
+# Every screen -dmS below runs under `setsid -w`. Spectre runs this script as `wsl.exe ... bash -lc`, and WSL
+# sends SIGHUP to that command's process group the moment it exits. A screen server that has not yet left the
+# group dies with it: no session, no output, exit 0 (Flask left down by Spectre restarts on 18 and 21 Oct;
+# reproduced through Spectre on 21 Oct: 9 of 12 launches died without setsid, 0 of 12 with it).
+
+# The Flask window's console (tracebacks included) is logged here; the previous run is kept as .1
+FLASK_CONSOLE_LOG="$PROJECT_ROOT/logs/flask_console.log"
 
 # ── Start functions ───────────────────────────────────────────────────
 
@@ -56,8 +64,27 @@ start_flask() {
     echo "Flask: already running"
     return 0
   fi
-  screen -dmS flask bash -c "cd '$PROJECT_ROOT' && source .venv/bin/activate && python3 app.py"
-  echo "Flask: started (screen session 'flask')"
+  mkdir -p "$PROJECT_ROOT/logs"
+  if [[ -f "$FLASK_CONSOLE_LOG" ]]; then mv -f "$FLASK_CONSOLE_LOG" "$FLASK_CONSOLE_LOG.1"; fi
+  echo "=== $(date -Is) start.sh start flask ===" >"$FLASK_CONSOLE_LOG"
+  setsid -w screen -dmS flask -L -Logfile "$FLASK_CONSOLE_LOG" \
+    bash -c "cd '$PROJECT_ROOT' && source .venv/bin/activate && python3 app.py; echo \"=== app.py exited (status \$?) ===\""
+  # Wait for :5000/api/health (30 s). If the session dies first, fail with its console tail so the caller sees why.
+  local i
+  for ((i = 0; i < 60; i++)); do
+    if curl -fsS -m 2 -o /dev/null http://127.0.0.1:5000/api/health 2>/dev/null; then
+      echo "Flask: started (screen session 'flask', :5000 healthy; console: logs/flask_console.log)"
+      return 0
+    fi
+    if ((i == 2)); then screen -S flask -X logfile flush 1 >/dev/null 2>&1 || true; fi
+    if ((i >= 2)) && ! screen_running flask; then
+      echo "Flask: FAILED: app.py exited during start-up. Last console lines (logs/flask_console.log):" >&2
+      tail -n 25 "$FLASK_CONSOLE_LOG" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+  echo "Flask: started (screen session 'flask'), but :5000/api/health is not answering yet after 30 s; console: logs/flask_console.log"
 }
 
 start_vite() {
@@ -80,7 +107,7 @@ start_vite() {
       echo "Vite: already running"
       return 0
     fi
-    screen -dmS vite bash -c "cd '$PROJECT_ROOT' && npm run dev"
+    setsid -w screen -dmS vite bash -c "cd '$PROJECT_ROOT' && npm run dev"
     echo "Vite: started in DEV mode (screen session 'vite')"
   fi
 }
@@ -95,7 +122,7 @@ start_ngrok() {
     echo "Ngrok: skipped (no NGROK_DOMAIN set)"
     return 0
   fi
-  screen -dmS ngrok bash -c "ngrok http --domain=$NGROK_DOMAIN $NGROK_PORT"
+  setsid -w screen -dmS ngrok bash -c "ngrok http --domain=$NGROK_DOMAIN $NGROK_PORT"
   echo "Ngrok: started (screen session 'ngrok', domain=$NGROK_DOMAIN, port=$NGROK_PORT)"
 }
 
