@@ -28,10 +28,11 @@ exactly; c8's integration ruling, 16 Oct: mllink wraps them rather than repeatin
     in the last stats line), so every reader's freshness follows the worker's own stretching and none flaps while it
     degrades. Each tags line's embedding is decoded once (float32).
   - **Beat votes** (§5.3: integer corrections only, never a phase or a tempo). ``beat_vote`` (pure) reads a beats line
-    against the clock's published line; ``_apply`` then sends ``ctx.clock_correct`` only the parts that differ, once
-    the same vote came ``agree_runs`` runs in a row with ``conf >= min_conf`` and ``cooldown_s`` after the last one. An
-    octave goes alone (bar and one wait for a run under the new numbering). A new bar length needs a one and
-    ``bar_agree_runs`` runs in a row. A vote that agrees with the clock in full is sent too (at most every
+    against the clock's published line where that line holds (the window's last ``local_s``, the line carried back
+    from its anchor at Beat This!'s own local period); ``_apply`` then sends ``ctx.clock_correct`` only the parts that
+    differ, once the same vote came ``agree_runs`` runs in a row with ``conf >= min_conf`` and ``cooldown_s`` after the
+    last one. An octave goes alone (bar and one wait for a run under the new numbering). A new bar length needs a one
+    and ``bar_agree_runs`` runs in a row. A vote that agrees with the clock in full is sent too (at most every
     ``cooldown_s``): the clock raises its bar_conf on an agreeing one, which it otherwise never hears (B9's open point).
   - **CPU** every ``CPU_EVERY_S`` from ``/proc``: ``cpu`` = {worker, service, total, children} in cores. ``service``
     is show_service's own process plus its other children (``child_pids``: __main__ passes the clock's beat process,
@@ -78,7 +79,8 @@ HEAVY_EVERY_S = 30.0             # the snapshot's log tail and cost percentiles 
 STAT_N = 2000
 #: S4.9's starting points for what mllink itself reads (show.yaml ml.beat_votes; the same numbers, marked there)
 BEAT_VOTES_FALLBACK: dict = {"match_ms": 70, "octave_tol": 0.06, "min_conf": 0.6, "one_agree": 0.6, "agree_runs": 2,
-                             "bar_agree_runs": 4, "bar_lens": [3, 4], "cooldown_s": 30}
+                             "bar_agree_runs": 4, "bar_lens": [3, 4], "cooldown_s": 30, "local_s": 10}
+LOCAL_MIN_BEATS = 6              # beat_vote: Beat This!'s beats in the local span before its tempo counts
 RESULTS_STALE_FALLBACK = 3.0     # starting point (show.yaml ml.results_stale_s)
 STALE_PERIODS_FALLBACK = 1.5     # starting point (show.yaml ml.stale_periods)
 CPU_FLOOR_FALLBACK = 0.1         # starting point (show.yaml ml.cpu_floor)
@@ -186,14 +188,47 @@ def _num(v: Any) -> Optional[float]:
     return x if math.isfinite(x) else None
 
 
-def _beat_at(clock: dict, t_s: float) -> float:
-    """contract.ClockData's line: the published beat (float) at host time t_s."""
-    return float(clock["beat_at_anchor"]) + (t_s * 1000.0 - float(clock["anchor_ms"])) * float(clock["bpm"]) / 60000.0
+def _local_period(beats: list[float]) -> Optional[float]:
+    """Beat This!'s beat period over ``beats`` (ascending, the local span): each beat numbered on from the last by its
+    interval in median intervals (a skipped beat counts 2; one closer than half a median is an extra and left out),
+    then the Theil-Sen slope of time on number (the median of every pair's): finer than the median interval (Beat
+    This!'s 20 ms frames make that 1.5 % coarse at 200 bpm), and a phase step (a jump cut, a re-entry) can't tilt it
+    the way it tilts an LS fit. None with fewer than 4 numbered beats."""
+    t = np.asarray(beats, float)
+    iv = np.diff(t)
+    T0 = float(np.median(iv)) if iv.size else 0.0
+    if not T0 > 0.0:
+        return None
+    n, keep = [0.0], [float(t[0])]
+    for b in t[1:]:
+        step = int(round((float(b) - keep[-1]) / T0))
+        if step >= 1:
+            n.append(n[-1] + step)
+            keep.append(float(b))
+    if len(keep) < 4:
+        return None
+    nn, tt = np.asarray(n), np.asarray(keep)
+    i, j = np.triu_indices(nn.size, 1)
+    T = float(np.median((tt[j] - tt[i]) / (nn[j] - nn[i])))
+    return T if T > 0.0 and math.isfinite(T) else None
 
 
 def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: dict) -> contract.BeatVote:
-    """One Beat This! window read against the clock's published line (S4.5 "Beat votes"). Pure: ``applied`` is
-    False and ``why`` says why there is no vote (None: a vote); MLLink's apply rule decides the rest."""
+    """One Beat This! window read against the clock's published line (S4.5 "Beat votes"), where that line holds. Pure:
+    ``applied`` is False and ``why`` says why there is no vote (None: a vote); MLLink's apply rule decides the rest.
+
+    The clock's line holds near its anchor (an integer beat near the moment it was published, so near now): its bpm
+    is the tracker's local fit plus any slew in force, and the DBN re-anchors it on every beat, so extrapolated back
+    over a 30 s window it walks hundreds of ms off the beats (26, 21 Oct: 1.8 % on the quickstep; a 3 % slew while
+    gated dmx). So only the window's last ``local_s`` (of the interior, where the beats are) is read, and the clock's
+    line is carried back from its anchor at Beat This!'s own local period:
+    - **octave**: Beat This!'s period over the local span (``_local_period``: a Theil-Sen fit; LOCAL_MIN_BEATS beats or
+      "too few beats") against the clock's: their ratio within ``octave_tol`` of 2, 0.5 or 1;
+    - **conf**: the share of the local beats within ``match_ms`` of the octave-mapped clock line: the clock's beats at
+      its period / octave (within ``octave_tol``: Beat This!'s fitted period), phase from the clock's line at its
+      anchor (for 0.5, its bar anchor's beats: the ones a halving keeps). A consistent x2 window reaches ~1 however
+      the clock's slope is off; Beat This! on another phase, or split between tempi, stays low;
+    - **the one** (octave 1): each local downbeat within ``match_ms`` of a beat of that line votes its number."""
     out: contract.BeatVote = {"window_t0": float(msg.get("window_t0") or 0.0),
                               "window_t1": float(msg.get("window_t1") or 0.0),
                               "beat_is_one": None, "bar_len": None, "octave": None, "conf": 0.0, "applied": False,
@@ -205,26 +240,38 @@ def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: d
             or _num(clock.get("anchor_ms")) is None or _num(clock.get("beat_at_anchor")) is None):
         out["why"] = "no grid"
         return out
-    bt_bpm = _num(msg.get("bpm"))
-    beats = [b for b in (_num(x) for x in (msg.get("beats") or [])) if b is not None]
-    if not bt_bpm or bt_bpm <= 0 or len(beats) < 4:
+    match_s = float(c["match_ms"]) / 1000.0
+    beats = sorted(b for b in (_num(x) for x in (msg.get("beats") or [])) if b is not None)
+    inter = msg.get("interior")
+    t_end = _num(inter[1]) if isinstance(inter, (list, tuple)) and len(inter) == 2 else None
+    if t_end is None:
+        t_end = _num(msg.get("window_t1")) or (beats[-1] if beats else 0.0)
+    lo = t_end - float(c["local_s"])
+    loc = [b for b in beats if lo <= b <= t_end]
+    T_bt = _local_period(loc) if len(loc) >= LOCAL_MIN_BEATS else None
+    if T_bt is None:
         out["why"] = "too few beats"
         return out
-    r = (60.0 / bpm) / (60.0 / bt_bpm)              # the clock's period / Beat This!'s
+    r = (60.0 / bpm) / T_bt                         # the clock's period / Beat This!'s
     tol = float(c["octave_tol"])
     octave = next((o for o in (2.0, 0.5, 1.0) if abs(r / o - 1.0) <= tol), None)
     if octave is None:
         out["why"] = "the tempi don't relate"
         return out
     out["octave"] = octave
-    match_s = float(c["match_ms"]) / 1000.0
-    period = 60.0 / bpm / octave                    # Beat This!'s beat at the voted octave
+    t_ref = float(clock["anchor_ms"]) / 1000.0
+    k_ref = float(clock["beat_at_anchor"])
+    origin = float(int(clock.get("bar_anchor_beat") or 0))
+
+    def line(t: float) -> float:                    # the octave-mapped clock line's beat (float) at t
+        return (k_ref - origin) * octave + (t - t_ref) / T_bt
+
     hits = 0
-    for b in beats:
-        x = _beat_at(clock, b) * octave
-        if abs(x - round(x)) * period <= match_s:
+    for b in loc:
+        x = line(b)
+        if abs(x - round(x)) * T_bt <= match_s:
             hits += 1
-    out["conf"] = round(hits / len(beats), 3)
+    out["conf"] = round(hits / len(loc), 3)
     if octave != 1.0:
         return out
     bar_lens = [int(v) for v in (c.get("bar_lens") or []) if isinstance(v, (int, float))]
@@ -233,11 +280,11 @@ def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: d
     use = bl or int(clock.get("beats_per_bar") or 4)
     votes: list[int] = []
     for d in (_num(x) for x in (msg.get("downbeats") or [])):
-        if d is None:
+        if d is None or not lo <= d <= t_end:
             continue
-        x = _beat_at(clock, d)
+        x = line(d) + origin                         # (octave 1: the published count)
         k = round(x)
-        if abs(x - k) * (60.0 / bpm) <= match_s:
+        if abs(x - k) * T_bt <= match_s:
             votes.append(int(k))
     if votes:
         counts = collections.Counter(k % use for k in votes)
@@ -368,6 +415,8 @@ class MLLink:
                     ok = isinstance(v, list) and v and all(isinstance(x, int) and 2 <= x <= 16 for x in v)
                 elif k in ("agree_runs", "bar_agree_runs"):
                     ok = isinstance(v, int) and not isinstance(v, bool) and v >= 1
+                elif k == "local_s":
+                    ok = _num(v) is not None and float(v) > 0
                 else:
                     ok = _num(v) is not None and float(v) >= 0
                 if ok:
