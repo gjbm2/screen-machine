@@ -62,7 +62,6 @@ vibes:
     change_rate: 0.2
     dwell_s: [120, 300]
     relax_on_talk: true
-    listener: true                  # still needs the AI listening switch and the mode's "listening"
     palettes: [art, ember, gold, dusk]
     key_cct: 2700
     lamp_chroma_max: 0.04
@@ -102,7 +101,6 @@ vibes:
     change_rate: 0.15
     dwell_s: [180, 420]
     relax_on_talk: true
-    listener: true
     palettes: [art, ember, dusk, gold]
     key_cct: 2400
     lamp_chroma_max: 0.04
@@ -141,7 +139,6 @@ vibes:
     change_rate: 0.3
     dwell_s: [90, 240]
     relax_on_talk: true
-    listener: true
     palettes: [art, ocean, aurora, dusk, ice]
     key_cct: 2700
     lamp_chroma_max: 0.06
@@ -181,7 +178,6 @@ vibes:
     change_rate: 0.2
     dwell_s: [120, 600]
     relax_on_talk: false
-    listener: false                 # MIDI already gives the harmony and the dynamics (§7.5)
     palettes: [art, ember, gold, dusk]
     key_cct: 2700
     lamp_chroma_max: 0.05
@@ -220,7 +216,6 @@ vibes:
     change_rate: 0.6
     dwell_s: [45, 150]
     relax_on_talk: true
-    listener: true
     palettes: [neon, rainbow, gold, acid, art]
     key_cct: 3000
     lamp_chroma_max: 0.3            # §8.8: full colour on the key lamps only in Party and Disco
@@ -260,7 +255,6 @@ vibes:
     change_rate: 0.8
     dwell_s: [30, 120]
     relax_on_talk: true
-    listener: true
     palettes: [rainbow, neon, acid, gold]
     key_cct: 3000
     lamp_chroma_max: 0.3
