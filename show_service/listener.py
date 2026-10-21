@@ -21,7 +21,8 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
       talking" (the one fail-closed case: the owner's no-speech rule);
   (d) otherwise it goes. No music requirement: the LLM judges the music.
   The view's ``status`` is one of STATUS_WORDS ("Listening", "Paused: quiet", "Paused: people talking", "Paused:
-  can't check for talking", "Off"), the same rule on the clip that would go now; ``detail`` says more for
+  can't check for talking", "Off"): Off, or "Paused: quiet" while no clip can be cut (no sound coming in), else the
+  last send-time decision, so it changes once per send, never between them (09, 21 Oct); ``detail`` says more for
   diagnostics only (no model, no sound coming in, the mic is off). ``history`` lists the last HISTORY_N round trips
   and skips, newest first (repeated skips for the same reason fold into one row with a count). The ring records only
   while the switch is on (``Rings.armed``).
@@ -888,7 +889,8 @@ class Listener:
         self._estimate: Optional[dict] = None        # utils.llm.estimate("listen") this tick
         self._llm_sig: Any = None                   # what the listen models resolved to (logged when it changes)
         self._budget_hit = False
-        self._why: Optional[str] = WHY_OFF
+        self._why: Optional[str] = WHY_OFF        # can a clip be cut now (the switch, a model, sound coming in)
+        self._decided: Optional[str] = None         # the last send-time decision: None (it went) or its word
         self._stream: Optional[str] = None
         self._due: Optional[float] = None
         self._fast: Optional[str] = None            # README S5.22: why the fast cadence is on now
@@ -1052,6 +1054,7 @@ class Listener:
         wakes and reads ``on``); off cancels any call in flight."""
         self.on = bool(on)
         self.set_at = self._wall()
+        self._decided = None                      # a fresh start: no decision yet
         if not self.on and self._tasks:
             self._cancel()                        # every upload needs the switch, test streams included
         for fn in list(self._on_listeners):
@@ -1231,9 +1234,10 @@ class Listener:
         return not (stream and stream in self.no_room_sound)
 
     def _gate(self, now_s: float) -> tuple[Optional[str], Optional[str]]:
-        """(None while a clip would go now, else its STATUS_WORDS word; the stream a clip would come from), and
-        ``_detail``. The switch is the only on/off; then the clip that would go now, by ``_decide``. The upload decides
-        again on its own clip (_call)."""
+        """(None while a clip can be cut now, else its STATUS_WORDS word; the stream it would come from), and
+        ``_detail``: the switch, a usable model, sound coming in. Whether a clip goes is decided only at send time, on
+        its own window (_call, _decide); the page's status is that last decision (09, 21 Oct: no flicker between
+        sends, and "can't check" only when a send was really skipped for it)."""
         stream = self._active_stream(now_s)
         self._detail = None
         self._arm(self.on)
@@ -1257,7 +1261,7 @@ class Listener:
                 held < min(float(self.cfg["clip_s"]), float(self.cfg["min_clip_s"])):
             self._detail = DETAIL_NO_SOUND
             return WHY_QUIET, stream
-        return self._decide(stream, now_s - float(self.cfg["clip_s"]), now_s, now_s), stream
+        return None, stream
 
     def _gate_between(self, t0: float, t1: float) -> float:
         """The loudness gate's mean over [t0, t1] (the 1 Hz timeline); with no sample in it, the latest; 0 with none."""
@@ -1511,8 +1515,10 @@ class Listener:
         return rings.latest(stream, clip_s)
 
     def _skip(self, stream: str, kind: str, why: str, detail: Optional[str] = None) -> None:
+        self._decided = why
         self._log_event({"kind": "skipped", "stream": stream, "call": kind, "why": why, "detail": detail})
         self._remember({"ok": False, "call": kind, "why": why, "detail": detail})
+        self._refresh(self._mono())
 
     def _remember(self, row: dict) -> None:
         """One row of the view's history (HISTORY_N, newest first in the view): a round trip or a skip. A skip for
@@ -1558,6 +1564,7 @@ class Listener:
         if why is not None:
             self._skip(stream, kind, why, detail)
             return
+        self._decided = None                          # it goes
         user = [self._timeline_text(t1, clip, lufs)]
         segs = self._segments(clip.t0_s, t1)
         if segs:
@@ -1783,8 +1790,9 @@ class Listener:
         est = self.estimate_view()
         b = self._beliefs if isinstance(self._beliefs, dict) else {}
         ap = b.get("approach") if isinstance(b.get("approach"), dict) else None
-        return {"on": self.on, "mode": self.mode, "effective": self._why is None, "why": self._why,
-                "status": LISTENING if self._why is None else self._why, "detail": self._detail,
+        shown = self._why if self._why is not None else self._decided   # the last send-time decision
+        return {"on": self.on, "mode": self.mode, "effective": shown is None, "why": shown,
+                "status": LISTENING if shown is None else shown, "detail": self._detail,
                 "history": [dict(r) for r in reversed(self._history)],
                 "stream": self._stream,
                 "next_in_s": nxt, "cadence_s": round(self.interval(), 1), "fast": self._fast,
