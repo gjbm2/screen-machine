@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from ..mask import parse_mask
 from ..roomstate.contract import Adapter, Outcome, Reading
 from ..roomstate.schema import enum_schema
 from ..util import wait_until
@@ -41,10 +42,11 @@ def _save(path: Path, data: dict) -> None:
 
 
 class SensorMaskAdapter(Adapter):
-    """sensor_mask.main: "follow" | "suspended". Room-wide, through the mask's set_suspended()."""
+    """sensor_mask.main: "follow" | "suspended". Room-wide, through the mask's set_suspended(). The file keeps the
+    held value per screen too, so after a restart while suspended the TV pages' welcome carries what they showed."""
 
     subsystem = "sensor_mask"
-    subsystem_label = "Art and room light"
+    subsystem_label = "Art brightness"
     category = "setting"
     kind = "level"
     members = ["main"]
@@ -56,12 +58,32 @@ class SensorMaskAdapter(Adapter):
         self.path = Path(state_dir) / "sensor_mask.json"
 
     def restore(self) -> None:
-        saved = _load(self.path).get("suspended")
-        if isinstance(saved, bool):
-            self.mask.set_suspended(saved)
+        saved = _load(self.path)
+        suspended = saved.get("suspended")
+        if not isinstance(suspended, bool):
+            return
+        if suspended:
+            self._seed(saved.get("held"))
+        self.mask.set_suspended(suspended)
+
+    def _seed(self, held: Any) -> None:
+        """LM-1: put the held values back as what the pages show, for screens still configured with mask_push."""
+        cfg, pushed = getattr(self.mask, "cfg", None), getattr(self.mask, "pushed", None)
+        if not isinstance(held, dict) or cfg is None or not isinstance(pushed, dict):
+            return
+        sources = getattr(self.mask, "pushed_source", None)
+        for sid, v in held.items():
+            sc = cfg.screen(sid)
+            mv = parse_mask(v) if isinstance(v, dict) else None
+            if not sc or not sc.mask_push or mv is None:
+                continue
+            pushed[sid] = mv
+            if isinstance(sources, dict):
+                sources[sid] = v.get("source")
 
     def value_schema(self, member: str) -> dict:
-        s = enum_schema(list(self.VALUES), "Art follows the room's light", {"follow": "Follow", "suspended": "Hold steady"})
+        s = enum_schema(list(self.VALUES), "Art brightness",
+                        {"follow": "Follows the room's light", "suspended": "Stays as it was"})
         s["x-ui"]["advanced"] = True
         return s
 
@@ -76,7 +98,10 @@ class SensorMaskAdapter(Adapter):
     async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
         suspended = desired["main"] == "suspended"
         self.mask.set_suspended(suspended)
-        _save(self.path, {"suspended": suspended})
+        pushed = getattr(self.mask, "pushed", None) or {}
+        src = getattr(self.mask, "pushed_source", None) or {}
+        _save(self.path, {"suspended": suspended,
+                          "held": {sid: {**v.as_dict(), "source": src.get(sid)} for sid, v in pushed.items()}})
         return Outcome("ok", "", {"main": Outcome("ok")})
 
 
@@ -130,9 +155,9 @@ class PageAdapter(Adapter):
     async def _confirm(self, m: str, value: bool, n: int) -> Outcome:
         c = self.c[self._sid(m)]
         if n == 0 or c._page() is None:
-            return Outcome("unconfirmed", "no page connected; the next welcome carries it")
+            return Outcome("ok", "kept; the TV page gets it when it opens")
         if c.kiosk_state is not None and "policy" not in c.kiosk_state:
-            return Outcome("unconfirmed", "sent; the page doesn't report its policy in kiosk.state")
+            return Outcome("ok", "sent")
         if await wait_until(lambda: c.page_timed_reload() == value, c.changed, self.timeout_s):
             return Outcome("ok")
         return Outcome("unconfirmed", "sent; the page hasn't reported it in kiosk.state")

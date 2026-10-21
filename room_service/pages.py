@@ -203,7 +203,6 @@ class PageHub:
         self.clients: dict[str, list[PageClient]] = {sid: [] for sid in cfg.screens}
         self._keys: dict[str, str] = {}
         self._keys_mtime: float | None = None
-        self._warned_open: set[str] = set()
         self._load_keys()
         self.allowed_origins = {o.rstrip("/").lower() for o in [*cfg.web_origins, *cfg.kiosk_origins]}
         base = urlsplit(cfg.art_page_base)
@@ -240,12 +239,8 @@ class PageHub:
     def _check_key(self, client: PageClient, presented: str | None) -> bool:
         """Glass clients only. True if allowed (a valid key, or none configured for the screen)."""
         want = self._keys.get(client.screen) if self.key_required(client.screen) else None
-        if want is None:
+        if want is None:                          # the normal case: no keys in the AV stack (owner, 14 Oct)
             client.authenticated = False
-            if client.screen not in self._warned_open:
-                self._warned_open.add(client.screen)
-                log.warning("%s: no control key configured; accepting unauthenticated %s clients "
-                            "(add one to %s to require it)", client.screen, client.role, self.cfg.page_keys_file)
             return True
         ok = bool(presented) and hmac.compare_digest(str(presented).encode(), want.encode())
         client.authenticated = ok

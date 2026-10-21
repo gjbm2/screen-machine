@@ -1,7 +1,8 @@
 """Optional room config (room.prod.yaml) settings for light-sensor ingest (LIVE_V1 §2.2b, DCL v3.1 §4.4).
 
-Every key is optional. The defaults change nothing for an existing config: without a
-sensor keys file, ingest is off and the mask comes from Flask exactly as before.
+Every key is optional. Ingest is on by default and needs no sensor keys (owner ruling, 14 Oct):
+any relay may send readings. `enabled: false` turns the sensor path off, and the mask then comes
+from Flask exactly as before. `sensors_file` is still read but no longer gates anything.
 
 ```yaml
 ingest:
