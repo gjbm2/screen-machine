@@ -59,7 +59,7 @@ from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction, weighted_pick
 from .tags import scene_weight
-from .effects import EffectChain, EffectSlot
+from .effects import MAX_BUS_SLOTS, EffectChain, EffectSlot
 from .fx_director import FX_EVENT_P, FxDirector, FxMove
 from .fx_state import SessionFx
 from .guard import trip_budget_ms
@@ -1330,8 +1330,8 @@ class Session(EngineListener):
             self._upnext_edited()
             if kind == "scene":
                 result["cue"] = await self.cue({"to": "auto", "at": body.get("when") or "now"})
-            else:
-                result["fx"] = await self.fx_next()
+            else:                                       # the effect the owner pressed Play on, not a fresh pick
+                result["fx"] = await self.fx_next({"effect": q.effects[0]["effect"]})
         else:
             raise ParamError("bad_request", "op must be add, set, remove, move, keep, reroll or play")
         self._upnext_edited()
@@ -1948,7 +1948,9 @@ class Session(EngineListener):
         if eff is None:
             move = fd.next_move(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
                                 self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
-            if move is None:
+            if move is None:                             # (next_move relaxes the stage rules before giving up)
+                if not autos and len(self.fx.stack) >= MAX_BUS_SLOTS:
+                    raise SessionError(409, "too_many_effects", f"at most {MAX_BUS_SLOTS} effects on the bus")
                 raise SessionError(409, "no_effect", "no effect in the pool fits here right now")
             if rep is not None:
                 move = FxMove("add" if rep == "none" else "swap", move.add, None if rep == "none" else rep, move.why,

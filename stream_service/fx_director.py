@@ -239,9 +239,11 @@ class FxDirector:
         return match_weight(tags, want, FX_DESCRIPTORS)
 
     def candidates(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
-                   pixels_ratio: float, freed: Any = None) -> list[str]:
+                   pixels_ratio: float, freed: Any = None, relaxed: bool = False) -> list[str]:
         """Eligible presets for one more bus effect (``freed``: a slot about to be swapped out).  ``cost`` and
-        ``pixels_ratio`` are not read any more (no cost budget, 21 Oct); the callers' signature stays."""
+        ``pixels_ratio`` are not read any more (no cost budget, 21 Oct); the callers' signature stays.  ``relaxed``
+        (the owner's Next, when nothing fits the stage rules): any stage, a second one on a stage, outside
+        direction.fx.stages; still never quarantined, unvetted, ``auto: false`` or already on the bus."""
         pool = resolve_pool(self.auto_fx.get("pool", "all"), presets)
         q = self._quarantined(now)
         allowed = self.fxd.get("stages")
@@ -257,7 +259,7 @@ class FxDirector:
                 continue
             if self.vet is not None and not self._vetted(p.get("effect")):
                 continue
-            if stage not in STAGES or stage in used_stages or (allowed and stage not in allowed):
+            if not relaxed and (stage not in STAGES or stage in used_stages or (allowed and stage not in allowed)):
                 continue
             out.append(name)
         return out
@@ -418,17 +420,24 @@ class FxDirector:
     def next_move(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
                   pixels_ratio: float = 1.0, prefer: tuple = ()) -> Optional[FxMove]:
         """The owner's "next effect" (16 Oct): a change now, whatever the schedule or auto.fx says.  Swaps the oldest
-        auto effect for a new pick, or adds one when there is none; manual (hand-placed) effects are never touched."""
+        auto effect for a new pick, or adds one when there is none; manual (hand-placed) effects are never touched.
+        Nothing fits the stage rules: the same again with them relaxed (``candidates(relaxed=True)``); None only when
+        that is empty too, or the bus is full with no auto effect to swap."""
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
-        if autos:
-            old = autos[0]
-            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer,
-                               stack, old)
-            return None if got is None else self._move("swap", got, old.id, f"next: {got[1]} for {old.spec.name}")
-        if len(stack) >= MAX_BUS_SLOTS:
+        old = autos[0] if autos else None
+        if old is None and len(stack) >= MAX_BUS_SLOTS:
             return None
-        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer, stack)
-        return None if got is None else self._move("add", got, None, f"next: {got[1]}")
+        got = None
+        for relaxed in (False, True):
+            got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old, relaxed=relaxed),
+                               presets, prefer, stack, old)
+            if got is not None:
+                break
+        if got is None:
+            return None
+        if old is not None:
+            return self._move("swap", got, old.id, f"next: {got[1]} for {old.spec.name}")
+        return self._move("add", got, None, f"next: {got[1]}")
 
     def status(self, now: float) -> dict:
         fxd = self.fxd
