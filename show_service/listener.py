@@ -7,28 +7,24 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 * **Each tick:** sample the DSP (features, clock, harmony) into a 120 s timeline; age the beliefs; decide whether a
   clip may go (``why``: the first failing reason, in page words); when one is due, start a call (up to
   ``max_in_flight`` in flight).
-* **Gating** (§7.3, §7.5), in order, for every stream (test streams too): the AI listening switch ("AI
-  listening"; persisted; default off: nothing is uploaded until the owner turns it on); the mode's permission (owner,
-  20 Oct: "it's intrusive and expensive to have it running by default if e.g. people are just in the room talking
-  normally": room_service's per-mode device ``show.ai`` PUTs ``{"mode": bool}``, as ``show.mic`` claims the mic;
-  persisted; default off, so only the modes whose row turns it on (the live ones) listen; ``requires_mode``; "AI
-  listening is off in <the mode's label>"); Auto on and the room's mic on
-  (owner, 17 Oct; ``requires_auto`` / ``requires_mic``; unknown = off); the vibe's own ``listener`` (a feel can say
-  off); sound coming in (fresh features, audio in the ring); the music gate (``classifier``: CED from the ML worker,
-  below; ``dsp``: a beat or a key over ``situations.music.dsp_min_gate``), skipped only for a stream whose show.yaml
-  sender says ``room_sound: false`` (a music file: no one's speech in it); gate >= ``quiet_gate`` over the last 10 s; a
-  usable model in config/llm.yaml. The mode's show target no longer gates (owner, 17 Oct: its ``listening`` stays in
-  the API for readers; the permission above is a separate, explicit per-mode row). The ring records only while the
-  switch, the mode's permission, Auto, the mic and the vibe allow a clip (``Rings.armed``).
-* **The CED gate** (Stage 4, README S4.8; ``music_gate: classifier``, room-sound streams only): no fresh CED reading
-  for the stream (``ctx.ml``; MLView.stale_s, at least ``ml.results_stale_s``): "the music/speech check isn't
-  running"; the latest reading's speech >= ``listener.ced.speech_max``: "people are talking" (speech is the max over
-  ``ced.speech_words``: speech, conversation, crowd); else the clip is the longest contiguous run of seconds in the
-  last ``clip_s`` whose readings say music >= ``ced.music_min`` and speech < ``ced.speech_max`` (a run starts
-  ``ced.speaks_s`` before its first reading, consecutive passing readings join while at most the CED's stale time apart,
-  so a worker slowed to a reading every 4-8 s still makes one run, and the run's last second also needs the next
-  reading, which covers it too, to have passed; the latest run wins a tie), cut with ``rings.clip``; a run shorter than ``min_clip_s`` is
-  skipped: "not enough music without talking".
+* **When a clip goes** (owner, 21 Oct: "if I turn this on, I want to see ... what it is returning on each roundtrip,
+  I don't want to spend my time battling with ... gating code"; 09's first-principles spec). The Room page's AI
+  listening switch is the only on/off: no mode, Auto or feel vetoes it, and switching it on claims the mic (mic.py's
+  ``set_listening``), as Auto and a mode's ``show.mic`` do. Each clip is decided at send time from its own window, the
+  last ``clip_s`` of the ring (a section call's ends at its boundary + ``section_call_after_s``):
+  (a) the loudness gate's mean over the clip is under ``quiet_gate``: skipped, "Paused: quiet";
+  (b) a room-sound stream (not a show.yaml sender with ``room_sound: false``) and ANY CED reading overlapping
+      [the clip's start - that reading's window, its end] has speech >= ``ced.speech_max`` (speech is the max over
+      ``ced.speech_words``: speech, conversation, crowd): skipped, "Paused: people talking";
+  (c) a room-sound stream, no CED reading overlaps the clip and the latest is older than the CED's stale time
+      (MLView.stale_s: ``ml.stale_periods`` x its real cadence) or there is none: skipped, "Paused: can't check for
+      talking" (the one fail-closed case: the owner's no-speech rule);
+  (d) otherwise it goes. No music requirement: the LLM judges the music.
+  The view's ``status`` is one of STATUS_WORDS ("Listening", "Paused: quiet", "Paused: people talking", "Paused:
+  can't check for talking", "Off"), the same rule on the clip that would go now; ``detail`` says more for
+  diagnostics only (no model, no sound coming in, the mic is off). ``history`` lists the last HISTORY_N round trips
+  and skips, newest first (repeated skips for the same reason fold into one row with a count). The ring records only
+  while the switch is on (``Rings.armed``).
 * **Sections** (Stage 4, §7.3): structure's events (``on_music_event``) and music.context keep a short section history.
   A confirmed ``section_change`` makes one extra call due at its boundary + ``section_call_after_s`` (still
   ``min_gap_s`` after the last call, one in flight, and slowed with the cadence: at least half the current interval
@@ -37,7 +33,8 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   end. A ``track_change`` lets the next verdict's genre win at once (the beliefs' track-change rule).
 * **The mic on demand** (README S5.16): a stream the mic keeps off (the ring's ``off``, receiver health's ``off``, or
   state "off") never gives a clip ("the mic is off"); the ring forgets what it held of it; and a clip cut before a
-  stream went off (the ring's ``off_gen`` moved while it was encoded) is never uploaded.
+  stream went off (the ring's ``off_gen`` moved while it was encoded) is never uploaded. A stream the mic keeps off
+  reads "Paused: quiet" (detail "the mic is off").
 * **Cadence** (README S5.22; owner 18 Oct): a ``clip_s`` (10 s) clip every ``cadence_s`` (15 s) while the music is
   steady, every ``fast_cadence_s`` (5 s) while something develops (``_developing``: structure's build or outro, a
   forecast window open or opening within ``fast_lookahead_s``, an armed song end within ``fast_end_s``, a confirmed
@@ -101,7 +98,7 @@ LISTENER_LOG = contract.LISTENER_LOG    # every verdict and failure (genre.detai
 LOG_ROTATE_BYTES = 1_000_000
 
 # Design defaults (§7.3; starting points), used for any key show.yaml's ``listener`` leaves out. quiet_gate: the
-# loudness gate's mean over QUIET_WINDOW_S must reach this; min_clip_s: the ring must hold min(clip_s, this) before a
+# loudness gate's mean over the clip must reach this (0: never quiet); min_clip_s: the ring must hold min(clip_s, this) before a
 # call (it records only while a clip could go, so a first clip waits this long).
 DEFAULTS: dict[str, Any] = {"cadence_s": 15.0, "clip_s": 10.0, "min_gap_s": 4.0,
                             # README S5.22 (owner, 18 Oct: "24 s every 20 s is too long a round trip"): a 10 s clip
@@ -112,16 +109,8 @@ DEFAULTS: dict[str, Any] = {"cadence_s": 15.0, "clip_s": 10.0, "min_gap_s": 4.0,
                             # min_gap_s apart
                             "fast_cadence_s": 5.0, "max_in_flight": 2, "fast_lookahead_s": 20.0, "fast_end_s": 30.0,
                             "fast_after_section_s": 10.0,
-                            "music_gate": "classifier", "describe_timeout_s": 8.0,
+                            "describe_timeout_s": 8.0,
                             "quiet_gate": 0.1, "min_clip_s": 6.0, "section_call_after_s": 8.0,
-                            # owner, 17 Oct: nothing goes to any provider unless Auto is on and the room's mic is
-                            # on (cost, and it's intrusive); unknown reads as off. show.yaml listener.requires_auto /
-                            # requires_mic
-                            "requires_auto": True, "requires_mic": True,
-                            # owner, 20 Oct: and nothing unless the mode allows it (room_service's show.ai: PUT
-                            # /api/v1/listening {"mode": bool}); never set reads as off. show.yaml
-                            # listener.requires_mode
-                            "requires_mode": True,
                             # README S5.20: the evening the Music card's estimate covers (hours; starting point);
                             # S5.22: the share of the time at the fast cadence the estimate assumes until it has
                             # measured an hour of its own listening
@@ -129,18 +118,14 @@ DEFAULTS: dict[str, Any] = {"cadence_s": 15.0, "clip_s": 10.0, "min_gap_s": 4.0,
 INT_KEYS = ("max_in_flight",)
 SHARE_KEYS = ("est_fast_share",)
 FAST_SHARE_MIN_S = 3600.0     # the estimate's fast share is measured once an hour of effective listening is behind it
-# Stage 4 (README S4.8, §7.5): the CED gate's thresholds (show.yaml listener.ced; starting points, the same numbers)
-CED_DEFAULTS: dict[str, float] = {"music_min": 0.5, "speech_max": 0.3}
+# the talking check's threshold (show.yaml listener.ced.speech_max; starting point, the same number)
+CED_DEFAULTS: dict[str, float] = {"speech_max": 0.3}
+CED_WINDOW_S = 2.0            # a CED reading's window when it doesn't say (show.yaml ml.fast_lane.window_s)
 RESULTS_STALE_S = 3.0         # show.yaml ml.results_stale_s when it is left out (starting point): an older CED reading
                               # is not "now"
-CED_SPEAKS_S = 1.0            # show.yaml listener.ced.speaks_s (README S4.8): each CED reading vouches for the last
-                              # second of its window
 CONTEXT_STALE_S = 3.0         # music.context comes at 1 Hz
+HARMONY_MIN_CONF = 0.3        # the timeline's key line: a key this sure is named
 SECTIONS_KEEP = 64            # the section history (ids, letters, starts) for segment maps
-MUSIC_GATES = ("classifier", "dsp")
-DSP_MIN_GATE = 0.3            # show.yaml situations.music.dsp_min_gate when it is left out (starting point)
-HARMONY_MIN_CONF = 0.3        # "or a clear key" for the dsp music gate (README S3.12)
-QUIET_WINDOW_S = 10.0
 FEATURES_STALE_S = 5.0
 CONFIDENT = 0.6
 BUDGET_SLOWDOWN = 3.0
@@ -154,6 +139,8 @@ LUFS_CHUNK = 8000             # pyebur128 in 0.5 s pieces: the worker thread nev
 ENCODE_TIMEOUT_S = 5.0
 ENCODE_NICE = 10
 LOG_N = 200
+TIMELINE_SLACK_S = 1.5       # the 1 Hz timeline's sample just after a clip's end still speaks for it
+HISTORY_N = 10                # the view's history: the last round trips and skips the Room page lists
 
 # beliefs (§7.1; README S5.22)
 HALF_LIFE_S = {"genre": 120.0, "mood": 45.0, "change": 45.0, "transitions": 45.0, "intensity": 45.0}
@@ -171,26 +158,18 @@ CHARACTER_WORDS = 12
 WHY_WORDS = 12
 MUSICAL = ("music", "mixed")
 
-WHY_OFF = "AI listening is off"
-WHY_VIBE = "this feel doesn't listen"
-WHY_NO_CED = "the music/speech check isn't running"        # Stage 4: no fresh CED reading for the stream
-WHY_P1 = WHY_NO_CED                                         # the Stage-3 name, kept for readers of it
-WHY_TALKING = "people are talking"
-WHY_SHORT = "not enough music without talking"
-WHY_NO_MUSIC = "no music heard"
-WHY_QUIET = "too quiet"
-WHY_NO_SOUND = "no sound coming in"
-WHY_NO_MODEL = "no model configured"
-WHY_MIC_OFF = "the mic is off"                              # the mic on demand (README S5.16)
-WHY_MIC_WENT_OFF = "the mic went off"                       # a clip cut before that is never uploaded
-WHY_AUTO_OFF = "Auto is off"                                  # owner, 17 Oct: no uploads unless Auto is on
-WHY_MODE_OFF = "AI listening is off in {mode}"                # owner, 20 Oct: the mode's permission (show.ai) is off
-THIS_MODE = "this mode"                                       # {mode} when the room doesn't say its label (as mic.py)
-
-
-def why_mode(label: Optional[str]) -> str:
-    """WHY_MODE_OFF in page words: "AI listening is off in Normal", else "... in this mode"."""
-    return WHY_MODE_OFF.format(mode=label.strip() if isinstance(label, str) and label.strip() else THIS_MODE)
+# The Room page's words, all of them (owner, 21 Oct; module docstring "When a clip goes")
+LISTENING = "Listening"
+WHY_OFF = "Off"
+WHY_QUIET = "Paused: quiet"
+WHY_TALKING = "Paused: people talking"
+WHY_CANT_CHECK = "Paused: can't check for talking"
+STATUS_WORDS = (LISTENING, WHY_QUIET, WHY_TALKING, WHY_CANT_CHECK, WHY_OFF)
+# ``detail`` (diagnostics only, never the page's status)
+DETAIL_NO_MODEL = "no model configured"
+DETAIL_NO_SOUND = "no sound coming in"
+DETAIL_MIC_OFF = "the mic is off"
+DETAIL_MIC_WENT_OFF = "the mic went off"                     # a clip cut before that is never uploaded
 
 
 def _one_of(words: Any) -> str:
@@ -309,6 +288,11 @@ def _f(v: Any, default: Optional[float] = None) -> Optional[float]:
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
         return default
     return float(v)
+
+
+def _round(v: Any) -> Optional[float]:
+    f = _f(v)
+    return None if f is None else round(f, 1)
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -864,8 +848,7 @@ class Listener:
                  vocab_path: Path = contract.VOCAB_FILE, encoder: Optional[Callable[..., Any]] = None,
                  warm: bool = True) -> None:
         self.ctx = ctx
-        self._auto_fn: Optional[Callable[[], Optional[bool]]] = None   # Autopilot.is_on (set_auto)
-        self._mic_fn: Optional[Callable[[], Any]] = None               # Mic.state (set_mic): {"on": bool, ...}
+        self._on_listeners: list[Callable[[], None]] = []                # mic.py's wake: the switch claims the mic
         self._llm = llm
         self._llm_error: Optional[str] = None
         self._llm_retry = -math.inf
@@ -877,19 +860,19 @@ class Listener:
         self.cfg: dict = dict(DEFAULTS)
         self.ced_cfg: dict = dict(CED_DEFAULTS)
         self.speech_words: tuple[str, ...] = contract.SPEECH_WORDS   # listener.ced.speech_words
-        self.speaks_s = CED_SPEAKS_S
         self.results_stale_s = RESULTS_STALE_S
-        self._ced_state: dict = {"why": None, "run": None, "latest": None}   # the CED gate's last look (snapshot)
+        self._ced_state: dict = {"why": None, "overlapping": 0, "speech": None, "latest_age_s": None}   # (snapshot)
+        self._detail: Optional[str] = None          # diagnostics only: why, in more words (no model, no sound, ...)
+        self._history: collections.deque = collections.deque(maxlen=HISTORY_N)   # the view's history, oldest first
         self._sections: collections.deque = collections.deque(maxlen=SECTIONS_KEEP)   # {"id", "letter", "start_s"}
         self._section_due: Optional[float] = None    # the section call's clip end (boundary + section_call_after_s)
         self._section_calls = 0
         self._last_section_start: Optional[float] = None
-        self.dsp_min_gate = DSP_MIN_GATE
         self.no_room_sound: set[str] = set()      # streams whose sender says room_sound: false (show.yaml)
         self.problems: list[str] = []
         self.on = False
         self.set_at: Optional[float] = None
-        self.mode = False                         # owner, 20 Oct: this mode lets the AI listen (show.ai; persisted)
+        self.mode = False                         # show.ai's last word (persisted; shown, never a gate since 21 Oct)
         self.beliefs_state = BeliefState()
         self._timeline: collections.deque = collections.deque(maxlen=int(TIMELINE_S) + 8)
         self._tasks: list = []                    # calls in flight (at most listener.max_in_flight)
@@ -934,17 +917,7 @@ class Listener:
             if k not in src:
                 continue
             v = src[k]
-            if k == "music_gate":
-                if v in MUSIC_GATES:
-                    cfg[k] = v
-                else:
-                    problems.append(f"listener.music_gate: {v!r} is not one of {', '.join(MUSIC_GATES)}")
-            elif k in ("requires_auto", "requires_mic", "requires_mode"):
-                if isinstance(v, bool):
-                    cfg[k] = v
-                else:
-                    problems.append(f"listener.{k}: {v!r} is not true/false")
-            elif k in INT_KEYS:
+            if k in INT_KEYS:
                 if isinstance(v, int) and not isinstance(v, bool) and v >= 1:
                     cfg[k] = v
                 else:
@@ -957,12 +930,11 @@ class Listener:
                     problems.append(f"listener.{k}: {v!r} is not 0..1")
             else:
                 fv = _f(v)
-                if fv is not None and fv > 0:
-                    cfg[k] = fv
+                if fv is not None and (fv > 0 or (k == "quiet_gate" and fv == 0)):
+                    cfg[k] = fv                   # quiet_gate 0: never quiet
                 else:
                     problems.append(f"listener.{k}: {v!r} is not a positive number")
         ced, ced_cfg = src.get("ced"), dict(CED_DEFAULTS)
-        speaks = CED_SPEAKS_S
         if isinstance(ced, dict):
             for k in CED_DEFAULTS:
                 if k in ced:
@@ -971,25 +943,16 @@ class Listener:
                         ced_cfg[k] = fv
                     else:
                         problems.append(f"listener.ced.{k}: {ced[k]!r} is not 0..1")
-            if "speaks_s" in ced:
-                fv = _f(ced["speaks_s"])
-                if fv is not None and 0.0 < fv <= 10.0:
-                    speaks = fv
-                else:
-                    problems.append(f"listener.ced.speaks_s: {ced['speaks_s']!r} is not 0..10 s")
         elif ced is not None:
             problems.append("listener.ced: not a mapping")
         words, prob = contract.speech_words(ced.get("speech_words") if isinstance(ced, dict) else None,
                                             "listener.ced.speech_words")
         if prob:
             problems.append(prob)
-        self.ced_cfg, self.speech_words, self.speaks_s = ced_cfg, words, speaks
+        self.ced_cfg, self.speech_words = ced_cfg, words
         ml = (settings or {}).get("ml")
         rs = _f(ml.get("results_stale_s")) if isinstance(ml, dict) else None
         self.results_stale_s = rs if rs is not None and rs > 0 else RESULTS_STALE_S
-        music = ((settings or {}).get("situations") or {}).get("music") or {}
-        g = _f(music.get("dsp_min_gate")) if isinstance(music, dict) else None
-        self.dsp_min_gate = _clamp(g, 0.0, 1.0) if g is not None else DSP_MIN_GATE
         self.no_room_sound, more = no_room_sound_streams(settings or {})
         problems += more
         self.cfg, self.problems = cfg, problems
@@ -1085,11 +1048,17 @@ class Listener:
 
     # -- the API's calls (show-brain) --------------------------------------------------------------------------------
     def set_on(self, on: bool) -> dict:
-        """The AI listening switch (PUT /api/v1/listening). Off cancels any call in flight."""
+        """The AI listening switch (PUT /api/v1/listening): the only on/off. On claims the mic (the on-listeners: mic.py
+        wakes and reads ``on``); off cancels any call in flight."""
         self.on = bool(on)
         self.set_at = self._wall()
         if not self.on and self._tasks:
             self._cancel()                        # every upload needs the switch, test streams included
+        for fn in list(self._on_listeners):
+            try:
+                fn()
+            except Exception:                     # noqa: BLE001
+                log.exception("listening on-listener failed")
         if self.ctx.persist is not None:
             try:
                 self.ctx.persist()
@@ -1102,14 +1071,11 @@ class Listener:
         return self._view
 
     def set_mode(self, mode: bool) -> dict:
-        """The mode's permission (owner, 20 Oct; PUT /api/v1/listening {"mode": bool}, room_service's per-mode device
-        ``show.ai``, as ``show.mic`` claims the mic). The Room page's switch stays the master: both must be on. Off
-        cancels any call in flight, as the switch going off does. Room re-sends it on every re-sync, so only a change
-        is persisted and logged."""
+        """room_service's per-mode device ``show.ai`` (PUT /api/v1/listening {"mode": bool}): kept and shown, never a
+        gate (owner, 21 Oct: "I can't see why it would disable ai mode if user turns it on"). Room re-sends it on
+        every re-sync, so only a change is persisted and logged."""
         mode = bool(mode)
         changed, self.mode = mode != self.mode, mode
-        if not self.mode and self.cfg["requires_mode"] and self._tasks:
-            self._cancel()                        # every upload needs the mode's permission too, test streams included
         if changed and self.ctx.persist is not None:
             try:
                 self.ctx.persist()
@@ -1124,6 +1090,10 @@ class Listener:
 
     def view(self) -> dict:
         return self._view
+
+    def add_on_listener(self, fn: Callable[[], None]) -> None:
+        """fn() (it must not block) whenever the switch is set: mic.py's wake, so switching on claims the mic at once."""
+        self._on_listeners.append(fn)
 
     def beliefs(self) -> Optional[dict]:
         """Any thread: the last Beliefs built on show-brain."""
@@ -1235,10 +1205,6 @@ class Listener:
         self._timeline.append((now_s, _f(f.get("lufs_s")), _f(f.get("energy")), _f(f.get("gate")),
                                _f(f.get("brightness")), _f(f.get("onset"))))
 
-    def _gate_mean(self, now_s: float, window_s: float) -> float:
-        vals = [row[3] or 0.0 for row in self._timeline if now_s - row[0] < window_s]
-        return sum(vals) / len(vals) if vals else 0.0
-
     def _mic_off(self, stream: Optional[str]) -> bool:
         """Is ``stream`` kept off by the mic on demand (README S5.16)? The ring's own off set first (it moves the moment
         mic.py decides), then receiver health's ``off`` and the stream's state."""
@@ -1264,185 +1230,77 @@ class Listener:
         (a music file played as a test). Unknown streams count as room sound: the strict side."""
         return not (stream and stream in self.no_room_sound)
 
-    def set_auto(self, fn: Optional[Callable[[], Optional[bool]]]) -> None:
-        """Auto on/off now (autopilot.Autopilot.is_on; any thread, no side effects). Unset or None: off."""
-        self._auto_fn = fn
-
-    def set_mic(self, fn: Optional[Callable[[], Any]]) -> None:
-        """The room mic's state (mic.Mic.state: {"on": bool, ...}). Unset or unknown: off."""
-        self._mic_fn = fn
-
-    def _mode_label(self) -> Optional[str]:
-        """The mode's label for WHY_MODE_OFF (ctx.room's RoomView, read by reference; the mode it is going to, else the
-        one it is in), None when the room doesn't say. Words only: nothing branches on it."""
-        view = self._call_or_none(self.ctx.room)
-        if not isinstance(view, dict):
-            return None
-        name = view.get("target") or view.get("current")
-        modes = view.get("modes") if isinstance(view.get("modes"), dict) else {}
-        row = modes.get(name) if isinstance(name, str) else None
-        lab = row.get("label") if isinstance(row, dict) else None
-        return lab if isinstance(lab, str) and lab.strip() else None
-
-    def _auto_is_on(self) -> bool:
-        try:
-            return self._auto_fn is not None and self._auto_fn() is True
-        except Exception:                         # noqa: BLE001
-            return False
-
-    def _mic_is_on(self) -> bool:
-        try:
-            st = self._mic_fn() if self._mic_fn is not None else None
-        except Exception:                         # noqa: BLE001
-            st = None
-        return isinstance(st, dict) and st.get("on") is True
-
     def _gate(self, now_s: float) -> tuple[Optional[str], Optional[str]]:
-        """(the first failing reason in page words, or None; the stream a clip would come from). Every stream, test
-        or not, needs the AI listening switch, the mode's permission (owner, 20 Oct: show.ai), Auto and the mic on
-        (owner, 17 Oct) and a vibe that doesn't say ``listener: off``; the mode's show target no longer gates (owner,
-        17 Oct). Only a stream whose sender says ``room_sound: false`` skips the music/speech check (it can't carry
-        anyone's speech). The upload re-checks all of it (_call)."""
+        """(None while a clip would go now, else its STATUS_WORDS word; the stream a clip would come from), and
+        ``_detail``. The switch is the only on/off; then the clip that would go now, by ``_decide``. The upload decides
+        again on its own clip (_call)."""
         stream = self._active_stream(now_s)
-        why = None
+        self._detail = None
+        self._arm(self.on)
         if not self.on:
-            why = WHY_OFF
-        elif self.cfg["requires_mode"] and self.mode is not True:
-            why = why_mode(self._mode_label())        # owner, 20 Oct: off by default, the live modes turn it on
-        elif self.cfg["requires_auto"] and not self._auto_is_on():
-            why = WHY_AUTO_OFF                        # owner, 17 Oct: cost, and it's intrusive; checked again at upload
-        elif self.cfg["requires_mic"] and not self._mic_is_on():
-            why = WHY_MIC_OFF
-        else:
-            vibe = self._call_or_none(self.ctx.vibe)
-            if vibe is not None and vibe.get("listener", True) is False:
-                why = WHY_VIBE                            # a feel can still say no (the piano: MIDI already says it)
-        self._arm(why is None)
-        if why is not None:
-            return why, stream
+            return WHY_OFF, stream
+        m = self._llm_mod()
+        if m is None or not self._usable(m, "listen"):
+            self._detail = DETAIL_NO_MODEL
+            return WHY_OFF, stream
         if self._mic_off(stream):
-            return WHY_MIC_OFF, stream
-        if stream is None or self._features(now_s) is None:
-            return WHY_NO_SOUND, stream
-        self._ced_state = {"why": None, "run": None, "latest": None}
-        if self.room_sound(stream):
-            if self.cfg["music_gate"] == "classifier":
-                _run, why = self._ced_run(stream, now_s)
-                if why is not None:
-                    return why, stream
-            else:
-                why = self._dsp_music_gate(now_s)
-                if why is not None:
-                    return why, stream
-        if self._gate_mean(now_s, QUIET_WINDOW_S) < float(self.cfg["quiet_gate"]):
+            self._detail = DETAIL_MIC_OFF
             return WHY_QUIET, stream
         rings = self.ctx.rings
         held = 0.0
-        if rings is not None:
+        if rings is not None and stream is not None:
             try:
                 held = float(((rings.info() or {}).get(stream) or {}).get("held_s") or 0.0)
             except Exception:                     # noqa: BLE001
                 held = 0.0
-        if held < min(float(self.cfg["clip_s"]), float(self.cfg["min_clip_s"])):
-            return WHY_NO_SOUND, stream
-        m = self._llm_mod()
-        if m is None or not self._usable(m, "listen"):
-            return WHY_NO_MODEL, stream
-        return None, stream
+        if stream is None or self._features(now_s) is None or \
+                held < min(float(self.cfg["clip_s"]), float(self.cfg["min_clip_s"])):
+            self._detail = DETAIL_NO_SOUND
+            return WHY_QUIET, stream
+        return self._decide(stream, now_s - float(self.cfg["clip_s"]), now_s, now_s), stream
 
-    def _dsp_music_gate(self, now_s: float) -> Optional[str]:
-        """``music_gate: dsp`` (Stage 3, the owner's choice): a beat or a key over situations.music.dsp_min_gate."""
-        clock = self._call_or_none(self.ctx.clock) or {}
-        harmony = self._call_or_none(self.ctx.harmony) or {}
-        beat = clock.get("gate") in ("beat", "dmx")
-        keyed = (_f(harmony.get("conf"), 0.0) or 0.0) >= HARMONY_MIN_CONF and harmony.get("key") is not None
-        if self._gate_mean(now_s, QUIET_WINDOW_S) < self.dsp_min_gate:
+    def _gate_between(self, t0: float, t1: float) -> float:
+        """The loudness gate's mean over [t0, t1] (the 1 Hz timeline); with no sample in it, the latest; 0 with none."""
+        vals = [row[3] or 0.0 for row in self._timeline if t0 - 1e-6 <= row[0] <= t1 + 1e-6]
+        if not vals and self._timeline:
+            vals = [self._timeline[-1][3] or 0.0]
+        return sum(vals) / len(vals) if vals else 0.0
+
+    def _decide(self, stream: str, t0: float, t1: float, now_s: float) -> Optional[str]:
+        """The module docstring's (a)-(d) for the clip [t0, t1]: None (it goes) or its STATUS_WORDS word."""
+        self._ced_state = {"why": None, "overlapping": 0, "speech": None, "latest_age_s": None}
+        if self._gate_between(t0, t1 + TIMELINE_SLACK_S) < float(self.cfg["quiet_gate"]):
+            self._ced_state["why"] = WHY_QUIET
             return WHY_QUIET
-        if not (beat or keyed):
-            return WHY_NO_MUSIC
-        return None
-
-    # -- the CED gate and sections (Stage 4) -------------------------------------------------------------------------
-    def _ml_view(self) -> Optional[dict]:
-        v = self._call_or_none(getattr(self.ctx, "ml", None))
-        return v if isinstance(v, dict) else None
-
-    def _ced_run(self, stream: str, now_s: float,
-                 t_end: Optional[float] = None) -> tuple[Optional[tuple[float, float]], Optional[str]]:
-        """README S4.8's CED gate for a room-sound stream: ((t0, t1) the clip, None) or (None, why). A reading's
-        speech is the max over listener.ced.speech_words (speech, conversation, crowd: guests talking over music
-        show up as babble and conversation, not only as Speech). The run is the longest contiguous stretch of seconds
-        in the ``clip_s`` that ends at ``t_end`` (None: the latest reading) whose readings say music >= ced.music_min
-        with speech < ced.speech_max; the latest run wins a tie. A run starts speaks_s before its first reading, and
-        each passing reading joins the one before it when they are at most the CED's stale time apart (its real
-        cadence, stretched under load), else speaks_s or its window. Every second must be vouched for by each reading
-        that covers it: the run's last second is also in
-        the next reading's window, so it counts only when that reading exists and passed (or doesn't reach back
-        into it); otherwise the run ends speaks_s earlier."""
+        if not self.room_sound(stream):
+            return None                           # a music file played as a test: no one's speech in it
         v = self._ml_view()
         rows = []
         if v is not None and v.get("stream") == stream:
             rows = sorted((r for r in v.get("ced_recent") or [] if isinstance(r, dict) and _f(r.get("t")) is not None
                            and r.get("stream", stream) == stream), key=lambda r: r["t"])
-        latest = rows[-1] if rows else None
-        stale = contract.ml_stale_s(v, "ced", self.results_stale_s)
-        if latest is None or now_s - float(latest["t"]) > stale:
-            self._ced_state = {"why": WHY_NO_CED, "run": None, "latest": None}
-            return None, WHY_NO_CED
-        music_min, speech_max = float(self.ced_cfg["music_min"]), float(self.ced_cfg["speech_max"])
-        words, speaks = self.speech_words, float(self.speaks_s)
+        over = []
+        for r in rows:
+            t, w = float(r["t"]), _f(r.get("window_s"), CED_WINDOW_S) or CED_WINDOW_S
+            if t >= t0 - w - 1e-6 and t - w <= t1 + 1e-6:
+                over.append(r)
+        speech = max((contract.speech_of(r, self.speech_words) or 0.0 for r in over), default=None)
+        latest_age = round(now_s - float(rows[-1]["t"]), 1) if rows else None
+        self._ced_state.update(overlapping=len(over), speech=None if speech is None else round(speech, 3),
+                               latest_age_s=latest_age)
+        if speech is not None and speech >= float(self.ced_cfg["speech_max"]):
+            self._ced_state["why"] = WHY_TALKING
+            return WHY_TALKING
+        if not over and (latest_age is None or latest_age > contract.ml_stale_s(v, "ced", self.results_stale_s)):
+            self._ced_state["why"] = WHY_CANT_CHECK
+            return WHY_CANT_CHECK
+        return None
 
-        def speech(r: dict, missing: float) -> float:
-            x = contract.speech_of(r, words)
-            return missing if x is None else x
+    def _ml_view(self) -> Optional[dict]:
+        v = self._call_or_none(getattr(self.ctx, "ml", None))
+        return v if isinstance(v, dict) else None
 
-        def ok(r: dict) -> bool:
-            return _f(r.get("music_p"), 0.0) >= music_min and speech(r, 1.0) < speech_max
-
-        lat = {"t": latest["t"], "music": _f(latest.get("music_p"), 0.0), "speech": speech(latest, 0.0)}
-        if lat["speech"] >= speech_max:
-            self._ced_state = {"why": WHY_TALKING, "run": None, "latest": lat}
-            return None, WHY_TALKING
-        end = float(latest["t"]) if t_end is None else float(t_end)
-        start = end - float(self.cfg["clip_s"])
-        runs: list[list] = []                     # [first second's start, the last reading's t, its index]
-        cur: Optional[list] = None
-        prev: Optional[dict] = None
-        for i, r in enumerate(rows):
-            t = float(r["t"])
-            if t <= start or t > end + 1e-6:
-                continue
-            if not ok(r):
-                cur, prev = None, None
-                continue
-            # a reading vouches back to the one before it while that one was still "now" (ml_stale_s: the worker's
-            # real cadence, which it stretches under load), so readings every 4-8 s join into one run (21 Oct)
-            joined = prev is not None and t - float(prev["t"]) <= max(speaks, stale, _f(r.get("window_s"), 0.0)) + 1e-6
-            if cur is None or not joined:
-                cur = [max(start, t - speaks), t, i]
-                runs.append(cur)
-            else:
-                cur[1], cur[2] = t, i
-            prev = r
-        best: Optional[tuple[float, float]] = None
-        for run0, t_last, i in runs:
-            t1 = min(t_last, end)
-            nxt = rows[i + 1] if i + 1 < len(rows) else None
-            vouched = nxt is not None and (ok(nxt) or float(nxt["t"]) - (_f(nxt.get("window_s"), speaks) or speaks)
-                                           >= t_last - 1e-6)
-            if not vouched:
-                t1 = min(t1, t_last - speaks)     # its last second waits for the next reading's word
-            if t1 <= run0 + 1e-9:
-                continue
-            if best is None or t1 - run0 >= best[1] - best[0] - 1e-9:
-                best = (run0, t1)                 # >=: the latest run wins a tie
-        if best is None or best[1] - best[0] < float(self.cfg["min_clip_s"]) - 1e-6:
-            self._ced_state = {"why": WHY_SHORT, "run": [round(best[0], 2), round(best[1], 2)] if best else None,
-                               "latest": lat}
-            return None, WHY_SHORT
-        self._ced_state = {"why": None, "run": [round(best[0], 2), round(best[1], 2)], "latest": lat}
-        return best, None
-
+    # -- sections (Stage 4) ------------------------------------------------------------------------------------------
     def on_music_event(self, ev: dict) -> None:
         """structure's room.event (show-brain): a confirmed section_change makes one extra call due at its boundary +
         section_call_after_s (never a predicted one) and turns the fast cadence on for fast_after_section_s; a
@@ -1524,8 +1382,8 @@ class Listener:
                 "is the same section again): " + ", ".join(parts) + ".")
 
     def _arm(self, on: bool) -> None:
-        """The ring records only while a clip could go (the switch, the mode, Auto, the mic and the vibe allow it): no
-        resampling on show-rx for nothing. A first clip then waits for the ring to fill (min_clip_s)."""
+        """The ring records only while the switch is on: no resampling on show-rx for nothing. A first clip then waits
+        for the ring to fill (min_clip_s)."""
         rings = self.ctx.rings
         if rings is not None and getattr(rings, "armed", on) != on:
             try:
@@ -1642,27 +1500,41 @@ class Listener:
             log.exception("listener call failed")
             self._log_event({"kind": "error", "stream": stream, "error": f"{type(e).__name__}: {e}"[:300]})
 
-    def _cut_clip(self, stream: str, t_end: Optional[float]) -> tuple[Any, Optional[str]]:
-        """(the ring clip this call sends, None) or (None, why). A room-sound stream under ``music_gate: classifier``
-        sends only its longest music-dominant run (README S4.8); a section call's clip ends at ``t_end``."""
+    def _cut_clip(self, stream: str, t_end: Optional[float]) -> Any:
+        """The ring clip this call sends: the last ``clip_s`` (a section call's ends at ``t_end``), else None."""
         rings = self.ctx.rings
         if rings is None:
-            return None, WHY_NO_SOUND
+            return None
         clip_s = float(self.cfg["clip_s"])
-        if self.room_sound(stream) and self.cfg["music_gate"] == "classifier":
-            run, why = self._ced_run(stream, self._mono(), t_end)
-            if run is None:
-                return None, why
-            return rings.clip(stream, run[0], run[1]), None
         if t_end is not None:
-            return rings.clip(stream, t_end - clip_s, t_end), None
-        return rings.latest(stream, clip_s), None
+            return rings.clip(stream, t_end - clip_s, t_end)
+        return rings.latest(stream, clip_s)
+
+    def _skip(self, stream: str, kind: str, why: str, detail: Optional[str] = None) -> None:
+        self._log_event({"kind": "skipped", "stream": stream, "call": kind, "why": why, "detail": detail})
+        self._remember({"ok": False, "call": kind, "why": why, "detail": detail})
+
+    def _remember(self, row: dict) -> None:
+        """One row of the view's history (HISTORY_N, newest first in the view): a round trip or a skip. A skip for
+        the same reason as the newest row folds into it (``count``, its time moves on), so a quiet hour is one row."""
+        row = {"t_ms": round(self._mono() * 1000.0, 1), "at": round(self._wall(), 3), **row}
+        last = self._history[-1] if self._history else None
+        if not row.get("ok") and row.get("error") is None and last is not None and not last.get("ok") \
+                and last.get("error") is None and last.get("why") == row.get("why"):
+            last.update(t_ms=row["t_ms"], at=row["at"], count=int(last.get("count") or 1) + 1)
+            return
+        self._history.append(row)
 
     async def _call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
         off_gen = getattr(self.ctx.rings, "off_gen", None)    # a stream going off from now on voids this clip
-        clip, why = self._cut_clip(stream, t_end)
+        clip = self._cut_clip(stream, t_end)
         if clip is None or clip.pcm.shape[0] < clip.fs:
-            self._log_event({"kind": "skipped", "stream": stream, "call": kind, "why": why or WHY_NO_SOUND})
+            self._skip(stream, kind, WHY_QUIET, DETAIL_NO_SOUND)
+            return
+        t1 = clip.t0_s + clip.pcm.shape[0] / clip.fs
+        why = self._decide(stream, clip.t0_s, t1, self._mono())   # this clip's own window (module docstring)
+        if why is not None:
+            self._skip(stream, kind, why)
             return
         m = self._llm_mod()
         if m is None:
@@ -1675,13 +1547,17 @@ class Listener:
         audio, fmt = await self._encode(pcm, clip.fs, fmt=str(aud.get("format") or "mp3"),
                                         sample_rate=int(aud["sample_rate"]) if aud.get("sample_rate") else None,
                                         bitrate=str(aud.get("bitrate") or "64k"))
-        why, now_stream = self._gate(self._mono())   # still allowed, for this stream, right before the upload?
-        if why is None and getattr(self.ctx.rings, "off_gen", None) != off_gen:
-            why = WHY_MIC_WENT_OFF                    # the mic went off while it was encoded: never sent
-        if why is not None or now_stream != stream:
-            self._log_event({"kind": "skipped", "stream": stream, "why": why or "the stream changed"})
+        # right before the upload: still on, the mic didn't go off while it was encoded, and the clip still passes
+        detail = None
+        if not self.on:
+            why = WHY_OFF
+        elif getattr(self.ctx.rings, "off_gen", None) != off_gen:
+            why, detail = WHY_QUIET, DETAIL_MIC_WENT_OFF
+        else:
+            why = self._decide(stream, clip.t0_s, t1, self._mono())
+        if why is not None:
+            self._skip(stream, kind, why, detail)
             return
-        t1 = clip.t0_s + clip.pcm.shape[0] / clip.fs
         user = [self._timeline_text(t1, clip, lufs)]
         segs = self._segments(clip.t0_s, t1)
         if segs:
@@ -1699,6 +1575,8 @@ class Listener:
             self._errors_row += 1
             self._log_event({"kind": "error", "stream": stream, "error": res.error, "attempts": res.attempts,
                              "cost_usd": res.cost_usd})
+            self._remember({"ok": False, "call": kind, "error": str(res.error or "failed")[:160],
+                            "model": res.model, "latency_ms": _round(res.latency_ms), "cost_usd": res.cost_usd})
             self._refresh(self._mono())
             return
         self._errors_row = 0
@@ -1720,6 +1598,10 @@ class Listener:
                 self.ctx.notify("card", None)
             except Exception:                     # noqa: BLE001
                 pass
+        self._remember({"ok": True, "call": kind, "model": ins.get("model"), "latency_ms": _round(res.latency_ms),
+                        "cost_usd": res.cost_usd, "content": ins.get("content"), "character": ins.get("character"),
+                        "genre": ins.get("genre"), "moods": ins.get("mood") or ins.get("moods"),
+                        "coming": ins.get("coming"), "why": ins.get("why")})
         self._log_event({"kind": "verdict", "insight": ins, "lufs": round(lufs, 1) if lufs is not None else None,
                          "gain_db": round(gain, 1), "format": fmt, "bytes": len(audio), "cost_usd": res.cost_usd,
                          "usage": res.usage, "call": kind, "segments": segs,
@@ -1902,6 +1784,8 @@ class Listener:
         b = self._beliefs if isinstance(self._beliefs, dict) else {}
         ap = b.get("approach") if isinstance(b.get("approach"), dict) else None
         return {"on": self.on, "mode": self.mode, "effective": self._why is None, "why": self._why,
+                "status": LISTENING if self._why is None else self._why, "detail": self._detail,
+                "history": [dict(r) for r in reversed(self._history)],
                 "stream": self._stream,
                 "next_in_s": nxt, "cadence_s": round(self.interval(), 1), "fast": self._fast,
                 "in_flight": len(self._tasks),

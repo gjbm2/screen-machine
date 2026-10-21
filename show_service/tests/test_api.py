@@ -1010,6 +1010,7 @@ def test_card_maps_every_component(brain):
     assert cd["palette"]["choices"][1]["label"] == "From the art" and cd["palette"]["pick"] == "auto"
     assert cd["look"] == {"id": "L3", "keep_in_s": None, "next_pending": False}
     assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off", "mode": False,
+                               "status": "Off", "history": [],
                                "spend_today_usd": 0.0,
                                "est_evening_usd": None, "provider": None, "character": None, "approach": None,
                                "armed": []}
@@ -1056,6 +1057,7 @@ def test_card_and_listening_show_the_cost_even_while_off(brain):
                  "model": "gemini-3.8-flash"}
     cd = card(snap_of(brain), ENGINE)
     assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off", "mode": False,
+                               "status": "Off", "history": [],
                                "spend_today_usd": 0.1235, "est_evening_usd": 2.9, "provider": "Google",
                                "character": None, "approach": None, "armed": []}
     # README S5.22: the listener's line, its approach and the cue sheet ride on the card's listening block
