@@ -108,6 +108,56 @@ def _query_gpus() -> list[dict]:
 
 GPU_KEYS = ("util", "enc_util", "mem_used_mb", "mem_total_mb", "temp_c", "sm_mhz", "sm_max_mhz")
 
+ENC_UTIL_S = 1.0
+_enc_util: dict[str, "EncoderUtil"] = {}
+
+
+class EncoderUtil:
+    """NVENC's own utilisation on one GPU (NVML, 0..1; None until read or without NVML), read once a second on a
+    side thread: each read costs 1-2 ms under WSL and the NVML init ~0.4 s, never on a render thread.  degrade.py's
+    check that an "encoder busy" is the encoder and not the host starving the encode thread."""
+
+    def __init__(self, bus: str):
+        self.bus = bus
+        self.value: Optional[float] = None
+        threading.Thread(target=self._run, name="nvenc-util", daemon=True).start()
+
+    def _run(self) -> None:
+        nv = _nvml_mod()
+        if not nv:
+            return
+        h = None
+        try:
+            for i in range(nv.nvmlDeviceGetCount()):
+                d = nv.nvmlDeviceGetHandleByIndex(i)
+                bid = nv.nvmlDeviceGetPciInfo(d).busId
+                bid = bid.decode() if isinstance(bid, bytes) else str(bid)
+                if _bus_key(bid) == self.bus:
+                    h = d
+        except Exception:
+            return
+        if h is None:
+            return
+        while True:
+            u = _nv(nv.nvmlDeviceGetEncoderUtilization, h)
+            self.value = u[0] / 100.0 if u else None
+            time.sleep(ENC_UTIL_S)
+
+
+def _bus_key(bus_id: str) -> str:
+    """"00000000:17:00.0" (NVML) and "0000:17:00.0" (CUDA) -> "17:00.0"."""
+    return str(bus_id).lower().split(":", 1)[-1]
+
+
+def encoder_util(pci_bus_id: str) -> EncoderUtil:
+    """The one sampler for this GPU in this process (started on first use)."""
+    key = _bus_key(pci_bus_id)
+    with _nvml_lock:
+        s = _enc_util.get(key)
+        if s is None:
+            s = _enc_util[key] = EncoderUtil(key)
+        return s
+
 
 def gpus(devices: list[dict]) -> list[dict]:
     """[{index, name, util, enc_util, mem_used_mb, mem_total_mb, temp_c, sm_mhz, sm_max_mhz}] in CUDA (PCI bus)

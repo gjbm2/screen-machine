@@ -19,7 +19,7 @@ A second is overloaded when both its halves are: a stage at DOWN_LOAD or more, o
   fps         output 60 -> 30 fps: NVENC Reconfigure, frame ids stay on the 60 Hz grid, each fMP4 sample lasts two ticks
               (renderer.py): any stage, on the GPU-encode path at 60 fps only (the ffmpeg path skips it).
 The why is the busiest stage, except that an encode stage with at least ENC_RUNQ_SHARE of the encode thread's time
-in the run queue is the host's ("computer busy", 21 Oct: NVENC was 29-46% busy while the box ran at load 40-53 on
+in the run queue, or with NVENC itself under NVENC_BUSY (NVML, read once a second off the render thread), is the host's ("computer busy", 21 Oct: NVENC was 29-46% busy while the box ran at load 40-53 on
 20 vCPUs); the step taken is the same.  None left: it stays where it is (``floor``).  Down at most once a second: the window after a change starts at the
 change.  Up: the last step on comes off once its projection (the load without it, from the same numbers) has stayed
 under UP_LOAD for its UP_WAIT_S (fps 30 s) and as long since the last change.  A step that has to come back on within
@@ -49,6 +49,7 @@ SETTLE_S = 60.0
 WAIT_MAX_X = 8
 GPU_MARGIN_MS = 1.0     # as guard.GPU_BOUND_MARGIN_MS: a span this much over the host's submit is real GPU work
 ENC_RUNQ_SHARE = 0.5    # the encode stage busiest with this share of its thread's time runnable, not running: "host"
+NVENC_BUSY = 0.85       # ... or with NVENC itself (NVML) under this share busy: "host" too
 SCENE_FLOOR = 2
 EPS = 1e-6
 
@@ -140,6 +141,7 @@ class Ctx:
     fx_gpu_ms: float = 0.0
     own_div: int = 1            # the scene's own rate_div (layers.py)
     can_fps: bool = False       # the GPU-encode path at 60 fps
+    nvenc_busy: Optional[float] = None   # NVENC's own utilisation on this GPU, 0..1 (diag.EncoderUtil)
 
 
 @dataclass
@@ -198,7 +200,8 @@ class Controller:
         b = window([r for r in recs if r.t_start >= mid], period_ms)
         whole = window(recs, period_ms)
         ld = whole.load(period_ms)
-        self.load = {**{k: round(v, 3) for k, v in ld.items()}, "enc_runq": round(whole.enc_runq, 3)}
+        self.load = {**{k: round(v, 3) for k, v in ld.items()}, "enc_runq": round(whole.enc_runq, 3),
+                     "nvenc": None if ctx.nvenc_busy is None else round(ctx.nvenc_busy, 2)}
         sa, sb = self._over(a, period_ms), self._over(b, period_ms)
         if sa and sb:                             # held for the whole second
             self.ok_since = None
@@ -207,7 +210,9 @@ class Controller:
             if step is None:
                 self.floor = True
                 return None
-            why = "host" if stage == "enc" and whole.enc_runq >= ENC_RUNQ_SHARE else stage   # starved, not NVENC
+            starved = whole.enc_runq >= ENC_RUNQ_SHARE or (ctx.nvenc_busy is not None
+                                                          and ctx.nvenc_busy < NVENC_BUSY)
+            why = "host" if stage == "enc" and starved else stage   # the encode thread starved, not NVENC
             return self._on(step, why, ctx, now)
         self.floor = False
         if sa or sb or not self.steps:

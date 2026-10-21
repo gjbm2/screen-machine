@@ -750,7 +750,22 @@ class Engine:
         own = int(getattr(lay, "rate_div", 1) or 1)
         frozen = self._out_applied or not bus.is_open or bus.level < 1.0
         return Ctx(frozen=frozen, has_fx=bool(live), fx_host_ms=fh, fx_gpu_ms=fg, own_div=own,
-                   can_fps=self._gpu_enc is not None and self.fps == 60 and self._fps_lost is None)
+                   can_fps=self._gpu_enc is not None and self.fps == 60 and self._fps_lost is None,
+                   nvenc_busy=self._nvenc_busy())
+
+    def _nvenc_busy(self) -> Optional[float]:
+        """NVENC's own utilisation on this GPU (on the GPU-encode path; its sampler started at the first ask)."""
+        if self._gpu_enc is None:
+            return None
+        s = getattr(self, "_enc_util", None)
+        if s is None:
+            try:
+                from .diag import encoder_util
+
+                s = self._enc_util = encoder_util(self.ctx.device.pci_bus_id)
+            except Exception:
+                s = self._enc_util = False
+        return s.value if s else None
 
     def degrade_state(self) -> dict:
         """The controller's state (its out_fps is the decided rate: the step lands within a slot), or the off one."""
