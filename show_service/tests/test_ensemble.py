@@ -541,6 +541,25 @@ def test_canon_plays_a_round_at_equal_strength(tmp_path, scorer):
     assert b.en.block()["line"] == "Playing together: a round, right follows left by 2 beats"
 
 
+ECHO_SAME = """  echo:
+    kind: echo
+    line: "echo, {order}"
+    params: {team_by: side, order: flow, delay_beats: 1, delay_s: 0.5, decay: 0.6, every_bars: 1, clock_offset: true}
+    routes: [downbeat]
+    needs: [sides]
+"""
+
+
+def test_echo_with_clock_offset_is_the_same_picture_a_step_behind(tmp_path, scorer):
+    """ff, 22 Oct: echo's later side runs its beat-bound motion delay_beats behind (clock_offset_beats)."""
+    b = Band(tmp_path, scorer, ECHO_SAME)
+    b.accents = "downbeat"
+    b.start(96.0)
+    b.run_to(98.5)
+    ps = b.en.block()["players"]
+    assert ps["screen.south"]["clock_offset_beats"] == 0.0 and ps["screen.north"]["clock_offset_beats"] == 1.0
+
+
 SOLO = """  solo:
     kind: solo_and_accompany
     line: "{lead} leads"

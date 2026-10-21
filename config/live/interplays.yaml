@@ -33,7 +33,7 @@ interplays:
     kind: echo
     line: "echo, {order}"
     params: {team_by: side, order: flow, caller: first, delay_beats: 1, delay_s: 0.5, decay: 0.6, repeats: 1,
-             every_bars: 2}
+             every_bars: 2, clock_offset: true}       # ff, 22 Oct: the later screen draws the same picture a step behind
     routes: [downbeat, phrase, hit, section, chord, note]
     needs: [sides]
     tags:
@@ -48,7 +48,7 @@ interplays:
     kind: echo
     line: "passed {order}"
     params: {team_by: player, order: flow, caller: first, delay_beats: 0.5, delay_s: 0.25, decay: 0.8, repeats: 1,
-             every_bars: 4}
+             every_bars: 4, clock_offset: true}
     routes: [phrase, hit, section, chord]
     needs: [sides, grid]
     tags:

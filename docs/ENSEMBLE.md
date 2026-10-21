@@ -296,7 +296,7 @@ gives one.
 | kind | params (default) | routing | roles | stagger | pulse |
 |---|---|---|---|---|---|
 | `unison` | — | every routed seed: one part per on player at its at | even | 0 | 1 |
-| `echo` | `delay_beats` 1, `delay_s` 0.5, `decay` 0.6, `repeats` 1, `every_bars` 2, `caller` first \| register, `order` flow | The call goes to the caller team at at. Team k (in travel order from the caller) follows at at + k·delay with decay^k. `repeats` > 1 bounces back along the order (A B A B…), up to `max_parts`. Downbeats only on bars divisible by `every_bars`. `caller: register`: piano seeds start on the low team when register < split, else the high team. | even | team k × delay_beats | 0.8 |
+| `echo` | `delay_beats` 1, `delay_s` 0.5, `decay` 0.6, `repeats` 1, `every_bars` 2, `caller` first \| register, `order` flow, `clock_offset` false (true: `clock_offset_beats` = k·delay, the same picture a step behind) | The call goes to the caller team at at. Team k (in travel order from the caller) follows at at + k·delay with decay^k. `repeats` > 1 bounces back along the order (A B A B…), up to `max_parts`. Downbeats only on bars divisible by `every_bars`. `caller: register`: piano seeds start on the low team when register < split, else the high team. | even | team k × delay_beats | 0.8 |
 | `call_and_response` | `answer` replay \| own, `decay` 0.85, `half_s` 4, `every_bars` 1 | The phrase splits in halves (no grid: `half_s` blocks). The caller team plays the first half. `replay`: each call part is copied to the answer team at + half a phrase, × decay (gen 1), and live seeds in the answer half are not routed (hits and sections are, unison). `own`: the answer team plays the second half live. The caller swaps every phrase. | caller lead, answer accompany, swapped each half (as `next` on the half line) | answer team: half a phrase | 0.8 |
 | `ping_pong` | `on` beat \| half_bar \| bar, `downbeat_boost` 1.5, `scene_offset_beats` 1 | The clock's accents and downbeats go to team (step mod teams), with step = the beat, half-bar or bar number. Other seeds go to the next team in turn. Downbeats are × `downbeat_boost`. | even | team k × scene_offset_beats | 0.4 |
 | `canon` | `offset_beats` 2, `offset_s` 1.0, `every_bars` 1, `clock_offset` true | Every routed seed plays on team k at at + k·offset, at equal strength: a round. | even; `clock_offset_beats` = k·offset when `clock_offset` | team k × offset_beats | 0.7 |
@@ -304,7 +304,7 @@ gives one.
 | `contrast` | `palette_roles` [base, highlight], `energy_split` 0.15, `swap_on` section \| look | unison, with each part's `colour` its team's palette role | even, with `palette_role` (team 0 the first, team 1 the second) and screens' `energy_bias` −/+ energy_split / 2, swapped at `swap_on` | 0 | 1 |
 | `register_split` | `low` left \| right, `split` (`piano.split`), `outside` 0.25 | note and chord seeds: the pitches under the split go to the low team and the rest to the other, each part's strength from its own notes' loudest. A chord across the split plays on both. hit and section are unison. | even, with `register` [0, s] on the low team and [s, 1] on the high (s = the split as register) | 0 | 1 |
 
-`clock_offset_beats` (canon) and `register` (register_split) are for consumers that can use them (§7.3, §8). Without
+`clock_offset_beats` (canon, and echo with `clock_offset`) and `register` (register_split) are for consumers that can use them (§7.3, §8). Without
 them, those forms still play through gestures and staggers.
 
 ### 4.4 The shipped catalogue (show writes this file verbatim)
@@ -696,7 +696,8 @@ class EnsemblePart(TypedDict):
     palette_role: Optional[str]    # contrast: the palette role its colours lean to; else None
     energy_bias: float             # contrast: a screen's direction energy +- this; 0 otherwise
     register: Optional[list[float]]   # register_split: [lo, hi] of 0..1 register it plays; else None
-    clock_offset_beats: float      # canon: its beat-bound motion runs this many beats late; else 0
+    clock_offset_beats: float      # canon (k x offset_beats) and echo with clock_offset (k x delay_beats; ff, 22 Oct:
+                                   # the same picture, a step behind): its beat-bound motion runs this late; else 0
     team: int                      # its team's place in the travel order (0 first); -1: centre
     kind: str                      # PLAYER_KINDS
     side: str
