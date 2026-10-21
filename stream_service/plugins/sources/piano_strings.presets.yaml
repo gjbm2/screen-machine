@@ -1,0 +1,44 @@
+piano-strings-gold:
+  label: Piano strings (gold)
+  source: piano_strings
+  params:
+    colours: gold
+    vibration: 1.0
+    glow: 1.0
+    flash: 1.0
+    sympathy: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, warm, calm]
+    modes: [piano]
+    family: light
+    dims: 2d
+    technique: [analytic, light]
+    weight: 1.0
+
+piano-strings-harmony:
+  label: Piano strings (harmony colours)
+  source: piano_strings
+  params:
+    colours: pitch
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.0
+    glow: 1.2
+    sympathy: 1.4
+    overstrung: 0.7
+    room_light: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 0.9]
+    moods: [elegant, dreamy, bright]
+    modes: [piano]
+    family: light
+    dims: 2d
+    technique: [analytic, light]
+    weight: 1.0
