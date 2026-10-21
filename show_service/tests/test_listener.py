@@ -332,6 +332,29 @@ def test_the_status_is_the_last_send_time_decision(tmp_path):
     assert rig.lis.view()["status"] == "Paused: can't check for talking" and len(rig.llm.calls) == 1
 
 
+def test_every_sent_clip_is_kept_and_listed(tmp_path):
+    """09, 21 Oct: hear what the AI hears. The exact bytes sent, the last CLIPS_KEEP, and each row's clip_url, ring
+    gaps, loudness, gain, device and seconds."""
+    rig = Rig(tmp_path, stream="test-audio")
+    rig.lis.clips_dir = tmp_path / "clips"
+    rig.health["streams"] = {"test-audio": {"sender": {"dev": "Microphone (Insta360 Link)"}}}
+    rig.fill()
+    run(rig.tick())
+    row = rig.lis.view()["history"][0]
+    assert row["ok"] is True and row["clip_url"] == L.CLIPS_URL + row["clip"]
+    assert (tmp_path / "clips" / row["clip"]).read_bytes() == b"MP3DATA"
+    assert row["device"] == "Microphone (Insta360 Link)" and row["clip_s"] == pytest.approx(10.0, abs=0.01)
+    assert row["gaps"] == 0 and row["gaps_s"] == 0.0 and row["lufs"] is not None and "gain_db" in row
+    assert rig.lis.clip_path(row["clip"]) == tmp_path / "clips" / row["clip"]
+    for bad in ("../x.mp3", "1.mp3", "1792000000000.txt", row["clip"] + "/"):
+        assert rig.lis.clip_path(bad) is None
+    for i in range(L.CLIPS_KEEP + 5):
+        rig.now += 1.0
+        rig.lis._keep_clip(b"x", "mp3")
+    assert len(list((tmp_path / "clips").iterdir())) == L.CLIPS_KEEP
+    assert rig.lis.clip_path(row["clip"]) is None                     # the oldest went
+
+
 def test_the_switch_wakes_its_on_listeners(tmp_path):
     rig = Rig(tmp_path, on=False)
     woke = []

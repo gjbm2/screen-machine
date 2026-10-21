@@ -96,6 +96,11 @@ from . import contract
 log = logging.getLogger("show_service.listener")
 
 LISTENER_LOG = contract.LISTENER_LOG    # every verdict and failure (genre.detail grows the vocab)
+CLIPS_DIR = contract.STATE_DIR / "listen" / "clips"   # the exact bytes of the last CLIPS_KEEP clips sent (09, 21 Oct;
+                                                      # __main__ passes <state_dir>/listen/clips; None: none kept)
+CLIPS_KEEP = 20
+CLIP_NAME_RE = re.compile(r"^\d{10,16}\.(mp3|wav)$")
+CLIPS_URL = "/show/api/v1/listening/clips/"      # GET /api/v1/listening/clips/<name> through room's /show door
 LOG_ROTATE_BYTES = 1_000_000
 
 # Design defaults (§7.3; starting points), used for any key show.yaml's ``listener`` leaves out. quiet_gate: the
@@ -847,8 +852,9 @@ class Listener:
     def __init__(self, ctx: contract.BrainContext, *, llm: Any = None, mono: Callable[[], float] = time.monotonic,
                  wall: Callable[[], float] = time.time, log_path: Optional[Path] = LISTENER_LOG,
                  vocab_path: Path = contract.VOCAB_FILE, encoder: Optional[Callable[..., Any]] = None,
-                 warm: bool = True) -> None:
+                 warm: bool = True, clips_dir: Optional[Path] = None) -> None:
         self.ctx = ctx
+        self.clips_dir = Path(clips_dir) if clips_dir else None
         self._on_listeners: list[Callable[[], None]] = []                # mic.py's wake: the switch claims the mic
         self._llm = llm
         self._llm_error: Optional[str] = None
@@ -1531,6 +1537,39 @@ class Listener:
             return
         self._history.append(row)
 
+    def _device(self, stream: str) -> Optional[str]:
+        """The sender's capture device for ``stream`` (receiver health's sender.dev), else None."""
+        h = self._call_or_none(self.ctx.health)
+        st = ((h or {}).get("streams") or {}).get(stream) if isinstance(h, dict) else None
+        dev = ((st or {}).get("sender") or {}).get("dev") if isinstance(st, dict) else None
+        return dev if isinstance(dev, str) and dev else None
+
+    def _keep_clip(self, audio: bytes, fmt: str) -> Optional[str]:
+        """The exact bytes about to be sent, as CLIPS_DIR/<wall ms>.<fmt>; the oldest beyond CLIPS_KEEP go. A worker
+        thread; never raises (None: not kept)."""
+        if self.clips_dir is None or not audio:
+            return None
+        try:
+            self.clips_dir.mkdir(parents=True, exist_ok=True)
+            name = f"{int(self._wall() * 1000)}.{'wav' if fmt == 'wav' else 'mp3'}"
+            tmp = self.clips_dir / (name + ".tmp")
+            tmp.write_bytes(audio)
+            os.replace(tmp, self.clips_dir / name)
+            kept = sorted(p for p in self.clips_dir.iterdir() if CLIP_NAME_RE.match(p.name))
+            for old in kept[:-CLIPS_KEEP]:
+                old.unlink(missing_ok=True)
+            return name
+        except Exception:                         # noqa: BLE001
+            log.exception("listener: clip not kept")
+            return None
+
+    def clip_path(self, name: str) -> Optional[Path]:
+        """A kept clip's file for GET /api/v1/listening/clips/<name>, or None (a bad name, or gone)."""
+        if self.clips_dir is None or not isinstance(name, str) or not CLIP_NAME_RE.match(name):
+            return None
+        p = self.clips_dir / name
+        return p if p.is_file() else None
+
     async def _call(self, stream: str, t_end: Optional[float] = None, kind: str = "cadence") -> None:
         off_gen = getattr(self.ctx.rings, "off_gen", None)    # a stream going off from now on voids this clip
         clip = self._cut_clip(stream, t_end)
@@ -1553,6 +1592,10 @@ class Listener:
         audio, fmt = await self._encode(pcm, clip.fs, fmt=str(aud.get("format") or "mp3"),
                                         sample_rate=int(aud["sample_rate"]) if aud.get("sample_rate") else None,
                                         bitrate=str(aud.get("bitrate") or "64k"))
+        gaps = [(a, b) for a, b in (getattr(clip, "gaps", None) or []) if b > a]
+        meta = {"stream": stream, "device": self._device(stream), "clip_s": round(clip.pcm.shape[0] / clip.fs, 2),
+                "gaps": len(gaps), "gaps_s": round(sum(b - a for a, b in gaps), 3),
+                "lufs": round(lufs, 1) if lufs is not None else None, "gain_db": round(gain, 1)}
         # right before the upload: still on, the mic didn't go off while it was encoded, and the clip still passes
         detail = None
         if not self.on:
@@ -1565,6 +1608,9 @@ class Listener:
             self._skip(stream, kind, why, detail)
             return
         self._decided = None                          # it goes
+        name = await loop.run_in_executor(None, self._keep_clip, audio, fmt)
+        if name:
+            meta.update(clip=name, clip_url=CLIPS_URL + name)
         user = [self._timeline_text(t1, clip, lufs)]
         segs = self._segments(clip.t0_s, t1)
         if segs:
@@ -1583,7 +1629,8 @@ class Listener:
             self._log_event({"kind": "error", "stream": stream, "error": res.error, "attempts": res.attempts,
                              "cost_usd": res.cost_usd})
             self._remember({"ok": False, "call": kind, "error": str(res.error or "failed")[:160],
-                            "model": res.model, "latency_ms": _round(res.latency_ms), "cost_usd": res.cost_usd})
+                            "model": res.model, "latency_ms": _round(res.latency_ms), "cost_usd": res.cost_usd,
+                            **meta})
             self._refresh(self._mono())
             return
         self._errors_row = 0
@@ -1608,7 +1655,7 @@ class Listener:
         self._remember({"ok": True, "call": kind, "model": ins.get("model"), "latency_ms": _round(res.latency_ms),
                         "cost_usd": res.cost_usd, "content": ins.get("content"), "character": ins.get("character"),
                         "genre": ins.get("genre"), "moods": ins.get("mood") or ins.get("moods"),
-                        "coming": ins.get("coming"), "why": ins.get("why")})
+                        "coming": ins.get("coming"), "why": ins.get("why"), **meta})
         self._log_event({"kind": "verdict", "insight": ins, "lufs": round(lufs, 1) if lufs is not None else None,
                          "gain_db": round(gain, 1), "format": fmt, "bytes": len(audio), "cost_usd": res.cost_usd,
                          "usage": res.usage, "call": kind, "segments": segs,

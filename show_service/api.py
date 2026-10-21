@@ -148,7 +148,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("DELETE", "/api/v1/nudge/{id}"),
     ("GET", "/api/v1/vibes"), ("GET", "/api/v1/vibe"), ("PUT", "/api/v1/vibe"), ("DELETE", "/api/v1/vibe"),
     ("POST", "/api/v1/describe"),
-    ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"),
+    ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"), ("GET", "/api/v1/listening/clips/{name}"),
     ("POST", "/api/v1/hue/release"), ("POST", "/api/v1/hue/stream"), ("GET", "/api/v1/hue/status"),
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
     ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"),
@@ -1054,6 +1054,7 @@ class Api:
             ("POST", "/api/v1/describe", self._describe),
             ("GET", "/api/v1/listening", self._listening_get),
             ("PUT", "/api/v1/listening", self._listening_put),
+            ("GET", "/api/v1/listening/clips/{name}", self._listening_clip),
             ("GET", "/api/v1/autopilot", self._auto_get),
             ("PUT", "/api/v1/autopilot", self._auto_put),
             ("POST", "/api/v1/autopilot/undo", self._auto_undo),
@@ -1527,6 +1528,17 @@ class Api:
         if listener is None:
             return _json(self._listening(neutral_listener(MISSING[LISTENER])))
         return _json(self._listening(await self._call(brain, listener.view)))
+
+    async def _listening_clip(self, request: web.Request, brain: Any) -> web.Response:
+        """One clip the listener sent, its exact bytes (09, 21 Oct: hear what the AI hears): a history row's
+        ``clip_url``. 404 for a bad name or one already pruned (it keeps the last listener.CLIPS_KEEP)."""
+        listener = _components(brain).get(LISTENER)
+        fn = getattr(listener, "clip_path", None)
+        p = fn(request.match_info.get("name", "")) if fn is not None else None
+        if p is None:
+            return _err(404, "not_found", "no such clip (only the last 20 are kept)")
+        ctype = "audio/wav" if p.suffix == ".wav" else "audio/mpeg"
+        return web.FileResponse(p, headers={"Content-Type": ctype, "Cache-Control": "no-store"})
 
     async def _listening_put(self, request: web.Request, brain: Any) -> web.Response:
         """``{"on"?: bool, "mode"?: bool}``, at least one: ``on`` the Room page's AI listening switch (the master),

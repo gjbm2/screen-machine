@@ -420,7 +420,8 @@ class Show:
         kw: dict[str, Any] = {
             "autopilot": {"log_path": logs["autopilot"]},
             "sources": {"log_dir": pathlib.Path(self.opts.state_dir)},
-            "listener": {"log_path": logs["listener"]},
+            "listener": {"log_path": logs["listener"],
+                         "clips_dir": pathlib.Path(self.opts.state_dir) / "listen" / "clips"},   # 09, 21 Oct
             "cues": {"log_path": logs["cues"]},
             "mllink": {"log_path": pathlib.Path(self.opts.state_dir) / "ml-worker.log",
                        "child_pids": self._child_pids},
