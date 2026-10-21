@@ -72,10 +72,9 @@ def range_schema(lo: int, hi: int, label: str, unit: str = "", step: int = 1, de
 
 ICONS = ("home", "music", "piano", "party", "disco", "film", "moon", "sun", "sparkles", "power")   # names; the page draws them
 PUT_BACK_PRESETS = {"1 hour": 3600, "3 hours": 10800, "12 hours": 43200}
-AUTOPILOT_KEYS = ("on", "quiet_hours", "min_dwell_s", "max_switches", "backoff_s", "hold", "chips")
+AUTOPILOT_KEYS = ("on", "quiet_hours", "min_dwell_s", "hold", "chips")
 MODE_AUTOPILOT_KEYS = ("enter_when", "otherwise_suggest_when", "from", "leave_when", "leave_to", "skip")
 AUTOPILOT_LABELS = {"quiet_hours": "Quiet hours", "min_dwell_s": "Stay in a mode at least",
-                    "max_switches": "Most switches", "backoff_s": "Wait after a failed switch",
                     "hold": "Hold after a choice by hand", "chips": "Chips"}
 
 

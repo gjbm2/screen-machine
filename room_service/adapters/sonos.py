@@ -258,6 +258,10 @@ class SonosAdapter(Adapter):
         zone, field = member.rsplit(".", 1)
         return self.zones[zone], field
 
+    def equivalent(self, x, y):
+        """Paused and stopped both mean "no music": a mode that wants one is already there with the other."""
+        return isinstance(x, str) and isinstance(y, str) and {x, y} == {"paused", "stopped"}
+
     def label(self, member: str) -> str:
         z, field = self._split(member)
         return f"{z.room} {FIELD_WORDS[field]}"
