@@ -25,7 +25,7 @@ from .test_nvenc import COLR, Dev, FakeCp, FakeNvc, fixture
 
 # -- the decision logic -----------------------------------------------------------------------------------------------
 def second(t0: float, fps: int, host: float, *, gpu: float = 0.0, enc: float = 1.0, held_every: int = 0,
-           held_host: float = 0.5, repeats: int = 0, late: int = 0, span: float = 1.0) -> list:
+           held_host: float = 0.5, repeats: int = 0, late: int = 0, span: float = 1.0, enc_runq: float = 0.0) -> list:
     """One window of slot records starting at t0 (newest first, as the engine hands them over); repeats and late
     slots spread evenly over it."""
     n = int(round(fps * span))
@@ -36,12 +36,12 @@ def second(t0: float, fps: int, host: float, *, gpu: float = 0.0, enc: float = 1
         t = t0 + i / fps
         slip = 2000.0 / fps if i in lat else 0.0
         if i in rep:
-            out.append(_Rec(i, True, slip, t_start=t, write_ms=enc))
+            out.append(_Rec(i, True, slip, t_start=t, write_ms=enc, enc_runq_ms=enc_runq))
             continue
         held = bool(held_every) and i % held_every != 0
         h = held_host if held else host
         out.append(_Rec(i, False, slip, h, t_start=t, cpu_ms=h * 0.8, runq_ms=0.0, blocked_ms=h * 0.2,
-                        render_ms=(h + gpu) if gpu else h * 0.5, write_ms=enc, held=held))
+                        render_ms=(h + gpu) if gpu else h * 0.5, write_ms=enc, held=held, enc_runq_ms=enc_runq))
     return out[::-1]
 
 
@@ -126,6 +126,26 @@ def test_skips_steps_that_cannot_help_the_busy_stage():
     assert r.tick(2.0, enc=20.0).step == "fps" and r.c.state()["why"] == "encoder busy"
     r = Run(can_fps=False)                                                    # ... and not on the ffmpeg path
     assert r.tick(2.0, enc=20.0) is None and r.c.state()["floor"] and r.c.steps == []
+
+
+def test_an_encoder_waiting_for_a_cpu_is_the_computer_busy():
+    """21 Oct: both TVs went 60 -> 30 fps "encoder busy" with NVENC 29-46% busy; the encode thread was in the run
+    queue.  At least half its time runnable-not-running: the same step, the why is the host's."""
+    w = window(second(0.0, 60, 2.0, enc=20.0, enc_runq=12.0), 1000 / 60)
+    assert w.enc_runq_ms == pytest.approx(12.0) and w.enc_runq == pytest.approx(0.6)
+    r = Run()
+    ch = r.tick(2.0, enc=20.0, enc_runq=12.0)
+    st = r.c.state()
+    assert ch.step == "fps" and ch.why == "host" and st["why"] == "computer busy"
+    assert st["text"] == "60 -> 30 fps: computer busy" and st["load"]["enc_runq"] == pytest.approx(0.6)
+    r = Run()
+    ch = r.tick(2.0, enc=20.0, enc_runq=8.0)                                  # 40%: the encoder itself
+    assert ch.step == "fps" and ch.why == "enc" and r.c.state()["why"] == "encoder busy"
+    assert r.c.state()["load"]["enc_runq"] == pytest.approx(0.4)
+    r = Run()
+    ch = r.tick(40.0, enc=20.0, enc_runq=19.0)                                # the host is the busiest: as before
+    assert ch.step == "scene_rate" and ch.why == "host"
+    assert window([_Rec(0, False, 0.0, 1.0, write_ms=5.0)], 16.7).enc_runq == 0.0    # unreadable: 0
 
 
 def test_repeats_and_late_slots_count_as_overload():

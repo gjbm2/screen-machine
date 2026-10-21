@@ -220,6 +220,7 @@ class _Rec:
     held: Optional[bool] = None            # the scene's last frame was shown again (rate_div), nothing drawn
     probe: bool = False                    # rendered after MAX_REPEAT_RUN repeats in a row
     enc_cpu_ms: Optional[float] = None     # the writer / encode thread's own CPU for this slot (pipe write or Encode)
+    enc_runq_ms: Optional[float] = None    # ... and its run-queue wait over the same span (schedstat; 0 if unreadable)
 
 
 class Engine:
@@ -1093,6 +1094,7 @@ class Engine:
         cp = self.ctx.cp
         set_thread_name(f"{'nvenc' if self._gpu_enc is not None else 'writer'}-{self._tag()}")
         self.ctx.device.use()
+        meter = ThreadMeter()                   # this thread's schedstat, opened once (degrade: "computer busy")
         try:
             while True:
                 with self._cv:
@@ -1112,6 +1114,7 @@ class Engine:
                     self.render_cost_ema += 0.2 * (cost - self.render_cost_ema)
                 t0 = pace_clock()
                 c0 = time.thread_time()
+                q0 = meter.runq_ns()
                 try:
                     self._submit(n, slot, step)
                 except (BrokenPipeError, ValueError, OSError) as e:
@@ -1120,18 +1123,22 @@ class Engine:
                     return
                 t1 = pace_clock()
                 enc_cpu = (time.thread_time() - c0) * 1000
+                q1 = meter.runq_ns()
+                enc_runq = (q1 - q0) / 1e6 if q0 is not None and q1 is not None and q1 >= q0 else 0.0
                 self.enc_cpu_ms.add(enc_cpu)
                 self.frames_written += 1
                 if rec is not None:
                     rec.write_ms = (t1 - t0) * 1000
                     rec.t_written = t1
                     rec.enc_cpu_ms = enc_cpu
+                    rec.enc_runq_ms = enc_runq
                     self.write_ms.add(rec.write_ms)
                 with self._cv:
                     self._pending.popleft()
                     slot.refs -= 1
                     self._cv.notify_all()
         finally:
+            meter.close()
             with self._cv:
                 self._cv.notify_all()
 
@@ -1371,6 +1378,7 @@ class Engine:
             "slip_ms": dist("slip_ms"), "host_ms": dist("host_ms", rendered),
             "cpu_ms": dist("cpu_ms", rendered), "runq_ms": dist("runq_ms", rendered),
             "blocked_ms": dist("blocked_ms", rendered), "enc_cpu_ms": dist("enc_cpu_ms"),
+            "enc_runq_ms": dist("enc_runq_ms"),
             "content_fps": self._content_fps(recs, seconds), "probe_frames": sum(1 for r in recs if r.probe),
             "late_pct": round(100.0 * sum(1 for r in recs if r.slip_ms > period_ms) / len(recs), 1) if recs else None,
             "repeats": sum(1 for r in recs if r.repeat),
