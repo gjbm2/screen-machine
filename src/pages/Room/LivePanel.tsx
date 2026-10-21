@@ -271,7 +271,7 @@ function FxStatus({
   if (on) {
     parts.push("Picked by itself");
     const eta = fxEta(plan, now);
-    if (picks === 0 && lo >= 1 && !plan?.plan.effects.length) parts.push("nothing fits this scene just now");
+    if (picks === 0 && lo >= 1 && !plan?.plan.effects.length) parts.push("none on yet; one comes in at its next change");
     else if (eta !== null)
       parts.push(
         eta < 5 ? "next change soon" : eta < 90 ? `next change in ~${Math.max(5, Math.round(eta / 5) * 5)} s` : `next change in ~${Math.round(eta / 60)} min`,
