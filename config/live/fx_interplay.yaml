@@ -31,7 +31,7 @@ roles:
   corrupt: {busy: [1.1, 0.7], legible: [1.0, 0.3], own_glitch: [1.0, 0.4]}
   reframe: {brightness: [0.55, 1.1], busy: [0.85, 1.2], legible: [1.0, 0.35]}      # a dark sphere on black is nothing
   camera:  {motion: [1.15, 0.4]}                              # shake on a fly-through is queasy
-  add:     {busy: [1.3, 0.5]}                                 # rain on a busy scene is clutter
+  add:     {busy: [1.3, 0.5], legible: [1.0, 0.25]}            # rain on a busy scene is clutter; an overlay buries the score
 
 # role + role (either order) on the same bus: a number, or by genre group with a default
 pairs:
