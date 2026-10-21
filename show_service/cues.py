@@ -23,6 +23,9 @@ nobody (``on_music_event`` skips via "cues").
   ending    the listener's ``ending`` (beliefs, held 60 s) picks which: cold arms the stop only; fade arms the fade
             (and the stop, which a fade never trips); segue arms neither (the track_change's crossfade carries it);
             unknown or no listener: both.
+  piano     neither fires while the piano's MIDI vouches for the piece (structure.piano_vouches: a key or the damper
+            down, or a note within show.yaml structure.track.piano_rest_s): a lifted hand or a diminuendo is a rest,
+            not the song's end (owner, 21 Oct: practice kept flipping to black). Nor does a fade while lufs_s rises.
   The existing drop, breakdown, track_change and track_end_armed (structure's) are untouched.
 
 **Forecast cues**, from the beliefs' ``coming`` (each window on the acoustic clock): armed with their window, size,
@@ -67,7 +70,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from . import contract
-from .structure import _Grid
+from .structure import STRUCTURE_FALLBACK, _Grid, piano_vouches
 
 log = logging.getLogger("show_service.cues")
 
@@ -213,6 +216,8 @@ class Cues:
         self._n = 0
         self._seq = 0
         self._last_fire: Optional[float] = None
+        self._piano_rest_s = float(STRUCTURE_FALLBACK["track"]["piano_rest_s"])
+        self._rest_at: Optional[float] = None           # the collapse a piano rest already excused (logged once)
         self._ending: Optional[str] = None
         self._stop_on = True
         self._fade_on = True
@@ -233,6 +238,9 @@ class Cues:
         probs: list[str] = []
         s = settings if isinstance(settings, dict) else {}
         self.cfg = _resolve(CUES_FALLBACK, s.get("cues"), "cues", probs)
+        tr = (s.get("structure") or {}).get("track") if isinstance(s.get("structure"), dict) else None
+        self._piano_rest_s = _f((tr or {}).get("piano_rest_s") if isinstance(tr, dict) else None,
+                                float(STRUCTURE_FALLBACK["track"]["piano_rest_s"]))
         self.problems = probs
         for p in probs:
             log.warning("show.yaml %s", p)
@@ -466,6 +474,13 @@ class Cues:
         lv = after[-1][1]
         if lv > self._quiet_line(floor):
             return
+        if piano_vouches(self.ctx, self._piano_rest_s):
+            if self._rest_at != last_loud:              # once per collapse (it passes for ~1 s of ticks)
+                self._rest_at = last_loud
+                self.counts["piano_rest"] += 1
+                self._log_event({"kind": "piano_rest", "cue": "stop", "ref_dbfs": round(ref, 1),
+                                 "level_dbfs": round(lv, 1)})
+            return
         if self._held():
             self.counts["held"] += 1
             self._log_event({"kind": "held", "cue": "stop"})
@@ -486,9 +501,15 @@ class Cues:
 
     def _fade_fire(self, now_s: float, t: float, floor: Optional[float], mc: Optional[dict]) -> None:
         fc = self.cfg["fade"]
-        self._outro_done = True
         w = [r for r in self._rows if r[0] >= t - fc["slope_s"]]
         slope = _slope([r[0] for r in w], [r[3] for r in w])
+        if slope is not None and slope > 0:
+            return                                    # louder, not fading: wait (the outro may still fall)
+        self._outro_done = True
+        if piano_vouches(self.ctx, self._piano_rest_s):
+            self.counts["piano_rest"] += 1
+            self._log_event({"kind": "piano_rest", "cue": "fade"})
+            return
         lufs = self._rows[-1][3]
         if lufs is None:
             return
