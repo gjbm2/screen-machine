@@ -1157,6 +1157,32 @@ class Session(EngineListener):
         self.upnext.drop_auto("effect")
         self._fill_retry = {"scene": 0.0, "effect": 0.0}
 
+    def _replan_head(self) -> None:
+        """The music moved the direction (live-F7, 21 Oct): only the head of each queue is picked again, in place, and
+        only when it is the director's own (auto, not held); the rest of the plan stays, so it no longer churns."""
+        q, d, fd, presets, now = self.upnext, self.director, self.fx_director, self.mgr.presets, time.monotonic()
+        e = q.head("scene")
+        if e is not None and d.enabled and e.get("origin") == "auto" and not e.get("hold"):
+            got = d.pick_scene(presets.scenes, self.current_name, now)
+            nxt = q.scenes[1]["scene"] if len(q.scenes) > 1 else None
+            if got is not None and got[0] != nxt:
+                t = e.get("transition"), e.get("transition_origin")
+                if t[1] == "auto" or t[0] is None:
+                    p = d.pick_transition(presets.transitions,
+                                          prev=d.recent_transitions[-1] if d.recent_transitions else None)
+                    t = (p[0], "auto") if p else (None, None)
+                q.remove(e["id"])
+                q.add("scene", {"scene": got[0], "transition": t[0], "origin": "auto", "transition_origin": t[1],
+                                "why": got[1], "why_words": self._why("scene", got[0])}, at=0)
+        e = q.head("effect")
+        if e is not None and fd.enabled and e.get("origin") == "auto" and not e.get("hold"):
+            got = fd.ahead(now, self.fx.stack, presets.effects, lambda n: self.mgr.cost_ms("effect", n),
+                           self.pixels_ratio(), tuple(x["effect"] for x in q.effects[1:]))
+            if got is not None:
+                q.remove(e["id"])
+                q.add("effect", {"effect": got[0], "origin": "auto", "why": got[1],
+                                 "why_words": self._why("effect", got[0])}, at=0)
+
     def _upnext_fill(self, now: float, need: int = 0) -> None:
         """Top the queue up with the director's picks (``need``: at least that many scenes even with scene
         picking off, for Next).  Loop thread, no awaits."""
@@ -1533,10 +1559,14 @@ class Session(EngineListener):
             effective_direction(self.direction, self.music.proposal, self.music.m)
         self.direction_effective = eff
         key = pick_key(eff)
+        head_only = False
         if key != self._dir_key and (cause in ("panel", "auto") or now - self._dir_drop_t >= self.DIR_DROP_MIN_S):
             self._dir_key, self._dir_gen, self._dir_drop_t = key, self._dir_gen + 1, now
             self._drop_prepared()                       # it was picked for the old direction
-            self._replan()
+            if cause == "music":
+                head_only = True                        # the music's own moves: the next scene and effect only
+            else:
+                self._replan()
         elif cause == "auto":
             self._drop_prepared()                       # a new pool / transitions / dwell
             self._replan()
@@ -1545,6 +1575,8 @@ class Session(EngineListener):
         self.runtime.depth_target = eff["intensity"]
         fd = self.fx_director
         fd.configure((self.director.auto or {}).get("fx"), eff)
+        if head_only:                                   # (picked for the new direction: after it is set)
+            self._replan_head()
         if fd.next_at is not None:                      # a busier direction may bring the next move earlier, never later
             fd.next_at = min(fd.next_at, now + fd.interval())
         if cause != "music":                            # the music's numeric drift is visible through GET only

@@ -14,7 +14,8 @@ Features (loop thread, from ``snapshot()``: never ``peek()``, whose idle easing 
   D      = EMA(0.7 * clamp(rate / 2.2) + 0.3 * punch, tau 8 s)            "drive"
   energy = (1 - w) * E + w * D, w = 0.3 if a pulse edge was accepted in the last 30 s else 0
   tempo  = clamp((bpm - 60) / 90) while the follower is locked, else None
-Proposal: pace 0.1 + 0.8 * (0.7 e + 0.3 tempo | e), intensity 1.0 (the per-item mappings make calm music calm), change_rate 0.9 e, fx.density 0.1 + 0.8 e,
+Proposal: pace 0.1 + 0.8 * (0.7 e + 0.3 tempo | e), intensity 1.0 (the per-item mappings make calm music calm), change_rate 0.9 e, fx.density 0.1 + 0.8 e
+(not applied when the panel's fx.density is 1.0: the mode asked for every effect it allows, so quiet music never thins it),
 fx.rate 0.05 + 0.85 e, and per band (energy edges 0.30 / 0.55 / 0.80, +-0.04 hysteresis; the 0.30-0.55 band splits
 on drive into "groove" < 0.55 / "pulse" >= 0.65) moods, fx.moods and transition_style (BANDS).
 A GOBO change (a stable new ``effect`` on a fresh frame) starts a 1.5 s settle: E is then re-seeded from the last
@@ -89,6 +90,14 @@ def _c01(x: float) -> float:
     return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
 
+def _full_density(panel: dict) -> bool:
+    """The panel's fx.density is 1.0 (every effect the mode allows): the music leaves it alone."""
+    try:
+        return float((panel.get("fx") or FX_DIRECTION_DEFAULTS).get("density")) >= 1.0
+    except (TypeError, ValueError):
+        return False
+
+
 def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
     """The direction the director uses: the panel's, trimmed around the music's proposal by ``m`` (see above)."""
     if music is None or m <= 0.0:
@@ -97,6 +106,8 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
     for k in NUMERIC:
         out[k] = round(_c01(panel[k] + m * (music[k] - DIRECTION_DEFAULTS[k])), 3)
     for k in FX_NUMERIC:
+        if k == "density" and _full_density(panel):
+            continue                              # the panel asked for every effect: the music doesn't thin it
         out["fx"][k] = round(_c01(out["fx"][k] + m * (music["fx"][k] - FX_DIRECTION_DEFAULTS[k])), 3)
     how = panel.get("music") or "blend"
     if m >= 0.5 and how != "ignore":
@@ -123,7 +134,7 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
     """Which direction fields the music is moving right now (for the console)."""
     if music is None or m <= 0.0:
         return []
-    out = [*NUMERIC, *(f"fx.{k}" for k in FX_NUMERIC)]
+    out = [*NUMERIC, *(f"fx.{k}" for k in FX_NUMERIC if not (k == "density" and _full_density(panel)))]
     how = panel.get("music") or "blend"
     if m >= 0.5 and how != "ignore":
         if not panel.get("moods") or (how == "replace" and music.get("moods")):
