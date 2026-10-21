@@ -1,7 +1,7 @@
 """screens.<id>: a thin shim around ScreenController (ROOM_STATE_MODEL §5.4 screens).
 
-Values: "art" or {"live": {scene, transitions, params?, profile?}}; read-only "failed" while the controller has given up
-on a live request. The cut handshake stays inside the controller; this only sets desired values and reports glass.
+Values: "art" or {"live": {scene, transitions, params?, profile?}}; read-only "failed" while live is off for the screen
+(its config says live disabled). A screen never parks after failed go-lives: it keeps retrying. The cut handshake stays inside the controller; this only sets desired values and reports glass.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ class ScreensAdapter(Adapter):
 
     def words(self, member: str, value: Any) -> str:
         if value in ("art", "failed"):
-            return {"art": "Art", "failed": "Live failed (showing art)"}[value]
+            return {"art": "Art", "failed": "Live is off for this screen (showing art)"}[value]
         tags = (value.get("live") or {}).get("scene_tags") if isinstance(value, dict) else None
         return f"Live ({', '.join(tags)})" if tags else "Live"
 
@@ -131,7 +131,7 @@ class ScreensAdapter(Adapter):
         if status == "cancelled":
             return Outcome("unconfirmed", "desired changed meanwhile")
         if status == "failed":
-            return Outcome("failed", detail, retry=False)       # the controller gave up: retrying defeats its guard
+            return Outcome("failed", detail, retry=False)       # live is off for this screen: retrying can't help
         return Outcome(status, detail)
 
     async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:

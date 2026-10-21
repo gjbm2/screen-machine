@@ -112,10 +112,9 @@ class Timeouts:
     art_visible_extra_s: float = 10.0  # live.leave -> ack art_visible: out transition + this
     entering_extra_s: float = 5.0      # go -> 'live' phase if no "in done" event: in transition + this
     abort_ack_s: float = 1.0           # live.abort -> art_visible (best effort, not required)
-    backoff_s: list[float] = field(default_factory=lambda: [2.0, 5.0, 15.0, 30.0])
-    fallback_window_s: float = 600.0
-    fallback_limit: int = 3            # this many fallbacks inside the window -> phase failed
-    max_entry_failures: int = 3        # consecutive failed entry handshakes -> phase failed
+    backoff_s: list[float] = field(default_factory=lambda: [2.0, 5.0, 15.0, 30.0, 60.0])   # retries after a
+                                       # failed go-live or a fallback; the last step repeats: never parked (S1, S2)
+    fallback_window_s: float = 600.0   # fallbacks counted in this window, for the page's words only
     stable_reset_s: float = 60.0       # live this long -> the retry backoff starts again at the first step
     adopt_wait_s: float = 20.0         # after a restart: wait this long for the page to say what it shows
     page_hb_idle_s: float = 2.0        # send hb when a page socket has been idle this long
