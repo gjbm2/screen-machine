@@ -92,6 +92,12 @@ PEN_W = 12.0                   # the pen's x follows its bars through a stiff sp
 GHOST_A, GHOST_TH = 0.22, 0.6
 # notes
 MAX_LIVE, MAX_GLOWS, CAP_HEADROOM = 64, 96, 8
+LIVE_STRIDE = 16               # floats per live note in the upload (see live_notes in the kernel)
+STEM_SP, HALF_BEATS, FRESH_S = 3.5, 2.0, 0.7    # a stem's length; held this many beats -> a hollow head; halo fade
+HEAD_GAP_SP, ACC_GAP_SP, CHORD_S = 1.7, 1.3, 0.05   # live heads' least spacing (+ a sign's room); a chord's spread
+FLOW_NOW, FLOW_MIN_S, FLOW_MAX_S, FLOW_TAU = 0.93, 2.0, 6.0, (0.4, 1.5)   # scroll: the newest note's place (of the tape), the least
+                               # time the flow spans, its speed's easing (slowing, quickening): notes not yet written
+                               # flow from 'now' to the pen in the time their ink takes, then hop into it
 NOTE_W, NOTE_PRE_S, TELEPORT_SP, GHOST_OUT_S, FADE_IN_S = 6.0, 0.1, 8.0, 0.2, 0.25
 RETIRE_S, RETIRE_AHEAD_SP, ORPHAN_S = 0.3, 0.5, 8.0
 SLEW_UP, SLEW_DN, REL_FLOOR, REL_TAU = 6.0, 3.0, 0.32, 0.6
@@ -114,12 +120,13 @@ PUMP_S = 0.004                 # a burst of bars (a phrase's first, a rewrite) g
 UP_P, UP_R = 0, 64
 UP_RI = (UP_R + NROW * 16 + 15) // 16 * 16
 UP_L = (UP_RI + NROW + 15) // 16 * 16
-UP_G = (UP_L + MAX_LIVE * 8 + 15) // 16 * 16
+UP_G = (UP_L + MAX_LIVE * LIVE_STRIDE + 15) // 16 * 16
 UP_N = UP_G + NGHOST * 2
 
 _SRC = HELPERS + r"""
 #define NROW """ + str(NROW) + r"""
 #define MAX_LIVE """ + str(MAX_LIVE) + r"""
+#define LS """ + str(LIVE_STRIDE) + r"""
 #define NGHOST """ + str(NGHOST) + r"""
 #define GHOST_TH """ + f"{GHOST_TH}f" + r"""
 
@@ -158,35 +165,128 @@ __device__ __forceinline__ float staff_lines(const float cy, const float t1, con
     return s;
 }
 
-// the notes being played now: L is x-sorted, 8 floats each (x y rx ry intensity r g b); P[33] the reach
+// antialiased coverage of a band |d| < w/2 (d, w in px)
+__device__ __forceinline__ float band(const float d, const float w) { return clamp01(0.5f * w + 0.5f - fabsf(d)); }
+// a vertical stroke at x = sx from y0 to y1 (px), w wide, rounded ends
+__device__ __forceinline__ float vstroke(const float X, const float Y, const float sx, const float y0, const float y1,
+                                         const float w) {
+    const float lo = fminf(y0, y1), hi = fmaxf(y0, y1);
+    const float dy = Y < lo ? lo - Y : (Y > hi ? Y - hi : 0.f);
+    const float dx = X - sx;
+    return clamp01(0.5f * w + 0.5f - sqrtf(dx * dx + dy * dy));
+}
+// a slanted bar through (cx, cy), half length hl in x, slope k (dy/dx), thickness w
+__device__ __forceinline__ float sbar(const float X, const float Y, const float cx, const float cy, const float hl,
+                                      const float k, const float w) {
+    const float u = X - cx;
+    if (fabsf(u) > hl + 1.f) return 0.f;
+    const float d = (Y - (cy + k * u)) * rsqrtf(1.f + k * k);
+    return band(d, w) * clamp01(hl + 0.5f - fabsf(u));
+}
+// sharp (1), flat (2), natural (3) centred at (ax, hy), staff space sp (px)
+__device__ float accidental(const float X, const float Y, const float ax, const float hy, const int kind,
+                            const float sp) {
+    const float lw = 0.11f * sp, bw = 0.34f * sp;
+    if (kind == 1) {
+        float v = fmaxf(vstroke(X, Y, ax - 0.22f * sp, hy - 1.25f * sp, hy + 1.45f * sp, lw),
+                        vstroke(X, Y, ax + 0.22f * sp, hy - 1.45f * sp, hy + 1.25f * sp, lw));
+        v = fmaxf(v, sbar(X, Y, ax, hy - 0.45f * sp, 0.5f * sp, -0.35f, bw));
+        return fmaxf(v, sbar(X, Y, ax, hy + 0.45f * sp, 0.5f * sp, -0.35f, bw));
+    }
+    if (kind == 2) {
+        const float sx = ax - 0.28f * sp;
+        float v = vstroke(X, Y, sx, hy - 1.9f * sp, hy + 0.5f * sp, lw);
+        // the bowl: a ring right of the stem, fuller at its right
+        const float bx = X - (sx + 0.02f * sp), by = Y - (hy - 0.02f * sp);
+        if (bx > 0.f) {
+            const float ex = bx / (0.62f * sp), ey = by / (0.52f * sp);
+            const float d = sqrtf(ex * ex + ey * ey);
+            const float t = (0.09f + 0.12f * clamp01(bx / (0.6f * sp))) * sp / (0.55f * sp);
+            v = fmaxf(v, clamp01((t * 0.5f - fabsf(d - 1.f + 0.5f * t)) * 0.55f * sp + 0.5f));
+        }
+        return v;
+    }
+    float v = fmaxf(vstroke(X, Y, ax - 0.2f * sp, hy - 1.3f * sp, hy + 0.55f * sp, lw),
+                    vstroke(X, Y, ax + 0.2f * sp, hy - 0.55f * sp, hy + 1.3f * sp, lw));
+    v = fmaxf(v, sbar(X, Y, ax, hy - 0.4f * sp, 0.24f * sp, -0.3f, 0.3f * sp));
+    return fmaxf(v, sbar(X, Y, ax, hy + 0.4f * sp, 0.24f * sp, -0.3f, 0.3f * sp));
+}
+
+// the notes being played now, drawn as notation from the first frame (owner 21 Oct: "show the notes immediately"):
+// L is x-sorted, LS floats each: [0] x [1] y [2] rx [3] ry [4] intensity [5..7] r g b [8] stem (+1 up, -1 down, 0 none)
+// [9] stem length [10] its staff's top line y [11] accidental (0 none, 1 sharp, 2 flat, 3 natural) [12] hollow 0..1
+// [13] fresh 0..1 (the halo of a just-struck note).  P[33] the reach, P[28] staff space, P[29] line thickness
 __device__ __forceinline__ void live_notes(float3& c, const float X, const float Y, const float* __restrict__ L,
-                                           const int nl, const float* __restrict__ P, const int night)
+                                           const int nl, const float* __restrict__ P, const int night,
+                                           const float3 inkc)
 {
     const int n = min(nl, MAX_LIVE);
     if (n <= 0 || X <= P[22] || X >= P[24] || Y <= P[23] || Y >= P[25]) return;
-    const float rc = P[33];
+    const float rc = P[33], sp = P[28], th = P[29];
     int lo = 0, hi = n;
     for (int s = 0; s < 7 && lo < hi; ++s) {                // the first note with x >= X - rc
         const int mid = (lo + hi) >> 1;
-        if (L[8 * mid] < X - rc) lo = mid + 1; else hi = mid;
+        if (L[LS * mid] < X - rc) lo = mid + 1; else hi = mid;
     }
     const float e = P[16], kick = P[17];
     const float cs = 0.93937271f, sn = -0.34289781f;        // cos, sin of -0.35
     const float halo = P[19] * (0.8f + 0.6f * e) * (1.f + 0.5f * kick);
     const float hk = 2.2f / fmaxf(halo, 0.05f);
-    for (int i = lo; i < n && L[8 * i] <= X + rc; ++i) {
-        const float* N = L + 8 * i;
+    for (int i = lo; i < n && L[LS * i] <= X + rc; ++i) {
+        const float* N = L + LS * i;
         const float dx = X - N[0], dy = Y - N[1];
-        const float rr = sqrtf(dx * dx + dy * dy);
-        if (rr >= rc) continue;
+        if (fabsf(dy) > rc + N[9]) continue;
+        // the head: a tilted ellipse, crisp; hollow (a half note) as it's held
         const float ex = (dx * cs + dy * sn) / N[2], ey = (-dx * sn + dy * cs) / N[3];
         const float d = sqrtf(ex * ex + ey * ey);
-        const float core = 1.f - smooth(0.82f, 1.05f, d);
-        const float glow = expf(-fmaxf(d - 1.f, 0.f) * hk) * 0.7f * halo;
-        const float kk = N[4] * fminf(1.f, core + glow) * (1.f - smooth(0.7f * rc, rc, rr));
-        if (!night) { c.x += (N[5] * 0.85f - c.x) * kk; c.y += (N[6] * 0.85f - c.y) * kk;
-                      c.z += (N[7] * 0.85f - c.z) * kk; }
-        else { c.x += N[5] * kk; c.y += N[6] * kk; c.z += N[7] * kk; }
+        const float aa = 1.f / fmaxf(N[3], 1.f);
+        float head = 1.f - smooth(1.f - aa, 1.f + aa, d);
+        if (N[12] > 0.001f && head > 0.f) {
+            const float cs2 = 0.70710678f, sn2 = -0.70710678f;          // the hole leans more than the head
+            const float ix = (dx * cs2 + dy * sn2) / (0.78f * N[2]), iy = (-dx * sn2 + dy * cs2) / (0.36f * N[3]);
+            const float di = sqrtf(ix * ix + iy * iy);
+            head *= 1.f - N[12] * (1.f - smooth(1.f - 2.f * aa, 1.f + 2.f * aa, di));
+        }
+        float cov = head;
+        // the stem: on the right going up, on the left going down
+        if (N[8] != 0.f) {
+            const float sx = N[0] + N[8] * (N[2] * 0.86f);
+            const float y0 = N[1] - N[8] * 0.15f * sp, y1 = N[1] - N[8] * N[9];
+            cov = fmaxf(cov, vstroke(X, Y, sx, y0, y1, 0.12f * sp));
+        }
+        // ledger lines between the staff and the head
+        const float top = N[10];
+        if (fabsf(dx) < 1.6f * N[2]) {
+            if (N[1] < top - 0.75f * sp) {
+                const float k = rintf((top - Y) / sp);
+                if (k >= 1.f && top - k * sp >= N[1] - 0.6f * sp) cov = fmaxf(cov, band(Y - (top - k * sp), th));
+            } else if (N[1] > top + 4.75f * sp) {
+                const float b4 = top + 4.f * sp, k = rintf((Y - b4) / sp);
+                if (k >= 1.f && b4 + k * sp <= N[1] + 0.6f * sp) cov = fmaxf(cov, band(Y - (b4 + k * sp), th));
+            }
+        }
+        if (N[11] > 0.5f) cov = fmaxf(cov, accidental(X, Y, N[0] - N[2] - 1.05f * sp, N[1], (int)(N[11] + 0.5f), sp));
+        const float I = N[4];
+        // fresh: a halo in the note's colour behind it, fading as it settles into ink
+        const float rr = sqrtf(dx * dx + dy * dy);
+        const float hal = N[13] * expf(-fmaxf(d - 1.f, 0.f) * hk) * 0.4f * halo * (1.f - smooth(0.6f * rc, rc, rr));
+        const float3 tint = make_float3(N[5], N[6], N[7]);
+        if (!night) {
+            if (hal > 0.f) { c.x += (tint.x * 0.85f - c.x) * hal * I * 0.6f; c.y += (tint.y * 0.85f - c.y) * hal * I * 0.6f;
+                             c.z += (tint.z * 0.85f - c.z) * hal * I * 0.6f; }
+            const float m = 0.45f * N[13];                                  // fresh ink carries a little colour
+            const float3 ic = make_float3(inkc.x + (tint.x * 0.55f - inkc.x) * m, inkc.y + (tint.y * 0.55f - inkc.y) * m,
+                                          inkc.z + (tint.z * 0.55f - inkc.z) * m);
+            const float k2 = cov * I;
+            c.x += (ic.x - c.x) * k2; c.y += (ic.y - c.y) * k2; c.z += (ic.z - c.z) * k2;
+        } else {
+            c.x += tint.x * hal * I; c.y += tint.y * hal * I; c.z += tint.z * hal * I;
+            const float m = 0.5f * N[13];
+            const float3 ic = make_float3(inkc.x + (tint.x - inkc.x) * m, inkc.y + (tint.y - inkc.y) * m,
+                                          inkc.z + (tint.z - inkc.z) * m);
+            const float k2 = cov * I;
+            c.x += (ic.x - c.x) * k2; c.y += (ic.y - c.y) * k2; c.z += (ic.z - c.z) * k2;
+        }
     }
 }
 
@@ -252,7 +352,7 @@ void score(uchar4* __restrict__ out, const float* __restrict__ P, const unsigned
         if (cx < pen && inkv > 0.004f && Q[5] > 0.f)             // the fresh ink glowing behind the pen
             blend_glow(c, fresh_c, inkv * a * Q[5] * expf(-(pen - cx) / Q[6]), night);
     }
-    live_notes(c, X, Y, L, nl, P, night);
+    live_notes(c, X, Y, L, nl, P, night, inkc);
     const float g = 255.f * P[18];
     out[y * W + x] = pack(make_float4(clamp01(c.x) * g, clamp01(c.y) * g, clamp01(c.z) * g, 255.f));
 }
@@ -323,7 +423,7 @@ void score_scroll(uchar4* __restrict__ out, const float* __restrict__ P, const u
         }
         blend_ink(c, inkc, cov);
     }
-    live_notes(c, X, Y, L, nl, P, night);
+    live_notes(c, X, Y, L, nl, P, night, inkc);
     const float g = 255.f * P[18];
     out[y * W + x] = pack(make_float4(clamp01(c.x) * g, clamp01(c.y) * g, clamp01(c.z) * g, 255.f));
 }
@@ -474,7 +574,8 @@ class _Phrase:
 
 class _Glow:
     __slots__ = ("gid", "note", "phrase", "staff", "home", "k", "frac", "pre", "x", "vx", "y", "vy", "gx", "gy",
-                 "inten", "tgt", "presence", "bloom", "state", "t_state", "dirty", "born", "fade", "shrink", "edge")
+                 "inten", "tgt", "presence", "bloom", "state", "t_state", "dirty", "born", "fade", "shrink", "edge",
+                 "fx")
 
     def __init__(self, gid: int, note, phrase, staff: int, born: float) -> None:
         self.gid, self.note, self.phrase, self.staff, self.born = gid, note, phrase, staff, born
@@ -491,6 +592,7 @@ class _Glow:
         self.fade = 0.0                             # > 0: fading out over that many seconds (cap, orphan, no line)
         self.shrink = 1.0
         self.edge = 1.0                             # before the metre: faded at the line's left edge (slewed)
+        self.fx = None                              # scroll: where it last flowed (its hop into the ink starts there)
 
 
 class LiveScore(Source):
@@ -552,11 +654,11 @@ class LiveScore(Source):
         self.up_k = 0
         self.P, self.R = self.up_dev[UP_P:UP_P + 64], self.up_dev[UP_R:UP_R + NROW * 16]
         self.RI = self.up_dev[UP_RI:UP_RI + NROW].view(cp.int32)
-        self.L = self.up_dev[UP_L:UP_L + MAX_LIVE * 8]
+        self.L = self.up_dev[UP_L:UP_L + MAX_LIVE * LIVE_STRIDE]
         self.Ph = np.zeros(64, np.float32)
         self.Rh = np.zeros(NROW * 16, np.float32)
         self.RIh = np.zeros(NROW, np.int32)
-        self.Lh = np.zeros(MAX_LIVE * 8, np.float32)
+        self.Lh = np.zeros(MAX_LIVE * LIVE_STRIDE, np.float32)
         self.pump_until = 0.0
         # first uses load kernels and modules (35 ms on the first ink, 12 ms on the first bar, measured): here, in
         # setup, not on a frame
@@ -595,6 +697,9 @@ class LiveScore(Source):
         self.nat_seed: dict = {}                # unit -> the last phrase's natural beat width (sp)
         self.R_last = None                      # the last phrase's px/s
         self.spells: dict = {}
+        self.accs: dict = {}                            # (pitch, spelled, shown) -> the sign a live head carries
+        self._spell_c = None                            # (builder ver, the key heard so far)
+        self.flow_now, self.flow_v, self._flow_t = 0.0, 0.0, None   # scroll: the unwritten notes' flow
         self.glows: list[_Glow] = []
         self.gid = 0
         self.last_nid = 0
@@ -1950,6 +2055,79 @@ class LiveScore(Source):
         self.glows.append(g)
         return g
 
+    def _accidental(self, pitch: int, spelled: int, shown: int) -> int:
+        """The sign a live note's head carries: spelled in the key ``spelled`` (fifths), against the signature
+        ``shown`` on its line: 0 none, 1 sharp, 2 flat, 3 natural."""
+        key = (pitch, spelled, shown)
+        a = self.accs.get(key)
+        if a is None:
+            from stream_service.score.mei import signature, spell
+            letter, alt, _octave = spell(pitch, spelled, signature(spelled))
+            sig = signature(shown)
+            a = 0 if alt == sig[letter] else (1 if alt > 0 else 2 if alt < 0 else 3)
+            self.accs[key] = a
+        return a
+
+    def _flow_step(self) -> None:
+        """Scroll: 'now' (where a note appears) and the flow's speed: the oldest note not yet written reaches the pen
+        about as its ink lands.  Eased: slowing within ~0.4 s (so nothing crosses the pen), quickening over ~1.5 s."""
+        sp, now = self.sp, self.t_sound
+        self.flow_now = self.X_left + FLOW_NOW * self.tape_w
+        A = max((now - g.note.t_on for g in self.glows if g.state == "live" and g.home is not None), default=0.0)
+        span = max(4.0 * sp, self.flow_now - (self.pen_sx + 2.0 * sp))
+        v_t = span / min(FLOW_MAX_S, max(FLOW_MIN_S, A + 0.4))   # ink later than that: the oldest pass the pen, fading
+        dt = max(0.0, now - self._flow_t) if self._flow_t is not None else 0.0
+        self._flow_t = now
+        if self.flow_v <= 0.0:
+            self.flow_v = v_t
+        else:
+            tau = FLOW_TAU[0] if v_t < self.flow_v else FLOW_TAU[1]
+            self.flow_v += (v_t - self.flow_v) * (1.0 - math.exp(-dt / tau))
+
+    def _unheap(self, rows: list) -> list:
+        """Notes drawn as notation must never pile up (owner 21 Oct: "all the notes land on top of each other in a
+        massive ugly heap"): per staff, in time order, each head sits at least a head's width (more with a sign) right
+        of the one before; notes struck together (a chord) share one x.  Only the drawing moves, not the targets."""
+        sp = self.sp
+        out = []
+        by_staff: dict = {}
+        for r in rows:
+            by_staff.setdefault(r[7], []).append(r)
+        for grp in by_staff.values():
+            grp.sort(key=lambda r: (r[6].note.t_on, r[0]))
+            px = pt = None
+            for r in grp:
+                nt = r[6].note
+                hm = r[6].home
+                acc = self._accidental(nt.pitch, self._spelling(hm), hm.fifths) if hm is not None else 0
+                X = r[0]
+                if px is not None:
+                    if nt.t_on - pt < CHORD_S:
+                        X = px
+                    else:
+                        X = max(X, px + HEAD_GAP_SP * sp + (ACC_GAP_SP * sp if acc else 0.0))
+                if px is None or nt.t_on - pt >= CHORD_S:
+                    pt = nt.t_on
+                px = X
+                out.append((X,) + r[1:])
+        return out
+
+    def _spelling(self, ln) -> int:
+        """The key a live note is spelled in: the key heard so far (the analysis's, else the builder's estimate from
+        the playing) before the line shows its signature, so an E-flat is written as one from the first note."""
+        b = self.builder
+        c = self._spell_c
+        now = self.t_sound
+        if c is None or (c[0] != b.ver and now - c[2] >= 0.5):       # the key moves slowly: twice a second at most
+            f = b.key_fifths
+            if f is None and sum(b.pc_weight) > 0.0:
+                try:
+                    f = b.key()[2]
+                except Exception:
+                    f = None
+            c = self._spell_c = (b.ver, f, now)
+        return ln.fifths if c[1] is None else c[1]
+
     def _pitch_y(self, ln: _Line, pitch: int, fifths: int, staff: int) -> float:
         key = (pitch, fifths, staff)
         off = self.spells.get(key)
@@ -1992,7 +2170,7 @@ class LiveScore(Source):
             if ln is None or ph.t0 is None:
                 return None
             x = ph.hdr_est + self.lpad + (n.t_on - ph.t0) * ph.R_prov - ph.conv
-            return ln, x, self._pitch_y(ln, n.pitch, ln.fifths, g.staff)
+            return ln, x, self._pitch_y(ln, n.pitch, self._spelling(ln), g.staff)
         if ph is self.ph and not ph.plan.covers(g.k):
             self._ensure_plan(ph, g.k)
         if not ph.plan.lines:
@@ -2011,7 +2189,7 @@ class LiveScore(Source):
             L = ph.plan.line(j)
             x0, wk = ph.plan.slot_x0(j, g.k), L.bw
         x = x0 + self.lpad + g.frac * max(self.sp, wk - self.lpad - self.rpad)
-        return ln, x, self._pitch_y(ln, n.pitch, ln.fifths, g.staff)
+        return ln, x, self._pitch_y(ln, n.pitch, self._spelling(ln), g.staff)
 
     def _retired(self, g: _Glow) -> bool:
         """The pen has reached the glow's note (its ink is showing)."""
@@ -2113,9 +2291,9 @@ class LiveScore(Source):
             if g.fade:
                 rate = max(rate, 1.0 / g.fade)
             if rate:                                                   # the fastest fade that applies, a frame's worth
-                g.presence = max(0.0, g.presence - min(dt, 1 / 30) * rate)
+                g.presence = max(0.0, g.presence - min(dt, 0.1) * rate)
             elif g.state == "live":
-                g.presence = min(1.0, g.presence + min(dt, 1 / 30) / FADE_IN_S)
+                g.presence = min(1.0, g.presence + min(dt, 0.1) / FADE_IN_S)
         self.glows.extend(add)
         # too many: ghosts fade first, then the retiring, then the oldest written (fading ones gone below 0.05 were
         # removed at the top of the step: each is drawn faint at least once)
@@ -2139,28 +2317,43 @@ class LiveScore(Source):
         dbg = []
         b = self.builder
         scroll = self.layout == "scroll"
+        if scroll:
+            self._flow_step()
         for g in self.glows:
             ln = g.home
             if ln is None:
                 continue
-            if scroll:                                      # ahead of the pen through the lane, else on the paper
-                d = g.x - self.lane_u if self.lane_u is not None else -1.0
-                X = (self.lane_u - self.S + self._lane(d)[0]) if d > 0.0 else g.x - self.S
-                Y = self.y0 + g.y
-                a = smoothstep(self.X_left, self.X_left + SHIELD_SP * sp, X) * (
-                    1.0 - smoothstep(0.5 * (self.X_h + self.X_R), self.X_R + 2.0 * sp, X))
+            if scroll:
+                # not yet written: flowing left from 'now' at the pace that brings it to the pen as its ink lands;
+                # written: a hop from where it flowed into its ink while it fades (owner 21 Oct: notes at once, then
+                # adapted).  The old lane squeezed the backlog into a heap or ran it off the edge.
+                if g.state == "live":
+                    X = self.flow_now - (self.t_sound - g.note.t_on) * self.flow_v
+                    g.fx = X
+                    Y = self.y0 + g.y
+                    past = smoothstep(self.pen_sx - 3.0 * sp, self.pen_sx + sp, X)   # unwritten past the pen: fading
+                else:
+                    Xi = g.x - self.S
+                    k = g.presence
+                    X = Xi + (g.fx - Xi) * k if g.fx is not None else Xi
+                    Y = self.y0 + g.y - math.sin(math.pi * (1.0 - k)) * 0.8 * sp
+                a = smoothstep(self.X_left, self.X_left + SHIELD_SP * sp, X)
+                if g.state == "live":
+                    a *= past
             else:
                 a = ln.alpha if ln in self.lines else 0.0
                 X = self.x_off + g.x
                 Y = ln.y + g.y
-            I = g.inten * g.presence * a * g.edge
+            I = g.presence * a * g.edge                    # written notes stay solid; the sound only lights the halo
             if I <= 0.004:
                 continue
-            s = g.bloom * g.shrink
-            rows.append((X, Y, 0.62 * sp * s, 0.48 * sp * s, I, ((g.note.pitch * 7) % 12) / 12.0, g))
+            s = g.shrink * (1.0 + 0.35 * (g.bloom - 1.0))          # a struck head swells a little, never a blob
+            rows.append((X, Y, 0.62 * sp * s, 0.48 * sp * s, I, ((g.note.pitch * 7) % 12) / 12.0, g,
+                         (self.y0 if scroll else ln.y) + (ln.t1 if g.staff == 0 else ln.t2)))
         if len(rows) > MAX_LIVE:
             rows.sort(key=lambda r: -r[4])
             rows = rows[:MAX_LIVE]
+        rows = self._unheap(rows)
         rows.sort(key=lambda r: r[0])
         n = len(rows)
         if n:
@@ -2168,11 +2361,44 @@ class LiveScore(Source):
             cols = _pal3(self.Ph[0:12], np.array([r[5] for r in rows]) * float(p["palette_period"]) + self.drift % 10.0)
             arr = np.array([r[:5] for r in rows], np.float32)
             Lh = self.Lh
-            Lh[:8 * n].reshape(n, 8)[:, :5] = arr
-            Lh[:8 * n].reshape(n, 8)[:, 5:8] = cols
+            V = Lh[:LIVE_STRIDE * n].reshape(n, LIVE_STRIDE)
+            V[:, :5] = arr
+            V[:, 5:8] = cols
+            # notation: stem, ledger lines (from the staff's top line), accidental, hollow head, fresh halo
+            now = self.t_sound
+            beat_s = b.clock.P if b.clock.P else 0.5
+            ymin, ymax = float(arr[:, 1].min()), float(arr[:, 1].max())
+            # chords: heads at (nearly) one x on one staff share a stem, drawn from the end note through the others
+            i = 0
+            while i < n:
+                j = i + 1
+                while j < n and rows[j][0] - rows[i][0] < 0.6 * sp and rows[j][7] == rows[i][7]:
+                    j += 1
+                grp = range(i, j)
+                top = rows[i][7]
+                mid = top + 2.0 * sp
+                lo_y = min(rows[k][1] for k in grp)
+                hi_y = max(rows[k][1] for k in grp)
+                up = 1.0 if (hi_y - mid) > (mid - lo_y) else -1.0  # the head farthest from the middle line decides
+                end = max(grp, key=lambda k: rows[k][1]) if up > 0 else min(grp, key=lambda k: rows[k][1])
+                span = hi_y - lo_y
+                stem = max(STEM_SP * sp + span, abs(rows[end][1] - mid))
+                for k in grp:
+                    V[k, 8] = up if k == end else 0.0
+                    V[k, 9] = stem if k == end else 0.0
+                    ymin, ymax = min(ymin, rows[k][1] - stem), max(ymax, rows[k][1] + stem)
+                i = j
+            for i, r in enumerate(rows):
+                g, top = r[6], r[7]
+                nt = g.note
+                held = (nt.t_off if nt.t_off is not None else now) - nt.t_on
+                V[i, 10] = top
+                hm = g.home
+                V[i, 11] = self._accidental(nt.pitch, self._spelling(hm), hm.fifths) if hm is not None else 0
+                V[i, 12] = smoothstep(HALF_BEATS - 0.15, HALF_BEATS + 0.15, held / beat_s)
+                V[i, 13] = max(math.exp(-max(0.0, now - g.born) / FRESH_S), 0.8 * min(1.0, g.inten))
             rc = RC_SP * sp
-            self.bbox = (float(arr[:, 0].min() - rc), float(arr[:, 1].min() - rc),
-                         float(arr[:, 0].max() + rc), float(arr[:, 1].max() + rc))
+            self.bbox = (float(arr[:, 0].min() - rc), ymin - rc, float(arr[:, 0].max() + rc), ymax + rc)
             for r in rows:
                 g = r[6]
                 pos = None
@@ -2247,7 +2473,7 @@ class LiveScore(Source):
         h[UP_R:UP_R + NROW * 16] = self.Rh
         h[UP_RI:UP_RI + NROW].view(np.int32)[:] = self.RIh
         if nl:
-            h[UP_L:UP_L + 8 * nl] = self.Lh[:8 * nl]
+            h[UP_L:UP_L + LIVE_STRIDE * nl] = self.Lh[:LIVE_STRIDE * nl]
         if self.layout == "scroll":
             h[UP_G:UP_G + NGHOST * 2] = self.Gh
         st = cp.cuda.get_current_stream()
