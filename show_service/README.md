@@ -4803,7 +4803,9 @@ whichever octave is right. A slow-lane octave now also passes the clock's own ju
   min(70 ms, a quarter of its period), from the last 20 s of frames (`beatdbn.OCT_EV_S`). The grid is the line's
   period over its last 16 beats (`DbnTracker.period`, the median of its beat-to-beat periods), also the tempo the prior
   reads. The tracker's own period jumped 110-137 bpm beat to beat on the room-mic pop; at the switch it read 136,
-  whose half is within 1 % of the bound. The median read 125.0.
+  whose half is within 1 % of the bound. The median read 125.0. Only the beats since the line's last new tempo count
+  (a new line, a re-phase onto another tempo, a run of taps; under 4 of them, the line's own period): the octave map
+  multiplies the tracker's line as it is now (21 Oct check, below).
 - mllink sends the three thresholds with each octave (S4.5; show.yaml `ml.beat_votes.octave_*`); the clock's
   defaults are the same (`OCT_ADD_MIN`, `OCT_DROP_MAX`, `OCT_PRIOR_OCT`). A person's half/double and the legacy
   estimator are not judged.
@@ -4854,6 +4856,28 @@ exactly the slow-lane-off run's (26's C, room-mic). The 8 parity cases (slow lan
 - A wrong doubling onto 8th-note hats passes (a): none was measured, and Beat This!'s conf already needs its beats on
   the midpoints.
 - The thresholds come from 38 votes on 7 tracks.
+
+**Check (21 Oct, independent re-run).** The six slow-lane inputs and the pop replay flash-identical to the runs above
+(the pop's flashes are 26's C, room mic, slow lane off), and the 8 parity cases are flash-identical. One defect,
+fixed: `DbnTracker.period()` kept the beat-to-beat periods from before the tracker's own tempo change. On Miss
+Independent in the room (26's D seed), a x0.5 injected at 15.8 s reached its switch beat with the published line
+still at 172 and the tracker two beats onto 85.6. The median still read 171.4 (12 of its 16 periods were 172's), so
+the gate judged a halving to 85.7, and the octave map applied it to the tracker's 85.6: 42.8 bpm published for 4.5 s.
+Now only the periods since the line's last new tempo count: it reads 85.6 and refuses (prior). Every replay above is
+flash-identical after the fix. Octave votes injected (judged, never applied) where 26's runs had one under conf 0.6,
+and on synthetic loops:
+
+| case | votes (ratio): verdict |
+|---|---|
+| wrong x0.5 to under 69 | eyes 128 -> 64 (0.67, 0.80), country.00050 118 -> 59 (0.89), the pop on the pc22 model (0.60): refused (prior) |
+| wrong x0.5 to 69 or more (limit 1) | blues.00064 155 -> 79 (0.95), Media-103814 172 -> 86 (2.53), jazz.00034 194 -> 97 (0.69), a rumba 140 -> 70 (1.00), lightweight in the room 188 -> 94 (0.80): pass |
+| right x0.5 | letitrain 157 -> 78 (5.4, 4.2, 1.6), lookatmenow in the room 146 -> 73 (1.55): pass |
+| right x0.5 to under 69 (limit 2) | a Bach fugue 109 -> 54 (0.95, 0.81, 0.59); a synthetic 62 bpm ballad held at 125, where Beat This! voted x0.5 at conf 1.0 twice (0.78); a 66 one at 132 (0.69-1.40): refused (prior) |
+| x2 | a samba 104 -> 207, wrong (0.10): refused (audio); Liszt 87 -> 174, wrong (0.67): passes (limit 3) |
+| half-time feel (hats at the beat, kick and snare at half) | at 150, Beat This! x0.5 applied on the audio (0.32); at 130 with the one on the kick, applied on the audio to 65 (0.42); on the hats' parity, refused (2.41) |
+
+A halving whose kept beats are the weaker parity (ratio well over 1: letitrain's 5.4, a synthetic quickstep's 5.0)
+still passes when its tempo is plausible; mllink's conf (Beat This!'s beats on the kept parity) is what stops it.
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 

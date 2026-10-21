@@ -73,7 +73,8 @@ Added here, for the live clock (inert in a replay that has no corrections and co
   activation peak at the points only it has (the beats a doubling adds, a halving drops) over the mean at the beats
   both grids keep, each above the activation's median there. It reads the last OCT_EV_S of frames (``_act_ev``, a
   record nothing else reads). ``period()``: the line's period over its last 16 beats (their median), the grid it
-  is read on (the line's own jitters by 10 % beat to beat in a room).
+  is read on (the line's own jitters by 10 % beat to beat in a room); only the beats since the line's last new
+  tempo count (before it they are another tempo's: the 21 Oct check).
 Pure numpy and the stdlib (``tg`` imports clock's Tempogram and _Peaks): the Clock, a test or a replay drive one the
 same way.
 """
@@ -289,6 +290,7 @@ class DbnTracker:
         self._k_judged = -1
         self._n_line = 0                        # beats on the line since it started or re-phased
         self._ibis: collections.deque = collections.deque(maxlen=16)   # the line's beat-to-beat periods (rubato)
+        self._n_ibi = 0                         # ... of them since the line's last new tempo (period() reads these)
         self._sal: collections.deque = collections.deque(maxlen=8)      # activation peak at each beat (deferred)
         self._sal_wait: collections.deque = collections.deque()         # beat times waiting for their window
         self._x: dict = {}
@@ -350,9 +352,13 @@ class DbnTracker:
     def period(self) -> Optional[float]:
         """The line's period (s) over its last 16 beats: the median of their beat-to-beat periods (4 or more; else
         the line's own, None without a line). Steadier than the line's own, which follows its last 8 DBN beats, or
-        the posterior while they disagree, and jittered 110-137 bpm beat to beat on 26's room-mic pop song."""
-        if len(self._ibis) >= 4:
-            return float(np.median(self._ibis))
+        the posterior while they disagree, and jittered 110-137 bpm beat to beat on 26's room-mic pop song. Only the
+        beats since the line's last new tempo (a new line, a re-phase onto another tempo, a run of taps) count: the
+        ones before it are another tempo's (21 Oct check: the tracker at 85.6 for two beats after 172, a median
+        of 171.4 judged a slow-lane halving at 172 that the octave map then applied to 85.6: 42.8 published)."""
+        n = min(self._n_ibi, len(self._ibis))
+        if n >= 4:
+            return float(np.median(list(self._ibis)[-n:]))
         return self._line[2] if self._line is not None else None
 
     def beat_at(self, t: float) -> float:
@@ -460,6 +466,7 @@ class DbnTracker:
             self._k_judged = k
             self._hits.append(1.0)
             self._n_line = 1
+            self._n_ibi = 0
             self.counts["lines"] += 1
             self._ev_wait.append((t, k, "new"))
         else:
@@ -479,6 +486,7 @@ class DbnTracker:
                 if self._hist:
                     kp, tp = self._hist[-1]
                     self._ibis.append((t - tp) / max(1, k - kp))
+                    self._n_ibi += 1
                 self._hist.append((k, t))
                 self._n_line += 1
             elif t < self._hold_until:                          # a tap holds the line: the DBN waits
@@ -491,6 +499,8 @@ class DbnTracker:
                 self._hist.append((k, t))
                 self._k_judged = k
                 self._n_line = 1
+                if abs(T / Td - 1.0) > 0.15:                    # onto another tempo ("new"): period() starts over
+                    self._n_ibi = 0
                 self.epoch += 1
                 self.counts["rephases"] += 1
                 self._ev_wait.append((t, k, "rephase" if abs(T / Td - 1.0) <= 0.15 else "new"))
@@ -698,6 +708,7 @@ class DbnTracker:
             self._hist.extend((k - (n - 1) + i, float(ti)) for i, ti in enumerate(tt))
             self._n_line = max(self._n_line, n) if ln is not None else n
             self._ibis.clear()
+            self._n_ibi = 0
             if ln is None:
                 self.tapped = True
                 self.conf = max(self.conf, TAP_CONF)
