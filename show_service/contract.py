@@ -1403,7 +1403,8 @@ class BeatVote(TypedDict):
     beat_is_one: Optional[int]         # a beat index in the clock's published numbering that starts a bar; None: no vote
     bar_len: Optional[int]
     octave: Optional[float]            # 1 | 2 (the beat is twice as fast) | 0.5; None: the tempi don't relate
-    conf: float                        # share of the interior's beats within match_ms of the clock's grid at ``octave``
+    conf: float                        # share of the beats of the interior's last local_s within match_ms of the
+                                       # clock's line at ``octave``, carried back from its anchor (README S4.5)
     applied: bool                      # this vote went to clock_correct
     why: Optional[str]                 # page words when not: "no grid", "too few beats", "low agreement", "waiting
                                        # for a second run", "the clock agrees", "cooldown", "the tempi don't relate",

@@ -1,6 +1,8 @@
 """mllink (README S4.5): MLFeed into a real pipe (frames, the receiver's times through soxr, segments, GAP, a full
-pipe, a dead reader, the cost), ``beat_vote`` on synthetic beats (each octave, a 3:2 tempo, bar and one), MLLink's
-apply rule (agree_runs, cooldown, only what differs, an octave alone, confirmations) on a fake clock, and MLLink
+pipe, a dead reader, the cost), ``beat_vote`` on synthetic beats (each octave, a 3:2 tempo, bar and one; read where
+the clock's line holds: a 2 % drifting line, the other phase, split, random and jump-cut windows, and 26's quickstep
+window that failed read whole), MLLink's apply rule (agree_runs, cooldown, only what differs, an octave alone,
+confirmations) on a fake clock, and MLLink
 against ``python -m show_service.ml.worker --fake`` (sys.executable, a tmp models dir): hello, the feed attached, the
 view filled, CPU read, a killed worker restarted, disabled by show.yaml, stop as brain.py awaits it.
 
@@ -225,6 +227,94 @@ def test_beat_vote_octaves_and_unrelated_tempi():
     assert M.beat_vote(beats_msg(off[:3]), CLOCK, {})["why"] == "too few beats"
 
 
+def whole_window_conf(msg, clock, match_ms=70.0, tol=0.06):
+    """The vote's conf before 21 Oct: every beat of the window against the clock's current line carried back at its
+    own bpm (what 26 measured failing on the quickstep), for the regression below."""
+    bpm = clock["bpm"]
+    r = (60.0 / bpm) / (60.0 / msg["bpm"])
+    octave = next(o for o in (2.0, 0.5, 1.0) if abs(r / o - 1.0) <= tol)
+    hits = 0
+    for b in msg["beats"]:
+        x = (clock["beat_at_anchor"] + (b * 1000.0 - clock["anchor_ms"]) * bpm / 60000.0) * octave
+        hits += abs(x - round(x)) * 60.0 / bpm / octave <= match_ms / 1000.0
+    return hits / len(msg["beats"])
+
+
+def drifting_x2(drift=0.02, true_bpm=203.0, jitter_s=0.008, phase_s=0.0, seed=4):
+    """Beat This! at a true 203 bpm over a 30 s window (its interior's beats, 8 ms jitter); the clock locked at the
+    half, its line anchored on a true beat 1.5 s after the window (a vote arrives ~3.7 s after it), its bpm ``drift``
+    off: carried back 30 s that line walks 0.6 s off the beats."""
+    rng = np.random.default_rng(seed)
+    T = 60.0 / true_bpm
+    w = (1000.0, 1030.0)
+    beats = [w[0] + 3.0 + phase_s + i * T + float(rng.normal(0.0, jitter_s)) for i in range(int(24.0 / T))]
+    t_anchor = w[0] + 3.0 + 2 * round((w[1] + 1.5 - w[0] - 3.0) / (2 * T)) * T    # a true beat the half-clock has
+    clock = {**CLOCK, "bpm": true_bpm / 2 * (1.0 + drift), "anchor_ms": t_anchor * 1000.0, "beat_at_anchor": 400,
+             "bar_anchor_beat": 396}
+    return beats_msg(beats, w=w), clock
+
+
+def test_beat_vote_reads_where_the_clocks_line_holds_a_consistent_x2_reaches_full_agreement():
+    """README S4.5 "Beat votes": a consistent x2 window against a half-tempo clock whose line is 2 % off the music's
+    tempo (the tracker's local fit, a slew in force) reaches conf ~1 at octave 2; read over the whole window the old
+    way it doesn't."""
+    for drift in (0.02, -0.02, 0.0):
+        msg, clock = drifting_x2(drift)
+        v = M.beat_vote(msg, clock, {})
+        assert v["octave"] == 2.0 and v["conf"] >= 0.9 and v["why"] is None, (drift, v)
+        if drift:
+            assert whole_window_conf(msg, clock) < 0.6, drift
+    # Beat This! on the other phase (its beats on the half-clock's off-beats' midpoints): no agreement at x2
+    msg, clock = drifting_x2(0.02, phase_s=60.0 / 203.0 / 2)
+    v = M.beat_vote(msg, clock, {})
+    assert v["octave"] == 2.0 and v["conf"] < 0.6
+    # only the last local_s count: a window whose newest 10 s moved off the clock's phase disagrees
+    msg, clock = drifting_x2(0.0)
+    late = [b + (0.12 if b >= msg["interior"][1] - 10.0 else 0.0) for b in msg["beats"]]
+    assert M.beat_vote(beats_msg(late, w=(1000.0, 1030.0)), clock, {})["conf"] < 0.6
+    assert M.beat_vote(beats_msg(late, w=(1000.0, 1030.0)), clock, {"local_s": 30})["conf"] < 0.9
+
+
+def test_beat_vote_split_or_garbage_windows_stay_below_min_conf():
+    msg, clock = drifting_x2(0.0)
+    t0, t1 = msg["interior"]
+    split = ([t0 + i * 60.0 / 176.0 for i in range(int(19.0 * 176 / 60))]          # Beat This! splits: 176 bpm,
+             + [t0 + 19.0 + i * 0.64 for i in range(int(5.0 / 0.64))])            # then 93.75 (26's reggae)
+    v = M.beat_vote(beats_msg(split, w=(1000.0, 1030.0)), clock, {})
+    assert v["conf"] < 0.6 or v["octave"] is None, v
+    rng = np.random.default_rng(8)
+    for _ in range(20):                                       # random onsets: never a vote that passes
+        junk = sorted(float(x) for x in rng.uniform(t0, t1, int(rng.integers(20, 90))))
+        v = M.beat_vote(beats_msg(junk, w=(1000.0, 1030.0)), clock, {})
+        assert v["conf"] < 0.6 or v["octave"] is None, v
+    n1, T = int(17.0 * 203 / 60), 60.0 / 203.0                 # a jump cut 7 s from the end: the phase jumps 0.13 s
+    seam = [t0 + i * T for i in range(n1)] + [t0 + (n1 + i) * T + 0.13 for i in range(int(7.0 / T))]
+    v = M.beat_vote(beats_msg(seam, w=(1000.0, 1030.0)), clock, {})
+    assert v["conf"] < 0.6, v
+
+
+#: 26's live failure (21 Oct, m06-quickstep, the NEEWER mic, replayed; mllink's turn at +25.7 s): Beat This! 200 bpm
+#: over the whole window, the clock locked at the half (102.36 published, its line anchored 0.3 s before the vote).
+#: Times from the music's start (+1000 s).
+QS_BEATS = [0.03, 0.33, 0.61, 0.91, 1.15, 1.49, 1.77, 2.09, 2.35, 2.67, 2.97, 3.27, 3.55, 3.85, 4.13, 4.45, 4.75, 5.05,
+            5.33, 5.63, 5.91, 6.21, 6.49, 6.79, 7.09, 7.39, 7.67, 7.97, 8.25, 8.55, 8.85, 9.15, 9.43, 9.73, 10.03,
+            10.33, 10.61, 10.93, 11.21, 11.51, 11.79, 12.11, 12.39, 12.69, 12.97, 13.29, 13.57, 13.87, 14.17, 14.47,
+            14.77, 15.07, 15.37, 15.65, 15.95, 16.25, 16.53, 16.83, 17.11, 17.43, 17.71, 18.01, 18.29, 18.59, 18.89]
+QS_DOWN = [0.33, 0.91, 1.15, 1.49, 1.77, 2.67, 3.27, 3.85, 5.05, 6.21, 7.39, 8.55, 9.73, 10.93, 12.11, 13.29, 14.47,
+           15.65, 16.83, 17.43, 18.01, 18.59]
+QS_CLOCK = {**CLOCK, "bpm": 102.359486, "anchor_ms": (1000.0 + 25.397926) * 1000.0, "beat_at_anchor": 65,
+            "bar_anchor_beat": 51, "bar_conf": 0.1, "conf": 0.9143, "epoch": 2}
+
+
+def test_beat_vote_26s_quickstep_window_the_old_failure_and_the_fix():
+    msg = {**beats_msg([1000.0 + b for b in QS_BEATS], [1000.0 + d for d in QS_DOWN], bpm=200.0, bar_len=4,
+                       w=(1000.0 - 8.05, 1000.0 + 21.9499))}
+    msg["interior"] = [1000.0 - 5.05, 1000.0 + 18.9499]
+    assert whole_window_conf(msg, QS_CLOCK) == pytest.approx(0.154, abs=0.01)   # 26's 0.154: "low agreement"
+    v = M.beat_vote(msg, QS_CLOCK, {})
+    assert v["octave"] == 2.0 and v["conf"] >= 0.9 and v["beat_is_one"] is None and v["why"] is None
+
+
 class Link:
     """MLLink with only what _vote and _apply touch: a fake clock and a recording clock_correct."""
 
@@ -267,7 +357,7 @@ def test_apply_octave_alone_and_low_agreement():
     halves = beats_msg([t_of(180) + i * 0.25 for i in range(100)], [t_of(180)], bar_len=3)
     L.vote(halves)
     assert L.vote(halves)["applied"] and L.calls == [{"octave": 2.0}]           # never with bar or one
-    off = beats_msg([t_of(k) + (0.2 if k < 206 else 0.0) for k in range(180, 230)])   # half of them off the grid
+    off = beats_msg([t_of(k) + (0.2 if k >= 214 else 0.0) for k in range(180, 230)])  # the local span off the grid
     v = L.vote(off)
     assert v["why"] == "low agreement" and len(L.calls) == 1
 

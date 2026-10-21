@@ -519,7 +519,9 @@ ml:
   beat_votes:                               # §5.3: Beat This! gives integer corrections only (the one, the bar length,
     match_ms: 70                            # the octave). A beat this close to a clock beat agrees (starting point)
     octave_tol: 0.06                        # tempo ratios within 6 % of 1/2, 1 or 2 (starting point)
-    min_conf: 0.6                           # starting point: the share of the window's beats that must agree
+    min_conf: 0.6                           # starting point: the share of the local span's beats that must agree
+    local_s: 10                             # starting point: agreement is read over the window's last 10 s (where the
+                                            # clock's line holds; README S4.5 "Beat votes")
     one_agree: 0.6                          # starting point: the share of downbeats that must fall on one beat of the bar
     agree_runs: 2                           # starting point: the same vote this many runs in a row before it applies
     bar_agree_runs: 4                       # starting point: a new bar length (the meter) needs this many, each with a

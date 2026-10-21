@@ -58,13 +58,15 @@ Added here, for the live clock (inert in a replay that has no corrections and co
   predicted beat that passed without one, ``rephase`` / ``new`` a DBN beat that moved the line's phase / its tempo),
   each hit 70 ms late with its activation peak as the strength: Clock's bar and phrase code reads them as it reads
   the legacy estimator's judged beats.
-- ``set_octave(f, K)``: the human's half/double and the slow lane's octave: the line's period / f from its beat K (K
-  keeps its time and number; the LS history is renumbered), the forward state re-seeded on the new line, and for
-  HOLD_S the DBN's disagreement is held off (its beats off the line are ignored, and a reset re-seeds on the line), so
-  it never snaps straight back; the octave then lasts until the DBN's next fresh start.
+- Octaves (the human's half/double, the slow lane's octave) never touch the tracker: Clock's publisher maps its line
+  (clock.Clock, "the octave map"; README S4.15), so the DBN tracks on at its own octave and its conf and gate stay
+  its own. (Until 21 Oct a ``set_octave`` scaled this line and held the DBN off for HOLD_S; the DBN then took its
+  own octave back about 6 s later.)
 - ``tap(t, run)``: a tap that agrees with the line (within 0.15 beat) is one more hit; otherwise the line's nearest
   beat moves to it (and takes the taps' LS period when 4 or more agree; with no line, such a run starts one, "free"
-  until a DBN beat lands, at TAP_CONF), re-seeded and held as above.
+  until a DBN beat lands, at TAP_CONF), the forward state re-seeded on the new line and the DBN's disagreement held
+  off for HOLD_S (its beats off the line are ignored, and a reset re-seeds on the line), so it never snaps straight
+  back.
 - ``coast(t)``: no audio arriving: the predicted beats pass as misses on tick time, ``free``, gate ``none``.
 Pure numpy and the stdlib (``tg`` imports clock's Tempogram and _Peaks): the Clock, a test or a replay drive one the
 same way.
@@ -86,7 +88,7 @@ log = logging.getLogger("show_service.beatdbn")
 HERE = pathlib.Path(__file__).resolve().parent
 CONF_FILE = HERE / "beatdbn_conf.json"
 FPS = 100.0                     # clock.FPS: 44100 / 441
-HOLD_S = 6.0                    # after an octave or a tap: the DBN's disagreement waits this long (a few bars)
+HOLD_S = 6.0                    # after a tap: the DBN's disagreement waits this long (a few bars)
 SEED_TEMPO_SD = 0.02            # a re-seeded forward state: log-normal over the period (2 %) ...
 SEED_PHASE_SD = 2.0             # ... and a Gaussian over the position (frames)
 TAP_AGREE = 0.15                # a tap within this many beats of the line's agrees (clock's legacy rule)
@@ -292,13 +294,13 @@ class DbnTracker:
         self._ev_wait: collections.deque = collections.deque()                  # (t, k, kind): hits for their window
         self.no_audio = False                   # coasting on tick time (Clock's NO_AUDIO_S)
         self.tapped = False                     # a line from taps that no DBN beat has landed on yet
-        self._hold_until = -1e9                 # an octave or a tap holds the DBN's disagreement off until then
+        self._hold_until = -1e9                 # a tap holds the DBN's disagreement off until then
         self.hmm_reset()
 
     # -- the forward state
     def hmm_reset(self) -> None:
-        """The forward state starts over: madmom's start (uniform, or ``prior_oct``), or, while a correction holds
-        the line (HOLD_S), on the line itself."""
+        """The forward state starts over: madmom's start (uniform, or ``prior_oct``), or, while a tap holds the line
+        (HOLD_S), on the line itself."""
         ln = self._line
         if ln is not None and self.t_last < self._hold_until:
             self.p = self.hmm.seed(ln[2], (self.t_last - ln[1]) / ln[2])
@@ -461,7 +463,7 @@ class DbnTracker:
                     self._ibis.append((t - tp) / max(1, k - kp))
                 self._hist.append((k, t))
                 self._n_line += 1
-            elif t < self._hold_until:                          # a correction holds the line: the DBN waits
+            elif t < self._hold_until:                          # a tap holds the line: the DBN waits
                 self.counts["held_beats"] += 1
                 return
             else:                                               # off the line: re-phase onto the DBN's beat
@@ -635,32 +637,6 @@ class DbnTracker:
         self._ch = None
         self._hold_until = max(self._hold_until, t + HOLD_S)
         self.counts["holds"] += 1
-
-    def set_octave(self, f: float, K: int) -> bool:
-        """The line's period / ``f`` (2: the beat is twice as fast, 0.5: half) from its beat ``K``, which keeps its
-        predicted time and its number; the beats before it are renumbered in the LS history (at half tempo every
-        other one is a beat). ``epoch`` + 1, the forward state re-seeded, the disagreement held (HOLD_S). False
-        without a line or out of min_bpm..max_bpm (nothing moves)."""
-        ln = self._line
-        if ln is None or f <= 0.0:
-            return False
-        k0, t0, T = ln
-        T2 = T / f
-        if not 60.0 / self.cfg["max_bpm"] <= T2 <= 60.0 / self.cfg["min_bpm"]:
-            return False
-        K = int(K)
-        tK = t0 + (K - k0) * T
-        hist = [(K + (j - K) * f, tj) for j, tj in self._hist]
-        self._hist.clear()
-        self._hist.extend((int(round(n)), tj) for n, tj in hist if abs(n - round(n)) < 1e-6 and n < K)
-        self._line = (K, tK, T2)
-        self.k_pub = K
-        self._k_judged = K - 1
-        self._ibis.clear()
-        self.epoch += 1
-        self.counts["octaves"] += 1
-        self._hold(self.t_last)
-        return True
 
     def tap(self, t: float, run: Optional[list[float]] = None) -> tuple[Optional[str], Optional[int]]:
         """The human's beat at host time ``t``; ``run``: the run of taps it ends (4 or more, evenly spaced) or None.

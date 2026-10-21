@@ -6,7 +6,9 @@
   show-beat thread and the beat process hand the tracker the same frames (silent and fresh flags included) and so
   publish the same beats; the quiet gate (gate none at once, silent frames, the forward state restarted when it
   ends); no audio (free, gate none, coasting, back); the corrections (half, double, out of range, tap, a run of taps,
-  one, the slow lane's bar and octave votes); bar and phrase fields on a 4/4 loop; the body and stats; a fuzz;
+  one, the slow lane's bar and octave votes); the octave map (a minute at x2 over a DBN at its own octave, ended by
+  the quiet room's new grid, the cold grid and a contrary vote); bar and phrase fields on a 4/4 loop; the body and
+  stats; a fuzz;
 - the published line (README S4.15 "Publishing"), on synthetic activations fed frame by frame (``act_clock``): the
   count only goes forward across a re-phase and a tempo jump; next_beat moves about half as much as the tracker's own
   line under a jittered DBN beat train; the downbeat stays put across a re-lock and a tempo jump; the epoch moves only
@@ -359,10 +361,10 @@ def test_no_audio_goes_free_with_the_gate_off_coasts_and_comes_back():
 
 
 # -- the clock: corrections --------------------------------------------------------------------------------------------
-def test_half_and_double_scale_the_line_and_the_dbn_waits_for_the_hold():
-    """Half: the line's period x2 at the next beat, the DBN re-seeded there and its disagreement held for
-    beatdbn.HOLD_S (a correction is an observation: after the hold the music's own beat may take it back); double
-    returns; 240 bpm is refused."""
+def test_half_and_double_map_the_line_and_the_dbn_tracks_on_underneath():
+    """Half: the octave map (factor 0.5) from the next beat; the published line runs at 60 while the DBN tracks on at
+    its own 120 (no hold, nothing re-seeded) and stays mapped; double is the contrary correction: factor 1, the
+    tracker's own line again; a double that would publish 240 bpm is refused."""
     clk, pubs, _ = locked_clock()
     e0 = clk.snapshot()["epoch"]
     clk.double()                                            # 240 bpm: out of range, refused, nothing moves
@@ -370,28 +372,114 @@ def test_half_and_double_scale_the_line_and_the_dbn_waits_for_the_hold():
     assert clk.snapshot()["bpm"] == pytest.approx(120.0, rel=0.02) and clk.stats()["octave_refused"] == 1
     k_before = C.beat_at(clk.snapshot(), T0 + 14.0)
     clk.half()
-    more(clk, 14.0, 4.0)
+    more(clk, 14.0, 10.0)
     d = clk.snapshot()
-    assert d["bpm"] == pytest.approx(60.0, rel=0.02) and d["epoch"] > e0 and clk.stats()["dbn"]["held"]
+    st = clk.stats()
+    assert d["bpm"] == pytest.approx(60.0, rel=0.02) and d["epoch"] > e0 and not st["dbn"]["held"]
+    assert st["oct_factor"] == 0.5 and st["oct_age_s"] > 8.0 and st["bpm"] == pytest.approx(120.0, rel=0.02)
+    assert d["gate"] == "beat" and d["state"] == "locked"   # the tracker's own conf and gate
     t_half = next(p["t_ms"] for p in pubs if p["t_ms"] / 1000.0 - T0 >= 14.0 and 0.0 < p["bpm"] < 90.0) / 1000.0
     assert t_half - T0 < 15.0                               # at the next beat
-    held = [p for p in pubs if t_half <= p["t_ms"] / 1000.0 < T0 + 18.0]
-    assert held and all(p["bpm"] == pytest.approx(60.0, rel=0.03) for p in held)    # no snap back while held
-    for t in TC.grid(120.0, 15.3, 17.5):                    # every kick on a whole or half beat of the slow grid
+    held = [p for p in pubs if t_half <= p["t_ms"] / 1000.0 < T0 + 24.0]
+    assert held and all(p["bpm"] == pytest.approx(60.0, rel=0.03) for p in held)    # never back (the old hold: 6 s)
+    for t in TC.grid(120.0, 15.3, 23.5):                    # every kick on a whole or half beat of the slow grid
         b = C.beat_at(d, T0 + t)
         assert abs(2 * b - round(2 * b)) < 0.06
-    assert C.beat_at(d, T0 + 17.5) > k_before               # the count never went back
+    assert C.beat_at(d, T0 + 23.5) > k_before               # the count never went back
     clk.double()
-    more(clk, 18.0, 6.0)
+    more(clk, 24.0, 6.0)
     d2 = clk.snapshot()
     assert d2["bpm"] == pytest.approx(120.0, rel=0.02) and d2["state"] == "locked"
-    for t in TC.grid(120.0, 22.3, 23.5):
+    for t in TC.grid(120.0, 28.3, 29.5):
         b = C.beat_at(d2, T0 + t)
         assert abs(b - round(b)) < 0.06
-    assert C.beat_at(d2, T0 + 23.0) > C.beat_at(d, T0 + 17.5)
+    assert C.beat_at(d2, T0 + 29.0) > C.beat_at(d, T0 + 23.5)
     st = clk.stats()
-    assert st["human_octave"] == 3 and st["octave_changes"] == 2 and st["dbn"]["octaves"] == 2
-    assert st["errors"] == 0
+    assert st["human_octave"] == 3 and st["octave_changes"] == 2 and st["oct_factor"] == 1.0
+    assert st["oct_maps_applied"] == 1 and st["oct_maps_cleared"] == 1 and st["oct_clear_contrary"] == 1
+    assert st["oct_age_s"] is None and st["dbn"].get("holds", 0) == 0 and st["errors"] == 0
+
+
+def test_an_octave_map_holds_for_a_minute_ends_on_a_cold_grid_and_a_contrary_vote():
+    """README S4.15 "The octave map": a 100 bpm DBN loop; the slow lane's x2 at 12 s publishes 200 bpm from the next
+    bar line to 80 s with no flip back (the DBN tracks on at 100 underneath), the count only forward, one epoch, the
+    downbeat kept; 4 s of silence, then the same loop: the first gate after it is a new grid on the tracker's own 100
+    (the map ends); a second x2 at 95 s, then the contrary x0.5 at 106 s: factor 1 again."""
+    lag = C.AubioActivation.lag_s
+    a = act_train([(100.0, 0.3, 80.0), (100.0, 84.21, 125.0)], 125.0, lag, seed=31)
+    t = (np.arange(len(a)) + 1) / D.FPS
+    sil = (t >= 80.0) & (t < 84.0)
+    a[sil] = 0.0
+    seen: dict = {}
+
+    def note(key: str):
+        return lambda c, tt: seen.setdefault(key, (tt, dict(c.stats()), c._trk.line))
+
+    at = {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0), 79.9: note("mapped"), 93.0: note("cold"),
+          95.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0), 105.9: note("again"),
+          106.0: lambda c, tt: c.apply_integer_correction(None, None, 0.5)}
+    clk, pubs = act_clock(a, at, level=np.where(sil, 0.0, 0.4))
+    t_sw = next(tt for tt, d, _ in pubs if tt >= 12.0 and d["bpm"] > 150.0)
+    assert t_sw < 15.0
+    mapped = [(tt, d, ln) for tt, d, ln in pubs if t_sw <= tt < 80.0]
+    assert mapped[-1][0] - t_sw >= 60.0
+    assert all(d["bpm"] == pytest.approx(200.0, rel=0.03) for _, d, _ in mapped)      # steady, never back to 100
+    assert sum(abs(60.0 / ln[2] - 100.0) < 3.0 for _, _, ln in mapped) >= 0.9 * len(mapped)  # the DBN at its own
+    assert len({d["epoch"] for _, d, _ in mapped}) == 1
+    assert len({d["bar_anchor_beat"] % 4 for _, d, _ in mapped}) == 1 and mapped[-1][1]["beats_per_bar"] == 4
+    assert all(d["gate"] == "beat" for tt, d, _ in mapped if tt >= t_sw + 4.0)
+    for (_, p, _), (tt, q, _) in zip(pubs, pubs[1:]):
+        if p["bpm"]:
+            for dt in (0.0, 0.05, 0.1):
+                assert C.beat_at(q, tt + dt) >= C.beat_at(p, tt + dt) - 1e-9, (tt, dt)
+    res = []                                                # the 100 bpm beats and the ones between them, each
+    for tt, d, _ in mapped:                                 # read on the body in force at the time: all on it
+        if tt >= t_sw + 2.0:
+            res += [C.beat_at(d, b + h) for b in act_beats(100.0, tt, tt + 0.6) for h in (0.0, 0.3)]
+    res = np.array([x - round(x) for x in res])
+    assert len(res) > 400 and np.percentile(np.abs(res - np.median(res)), 95) < 0.05 and abs(np.median(res)) < 0.1
+    ts, st, _ = seen["mapped"]
+    assert st["oct_factor"] == 2.0 and st["oct_age_s"] > 60.0 and st["oct_maps_applied"] == 1
+    assert st["corr_applied"] == 1 and st["dbn"].get("holds", 0) == 0
+    _, st, _ = seen["cold"]                                 # the gate after the quiet room: the tracker's own octave
+    # (here the DBN's restart line jumped first, ungated: that new grid ended the map; else the cold grid does)
+    assert st["oct_factor"] == 1.0 and st["pub_cold_grids"] == 1
+    assert st.get("oct_clear_cold", 0) + st.get("oct_clear_jump", 0) == 1 and st["oct_maps_cleared"] == 1
+    cold = [d for tt, d, _ in pubs if 90.0 <= tt < 95.0]
+    assert cold and all(d["bpm"] == pytest.approx(100.0, rel=0.03) for d in cold)
+    _, st, _ = seen["again"]
+    assert st["oct_factor"] == 2.0 and st["oct_maps_applied"] == 2
+    st = clk.stats()
+    assert st["oct_factor"] == 1.0 and st["oct_clear_contrary"] == 1 and st["oct_maps_cleared"] == 2
+    assert pubs[-1][1]["bpm"] == pytest.approx(100.0, rel=0.03) and st["errors"] == 0
+
+
+def test_an_octave_map_ends_at_the_cold_grid_after_a_quiet_room():
+    """_dbn_cold_grid with a map in force (the room went quiet and the line came back gated, unjumped): the map ends
+    there, a new grid (one epoch) on the tracker's own line."""
+    lag = C.AubioActivation.lag_s
+
+    def quiet_passed(c: C.Clock, tt: float) -> None:        # as _frame_dbn marks it after a quiet room
+        c._pub_cold, c._pub_real = True, False
+
+    clk, pubs = act_clock(act_train([(100.0, 0.3, 30.0)], 30.0, lag, seed=31),
+                          {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0), 22.0: quiet_passed})
+    before = [d for tt, d, _ in pubs if 20.0 <= tt < 22.0]
+    after = [d for tt, d, _ in pubs if 23.0 <= tt]
+    assert all(d["bpm"] == pytest.approx(200.0, rel=0.03) for d in before)
+    assert after and all(d["bpm"] == pytest.approx(100.0, rel=0.03) for d in after)
+    assert {d["epoch"] for d in after} == {before[-1]["epoch"] + 1}
+    st = clk.stats()
+    assert st["oct_factor"] == 1.0 and st["oct_clear_cold"] == 1 and st["pub_cold_grids"] == 1
+    for (_, p, _), (tt, q, _) in zip(pubs, pubs[1:]):
+        if p["bpm"]:
+            assert C.beat_at(q, tt) >= C.beat_at(p, tt) - 1e-9, tt
+
+
+def act_beats(bpm: float, t0: float, t1: float) -> list[float]:
+    """act_train's beats (from 0.3 s) between t0 and t1, as the tracker times them (its own lag taken out)."""
+    T = 60.0 / bpm
+    return [0.3 + i * T for i in range(int((t1 - 0.3) / T) + 1) if t0 <= 0.3 + i * T < t1]
 
 
 def test_a_tap_rephases_the_line_and_one_that_agrees_moves_nothing():
@@ -837,8 +925,6 @@ def test_fuzz_the_clock_and_the_tracker_never_raise():
         trk.frame(float(rng.random() ** 3), tt, silent=u < 0.05, fresh=u > 0.99)
         if u < 0.002:
             trk.set_quiet(not trk.quiet, tt)
-        elif u < 0.004 and trk.line is not None:
-            trk.set_octave(float(rng.choice([0.5, 2.0])), int(trk.beat_at(tt)) + 1)
         elif u < 0.006:
             trk.tap(tt + float(rng.normal(0, 0.1)), [tt - 1.5, tt - 1.0, tt - 0.5, tt] if rng.random() < 0.5 else None)
         elif u < 0.007:

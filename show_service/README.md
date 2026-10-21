@@ -3355,15 +3355,28 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
 - **Beat votes.** Each `beats` line goes through `beat_vote(msg, ctx.clock(), cfg["beat_votes"])`, then the apply rule
   below. The vote goes into the view and the snapshot.
   - No clock grid (bpm 0, or gate `none`): `why` "no grid".
-  - **Octave:** r = the clock's period / Beat This!'s period.
+  - **Where the clock's line holds** (21 Oct, 3a; 26's measurement on the NEEWER mic). The clock's published line
+    holds near its anchor (an integer beat near the moment it was published): its bpm is the tracker's local fit plus
+    any slew in force, and the DBN re-anchors it on every beat. Carried back over the whole 30 s window it walked
+    hundreds of ms off the beats (the quickstep's tracker 1.8 % off; a 3 % slew while gated dmx), so a quickstep that
+    Beat This! heard at 200 in 11 of 11 runs, against the clock at the half, scored conf 0.15-0.65 and never applied.
+    Now only the interior's last `local_s` (10 s) is read, and the clock's line is carried back from its anchor at
+    Beat This!'s own local period (10 s ending 3 s before the window's end: 7-17 s before the vote arrives).
+  - **Octave:** Beat This!'s period over that span (a Theil-Sen fit of its beat times on their numbers, each numbered
+    on from the last by its interval; 6 beats or "too few beats"); r = the clock's period / that period.
     - r within `octave_tol` of 2 → octave 2;
     - r within `octave_tol` of 0.5 → octave 0.5;
     - r within `octave_tol` of 1 → octave 1;
     - otherwise None ("the tempi don't relate").
-  - **`conf`** = the share of the interior's beats within `match_ms` of the clock's grid at the voted octave
-    (`beat_at(t) × octave` near an integer).
+  - **`conf`** = the share of the span's beats within `match_ms` of the octave-mapped clock line: the clock's beats at
+    its period / octave (Beat This!'s fitted period, which r put within `octave_tol` of it), phase from the clock's
+    line at its anchor (`(beat_at_anchor − bar_anchor_beat) × octave + (t − anchor) / period` near an integer: at
+    0.5 the bar anchor's beats, the ones a halving keeps). A consistent x2 window reaches ~1 however far the clock's
+    slope is off (26's window: 0.154 before, 1.0 now); Beat This! on another phase, split between tempi, or across a
+    jump cut stays low (test_mllink).
   - **The one and the bar** (octave 1 only):
-    - each interior downbeat d whose `beat_at(clock, d)` is within `match_ms` of an integer k votes k mod `bar_len`;
+    - each downbeat d in the span within `match_ms` of a beat k of that line (`beat_at_anchor + (d − anchor) /
+      period`) votes k mod `bar_len`;
     - when at least `one_agree` of them share one residue, `beat_is_one` = the latest such k;
     - `bar_len` = the worker's, if it is in `bar_lens`.
   - **Apply** when all of these hold:
@@ -3607,6 +3620,7 @@ Clock.stop(timeout: float = 1.0) -> None      # joins show-beat (a sentinel); an
   - A correction that misses its bar line expires and is never applied off one. An out-of-range octave is refused, and
     nothing else moves.
   - Any accepted call holds the clock's own octave check off for `SLOW_OCT_HOLD_S` (30 s).
+  - (The dbn estimator, S4.15: an octave is the publisher's octave map, and also waits for a beat of both grids.)
   - `stats()["last_correction"]` is `{one, bar_len, octave, result, at_beat}`, and each outcome is counted as
     `corr_<result>`.
 - **Measured** on PC22 with the 4K render running (load about 3), niced. Each run fed 124 bpm drums in real time:
@@ -4156,7 +4170,7 @@ both at integration (S4.12).
 
 | Section | Read by | Keys |
 |---|---|---|
-| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s}`, `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
+| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s}`, `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
 | `genre_map` | structure (`genre_reading`) | `parents {Discogs parent: word, or {from_listener: [words]}}`, `tau_s`, `freeze_below_music`, `speech_scale_above`, `switch_margin`, `switch_dwell_s` |
 | `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m, window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps}`, `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
 | `situations.talking` (new; `speech_words` since S4.13, also read by structure); `situations.quiet` gains `music_below`, `speech_below` | situations | S4.8 |
@@ -4616,12 +4630,11 @@ fine-tune, and on clean audio, where a better mic should land, it meets every ba
   under dbn `source` is `madmom-dbn2`.
 - **Corrections** (any thread, as before): a tap that agrees with the line (within 0.15 beat) is one more hit;
   otherwise the line's nearest beat moves to the tap, and a run of 4+ evenly spaced taps also sets its tempo (with
-  no line it starts one, `free` and gated dmx until a DBN beat lands). Half/double and the slow lane's octave scale
-  the line's period at the upcoming beat (the bar line once bar_conf >= 0.5; 45-200 bpm or refused); the DBN's
-  forward state is re-seeded on the new line and its disagreement held off for 6 s (`beatdbn.HOLD_S`), so it never
-  snaps straight back. A correction is an observation, not an override: on music whose beat clearly says the other
-  octave the DBN takes it back after the hold (on the synthetic 120 bpm kick loop, ~6 s after a half). One sets the
-  bar anchor through the bar code.
+  no line it starts one, `free` and gated dmx until a DBN beat lands); a tap re-seeds the DBN's forward state on
+  the new line and holds its disagreement off for 6 s (`beatdbn.HOLD_S`), so it never snaps straight back.
+  Half/double and the slow lane's octave set the publisher's octave map at the upcoming beat (since 21 Oct: "The
+  octave map" below; until then they scaled the tracker's line under the same 6 s hold, and the DBN took its own
+  octave back ~6 s later). One sets the bar anchor through the bar code.
 - **No audio** for 1.5 s: `free`, gate `none`, the line's beats pass as misses on tick time; audio back resumes it.
 - `stats()["estimator"]` (`dbn` | `legacy`), `stats()["source"]` (`madmom-dbn2`; `aubio-dbn` on the fallback),
   `stats()["dbn"]` (the tracker's counts: dbn_beats, rephases, hmm_resets, silent_frames, holds, held_beats,
@@ -4699,6 +4712,50 @@ legacy step 6's discipline on the tracker's line, which keeps tracking underneat
   every beat-gated number of the 8 cases as it was; the all-gate jitter maxima fall (rec-full +300 ms 329 -> 174
   ms).
 
+**The octave map and the slow lane's local vote (21 Oct, 3a).** 26 measured the live DBN on the room's NEEWER mic
+(F 0.87 on 4 songs) with octave errors left: the quickstep locked at the half (101 against 200-203), the reggae at the
+double (178-184 against 92.3). Replayed with the slow lane on, no vote ever reached the clock: Beat This! said 200 on
+the quickstep in 11 of 11 runs, but the vote's conf read the whole 30 s window against the clock's line carried back
+from now (0.15-0.65, under min_conf 0.6). And an octave that did apply only lasted the 6 s hold. Two changes:
+- **mllink's vote** reads where the clock's line holds (S4.5 "Beat votes": the interior's last `local_s`, 10 s, and the
+  clock's line carried back from its anchor at Beat This!'s own local period; `ml.beat_votes.local_s`). On 26's
+  quickstep window conf 0.154 -> 1.0.
+- **The octave map** (clock.py, the dbn publisher): an octave (the slow lane's, the human's half/double) no longer
+  touches the tracker. It sets the publisher's factor (x2 or x0.5 of what it was, 1/4..4) at the upcoming beat (the
+  bar line once bar_conf >= 0.5, and a beat of both grids), which keeps its time and number; from there the
+  published line is the tracker's line at factor x its tempo, while the DBN tracks on at its own octave underneath
+  (its conf, state and gate unchanged: on the replays they are bit for bit the unmapped run's). Tracker beat k is
+  mapped beat `_om_m + (k - _om_k) x factor`, published `+ _off`: at 2 each tracker beat is two published beats (the
+  one between interpolated on the line; the bar code gets it as `interp`), at 0.5 every other one. Everything in
+  "Publishing" above runs on the mapped line: the slew, the forward-only count, the epochs; the bar anchor moves once
+  at the switch and is then kept. The map holds until a new grid: the first gate after a quiet room (or the ungated
+  line's first jump after it), a confirmed jump of the mapped tempo over 8 % (if the tracker's own tempo is then the
+  one followed, the DBN came to the mapped octave itself, and the line slews on as its own with no new grid), a run
+  of taps (their tempo is the human's octave; a single tap keeps the map), a mapped tempo out of 45-200 bpm with 8 %
+  slack (`DBN_OCT_MIN_BPM`..`DBN_OCT_MAX_BPM`, 41.7-216: a quickstep at 50-52 bars a minute is 200-208, and its
+  tracker at the half reads 101-104; the switch's range too), or a contrary correction (factor back to 1). The
+  tracker's own octave hold (`set_octave`) is gone; taps keep `HOLD_S`. Stats: `oct_factor`, `oct_age_s`,
+  `oct_maps_applied`, `oct_maps_cleared`, `oct_clear_<why>` (contrary, joined, jump, range, cold, tap).
+- Measured: 26's six inputs (`m06-quickstep`, `m09-reggae`, `m02-waltz`; x1 = the 30 s segment, x4 = it looped 4x
+  with jump cuts; 30 s of silence first, gate ref -49 LUFS, `--seed 1`: 26's slow-lane phase), slow lane on, through
+  `run_stack.py` (3a's dbn scratch `oct/`; 26's results as "before"). F, CMLt and acc1 (the right tempo, octave
+  strict, over time) from score.py:
+
+| case | slow-lane votes (octave, conf: applied) | clock bpm end | F | CMLt | acc1 time | cover beat | precision |
+|---|---|---|---|---|---|---|---|
+| quickstep x1 | octave 2 at conf 1.0 twice: applied at 25.7 s (before 0.645, 0.154) | 101.8 -> 203.8 | 0.635 -> 0.697 | 0.01 -> 0.14 | 0 -> 0.12 | 0.703 = | 1.000 = |
+| quickstep x4 | the same, then octave 1 (conf 0.9-1.0) to the end | 101.8 -> 203.8 | 0.624 -> 0.889 | 0.00 -> 0.73 | 0 -> 0.66 | 0.767 = | 0.961 -> 0.957 |
+| reggae x1 | 0.5 at conf 0.062 (before 0.364): none | 183.9 = | 0.400 = | 0 = | 0.05 = | 0 = | - |
+| reggae x4 | none (the seam windows: the tempi don't relate, or octave 1 at 0.18) | 92.2 = | 0.822 = | 0.64 = | 0.71 = | 0.658 = | 1.000 = |
+| waltz x1 | octave 1 (1.0 with a one in 3; a new bar length waits 4 runs) | 87.3 = | 0.966 = | 0.89 = | 0.77 = | 0.395 = | 1.000 = |
+| waltz x4 | octave 1 (0.86-1.0 or 0 by turns) | 86.9 = | 0.887 = | 0.87 = | 0.75 = | 0.238 = | 1.000 = |
+
+  The quickstep x4 holds the double from the switch (26.3 s) to the end (94 s, `oct_age_s` at the end), one epoch,
+  no body under 150 bpm; its bpm field carries the slew (191-220, median 203.5). Reggae and waltz flash for flash as
+  before (0.000 ms). Reggae x1 still ends at the double: its one 0.5 vote is a window in which Beat This! itself
+  splits (its local beats 87 ms rms off a grid), and the x1 run has no second one. The 8 parity cases (slow lane
+  off: no corrections) flash for flash as the published line was (0.000 ms against step 2's check runs).
+
 **Parity with the measured candidate.** `tools/room/beat_eval/run_stack.py` on the live Clock against `madmom_dbn.py
 run --variant best2` on the same input (3a's dbn scratch: `rerun_live.sh`, `compare_flashes.py`): rec-music
 (105 flashes) and disco-C (68, with the quiet gate) identical flash for flash (|dt| 0.000 ms, same k, gate, conf,
@@ -4710,9 +4767,10 @@ tracker's underneath: on all 8 cases the gate's runs and switch times are step 1
 exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker that cannot be built runs legacy
 (counted `dbn_failed`). **Live** at the next show restart (none was done for this).
 
-**Known limits.** The aubio fallback (no madmom) runs the 2-net weights and aubio's own lag, untuned. The slow lane's
-octave votes can meet a DBN that takes the octave back after the hold (watch `octave_votes` against `dbn.rephases`
-live).
+**Known limits.** The aubio fallback (no madmom) runs the 2-net weights and aubio's own lag, untuned. Under an
+octave map at x2 the tracker's phase error is twice as many published beats, so the published bpm field's slew is
+twice as wide (quickstep x4: acc2 over time 0.83 -> 0.81 while acc1 rose 0 -> 0.66). A vote needs the clock's line
+to hold at its anchor: while it slews hard (gated dmx, 3 %) the window reads low and waits for the next one.
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
