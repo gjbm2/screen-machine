@@ -141,11 +141,12 @@ Optional sections (additive; defaults in `config.py`):
 # allowed_hosts: ["192.168.1.205", "pc22.local", "localhost", "127.0.0.1", "::1"]   # Host check (port ignored)
 # web_origins: [...]                        # default: from .env (SM_LAN_HOST, VITE_URL)
 # timeouts:                                 # AV_PROGRAMME §3.3
-#   freeze_ack_s: 5        snapshot_s: 3       session_ready_s: 5     live_visible_s: 10
+#   freeze_ack_s: 5        snapshot_s: 3       session_ready_s: 7     live_visible_s: 10
+#   # production (room.prod.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
 #   create_session_s: 5                       # POST session/exit HTTP timeout (inside the freeze)
 #   settle_before_go_s: 1.0                   # after ack live_visible, before go (decoder warm-up)
 #   held_extra_s: 5        art_visible_extra_s: 10                   # + the out transition's length
-#   backoff_s: [2, 5, 15, 30]  fallback_limit: 3  fallback_window_s: 600  max_entry_failures: 3
+#   backoff_s: [2, 5, 15, 30, 60]  fallback_window_s: 600   # retries; the last step repeats: never parked
 #   adopt_wait_s: 20       page_hb_idle_s: 2   page_dead_s: 15       step_timeout_s: 120
 #   page_behind_s: 5       page_behind_bytes: 262144                 # LIVE_V1 §2.2a.1
 # snapshot:
@@ -181,16 +182,18 @@ Bloc hub for real; their writes stay off (`dry_run`) until `config/room/rf/blind
 
 | Handshake | Steps [timeout] |
 |---|---|
-| entry | *(snapshotter page loaded)* → `freeze` → ack frozen [3 s] → snapshot [3 s] → `POST /api/sessions` (anchor PNG, scene, transitions, profile, gpu, width/height) → `session.ready` [5 s] → `live.attach` → ack `live_visible` [10 s; the page gives up at 8 s with `live_failed`] → settle [`settle_before_go_s`, 1 s: the page holds the anchor while its decoder warms up] → `POST go` → `unfreeze` |
+| entry | *(snapshotter page loaded)* → `freeze` → ack frozen [3 s] → snapshot [3 s] → `POST /api/sessions` (anchor PNG, scene, transitions, profile, gpu, width/height) → `session.ready` [7 s; 15 s in production] → `live.attach` → ack `live_visible` [10 s; the page gives up at 8 s with `live_failed`] → settle [`settle_before_go_s`, 1 s: the page holds the anchor while its decoder warms up] → `POST go` → `unfreeze` |
 | exit | *(snapshotter page loaded)* → `freeze` → ack frozen [3 s] → snapshot [3 s] → `POST exit` (target PNG) → `session.held` [out + 5 s] → `live.leave{hold_pts}` → ack `art_visible` [out + 10 s] → `DELETE` → `unfreeze` |
 
 * Any failure aborts cleanly: `live.abort` if attached, `DELETE`, `unfreeze`; the screen ends in art.
-  An entry failure is retried with backoff 2/5/15/30 s; 3 in a row → `failed`. An entry that fails only
-  because stream_service is unreachable doesn't count; the screen waits for it.
+  An entry failure is retried with backoff 2/5/15/30/60 s; the last step repeats, so a screen never parks
+  (21 Oct: no `failed` after failed go-lives). An entry that fails only because stream_service is unreachable
+  doesn't count; the screen waits for it.
 * Fallback (ack `art_visible` with reason stall/error, `session.error`/`ended`, a 404 on renew, or a
   `kiosk.state` showing art while live): `live.abort` if the page is still on the stream, `DELETE`, then
-  the full entry handshake again (freeze reason `reanchor`) with backoff 2/5/15/30 s. 3 fallbacks in
-  10 min → phase `failed`, which stays in art until desired changes.
+  the full entry handshake again (freeze reason `reanchor`) with the same backoff, 2/5/15/30/60 s, never parking.
+  The fallbacks in the last 10 min are counted for the page's words only. A renderer restart isn't counted and
+  goes back as soon as it's up. Phase `failed` now only means live is off for the screen in its config.
 * **Live renders whether or not a page shows it** (owner, 14 Oct). With no glass page connected, the entry is
   headless: anchor = a snapshot of the current art (the newest `/output/<id>.jpg|.JPG|.mp4` on Flask, current
   mask) if the art-only page renders it, else black; `POST session` → `session.ready` → `go`, no freeze/attach/
@@ -362,8 +365,8 @@ Everything runs against fakes (`tests/fakes.py`): a fake stream_service (REST + 
 that follow the LIVE_V1 §2.2 page rules, a fake Flask (`/api/<id>/mask` and a `:8765` that records every
 frame a client sends; it must stay empty), and a fake snapshotter. `test_snapshot.py` drives the real cached
 Chrome against `tests/fixtures/artonly.html`, a stand-in implementing `__smRenderArt` until the real page
-lands. Covered: full entry/exit; every entry and exit timeout; stall → re-entry with backoff; 3 fallbacks →
-failed; stream errors; switching to art mid-entry; queued changes mid-exit; in-stream PATCH; page reload,
+lands. Covered: full entry/exit; every entry and exit timeout; stall → re-entry with backoff; repeated fallbacks
+and entry failures keep retrying, never parked; stream errors; switching to art mid-entry; queued changes mid-exit; in-stream PATCH; page reload,
 socket blip and duplicates; restart adoption (live, orphan, mid-entry, no page); coordinator diff, sequence,
 `after:`, interruption and restart; mask trigger/deadbands/backstop/rate/suspend/freeze; API auth/CORS/
 rate-limited status; token files and redaction. Review additions (`test_hardening.py` and the "Review

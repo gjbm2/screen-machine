@@ -193,9 +193,10 @@ async def test_subscriber_that_stalls_is_offered_the_session_again(harness: Harn
 
 
 async def test_a_subscriber_that_cannot_play_is_not_asked_again(harness: Harness, monkeypatch):
+    """A page that can't play it at all isn't asked again; one that keeps failing is, on the backoff, without a
+    limit (S14)."""
     from room_service.screens import ScreenController
     monkeypatch.setattr(ScreenController, "REJOIN_BACKOFF_S", (0.05,))
-    monkeypatch.setattr(ScreenController, "REJOIN_MAX", 3)
     h = harness
     await h.go_live()
     c = h.screen()
@@ -204,11 +205,11 @@ async def test_a_subscriber_that_cannot_play_is_not_asked_again(harness: Harness
     no_codec = await h.page(role="viewer")
     await no_codec.ack(kind="live_failed", session=sid, reason="unsupported-codec")
     slow = await h.page(role="viewer")
-    slow.live_failed = True                          # every attach fails (a warm-up timeout): backoff, then give up
+    slow.live_failed = True                          # every attach fails (a warm-up timeout): offered again and again
     await slow.ack(kind="live_failed", session=sid, reason="warmup-timeout")
     await asyncio.sleep(1.0)
     assert len(attaches(no_codec, sid)) == 0
-    assert len(attaches(slow, sid)) == 3, slow.of("live.attach")
+    assert len(attaches(slow, sid)) > 10, slow.of("live.attach")
     assert c.layer == "live" and c.session["id"] == sid
 
 

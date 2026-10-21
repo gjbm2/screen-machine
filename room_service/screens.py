@@ -59,7 +59,6 @@ log = logging.getLogger("room_service.screens")
 
 SHOT_REUSE_S = 600.0     # reuse a snapshot for an identical ArtState at most this old
 RENDERER_GONE_S = 30.0    # a fallback this soon after the renderer dropped is its restart, not the screen's fault
-SLOW_RETRY_S = 60.0       # after fallback_limit real fallbacks: keep trying, slowly (owner: degrade, never refuse)
 CARRY_S = 600.0          # a re-created session takes over the old one's look if it ended at most this long ago
 
 PHASES = ("idle", "freezing", "snapshot", "starting", "attaching", "entering", "live",
@@ -280,8 +279,6 @@ class ScreenController:
         self._stale_fid = s.get("frozen_fid")
         self.last_error = s.get("last_error")
         self.fallbacks = deque(float(x) for x in (s.get("fallbacks") or []))
-        if s.get("failed"):
-            self.phase = "failed"
         if isinstance(s.get("timed_reload"), bool):
             self.timed_reload = s["timed_reload"]
         e = s.get("expiry")
@@ -305,7 +302,7 @@ class ScreenController:
                 "session": self.session, "page_load_id": self.page_load_id, "glass_device": self.glass_device,
                 "frozen_fid": self.frozen_fid or self._stale_fid,
                 "last_error": self.last_error, "fallbacks": list(self.fallbacks),
-                "failed": self.phase == "failed", "timed_reload": self.timed_reload, "expiry": self.expiry,
+                "timed_reload": self.timed_reload, "expiry": self.expiry,
                 "saved_at": utc_iso()}
 
     def _changed(self) -> None:
@@ -773,9 +770,9 @@ class ScreenController:
 
     # A subscriber that cut to art by itself while the screen stays live (a stall: a hidden tab, a Wi-Fi drop; a
     # warm-up timeout; a player error) is offered the session again: live.attach{rejoin} to that page only, after a
-    # backoff that grows with each failure in a row. A page that can't play it at all is not asked again.
+    # backoff that grows with each failure in a row, topping out at 30 s, never giving up (S14). A page that can't
+    # play it at all is not asked again.
     REJOIN_BACKOFF_S: tuple[float, ...] = (2.0, 4.0, 8.0, 15.0, 30.0)
-    REJOIN_MAX = 10              # failures in a row (no live_visible between) before the page is left in art
     REJOIN_NEVER = ("unsupported-codec", "live_disabled", "session-ended")   # session-ended: a build without rejoin
 
     def on_subscriber_message(self, client: PageClient, mtype: str, data: dict) -> None:
@@ -797,8 +794,7 @@ class ScreenController:
             client.rejoins = 0
             return
         if (kind not in ("art_visible", "live_failed") or reason in ("exit", "abort") or reason in self.REJOIN_NEVER
-                or self._handshake is not None or client.rejoin_timer is not None
-                or client.rejoins >= self.REJOIN_MAX):
+                or self._handshake is not None or client.rejoin_timer is not None):
             return
         delay = self.REJOIN_BACKOFF_S[min(client.rejoins, len(self.REJOIN_BACKOFF_S) - 1)]
         client.rejoins += 1
@@ -859,6 +855,7 @@ class ScreenController:
         self._next_attempt_at = 0.0
         self._after_fallback = False
         self.fallbacks.clear()
+        self.last_error = None                   # S11: a new request starts clean (persisted by _changed)
         if self.phase == "failed":
             self._set_phase("idle", "cleared by a new request")
         if d == "art" and self._handshake == "entry":
@@ -1094,7 +1091,10 @@ class ScreenController:
                 return None
             elif client.device == cur.device or (self._own(client) and not self._own(cur)):
                 cur.standby = True                # in art and idle: a reload on the same device, or the TV is back
-                self._duplicate(client, f"{client.cid} is now driven, {cur.cid} on standby")
+                if self._own(client) and not self._own(cur):    # the TV coming back is normal, not a duplicate
+                    self._log("info", f"this screen's own glass is back: {client.cid} drives, {cur.cid} on standby")
+                else:
+                    self._duplicate(client, f"{client.cid} is now driven, {cur.cid} on standby")
             else:
                 client.standby = True             # another device (a phone, a laptop): it watches, the TV drives
                 self._log("info", f"{client.cid} (another device, page {client.page_load_id}) watches as a "
@@ -1185,7 +1185,8 @@ class ScreenController:
         return True
 
     def _promote(self, c: PageClient, why: str) -> None:
-        self._log("warning", f"promoting standby glass {c.cid} (page {c.page_load_id}): {why}")
+        # the screen's own glass (the TV) taking it back is normal (info); another device driving is worth a warning
+        self._log("info" if self._own(c) else "warning", f"promoting standby glass {c.cid} (page {c.page_load_id}): {why}")
         info = self._drive(c)
         if info and info.get("attach"):          # a headless session: no welcome now, so attach it here
             try:
@@ -1218,7 +1219,9 @@ class ScreenController:
             return
         self._driven = None
         self.box.put({"src": "internal", "type": "page_gone", "cid": client.cid})
-        if self._busy() or not self.promote_standby("the driven page left"):
+        # S13: the screen's own glass (the TV) dropping is a reload or a network blip: hold for it to come back rather
+        # than handing the glass (and the show's shape) to a phone that happens to be watching.
+        if self._own(client) or self._busy() or not self.promote_standby("the driven page left"):
             # G5: hold for the page to come back (the supervisor promotes after adopt_wait_s).
             self._page_lost_at = self._now()
         self._changed()
@@ -1508,7 +1511,7 @@ class ScreenController:
                 self._set_phase("idle", "waiting for stream_service")
                 return
             if self._now() < self._next_attempt_at:
-                if not self.detail.startswith("retry in"):
+                if not self.detail.startswith(("retry in", "the renderer is restarting", "live keeps stopping")):
                     self._set_phase("idle", f"retry in {self._next_attempt_at - self._now():.1f} s")
                 self._wake_at(self._next_attempt_at)
                 return
@@ -1580,7 +1583,7 @@ class ScreenController:
                 self._log("info", f"live change applied in-stream ({', '.join(body)})")
                 if recue:
                     tin = (new.get("transitions") or {}).get("in")
-                    cue = {"to": "auto", "source": "room", **({"via": tin} if tin is not None else {})}
+                    cue = {"to": "auto", "source": "mode", **({"via": tin} if tin is not None else {})}
                     try:
                         await self.mgr.stream.cue(self.session["id"], cue)
                     except StreamError as e:
@@ -1657,19 +1660,11 @@ class ScreenController:
             self._set_phase("idle", "the renderer is restarting; back live as soon as it's up")
             self._wake_at(self._next_attempt_at)
             return
-        n = self._record_fallback()
+        n = self._record_fallback()             # the window's count, for the page's words; never a limit
         if self.desired == "art":
             self._set_phase("idle")
             return
-        if n >= self.t.fallback_limit:
-            # Degrade, never refuse (owner): no parking until someone changes desired; keep trying, slowly.
-            self.last_error = f"{n} fallbacks in {self.t.fallback_window_s / 60:g} min (last: {reason})"
-            self._log("warning", f"{self.last_error}; trying again every {SLOW_RETRY_S:g} s")
-            self._next_attempt_at = self._now() + SLOW_RETRY_S
-            self._set_phase("idle", f"live keeps stopping; trying again in {SLOW_RETRY_S:g} s")
-            self._wake_at(self._next_attempt_at)
-            return
-        self._schedule_retry(f"fallback {n}")
+        self._schedule_retry(f"fallback {n}")     # degrade, never refuse (owner): the backoff tops out at 60 s (S2)
 
     # -- entry handshake ----------------------------------------------------
     async def _entry(self, page: PageClient) -> None:
@@ -1770,7 +1765,8 @@ class ScreenController:
                 raise HandshakeError("go", str(e), transient=isinstance(e, StreamUnreachable)
                                      and not self.mgr.stream.reachable) from None
             self._live_since = self._now()
-            self.glass_device = page.device or self.glass_device    # this show is shaped for this page's device
+            if not self.glass_device or self._own(page):   # S13: another device driving never takes the TV's place
+                self.glass_device = page.device or self.glass_device    # this show is shaped for this page's device
             self._set_phase("entering", sid)
             # 7. unfreeze
             self._unfreeze(page)
@@ -1798,11 +1794,8 @@ class ScreenController:
             await self._abort_entry_cleanup(page, sid, attached, str(e)[:80])
             if not getattr(e, "transient", isinstance(e, StreamUnreachable)):
                 self._entry_failures += 1       # an unreachable stream_service just waits for it
-            if self.desired != "art":
-                if self._entry_failures >= self.t.max_entry_failures:
-                    self._fail(f"{self._entry_failures} entry failures (last: {e})")
-                else:
-                    self._schedule_retry(f"entry failure {self._entry_failures}")
+            if self.desired != "art":           # never parked: the backoff tops out and keeps trying (S1)
+                self._schedule_retry(f"entry failure {self._entry_failures}")
         finally:
             self._handshake = None
             self._abort_entry = False
@@ -1947,11 +1940,8 @@ class ScreenController:
             if not aborted:
                 if not getattr(e, "transient", isinstance(e, StreamUnreachable)):
                     self._entry_failures += 1
-                if self.desired != "art":
-                    if self._entry_failures >= self.t.max_entry_failures:
-                        self._fail(f"{self._entry_failures} entry failures (last: {e})")
-                    else:
-                        self._schedule_retry(f"entry failure {self._entry_failures}")
+                if self.desired != "art":       # never parked: the backoff tops out and keeps trying (S1)
+                    self._schedule_retry(f"entry failure {self._entry_failures}")
         finally:
             self._handshake = None
             self._abort_entry = False
@@ -2455,7 +2445,8 @@ class ScreensManager:
                         c._stale_session = True
                         c.wake()
                 headless = c._headless()
-                if (expired or headless or not c._busy()) and c.promote_standby(
+                waiting = c._page_lost_at is not None and not expired     # S13: the lost page may come back
+                if not waiting and (expired or headless or not c._busy()) and c.promote_standby(
                         "the driven page did not come back" if expired else "no driven page"):
                     continue
                 if expired and (not c.session or headless):

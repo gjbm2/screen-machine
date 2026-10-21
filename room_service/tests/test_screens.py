@@ -95,105 +95,110 @@ async def put_live(h: Harness, desired=None):
     assert st == 202
 
 
+async def wait_retry(h: Harness):
+    """A failed go-live: the screen is back in art with a retry scheduled (never parked, S1)."""
+    c = h.screen()
+    await h.wait(lambda: c.phase == "idle" and c.detail.startswith("retry in") and c.last_error, 3,
+                 f"a retry scheduled (now {c.phase} {c.detail})")
+
+
 async def test_entry_timeout_no_frozen_ack(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
     page.ack_frozen = False
     t0 = time.monotonic()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     assert 0.35 < time.monotonic() - t0 < 1.5
     await assert_clean_entry_abort(h, page, attached=False, session_created=False)
     assert "ack frozen" in h.screen().last_error and not h.snap.calls
 
 
 async def test_entry_snapshot_timeout(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
     h.snap.delay = 1.0
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=False, session_created=False)
     assert "snapshot" in h.screen().last_error
 
 
 async def test_entry_snapshot_error(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
     h.snap.fail = "page crashed"
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=False, session_created=False)
 
 
 async def test_entry_session_ready_timeout(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     h.stream.emit_ready = False
     page = await h.page()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=False, session_created=True)
     assert "session.ready" in h.screen().last_error
 
 
 async def test_entry_create_session_error(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     h.stream.create_status = 500
     page = await h.page()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=False, session_created=True)
     assert "create session" in h.screen().last_error
 
 
 async def test_entry_live_visible_timeout(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
     page.ack_live = False
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=True, session_created=True)
     assert not h.stream.calls_of("POST", "/api/sessions/s-0001/go")
     assert "live_visible" in h.screen().last_error
 
 
 async def test_entry_page_live_failed(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
     page.live_failed = True
     t0 = time.monotonic()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     assert time.monotonic() - t0 < 0.4, "live_failed aborts at once, not at the timeout"
     await assert_clean_entry_abort(h, page, attached=True, session_created=True)
     assert "live_failed" in h.screen().last_error
 
 
 async def test_entry_go_refused(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     h.stream.go_status = 409
     page = await h.page()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     await assert_clean_entry_abort(h, page, attached=True, session_created=True)
     assert page.layer == "art", "the page was hard-cut back to art (it had shown the anchor)"
 
 
-async def test_entry_failure_retries_with_backoff_then_fails(harness: Harness):
+async def test_entry_failure_retries_with_backoff_and_never_parks(harness: Harness):
+    """S1: failed go-lives never park the screen: it retries on the backoff (topping out, never giving up) and goes
+    live by itself once the page answers. No new request needed."""
     h = harness
     page = await h.page()
     page.ack_frozen = False
     await put_live(h)
-    await h.wait_phase("failed", timeout=5)
-    freezes = page.of("freeze")
-    assert len(freezes) == 3                     # max_entry_failures
     c = h.screen()
-    assert "3 entry failures" in c.last_error
-    await asyncio.sleep(0.5)
-    assert len(page.of("freeze")) == 3, "failed is sticky until desired changes"
-    # A new request clears it; this time the page answers.
+    await h.wait(lambda: len(page.of("freeze")) >= 5, 8, "five tries")
+    assert c.phase != "failed" and "entry" in c.last_error
+    assert "failed" not in c.snapshot_state()
     page.ack_frozen = True
-    await h.go_live(page)
+    await h.wait(lambda: c.layer == "live" and c.phase in ("entering", "live"), 5, "live by itself")
 
 
 async def test_page_gone_during_entry_aborts(harness: Harness):
@@ -281,7 +286,7 @@ async def test_exit_when_page_already_in_art(harness: Harness):
 
 
 # ---------------------------------------------------------------------------
-# Fallbacks: stall / stream error while live -> re-entry with backoff; 3 -> failed
+# Fallbacks: stall / stream error while live -> re-entry with backoff; never parked
 # ---------------------------------------------------------------------------
 
 async def test_stall_reentry_with_backoff(harness: Harness):
@@ -310,24 +315,19 @@ async def test_stall_reentry_with_backoff(harness: Harness):
     assert time.monotonic() - t0 >= 0.4
 
 
-async def test_three_fallbacks_slow_down_never_park(harness: Harness, monkeypatch):
-    """Degrade, never refuse (owner): after fallback_limit real fallbacks the screen keeps trying, slowly."""
-    from room_service import screens as screens_mod
-    monkeypatch.setattr(screens_mod, "SLOW_RETRY_S", 1.5)
+async def test_fallbacks_follow_the_backoff_and_never_park(harness: Harness):
+    """S2, degrade, never refuse (owner): every fallback re-enters on the backoff (its last step repeats). No limit,
+    no slow mode, never parked."""
     h = harness
     page = await h.go_live()
     c = h.screen()
-    for i in range(3):
+    for i in range(5):
         await h.wait(lambda: c.layer == "live" and c.phase in ("entering", "live"), 4, f"live #{i}")
         sid = c.session["id"]
         await page.stall()
         await h.wait(lambda: c.session is None or c.session["id"] != sid, 2)
-    await h.wait(lambda: c.phase == "idle" and "3 fallbacks" in (c.last_error or ""), 3, "slow retry, not failed")
-    assert c.layer == "art" and c.session is None and c.phase != "failed"
-    n = len(page.of("freeze"))
-    await asyncio.sleep(0.8)
-    assert len(page.of("freeze")) == n, "no quick re-entry after the limit"
-    await h.wait(lambda: len(page.of("freeze")) > n, 3, "the slow retry goes live again")
+    await h.wait(lambda: c.layer == "live" and c.phase in ("entering", "live"), 4, "live again after 5 fallbacks")
+    assert len(c.fallbacks) == 5 and c.phase != "failed"
 
 
 async def test_a_renderer_restart_is_not_a_fallback(harness: Harness):
@@ -775,11 +775,11 @@ async def test_cold_snapshotter_is_waited_for_before_the_freeze(harness: Harness
 
 
 async def test_snapshotter_unavailable_fails_entry_without_freezing(make_harness):
-    h = await make_harness(timeouts={"max_entry_failures": 1})
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
     h.snap.not_ready = "chrome missing"
     page = await h.page()
     await put_live(h)
-    await h.wait_phase("failed", timeout=3)
+    await wait_retry(h)
     assert not page.of("freeze") and "snapshotter" in h.screen().last_error
 
 

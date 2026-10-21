@@ -28,8 +28,7 @@ STREAM_TOKEN = "s" * 64
 FAST_TIMEOUTS = {
     "freeze_ack_s": 0.4, "snapshot_s": 0.4, "session_ready_s": 0.4, "live_visible_s": 0.4,
     "held_extra_s": 0.4, "art_visible_extra_s": 0.4, "entering_extra_s": 0.3, "abort_ack_s": 0.2,
-    "backoff_s": [0.2, 0.4, 0.6, 0.8], "fallback_window_s": 600, "fallback_limit": 3,
-    "max_entry_failures": 3, "stable_reset_s": 60, "adopt_wait_s": 1.0,
+    "backoff_s": [0.2, 0.4, 0.6, 0.8], "fallback_window_s": 600, "stable_reset_s": 60, "adopt_wait_s": 1.0,
     "page_hb_idle_s": 0.3, "page_dead_s": 1.5, "page_hello_s": 2.0,
     "step_timeout_s": 5.0, "after_timeout_s": 5.0, "http_s": 3.0, "default_transition_s": 0.1,
     "create_session_s": 3.0, "policy_ack_s": 1.0, "sweep_delay_s": 0.2, "settle_before_go_s": 0.05,
