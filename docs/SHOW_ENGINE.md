@@ -1073,12 +1073,12 @@ Situations combine with `all`, `any` and `not`, each with its own `for_s` confir
 
 **Global settings** go in one top-level `autopilot` block in modes.json:
 - on/off (default **off** until the owner turns it on);
-- quiet hours (default 23:00–08:00: Auto may only leave a mode it entered, never enter one);
-- minimum dwell (5 min);
-- flap guard: at most 4 automatic switches in 30 min, then Auto pauses for 30 min and says so;
-- a 30-minute backoff after a failed or rolled-back switch (a partial one landed: it is only logged, 21 Oct);
+- quiet hours (none unless set; while they run, Auto may only leave a mode it entered, never enter one);
+- minimum stay in a mode before Auto switches again (60 s);
 - how long a manual choice holds (below);
 - chip timings.
+
+A switch that fails (or rolls back) is said once ("Auto couldn't switch to Piano"), and that rule isn't tried again until it stops holding; nothing else waits or pauses (owner, 21 Oct: no flap guard, no backoff). A partial switch landed: it is only logged.
 
 aa adds the new mode key and the top-level key to the model's allowed set.
 
@@ -1096,21 +1096,22 @@ Whether a mode can be entered automatically, suggested, or neither is entirely i
 **People always win.**
 - **A person picks a mode while Auto is on:** Auto *holds*. It shows "Auto paused · you chose Disco · Resume" until the activity ends (no piano and no audible music for 10 min), capped at 2 h, or until Resume. Picking the mode Auto would have chosen is not an override.
 - **Undo, or a manual change within 60 s of an Auto switch:** treated as a correction. That trigger→mode pair is suppressed for the rest of the episode (or 4 h), and logged with the evidence for tuning.
-- **Nudges inside a mode** (Calmer, Wilder, palette, Keep this look) are not overrides. They stop Auto from *leaving* a mode it entered, because someone is engaged.
+- **Nudges inside a mode** (Calmer, Wilder, palette, Keep this look) are not overrides, and they don't stop Auto leaving a mode it entered (21 Oct): the mode's own leave rule decides.
 - **Never undo a person's changes:**
   - Auto acts only when no transition is running (`mode.transition` and `mode.target` both null), and never re-requests the current mode (that would undo hand changes).
   - It sends `expect: {current, last_transition_id}`. room_service answers 409 `stale` if the room changed meanwhile, so an Auto request can never cancel a tap that landed while it was deciding. People never send `expect`, so nobody is gated.
 
 **Never react to the room's own actions.**
-- Sonos and mic-loudness changes are ignored for about 60 s after room_service sent anything to Sonos, or ran a transition that touched it. This uses a per-member `sent_age_s` in status (aa).
+- Sonos's own reading (`sonos_playing`, and the Sonos part of `music_audible`) is ignored for about 60 s after room_service sent anything to Sonos, or ran a transition that touched it. This uses a per-member `sent_age_s` in status (aa). The mic's words (`music_audible`, `quiet`) aren't held back: the mic hears what is really in the room (21 Oct).
 - "Sonos stopped" or "quiet" is never the exit test for a mode that pauses Sonos.
 
 **Leaving.** Exit windows are 5–10× longer than entry windows; pianists pause between pieces. A mode Auto entered goes back to the mode that was active before Auto acted (`leave_to: previous`), never to a fixed mode.
 
 **Say it, every time.**
 - Each Auto switch shows a chip on /room for 30–60 s: **"Auto → Piano · the piano is playing · Undo"**.
-- A standing Auto line under the mode tiles shows the state and the reason: Watching / Holding (you chose Party) / Paused (quiet hours) / Paused (too many changes).
-- If show_service is down, the line reads "Auto · not listening". The switch is never disabled.
+- A standing Auto line under the mode tiles shows the state and the reason: Watching / Holding (you chose Party) / Paused (quiet hours).
+- Why Auto won't switch is said in Room-page words: "only from Normal", "the room stays in Normal at least 60 s (42 s to go)", "you changed it back right after Auto switched; it'll switch again next time", "the last try didn't work; it tries again the next time the piano is playing", "its rule has a problem: open the mode's ⋯".
+- If Auto can't reach the room, the line reads "Auto can't reach the room right now". The switch is never disabled.
 - Every decision is logged with its evidence on the show console.
 
 **Sonos now-playing** (aa's Sonos adapter, which is a placeholder today). SoCo 0.32 over local UPnP on :1400, outbound only, so it works from WSL.
@@ -1635,7 +1636,7 @@ Thresholds are tuned by ear with the owner on real music, guided by one recordin
 | WSL NAT | Receiver-initiated UDP for audio and Art-Net replies; the relay only as a fallback |
 | Kiosk on powerline carries the sender up while two 4K streams come down; a sender fault could affect the kiosk | A separate unit from light-relay, nice'd capture, sample-index stamping (jitter only delays knowledge), health on the card; Wi-Fi as fallback path |
 | adsilent v1 quirks: hot notes, missed very fast presses, delayed big chords | Hot-note cap in show_rt; the mic's onsets fill in missed notes for lights; the 2 Hz key state heals stuck notes |
-| Auto surprises people (wrong switch, flapping, undoing a tap) | Confirm windows, slow exits, dwell, flap guard, `expect` (409 stale), holds after a person's choice, Undo as correction, a chip every time, side-effect `skip`, default off |
+| Auto surprises people (wrong switch, flapping, undoing a tap) | Confirm windows, slow exits, a minimum stay, `expect` (409 stale), holds after a person's choice, Undo as correction, a chip for every switch, side-effect `skip`, default off |
 | Auto reacts to the room's own actions (Piano pauses Sonos; Disco starts music) | `sent_age_s` discount; never "quiet" as the exit for modes that pause Sonos; test streams and adsilent channel 2 ignored |
 | Sonos UPnP turned off after Sonos's 2025 security advisory, or an S1 household | Owner checks first; aiosonos (S2, outbound wss) as a fallback behind the same reader |
 | The Flask scheduler's direct TV standby/wake events bypass room_service | Flag to 2f before the TV adapter becomes real |

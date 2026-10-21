@@ -17,7 +17,9 @@ Owner rules kept here:
 - It holds after a person's choice, treats Undo (and a change within correction_s) as a correction, and never
   re-requests the current mode. It never acts while a transition runs, and sends ``expect``, so a tap that landed
   meanwhile wins (409 stale).
-- It announces every switch, suggestion, hold, undo, pause and failure. A room that answers its PUT late (its lock,
+- It announces every switch, suggestion, undo, quiet-hours pause and failure; a hold after a person's choice is only
+  logged (the Auto line says it). A switch that fails isn't tried again until its rule stops holding; nothing else
+  waits or pauses (owner, 21 Oct: no backoff, no flap guard). A room that answers its PUT late (its lock,
   device reads for a ``skip`` with ``from``) is waited for up to contract.ROOM_PUT_TIMEOUT_S; a PUT with no answer
   leaves a "maybe", and the room's own ``started`` event for it is adopted as Auto's switch (or Undo), so it is still
   announced, entered, counted and undoable.
@@ -67,9 +69,7 @@ LOG_MAX_BYTES = 1 << 20
 AP_DEFAULTS: dict[str, Any] = {
     "on": False,
     "quiet_hours": None,                                 # none unless modes.json sets them (owner, 16 Oct: never invented)
-    "min_dwell_s": 300.0,
-    "max_switches": {"count": 4, "per_s": 1800.0, "pause_s": 1800.0},
-    "backoff_s": 1800.0,
+    "min_dwell_s": 60.0,                                 # owner, 17 Oct: 5 min was longer than a track
     "hold": {"until": {"all": [{"piano_idle": {}}, {"not": {"music_audible": {}}}], "for_s": 600},
              "max_s": 7200.0, "correction_s": 60.0, "suppress_s": 14400.0},
     "chips": {"switch_s": 45.0, "suggest_s": 120.0},
@@ -628,15 +628,14 @@ class Autopilot:
         # persisted (README S3.4 "autopilot")
         self.entered: Optional[dict] = None
         self.hold: Optional[dict] = None
-        self.pause: Optional[dict] = None
-        self.backoff_until: Optional[float] = None
         self.suppressed: list[dict] = []
-        self.switches: list[float] = []
+        self.switches: list[float] = []                # wall times of Auto's switches, the last 24 h (a record only)
         self.last: Optional[dict] = None
         # runtime
         self.acting: Optional[dict] = None
         self._pending: Optional[asyncio.Task] = None
         self._blocked: dict[str, dict] = {}            # rule path -> {"revision", "error"} (a 404/400 from the room)
+        self._failed: set[str] = set()                 # rules whose switch failed: not again until the rule goes false
         self._suggested: set[str] = set()              # modes whose suggestion was said in this episode
         self._chip: Optional[tuple[dict, Optional[float]]] = None      # (announcement, expires mono)
         self._suggest: Optional[tuple[dict, Optional[float]]] = None
@@ -698,7 +697,7 @@ class Autopilot:
         last = None
         if self.last:
             last = {k: self.last.get(k) for k in ("at", "from", "to", "reason", "rule", "transition_id", "status")}
-        return {"entered": self.entered, "hold": self.hold, "pause": self.pause, "backoff_until": self.backoff_until,
+        return {"entered": self.entered, "hold": self.hold,
                 "suppressed": [{k: s.get(k) for k in ("mode", "rule", "since", "until")} for s in self.suppressed],
                 "switches": list(self.switches), "last": last}
 
@@ -712,11 +711,7 @@ class Autopilot:
 
         self.entered = rec(saved.get("entered"), "mode")
         h = rec(saved.get("hold"), "mode", "by", "until")
-        self.hold = h if h and (_num(h["until"]) or 0) > wall else None
-        p = rec(saved.get("pause"), "why", "until")
-        self.pause = p if p and (_num(p["until"]) or 0) > wall else None
-        b = _num(saved.get("backoff_until"))
-        self.backoff_until = b if b and b > wall else None
+        self.hold = h if h and (_num(h["until"]) or 0) > wall else None   # an old "pause"/"backoff_until": ignored
         self.suppressed = [dict(s) for s in saved.get("suppressed") or []
                            if isinstance(s, dict) and s.get("mode") and s.get("rule") and (_num(s.get("until")) or 0) > wall]
         self.switches = [t for t in (saved.get("switches") or []) if _num(t) is not None and wall - t < 86400]
@@ -758,15 +753,12 @@ class Autopilot:
                 return None
             ok = isinstance(v, dict) and set(v) == {"from", "to"} and _hhmm(v["from"]) is not None and _hhmm(v["to"]) is not None
             return {"from": v["from"], "to": v["to"]} if ok else _BAD
-        if k in ("min_dwell_s", "backoff_s"):
+        if k == "min_dwell_s":
             return float(v) if nonneg(v) else _BAD
         if not isinstance(v, dict) or set(v) - set(d):
             return _BAD
         m = {**d, **v}
-        if k == "max_switches":
-            ok = (_num(m["count"]) is not None and int(m["count"]) == m["count"] and m["count"] >= 1
-                  and nonneg(m["per_s"], True) and nonneg(m["pause_s"]))
-        elif k == "hold":
+        if k == "hold":
             ok = (isinstance(m["until"], dict) and not self.cond.check(m["until"]) and nonneg(m["max_s"], True)
                   and nonneg(m["correction_s"]) and nonneg(m["suppress_s"]))
         else:                                           # chips
@@ -779,8 +771,8 @@ class Autopilot:
         self._resolve_settings(view.get("autopilot"))
         on = self._on(view)
         if on is True and self._on_prev is False:      # turned on: a fresh start (suppressions kept)
-            self.hold = self.pause = None
-            self.backoff_until = None
+            self.hold = None
+            self._failed.clear()
             # switching Auto on is the person's newest choice: it acts now, not after the minimum stay of the mode
             # they picked a moment before (owner, 17 Oct: "I played a midi file; piano mode didn't engage")
             self._dwell_waived_mode = view.get("current") if isinstance(view.get("current"), str) else None
@@ -873,10 +865,6 @@ class Autopilot:
             st = ("acting", None)
         elif self.hold:
             st = ("holding", self.hold.get("by"))
-        elif self.pause:
-            st = ("paused", self.pause.get("why", "flap"))
-        elif self.backoff_until:
-            st = ("backoff", "failed")
         elif self._quiet():
             st = ("paused", "quiet_hours")
         else:
@@ -909,7 +897,6 @@ class Autopilot:
         would: dict[str, str] = {}
         since = view.get("since_age_s")
         dwell = self._settings["min_dwell_s"]
-        engaged = bool(_guard("engaged", self.ctx.engaged)) if self.ctx.engaged else False
         for idx, name in enumerate(order):
             ap = (modes.get(name) or {}).get("autopilot")
             if not isinstance(ap, dict):
@@ -933,22 +920,29 @@ class Autopilot:
                 if b is not None and b["revision"] != view.get("revision"):
                     del self._blocked[rule]
                     b = None
+                # the Room page shows these after "Auto won't switch to Piano: " (PianoRow); the problems and the
+                # room's answer are in the mode's ⋯ editor and the log. None ends in " Resume" (MusicCard keys on it).
+                failed = (f"the last try didn't work; it tries again the next time "
+                          f"{self._reason(info, rule, cond).rsplit(' (', 1)[0]}") if rule in self._failed else None
                 if info.get("problems"):
-                    c["blocked"] = "rule error: " + "; ".join(info["problems"])
+                    c["blocked"] = "its rule has a problem: open the mode's ⋯"
                 elif b is not None:
-                    c["blocked"] = f"the room refused it ({b['error']}) until modes.json changes"
+                    c["blocked"] = "the room said no to this switch: open the mode's ⋯"
                 elif kind in ("enter", "suggest"):
                     if name == current:
                         c["blocked"] = "it's the current mode"
+                    elif failed:
+                        c["blocked"] = failed
                     elif allowed is not None and current not in allowed:
-                        c["blocked"] = f"only from {', '.join(allowed) or 'no mode'}"
+                        c["blocked"] = f"only from {' or '.join(self._label(view, m) for m in allowed) or 'no mode'}"
                     elif self._suppressed(name, rule):
-                        c["blocked"] = "suppressed: you changed it back"
+                        c["blocked"] = "you changed it back right after Auto switched; it'll switch again next time"
                     elif kind == "suggest" and enter_holds:
                         c["blocked"] = "it would switch instead"
                     elif (kind == "enter" and since is not None and since < dwell
                           and current != self._dwell_waived_mode):
-                        c["blocked"] = f"staying in the current mode {dwell - since:.0f} s more"
+                        c["blocked"] = (f"the room stays in {self._label(view, current)} at least {dwell:.0f} s "
+                                        f"({dwell - since:.0f} s to go)")
                     elif kind == "enter" and self._quiet():
                         c["blocked"] = "quiet hours"
                     if holds and not info.get("problems") and name != current:
@@ -960,16 +954,16 @@ class Autopilot:
                     to = leave_to_of(ap)
                     to = e.get("previous") if to == "previous" else to
                     c["to"] = to
-                    if current != name:
+                    if failed:
+                        c["blocked"] = failed
+                    elif current != name:
                         c["blocked"] = "it isn't the current mode"
                     elif not isinstance(to, str) or to not in modes:
                         c["blocked"] = "no mode to go back to"
                     elif to == current:
                         c["blocked"] = "already there"
                     elif self._suppressed(name, rule):
-                        c["blocked"] = "suppressed: you changed it back"
-                    elif engaged:
-                        c["blocked"] = "someone is using the controls"
+                        c["blocked"] = "you changed it back right after Auto switched; it'll switch again next time"
                 if holds:
                     c["reason"] = self._reason(info, rule, cond)
                 cands.append(c)
@@ -996,12 +990,8 @@ class Autopilot:
                 changed = True
                 self._announce("resume", "Auto · watching again", reason=ended,
                                expires_s=self._settings["chips"]["switch_s"])
-        if self.pause and wall >= (_num(self.pause.get("until")) or 0):
-            self.pause, changed = None, True
-            self._note("pause_end", None, None, "the pause is over")
-        if self.backoff_until and wall >= self.backoff_until:
-            self.backoff_until, changed = None, True
-            self._note("backoff_end", None, None, "the backoff is over")
+        # a failed switch's rule may try again once it has gone false (or is gone)
+        self._failed = {r for r in self._failed if r in self._infos and self._infos[r].get("value") is not False}
         keep, ep = [], self._episode_s()
         for s in self.suppressed:
             if wall >= (_num(s.get("until")) or 0):
@@ -1058,16 +1048,13 @@ class Autopilot:
             return
         leaves = [c for c in self._candidates if c["kind"] == "leave" and c["holds"] and not c["blocked"]]
         if leaves:
-            if not self._flap(wall):
-                self._request(view, leaves[0])
+            self._request(view, leaves[0])
             return
         if state != ("watching", None):
             return
         enters = [c for c in self._candidates if c["kind"] == "enter" and c["holds"] and not c["blocked"]]
         if enters:
-            best = min(enters, key=lambda c: (c["rank"], c["order"]))
-            if not self._flap(wall):
-                self._request(view, best)
+            self._request(view, min(enters, key=lambda c: (c["rank"], c["order"])))
             return
         for c in self._candidates:
             if c["kind"] == "suggest" and c["holds"] and not c["blocked"] and c["mode"] not in self._suggested:
@@ -1076,18 +1063,6 @@ class Autopilot:
                                mode=c["mode"], previous=view.get("current"), rule=c["rule"],
                                reason=c.get("reason"), evidence=c["info"].get("words"),
                                expires_s=self._settings["chips"]["suggest_s"])
-
-    def _flap(self, wall: float) -> bool:
-        """The flap guard: True (and paused) when max_switches.count switches already happened within per_s."""
-        ms = self._settings["max_switches"]
-        self.switches = [t for t in self.switches if wall - t < ms["per_s"]]
-        if len(self.switches) < ms["count"]:
-            return False
-        self.pause = {"why": "flap", "until": wall + ms["pause_s"]}
-        self._dirty()
-        self._announce("pause", "Auto paused · too many changes", reason=f"{len(self.switches)} switches in "
-                       f"{ms['per_s'] / 60:.0f} min", expires_s=self._settings["chips"]["switch_s"])
-        return True
 
     @staticmethod
     def _label(view: contract.RoomView, mode: Optional[str]) -> str:
@@ -1239,7 +1214,7 @@ class Autopilot:
             else:
                 self.entered = None
             self._last_entered_before = a["entered_before"]
-            self.switches.append(wall)
+            self.switches = [t for t in self.switches if wall - t < 86400] + [wall]
             if self.last:
                 self.last["at"] = wall
             words = a["reason"].rsplit(" (", 1)[0]
@@ -1248,17 +1223,19 @@ class Autopilot:
                            reason=a["reason"], evidence=a["evidence"], expires_s=chips["switch_s"])
             if status == "partial":                     # the mode landed: a skipped or unconfirmed side step (a TV
                 self._note("partial", a["mode"], a["rule"],   # with no adapter, a Sonos pause not proven) is reported,
-                           "switched; some steps were skipped or not confirmed")   # never a backoff (owner, 21 Oct)
+                           "switched; some steps were skipped or not confirmed")   # a switch (owner, 21 Oct)
         else:                                           # failed, or rolled back
-            self._fail(a, wall, "didn't finish")
+            self._fail(a, status, n.get("detail"))
         self._dirty()
 
-    def _fail(self, a: dict, wall: float, how: str) -> None:
-        b = self._settings["backoff_s"]
-        self.backoff_until = wall + b
+    def _fail(self, a: dict, status: str, detail: Any) -> None:
+        """A switch that didn't finish: said once, and its rule isn't tried again until it goes false (no backoff,
+        nothing else stops: owner, 21 Oct). The room's detail goes in the log only."""
+        self._failed.add(a["rule"])
         view = self.link.view()
-        self._announce("failed", f"Auto: the switch to {self._label(view, a['mode'])} {how} · waiting {b / 60:.0f} min",
-                       mode=a["mode"], previous=a["from"], rule=a["rule"], tid=a["transition_id"],
+        why = f"the switch didn't finish ({status}{f': {detail}' if detail else ''})"
+        self._announce("failed", f"Auto couldn't switch to {self._label(view, a['mode'])}",
+                       mode=a["mode"], previous=a["from"], rule=a["rule"], tid=a["transition_id"], reason=why,
                        expires_s=self._settings["chips"]["switch_s"])
 
     def _person(self, n: dict) -> None:
@@ -1292,9 +1269,12 @@ class Autopilot:
         self.cond.reset("_hold")
         if e and e.get("mode") != to:
             self.entered = None
-        self._announce("hold", f"Auto paused · you chose {self._label(view, to)}", mode=to, previous=frm,
-                       rule=last.get("rule") if by == "correction" and last else None, tid=n.get("id"),
-                       reason=by, expires_s=self._settings["chips"]["switch_s"])
+        # logged, not announced (owner, 21 Oct: "gets in the way"): the Auto line already says "you chose …", and an
+        # earlier chip (an Undo for a switch the person has just changed) no longer applies
+        self._chip = None
+        self._note("hold", to, last.get("rule") if by == "correction" and last else None, by,
+                   extra={"text": f"Auto paused · you chose {self._label(view, to)}", "previous": frm,
+                          "transition_id": n.get("id")})
         self._dirty()
 
     def _suppress(self, rule: str, wall: float) -> None:
@@ -1372,8 +1352,8 @@ class Autopilot:
         self._publish()
 
     def resume(self) -> contract.AutopilotState:
-        self.hold = self.pause = None
-        self.backoff_until = None
+        self.hold = None
+        self._failed.clear()
         self.cond.reset("")
         self._suggested.clear()
         self._announce("resume", "Auto · watching again", reason="Resume",
@@ -1601,17 +1581,12 @@ class Autopilot:
         elif state == "holding":
             until = (_num(self.hold.get("until")) or wall) - wall
             line = f"Auto paused · you chose {label(view, self.hold.get('mode'))} · Resume"
-        elif state == "paused" and why == "quiet_hours":
+        elif state == "paused":                          # quiet hours (the only pause)
             until = self._quiet_left_s()
             line = "Auto paused · quiet hours"
-        elif state == "paused":
-            until = (_num(self.pause.get("until")) or wall) - wall
-            line = "Auto paused · too many changes · Resume"
-        elif state == "backoff":
-            until = (self.backoff_until or wall) - wall
-            line = "Auto waiting · the last switch didn't finish · Resume"
         else:
-            line = "Auto · not listening" if why == "room_unreachable" else "Auto is paused: a mode has a problem; open its editor"
+            line = ("Auto can't reach the room right now" if why == "room_unreachable"
+                    else "Auto is paused: a mode has a problem; open its editor")
 
         def chip(c: Optional[tuple]) -> Optional[dict]:
             if not c:

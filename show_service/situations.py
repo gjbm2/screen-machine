@@ -17,8 +17,9 @@ the one measured (a test played from another room never switches this one).
 
 The mic on demand (README S5.16). A stream the receiver keeps off (health ``off``, or state "off") is never measured:
 features and CED readings of it read as missing, so the audio words (quiet, talking, music_audible, energy_above) read
-unknown while the mic is off, never "quiet" because it was switched off; piano_playing skips heard_by (as when it is
-down).
+unknown while the mic is off, never "quiet" because it was switched off. The piano words read MIDI alone (21 Oct: no
+"the mic must hear it too"). The room's own Sonos change (``own_change_s``) leaves only Sonos's reading out: the mic's
+words (music_audible, quiet) read what the mic hears.
 
 Stage 4 (README S4.8). ``Situations.classifier`` is CED, from ``ctx.ml``: ``(stream) -> {"music", "speech",
 "conversation", "singing", "crowd", "applause", "silence", "stream", "n"}``, the mean of the worker's readings for that
@@ -74,7 +75,6 @@ IDLE_NOTE_S = 1.0                       # starting point (show.yaml situations.m
 DAMPER_DOWN = 0.1                       # a damper at or above this is "down" (§8.5 uses < 0.1 as up)
 HARMONY_MIN_CONF = 0.3                  # music_audible's DSP guess: a clear key also counts as music
 ENERGY_TAU_S = 10.0                     # energy_above's EMA
-HISTORY_S = 660.0                       # features samples kept (covers any window_s up to 600 s)
 NOTES_KEEP_S = 600.0                    # how far back a tick's note copy reaches
 SINCE_FORGET_S = 60.0                   # a since_s tracker not read for this long is dropped
 SONOS_PLAYING = ("PLAYING", "TRANSITIONING")
@@ -112,11 +112,6 @@ PARAM_SCHEMAS: dict[str, dict] = {
     "min_pitches": {"type": "integer", "minimum": 1, "maximum": 88, "x-ui": {"label": "Different keys, at least"}},
     "idle_note_s": {"type": "number", "minimum": 0.1, "maximum": 60,
                     "x-ui": {"label": "No note for at least", "unit": "s"}},
-    "heard_by": {"type": "string", "nullable": True,
-                 "x-ui": {"label": "The mic must hear it too", "unset_label": "Don't check"}},
-    "heard_min_lufs": {"type": "number", "minimum": -70, "maximum": 0,
-                       "x-ui": {"label": "Mic loudness at least", "unit": "LUFS", **_P,
-                                "ends": {"min": "Faint", "max": "Loud"}}},
     "stream": {"type": "string", "nullable": True, "x-ui": {"label": "Audio stream", "unset_label": "Whichever plays"}},
     "min_prob": {"type": "number", "minimum": 0, "maximum": 1,
                  "x-ui": {"label": "Classifier probability", **_P, "ends": {"min": "A hint", "max": "Certain"}}},
@@ -157,7 +152,7 @@ PARAM_SCHEMAS: dict[str, dict] = {
 #: A None here means "unset" (any stream, every channel, no check), never an invented device or stream name.
 DESIGN_DEFAULTS: dict[str, Any] = {
     "streams": None, "channels": None, "include_test": False, "window_s": 10, "min_notes": 12, "min_span_s": 6,
-    "min_pitches": 4, "idle_note_s": IDLE_NOTE_S, "heard_by": None, "heard_min_lufs": -45, "stream": None,
+    "min_pitches": 4, "idle_note_s": IDLE_NOTE_S, "stream": None,
     "min_prob": 0.5, "dsp_min_gate": 0.3,
     "now_playing": None, "volume": None, "own_change_s": 60, "min_conf": 0.6, "gate_below": 0.05,
     "music_below": None, "speech_below": None,       # quiet: unset = the gate alone; talking: TALKING_MUSIC_BELOW
@@ -177,10 +172,9 @@ _NO_LIGHT = "The light sensor isn't reporting"
 WORDS: dict[str, dict] = {
     "piano_playing": {
         "label": "the piano is playing", "source": "midi", "sections": ("midi",), "unavailable": _NO_PIANO,
-        "params": _PIANO + ("window_s", "min_notes", "min_span_s", "min_pitches", "heard_by", "heard_min_lufs"),
+        "params": _PIANO + ("window_s", "min_notes", "min_span_s", "min_pitches"),
         "description": "Someone is really playing: enough notes in a short time, spread over a few seconds and "
-                       "several keys, so a single key press or a cat on the keys doesn't count. While the room's mic "
-                       "is on, it must hear the piano too, so silent practice with headphones never switches."},
+                       "several keys, so a single key press or a cat on the keys doesn't count."},
     "piano_idle": {
         "label": "the piano has stopped", "source": "midi", "sections": ("midi",), "params": _PIANO + ("idle_note_s",),
         "unavailable": _NO_PIANO,
@@ -731,7 +725,6 @@ class Situations:
         self.problems: list[str] = []
         self._section: dict = {}
         self.revision = 0                                 # +1 per configure (Conditions re-checks rules)
-        self._hist: deque = deque()                       # (t_s, stream, lufs_s, gate)
         self._ema: dict[str, tuple[float, float]] = {}    # stream -> (t_s, energy EMA)
         self._since: dict[str, list] = {}                 # key -> [value, since_t, last_read_t]
         self._notes_cache: tuple[Optional[float], list] = (None, [])   # (now_s, notes)
@@ -1037,7 +1030,6 @@ class Situations:
         f = self._features(now_s)
         if f is not None:
             stream = f.get("stream")
-            self._hist.append((now_s, stream, _num(f.get("lufs_s"), -70.0), _num(f.get("gate"), 0.0)))
             e = _num(f.get("energy"), 0.0)
             prev = self._ema.get(stream)
             if prev is None or now_s - prev[0] > 3 * ENERGY_TAU_S:
@@ -1045,9 +1037,6 @@ class Situations:
             else:
                 a = 1.0 - math.exp(-max(0.0, now_s - prev[0]) / ENERGY_TAU_S)
                 self._ema[stream] = (now_s, prev[1] + a * (e - prev[1]))
-        cut = now_s - HISTORY_S
-        while self._hist and self._hist[0][0] < cut:
-            self._hist.popleft()
 
     def _test_measured(self, p: dict, f: Optional[dict]) -> Optional[dict]:
         """Evidence when the sound being measured (the features' stream, else the receiver's active audio) is a test
@@ -1159,20 +1148,7 @@ class Situations:
         ok = (n >= _num(p.get("min_notes"), DESIGN_DEFAULTS["min_notes"])
               and span >= _num(p.get("min_span_s"), DESIGN_DEFAULTS["min_span_s"])
               and pitches >= _num(p.get("min_pitches"), DESIGN_DEFAULTS["min_pitches"]))
-        via = "midi"
-        heard_by = p.get("heard_by")
-        if ok and isinstance(heard_by, str) and heard_by and self._up(streams, heard_by):
-            f = self._features(now_s)
-            if f is not None and f.get("stream") == heard_by:
-                vals = [h[2] for h in self._hist if h[0] >= t0 and h[1] == heard_by]
-                vals.append(_num(f.get("lufs_s"), -70.0))
-                loud, need = max(vals), _num(p.get("heard_min_lufs"), DESIGN_DEFAULTS["heard_min_lufs"])
-                ev.update(heard_by=heard_by, heard_lufs=round(loud, 1), heard_min_lufs=need)
-                via = "midi+mic"
-                if loud < need:
-                    ok = False
-                    ev["why"] = "the mic doesn't hear the piano"
-        return ok, via, ev
+        return ok, "midi", ev
 
     def _r_piano_idle(self, p: dict, now_s: float):
         streams, _ = self._health()
@@ -1200,10 +1176,7 @@ class Situations:
         return True, "midi", ev
 
     def _r_music_audible(self, p: dict, now_s: float):
-        sonos, sev = self._sonos(p)
-        own = self._own_change(p)
-        if own is not None:
-            return None, "sonos", own
+        sonos, sev = self._sonos(p)                     # the room's own Sonos change leaves Sonos out (sev says so)
         streams, active = self._health()
         stream = p.get("stream") if isinstance(p.get("stream"), str) and p.get("stream") else None
         f = self._features(now_s)
@@ -1434,9 +1407,6 @@ class Situations:
                                     "ced_n": c.get("n"), "stream": c.get("stream")}
 
     def _r_quiet(self, p: dict, now_s: float):
-        own = self._own_change(self.params("sonos_playing"))      # the room's own Sonos change isn't the room's quiet
-        if own is not None:
-            return None, "dsp", own
         streams, active = self._health()
         stream = p.get("stream") if isinstance(p.get("stream"), str) and p.get("stream") else None
         off = self._off()
