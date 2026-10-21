@@ -351,7 +351,7 @@ PALETTE_ART = "art"          # from the on-glass stills (room's snapshots), in a
 #: (README "Stage 3 > vibes.yaml"); a field a vibe leaves out takes its neutral value, never a hidden default.
 VIBE_FIELDS: tuple[str, ...] = (
     "label", "description", "energy", "energy_centre", "loudness_ref_lufs", "follow", "follow_amount", "beat_lock",
-    "change_looks", "change_rate", "dwell_s", "relax_on_talk", "listener", "palettes", "key_cct", "lamp_chroma_max",
+    "change_looks", "change_rate", "dwell_s", "relax_on_talk", "palettes", "key_cct", "lamp_chroma_max",
     "chroma_max", "saturation", "contrast", "level", "floor", "motion", "accents", "strobe", "peak_tokens_per_hour",
     "moods", "genre", "transition_style", "palette_family", "step_size", "max_steps", "persona")
 
@@ -371,7 +371,6 @@ class VibeSettings(TypedDict, total=False):
     change_rate: float             # 0..1: min_bars 32 / 16 / 8 at 0 / 0.5 / 1 (§8.5); also direction.change_rate
     dwell_s: list[float]           # [min, max]: when changing by time (change_looks "time", or the clock unsure)
     relax_on_talk: bool
-    listener: bool                 # this vibe lets the LLM listener run (with the AI listening switch and the target's)
     palettes: list[str]            # ranked: names in the palette catalog, or "art"
     key_cct: float                 # kelvin, the key lamps' white (2400-3000 in calm vibes)
     lamp_chroma_max: float         # OKLCh chroma cap for key-role lamps (about 0.05 = a faint tint; 0.37 = any)

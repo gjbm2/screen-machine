@@ -16,15 +16,13 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   (b) a room-sound stream (not a show.yaml sender with ``room_sound: false``) and ANY CED reading overlapping
       [the clip's start - that reading's window, its end] has speech >= ``ced.speech_max`` (speech is the max over
       ``ced.speech_words``: speech, conversation, crowd): skipped, "Paused: people talking";
-  (c) a room-sound stream, no CED reading overlaps the clip and the latest is older than the CED's stale time
-      (MLView.stale_s: ``ml.stale_periods`` x its real cadence) or there is none: skipped, "Paused: can't check for
-      talking" (the one fail-closed case: the owner's no-speech rule);
-  (d) otherwise it goes. No music requirement: the LLM judges the music.
-  The view's ``status`` is one of STATUS_WORDS ("Listening", "Paused: quiet", "Paused: people talking", "Paused:
-  can't check for talking", "Off"): Off, or "Paused: quiet" while no clip can be cut (no sound coming in), else the
-  last send-time decision, so it changes once per send, never between them (09, 21 Oct); ``detail`` says more for
-  diagnostics only (no model, no sound coming in, the mic is off). ``history`` lists the last HISTORY_N round trips
-  and skips, newest first (repeated skips for the same reason fold into one row with a count). The ring records only
+  (c) otherwise it goes: no CED reading in the clip doesn't hold it back (09's audit ai-F2: no fail-closed pause),
+      and there is no music requirement: the LLM judges the music.
+  The view's ``status`` is one of STATUS_WORDS, one word per reason (ai-F3): "Off"; "Paused: no AI model set up";
+  "Paused: Room mic is off"; "Paused: no sound from the mic" (no stream or features, or a clip under 1 s);
+  "Starting" (the ring still filling); else the last send-time decision ("Listening", "Paused: quiet", "Paused:
+  people talking"), so it changes once per send, never between them (09, 21 Oct). ``history`` lists the last
+  HISTORY_N round trips and skips, newest first (repeated skips for the same reason fold into one row with a count). The ring records only
   while the switch is on (``Rings.armed``).
 * **Sections** (Stage 4, §7.3): structure's events (``on_music_event``) and music.context keep a short section history.
   A confirmed ``section_change`` makes one extra call due at its boundary + ``section_call_after_s`` (still
@@ -35,7 +33,7 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
 * **The mic on demand** (README S5.16): a stream the mic keeps off (the ring's ``off``, receiver health's ``off``, or
   state "off") never gives a clip ("the mic is off"); the ring forgets what it held of it; and a clip cut before a
   stream went off (the ring's ``off_gen`` moved while it was encoded) is never uploaded. A stream the mic keeps off
-  reads "Paused: quiet" (detail "the mic is off").
+  reads "Paused: Room mic is off".
 * **Cadence** (README S5.22; owner 18 Oct): a ``clip_s`` (10 s) clip every ``cadence_s`` (15 s) while the music is
   steady, every ``fast_cadence_s`` (5 s) while something develops (``_developing``: structure's build or outro, a
   forecast window open or opening within ``fast_lookahead_s``, an armed song end within ``fast_end_s``, a confirmed
@@ -164,18 +162,17 @@ CHARACTER_WORDS = 12
 WHY_WORDS = 12
 MUSICAL = ("music", "mixed")
 
-# The Room page's words, all of them (owner, 21 Oct; module docstring "When a clip goes")
+# The Room page's words, all of them, one per reason (owner, 21 Oct; 09's audit ai-F3; module docstring "When a clip
+# goes")
 LISTENING = "Listening"
-WHY_OFF = "Off"
-WHY_QUIET = "Paused: quiet"
+WHY_STARTING = "Starting"                                     # sound is coming in; the ring is still filling
+WHY_QUIET = "Paused: quiet"                                   # the clip's loudness gate under quiet_gate
 WHY_TALKING = "Paused: people talking"
-WHY_CANT_CHECK = "Paused: can't check for talking"
-STATUS_WORDS = (LISTENING, WHY_QUIET, WHY_TALKING, WHY_CANT_CHECK, WHY_OFF)
-# ``detail`` (diagnostics only, never the page's status)
-DETAIL_NO_MODEL = "no model configured"
-DETAIL_NO_SOUND = "no sound coming in"
-DETAIL_MIC_OFF = "the mic is off"
-DETAIL_MIC_WENT_OFF = "the mic went off"                     # a clip cut before that is never uploaded
+WHY_NO_SOUND = "Paused: no sound from the mic"                # no stream or features, or a clip under 1 s
+WHY_MIC_OFF = "Paused: Room mic is off"                       # the mic on demand keeps it off (or it went off)
+WHY_NO_MODEL = "Paused: no AI model set up"                   # no usable model in config/llm.yaml
+WHY_OFF = "Off"
+STATUS_WORDS = (LISTENING, WHY_STARTING, WHY_QUIET, WHY_TALKING, WHY_NO_SOUND, WHY_MIC_OFF, WHY_NO_MODEL, WHY_OFF)
 
 
 def _one_of(words: Any) -> str:
@@ -869,7 +866,7 @@ class Listener:
         self.speech_words: tuple[str, ...] = contract.SPEECH_WORDS   # listener.ced.speech_words
         self.results_stale_s = RESULTS_STALE_S
         self._ced_state: dict = {"why": None, "overlapping": 0, "speech": None, "latest_age_s": None}   # (snapshot)
-        self._detail: Optional[str] = None          # diagnostics only: why, in more words (no model, no sound, ...)
+        self._detail: Optional[str] = None          # the view's detail (unused since ai-F3: one word per reason)
         self._history: collections.deque = collections.deque(maxlen=HISTORY_N)   # the view's history, oldest first
         self._sections: collections.deque = collections.deque(maxlen=SECTIONS_KEEP)   # {"id", "letter", "start_s"}
         self._section_due: Optional[float] = None    # the section call's clip end (boundary + section_call_after_s)
@@ -1014,6 +1011,8 @@ class Listener:
             self._note_models()
         self._beliefs = self.beliefs_state.view(now_s)
         self._section_tick(now_s)
+        if not self.on:
+            self._section_due = None                  # 09's audit ai-F7: nothing is armed (or logged) while off
         self._fast = self._developing(now_s)
         self._why, self._stream = self._gate(now_s)
         self._account(now_s)
@@ -1251,22 +1250,20 @@ class Listener:
             return WHY_OFF, stream
         m = self._llm_mod()
         if m is None or not self._usable(m, "listen"):
-            self._detail = DETAIL_NO_MODEL
-            return WHY_OFF, stream
+            return WHY_NO_MODEL, stream
         if self._mic_off(stream):
-            self._detail = DETAIL_MIC_OFF
-            return WHY_QUIET, stream
+            return WHY_MIC_OFF, stream
+        if stream is None or self._features(now_s) is None:
+            return WHY_NO_SOUND, stream
         rings = self.ctx.rings
         held = 0.0
-        if rings is not None and stream is not None:
+        if rings is not None:
             try:
                 held = float(((rings.info() or {}).get(stream) or {}).get("held_s") or 0.0)
             except Exception:                     # noqa: BLE001
                 held = 0.0
-        if stream is None or self._features(now_s) is None or \
-                held < min(float(self.cfg["clip_s"]), float(self.cfg["min_clip_s"])):
-            self._detail = DETAIL_NO_SOUND
-            return WHY_QUIET, stream
+        if held < min(float(self.cfg["clip_s"]), float(self.cfg["min_clip_s"])):
+            return WHY_STARTING, stream
         return None, stream
 
     def _gate_between(self, t0: float, t1: float) -> float:
@@ -1301,10 +1298,7 @@ class Listener:
         if speech is not None and speech >= float(self.ced_cfg["speech_max"]):
             self._ced_state["why"] = WHY_TALKING
             return WHY_TALKING
-        if not over and (latest_age is None or latest_age > contract.ml_stale_s(v, "ced", self.results_stale_s)):
-            self._ced_state["why"] = WHY_CANT_CHECK
-            return WHY_CANT_CHECK
-        return None
+        return None                               # no reading in the clip: it goes (09's audit ai-F2: no fail-closed)
 
     def _ml_view(self) -> Optional[dict]:
         v = self._call_or_none(getattr(self.ctx, "ml", None))
@@ -1325,7 +1319,7 @@ class Listener:
             if start_ms is not None and isinstance(sid, int) and not isinstance(sid, bool):
                 self._note_section(sid, ev.get("letter") if isinstance(ev.get("letter"), str) else None,
                                    start_ms / 1000.0)
-            if not ev.get("predicted") and start_ms is not None:
+            if not ev.get("predicted") and start_ms is not None and self.on:     # ai-F7: never armed while off
                 self._section_due = start_ms / 1000.0 + float(self.cfg["section_call_after_s"])
                 self._boundary_s = self._mono()
         elif kind == "track_end_armed":
@@ -1574,7 +1568,7 @@ class Listener:
         off_gen = getattr(self.ctx.rings, "off_gen", None)    # a stream going off from now on voids this clip
         clip = self._cut_clip(stream, t_end)
         if clip is None or clip.pcm.shape[0] < clip.fs:
-            self._skip(stream, kind, WHY_QUIET, DETAIL_NO_SOUND)
+            self._skip(stream, kind, WHY_NO_SOUND)
             return
         t1 = clip.t0_s + clip.pcm.shape[0] / clip.fs
         why = self._decide(stream, clip.t0_s, t1, self._mono())   # this clip's own window (module docstring)
@@ -1601,7 +1595,7 @@ class Listener:
         if not self.on:
             why = WHY_OFF
         elif getattr(self.ctx.rings, "off_gen", None) != off_gen:
-            why, detail = WHY_QUIET, DETAIL_MIC_WENT_OFF
+            why = WHY_MIC_OFF                         # the mic went off while it was encoded: never sent
         else:
             why = self._decide(stream, clip.t0_s, t1, self._mono())
         if why is not None:

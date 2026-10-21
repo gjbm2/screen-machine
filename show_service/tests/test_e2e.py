@@ -535,9 +535,8 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
         assert code == 200 and odd["vibe"] == "no-such-feel" and odd["known"] is False and odd["problems"], odd
         code, rb = http("PUT", base + "/api/v1/vibe", {"vibe": "e2e-lively", "listening": False})
         assert code == 200 and rb["vibe"] == "e2e-lively" and rb["known"] is True and rb["source"] == "mode", rb
-        # the listener's own switch (off by default) or the feel's listening: false says why (README S5.20)
-        assert rb["listening_effective"] is False and rb["listening_why"] in ("AI listening is off",
-                                                                            "this feel doesn't listen")
+        # the listener's own switch (off by default) says why; a feel no longer can (09's audit ai-F6)
+        assert rb["listening_effective"] is False and rb["listening_why"] == "Off"   # the switch alone decides
         assert rb["problems"] == [] and rb["boot_id"] == odd["boot_id"]
         look = wait_for(lambda: next((d for d in reversed(tap.of(contract.ROOM_LOOK)) if d["vibe"] == "e2e-lively"),
                                      None), 5, "room.look for the vibe")

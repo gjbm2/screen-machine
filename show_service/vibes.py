@@ -73,7 +73,6 @@ _SPECS: dict[str, dict] = {
     "change_rate": {"kind": "num", "min": 0.0, "max": 1.0},
     "dwell_s": {"kind": "range", "min": 1.0, "max": 86400.0},
     "relax_on_talk": {"kind": "bool"},
-    "listener": {"kind": "bool"},
     "palettes": {"kind": "palettes"},
     "key_cct": {"kind": "num", "min": 1500.0, "max": 6500.0},
     "lamp_chroma_max": {"kind": "num", "min": 0.0, "max": 0.37},
@@ -95,13 +94,16 @@ _SPECS: dict[str, dict] = {
     "persona": {"kind": "text"},
 }
 assert tuple(_SPECS) == contract.VIBE_FIELDS
+#: fields a vibe no longer has, ignored without a problem line where old files or stored overrides still carry them
+#: (``listener``: 09's audit ai-F6, 21 Oct: the AI listening switch alone decides)
+RETIRED_FIELDS = frozenset({"listener"})
 
 #: S3.5's neutral column. ``label`` is the vibe's name and ``energy_centre`` the middle of ``energy``: both are filled
 #: per vibe by ``Vibes.get`` / ``effective``; the values here are what an unnamed, unbounded vibe would have.
 NEUTRAL: contract.VibeSettings = {
     "label": "", "description": "", "energy": [0.0, 1.0], "energy_centre": 0.5, "loudness_ref_lufs": None,
     "follow": ["energy"], "follow_amount": 0.5, "beat_lock": True, "change_looks": "phrase", "change_rate": 0.5,
-    "dwell_s": [45.0, 180.0], "relax_on_talk": True, "listener": True, "palettes": [], "key_cct": 2700.0,
+    "dwell_s": [45.0, 180.0], "relax_on_talk": True, "palettes": [], "key_cct": 2700.0,
     "lamp_chroma_max": 0.05, "chroma_max": 0.37, "saturation": [0.5, 1.0], "contrast": [0.3, 0.7],
     "level": [0.5, 1.0], "floor": 0.1, "motion": [0.1, 0.5], "accents": "none", "strobe": False,
     "peak_tokens_per_hour": 0, "moods": [], "genre": None, "transition_style": None, "palette_family": None,
@@ -163,7 +165,6 @@ FIELD_SCHEMAS: dict[str, dict] = {
     "change_rate": _num_schema("change_rate", "How often looks change"),
     "dwell_s": _range_schema("dwell_s", "Time between looks", "s"),
     "relax_on_talk": _bool_schema("relax_on_talk", "Relax when people talk"),
-    "listener": _bool_schema("listener", "The AI may listen"),
     "palettes": {"type": "array", "items": {"type": "string"}, "default": [],
                  "x-ui": _ui("Palettes, best first", "select", unset_label="warm white only")},
     "key_cct": _num_schema("key_cct", "Key lamps' white", "K", 50),
@@ -405,6 +406,8 @@ class Vibes:
                 if f == COMPOSE_BLOCK:                       # the composer's limits (README S5.18)
                     limits[name] = comp.parse_limits(v, f"vibes.{name}.{f}", problems)
                     continue
+                if f in RETIRED_FIELDS:
+                    continue
                 if f not in _SPECS:
                     problems.append(f"vibes.{name}.{f}: unknown field: ignored")
                     continue
@@ -532,6 +535,8 @@ class Vibes:
         for f, v in (target.get("overrides") or {}).items():
             if f in NOT_OVERRIDABLE:
                 probs.append(f"overrides.{f}: belongs to the vibe and can't be overridden: ignored")
+                continue
+            if f in RETIRED_FIELDS:
                 continue
             if f not in _SPECS:
                 probs.append(f"overrides.{f}: unknown field: ignored")

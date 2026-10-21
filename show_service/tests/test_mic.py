@@ -106,12 +106,12 @@ def test_the_mode_claim_turns_it_on_and_mute_always_wins(tmp_path):
     assert b["streams"] == {"capturing": ["room-mic", "pc22-mic"], "off": []}       # no choice: every room mic
     assert e.rx.calls[-1] == ([], ALL) and e.rings.offs[-1] == [] and "card" in e.notes
     b = e.mic.put(muted=True)
-    assert b["on"] is False and b["why"] == "Muted: Party can't follow the music"
+    assert b["on"] is False and b["why"] == "Switched off: Party can't follow the music"
     assert e.rx.calls[-1][0] == ["pc22-mic", "room-mic"]
     e.room = None                                                  # no room view: "this mode"
-    assert e.mic.evaluate()["why"] == "Muted: this mode can't follow the music"
+    assert e.mic.evaluate()["why"] == "Switched off: this mode can't follow the music"
     b = e.mic.put(mode=False)
-    assert b["why"] == "Muted" and b["wanted"] is False and b["claims"] == []
+    assert b["why"] == "Switched off" and b["wanted"] is False and b["claims"] == []
     b = e.mic.put(muted=False)
     assert b["why"] == "Off: nothing needs it"
     assert json.loads(e.file.read_text()) == {"v": 1, "muted": False, "mode": False}
@@ -127,9 +127,9 @@ def test_auto_on_wants_it_live(tmp_path):
     assert b["why"] == "Listening for Auto and Party"               # a transition: the mode being entered
     assert [c["by"] for c in b["claims"]] == ["auto", "mode"]
     b = e.mic.put(muted=True)
-    assert b["why"] == "Muted: Auto and Party can't hear the room"
+    assert b["why"] == "Switched off: Auto and Party can't hear the room"
     e.mic.put(mode=False)
-    assert e.mic.evaluate()["why"] == "Muted: Auto can't hear the room"
+    assert e.mic.evaluate()["why"] == "Switched off: Auto can't hear the room"
     e.mic.put(muted=False)
     e.auto = None                                                  # unknown (the room not reached yet): no claim
     assert e.mic.evaluate()["on"] is False
@@ -223,7 +223,7 @@ def test_why_words():
     assert w(True, False, False, True, "Party") == "Listening: Party follows the music"
     assert w(True, False, True, True, None) == "Listening for Auto and this mode"
     assert w(False, False, False, False, None) == "Off: nothing needs it"
-    assert w(False, True, False, False, None) == "Muted"
+    assert w(False, True, False, False, None) == "Switched off"
 
 
 def test_the_thread_wakes_at_once(tmp_path):
@@ -258,7 +258,7 @@ async def _routes(e):
         assert r.status == 200 and (await r.json())["on"] is True
         r = await c.put("/api/v1/mic", json={"muted": True})
         b = await r.json()
-        assert r.status == 200 and b["on"] is False and b["why"] == "Muted: this mode can't follow the music"
+        assert r.status == 200 and b["on"] is False and b["why"] == "Switched off: this mode can't follow the music"
         for bad in ({}, {"muted": "yes"}, {"mode": None}, [1]):
             r = await c.put("/api/v1/mic", json=bad)
             assert r.status == 400 and set(await r.json()) == {"error", "detail"}

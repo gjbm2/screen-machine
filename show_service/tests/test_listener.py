@@ -184,8 +184,9 @@ def test_the_switch_is_the_only_on_off(tmp_path, stream):
 
 
 def test_the_words_are_only_the_five(tmp_path):
-    assert L.STATUS_WORDS == ("Listening", "Paused: quiet", "Paused: people talking",
-                              "Paused: can't check for talking", "Off")
+    assert L.STATUS_WORDS == ("Listening", "Starting", "Paused: quiet", "Paused: people talking",
+                              "Paused: no sound from the mic", "Paused: Room mic is off", "Paused: no AI model set up",
+                              "Off")                     # 09's audit ai-F3: one word per reason
 
 
 def test_sparse_music_readings_send_every_cadence(tmp_path):
@@ -236,20 +237,13 @@ def test_talking_in_the_clip_skips_it(tmp_path):
     assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
 
 
-def test_no_ced_means_cant_check_for_room_sound_only(tmp_path):
+def test_no_ced_reading_never_holds_a_clip_back(tmp_path):
+    """09's audit ai-F2 (21 Oct): no fail-closed pause. With no CED reading, or a worker gone a minute, it sends."""
     rig = Rig(tmp_path, stream="room-mic")
     rig.fill()
-    run(rig.ticks(3))
-    assert rig.lis.view()["status"] == "Paused: can't check for talking" and rig.llm.calls == []
-    music_now(rig)
-    for r in rig.ml["ced_recent"]:
-        r["t"] -= 60.0                                   # the worker stopped a minute ago
-    run(rig.tick(0.0))
-    assert rig.lis.view()["status"] == "Paused: can't check for talking"
-    rig2 = Rig(tmp_path, stream="test-audio")            # a room_sound: false file: no talking check at all
-    rig2.fill()
-    run(rig2.tick())
-    assert rig2.lis.view()["status"] == "Listening" and len(rig2.llm.calls) == 1
+    run(rig.tick())
+    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
+    assert not hasattr(L, "WHY_CANT_CHECK")
 
 
 def test_a_fresh_worker_with_no_reading_in_the_clip_still_sends(tmp_path):
@@ -261,11 +255,10 @@ def test_a_fresh_worker_with_no_reading_in_the_clip_still_sends(tmp_path):
     assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
 
 
-@pytest.mark.parametrize("case,status,detail", [("quiet", "Paused: quiet", None),
-                                                ("no_sound", "Paused: quiet", L.DETAIL_NO_SOUND),
-                                                ("no_model", "Off", L.DETAIL_NO_MODEL),
-                                                ("too_little_audio", "Paused: quiet", L.DETAIL_NO_SOUND)])
-def test_why(tmp_path, case, status, detail):
+@pytest.mark.parametrize("case,status", [("quiet", "Paused: quiet"), ("no_sound", "Paused: no sound from the mic"),
+                                         ("no_model", "Paused: no AI model set up"),
+                                         ("too_little_audio", "Starting")])
+def test_why(tmp_path, case, status):
     rig = Rig(tmp_path, stream="test-audio")
     rig.fill()
     if case == "quiet":
@@ -283,7 +276,7 @@ def test_why(tmp_path, case, status, detail):
         await rig.ticks(12)
     run(go())
     v = rig.lis.view()
-    assert v["status"] == status and v["why"] == status and v["detail"] == detail and v["effective"] is False
+    assert v["status"] == status and v["why"] == status and v["effective"] is False
     assert (v["next_in_s"] is None) == (case != "quiet") and rig.llm.calls == []   # quiet: decided at each send
 
 
@@ -316,20 +309,22 @@ def test_history_lists_round_trips_and_folds_repeated_skips(tmp_path):
 
 
 def test_the_status_is_the_last_send_time_decision(tmp_path):
-    """09, 21 Oct: no flicker between sends; "can't check" only when a send was really skipped for it."""
+    """09, 21 Oct: no flicker between sends: the status changes only when a send is decided."""
     rig = Rig(tmp_path, stream="room-mic")
     rig.fill(seconds=38.0)
     rig.llm.results = [ok(verdict(coming=[]))]             # nothing coming: the steady 15 s cadence
-    music_now(rig)
-    run(rig.tick())
-    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
-    rig.ml = None                                         # the worker drops out between sends
+    rows = music_now(rig)
+    rows[-1]["speech_p"] = 0.9                            # people talking now
+    run(rig.tick(0.0))
+    assert rig.lis.view()["status"] == "Paused: people talking" and rig.llm.calls == []
+    rows[-1]["speech_p"] = 0.0                            # they stop between sends
     for _ in range(5):
         run(rig.tick())
-        assert rig.lis.view()["status"] == "Listening"    # no send was due: the last decision stands
+        assert rig.lis.view()["status"] == "Paused: people talking"   # no send was due: the last decision stands
     rig.now += 15.0
-    run(rig.tick(0.0))                                    # the next send: skipped for it, and now it says so
-    assert rig.lis.view()["status"] == "Paused: can't check for talking" and len(rig.llm.calls) == 1
+    music_now(rig)
+    run(rig.tick(0.0))                                    # the next send goes, and now it says so
+    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
 
 
 def test_every_sent_clip_is_kept_and_listed(tmp_path):
@@ -951,8 +946,7 @@ def test_a_stream_the_mic_keeps_off_never_gives_a_clip(tmp_path):
             rig.rings.set_off(["test-audio"])
         run(rig.ticks(3))
         v = rig.lis.view()
-        assert rig.llm.calls == [] and rig.pub == [] and v["status"] == L.WHY_QUIET, how
-        assert v["detail"] == L.DETAIL_MIC_OFF, how
+        assert rig.llm.calls == [] and rig.pub == [] and v["status"] == "Paused: Room mic is off", how
 
 
 def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
@@ -964,7 +958,7 @@ def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
         return b"MP3", "mp3"
     rig.lis._encode = enc
     run(rig.tick())
-    assert rig.llm.calls == [] and rig.lis.log(1)[0]["detail"] == L.DETAIL_MIC_WENT_OFF
+    assert rig.llm.calls == [] and rig.lis.log(1)[0]["why"] == "Paused: Room mic is off"
 
 
 
