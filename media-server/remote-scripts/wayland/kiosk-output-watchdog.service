@@ -1,0 +1,15 @@
+# Kiosk output watchdog (21 Oct 2026): power-cycles a TV output that stops drawing (the sway 1.9 / i915 stall that
+# froze south 06:07-07:57), then restarts that TV's Chrome if that wasn't enough. A systemd --user unit (the kiosk's
+# gjbm2 lingers, like show-sender.service). Installed by media-server/local-scripts/deploy-output-watchdog.sh.
+[Unit]
+Description=Kiosk output watchdog: un-freezes a TV whose sway output stops drawing
+After=default.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/kiosk-watchdog/output_watchdog.py
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=default.target
