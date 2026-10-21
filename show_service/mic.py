@@ -26,8 +26,8 @@ Routes, on show-bus (pages reach them through room's ``/show/*`` pass-through):
                     error}
   PUT /api/v1/mic   {muted?: bool, mode?: bool} (at least one) -> the GET body; else 400 {error, detail}. ``muted`` is
                     the Room page's Mute; ``mode`` is room_service's ``show.mic``.
-The card carries the same body as ``mic_state`` (api.card), and says "Mic muted" / "Mic off" when that is why no room
-sound comes in.
+The card carries the same body as ``mic_state`` (api.card), and says "Room mic switched off" / "Mic off" when that is
+why no room sound comes in.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str
     """The Room page's words for the mic's state (plain words; ``label`` the mode's, else "this mode")."""
     lab = label or THIS_MODE
     if listening and not auto and not mode:
-        return "Listening for AI listening" if on else "Muted: AI listening can't hear the room"
+        return "Listening for AI listening" if on else "Switched off: AI listening can't hear the room"
     if on:
         if auto and mode:
             return f"Listening for Auto and {lab}"
@@ -72,13 +72,13 @@ def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str
         return f"Listening: {lab} follows the music"
     if not muted:
         return "Off: nothing needs it"
-    if auto and mode:
-        return f"Muted: Auto and {lab} can't hear the room"
+    if auto and mode:                                   # 09's audit H7: "Switched off", the Room page's own word
+        return f"Switched off: Auto and {lab} can't hear the room"
     if auto:
-        return "Muted: Auto can't hear the room"
+        return "Switched off: Auto can't hear the room"
     if mode:
-        return f"Muted: {lab} can't follow the music"
-    return "Muted"
+        return f"Switched off: {lab} can't follow the music"
+    return "Switched off"
 
 
 class Mic:

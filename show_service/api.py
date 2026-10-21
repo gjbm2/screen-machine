@@ -333,7 +333,7 @@ NO_DEVICE = "No microphone plugged in"
 STOPPED = "The microphone stopped sending"
 MIC_STARTING = "The microphone is starting"     # the mic is on, its sender hasn't opened it yet (README S5.16)
 #: hearing.text when the mic on demand (mic.py, README S5.16) is why no room sound arrives: these win over the above
-MIC_MUTED = "Mic muted"
+MIC_MUTED = "Room mic switched off"                # 09's audit H7: the Room page's own word for its Mute
 MIC_OFF = "Mic off"
 
 
@@ -410,7 +410,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     energy (loudness against the mode's expected loudness, gated), not a meter. hearing.mic is inputs.Inputs.mic():
     {stream, device, chosen} for the active stream (None without one).
 
-    hearing.text, first match wins: why nothing arrives when no sound comes in (the mic on demand first: "Mic muted" /
+    hearing.text, first match wins: why nothing arrives when no sound comes in (the mic on demand first: "Room mic
+    switched off" /
     "Mic off", README S5.16; then _input_words: no microphone connected / not answering / not plugged in / starting /
     stopped sending), music.context's confident genre (Stage 4, structure's snapshot; with the listener's first mood),
     confident beliefs ("soul · relaxed"), Talking, Quiet, No sound coming in (no active audio, or features older than

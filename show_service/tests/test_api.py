@@ -1615,7 +1615,7 @@ def test_card_says_mic_muted_or_off_when_that_is_why_nothing_arrives():
     from show_service.api import MIC_MUTED, MIC_OFF, MIC_STARTING, STOPPED
     off = {"on": False, "muted": False, "wanted": False, "why": "Off: nothing needs it", "claims": [], "mode": False,
            "streams": {"capturing": [], "off": ["room-mic"]}, "error": None}
-    muted = {**off, "muted": True, "wanted": True, "why": "Muted: Auto can't hear the room",
+    muted = {**off, "muted": True, "wanted": True, "why": "Switched off: Auto can't hear the room",
              "claims": [{"by": "auto", "label": "Auto"}]}
     on = {**off, "on": True, "wanted": True, "why": "Listening for Auto", "claims": [{"by": "auto", "label": "Auto"}],
           "streams": {"capturing": ["room-mic"], "off": []}}

@@ -4099,9 +4099,8 @@ class Director:
         t = self.target
         vs, known = self._effective()
         listening = bool(t["listening"]) if t else False    # as the mode asked: kept for readers, no longer a gate
-        why = None                                           # (owner, 17 Oct: the AI listening switch, Auto and the
-        if not vs["listener"]:                               # mic decide, and a feel may still say listener: off)
-            why = "this feel doesn't listen"
+        why = None                                           # the AI listening switch alone decides (09's audit ai-F6):
+                                                             # api fills listening_effective/_why from the listener
         out: contract.VibeReadback = {
             "vibe": t["vibe"] if t else None, "listening": listening,
             "source": "restored" if (t and self.restored) else (self.target_source if t else "none"),
