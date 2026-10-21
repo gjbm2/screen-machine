@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import os
 import signal
 import sys
@@ -223,7 +224,7 @@ def test_beat_vote_octaves_and_unrelated_tempi():
     off = [t_of(k) + 0.2 for k in range(180, 230)]            # right tempo, wrong phase: no agreement
     assert M.beat_vote(beats_msg(off), CLOCK, {})["conf"] == 0.0
     assert M.beat_vote(beats_msg(off), None, {})["why"] == "no grid"
-    assert M.beat_vote(beats_msg(off), {**CLOCK, "gate": "none"}, {})["why"] == "no grid"
+    assert M.beat_vote(beats_msg(off), {**CLOCK, "gate": "none", "state": "searching"}, {})["why"] == "no grid"
     assert M.beat_vote(beats_msg(off[:3]), CLOCK, {})["why"] == "too few beats"
 
 
@@ -396,6 +397,90 @@ def test_an_agreeing_vote_is_sent_as_a_confirmation_at_most_every_cooldown():
     L.vote(agree)
     assert len(L.calls) == 1                                  # within cooldown_s: nothing more
     assert L.link.confirmed == 1 and L.link.applied == 0
+
+
+def x2_at(t1, epoch_clock=CLOCK):
+    """Beat This! at twice the clock's tempo over a window ending at ``t1`` (its interior, on the clock's grid)."""
+    T = 60.0 / epoch_clock["bpm"] / 2
+    a = epoch_clock["anchor_ms"] / 1000.0
+    n0, n1 = math.ceil((t1 - 27.0 - a) / T), math.floor((t1 - 3.0 - a) / T)
+    beats = [a + n * T for n in range(n0, n1 + 1)]
+    return beats_msg(beats, beats[:1], w=(t1 - 30.0, t1))
+
+
+def test_the_run_survives_turns_that_are_no_vote():
+    """README S4.5 "Apply" (21 Oct): "no grid", "too few beats" and "the tempi don't relate" neither add to the run
+    nor break it (26's lookatmenow: four x0.5 votes, never two turns in a row)."""
+    L = Link(cooldown_s=0)
+    assert L.vote(x2_at(120.0))["why"] == "waiting for a second run"
+    assert L.vote(beats_msg([t_of(k) for k in (226, 227, 228)], w=(100.0, 130.0)))["why"] == "too few beats"
+    L.clock = {**CLOCK, "gate": "none", "state": "searching"}
+    assert L.vote(x2_at(140.0))["why"] == "no grid"
+    L.clock = dict(CLOCK)
+    assert L.vote(beats_msg([t_of(180) + i / 3.0 for i in range(60)]))["why"] == "the tempi don't relate"
+    v = L.vote(x2_at(160.0))
+    assert v["applied"] and L.calls == [{"octave": 2.0, "add_min": 0.2, "drop_max": 0.5, "prior_oct": 0.8}]
+
+
+def test_the_run_expires_after_run_max_s_and_clears_on_a_new_epoch():
+    L = Link(cooldown_s=0)
+    assert L.link.votes_cfg["run_max_s"] == 90
+    L.vote(x2_at(120.0))
+    assert L.vote(x2_at(211.0))["why"] == "waiting for a second run"     # 91 s after the first: it fell out
+    assert L.vote(x2_at(301.0))["applied"]                                 # 90 s after the second: still in
+    L = Link(cooldown_s=0)
+    L.vote(x2_at(120.0))
+    L.clock = {**CLOCK, "epoch": CLOCK["epoch"] + 1}                       # a new grid between the votes
+    assert L.vote(x2_at(130.0))["why"] == "waiting for a second run"
+    assert L.vote(x2_at(140.0))["applied"] and len(L.calls) == 1
+    L = Link(cooldown_s=0, run_max_s=200)                                  # show.yaml's ml.beat_votes.run_max_s
+    L.vote(x2_at(120.0))
+    assert L.vote(x2_at(300.0))["applied"]
+    L = Link(run_max_s=0)
+    assert L.link.snapshot()["problems"] == ["ml.beat_votes.run_max_s: 0 is not usable: 90 used"]
+
+
+def test_a_contrary_vote_or_low_agreement_breaks_the_run():
+    L = Link(cooldown_s=0)
+    L.vote(x2_at(120.0))
+    assert L.vote(one_two_msg())["why"] == "waiting for a second run"     # another key: the run starts again
+    assert L.vote(x2_at(140.0))["why"] == "waiting for a second run"
+    off = beats_msg([t_of(k) + (0.2 if k >= 214 else 0.0) for k in range(180, 230)])   # under min_conf
+    assert L.vote(off)["why"] == "low agreement"
+    assert L.vote(x2_at(160.0))["why"] == "waiting for a second run"
+    assert L.vote(x2_at(170.0))["applied"] and len(L.calls) == 1
+
+
+def test_an_ungated_locked_or_holding_line_is_voted_on_a_searching_or_free_one_is_no_grid():
+    """26's 031 (true 91): the clock locked at 181 with its gate none on 19 of 26 turns, Beat This! at 91 ("no grid"
+    before 21 Oct). An ungated line in locked or holding is read; searching and free are not (README S4.5)."""
+    msg = x2_at(120.0)
+    for state in ("locked", "holding"):
+        v = M.beat_vote(msg, {**CLOCK, "gate": "none", "state": state}, {})
+        assert v["why"] is None and v["octave"] == 2.0 and v["conf"] == 1.0, state
+    for state in ("searching", "free", None):
+        assert M.beat_vote(msg, {**CLOCK, "gate": "none", "state": state}, {})["why"] == "no grid", state
+    assert M.beat_vote(msg, {**CLOCK, "gate": "dmx", "state": "free"}, {})["why"] is None     # gated: as before
+
+
+def test_a_halving_onto_the_other_half_of_the_beats_carries_the_one_that_picks_it():
+    """At 0.5 Beat This!'s beats may sit on either half of the clock's beats (26's 031: the bar anchor's other half,
+    conf 0.0 before 21 Oct). The vote reads both: on the bar anchor's half it carries no one; on the other it carries
+    the beat one after the bar anchor (mod 2 bars) within a bar of the clock's anchor, which picks that half at the
+    clock. The run's key is the half."""
+    odd = [t_of(k) for k in range(181, 230, 2)]               # the clock's odd beats: its bar anchor (200) is even
+    v = M.beat_vote(beats_msg(odd), CLOCK, {})
+    assert v["octave"] == 0.5 and v["conf"] == 1.0 and v["why"] is None
+    one = v["beat_is_one"]
+    assert one % 8 == 201 % 8 and abs(one - CLOCK["beat_at_anchor"]) <= 4
+    even = M.beat_vote(beats_msg([t_of(k) for k in range(180, 230, 2)]), CLOCK, {})
+    assert even["conf"] == 1.0 and even["beat_is_one"] is None
+    L = Link(cooldown_s=0)
+    L.vote(beats_msg(odd))
+    assert L.vote(beats_msg([t_of(k) for k in range(180, 230, 2)]))["why"] == "waiting for a second run"
+    L.vote(beats_msg(odd))
+    assert L.vote(beats_msg(odd))["applied"]
+    assert L.calls == [{"octave": 0.5, "beat_is_one": one, "add_min": 0.2, "drop_max": 0.5, "prior_oct": 0.8}]
 
 
 def test_configure_problems_keep_the_starting_points():
