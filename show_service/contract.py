@@ -519,8 +519,8 @@ class LookData(TypedDict):
     ensemble: "EnsembleData"       # the same object as room.direction's
     gestures: list["GestureData"]  # the recent ones, newest last (<= ensemble.gestures.keep); never on the bus
 
-class LightSceneDrop(TypedDict):
 
+class LightSceneDrop(TypedDict):
     """LookData.light_scene_drop: a drop line (structure's drop, a cue's forecast drop) for the light scene's drop
     flash (looks.LookEngine.trigger_hit, taken once per ``id``), whatever the peak tokens say."""
     id: str                        # "drop:<n>": +1 per drop line the director passes on
@@ -682,8 +682,8 @@ class DirectionData(TypedDict):
                                    # once on a new flow.id
     ensemble: "EnsembleData"       # docs/ENSEMBLE.md: forms, roles, staggers per screen; published at once on a new
                                    # (id, rev)
-    pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
     # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
+    pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
     peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
                                    # pick reads them instead of its own fixed peak, from step 3)
 
