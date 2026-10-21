@@ -9,7 +9,7 @@
 // Under it, what Auto makes of it (owner, 20 Oct: "didn't change automatically to piano after playing midi for 15s"):
 // show_service's autopilot candidate for the mode whose rule is "the piano is playing" (GET /show/api/v1/autopilot,
 // every 2 s: counting down, or why it won't switch) and, while someone has just played, why "the piano is playing"
-// is still false (GET /show/api/v1/situations: too few notes, too few different keys, the mic doesn't hear it), with
+// is still false (GET /show/api/v1/situations: too few notes, too few different keys), with
 // show.yaml's numbers from the word's own vocabulary. The mode's name and rule come from /show/api/v1/autopilot/rules.
 // Nothing to set here: the row only reports.
 
@@ -51,9 +51,6 @@ function notYet(ev: Record<string, unknown>, word: Word | null): string | null {
   const d = (k: string) => num(word?.params?.[k]?.default);
   const window = num(ev.window_s) ?? d("window_s");
   const within = window ? ` in ${window} s` : "";
-  if (typeof ev.why === "string" && ev.heard_lufs !== undefined) {
-    return `the room mic barely hears the piano (${num(ev.heard_lufs)} dB, needs ${num(ev.heard_min_lufs)})`;
-  }
   if (typeof ev.why === "string") return ev.why;
   const notes = num(ev.notes) ?? 0;
   const pitches = num(ev.pitches) ?? 0;
@@ -220,13 +217,13 @@ export function PianoRow({ api }: { api: RoomApi }) {
   if (target && auto) {
     const needs = num(cand?.needs_s);
     if (auto.on === false) autoLine = `Auto is off, so it won't switch to ${modeLabel} by itself.`;
-    // paused, waiting after a switch that didn't finish, switching now: Auto's own line says it (with Resume above)
-    else if (auto.state && auto.state !== "watching" && auto.line) autoLine = `${auto.line}.`;
+    // paused, waiting after a switch that didn't finish, switching now: Auto's own row above says it, so no line here
+    else if (auto.state && auto.state !== "watching") autoLine = null;
     else if (cand?.blocked === "it's the current mode") autoLine = `Auto: in ${modeLabel} now.`;
     else if (cand?.blocked) autoLine = `Auto won't switch to ${modeLabel}: ${cand.blocked}.`;
     else if (cand?.holds && needs !== null)
       autoLine = `Auto: switching to ${modeLabel} in ${Math.max(0, Math.ceil(needs - (num(cand.held_s) ?? 0)))} s.`;
-    else if (played && reading?.value === false && reading.evidence) {
+    else if (played && !last?.test && reading?.value === false && reading.evidence) {
       const why = notYet(reading.evidence, word);
       autoLine = `Auto isn't counting yet${why ? `: ${why}` : ""}.`;
     } else if (target.enter) autoLine = `Auto switches to ${modeLabel} when ${target.enter}.`;

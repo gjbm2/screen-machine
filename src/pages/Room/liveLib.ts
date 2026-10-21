@@ -239,11 +239,5 @@ export function fxChips(look: Look | null | undefined, lib: Library | null, kind
   return out;
 }
 
-/** "That's 6: <name> came off." */
-export const droppedWords = (max: number, label: string) => `That's ${max}: ${label} came off.`;
-
-export function mismatchWords(asked: string, got: string | null, lib: Library | null): string | null {
-  if (got === asked) return null;
-  const label = presetLabel(asked, lib);
-  return got ? `${label} doesn't fit with this scene just now; it put ${presetLabel(got, lib)} on.` : `${label} doesn't fit with this scene just now.`;
-}
+/** "<name> came off to make room: a screen runs 6 effects at most." */
+export const droppedWords = (max: number, label: string) => `${label} came off to make room: a screen runs ${max} effects at most.`;
