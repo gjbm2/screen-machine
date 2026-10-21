@@ -215,7 +215,8 @@ Corrections (*any thread*)
     (``corr_refused``). One that has not met its bar line after twice the longest wait (2 x bar_len beats, x2 for
     octave 0.5: the count moved under it) is dropped (``corr_expired``), never applied off a bar line.
   - The dbn estimator's octave is the publisher's octave map ("Estimators"): an octave also waits for a beat of both
-    grids, and its range is DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM.
+    grids (past a bar line that is an in-between beat, the first one after it, which then starts the bar), and its
+    range is DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM.
   - Every accepted call (it agrees on the octave, or sets one) holds the clock's own octave check off for
     SLOW_OCT_HOLD_S. ``stats()["last_correction"]`` = ``{one, bar_len, octave, result, at_beat}`` for the latest
     (result ``accepted``, ``applied``, ``bad``, ``no_grid``, ``stale``, ``superseded``, ``refused`` or
@@ -243,7 +244,7 @@ import threading
 import time
 import warnings
 import weakref
-from typing import Literal, Optional, Protocol
+from typing import Callable, Literal, Optional, Protocol
 
 import numpy as np
 
@@ -1724,6 +1725,19 @@ class Clock:
         """Can an octave ``f`` switch at published beat ``K`` (dbn: a beat of both grids)? Legacy: always."""
         return self._trk is None or self._om_ref(K - self._off, self._om_f * f) is not None
 
+    def _om_bar_wait(self, K: int, f: float, at_bar: Callable[[int], bool]) -> Optional[int]:
+        """An octave ``f`` that switches at a bar line (``at_bar``): 0 when the upcoming beat ``K`` is one and a beat
+        of both grids; under a map of factor 2 (4) the bar line can be an in-between beat (the tracker re-phased by
+        half its beat under the map, or a one landed there), and then the first beat of both grids after it, 1 (to 3)
+        beats on; None: not here. Legacy and factor <= 1: 0 at a bar line, as before."""
+        if not self._om_switchable(K, f):
+            return None
+        n = int(self._om_f) if self._trk is not None and self._om_f > 1.0 else 1
+        for j in range(n):
+            if at_bar(K - j):
+                return j if j == 0 or not self._om_switchable(K - j, f) else None
+        return None
+
     def _om_clear(self, why: str) -> None:
         """The map ends (factor 1, referred to the last tracker beat the bar code has had); counted by ``why``:
         contrary (a correction back), joined (the tracker came to the mapped octave itself), jump (a confirmed tempo
@@ -1766,7 +1780,10 @@ class Clock:
             return
         k0, t0, T = ln
         bpm_e = 60.0 / T
-        if self._om_f != 1.0 and not resync and not DBN_OCT_MIN_BPM <= bpm_e <= DBN_OCT_MAX_BPM:
+        # (a mapped tempo out of the range that is also a jump, such as the tracker at the mapped octave by itself, is
+        # judged as a jump below: confirmed, then joined or jump; here the map's own drift out of the range)
+        if (self._om_f != 1.0 and not resync and not DBN_OCT_MIN_BPM <= bpm_e <= DBN_OCT_MAX_BPM
+                and (explicit or not self._pub_ok or abs(bpm_e / self._pub_base - 1.0) <= DBN_NEW_TEMPO)):
             self._om_clear("range")
             k0, t0, T = ln = self._om_line()
             bpm_e = 60.0 / T
@@ -2627,11 +2644,13 @@ class Clock:
         K = self._upcoming()                            # the upcoming beat, published numbering
         changed = False
         if self._pending_oct is not None and self._pending is None:
-            if ((self._bar_conf < 0.5 or (K - self._bar_anchor) % self._bpb == 0)
-                    and self._om_switchable(K, self._pending_oct)):
+            j = self._om_bar_wait(K, self._pending_oct,
+                                  lambda x: self._bar_conf < 0.5 or (x - self._bar_anchor) % self._bpb == 0)
+            if j is not None:
                 f, kick = self._pending_oct, self._pending_kick
                 self._pending_oct = self._pending_kick = None
                 if self._apply_octave(f, kick=kick):
+                    self._bar_anchor += j                   # (past an in-between bar line: the switch beat starts it)
                     changed = True
                     self._counts["octave_changes"] += 1
                     if kick is not None:
@@ -2645,8 +2664,12 @@ class Clock:
             # counted from the one; it starts a bar when that is a whole multiple of L. With octave = num / den:
             # (K - ref) x num = 0 mod (L x den)
             num, den = (2, 1) if p["oct"] == 2.0 else ((1, 2) if p["oct"] == 0.5 else (1, 1))
-            # (dbn, under an octave map: an octave also needs K to be a beat of both grids, _om_switchable)
-            if ((K - ref) * num) % (L * den) == 0 and (p["oct"] == 1.0 or self._om_switchable(K, p["oct"])):
+
+            def at_bar(x: int) -> bool:
+                return ((x - ref) * num) % (L * den) == 0
+
+            # (dbn, under an octave map: an octave also needs K to be a beat of both grids, _om_bar_wait)
+            if at_bar(K) if p["oct"] == 1.0 else (self._om_bar_wait(K, p["oct"], at_bar) is not None):
                 self._pending = None
                 into = ((K - self._bar_anchor) // self._bpb) % self._phrase_bars
                 if p["oct"] != 1.0:

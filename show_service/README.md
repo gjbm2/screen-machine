@@ -4722,7 +4722,9 @@ from now (0.15-0.65, under min_conf 0.6). And an octave that did apply only last
   quickstep window conf 0.154 -> 1.0.
 - **The octave map** (clock.py, the dbn publisher): an octave (the slow lane's, the human's half/double) no longer
   touches the tracker. It sets the publisher's factor (x2 or x0.5 of what it was, 1/4..4) at the upcoming beat (the
-  bar line once bar_conf >= 0.5, and a beat of both grids), which keeps its time and number; from there the
+  bar line once bar_conf >= 0.5, and a beat of both grids; a bar line that is an in-between beat, after the tracker's
+  beats moved half a beat under a map or a one landed there, switches at the first beat of both grids after it, which
+  then starts the bar), which keeps its time and number; from there the
   published line is the tracker's line at factor x its tempo, while the DBN tracks on at its own octave underneath
   (its conf, state and gate unchanged: on the replays they are bit for bit the unmapped run's). Tracker beat k is
   mapped beat `_om_m + (k - _om_k) x factor`, published `+ _off`: at 2 each tracker beat is two published beats (the
@@ -4733,9 +4735,10 @@ from now (0.15-0.65, under min_conf 0.6). And an octave that did apply only last
   one followed, the DBN came to the mapped octave itself, and the line slews on as its own with no new grid), a run
   of taps (their tempo is the human's octave; a single tap keeps the map), a mapped tempo out of 45-200 bpm with 8 %
   slack (`DBN_OCT_MIN_BPM`..`DBN_OCT_MAX_BPM`, 41.7-216: a quickstep at 50-52 bars a minute is 200-208, and its
-  tracker at the half reads 101-104; the switch's range too), or a contrary correction (factor back to 1). The
-  tracker's own octave hold (`set_octave`) is gone; taps keep `HOLD_S`. Stats: `oct_factor`, `oct_age_s`,
-  `oct_maps_applied`, `oct_maps_cleared`, `oct_clear_<why>` (contrary, joined, jump, range, cold, tap).
+  tracker at the half reads 101-104; the switch's range too; out of it by a jump, such as the DBN at the mapped octave
+  itself mapping to 400, is judged as that jump: confirmed, then joined or jump), or a contrary correction (factor
+  back to 1). The tracker's own octave hold (`set_octave`) is gone; taps keep `HOLD_S`. Stats: `oct_factor`,
+  `oct_age_s`, `oct_maps_applied`, `oct_maps_cleared`, `oct_clear_<why>` (contrary, joined, jump, range, cold, tap).
 - Measured: 26's six inputs (`m06-quickstep`, `m09-reggae`, `m02-waltz`; x1 = the 30 s segment, x4 = it looped 4x
   with jump cuts; 30 s of silence first, gate ref -49 LUFS, `--seed 1`: 26's slow-lane phase), slow lane on, through
   `run_stack.py` (3a's dbn scratch `oct/`; 26's results as "before"). F, CMLt and acc1 (the right tempo, octave
@@ -4770,7 +4773,10 @@ exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker tha
 **Known limits.** The aubio fallback (no madmom) runs the 2-net weights and aubio's own lag, untuned. Under an
 octave map at x2 the tracker's phase error is twice as many published beats, so the published bpm field's slew is
 twice as wide (quickstep x4: acc2 over time 0.83 -> 0.81 while acc1 rose 0 -> 0.66). A vote needs the clock's line
-to hold at its anchor: while it slews hard (gated dmx, 3 %) the window reads low and waits for the next one.
+to hold at its anchor: while it slews hard (gated dmx, 3 %) the window reads low and waits for the next one. A
+slow-lane x0.5 reads its conf on the bar anchor's parity: under a x2 map whose tracker beats moved to the other parity
+(a straight cut, no quiet room, to a song near the old tracker tempo and on the other phase) it reads ~0, so a map
+that is wrong for that song holds until a new grid (synthetic, 21 Oct check: 90 s to the end of the run).
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
