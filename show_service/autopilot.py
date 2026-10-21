@@ -1246,8 +1246,9 @@ class Autopilot:
             self._announce("switch", f"Auto → {self._label(view, a['mode'])} · {words}", mode=a["mode"],
                            previous=a["from"], rule=a["rule"], tid=a["transition_id"], undo=True,
                            reason=a["reason"], evidence=a["evidence"], expires_s=chips["switch_s"])
-            if status == "partial":
-                self._fail(a, wall, "didn't fully finish")
+            if status == "partial":                     # the mode landed: a skipped or unconfirmed side step (a TV
+                self._note("partial", a["mode"], a["rule"],   # with no adapter, a Sonos pause not proven) is reported,
+                           "switched; some steps were skipped or not confirmed")   # never a backoff (owner, 21 Oct)
         else:                                           # failed, or rolled back
             self._fail(a, wall, "didn't finish")
         self._dirty()

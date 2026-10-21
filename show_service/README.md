@@ -1953,11 +1953,11 @@ class Autopilot:                                      # Component "autopilot", t
 |---|---|---|
 | `off` ("Auto is off") | `autopilot.main` isn't "on" | watching when it turns on (suppressions are kept) |
 | `watching` ("Auto · watching") | it evaluates rules | acting, holding, paused, backoff, blind |
-| `acting` ("Auto → Piano…") | its PUT got 202 and the transition runs | watching (done); backoff (partial, failed or rolled back); holding (cancelled by someone else's request) |
+| `acting` ("Auto → Piano…") | its PUT got 202 and the transition runs | watching (done, or partial: the mode landed and a skipped or unconfirmed step is only logged, 21 Oct); backoff (failed or rolled back); holding (cancelled by someone else's request) |
 | `holding` ("Auto paused · you chose Disco · Resume") | a person picked a mode | watching when `hold.until` holds, at `hold.max_s`, or on Resume |
 | `paused`, why `quiet_hours` ("Auto paused · quiet hours") | inside quiet hours: it may **leave** a mode it entered, never enter one | watching at the end of quiet hours |
 | `paused`, why `flap` ("Auto paused · too many changes · Resume") | `max_switches.count` switches within `per_s` | watching after `pause_s`, or on Resume |
-| `backoff` ("Auto waiting · the last switch didn't finish · Resume") | after a partial, failed or rolled-back switch | watching after `backoff_s`, or on Resume |
+| `backoff` ("Auto waiting · the last switch didn't finish · Resume") | after a failed or rolled-back switch (not a partial one: its mode landed) | watching after `backoff_s`, or on Resume |
 | `blind` ("Auto · not listening" / "Auto · modes.json has an error") | room unreachable, or `status.config.error` | the previous state when it comes back |
 
 **Each tick (1 Hz):**
@@ -1993,7 +1993,7 @@ class Autopilot:                                      # Component "autopilot", t
    - `done` → `watching`. An enter sets `entered = {mode, previous, rule, at, transition_id, by: "auto"}`; a leave
      clears it. Announce `switch` (a chip with Undo for `chips.switch_s`) and record the switch time for the flap
      guard.
-   - `partial`, `failed` or rolled back → `backoff`, and announce `failed`.
+   - `failed` or rolled back → `backoff`, and announce `failed`. `partial` (the mode landed, a step skipped or unconfirmed) is a switch, logged as `partial` (owner, 21 Oct).
    - `cancelled` → `holding` (`by: "person"`).
 
 **People win** (a `mode.transition` `started` whose source isn't `autopilot`, `auto-undo`, `boot`, `resume` or
@@ -3962,7 +3962,9 @@ read its result, `music_context.genre`.
     max over `listener.ced.speech_words` (speech, conversation, crowd): guests talking over music show up as
     conversation and babble while "Speech" stays low;
   - **the clip** is the longest contiguous run of seconds, within the last `clip_s`, whose CED reading says music ≥
-    `ced.music_min` and speech < `ced.speech_max`. Each reading speaks for the last `ced.speaks_s` (1 s) of its window;
+    `ced.music_min` and speech < `ced.speech_max`. A run starts `ced.speaks_s` (1 s) before its first reading, and
+    consecutive passing readings join while at most the CED's stale time apart (MLView.stale_s: the worker's real
+    cadence, stretched under load; 21 Oct, 09's audit: readings every 4-8 s never joined, so the gate never opened);
     the latest run wins a tie. S4.13: the run's last second is also in the next reading's window, so it counts only
     when that reading exists and passed (or doesn't reach back into it); otherwise the run ends a second earlier. It
     is cut from the ring with `rings.clip(stream, t0, t1)`;
