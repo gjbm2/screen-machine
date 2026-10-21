@@ -9,8 +9,9 @@
   one, the slow lane's bar and octave votes); the octave map (a minute at x2 over a DBN at its own octave, ended by
   the quiet room's new grid, the cold grid and a contrary vote); the slow lane's octave evidence (the activation's
   ratio at the beats an octave adds or drops; a x2 onto nothing refused, an unheard one too; a halving the audio
-  can't confirm refused at 126 bpm, applied at 184 or with a wider prior; one it confirms applied at 120); bar and
-  phrase fields on a 4/4 loop; the body and stats; a fuzz;
+  can't confirm refused at 126 bpm, applied at 184 or with a wider prior; one it confirms applied at 120; the period
+  it reads is the line's own from its first beat at a new tempo); bar and phrase fields on a 4/4 loop; the body and
+  stats; a fuzz;
 - the published line (README S4.15 "Publishing"), on synthetic activations fed frame by frame (``act_clock``): the
   count only goes forward across a re-phase and a tempo jump; next_beat moves about half as much as the tracker's own
   line under a jittered DBN beat train; the downbeat stays put across a re-lock and a tempo jump; the epoch moves only
@@ -571,6 +572,22 @@ def test_octave_evidence_reads_the_beats_an_octave_adds_or_drops():
     # 25 ms of beat-to-beat jitter
     trk = fed_tracker(act_train([(100.0, 0.3, 30.0)], 30.0, lag, seed=7, jitter_s=0.025))
     assert trk.period() == pytest.approx(0.6, rel=0.02) and D.DbnTracker().period() is None
+
+
+def test_period_is_the_lines_own_tempo_right_after_a_tempo_change():
+    """period() counts only the beats since the line's last new tempo: from the tracker's first beat at 150 after 20 s
+    at 90 it is that line's (not the median of 90's periods, which the octave gate then read for the wrong grid
+    and the prior for the wrong tempo: the 21 Oct check's 172 -> 85.6 that a halving took to 42.8)."""
+    lag = D.SETTINGS["lag_ms"] / 1000.0
+    trk = D.DbnTracker()
+    seen = []
+    for i, v in enumerate(act_train([(90.0, 0.3, 20.0), (150.0, 20.0, 40.0)], 40.0, lag, seed=7, off=0.0)):
+        t = (i + 1) / D.FPS
+        trk.frame(float(v), t)
+        if trk.line is not None and 60.0 / trk.line[2] > 130.0:
+            seen.append(trk.period() / trk.line[2])
+    assert len(seen) > 1000 and all(abs(r - 1.0) <= 0.15 for r in seen)
+    assert trk.period() == pytest.approx(0.4, rel=0.02)
 
 
 def test_a_slow_lane_x2_needs_peaks_midway():
