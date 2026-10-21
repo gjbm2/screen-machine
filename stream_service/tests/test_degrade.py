@@ -1,6 +1,7 @@
 """4K60 plan change 5: the degradation controller (degrade.py, shared plumbing) and what it drives: the scene-rate
 floor (layers.py), the fps step (renderer.py frame ids / fMP4 durations / NVENC Reconfigure), the SPS pin
-(bitstream.py), the FX trim (fx_director.py), the session's reporting.  No GPU."""
+(bitstream.py), the session's reporting.  No GPU.  The ladder is the scene rate and the fps only (owner, 21 Oct:
+"degrade, never refuse": no fewer-effects step)."""
 from __future__ import annotations
 
 import struct
@@ -82,15 +83,14 @@ def test_window_means_per_slot():
 
 
 def test_steps_down_in_order_once_a_second_and_says_why():
-    r = Run()
-    assert r.tick(40.0) is not None and r.c.steps == ["fx"]                  # 40 ms in a 16.7 ms slot: host
-    assert r.c.state()["text"] == "fewer effects: computer busy"
-    assert r.tick(40.0).step == "scene_rate"
+    r = Run()                                                                 # effects on the bus: never trimmed
+    assert r.tick(40.0) is not None and r.c.steps == ["scene_rate"]          # 40 ms in a 16.7 ms slot: host
+    assert r.c.state()["text"] == "scene 30 fps: computer busy" and not r.c.state()["fx_trim"]
     assert r.tick(40.0).step == "fps" and r.out_fps == 30                    # (20 ms a slot with the floor)
     st = r.c.state()
-    assert st["level"] == 3 and st["step"] == "fps" and st["why"] == "computer busy" and st["out_fps"] == 30
-    assert st["text"] == "60 -> 30 fps + scene 15 fps + fewer effects: computer busy" and st["since"].endswith("Z")
-    assert [c[1] for c in r.changes] == ["fx", "scene_rate", "fps"] and [c[0] for c in r.changes] == [1, 2, 3]
+    assert st["level"] == 2 and st["step"] == "fps" and st["why"] == "computer busy" and st["out_fps"] == 30
+    assert st["text"] == "60 -> 30 fps + scene 15 fps: computer busy" and st["since"].endswith("Z")
+    assert [c[1] for c in r.changes] == ["scene_rate", "fps"] and [c[0] for c in r.changes] == [1, 2]
     assert r.tick(30.0) is None and not r.c.state()["floor"]                  # 15 ms in 33 ms: holds
     assert r.tick(80.0) is None and r.c.state()["floor"]                      # nothing left: it stays, says so
 
@@ -102,7 +102,7 @@ def test_a_change_waits_a_whole_second_and_a_spike_in_one_half_is_not_held():
     assert r.c.decide(half, r.ctx, r.t + 0.5, 1000 / 60) is None             # not a whole second since the change
     r.t += 1.0
     spike = second(r.t, 60, 25.0, span=0.5) + second(r.t + 0.5, 60, 5.0, span=0.5)
-    assert r.c.decide(spike, r.ctx, r.t + 1.0, 1000 / 60) is None and r.c.steps == ["fx"]
+    assert r.c.decide(spike, r.ctx, r.t + 1.0, 1000 / 60) is None and r.c.steps == ["scene_rate"]
 
 
 def test_frozen_across_entry_and_exit():
@@ -111,17 +111,17 @@ def test_frozen_across_entry_and_exit():
         assert r.tick(40.0) is None
     r.ctx.frozen = False
     assert r.tick(40.0) is None                                               # opened: a second from here
-    assert r.tick(40.0).step == "fx"
+    assert r.tick(40.0).step == "scene_rate"
     r.ctx.frozen = True                                                       # the exit: nothing moves
-    assert all(r.tick(1.0) is None for _ in range(40)) and r.c.steps == ["fx"]
+    assert all(r.tick(1.0) is None for _ in range(40)) and r.c.steps == ["scene_rate"]
 
 
 def test_skips_steps_that_cannot_help_the_busy_stage():
-    r = Run(has_fx=False)                                                     # an empty bus: straight to the scene
+    r = Run(has_fx=False)                                                     # bus or no bus: the scene first
     assert r.tick(25.0).step == "scene_rate"
     r = Run(own_div=2)                                                        # GPU-bound, scene already at 1/2
-    assert r.tick(1.0, gpu=30.0).step == "fx" and r.changes[-1][3] == "gpu"
-    assert r.tick(1.0, gpu=30.0).step == "fps"
+    assert r.tick(1.0, gpu=30.0).step == "fps" and r.changes[-1][3] == "gpu"
+    assert r.tick(1.0, gpu=40.0) is None and r.c.state()["floor"]            # 41 ms in 33 ms: nothing left
     r = Run()                                                                 # the encoder: only fps helps
     assert r.tick(2.0, enc=20.0).step == "fps" and r.c.state()["why"] == "encoder busy"
     r = Run(can_fps=False)                                                    # ... and not on the ffmpeg path
@@ -130,20 +130,20 @@ def test_skips_steps_that_cannot_help_the_busy_stage():
 
 def test_repeats_and_late_slots_count_as_overload():
     r = Run()
-    assert r.tick(5.0, repeats=8).step == "fx"                                # 4 of 30 slots per half
+    assert r.tick(5.0, repeats=8).step == "scene_rate"                        # 4 of 30 slots per half
     r = Run()
     assert r.tick(5.0, repeats=2) is None                                     # one a half: not yet
     r = Run()
-    assert r.tick(5.0, late=20).step == "fx"                                  # a third of the slots late
+    assert r.tick(5.0, late=20).step == "scene_rate"                          # a third of the slots late
     r = Run()
     assert r.tick(5.0) is None and r.c.steps == []
 
 
 def test_steps_up_after_10_s_and_30_s_for_fps_when_the_projection_fits():
     r = Run()
-    for _ in range(3):
+    for _ in range(2):
         r.tick(40.0)
-    assert r.c.steps == ["fx", "scene_rate", "fps"]
+    assert r.c.steps == ["scene_rate", "fps"]
     t_last = r.changes[-1][0]
     for _ in range(40):
         r.tick(3.0)                                                           # the load went: 3 ms a slot
@@ -173,13 +173,6 @@ def test_scene_rate_projection_uses_the_drawn_slots():
     assert c.project("scene_rate", w, Ctx(own_div=3), 1000 / 60) < 0.5      # the scene is that slow by itself
 
 
-def test_fx_projection_adds_back_what_the_bus_cost():
-    c = Controller(60)
-    c.fx_at = (6.0, 0.0)
-    w = window(second(0.0, 60, 5.0), 1000 / 60)
-    assert c.project("fx", w, Ctx(fx_host_ms=1.0), 1000 / 60) == pytest.approx((5.0 + 5.0) / (1000 / 60), 0.01)
-
-
 def test_a_failed_step_up_doubles_its_wait_and_a_settled_one_resets():
     r = Run(has_fx=False, can_fps=False)
     r.tick(25.0)
@@ -202,15 +195,16 @@ def test_a_failed_step_up_doubles_its_wait_and_a_settled_one_resets():
 
 def test_drop_and_the_off_state():
     r = Run()
-    for _ in range(3):
+    for _ in range(2):
         r.tick(40.0)
     ch = r.c.drop("fps", r.t)
-    assert ch.step == "fps" and not ch.on and r.out_fps == 60 and r.c.steps == ["fx", "scene_rate"]
+    assert ch.step == "fps" and not ch.on and r.out_fps == 60 and r.c.steps == ["scene_rate"]
     assert r.c.drop("fps", r.t) is None
     off = dg.off_state(60)
-    assert off["mode"] == "off" and off["level"] == 0 and off["out_fps"] == 60
-    assert dg.text(["fx"], "gpu", 60) == "fewer effects: GPU busy" and dg.text(["fps"], "host", 60) == \
+    assert off["mode"] == "off" and off["level"] == 0 and off["out_fps"] == 60 and not off["fx_trim"]
+    assert dg.text(["scene_rate"], "gpu", 60) == "scene 30 fps: GPU busy" and dg.text(["fps"], "host", 60) == \
         "60 -> 30 fps: computer busy"
+    assert dg.STEPS == ("scene_rate", "fps")
 
 
 # -- the scene-rate floor and the fps step in the layer tree ----------------------------------------------------------
@@ -407,54 +401,34 @@ def test_the_60p_profile_holds_level_5_1_main_tier_on_both_paths():
     assert q.name == "hevc-2160p60" and q.color_trc == "bt709" and at_fps(q, 30).name == "hevc-2160p30"
 
 
-# -- the FX trim ------------------------------------------------------------------------------------------------------
-def test_fx_trim_removes_one_auto_effect_and_halves_the_budget():
-    from stream_service.fx_director import FX_BUS_BUDGET_MS, FxDirector
-
-    fd = FxDirector(1)
-    fd.configure({"enabled": True, "max": 2, "pool": "all"}, {"fx": {"density": 1.0, "rate": 0.5}})
-    fd.armed = True
-    spec = lambda n: types.SimpleNamespace(preset=n, effect=n, name=n)        # noqa: E731
-    stack = [types.SimpleNamespace(id=f"x{i}", spec=spec(f"e{i}"), stage=f"s{i}", origin="auto") for i in range(2)]
-    presets = {"cheap": {"effect": "cheap", "stage": "colour", "tags": {"energy": "low"}},
-               "dear": {"effect": "dear", "stage": "colour", "tags": {"energy": "low"}}}
-    cost = {"e0": 0.5, "e1": 0.5, "cheap": 0.2, "dear": FX_BUS_BUDGET_MS * 0.6}.get
-    assert set(fd.candidates(0.0, stack[:1], presets, cost, 1.0)) == {"cheap", "dear"}
-    assert fd.set_trim(True, 50.0, 2) and fd.due(50.0)                        # a move now
-    mv = fd.plan(50.0, stack, presets, cost)
-    assert mv.op == "remove" and mv.remove == "x0" and "fewer effects" in mv.why
-    assert fd.candidates(0.0, stack[:1], presets, cost, 1.0) == ["cheap"]     # half the budget: cheaper picks
-    assert fd.status(50.0)["trimmed"] and not fd.set_trim(True, 51.0, 1)
-    assert not fd.set_trim(False, 52.0, 1) and fd.trim_max is None
+# -- the session: session.degrade, /api/sessions, the panel's line, the media backlog ---------------------------------
+from .test_sessions import AUTH, MANAGER, client, create  # noqa: E402,F401 (fixture)
 
 
-# -- the session: session.degrade, /api/sessions, the panel's line, the FX trim, the media backlog ------------------------
-from .test_sessions import AUTH, client, create  # noqa: E402,F401 (fixture)
-
-
-async def test_the_session_reports_a_step_and_hands_the_fx_trim_on(client):  # noqa: F811
-    _, s = await create(client, profile="hevc-2160p60")                      # devtest: 60 fps in the shipped file
+async def test_the_session_reports_a_step_and_never_trims_the_effects(client, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(client.app[MANAGER].switches, "fps", lambda screen: 60)   # not the shipped file's rate
+    _, s = await create(client, profile="hevc-2160p60")
     assert s.profile.fps == 60
     s.engine.root = None                                                     # (the fake engine has no layer tree)
     c = Controller(60, wall=lambda: 1_700_000_000.0)
-    c.steps, c.why, c.since = ["fx"], "gpu", 1_700_000_000.0
+    c.steps, c.why, c.since = ["scene_rate"], "gpu", 1_700_000_000.0
     s.on_degrade(c.state())
     ev = [e for e in s.mgr.events.history if e["type"] == "session.degrade"][-1]
-    assert ev["session"] == s.id and ev["level"] == 1 and ev["step"] == "fx" and ev["why"] == "GPU busy"
-    assert ev["text"] == "fewer effects: GPU busy" and ev["since"] == "2023-11-14T22:13:20.000Z"
-    assert s.fx_director.trim_max == 0                                       # no auto effects on the bus: none
+    assert ev["session"] == s.id and ev["level"] == 1 and ev["step"] == "scene_rate" and ev["why"] == "GPU busy"
+    assert ev["text"] == "scene 30 fps: GPU busy" and ev["since"] == "2023-11-14T22:13:20.000Z"
+    assert not hasattr(s.fx_director, "trim_max")                            # the effects are never trimmed
     summ = (await (await client.get(f"/api/sessions/{s.id}", headers=AUTH)).json())
-    assert summ["degrade"]["level"] == 1 and summ["degrade"]["text"] == "fewer effects: GPU busy"
+    assert summ["degrade"]["level"] == 1 and summ["degrade"]["text"] == "scene 30 fps: GPU busy"
     body = await (await client.get(f"/api/sessions/{s.id}/hud", headers=AUTH)).json()
-    i = body["lines"].index("fewer effects: GPU busy")
+    i = body["lines"].index("scene 30 fps: GPU busy")
     assert i in body["warn"]
-    c.steps = ["fx", "scene_rate", "fps"]
+    c.steps = ["scene_rate", "fps"]
     s.on_degrade(c.state())
     assert s.media.fps == 30 and s.degrade["out_fps"] == 30
     from stream_service.hud import build_lines
     lines, warn = build_lines(s, time.monotonic())
-    assert lines[lines.index("60 -> 30 fps + scene 15 fps + fewer effects: GPU busy")]
+    assert lines[lines.index("60 -> 30 fps + scene 15 fps: GPU busy")]
     c.steps = []
     s.on_degrade(c.state())
     lines, _ = build_lines(s, time.monotonic())
-    assert s.fx_director.trim_max is None and s.media.fps == 60 and not any("busy" in x for x in lines)
+    assert s.media.fps == 60 and not any("busy" in x for x in lines)

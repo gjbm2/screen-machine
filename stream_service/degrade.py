@@ -10,9 +10,8 @@ records and decides with arithmetic only.  Per output slot (means, ms) it knows:
 and the outcome: repeats and late slots.  Each stage's time as a share of the output period is its load.
 
 A second is overloaded when both its halves are: a stage at DOWN_LOAD or more, or repeats (REPEAT_SHARE) or late slots
-(LATE_SHARE).  Then one step down, the first of these that is not on yet and can relieve the busiest stage:
-  fx          fewer, cheaper bus effects (the session's FX director: one auto effect fewer, half the bus budget; the bus
-              keeps playing): while the bus carries effects and the host or the GPU is the busy stage;
+(LATE_SHARE).  Then one step down, the first of these that is not on yet and can relieve the busiest stage (owner,
+21 Oct: "degrade, never refuse": the ladder is the scene's rate and the output fps only; the effects are never trimmed):
   scene_rate  new scene content every 2nd output slot, the last frame shown in between (layers.py: a floor under the
               scene's own rate_div): the host or the GPU, and the scene not already that slow by itself;
   fps         output 60 -> 30 fps: NVENC Reconfigure, frame ids stay on the 60 Hz grid, each fMP4 sample lasts two ticks
@@ -33,7 +32,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Optional
 
-STEPS = ("fx", "scene_rate", "fps")
+STEPS = ("scene_rate", "fps")
 WHY = {"host": "computer busy", "gpu": "GPU busy", "enc": "encoder busy", "fallback": "encoder fell back"}
 DECIDE_S = 1.0          # decisions per second, each over the last second
 DOWN_LOAD = 0.95        # a stage this busy in both halves of a second: one step down
@@ -41,7 +40,7 @@ UP_LOAD = 0.7           # a step comes off only if the projection without it is 
 REPEAT_SHARE = 0.05     # ... or this share of the slots repeated (at least 2)
 LATE_SHARE = 0.25       # ... or started more than a period late
 MIN_SLOTS = 3           # a half with fewer slots says nothing
-UP_WAIT_S = {"fx": 10.0, "scene_rate": 10.0, "fps": 30.0}
+UP_WAIT_S = {"scene_rate": 10.0, "fps": 30.0}
 SETTLE_S = 60.0
 WAIT_MAX_X = 8
 GPU_MARGIN_MS = 1.0     # as guard.GPU_BOUND_MARGIN_MS: a span this much over the host's submit is real GPU work
@@ -123,7 +122,7 @@ def window(recs: Iterable[Any], period_ms: float) -> Window:
 class Ctx:
     """What the engine adds to the records at a decision."""
     frozen: bool = False        # the entry (master bus not fully open yet) or the exit
-    has_fx: bool = False        # the bus carries effects (not on their way out)
+    has_fx: bool = False        # the bus carries effects (not on their way out); reported only: no step trims them
     fx_host_ms: float = 0.0     # their cost per rendered frame now (the guard's samples: own CPU, real GPU)
     fx_gpu_ms: float = 0.0
     own_div: int = 1            # the scene's own rate_div (layers.py)
@@ -138,13 +137,12 @@ class Change:
 
 
 def text(steps: Iterable[str], why: Optional[str], grid_fps: int) -> str:
-    """Plain words for the panel: "60 -> 30 fps: computer busy", "fewer effects: GPU busy"."""
+    """Plain words for the panel: "60 -> 30 fps: computer busy", "scene 30 fps: GPU busy"."""
     steps = list(steps)
     if not steps:
         return f"full rate, {grid_fps} fps"
     out_fps = grid_fps // 2 if "fps" in steps else grid_fps
-    words = {"fps": f"{grid_fps} -> {out_fps} fps", "scene_rate": f"scene {out_fps // SCENE_FLOOR} fps",
-             "fx": "fewer effects"}
+    words = {"fps": f"{grid_fps} -> {out_fps} fps", "scene_rate": f"scene {out_fps // SCENE_FLOOR} fps"}
     s = " + ".join(words[x] for x in reversed(steps))
     return f"{s}: {WHY.get(why, why)}" if why else s
 
@@ -161,7 +159,6 @@ class Controller:
         self.ok_since: Optional[float] = None      # the last step's projection under UP_LOAD since
         self.mult = {s: 1 for s in STEPS}
         self.off_at: dict[str, float] = {}         # when a step last came off
-        self.fx_at = (0.0, 0.0)                    # the bus's cost when the fx step came on
         self.frozen = True
         self.floor = False                         # overloaded with no step left
         self.load: Optional[dict] = None
@@ -237,8 +234,6 @@ class Controller:
         for step in STEPS:
             if step in self.steps:
                 continue
-            if step == "fx" and ctx.has_fx and stage in ("host", "gpu"):
-                return step
             if step == "scene_rate" and stage in ("host", "gpu") and ctx.own_div < SCENE_FLOOR:
                 return step
             if step == "fps" and ctx.can_fps:
@@ -255,9 +250,7 @@ class Controller:
             if ctx.own_div >= SCENE_FLOOR or w.drawn_host_ms is None:
                 return max(ld.values())           # the scene is that slow by itself: the floor changes nothing
             return max(max(w.host_ms, w.drawn_host_ms) / p, max(w.gpu_ms, w.drawn_gpu_ms or 0.0) / p, ld["enc"])
-        h0, g0 = self.fx_at                       # fx: what the bus cost when the trim came on, back
-        return max(ld["host"] + max(0.0, h0 - ctx.fx_host_ms) / p, ld["gpu"] + max(0.0, g0 - ctx.fx_gpu_ms) / p,
-                   ld["enc"])
+        return max(ld.values())
 
     def _on(self, step: str, stage: str, ctx: Ctx, now: float) -> Change:
         self.steps.append(step)
@@ -269,8 +262,6 @@ class Controller:
                 self.failed_ups += 1
             else:
                 self.mult[step] = 1
-        if step == "fx":
-            self.fx_at = (ctx.fx_host_ms, ctx.fx_gpu_ms)
         self.downs += 1
         self._changed(now)
         return Change(step, True, stage)
@@ -300,7 +291,7 @@ class Controller:
                 "since": None if self.since is None else _iso(self.since),
                 "text": text(self.steps, self.why if self.steps else None, self.grid_fps),
                 "out_fps": self.out_fps, "scene_div": SCENE_FLOOR if "scene_rate" in self.steps else 1,
-                "fx_trim": "fx" in self.steps, "floor": self.floor, "frozen": self.frozen, "load": self.load,
+                "fx_trim": False, "floor": self.floor, "frozen": self.frozen, "load": self.load,
                 "up_wait_s": {s: UP_WAIT_S[s] * self.mult[s] for s in STEPS},
                 "downs": self.downs, "ups": self.ups, "failed_ups": self.failed_ups}
 

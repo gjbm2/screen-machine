@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from stream_service.fx_director import (FX_BUS_BUDGET_MS, FX_INTERVAL_AT_0, FX_INTERVAL_AT_1, FxDirector, fade_for,
-                                        interval_for)
+from stream_service import fx_director as fxd_mod
+from stream_service.fx_director import FX_INTERVAL_AT_0, FX_INTERVAL_AT_1, FxDirector, fade_for, interval_for
 from stream_service.presets import EffectSpec
 
 PRESETS = {
@@ -116,13 +116,12 @@ def test_novelty_downweights_recent_picks():
     assert picks.count("cool") > picks.count("warm") * 2
 
 
-def test_budget_excludes_costly_candidates():
-    d = director(density=1.0, mx=4)
+def test_no_cost_budget_a_costly_effect_stays_a_candidate():
+    d = director(density=1.0, mx=4)                                             # owner 21 Oct: degrade, never refuse
     stack = [St("fx-1", "warm")]
-    assert "heavy" not in d.candidates(0, stack, PRESETS, cost, 1.0)           # 0.5 + 2.9 > 3.0
-    assert "heavy" in d.candidates(0, stack, PRESETS, cost, 0.25)               # 1080p: budget 12 ms
-    assert "heavy" in d.candidates(0, [], PRESETS, cost, 1.0)
-    assert FX_BUS_BUDGET_MS == 3.0
+    assert "heavy" in d.candidates(0, stack, PRESETS, cost, 1.0)                # 0.5 + 2.9 ms: no budget turns it away
+    assert "heavy" in d.candidates(0, stack, PRESETS, lambda n: 1e9, 1.0)
+    assert not hasattr(fxd_mod, "FX_BUS_BUDGET_MS") and not hasattr(d, "set_trim")
 
 
 def test_manual_slots_are_never_touched_but_count():

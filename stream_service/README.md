@@ -39,8 +39,8 @@ WebSocket fan-out with drop-to-keyframe are reused here.
   `/api/sessions` keeps `profile` as asked and adds `profile_live`). `hevc-2160p60` is 40M CBR with a 1 s buffer at
   HEVC Main tier level 5.1 (`hev1.1.2.L153.90`; a 2 s buffer would be High tier). `degrade.py`, one per session where
   its Engine runs (`"degrade": "on" | "off"`), decides once a second from the frame records (render-thread host time,
-  real GPU span, encode time, repeats, late slots) and steps down at most once a second: fewer effects (the FX
-  director's trim), then the scene every 2nd slot (a floor under the scene's own `rate_div`), then 60 -> 30 fps (GPU
+  real GPU span, encode time, repeats, late slots) and steps down at most once a second (never fewer effects: owner,
+  21 Oct): the scene every 2nd slot (a floor under the scene's own `rate_div`), then 60 -> 30 fps (GPU
   encoder only: NVENC Reconfigure, frame ids stay on the 60 Hz grid, fMP4 samples of 2 ticks, the in-band SPS pinned
   to the init's). Up after 10 s (fps 30 s) when the load without the step projects under 0.7 of the period; a failed
   step up doubles its wait. Frozen across entry and exit. Reported as `degrade{level, step, why, since, text, ...}` in
