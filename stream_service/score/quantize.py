@@ -71,7 +71,8 @@ KEY_TAU_S = 30.0
 DYNAMICS = ((0.30, "pp"), (0.42, "p"), (0.54, "mp"), (0.66, "mf"), (0.80, "f"), (2.0, "ff"))
 # the analysis
 ANALYSE_S = 1.0                    # a request at most this often while notes come
-WINDOW_S = 24.0                    # the notes sent (the networks were checked on 24 s windows) ...
+WINDOW_S = 12.0                    # the notes sent: 12 s replies in 296 ms p50 (24 s: 422), -30% CPU, accuracy within
+                                   # the timing noise (7c's levers sweep, 21 Oct; the networks were checked on 24 s) ...
 MAX_NOTES = 600                    # ... at most the newest this many (dense playing: a shorter window, a quick reply)
 MIN_NOTES = 12
 MIN_DECIDE_S = 3.0                 # the metre is taken once the phrase has this much playing and ...
@@ -83,7 +84,8 @@ REWRITE_P = 0.85                   # the evidence for another metre that rewrite
 REWRITE_RUN = 2                    # ... in this many replies running ...
 REWRITE_S = 45.0                   # ... while the phrase is younger than this
 HISTORY_S = 60.0                   # the phrase's notes kept (the analysis window, and a rewrite)
-TRUST_S = 0.6                      # a bar is written once it ends this long before the newest analysed note
+TRUST_S = 0.15                     # a bar is written once it ends this long before the newest analysed note (0.6 until
+                                   # 21 Oct: 0.15 writes every bar 0.43 s sooner at no measurable accuracy cost, 13 pieces)
 FAST_BEAT_S = 0.28                 # an analysed beat faster than this (215 bpm: a beat on every note of a fast
                                    # run) is written at half the rate; jazz at 180 keeps its quarters
 PAUSE_BEATS = 3.0                  # a silence this long inside a phrase (a break): playing resumes on a beat
