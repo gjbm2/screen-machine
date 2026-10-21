@@ -14,7 +14,7 @@
     "devtest": {
       "encoder": "nvenc",
       "workers": "proc",
-      "fps": 60
+      "fps": 30
     },
     "north-screen": {
       "workers": "proc",
