@@ -33,7 +33,8 @@ one stop is a hang (a call 3 s on the GPU), which arrives as a plug-in error wit
 process-wide (``SessionManager.slow``: the catalog's ``slow`` list, /api/diag, the library), never benched.  A
 stopped current scene is recovered to the previous scene, else a core scene.  Vetted pool (``auto_ok``): the
 directors only pick plug-ins that are not broken or blacklisted and that are core or have rendered at least once
-(a harness sheet); a calibration entry for the session's GPU (library.Calibration) decides instead when there is one (status ok and fits), and its
+(a harness sheet); a calibration entry for the session's GPU (library.Calibration) decides instead when there is one
+(only a hang or an error is out: no cost test, 21 Oct), and its
 ``fit_scale`` becomes a scene's ``render_scale`` unless the cue sets one.  Manual cues may pick anything.
 """
 from __future__ import annotations
@@ -2528,8 +2529,9 @@ class SessionManager:
     def auto_ok(self, kind: str, plugin: Optional[str], gpu: Optional[int] = None,
                 budget_4k: Optional[float] = None) -> bool:
         """The vetted pool: may a director pick this plug-in on its own?  Not rejected in the Library and not
-        broken; then the calibration entry for this GPU decides when there is one (status ok and fits); otherwise core, or imported with a harness sheet (it rendered at least once) and no harness cost over
-        the session's budget."""
+        broken; then the calibration entry for this GPU, when there is one, excludes only a hang or an error; otherwise
+        core, or imported with a harness sheet (it rendered at least once).  No cost test (owner, 21 Oct: "degrade,
+        never refuse": a slow plug-in plays and the stream degrades); ``budget_4k`` is no longer read."""
         if not plugin:
             return True
         if self.rating_weight(kind, plugin) == 0.0:      # rejected in the Library
@@ -2539,12 +2541,9 @@ class SessionManager:
         if gpu is not None:
             e = self.calibration.entry(plugin, gpu)
             if e is not None:
-                return Calibration.ok(e)
-        sheets, est = vetting()
-        if origin_of(plugin) == "imported" and plugin not in sheets:
-            return False
-        ms = est.get(plugin)
-        return budget_4k is None or ms is None or ms <= budget_4k
+                return e.get("status") not in ("hung", "error")
+        sheets, _ = vetting()
+        return not (origin_of(plugin) == "imported" and plugin not in sheets)
 
     def first_scene(self, p: dict, look: dict, leader: Optional[Session]) -> SceneSpec:
         """A session created with scene "auto": the room leader's scene when joining a room (the screens start

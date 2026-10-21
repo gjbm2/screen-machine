@@ -151,3 +151,4 @@ def test_why_in_plain_words():
     assert why_words("scene", {}, d) == "For variety"
     assert why_words("effect", {"moods": ["warm"]}, d, 1.0, "light") == "A light effect · fits warm"
     assert why_words("effect", {}, d, 1.0, "light") == "A light effect · for variety"
+    assert why_words("effect", {}, d, 1.0, "overlay") == "An overlay effect · for variety"      # live-F13
