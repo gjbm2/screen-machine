@@ -1,8 +1,9 @@
 """The mic on demand (the owner's rule, 16 Oct; README S5.16): the room's mic runs only while something needs it.
 
-* **Wanted** while Auto is on (the autopilot's own on/off, read live: the room target ``autopilot.main``) or the
+* **Wanted** while Auto is on (the autopilot's own on/off, read live: the room target ``autopilot.main``), the
   mode follows the music (a per-mode config row: room_service's device ``show.mic`` PUTs ``{"mode": true}`` here and
-  ``{"mode": false}`` when it puts it back). **On** = wanted and not muted: the Room page's Mute always wins.
+  ``{"mode": false}`` when it puts it back), or the Room page's AI listening switch is on (owner, 21 Oct: switching
+  it on claims the mic; ``set_listening``, the listener's ``on``, read live and woken on a set). **On** = wanted and not muted: the Room page's Mute always wins.
 * **Off** means the senders' capture devices are closed, not just ignored: ``Receiver.set_off_streams`` lists the
   room-sound streams under each SUBSCRIBE's ``off`` (the senders keep their off heartbeats, so the Mic list still
   shows every mic), the receiver drops anything of theirs that still arrives, and ``Rings.set_off`` makes the
@@ -58,9 +59,11 @@ def _d(v: Any) -> dict:
     return v if isinstance(v, dict) else {}
 
 
-def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str]) -> str:
+def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str], listening: bool = False) -> str:
     """The Room page's words for the mic's state (plain words; ``label`` the mode's, else "this mode")."""
     lab = label or THIS_MODE
+    if listening and not auto and not mode:
+        return "Listening for AI listening" if on else "Muted: AI listening can't hear the room"
     if on:
         if auto and mode:
             return f"Listening for Auto and {lab}"
@@ -91,6 +94,7 @@ class Mic:
         self._rx: Any = None
         self._rings: Any = None
         self._auto_fn: Optional[Callable[[], Optional[bool]]] = None
+        self._listening_fn: Optional[Callable[[], Optional[bool]]] = None
         self._room_fn: Optional[Callable[[], Any]] = None
         self._notify: Optional[Callable[[str, Optional[dict]], None]] = None
         self.muted = False
@@ -126,6 +130,11 @@ class Mic:
     def set_auto(self, fn: Optional[Callable[[], Optional[bool]]]) -> None:
         """Auto on/off now (autopilot.Autopilot.is_on: any thread, no side effects); None until the brain runs."""
         self._auto_fn = fn
+
+    def set_listening(self, fn: Optional[Callable[[], Optional[bool]]]) -> None:
+        """The AI listening switch now (the listener's ``on``: any thread, no side effects); the listener wakes the
+        mic when it is set (``Listener.add_on_listener``)."""
+        self._listening_fn = fn
 
     def set_room(self, fn: Optional[Callable[[], Any]]) -> None:
         """The room view (autopilot.RoomLink.view), for the mode's label."""
@@ -179,7 +188,13 @@ class Mic:
             return {}
 
     def _auto(self) -> Optional[bool]:
-        fn = self._auto_fn
+        return self._read(self._auto_fn)
+
+    def _listening(self) -> Optional[bool]:
+        return self._read(self._listening_fn)
+
+    @staticmethod
+    def _read(fn: Optional[Callable[[], Optional[bool]]]) -> Optional[bool]:
         if fn is None:
             return None
         try:
@@ -214,7 +229,8 @@ class Mic:
             self.evaluations += 1
             h = self._h()
             auto = self._auto() is True
-            wanted = auto or self.mode
+            listening = self._listening() is True
+            wanted = auto or self.mode or listening
             on = wanted and not self.muted
             if on and self._on_since is None:
                 self._on_since = now
@@ -254,7 +270,7 @@ class Mic:
             off = [s for s in room if s not in capturing]
             covered = sorted(set(covered) | set(room))
             self._tell(off, covered)
-            body = self._build(on, auto, self._mode_label(), capturing, off)
+            body = self._build(on, auto, self._mode_label(), capturing, off, listening)
             if broken and wanted and not self.muted:
                 body["why"] = "Off: the room's mics can't be listed (see the log)"
             changed = body != self._body
@@ -289,12 +305,15 @@ class Mic:
             except Exception:                           # noqa: BLE001
                 self._failed("rings.set_off")
 
-    def _build(self, on: bool, auto: bool, label: Optional[str], capturing: list[str], off: list[str]) -> dict:
-        wanted = auto or self.mode
+    def _build(self, on: bool, auto: bool, label: Optional[str], capturing: list[str], off: list[str],
+               listening: bool = False) -> dict:
+        wanted = auto or self.mode or listening
         claims = ([{"by": "auto", "label": "Auto"}] if auto else []) + \
-                 ([{"by": "mode", "label": label or THIS_MODE}] if self.mode else [])
+                 ([{"by": "mode", "label": label or THIS_MODE}] if self.mode else []) + \
+                 ([{"by": "listening", "label": "AI listening"}] if listening else [])
         return {"on": bool(on), "muted": self.muted, "wanted": bool(wanted),
-                "why": why_words(bool(on), self.muted, auto, self.mode, label), "claims": claims, "mode": self.mode,
+                "why": why_words(bool(on), self.muted, auto, self.mode, label, listening), "claims": claims,
+                "mode": self.mode,
                 "streams": {"capturing": list(capturing), "off": list(off)}, "error": self.error}
 
     # -- PUT ----------------------------------------------------------------------------------------------------------

@@ -95,7 +95,7 @@ class Rig:
         self.harmony = {"key": None, "mode": None, "conf": 0.0}
         self.notified: list = []
         self.encoded: list = []
-        self.room = room                                  # a RoomView (the mode's label for WHY_MODE_OFF), or None
+        self.room = room                                  # a RoomView, or None
         ctx = c.BrainContext(
             publish=self.pub.append,
             features=lambda: dict(self.feats, t_ms=self.now * 1000.0, stream=self.health.get("active_audio")),
@@ -110,13 +110,9 @@ class Rig:
                               log_path=self.log_path, vocab_path=vocab, encoder=self._encode)
         self.lis.configure(dict({"senders": SENDERS}, **(settings or {
             "listener": {"cadence_s": 15, "fast_cadence_s": 5, "clip_s": 10, "min_gap_s": 4, "max_in_flight": 2,
-                         "music_gate": "classifier", "describe_timeout_s": 0.5},
-            "situations": {"music": {"dsp_min_gate": 0.3}}})))
+                         "describe_timeout_s": 0.5}})))
         self.lis.on = bool(on)                            # as restored from state.json (set_on would persist)
         self.lis.mode = bool(mode)                        # owner, 20 Oct: the mode's permission, as restored
-        self.auto_on, self.mic = True, {"on": True}         # owner, 17 Oct: uploads need Auto on and the mic on
-        self.lis.set_auto(lambda: self.auto_on)
-        self.lis.set_mic(lambda: self.mic)
 
     def _persist(self):
         self.persisted += 1
@@ -152,7 +148,15 @@ def run(coro):
     return asyncio.run(coro)
 
 
-# -- gating ------------------------------------------------------------------------------------------------------------
+# -- when a clip goes (owner, 21 Oct; the module docstring) -----------------------------------------------------------------
+def music_now(rig, stream="room-mic", every=5.0, n=8, music=0.7, speech=0.01):
+    """Fresh CED readings every ``every`` s up to now, as the worker sends them under load (09's sample: 4-8 s)."""
+    rows = [ced(rig.now - every * k, music, speech, stream=stream) for k in range(n)][::-1]
+    rig.ml = {**ml_view(rows, stream), "stale_s": {"ced": 3 * every, "tags": 3 * every, "key": 30.0, "beats": 30.0}}
+    rig.lis.ctx.ml = lambda: rig.ml
+    return rows
+
+
 def test_switch_off_sends_nothing_from_the_room(tmp_path):
     rig = Rig(tmp_path, stream="room-mic", on=False)
     rig.fill()
@@ -161,88 +165,160 @@ def test_switch_off_sends_nothing_from_the_room(tmp_path):
         await rig.ticks(30)
     run(go())
     v = rig.lis.view()
-    assert v["on"] is False and v["effective"] is False and v["why"] == L.WHY_OFF
-    assert rig.llm.calls == [] and rig.pub == []
+    assert v["on"] is False and v["effective"] is False and v["why"] == L.WHY_OFF and v["status"] == "Off"
+    assert rig.llm.calls == [] and rig.pub == [] and rig.rings.armed is False
     assert rig.lis.persist() == {"on": False, "set_at": None, "mode": True}
 
 
-@pytest.mark.parametrize("stream", ["test-audio", "phone-test", "test-anything", "room-mic"])
-def test_every_stream_needs_the_switch_auto_and_the_mic(tmp_path, stream):
-    """Privacy is never decided by a stream's name: test streams, phone-test and test-* need AI listening on, Auto on
-    and the mic on, exactly as the room mic does (§7.5: the switch stops every upload)."""
-    for case in ("switch_off", "auto_off", "auto_unknown", "mic_off", "vibe_off"):
-        rig = Rig(tmp_path, stream=stream, on=case != "switch_off")
-        rig.fill()
-        if case == "auto_off":
-            rig.auto_on = False
-        elif case == "auto_unknown":
-            rig.auto_on = None
-        elif case == "mic_off":
-            rig.mic = {"on": False}
-        elif case == "vibe_off":
-            rig.vibe = {"listener": False}
-
-        async def go():
-            await rig.ticks(25)
-        run(go())
-        assert rig.llm.calls == [] and rig.pub == [], (stream, case)
-        want = {"switch_off": L.WHY_OFF, "auto_off": L.WHY_AUTO_OFF, "auto_unknown": L.WHY_AUTO_OFF,
-                "mic_off": L.WHY_MIC_OFF, "vibe_off": L.WHY_VIBE}[case]
-        assert rig.lis.view()["why"] == want, (stream, case)
-        assert rig.rings.armed is False                   # nothing recorded for nothing
-
-
-@pytest.mark.parametrize("target", [None, {"vibe": "home", "listening": False}, {"vibe": "home", "listening": True}])
-def test_the_modes_listening_no_longer_gates(tmp_path, target):
-    """Owner, 17 Oct: the AI listening switch, Auto and the mic decide (and a feel's own listener: off); a mode with
-    no show target, or one whose show.main says listening: false, listens like any other."""
-    rig = Rig(tmp_path, stream="test-audio", target=target)
+@pytest.mark.parametrize("stream", ["test-audio", "room-mic"])
+def test_the_switch_is_the_only_on_off(tmp_path, stream):
+    """Owner, 21 Oct: no mode (show.ai), Auto or feel vetoes the switch."""
+    rig = Rig(tmp_path, stream=stream, mode=False)
+    rig.vibe = {"listener": False}
     rig.fill()
+    music_now(rig, stream)
     run(rig.tick())
-    assert rig.lis.view()["effective"] is True and rig.rings.armed is True
-    assert len(rig.llm.calls) == 1 and [m["type"] for m in rig.pub] == [c.MUSIC_INSIGHT]
-    assert not hasattr(L, "WHY_MODE")                  # the show target's old "this mode doesn't listen"
+    v = rig.lis.view()
+    assert v["status"] == "Listening" and v["effective"] is True and len(rig.llm.calls) == 1, v
+    assert rig.rings.armed is True
 
 
-def test_rule_0_still_holds_for_room_sound_without_the_music_check(tmp_path):
-    """Owner, 17 Oct (1fe8b6f3): room sound goes only as substantive music: the CED music/speech run (or the DSP
-    gate) and the loudness floor, with Auto and the mic on. Dropping the mode's wish changes none of it."""
-    rig = Rig(tmp_path, stream="room-mic", target=None)  # no mode wish at all
-    rig.fill()
-    run(rig.ticks(5))
-    assert rig.lis.view()["why"] == L.WHY_NO_CED and rig.llm.calls == []          # no classifier: nothing goes
-    s = {"listener": {"music_gate": "dsp"}, "situations": {"music": {"dsp_min_gate": 0.3}}}
-    rig = Rig(tmp_path, stream="room-mic", settings=s, target=None)
-    rig.fill()
-    run(rig.ticks(3))
-    assert rig.lis.view()["why"] == L.WHY_NO_MUSIC and rig.llm.calls == []        # no beat, no key: no music
-    rig.feats["gate"] = 0.05                                                     # under the floor...
-    run(rig.ticks(12))
-    rig.clock = {"gate": "beat", "bpm": 120.0, "state": "locked", "conf": 0.8}  # ...with a beat
-    run(rig.ticks(2))
-    assert rig.lis.view()["why"] == L.WHY_QUIET and rig.llm.calls == []
-    rig.feats["gate"] = 0.6
-    rig.auto_on = False                                                          # loud music, Auto off
-    run(rig.ticks(12))
-    assert rig.lis.view()["why"] == L.WHY_AUTO_OFF and rig.llm.calls == []
-    rig.auto_on = True
-    run(rig.tick())
-    rig.fill()                                                                   # re-armed: the ring starts afresh
-    run(rig.ticks(2))
-    assert len(rig.llm.calls) == 1
+def test_the_words_are_only_the_five(tmp_path):
+    assert L.STATUS_WORDS == ("Listening", "Paused: quiet", "Paused: people talking",
+                              "Paused: can't check for talking", "Off")
 
 
-@pytest.mark.parametrize("stream", ["phone-test", "test-anything", "room-mic"])
-def test_only_room_sound_false_skips_the_music_check(tmp_path, stream):
-    """A name like test-* or phone-test carries room sound unless its show.yaml sender says room_sound: false."""
-    rig = Rig(tmp_path, stream=stream)
-    rig.fill()
+def test_sparse_music_readings_send_every_cadence(tmp_path):
+    """09's sample (21 Oct): 60 s of CED readings 4-8 s apart, music 0.36-0.78, speech <= 0.015: a clip every
+    cadence_s, never "not enough music"."""
+    rig = Rig(tmp_path, stream="room-mic")
+    rig.fill(seconds=38.0)
+    gaps = [4.0, 6.0, 8.0, 5.0, 7.0]
+    musics = [0.36, 0.78, 0.55, 0.62, 0.41, 0.7]
+    rows, t_next, k = [], rig.now - 8.0, 0
+    rig.llm.results = [ok(verdict(coming=[])) for _ in range(10)]   # nothing coming: the steady cadence
+    rig.ml = None
+    rig.lis.ctx.ml = lambda: rig.ml
 
     async def go():
-        await rig.ticks(5)
+        nonlocal t_next, k
+        for _ in range(60):
+            rig.now += 1.0
+            if rig.now >= t_next:
+                rows.append(ced(rig.now, musics[k % len(musics)], 0.001 + 0.002 * (k % 7)))
+                t_next, k = rig.now + gaps[k % len(gaps)], k + 1
+                rig.ml = {**ml_view(list(rows)), "stale_s": {"ced": 24.0, "tags": 24.0, "key": 30.0, "beats": 30.0}}
+            rig.fill(seconds=1.0)
+            rig.lis.tick(rig.now)
+            ts = list(rig.lis._tasks)
+            if ts:
+                await asyncio.wait(ts, timeout=5)
     run(go())
-    assert rig.lis.view()["why"] == L.WHY_P1 and rig.llm.calls == []
-    assert rig.lis.room_sound(stream) is True and rig.lis.room_sound("test-audio") is False
+    assert len(rig.llm.calls) == 4                       # at 1, 16, 31, 46 s: every 15 s
+    assert all(h["ok"] for h in rig.lis.view()["history"])
+
+
+def test_talking_in_the_clip_skips_it(tmp_path):
+    rig = Rig(tmp_path, stream="room-mic")
+    rig.fill()
+    rows = music_now(rig)
+    rows[-2]["conversation_p"] = 0.5                     # 5 s ago: inside the 10 s clip
+    rig.ml = {**ml_view(rows), "stale_s": {"ced": 15.0}}
+    run(rig.tick(0.0))
+    v = rig.lis.view()
+    assert v["status"] == "Paused: people talking" and rig.llm.calls == []
+    rows[-2]["conversation_p"] = 0.0
+    rows[0]["speech_p"] = 0.9                            # 35 s ago: not in this clip
+    run(rig.tick(0.0))
+    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
+
+
+def test_no_ced_means_cant_check_for_room_sound_only(tmp_path):
+    rig = Rig(tmp_path, stream="room-mic")
+    rig.fill()
+    run(rig.ticks(3))
+    assert rig.lis.view()["status"] == "Paused: can't check for talking" and rig.llm.calls == []
+    music_now(rig)
+    for r in rig.ml["ced_recent"]:
+        r["t"] -= 60.0                                   # the worker stopped a minute ago
+    run(rig.tick(0.0))
+    assert rig.lis.view()["status"] == "Paused: can't check for talking"
+    rig2 = Rig(tmp_path, stream="test-audio")            # a room_sound: false file: no talking check at all
+    rig2.fill()
+    run(rig2.tick())
+    assert rig2.lis.view()["status"] == "Listening" and len(rig2.llm.calls) == 1
+
+
+def test_a_fresh_worker_with_no_reading_in_the_clip_still_sends(tmp_path):
+    rig = Rig(tmp_path, stream="room-mic")
+    rig.fill()
+    music_now(rig, every=12.0, n=2)                      # one reading now, one 12 s ago
+    rig.ml["ced_recent"] = rig.ml["ced_recent"][:1]      # only the old one: none overlaps, but it is "now" (36 s)
+    run(rig.tick(0.0))
+    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
+
+
+@pytest.mark.parametrize("case,status,detail", [("quiet", "Paused: quiet", None),
+                                                ("no_sound", "Paused: quiet", L.DETAIL_NO_SOUND),
+                                                ("no_model", "Off", L.DETAIL_NO_MODEL),
+                                                ("too_little_audio", "Paused: quiet", L.DETAIL_NO_SOUND)])
+def test_why(tmp_path, case, status, detail):
+    rig = Rig(tmp_path, stream="test-audio")
+    rig.fill()
+    if case == "quiet":
+        rig.feats["gate"] = 0.02
+    elif case == "no_sound":
+        rig.lis.ctx.features = lambda: None
+    elif case == "no_model":
+        rig.llm.usable["listen"] = []
+    elif case == "too_little_audio":
+        rig.rings = Rings()
+        rig.lis.ctx.rings = rig.rings
+        rig.fill(seconds=3.0)
+
+    async def go():
+        await rig.ticks(12)
+    run(go())
+    v = rig.lis.view()
+    assert v["status"] == status and v["why"] == status and v["detail"] == detail and v["effective"] is False
+    assert v["next_in_s"] is None and rig.llm.calls == []
+
+
+def test_quiet_gate_zero_is_never_quiet(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio", settings={"listener": {"quiet_gate": 0}})
+    rig.fill()
+    rig.feats["gate"] = 0.0
+    run(rig.tick())
+    assert rig.lis.problems == [] and rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
+
+
+def test_history_lists_round_trips_and_folds_repeated_skips(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio")
+    rig.fill()
+    rig.llm.results = [ok(verdict()), ok(verdict())]
+    run(rig.tick())
+    h = rig.lis.view()["history"]
+    assert len(h) == 1 and h[0]["ok"] is True and h[0]["model"] == "gpt-x" and h[0]["call"] == "cadence"
+    assert {"content", "character", "genre", "moods", "coming", "why", "latency_ms", "cost_usd", "at"} <= set(h[0])
+    for _ in range(3):
+        rig.lis._skip("test-audio", "cadence", L.WHY_QUIET)
+    rig.lis._refresh(rig.now)
+    h = rig.lis.view()["history"]
+    assert len(h) == 2 and h[0]["why"] == L.WHY_QUIET and h[0]["count"] == 3 and h[1]["ok"] is True
+    for i in range(L.HISTORY_N + 3):
+        rig.lis._remember({"ok": True, "call": "cadence", "n": i})
+    rig.lis._refresh(rig.now)
+    h = rig.lis.view()["history"]
+    assert len(h) == L.HISTORY_N and h[0]["n"] == L.HISTORY_N + 2      # newest first
+
+
+def test_the_switch_wakes_its_on_listeners(tmp_path):
+    rig = Rig(tmp_path, on=False)
+    woke = []
+    rig.lis.add_on_listener(lambda: woke.append(rig.lis.on))
+    rig.lis.set_on(True)
+    rig.lis.set_on(False)
+    assert woke == [True, False]
 
 
 def test_a_room_sound_false_stream_is_listened_to_with_the_switch_on(tmp_path):
@@ -289,70 +365,16 @@ def test_a_bad_room_sound_flag_counts_as_room_sound(tmp_path):
     assert rig.lis.room_sound("test-audio") is True and any("room_sound" in p for p in rig.lis.problems)
 
 
-def test_the_ring_records_only_while_a_clip_could_go(tmp_path):
+def test_the_ring_records_only_while_the_switch_is_on(tmp_path):
     rig = Rig(tmp_path, stream="test-audio", on=False)
     rig.fill()                                           # recorded before the first tick (armed by default)
     rig.lis.tick(rig.now)
     assert rig.rings.armed is False
     rig.fill(seconds=5.0)                                # skipped: not armed
     rig.lis.set_on(True)
-    assert rig.rings.armed is True
+    assert rig.rings.armed is True and rig.persisted == 1
     rig.fill(seconds=3.0)                                # recording again: what was held before is forgotten
     assert rig.rings.info()["test-audio"]["held_s"] == pytest.approx(3.0, abs=0.1)
-
-
-def test_no_classifier_means_no_room_mic_clip(tmp_path):
-    rig = Rig(tmp_path, stream="room-mic", on=False)
-    rig.fill()
-    rig.lis.set_on(True)
-    assert rig.persisted == 1 and rig.lis.persist()["on"] is True
-
-    async def go():
-        await rig.ticks(5)
-    run(go())
-    assert rig.lis.view()["why"] == L.WHY_P1 and rig.llm.calls == []
-
-
-def test_dsp_music_gate(tmp_path):
-    s = {"listener": {"music_gate": "dsp"}, "situations": {"music": {"dsp_min_gate": 0.3}}}
-    rig = Rig(tmp_path, stream="room-mic", settings=s)
-    rig.fill()
-
-    async def go():
-        await rig.ticks(3)
-        assert rig.lis.view()["why"] == L.WHY_NO_MUSIC and rig.llm.calls == []
-        rig.clock = {"gate": "beat", "bpm": 120.0, "state": "locked", "conf": 0.8}
-        await rig.tick()
-        assert rig.lis.view()["effective"] is True and len(rig.llm.calls) == 1
-        assert "120.0 bpm" in rig.llm.calls[0][1]["user"][0]
-    run(go())
-
-
-@pytest.mark.parametrize("case,why", [("vibe_off", L.WHY_VIBE), ("quiet", L.WHY_QUIET),
-                                      ("no_sound", L.WHY_NO_SOUND), ("no_model", L.WHY_NO_MODEL),
-                                      ("too_little_audio", L.WHY_NO_SOUND)])
-def test_why(tmp_path, case, why):
-    rig = Rig(tmp_path, stream="test-audio")
-    rig.fill()
-    if case == "vibe_off":
-        rig.vibe = {"listener": False}
-    elif case == "quiet":
-        rig.feats["gate"] = 0.02
-    elif case == "no_sound":
-        rig.lis.ctx.features = lambda: None
-    elif case == "no_model":
-        rig.llm.usable["listen"] = []
-    elif case == "too_little_audio":
-        rig.rings = Rings()
-        rig.lis.ctx.rings = rig.rings
-        rig.fill(seconds=3.0)
-
-    async def go():
-        await rig.ticks(12)
-    run(go())
-    v = rig.lis.view()
-    assert v["why"] == why and v["effective"] is False and v["next_in_s"] is None
-    assert rig.llm.calls == []
 
 
 # -- cadence (README S5.22) ---------------------------------------------------------------------------------------------
@@ -454,9 +476,9 @@ def test_budget_slows_and_errors_back_off(tmp_path):
 
 
 def test_switching_off_cancels_a_room_call_in_flight(tmp_path):
-    rig = Rig(tmp_path, stream="room-mic", settings={"listener": {"music_gate": "dsp"}})
-    rig.clock["gate"] = "beat"
+    rig = Rig(tmp_path, stream="room-mic")
     rig.fill()
+    music_now(rig)
     rig.llm.delay = 5.0
 
     async def go():
@@ -494,12 +516,13 @@ def test_gate_is_checked_again_right_before_the_upload(tmp_path):
     rig.fill()
 
     async def enc(pcm, fs, **kw):
-        rig.auto_on = False                                # Auto went off while the clip was being encoded
+        rig.lis.on = False                                 # switched off while the clip was being encoded
         return b"MP3", "mp3"
     rig.lis._encode = enc
     run(rig.tick())
     assert rig.llm.calls == [] and rig.lis.log(1)[0] == {"at": rig.lis.log(1)[0]["at"], "kind": "skipped",
-                                                          "stream": "test-audio", "why": L.WHY_AUTO_OFF}
+                                                          "stream": "test-audio", "call": "cadence", "why": "Off",
+                                                          "detail": None}
 
 
 def test_persist_restore(tmp_path):
@@ -517,10 +540,10 @@ def test_persist_restore(tmp_path):
 
 
 def test_bad_settings_fall_back_to_design_defaults(tmp_path):
-    rig = Rig(tmp_path, settings={"listener": {"cadence_s": -1, "music_gate": "maybe", "max_in_flight": 0,
+    rig = Rig(tmp_path, settings={"listener": {"cadence_s": -1, "quiet_gate": -1, "max_in_flight": 0,
                                                "est_fast_share": 2}})
     assert rig.lis.cfg["quiet_gate"] == 0.1 and rig.lis.cfg["min_clip_s"] == 6.0           # design defaults
-    assert rig.lis.cfg["cadence_s"] == 15.0 and rig.lis.cfg["music_gate"] == "classifier"
+    assert rig.lis.cfg["cadence_s"] == 15.0
     assert rig.lis.cfg["max_in_flight"] == 2 and rig.lis.cfg["est_fast_share"] == 0.5 and len(rig.lis.problems) == 4
     assert L.DEFAULTS["clip_s"] == 10.0 and L.DEFAULTS["fast_cadence_s"] == 5.0 and L.DEFAULTS["min_gap_s"] == 4.0
 
@@ -743,10 +766,6 @@ def ml_view(rows, stream="room-mic"):
             "ages": {}, "hello": None}
 
 
-CED24 = {"listener": {"cadence_s": 15, "fast_cadence_s": 5, "clip_s": 24, "min_gap_s": 4, "min_clip_s": 10,
-                      "music_gate": "classifier"}}          # the run arithmetic below was written for 24 s clips
-
-
 def stage4_rig(tmp_path, stream="room-mic", settings=None) -> Rig:
     rig = Rig(tmp_path, stream=stream, settings=settings)
     rig.ml = None
@@ -756,134 +775,16 @@ def stage4_rig(tmp_path, stream="room-mic", settings=None) -> Rig:
     return rig
 
 
-def readings(rig, spans):
-    """CED readings one a second, ending now: spans = [(seconds, music, speech), ...] oldest first."""
-    total = sum(n for n, _, _ in spans)
-    rows, t = [], rig.now - total + 1
-    for n, m, sp in spans:
-        for _ in range(n):
-            rows.append(ced(t, m, sp))
-            t += 1
-    return rows
-
-
-def test_ced_gate_reasons(tmp_path):
-    rig = stage4_rig(tmp_path)
-    rig.fill()
-
-    async def go():
-        await rig.tick()
-        assert rig.lis.view()["why"] == L.WHY_NO_CED                  # no worker
-        rig.ml = ml_view([ced(rig.now - 10)])                         # stale
-        await rig.tick()
-        assert rig.lis.view()["why"] == L.WHY_NO_CED
-        rig.ml = ml_view(readings(rig, [(20, 0.8, 0.1), (1, 0.8, 0.4)]))
-        await rig.tick(0.0)
-        assert rig.lis.view()["why"] == L.WHY_TALKING                 # the latest reading: people are talking
-        rig.ml = ml_view(readings(rig, [(20, 0.8, 0.5), (6, 0.9, 0.1)]))
-        await rig.tick(0.0)
-        assert rig.lis.view()["why"] == L.WHY_SHORT                   # 6 s of music without talking: too short
-        assert rig.lis.snapshot()["ced"]["run"] is not None
-        assert rig.llm.calls == []
-    run(go())
-
-
-def test_the_clip_is_the_longest_music_run_talking_in_the_middle(tmp_path):
-    rig = stage4_rig(tmp_path, settings=CED24)
-    rig.fill(seconds=35.0)
-    rig.ml = ml_view(readings(rig, [(12, 0.8, 0.1), (3, 0.7, 0.6), (9, 0.9, 0.05)]))
-    t_first = rig.now - 24 + 1
-
-    async def go():
-        await rig.tick(0.0)
-    run(go())
-    assert len(rig.llm.calls) == 1
-    pcm, fs, _ = rig.encoded[0]
-    # the 12 s run before the talking, not the 9 s; its last second is also in the first talking reading's window,
-    # so it ends a second early (11 s): no speech rides along at the clip's end
-    assert len(pcm) == pytest.approx(11 * 16000, abs=2)
-    ins = rig.pub[0]["data"]
-    assert ins["window"]["t0_ms"] == pytest.approx((t_first - 1.0) * 1000.0, abs=1.0)
-    assert ins["window"]["t1_ms"] == pytest.approx((t_first + 10) * 1000.0, abs=1.0)
-
-
-def test_a_tie_goes_to_the_latest_run(tmp_path):
-    rig = stage4_rig(tmp_path, settings=CED24)
-    rig.fill(seconds=35.0)
-    rig.ml = ml_view(readings(rig, [(11, 0.8, 0.1), (2, 0.1, 0.6), (11, 0.8, 0.1)]))
-    run(rig.tick(0.0))
-    ins = rig.pub[0]["data"]
-    # both runs lose their last second (the next reading failed, or hasn't come yet): a tie, the latest wins
-    assert ins["window"]["t1_ms"] == pytest.approx((rig.now - 1.0) * 1000.0, abs=1.0)
-
-
 def test_babble_and_conversation_under_music_count_as_talking(tmp_path):
-    rig = stage4_rig(tmp_path, settings=CED24)
+    rig = stage4_rig(tmp_path)
     rig.fill(seconds=35.0)
-    rows = readings(rig, [(20, 0.8, 0.1)])
-    for r in rows:
-        r["conversation_p"] = 0.6                                     # guests talking over the music
-    rig.ml = ml_view(rows)
+    rows = music_now(rig, every=1.0, n=20)
+    for r in rows[-4:]:
+        r["crowd_p"] = 0.5                                            # chatter under the music
     run(rig.tick(0.0))
-    assert rig.lis.view()["why"] == L.WHY_TALKING and rig.llm.calls == []
-    for r in rows[:-1]:                                               # only the latest is clear: still no clip
-        r["conversation_p"] = 0.0
-    rows[-1]["conversation_p"] = 0.0
-    for r in rows[5:9]:
-        r["crowd_p"] = 0.5                                            # chatter in the middle splits the run
-    rig.ml = ml_view(rows)
-    run(rig.tick(0.0))
-    assert len(rig.llm.calls) == 1
-    pcm, fs, _ = rig.encoded[0]
-    assert len(pcm) == pytest.approx(10 * 16000, abs=2)               # 11 readings after the chatter, less the last
+    assert rig.lis.view()["status"] == L.WHY_TALKING and rig.llm.calls == []
     rig2 = Rig(tmp_path, settings={"listener": {"ced": {"speech_words": ["speech"]}}})   # config, not code
     assert rig2.lis.speech_words == ("speech",) and rig2.lis.problems == []
-
-
-def test_a_run_ending_before_the_latest_reading_keeps_its_last_second(tmp_path):
-    rig = stage4_rig(tmp_path)
-    rig.fill(seconds=35.0)
-    rig.ml = ml_view(readings(rig, [(20, 0.8, 0.1)]))
-    run_, why = rig.lis._ced_run("room-mic", rig.now, t_end=rig.now - 3.0)   # a section call's clip end
-    assert why is None and run_[1] == pytest.approx(rig.now - 3.0)         # the next reading passed: vouched for
-
-
-def test_a_stretched_ced_cadence_is_still_fresh(tmp_path):
-    rig = stage4_rig(tmp_path)
-    rig.fill(seconds=35.0)
-    rows = [ced(rig.now - 5.0 - 3.0 * k) for k in range(8)][::-1]         # every 3 s, the newest 5 s old
-    rig.ml = ml_view(rows)
-    run(rig.tick(0.0))
-    assert rig.lis.view()["why"] == L.WHY_NO_CED                       # stale at results_stale_s
-    rig.ml = {**ml_view(rows), "stale_s": {"ced": 9.0, "tags": 9.0, "key": 9.0, "beats": 30.0}}
-    run(rig.tick(0.0))
-    assert rig.lis.view()["why"] != L.WHY_NO_CED                       # the worker says CED comes every 6 s now
-
-
-def test_sparse_ced_readings_join_into_one_run(tmp_path):
-    """21 Oct (09's audit): readings every 4-8 s, all music without talking, never made a run over 1 s, so the gate
-    said "not enough music without talking" for good. A reading now vouches back to the one before it while that one
-    was still "now" (MLView.stale_s)."""
-    rig = stage4_rig(tmp_path)
-    rig.fill(seconds=35.0)
-    gaps = [0.0, 5.0, 4.0, 7.0, 6.0, 8.0]                             # the newest first, seconds before it
-    ts, t = [], rig.now
-    for g in gaps:
-        t -= g
-        ts.append(t)
-    rows = [ced(x, 0.72, 0.001) for x in sorted(ts)]
-    stale = {"ced": 24.0, "tags": 24.0, "key": 24.0, "beats": 30.0}  # 3 x the worker's 8 s
-    rig.ml = {**ml_view(rows), "stale_s": stale}
-    run_, why = rig.lis._ced_run("room-mic", rig.now)
-    assert why is None and run_[1] - run_[0] >= 6.0
-    rows[-3] = ced(rows[-3]["t"], 0.1, 0.6)                           # talking in between splits it
-    rig.ml = {**ml_view(rows), "stale_s": stale}
-    run_, why = rig.lis._ced_run("room-mic", rig.now)
-    assert why == L.WHY_SHORT
-    far = [ced(rig.now - 30.0), ced(rig.now - 0.5)]                    # further apart than the stale time: no join
-    rig.ml = {**ml_view(far), "stale_s": {**stale, "ced": 9.0}}
-    run_, why = rig.lis._ced_run("room-mic", rig.now)
-    assert why == L.WHY_SHORT
 
 
 def fill_until(rig, t_end, seconds=38.0):
@@ -982,7 +883,7 @@ def test_track_change_lets_the_next_verdict_win_at_once(tmp_path):
 def test_ced_settings(tmp_path):
     rig = Rig(tmp_path, settings={"listener": {"ced": {"music_min": 0.7, "speech_max": 2}, "section_call_after_s": 5},
                                   "ml": {"results_stale_s": 4}})
-    assert rig.lis.ced_cfg == {"music_min": 0.7, "speech_max": 0.3} and rig.lis.cfg["section_call_after_s"] == 5.0
+    assert rig.lis.ced_cfg == {"speech_max": 0.3} and rig.lis.cfg["section_call_after_s"] == 5.0
     assert rig.lis.results_stale_s == 4.0 and any("listener.ced.speech_max" in p for p in rig.lis.problems)
     assert rig.lis.provides()["on_music_event"] == rig.lis.on_music_event
 
@@ -999,7 +900,9 @@ def test_a_stream_the_mic_keeps_off_never_gives_a_clip(tmp_path):
         else:
             rig.rings.set_off(["test-audio"])
         run(rig.ticks(3))
-        assert rig.llm.calls == [] and rig.pub == [] and rig.lis.view()["why"] == L.WHY_MIC_OFF, how
+        v = rig.lis.view()
+        assert rig.llm.calls == [] and rig.pub == [] and v["status"] == L.WHY_QUIET, how
+        assert v["detail"] == L.DETAIL_MIC_OFF, how
 
 
 def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
@@ -1011,113 +914,23 @@ def test_a_clip_cut_before_the_mic_went_off_is_never_uploaded(tmp_path):
         return b"MP3", "mp3"
     rig.lis._encode = enc
     run(rig.tick())
-    assert rig.llm.calls == [] and rig.lis.log(1)[0]["why"] == L.WHY_MIC_WENT_OFF
+    assert rig.llm.calls == [] and rig.lis.log(1)[0]["detail"] == L.DETAIL_MIC_WENT_OFF
 
 
 
-def test_nothing_goes_to_openai_unless_auto_and_the_mic_are_on(tmp_path):
-    """Owner, 17 Oct: Auto off, or the mic off, or unknown -> no audio to OpenAI (cost, and it's intrusive)."""
-    r = Rig(tmp_path)
-    assert r.lis._gate(r.now)[0] != L.WHY_AUTO_OFF
-    r.auto_on = False
-    assert r.lis._gate(r.now)[0] == L.WHY_AUTO_OFF
-    r.auto_on = None                                     # unknown (the brain starting): off
-    assert r.lis._gate(r.now)[0] == L.WHY_AUTO_OFF
-    r.auto_on, r.mic = True, {"on": False, "muted": True}
-    assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
-    r.lis.set_mic(None)                                  # no mic component at all: off
-    assert r.lis._gate(r.now)[0] == L.WHY_MIC_OFF
-    r.lis.configure({"senders": SENDERS, "listener": {"requires_auto": False, "requires_mic": False}})
-    assert r.lis._gate(r.now)[0] not in (L.WHY_AUTO_OFF, L.WHY_MIC_OFF)   # config can relax it (not the default)
-
-
-# -- owner, 20 Oct: the mode's permission (room_service's show.ai) -----------------------------------------------------
-NORMAL = {"current": "normal", "target": None, "modes": {"normal": {"label": "Normal"}, "live": {"label": "Live"}}}
-
-
-def test_the_mode_must_allow_it(tmp_path):
-    """Owner, 20 Oct: "the default should be that it doesn't send except on a live mode". With the switch, Auto and
-    the mic on, a mode that hasn't allowed it sends nothing, says so in the mode's words, and records nothing."""
-    for room, want in ((None, "AI listening is off in this mode"), (NORMAL, "AI listening is off in Normal"),
-                       (dict(NORMAL, target="live"), "AI listening is off in Live")):   # going to Live: its label
-        rig = Rig(tmp_path, stream="test-audio", mode=False, room=room)
-        rig.fill()
-
-        async def go():
-            await rig.ticks(25)
-        run(go())
-        v = rig.lis.view()
-        assert rig.llm.calls == [] and rig.pub == [] and rig.rings.armed is False
-        assert v["why"] == want and v["mode"] is False and v["on"] is True and v["effective"] is False
-    assert L.why_mode(None) == L.why_mode("  ") == "AI listening is off in this mode"
-
-
-def test_the_switch_is_still_the_master_and_the_mode_comes_before_auto(tmp_path):
-    rig = Rig(tmp_path, on=False, mode=True)
-    assert rig.lis._gate(rig.now)[0] == L.WHY_OFF        # the Room page's switch off: off, whatever the mode says
-    rig = Rig(tmp_path, mode=False, room=NORMAL)
-    rig.auto_on, rig.mic = False, {"on": False}
-    assert rig.lis._gate(rig.now)[0] == "AI listening is off in Normal"
-
-
-def test_a_mode_that_allows_it_listens(tmp_path):
-    rig = Rig(tmp_path, stream="test-audio", mode=False, room=NORMAL)
+# -- show.ai (room_service's per-mode device): kept and shown, never a gate since 21 Oct -------------------------------
+def test_show_ai_is_kept_but_never_gates(tmp_path):
+    rig = Rig(tmp_path, stream="test-audio", mode=False)
     rig.fill()
     run(rig.tick())
-    assert rig.lis.view()["effective"] is False and rig.rings.armed is False
-    v = rig.lis.set_mode(True)                           # room_service's show.ai: this mode lets the AI listen
-    assert v["mode"] is True and rig.rings.armed is True and rig.persisted == 1
-    assert rig.lis.persist()["mode"] is True and rig.lis.log(1)[0]["kind"] == "mode"
+    assert rig.lis.view()["effective"] is True and len(rig.llm.calls) == 1
+    v = rig.lis.set_mode(True)
+    assert v["mode"] is True and rig.persisted == 1 and rig.lis.log(1)[0]["kind"] == "mode"
     rig.lis.set_mode(True)                               # room's re-sync: no change, nothing persisted or logged
-    assert rig.persisted == 1 and len([e for e in rig.lis.log(50) if e["kind"] == "mode"]) == 1
-    rig.fill()
+    assert rig.persisted == 1
+    rig.lis.set_mode(False)
+    assert rig.lis.view()["effective"] is True and rig.lis.persist()["mode"] is False
 
-    async def go():
-        await rig.ticks(12)
-    run(go())
-    assert rig.lis.view()["effective"] is True and len(rig.llm.calls) >= 1 and rig.pub
-
-
-def test_requires_mode_false_relaxes_it_and_a_bad_value_keeps_the_default(tmp_path):
-    rig = Rig(tmp_path, mode=False)
-    assert rig.lis._gate(rig.now)[0] == "AI listening is off in this mode"
-    rig.lis.configure({"senders": SENDERS, "listener": {"requires_mode": False}})
-    assert not rig.lis._gate(rig.now)[0].startswith("AI listening is off")
-    rig.lis.configure({"senders": SENDERS, "listener": {"requires_mode": "yes"}})
-    assert rig.lis.cfg["requires_mode"] is True
-    assert "listener.requires_mode: 'yes' is not true/false" in rig.lis.problems
-    assert rig.lis._gate(rig.now)[0] == "AI listening is off in this mode"
-
-
-def test_the_mode_going_off_cancels_a_call_in_flight(tmp_path):
-    rig = Rig(tmp_path, stream="test-audio", room=NORMAL)
-    rig.fill()
-    rig.llm.delay = 5.0
-
-    async def go():
-        rig.now += 1
-        rig.lis.tick(rig.now)
-        await asyncio.sleep(0.05)
-        task = rig.lis._tasks[0]
-        v = rig.lis.set_mode(False)                      # the room left the live mode
-        await asyncio.wait([task], timeout=2)
-        await asyncio.sleep(0)
-        assert task.cancelled() and rig.lis._tasks == [] and rig.pub == []
-        assert v["why"] == "AI listening is off in Normal" and rig.rings.armed is False
-    run(go())
-
-
-def test_the_mode_is_checked_again_right_before_the_upload(tmp_path):
-    rig = Rig(tmp_path, stream="test-audio")
-    rig.fill()
-
-    async def enc(pcm, fs, **kw):
-        rig.lis.mode = False                             # the mode's permission went while the clip was encoded
-        return b"MP3", "mp3"
-    rig.lis._encode = enc
-    run(rig.tick())
-    assert rig.llm.calls == [] and rig.lis.log(1)[0]["kind"] == "skipped"
-    assert rig.lis.log(1)[0]["why"] == "AI listening is off in this mode"
 
 
 def test_the_modes_permission_survives_a_restart(tmp_path):
@@ -1127,10 +940,9 @@ def test_the_modes_permission_survives_a_restart(tmp_path):
     rig.lis.set_mode(True)
     store = StateStore(tmp_path / "state.json")
     assert store.save({"listener": rig.lis.persist()})
-    again = Rig(tmp_path, mode=False)                    # a fresh listener: off until restored
-    assert again.lis._gate(again.now)[0] == "AI listening is off in this mode"
+    again = Rig(tmp_path, mode=False)                    # a fresh listener: not set until restored
     again.lis.restore(StateStore(tmp_path / "state.json").load()["listener"])
-    assert again.lis.mode is True and not (again.lis._gate(again.now)[0] or "").startswith("AI listening is off")
+    assert again.lis.mode is True
     rig.lis.set_mode(False)
     assert store.save({"listener": rig.lis.persist()})
     again.lis.restore(StateStore(tmp_path / "state.json").load()["listener"])

@@ -525,7 +525,7 @@ class Show:
 
     def _wire_mic(self) -> None:
         """README S5.16: the mic's brain-side inputs (each optional): the ring, Auto's live on/off (and its wake on a
-        toggle), the room view for the mode's label, the card's refresh."""
+        toggle), the AI listening switch (and its wake), the room view for the mode's label, the card's refresh."""
         mic = self.mic
         if mic is None:
             return
@@ -540,9 +540,9 @@ class Show:
             if callable(add):
                 add(mic.wake)
             lis = comps.get("listener") if isinstance(comps, dict) else None
-            if lis is not None and callable(getattr(lis, "set_auto", None)):
-                lis.set_auto(getattr(ap, "is_on", None) if ap is not None else None)   # no OpenAI unless Auto is on
-                lis.set_mic(mic.state)                                                 # ... and the mic is on
+            if lis is not None and callable(getattr(lis, "add_on_listener", None)):
+                mic.set_listening(lambda: lis.on is True)    # owner, 21 Oct: AI listening on claims the mic
+                lis.add_on_listener(mic.wake)
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))

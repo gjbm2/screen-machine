@@ -488,7 +488,10 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     if LISTENER in comps:          # README S5.20: today's spend and the evening's estimate, even while it is off
         est = _num(lview.get("est_evening_usd"), None)
         listening = {"on": bool(lview.get("on")), "effective": bool(lview.get("effective")), "why": lview.get("why"),
-                     "mode": bool(lview.get("mode")),     # owner, 20 Oct: the mode's own permission (show.ai)
+                     # owner, 21 Oct: one of listener.STATUS_WORDS, and the last round trips and skips, newest first
+                     "status": lview.get("status") if isinstance(lview.get("status"), str) else None,
+                     "history": [dict(x) for x in lview.get("history") or [] if isinstance(x, dict)],
+                     "mode": bool(lview.get("mode")),     # show.ai's last word (shown, never a gate since 21 Oct)
                      "spend_today_usd": round(_num(lview.get("spend_today_usd"), 0.0) or 0.0, 4),
                      "est_evening_usd": None if est is None else round(est, 2),
                      "provider": lview.get("provider") if isinstance(lview.get("provider"), str) else None,
@@ -497,7 +500,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
                      "approach": dict(lview["approach"]) if isinstance(lview.get("approach"), dict) else None,
                      "armed": [dict(x) for x in lview.get("armed") or [] if isinstance(x, dict)]}
     else:
-        listening = {"on": False, "effective": False, "why": MISSING[LISTENER], "mode": False, "spend_today_usd": 0.0,
+        listening = {"on": False, "effective": False, "why": MISSING[LISTENER], "status": None, "history": [],
+                     "mode": False, "spend_today_usd": 0.0,
                      "est_evening_usd": None, "provider": None, "character": None, "approach": None, "armed": []}
 
     if AUTOPILOT in comps:
@@ -534,7 +538,8 @@ def neutral_catalog(why: str) -> dict:
 
 
 def neutral_listener(why: str) -> dict:
-    return {"on": False, "mode": False, "effective": False, "why": why, "stream": None, "next_in_s": None,
+    return {"on": False, "mode": False, "effective": False, "why": why, "status": "Off", "detail": why,
+            "history": [], "stream": None, "next_in_s": None,
             "cadence_s": 0.0, "fast": None, "in_flight": 0, "calls_today": 0, "spend_today_usd": 0.0,
             "budget_usd": None, "model": None, "last": None, "errors": 0, "provider": None, "est_evening_usd": None,
             "estimate": None, "character": None, "approach": None, "armed": []}
