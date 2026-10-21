@@ -4933,6 +4933,30 @@ against 26's D (a9867fd2) and 3a's a9867fd2 replays:
   windows), and the halving kept them.
 - **What still reads 0.0 at 0.5.** On 031 at 149 s, Beat This!'s beats are on the annotations but a quarter beat off
   the line on both halves. Its local period is 92.6 bpm against a true 91.1, carried 6.6-16.6 s back from the anchor.
+- The 8 parity cases (slow lane off) are flash-identical at e6b83d41.
+
+**26's full-song set at e6b83d41** (`baseline.py run --subset fullsong-subset.json --stream room-mic --snr-db 27
+--conditions D --tag fullsong-roommic-runs2`; 24 songs; stack s9e24e8b337; against 26's D at a9867fd2). 21 of 24 are
+flash-identical. Six octave votes reached the clock (in 26's run, only the pop's first did):
+
+| song (true bpm) | vote | the clock | effect |
+|---|---|---|---|
+| lookatmenow (73) | x0.5 at 62 s, 147 -> 73, right tempo | applied (prior); held 8 s | on Beat This!'s off-beat half: flashes on a beat 0.29 -> 0.25; F 0.517 -> 0.515, acc1 time 0.023 -> 0.044 |
+| 031 (91) | x0.5 at 169 s, other half, 182 -> 91, right | applied (audio, 0.37); held 16 s | flashes on a beat 0.38 -> 0.56; F 0.552 -> 0.557, acc1 time 0.084 -> 0.127 |
+| 044 (147) | x0.5 at 71 s, 148 -> 74, **wrong**: two ungated turns in a row, conf 0.67 and 1.0 | **applied (prior: 73 >= 69; ratio 1.33)**; held 7 s | still on beats (half of them); F 0.960 -> 0.947, acc1 time 0.864 -> 0.826 |
+| the pop, 069 (126) | x0.5 at 137 s and 177 s, to 62-63, wrong | refused (prior) both | flash-identical |
+| 084 (128) | x0.5 at 35 s, other half, to 63, wrong | refused (prior) | flash-identical |
+
+Over the set: F 0.764 = (mean -0.0004), AMLt 0.722 -> 0.718, acc1 0.67 =, acc2 0.88 =, acc1 over time 0.605 -> 0.606,
+precision 0.95 =, wrong-lock 0.001 =. Net, about nothing. The votes now reach the clock, but on this mic:
+- A right halving's map lasts 8-16 s, until the DBN itself leaves the double (`oct_clear_jump`).
+- Beat This! can have the tempo without the phase (lookatmenow).
+- A wrong halving above 69 bpm passes on an ungated line (044: limit 1 above, now reached through "no grid" turns).
+  On this set, requiring the audio (ratio <= `octave_drop_max`) for a halving while the clock's gate is none would
+  refuse 044's and keep 031's (0.37) and lookatmenow's (gated dmx). That is not done here: three cases are too few.
+- Low agreement is kept as a break. On this set it sat between two votes of one key only for octave-1 one votes
+  (7 turns on 4 songs) and the pop's refused halving (77 s and 127 s); keeping the run across it would add no right
+  octave.
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
