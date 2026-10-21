@@ -29,7 +29,6 @@ import {
   fxChips,
   fxLabel,
   fxRange,
-  mismatchWords,
   useEffectItems,
   useSceneItems,
   type FxChip,
@@ -871,7 +870,7 @@ export function LookControls({
     const on = chips.find((c) => c.kind !== "scene" && c.preset === key);
     if (on) return takeOff(on);
     if (onTop) void lv.addEffect(key, label, max, (d) => droppedWords(max, fxLabel(d, lib)));
-    else if (me) void lv.act(`putting ${label} on`, () => pickEffect(api, me.session, key, { lib }), (r) => mismatchWords(key, (r as string | null) ?? null, lib));
+    else if (me) void lv.act(`putting ${label} on`, () => pickEffect(api, me.session, key, { lib }));
   };
 
   const selected = new Set(chips.filter((c) => c.kind !== "scene" && c.preset).map((c) => c.preset as string));
@@ -1055,25 +1054,32 @@ export function LookSettings({
 }) {
   const look = lv.look;
   const [music, setMusic] = useState<string | null>(null);
+  // Re-read every 5 s while this is on screen and the page is visible.
   useEffect(() => {
     let alive = true;
-    api
-      .inputs(screenId)
-      .then((r) => {
-        if (!alive) return;
-        const d = (r.derived ?? {}) as Record<string, unknown>;
-        const bpm = typeof d.bpm === "number" ? Math.round(d.bpm) : null;
-        setMusic(
-          r.online === false
-            ? "No music signal: on-the-beat changes happen straight away."
-            : bpm
-              ? `Hearing ${bpm} beats a minute${d.beat_locked ? ", in time" : ", finding the beat"}.`
-              : "Listening for the beat…",
-        );
-      })
-      .catch(() => alive && setMusic(null));
+    const read = () => {
+      if (document.visibilityState === "hidden") return;
+      api
+        .inputs(screenId)
+        .then((r) => {
+          if (!alive) return;
+          const d = (r.derived ?? {}) as Record<string, unknown>;
+          const bpm = typeof d.bpm === "number" ? Math.round(d.bpm) : null;
+          setMusic(
+            r.online === false
+              ? "No music signal: on-the-beat changes happen straight away."
+              : bpm
+                ? `Hearing ${bpm} beats a minute${d.beat_locked ? ", in time" : ", finding the beat"}.`
+                : "Listening for the beat…",
+          );
+        })
+        .catch(() => alive && setMusic(null));
+    };
+    read();
+    const id = window.setInterval(read, 5_000);
     return () => {
       alive = false;
+      window.clearInterval(id);
     };
   }, [api, screenId, look?.session]);
 
@@ -1100,7 +1106,7 @@ export function LookSettings({
           {!auto?.enabled && <p className="mb-2 text-[15px] text-muted-foreground">Used while Pick scenes by itself is on.</p>}
           <div className="space-y-3">
             <ChipGroup label="Scenes it picks from">
-              <Chip active={!fam} onClick={() => setAuto("picking from every scene", { pool: "all" })}>
+              <Chip active={auto?.pool === "all"} onClick={() => setAuto("picking from every scene", { pool: "all" })}>
                 <Shuffle className="h-4 w-4" aria-hidden /> Any
               </Chip>
               {families.map((f) => (
@@ -1109,6 +1115,11 @@ export function LookSettings({
                 </Chip>
               ))}
             </ChipGroup>
+            {Array.isArray(auto?.pool) && (
+              <p className="text-[15px] text-muted-foreground">
+                This mode picks from its own {auto.pool.length} scenes; Any widens it.
+              </p>
+            )}
             <ChipGroup label="Each scene stays">
               {DWELL.map((d) => (
                 <Chip key={d.label} active={sameDwell(auto?.dwell_s, d.value)} onClick={() => setAuto(`scenes stay: ${d.label.toLowerCase()}`, { dwell_s: d.value })}>
@@ -1116,12 +1127,14 @@ export function LookSettings({
                 </Chip>
               ))}
             </ChipGroup>
-            <UnitSlider
-              label="How often it changes scene"
-              value={dir.change_rate ?? 0.5}
-              show={oftenWords}
-              onCommit={(v) => void lv.setDirection("change rate", { change_rate: v, source: "panel" })}
-            />
+            {sameDwell(auto?.dwell_s, null) && (
+              <UnitSlider
+                label="How often it changes scene"
+                value={dir.change_rate ?? 0.5}
+                show={oftenWords}
+                onCommit={(v) => void lv.setDirection("change rate", { change_rate: v, source: "panel" })}
+              />
+            )}
             <SwitchRow
               label="Change on the beat"
               hint="Waits for the music's next beat"

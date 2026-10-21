@@ -22,7 +22,7 @@ import type { Catalog, Library, ScreenStatus } from "./types";
 import { useLiveLook } from "./useLiveLook";
 import type { NewLogEntry, StreamEvent } from "./useRoomConnection";
 import { liveOf, useScreenControls } from "./useScreenControls";
-import { friendlyName, summariseScreen } from "./words";
+import { friendlyName, problemWords, summariseScreen } from "./words";
 
 export interface ScreenCardProps {
   screenId: string;
@@ -91,9 +91,9 @@ export const ScreenCard = memo(function ScreenCard({
     if (onGlass) followScene(onGlass.key);
   }, [onGlass, followScene]);
   const summary = useMemo(() => {
-    const s = summariseScreen(screen, sc.scenes);
+    const s = summariseScreen(screen, sc.scenes, streamReachable);
     return onGlass && s.live ? { ...s, text: `Live · ${onGlass.label}` } : s;
-  }, [screen, sc.scenes, onGlass]);
+  }, [screen, sc.scenes, onGlass, streamReachable]);
 
   // What's on the TV: the art it reports (re-read when it changes), or the scene while live.
   const art = usePublishedArt(screenId, obs.kiosk_state?.base_url);
@@ -193,16 +193,14 @@ export const ScreenCard = memo(function ScreenCard({
           <div className="space-y-5 border-t border-stone-200/80 px-4 pb-5 pt-4">
             {(phase === "failed" || screen.last_error) && (
               <Notice tone="bad">
-                <strong className="font-semibold">
-                  {phase === "failed" ? "The last change didn't work." : "The last try had a problem."}
-                </strong>{" "}
-                {screen.last_error ?? obs.detail ?? ""}
+                {/* One sentence; the raw error is under Technical details. */}
+                {problemWords(screen.last_error, phase)}
+                {desiredLive ? " It's trying again." : ""}
               </Notice>
             )}
             {obs.page_connected === false && (
               <Notice tone="info">
-                This screen's page isn't connected right now, so it can't go live. It reconnects by itself when the TV
-                page is open.
+                The TV page isn't open right now. Live still starts; the TV joins it when its page opens.
               </Notice>
             )}
             {catalogError && (
@@ -212,7 +210,7 @@ export const ScreenCard = memo(function ScreenCard({
               </Notice>
             )}
             {streamReachable === false && sc.liveNow && (
-              <Notice tone="warn">Live pictures aren't available right now (stream service unreachable). Back to art still works.</Notice>
+              <Notice tone="warn">The live pictures aren't answering right now. Back to art still works.</Notice>
             )}
 
             {sc.liveNow ? (

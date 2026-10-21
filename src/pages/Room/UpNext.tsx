@@ -238,14 +238,7 @@ export function UpNext({
             aria-label={`Play ${label} now`}
             title="Play now"
             data-testid={`upn-play-${screenId}-${kind}-${i}`}
-            onClick={async () => {
-              const res = await send(`playing ${label}`, k("play"), { op: "play", id: e.id });
-              const got = !scene && res ? (res.fx as { preset?: string | null } | undefined)?.preset : undefined;
-              if (!scene && res && got !== (e as UpNextEffect).effect) {
-                const other = got ? lib?.effects.find((x) => x.name === got)?.label ?? cap(got) : null;
-                setNote(other ? `${label} didn't fit; it brought in ${other}.` : `${label} didn't fit with this scene just now.`);
-              }
-            }}
+            onClick={() => void send(`playing ${label}`, k("play"), { op: "play", id: e.id })}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {busy === k("play") ? <Spinner /> : <Play className="h-4 w-4" aria-hidden />}
@@ -412,7 +405,7 @@ export function UpNext({
 
       <div className="space-y-1">
         {group("scene", scenes, autoOn ? "Choosing the next ones…" : "Nothing queued. Add one, or turn on picking scenes by itself.")}
-        {group("effect", effects, fxAutoOn ? "Nothing fits right now." : "None queued. Add one, or turn on picking effects by itself.")}
+        {group("effect", effects, fxAutoOn ? "Choosing the next ones…" : "None queued. Add one, or turn on picking effects by itself.")}
       </div>
 
       {note && (

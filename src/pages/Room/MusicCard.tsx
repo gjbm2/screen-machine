@@ -7,10 +7,10 @@
 //     "Auto → Piano · the piano is playing · Undo" chip after a switch. Nothing else on the page is called "Auto".
 //   - Listening: the Room mic switch and its input, the piano's MIDI (connected, and each key as it arrives), then AI
 //     listening (short clips to an online AI). Both listening switches live here, together; the menu has no controls.
-//   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar, and "following loosely";
+//   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar;
 //     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
 //   - Calmer · Wilder, the palette, Next look · Keep this look · House lights.
-//   - The active nudges as chips, each with an ×, and Back to auto.
+//   - The active nudges as chips, each with an ×, and Clear all.
 //   - More: Lamp brightness (the Lights low toggle, c8's ruling, S3.9) and Describe it.
 // Nothing is ever disabled: a tap the music side can't take yet
 // is sent again for half a minute, and the card says so. The words are show_service's own or written here; never an id.
@@ -28,7 +28,7 @@ import { MicPicker } from "./MicPicker";
 import { PianoRow } from "./PianoRow";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, type Tone } from "./tones";
-import type { ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowMicState, ShowPaletteChoice } from "./types";
+import type { ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowListenRound, ShowMicState, ShowPaletteChoice } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
 
 const POLL_MS = 5_000;
@@ -440,7 +440,7 @@ function ActionButton({
 
 /** Auto's announcement: a switch (with Undo), a hold, an undo, a failure. */
 function AutoChip({ chip, busy, onUndo }: { chip: ShowAutoNote; busy: boolean; onUndo: () => void }) {
-  const tone: Tone = chip.kind === "failed" || chip.kind === "backoff" ? "warn" : chip.kind === "switch" ? "live" : "muted";
+  const tone: Tone = chip.kind === "failed" ? "warn" : chip.kind === "switch" ? "live" : "muted";
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-1.5", TONE_CLASSES[tone])} data-testid="music-auto-chip">
       <span className="min-w-0 flex-1 py-1 text-[15px] leading-snug">{chip.text}</span>
@@ -503,7 +503,13 @@ export function MusicCard({
     : micListening
       ? `In use · ${
           (mic.claims ?? [])
-            .map((c) => (c.by === "auto" ? "for Auto" : `${c.label || mic.mode || "this mode"} follows the music`))
+            .map((c) =>
+              c.by === "auto"
+                ? "for Auto"
+                : c.by === "listening"
+                  ? "for AI listening"
+                  : `${c.label || mic.mode || "this mode"} follows the music`,
+            )
             .join(" · ") || "for the room"
         }`
       : !micAllowed
@@ -562,20 +568,24 @@ export function MusicCard({
     void send(dir, cap(dir), () => api.showStep(dir), {
       ok: (r) =>
         r?.steps?.at_limit
-          ? { tone: "muted", text: dir === "calmer" ? "That's as calm as this mode goes." : "That's as wild as this mode goes." }
+          ? { tone: "muted", text: dir === "calmer" ? "That's as calm as it goes." : "That's as wild as it goes." }
           : null,
     });
   const setPalette = (c: ShowPaletteChoice) =>
     void send("palette", `palette ${c.label || c.name}`, () => api.showPalette(c.name), { latest: true });
   const next = () =>
     void send("next", "Next look", () => api.showAction("next"), {
-      ok: (r) => (r?.detail ? { tone: "muted", text: r.detail } : r?.look && !r.look.next_pending ? { tone: "muted", text: "This mode has no other looks to change to." } : null),
+      ok: (r) => (r?.detail ? { tone: "muted", text: r.detail } : r?.look && !r.look.next_pending ? { tone: "muted", text: "No colours are playing yet, so there's nothing to change." } : null),
     });
-  const keep = () => void send("keep", "Keep this look", () => api.showAction("keep"));
-  const house = () => void send("house", card?.house ? "back from house lights" : "House lights", () => api.showAction("house"));
+  const keep = () =>
+    void send("keep", typeof card?.look?.keep_in_s === "number" ? "stop keeping this look" : "Keep this look", () =>
+      api.showAction("keep"),
+    );
+  const house = () =>
+    void send("house", card?.house ? "back from house lights" : "House lights", () => api.showAction("house", !card?.house));
   const setLow = (on: boolean) => {
     setPendingLow(on);
-    void send("low", on ? "Lights low" : "lights back up", () => api.showAction("low")).then((ok) => {
+    void send("low", on ? "Lights low" : "lights back up", () => api.showAction("low", on)).then((ok) => {
       if (ok) setTimeout(() => setPendingLow(null), 3_000);
       else setPendingLow(null);
     });
@@ -584,7 +594,7 @@ export function MusicCard({
     if (pendingLow !== null && !!card?.low === pendingLow) setPendingLow(null);
   }, [card?.low, pendingLow]);
   const clear = (c: ShowChip) => void send(`chip:${c.id}`, `clear ${c.label || "a change"}`, () => api.showClearNudge(c.id));
-  const backToAuto = () => void send("all", "Back to auto", () => api.showClearNudge("all"));
+  const backToAuto = () => void send("all", "Clear all", () => api.showClearNudge("all"));
   const describeIt = () => {
     const t = text.trim();
     void send("describe", t ? `describe it: “${t}”` : "describe it", () => api.showDescribe(t), { ok: () => setText("") });
@@ -687,14 +697,13 @@ export function MusicCard({
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm text-muted-foreground">What it hears</span>
-            {answering && hearing?.loose && <span className="text-sm text-amber-800">following loosely</span>}
           </div>
           <p
             className={cn("text-xl font-semibold leading-snug first-letter:uppercase", !answering && "text-stone-500")}
             data-testid="music-hearing"
           >
             {/* show_service's catch-all "Listening" (sound, but nothing it recognises) would read like the mic's state */}
-            {card ? (!hearing?.text || hearing.text === "Listening" ? "Not sure yet" : hearing.text) : "Nothing yet"}
+            {card ? (!hearing?.text || hearing.text === "Listening" ? (hearing?.test && level > 0 ? "Test music" : "Not sure yet") : hearing.text) : "Nothing yet"}
           </p>
           {answering && <AiHears listening={card?.listening} />}
           {!mic && <MicPicker api={api} />}
@@ -715,7 +724,10 @@ export function MusicCard({
               {card ? "The music side stopped answering" : "The music side isn't answering yet"}; the page keeps trying.
             </p>
           ) : (
-            hearing?.test && level > 0 && <p className="mt-1.5 text-sm text-muted-foreground">From the test music.</p>
+            hearing?.test &&
+            level > 0 &&
+            !!hearing.text &&
+            hearing.text !== "Listening" && <p className="mt-1.5 text-sm text-muted-foreground">From the test music.</p>
           )}
         </div>
 
@@ -818,7 +830,7 @@ export function MusicCard({
               onClick={backToAuto}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium text-stone-700 underline underline-offset-2 hover:text-stone-900"
             >
-              {busy("all") && <Spinner />} Back to auto
+              {busy("all") && <Spinner />} Clear all
             </button>
           </div>
         )}
@@ -928,11 +940,14 @@ function IdentifyMusicRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed;
   const [pending, setPending] = useState<boolean | null>(null);
   const l = card?.listening;
   const on = pending ?? !!l?.on;
+  // Owner, 21 Oct: on = it sends; the line just says Listening, or show_service's own words for a pause.
   const sub = !card
     ? "The music side isn't answering yet."
-    : !on || l?.effective || pending !== null
+    : !on || pending !== null
       ? `Lets an online AI${l?.provider ? ` (${l.provider})` : ""} listen to the music and foresee what's coming (a chorus, a climax, the end), so the screens and lights change on time`
-      : `Not sending right now${l?.why ? `: ${l.why.replace(/\.+$/, "")}` : ""}`;
+      : l?.effective
+        ? "Listening"
+        : (l?.why ? l.why.replace(/\.+$/, "") : "Not sending right now");
   // What it costs (owner, 17 Oct: "guide the user to the fact that this is going to run up the bills"), shown whether
   // it's on or off, so the price is there before switching on. Both numbers are show_service's; none is made up here.
   const money = (v: number) => `$${v.toFixed(2)}`;
@@ -955,11 +970,6 @@ function IdentifyMusicRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed;
         <span className="min-w-0">
           <span className="block text-base font-semibold leading-snug">AI listening</span>
           <span className="block text-sm leading-snug text-muted-foreground">{sub}</span>
-          {on && l?.mode === false && (
-            <span className="block text-sm leading-snug text-stone-700" data-testid="music-identify-mode">
-              To allow it in this mode, use the mode's ⋯
-            </span>
-          )}
           {cost && (
             <span className="block text-sm leading-snug text-amber-800" data-testid="music-identify-cost">
               {cost}
@@ -972,6 +982,73 @@ function IdentifyMusicRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed;
         </span>
       </label>
       <NoteLine note={note} />
+      {on && <ListenRounds rounds={l?.history} base={api.baseUrl} />}
     </div>
+  );
+}
+
+/** Each AI listening round trip in one plain line, newest first (owner, 21 Oct: see what it returns on each round
+ *  trip). A skip or failure shows its words; nothing here decides anything. */
+function ListenRounds({ rounds, base }: { rounds?: ShowListenRound[] | null; base: string }) {
+  const list = (rounds ?? []).slice(0, 10);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const player = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => player.current?.pause(), []);
+  if (!list.length) return null;
+  // ▶ plays the exact clip that round trip sent (show_service keeps the last few); ■ stops it.
+  const play = (url: string) => {
+    player.current?.pause();
+    if (playing === url) { setPlaying(null); return; }
+    const a = new Audio(`${base}${url}`);
+    a.onended = () => setPlaying((p) => (p === url ? null : p));
+    a.onerror = () => setPlaying((p) => (p === url ? null : p));
+    player.current = a;
+    setPlaying(url);
+    a.play().catch(() => setPlaying(null));
+  };
+  const when = (r: ShowListenRound) => {
+    if (typeof r.at !== "number") return "";
+    const d = new Date(r.at * 1000);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+  const genre = (g: ShowListenRound["genre"]) =>
+    typeof g === "string" ? g : g ? [g.label, g.detail && g.detail !== g.label ? g.detail : null].filter(Boolean).join(", ") : "";
+  const moods = (m: ShowListenRound["moods"]) => (Array.isArray(m) ? m : m?.words ?? []).filter(Boolean).join(", ");
+  const coming = (c: ShowListenRound["coming"]) =>
+    (c ?? []).filter((x) => x?.kind).map((x) =>
+      typeof x.eta_min_s === "number" && typeof x.eta_max_s === "number"
+        ? `${x.kind} in ${Math.round(x.eta_min_s)}-${Math.round(x.eta_max_s)} s` : `${x.kind}`).join(", ");
+  return (
+    <ul className="space-y-1 rounded-md bg-stone-50 px-2 py-1.5" data-testid="music-identify-rounds">
+      {list.map((r, i) => {
+        const said = [r.character || r.content, genre(r.genre), moods(r.moods)].filter(Boolean).join(" · ");
+        const next = coming(r.coming);
+        const meta = [
+          typeof r.lufs === "number" ? `heard ${Math.round(r.lufs)} LUFS${typeof r.gain_db === "number" ? ` +${Math.round(r.gain_db)} dB` : ""}` : null,
+          r.gaps ? `${r.gaps} dropout${r.gaps === 1 ? "" : "s"} (${(r.gaps_s ?? 0).toFixed(1)} s)` : null,
+          r.device || null,
+          typeof r.latency_ms === "number" ? `${(r.latency_ms / 1000).toFixed(1)} s` : null,
+          typeof r.cost_usd === "number" ? `$${r.cost_usd.toFixed(4)}` : null,
+        ].filter(Boolean).join(" · ");
+        return (
+          <li key={`${r.t_ms ?? r.at ?? i}-${i}`} className="text-sm leading-snug">
+            {r.clip_url && (
+              <button type="button" onClick={() => play(r.clip_url!)} aria-label={playing === r.clip_url ? "Stop" : "Play what the AI heard"}
+                className="mr-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-teal-700 text-xs text-white align-middle">
+                {playing === r.clip_url ? "■" : "▶"}
+              </button>
+            )}
+            <span className="tabular-nums text-muted-foreground">{when(r)} </span>
+            {r.ok === false ? (
+              <span className="text-muted-foreground">{r.why || r.error || "nothing came back"}</span>
+            ) : (
+              <span className="text-stone-800">{said || "(no words)"}</span>
+            )}
+            {next && <span className="text-teal-800"> · expects {next}</span>}
+            {meta && <span className="text-xs text-muted-foreground"> · {meta}</span>}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
