@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from collections import defaultdict
@@ -42,6 +43,8 @@ def _vocabulary(a: Adapter) -> dict:
     return v if isinstance(v, dict) else {}
 
 
+mode_log = logging.getLogger("room_service.mode")   # one line per finished switch (mo-11)
+
 RESERVED_SOURCES = {"boot", "resume", "rollback"}  # set only by room_service itself; the API answers 400 bad_source
 BACKOFF = (30, 60, 120, 300, 600)                 # retry delays (s); after the last one the retry gives up (§4.1)
 POLICY_RANK = {"ignore": 0, "respect": 1, "enforce": 2}
@@ -51,7 +54,7 @@ EDGE_TICK_S = 10.0                                # reconcile period for a subsy
 
 class Refused(RuntimeError):
     """A change the coordinator won't make now. `code` is for the API: bad_source | transition_running | device_busy |
-    enforced | toggle_state_unknown | unknown_stored | unavailable | readable."""
+    unknown_stored | unavailable | readable."""
 
     def __init__(self, code: str, detail: str = "") -> None:
         super().__init__(f"{code}: {detail}" if detail else code)
@@ -66,10 +69,11 @@ class Busy(Refused):
 
 
 def same(x: Any, y: Any, a: Adapter | None = None) -> bool:
-    """Numbers within the adapter's tolerance, anything else with ==. Both sides are canonical (§5.2 rule 1)."""
+    """Numbers within the adapter's tolerance, anything else with == or the adapter's equivalent() (Sonos paused and
+    stopped). Both sides are canonical (§5.2 rule 1)."""
     if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (x, y)):
         return abs(x - y) <= (a.tolerance if a is not None else 0)
-    return x == y
+    return x == y or (a is not None and a.equivalent(x, y))
 
 
 def err(e: BaseException) -> str:
@@ -361,6 +365,7 @@ class Coordinator:
                     if later:                     # sent now (in order on its channel); the next step doesn't wait
                         behind.append(_eager(self._apply(tr, later, p.slots, mode=to, eager=True)))
                     out = await self._apply(tr, batch, p.slots, mode=to) if batch else {}
+                    self._hand_rows(tr, out)      # set by hand while the batch ran: the person's value stands
                     guards = [t for t in names if t in step.abort_on and t in p.desired]
                     bad = [t for t in guards if not self._held_already(t, p.desired[t], tr, cfg)    # R7
                            and ((t in out and out[t].status != "ok")
@@ -376,6 +381,7 @@ class Coordinator:
                     if weak:                      # R8: allow_skipped
                         tr["detail"] = "; ".join(filter(None, [tr["detail"], f"guard not enforced: {', '.join(weak)} skipped"]))
                 await asyncio.gather(*behind)     # every row has its outcome before the enter signals
+                self._hand_rows(tr, p.desired)
                 # 7. Enter signals of the modes the room is entering, outermost first.
                 for name in p.enters:
                     self.s["mode"]["entered"].append(name)          # on disk before a signal goes: _fire saves first
@@ -427,6 +433,15 @@ class Coordinator:
         rows, ref = self._rows(exits, steps, enters, desired, pending, unsent, slots, to, cfg)
         return Plan(desired, slots, pending, unsent, exits, enters, steps, rows, ref)
 
+    def _hand_rows(self, tr: dict, targets) -> None:
+        """S12: a target set by hand while the switch was sending it: its row says so (skipped), not the switch's
+        outcome, and it never makes the switch partial."""
+        hit = [t for t in targets if t in self._hand_wins]
+        for t in hit:
+            self._row(tr, t, "skipped", "set by hand during the switch", "hand", save=False)
+        if hit:
+            self._save()
+
     def _proved_behind(self, t: str, step: Step) -> bool:
         """An unguarded target of a prove_behind adapter (the page policy): the step sends it, the next step goes on."""
         a = self._adapter(t)
@@ -446,6 +461,10 @@ class Coordinator:
             self.s["mode"]["target"] = None
         self._save()
         self._emit("done", tr, status=tr["status"], detail=tr["detail"])
+        bad = [f"{r['subsystem']} {r['status']}" + (f" ({r['detail']})" if r.get("detail") else "")
+               for r in tr["steps"] if r["status"] != "ok" and r["kind"] != "delay"]
+        mode_log.info("switch %s %s→%s %s (source %s): %s", tr["id"], tr["from"], tr["to"], tr["status"],
+                      tr.get("source"), "; ".join(bad) or "all ok")
 
     def _note(self, tr: dict, t: str, text: str) -> None:
         tr.setdefault("notes", {})[t] = text
@@ -538,8 +557,10 @@ class Coordinator:
 
     @staticmethod
     def _any_not_ok(tr: dict) -> bool:
-        """failed or unconfirmed rows, or a skipped guarded one (allow_skipped); other skipped rows never count."""
-        return any(r["status"] in ("failed", "unconfirmed") or (r["status"] == "skipped" and r.get("guarded"))
+        """failed or unconfirmed rows, or a skipped guarded one (allow_skipped); other skipped rows never count, nor
+        one the person set by hand during the switch."""
+        return any(r["status"] in ("failed", "unconfirmed")
+                   or (r["status"] == "skipped" and r.get("guarded") and r.get("reason") != "hand")
                    for r in tr["steps"])
 
     # store, desired values, send decisions (§4.4) --------------------------------------------------------------
@@ -1076,7 +1097,9 @@ class Coordinator:
     async def hand_set(self, t: str, value: Any, hold: bool = False, source: str = "web") -> asyncio.Task:
         """PUT /room/targets/{t}, PUT /screens/{id}: one target by hand, under the current mode's policy. Returns the
         running change (202): its result is the Outcome. KeyError: unknown target (404); ValueError: bad value (400);
-        Refused: transition_running, enforced (needs hold), toggle_state_unknown, unavailable (409)."""
+        Refused: unavailable (409). The person's value always goes: an enforced target takes it (drift overridden)
+        until the next switch, and a toggle whose state is unknown gets one press, the tapped value believed
+        (unconfirmed). `hold` is kept for the log."""
         a, member = self._target(t)
         v = a.normalize(member, value)
         if a.placeholder or a.dry_run:
@@ -1084,12 +1107,6 @@ class Coordinator:
         self._gen += 1
         async with self._req:
             running = bool(self._task and not self._task.done())
-            d, b = self.s["desired"].get(t), self.s["believed"].get(t)
-            if d and d["policy"] == "enforce" and not hold:
-                raise Refused("enforced", f"{self.s['mode']['current']} keeps {t} at {a.show(member, d['value'])}: "
-                                          "hold it until the next mode change?")
-            if a.kind == "edge_toggle" and (not b or b["confidence"] == "unknown"):
-                raise Refused("toggle_state_unknown", "say what it is doing first (assume)")
             if running:                           # owner 17 Oct: a switch running never blocks a hand change (Auto on /
                 self._hand_wins[t] = v            # off mid-switch): it applies now, the switch leaves it alone, and the
                 task = asyncio.create_task(self._hand_apply_during(t, v, source, hold))   # value holds until the next

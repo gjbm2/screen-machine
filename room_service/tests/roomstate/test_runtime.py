@@ -782,6 +782,24 @@ def test_s13_manual_screen_during_transition_applies_and_holds(tmp_path):
     asyncio.run(body())
 
 
+def test_s12_hand_set_while_its_batch_is_sent_says_by_hand(tmp_path):
+    """S12: a target set by hand while the switch is sending it: its row is skipped "set by hand during the switch",
+    the person's value stands, and the switch isn't partial because of it."""
+    async def body():
+        r = make_room(tmp_path)
+        await boot(r)
+        r.blinds.travel_s = 0.2
+        await r.c.request_mode("disco")
+        await until(lambda: sent(r, "blinds"))
+        await (await r.c.hand_set("blinds.ch03", 50))
+        await r.c.wait_idle()
+        tr = r.c.s["last_transition"]
+        row = next(x for x in tr["steps"] if x["subsystem"] == "blinds.ch03")
+        assert (row["status"], row["detail"], row.get("reason")) == ("skipped", "set by hand during the switch", "hand")
+        assert tr["status"] == "ok" and r.blinds.value["ch03"] == 50
+    asyncio.run(body())
+
+
 # --- F10, F19 -------------------------------------------------------------------------------------------------------------
 
 def test_exception_in_run_fails_cleanly(tmp_path):

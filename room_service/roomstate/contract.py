@@ -104,6 +104,11 @@ class Adapter:
         """Short text for a row ("live:fractal-zoom")."""
         return value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
 
+    def equivalent(self, x: Value, y: Value) -> bool:
+        """Two different canonical values that mean the same for the room (Sonos paused vs stopped), so a target that
+        holds one needs no command to reach the other. Called only after == said no."""
+        return False
+
     def words(self, member: str, value: Value) -> str:
         """Page words for a value ("Lowered", "Art mode"): the value schema's own names (schema_words), else show()."""
         try:

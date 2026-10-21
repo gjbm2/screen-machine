@@ -186,7 +186,7 @@ def test_plan_says_why_a_blind_will_not_be_restored(tmp_path):
 # --- hand changes, stored edits, reload -----------------------------------------------------------------------------
 
 def test_set_target_validates_and_follows_the_mode_policy(tmp_path):
-    """v1.1 (marked in §8): hold makes the enforced target overridden (manual drift) instead of aa's held/respect."""
+    """mo-7: an enforced target takes a hand value without hold; it shows as overridden (manual drift)."""
     async def body():
         r = build(tmp_path)
         await boot(r)
@@ -200,10 +200,7 @@ def test_set_target_validates_and_follows_the_mode_policy(tmp_path):
         drift = r.c.s["drift"]["sonos.lounge.volume"]
         assert {k: drift[k] for k in ("observed", "desired", "manual", "overridden")} == {
             "observed": 30, "desired": 60, "manual": True, "overridden": False}
-        with pytest.raises(Refused) as e:                                    # enforced: refused without hold
-            await r.c.set_target("blinds.ch03", 0)
-        assert e.value.code == "enforced" and r.blinds.value["ch03"] == 100
-        await r.c.set_target("blinds.ch03", 0, cause="owner peeked", hold=True)   # held until the next switch
+        await r.c.set_target("blinds.ch03", 0, cause="owner peeked")        # enforced: accepted, held until the next switch
         st = r.c.status()["subsystems"]["blinds"]["members"]["ch03"]
         assert r.blinds.value["ch03"] == 0 and st["drift"]["overridden"] and st["drift"]["manual"]
         await r.c.reconcile_once()
@@ -294,15 +291,16 @@ def test_assume_tells_a_toggle_relay_its_state_without_sending(tmp_path):
     async def body():
         r = build(tmp_path, ball_kind="edge_toggle")
         await boot(r)
-        with pytest.raises(Refused) as e:
-            await r.c.set_target("mirror_ball.main", "spinning")
-        assert e.value.code == "toggle_state_unknown" and r.ball.sent == []
-        r.c.assume("mirror_ball.main", "stopped", cause="owner: it is off")
-        assert r.ball.sent == []
+        out = await r.c.set_target("mirror_ball.main", "spinning")             # mo-8: state unknown: one press,
+        assert out.status == "ok" and r.ball.sent == [{"main": "spinning"}]     # the tapped value believed
+        b = r.c.s["believed"]["mirror_ball.main"]
+        assert (b["value"], b["confidence"]) == ("spinning", "unconfirmed")
+        r.c.assume("mirror_ball.main", "spinning", cause="owner: it is spinning")
+        assert len(r.ball.sent) == 1
         with pytest.raises(Refused, match="readable"):                          # v1.1: level targets are read
             r.c.assume("blinds.ch02", 0, cause="x")
-        await r.c.set_target("mirror_ball.main", "spinning")
-        assert r.ball.physical["main"] == "spinning"
+        await r.c.set_target("mirror_ball.main", "stopped")
+        assert r.ball.physical["main"] == "stopped"
     asyncio.run(body())
 
 

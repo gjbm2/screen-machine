@@ -13,7 +13,7 @@ import pytest
 
 from .harness import current, DOWN, ORIGINAL, SCREENS, boot, example, fake_adapters, go, make_room, privacy, restart, \
     row, sent, signals_sent, started, stored
-from room_service.roomstate.coordinator import BACKOFF, Refused
+from room_service.roomstate.coordinator import BACKOFF
 from room_service.roomstate.fakes import Clock, FakeScreens, hard_kill
 from room_service.roomstate.model import RoomConfig
 
@@ -569,15 +569,13 @@ def test_r13_piano_return_leaves_user_tracks(tmp_path):
 
 # --- R14–R18 -------------------------------------------------------------------------------------------------------------
 
-def test_r14_hand_set_enforced_needs_hold(tmp_path):
+def test_r14_hand_set_on_an_enforced_target_is_accepted_and_overrides(tmp_path):
+    """mo-7: no refusal and no hold needed: the person's value goes, drift says overridden, and it isn't put back."""
     async def body():
         r = make_room(tmp_path)
         await boot(r)
         await go(r, "disco")
-        with pytest.raises(Refused) as e:
-            await r.c.hand_set("blinds.ch03", 0)
-        assert e.value.code == "enforced" and r.blinds.value["ch03"] == 100
-        out = await (await r.c.hand_set("blinds.ch03", 0, hold=True, source="owner"))
+        out = await (await r.c.hand_set("blinds.ch03", 0, source="owner"))
         drift = r.c.s["drift"]["blinds.ch03"]
         assert out.status == "ok" and (drift["overridden"], drift["manual"], drift["source"]) == (True, True, "owner")
         await r.c.reconcile_once()

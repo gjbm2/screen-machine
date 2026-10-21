@@ -177,3 +177,31 @@ def test_fades_pause_restores_volume_and_play_fades_up():
         await asyncio.sleep(0.5)
         assert dev.volume == mid                                            # and the ramp thread really stopped
     asyncio.run(body())
+
+
+def test_entering_piano_with_the_player_stopped_sends_nothing(tmp_path):
+    """mo-2: Piano wants "paused"; a stopped player already means no music. No playback row, no reconcile retry,
+    and the switch isn't partial."""
+    from .harness import boot, example, fake_adapters, go, make_room, row, sent
+
+    def lounge(raw):                       # the real adapter adds now_playing: name the two settable members
+        house = raw["modes"]["house"]["state"]
+        house.pop("sonos.lounge")
+        house.update({"sonos.lounge.volume": {"retrieve": "pre_live"}, "sonos.lounge.playback": {"retrieve": "pre_live"}})
+
+    async def body():
+        dev = FakeSoCo("192.168.1.17")
+        a = fake_adapters()
+        a.sonos = SonosAdapter({"lounge": {"room": "Lounge", "ip": dev.ip}}, factory=lambda ip: dev, ramp_s=0.05)
+        a.sonos.change_time_s = 1.0
+        r = make_room(tmp_path, example(lounge), adapters=a)
+        await boot(r)
+        n = len(sent(r, "sonos"))
+        tr = await go(r, "piano")
+        assert tr["status"] == "ok" and row(tr, "sonos.lounge.playback") is None
+        assert len(sent(r, "sonos")) == n and dev.state == "STOPPED"
+        d = r.c.s["desired"]["sonos.lounge.playback"]
+        assert d["settled"] and d["retry"] is None
+        await r.c.reconcile_once()
+        assert len(sent(r, "sonos")) == n and r.c.s["desired"]["sonos.lounge.playback"]["retry"] is None
+    asyncio.run(body())
