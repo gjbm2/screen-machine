@@ -240,3 +240,24 @@ def test_a_breakdown_thins_the_bus_until_the_music_lifts():
 def test_events_only_while_armed_and_enabled():
     d = director()
     assert not d.on_event("drop", 1.0) and d.next_at is None
+
+
+def test_next_relaxes_the_stage_rules_before_giving_up():
+    """live-F3 (21 Oct): the owner's Next finds an effect when the stage rules leave nothing; never a quarantined,
+    unvetted, auto:false one, or one already on the bus."""
+    from stream_service.effects import MAX_BUS_SLOTS
+
+    d = director(stages=["colour"])
+    stack = [St("m1", "warm", origin="manual"), St("m2", "cool", origin="manual")]   # both colour presets, by hand
+    assert d.candidates(0, stack, PRESETS, cost, 1.0) == []                         # strict: nothing
+    d.quarantine("kick", 0.0)
+    d.vet = lambda kind, plugin: plugin != "chroma"                                 # "split" fails vetting
+    move = d.next_move(0, stack, PRESETS, cost)
+    assert move.op == "add" and move.add == "heavy" and move.add not in ("warm", "cool", "lab-unreviewed")
+    d.vet = lambda kind, plugin: plugin == "grade"                                  # only presets already on
+    assert d.next_move(0, stack, PRESETS, cost) is None
+    d = director()
+    full = [St(f"m{i}", "warm", origin="manual") for i in range(MAX_BUS_SLOTS)]
+    assert d.next_move(0, full, PRESETS, cost) is None                              # full, nothing auto to swap
+    move = d.next_move(0, [St("a1", "warm"), St("a2", "split", stage="glitch")], PRESETS, cost, prefer=("cool",))
+    assert move.op == "swap" and move.remove == "a1"
