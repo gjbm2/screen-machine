@@ -318,6 +318,8 @@ RESUME_MAX_FRAMES = 256     # a RESUME block is one packet (VBAN: at most 256 fr
 # integer corrections (the slow lane, Beat This!)
 BAR_LEN_MIN, BAR_LEN_MAX = 2, 16   # a bar length outside this is not a bar: the correction is ignored
 SLOW_OCT_HOLD_S = 30.0      # after a slow-lane or human octave word, the clock's own octave check waits this long
+HUMAN_OCT_HOLD_S = 600.0    # a person's half/double outranks the slow lane's octave votes (dropped whole: their one
+                            # and bar length assumed their octave) this long, or until a new song (a cold grid)
 # the estimator after the activation (module docstring, "Estimators")
 ESTIMATORS = ("dbn", "legacy")
 DBN_CONFIRM_N = 3           # dbn: the bars start (bar_anchor at that beat, bar_conf 0.1) at the 3rd DBN beat on a line
@@ -869,6 +871,7 @@ class Clock:
         self._pending: Optional[dict] = None
         self._break_k = -(1 << 62)                  # published beat of the last numbering break (corrections)
         self._pending_oct: Optional[float] = None
+        self._human_oct_t: Optional[float] = None       # when a person last said half/double (HUMAN_OCT_HOLD_S)
         self._pending_kick: Optional[int] = None   # with a kick-voted halving: an estimator beat that carries kicks
         self._seed_prev: Optional[float] = None
         self._R_s: Optional[np.ndarray] = None
@@ -1636,6 +1639,7 @@ class Clock:
         tracker ungated meanwhile; the bars keep their anchor, bar_conf drops to DBN_NEW_BAR_CONF; a waiting
         correction is stale. An octave map ends here: the line is the tracker's own again (a new grid on it)."""
         self._pub_cold = False
+        self._human_oct_t = None                        # a new song: the slow lane may set its octave again
         if self._om_f != 1.0:
             self._om_clear("cold")
             self._dbn_publish(self._trk.t_last, explicit=True)     # (epoch + 1, the numbering break)
@@ -2534,6 +2538,7 @@ class Clock:
             elif kind == "oct":
                 self._pending_oct, self._pending_kick = item[1], None
                 self._oct_lock_t = self._t_known + SLOW_OCT_HOLD_S
+                self._human_oct_t = self._t_known
                 self._counts["human_octave"] += 1
             elif kind == "one":
                 b = self._line_beat(item[1])
@@ -2564,6 +2569,9 @@ class Clock:
                 or octv not in (0.5, 1.0, 2.0)):
             self._corr_done("bad", {"one": None, "L": None, "oct": None})
             return
+        if octv != 1.0 and self._human_oct_t is not None and self._t_known - self._human_oct_t < HUMAN_OCT_HOLD_S:
+            self._corr_done("human", {"one": one, "L": L, "oct": octv})   # a person set the octave: theirs stands
+            return                                      # (the vote's one and bar length assumed its own octave)
         p = {"one": one, "L": L, "oct": octv, "age": 0}
         if not self._has_grid():
             self._corr_done("no_grid", p)
