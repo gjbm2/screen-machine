@@ -1,0 +1,52 @@
+harmony-spiral-fifths:
+  label: Harmony spiral (circle of fifths colours)
+  source: harmony_spiral
+  params:
+    layout: fifths
+    colours: fifths
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.0
+    history: tunnel
+    linger: 3.0
+    depth: 0.3
+    twist: 0.18
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.9]
+    moods: [elegant, geometric, dreamy, cosmic]
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [sdf, feedback]
+    weight: 1.0
+
+harmony-spiral-night:
+  label: Harmony spiral (night, one colour)
+  source: harmony_spiral
+  params:
+    layout: fifths
+    colours: accent
+    palette: ember
+    drift_speed: 0.0
+    history: tunnel
+    linger: 4.0
+    depth: 0.22
+    twist: -0.12
+    threads: 0.9
+    fill: 0.3
+    guide: 0.6
+    names: 0.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [calm, elegant, dark, warm]
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [sdf, feedback]
+    weight: 1.0
