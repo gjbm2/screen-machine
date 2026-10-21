@@ -21,6 +21,7 @@ there (SMC is offline) is reported and skipped.
      GateOffsetWatch sets it live for pc22-mic (-47 if the file has none)                          off
   D  as C with the slow lane on (Beat This! votes, as live)
   E  a control: as C with the model's room sound taken out (--snr-db 60), so the mic chain alone degrades the music
+  F  as A with the slow lane on (clean audio as live; 21 Oct, the octave votes)
 ``--datasets`` runs a condition on those datasets' tracks only (18 Oct: D on the full-length sets, where the slow
 lane gets its turns; a 30 s excerpt gets three, mostly over the pre-roll; E on the excerpts).
 Each track has its own fixed seed (run_batch --track-seeds: --seed + a hash of its id), the same in every
@@ -141,6 +142,7 @@ def conditions() -> dict[str, dict]:
               "args": ["--degrade", model, "--gate-ref-lufs", f"{ref:g}"]},
         "E": {"what": f"room model without its room sound (snr 60 dB), calibrated gate ({ref:g}), slow lane off",
               "args": ["--degrade", model, "--snr-db", "60", "--gate-ref-lufs", f"{ref:g}", "--no-slow-lane"]},
+        "F": {"what": "clean, default gate (-30), slow lane on (A as live)", "args": []},
     }
 
 
@@ -155,6 +157,9 @@ def cmd_run(a: argparse.Namespace) -> int:
     rc = 0
     for c in [s.strip() for s in a.conditions.split(",") if s.strip()]:
         spec = conds[c]
+        if a.snr_db is not None and "--degrade" in spec["args"] and "--snr-db" not in spec["args"]:
+            spec = {**spec, "what": f"{spec['what']}, room sound at {a.snr_db:g} dB under the music",
+                    "args": [*spec["args"], "--snr-db", f"{a.snr_db:g}"]}
         out = cond_dir(c, a.tag)
         out.mkdir(parents=True, exist_ok=True)
         cmd = [sys.executable, str(HERE / "run_batch.py"), str(SUBSET), "--seed", str(a.seed), "--track-seeds",
@@ -465,6 +470,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--datasets", default=None, help="run: only these datasets' tracks (comma-separated)")
     ap.add_argument("--stream", default=STREAM, help=f"whose room calibration (model, gate) B-E use (default {STREAM}; "
                                                     "e.g. room-mic); tag the run to keep the results apart")
+    ap.add_argument("--snr-db", type=float, default=None,
+                    help="run: the room model's room sound this far under the music in B-D (run_stack --snr-db), "
+                         "e.g. when the model's bed caught other sound: room-mic 21 Oct, 27 = dsp's -70 vs -42.8")
     a = ap.parse_args(argv)
     STREAM = a.stream
     if a.cmd == "subset":
