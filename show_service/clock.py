@@ -94,18 +94,32 @@ Estimators (``Clock(estimator=...)``; config ``SHOW_CLOCK_ESTIMATOR``; README S4
   is mapped beat ``_om_m + (k - _om_k) x factor``, published ``+ _off``: at 2 each tracker beat is two published
   beats (the one between interpolated on the line, ``interp`` to the bar code), at 0.5 every other one. The slew, the
   forward-only count, the epochs and the bars (anchor moved once at the switch, then kept) all run on the mapped line.
-  The map holds until a new grid (``_om_clear``): the first gate after a quiet room, a confirmed jump of the mapped
-  tempo over 8 % (when the tracker's own tempo is then the one followed, the tracker came to the mapped octave
-  itself: the line slews on as its own, no new grid), a run of taps (their tempo is the human's octave), a mapped
-  tempo out of DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM (45-200 bpm with 8 % slack, also the switch's range), or a contrary
-  correction (factor back to 1). It replaced (21 Oct) the tracker's octave hold, after which the DBN took its own
-  octave back ~6 s later. No audio for
+  The map holds until a new grid (``_om_clear``): the first gate after a quiet room (or the line's first jump after
+  it: a new song), a run of taps (their tempo is the human's octave), a mapped tempo out of
+  DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM (45-200 bpm with 8 % slack, also the switch's range), a contrary correction
+  (factor back to 1), or DBN_OCT_AWAY_S of a coast heard gated. It replaced (21 Oct) the tracker's octave hold, after
+  which the DBN took its own octave back ~6 s later. **The coast** (21 Oct evening, the owner's rule; README S4.15
+  "The coast and the gated octave"): a confirmed jump of the mapped tempo over 8 % no longer ends the map. If the
+  tracker is then at another octave of the corrected tempo (at factor 1: the tempo itself), the factor follows it
+  (``joined``, ``_om_join``: a slew, no new grid; the map stays in force, at factor 1 too, so a DBN that goes back to
+  the octave it was corrected from is mapped again). Otherwise the published line holds the corrected tempo (the
+  median of the last DBN_OCT_TEMPO_N it followed, on the median phase of the mapped line's last DBN_OCT_GOOD_N beats
+  it agreed with) with its forward-only count and its downbeat, and the bar code has its beats (as misses), until the
+  tracker is at the mapped tempo again or at another octave of it, for DBN_NEW_N line updates (``resumed`` or
+  ``joined``: it follows it again, on the half of the tracker's beats the coast is on), or one of the ends above; a
+  single tap re-phases the coast at its tempo. Under a map at 0.5 or 0.25 the kept beats are, at each
+  line update, the tracker's beats nearest the published line's (``_om_rebase``): the DBN's count can slip a beat.
+  At 0.5 the kept half is also read on the audio every DBN_HALF_N DBN beats (``_om_half_check``): when the beats
+  dropped carry 1 / DBN_HALF_MAX (2x) the kept ones' activation, the map moves to the other half (a new grid;
+  counted ``oct_half_moves``): a DBN at the double that walked a beat had taken the published line there. No audio for
   NO_AUDIO_S: ``free``, gate ``none``, the line's beats pass as misses on tick time. ``stats()["estimator"]``,
   ``stats()["source"]`` (``madmom-dbn2``), ``stats()["dbn"]`` (the tracker's counts; its ``epoch`` counts its own
   re-phases) and the publisher's ``pub_grids``, ``pub_slews``, ``pub_snaps``, ``pub_far_waits``, ``pub_resyncs``,
   ``pub_cold_grids``, ``oct_factor``, ``oct_age_s`` (since the factor was set; None at 1), ``oct_maps_applied``,
-  ``oct_maps_cleared`` and ``oct_clear_<why>`` (contrary, joined, jump, range, cold, tap); ``stats()["epoch"]`` is the
-  published one.
+  ``oct_maps_cleared`` and ``oct_clear_<why>`` (contrary, away, range, cold, tap), ``oct_map`` (a map in force,
+  whatever its factor), ``oct_joins``, ``oct_coasts``, ``oct_coasts_resumed``, ``oct_half_moves``, ``oct_coast``
+  (the coast in force: ``{s, gated_s, bpm, tracker_bpm}``, else None) and ``oct_coasts_last`` (the last
+  DBN_OCT_COASTS_KEPT that ended: ``{t0, s, gated_s, bpm, end}``); ``stats()["epoch"]`` is the published one.
 - ``"legacy"``: the estimator below (steps 3-6), exactly as before: the rollback.
 
 Pipeline (steps 3-6 and their conf, gate and corrections: the legacy estimator)
@@ -350,6 +364,25 @@ DBN_NEW_BAR_CONF = 0.1      # a new grid (a tempo jump) keeps the bar anchor; it
 DBN_OCT_SLACK = 0.08
 DBN_OCT_MIN_BPM, DBN_OCT_MAX_BPM = MIN_BPM / (1.0 + DBN_OCT_SLACK), MAX_BPM * (1.0 + DBN_OCT_SLACK)
 DBN_OCT_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
+# dbn, the octave map's coast (module docstring, "Estimators"; README S4.15 "The coast and the gated octave"): a
+# confirmed jump of the mapped tempo no longer ends the map. A tracker at another octave of the corrected tempo is
+# joined (the factor follows it); otherwise the published line holds the corrected tempo (``_coast_begin``) with its
+# count and downbeat, the bar code fed its beats, until the tracker is back at
+# an octave of it. A coast ends the map (a new grid on the tracker's own line) after DBN_OCT_AWAY_S of the excursion
+# heard gated (beat or dmx): a straight cut to another song, with no quiet room between. Measured on 26's 24 full
+# songs (room mic): the longest gated excursion within a song was 34.2 s, so 60 s.
+DBN_OCT_TEMPO_N = 16
+DBN_OCT_AWAY_S = 60.0
+DBN_OCT_GOOD = 0.15         # the coast's phase: the median of the mapped line's last DBN_OCT_GOOD_N beats where the
+DBN_OCT_GOOD_N = 8          # published line was this close to it (beats; the tracker's first beats away can read near)
+DBN_OCT_COASTS_KEPT = 8     # stats()["oct_coasts_last"]: the last coasts that ended
+# dbn, the half a map at 0.5 keeps (README S4.15 "The coast and the gated octave"): the DBN at the double can walk a
+# beat of its own (a slip, or a drift while ungated) and so take the published line onto the other half. Every
+# DBN_HALF_N of its beats the halving's own audio reading (beatdbn.DbnTracker.octave_evidence: the beats it drops
+# over the beats it keeps, 8 of each) is taken again; at 1 / DBN_HALF_MAX or more the map moves to the other half (a
+# new grid): the halving's rule (OCT_DROP_MAX) the other way round.
+DBN_HALF_N = 8
+DBN_HALF_MAX = 0.5
 # dbn, the slow lane's octave evidence (module docstring, "Corrections"; README S4.15 "Octave evidence"): at its switch
 # beat a slow-lane octave also needs the room's audio (beatdbn.DbnTracker.octave_evidence: the activation at the beats
 # it adds or drops over the beats both grids keep) or, for a halving the audio can't confirm, a plausible tempo. The
@@ -947,11 +980,18 @@ class Clock:
         self._dbn_K = -(1 << 62)                    # ... and its number in the published count (m + _off)
         # dbn: the octave map. The tracker's beat k is mapped beat _om_m + (k - _om_k) x _om_f (whole for every k at
         # factor >= 1, the in-between ones interpolated on the line; at 0.5 every other k); mapped beat m is published
-        # beat m + _off. Factor 1 is no map (identity until the first correction).
+        # beat m + _off. No map: factor 1 (identity until the first correction). A map in force (``_om_on``) may be at
+        # factor 1 too: the tracker came to the corrected tempo itself (joined), and the map follows its octave.
         self._om_f = 1.0
         self._om_k = 0
         self._om_m = 0
-        self._om_t: Optional[float] = None          # the tracker's time when the factor became what it is (not 1)
+        self._om_on = False                         # an octave correction is in force (the published tempo is its)
+        self._om_t: Optional[float] = None          # the tracker's time when the correction was made (None: no map)
+        self._om_bpms: collections.deque = collections.deque(maxlen=DBN_OCT_TEMPO_N)  # mapped tempi it followed
+        self._om_coast: Optional[dict] = None       # the map's coast ({t0, u, gated_s, bpm, line}); None: it follows
+        self._om_goods: collections.deque = collections.deque(maxlen=DBN_OCT_GOOD_N)    # (published beat, time)
+        self._om_coasts: tuple = ()                 # the last ones ended (swapped by reference: stats() reads it)
+        self._om_half_n = 0                         # DBN beats since the kept half was last judged (a map at 0.5)
         self._pub_base = 0.0                        # dbn: the tracker's bpm the published line last followed
         self._pub_real = False                      # dbn: the published grid was gated (beat|dmx) since its epoch
         self._pub_far = 0                           # dbn: line updates in a row DBN_NEW_TEMPO off the tempo followed
@@ -1216,8 +1256,9 @@ class Clock:
         if trk is not None:                             # the line's labels are the tracker's; its counts nest
             ts = trk.stats()                            # (ts["epoch"]: the tracker's own re-phases; epoch: published)
             out.update(source=self._dbn_source, state=ts["state"], gate=ts["gate"], conf=ts["conf"], bpm=ts["bpm"],
-                       dbn=ts, oct_factor=self._om_f,
-                       oct_age_s=(round(trk.t_last - self._om_t, 1) if self._om_t is not None else None))
+                       dbn=ts, oct_map=self._om_on, oct_factor=self._om_f,
+                       oct_age_s=(round(trk.t_last - self._om_t, 1) if self._om_t is not None else None),
+                       oct_coast=self._coast_view(trk.t_last), oct_coasts_last=list(self._om_coasts))
         return out
 
     # ---- rhythm lane -------------------------------------------------------------------------------------------------
@@ -1655,6 +1696,8 @@ class Clock:
             self._pub_real = True
         if trk.events:
             self._dbn_beats()
+        elif self._om_coast is not None:                # (the coasting line's beats come on time)
+            self._coast_beats(trk.t_last)
         return trk.key() != k0 or self._bar_key() != b0
 
     def _dbn_missed(self, u: float) -> None:
@@ -1671,7 +1714,7 @@ class Clock:
         correction is stale. An octave map ends here: the line is the tracker's own again (a new grid on it)."""
         self._pub_cold = False
         self._human_oct_t = None                        # a new song: the slow lane may set its octave again
-        if self._om_f != 1.0:
+        if self._om_on:
             self._om_clear("cold")
             self._dbn_publish(self._trk.t_last, explicit=True)     # (epoch + 1, the numbering break)
         else:
@@ -1688,11 +1731,19 @@ class Clock:
         the miss run and entries, the bars' start (DBN_CONFIRM_N beats on a line: that beat is a one, bar_conf 0.1;
         once started the bars are kept), the phrase evidence (``_bar_phrase``, the beat's activation peak as its
         strength) and the waiting corrections (``_apply_pending``). The tracker's re-phases and new lines are no break
-        in the published count; the published line's new grids are (``_dbn_publish``)."""
+        in the published count; the published line's new grids are (``_dbn_publish``). While the octave map coasts
+        the bar code has the published line's beats instead (``_coast_beats``)."""
         trk = self._trk
+        if self._om_coast is not None:                  # (the tracker's beats are another tempo's)
+            while trk.events:
+                self._dbn_k = max(self._dbn_k, trk.events.popleft()[0])
+            self._coast_beats(trk.t_last)
+            return
         while trk.events:
             k, kind, strength = trk.events.popleft()
             self._dbn_k = max(self._dbn_k, k)
+            if self._om_on and self._om_f == 0.5 and kind != "miss":
+                self._om_half_n += 1
             for m, knd in self._om_beats(k, kind):
                 K = m + self._off
                 self._dbn_m = max(self._dbn_m, m)
@@ -1710,6 +1761,7 @@ class Clock:
                 if self._confirmed:
                     self._bar_phrase(m, knd, strength, entry)
                 self._apply_pending(m)
+        self._om_half_check()
 
     # -- the octave map (module docstring, "Estimators"; README S4.15 "The octave map")
     def _om_line(self) -> Optional[tuple[int, float, float]]:
@@ -1774,18 +1826,207 @@ class Clock:
         return None
 
     def _om_clear(self, why: str) -> None:
-        """The map ends (factor 1, referred to the last tracker beat the bar code has had); counted by ``why``:
-        contrary (a correction back), joined (the tracker came to the mapped octave itself), jump (a confirmed tempo
-        jump of the mapped line), range (it drifted out of the octave range), cold (a new grid after a quiet room),
-        tap (a run of taps set the tempo)."""
-        if self._om_f == 1.0:
+        """The map ends (factor 1, referred to the last tracker beat the bar code has had), and a coast with it;
+        counted by ``why``: contrary (a correction back), away (DBN_OCT_AWAY_S of a coast heard gated: another song),
+        range (it drifted out of the octave range), cold (a new grid after a quiet room, or the line's jump after
+        one), tap (a run of taps set the tempo)."""
+        if not self._om_on:
             return
+        self._coast_end(why)
         k = self._dbn_k if self._dbn_k > -(1 << 61) else (self._trk.line[0] if self._trk.line is not None else 0)
         m = self._om_floor(k)
-        self._om_k, self._om_m, self._om_f, self._om_t = k, m, 1.0, None
+        self._om_k, self._om_m, self._om_f, self._om_t, self._om_on = k, m, 1.0, None, False
+        self._om_bpms.clear()
+        self._om_goods.clear()
+        self._om_half_n = 0
         self._dbn_m = min(self._dbn_m, m) if self._dbn_m > -(1 << 61) else self._dbn_m
         self._counts["oct_maps_cleared"] += 1
         self._counts[f"oct_clear_{why}"] += 1
+
+    # -- the octave map's coast (README S4.15 "The coast")
+    def _om_rebase(self) -> None:
+        """Refer the map to the tracker's line as it is now so that its beats are numbered on the published count:
+        the tracker's latest beat (at 0.5 or 0.25, of it and the ones before it that the map could keep, the one
+        nearest a published beat) is that published beat, less ``_off``. The coast keeps the map's numbering with its
+        own count this way (the bar code, the corrections), and a tracker that comes back is followed on the half of
+        its beats the coast is on."""
+        k0, t0, T = self._trk.line
+        n = int(round(1.0 / self._om_f)) if self._om_f < 1.0 else 1
+        best = None
+        for j in range(n):
+            x = self._pub_beat(t0 - j * T)
+            d = abs(x - round(x))
+            if best is None or d < best[0] - 1e-9:
+                best = (d, j, int(round(x)))
+        _, j, K = best
+        self._om_k, self._om_m = k0 - j, K - self._off
+
+    def _coast_begin(self, u: float) -> None:
+        """The tracker left the tempo the map was set on (a confirmed jump of the mapped line, not to an octave of it):
+        the coast's line runs at the mapped tempo (the median of the last DBN_OCT_TEMPO_N it followed) on the median
+        phase of the mapped line's last DBN_OCT_GOOD_N beats the published line agreed with (within DBN_OCT_GOOD: the
+        tracker's first beats away can still read near, re-phased), and the published line slews onto it
+        (``_coast_slew``), no new grid. (The rate of the published count over those beats, tried instead, read the
+        DBN's walks into the tempo: 031's coast at 93.4 against a true 90.9; the median read 91.4.)"""
+        bpm = float(np.median(self._om_bpms)) if len(self._om_bpms) >= 3 else self._pub_base
+        if self._om_goods:                              # the beat each predicts at u, at that tempo
+            x = float(np.median([K + (u - t) * bpm / 60.0 for K, t in self._om_goods]))
+        else:
+            x = self._pub_beat(u)
+        x -= round(x - self._pub_beat(u))               # (the nearest to the published count)
+        K = math.floor(x)
+        self._om_coast = {"t0": u, "u": u, "gated_s": 0.0, "bpm": bpm, "line": (K, u - (x - K) * 60.0 / bpm)}
+        self._om_half_n = 0
+        self._pub_base, self._pub_far = bpm, 0
+        self._coast_slew(u)
+        self._om_rebase()
+        self._counts["oct_coasts"] += 1
+
+    def _coast_slew(self, u: float) -> None:
+        """The published line onto the coast's line (beat K at t, at the coast's tempo) as a gated beat's slew (half
+        the phase error per beat, at most 10 %), judged again at each of its beats (``_coast_beats``); the count never
+        back over the consumers' now (a slower line pivots at ``u + DBN_PIVOT_S``)."""
+        c = self._om_coast
+        K, t = c["line"]
+        bpm = c["bpm"]
+        sb, smax = DBN_SLEW["beat"]
+        p = u
+        for _ in range(2):
+            pp = self._pub_beat(p)
+            d = K + (p - t) * bpm / 60.0 - pp
+            b = bpm * (1.0 + min(smax, max(-smax, d / sb)))
+            if b >= self._pub_bpm or p > u:
+                break
+            p = u + DBN_PIVOT_S
+        if p > u:
+            b = min(b, self._pub_bpm)
+        if abs(b / self._pub_bpm - 1.0) < 2e-4:
+            return
+        ka = math.floor(pp)
+        self._set_pub(ka, p - (pp - ka) * 60.0 / b, b)
+
+    def _coast_step(self, u: float, gate: str, far: bool) -> Optional[str]:
+        """A tracker line update while the map coasts: ``resumed`` (its mapped tempo is back: the map follows it
+        again, on the half of its beats the coast is on) or ``joined`` (the tracker is at another octave of the
+        corrected tempo, at factor 1 its very tempo: the map follows it there, ``_om_join``), each once DBN_NEW_N line
+        updates in a row say so (on its way back a DBN can read the other octave for a beat); ``cold`` (the room went
+        quiet since, and the line came back elsewhere: a new song), ``away`` (DBN_OCT_AWAY_S of the excursion heard
+        gated: another song); or None (the line holds)."""
+        c = self._om_coast
+        g = self._om_octave_of(60.0 / self._trk.line[2])
+        c["n"] = c["n"] + 1 if g is not None and g == c.get("g") else (1 if g is not None else 0)
+        c["g"] = g
+        if c["n"] >= DBN_NEW_N:
+            if g == self._om_f:
+                self._om_rebase()
+                self._coast_end("resumed")
+                self._counts["oct_coasts_resumed"] += 1
+                return "resumed"
+            self._om_join(g)
+            return "joined"
+        if self._pub_cold and g is None:
+            self._om_clear("cold")
+            return "cold"
+        if gate != "none" and g is None:
+            c["gated_s"] += max(0.0, min(u - c["u"], 1.0))
+        c["u"] = u
+        if c["gated_s"] >= DBN_OCT_AWAY_S:
+            self._om_clear("away")
+            return "away"
+        self._om_rebase()
+        return None
+
+    def _om_octave_of(self, bpm: float) -> Optional[float]:
+        """The factor (DBN_OCT_FACTORS) that puts the tracker's tempo ``bpm`` within DBN_NEW_TEMPO of the corrected
+        tempo the published line holds (``_pub_base``), or None (an unrelated tempo)."""
+        return next((g for g in DBN_OCT_FACTORS if abs(bpm * g / self._pub_base - 1.0) <= DBN_NEW_TEMPO), None)
+
+    def _om_join(self, g: float) -> None:
+        """The tracker is at another octave of the corrected tempo (at ``g`` = 1 the tempo itself): the map's factor
+        becomes ``g``, referred to the tracker's line on the published count (``_om_rebase``), so the line slews on, no
+        new grid, and the map stays in force (the DBN may go back to the octave it was corrected from)."""
+        self._coast_end("joined")
+        self._om_f = g
+        self._om_rebase()
+        self._om_half_n = 0
+        self._counts["oct_joins"] += 1
+
+    def _om_half_check(self) -> None:
+        """A map at 0.5 keeps the half of the tracker's beats where the halving put it, but the DBN at the double can
+        walk a beat of its own (26's 031 in the room: its line ran 4 % fast for 2 s, ungated, and the published 91
+        followed it onto the off-beats). Every DBN_HALF_N of its beats the halving's audio reading is taken again on
+        the kept half (``DbnTracker.octave_evidence``: the beats dropped over the beats kept, on the line's 16-beat
+        period); at 1 / DBN_HALF_MAX or more the map moves to the other half: a new grid, half a beat on (its bar line
+        a guess: bar_conf drops to DBN_NEW_BAR_CONF); counted ``oct_half_moves``."""
+        trk = self._trk
+        if self._om_half_n < DBN_HALF_N or self._om_coast is not None or trk.line is None:
+            return
+        self._om_half_n = 0
+        k0, t0, T = trk.line
+        Tp = trk.period() or T
+        j = (k0 - self._om_k) % 2                       # the tracker's last beat: kept (0) or dropped (1)
+        ev = trk.octave_evidence(t0 - j * Tp, Tp, 0.5)
+        if ev is None or ev["ratio"] < 1.0 / DBN_HALF_MAX:
+            return
+        self._om_k += 1                                 # the other parity kept (the mapped numbers move with it)
+        self._counts["oct_half_moves"] += 1
+        self._dbn_publish(trk.t_last, explicit=True)
+        if self._confirmed:
+            self._bar_conf = min(self._bar_conf, DBN_NEW_BAR_CONF)
+            self._bar_votes = 0
+
+    def _coast_end(self, why: str) -> None:
+        """The coast is over (``why``: resumed, or what ended the map or made a new grid); kept for stats."""
+        c = self._om_coast
+        if c is None:
+            return
+        self._om_coast = None
+        t = self._trk.t_last
+        rec = {"t0": round(c["t0"], 2), "s": round(t - c["t0"], 1), "gated_s": round(c["gated_s"], 1),
+               "bpm": round(c["bpm"], 2), "end": why}
+        self._om_coasts = (self._om_coasts + (rec,))[-DBN_OCT_COASTS_KEPT:]
+
+    def _coast_view(self, t: float) -> Optional[dict]:
+        c = self._om_coast
+        if c is None:
+            return None
+        ln = self._trk.line
+        return {"s": round(t - c["t0"], 1), "gated_s": round(c["gated_s"], 1), "bpm": round(c["bpm"], 2),
+                "tracker_bpm": round(60.0 / ln[2], 2) if ln is not None else None}
+
+    def _coast_beats(self, t: float) -> None:
+        """While the map coasts, the bar code's beats are the published line's (the tracker's are another tempo's),
+        each as a miss once it is as far past as the tracker judges a miss (``_dbn_beats``); the waiting
+        corrections switch on them (one may end the coast)."""
+        while self._om_coast is not None:
+            P = 60.0 / self._pub_bpm
+            K = max(self._dbn_K + 1, math.floor(self._pub_beat(t)) - 64)
+            if self._pub_t + (K - self._pub_k + 0.35) * P > t:
+                return
+            self._dbn_K = K
+            m = K - self._off
+            self._dbn_m = m
+            if self._confirmed:
+                self._bar_phrase(m, "miss", 0.0, False)
+            self._apply_pending(m)
+            if self._om_coast is not None:
+                self._coast_slew(t)
+
+    def _coast_tap(self, t: float) -> None:
+        """A tap (not a run) while the map coasts: the coasting line's beat nearest it moves to it (unless it agrees
+        within beatdbn.TAP_AGREE), the count never back over the consumers' now (a new grid: epoch + 1)."""
+        P = 60.0 / self._om_coast["bpm"]
+        x = self._pub_beat(t)
+        if abs(x - round(x)) <= beatdbn.TAP_AGREE:
+            return
+        u = max(self._trk.t_last, t)
+        K = max(math.ceil(self._pub_beat(w) - (w - t) / P - 1e-9) for w in (u, u + DBN_PIVOT_S))
+        self._set_pub(K, t, self._om_coast["bpm"])
+        self._om_coast["line"] = (K, t)
+        self._om_rebase()
+        self._epoch += 1
+        self._numbering_break(K)
+        self._counts["pub_grids"] += 1
 
     def _dbn_publish(self, u: float, explicit: bool = False, resync: bool = False) -> None:
         """The tracker's line moved, at ``u`` (now, as heard): the published line follows it with step 6's discipline
@@ -1806,17 +2047,24 @@ class Clock:
         ``resync`` (``_dbn_missed``): the tracker's line has not moved, a beat of it passed with no DBN beat: only the
         slew is judged again (or the ungated line snaps on); a tempo jump is judged on the line's own updates.
         **The octave map**: "the tracker's line" is it through the map (``_om_line``), its tempo the mapped one. A
-        confirmed jump of that tempo ends the map: when the tracker's own tempo is the one followed (it came to the
-        mapped octave itself) the line slews on as the tracker's, with no new grid; otherwise a new grid on the
-        tracker's own. A mapped tempo out of DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM ends it too (a new grid)."""
+        confirmed jump of that tempo: when the tracker is at another octave of the tempo followed (at factor 1 the
+        tempo itself) the factor follows it (``_om_join``) and the line slews on, with no new grid; after a quiet room
+        the map ends, a new grid on the tracker's own line (a new song); otherwise the map coasts (``_coast_begin``):
+        the published line holds the corrected tempo, and each line update is judged by ``_coast_step`` (resumed,
+        joined, cold, away or still holding). A mapped tempo out of DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM ends it too (a
+        new grid). Under a map at 0.5 or 0.25 each line update first refers the map to the published line
+        (``_om_rebase``: the half kept is the published line's)."""
         trk = self._trk
-        ln = self._om_line()
+        if (self._om_on and self._om_f < 1.0 and not explicit and not resync and self._pub_ok
+                and self._om_coast is None and trk.line is not None):
+            self._om_rebase()                           # the half kept: the tracker's beats nearest the published
+        ln = self._om_line()                            # line's (the DBN's count can slip a beat under the map)
         if ln is None or (resync and not self._pub_ok):
             return
         k0, t0, T = ln
         bpm_e = 60.0 / T
         # (a mapped tempo out of the range that is also a jump, such as the tracker at the mapped octave by itself, is
-        # judged as a jump below: confirmed, then joined or jump; here the map's own drift out of the range)
+        # judged as a jump below: confirmed, then joined or a coast; here the map's own drift out of the range)
         if (self._om_f != 1.0 and not resync and not DBN_OCT_MIN_BPM <= bpm_e <= DBN_OCT_MAX_BPM
                 and (explicit or not self._pub_ok or abs(bpm_e / self._pub_base - 1.0) <= DBN_NEW_TEMPO)):
             self._om_clear("range")
@@ -1838,26 +2086,50 @@ class Clock:
         if gate != "none":
             self._pub_real = True
         far = abs(bpm_e / self._pub_base - 1.0) > DBN_NEW_TEMPO
+        jumped = False                                  # the coast ended on another song: a new grid (a jump)
+        if self._om_coast is not None:                  # the map coasts (README S4.15 "The coast")
+            if resync:
+                return                                  # (its line runs on: nothing to judge again)
+            if explicit:
+                self._coast_end("grid")
+            else:
+                why = self._coast_step(u, gate, far)
+                if why is None:
+                    return                              # still away: the published line holds
+                k0, t0, T = ln = self._om_line()
+                bpm_e = 60.0 / T
+                far = jumped = why in ("cold", "away")
+                self._pub_far = 0
         if resync and far:                              # (a jump waits for the tracker's own line updates)
             return
         self._pub_far = self._pub_far + 1 if far else 0
-        if far and not explicit and self._pub_real and self._pub_far < DBN_NEW_N:
+        if far and not explicit and not jumped and self._pub_real and self._pub_far < DBN_NEW_N:
             self._counts["pub_far_waits"] += 1          # not yet: the published line holds (its count goes on)
             return
-        if far and not explicit and self._om_f != 1.0:  # the mapped line jumped: the map ends
-            joined = abs(60.0 / trk.line[2] / self._pub_base - 1.0) <= DBN_NEW_TEMPO
-            self._om_clear("joined" if joined else "jump")
-            k0, t0, T = ln = self._om_line()
-            bpm_e = 60.0 / T
-            if joined:                                  # the tracker's own octave is the one followed: a slew
+        if far and not explicit and not jumped and self._om_on:      # the mapped line jumped
+            g = self._om_octave_of(60.0 / trk.line[2])
+            if g is not None:                           # the tracker came to another octave of the corrected tempo
+                self._om_join(g)                        # (itself, at factor 1): the map follows it, a slew
+                k0, t0, T = ln = self._om_line()
+                bpm_e = 60.0 / T
                 far, self._pub_far = False, 0
+            elif self._pub_cold:                        # a new song after a quiet room: a new grid on its own line
+                self._om_clear("cold")
+                k0, t0, T = ln = self._om_line()
+                bpm_e = 60.0 / T
+            else:                                       # the tracker left the mapped tempo: the line holds it
+                self._coast_begin(u)
+                return
         if explicit or far:
             w = (u, u + DBN_PIVOT_S)
             off = max(math.ceil(self._pub_beat(t) - (k0 + (t - t0) / T) - 1e-9) for t in w)
             step = max(k0 + (t - t0) / T + off - self._pub_beat(t) for t in w)
             self._off = off
             self._set_pub(k0 + off, t0, bpm_e)
-            self._pub_base = bpm_e
+            self._follow(bpm_e)
+            self._om_goods.clear()
+            if self._om_on:
+                self._om_goods.append((k0 + off, t0))
             self._pub_far = 0
             if explicit or self._pub_real or step >= 1.0:
                 self._epoch += 1
@@ -1874,9 +2146,11 @@ class Clock:
             if all(k0 + (t - t0) / T + off >= self._pub_beat(t) for t in (u, u + DBN_PIVOT_S)):
                 if resync and (k0 + off, t0, bpm_e) == (self._pub_k, self._pub_t, self._pub_bpm):
                     return                              # (snapped on already)
+                if self._om_on and not resync and k0 + (u - t0) / T + off - self._pub_beat(u) <= DBN_OCT_GOOD:
+                    self._om_goods.append((k0 + off, t0))
                 self._off = off
                 self._set_pub(k0 + off, t0, bpm_e)
-                self._pub_base = bpm_e
+                self._follow(bpm_e, keep=not resync)
                 self._counts["pub_snaps"] += 1
                 return
         sb, smax = DBN_SLEW.get(gate, DBN_SLEW["none"])
@@ -1896,10 +2170,19 @@ class Clock:
                 return
             self._counts["pub_resyncs"] += 1
         self._off = off
+        if self._om_on and not resync and abs(d) <= DBN_OCT_GOOD:     # (a resync: the error as it closes)
+            self._om_goods.append((k0 + off, t0))
         ka = math.floor(pp)
         self._set_pub(ka, p - (pp - ka) * 60.0 / bpm, bpm)
-        self._pub_base = bpm_e
+        self._follow(bpm_e, keep=not resync)
         self._counts["pub_slews"] += 1
+
+    def _follow(self, bpm_e: float, keep: bool = True) -> None:
+        """The published line followed the tracker's (mapped) tempo ``bpm_e``; under a map each line update's is kept
+        (``keep``; not a resync's: the same line) for a coast's tempo."""
+        self._pub_base = bpm_e
+        if keep and self._om_on:
+            self._om_bpms.append(bpm_e)
 
     def _dbn_octave(self, f: float) -> bool:
         """``_apply_octave`` for the dbn estimator: the octave map's factor x f from the upcoming beat (it keeps its
@@ -1907,7 +2190,8 @@ class Clock:
         on the mapped line (``_dbn_publish``; the bar anchor moves with the count, so the bar line stays on its beat).
         The tracker is not touched: it tracks on at its own octave, its conf and gate its own, and the map holds until
         a new grid or a contrary correction (factor back to 1). A mapped tempo out of DBN_OCT_MIN_BPM..DBN_OCT_MAX_BPM
-        (or a factor past 4 or 1/4) is refused (counted)."""
+        (or a factor past 4 or 1/4) is refused (counted). A coast in force ends here (a new grid on the tracker's line
+        as it is, through the new factor; the map was referred to it as the coast went, ``_om_rebase``)."""
         trk = self._trk
         ln = trk.line
         f2 = self._om_f * f
@@ -1922,8 +2206,10 @@ class Clock:
             self._om_clear("contrary")
         else:
             self._counts["oct_maps_applied"] += 1
+            self._om_bpms.clear()                       # (the tempi the line followed were another factor's)
+            self._om_half_n = 0
         self._om_k, self._om_m = ref
-        self._om_f, self._om_t = f2, (None if f2 == 1.0 else trk.t_last)
+        self._om_f, self._om_t, self._om_on = f2, (None if f2 == 1.0 else trk.t_last), f2 != 1.0
         self._dbn_publish(trk.t_last, explicit=True)    # beats from m on are the new octave's (a numbering break)
         self._dbn_m = m - 1                              # m is the upcoming beat (an in-between one before it is not)
         self._dbn_K = max(self._dbn_K, m - 1 + self._off)
@@ -1950,9 +2236,12 @@ class Clock:
         if kind in ("phase", "tempo"):
             if kind == "tempo":                         # the taps' tempo is the human's octave: an octave map ends
                 self._om_clear("tap")
+            elif self._om_coast is not None:            # the map coasts on its tempo: the tap moves its phase only
+                self._coast_tap(t)
             elif self._om_f < 1.0 and (k - self._om_k) % int(round(1.0 / self._om_f)):
                 self._om_m, self._om_k = self._om_floor(k), k        # at 0.5: the tapped beat is a published one
-            self._dbn_publish(max(self._trk.t_last, t), explicit=True)
+            if self._om_coast is None:
+                self._dbn_publish(max(self._trk.t_last, t), explicit=True)
             m = self._om_floor(k)
             self._dbn_k = max(self._dbn_k, k)
             self._dbn_m = max(self._dbn_m, m)
