@@ -95,6 +95,9 @@ def deal(entries: list[dict], n: int, seed: int) -> list[dict]:
 def cmd_subset(a: argparse.Namespace) -> int:
     _, entries = run_batch.load_index(COMBINED)
     entries = [e for e in entries if not e["duplicate"]]
+    skip = {(i["dataset"], i["id"]) for x in a.exclude.split(",") if x.strip()
+            for i in json.loads(pathlib.Path(x.strip()).expanduser().read_text())["items"]}
+    entries = [e for e in entries if (e["dataset"], e["id"]) not in skip]
     counts = {k.strip(): int(v) for k, v in (p.split("=") for p in a.counts.split(",") if p.strip())}
     items, missing = [], []
     for ds, n in counts.items():
@@ -105,7 +108,7 @@ def cmd_subset(a: argparse.Namespace) -> int:
         for e in deal(have, n, a.seed):
             items.append({"id": e["id"], "dataset": ds, "genre": e["genre"], "audio": str(e["audio"]),
                           "beats": str(e["beats"]), "duration_s": e.get("duration_s")})
-    doc = {"name": "baseline", "seed": a.seed, "counts": counts, "missing": missing, "items": items}
+    doc = {"name": SUBSET.stem.removesuffix("-subset"), "seed": a.seed, "excluded": a.exclude or None, "counts": counts, "missing": missing, "items": items}
     SUBSET.parent.mkdir(parents=True, exist_ok=True)
     SUBSET.write_text(json.dumps(doc, indent=1))
     by = collections.Counter(i["dataset"] for i in items)
@@ -458,7 +461,7 @@ def cmd_report(a: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    global STREAM
+    global STREAM, SUBSET
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=("subset", "run", "report"))
@@ -473,8 +476,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--snr-db", type=float, default=None,
                     help="run: the room model's room sound this far under the music in B-D (run_stack --snr-db), "
                          "e.g. when the model's bed caught other sound: room-mic 21 Oct, 27 = dsp's -70 vs -42.8")
+    ap.add_argument("--subset", type=pathlib.Path, default=SUBSET,
+                    help=f"the track index subset writes and run/report read (default {SUBSET}); e.g. a full-song set")
+    ap.add_argument("--exclude", default="", help="subset: leave out these indexes' tracks (comma-separated paths), "
+                                                  "e.g. the DEV subset the stack was tuned on")
     a = ap.parse_args(argv)
-    STREAM = a.stream
+    STREAM, SUBSET = a.stream, a.subset.expanduser()
     if a.cmd == "subset":
         return cmd_subset(a)
     if a.cmd == "run":
