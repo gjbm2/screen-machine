@@ -59,7 +59,7 @@ Paths are relative to `/home/gjbm2/dev/screen-machine`. Line numbers were checke
   - `modeWords.ts:226` becomes "(the room can't switch it yet)".
   - `ModeTargets.tsx:695` becomes "The room can't switch it yet".
   - In notConnectedWords (`modeWords.ts:265-296`), build the sentence: `The room can't switch ${theList(names)} yet, so modes leave ${p?'them':'it'} alone.`
-  - For a device that is only unreachable: "The room can't reach  right now".
+  - For a device that is only unreachable: "The room can't reach … right now".
 - **mo-6:**
   - `useRoomConnection.ts` (~:411): keep `status` and `detail` on done and cancelled.
   - `types.ts`: add `status?: string|null; detail?: string|null` to ModeTransition and ModeTransitionEventData.
@@ -87,7 +87,7 @@ Paths are relative to `/home/gjbm2/dev/screen-machine`. Line numbers were checke
   - `MusicCard.tsx:575`: House lights sends `on = !card?.house`.
   - `MusicCard.tsx:578`: Lights low sends `on`.
 - **nudges-F9:**
-  - `Fixtures.tsx:593`: drop ` N/s`.
+  - `Fixtures.tsx:593`: drop `· N/s`.
   - Keep :594 as a warn.
   - `:202` becomes "It follows as soon as the show sends colours."
 - **nudges-F10:** `MusicCard.tsx:821` "Back to auto" → "Clear all", and change the log word at :587 and the comment at :13.
@@ -100,7 +100,7 @@ Paths are relative to `/home/gjbm2/dev/screen-machine`. Line numbers were checke
 - **live-F4:** delete the "didn't fit; it brought in" note at `UpNext.tsx:243-247`.
 - **live-F5:**
   - Delete `liveLib.ts:245-249` mismatchWords and its callbacks at `LivePanel.tsx:874` and `RoomLive.tsx:243`.
-  - `UpNext.tsx:415` becomes "Choosing the next ones".
+  - `UpNext.tsx:415` becomes "Choosing the next ones…".
   - `LivePanel.tsx:275` becomes "none on yet; one comes in at its next change". Ship this one only after the [stream] restart.
   - Keep UpNext's "if it fits" lines.
 - **live-F11:**
@@ -116,13 +116,13 @@ Paths are relative to `/home/gjbm2/dev/screen-machine`. Line numbers were checke
 - **S8:**
   - `ScreenCard.tsx:202-207` becomes "The TV page isn't open right now. Live still starts; the TV joins it when its page opens."
   - At `words.ts:63`, drop "Can't go live yet". Build the hint from `observed.retry_in_s` ("Trying again in a moment") and from `streamReachable === false` ("Waiting for the live pictures to come back").
-  - Use a detail prefix only for "the renderer is restarting", which becomes "Live pictures are restarting  back in a moment".
+  - Use a detail prefix only for "the renderer is restarting", which becomes "Live pictures are restarting · back in a moment".
 - **S9:**
   - `LiveControls.tsx:349` becomes "The live pictures aren't answering right now. Going live starts by itself as soon as they're back."
   - `ScreenCard.tsx:215` becomes "The live pictures aren't answering right now. Back to art still works."
   - `MenuSheet.tsx:187` becomes "Not answering: going live waits until it's back."
 - **S10:**
-  - `words.ts:50` becomes "Live didn't start  showing art".
+  - `words.ts:50` becomes "Live didn't start · showing art".
   - At `ScreenCard.tsx:194-201`, choose one sentence by the last_error prefix:
     - `fallback:` → "Live stopped by itself."
     - `N fallbacks` → "Live keeps stopping."
@@ -146,7 +146,7 @@ Paths are relative to `/home/gjbm2/dev/screen-machine`. Line numbers were checke
     - `manual_override` or `maskoff` → "set by hand";
     - suspended → muted "stays as it was (this mode)";
     - otherwise → "follows the room's light".
-  - Show "The page draws" only when it differs by more than 0.01.
+  - Show "The page draws…" only when it differs by more than 0.01.
   - Add `source?: string` to ScreenMask in `types.ts:200-202`.
 - **LM-3 (page half):** `ModeTargets.tsx:52` BEHIND.sensor_mask becomes "Art brightness".
 
@@ -169,27 +169,27 @@ e9 rewrote `listener.py` and `mic.py` tonight, so 3a and e9 agree who lands thos
   - `contract.py`: remove `max_switches` from :844, plus MaxSwitches (:852) and its field (:876).
   - Tests: delete `test_flap_guard_pauses_auto` (:569), fix the fixture at :30, and point the :654 assertion at another key.
 - **auto-4 (= nudges-F1): remove the "engaged" block on leaving.**
-  - Delete :912 (`engaged = `) and the `elif engaged` at :971-972.
+  - Delete :912 (`engaged = …`) and the `elif engaged` at :971-972.
   - `test_autopilot.py:365-379` now expects the leave.
   - Reword `docs/SHOW_ENGINE.md:1099` and `show_service/README.md:1971`.
 - **auto-7: blocked reasons in Room-page words.**
   - :944 becomes `f"only from {' or '.join(self._label(view, m) for m in allowed) or 'no mode'}"`.
   - :946 and :970 become "you changed it back right after Auto switched; it'll switch again next time".
   - :951 becomes `f"the room stays in {self._label(view, current)} at least {dwell:.0f} s ({dwell - since:.0f} s to go)"`.
-  - :937 becomes "its rule has a problem: open the mode's ".
-  - :939 becomes "the room said no to this switch: open the mode's ".
+  - :937 becomes "its rule has a problem: open the mode's ⋯".
+  - :939 becomes "the room said no to this switch: open the mode's ⋯".
   - :1614 becomes "Auto can't reach the room right now".
-  - No new line may end in ` Resume` (MusicCard.tsx:534 keys on that).
+  - No new line may end in `· Resume` (MusicCard.tsx:534 keys on that).
   - Update tests :438 and :611, `README.md:1961` and `SHOW_ENGINE.md:1113`.
 - **auto-10:** `:70` min_dwell_s 300.0 → 60.0 (test :653). In `SHOW_ENGINE.md:1074-1079`: quiet hours "none unless set", minimum stay 60 s, and drop the flap and backoff lines.
-- **auto-11:** in `_person` (:1295-1297), record the hold with `self._note('hold', )` instead of `_announce`.
+- **auto-11:** in `_person` (:1295-1297), record the hold with `self._note('hold', …)` instead of `_announce`.
 
 **Listener (`listener.py`, current lines)**
 - **ai-F2: delete the fail-closed "can't check" pause.** Remove `_decide` :1304-1306, `WHY_CANT_CHECK` (:172 and in STATUS_WORDS :173), docstring (c) and its tests. Keep the talking branch at :1301-1303 until Q3 is answered.
 - **ai-F3: one word per pause, in STATUS_WORDS.**
   - No usable model while the switch is on (`_gate` :1246-1251, which returns WHY_OFF today) → "Paused: no AI model set up".
   - Mic off (`_gate` ~:1252-1255, and the mid-clip check in `_call`) → "Paused: Room mic is off".
-  - Stream and features present but the ring under `min(clip_s, min_clip_s)` → "Starting".
+  - Stream and features present but the ring under `min(clip_s, min_clip_s)` → "Starting…".
   - No stream or features, or a clip under 1 s → "Paused: no sound from the mic".
   - "Paused: quiet" only for the quiet_gate branch.
   - Update the tests.
