@@ -12,13 +12,13 @@ api.py's Host / Origin / CORS middlewares apply to them as to every route on the
                                          current one (the renderer replaces it whole); `auto: true|false` is short
                                          for {enabled: ...}
   POST  /api/v1/screens/{id}/cue        {to, transition?, at?} -> POST /api/sessions/{sid}/cue {to, via, at,
-                                         source: "panel"}; at most 1 per second per screen (proposal §C.2)
+                                         source: "panel"}
   GET   /api/v1/screens/{id}/fx         the FX bus (GET /api/sessions/{sid}/fx)
   PUT   /api/v1/screens/{id}/fx         {stack, fade_s?, master?, if_rev?} -> PUT /api/sessions/{sid}/fx
   GET   /api/v1/screens/{id}/inputs     the show-bus monitor (GET /api/sessions/{sid}/inputs), read-only
 
 Errors are {error, detail}: 404 unknown_screen, 409 not_live (no current session, or it has ended), 400 bad_request /
-bad_name, 429 too_fast, 502 stream_unreachable; stream_service's own 4xx errors are relayed with their status.
+bad_name, 502 stream_unreachable; stream_service's own 4xx errors are relayed with their status.
 
 A scene change on glass (a cue from here, or the renderer's auto director) is recorded in the screen's desired live
 spec, as PATCH /live already does for a scene, so a re-entry, a parameter edit and the coordinator's readback see the
@@ -51,7 +51,6 @@ THUMB_LRU_MAX = 300                 # ~7 KB each
 THUMB_MISS_S = 60.0                 # a plug-in with no thumbnail is not asked again for this long
 THUMB_UPSTREAM = 4                  # concurrent /dev/thumb fetches (each may be a PIL crop of a big sheet)
 LIBRARY_TTL_S = 30.0                # thumbnails appear as the fxtest harness writes them
-CUE_MIN_INTERVAL_S = 1.0
 LOOK_KEYS = {"auto", "direction", "palette", "palette_transition_s", "direction_ease_s", "beat_follow"}
 CUE_KEYS = {"to", "transition", "at", "idempotency_key"}
 FX_KEYS = {"stack", "fade_s", "master", "if_rev"}
@@ -234,7 +233,6 @@ def register(app: web.Application, svc: "RoomService") -> None:
     lib_lock = asyncio.Lock()
     thumbs: collections.OrderedDict[tuple[str, str], tuple[bytes, str]] = collections.OrderedDict()
     misses: dict[str, float] = {}
-    last_cue: dict[str, float] = {}
     upstream: dict[str, asyncio.Semaphore] = {}
 
     # -- caches and the stream events hook --------------------------------------------------
@@ -500,10 +498,6 @@ def register(app: web.Application, svc: "RoomService") -> None:
         if not (isinstance(to, str) and to) and not isinstance(to, dict):
             raise _Fail(400, "bad_to", "to is a scene preset name, a scene spec or \"auto\"")
         sid = live_session(c)
-        now = time.monotonic()
-        if now - last_cue.get(c.id, -1e9) < CUE_MIN_INTERVAL_S:
-            raise _Fail(429, "too_fast", "one scene change a second per screen")
-        last_cue[c.id] = now
         out: dict[str, Any] = {"to": to, "source": "panel"}
         tr = body.get("transition")
         if tr not in (None, "", "default"):

@@ -90,7 +90,7 @@ NO_FEEL = {"vibe": None, "listening": False}            # the director neutral: 
 FIXED_FIELDS = ("label", "description", "persona")       # a vibe's own words: never overridden by a mode (S3.5)
 # §8.1's behaviour table: the fine-tune fields shown up front (those that do something today; a field whose schema
 # says x-ui.not_built, like strobe and peak tokens, goes behind "More"). Every other field is behind "More".
-BASIC_FIELDS = ("beat_lock", "change_looks", "follow", "relax_on_talk", "listener", "accents")
+BASIC_FIELDS = ("beat_lock", "change_looks", "follow", "relax_on_talk", "accents")
 CACHE_S = 60.0          # catalog and situations: refreshed at most this often
 RETRY_S = 15.0          # ... or this soon after a failed fetch
 FETCH_TIMEOUT_S = 5.0

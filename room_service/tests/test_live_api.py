@@ -115,7 +115,6 @@ class LiveFake(FakeStreamService):
 
 @pytest_asyncio.fixture
 async def h(tmp_path, monkeypatch):
-    monkeypatch.setattr(live_api, "CUE_MIN_INTERVAL_S", 0.0)
     hz = Harness(tmp_path)
     hz.stream = LiveFake(hz.stream.token)
     await hz.start()
@@ -181,13 +180,13 @@ async def test_routes_map_onto_the_live_session(h: Harness):
     assert st == 200 and res["online"] is False
 
 
-async def test_cue_rate_limit(h: Harness, monkeypatch):
-    monkeypatch.setattr(live_api, "CUE_MIN_INTERVAL_S", 5.0)
+async def test_cues_are_never_rate_limited(h: Harness):
+    """live-F9: a second tap straight after the first goes too (no 429)."""
     await h.go_live()
     st, _ = await h.api("POST", "/api/v1/screens/devtest/cue", {"to": "other-scene"}, token=None)
     assert st == 202
-    st, res = await h.api("POST", "/api/v1/screens/devtest/cue", {"to": "fractal-zoom"}, token=None)
-    assert st == 429 and res["error"] == "too_fast"
+    st, _ = await h.api("POST", "/api/v1/screens/devtest/cue", {"to": "fractal-zoom"}, token=None)
+    assert st == 202
 
 
 async def test_auto_scene_change_is_followed(h: Harness):
