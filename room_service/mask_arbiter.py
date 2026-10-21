@@ -13,9 +13,10 @@ It *is* the room's mask object: a `MaskPusher` subclass, so the screens, the coo
 | `hold` | nobody: the page keeps its last mask | no |
 
 `ingest.mask_source` per screen (ingest_config.py): `auto` = sensor (fresh) > flask > hold,
-`sensor` = lightmask only (DCL), `flask` = today. **Without a sensor keys file every screen is
-`flask` and every call goes straight to MaskPusher's own code, so behaviour is exactly as
-before.** A screen's first sensor-driven push marks it *sourced*; from then on its masks
+`sensor` = lightmask only (DCL), `flask` = today. No sensor keys are needed (owner, 14 Oct).
+**With ingest off (`ingest.enabled: false` or `mask.enabled: false`) every screen is `flask` and
+every call goes straight to MaskPusher's own code, so behaviour is exactly as before.** A
+screen's first sensor-driven push marks it *sourced*; from then on its masks
 carry `source` and go through its MaskShaper (mask_shaper.py), Flask values included.
 
 Holds: a frozen screen (cut in progress), `sensor_mask: suspended`, and a sensor whose relay
@@ -130,7 +131,7 @@ class MaskArbiter(MaskPusher):
 
     @property
     def armed(self) -> bool:
-        """Sensor path possible: ingest on and at least one valid sensor key."""
+        """Sensor path possible: ingest on. No sensor keys needed (owner ruling, 14 Oct)."""
         return self.ingest_on   # owner ruling, 14 Oct: no sensor keys needed
 
     def disabled_reason(self) -> str | None:
@@ -141,7 +142,7 @@ class MaskArbiter(MaskPusher):
         return None
 
     def _legacy(self, screen: str) -> bool:
-        """Today's code path, verbatim: no sensor keys and never sensor-driven."""
+        """Today's code path, verbatim: ingest off and never sensor-driven."""
         return not self.armed and screen not in self._sourced
 
     def _rate(self, screen: str) -> float:
@@ -463,12 +464,6 @@ class MaskArbiter(MaskPusher):
         """The solar curve, the stale ramp and the tier changes move without readings."""
         while True:
             await asyncio.sleep(self.icfg.eval_interval_s)
-            was = self.armed
-            self.keys.refresh()
-            if self.armed != was:
-                log.info("sensor ingest %s", "armed (sensor keys present)" if self.armed else "off (no sensor keys)")
-                self._config_wake.set()
-                self._on_change()
             if self.armed or self._sourced:
                 self._evaluate_all()
                 self._maybe_persist()
@@ -545,7 +540,6 @@ class MaskArbiter(MaskPusher):
         t = self._clock()
         return {
             "ingest": {"on": self.ingest_on, "armed": self.armed, "disabled_reason": self.disabled_reason(),
-                       "sensors_file": str(self.keys.path), "sensors_with_keys": sorted(self.keys.keys),
                        **self.hub.status()},
             "latency_ms": self.latency.status(),
             "tiers": {sid: self.tier.get(sid, FLASK) for sid, sc in self.cfg.screens.items() if sc.mask_push},

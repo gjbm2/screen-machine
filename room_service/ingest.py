@@ -8,13 +8,11 @@ relay  -> {"v":1,"type":"ingest.lux","data":{"sensor":"living-room","lux":312.5,
 server -> {"v":1,"type":"lux.ack","data":{"seq":118233}}
 ```
 
-* **Keys:** `hello.key` must match the sensor's entry in the 0600 `{sensor_id: key}` file
-  (`ingest.sensors_file`, default `~/.config/screen-machine/room_sensors.json`; reloaded on
-  change), compared in constant time; otherwise close **4401**. With no keys file ingest is
-  off: every socket is closed with 4401 and a reason, logged once. Keys never reach a log.
+* **No keys** (owner ruling, 14 Oct: no keys anywhere in the AV stack): any valid sensor id is
+  accepted and a `hello.key`, if sent, is ignored. Only ingest being off (`ingest.enabled:
+  false` or `mask.enabled: false`) closes a socket, with 4401 and the reason, logged once.
 * **Browser rules:** the Host check is the app's (every route); an `Origin`, if sent, must be
-  one the page sockets accept. The relay sends none, which is allowed because a valid key is
-  always required.
+  one the page sockets accept. The relay sends none, which is allowed.
 * **Readings:** finite numbers only (NaN/±inf, bool and strings rejected), clamped to
   0–200 klx, `seq` required and strictly increasing within a hello (the check resets on each
   hello: calib-3 seeds `seq` from the wall clock at relay start). `held` must be a bool when

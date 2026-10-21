@@ -69,7 +69,7 @@ def test_screens_shim_reports_glass_and_never_retries_a_controller_that_gave_up(
         assert out.status == "ok" and (await a.read(["devtest"]))["devtest"].value == LIVE
         c["devtest"].phase = "failed"
         assert (await a.read(["devtest"]))["devtest"].value == "failed"
-        c["devtest"].settle = ("failed", "3 fallbacks in 10 min")
+        c["devtest"].settle = ("failed", "live_disabled")          # live is off for the screen (S1: never parked)
         out = await a.apply({"devtest": LIVE})
         assert out.status == "failed" and out.retry is False
         c["devtest"].settle = ("cancelled", "desired changed meanwhile")
@@ -89,11 +89,36 @@ def test_mask_and_page_persist_what_they_applied(tmp_path):
         assert mask2.suspended is True
         c = {"north-screen": Ctl("north-screen")}
         p = PageAdapter(c, tmp_path)
-        out = await p.apply({"north-screen.timed_reload": False})
-        assert out.status == "unconfirmed" and "no page" in out.members["north-screen.timed_reload"].detail
+        out = await p.apply({"north-screen.timed_reload": False})           # S5: no page is no failure
+        assert out.status == "ok" and "when it opens" in out.members["north-screen.timed_reload"].detail
         c2 = {"north-screen": Ctl("north-screen")}
         PageAdapter(c2, tmp_path).restore()
         assert c2["north-screen"].timed_reload is False
+    asyncio.run(body())
+
+
+def test_a_held_mask_survives_a_restart_and_the_welcome_carries_it(tmp_path):
+    """LM-1: suspended saves the held value per screen; after a restart the TV page's welcome gets it back, for screens
+    still configured with mask_push only. Following saves nothing to seed."""
+    from room_service.mask import MaskPusher, MaskValue
+    screens = {"north-screen": SimpleNamespace(mask_push=True), "devtest": SimpleNamespace(mask_push=False)}
+    cfg = SimpleNamespace(mask=SimpleNamespace(transition_ms=200), screen=screens.get)
+
+    async def body():
+        m1 = MaskPusher(cfg, None, None, is_frozen=lambda s: False)
+        m1.pushed = {"north-screen": MaskValue(0.4, "#FFC973", 0.1), "devtest": MaskValue(0.9, "#FFFFFF", 0.0)}
+        m1.pushed_source = {"north-screen": "sensor"}
+        await SensorMaskAdapter(m1, tmp_path).apply({"main": "suspended"})
+        m2 = MaskPusher(cfg, None, None, is_frozen=lambda s: False)
+        m2.pushed_source = {}
+        SensorMaskAdapter(m2, tmp_path).restore()
+        assert m2.suspended is True and m2.pushed_source == {"north-screen": "sensor"} and "devtest" not in m2.pushed
+        assert m2.welcome_mask("north-screen") == {"rev": 0, "brightness": 0.4, "warm_hex": "#FFC973",
+                                                   "warm_alpha": 0.1, "transition_ms": 200}
+        await SensorMaskAdapter(m1, tmp_path).apply({"main": "follow"})
+        m3 = MaskPusher(cfg, None, None, is_frozen=lambda s: False)
+        SensorMaskAdapter(m3, tmp_path).restore()
+        assert m3.suspended is False and m3.pushed == {}
     asyncio.run(body())
 
 

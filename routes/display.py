@@ -73,7 +73,6 @@ def mask_state(dest_id: str):
     
     # Default to True if not explicitly set
     enabled = mask_states.get(dest_id, True)
-    debug(f"[mask_state] Mask state for '{dest_id}': {enabled}")
     return jsonify({"enabled": enabled, "destination": dest_id})
 
 @mask_bp.route("/<dest_id>/brightness-override", methods=["POST"])
