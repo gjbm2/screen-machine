@@ -2725,8 +2725,12 @@ class Clock:
                     self._counts["octave_votes"] += 1
                     if self._trk is not None:           # dbn: the new grid may number that beat one on
                         K = self._upcoming()
-                if p["one"] is not None:
-                    agree = L == self._bpb and (p["one"] - self._bar_anchor) % self._bpb == 0 and p["oct"] == 1.0
+                if p["one"] is not None and p["oct"] != 1.0:
+                    # a halving onto the other half of the beats (mllink.beat_vote): the one only picks which half;
+                    # its bar line, one beat after the old one, is a guess
+                    self._bar_conf = min(self._bar_conf, DBN_NEW_BAR_CONF)
+                elif p["one"] is not None:
+                    agree = L == self._bpb and (p["one"] - self._bar_anchor) % self._bpb == 0
                     self._bar_conf = (self._bar_conf + 0.35 * (0.95 - self._bar_conf)) if (
                         agree and self._bar_votes) else 0.6
                     self._bar_votes += 1

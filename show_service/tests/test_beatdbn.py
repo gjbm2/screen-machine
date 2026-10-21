@@ -656,6 +656,34 @@ def test_a_halving_the_audio_confirms_applies_whatever_the_tempo():
         assert abs((b + 0.5) % 1.0 - 0.5) < 0.06, i
 
 
+def test_a_halving_onto_the_other_half_of_the_beats_keeps_the_ones_its_one_picks():
+    """mllink's halving onto the other half (README S4.5 "Beat votes", 21 Oct): every other beat of a 120 bpm loop
+    weak and the bars' one on a weak beat, so a plain x0.5 would keep the weak half (and the audio refuses that: the
+    beats it drops are the strong ones, the half is under the prior's 69). The vote's one, a strong beat, picks the
+    strong half; the switch is there, the audio confirms it, and its bar line (a guess) gets DBN_NEW_BAR_CONF."""
+    lag = C.AubioActivation.lag_s
+
+    def other_half(c: C.Clock, tt: float) -> None:
+        d = c.snapshot()
+        c.apply_integer_correction(int(round(C.beat_at(d, 0.3 + 0.5 * 26))), None, 0.5)   # a strong beat, ahead
+
+    a = act_train([(120.0, 0.3, 24.0)], 24.0, lag, seed=31, weak=0.3)
+    plain = {10.95: lambda c, tt: c.one(10.8), 12.0: lambda c, tt: c.apply_integer_correction(None, None, 0.5)}
+    clk, pubs = act_clock(a, plain)                         # (beat 21: a weak one)
+    assert clk.stats()["corr_octave_refused_prior"] == 1 and clk.stats()["oct_factor"] == 1.0
+    clk, pubs = act_clock(a, {10.95: lambda c, tt: c.one(10.8), 12.0: other_half})
+    st = clk.stats()
+    assert st["corr_applied"] == 1 and st["oct_factor"] == 0.5 and st["errors"] == 0
+    assert st["oct_evidence"]["result"] == "ok" and st["oct_evidence"]["ratio"] < C.OCT_DROP_MAX
+    first = next(d for tt, d, _ in pubs if tt > 12.0 and d["bpm"] < 90.0)
+    assert first["bar_conf"] <= C.DBN_NEW_BAR_CONF
+    d = pubs[-1][1]
+    assert d["bpm"] == pytest.approx(60.0, rel=0.03)
+    for i in range(40, 44):                                 # the strong beats are its beats, the weak ones between
+        b = C.beat_at(d, 0.3 + 0.5 * i) - (0.5 if i % 2 else 0.0)
+        assert abs((b + 0.5) % 1.0 - 0.5) < 0.06, i
+
+
 def test_a_tap_rephases_the_line_and_one_that_agrees_moves_nothing():
     clk, pubs, beats = locked_clock()
     d = clk.snapshot()

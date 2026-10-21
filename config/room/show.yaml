@@ -523,7 +523,10 @@ ml:
     local_s: 10                             # starting point: agreement is read over the window's last 10 s (where the
                                             # clock's line holds; README S4.5 "Beat votes")
     one_agree: 0.6                          # starting point: the share of downbeats that must fall on one beat of the bar
-    agree_runs: 2                           # starting point: the same vote this many runs in a row before it applies
+    agree_runs: 2                           # starting point: the same vote this many times before it applies (turns
+                                            # with no vote between don't break the run; another vote does)
+    run_max_s: 90                           # starting point: a vote this much older than the newest falls out of the
+                                            # run (a new grid clears it too; README S4.5 "The run")
     bar_agree_runs: 4                       # starting point: a new bar length (the meter) needs this many, each with a
                                             # one (§5.3: stronger evidence for what moves every bar line)
     bar_lens: [3, 4]                        # starting point: the bar lengths it may set

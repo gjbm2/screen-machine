@@ -3354,7 +3354,13 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
   max(`results_stale_s`, `stale_periods` x its interval now), which every reader uses for freshness.
 - **Beat votes.** Each `beats` line goes through `beat_vote(msg, ctx.clock(), cfg["beat_votes"])`, then the apply rule
   below. The vote goes into the view and the snapshot.
-  - No clock grid (bpm 0, or gate `none`): `why` "no grid".
+  - No clock grid: `why` "no grid". That is bpm 0, no anchor, or gate `none` in state `searching` or `free`. An
+    ungated line in `locked` or `holding` is read (21 Oct, 3a): on 26's full songs through the room mic the clock ran
+    a locked line with its gate `none` on 181 of 526 turns (031: 19 of 26, locked at 181 against a true 91 that Beat
+    This! heard). The local agreement, the run and the clock's octave evidence judge such a line as any other; a
+    correction still needs the clock's confirmed grid (`Clock._has_grid`). The room's own sound before the music
+    (rec-full) runs `locked`/`holding` ungated too. The same evidence keeps it out: on rec-full no vote reached the
+    clock (S4.15 "The run, ungated lines and the other half").
   - **Where the clock's line holds** (21 Oct, 3a; 26's measurement on the NEEWER mic). The clock's published line
     holds near its anchor (an integer beat near the moment it was published): its bpm is the tracker's local fit plus
     any slew in force, and the DBN re-anchors it on every beat. Carried back over the whole 30 s window it walked
@@ -3374,6 +3380,12 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
     0.5 the bar anchor's beats, the ones a halving keeps). A consistent x2 window reaches ~1 however far the clock's
     slope is off (26's window: 0.154 before, 1.0 now); Beat This! on another phase, split between tempi, or across a
     jump cut stays low (test_mllink).
+  - **At 0.5, either half** (21 Oct, 3a). A halving keeps one beat in two, and Beat This!'s beats may sit on the
+    other half from the bar anchor's (26's 031: its x0.5 at 168 s read 0.0 on the bar anchor's half, its beats 0.45-0.49
+    of a period off it, and 1.0 on the other). Both halves are read and the better one counts. On the other half the
+    vote carries `beat_is_one`: the beat one after the bar anchor, mod 2 bars, within a bar of the clock's anchor. The
+    clock then switches at a beat of that residue (`(K − one) mod 2L = 0`), so that half is kept, and its bar line
+    (one beat after the old one) is a guess: `bar_conf` drops to `DBN_NEW_BAR_CONF`.
   - **The one and the bar** (octave 1 only):
     - each downbeat d in the span within `match_ms` of a beat k of that line (`beat_at_anchor + (d − anchor) /
       period`) votes k mod `bar_len`;
@@ -3381,14 +3393,25 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
     - `bar_len` = the worker's, if it is in `bar_lens`.
   - **Apply** when all of these hold:
     - `conf ≥ min_conf`;
-    - the same vote (octave, bar_len, residue) came from `agree_runs` runs in a row; a new bar length (the meter)
-      needs a one and `bar_agree_runs` (4) runs in a row (S4.13), and without a one it never applies;
+    - the same vote (octave, bar_len, residue; at 0.5 the half it keeps) came from `agree_runs` votes of the run; a new
+      bar length (the meter) needs a one and `bar_agree_runs` (4) (S4.13), and without a one it never applies;
     - it differs from the clock now: octave ≠ 1, or `bar_len` ≠ `beats_per_bar`, or
       `(beat_is_one − bar_anchor_beat) mod bar_len` ≠ 0;
     - the last apply is at least `cooldown_s` old.
 
-    Then call `ctx.clock_correct(...)` with only the parts that differ. An octave goes alone; bar and one wait for the
-    next run, under the new numbering. Never a phase, never a tempo.
+    Then call `ctx.clock_correct(...)` with only the parts that differ. An octave goes alone (a halving onto the
+    other half with the one that picks it); bar and one wait for the next run, under the new numbering. Never a
+    phase, never a tempo.
+  - **The run** (21 Oct, 3a). It holds the votes of one key, each with its window's end and the clock's epoch.
+    - A turn that is no vote ("no grid", "too few beats", "the tempi don't relate") neither adds to it nor breaks it,
+      and a silent window writes no line at all. Before, any such turn reset it. On 26's full-song lookatmenow
+      (room-mic model) Beat This! voted x0.5 four times at conf 0.64-1.0, but never on two turns in a row: the turns
+      between were "too few beats" (Beat This! is sparse through this mic: 81 of 526 turns) or "no grid".
+    - A vote breaks it when it has another key, or reads under `min_conf` ("low agreement": its beats are off the line
+      it would set). That is kept as before: no low-agreement turn sat between two votes of one key in 26's
+      lookatmenow or 031.
+    - Stale evidence can't combine. A vote whose window ended more than `run_max_s` (90 s) before the new one's falls
+      out, and a new epoch (the clock's new grid: another line, another count) clears the run.
   - **An octave carries `octave_add_min`, `octave_drop_max` and `octave_prior_oct`** (21 Oct): conf can't pick an
     octave (one grid's beats are a subset of the other's, so they agree either way), so the clock (dbn) judges it on
     the room's audio at its switch beat and may refuse it (S4.15 "Octave evidence"; counted there, not here).
@@ -4173,7 +4196,7 @@ both at integration (S4.12).
 
 | Section | Read by | Keys |
 |---|---|---|
-| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s, octave_add_min, octave_drop_max, octave_prior_oct}` (the octave_* keys since 21 Oct: S4.15 "Octave evidence"), `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
+| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s, octave_add_min, octave_drop_max, octave_prior_oct, run_max_s}` (the octave_* keys since 21 Oct: S4.15 "Octave evidence"; run_max_s since 21 Oct: S4.5 "The run"), `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
 | `genre_map` | structure (`genre_reading`) | `parents {Discogs parent: word, or {from_listener: [words]}}`, `tau_s`, `freeze_below_music`, `speech_scale_above`, `switch_margin`, `switch_dwell_s` |
 | `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m, window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps}`, `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
 | `situations.talking` (new; `speech_words` since S4.13, also read by structure); `situations.quiet` gains `music_below`, `speech_below` | situations | S4.8 |
@@ -4878,6 +4901,38 @@ and on synthetic loops:
 
 A halving whose kept beats are the weaker parity (ratio well over 1: letitrain's 5.4, a synthetic quickstep's 5.0)
 still passes when its tempo is plausible; mllink's conf (Beat This!'s beats on the kept parity) is what stops it.
+Since 21 Oct mllink reads both halves and sends the one Beat This!'s beats are on (S4.5 "At 0.5, either half"), so the
+kept half is Beat This!'s; the ratio is then judged on that half.
+
+**The run, ungated lines and the other half (21 Oct, 3a).** 26's full-song run (room-mic model, `--snr-db 27`,
+IMPROVE_2026-10-19.md, last section) found two songs where Beat This! has the right tempo and no vote reached the
+clock. On lookatmenow, four x0.5 votes never came two turns in a row. On 031, 19 of 26 turns read "no grid" while the
+clock ran a locked line at 181, ungated, and its two x0.5 votes read 0.0. Three changes in mllink (S4.5): the run
+survives turns that are no vote (bounded by `run_max_s` and the epoch); an ungated line in `locked`/`holding` is read;
+and at 0.5 both halves are read. The clock change: a halving onto the other half (it comes with a one) drops
+`bar_conf` to `DBN_NEW_BAR_CONF`. Replays at 26's D commands (`run_stack.py`; the slow-lane pre-pass cached on disk),
+against 26's D (a9867fd2) and 3a's a9867fd2 replays:
+
+| case | octave votes (conf): the clock | F | acc1 over time |
+|---|---|---|---|
+| lookatmenow, room mic | x0.5 at 42 s (0.75), then "too few beats", then x0.5 at 62 s (1.00): applied (ratio 0.60; the half, 73.2, passes the prior) -> 72.9 bpm from 64.7 s for 8 s. Later x0.5s on opposite halves (142 s, 0.64; 152 s, 1.00) don't combine | 0.517 -> 0.515 | 0.023 -> 0.044 |
+| 031, room mic | x0.5 at 159 s (0.67) and 169 s (1.00), both on the other half and the first on an ungated line: applied (ratio 0.37: the audio confirms) -> 91.5 bpm from 170.4 s for 16 s; flashes on a beat 0.37 -> 0.60 over it | 0.552 -> 0.557 | 0.084 -> 0.127 |
+| the pop (069), room mic | x0.5 to 64 sent twice (137 s; 177 s, across a turn with no vote): refused (prior) both times | 0.756 = (flash-identical) | 0.51 = |
+| quickstep, reggae, waltz x1/x4 | as before (reggae's first x0.5 now reads 0.88 on the other half, against 0.06; it is the only one, so it waits) | flash-identical | = |
+| rec-full (pc22 mic: room sound, then music), slow lane on | over the room sound (to ~165 s, its line locked/holding and ungated): 11 of 13 turns "too few beats", 2 low agreement (x1 0.42, x0.5 0.13). Nothing reached the clock | flash-identical to slow lane off | - |
+
+- **Both reach their true tempo, briefly.** The octave map ends when the DBN itself leaves the double: lookatmenow's
+  tracker drops from 146 to 98-125 at 72 s (holding, ungated); 031's re-locks at 164 at 186.7 s. Both end the map
+  as a confirmed jump of the mapped tempo (`oct_clear_jump`). Beat This! did not vote again in time (cooldown, then
+  "too few beats").
+- **lookatmenow's halving lands on the off-beats.** Beat This! has the tempo (73) but not the phase. In 4 of its 5
+  voting windows every local beat sat within 70 ms of an annotation midpoint, and none sat on a beat. The clock's
+  own activation agrees with it: the beats the halving dropped (the annotated ones) read 0.60 of the kept ones. So
+  the halved line flashed 0 of 9 on beats. Before, the line flashed at the double, half of them on beats. Nothing
+  either side can see tells these apart. On 031, Beat This!'s beats are on the annotations (1.00 in its voting
+  windows), and the halving kept them.
+- **What still reads 0.0 at 0.5.** On 031 at 149 s, Beat This!'s beats are on the annotations but a quarter beat off
+  the line on both halves. Its local period is 92.6 bpm against a true 91.1, carried 6.6-16.6 s back from the anchor.
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 

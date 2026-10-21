@@ -29,9 +29,12 @@ exactly; c8's integration ruling, 16 Oct: mllink wraps them rather than repeatin
     degrades. Each tags line's embedding is decoded once (float32).
   - **Beat votes** (§5.3: integer corrections only, never a phase or a tempo). ``beat_vote`` (pure) reads a beats line
     against the clock's published line where that line holds (the window's last ``local_s``, the line carried back
-    from its anchor at Beat This!'s own local period); ``_apply`` then sends ``ctx.clock_correct`` only the parts that
-    differ, once the same vote came ``agree_runs`` runs in a row with ``conf >= min_conf`` and ``cooldown_s`` after the
-    last one. An octave goes alone (bar and one wait for a run under the new numbering), with the ``octave_*``
+    from its anchor at Beat This!'s own local period; an ungated line counts while locked or holding, and at 0.5
+    either half of its beats may be the one kept); ``_apply`` then sends ``ctx.clock_correct`` only the parts that
+    differ, once the same vote came ``agree_runs`` times in the run (turns that are no vote don't break it; another
+    vote does; ``run_max_s`` and a new epoch end it) with ``conf >= min_conf`` and ``cooldown_s`` after the last one.
+    An octave goes alone (bar and one wait for a run under the new numbering; a halving onto the other half carries
+    the one that picks it), with the ``octave_*``
     thresholds: the clock judges it on the room's audio at its switch beat, since conf can't pick an octave (one
     grid's beats are a subset of the other's; README S4.15 "Octave evidence"). A new bar length needs a one
     and ``bar_agree_runs`` runs in a row. A vote that agrees with the clock in full is sent too (at most every
@@ -82,9 +85,11 @@ STAT_N = 2000
 #: S4.9's starting points for what mllink itself reads (show.yaml ml.beat_votes; the same numbers, marked there)
 BEAT_VOTES_FALLBACK: dict = {"match_ms": 70, "octave_tol": 0.06, "min_conf": 0.6, "one_agree": 0.6, "agree_runs": 2,
                              "bar_agree_runs": 4, "bar_lens": [3, 4], "cooldown_s": 30, "local_s": 10,
-                             "octave_add_min": 0.2, "octave_drop_max": 0.5, "octave_prior_oct": 0.8}
+                             "octave_add_min": 0.2, "octave_drop_max": 0.5, "octave_prior_oct": 0.8,
+                             "run_max_s": 90}
 # (the octave_* keys go with each octave to the clock, which judges it on the room's audio: clock.OCT_ADD_MIN etc.)
 LOCAL_MIN_BEATS = 6              # beat_vote: Beat This!'s beats in the local span before its tempo counts
+VOTE_UNGATED_STATES = ("locked", "holding")   # beat_vote: an ungated line in these is read too (not searching, free)
 RESULTS_STALE_FALLBACK = 3.0     # starting point (show.yaml ml.results_stale_s)
 STALE_PERIODS_FALLBACK = 1.5     # starting point (show.yaml ml.stale_periods)
 CPU_FLOOR_FALLBACK = 0.1         # starting point (show.yaml ml.cpu_floor)
@@ -232,7 +237,12 @@ def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: d
       its period / octave (within ``octave_tol``: Beat This!'s fitted period), phase from the clock's line at its
       anchor (for 0.5, its bar anchor's beats: the ones a halving keeps). A consistent x2 window reaches ~1 however
       the clock's slope is off; Beat This! on another phase, or split between tempi, stays low;
-    - **the one** (octave 1): each local downbeat within ``match_ms`` of a beat of that line votes its number."""
+    - **at 0.5 either half**: the other half of the clock's beats is read too, and the better counts; on the other
+      half ``beat_is_one`` is the beat one after the bar anchor (mod 2 bars) within a bar of the anchor, the one with
+      which the clock's halving keeps that half (26's 031: 0.0 on the bar anchor's half, 1.0 on the other);
+    - **the one** (octave 1): each local downbeat within ``match_ms`` of a beat of that line votes its number.
+    "no grid": no line (bpm 0, no anchor), or a line with its gate none that is searching or free; an ungated line
+    in VOTE_UNGATED_STATES is read (the clock ran 031's locked line at 181 ungated on 19 of 26 turns)."""
     out: contract.BeatVote = {"window_t0": float(msg.get("window_t0") or 0.0),
                               "window_t1": float(msg.get("window_t1") or 0.0),
                               "beat_is_one": None, "bar_len": None, "octave": None, "conf": 0.0, "applied": False,
@@ -240,7 +250,8 @@ def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: d
     c = dict(BEAT_VOTES_FALLBACK)
     c.update(cfg or {})
     bpm = _num((clock or {}).get("bpm"))
-    if (not isinstance(clock, dict) or not bpm or bpm <= 0 or clock.get("gate") in (None, "none")
+    if (not isinstance(clock, dict) or not bpm or bpm <= 0
+            or (clock.get("gate") in (None, "none") and clock.get("state") not in VOTE_UNGATED_STATES)
             or _num(clock.get("anchor_ms")) is None or _num(clock.get("beat_at_anchor")) is None):
         out["why"] = "no grid"
         return out
@@ -270,12 +281,19 @@ def beat_vote(msg: contract.MlBeats, clock: Optional[contract.ClockData], cfg: d
     def line(t: float) -> float:                    # the octave-mapped clock line's beat (float) at t
         return (k_ref - origin) * octave + (t - t_ref) / T_bt
 
-    hits = 0
-    for b in loc:
-        x = line(b)
-        if abs(x - round(x)) * T_bt <= match_s:
-            hits += 1
-    out["conf"] = round(hits / len(loc), 3)
+    def hits(half: float) -> int:                   # local beats on the mapped line (half = 0.5: the other half)
+        return sum(1 for b in loc if abs((line(b) - half) - round(line(b) - half)) * T_bt <= match_s)
+
+    n_hit = hits(0.0)
+    if octave == 0.5:
+        n_other = hits(0.5)                         # Beat This!'s beats on the other half of the clock's beats
+        if n_other > n_hit:
+            n_hit = n_other
+            L = int(clock.get("beats_per_bar") or 4)
+            res = (int(origin) + 1) % (2 * L)       # that half's bar starts one beat after the bar anchor; the beat
+            k0 = int(k_ref) + L                     # of that residue (mod 2 bars) within a bar of the anchor
+            out["beat_is_one"] = k0 - (k0 - res) % (2 * L)
+    out["conf"] = round(n_hit / len(loc), 3)
     if octave != 1.0:
         return out
     bar_lens = [int(v) for v in (c.get("bar_lens") or []) if isinstance(v, (int, float))]
@@ -365,7 +383,7 @@ class MLLink:
         self._latest: dict[str, Optional[dict]] = {t: None for t in contract.ML_TASKS}
         self._stream: Optional[str] = None
         self._votes: collections.deque = collections.deque(maxlen=VOTES_KEEP)
-        self._run: list[tuple] = []                  # the last agree_runs votes' keys
+        self._run: list[tuple] = []                  # the vote run: (key, window_t1, clock epoch), one key
         self._last_apply: Optional[float] = None
         self.applied = 0
         self.confirmed = 0
@@ -419,7 +437,7 @@ class MLLink:
                     ok = isinstance(v, list) and v and all(isinstance(x, int) and 2 <= x <= 16 for x in v)
                 elif k in ("agree_runs", "bar_agree_runs"):
                     ok = isinstance(v, int) and not isinstance(v, bool) and v >= 1
-                elif k == "local_s":
+                elif k in ("local_s", "run_max_s"):
                     ok = _num(v) is not None and float(v) > 0
                 else:
                     ok = _num(v) is not None and float(v) >= 0
@@ -620,29 +638,44 @@ class MLLink:
         return vote
 
     def _apply(self, vote: contract.BeatVote, clock: Optional[dict]) -> None:
-        """S4.5 "Apply": conf, agree_runs in a row, differs from the clock, cooldown. Only the parts that differ;
-        an octave alone. A new bar length (the meter: it moves every bar line, phrase and drop line) needs a one and
-        bar_agree_runs in a row (§5.3: stronger evidence). An agreeing vote is sent as a confirmation (bar_conf), at
-        most every cooldown_s."""
+        """S4.5 "Apply": conf, agree_runs votes of one key, differs from the clock, cooldown. Only the parts that
+        differ; an octave alone. A new bar length (the meter: it moves every bar line, phrase and drop line) needs a
+        one and bar_agree_runs votes (§5.3: stronger evidence). An agreeing vote is sent as a confirmation
+        (bar_conf), at most every cooldown_s.
+
+        **The run** (21 Oct, 3a): the votes of one key, each kept with its window's end and the clock's epoch. A turn
+        that is no vote ("no grid", "too few beats", "the tempi don't relate"; a silent window writes no line at all)
+        neither adds to it nor breaks it: through the room's mic Beat This! is sparse, and on 26's full-song
+        lookatmenow four x0.5 votes at conf 0.64-1.0 never came two turns in a row. A vote that breaks it: another
+        key, or one under min_conf ("low agreement": Beat This!'s beats off the line it would set). Stale evidence
+        can't combine: a vote whose window ended more than ``run_max_s`` before the new one's falls out, and a new
+        epoch (a new grid: the clock's numbering and line are another's) clears it."""
         c = self.votes_cfg
         if vote["why"] is not None or vote["octave"] is None:
-            self._run = []
-            return
+            return                                            # no vote: the run is kept as it is
         bpb = int((clock or {}).get("beats_per_bar") or 4)
         anchor = int((clock or {}).get("bar_anchor_beat") or 0)
         L = vote["bar_len"] or bpb
         one = vote["beat_is_one"]
-        key = (vote["octave"], vote["bar_len"], None if one is None else one % L)
+        if vote["octave"] == 0.5:                             # which half of the clock's beats a halving keeps
+            key = (0.5, None, (anchor if one is None else one) % 2)
+        else:
+            key = (vote["octave"], vote["bar_len"], None if one is None else one % L)
+        t_w, epoch = float(vote["window_t1"]), (clock or {}).get("epoch")
+        run_max = float(c["run_max_s"])
+        self._run = [e for e in self._run if e[2] == epoch and 0.0 <= t_w - e[1] <= run_max]
         if vote["conf"] < float(c["min_conf"]):
             vote["why"] = "low agreement"
             self._run = []
             return
         agree, bar_agree = int(c["agree_runs"]), max(int(c["agree_runs"]), int(c["bar_agree_runs"]))
-        self._run = (self._run + [key])[-bar_agree:]
+        if self._run and self._run[-1][0] != key:
+            self._run = []                                    # a contrary vote
+        self._run = (self._run + [(key, t_w, epoch)])[-bar_agree:]
         octave = vote["octave"]
         meter = octave == 1.0 and vote["bar_len"] is not None and vote["bar_len"] != bpb
         need = bar_agree if (meter and one is not None) else agree
-        if len(self._run) < need or any(k != key for k in self._run[-need:]):
+        if len(self._run) < need:
             vote["why"] = "waiting for a second run" if need <= 2 else f"waiting for {need} runs (a new bar length)"
             return
         now = self._mono()
@@ -652,6 +685,8 @@ class MLLink:
             args = {"octave": octave, "add_min": float(c["octave_add_min"]),       # switch beat, these thresholds:
                     "drop_max": float(c["octave_drop_max"]),                       # README S4.15 "Octave evidence")
                     "prior_oct": float(c["octave_prior_oct"])}
+            if one is not None:                               # a halving onto the other half of the beats: the
+                args["beat_is_one"] = one                     # one that picks it (beat_vote)
         else:
             args = {}
             if meter:
