@@ -4778,6 +4778,10 @@ slow-lane x0.5 reads its conf on the bar anchor's parity: under a x2 map whose t
 (a straight cut, no quiet room, to a song near the old tracker tempo and on the other phase) it reads ~0, so a map
 that is wrong for that song holds until a new grid (synthetic, 21 Oct check: 90 s to the end of the run).
 
+**A person's octave stands.** A half or double from the Room page outranks the slow lane: a contrary slow-lane octave
+vote is dropped whole (counted ``corr_human``; its one and bar length assumed its own octave) for HUMAN_OCT_HOLD_S
+(10 min) or until a new song (the cold grid after a quiet room). Before, two runs and the cooldown undid it in ~25 s.
+
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
 **Interfaces, 16 Oct (c8).** This section defines Stage 5 so that five builders can work in parallel, each in its own

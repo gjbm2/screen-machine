@@ -600,6 +600,25 @@ def test_one_and_the_slow_lanes_bar_and_octave_votes():
     assert clk2.stats()["corr_no_grid"] == 1
 
 
+def test_a_persons_half_outranks_the_slow_lanes_octave_votes_until_a_new_song():
+    """A person's half/double stands against the slow lane's octave votes (they are dropped whole, counted "human")
+    for HUMAN_OCT_HOLD_S or until a cold grid; octave-1 votes (a one, a bar length) still apply."""
+    clk, pubs, beats = locked_clock(14.0)
+    clk.half()
+    more(clk, 14.0, 6.0)
+    assert clk.snapshot()["bpm"] == pytest.approx(60.0, rel=0.03)
+    clk.apply_integer_correction(None, None, 2.0)           # the slow lane disagrees: the person's half stands
+    more(clk, 20.0, 6.0)
+    st = clk.stats()
+    assert clk.snapshot()["bpm"] == pytest.approx(60.0, rel=0.03)
+    assert st["last_correction"]["result"] == "human" and st["corr_human"] == 1
+    clk._human_oct_t -= C.HUMAN_OCT_HOLD_S                 # ten minutes on: the slow lane may set it again
+    clk.apply_integer_correction(None, None, 2.0)
+    more(clk, 26.0, 6.0)
+    assert clk.snapshot()["bpm"] == pytest.approx(120.0, rel=0.03)
+    assert clk.stats()["last_correction"]["result"] == "applied"
+
+
 def test_bar_and_phrase_fields_come_from_the_bar_code_on_a_4_4_loop():
     secs = 30.0
     beats = TC.grid(120.0, 0.3, secs - 0.2)
