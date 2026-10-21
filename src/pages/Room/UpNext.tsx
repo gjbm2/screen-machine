@@ -72,7 +72,6 @@ function failWords(e: unknown, what: string): { msg: string; retry: boolean } {
   if (e.code === "auto_unavailable") return say("this live screen can't plan ahead");
   if (e.code === "bad_state") return say("the screen is changing over; try again in a moment", true);
   if (e.code === "not_live" || e.status === 404) return say("the screen isn't live any more");
-  if (e.code === "too_fast") return say("one scene change a second, please; try again", true);
   if (e.status === 400) return say("the renderer turned it down");
   if (e.status === 409) return say("the screen can't do that right now");
   return say(explainError(e));

@@ -127,10 +127,10 @@ export const ScreenCard = memo(function ScreenCard({
   }, [phase]);
 
   // Inline: the live controls; or a way back to art after a failure, or out of a go-live under
-  // way. Not while a mode change is doing that go-live: Cancel there would fight the mode the
-  // person just chose (it stays under "More").
+  // way, a mode change's included (audit S12: Cancel stays visible; a hand change during the
+  // switch wins and the mode's row reads "set by hand during the switch").
   const canStop = sc.canBackToArt || sc.busy === "back to art";
-  const showCore = sc.liveNow || (canStop && (phase === "failed" || (!!desiredLive && !inModeChange)));
+  const showCore = sc.liveNow || (canStop && (phase === "failed" || !!desiredLive));
   const name = screen.name || friendlyName(screenId);
 
   return (
