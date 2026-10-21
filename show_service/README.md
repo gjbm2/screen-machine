@@ -7862,3 +7862,110 @@ index.tsx), tests in test_api.py and `src/pages/Lights/lib.test.ts`.
   a saved position landing on the floor within 5 cm). lib.test.ts (controls for the full mover, an RGB par and a wheel
   spot; JogSender latest-wins and its rate on a fake clock; the plan's room <-> SVG round trip on every front; the
   countdown and other words; names; tolerant reads).
+
+### S5.31 The ensemble: the room's screens and lights playing together (22 Oct; docs/ENSEMBLE.md; the show builder)
+
+The owner (22 Oct): "more of a conversation between room elements ... south (left) and then north (right) and/or echo
+between". The director's half: who plays, which interplay form, and each musical moment routed player by player.
+Files: `show_service/ensemble.py` (new, pure), `config/live/interplays.yaml` (new, the spec's 10 forms verbatim),
+director.py (the ensemble hunks), contract.py (the docs/ENSEMBLE.md §6.1 block; LookData `ensemble`/`gestures`,
+DirectionData `ensemble`, CardData look `together`), bus.py (`room.gesture` want-only), show.yaml (`ensemble:`, after
+`lights:`), api.py (the card's `look.together`).
+
+- **Players** (`ensemble.players`): each screen fixture, each light group per side (`lamps:left` "Lamps, left",
+  `lamps:right`; unplaced members `<group>:all`), and the glitterball (`device:<subsystem>`, centre) while
+  lights.flow.mirror_ball is on. x from the Room map (space.lateral, only once the placed fixtures span
+  `players.min_spread_m`), else the fixture's zone through `ensemble.players.zones` (the owner's words: south left,
+  north right), else the screen it hangs at, else centre. A screen is on while it shows live (compose.enabled). The
+  room today: `lamps:left, screen.south, lamps:right, screen.north`, the ball centre.
+- **Forms** (`ensemble.Catalogue`, interplays.yaml, hot-reloaded every RELOAD_S): checked and scored with the light
+  scenes' own tags rule and score (x flow_fit) x `boost`; `needs` (sides, grid, piano) are hard. The draw (seed
+  ENSEMBLE_SEED 2) happens at a look change (the dwell `pick.dwell_bars` holds it, a song change doesn't; the form
+  playing x `pick.stay`), when the piano starts with a piano form eligible, or stops under one. Keep this look holds
+  the form, its roles and staggers; gestures go on (the owner may want them held too: one switch away).
+- **Gestures** (room.gesture, GestureData, as decided; predicted parts >= the lead ahead): the clock's phrase, fill,
+  downbeat and accent lines (each once, by the feel's accents word, the gate, beat_lock and the form's routes), a look's
+  section/phrase pop (each player's part at its own stagger, so it lands with its cut), structure's drop line (a
+  call-off re-sends the id with no parts), a drop heard, a build's swell, a breakdown, piano bursts (note/chord with
+  register). Spacing (`min_gap_ms`; of two parts too close the stronger shows: a weaker one still to come is taken back
+  and its gesture re-sent), `max_per_bar` and `min_strength`, each counted in the snapshot; a hit always plays.
+- **Every look change sets `next` at its at_ms**, even when the form stays, so the look engine's stagger finds its
+  moment (S5.32); `at_ms` is the last change that took effect, `since_ms` when the form began. A look announced again
+  moves its decision; one that never lands is called off by its own gesture's re-send.
+- **The director**: `_ensemble_tick` after the lights' tick (players when the registry, groups, space, live screens,
+  the ball or show.yaml moved; the piano's notes from ctx.notes; the tick; room.gesture out; lamp parts with their
+  colours; room.look at once on a new rev; room.direction at once on a new (id, rev)); `_ensemble_announce` with every
+  look change; `_ensemble_event` for drop_armed, drop, build (with the context's drop eta) and breakdown. Lamps: an
+  accompanying side sits at `floor + (level - floor) x scale.level` (never under the floor; a scale of 1 leaves the
+  bytes as before), contrast's palette role per side, the lights' mean `scale.pulse` on the accent depth, and
+  `maestro_palette_fn` lays each lights part over its lamps by contract.gesture_weight (Hue's 80 ms attack, a
+  reactive part's 300 ms swell). A leading ball turns one speed word faster. A mode change resets to unison. room.look
+  on the bus carries no `gestures` (look_fn's LookData does). Snapshot: `director.ensemble` (form, line, why, source,
+  roles, next, players, counts, last 10, weights, problems, catalogue); director.jsonl: every pick and form change, the
+  players when they move, and the gestures' counts at most once a minute.
+- **Degrade**: no ensemble.py, the director is as before; no `ensemble:` block, the room plays as today (built-in
+  unison, nothing seeded or published, the block's line None); no catalogue, built-in unison; no zones or space, every
+  player centre and only forms without `needs: sides`; neutral, House or Low, no seeds (the block `source: neutral`).
+- **Tests**: test_ensemble.py (new, 40): players (zones, the space facing west, the front axis falling back to zones, no
+  zones, a lamp by its screen, the ball, live screens, travel orders); the catalogue (the real file clean, bad entries
+  left out, a broken file kept, reloads, the scenes' scoring); picks (seeded, the piano's form, the dwell and a song
+  change, Keep, `next` folding in); routing per form (unison, echo and a left flow, echo by register, call and answer
+  halves and the swap, ping-pong with fills, canon, solo and its pass, contrast and its swap, register split, no grid);
+  density, bursts, the clock's lines, the drop line and its call-off, neutral, reset, no block; settings;
+  gesture_weight; the bus filter; no names. test_director.py (+5): the block on room.direction and room.look (none on
+  the bus's room.look), a round's 2-beat lag and each screen's pop at its cut, accompanying lamps at floor + 0.7 x the
+  rest, the virtual Maestro's lamps side by side, and no block = no room.gesture and the same colours. test_bus and
+  test_api: the want-only set and the card's `together`.
+
+### S5.32 Lights: the ensemble's gestures, roles and staggers (22 Oct; docs/ENSEMBLE.md §7.2; the lights builder)
+
+The look engine's half of the room ensemble (the director's half is S5.31). looks.py reads two more LookData fields,
+`ensemble` and `gestures`; without them every frame is byte-identical to before. This shows on the rig's own lights
+(movers, DMX, and Hue once `outputs.hue` is cut over); today's Hue lamps take the same gestures through the director's
+virtual Maestro path (docs/ENSEMBLE.md §7.1).
+
+- **Taking gestures.** `LookEngine.take_gesture(g)` (any thread, under the drop lock), and once a frame each `(id,
+  seq)` on LookData `gestures` not yet taken:
+  - each part's player resolves to its member fixtures through `ensemble.players` (or `next.players`); a player id
+    that is a fixture id is that fixture; a screen or a device has nothing here to light;
+  - a re-sent id replaces its parts, `parts: []` calls it off, and an older seq changes nothing;
+  - parts sit on one ring (`GESTURE_RING` 128, oldest out first) until 8 decays past their peak;
+  - a body that doesn't read returns False (`malformed`); an unknown kind is skipped and an unknown player counted
+    (`unknown`), never raised.
+- **Per light, per frame** (the active branch, after layers, effects and hits; before fade_dark, master and caps), at
+  the light's own photon times through `contract.gesture_weight`, the envelope the virtual Maestro's lamps share:
+  - **flash**: HTP `level + depth x w`. It is a step peaking on its line on an output that takes hits, or for a
+    predicted part (Hue rises over its 80 ms min attack, so the rise limit never clips it). A reactive part on Hue
+    swells over 300 ms;
+  - **colour pop**: toward the part's palette role at full value, by `colour_depth x w`;
+  - **kick**: a calibrated mover's aim point rises `KICK_M` (0.4 m, starting point) x kick x w, slew-limited by the
+    motion stage; an uncalibrated light with zoom widens toward its widest; anything else does nothing;
+  - never the shutter. On an output with `caps.min_period_ms` (Hue: 160 ms), parts closer than that merge into the
+    first, which keeps the larger strength;
+  - nothing under House, Low or a held frame, or on a held, identified or not-following light. Over the pre-drop dip,
+    only a `hit`.
+- **Roles.** A light's part is `next`'s from `next.at_ms` at its own time, else the current one. `scale.pulse`
+  multiplies the depth of `beat`-phase intensity layers; `scale.motion` multiplies every other oscillator's depth and
+  the pattern sizes (position patterns, tilt_wave, an oscillating beam value round its middle). Each glides over
+  `glide_ms` from the change (from 1.0 the first time). Level and the palette role are in the director's colours
+  already, so they are not applied again.
+- **Staggers.** A group's cut, dark move or crossfade whose `at_ms` is the ensemble's look change (`at_ms` or
+  `next.at_ms`, within 5 ms) lands `stagger_beats` later on each light (no clock: `stagger_s`), with positions
+  pre-rolled to the staggered line. Sweeps and fade_dark are never staggered.
+- **Canon.** `clock_offset_beats` runs that light's oscillators (layers, oscillating values, patterns, hops) that many
+  beats late, glided in.
+- **Stats.** `stats()["gestures"]`: taken, replaced, removed, parts (on the ring now), shown, merged, unknown,
+  skipped, malformed, by_kind.
+- **outputs.py** needed no hook: everything arrives on LookData through `look_fn`.
+- **Cost.** With no ensemble, an A/B on 32 pars showed no measurable change (within this loaded host's noise).
+- **Tests:**
+  - test_looks_gestures (new: 21 tests, 22 cases):
+    - DMX's step, hold and decay; Hue's rise within its limit, the reactive swell and the min-period merge;
+    - routing and unknown players; once per (id, seq), a re-send and a call-off; malformed bodies;
+    - the colour pop; accompany's pulse and motion, `next`'s glide, a pattern's size;
+    - staggered crossfades and cuts, with sweeps and off-moment transitions left unstaggered; canon's 2-beat lag;
+    - a calibrated kick within KICK_M and the light's speed, zoom on an uncalibrated mover, nothing without either;
+    - steady frames and the dip;
+    - byte-identical frames without an ensemble or with an all-even one; no `contract.gesture_weight` means no
+      gestures.
+  - test_looks: the stats shape gains `gestures`.

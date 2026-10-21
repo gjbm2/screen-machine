@@ -2892,3 +2892,133 @@ def test_the_listeners_transitions_and_change_apply_under_a_persons_or_a_feels_o
     assert rig.d.direction["transition_style"] == "lively"
     assert rig.d.snapshot()["words_from"]["transition_style"] == "feel"
     assert rig.d.provides()["held"]() is False
+
+
+# -- the ensemble (docs/ENSEMBLE.md §11.1; the show builder's, 22 Oct) ---------------------------------------------------
+from show_service import ensemble as ensmod  # noqa: E402
+
+ENS_ZONES = {"port": "left", "starboard": "right"}                   # made-up zones: the code knows no room
+ROUND = """  a-round:
+    kind: canon
+    line: "a round, {second} follows {first} by {beats}"
+    params: {team_by: side, order: room, offset_beats: 2, offset_s: 1.0, every_bars: 1, clock_offset: true}
+    routes: [downbeat, phrase, section]
+    needs: [sides]
+"""
+SPOT = """  spotlight:
+    kind: solo_and_accompany
+    params: {team_by: side, order: room, pass_on: section, pass: next, accompany_beats: 8, lead_kinds: [screen, lights]}
+    routes: []
+    needs: [sides]
+"""
+
+
+def ensemble_registry() -> dict:
+    """registry_view's types, zoned: a screen on each side, two colour lamps hung at each."""
+    fx = {"tv.left": {"id": "tv.left", "type": "tvt", "screen": "wall-left", "label": "L", "zone": "port"},
+          "tv.right": {"id": "tv.right", "type": "tvt", "screen": "wall-right", "label": "R", "zone": "starboard"}}
+    for fid, scr, zone in (("lamp.one", "wall-left", "port"), ("lamp.two", "wall-left", "port"),
+                           ("lamp.three", "wall-right", "starboard"), ("lamp.four", "wall-right", "starboard")):
+        fx[fid] = {"id": fid, "type": "lampt", "screen": scr, "placement": "over", "zone": zone}
+    return registry_view(fx)
+
+
+def ensemble_rig(tmp_path, forms: str | None = None, *, block: bool = True) -> Rig:
+    settings = json.loads(json.dumps(SETTINGS))
+    if block:
+        settings["ensemble"] = {"players": {"zones": dict(ENS_ZONES)}}
+    r = Rig(tmp_path, clock=True, settings=settings)
+    view = ensemble_registry()
+    r.ctx.rig = lambda: view
+    if forms is not None:                                            # a catalogue of the test's own forms
+        p = tmp_path / "interplays.yaml"
+        p.write_text("version: 1\ninterplays:\n" + forms)
+        r.d.ensemble.catalogue = ensmod.Catalogue(p, scorer=r.d.light_scenes)
+    r.sec = {"id": 0, "letter": None, "phase": "calm", "track": 0, "started_s": r.t}
+    r.d.set_target("alpha")
+    r.run(10.0)
+    return r
+
+
+def test_the_ensemble_rides_on_room_direction_and_room_look_but_gestures_stay_off_the_bus(tmp_path):
+    r = ensemble_rig(tmp_path, ROUND)
+    d, lk = r.of(contract.ROOM_DIRECTION)[-1], r.of(contract.ROOM_LOOK)[-1]
+    assert set(d["ensemble"]) == set(contract.EnsembleData.__annotations__)
+    assert "ensemble" in lk and "gestures" not in lk
+    look = r.d.look_fn()
+    assert "gestures" in look and look["ensemble"] is r.d.ensemble.block()
+    snap = r.d.snapshot()["ensemble"]
+    assert {p["id"]: p["side"] for p in snap["players"]} == {"*:left": "left", "tv.left": "left",
+                                                              "*:right": "right", "tv.right": "right"}
+    assert d["ensemble"]["screens"] == {"wall-left": "tv.left", "wall-right": "tv.right"}
+    json.dumps(r.d.snapshot())
+
+
+def test_a_round_puts_the_right_side_two_beats_behind_and_each_screen_pops_at_its_cut(tmp_path):
+    r = ensemble_rig(tmp_path, ROUND)
+    r.d.action("next")                                               # the first look picks the form
+    r.run(6.0)
+    blk = r.d.ensemble.block()
+    assert blk["form"] == "a-round" and r.d.snapshot()["ensemble"]["line"] == \
+        "Playing together: a round, right follows left by 2 beats"
+    assert blk["players"]["tv.right"]["clock_offset_beats"] == 2.0 and blk["players"]["tv.right"]["stagger_s"] == 1.0
+    gs = r.of(contract.ROOM_GESTURE)
+    pairs = [{p["player"]: p["at_ms"] for p in g["parts"]} for g in gs if g["kind"] == "downbeat"]
+    pairs = [at for at in pairs if "tv.left" in at and "tv.right" in at]
+    assert pairs and all(at["tv.right"] - at["tv.left"] == pytest.approx(1000.0) for at in pairs)
+    nxt = [g for g in gs if g["id"].startswith("g:look:")][-1]       # the Next look's pop, staggered per screen
+    at = {p["player"]: p["at_ms"] for p in nxt["parts"]}
+    assert at["tv.right"] - at["tv.left"] == pytest.approx(1000.0) and at["*:left"] == at["tv.left"]
+    at_s = r.next_bar(2.5)                                           # a section from structure, on its line
+    r.sec.update(id=1, started_s=at_s)
+    r.event("section_change", at_s, section_id=1, letter=None, repeat_of=None, predicted=False,
+            boundary_ms=at_s * 1000.0)
+    r.run_to(at_s + 0.15)
+    sec = [g for g in r.of(contract.ROOM_GESTURE) if g["kind"] == "section"][-1]
+    at = {p["player"]: p["at_ms"] / 1000.0 for p in sec["parts"]}
+    assert at["tv.left"] == pytest.approx(at_s, abs=1e-3) and at["tv.right"] == pytest.approx(at_s + 1.0, abs=1e-3)
+
+
+def test_accompanying_lamps_sit_lower_and_never_under_the_floor(tmp_path):
+    r = ensemble_rig(tmp_path, SPOT)
+    r.d.action("next")
+    r.run(6.0)
+    roles = {pid: p["role"] for pid, p in r.d.ensemble.block()["players"].items()}
+    assert roles["*:left"] == "lead" and roles["*:right"] == "accompany"
+    lk = r.d.look
+    floor, level = lk["floor"], max(lk["floor"], lk["level"])
+    want = floor + (level - floor) * 0.7
+    assert lk["lamps"]["lamp.one"]["level"] == pytest.approx(level, abs=2e-3)
+    assert lk["lamps"]["lamp.three"]["level"] == pytest.approx(want, abs=2e-3)
+    cols = r.colours()
+    assert max(cols["lamp.three"]) == pytest.approx(want, abs=5e-3) and max(cols["lamp.four"]) < max(cols["lamp.two"])
+    assert max(cols["tv.right"]) == pytest.approx(1.0)                # screens: never a gain
+
+
+def test_the_virtual_maestros_lamps_take_the_gestures_side_by_side(tmp_path):
+    r = ensemble_rig(tmp_path, ROUND)
+    r.d.action("next")
+    r.run(6.0)
+    g = [g for g in r.of(contract.ROOM_GESTURE) if g["kind"] == "downbeat"
+         and any(p["player"] == "*:left" for p in g["parts"])][-1]
+    t_left = next(p["at_ms"] for p in g["parts"] if p["player"] == "*:left") / 1000.0
+    base, got = r.d.palette_fn(t_left), r.d.maestro_palette_fn(t_left)
+    assert max(got["lamp.one"]) > max(base["lamp.one"]) + 0.01      # the left side's voice peaks here
+    assert got["lamp.three"] == pytest.approx(base["lamp.three"], abs=0.01)   # the right's comes 2 beats later
+    later = r.d.maestro_palette_fn(t_left + 1.0)
+    assert max(later["lamp.three"]) > max(r.d.palette_fn(t_left + 1.0)["lamp.three"]) + 0.01
+    assert got["tv.left"] == base["tv.left"]                          # screens never carry a lamp's gesture
+
+
+def test_with_no_ensemble_block_nothing_new_goes_out_and_the_colours_are_as_before(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    a, b = ensemble_rig(tmp_path / "a", block=False), ensemble_rig(tmp_path / "b", block=False)
+    b.d.ensemble = None                                              # as if ensemble.py were not there
+    for r in (a, b):
+        r.d.action("next")
+        r.run(8.0)
+    assert a.of(contract.ROOM_GESTURE) == []
+    assert a.colours() == b.colours()
+    assert [x for x in a.calls if x[0] == "look"] == [x for x in b.calls if x[0] == "look"]   # set_look_out
+    assert a.d.snapshot()["ensemble"]["line"] is None and a.d.ensemble.block()["form"] == "unison"

@@ -134,6 +134,28 @@ the ``light_scene`` path above.
     else until ``release`` or ``idle_s`` after the last call, gliding there (pan/tilt first order within its speed)
     and back to its program through the motion stage. A frame with a held or gliding light says ``busy``.
 
+**The ensemble** (docs/ENSEMBLE.md §7.2; the lights builder, 22 Oct). Two more LookData fields; without them the engine
+runs exactly as before, byte for byte:
+  * ``gestures`` (contract.GestureData, newest last): each ``(id, seq)`` not yet taken goes to ``take_gesture`` (any
+    thread, under the drop lock), which resolves each part's player to its member fixtures through the ensemble (a
+    player id that is a fixture id is that fixture) and keeps the part on one ring (GESTURE_RING parts, each until 8
+    decays past its peak). A re-sent id replaces its parts; ``parts: []`` calls it off. Per lamp per frame (the active
+    branch, after the layers, effects and hits, before fade_dark, master and caps), each part at the light's own times
+    through ``contract.gesture_weight``, the one envelope rule shared with the virtual Maestro's lamps: a flash HTP over
+    the level (a step on an output that takes hits or for a predicted part, peaking on its line; a reactive part on Hue
+    swells over HIT_SWELL_MS), a colour pop toward the part's palette role, and a kick (a calibrated mover's aim point
+    up KICK_M x kick x w through the motion stage; an uncalibrated light with zoom widens; neither: nothing). Never the
+    shutter; on an output with ``caps.min_period_ms`` a part closer than that to the one before merges into it (the
+    larger strength). Not under House, Low or a held frame, nor on a held, identified or not-following light; over the
+    pre-drop dip only a ``hit``.
+  * ``ensemble`` (contract.EnsembleData): a light plays as the player whose ``members`` hold it, its part ``next``'s
+    from ``next.at_ms`` at its own time, else the current one. Its role's ``scale``, glided over ``glide_ms``: intensity
+    layers with phase ``beat`` take depth x ``pulse``, the other oscillators x ``motion``, and pattern sizes (position
+    and beam) x ``motion``. Level and the palette role are already in the director's colours, never applied again. A
+    group's program transition at the ensemble's look change (its ``at_ms`` or ``next.at_ms``) lands its part's
+    ``stagger_beats`` later on each light (no clock: ``stagger_s``); ``sweep`` and ``fade_dark`` are never staggered.
+    Canon's ``clock_offset_beats`` runs that light's oscillators that many beats late.
+
 **Parity with the virtual Maestro.** With no vibe, the neutral colour and depth (artnet_out's ``DEFAULT_RGB`` /
 ``HUE_DEPTH``, or what outputs.py passes as ``neutral``) and show.yaml's ``pulse`` layer (or this module's default
 layer when ``looks.layers`` is absent), a Hue lamp's ``rgb`` equals artnet_out's hue channels / 255 for the same clock,
@@ -273,6 +295,20 @@ _DROP_KEYS = frozenset({"depth", "decay_ms"})
 _LOOKS_KEYS = frozenset({"align_pct", "min_visible_ms", "middle_depth", "master", "caps", "layers", "hits"})
 _MARKERS = frozenset({"depth", "spread", "fan", "lift", "shake", "zoom", "focus", "iris", "frost"})   # a bad value
                                 # whose own problem line is written already
+
+# -- the ensemble (docs/ENSEMBLE.md §7.2; the lights builder, 22 Oct) -------------------------------------------------
+GESTURE_RING = 128              # starting point: gesture parts kept (oldest out first), each to 8 decays past its peak
+KICK_M = 0.4                    # starting point: a calibrated mover's aim point rises this many metres x shape.kick
+GESTURE_KINDS: tuple[str, ...] = tuple(getattr(contract, "GESTURE_KINDS", (
+    "accent", "downbeat", "phrase", "fill", "hit", "section", "swell", "note", "chord")))
+GESTURE_OVER_DIP = "hit"        # the one kind shown over the pre-drop dip (as the drop flash is)
+STAGGER_KINDS = frozenset({"cut", "dark_move", "crossfade"})   # a sweep travels already; fade_dark goes dark together
+STAGGER_MATCH_MS = 5.0          # a group's transition is the ensemble's look change when their at_ms agree this closely
+GESTURE_AHEAD_S = 1.0           # a part is looked at from this long before its rise (a light's rise latency + attack)
+GESTURE_TAIL_S = 0.5            # ... and kept this long past its 8 decays (a light's min_pulse, a reactive swell)
+GESTURE_SEEN = 512              # gesture ids remembered with their last seq (oldest forgotten first)
+_SHAPE_KEYS = ("attack_ms", "hold_ms", "decay_ms", "depth")   # a GestureShape needs these; colour_depth, kick: 0
+_UNSEEN = object()              # a gesture id not taken yet
 
 
 # -- small helpers ----------------------------------------------------------------------------------------------------
@@ -593,6 +629,7 @@ class _Program:
     space_mod: Any = None                       # space.py (None: no positions)
     enc_mod: Any = None                         # fixture_encode.py (None: colour_mix only)
     skipped: Mapping[str, int] = field(default_factory=dict)    # layer id -> members it can't reach (capabilities)
+    fixture_ids: frozenset = frozenset()        # every fixture evaluated (docs/ENSEMBLE.md §7.2: a part's player)
 
 
 _EMPTY = _Program(revision="", layers=(), hits=None, master=DEFAULT_MASTER, middle_depth=DEFAULT_MIDDLE_DEPTH,
@@ -827,7 +864,49 @@ class _Hold:
 class _Ctx:
     """What every per-fixture step of one frame reads (built once per evaluate)."""
     __slots__ = ("t", "dt", "look", "snap", "src", "beat_s", "bpb", "bar_anchor", "phrase_bars", "trans_s",
-                 "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n")
+                 "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n",
+                 # docs/ENSEMBLE.md §7.2 (None without an ensemble): per light its role's motion scale and canon's
+                 # offset (s), filled as each light is evaluated; the palette roles at full value (a colour pop's)
+                 "ms", "co", "roles")
+
+
+class _GPart:
+    """One gesture part on the ring (docs/ENSEMBLE.md §7.2), resolved to the fixtures it lights. ``shown`` and
+    ``merged`` are counted once per part."""
+    __slots__ = ("gid", "kind", "at_s", "strength", "shape", "attack_s", "depth", "cdepth", "kick", "predicted",
+                 "colour", "dur_s", "members", "end_s", "shown", "merged")
+
+    def __init__(self, gid: str, kind: str, at_s: float, strength: float, shape: Mapping[str, Any], predicted: bool,
+                 colour: Optional[str], dur_s: float, members: frozenset) -> None:
+        self.gid, self.kind, self.at_s, self.strength, self.shape = gid, kind, at_s, strength, shape
+        self.attack_s = float(shape["attack_ms"]) / 1000.0
+        self.depth = float(shape["depth"])
+        self.cdepth = float(shape.get("colour_depth") or 0.0)
+        self.kick = float(shape.get("kick") or 0.0)
+        self.predicted, self.colour, self.dur_s, self.members = predicted, colour, dur_s, members
+        peak = at_s + max(dur_s, self.attack_s, HIT_SWELL_MS / 1000.0)
+        self.end_s = peak + float(shape["hold_ms"]) / 1000.0 + HIT_TAIL_DECAYS * float(shape["decay_ms"]) / 1000.0 \
+            + GESTURE_TAIL_S
+        self.shown = self.merged = False
+
+
+class _EnsView:
+    """LookData.ensemble for one frame (docs/ENSEMBLE.md §7.2): each fixture's player now and in ``next``, a fixture's
+    part at a time, and the look change's moments (``at_ms``, ``next.at_ms``)."""
+    __slots__ = ("cur", "nxt", "fcur", "fnxt", "next_at_s", "ats", "glide_s")
+
+    def part(self, fid: str, tt: float) -> Optional[Mapping[str, Any]]:
+        """The part in effect for ``fid`` at its time ``tt``: next's from next.at_ms, else the current one."""
+        if self.nxt is not None and tt >= self.next_at_s:
+            p = self.nxt.get(self.fnxt.get(fid))
+            if isinstance(p, Mapping):
+                return p
+        p = self.cur.get(self.fcur.get(fid))
+        return p if isinstance(p, Mapping) else None
+
+    def moment(self, at_s: float) -> bool:
+        """``at_s`` is the ensemble's look change (a program transition landing with it)."""
+        return any(abs(at_s * 1000.0 - a) <= STAGGER_MATCH_MS for a in self.ats)
 
 
 # -- the engine -------------------------------------------------------------------------------------------------------
@@ -899,6 +978,14 @@ class LookEngine:
         self._holds: dict[str, _Hold] = {}                           # swapped whole under _hold_lock
         self._hold_lock = threading.Lock()
         self._hold_seq = itertools.count(1)
+        # docs/ENSEMBLE.md §7.2: the gesture ring (swapped whole under _drop_lock), each id's last seq taken, the last
+        # LookData.gestures list read, the ensemble's fixture maps (cached on its id and rev) and the counts
+        self._gring: tuple[_GPart, ...] = ()
+        self._gseq: dict[str, Any] = {}
+        self._gsrc: Any = None
+        self._ens_cache: Optional[tuple] = None
+        self._gstats: dict[str, Any] = {"taken": 0, "replaced": 0, "removed": 0, "shown": 0, "merged": 0, "unknown": 0,
+                                        "skipped": 0, "malformed": 0, "by_kind": {}}
 
     # -- show-brain ---------------------------------------------------------------------------------------------------
     def configure(self, looks: Optional[Mapping[str, Any]], rig: Optional[Mapping[str, Any]], *,
@@ -1037,7 +1124,8 @@ class LookEngine:
                         master=master, middle_depth=middle, flash_hz_max=flash_hz, outputs=outputs, zones=zones,
                         problems=tuple(probs), scenes=scenes, scene_revision=srev, scene_problems=tuple(sprobs),
                         groups=groups, group_scenes=gsc, group_effects=gfx, motion=motion, space=space,
-                        space_mod=space_mod, enc_mod=enc_mod, skipped=skipped)
+                        space_mod=space_mod, enc_mod=enc_mod, skipped=skipped,
+                        fixture_ids=frozenset(s.id for op in outputs.values() for s in op.slots))
         self._program = prog
         return list(probs)
 
@@ -1898,6 +1986,151 @@ class LookEngine:
         if _isnum(at):
             self.trigger_hit(at / 1000.0, s if _isnum(s) else 1.0, key=key)
 
+    # -- the ensemble's gestures (docs/ENSEMBLE.md §7.2; any thread) ------------------------------------------------
+    def take_gesture(self, g: Mapping[str, Any]) -> bool:
+        """A room.gesture body (contract.GestureData) onto the gesture ring, under the drop lock: each part resolved
+        to the fixtures its player holds (the look's ``ensemble`` members; a player id that is a fixture id is that
+        fixture). A re-sent id replaces its parts and ``parts: []`` calls it off; the same or an older seq of an id
+        already taken changes nothing. False for a body that doesn't read (counted ``malformed``) or a kind that isn't
+        contract.GESTURE_KINDS (skipped, counted); a part whose player the ensemble doesn't name is skipped and
+        counted ``unknown``, never raised."""
+        look = self._call("look", self.look_fn)
+        return self._take(g, self._ens_view(look if isinstance(look, Mapping) else None))
+
+    def _take(self, g: Any, ev: Optional[_EnsView]) -> bool:
+        gs = self._gstats
+        got = self._read_gesture(g, ev)
+        if got is None:
+            with self._drop_lock:
+                gs["malformed"] += 1
+            return False
+        gid, seq, kind, parts, unknown = got
+        known = kind in GESTURE_KINDS
+        with self._drop_lock:
+            seen = gid in self._gseq
+            last = self._gseq.get(gid)
+            if seen and (seq == last or (_isnum(seq) and _isnum(last) and seq < last)):
+                return known                                     # taken already, or an older copy
+            self._gseq.pop(gid, None)
+            self._gseq[gid] = seq
+            if len(self._gseq) > GESTURE_SEEN:
+                self._gseq.pop(next(iter(self._gseq)))
+            if not known:
+                gs["skipped"] += 1
+                return False
+            gs["unknown"] += unknown
+            now = self._mono()
+            ring = [p for p in self._gring if p.gid != gid and p.end_s >= now] + parts
+            self._gring = tuple(ring[-GESTURE_RING:])            # the oldest out first
+            if not seen:
+                gs["taken"] += 1
+                bk = gs["by_kind"]
+                bk[kind] = bk.get(kind, 0) + 1
+            elif parts:
+                gs["replaced"] += 1
+            else:
+                gs["removed"] += 1
+        return True
+
+    def _read_gesture(self, g: Any, ev: Optional[_EnsView]) -> Optional[tuple]:
+        """(id, seq, kind, [_GPart], unknown players) from a GestureData body; None when it doesn't read."""
+        if not isinstance(g, Mapping):
+            return None
+        gid, raw = g.get("id"), g.get("parts")
+        if not isinstance(gid, str) or not gid or not isinstance(raw, (list, tuple)):
+            return None
+        seq, kind = g.get("seq"), g.get("kind")
+        shape = g.get("shape")
+        if raw and not (isinstance(shape, Mapping) and all(_isnum(shape.get(k)) and shape[k] >= 0
+                                                            for k in _SHAPE_KEYS)
+                        and all(shape.get(k) is None or (_isnum(shape[k]) and shape[k] >= 0)
+                                for k in ("colour_depth", "kick"))):
+            return None
+        dur = g.get("dur_ms")
+        dur_s = float(dur) / 1000.0 if _isnum(dur) and dur > 0 else 0.0
+        fids = self._program.fixture_ids
+        parts: list[_GPart] = []
+        unknown = 0
+        for p in raw:
+            if not isinstance(p, Mapping):
+                return None
+            pid, at, s = p.get("player"), p.get("at_ms"), p.get("strength")
+            col = p.get("colour")
+            if not isinstance(pid, str) or not _isnum(at) or not _isnum(s) or not (col is None or isinstance(col, str)):
+                return None
+            mem = None
+            if ev is not None:
+                pl = ev.cur.get(pid)
+                if not isinstance(pl, Mapping) and ev.nxt is not None:
+                    pl = ev.nxt.get(pid)
+                if isinstance(pl, Mapping):
+                    mem = frozenset(m for m in pl.get("members") or () if isinstance(m, str))
+            if mem is None:
+                if pid not in fids:
+                    unknown += 1                                 # not a player the ensemble names: skipped
+                    continue
+                mem = frozenset((pid,))
+            mem &= fids                                          # a screen or a device: nothing here to light
+            if mem and s > 0.0:
+                parts.append(_GPart(gid, str(kind), float(at) / 1000.0, _c01(float(s)), dict(shape),
+                                    p.get("predicted") is True, col, dur_s, mem))
+        return gid, seq, kind, parts, unknown
+
+    def _take_gestures(self, look: Mapping[str, Any]) -> None:
+        """LookData.gestures (every runner, once a frame): each (id, seq) not yet taken goes to the ring, once."""
+        gl = look.get("gestures")
+        if gl is self._gsrc or not isinstance(gl, (list, tuple)):
+            return
+        self._gsrc = gl
+        seen = self._gseq
+        new = []
+        for g in gl:
+            gid = g.get("id") if isinstance(g, Mapping) else None
+            last = seen.get(gid, _UNSEEN) if isinstance(gid, str) else _UNSEEN
+            if last is not _UNSEEN:
+                seq = g.get("seq")
+                if seq == last or not (_isnum(seq) and _isnum(last) and seq > last):
+                    continue
+            new.append(g)
+        if new:
+            ev = self._ens_view(look)
+            for g in new:
+                self._take(g, ev)
+
+    def _ens_view(self, look: Optional[Mapping[str, Any]]) -> Optional[_EnsView]:
+        """LookData.ensemble for this frame, or None (no ensemble: everything exactly as before). The fixture -> player
+        maps are cached on the ensemble's (id, rev)."""
+        ens = look.get("ensemble") if look is not None else None
+        if not isinstance(ens, Mapping) or not isinstance(ens.get("players"), Mapping):
+            return None
+        cur = ens["players"]
+        nx = ens.get("next") if isinstance(ens.get("next"), Mapping) else None
+        nat = nx.get("at_ms") if nx is not None else None
+        nxt = nx.get("players") if nx is not None and _isnum(nat) and isinstance(nx.get("players"), Mapping) else None
+        i, r = ens.get("id"), ens.get("rev")
+        key = (i, r) if _isnum(i) and _isnum(r) else (id(cur), id(nxt))
+        c = self._ens_cache
+        if c is None or c[0] != key:
+            c = self._ens_cache = (key, self._members(cur), self._members(nxt) if nxt is not None else {})
+        ev = _EnsView()
+        ev.cur, ev.nxt, ev.fcur, ev.fnxt = cur, nxt, c[1], c[2]
+        ev.next_at_s = float(nat) / 1000.0 if nxt is not None else math.inf
+        ev.ats = tuple(float(a) for a in (ens.get("at_ms"), nat if nxt is not None else None) if _isnum(a))
+        gm = ens.get("glide_ms")
+        ev.glide_s = float(gm) / 1000.0 if _isnum(gm) and gm > 0 else 0.0
+        return ev
+
+    @staticmethod
+    def _members(players: Mapping[str, Any]) -> dict[str, str]:
+        """fixture id -> the player whose ``members`` hold it (the first, by the players' order)."""
+        out: dict[str, str] = {}
+        for pid, p in players.items():
+            if isinstance(p, Mapping):
+                for m in p.get("members") or ():
+                    if isinstance(m, str):
+                        out.setdefault(m, str(pid))
+        return out
+
     def identify(self, fixture_id: str, seconds: float, rgb: Sequence[float] = (255, 255, 255)) -> bool:
         """That fixture at full ``rgb`` (0..255 each; white) for ``seconds`` from now, whatever it was doing: layers,
         hits, master, caps and its follow value are bypassed, inactive frames included. ``seconds`` <= 0 ends it.
@@ -2192,7 +2425,8 @@ class LookEngine:
                 "per_output": per, "errors": dict(self.errors),
                 "identify": {k: round(v[0] - now, 1) for k, v in self._ident.items() if v[0] > now},
                 "follow": dict(self._follow_view), "drops": self.drops, "motion": motion,
-                "holds": sorted(k for k, h in self._holds.items() if h.until_s > now)}
+                "holds": sorted(k for k, h in self._holds.items() if h.until_s > now),
+                "gestures": {**self._gstats, "by_kind": dict(self._gstats["by_kind"]), "parts": len(self._gring)}}
 
     # -- the live view (docs/LIGHTS.md §8.1; any thread) -------------------------------------------------------------
     def live_view(self, frames: Mapping[str, Any]) -> dict:
@@ -2393,6 +2627,8 @@ class LookEngine:
             dl = look.get("light_scene_drop")
             if dl is not None:
                 self._take_drop(dl)                              # a new drop line, once per id (README S5.24)
+            if look.get("gestures"):                             # docs/ENSEMBLE.md §7.2: each (id, seq) once
+                self._call("gestures", self._take_gestures, look)
         drop = self._drop_hit(look, caps_hits)
         pals: dict[float, Any] = {}
 
@@ -2482,6 +2718,14 @@ class LookEngine:
 
         cx = self._ctx(t, look, snap, trans_s, min_period_s, energy, vibe, st, prog, op)
         cx.dt = dt
+        # the ensemble (docs/ENSEMBLE.md §7.2): each light's part (its role's scales, canon's offset, a transition's
+        # stagger) and the gesture parts on it; neither on the look: nothing below changes
+        ev = self._ens_view(look)
+        if ev is not None:
+            cx.ms, cx.co = {}, {}
+        gw = getattr(contract, "gesture_weight", None)
+        gparts = self._gesture_parts(t, bool(look.get("dip")), min_period_s) \
+            if self._gring and gw is not None and look is not None and not steady else None
         # the groups (§5.6): with light programs, each group runs its own; without, every lamp the light_scene path
         programs = self._programs_of(look)
         gnow: dict[str, _Group] = {}
@@ -2542,25 +2786,28 @@ class LookEngine:
             sweep = gn.pf is not None and gn.pf.kind == "sweep" and gn.pf.old != gn.pf.new
             cs = self._coord(cx, s, gn.flow, None, gn.flow is not None and gn.flow.get("symmetry") == "mirror") \
                 if sweep else 0.0
+            # its ensemble part: (pulse, motion) scales, canon's offset (s), the transition's stagger (s)
+            rs, co, so = (None, 0.0, 0.0) if ev is None else self._ens_fix(ev, s, st, cx, gn, ti)
             # oscillators scale the base, in file order: each scene of the group's mix at its share for this light
             for part in gn.parts:
                 if not part.inows:
                     continue
-                w = part.w0 if part.pf is None else part.w(ti, cs)
+                w = part.w0 if part.pf is None else part.w(ti - so, cs)
                 if w <= 0.0:
                     continue
-                inten = self._intensity(part.inows, s, inten, ti, w, memo, energy, cx, gn)
+                inten = self._intensity(part.inows, s, inten, ti, w, memo, energy, cx, gn, rs, co)
             for ef, env, inows in gn.effects:
                 if inows:
                     e = env(ti)
                     if e > 0.0:
-                        inten = self._intensity(inows, s, inten, ti, e, memo, energy, cx, gn)
+                        inten = self._intensity(inows, s, inten, ti, e, memo, energy, cx, gn, rs, co)
             # everything else a layer sets (position, beam, gobo, prism, colour, ...): latest takes precedence
             attrs = None
             pan_tilt = None
             dark_ok, light_at = False, None
             if s.enc or s.id in gn.amembers:
-                attrs, pan_tilt, colour, dark_ok, light_at = self._attrs(s, fs, gn, cx, t, colour, cs, house_low)
+                attrs, pan_tilt, colour, dark_ok, light_at = self._attrs(s, fs, gn, cx, t, colour, cs, house_low,
+                                                                         so)
             # hits: highest takes precedence (one flash value per frame for each block and min_pulse)
             if gn.blocks:
                 fl = 0.0
@@ -2591,6 +2838,12 @@ class LookEngine:
                     hv = min(1.0, level + fl)
                     if hv > inten:
                         inten = hv
+            # the ensemble's gestures (docs/ENSEMBLE.md §7.2): a flash HTP over the level, a colour pop, a kick
+            if gparts is not None:
+                gl = gparts.get(s.id)
+                if gl:
+                    inten, colour, pan_tilt = self._gestures(gl, s, fs, cx, gw, t, level, inten, colour, attrs,
+                                                             pan_tilt, caps_hits, min_attack_s)
             # a fade_dark transition: toward the group's dark level and back (§5.6)
             if gn.pf is not None and gn.pf.kind == "fade_dark":
                 x = gn.pf.darkness(ti, mc.dark_max_s)
@@ -2651,7 +2904,170 @@ class LookEngine:
         digits = "".join(ch for ch in str(lid or "") if ch.isdigit())
         cx.look_n = int(digits) if digits else 0
         cx.flow_key = (prog.revision, (prog.space or {}).get("revision"))
+        cx.ms = cx.co = cx.roles = None
         return cx
+
+    # -- the ensemble per light (docs/ENSEMBLE.md §7.2) ---------------------------------------------------------------
+    @staticmethod
+    def _ens_num(d: Any, key: str, default: float) -> float:
+        v = d.get(key) if isinstance(d, Mapping) else None
+        return float(v) if _isnum(v) and v >= 0 else default
+
+    @staticmethod
+    def _ens_glide(st: _OutState, key: tuple[str, str], v: float, rest: float, t: float, dur: float) -> float:
+        """A light's role value gliding to ``v`` over ``dur`` from the change; the first one glides from ``rest`` (the
+        value with no ensemble), and a light that has only ever been at rest makes no glide (exactly today's)."""
+        gl = st.glides.get(key)
+        if gl is None:
+            if v == rest:
+                return v
+            gl = st.glides[key] = _Glide(rest, t)
+        return gl.to(v, t, dur)
+
+    def _ens_fix(self, ev: _EnsView, s: _Slot, st: _OutState, cx: _Ctx, gn: _Group, ti: float
+                 ) -> tuple[Optional[tuple[float, float]], float, float]:
+        """One light's ensemble part this frame: ((pulse, motion) | None, canon's offset in s, its transition's stagger
+        in s). The scales and the offset glide over ``glide_ms`` from the change; a light at 1.0 with no offset that
+        never had one makes no glide at all (the frame is exactly today's). The stagger is the part in effect at the
+        transition's line, for a cut, dark move or crossfade at the ensemble's look change."""
+        p = ev.part(s.id, ti)
+        sc = p.get("scale") if p is not None else None
+        g = ev.glide_s
+        pulse = self._ens_glide(st, (s.id, "ens:pulse"), self._ens_num(sc, "pulse", 1.0), 1.0, ti, g)
+        motion = self._ens_glide(st, (s.id, "ens:motion"), self._ens_num(sc, "motion", 1.0), 1.0, ti, g)
+        cob = self._ens_glide(st, (s.id, "ens:canon"), self._ens_num(p, "clock_offset_beats", 0.0), 0.0, ti, g)
+        co = cob * cx.beat_s
+        if co:
+            cx.co[s.id] = co
+        if motion != 1.0:
+            cx.ms[s.id] = motion
+        so = 0.0
+        pf = gn.pf
+        if pf is not None and pf.old != pf.new and pf.kind in STAGGER_KINDS and ev.moment(pf.at):
+            pa = ev.part(s.id, pf.at + STAGGER_MATCH_MS / 1000.0)
+            sb = pa.get("stagger_beats") if pa is not None else None
+            if cx.snap is not None and _isnum(sb):
+                so = max(0.0, float(sb)) * cx.beat_s
+            elif pa is not None:
+                so = self._ens_num(pa, "stagger_s", 0.0)
+        return (None if pulse == 1.0 and motion == 1.0 else (pulse, motion)), co, so
+
+    def _gesture_parts(self, t: float, dip: bool, min_period_s: float) -> Optional[dict[str, list]]:
+        """This frame's gesture parts per light, [(part, strength)], from the ring: over the pre-drop dip only a hit.
+        On an output with ``caps.min_period_ms`` (Hue: it never strobes) a part closer than that to the first of its
+        run merges into it, which keeps the larger strength (counted once per part)."""
+        by: dict[str, list] = {}
+        for p in self._gring:
+            if p.end_s < t or p.at_s - p.attack_s - GESTURE_AHEAD_S > t:
+                continue
+            if dip and p.kind != GESTURE_OVER_DIP:
+                continue
+            e = (p, p.strength)
+            for fid in p.members:
+                lst = by.get(fid)
+                if lst is None:
+                    by[fid] = [e]
+                else:
+                    lst.append(e)
+        if not by:
+            return None
+        if min_period_s > 0.0:
+            gs = self._gstats
+            for fid, lst in by.items():
+                if len(lst) < 2:
+                    continue
+                lst.sort(key=lambda e: e[0].at_s)
+                keep = [lst[0]]
+                for e in lst[1:]:
+                    f = keep[-1]
+                    if e[0].at_s - f[0].at_s < min_period_s:
+                        if e[1] > f[1]:
+                            keep[-1] = (f[0], e[1])
+                        if not e[0].merged:
+                            e[0].merged = True
+                            gs["merged"] += 1
+                    else:
+                        keep.append(e)
+                by[fid] = keep
+        return by
+
+    def _gestures(self, parts: list, s: _Slot, fs: _FixState, cx: _Ctx, gw: Callable, t: float, level: float,
+                  inten: float, colour: list, attrs: Optional[dict], pan_tilt: Optional[Sequence[float]],
+                  step_out: bool, min_attack_s: float) -> tuple[float, list, Optional[Sequence[float]]]:
+        """The gesture parts on one light this frame, each at the light's own times (intensity, colour, position)
+        through contract.gesture_weight x its strength: the flash HTP over the level (x the shape's depth), the colour
+        toward the part's palette role at full value (x colour_depth), and the largest kick. Never the shutter."""
+        ti, tc, tp = t + s.rise_s, t + s.colour_s, t + s.pos_s
+        sw, mh = HIT_SWELL_MS / 1000.0, s.min_pulse_s
+        kick = 0.0
+        gs = self._gstats
+        for p, strength in parts:
+            step = step_out or p.predicted
+            w = gw(ti, p.at_s, p.shape, step=step, min_attack_s=min_attack_s, min_hold_s=mh, swell_s=sw,
+                   dur_s=p.dur_s) * strength
+            if w > 0.0:
+                if not p.shown:
+                    p.shown = True
+                    gs["shown"] += 1
+                hv = min(1.0, level + p.depth * w)
+                if hv > inten:
+                    inten = hv
+            if p.colour is not None and p.cdepth > 0.0:
+                wc = w if tc == ti else gw(tc, p.at_s, p.shape, step=step, min_attack_s=min_attack_s, min_hold_s=mh,
+                                           swell_s=sw, dur_s=p.dur_s) * strength
+                if wc > 0.0:
+                    if cx.roles is None:
+                        cx.roles = self._role_rgbs(cx.look)
+                    rc = cx.roles.get(p.colour)
+                    if rc is not None:
+                        c = palette_mix(colour, rc, min(1.0, p.cdepth * wc))
+                        m = max(c)
+                        if m > 0.0:
+                            colour = [c[0] / m, c[1] / m, c[2] / m]
+            if p.kick > 0.0 and attrs is not None:
+                wp = w if tp == ti else gw(tp, p.at_s, p.shape, step=step, min_attack_s=min_attack_s, min_hold_s=mh,
+                                           swell_s=sw, dur_s=p.dur_s) * strength
+                if p.kick * wp > kick:
+                    kick = p.kick * wp
+        if kick > 0.0:
+            pan_tilt = self._kick(s, fs, cx, min(1.0, kick), attrs, pan_tilt)
+        return inten, colour, pan_tilt
+
+    def _kick(self, s: _Slot, fs: _FixState, cx: _Ctx, k: float, attrs: dict, pan_tilt: Optional[Sequence[float]]
+              ) -> Optional[Sequence[float]]:
+        """A gesture's kick ``k`` (0..1): a calibrated mover's aim point rises KICK_M x k metres, through the motion
+        stage after (slew-limited: degrade); an uncalibrated light with zoom widens toward its widest by k; anything
+        else: nothing (no guessed directions)."""
+        if self._calibrated(s, cx):
+            if pan_tilt is None:
+                return None
+            bd = _vec3(self._call("space.beam_dir", getattr(cx.sm, "beam_dir", None), s.pose, pan_tilt[0],
+                                  pan_tilt[1]))
+            hit = self._call("space.ray_hit", getattr(cx.sm, "ray_hit", None), cx.view, s.pos, bd) \
+                if bd is not None else None
+            q0 = _vec3(hit[0]) if isinstance(hit, (list, tuple)) and hit else None
+            if q0 is None:
+                return pan_tilt
+            pt = self._aim(s, fs, cx, (q0[0], q0[1], q0[2] + KICK_M * k), None, current=pan_tilt)
+            return [pt[0], pt[1]] if pt is not None else pan_tilt
+        z = s.caps.get("zoom") if s.caps is not None else None
+        if "zoom" in s.attrs and isinstance(z, Mapping) and _isnum(z.get("max")) and _isnum(attrs.get("zoom")):
+            attrs["zoom"] = attrs["zoom"] + (float(z["max"]) - attrs["zoom"]) * k
+        return pan_tilt
+
+    @staticmethod
+    def _role_rgbs(look: Any) -> dict[str, Rgb]:
+        """LookData.palette.roles at full value (a gesture's colour pop)."""
+        pal = look.get("palette") if isinstance(look, Mapping) else None
+        roles = pal.get("roles") if isinstance(pal, Mapping) else None
+        out: dict[str, Rgb] = {}
+        if isinstance(roles, Mapping):
+            for r, v in roles.items():
+                c = _hex_rgb(v.get("hex")) if isinstance(v, Mapping) else None
+                m = max(c) if c is not None else 0.0
+                if m > 0.0:
+                    out[str(r)] = (c[0] / m, c[1] / m, c[2] / m)
+        return out
 
     def _group_now(self, gid: str, programs: Optional[Mapping[str, Any]], prog: _Program, st: _OutState, cx: _Ctx,
                    t: float, snap: Optional[Mapping[str, Any]], gate: str, caps_hits: bool, min_attack_s: float,
@@ -2836,8 +3252,12 @@ class LookEngine:
         return env
 
     def _intensity(self, inows: Sequence[_LayerNow], s: _Slot, inten: float, ti: float, w: float, memo: dict,
-                   energy: float, cx: _Ctx, gn: _Group) -> float:
-        """Intensity layers on one fixture at ``ti``, each at depth x ``w`` (a scene's share, an effect's envelope)."""
+                   energy: float, cx: _Ctx, gn: _Group, rs: Optional[tuple[float, float]] = None,
+                   co: float = 0.0) -> float:
+        """Intensity layers on one fixture at ``ti``, each at depth x ``w`` (a scene's share, an effect's envelope).
+        docs/ENSEMBLE.md §7.2: ``rs`` (pulse, motion), its role's scales: a ``beat``-phase layer's depth x pulse, any
+        other x motion; ``co``: canon's offset (s), its oscillators that much late."""
+        to = ti - co if co else ti
         for ln in inows:
             m = ln.layer.members.get(s.id)
             if m is None:
@@ -2850,15 +3270,19 @@ class LookEngine:
                     lag = ln.spread * m[0] / m[1] if ln.spread and m[1] else 0.0
                 else:
                     lag = self._lag(L, ln.spread, s, m, cx, gn)
-                key = (id(ln), ti, lag)
+                key = (id(ln), to, lag)
                 val = memo.get(key)
                 if val is None:
                     val = 0.0
                     for vw, src, off, div, per in ln.variants:
-                        cyc = ((beat_at(src, ti) - off) / div if src is not None else ti / div) - lag
+                        cyc = ((beat_at(src, to) - off) / div if src is not None else to / div) - lag
                         val += vw * shape(ln.layer.fx, cyc, per, ln.attack_s, ln.layer.decay_s)
                     memo[key] = val
             dd = ln.d * w
+            if rs is not None:
+                dd *= rs[0] if ln.layer.phase == "beat" else rs[1]
+                if dd > 1.0:
+                    dd = 1.0
             inten *= 1.0 - dd + dd * val
         return inten
 
@@ -2916,9 +3340,10 @@ class LookEngine:
 
     # -- the non-intensity layers (§5.2-§5.4) --------------------------------------------------------------------------
     def _attrs(self, s: _Slot, fs: _FixState, gn: _Group, cx: _Ctx, t: float, colour: list, cs: float,
-               house_low: bool) -> tuple:
+               house_low: bool, so: float = 0.0) -> tuple:
         """(attrs, (pan, tilt) | None, colour, dark_ok, light_at) for one fixture: each scene of the mix from the
-        light's resting values, combined by the transition, then the running effects over it."""
+        light's resting values, combined by the transition, then the running effects over it. ``so``: its stagger
+        (docs/ENSEMBLE.md §7.2): the transition lands that much later on this light."""
         tp, tc = t + s.pos_s, t + s.colour_s
         fs.clamped.clear()
         fs.unresolved.clear()
@@ -2938,8 +3363,8 @@ class LookEngine:
         else:
             (p_old, r_old), (p_new, r_new) = res
             pf = gn.pf
-            xa = p_new.w(tp, cs)                                 # the new scene's share at its position time
-            xc = p_new.w(tc, cs)
+            xa = p_new.w(tp - so, cs)                            # the new scene's share at its position time
+            xc = p_new.w(tc - so, cs)
             attrs = self._mix_attrs(r_old[2], r_new[2], xa)
             col = r_new[3] if xc >= 1.0 else r_old[3] if xc <= 0.0 else list(palette_mix(r_old[3], r_new[3], xc))
             dark_ok = r_new[4]
@@ -2961,8 +3386,8 @@ class LookEngine:
                     lead = 0.0
                     if kind == "dark_move" and jump > mc.dark_move_min_deg:
                         lead = max(0.0, s.fall_s - s.pos_s) + cx.dt + mc.settle_s
-                        dark_ok, light_at = True, pf.at
-                    pos = nw if tp + tr + lead - cx.dt * 0.5 >= pf.at else o
+                        dark_ok, light_at = True, pf.at + so
+                    pos = nw if tp - so + tr + lead - cx.dt * 0.5 >= pf.at else o
                 elif kind == "fade_dark":
                     pos = nw if tp >= pf.at else o               # positions move while dark
                 else:                                            # crossfade, sweep
@@ -3128,6 +3553,8 @@ class LookEngine:
             vs = self._cycles(ol, cx)
             if not vs:
                 return v.lo
+            if cx.co:                                            # docs/ENSEMBLE.md §7.2: canon, its waves run late
+                tt -= cx.co.get(s.id, 0.0)
             sp = self._input(ol.spread, cx.look, cx.vibe, cx.energy)
             lag = self._lag(ol, sp, s, m, cx, gn) if sp else 0.0
             val = 0.0
@@ -3157,6 +3584,8 @@ class LookEngine:
         vw, src, off, div, per = max(vs, key=lambda v: v[0])
         sp = self._input(L.spread, cx.look, cx.vibe, cx.energy)
         lag = self._lag(L, sp, s, m, cx, gn) if sp else 0.0
+        if cx.co:                                                # docs/ENSEMBLE.md §7.2: canon, its waves run late
+            tt -= cx.co.get(s.id, 0.0)
         cyc = (beat_at(src, tt) - off) / div if src is not None else tt / div
         return cyc / factor - lag, per * factor
 
@@ -3175,13 +3604,23 @@ class LookEngine:
                 if lo is None or hi is None:
                     return None
                 return lo if v == "narrow" else hi if v == "wide" else (lo + hi) / 2.0
-            x = self._val(v, L, s, m, cx, gn, tt)
+            x = self._sized(v, self._val(v, L, s, m, cx, gn, tt), s, cx)
             return _clamp(x, lo, hi) if lo is not None and hi is not None else x
         if v == "default":
             b = s.setup.get("beam") if isinstance(s.setup.get("beam"), Mapping) else {}
             d = b.get(a, s.neutral.get(a))
             return float(d) if _isnum(d) else None
-        return _c01(self._val(v, L, s, m, cx, gn, tt))
+        return _c01(self._sized(v, self._val(v, L, s, m, cx, gn, tt), s, cx))
+
+    @staticmethod
+    def _sized(v: Any, x: float, s: _Slot, cx: _Ctx) -> float:
+        """An oscillating beam value's swing round its middle x the light's role motion (docs/ENSEMBLE.md §7.2)."""
+        if cx.ms and isinstance(v, _Osc):
+            k = cx.ms.get(s.id)
+            if k is not None:
+                mid = 0.5 * (v.lo + v.hi)
+                return mid + (x - mid) * k
+        return x
 
     @staticmethod
     def _slots(spec: Any, slots: Sequence[Any]) -> list[int]:
@@ -3377,7 +3816,7 @@ class LookEngine:
         if mode == "home":
             return (s.home[0], s.home[1]), None
         if mode == "tilt_wave":
-            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0]
+            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0)
             w, _per = self._phase(L, s, m, cx, gn, tp)
             return (prev[0], prev[1] + sz * (2.0 * shape(p["fx"], w) - 1.0)), prev_q
         if mode == "lift":
@@ -3508,11 +3947,12 @@ class LookEngine:
 
     def _run_pattern(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
                      at: Callable, mode: str) -> Optional[tuple]:
+        ms = cx.ms.get(s.id, 1.0) if cx.ms else 1.0             # docs/ENSEMBLE.md §7.2: its role's motion x the size
         if mode == "fan":
-            return at(0.0, 0.0, 1.0)
+            return at(0.0, 0.0, ms)
         share, factor = self._fit(L, m, s, fs, cx, gn, tp, at)
         cyc, _per = self._phase(L, s, m, cx, gn, tp, factor)
-        return at(cyc - math.floor(cyc), cyc, share)
+        return at(cyc - math.floor(cyc), cyc, share * ms)
 
     def _fit(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
              at: Optional[Callable]) -> tuple[float, float]:
@@ -3614,6 +4054,8 @@ class LookEngine:
         sp = self._input(L.spread, cx.look, cx.vibe, cx.energy)
         lag = self._lag(L, sp, s, m, cx, gn) if sp else 0.0
         div = hop_beats * factor
+        if cx.co:                                                # docs/ENSEMBLE.md §7.2: canon, its hops run late
+            tp -= cx.co.get(s.id, 0.0)
 
         def hop(tt: float) -> float:
             return (beat_at(cx.src, tt) - anchor) / div - lag

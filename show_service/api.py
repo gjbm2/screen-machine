@@ -476,7 +476,8 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     keep = _num(director.get("keep_in_s"), None)
     look_out = {"id": look.get("look_id") if isinstance(look.get("look_id"), str) else None,
                 "keep_in_s": None if keep is None else float(round(keep)),
-                "next_pending": bool(director.get("next_pending"))}
+                "next_pending": bool(director.get("next_pending")),
+                "together": _d(director.get("ensemble")).get("line")}    # docs/ENSEMBLE.md §9: "Playing together: …"
 
     chips = []
     for ch in director.get("chips") or []:

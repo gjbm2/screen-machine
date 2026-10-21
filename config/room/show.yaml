@@ -1064,6 +1064,60 @@ lights:
       speeds: [[0.0, low], [0.4, medium], [0.75, high]]   # flow.speed from -> the remote's speed word
       min_gap_s: 120                        # §9.3: one change at most this often (the motor reverses)
     blinds:
+
+# ---- The ensemble: how the room's screens and lights play together (docs/ENSEMBLE.md). Starting points unless marked.
+ensemble:
+  players:
+    zones: {south: left, north: right}      # owner, 22 Oct: "south (left) ... north (right)". The Room map's positions
+                                            # win once the room is placed and its front set (facing west, south is left)
+    split_groups: true                      # each light group plays as one player per side (Lamps, left / Lamps, right)
+    min_spread_m: 0.5                       # placed players closer than this across the room: the zones decide instead
+  pick:
+    dwell_bars: 16                          # a form plays at least this long before another (a song change may)
+    dwell_s: 45                             # the same without a beat grid
+    stay: 1.5                               # the form playing weighs this much more in the next draw (hysteresis)
+  roles:                                    # screens: never a gain (depth: music depth); lights: never under the floor
+    even:      {level: 1.0, depth: 1.0, motion: 1.0, pulse: 1.0, fx_density: 1.0, gestures: 1.0}
+    lead:      {level: 1.0, depth: 1.0, motion: 1.0, pulse: 1.0, fx_density: 1.0, gestures: 1.0}
+    accompany: {level: 0.7, depth: 0.6, motion: 0.5, pulse: 0.6, fx_density: 0.5, gestures: 0.5}
+  glide_beats: 2                            # roles move over this many beats at a change
+  glide_s: 1.0                              # ... without a beat grid
+  no_grid_beat_s: 0.5                       # a form's beats in seconds when the clock has no grid
+  max_stagger_beats: 16                     # a scene change spreads across the room over at most this long
+  gestures:
+    horizon_s: 0.25                         # clock lines are scheduled this window past the screens' lead (> one tick)
+    min_gap_ms: 180                         # one player's parts at least this far apart (a hit always plays)
+    max_per_bar: 4                          # one player's parts per bar at most (per 2 s with no grid; hits always)
+    min_strength: 0.05                      # a part weaker than this is left out
+    max_parts: 8                            # parts per gesture (echoes and answers included)
+    keep: 32                                # recent gestures on LookData for the look engine
+    fill_energy: 0.6                        # a phrase's last bar rolls across the room above this energy
+    strength: {accent: 0.35, downbeat: 0.55, phrase: 0.75, fill: 0.45, hit: 1.0, section: 0.7, swell: 0.5,
+               note: 0.5, chord: 0.7}
+    colours: {accent: null, downbeat: accent, phrase: highlight, fill: null, hit: highlight, section: accent,
+              swell: accent, note: accent, chord: highlight}   # a palette role, or null: the light's own colour
+    shapes:                                 # how each kind looks on a light (the renderer takes the timing)
+      accent:   {attack_ms: 0,  hold_ms: 40,  decay_ms: 160, depth: 0.25, colour_depth: 0.0, kick: 0.0}
+      downbeat: {attack_ms: 0,  hold_ms: 60,  decay_ms: 220, depth: 0.35, colour_depth: 0.2, kick: 0.3}
+      phrase:   {attack_ms: 40, hold_ms: 80,  decay_ms: 500, depth: 0.45, colour_depth: 0.4, kick: 0.5}
+      fill:     {attack_ms: 0,  hold_ms: 30,  decay_ms: 120, depth: 0.25, colour_depth: 0.0, kick: 0.2}
+      hit:      {attack_ms: 0,  hold_ms: 80,  decay_ms: 400, depth: 1.0,  colour_depth: 0.6, kick: 1.0}
+      section:  {attack_ms: 80, hold_ms: 120, decay_ms: 900, depth: 0.5,  colour_depth: 0.6, kick: 0.6}
+      swell:    {attack_ms: 0,  hold_ms: 0,   decay_ms: 600, depth: 0.5,  colour_depth: 0.3, kick: 0.0}  # rises over
+                                                                                                         # its length
+      note:     {attack_ms: 0,  hold_ms: 30,  decay_ms: 200, depth: 0.3,  colour_depth: 0.3, kick: 0.0}
+      chord:    {attack_ms: 0,  hold_ms: 60,  decay_ms: 350, depth: 0.5,  colour_depth: 0.5, kick: 0.3}
+    virtual_lamps: {min_attack_ms: 80, swell_ms: 300}   # the virtual Maestro's lamps are Hue: §5.4's attack, and the
+                                            # drop hit's swell (director.build.hit_swell_ms) for a reactive part
+  piano:
+    burst_ms: 90                            # note-ons this close together make one gesture
+    max_burst_ms: 250
+    chord_notes: 3                          # this many notes in a burst make a chord
+    min_vel: 20                             # a quieter strike makes no gesture of its own
+    vel_curve: 1.5                          # strength = (velocity / 127) ^ this
+    split: auto                             # register_split's line: a MIDI note, or auto (the median of the last notes)
+    split_range: [48, 72]                   # auto stays within C3..C5
+    split_notes: 64
       enabled: false                        # true: big song changes move the blinds with an up/down flow
       # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
   motion:

@@ -1021,7 +1021,7 @@ def test_card_maps_every_component(brain):
     assert [x["name"] for x in cd["palette"]["choices"]] == ["auto", "art", "ember", "sea", "dusk", "moss", "rose"]
     assert cd["palette"]["choices"][0] == apimod.AUTO_CHOICE
     assert cd["palette"]["choices"][1]["label"] == "From the art" and cd["palette"]["pick"] == "auto"
-    assert cd["look"] == {"id": "L3", "keep_in_s": None, "next_pending": False}
+    assert cd["look"] == {"id": "L3", "keep_in_s": None, "next_pending": False, "together": None}   # no ensemble
     assert cd["listening"] == {"on": False, "effective": False, "why": "AI listening is off", "mode": False,
                                "status": "Off", "history": [],
                                "spend_today_usd": 0.0,
