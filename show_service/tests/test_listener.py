@@ -227,7 +227,10 @@ def test_talking_in_the_clip_skips_it(tmp_path):
     run(rig.tick(0.0))
     v = rig.lis.view()
     assert v["status"] == "Paused: people talking" and rig.llm.calls == []
-    rows[-2]["conversation_p"] = 0.0
+    run(rig.tick(0.0))
+    assert rig.lis.view()["status"] == "Paused: people talking"   # no send due yet: the last decision stands
+    rig.now += 15.0                                      # the next send
+    rows = music_now(rig)
     rows[0]["speech_p"] = 0.9                            # 35 s ago: not in this clip
     run(rig.tick(0.0))
     assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
@@ -281,7 +284,7 @@ def test_why(tmp_path, case, status, detail):
     run(go())
     v = rig.lis.view()
     assert v["status"] == status and v["why"] == status and v["detail"] == detail and v["effective"] is False
-    assert v["next_in_s"] is None and rig.llm.calls == []
+    assert (v["next_in_s"] is None) == (case != "quiet") and rig.llm.calls == []   # quiet: decided at each send
 
 
 def test_quiet_gate_zero_is_never_quiet(tmp_path):
@@ -310,6 +313,23 @@ def test_history_lists_round_trips_and_folds_repeated_skips(tmp_path):
     rig.lis._refresh(rig.now)
     h = rig.lis.view()["history"]
     assert len(h) == L.HISTORY_N and h[0]["n"] == L.HISTORY_N + 2      # newest first
+
+
+def test_the_status_is_the_last_send_time_decision(tmp_path):
+    """09, 21 Oct: no flicker between sends; "can't check" only when a send was really skipped for it."""
+    rig = Rig(tmp_path, stream="room-mic")
+    rig.fill(seconds=38.0)
+    rig.llm.results = [ok(verdict(coming=[]))]             # nothing coming: the steady 15 s cadence
+    music_now(rig)
+    run(rig.tick())
+    assert rig.lis.view()["status"] == "Listening" and len(rig.llm.calls) == 1
+    rig.ml = None                                         # the worker drops out between sends
+    for _ in range(5):
+        run(rig.tick())
+        assert rig.lis.view()["status"] == "Listening"    # no send was due: the last decision stands
+    rig.now += 15.0
+    run(rig.tick(0.0))                                    # the next send: skipped for it, and now it says so
+    assert rig.lis.view()["status"] == "Paused: can't check for talking" and len(rig.llm.calls) == 1
 
 
 def test_the_switch_wakes_its_on_listeners(tmp_path):
@@ -412,6 +432,10 @@ def test_up_to_two_calls_in_flight(tmp_path):
             rig.now += 4.0
             rig.lis.tick(rig.now)
             await asyncio.sleep(0.01)
+        for _ in range(100):
+            if len(rig.llm.calls) == 2:
+                break
+            await asyncio.sleep(0.01)
         assert len(rig.lis._tasks) == 2 and rig.lis.view()["in_flight"] == 2   # the third waits for a free slot
         assert len(rig.llm.calls) == 2
         await asyncio.wait(list(rig.lis._tasks), timeout=5)
@@ -419,7 +443,10 @@ def test_up_to_two_calls_in_flight(tmp_path):
         assert rig.lis._tasks == [] and len(rig.pub) == 2
         rig.now += 4.0
         rig.lis.tick(rig.now)
-        await asyncio.sleep(0.01)
+        for _ in range(100):                             # (a loaded host: the encode runs in a worker thread)
+            if len(rig.llm.calls) == 3:
+                break
+            await asyncio.sleep(0.01)
         assert len(rig.llm.calls) == 3
         await asyncio.wait(list(rig.lis._tasks), timeout=5)
     run(go())
