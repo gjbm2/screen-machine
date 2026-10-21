@@ -516,6 +516,9 @@ class LookData(TypedDict):
     flow: "FlowData"               # the same object as room.direction's
     light_programs: dict[str, "LightProgram"]   # light group -> its program; {} while neutral (the compat path)
 
+    # docs/ENSEMBLE.md (22 Oct): how the room plays together, and the moments it plays (the look engine's)
+    ensemble: "EnsembleData"       # the same object as room.direction's
+    gestures: list["GestureData"]  # the recent ones, newest last (<= ensemble.gestures.keep); never on the bus
 
 class LightSceneDrop(TypedDict):
     """LookData.light_scene_drop: a drop line (structure's drop, a cue's forecast drop) for the light scene's drop
@@ -678,6 +681,8 @@ class DirectionData(TypedDict):
     flow: "FlowData"               # docs/LIGHTS.md §4: the room's direction of travel (still while neutral); published at
                                    # once on a new flow.id
     # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
+    ensemble: "EnsembleData"       # docs/ENSEMBLE.md: forms, roles, staggers per screen; published at once on a new
+                                   # (id, rev)
     pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
     peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
                                    # pick reads them instead of its own fixed peak, from step 3)
@@ -1092,7 +1097,8 @@ class CardData(TypedDict):
     steps: StepsView
     palette: dict[str, Any]        # {"pick": "auto"|"art"|name, "current": name, "choices": [PaletteChoice] (Auto,
                                    #  From the art, then the vibe's first 5)}
-    look: dict[str, Any]           # {"id": str, "keep_in_s": float | None, "next_pending": bool}
+    look: dict[str, Any]           # {"id": str, "keep_in_s": float | None, "next_pending": bool,
+                                   #  "together": str | None (docs/ENSEMBLE.md §9: "Playing together: ...")}
     house: bool
     low: bool
     chips: list[ChipData]
@@ -2316,3 +2322,150 @@ class ScreenFlow(TypedDict):
                                    # 0 otherwise
     spin: int                      # +1 cw, -1 ccw (cw/ccw flows; the same sense on every screen), else 0
     phase: float                   # 0..1: the screen's place along the flow (flow_coord of its centre)
+
+
+# -- the ensemble: the room's appliances as one band (docs/ENSEMBLE.md; the show builder's, 22 Oct) --------------------
+ROOM_GESTURE = "room.gesture"      # GestureData, when decided (predicted parts >= the screens' lead ahead); want-only
+WANT_ONLY_ENSEMBLE: tuple[str, ...] = (ROOM_GESTURE,)
+INTERPLAYS_FILE = REPO_ROOT / "config" / "live" / "interplays.yaml"   # the forms (ensemble.py; hot-reloaded)
+GESTURE_KINDS: tuple[str, ...] = ("accent", "downbeat", "phrase", "fill", "hit", "section", "swell", "note", "chord")
+GESTURE_SOURCES: tuple[str, ...] = ("clock", "look", "structure", "piano")
+FORM_KINDS: tuple[str, ...] = ("unison", "echo", "call_and_response", "ping_pong", "canon", "solo_and_accompany",
+                               "contrast", "register_split")
+ENSEMBLE_ROLES: tuple[str, ...] = ("even", "lead", "accompany")
+ROLE_SCALES: tuple[str, ...] = ("level", "depth", "motion", "pulse", "fx_density", "gestures")
+PLAYER_KINDS: tuple[str, ...] = ("screen", "lights", "device")
+PLAYER_SIDES: tuple[str, ...] = ("left", "centre", "right")
+
+
+class PlayerInfo(TypedDict):
+    """One player of the room's band (ensemble.players): a screen, a light group's lights on one side, a room device."""
+    id: str                        # a screen: its fixture id ("screen.south"); lights "<group>:left|right|all"; a
+                                   # device "device:<room subsystem>"
+    kind: str                      # PLAYER_KINDS
+    label: str                     # page words: "South Frame", "Lamps, left", "Mirror ball"
+    side: str                      # PLAYER_SIDES
+    x: float                       # -1 (left) .. 1 (right): its place across the room
+    order: int                     # 0.. by (x, id)
+    via: str                       # where x came from: "space" | "zone" | "screen" | "none"
+    members: list[str]             # fixture ids (a device: [])
+    group: Optional[str]           # its light group (kind lights)
+    screen: Optional[str]          # the renderer's screen name (kind screen)
+    on: bool                       # it can show something now (a screen: live; the others: True)
+
+
+class GestureShape(TypedDict):
+    """How a gesture looks on a light (show.yaml ensemble.gestures.shapes.<kind>); the renderer takes its timing."""
+    attack_ms: float               # up to the peak (an output's own min attack wins); a swell rises over dur_ms instead
+    hold_ms: float                 # at the peak (a light's min_pulse wins)
+    decay_ms: float                # then exp(-t / decay)
+    depth: float                   # 0..1: how far toward full it lifts a light (HTP over the look)
+    colour_depth: float            # 0..1: how far its colour moves toward the part's palette role
+    kick: float                    # 0..1: a calibrated mover's lift (looks.py KICK_M x this); 0: none
+
+
+class GesturePart(TypedDict):
+    player: str                    # PlayerInfo.id
+    at_ms: float                   # when it PEAKS on that player: photon time, host CLOCK_MONOTONIC ms (lights evaluate
+                                   # at t_send + their rise, screens at now + their lead)
+    strength: float                # 0..1, final: the moment's x the form's decay x the player's role ``gestures`` scale
+    gen: int                       # 0 the call; 1.. its echoes, answers and canon voices
+    predicted: bool                # at_ms was ahead when decided (False: a reactive call: show it as soon as possible)
+    colour: Optional[str]          # PALETTE_ROLES word for this part (contrast: its side's); None: the light's own
+
+
+class GestureData(TypedDict):
+    """room.gesture: one musical moment and how it travels the room (docs/ENSEMBLE.md §3). A re-send with the same id
+    replaces the earlier one (a moved drop line); ``parts`` [] calls it off."""
+    id: str                        # "g:<key>": g:beat:<epoch>:<beat>, g:look:<look_id>, g:hit:<event id>, g:piano:<n>
+    seq: int                       # +1 per message
+    t_ms: float                    # when published
+    kind: str                      # GESTURE_KINDS
+    source: str                    # GESTURE_SOURCES
+    form: str                      # the interplays.yaml entry that routed it
+    strength: float                # 0..1: the moment's own, before the form
+    shape: GestureShape
+    dur_ms: float                  # a swell's rise (0 for the other kinds)
+    register: Optional[float]      # note | chord: the mean pitch, 0 (A0) .. 1 (C8); else None
+    pitches: list[int]             # note | chord: the MIDI pitches struck; else []
+    beat: Optional[float]          # the clock's beat number at the call; None without a grid
+    parts: list[GesturePart]       # in at_ms order
+    why: str                       # page words: "the drop", "a chord, low"
+
+
+class EnsemblePart(TypedDict):
+    """What one player does under the form (EnsembleData.players and EnsembleNext.players values)."""
+    role: str                      # ENSEMBLE_ROLES
+    scale: dict[str, float]        # ROLE_SCALES -> the role's (pulse x the form's); screens never take one as a gain
+    stagger_beats: float           # a scene change lands this many beats after the room's moment on this player
+    stagger_s: float               # the same in seconds by show's grid now (no grid: x ensemble.no_grid_beat_s)
+    palette_role: Optional[str]    # contrast: the palette role its colours lean to; else None
+    energy_bias: float             # contrast: a screen's direction energy +- this; 0 otherwise
+    register: Optional[list[float]]   # register_split: [lo, hi] of 0..1 register it plays; else None
+    clock_offset_beats: float      # canon: its beat-bound motion runs this many beats late; else 0
+    team: int                      # its team's place in the travel order (0 first); -1: centre
+    kind: str                      # PLAYER_KINDS
+    side: str
+    x: float
+    label: str
+    screen: Optional[str]
+    members: list[str]
+
+
+class EnsembleNext(TypedDict):
+    """A change already decided (a form at a look change, a lead passing, a call's turn). It applies at at_ms on each
+    player at its own photon time; the director folds it in once the moment has passed."""
+    at_ms: float
+    form: str
+    kind: str
+    label: str
+    line: Optional[str]
+    players: dict[str, EnsemblePart]
+    why: str
+
+
+class EnsembleData(TypedDict):
+    """room.look.ensemble and room.direction.ensemble (the same object, as ``flow``): how the room plays together."""
+    id: int                        # +1 per form change
+    rev: int                       # +1 per change of anything here (players, roles, next): a cache key
+    form: str                      # the interplays.yaml entry ("unison": built in, without a catalogue)
+    kind: str                      # FORM_KINDS
+    label: str                     # page words: "Echo across the room"
+    line: Optional[str]            # the card's words: "Playing together: echo, left to right"; None while neutral
+    params: dict[str, Any]         # the entry's params, resolved
+    order: list[str]               # player ids in the order a gesture travels (centre players left out)
+    players: dict[str, EnsemblePart]
+    screens: dict[str, str]        # the renderer's screen name -> player id
+    since_ms: float
+    at_ms: float                   # when the form now playing took effect
+    glide_ms: float                # roles and scales move over this at a change (ensemble.glide_beats, else glide_s)
+    next: Optional[EnsembleNext]
+    source: str                    # "pick" | "piano" | "held" | "default" | "neutral"
+    why: str
+
+
+def gesture_weight(t_s: float, at_s: float, shape: "GestureShape", *, step: bool, min_attack_s: float = 0.0,
+                   min_hold_s: float = 0.0, swell_s: float = 0.3, dur_s: float = 0.0) -> float:
+    """How much of a gesture part shows at ``t_s`` (0..1; the caller multiplies by the part's strength and the shape's
+    depth): the one rule for the look engine (each fixture at its own photon time) and the virtual Maestro's lamps
+    (director.maestro_palette_fn). A swell (``dur_s`` > 0) rises over dur_s from at_s. ``step`` (an output that takes
+    hits, or a predicted part): it rises over max(attack, min_attack) to PEAK at at_s. Otherwise (Hue, a reactive
+    part): a swell up over max(attack, swell_s) from at_s (SHOW_ENGINE §5.4: Hue never gets a reactive hit). Then held
+    max(hold, min_hold), then exp decay; 0 after 8 decays."""
+    a = max(float(shape.get("attack_ms") or 0.0) / 1000.0, min_attack_s)
+    if dur_s > 0.0:
+        t0, peak = at_s, at_s + dur_s
+    elif step:
+        t0, peak = at_s - a, at_s
+    else:
+        t0, peak = at_s, at_s + max(a, swell_s)
+    if t_s < t0:
+        return 0.0
+    if t_s < peak:
+        x = (t_s - t0) / (peak - t0)
+        return x * x * (3.0 - 2.0 * x)
+    hold = max(float(shape.get("hold_ms") or 0.0) / 1000.0, min_hold_s)
+    if t_s < peak + hold:
+        return 1.0
+    k = (t_s - peak - hold) / max(0.001, float(shape.get("decay_ms") or 0.0) / 1000.0)
+    return 0.0 if k > 8.0 else math.exp(-k)

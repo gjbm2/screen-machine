@@ -109,6 +109,14 @@ room.direction (published at once on a new flow.id) and room.look, with each scr
 is placed. While a flow turns (cw/ccw) and the glitterball is already spinning, its motor follows at most once per
 min_gap_s on a bar line (it never powers it); the blinds follow a big song change only when switched on.
 
+**The ensemble** (docs/ENSEMBLE.md; ensemble.py, pure; README S5.31). Every screen, each light group per side and the
+glitterball are players; at a look change (and when the piano starts or stops) the director draws an interplay form
+(config/live/interplays.yaml: echo, call and answer, a round, one side leading, ...) and routes each musical moment
+(the clock's lines, a look's pop, the drop, a build, a breakdown, piano bursts) player by player on show's clock, as
+``room.gesture``. The form's roles and staggers ride on room.look and room.direction (``ensemble``); the lamps take
+their side's level and palette role here, and ``maestro_palette_fn`` lays the gestures over the virtual Maestro's
+lamps. No ``ensemble:`` block in show.yaml: the room plays as before.
+
 **The screens' hand-pick hold** (Stage 5, README S5.8; agreed with 2f, 16 Oct). Our look PATCHes carry
 ``source: "show_service"`` unless this room boot refused it (the probe: a 2xx with it, or any ``screen.look`` event
 carrying a ``source``, is ``yes``; a 400 ``bad_request`` is the old room: ``no``, and the PATCH goes again at once
@@ -176,6 +184,11 @@ from . import light_scenes as lscenes
 from . import palette as pal
 from .vibes import Vibes
 
+try:                                                  # docs/ENSEMBLE.md: without it the director runs as before
+    from . import ensemble as ensmod
+except Exception:                                     # noqa: BLE001  a broken ensemble.py never stops the director
+    ensmod = None
+
 log = logging.getLogger("show_service.director")
 
 # -- fixed vocabulary and timing ---------------------------------------------------------------------------------------
@@ -212,6 +225,8 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
 LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed"}
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
+ENSEMBLE_SEED = 2                   # the interplay forms' draw (docs/ENSEMBLE.md §4.2: its own, beside the lights')
+ENSEMBLE_LOG_S = 60.0               # the gestures' counts go to director.jsonl at most this often (never one each)
 LIGHT_FX_LOG = 10                   # effects fired, kept for the snapshot
 ROOM_TARGETS_PATH = "/api/v1/room/targets"   # room's PUT {values: {target: value}, source}: the glitterball, the blinds
 ROOM_TARGETS_SOURCE = "show"        # the source on those PUTs (docs/LIGHTS.md §4.4)
@@ -716,6 +731,16 @@ class Director:
         self._mb: dict[str, Any] = {"sent": None, "sent_s": None, "due_s": None, "sends": 0, "error": None,
                                     "busy": False}        # the glitterball's motor (docs/LIGHTS.md §4.4)
         self._blinds: dict[str, Any] = {"sent": None, "sends": 0, "error": None}
+        # the ensemble (docs/ENSEMBLE.md): players, interplay forms and gestures, all on show-brain
+        self.ensemble = (ensmod.Ensemble(catalogue=ensmod.Catalogue(scorer=self.light_scenes),
+                                         rng=random.Random(ENSEMBLE_SEED)) if ensmod is not None else None)
+        self._ens_note_t: Optional[float] = None          # the newest piano note-on handed over
+        self._ens_piano = False
+        self._ens_players_key: Optional[tuple] = None
+        self._ens_lamps: tuple = ()                       # lamp_parts with each colour resolved (maestro_palette_fn)
+        self._ens_rev_pub: Optional[int] = None
+        self._ens_log_s: Optional[float] = None
+        self._ens_logged: dict = {}
         self.palettes = catalog if catalog is not None else pal.Catalog()
         self.vibes = vibes if vibes is not None else Vibes(pathlib.Path(vibes_path) if vibes_path is not None
                                                            else contract.VIBES_FILE, palette_names=self.palettes.names)
@@ -1205,6 +1230,10 @@ class Director:
         self.lamps_cfg = {"placement_roles": {str(k): v for k, v in pr.items() if v in clean_roles},
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
         self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
+        if self.ensemble is not None:                     # docs/ENSEMBLE.md §10
+            ens_probs: list[str] = []
+            self.ensemble.configure(ensmod.parse_settings(s.get("ensemble"), ens_probs), ens_probs)
+            probs += ens_probs
         self._flow_dec.configure(self.lights_cfg["flow"])
         self._lights_gen += 1
         self.settings_problems = probs
@@ -1360,6 +1389,7 @@ class Director:
             self._check_response()
             self._poll_light_scenes()
             self._poll_space()
+            self._poll_interplays()
         self._check_rig()
         self._fetches(now_s)
 
@@ -1399,6 +1429,7 @@ class Director:
         self._changes(now_s, vs, grid, cutting)
         self._phase_tick(now_s, vs, grid)
         self._lights_tick(now_s, grid, room)              # docs/LIGHTS.md: groups, programs, effects, the flow
+        self._ensemble_tick(now_s, vs, grid, room)        # docs/ENSEMBLE.md: players, forms, gestures
         self._compose_plan(now_s, dt, room)
         self._compose(now_s, vs, known, grid, room)
         self._outputs(now_s, vs, known, grid)
@@ -1709,6 +1740,7 @@ class Director:
             ev["bar"] = grid.bar_at(at_s + 1e-6)
             ev["phrase"] = math.floor(ev["bar"] / grid.pb)
         self._announce_programs(ev, now_s, reason, by, at_s, transition, section)   # docs/LIGHTS.md §7.3
+        self._ensemble_announce(ev, now_s, reason, by, at_s, grid)                  # docs/ENSEMBLE.md §5.2
         self._publish(contract.ROOM_EVENT, ev)
         self.events += 1
 
@@ -1864,6 +1896,7 @@ class Director:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
         self._light_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/LIGHTS.md: the flow's events, light effects
+        self._ensemble_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/ENSEMBLE.md: hits, swells, breakdowns
         if kind == "track_end_armed":                     # the composer's fade cue (README S5.18); a call-off ends it
             self._end_armed = None if ("eta_s" in ev and ev["eta_s"] is None) else at_ms / 1000.0
         elif kind == "track_change":
@@ -2769,6 +2802,7 @@ class Director:
         if mb["direction_target"]:
             want[mb["direction_target"]] = word
         sw = flowmod.speed_word(mb["speeds"], float(self._flow["speed"]))
+        sw = self._ens_ball_speed(mb, sw, now_s)          # docs/ENSEMBLE.md §5.7: a leading ball turns a step faster
         if mb["speed_target"] and sw is not None:
             want[mb["speed_target"]] = sw
         if not want or want == st["sent"] or st["busy"]:
@@ -2831,6 +2865,161 @@ class Director:
             self._log_event("room_targets", {"values": values, "error": st["error"]})
         finally:
             st["busy"] = False
+
+    # -- the ensemble (docs/ENSEMBLE.md; the show builder's, 22 Oct) ------------------------------------------------------
+    def _poll_interplays(self) -> None:
+        if self.ensemble is None:
+            return
+        try:
+            self.ensemble.catalogue.poll()
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("interplays: poll failed")
+
+    def _ensemble_players(self, now_s: float, room: Any) -> None:
+        """The room's players, rebuilt when the registry, the light groups, the space, the live screens, the
+        glitterball's config or show.yaml moved (ensemble.players: pure, no names)."""
+        rig = self._rig_seen if isinstance(self._rig_seen, dict) else None
+        sp, view = self._space_now()
+        live = comp.enabled(room)[0] if isinstance(room, dict) and isinstance(room.get("screens"), dict) else None
+        mb = self.lights_cfg["flow"]["mirror_ball"]
+        sub = str(mb.get("power_member") or "").split(".", 1)[0] if mb.get("enabled") else ""
+        key = (id(rig), (rig or {}).get("revision"), self._groups_key, (view or {}).get("revision"),
+               tuple(live) if live is not None else None, sub, self._cfg_gen)
+        if key == self._ens_players_key:
+            return
+        self._ens_players_key = key
+        devices = []
+        if sub:                                           # its place: the Room map point that names it
+            pt = next((p for p in ((view or {}).get("points") or {}).values()
+                       if isinstance(p, dict) and p.get("device") == sub), None) or {}
+            devices.append({"id": sub, "label": pt.get("label"), "at": pt.get("at")})
+        players = ensmod.players(rig, self._groups, cfg=self.ensemble.cfg, space_mod=sp, view=view,
+                                 live_screens=live, devices=devices)
+        if self.ensemble.set_players(players, now_s, space_mod=sp, view=view):
+            self._log_event("ensemble", {"change": "players", "players": [
+                {k: p[k] for k in ("id", "side", "via", "on")} for p in players]})
+
+    def _ensemble_tick(self, now_s: float, vs: dict, grid: Grid, room: Any) -> None:
+        """docs/ENSEMBLE.md §5.2: the players, the piano's notes, the tick (each gesture out on room.gesture as
+        decided), the lamps' parts with their colours (maestro_palette_fn), and room.look at once on a new rev."""
+        ens = self.ensemble
+        if ens is None:
+            return
+        try:
+            self._ensemble_players(now_s, room)
+            pv = _call(self.ctx.piano)
+            present = bool(pv.get("present")) if isinstance(pv, dict) else False
+            if present != self._ens_piano:
+                self._ens_piano = present
+                ens.on_piano(present, now_s, grid, self.direction, self._flow)
+                self._ens_note_t = None
+            notes = getattr(self.ctx, "notes", None)
+            if present and notes is not None:
+                got = notes.raw_since(self._ens_note_t if self._ens_note_t is not None else now_s - 1.0)
+                if got:
+                    ens.on_notes(got, now_s)
+                    self._ens_note_t = float(got[-1][0]) + 1e-6
+            nl = ens.next_look()                          # a look change that won't land: its decision goes too
+            if nl is not None and nl != f"L{self.look_n}" and (self.pending is None or nl != f"L{self.look_n + 1}"):
+                ens.cancel_look(nl, now_s)
+            out = ens.tick(now_s, grid, active=self.pal_on and not self.house and not self.low,
+                           accents=vs["accents"], beat_lock=bool(vs["beat_lock"]),
+                           energy=float(self.music.get("energy") or 0.0), direction=self.direction, flow=self._flow,
+                           lead_s=self._lead_s(), held=self.keep_until is not None)
+            for g in out:
+                self._publish(contract.ROOM_GESTURE, g)
+            for entry in ens.drain_log():
+                self._log_event("ensemble", entry)
+            if out and (self._ens_log_s is None or now_s - self._ens_log_s >= ENSEMBLE_LOG_S):
+                self._ens_log_s = now_s
+                self._log_event("ensemble_gestures", {"form": ens.block().get("form"), "counts": {
+                    k: dict(v) if isinstance(v, dict) else v for k, v in ens.counts.items()}})
+            roles = ((self.look or {}).get("palette") or {}).get("roles") or {}
+            rgb: dict[str, Any] = {}
+            lamps = []
+            for at, s, shape, pred, role, dur, members in ens.lamp_parts():
+                if role is not None and role not in rgb:
+                    rgb[role] = pal.full(pal.rgb_of(roles[role]["hex"])) if isinstance(roles.get(role), dict) else None
+                lamps.append((at, s, shape, pred, rgb.get(role) if role is not None else None, dur, members))
+            self._ens_lamps = tuple(lamps)
+            rev = ens.block().get("rev")
+            if rev != self._ens_rev_pub:
+                self._ens_rev_pub = rev
+                self._force_look = True                   # room.look goes at once with a new form, role or moment
+        except Exception:                                 # the band's bug never stops the director
+            log.exception("ensemble: tick failed")
+
+    def _ensemble_event(self, kind: str, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
+        """structure's drop_armed, drop, build (with the context's drop eta) and breakdown, while colours resolve."""
+        if self.ensemble is None or not self.pal_on or kind not in ("drop_armed", "drop", "build", "breakdown"):
+            return
+        if kind == "build" and "drop_eta_beats" not in ev:
+            sec = (self._mc or {}).get("section")
+            if isinstance(sec, dict) and _num(sec.get("drop_eta_beats")) is not None:
+                ev = {**ev, "drop_eta_beats": sec["drop_eta_beats"]}
+        try:
+            self.ensemble.on_event(kind, ev, at_s, now_s, grid)
+        except Exception:
+            log.exception("ensemble: event %s failed", kind)
+
+    def _ensemble_announce(self, ev: dict, now_s: float, reason: str, by: str, at_s: float, grid: Grid) -> None:
+        """A look change announced: the ensemble may pick a form for it (held while Keep this look holds and it isn't a
+        person's own Next look), and its section or phrase gesture lands with each player's own cut."""
+        if self.ensemble is None:
+            return
+        pv = _call(self.ctx.piano)
+        try:
+            self.ensemble.on_look(now_s, at_s, look_id=str(ev.get("look_id")), reason=reason, by=by,
+                                  direction=self.direction, flow=self._flow, grid=grid,
+                                  held=self.keep_until is not None and by != "human",
+                                  piano=bool(pv.get("present")) if isinstance(pv, dict) else False)
+        except Exception:
+            log.exception("ensemble: a look change failed")
+
+    def _ens_scale(self, member: str, key: str, t_s: float) -> float:
+        """A lamp's role scale (ensemble.scale: glided from a change's moment); 1.0 without the ensemble."""
+        if self.ensemble is None:
+            return 1.0
+        try:
+            return float(self.ensemble.scale(member, key, t_s))
+        except Exception:
+            return 1.0
+
+    def _ens_palette_role(self, member: str, t_s: float) -> Optional[str]:
+        """contrast: the palette role a lamp's side leans to; None otherwise."""
+        if self.ensemble is None:
+            return None
+        part = self.ensemble.part_of(member, t_s)
+        pr = part.get("palette_role") if part else None
+        return pr if pr in contract.PALETTE_ROLES else None
+
+    def _ens_lights_pulse(self, t_s: float) -> float:
+        """The lights players' mean ``pulse`` scale: artnet_out takes one accent depth for every lamp."""
+        if self.ensemble is None:
+            return 1.0
+        ps = [pid for pid, p in (self.ensemble.block().get("players") or {}).items() if p.get("kind") == "lights"]
+        return sum(self._ens_scale(pid, "pulse", t_s) for pid in ps) / len(ps) if ps else 1.0
+
+    def _ens_ball_speed(self, mb: dict, sw: Optional[str], now_s: float) -> Optional[str]:
+        """A glitterball leading the band turns one speed word faster (mirror_ball.speeds' next), if there is one."""
+        if self.ensemble is None or sw is None:
+            return sw
+        sub = str(mb.get("power_member") or "").split(".", 1)[0]
+        part = self.ensemble.part_of(f"device:{sub}", now_s)
+        if not part or part.get("role") != "lead":
+            return sw
+        words = [w for _, w in mb["speeds"]]
+        i = words.index(sw) if sw in words else -1
+        return words[i + 1] if 0 <= i < len(words) - 1 else sw
+
+    @staticmethod
+    def _ens_moved(a: Optional[dict], b: dict) -> bool:
+        """room.direction goes at once on a new ensemble (its id or rev)."""
+        eb = b.get("ensemble")
+        if not isinstance(eb, dict):
+            return False
+        ea = a.get("ensemble") if isinstance(a, dict) else None
+        return not isinstance(ea, dict) or (ea.get("id"), ea.get("rev")) != (eb.get("id"), eb.get("rev"))
 
     def _lights_view(self, now_s: float) -> dict:
         """The snapshot's ``lights``: the groups, each program in words, the announced look's scenes, the flow and its
@@ -3429,8 +3618,14 @@ class Director:
                 if self.house:
                     rgb, lv_out = self._house_rgb(did, room), None
                 else:
+                    pr = self._ens_palette_role(did, now_s)  # docs/ENSEMBLE.md §5.4: contrast's side leans to a role
+                    if pr is not None:
+                        rc = {**rc, "palette_role": pr}
                     c = self._lamp_colour(dev, rc, look_pal, screen_roles, vs, sat, speed, amount, i, now_s, narrow)
                     lv_out = self.cfg["low"]["level"] if self.low else lamp_level
+                    ks = self._ens_scale(did, "level", now_s) if not self.low and lv_out > floor else 1.0
+                    if ks != 1.0:                            # an accompanying side sits dimmer, never under the floor
+                        lv_out = floor + (lv_out - floor) * ks
                     rgb = pal.scale_level(c, lv_out)
                 lv_rep = lv_out if lv_out is not None else max(rgb)
                 colours[did] = rgb
@@ -3474,6 +3669,9 @@ class Director:
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
                      "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
                      "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2
+        if self.ensemble is not None:                     # docs/ENSEMBLE.md §5.4: the look engine's (never on the bus)
+            self.look["ensemble"] = self.ensemble.block()
+            self.look["gestures"] = self.ensemble.recent(now_s)
         bars = 0
         if grid.ok and self.look_bar is not None:
             bars = max(0, grid.bar_at(now_s) - self.look_bar)
@@ -3526,6 +3724,8 @@ class Director:
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat",
                           "flow": self._flow}                    # docs/LIGHTS.md §4.1
+        if self.ensemble is not None:
+            self.direction["ensemble"] = self.ensemble.block()   # docs/ENSEMBLE.md §8: roles, staggers per screen
         if self.cfg["compose"]["mode"] == comp.DRIVE:
             self._drive_direction(self.direction, vs)     # README S5.18: drive only
         self._words_now = words
@@ -3797,18 +3997,46 @@ class Director:
         """artnet_out's palette_fn (show-artnet, any thread): ``palette_fn`` with the drop's hit laid over the lamps
         as an output without hits takes it, since the virtual Maestro's lamp channels are what room streams to Hue
         (P0-P4): a predicted drop line's hit exactly at the line, an unforeseen drop's as a slow swell (§5.4;
-        contract.hit_weight, the look engine's own rule). Screens never carry it."""
+        contract.hit_weight, the look engine's own rule). Screens never carry it. Then the ensemble's gestures on
+        their lamps (docs/ENSEMBLE.md §7.1)."""
         out = self.palette_fn(t_s)
         h = self._hit
         if out is None or h is None:
-            return out
+            return self._ens_gestures(out, t_s)
         w = contract.hit_weight(t_s, h[0], h[1], bool(h[3]), float(self.cfg["build"]["hit_swell_ms"]) / 1000.0)
         if w <= 0.0:
-            return out
+            return self._ens_gestures(out, t_s)
         out = dict(out)
         for k, c in h[2].items():
             out[k] = tuple(c) if w >= 1.0 else pal.mix(out.get(k) or (0.0, 0.0, 0.0), c, w)   # OKLab, as looks.py
-        return out
+        return self._ens_gestures(out, t_s)
+
+    def _ens_gestures(self, out: Optional[dict], t_s: float) -> Optional[dict]:
+        """docs/ENSEMBLE.md §7.1: each lights part brightens its lamps toward full value and its colour by
+        contract.gesture_weight at ``t_s`` (the lamps' photon time), as Hue takes it: a predicted part rises over the
+        virtual lamps' min attack to peak at its moment, a reactive one swells; HTP-like, in OKLab. Guarded: any
+        error leaves the colours as they were."""
+        ep = self._ens_lamps
+        if out is None or not ep or self.ensemble is None:
+            return out
+        try:
+            vl = self.ensemble.cfg["gestures"]["virtual_lamps"]
+            got = None
+            for at, s, shape, pred, rgb, dur, lamps in ep:
+                w = contract.gesture_weight(t_s, at, shape, step=pred, min_attack_s=vl["min_attack_ms"] / 1000.0,
+                                            swell_s=vl["swell_ms"] / 1000.0, dur_s=dur) * s * float(shape["depth"])
+                if w <= 0.0:
+                    continue
+                if got is None:
+                    got = dict(out)
+                for k in lamps & got.keys():
+                    own = pal.full(got[k])
+                    tgt = own if rgb is None else pal.full(pal.mix(own, rgb, float(shape["colour_depth"])))
+                    got[k] = pal.mix(got[k], tgt, min(1.0, w))   # toward full value and the part's colour
+            return got if got is not None else out
+        except Exception:                                 # noqa: BLE001  never fails a frame
+            log.debug("ensemble: maestro gestures failed", exc_info=True)
+            return out
 
     def _set_colours(self, new: dict[str, pal.Rgb], now_s: float, dur: float,
                      start: Optional[dict[str, pal.Rgb]] = None) -> None:
@@ -3866,7 +4094,8 @@ class Director:
                                      "loose", "peak")) or \
                 sec_a.get("id") != d["section"]["id"] or sec_a.get("label") != d["section"]["label"] or \
                 (self._last_direction or {}).get("fx", {}).get("moods") != d["fx"]["moods"] or \
-                self._flow_moved(self._last_direction, d)            # docs/LIGHTS.md §4.2: a new flow at once
+                self._flow_moved(self._last_direction, d) or \
+                self._ens_moved(self._last_direction, d)             # docs/ENSEMBLE.md §5.5: a new form at once
             if changed or now_s - self._dir_pub_s >= rep:
                 self._dir_seq += 1
                 d["seq"] = self._dir_seq
@@ -3886,7 +4115,8 @@ class Director:
             if changed or now_s - self._look_pub_s >= rep:
                 self._look_seq += 1
                 lk["seq"] = self._look_seq
-                self._publish(contract.ROOM_LOOK, lk)
+                self._publish(contract.ROOM_LOOK, {k: v for k, v in lk.items() if k != "gestures"} if "gestures" in lk
+                              else lk)                    # docs/ENSEMBLE.md §5.5: gestures go as room.gesture
                 self._last_look = lk
                 self._look_pub_s = now_s
         if not known:
@@ -3903,6 +4133,7 @@ class Director:
             lvl = self.look["level"] if self.look else 1.0
             if lvl > 0:
                 depth = min(depth, max(0.0, 1.0 - vs["floor"] / lvl))
+            depth *= self._ens_lights_pulse(now_s)        # docs/ENSEMBLE.md §5.4: the form's pattern reads
         out = (round(depth if grid.gate == "beat" else 0.0, 3), vibe_lock, round(depth, 3))
         if out != self._look_out:
             self._look_out = out
@@ -4283,6 +4514,8 @@ class Director:
         cleared = self.clear("all", why="the mode changed")
         self._log_event("mode", {"from": old, "to": new, "cleared": cleared})
         self.mode = new
+        if self.ensemble is not None:                     # docs/ENSEMBLE.md §5.2: a new mode starts all at once
+            self.ensemble.reset(self._now(), "a new mode")
         self._dirty()
 
     def chips(self) -> list[contract.ChipData]:
@@ -4437,7 +4670,8 @@ class Director:
                             "age_s": int(max(0.0, now_s - self._ls_at)) if self._ls_at is not None else None,
                             "drop": dict(self._ls_drop) if self._ls_drop else None, **self._ls_stats,
                             "catalogue": self.light_scenes.view()},
-            "lights": self._lights_view(now_s)}                  # docs/LIGHTS.md §7.3
+            "lights": self._lights_view(now_s),                  # docs/LIGHTS.md §7.3
+            "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None}   # docs/ENSEMBLE.md §5.6
 
     def _compose_view(self) -> dict:
         """The snapshot's composer (README S5.18): the mode, whose limits, the problems (the limits' validator, the

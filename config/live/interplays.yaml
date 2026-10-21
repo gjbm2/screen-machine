@@ -1,0 +1,138 @@
+# Interplay forms: how the room's screens and lights play together (docs/ENSEMBLE.md §4; show_service/ensemble.py).
+# Hot-reloaded. The art director picks one at a look change, weighted by how well its tags fit the music (the scenes'
+# own scales and rule), and holds it at least show.yaml ensemble.pick.dwell_bars. Every number is a STARTING POINT,
+# chosen on paper: tune by watching the room. Delete this file and the room plays as today: all at once, nothing new.
+#   kind     unison | echo | call_and_response | ping_pong | canon | solo_and_accompany | contrast | register_split
+#   routes   the moments it plays: accent downbeat phrase fill hit section swell note chord ([] = none)
+#   params   the kind's (docs/ENSEMBLE.md §4.3); team_by side | player; order room | flow | caller
+#   needs    sides (players on both sides) | grid (the beat clock is sure) | piano (the piano is playing)
+#   boost    {need: factor}: the weight x factor while it holds
+#   line     the Music card's words after "Playing together: " ({order} {first} {second} {lead} {beats} {low} {high})
+version: 1
+interplays:
+  unison:
+    label: All at once
+    kind: unison
+    line: all at once
+    routes: []                                  # today's room: nothing new
+    tags: {weight: 0.3}                         # the fallback: rarely drawn while another form fits
+  together:
+    label: Together on the big moments
+    kind: unison
+    line: all together on the big moments
+    routes: [hit, section, phrase, chord]
+    tags:
+      energy: [0.6, 1.0]
+      moods: [euphoric, aggressive, fiery, bright]
+      genre_fit: {trance: 0.85, metal: 0.85, techno: 0.8, house: 0.8, electronic: 0.8, rock: 0.8, punk: 0.8,
+                  dubstep: 0.8, drum-and-bass: 0.75, pop: 0.6, "*": 0.4}
+      density: 0.8
+      weight: 0.8
+  echo-across:
+    label: Echo across the room
+    kind: echo
+    line: "echo, {order}"
+    params: {team_by: side, order: flow, caller: first, delay_beats: 1, delay_s: 0.5, decay: 0.6, repeats: 1,
+             every_bars: 2}
+    routes: [downbeat, phrase, hit, section, chord, note]
+    needs: [sides]
+    tags:
+      energy: [0.2, 0.7]
+      moods: [dreamy, hypnotic, liquid, cosmic, mellow, cool]
+      genre_fit: {reggae: 0.9, downtempo: 0.9, ambient: 0.85, trance: 0.7, electronic: 0.7, house: 0.6, soul: 0.6,
+                  jazz: 0.6, piano: 0.6, "*": 0.45}
+      density: 0.4
+      flow: {honours: true}                     # it travels with the flow, so it suits any
+  ripple:
+    label: Passed round the room
+    kind: echo
+    line: "passed {order}"
+    params: {team_by: player, order: flow, caller: first, delay_beats: 0.5, delay_s: 0.25, decay: 0.8, repeats: 1,
+             every_bars: 4}
+    routes: [phrase, hit, section, chord]
+    needs: [sides, grid]
+    tags:
+      energy: [0.35, 0.85]
+      moods: [playful, bright, geometric, hypnotic]
+      density: 0.6
+      flow: {honours: true}
+  call-and-answer:
+    label: Call and answer
+    kind: call_and_response
+    line: "call and answer, {first} starts"
+    params: {team_by: side, order: room, answer: replay, decay: 0.85, half_s: 4, every_bars: 1}
+    routes: [downbeat, phrase, hit, chord, note]
+    needs: [sides]
+    tags:
+      energy: [0.3, 0.8]
+      moods: [playful, warm, organic, retro]
+      genre_fit: {funk: 0.9, gospel: 0.9, afrobeat: 0.9, soul: 0.85, jazz: 0.85, blues: 0.85, latin: 0.8, rnb: 0.8,
+                  disco: 0.75, hip-hop: 0.7, "*": 0.4}
+      organic: 0.6
+  back-and-forth:
+    label: Back and forth on the beat
+    kind: ping_pong
+    line: back and forth on the beat
+    params: {team_by: side, order: flow, "on": beat, downbeat_boost: 1.5, scene_offset_beats: 1}
+    routes: [accent, downbeat, fill]
+    needs: [sides, grid]
+    tags:
+      energy: [0.5, 0.95]
+      moods: [playful, bright, euphoric, geometric, retro]
+      genre_fit: {disco: 0.9, house: 0.85, funk: 0.8, latin: 0.8, techno: 0.75, pop: 0.75, drum-and-bass: 0.7,
+                  "*": 0.35}
+      density: 0.75
+      flow: {dirs: [left, right, cw, ccw]}
+  a-round:
+    label: A round
+    kind: canon
+    line: "a round, {second} follows {first} by {beats}"
+    params: {team_by: side, order: flow, offset_beats: 2, offset_s: 1.0, every_bars: 1, clock_offset: true}
+    routes: [downbeat, phrase, section, hit, chord, note]
+    needs: [sides]
+    tags:
+      energy: [0.25, 0.75]
+      moods: [hypnotic, geometric, elegant, cosmic]
+      genre_fit: {classical: 0.8, techno: 0.8, piano: 0.75, trance: 0.75, electronic: 0.75, ambient: 0.7, "*": 0.4}
+      density: 0.5
+      flow: {dirs: [left, right], honours: true}
+  spotlight:
+    label: One side leads
+    kind: solo_and_accompany
+    line: "{lead} leads"
+    params: {team_by: side, order: room, pass_on: section, pass: next, accompany_beats: 8,
+             lead_kinds: [screen, lights]}
+    routes: [downbeat, phrase, section, hit, chord, note]
+    needs: [sides]
+    tags:
+      energy: [0.15, 0.7]
+      moods: [elegant, dreamy, warm, mellow, tense]
+      genre_fit: {singer-songwriter: 0.9, jazz: 0.85, piano: 0.85, classical: 0.8, folk: 0.8, blues: 0.8,
+                  soundtrack: 0.8, soul: 0.75, "*": 0.4}
+      density: 0.35
+      flow: {dirs: [still, up, down]}
+  two-moods:
+    label: Two moods
+    kind: contrast
+    line: two moods, swapping sides
+    params: {team_by: side, order: room, palette_roles: [base, highlight], energy_split: 0.15, swap_on: section}
+    routes: [section, phrase, hit, chord]
+    needs: [sides]
+    tags:
+      energy: [0.2, 0.75]
+      moods: [dark, tense, cosmic, cool, icy, fiery]
+      genre_fit: {soundtrack: 0.85, dubstep: 0.8, downtempo: 0.8, rock: 0.7, indie: 0.7, trance: 0.7, "*": 0.4}
+      valence: 0.35
+      density: 0.5
+      flow: {dirs: [still, inward, outward]}
+  piano-hands:
+    label: Low notes and high notes
+    kind: register_split
+    line: "piano: low notes {low}, high notes {high}"
+    params: {team_by: side, order: room, low: left, outside: 0.25}   # owner, 22 Oct: low notes south (left)
+    routes: [note, chord, hit, section]
+    needs: [piano, sides]
+    boost: {piano: 4.0}
+    tags:
+      genre_fit: {piano: 0.95, classical: 0.85, jazz: 0.8, "*": 0.5}
+      organic: 0.8
