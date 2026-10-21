@@ -9,8 +9,8 @@ scenes it will play next, each with the transition it comes in by, and of the ef
     transition the director chose for one of them is (``transition_origin``).
   * When a scene's dwell is up the head plays (prepared PREPARE_AHEAD_S before, so an edit up to then is honoured);
     Next plays the head now; a scene pushed from the Library plays at once and leaves the queue as it is.
-  * When the FX director adds or swaps an effect it takes the first queued effect that fits the bus then (stage,
-    cost budget) and drops it from the queue; a remove leaves the queue alone; Next effect does the same as a move.
+  * When the FX director adds or swaps an effect it takes the first queued effect that fits the bus then (one per
+    stage; no cost budget) and drops it from the queue; a remove leaves the queue alone; Next effect does the same as a move.
   * ETAs are estimates: a scene's from the dwell window (a section change on the bus can come sooner), an effect's
     from the FX director's cadence.
 

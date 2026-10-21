@@ -2222,14 +2222,11 @@ class Session(EngineListener):
             self.emit("session.held", hold_pts=self.hold_pts)
 
     def on_degrade(self, info: dict) -> None:
-        """The degradation controller stepped (degrade.py, in the engine): session.degrade, the panel's line; its fx
-        step reaches the FX director here (fewer, cheaper bus effects), its fps step the media hub's backlog."""
+        """The degradation controller stepped (degrade.py, in the engine): session.degrade, the panel's line; its fps
+        step reaches the media hub's backlog.  The effects are never trimmed (owner, 21 Oct: "degrade, never refuse")."""
         if self.state in ("ended", "failed"):
             return
         self.degrade = dict(info)
-        now = time.monotonic()
-        autos = sum(1 for st in self.fx.stack if getattr(st, "origin", "manual") == "auto")
-        self.fx_director.set_trim(bool(info.get("fx_trim")), now, autos)
         if info.get("out_fps"):
             self.media.fps = info["out_fps"]
         self.emit("session.degrade", **{k: info.get(k) for k in ("level", "step", "steps", "why", "since", "text",
