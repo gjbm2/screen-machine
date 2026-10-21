@@ -395,7 +395,19 @@ class Worker:
         # the degradation controller runs here; a control that predates it sends no "degrade": none, as before
         eng.degrade_mode = d.get("degrade", "off")
         self._warm_on_media = not self._warmed      # after the first packet, in the anchor hold: well before go / exit
-        eng.start(anchor)
+        # GC for the session: what is set up now is frozen out of collection, automatic GC goes off and the render
+        # loop collects in the slack before its deadlines (renderer.GC_*); back to normal when the session ends
+        gc.collect()
+        gc.freeze()
+        gc.disable()
+        eng.gc_paced = True
+        try:
+            eng.start(anchor)
+        except BaseException:
+            eng.gc_paced = False
+            gc.unfreeze()
+            gc.enable()
+            raise
         h = eng.hud
         if h is not None:
             rt = self.runtime
@@ -425,7 +437,9 @@ class Worker:
             again = eng.encoder == "nvenc" and eng.encoder_fallback is None
             profile = eng.profile
             del eng
+            gc.unfreeze()
             gc.collect()
+            gc.enable()
             if ctx is not None:
                 try:
                     with ctx.device:

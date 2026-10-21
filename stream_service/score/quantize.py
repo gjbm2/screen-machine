@@ -398,6 +398,7 @@ class ScoreBuilder:
         self.last_dynamic: Optional[str] = None
         self.ver = 0                            # bumped by whatever can change a note's staff (notes, hands, bars)
         self.staff_seen: dict[int, tuple[int, int]] = {}    # note id -> (ver, staff): _staff's answers this ver
+        self._onsets: Optional[tuple] = None    # _overlapping's sorted window, per (ver, notes, now)
 
     @property
     def timeline(self):
@@ -841,7 +842,8 @@ class ScoreBuilder:
             seen = self.staff_seen.get(n.id)
             if seen is not None and seen[0] == self.ver:
                 return seen[1]
-            st = self._staff(n, self._alone(n, self.notes, self.last_event_t or n.t_on), self.line_staff)
+            now = self.last_event_t or n.t_on
+            st = self._staff(n, self._alone(n, self._overlapping(n, now), now), self.line_staff)
             if len(self.staff_seen) > 1024:
                 self.staff_seen.clear()
             self.staff_seen[n.id] = (self.ver, st)        # (the glows ask every frame; it changes only with ver)
@@ -862,6 +864,21 @@ class ScoreBuilder:
     def staves(self, notes: list) -> list[int]:
         """_staff for each of ``notes`` (a scene's glows each frame, in one call: one hold of a shared builder's lock)."""
         return [self._staff(n) for n in notes]
+
+    def _overlapping(self, n: Note, now: float) -> list:
+        """The notes that can sound with ``n``: a window by onset (sorted once per builder state, bisected per note),
+        as _build does.  Checking every note held was O(glows x notes) on the render thread after every room message:
+        15-60 ms frames at 120-400 notes, 0.5-1.9 s before a late metre (7c, 21 Oct); the window gives the same answers."""
+        key = (self.ver, len(self.notes), now)
+        c = self._onsets
+        if c is None or c[0] != key:
+            # released notes by their end: those still sounding when n starts are a suffix (short for the recent
+            # notes the glows are), with the held ones beside them; no longest-note window to stretch over everything
+            done = sorted((m for m in self.notes if m.t_off is not None), key=lambda m: m.t_off)
+            c = self._onsets = (key, done, [m.t_off for m in done], [m for m in self.notes if m.t_off is None])
+        _k, done, offs, held = c
+        end = n.t_off if n.t_off is not None else now
+        return [m for m in done[bisect.bisect_right(offs, n.t_on):] if m.t_on < end] + [m for m in held if m.t_on < end]
 
     @staticmethod
     def _alone(n: Note, notes: list, now: float) -> bool:
