@@ -463,8 +463,9 @@ ml:
                                             # becomes 0.8 less show_service's share, never under this (starting point)
   silence_dbfs: -70                         # starting point: a quieter window runs no model (CED reports silence)
   results_stale_s: 3                        # starting point: a CED/tags result older than this is not "now"...
-  stale_periods: 1.5                        # ...nor older than this many of its task's intervals now (starting point;
-                                            # the worker stretches them under load, and every reader follows)
+  stale_periods: 3                          # ...nor older than this many of its task's intervals now (21 Oct: 1.5 flapped
+                                            # "isn't running" with CED readings every 4-8 s; the worker stretches them
+                                            # under load, and every reader follows)
   fast_lane:
     every_s: 1                              # §6: CED and EffNet every second
     budget_ms: 250                          # starting point: one cycle's hard budget; a task that won't fit is skipped,

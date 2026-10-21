@@ -24,9 +24,10 @@ A Stage-3 component ("listener", 1 Hz on show-brain). It never runs on show-rx: 
   for the stream (``ctx.ml``; MLView.stale_s, at least ``ml.results_stale_s``): "the music/speech check isn't
   running"; the latest reading's speech >= ``listener.ced.speech_max``: "people are talking" (speech is the max over
   ``ced.speech_words``: speech, conversation, crowd); else the clip is the longest contiguous run of seconds in the
-  last ``clip_s`` whose readings say music >= ``ced.music_min`` and speech < ``ced.speech_max`` (each reading vouches
-  for the last ``ced.speaks_s`` of its window, and the run's last second also needs the next reading, which covers it
-  too, to have passed; the latest run wins a tie), cut with ``rings.clip``; a run shorter than ``min_clip_s`` is
+  last ``clip_s`` whose readings say music >= ``ced.music_min`` and speech < ``ced.speech_max`` (a run starts
+  ``ced.speaks_s`` before its first reading, consecutive passing readings join while at most the CED's stale time apart,
+  so a worker slowed to a reading every 4-8 s still makes one run, and the run's last second also needs the next
+  reading, which covers it too, to have passed; the latest run wins a tie), cut with ``rings.clip``; a run shorter than ``min_clip_s`` is
   skipped: "not enough music without talking".
 * **Sections** (Stage 4, §7.3): structure's events (``on_music_event``) and music.context keep a short section history.
   A confirmed ``section_change`` makes one extra call due at its boundary + ``section_call_after_s`` (still
@@ -1372,8 +1373,10 @@ class Listener:
         speech is the max over listener.ced.speech_words (speech, conversation, crowd: guests talking over music
         show up as babble and conversation, not only as Speech). The run is the longest contiguous stretch of seconds
         in the ``clip_s`` that ends at ``t_end`` (None: the latest reading) whose readings say music >= ced.music_min
-        with speech < ced.speech_max; the latest run wins a tie. A reading vouches for the last speaks_s of its
-        window, and every second must be vouched for by each reading that covers it: the run's last second is also in
+        with speech < ced.speech_max; the latest run wins a tie. A run starts speaks_s before its first reading, and
+        each passing reading joins the one before it when they are at most the CED's stale time apart (its real
+        cadence, stretched under load), else speaks_s or its window. Every second must be vouched for by each reading
+        that covers it: the run's last second is also in
         the next reading's window, so it counts only when that reading exists and passed (or doesn't reach back
         into it); otherwise the run ends speaks_s earlier."""
         v = self._ml_view()
@@ -1412,7 +1415,9 @@ class Listener:
             if not ok(r):
                 cur, prev = None, None
                 continue
-            joined = prev is not None and t - float(prev["t"]) <= max(speaks, _f(r.get("window_s"), 0.0)) + 1e-6
+            # a reading vouches back to the one before it while that one was still "now" (ml_stale_s: the worker's
+            # real cadence, which it stretches under load), so readings every 4-8 s join into one run (21 Oct)
+            joined = prev is not None and t - float(prev["t"]) <= max(speaks, stale, _f(r.get("window_s"), 0.0)) + 1e-6
             if cur is None or not joined:
                 cur = [max(start, t - speaks), t, i]
                 runs.append(cur)

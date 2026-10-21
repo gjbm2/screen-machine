@@ -860,6 +860,32 @@ def test_a_stretched_ced_cadence_is_still_fresh(tmp_path):
     assert rig.lis.view()["why"] != L.WHY_NO_CED                       # the worker says CED comes every 6 s now
 
 
+def test_sparse_ced_readings_join_into_one_run(tmp_path):
+    """21 Oct (09's audit): readings every 4-8 s, all music without talking, never made a run over 1 s, so the gate
+    said "not enough music without talking" for good. A reading now vouches back to the one before it while that one
+    was still "now" (MLView.stale_s)."""
+    rig = stage4_rig(tmp_path)
+    rig.fill(seconds=35.0)
+    gaps = [0.0, 5.0, 4.0, 7.0, 6.0, 8.0]                             # the newest first, seconds before it
+    ts, t = [], rig.now
+    for g in gaps:
+        t -= g
+        ts.append(t)
+    rows = [ced(x, 0.72, 0.001) for x in sorted(ts)]
+    stale = {"ced": 24.0, "tags": 24.0, "key": 24.0, "beats": 30.0}  # 3 x the worker's 8 s
+    rig.ml = {**ml_view(rows), "stale_s": stale}
+    run_, why = rig.lis._ced_run("room-mic", rig.now)
+    assert why is None and run_[1] - run_[0] >= 6.0
+    rows[-3] = ced(rows[-3]["t"], 0.1, 0.6)                           # talking in between splits it
+    rig.ml = {**ml_view(rows), "stale_s": stale}
+    run_, why = rig.lis._ced_run("room-mic", rig.now)
+    assert why == L.WHY_SHORT
+    far = [ced(rig.now - 30.0), ced(rig.now - 0.5)]                    # further apart than the stale time: no join
+    rig.ml = {**ml_view(far), "stale_s": {**stale, "ced": 9.0}}
+    run_, why = rig.lis._ced_run("room-mic", rig.now)
+    assert why == L.WHY_SHORT
+
+
 def fill_until(rig, t_end, seconds=38.0):
     """Audio in the ring for the ``seconds`` that end at ``t_end`` (it may run ahead of the fake clock)."""
     now = rig.now

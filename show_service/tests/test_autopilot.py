@@ -458,6 +458,20 @@ def test_failed_switch_backs_off_until_resume(tmp_path):
     run(tmp_path, body)
 
 
+def test_a_partial_switch_landed_so_auto_carries_on(tmp_path):
+    """21 Oct (owner, 09's audit): gallery -> piano landed but was "partial" (the TVs' hdmi skipped, no adapter; the
+    Sonos pause unconfirmed) and Auto backed off 30 min. The mode landed: it's reported, never a backoff."""
+    async def body(h: H):
+        h.room.finish_status = "partial"
+        h.playing = True
+        await h.step_until(lambda: h.room.auto_puts())
+        await h.settle()
+        s = h.state()
+        assert h.room.current == "piano" and s["state"] != "backoff" and s["chip"]["kind"] == "switch"
+        assert any(e["kind"] == "partial" for e in h.ap._log)
+    run(tmp_path, body)
+
+
 # -- people win -------------------------------------------------------------------------------------------------------------
 def test_a_person_s_choice_holds_auto(tmp_path):
     async def body(h: H):

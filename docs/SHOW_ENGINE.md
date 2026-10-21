@@ -1076,7 +1076,7 @@ Situations combine with `all`, `any` and `not`, each with its own `for_s` confir
 - quiet hours (default 23:00–08:00: Auto may only leave a mode it entered, never enter one);
 - minimum dwell (5 min);
 - flap guard: at most 4 automatic switches in 30 min, then Auto pauses for 30 min and says so;
-- a 30-minute backoff after a failed, partial or rolled-back switch;
+- a 30-minute backoff after a failed or rolled-back switch (a partial one landed: it is only logged, 21 Oct);
 - how long a manual choice holds (below);
 - chip timings.
 
