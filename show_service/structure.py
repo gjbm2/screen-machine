@@ -92,7 +92,9 @@ are show.yaml structure.fastled):
              silent, for the new song's first sound (at most track.first_sound_s).
   dsp        a silence (the track test's gap_gate / gap_lufs_m) that lasts track.end_gap_s after music (situations'
              music_audible; unknown: any sound) is a song's end: track_end via dsp at the gap's start, unless Sonos
-             vouches for the song (playing, its end more than arm_s away: a break inside the song).
+             vouches for the song (playing, its end more than arm_s away: a break inside the song) or the piano does
+             (``piano_vouches``: a key or the damper down, or a note within track.piano_rest_s: a rest inside the
+             piece; owner, 21 Oct: practice kept going dark). Once it stops vouching, the same gap ends the song.
   back       after a track_end, sound again with no track change (at once via dsp; via sonos after end_slack_s,
              the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
              that went dark come back. A later silence after music sends track_end (the same id) again.
@@ -181,7 +183,8 @@ STRUCTURE_FALLBACK: dict = {
     "events": {"min_lead_s": 1.1},
     "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": -60, "window_s": 20, "tempo_jump": 0.04,
               "key_min_conf": 0.3, "parent_window_s": 5, "parent_margin": 0.05, "spike_k": 2.0, "spike_jumps": 2,
-              "end_gap_s": 3, "arm_s": 20, "rearm_s": 0.5, "end_slack_s": 3, "first_sound_s": 10},
+              "end_gap_s": 3, "arm_s": 20, "rearm_s": 0.5, "end_slack_s": 3, "first_sound_s": 10,
+              "piano_rest_s": 15},
     "build": {"window_s": 12, "min_slope": {"lufs_db_s": 0.15, "brightness_s": 0.004, "onset_rate_s": 0.05},
               "low_max_slope_db_s": 0.05, "full_rise_db": 6, "phrase16_conf": 0.5, "arm_beats": 8, "foot_db": 0.5},
     "drop": {"low_jump_db": 6, "lufs_jump_db": 3, "within_beats": 1, "hold_bars": 8, "snap_beats": 0.25,
@@ -243,6 +246,24 @@ def _call(fn: Optional[Callable], *a: Any) -> Any:
         return fn(*a)
     except Exception:
         return None
+
+
+PIANO_DAMPER_DOWN = 0.1      # situations.DAMPER_DOWN
+
+
+def piano_vouches(ctx: Any, rest_s: float) -> bool:
+    """The piano's MIDI (ctx.piano, the voice piano) says it is still being played: a key or the damper down, or a
+    note within ``rest_s``. A silence or a collapse in the room's level then is a rest inside the piece, not its end
+    (structure's gap end, cues' stop and fade; owner, 21 Oct). rest_s 0: off. No piano: False (the mic decides)."""
+    if not rest_s > 0:
+        return False
+    pv = _call(getattr(ctx, "piano", None))
+    if not isinstance(pv, dict) or not pv.get("stream"):
+        return False
+    if (_f(pv.get("keys_down"), 0.0) or 0.0) > 0 or (_f(pv.get("damper"), 0.0) or 0.0) >= PIANO_DAMPER_DOWN:
+        return True
+    age = _f(pv.get("last_note_age_s"))
+    return age is not None and age < rest_s
 
 
 def _p95(values: Any) -> Optional[float]:
@@ -1133,7 +1154,8 @@ class Structure:
 
     def _dsp_end(self, now_s: float) -> None:
         e = self._end
-        if not self._heard or (e is not None and not e["back"]) or self._sonos_vouches(now_s):
+        if not self._heard or (e is not None and not e["back"]) or self._sonos_vouches(now_s) \
+                or piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
             return
         self._track_end(now_s, "dsp", self._silent_since if self._silent_since is not None else now_s)
 

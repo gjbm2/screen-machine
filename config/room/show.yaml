@@ -893,6 +893,10 @@ structure:
                                             # before track_end "sound_back"
     first_sound_s: 10                       # a Sonos track change in silence waits this long for the new song's first
                                             # sound (its at_ms), then goes anyway
+    piano_rest_s: 15                        # the piano's MIDI vouches for the piece while a key or the damper is down
+                                            # or a note came this recently: no song end (this gap, cues' stop and
+                                            # fade). Measured 21 Oct: practice rests 2.5-12.2 s; each one went dark
+                                            # (owner: "flips to black regularly"). 0: off (the mic alone decides)
   build:                                    # §6.2 (needs a clock grid: no builds or drops without one)
     window_s: 12                            # §6.2: over 8-16 s...
     min_slope: {lufs_db_s: 0.15, brightness_s: 0.004, onset_rate_s: 0.05}   # ...loudness, centroid, onsets rising...
