@@ -515,12 +515,12 @@ class LookData(TypedDict):
     # light_scene above stays: it is the scene of the group lights.scene_group names (compat)
     flow: "FlowData"               # the same object as room.direction's
     light_programs: dict[str, "LightProgram"]   # light group -> its program; {} while neutral (the compat path)
-
     # docs/ENSEMBLE.md (22 Oct): how the room plays together, and the moments it plays (the look engine's)
     ensemble: "EnsembleData"       # the same object as room.direction's
     gestures: list["GestureData"]  # the recent ones, newest last (<= ensemble.gestures.keep); never on the bus
 
 class LightSceneDrop(TypedDict):
+
     """LookData.light_scene_drop: a drop line (structure's drop, a cue's forecast drop) for the light scene's drop
     flash (looks.LookEngine.trigger_hit, taken once per ``id``), whatever the peak tokens say."""
     id: str                        # "drop:<n>": +1 per drop line the director passes on
@@ -680,10 +680,10 @@ class DirectionData(TypedDict):
     loose: bool                    # the card's "following loosely": the vibe wants the beat, the clock is unsure
     flow: "FlowData"               # docs/LIGHTS.md §4: the room's direction of travel (still while neutral); published at
                                    # once on a new flow.id
-    # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
     ensemble: "EnsembleData"       # docs/ENSEMBLE.md: forms, roles, staggers per screen; published at once on a new
                                    # (id, rev)
     pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
+    # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
     peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
                                    # pick reads them instead of its own fixed peak, from step 3)
 
@@ -2402,7 +2402,8 @@ class EnsemblePart(TypedDict):
     palette_role: Optional[str]    # contrast: the palette role its colours lean to; else None
     energy_bias: float             # contrast: a screen's direction energy +- this; 0 otherwise
     register: Optional[list[float]]   # register_split: [lo, hi] of 0..1 register it plays; else None
-    clock_offset_beats: float      # canon: its beat-bound motion runs this many beats late; else 0
+    clock_offset_beats: float      # canon, and echo with clock_offset (the same picture a step behind; ff, 22 Oct):
+                                   # its beat-bound motion runs this many beats late; else 0
     team: int                      # its team's place in the travel order (0 first); -1: centre
     kind: str                      # PLAYER_KINDS
     side: str

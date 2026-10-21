@@ -151,7 +151,7 @@ _COMMON = {"team_by": "side", "order": "room"}
 FORM_PARAMS: dict[str, dict[str, Any]] = {
     "unison": {**_COMMON, "pulse": 1.0},
     "echo": {**_COMMON, "order": "flow", "pulse": 0.8, "delay_beats": 1.0, "delay_s": 0.5, "decay": 0.6,
-             "repeats": 1, "every_bars": 2, "caller": "first"},
+             "repeats": 1, "every_bars": 2, "caller": "first", "clock_offset": False},
     "call_and_response": {**_COMMON, "pulse": 0.8, "answer": "replay", "decay": 0.85, "half_s": 4.0,
                           "every_bars": 1},
     "ping_pong": {**_COMMON, "pulse": 0.4, "on": "beat", "downbeat_boost": 1.5, "scene_offset_beats": 1.0},
@@ -1065,6 +1065,8 @@ class Ensemble:
                 reg = [0.0, round(s_reg, 4)] if p["side"] == P["low"] else [round(s_reg, 4), 1.0]
             if kind == "canon" and P["clock_offset"] and k > 0:
                 off = round(k * float(P["offset_beats"]), 4)
+            elif kind == "echo" and P.get("clock_offset") and k > 0:     # ff, 22 Oct: the same picture, a step behind
+                off = round(k * float(P["delay_beats"]), 4)
             out[p["id"]] = {"role": role, "scale": scale, "stagger_beats": sb, "stagger_s": ss, "palette_role": pr,
                             "energy_bias": bias, "register": reg, "clock_offset_beats": off, "team": k,
                             "kind": p["kind"], "side": p["side"], "x": p["x"], "label": p["label"],
