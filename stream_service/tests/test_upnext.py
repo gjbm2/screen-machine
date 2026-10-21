@@ -106,6 +106,24 @@ async def test_a_direction_change_replans_the_directors_entries(client):
     assert not (set(before) - {mine}) & set(after)                                 # the director's were re-picked
 
 
+async def test_the_musics_own_moves_repick_only_the_head(client):
+    """live-F7 (21 Oct): a music-caused direction change re-picks the next scene in place (when it is the director's
+    own and not held), and leaves the rest of the plan alone."""
+    sid, s, eng = await live(client, auto=AUTO)
+    s._upnext_fill(time.monotonic())
+    before = [e["id"] for e in s.upnext.scenes]
+    s._dir_key, s._dir_drop_t = None, -1e9                                         # the pick key moved, long ago
+    s._apply_direction("music")
+    after = [e["id"] for e in s.upnext.scenes]
+    assert len(after) == SCENES_AHEAD and after[1:] == before[1:]                  # only the head is re-picked
+    assert s.upnext.scenes[0]["origin"] == "auto" and s.upnext.scenes[0]["transition"]
+    s.upnext.scenes[0]["origin"] = "you"                                           # the owner's head stays
+    head = s.upnext.scenes[0]["id"]
+    s._dir_key, s._dir_drop_t = None, -1e9
+    s._apply_direction("music")
+    assert [e["id"] for e in s.upnext.scenes] == [head, *after[1:]]
+
+
 async def test_effects_queue_feeds_next_effect(fx_client):  # noqa: F811
     client = fx_client
     sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": True, "max": 2}})

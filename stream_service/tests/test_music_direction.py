@@ -190,6 +190,18 @@ def test_panel_numbers_trim_and_words_pin():
     assert "energy" in fields and "transition_style" not in fields and "moods" not in fields and "fx.moods" in fields
 
 
+def test_full_fx_density_on_the_panel_is_not_thinned_by_the_music():
+    """live-F6 (21 Oct): a mode at fx.density 1.0 asked for every effect it allows; quiet music never thins it."""
+    p = panel(fx={"density": 1.0, "rate": 0.5})
+    eff = M.effective_direction(p, MUSIC, 1.0)
+    assert eff["fx"]["density"] == 1.0 and eff["fx"]["rate"] == 0.14          # the rate still follows
+    fields = M.music_fields(p, MUSIC, 1.0)
+    assert "fx.density" not in fields and "fx.rate" in fields
+    p = panel(fx={"density": 0.9, "rate": 0.5})                                # below 1.0: trimmed as before
+    assert M.effective_direction(p, MUSIC, 1.0)["fx"]["density"] == pytest.approx(0.59, abs=1e-3)
+    assert "fx.density" in M.music_fields(p, MUSIC, 1.0)
+
+
 def test_m_zero_is_the_panel_and_small_m_keeps_panel_words():
     p = panel()
     assert M.effective_direction(p, MUSIC, 0.0) is p and M.music_fields(p, MUSIC, 0.0) == []
