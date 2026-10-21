@@ -1,0 +1,33 @@
+staff-roll-paper:
+  label: Staff roll (paper)
+  source: staff_roll
+  params:
+    look: paper
+    palette: ember
+    note_glow: 0.8
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
+
+staff-roll-night:
+  label: Staff roll (night)
+  source: staff_roll
+  params:
+    look: night
+    palette: ember
+    note_glow: 1.0
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
