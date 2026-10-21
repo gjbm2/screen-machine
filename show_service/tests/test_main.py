@@ -675,7 +675,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         sd = tmp_path / "state"
         assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
                                        "patch_path": __import__("pathlib").Path("p.yaml")}
-        assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm"}
+        assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm",
+                                       "clips_dir": sd / "listen" / "clips"}
         assert made["cues"].kw == {"log_path": sd / "cues.jsonl"} and ctx.cue_sheet() == []
         assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
         assert made["mllink"].kw == {"log_path": sd / "ml-worker.log", "child_pids": show._child_pids}
