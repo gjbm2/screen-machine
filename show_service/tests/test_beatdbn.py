@@ -482,6 +482,57 @@ def act_beats(bpm: float, t0: float, t1: float) -> list[float]:
     return [0.3 + i * T for i in range(int((t1 - 0.3) / T) + 1) if t0 <= 0.3 + i * T < t1]
 
 
+def test_an_octave_back_switches_past_a_bar_line_that_is_an_in_between_beat():
+    """Under a x2 map the music moves half a tracker beat (30 s): the tracker's beats are now the in-between beats of
+    the bars (every bar line an in-between beat). The slow lane's x0.5 (40 s) then switches at the first beat of both
+    grids after its bar line (it once waited for a bar line that never came, and expired), the switch beat starting
+    the bar; and a human half (56 s) at the next bar the same way (it once waited for ever)."""
+    lag = C.AubioActivation.lag_s
+    seen: dict = {}
+
+    def parity(c: C.Clock, tt: float) -> None:          # the tracker's beat against the bar anchor, published count
+        seen["par"] = (c._om_floor(c._trk.line[0]) + c._off - c._bar_anchor) % 2
+        seen["f"] = c._om_f
+
+    at = {10.0: lambda c, tt: c.one(tt), 12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0),
+          39.9: parity, 56.0: lambda c, tt: c.half()}
+    at[40.0] = lambda c, tt: c.apply_integer_correction(None, None, 0.5)
+    clk, pubs = act_clock(act_train([(100.0, 0.3, 30.0), (100.0, 30.6, 80.0)], 80.0, lag, seed=31), at)
+    assert seen == {"par": 1, "f": 2.0}                 # (the case: every bar line an in-between beat)
+    t_back = next(tt for tt, d, _ in pubs if tt >= 40.0 and d["bpm"] < 150.0)
+    t_half = next(tt for tt, d, _ in pubs if tt >= 56.0 and d["bpm"] < 75.0)
+    assert t_back < 40.0 + 2 * 8 * 0.3 and t_half < 56.0 + 2 * 4 * 0.6     # within its wait, never expired
+    st = clk.stats()
+    assert st["corr_applied"] == 2 and st.get("corr_expired", 0) == 0 and clk._pending_oct is None
+    assert st["oct_factor"] == 0.5 and st["oct_clear_contrary"] == 1 and st["errors"] == 0
+    d = next(d for tt, d, _ in pubs if t_back + 1.0 <= tt)      # at 100, every beat (the downbeat too) on the music's
+    beats = [30.6 + i * 0.6 for i in range(80) if t_back + 1.0 <= 30.6 + i * 0.6 < t_back + 4.0]
+    assert len(beats) == 5 and all(abs(x - round(x)) < 0.06 for x in (C.beat_at(d, b) for b in beats))
+    for (_, p, _), (tt, q, _) in zip(pubs, pubs[1:]):
+        if p["bpm"]:
+            for dt in (0.0, 0.05, 0.1):
+                assert C.beat_at(q, tt + dt) >= C.beat_at(p, tt + dt) - 1e-9, (tt, dt)
+
+
+def test_the_dbn_coming_to_the_mapped_octave_itself_is_joined_not_a_new_grid():
+    """A x2 map over a DBN at 100 (published 200); at 40 s the music becomes a 200 loop on the same grid and the DBN
+    comes to 200 itself (hopping back once on the way). The out-of-range mapped tempo (400) is judged as a jump,
+    confirmed, then 'joined': the line slews on as the tracker's own, no new grid, never back to 100 (the range clause
+    once ended the map on the DBN's first line at 200, then published its hop back to 100: three epochs)."""
+    lag = C.AubioActivation.lag_s
+    a = act_train([(100.0, 0.3, 40.0), (200.0, 40.3, 90.0)], 90.0, lag, seed=31)
+    clk, pubs = act_clock(a, {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0)})
+    t_sw = next(tt for tt, d, _ in pubs if tt >= 12.0 and d["bpm"] > 150.0)
+    after = [(tt, d, ln) for tt, d, ln in pubs if tt >= t_sw + 1.0]
+    assert len({d["epoch"] for _, d, _ in after}) == 1
+    assert all(d["bpm"] > 150.0 for _, d, _ in after)
+    assert after[-1][1]["bpm"] == pytest.approx(200.0, rel=0.03)
+    assert 60.0 / after[-1][2][2] == pytest.approx(200.0, rel=0.03)              # the tracker's own line at 200
+    st = clk.stats()
+    assert st["oct_factor"] == 1.0 and st["oct_clear_joined"] == 1 and st.get("oct_clear_range", 0) == 0
+    assert st["oct_maps_cleared"] == 1 and st["errors"] == 0
+
+
 def test_a_tap_rephases_the_line_and_one_that_agrees_moves_nothing():
     clk, pubs, beats = locked_clock()
     d = clk.snapshot()
