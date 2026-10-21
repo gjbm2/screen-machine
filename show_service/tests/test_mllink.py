@@ -451,6 +451,35 @@ def test_a_contrary_vote_or_low_agreement_breaks_the_run():
     assert L.vote(x2_at(170.0))["applied"] and len(L.calls) == 1
 
 
+def test_an_octave_needs_a_gated_vote_in_its_run():
+    """README S4.5 "An octave needs a gated vote" (21 Oct): on 26's full-song set 044 (true 147, the clock at 148)
+    halved through two ungated turns in a row. An octave now applies only when one of its run's votes was judged on a
+    gated clock (beat or dmx), whichever; meanwhile the run is kept. Octave 1 (the one) is unchanged."""
+    sent = [{"octave": 2.0, "add_min": 0.2, "drop_max": 0.5, "prior_oct": 0.8}]
+    L = Link(cooldown_s=0)
+    L.clock = {**CLOCK, "gate": "none", "state": "locked"}
+    assert L.vote(x2_at(120.0))["why"] == "waiting for a second run"
+    assert L.vote(x2_at(130.0))["why"] == "waiting for a gated vote" and L.calls == []
+    L.clock = {**CLOCK, "gate": "none", "state": "holding"}
+    assert L.vote(x2_at(140.0))["why"] == "waiting for a gated vote" and L.calls == []   # (the run is kept)
+    L.clock = {**CLOCK, "gate": "dmx"}
+    assert L.vote(x2_at(150.0))["applied"] and L.calls == sent
+    L = Link(cooldown_s=0)                                    # a gated first vote, an ungated second: it applies
+    L.vote(x2_at(120.0))
+    L.clock = {**CLOCK, "gate": "none", "state": "locked"}
+    assert L.vote(x2_at(130.0))["applied"] and L.calls == sent
+    L = Link(cooldown_s=0)                                    # the gated vote fell out of the run: waits again
+    L.vote(x2_at(120.0))
+    L.clock = {**CLOCK, "gate": "none", "state": "locked"}
+    assert L.vote(x2_at(211.0))["why"] == "waiting for a second run"
+    assert L.vote(x2_at(221.0))["why"] == "waiting for a gated vote" and L.calls == []
+    L = Link()                                                # octave 1: ungated, as before
+    L.clock = {**CLOCK, "gate": "none", "state": "locked"}
+    L.vote(one_two_msg())
+    v = L.vote(one_two_msg())
+    assert v["applied"] and L.calls == [{"beat_is_one": v["beat_is_one"]}]
+
+
 def test_an_ungated_locked_or_holding_line_is_voted_on_a_searching_or_free_one_is_no_grid():
     """26's 031 (true 91): the clock locked at 181 with its gate none on 19 of 26 turns, Beat This! at 91 ("no grid"
     before 21 Oct). An ungated line in locked or holding is read; searching and free are not (README S4.5)."""

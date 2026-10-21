@@ -3397,12 +3397,15 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
       bar length (the meter) needs a one and `bar_agree_runs` (4) (S4.13), and without a one it never applies;
     - it differs from the clock now: octave ≠ 1, or `bar_len` ≠ `beats_per_bar`, or
       `(beat_is_one − bar_anchor_beat) mod bar_len` ≠ 0;
+    - an octave (2 or 0.5): at least one vote of the run was judged while the clock's gate was `beat` or `dmx`
+      ("An octave needs a gated vote", below);
     - the last apply is at least `cooldown_s` old.
 
     Then call `ctx.clock_correct(...)` with only the parts that differ. An octave goes alone (a halving onto the
     other half with the one that picks it); bar and one wait for the next run, under the new numbering. Never a
     phase, never a tempo.
-  - **The run** (21 Oct, 3a). It holds the votes of one key, each with its window's end and the clock's epoch.
+  - **The run** (21 Oct, 3a). It holds the votes of one key, each with its window's end, the clock's epoch and
+    whether the clock's gate was `beat` or `dmx` when it was judged.
     - A turn that is no vote ("no grid", "too few beats", "the tempi don't relate") neither adds to it nor breaks it,
       and a silent window writes no line at all. Before, any such turn reset it. On 26's full-song lookatmenow
       (room-mic model) Beat This! voted x0.5 four times at conf 0.64-1.0, but never on two turns in a row: the turns
@@ -3412,6 +3415,13 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
       lookatmenow or 031.
     - Stale evidence can't combine. A vote whose window ended more than `run_max_s` (90 s) before the new one's falls
       out, and a new epoch (the clock's new grid: another line, another count) clears the run.
+  - **An octave needs a gated vote** (21 Oct evening, 3a; the owner's ruling). An octave applies only when at least
+    one of its run's votes was judged on a gated clock (`beat` or `dmx`); until then `why` is "waiting for a gated
+    vote" and the run is kept, so a gated vote of the same key completes it. On 26's full-song set at e6b83d41 the one
+    wrong halving that reached the clock (044, 148 -> 74, true 147) came through two ungated turns in a row (conf
+    0.67, 1.0) and passed the clock's prior (74 >= 69). The two right ones had a gated vote in their run (lookatmenow:
+    dmx and dmx; 031: none, then dmx), as did the pop's and 084's halvings, which the prior refuses. Octave 1 (the
+    one, the bar length, a confirmation) is unchanged. S4.15 "The coast and the gated octave" has the measurement.
   - **An octave carries `octave_add_min`, `octave_drop_max` and `octave_prior_oct`** (21 Oct): conf can't pick an
     octave (one grid's beats are a subset of the other's, so they agree either way), so the clock (dbn) judges it on
     the room's audio at its switch beat and may refuse it (S4.15 "Octave evidence"; counted there, not here).
@@ -4767,6 +4777,9 @@ from now (0.15-0.65, under min_conf 0.6). And an octave that did apply only last
   itself mapping to 400, is judged as that jump: confirmed, then joined or jump), or a contrary correction (factor
   back to 1). The tracker's own octave hold (`set_octave`) is gone; taps keep `HOLD_S`. Stats: `oct_factor`,
   `oct_age_s`, `oct_maps_applied`, `oct_maps_cleared`, `oct_clear_<why>` (contrary, joined, jump, range, cold, tap).
+  **Since 21 Oct evening a jump of the DBN no longer ends the map** ("The coast and the gated octave", below: the
+  map coasts, and a DBN at another octave of the corrected tempo, the tempo itself included, is joined with the map
+  kept); `oct_clear_<why>` is now contrary, away, range, cold or tap.
 - Measured: 26's six inputs (`m06-quickstep`, `m09-reggae`, `m02-waltz`; x1 = the 30 s segment, x4 = it looped 4x
   with jump cuts; 30 s of silence first, gate ref -49 LUFS, `--seed 1`: 26's slow-lane phase), slow lane on, through
   `run_stack.py` (3a's dbn scratch `oct/`; 26's results as "before"). F, CMLt and acc1 (the right tempo, octave
@@ -4959,6 +4972,102 @@ precision 0.95 =, wrong-lock 0.001 =. Net, about nothing. The votes now reach th
 - Low agreement is kept as a break. On this set it sat between two votes of one key only for octave-1 one votes
   (7 turns on 4 songs) and the pop's refused halving (77 s and 127 s); keeping the run across it would add no right
   octave.
+
+**The coast and the gated octave (21 Oct evening, 3a; the owner's two rulings, relayed by 26).** At e6b83d41 the two
+right halvings on 26's full-song set held 8 s (lookatmenow) and 16 s (031): the map ended as soon as the DBN itself
+left the double. And 044's wrong halving (148 -> 74, true 147) came through two ungated turns. Two changes, and two
+more that keep a held halving on its half of the beats:
+- **The map holds the correction** (clock.py, the publisher). A confirmed jump of the mapped tempo no longer ends it.
+  - **Joined.** If the tracker is then at another octave of the corrected tempo (x0.25 to x4; at x1, the tempo
+    itself), the factor follows it (`_om_join`): a slew, no new grid. The map stays in force at factor 1 too
+    (`stats()["oct_map"]`), so a DBN that goes back to the octave it was corrected from is mapped again
+    (lookatmenow: 0.5 at 64.6 s, 1 at 112.7 s when the DBN came to 75 itself, 0.5 again at 121.3 s when it went back
+    to 148; published 72-75 throughout).
+  - **The coast.** Otherwise the published line holds the corrected tempo and never follows the wander through the
+    factor (0.5 x 110 = 55). Its tempo is the median of the last 16 mapped tempi it followed (`DBN_OCT_TEMPO_N`). Its
+    phase is the median of the mapped line's last 8 beats that the published line agreed with, within 0.15 beat
+    (`DBN_OCT_GOOD_N`, `DBN_OCT_GOOD`): the DBN's first beats away can still read near but re-phased, and on a
+    synthetic loop they took the coast 0.15 beat off before this. The published line slews onto it as a gated beat
+    does (half the error per beat, at most 10 %). The count only goes forward, the bar anchor is kept, and the bar
+    code gets the coast's beats (as misses), so a waiting correction still switches on a bar line.
+  - **Back.** It follows the tracker again once that is at the mapped tempo, or at another octave of the corrected
+    one, for 3 line updates in a row (`DBN_NEW_N`; on its way back a DBN can read the other octave for one beat). It
+    takes the half of the tracker's beats nearest the coast (`resumed`, `joined`). A single tap re-phases the coast
+    at its tempo (a new grid).
+  - **What ends a map:** the first gate after a quiet room, or the line's first jump after one (a new song;
+    `cold`); a contrary correction; a run of taps; the range; and `DBN_OCT_AWAY_S` (60 s) of a coast heard gated
+    (`away`). Stats: `oct_coast` (the coast in force: length, gated seconds, tempo, the tracker's tempo),
+    `oct_coasts_last` (the last 8 that ended: start, length, gated seconds, tempo, how it ended), `oct_coasts`,
+    `oct_coasts_resumed`, `oct_joins`; `oct_clear_<why>` is now contrary, away, range, cold or tap.
+- **The bound, measured.** Should anything but a quiet room end a coast? A straight cut to another song (no quiet
+  room between: a DJ's mix, a crossfade) would otherwise hold the old song's tempo for the whole new song: its tempo
+  doesn't relate, so the slow lane never votes. The tracker's own excursions were traced on 26's 24 full songs (D,
+  room-mic model, slow lane off; the tracker is the same with it on), each against its most-held tempo (an octave of
+  it counting as back, as joined does; 3a's dbn scratch `runs3/survey/`, `excursions.txt`). The longest excursion
+  heard gated within a song was 34.2 s (futureperfecttense, true 240, the DBN at 80 and 120 by turns), then 32.0 s
+  (the pop's first minute, before it settled at 127). On the two right-map songs it was 6.6 s (lookatmenow) and 0 s
+  (031: ungated). 19 of 24 songs have none heard gated at all, and 3 have one over 7 s (8.4, 32.0, 34.2). Over a song
+  the tracker is gated 70 % of the time (median; 0.04-0.96). So the bound counts gated seconds only, and is 60 s:
+  1.75x the longest measured within a song. On a cut it costs about 86 s of the new song at the median gated share. Measured on a straight cut: lookatmenow (its halving
+  applied at 62 s) cut at 100 s into hotstuff (120), through the same room model (`runs3/cut/`). The coast held 71.6
+  while the DBN locked hotstuff at 120.4, gated beat on 125 of 131 line updates. At 162.3 s (60.3 s gated) the map
+  ended `away`, a new grid on 120.4. Flashes on a beat: 0.27 over 100-162 s, 0.95 over 162-214 s.
+- **The half a halving keeps.** Holding a halving exposed the DBN's own walk at the double. On 031 its line ran 4 %
+  fast for 2 s, ungated, at 180 s, and the published 91 followed it onto the off-beats (flashes on a beat 0.92 ->
+  0). Two guards:
+  - Under a map at 0.5 (or 0.25) each line update refers the map to the published line first (`_om_rebase`): the
+    tracker's beats kept are the ones nearest the published beats, so a slip of the DBN's count by a beat no longer
+    moves the published line half a beat.
+  - Every 8 DBN beats (`DBN_HALF_N`) the halving's own audio reading is taken again on the kept half
+    (`_om_half_check`, `DbnTracker.octave_evidence`: the beats dropped over the beats kept). At 2 or more
+    (`1 / DBN_HALF_MAX`: the halving's rule `octave_drop_max` the other way round) the map moves to the other half (a
+    new grid, its bar line a guess; `oct_half_moves`). On 031 the walk at 180 s read 1.04-1.49 for 23 s, then 2.15 at
+    205 s: moved, and 205-225 s flashed 1.00 on a beat (30 of 30). On lookatmenow it read 0.42-1.29 and never moved:
+    there the kept half, Beat This!'s, carries the room's kicks (dsp's sub/bass hits, 7-18 a window, on alternate
+    beats, all on the kept half) and the larger activation. The annotations sit on the other half, so the held 73
+    flashes half a beat off them (flashes on a beat 0.05 over the held span, against 0.40 at the double). Nothing in
+    the room's audio points to the annotated half.
+- **An octave needs a gated vote** (mllink, S4.5): each run entry keeps whether the clock's gate was beat or dmx, and
+  an octave applies only when one of the run's is. 044's two ungated x0.5 votes now wait ("waiting for a gated
+  vote"), and 044 is flash-identical to 26's D.
+
+**Replays** (the live code through `run_stack.py`, the slow-lane pre-pass cached; 3a's dbn scratch `runs3/final/`;
+against e6b83d41's replays, `runs2/final/`, and 26's D at a9867fd2 for the four D tracks):
+
+| case | octave votes (against the annotations): the clock | the map | F | AMLt | acc1 over time |
+|---|---|---|---|---|---|
+| lookatmenow (73), room mic | x0.5 at 62 s, 147 -> 73, right: applied | 64.6 s to the end (196 s). Coasts: 15.2 s (resumed); 21.9 s (joined the DBN at 75 at 112.7 s, x0.5 again at 121.3 s); 4.9 s (resumed) | 0.517 / 0.515 -> **0.234** | 0.640 / 0.629 -> 0.443 | 0.023 / 0.044 -> **0.661** (acc1 0 -> 1) |
+| 031 (91), room mic | x0.5 at 169 s, other half, 182 -> 91, right: applied | 170.4 s to the song's end (253.7 s, cold). One 2 s coast (resumed), one half move (205 s) | 0.552 / 0.557 -> 0.548 | 0.663 / 0.628 -> 0.458 | 0.084 / 0.127 -> **0.295** |
+| 044 (147), room mic | x0.5 at 71 s, 148 -> 74, wrong: **waits** (two ungated votes) | none | 0.960 / 0.947 -> 0.960 (flash-identical to 26's D) | 0.932 / 0.891 -> 0.932 | 0.864 / 0.826 -> 0.864 |
+| the pop, 069 (126), room mic | x0.5 at 137 and 177 s, to 62-63, wrong: refused (prior) | none | 0.756 (flash-identical) | 0.656 | 0.510 |
+| quickstep x1 / x4 | x2 at 26 s, 102 -> 203, right: applied | to the end (x4: 94 s, no coast) | 0.697 / 0.889 (flash-identical) | 0.593 / 0.733 | 0.12 / 0.65 |
+| reggae x1 / x4, waltz x1 / x4 | none applied | none | flash-identical | = | = |
+| rec-full (pc22 mic), slow lane on | 20 turns: 12 too few beats, 2 low agreement, 1 unrelated, 5 single votes; none applied | none | flash-identical | = | = |
+| straight cut (lookatmenow -> hotstuff at 100 s) | x0.5 at 62 s, right: applied | to 162.3 s (`away`), then hotstuff's own grid | 0.544 | 0.331 | 0.336 |
+
+F / AMLt / acc1 over time are 26's D / e6b83d41 -> now. Flashes on a beat (within 70 ms of an annotation):
+- lookatmenow over the held span: 0.40 at the double -> 0.05 (0.73 on the off-beats: the kicks' half, above).
+- 031: 0.92 in 170-182 s (as at e6b83d41's 16 s); 0 in 182-205 s (the walk); 1.00 in 205-225 s after the half move
+  (0.49 at the double); 0.10 in 225-254 s, a second walk that read under 2 (0.11 at the double).
+
+The 8 parity cases (slow lane off) are flash-identical at the final code (`runs3/parity/`), and so are the replays
+with no map (reggae, waltz, the pop, 044 against 26's D, rec-full). Tests: test_beatdbn (the coast: through the
+DBN's excursion and back on the same grid; on the half a halving kept; joined at the corrected tempo, the map held and
+followed back to x2; `away` after DBN_OCT_AWAY_S gated; a tap, a person's half and a quiet room while coasting; the
+stronger half after a walk) and test_mllink (an octave needs a gated vote; a gated one carries an ungated one; one that
+fell out of the run waits again; octave 1 ungated as before).
+
+**Limits.**
+- A coast holds the tempo, not the phase. It drifts at its tempo's error: lookatmenow's coasts ran at 71.3-72.6
+  against a true 73.0, up to 2.4 % slow (the DBN's own line slope there reads 143 against 146), so 0.45 beat over its
+  15 s coast. 031's ran at 91.4 against 90.9. The rate of the published count over the agreeing beats was tried for
+  the coast's tempo instead: it read the DBN's walks into it (031: 93.4) and was dropped.
+- A held halving keeps the half the audio carries. When the annotations are on the other half (lookatmenow), F falls
+  while the tempo is right; when the DBN walks onto the weaker half, the half check needs that half to read clearly
+  weaker (2x), and a walk that reads 1-1.5 stays (031 at 181-205 s and again from 225 s).
+- `away` is a long bound: a straight cut to an unrelated song is followed only after 60 s of it heard gated.
+- The whole-replay acc1 and acc2 read the replay's median tempo. A map that holds for part of a song can put that
+  median between the octaves (031: acc2 1 -> 0, while acc1 over time 0.127 -> 0.295).
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 

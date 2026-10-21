@@ -520,8 +520,9 @@ def test_an_octave_back_switches_past_a_bar_line_that_is_an_in_between_beat():
 def test_the_dbn_coming_to_the_mapped_octave_itself_is_joined_not_a_new_grid():
     """A x2 map over a DBN at 100 (published 200); at 40 s the music becomes a 200 loop on the same grid and the DBN
     comes to 200 itself (hopping back once on the way). The out-of-range mapped tempo (400) is judged as a jump,
-    confirmed, then 'joined': the line slews on as the tracker's own, no new grid, never back to 100 (the range clause
-    once ended the map on the DBN's first line at 200, then published its hop back to 100: three epochs)."""
+    confirmed, then 'joined': the line slews on as the tracker's own (factor 1, the map still in force), no new grid,
+    never back to 100 (the range clause once ended the map on the DBN's first line at 200, then published its hop
+    back to 100: three epochs)."""
     lag = C.AubioActivation.lag_s
     a = act_train([(100.0, 0.3, 40.0), (200.0, 40.3, 90.0)], 90.0, lag, seed=31)
     clk, pubs = act_clock(a, {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0)})
@@ -532,8 +533,210 @@ def test_the_dbn_coming_to_the_mapped_octave_itself_is_joined_not_a_new_grid():
     assert after[-1][1]["bpm"] == pytest.approx(200.0, rel=0.03)
     assert 60.0 / after[-1][2][2] == pytest.approx(200.0, rel=0.03)              # the tracker's own line at 200
     st = clk.stats()
-    assert st["oct_factor"] == 1.0 and st["oct_clear_joined"] == 1 and st.get("oct_clear_range", 0) == 0
-    assert st["oct_maps_cleared"] == 1 and st["errors"] == 0
+    assert st["oct_factor"] == 1.0 and st["oct_map"] and st["oct_joins"] == 1 and st.get("oct_clear_range", 0) == 0
+    assert st.get("oct_maps_cleared", 0) == 0 and st["errors"] == 0
+
+
+# -- the octave map's coast (README S4.15 "The coast") ----------------------------------------------------------------
+def coast_case(after: tuple, at: dict | None = None, factor: float = 2.0, home: float = 100.0,
+               away: float = 135.0, end: float = 90.0) -> tuple[C.Clock, list[tuple[float, dict, tuple]]]:
+    """A DBN loop at ``home`` mapped by the slow lane's ``factor`` at 12 s; at 40 s the DBN follows the music to an
+    unrelated ``away`` for 15 s; from 55 s ``after`` = (bpm, n): that tempo from home's beat n on (the same grid)."""
+    lag = C.AubioActivation.lag_s
+    T = 60.0 / home
+    a = act_train([(home, 0.3, 40.0), (away, 40.0, 55.0), (after[0], 0.3 + T * after[1], end)], end, lag, seed=31)
+    return act_clock(a, {12.0: lambda c, tt: c.apply_integer_correction(None, None, factor), **(at or {})})
+
+
+def grid_frac(pubs, grid: list[float], t0: float, t1: float) -> np.ndarray:
+    """The published beat's fraction (from its nearest whole) at each of ``grid``'s times in [t0, t1), read on the
+    body in force then."""
+    ts = [tt for tt, _, _ in pubs]
+    out = []
+    for g in grid:
+        if t0 <= g < t1:
+            d = pubs[max(0, int(np.searchsorted(ts, g, side="right")) - 1)][1]
+            b = C.beat_at(d, g)
+            out.append(b - round(b))
+    return np.array(out)
+
+
+def forward_only(pubs) -> None:
+    for (_, p, _), (tt, q, _) in zip(pubs, pubs[1:]):
+        if p["bpm"]:
+            for dt in (0.0, 0.05, 0.1):
+                assert C.beat_at(q, tt + dt) >= C.beat_at(p, tt + dt) - 1e-9, (tt, dt)
+
+
+def test_an_octave_map_coasts_through_the_dbns_excursion_and_follows_it_back():
+    """The owner's rule (21 Oct): the map holds when the DBN itself wanders off. A x2 map over a DBN at 100
+    (published 200); 40-55 s the DBN follows the music to 135: the published line does not follow it through the
+    factor (270), it holds 200 with its count, its phase and its downbeat (the coast); back at 100 the map follows
+    the DBN again on the same grid. One epoch from the switch to the end, never off 200 by more than the slews."""
+    clk, pubs = coast_case((100.0, 92))
+    t_sw = next(tt for tt, d, _ in pubs if tt >= 12.0 and d["bpm"] > 150.0)
+    after = [(tt, d, ln) for tt, d, ln in pubs if tt >= t_sw]
+    assert t_sw < 15.0 and all(d["bpm"] > 175.0 for _, d, _ in after)            # never 100, 135 or 270
+    away = [d for tt, d, ln in after if 45.0 <= tt < 55.0]
+    assert away and all(d["bpm"] == pytest.approx(200.0, rel=0.02) for d in away)
+    assert sum(abs(60.0 / ln[2] - 135.0) < 5.0 for tt, _, ln in after if 45.0 <= tt < 55.0) >= 0.8 * len(away)
+    assert len({d["epoch"] for _, d, _ in after}) == 1 and len({d["bar_anchor_beat"] % 4 for _, d, _ in after}) == 1
+    grid = [0.3 + 0.3 * i for i in range(300)]                                  # the 200 grid (the home beats, x2)
+    f0 = float(np.median(grid_frac(pubs, grid, 30.0, 40.0)))
+    for t0, t1 in ((44.0, 55.0), (65.0, 90.0)):                                 # the coast; followed again
+        assert np.all(np.abs(grid_frac(pubs, grid, t0, t1) - f0) < 0.05), (t0, t1)
+    forward_only(pubs)
+    st = clk.stats()
+    assert st["oct_factor"] == 2.0 and st.get("oct_maps_cleared", 0) == 0 and st["oct_maps_applied"] == 1
+    assert st["oct_coasts"] == 1 and st["oct_coasts_resumed"] == 1 and st["oct_coast"] is None
+    (c,) = st["oct_coasts_last"]
+    assert c["end"] == "resumed" and 10.0 < c["s"] < 25.0 and c["bpm"] == pytest.approx(200.0, rel=0.005)
+    assert st["errors"] == 0
+
+
+def test_a_halving_coasts_on_the_half_it_kept_and_follows_that_half_back():
+    """x0.5 over a DBN at 140 (published 70); 40-55 s the DBN at 100; back at 140 the published 70 is on the same half
+    of the 140 beats as before (the tracker's count moved on by any number of beats meanwhile: ``_om_rebase``)."""
+    T = 60.0 / 140.0
+    clk, pubs = coast_case((140.0, 129), factor=0.5, home=140.0, away=100.0)
+    t_sw = next(tt for tt, d, _ in pubs if tt >= 12.0 and 0.0 < d["bpm"] < 90.0)
+    after = [d for tt, d, _ in pubs if tt >= t_sw]
+    assert all(55.0 < d["bpm"] < 80.0 for d in after) and len({d["epoch"] for d in after}) == 1
+    grid = [0.3 + i * T for i in range(300)]                                    # every 140 beat: half are whole
+    f0 = grid_frac(pubs, grid, 30.0, 40.0)
+    kept = np.abs(f0) < 0.2
+    assert 0.4 < kept.mean() < 0.6
+    fb = grid_frac(pubs, grid, 65.0, 90.0)
+    keep_b = np.abs(fb) < 0.2
+    assert 0.4 < keep_b.mean() < 0.6
+    k0 = [i for i, g in enumerate(grid) if 30.0 <= g < 40.0 and abs(grid_frac(pubs, [g], 0, 99)[0]) < 0.2]
+    k1 = [i for i, g in enumerate(grid) if 65.0 <= g < 90.0 and abs(grid_frac(pubs, [g], 0, 99)[0]) < 0.2]
+    assert {i % 2 for i in k0} == {i % 2 for i in k1} and len({i % 2 for i in k0}) == 1     # the same half
+    forward_only(pubs)
+    st = clk.stats()
+    assert st["oct_factor"] == 0.5 and st["oct_coasts_resumed"] == 1 and st.get("oct_maps_cleared", 0) == 0
+    assert st["errors"] == 0
+
+
+def test_a_halving_keeps_the_stronger_half_when_the_dbn_walks_onto_the_other():
+    """A 140 loop whose odd beats are weak (0.45), halved by a person at 12 s (no audio rule: either half may be kept);
+    within DBN_HALF_N beats the kept half is read again and the map moves to the strong one. At 30 s the published
+    line is pushed onto the weak half (as a DBN at the double walking a beat of its own takes it, 26's 031): it moves
+    back. Each move a new grid; the published line at 70 throughout."""
+    lag = C.AubioActivation.lag_s
+    T = 60.0 / 140.0
+    seen: dict = {}
+
+    def push(c: C.Clock, tt: float) -> None:            # the other half, as a walk of the DBN's count would make it
+        seen["moves"] = c.stats().get("oct_half_moves", 0)
+        c._om_k += 1
+        c._dbn_publish(c._trk.t_last, explicit=True)
+
+    a = act_train([(140.0, 0.3, 50.0)], 50.0, lag, seed=31, weak=0.45)
+    clk, pubs = act_clock(a, {12.0: lambda c, tt: c.half(), 30.0: push})
+    strong = [0.3 + 2 * i * T for i in range(200)]
+    for t0, t1 in ((22.0, 30.0), (40.0, 50.0)):
+        fr = grid_frac(pubs, strong, t0, t1)
+        assert len(fr) >= 8 and np.all(np.abs(fr - np.median(fr)) < 0.06) and abs(np.median(fr)) < 0.15, (t0, t1)
+    assert all(d["bpm"] == pytest.approx(70.0, rel=0.1) for tt, d, _ in pubs if tt >= 14.0)
+    st = clk.stats()
+    assert st["oct_half_moves"] == seen["moves"] + 1 and st["oct_factor"] == 0.5 and st["errors"] == 0
+    forward_only(pubs)
+
+
+def test_the_dbn_coming_to_the_corrected_tempo_while_coasting_is_joined_and_the_map_holds():
+    """The coast at 200 over a DBN away at 135; 55-75 s the music is 200 on the same grid and the DBN comes to 200
+    itself: joined (factor 1, the map still in force), the line slews on as the tracker's own, no new grid; from 75 s
+    the music is 100 again and the DBN goes back to it (at 97 s): the map follows (factor 2), still 200 published (its
+    slew aside), one epoch."""
+    lag = C.AubioActivation.lag_s
+    a = act_train([(100.0, 0.3, 40.0), (135.0, 40.0, 55.0), (200.0, 55.5, 75.0), (100.0, 75.3, 115.0)], 115.0, lag,
+                  seed=31)
+    seen: dict = {}
+    clk, pubs = act_clock(a, {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0),
+                              74.0: lambda c, tt: seen.setdefault("joined", (dict(c.stats()), c._trk.line))})
+    t_sw = next(tt for tt, d, _ in pubs if tt >= 12.0 and d["bpm"] > 150.0)
+    after = [(tt, d, ln) for tt, d, ln in pubs if tt >= t_sw]
+    assert all(d["bpm"] > 140.0 for _, d, _ in after) and len({d["epoch"] for _, d, _ in after}) == 1
+    st, ln = seen["joined"]
+    assert st["oct_factor"] == 1.0 and st["oct_map"] and 60.0 / ln[2] == pytest.approx(200.0, rel=0.03)
+    assert [c["end"] for c in st["oct_coasts_last"]] == ["joined"] and st["oct_joins"] == 1
+    late = [(d, ln) for tt, d, ln in pubs if tt >= 102.0]
+    assert late and all(d["bpm"] == pytest.approx(200.0, rel=0.03) for d, _ in late)
+    assert sum(abs(60.0 / ln[2] - 100.0) < 3.0 for _, ln in late) >= 0.9 * len(late)
+    grid = [0.3 + 0.3 * i for i in range(400)]
+    f0 = float(np.median(grid_frac(pubs, grid, 30.0, 40.0)))
+    for t0, t1 in ((60.0, 74.0), (102.0, 115.0)):         # (the DBN's own line at 200 reads 30 ms earlier)
+        assert np.all(np.abs(grid_frac(pubs, grid, t0, t1) - f0) < 0.12), (t0, t1)
+    forward_only(pubs)
+    st = clk.stats()
+    assert st["oct_factor"] == 2.0 and st["oct_map"] and st["oct_joins"] == 2 and st.get("oct_maps_cleared", 0) == 0
+    assert st["errors"] == 0
+
+
+def test_a_long_gated_excursion_ends_the_map_a_new_grid_on_the_dbns_own_line():
+    """A straight cut (no quiet room) from the mapped song to one at an unrelated tempo: the coast holds the mapped
+    200 until DBN_OCT_AWAY_S of the DBN's excursion were heard gated, then a new grid (epoch + 1) on its own 135."""
+    lag = C.AubioActivation.lag_s
+    end = 30.0 + C.DBN_OCT_AWAY_S + 20.0
+    a = act_train([(100.0, 0.3, 30.0), (135.0, 30.0, end)], end, lag, seed=31)
+    clk, pubs = act_clock(a, {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0)})
+    st = clk.stats()
+    (c,) = st["oct_coasts_last"]
+    assert c["end"] == "away" and c["gated_s"] >= C.DBN_OCT_AWAY_S
+    t_end = c["t0"] + c["s"]
+    assert C.DBN_OCT_AWAY_S <= c["s"] < C.DBN_OCT_AWAY_S + 8.0
+    held = [d for tt, d, _ in pubs if 35.0 <= tt < t_end - 0.5]
+    new = [d for tt, d, _ in pubs if tt >= t_end + 3.0]
+    assert held and all(d["bpm"] == pytest.approx(200.0, rel=0.02) for d in held)
+    assert new and all(d["bpm"] == pytest.approx(135.0, rel=0.03) for d in new)
+    assert {d["epoch"] for d in new} == {held[-1]["epoch"] + 1}
+    assert st["oct_factor"] == 1.0 and st["oct_clear_away"] == 1 and st["errors"] == 0
+    forward_only(pubs)
+
+
+def test_while_coasting_a_tap_moves_its_phase_a_quiet_room_or_a_contrary_word_ends_it():
+    """A tap off the coasting line (48 s) re-phases the coast at its own tempo (a new grid: epoch + 1), still mapped;
+    a person's half then (52 s, the contrary of the x2) ends the map: the tracker's own 135. Separately, a quiet room
+    during the coast: the DBN's next line away is the new song's (cold), a new grid on its own line."""
+    seen: dict = {}
+
+    def tap(c: C.Clock, tt: float) -> None:              # 0.25-0.75 of a published beat off it, off the DBN's line
+        d = c.snapshot()                                # too (a tap on the DBN's line is one more hit for it)
+        k0, t0, T = c._trk.line
+        for x in np.arange(1.25, 3.0, 0.05):
+            t_tap = d["anchor_ms"] / 1000.0 + (math.floor(C.beat_at(d, tt)) + x - d["beat_at_anchor"]) * 0.3
+            y = (t_tap - t0) / T
+            if abs(y - round(y)) > 0.25 and 0.25 <= x % 1.0 <= 0.75:
+                break
+        seen["tap"], seen["e0"] = t_tap, d["epoch"]
+        c.tap(t_tap)
+
+    def note(c: C.Clock, tt: float) -> None:
+        seen["after_tap"] = (c.snapshot(), dict(c.stats()))
+
+    clk, pubs = coast_case((100.0, 92), {48.0: tap, 49.0: note, 52.0: lambda c, tt: c.half()})
+    d, st = seen["after_tap"]
+    b = C.beat_at(d, seen["tap"])
+    assert abs(b - round(b)) < 1e-6 and d["epoch"] == seen["e0"] + 1 and d["bpm"] == pytest.approx(200.0, rel=0.01)
+    assert st["oct_coast"] is not None and st["oct_factor"] == 2.0 and st["dbn"]["taps_phase"] == 1
+    t_half = next(tt for tt, d, _ in pubs if tt >= 52.0 and d["bpm"] < 170.0)
+    assert t_half < 54.0
+    assert all(d["bpm"] == pytest.approx(135.0, rel=0.04) for tt, d, _ in pubs if t_half + 1.0 <= tt < 55.0)
+    st = clk.stats()
+    assert st["oct_clear_contrary"] == 1 and st["oct_factor"] == 1.0 and st["errors"] == 0
+    assert [c["end"] for c in st["oct_coasts_last"]] == ["contrary"]
+    forward_only(pubs)
+
+    def quiet_passed(c: C.Clock, tt: float) -> None:        # as _frame_dbn marks it after a quiet room
+        c._pub_cold, c._pub_real = True, False
+
+    clk, pubs = coast_case((100.0, 92), {48.0: quiet_passed})
+    st = clk.stats()
+    assert st["oct_clear_cold"] == 1 and st["oct_factor"] == 1.0 and [c["end"] for c in st["oct_coasts_last"]] == [
+        "cold"]
+    assert all(d["bpm"] == pytest.approx(135.0, rel=0.04) for tt, d, _ in pubs if 50.0 <= tt < 55.0)
+    assert st["errors"] == 0
 
 
 # -- the slow lane's octave evidence (README S4.15 "Octave evidence") --------------------------------------------------

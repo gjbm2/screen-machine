@@ -32,7 +32,8 @@ exactly; c8's integration ruling, 16 Oct: mllink wraps them rather than repeatin
     from its anchor at Beat This!'s own local period; an ungated line counts while locked or holding, and at 0.5
     either half of its beats may be the one kept); ``_apply`` then sends ``ctx.clock_correct`` only the parts that
     differ, once the same vote came ``agree_runs`` times in the run (turns that are no vote don't break it; another
-    vote does; ``run_max_s`` and a new epoch end it) with ``conf >= min_conf`` and ``cooldown_s`` after the last one.
+    vote does; ``run_max_s`` and a new epoch end it) with ``conf >= min_conf`` and ``cooldown_s`` after the last one;
+    an octave also needs one of the run's votes judged while the clock's gate was beat or dmx.
     An octave goes alone (bar and one wait for a run under the new numbering; a halving onto the other half carries
     the one that picks it), with the ``octave_*``
     thresholds: the clock judges it on the room's audio at its switch beat, since conf can't pick an octave (one
@@ -383,7 +384,7 @@ class MLLink:
         self._latest: dict[str, Optional[dict]] = {t: None for t in contract.ML_TASKS}
         self._stream: Optional[str] = None
         self._votes: collections.deque = collections.deque(maxlen=VOTES_KEEP)
-        self._run: list[tuple] = []                  # the vote run: (key, window_t1, clock epoch), one key
+        self._run: list[tuple] = []                  # the vote run: (key, window_t1, clock epoch, gated), one key
         self._last_apply: Optional[float] = None
         self.applied = 0
         self.confirmed = 0
@@ -649,7 +650,13 @@ class MLLink:
         lookatmenow four x0.5 votes at conf 0.64-1.0 never came two turns in a row. A vote that breaks it: another
         key, or one under min_conf ("low agreement": Beat This!'s beats off the line it would set). Stale evidence
         can't combine: a vote whose window ended more than ``run_max_s`` before the new one's falls out, and a new
-        epoch (a new grid: the clock's numbering and line are another's) clears it."""
+        epoch (a new grid: the clock's numbering and line are another's) clears it.
+
+        **An octave needs a gated vote** (21 Oct, 3a): each entry keeps whether the clock's gate was beat or dmx when
+        it was judged, and an octave applies only when one of the run's is (else "waiting for a gated vote"; the run
+        is kept). On 26's full-song set a wrong halving (044, 148 -> 74) reached the clock through two ungated turns
+        in a row, its tempo plausible to the clock's prior; the right ones (lookatmenow, 031) each had a gated vote in
+        their run. Octave 1 (the one, the bar length, a confirmation) is unchanged."""
         c = self.votes_cfg
         if vote["why"] is not None or vote["octave"] is None:
             return                                            # no vote: the run is kept as it is
@@ -662,6 +669,7 @@ class MLLink:
         else:
             key = (vote["octave"], vote["bar_len"], None if one is None else one % L)
         t_w, epoch = float(vote["window_t1"]), (clock or {}).get("epoch")
+        gated = (clock or {}).get("gate") in ("beat", "dmx")
         run_max = float(c["run_max_s"])
         self._run = [e for e in self._run if e[2] == epoch and 0.0 <= t_w - e[1] <= run_max]
         if vote["conf"] < float(c["min_conf"]):
@@ -671,12 +679,15 @@ class MLLink:
         agree, bar_agree = int(c["agree_runs"]), max(int(c["agree_runs"]), int(c["bar_agree_runs"]))
         if self._run and self._run[-1][0] != key:
             self._run = []                                    # a contrary vote
-        self._run = (self._run + [(key, t_w, epoch)])[-bar_agree:]
+        self._run = (self._run + [(key, t_w, epoch, gated)])[-bar_agree:]
         octave = vote["octave"]
         meter = octave == 1.0 and vote["bar_len"] is not None and vote["bar_len"] != bpb
         need = bar_agree if (meter and one is not None) else agree
         if len(self._run) < need:
             vote["why"] = "waiting for a second run" if need <= 2 else f"waiting for {need} runs (a new bar length)"
+            return
+        if octave != 1.0 and not any(e[3] for e in self._run):
+            vote["why"] = "waiting for a gated vote"          # (the run is kept: a gated one of this key completes it)
             return
         now = self._mono()
         cooling = self._last_apply is not None and now - self._last_apply < float(c["cooldown_s"])
