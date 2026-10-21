@@ -67,6 +67,7 @@ own (the floor bounds it from below).
 from __future__ import annotations
 
 import collections
+import gc
 import logging
 import queue
 import threading
@@ -93,6 +94,14 @@ MAX_PENDING_WRITES = 5
 POOL_BASE = 2        # gpu.RenderContext's preallocated frames (one transition level)
 RENDER_BOUND = 0.85   # repeats only when the recent render cost exceeds this fraction of a frame period
 RESYNC_S = 0.25
+# Paced garbage collection (gc_paced, set by a render worker that turned automatic GC off for its session): collections
+# run in the sleep before a frame's deadline, only with this much slack left, never inside a render.  Automatic GC put
+# gen2 pauses of 80-160 ms and gen1 of up to 27 ms inside live score renders (7c's fluency audit, 21 Oct).
+GC_SLACK_S = (0.002, 0.004, 0.008)      # gen0 / gen1 / gen2: slack needed
+GC_EVERY_S = (0.0, 0.5, 20.0)           # each generation at most this often
+GC_GEN2_MAX_S = 120.0                   # gen2 runs at the next frame regardless after this long (memory stays bounded)
+GC_GEN0_PILE = 10                       # gen0 regardless of slack once its count is this many times its threshold (ff: at
+                                        # the degrade floor there is no slack, and garbage would pile up for the gen2)
 STARTUP_GRACE_S = 2.0  # at most this long after the first encoded frame, start-up catch-up is not counted late
 RECORD_KEEP = 4096
 MAX_REPEAT_RUN = 3    # repeats in a row before a slot that would repeat is rendered anyway (a probe frame)
@@ -239,6 +248,9 @@ class Engine:
         self.frames = 0           # frame slots submitted (rendered + repeated)
         self.rendered = 0
         self.late_frames = 0      # frame slots started more than one period after their deadline
+        self.gc_paced = False     # collect garbage in the slack before deadlines (worker.py turns automatic GC off)
+        self.gc_max_ms = [0.0, 0.0, 0.0]   # the longest paced collection seen, per generation
+        self.gc_runs = [0, 0, 0]           # paced collections run, per generation
         self.repeats = 0          # of those, slots filled by re-submitting the previous frame
         self.probe_frames = 0     # slots that would have repeated, rendered after MAX_REPEAT_RUN repeats in a row
         self.content_frames = 0   # rendered frames whose scene was drawn (not held by rate_div)
@@ -559,6 +571,24 @@ class Engine:
     # ------------------------------------------------------------------------
     # render thread
     # ------------------------------------------------------------------------
+    def _gc_in_slack(self, deadline: float, last: list) -> None:
+        """Paced GC: the oldest generation that is due and fits the slack before ``deadline`` (gen2 regardless once
+        GC_GEN2_MAX_S has passed)."""
+        now = pace_clock()
+        slack = deadline - now
+        for g in (2, 1, 0):
+            due = now - last[g] >= GC_EVERY_S[g]
+            forced = (g == 2 and now - last[2] >= GC_GEN2_MAX_S) or \
+                (g == 0 and gc.get_count()[0] >= GC_GEN0_PILE * max(1, gc.get_threshold()[0]))
+            if (due and slack >= GC_SLACK_S[g]) or forced:
+                gc.collect(g)
+                t = pace_clock()
+                self.gc_max_ms[g] = max(self.gc_max_ms[g], (t - now) * 1000.0)
+                self.gc_runs[g] += 1
+                for k in range(g + 1):
+                    last[k] = t
+                return
+
     def _render_loop(self) -> None:
         ctx = self.ctx
         period = 1.0 / self.fps               # the frame-id grid; an output slot is step x this
@@ -579,8 +609,11 @@ class Engine:
                 start = pace_clock() + 0.05
                 n = 0
                 counting, n_first_enc = False, None   # late-frame accounting (start-up excluded, see below)
+                gc_last = [pace_clock()] * 3
                 while not self.stop_evt.is_set():
                     deadline = start + n * period
+                    if self.gc_paced:
+                        self._gc_in_slack(deadline, gc_last)
                     while True:                       # one sleep to the deadline (again only if woken early)
                         delta = deadline - pace_clock()
                         if delta <= 0:
@@ -1289,6 +1322,8 @@ class Engine:
             # change 5: the degradation controller, the output rate and its NVENC Reconfigures
             "degrade": self.degrade_state(), "out_fps": self.fps // self.step, "fps_steps": self.fps_steps,
             "reconfigure_ms": self.reconfigure_ms, "reconfigure_error": self.reconfigure_error,
+            # paced GC (7c, 21 Oct): the longest collection and the number run, per generation; None when not paced
+            "gc_ms": {"max": [round(x, 2) for x in self.gc_max_ms], "runs": list(self.gc_runs)} if self.gc_paced else None,
         }
 
     def guard_stats(self) -> dict:

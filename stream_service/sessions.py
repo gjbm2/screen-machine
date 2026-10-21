@@ -2360,7 +2360,8 @@ class Session(EngineListener):
                                            "host_ms", "encode_ms", "bitrate_mbps")},
                       **{k: e.get(k) for k in ("cpu_ms", "runq_ms", "blocked_ms", "content_fps", "content_frames",
                                                "held_frames", "probe_frames")},     # W0.2, W1.7
-                      **{k: e.get(k) for k in ("encode_cpu_ms", "slot_to_packet_ms", "forced_idrs")}},   # change 2
+                      **{k: e.get(k) for k in ("encode_cpu_ms", "slot_to_packet_ms", "forced_idrs")},   # change 2
+                      "gc_ms": e.get("gc_ms")},                                   # paced GC in a render worker
             "client_stats": self.media.summary(),
             # LIVE_V1 1.1 (R22)
             "current_scene": self.current_name, "scene_bindings": self.scene_spec.bindings,
