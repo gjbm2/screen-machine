@@ -1064,6 +1064,27 @@ lights:
       speeds: [[0.0, low], [0.4, medium], [0.75, high]]   # flow.speed from -> the remote's speed word
       min_gap_s: 120                        # §9.3: one change at most this often (the motor reverses)
     blinds:
+      enabled: false                        # true: big song changes move the blinds with an up/down flow
+      # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
+  motion:
+    default_max_speed_deg_s: {pan: 180, tilt: 120}   # until measured (each light's own max_speed wins)
+    accel_s: 0.12
+    pt_speed: 1.0                           # the light's own pan/tilt speed channel (1 = fastest; the engine smooths)
+    max_travel_share: 0.8                   # a beat-locked hop may spend at most this share of its period moving
+    dark_move_min_deg: 30                   # a jump bigger than this travels dark when the transition says so
+    settle_ms: 120
+    min_size_share: 0.4                     # a pattern too fast for a light shrinks to this, then slows
+    dark_max_s: 8                           # fade_dark never stays dark longer (director.track_transitions.gap's)
+  jog:
+    idle_s: 60                              # Move it hands the light back after this long with no moves
+    smooth_ms: 80
+    send_hz: 20
+    nudge_deg: {fine: 1, coarse: 5}
+    drag_deg_per_px: {fine: 0.1, coarse: 0.5}
+  calibration:
+    fit_deg: [1.5, 4.0, 8.0]                # good | ok | rough edges of the solve's rms error
+    min_spread_deg: 20                      # taught points closer than this together: "point it at places further apart"
+    pos_sigma_m: 0.3                        # how far the solve may move a light from where the map puts it
 
 # ---- The ensemble: how the room's screens and lights play together (docs/ENSEMBLE.md). Starting points unless marked.
 ensemble:
@@ -1118,24 +1139,3 @@ ensemble:
     split: auto                             # register_split's line: a MIDI note, or auto (the median of the last notes)
     split_range: [48, 72]                   # auto stays within C3..C5
     split_notes: 64
-      enabled: false                        # true: big song changes move the blinds with an up/down flow
-      # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
-  motion:
-    default_max_speed_deg_s: {pan: 180, tilt: 120}   # until measured (each light's own max_speed wins)
-    accel_s: 0.12
-    pt_speed: 1.0                           # the light's own pan/tilt speed channel (1 = fastest; the engine smooths)
-    max_travel_share: 0.8                   # a beat-locked hop may spend at most this share of its period moving
-    dark_move_min_deg: 30                   # a jump bigger than this travels dark when the transition says so
-    settle_ms: 120
-    min_size_share: 0.4                     # a pattern too fast for a light shrinks to this, then slows
-    dark_max_s: 8                           # fade_dark never stays dark longer (director.track_transitions.gap's)
-  jog:
-    idle_s: 60                              # Move it hands the light back after this long with no moves
-    smooth_ms: 80
-    send_hz: 20
-    nudge_deg: {fine: 1, coarse: 5}
-    drag_deg_per_px: {fine: 0.1, coarse: 0.5}
-  calibration:
-    fit_deg: [1.5, 4.0, 8.0]                # good | ok | rough edges of the solve's rms error
-    min_spread_deg: 20                      # taught points closer than this together: "point it at places further apart"
-    pos_sigma_m: 0.3                        # how far the solve may move a light from where the map puts it
