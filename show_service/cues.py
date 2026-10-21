@@ -20,6 +20,10 @@ nobody (``on_music_event`` skips via "cues").
   fade      structure's outro phase (loudness sliding down): track_end {detail "fade", fade-dark, out_s = the time
             to reach the floor from lufs_s's slope over fade.slope_s, clamped fade.min_s..max_s (3..12)}; the music
             coming back up (lufs_s fade.back_db over where it was) sends "sound_back".
+  repeat    once a song has had a sound_back, neither fires again in that song (logged ``repeat``; 09's audit live-F8,
+            21 Oct: track_end:9 fired 11 times in 3.5 min, the TVs dipping to black each time) until the next
+            track_change; the sheet then drops their Ready lines. structure's own gap-based end still goes through.
+            The lamps hear the same cues (on_music_event), so they stop dipping too.
   ending    the listener's ``ending`` (beliefs, held 60 s) picks which: cold arms the stop only; fade arms the fade
             (and the stop, which a fade never trips); segue arms neither (the track_change's crossfade carries it);
             unknown or no listener: both.
@@ -207,6 +211,9 @@ class Cues:
         self._sign_t: dict[str, float] = {}             # sign -> when it was last seen (monotonic s)
         self._dip: Optional[tuple[float, float]] = None   # a stop_return dip: (its start, the median before it)
         self._dark: Optional[dict] = None               # a standing cue's dark: {"kind", "id", "track_id", ...}
+        self._back: set[int] = set()                    # track ids that had a sound_back: no second dark (live-F8)
+        self._repeat_at: Optional[float] = None         # the collapse a repeat already skipped (logged once)
+        self._repeat_now = False                        # this song already had a sound_back (the sheet's Ready lines)
         self._outro_done = False                        # the fade fired (or was held) for this outro
         self._phase: Optional[str] = None
         self._armed: dict[str, dict] = {}               # kind -> the armed forecast cue
@@ -288,6 +295,8 @@ class Cues:
                 self._log_event({"kind": "dark_over", "cue": self._dark["kind"], "id": self._dark["id"],
                                  "why": "a new song"})
                 self._dark = None
+            self._back.clear()                        # a new song may go dark again
+            self._repeat_now = False
             for c in list(self._armed.values()):
                 self._resolve_cue(c, "disarmed", now, why="a new song")
 
@@ -427,6 +436,7 @@ class Cues:
         phase = ((mc or {}).get("section") or {}).get("phase") if mc is not None else None
         if phase != "outro":
             self._outro_done = False
+        self._repeat_now = bool(self._back) and self._track_id(mc) in self._back
         floor = self.floor
         if not rows:
             self._playing = False
@@ -488,6 +498,13 @@ class Cues:
             return
         tid = self._track_id(mc)
         ev_id = f"track_end:{tid}"
+        if tid in self._back:                         # this song came back once already: no second dark (live-F8)
+            if self._repeat_at != last_loud:          # once per collapse (it passes for ~1 s of ticks)
+                self._repeat_at = last_loud
+                self.counts["repeat"] += 1
+                self._log_event({"kind": "repeat", "cue": "stop", "id": ev_id, "ref_dbfs": round(ref, 1),
+                                 "level_dbfs": round(lv, 1)})
+            return
         at = last_loud + 0.1
         self._publish({"kind": "track_end", "id": ev_id, "at_ms": round(at * 1000.0, 1), "detail": "stop",
                        "via": "cues", "track_id": tid,
@@ -522,6 +539,10 @@ class Cues:
             return
         tid = self._track_id(mc)
         ev_id = f"track_end:{tid}"
+        if tid in self._back:                         # this song came back once already: no second dark (live-F8)
+            self.counts["repeat"] += 1                # (once per outro: _outro_done is set)
+            self._log_event({"kind": "repeat", "cue": "fade", "id": ev_id, "out_s": out_s})
+            return
         self._publish({"kind": "track_end", "id": ev_id, "at_ms": round(now_s * 1000.0, 1), "detail": "fade",
                        "via": "cues", "track_id": tid,
                        "transition": self._dark_transition(out_s, fc["in_s"], fc["dark_max_s"])}, now_s, now_s)
@@ -571,6 +592,8 @@ class Cues:
             return
         self._publish({"kind": "track_end", "id": d["id"], "at_ms": round(at * 1000.0, 1), "detail": "sound_back",
                        "via": "cues", "track_id": d["track_id"]}, now_s, at)
+        self._back.add(d["track_id"])                 # not dark again in this song (live-F8)
+        self._repeat_now = True
         self.counts["sound_back"] += 1
         self._log_event({"kind": "sound_back", "cue": d["kind"], "id": d["id"], "after_s": round(at - d["at_s"], 2)})
         self._dark = None
@@ -813,7 +836,7 @@ class Cues:
             if self._ending == "segue":
                 out.append({"kind": "segue", "words": READY_WORDS["segue"], "window_s": None, "size": None})
             for k, on in (("stop", self._stop_on), ("fade", self._fade_on)):
-                if on:
+                if on and not self._repeat_now:       # this song came back once: neither goes dark again in it
                     out.append({"kind": k, "words": READY_WORDS[k], "window_s": None, "size": None})
         self._sheet = out
 
@@ -825,7 +848,7 @@ class Cues:
             "cues": [{**self._cue_log(c, now_s), "scheduled_in_s": round(c["sched"]["at"] - now_s, 1)
                       if c["sched"] else None} for c in self._armed.values()],
             "standing": {"stop": self._stop_on, "fade": self._fade_on, "ending": self._ending,
-                         "playing": self._playing,
+                         "playing": self._playing, "repeat": self._repeat_now, "came_back": sorted(self._back),
                          "dark": {k: v for k, v in self._dark.items() if k in ("kind", "id", "track_id", "handed")}
                          if self._dark else None},
             "level": {"dbfs": round(last[1], 1) if last and last[1] is not None else None,

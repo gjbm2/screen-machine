@@ -285,7 +285,7 @@ def apply_patch(target: Any, patch: Any) -> Any:
 # -- the card (pure) -----------------------------------------------------------------------------------------------------
 NEUTRAL_STEPS: dict = {"value": 0, "min": 0, "max": 0, "at_limit": False}
 DESCRIBE_IDLE: dict = {"state": "idle", "text": None, "reply": None, "suggest": None}
-AUTO_CHOICE: dict = {"name": PALETTE_AUTO, "label": "Auto", "family": None, "swatch": []}
+AUTO_CHOICE: dict = {"name": PALETTE_AUTO, "label": "Let it choose", "family": None, "swatch": []}   # 09's F10
 ART_CHOICE: dict = {"name": PALETTE_ART, "label": "From the art", "family": None, "swatch": []}
 
 
@@ -1172,7 +1172,16 @@ class Api:
         brain = self.brain()
         if brain is None:
             return None
-        return card(self.snapshot(brain), self.engine(), describe=self.describe_state)
+        return card(self.snapshot(brain), self.engine(), describe=self._describe_view(brain))
+
+    def _describe_view(self, brain: Any) -> dict:
+        """The card's ``describe``: describe_state, with ``suggest`` null once the room is in the suggested mode
+        (09's audit F7: the offer to switch stayed up after the switch)."""
+        d = self.describe_state if isinstance(self.describe_state, dict) else dict(DESCRIBE_IDLE)
+        mode = _d(d.get("suggest")).get("mode")
+        if mode and mode == self._room_view(brain).get("current"):
+            return {**d, "suggest": None}
+        return d
 
     def _changed(self) -> None:
         """A tap changed something: refresh every card now, and once more after a director tick."""
@@ -1228,7 +1237,7 @@ class Api:
 
     # -- the card ---------------------------------------------------------------------------------------------------------
     async def _card(self, request: web.Request, brain: Any) -> web.Response:
-        return _json(card(self.snapshot(brain), self.engine(), describe=self.describe_state))
+        return _json(card(self.snapshot(brain), self.engine(), describe=self._describe_view(brain)))
 
     # -- nudges ------------------------------------------------------------------------------------------------------------
     async def _step(self, request: web.Request, brain: Any) -> web.Response:
@@ -1309,7 +1318,11 @@ class Api:
         if director is None:
             return _json({"done": False, "chips": [], "look": {"id": None, "next_pending": False},
                           "detail": MISSING[DIRECTOR]})
-        out = await self._call(brain, director.action, do)
+        on = body.get("on") if isinstance(body, dict) else None    # house / low: the wanted state (09's audit F6)
+        if isinstance(on, bool):
+            out = await self._call(brain, director.action, do, on)
+        else:                                       # no "on" (an older page): it toggles, as before
+            out = await self._call(brain, director.action, do)
         self._changed()
         return _json(out)
 

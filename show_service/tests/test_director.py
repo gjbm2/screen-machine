@@ -281,6 +281,55 @@ def test_with_no_feel_next_look_lands_and_does_not_hold_the_room(tmp_path):
     r2.run(6.0)
     assert r2.d.pending is None and not r2.d._held()
 
+
+def test_with_no_feel_a_quiet_room_keeps_its_colours(tmp_path):
+    """09's audit F3 (21 Oct): a relaxed room with no feel handed the lamps to artnet_out's P0 idle, flipping the page
+    to "Show stopped sending" about 400 times a day. The director always resolves a palette: its colours stay."""
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["ember"]}
+    r = Rig(tmp_path, settings=st)
+    r.run(2.0)
+    before = r.d.palette_fn(r.t)
+    assert before is not None
+    r.situations = {"quiet": {"value": True}}
+    r.run(8.0)
+    assert r.d._relaxed and not r.d.known
+    assert r.d.palette_fn(r.t) is not None and r.d.maestro_palette_fn(r.t) is not None
+
+
+def test_house_and_low_take_the_wanted_state_and_keep_toggles(rig):
+    """09's audit F6: the page sends the state it wants (a stale card or a second phone can't flip it the wrong way);
+    without ``on`` it toggles, as before. F13: a second Keep this look stops keeping."""
+    rig.d.set_target("alpha")
+    rig.run(0.5)
+    for _ in range(2):
+        rig.d.action("house", True)
+        assert rig.d.house is True and rig.d.low is False
+    rig.d.action("low", True)
+    assert rig.d.low is True and rig.d.house is False                   # one or the other
+    rig.d.action("low", True)
+    assert rig.d.low is True
+    rig.d.action("house", False)
+    assert rig.d.house is False and rig.d.low is True                   # off leaves Lights low alone
+    rig.d.action("low", False)
+    rig.d.action("low", False)
+    assert rig.d.low is False and rig.d.house is False
+    rig.d.action("house")
+    assert rig.d.house is True                                          # no "on": a toggle
+    rig.d.action("house")
+    assert rig.d.house is False
+    rig.d.action("keep")
+    assert rig.d.keep_until is not None and any(c["id"] == "keep" for c in rig.d.chips())
+    rig.d.action("keep")
+    assert rig.d.keep_until is None and not any(c["id"] == "keep" for c in rig.d.chips())
+
+
+def test_the_palettes_auto_choice_is_let_it_choose(rig):
+    rig.d.set_target("alpha")
+    rig.run(0.5)
+    first = rig.d.snapshot()["palette"]["choices"][0]
+    assert first["name"] == contract.PALETTE_AUTO and first["label"] == "Let it choose"   # only the room's Auto
+
 def test_art_without_colour_to_give_falls_through_to_the_next_palette(tmp_path):
     st = json.loads(json.dumps(SETTINGS))
     st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
