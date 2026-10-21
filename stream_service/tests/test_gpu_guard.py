@@ -381,11 +381,11 @@ async def test_auto_ok_sheet_rule_calibration_slow_and_broken(client, harness):
     assert mgr.auto_ok("source", "warp_stack", 0, budget)               # core
     assert mgr.auto_ok("source", "st_seen", 0, budget)                  # imported, rendered at least once
     assert not mgr.auto_ok("source", "st_nosheet", 0, budget)           # imported, never rendered
-    assert not mgr.auto_ok("source", "st_heavy_est", 0, budget)         # harness cost far over the budget
+    assert mgr.auto_ok("source", "st_heavy_est", 0, budget)             # harness cost over the budget: no cost test
     assert mgr.auto_ok("source", "st_heavy_est", 0, None)
-    # GPU 1 has calibration: it decides (status ok and fits), even over the sheet rule
+    # GPU 1 has calibration: it decides (only a hang or an error is out), even over the sheet rule
     assert mgr.auto_ok("source", "st_cal_ok", 1, budget) and not mgr.auto_ok("source", "st_cal_ok", 0, budget)
-    assert not mgr.auto_ok("source", "st_seen", 1, budget) and not mgr.auto_ok("source", "st_hung", 1, budget)
+    assert mgr.auto_ok("source", "st_seen", 1, budget) and not mgr.auto_ok("source", "st_hung", 1, budget)
     assert not mgr.auto_ok("source", "fractal_zoom", 1, budget) and mgr.auto_ok("source", "fractal_zoom", 0, budget)
     # a runtime stop (a hang) is recorded, never benched (owner, 18 Oct: no gates); a broken module: never
     mgr.note_slow({"kind": "source", "name": "st_seen", "gpu_ms": 4000.0, "budget_ms": 50.0, "why": "stuck"}, "s-x")

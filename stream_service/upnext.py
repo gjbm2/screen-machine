@@ -53,9 +53,10 @@ def why_words(kind: str, tags: dict, direction: dict, rated: float = 1.0, stage:
         out.append("you rated it 5★")
     elif rated >= 4.0:
         out.append("you rated it 4★")
+    lead = f"{'an' if stage and stage[:1] in 'aeiou' else 'a'} {stage} effect"     # "an overlay effect"
     if kind == "effect" and stage:
-        out.insert(0, f"a {stage} effect")
-    if not out or out == [f"a {stage} effect"]:
+        out.insert(0, lead)
+    if not out or out == [lead]:
         out.append("for variety")
     s = " · ".join(out)
     return s[:1].upper() + s[1:]
