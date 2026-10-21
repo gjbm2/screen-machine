@@ -92,11 +92,12 @@ class FakeDirector:
         self._swap()
         return {"palette": {"pick": name, "current": name}, "chips": self.snap["chips"]}
 
-    def action(self, do: str) -> dict:
+    def action(self, do: str, *on) -> dict:
+        self.action_args = (do, *on)
         if do == "house":
-            self.house = not self.house
+            self.house = (not self.house) if not on else bool(on[0])
         elif do == "low":
-            self.low = not self.low
+            self.low = (not self.low) if not on else bool(on[0])
         elif do == "keep":
             self._chip("keep", "Keep this look · 15 min", True)
         self._swap()
@@ -576,10 +577,18 @@ def test_action_director_and_clock_words(brain):
 
     async def go():
         async with served(make_api(brain)) as cl:
+            d = brain.components["director"]
             r = await cl.post("/api/v1/action", json={"do": "house"})
             b = await body(r)
             assert r.status == 200 and b["done"] and b["look"] == {"id": "L3", "next_pending": False}
-            assert brain.components["director"].house is True
+            assert d.house is True and d.action_args == ("house",)          # no "on": a toggle, as before
+            for _ in range(2):                                              # the wanted state, sent twice (F6)
+                r = await cl.post("/api/v1/action", json={"do": "house", "on": True})
+                assert r.status == 200 and d.house is True and d.action_args == ("house", True)
+            r = await cl.post("/api/v1/action", json={"do": "low", "on": False})
+            assert r.status == 200 and d.low is False and d.action_args == ("low", False)
+            r = await cl.post("/api/v1/action", json={"do": "low", "on": "yes"})     # not a bool: a toggle
+            assert r.status == 200 and d.low is True and d.action_args == ("low",)
             t0 = time.monotonic()
             r = await cl.post("/api/v1/action", json={"do": "tap"})
             b = await body(r)
@@ -696,7 +705,11 @@ def test_describe_end_to_end_with_event(brain):
             assert ctx["palettes"][:2] == ["art", "ember"] and ctx["palette_labels"]["art"] == "From the art"
             assert ctx["modes"][1] == {"name": "party", "label": "Party time"} and ctx["moods"] == ["warm", "mellow"]
             r = await cl.get("/api/v1/card")
-            assert (await body(r))["describe"]["state"] == "done"
+            cd = (await body(r))["describe"]
+            assert cd["state"] == "done" and cd["suggest"] == {"mode": "party", "label": "Party time"}
+            brain.components["room"].view = lambda: {**FakeRoom().view(), "current": "party"}   # the room switched
+            cd = (await body(await cl.get("/api/v1/card")))["describe"]
+            assert cd["suggest"] is None and cd["reply"] == b["reply"]       # the offer goes with it (F7)
             await ws.close()
 
     run(go())
@@ -1081,12 +1094,13 @@ def test_card_and_listening_show_the_cost_even_while_off(brain):
 
 def test_card_keeps_the_directors_auto_swatch():
     snap = {"components": {"director": {"palette": {"pick": "auto", "current": "ember", "choices": [
-        {"name": "auto", "label": "Auto", "family": None, "swatch": ["#112233"]},
+        {"name": "auto", "label": "Let it choose", "family": None, "swatch": ["#112233"]},
         {"name": "art", "label": "From the art", "family": None, "swatch": ["#445566"]}]
         + [{"name": f"p{i}", "label": f"P{i}", "family": "warm", "swatch": []} for i in range(7)]}}}}
     ch = card(snap, ENGINE)["palette"]["choices"]
     assert [x["name"] for x in ch] == ["auto", "art", "p0", "p1", "p2", "p3", "p4"]
     assert ch[0]["swatch"] == ["#112233"] and ch[1]["swatch"] == ["#445566"]
+    assert ch[0]["label"] == apimod.AUTO_CHOICE["label"] == "Let it choose"      # only the room's Auto is "Auto"
 
 
 def test_card_test_stream_flag():

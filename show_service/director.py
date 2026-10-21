@@ -83,12 +83,14 @@ silence) or a tap (Next look, a palette pick) moves through the vibe's ranked pa
 **Light scenes** (README S5.24; light_scenes.py, the scenes builder's, 18 Oct). While a palette resolves (a feel, or
 director.no_feel), the director picks the lamps' light scene from config/live/light_scenes.yaml: a weighted random
 draw (seeded) by how well each scene's tags fit room.direction (stream_service/tags.py's rule), never the one showing
-now. It picks when a feel is set, at each look that lands, at a song change and on a person's Next look (with no feel
-no look lands, so those two pick at once), and when none is set yet; never while Keep this look holds (a person's own
-Next look still picks). The pick and its why go in room.look (``light_scene``, ``light_scene_why``) and the
-snapshot's ``light_scene``; no scenes: null, and the look engine runs show.yaml's looks.layers. Every drop the director
-hears (structure's drop, a cue's forecast drop at its at_ms) goes to the look engine as LookData ``light_scene_drop``
-(one a beat), whatever the peak tokens say, so a scene with drop hits flashes at the line.
+now. It picks when a feel is set, at each look that lands (a song change's and a person's Next look's among them),
+with no feel at a song change that lands no look (held, or people talking), and when none is set yet; once each
+(09's audit F5, 21 Oct: a no-feel song change and Next look picked at once and again as their look landed); never
+while Keep this look holds (a person's own Next look still picks). The pick and its why go in room.look
+(``light_scene``, ``light_scene_why``) and the snapshot's ``light_scene``; no scenes: null, and the look engine runs
+show.yaml's looks.layers. Every drop the director hears (structure's drop, a cue's forecast drop at its at_ms) goes
+to the look engine as LookData ``light_scene_drop`` (one a beat), whatever the peak tokens say, so a scene with drop
+hits flashes at the line.
 
 **Light programs and the flow** (docs/LIGHTS.md §4, §7; the catalogue builder's, 18 Oct). The lights are split into
 groups (show.yaml ``lights.groups``, light_scenes.group_members: first match wins, the rest in "*"), and each group
@@ -1948,13 +1950,13 @@ class Director:
                 "prev_track_id": ev.get("prev_track_id"), "transition": tr}
         self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "transition": tr,
                                   "held": bool(ev.get("held")), "context": self._ctx_brief()})
-        if self._vibe_name is None:                       # no feel: no look of ours lands, so the lamps' light scene
-            self._pick_light_scene("track", now_s)        # changes with the song here (README S5.24)
         # relaxed by the gap itself (quiet, no audio): the new song is the sound coming back, so its look lands;
         # relaxed because people talk over the music: it holds (§8.5)
         talk_hold = self._relaxed and bool(vs["relax_on_talk"]) and self._situation("talking") is True
         if not self.pal_on or talk_hold or self.keep_until is not None or ev.get("held"):
-            self._release_dip(now_s, "the new song, with no look change")
+            if self._vibe_name is None:                   # no feel and no look lands: the lamps' light scene changes
+                self._pick_light_scene("track", now_s)    # with the song here (README S5.24); a look that lands picks
+            self._release_dip(now_s, "the new song, with no look change")    # its own (09's audit F5: not twice)
             return                                        # the palette moves on at the next look change
         pd = self.pending
         if pd is not None and pd.get("recall"):
@@ -3775,12 +3777,11 @@ class Director:
     def palette_fn(self, t_s: float) -> Optional[dict[str, tuple[float, float, float]]]:
         """The director's colours at ``t_s`` (crossfades, House, Low, dips). The drop's unison hit is not in it: it
         is LookData.hit, which each output takes by its caps (looks.py), and ``maestro_palette_fn`` for the virtual
-        Maestro (README S5.14)."""
+        Maestro (README S5.14). A quiet room with no feel keeps its colours too (09's audit F3, 21 Oct: the director
+        always resolves a palette; artnet_out holds them steady), never artnet_out's P0 idle."""
         p = self._pal
         if p is None:
             return None
-        if not self.known and self._relaxed:
-            return None                                   # a silent room with no feel: artnet_out's P0 idle, as before
         t0, t1, frm, to, frm_lab, to_lab = p
         if t_s >= t1:
             return to
@@ -4162,23 +4163,24 @@ class Director:
     def _current_palette_name(self) -> Optional[str]:
         return (self.look or {}).get("palette", {}).get("name") if self.look else None
 
-    def action(self, do: str) -> dict:
+    def action(self, do: str, on: Optional[bool] = None) -> dict:
+        """A card tap (POST /api/v1/action). ``on`` (house, low): the state the page asks for, so a stale card or a
+        second phone can't flip it the wrong way; None toggles (09's audit F6). Keep this look toggles: a second
+        tap stops keeping (F13). Next look lands a look, and the look that lands picks the light scene (F5)."""
         if do not in contract.DIRECTOR_ACTIONS:
             raise ValueError(f"unknown_action: {do}")
         now = self._now()
         if do == "next":
             self._human_change("next", advance=self.palette_pick == contract.PALETTE_AUTO)
-            if self._vibe_name is None:                   # no feel: no look lands, so the light scene moves on now
-                self._pick_light_scene("next", now, human=True)
         elif do == "keep":
-            self.keep_until = now + float(self.cfg["keep_s"])
+            self.keep_until = None if self.keep_until is not None else now + float(self.cfg["keep_s"])
         elif do == "house":
-            self.house = not self.house
+            self.house = (not self.house) if on is None else bool(on)
             if self.house:
                 self.low = False
             self._house_toggled = HOUSE_GLIDE_S
         elif do == "low":
-            self.low = not self.low
+            self.low = (not self.low) if on is None else bool(on)
             if self.low:
                 self.house = False
             self._house_toggled = float(self.cfg["low"]["fade_s"])
@@ -4363,8 +4365,8 @@ class Director:
         names = [p for p in vs["palettes"] if p != contract.PALETTE_ART and self.palettes.has(p)] if self.known else []
         if not names:
             names = self.palettes.names()
-        choices: list[contract.PaletteChoice] = [
-            {"name": contract.PALETTE_AUTO, "label": "Auto", "family": None,
+        choices: list[contract.PaletteChoice] = [          # only the room's own Auto is called "Auto" (09's audit F10)
+            {"name": contract.PALETTE_AUTO, "label": "Let it choose", "family": None,
              "swatch": [r["hex"] for r in ((self.look or {}).get("palette") or {}).get("roles", {}).values()]},
             self._art_choice()]
         choices += [self.palettes.choice(n) for n in names[:5]]

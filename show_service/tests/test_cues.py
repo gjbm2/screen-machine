@@ -202,6 +202,47 @@ def test_a_cold_ending_never_fades(tmp_path):
     assert r.events() == []
 
 
+def test_a_song_that_came_back_never_goes_dark_again_until_the_next_song(tmp_path):
+    """09's audit live-F8 (21 Oct: track_end:9 fired 11 times in 3.5 min, the TVs dipping to black each time): once a
+    song has had a sound_back, neither standing cue fires again in it (logged "repeat"); a new song resets it."""
+    r = Rig(tmp_path)
+    r.learn_floor()
+    r.run(5.0)
+    r.level = -64.0                                                     # a stop ...
+    r.run(0.3)
+    r.level = -20.0                                                     # ... and the sound comes back
+    r.run(0.5)
+    assert [e["detail"] for e in r.events("track_end")] == ["stop", "sound_back"]
+    r.run(4.0)
+    assert r.c.sheet() == []                                            # no Ready lines: it won't go dark again
+    assert r.c.snapshot()["standing"]["repeat"] is True
+    r.level = -64.0                                                     # the same song stops dead again
+    r.run(1.0)
+    assert [e["detail"] for e in r.events("track_end")] == ["stop", "sound_back"]
+    assert r.kinds().count("repeat") == 1 and r.c.snapshot()["counts"]["repeat"] == 1   # once per collapse
+    r.level = -20.0
+    r.run(5.0)
+    t0 = r.t
+
+    def fall(rr):                                                       # and its outro fades
+        rr.lufs_s = rr.lufs = rr.level = -20.0 - 3.0 * (rr.t - t0)
+        if rr.t - t0 >= 5.0:
+            rr.phase = "outro"
+    r.run(5.3, fall)
+    assert [e["detail"] for e in r.events("track_end")] == ["stop", "sound_back"]
+    assert [e["cue"] for e in r.c.log() if e["kind"] == "repeat"] == ["stop", "fade"]
+    r.phase, r.lufs_s, r.lufs, r.level = "calm", -20.0, -20.0, -20.0
+    r.c.on_music_event({"kind": "track_change", "id": "track_change:4", "at_ms": r.t * 1000.0, "via": "dsp",
+                        "track_id": 4})
+    r.track = 4                                                         # a new song: it may go dark again
+    r.run(5.0)
+    assert [x["kind"] for x in r.c.sheet()] == ["stop", "fade"]
+    r.level = -64.0
+    r.run(0.3)
+    last = r.events("track_end")[-1]
+    assert last["detail"] == "stop" and last["id"] == "track_end:4"
+
+
 # -- signs -----------------------------------------------------------------------------------------------------------
 def test_the_sign_detectors(tmp_path):
     r = Rig(tmp_path)

@@ -651,35 +651,34 @@ def test_a_little_lateness_keeps_the_screens_feed_on_its_grid():
         assert any(0.0 <= t - b <= 2 * 0.0008 + ao.GRID_TOLERANCE_S + 1e-6 for t in sock.sent), b
 
 
-def test_foreign_sender_by_rate_and_while_yielded():
+def test_foreign_sender_by_address_and_while_yielded_never_by_rate():
     ours = frozenset({"127.0.0.1"})
 
     def st(frm="127.0.0.1", age=10.0, pps=42.0, source="artnet"):
         return {"enabled": True, "input": {"last_from": frm, "age_ms": age, "pps": pps, "source": source}}
 
-    assert ao.foreign_sender(st(pps=85.0), ours, own_hz=41.0) == "127.0.0.1 (+44 pps)"   # a relay from localhost
-    assert ao.foreign_sender(st(pps=46.0), ours, own_hz=41.0) is None                    # just us (jitter)
-    assert ao.foreign_sender(st(pps=85.0), ours) is None                                 # not sending: no rate test
-    assert ao.foreign_sender(st(pps=85.0, age=4000.0), ours, own_hz=41.0) is None        # stale
+    assert ao.foreign_sender(st(pps=194.0), ours) is None                               # our own beat edges (F4)
+    assert ao.foreign_sender(st(frm="192.168.1.50", age=4000.0), ours) is None          # stale
     assert ao.foreign_sender(st(pps=44.0), ours, yielded=True) == "127.0.0.1"            # we're quiet: not us
     assert ao.foreign_sender(st(source="fake"), ours, yielded=True) is None              # room's own test show
     assert ao.foreign_sender(st(age=3000.0), ours, yielded=True) is None
     assert ao.foreign_sender(st(frm="192.168.1.50"), ours) == "192.168.1.50"            # the address rule stays
 
 
-def test_check_foreign_yields_to_a_second_sender_by_rate_and_resumes():
-    box = {"st": {"enabled": True, "input": {"last_from": "127.0.0.1", "age_ms": 12.0, "pps": 86.0,
+def test_check_foreign_ignores_our_own_rate_and_yields_to_another_address():
+    box = {"st": {"enabled": True, "input": {"last_from": "127.0.0.1", "age_ms": 12.0, "pps": 194.0,
                                              "source": "artnet"}}}
     vm = ao.VirtualMaestro(layout=layout(), poll_fn=lambda: box["st"])
-    vm.check_foreign()
-    assert vm.yielded_to is None                                  # we aren't sending: nothing to compare
     vm.active, vm._interval_s, vm._sent_t = True, 1 / 42.0, time.monotonic()
     vm.check_foreign()
-    assert vm.yielded_to == "127.0.0.1 (+44 pps)" and vm.yields == 1
-    box["st"] = {"enabled": True, "input": {"last_from": "127.0.0.1", "age_ms": 9.0, "pps": 44.0,
+    assert vm.yielded_to is None and vm.yields == 0               # sending, at any rate: it's us
+    box["st"] = {"enabled": True, "input": {"last_from": "192.168.1.50", "age_ms": 9.0, "pps": 44.0,
                                             "source": "artnet"}}
     vm.check_foreign()
-    assert vm.yielded_to is not None                              # the other sender alone, at its own rate
+    assert vm.yielded_to == "192.168.1.50" and vm.yields == 1
+    box["st"]["input"]["last_from"] = "127.0.0.1"
+    vm.check_foreign()
+    assert vm.yielded_to is not None                              # paused: fresh real Art-Net is someone else's
     box["st"]["input"]["age_ms"] = 5000.0
     vm.check_foreign()
     assert vm.yielded_to is None and vm.yields == 1

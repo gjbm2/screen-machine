@@ -329,21 +329,28 @@ def test_next_look_moves_it_on_and_keep_this_look_holds_the_directors_own(tmp_pa
     assert last_look(r)["light_scene"] == r.d.light_scene
 
 
-def test_with_no_feel_a_new_song_and_next_look_pick_at_once(tmp_path):
+def test_with_no_feel_a_new_song_and_next_look_pick_once_as_their_look_lands(tmp_path):
+    """09's audit F5 (21 Oct): with no feel they picked at once and again as their look landed (46 doubles under 2 s,
+    e.g. flow-wave then still-glow 0.6 s later on one Next look). Now the look that lands picks, once."""
     r = drig(tmp_path, no_feel=True)
     r.run(1.0)
     first = r.d.light_scene
     assert first is not None and r.d.light_scene_why.startswith("the first light scene: ")
+    picks = r.d.snapshot()["light_scene"]["picks"]
     r.event("track_change", r.t, track_id=3, via="dsp")
     r.run(0.2)
+    assert r.d.light_scene == first                                 # not at once: the new song's look picks it
+    r.run(4.5)
     assert r.d.light_scene not in (None, first) and r.d.light_scene_why.startswith("a new song: ")
+    assert r.d.snapshot()["light_scene"]["picks"] == picks + 1
     second = r.d.light_scene
     r.d.action("next")
-    r.run(0.1)
+    r.run(4.5)
     assert r.d.light_scene == first and r.d.light_scene_why.startswith("someone pressed Next look: ")
+    assert r.d.snapshot()["light_scene"]["picks"] == picks + 2
     r.d.keep_until = r.d._now() + 600.0                             # Keep this look: a new song keeps it
     r.event("track_change", r.t, track_id=4, via="dsp")
-    r.run(0.2)
+    r.run(4.5)
     assert r.d.light_scene == first and second != first
 
 

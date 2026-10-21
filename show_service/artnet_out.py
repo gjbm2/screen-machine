@@ -65,11 +65,10 @@ base look, Lights low, House lights; §8.5 "never black") with hue_depth 0, no D
 features are not followed (``status()["held"]``: the reason).
 
 **Yield** (§9.4, as fake_artnet yields to Maestro). Every 5 s ``GET http://127.0.0.1:8700/api/v1/dmx`` (its
-``input``: last_from, age_ms, pps, source), and pause (log it, ``yield.from``) when the input is fresh (``age_ms`` <=
-1500, room's stale_after_ms) and:
-  * ``input.last_from`` is not one of our source addresses (127.0.0.1 or the socket's own); or
-  * while we send, ``input.pps`` is over our own rate + 8: a second sender interleaves with us. last_from alone
-    misses it about half the time (it shows us), and never sees a sender relayed from 127.0.0.1.
+``input``: last_from, age_ms, source), and pause (log it, ``yield.from``) when the input is fresh (``age_ms`` <=
+1500, room's stale_after_ms) and ``input.last_from`` is not one of our source addresses (127.0.0.1 or the socket's
+own). There is no packet-rate test (09's audit F4, 21 Oct: "over our own rate + 8" tripped on our own beat-edge
+frames, 38 times from 127.0.0.1, each stopping the lamps for 5 s; Maestro is coming out).
 While paused we send nothing, so any fresh real Art-Net (``source`` "artnet", any address) keeps us paused; the first
 poll that shows the input stale (or only room's own test show) resumes. A failed poll changes nothing (degrade,
 never refuse). A failing frame is counted (``frame_errors``) and logged once, then at most every 30 s.
@@ -180,7 +179,6 @@ ROOM_DMX_URL = "http://127.0.0.1:8700/api/v1/dmx"
 POLL_S = 5.0
 PATCH_CHECK_S = 2.0
 FOREIGN_FRESH_MS = 1500.0           # room's artnet.stale_after_ms
-FOREIGN_PPS_MARGIN = 8.0            # room's input.pps over our own send rate by this: a second sender interleaves
 IDLE_AFTER_S = 5.0
 
 
@@ -327,15 +325,13 @@ def grid_tick(period_s: float, max_hz: float = GRID_HZ) -> float:
 
 
 def foreign_sender(status: Any, ours: set[str] | frozenset[str], fresh_ms: float = FOREIGN_FRESH_MS, *,
-                   own_hz: Optional[float] = None, yielded: bool = False) -> Optional[str]:
-    """room's GET /api/v1/dmx -> who else is live on the universe (an address, or ``"<addr> (+N pps)"``), else None.
+                   yielded: bool = False) -> Optional[str]:
+    """room's GET /api/v1/dmx -> who else is live on the universe (an address), else None.
     The input must be fresh (``age_ms`` <= fresh_ms), and then:
       * ``last_from`` is not one of ``ours``; or
-      * ``own_hz`` given (we are sending at that rate) and ``input.pps`` > own_hz + FOREIGN_PPS_MARGIN: a second
-        sender interleaves with us, even one whose packets come from 127.0.0.1 (a local Art-Net relay), or that
-        ``last_from`` misses because it shows ours about half the time;
       * ``yielded`` (we aren't sending): any fresh real Art-Net (``source`` "artnet") is someone else's, whatever
-        its address. room's own test show ("fake") and API injections don't count."""
+        its address. room's own test show ("fake") and API injections don't count.
+    No packet-rate test (09's audit F4): ``input.pps`` over our own rate tripped on our own beat-edge frames."""
     if not isinstance(status, dict) or status.get("enabled") is False:
         return None
     inp = status.get("input")
@@ -351,9 +347,6 @@ def foreign_sender(status: Any, ours: set[str] | frozenset[str], fresh_ms: float
         return frm
     if yielded:
         return (frm or "?") if inp.get("source") == "artnet" else None
-    pps = inp.get("pps")
-    if own_hz is not None and isinstance(pps, (int, float)) and pps > own_hz + FOREIGN_PPS_MARGIN:
-        return f"{frm or '?'} (+{pps - own_hz:.0f} pps)"
     return None
 
 
@@ -979,10 +972,7 @@ class VirtualMaestro:
             return
         self.polls += 1
         yielded = self.yielded_to is not None
-        sent = self._sent_t
-        sending = (not yielded and self.active and self._interval_s is not None and sent is not None
-                   and self._now() - sent < 1.0)
-        who = foreign_sender(st, self.ours, own_hz=1.0 / self._interval_s if sending else None, yielded=yielded)
+        who = foreign_sender(st, self.ours, yielded=yielded)
         if who and self.yielded_to is None:
             self.yields += 1
             self.yielded_since = self._now()
