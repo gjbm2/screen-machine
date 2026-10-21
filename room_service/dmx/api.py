@@ -138,12 +138,12 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
         if out is None:
             status, words = "unavailable", "Bridge not connected"
         elif armed and state == "streaming":
-            status, words = "following", ("Following the music" if show else
-                                          "Following the test show" if s.rx.source == "fake" else "Following Maestro")
+            status, words = "following", ("Following the test show" if not show and s.rx.source == "fake"
+                                          else "Following the music")
         elif armed and state == "starting":
             status, words = "armed", "Connecting to the lamps…"
         elif armed and state in ("waiting_input", "idle"):
-            status, words = "armed", "Ready: waiting for the music" if show else "Ready: waiting for Maestro"
+            status, words = "armed", "Ready: waiting for the music"
         elif armed and state == "taken_over" or (li is not None and li.get("mode") == "streaming"):
             status, words = "taken_over", "Taken over by another app"
         elif armed and state == "error":
