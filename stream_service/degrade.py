@@ -7,6 +7,8 @@ records and decides with arithmetic only.  Per output slot (means, ms) it knows:
   * gpu:  the frame's GPU span where it outlasted the host's submit by GPU_MARGIN_MS (real GPU work; a shorter span is
           the GPU waiting on the host);
   * enc:  the encode thread's time per slot (Encode() / the pipe write) plus the render thread's wait for a free slot;
+          of the encode thread's time, how much it sat runnable in the run queue (schedstat: the host's CPUs, not
+          the encoder);
 and the outcome: repeats and late slots.  Each stage's time as a share of the output period is its load.
 
 A second is overloaded when both its halves are: a stage at DOWN_LOAD or more, or repeats (REPEAT_SHARE) or late slots
@@ -16,7 +18,9 @@ A second is overloaded when both its halves are: a stage at DOWN_LOAD or more, o
               scene's own rate_div): the host or the GPU, and the scene not already that slow by itself;
   fps         output 60 -> 30 fps: NVENC Reconfigure, frame ids stay on the 60 Hz grid, each fMP4 sample lasts two ticks
               (renderer.py): any stage, on the GPU-encode path at 60 fps only (the ffmpeg path skips it).
-None left: it stays where it is (``floor``).  Down at most once a second: the window after a change starts at the
+The why is the busiest stage, except that an encode stage with at least ENC_RUNQ_SHARE of the encode thread's time
+in the run queue is the host's ("computer busy", 21 Oct: NVENC was 29-46% busy while the box ran at load 40-53 on
+20 vCPUs); the step taken is the same.  None left: it stays where it is (``floor``).  Down at most once a second: the window after a change starts at the
 change.  Up: the last step on comes off once its projection (the load without it, from the same numbers) has stayed
 under UP_LOAD for its UP_WAIT_S (fps 30 s) and as long since the last change.  A step that has to come back on within
 SETTLE_S of coming off doubles its wait (up to WAIT_MAX_X); one that stays off that long starts again from 1x.  Frozen
@@ -44,6 +48,7 @@ UP_WAIT_S = {"scene_rate": 10.0, "fps": 30.0}
 SETTLE_S = 60.0
 WAIT_MAX_X = 8
 GPU_MARGIN_MS = 1.0     # as guard.GPU_BOUND_MARGIN_MS: a span this much over the host's submit is real GPU work
+ENC_RUNQ_SHARE = 0.5    # the encode stage busiest with this share of its thread's time runnable, not running: "host"
 SCENE_FLOOR = 2
 EPS = 1e-6
 
@@ -63,6 +68,7 @@ class Window:
     blocked_ms: float = 0.0
     gpu_ms: float = 0.0
     enc_ms: float = 0.0
+    enc_runq_ms: float = 0.0                # the encode thread's run-queue wait inside enc_ms
     wait_ms: float = 0.0
     drawn_host_ms: Optional[float] = None   # slots whose scene was drawn (not held by a rate divider)
     drawn_gpu_ms: Optional[float] = None
@@ -73,12 +79,17 @@ class Window:
         p = max(EPS, period_ms)
         return {"host": self.host_ms / p, "gpu": self.gpu_ms / p, "enc": (self.enc_ms + self.wait_ms) / p}
 
+    @property
+    def enc_runq(self) -> float:
+        """The share of the encode thread's time spent waiting for a CPU (0..1)."""
+        return min(1.0, self.enc_runq_ms / self.enc_ms) if self.enc_ms > EPS else 0.0
+
 
 def window(recs: Iterable[Any], period_ms: float) -> Window:
     """renderer._Rec rows -> a Window.  Host and GPU are over rendered slots (a repeat renders nothing), the encoder
     over every slot it has taken; the GPU span of a frame still on the GPU is not known yet and is left out."""
     w = Window()
-    host = cpu = runq = blk = gpu = enc = wait = dh = dg = 0.0
+    host = cpu = runq = blk = gpu = enc = erq = wait = dh = dg = 0.0
     n_gpu = n_enc = nd = ndg = 0
     for r in recs:
         w.slots += 1
@@ -87,6 +98,7 @@ def window(recs: Iterable[Any], period_ms: float) -> Window:
         wait += r.wait_ms or 0.0
         if r.write_ms is not None:
             enc += r.write_ms
+            erq += r.enc_runq_ms or 0.0
             n_enc += 1
         if r.repeat:
             w.repeats += 1
@@ -112,6 +124,7 @@ def window(recs: Iterable[Any], period_ms: float) -> Window:
     w.host_ms, w.cpu_ms, w.runq_ms, w.blocked_ms = host / k, cpu / k, runq / k, blk / k
     w.gpu_ms = gpu / n_gpu if n_gpu else 0.0
     w.enc_ms = enc / n_enc if n_enc else 0.0
+    w.enc_runq_ms = erq / n_enc if n_enc else 0.0
     w.wait_ms = wait / max(1, w.slots)
     w.drawn_host_ms = dh / nd if nd else None
     w.drawn_gpu_ms = dg / ndg if ndg else None
@@ -185,7 +198,7 @@ class Controller:
         b = window([r for r in recs if r.t_start >= mid], period_ms)
         whole = window(recs, period_ms)
         ld = whole.load(period_ms)
-        self.load = {k: round(v, 3) for k, v in ld.items()}
+        self.load = {**{k: round(v, 3) for k, v in ld.items()}, "enc_runq": round(whole.enc_runq, 3)}
         sa, sb = self._over(a, period_ms), self._over(b, period_ms)
         if sa and sb:                             # held for the whole second
             self.ok_since = None
@@ -194,7 +207,8 @@ class Controller:
             if step is None:
                 self.floor = True
                 return None
-            return self._on(step, stage, ctx, now)
+            why = "host" if stage == "enc" and whole.enc_runq >= ENC_RUNQ_SHARE else stage   # starved, not NVENC
+            return self._on(step, why, ctx, now)
         self.floor = False
         if sa or sb or not self.steps:
             self.ok_since = None
