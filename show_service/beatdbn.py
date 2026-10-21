@@ -68,6 +68,12 @@ Added here, for the live clock (inert in a replay that has no corrections and co
   off for HOLD_S (its beats off the line are ignored, and a reset re-seeds on the line), so it never snaps straight
   back.
 - ``coast(t)``: no audio arriving: the predicted beats pass as misses on tick time, ``free``, gate ``none``.
+- ``octave_evidence(t_ref, T, f)`` (21 Oct): the audio's word on an octave of a line, for Clock's gate on the slow
+  lane's octave votes (README S4.15 "Octave evidence"): over the finer grid's last OCT_EV_N points heard, the mean
+  activation peak at the points only it has (the beats a doubling adds, a halving drops) over the mean at the beats
+  both grids keep, each above the activation's median there. It reads the last OCT_EV_S of frames (``_act_ev``, a
+  record nothing else reads). ``period()``: the line's period over its last 16 beats (their median), the grid it
+  is read on (the line's own jitters by 10 % beat to beat in a room).
 Pure numpy and the stdlib (``tg`` imports clock's Tempogram and _Peaks): the Clock, a test or a replay drive one the
 same way.
 """
@@ -94,6 +100,8 @@ SEED_PHASE_SD = 2.0             # ... and a Gaussian over the position (frames)
 TAP_AGREE = 0.15                # a tap within this many beats of the line's agrees (clock's legacy rule)
 TAP_CONF = 0.7                  # a line from taps alone: the DMX swell may follow it; the beat gate waits for audio
 EVENTS_MAX = 256
+OCT_EV_S = 20.0                 # octave_evidence: the activation kept (16 points of a 45 bpm halving's grid)
+OCT_EV_N = 16                   # ... read over the finer grid's last this many points (8 kept beats, 8 between)
 
 # -- the tracker's settings ---------------------------------------------------------------------------------------------
 DEFAULTS: dict[str, Any] = {    # the candidate's defaults (madmom_dbn.DEFAULTS), verbatim
@@ -265,6 +273,7 @@ class DbnTracker:
             self._pk = _clock._Peaks()
         self.counts = collections.Counter()
         self._act: collections.deque = collections.deque(maxlen=int(4 * FPS))   # (t, a): the last 4 s
+        self._act_ev: collections.deque = collections.deque(maxlen=int(OCT_EV_S * FPS))   # ... OCT_EV_S of it
         self._llr: collections.deque = collections.deque(maxlen=int(4 * FPS))   # log(16 c): vs a beatless model
         self._llr_sum8 = 0.0                                                     # ... an 8 s running sum of it
         self._llr8: collections.deque = collections.deque()
@@ -338,6 +347,14 @@ class DbnTracker:
     def n_line(self) -> int:
         return self._n_line
 
+    def period(self) -> Optional[float]:
+        """The line's period (s) over its last 16 beats: the median of their beat-to-beat periods (4 or more; else
+        the line's own, None without a line). Steadier than the line's own, which follows its last 8 DBN beats, or
+        the posterior while they disagree, and jittered 110-137 bpm beat to beat on 26's room-mic pop song."""
+        if len(self._ibis) >= 4:
+            return float(np.median(self._ibis))
+        return self._line[2] if self._line is not None else None
+
     def beat_at(self, t: float) -> float:
         """The line's beat (float) at host time ``t``; NaN without a line."""
         ln = self._line
@@ -368,6 +385,7 @@ class DbnTracker:
             a = min(0.95, float(a) * self.cfg["act_norm"] / self._an_L)
         a = min(1.0 - 1e-6, max(1e-6, float(a)))
         self._act.append((t, a))
+        self._act_ev.append((t, a))
         self._salience(t)
         if self._tg is not None:
             v, _ = self._pk.push(a, t, self._tg_floor)
@@ -711,6 +729,42 @@ class DbnTracker:
         self.set_no_audio(True, t)
         self._judge(t)
         self._flush_events(t)
+
+    def octave_evidence(self, t_ref: float, T: float, f: float, n: int = OCT_EV_N) -> Optional[dict]:
+        """The audio's word on an octave of a line (Clock's gate on the slow lane's octave votes, README S4.15
+        "Octave evidence"). The line's beat at host time ``t_ref`` (acoustic, as this tracker's times) is one both
+        grids keep, ``T`` its period, ``f`` 2 (the octave adds the beats midway) or 0.5 (it drops every other beat,
+        ``t_ref``'s parity staying). Over the finer grid's last ``n`` points heard (``t_ref + j x P``, P = T at 0.5
+        and T / 2 at 2; odd j are the points only the finer grid has), each point's activation peak within +-w
+        (w = min(70 ms, P / 4)) from the last OCT_EV_S of frames, less the activation's median over that span (the
+        floor between onsets). Returns ``{"ratio", "n", "added", "kept", "floor"}``: ratio = the mean over the odd
+        points (the beats a doubling adds, a halving drops) / the mean over the even ones (the beats both keep).
+        None with fewer than n / 2 points heard (a quiet room, a hole) or no peak above the floor on the even ones."""
+        if not self._act_ev or not T > 0.0 or f not in (0.5, 2.0):
+            return None
+        P = T if f < 1.0 else 0.5 * T
+        w = min(0.07, 0.25 * P)
+        A = np.asarray(self._act_ev, float)
+        ta, aa = A[:, 0], A[:, 1]
+        j0 = math.floor((self.t_last - w - t_ref) / P + 1e-9)    # the newest point whose window has been heard
+        odd: list[float] = []
+        even: list[float] = []
+        t_first = math.inf
+        for j in range(j0, j0 - int(n), -1):
+            t = t_ref + j * P
+            lo, hi = int(np.searchsorted(ta, t - w, "left")), int(np.searchsorted(ta, t + w, "right"))
+            if hi <= lo:
+                continue
+            (odd if j % 2 else even).append(float(aa[lo:hi].max()))
+            t_first = t
+        if len(odd) + len(even) < 0.5 * n or not odd or not even:
+            return None
+        span = aa[int(np.searchsorted(ta, t_first - P, "left")):]
+        floor = float(np.median(span))
+        added, kept = float(np.mean(odd)) - floor, float(np.mean(even)) - floor
+        if not kept > 1e-6:
+            return None
+        return {"ratio": added / kept, "n": len(odd) + len(even), "added": added, "kept": kept, "floor": floor}
 
     # -- the body (contract.ClockData's fields; Clock fills the bar and phrase ones, and its published line and epoch)
     def body(self, now_s: float, source: str = "madmom-dbn2") -> dict:

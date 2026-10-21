@@ -3389,6 +3389,9 @@ def decode_emb(b64: str, dim: int) -> np.ndarray                                
 
     Then call `ctx.clock_correct(...)` with only the parts that differ. An octave goes alone; bar and one wait for the
     next run, under the new numbering. Never a phase, never a tempo.
+  - **An octave carries `octave_add_min`, `octave_drop_max` and `octave_prior_oct`** (21 Oct): conf can't pick an
+    octave (one grid's beats are a subset of the other's, so they agree either way), so the clock (dbn) judges it on
+    the room's audio at its switch beat and may refuse it (S4.15 "Octave evidence"; counted there, not here).
 - **CPU.** Every 10 s it reads `/proc/<worker pid>/stat` and our own: `snapshot()["cpu"]` = `worker`, `service` and
   `total`, in cores. A total over 0.8 for 60 s is logged (at most every 10 min) and shown. Since S4.13 it is also
   enforced, by degrading: while the 60 s total is over 0.8, the worker's cpu_max (a config frame) is 0.8 less
@@ -4170,7 +4173,7 @@ both at integration (S4.12).
 
 | Section | Read by | Keys |
 |---|---|---|
-| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s}`, `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
+| `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s, octave_add_min, octave_drop_max, octave_prior_oct}` (the octave_* keys since 21 Oct: S4.15 "Octave evidence"), `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
 | `genre_map` | structure (`genre_reading`) | `parents {Discogs parent: word, or {from_listener: [words]}}`, `tau_s`, `freeze_below_music`, `speech_scale_above`, `switch_margin`, `switch_dwell_s` |
 | `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m, window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps}`, `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
 | `situations.talking` (new; `speech_words` since S4.13, also read by structure); `situations.quiet` gains `music_below`, `speech_below` | situations | S4.8 |
@@ -4781,6 +4784,76 @@ that is wrong for that song holds until a new grid (synthetic, 21 Oct check: 90 
 **A person's octave stands.** A half or double from the Room page outranks the slow lane: a contrary slow-lane octave
 vote is dropped whole (counted ``corr_human``; its one and bar length assumed its own octave) for HUMAN_OCT_HOLD_S
 (10 min) or until a new song (the cold grid after a quiet room). Before, two runs and the cooldown undid it in ~25 s.
+
+**Octave evidence (21 Oct, 3a).** 26's held-out run with the slow lane on (`tools/room/beat_eval/IMPROVE_2026-10-19.md`,
+last addendum) found one regression. On the room-mic model, Beat This! heard a ~126 bpm pop song (TapCorrect
+`069_youtube_8kl6q_9qZOs`) at 61-65 and voted x0.5 twice at conf 1.0, and the clock ran at half tempo from 137 s to
+~205 s (acc1 1 -> 0). At an octave, conf can't choose: one grid's beats are a subset of the other's, so they agree
+whichever octave is right. A slow-lane octave now also passes the clock's own judgement at its switch beat
+(`Clock._oct_evidence` on the tracker's `octave_evidence`):
+- **x2** needs the beats midway to carry real activation peaks. Their mean peak, over the mean at the beats (both above
+  the activation's median over the span), must be at least `octave_add_min` (0.2); else `corr_octave_refused_audio`.
+- **x0.5** applies when the beats it drops are clearly weaker (that ratio at most `octave_drop_max`, 0.5). Otherwise
+  the audio can't tell, and the tempo prior decides: the halved tempo must lie within `octave_prior_oct` (0.8) octave
+  of the clock's prior, 120 bpm (so at least 69 bpm); else `corr_octave_refused_prior`.
+- Too little activation to judge (a quiet room, a hole): `corr_octave_refused_unheard`. A refused octave moves
+  nothing; `last_correction.result` is `octave_refused_<why>`, and `stats()["oct_evidence"]` is the latest verdict
+  (`{octave, at_beat, bpm, ratio, n, result}`).
+- **Read over 16 points** of the finer grid (8 kept beats and 8 between, or dropped), each point's peak within
+  min(70 ms, a quarter of its period), from the last 20 s of frames (`beatdbn.OCT_EV_S`). The grid is the line's
+  period over its last 16 beats (`DbnTracker.period`, the median of its beat-to-beat periods), also the tempo the prior
+  reads. The tracker's own period jumped 110-137 bpm beat to beat on the room-mic pop; at the switch it read 136,
+  whose half is within 1 % of the bound. The median read 125.0.
+- mllink sends the three thresholds with each octave (S4.5; show.yaml `ml.beat_votes.octave_*`); the clock's
+  defaults are the same (`OCT_ADD_MIN`, `OCT_DROP_MAX`, `OCT_PRIOR_OCT`). A person's half/double and the legacy
+  estimator are not judged.
+
+**How it was chosen.** Every octave vote in 26's runs was replayed through run_stack with the evidence logged and the
+gate off: the 13 replays that had one (26's quickstep and reggae inputs; the pop; every held-out track with an octave
+vote at conf 0.6 or more in 26's runs, in the conditions it ran them: lookatmenow, lightweight, two ballroom excerpts;
+and lightweight in the room), 38 votes. 3a's dbn scratch `octev/` (`proto/proto_live.py`, `proto/m1/`):
+
+| per octave vote | x2, right (13) | x0.5, right (20: hip-hop at the double of 73, reggae at the double of 92) | x0.5, wrong (5: the pop; lightweight in the room) |
+|---|---|---|---|
+| (a) the audio: added (dropped) over kept | 0.41-1.24 | 0.59-1.88 | 0.78-1.45 |
+| (b) the new tempo | 132-203 bpm | 73-91 bpm | 62.5-65 bpm (the pop); 96.8 (lightweight, conf 0.06) |
+
+- **(a) can't pick a halving.** Right and wrong halvings overlap completely: a DBN at the double locked there because
+  the beats a halving would drop carry peaks. For doublings it only refutes empty midpoints (no wrong x2 was among
+  them; with nothing midway it reads ~0.03), so the floor sits at half the lowest right one.
+- **(b), as a floor on the halved tempo**, separates the pop from every right halving, by about 0.1 octave either
+  side. As a comparison (whichever octave lies nearer 120 wins) it would refuse every right doubling (203 is farther
+  from 120 than 101) and the hip-hop halving.
+- **(c) 3 runs in a row** would have stopped the pop here, because its third run had too few beats. But Beat This!
+  heard 61-65 to the song's end, so another draw would bring a third, and every right doubling would wait one more
+  run (10 s). It was not added.
+
+**Replays** (the live code through `run_stack.py`, stack s8c49860988; before = HEAD 2ee5ff0a, stack s2fd2d8e696,
+flash-identical to 26's own results):
+
+| case | octave votes sent (ratio, tempo): clock | est bpm | F | acc1 | acc1 over time |
+|---|---|---|---|---|---|
+| quickstep x1 | x2 at 25.7 s (1.00, 102 -> 203): applied, as before | 101.5 = | 0.697 = | 0 = | 0.12 = |
+| quickstep x4 | the same: applied, holds to the end | 202.8 = | 0.889 = | 1 = | 0.65 = |
+| reggae x1 / x4 | none sent (x0.5 at conf 0.06) | 73.5 / 92.0 = | 0.400 / 0.822 = | 0 / 1 = | 0.05 / 0.71 = |
+| waltz x1 / x4 | none | 86.8 / 87.0 = | 0.966 / 0.887 = | 1 / 1 = | 0.77 / 0.75 = |
+| **pop, room mic** | x0.5 at 136.5 s (1.23, half 62.5): applied -> **refused (prior)** | 93.4 -> **124.7** | 0.682 -> **0.756** | 0 -> **1** | 0.33 -> **0.51** |
+| lookatmenow, clean | x0.5 at 52.1 s (1.18, half 73.2): applied, as before | 145.3 = | 0.635 = | 0 = | 0.08 = |
+| lightweight, clean | x2 at 55.1 and 85.1 s (0.69, 1.29): applied, as before | 185.5 = | 0.842 = | 1 = | 0.58 = |
+| Media-103819, room mic | x2 at 27.7 s (0.41): applied, as before | 65.8 = | 0.635 = | 0 = | 0.06 = |
+
+The other five replays sent no octave and are flash-identical, as are all but the pop. The pop's flashes are now
+exactly the slow-lane-off run's (26's C, room-mic). The 8 parity cases (slow lane off) are flash-identical to step
+2's check runs.
+
+**Limits.**
+- A wrong halving to 69 bpm or more still applies, i.e. a song above ~138 that Beat This! halves (lightweight in the
+  room, 193 -> 96.8, was one; its conf of 0.06 held it off).
+- A right halving below 69 that the audio can't confirm is refused: a ballad at 60-68 that the DBN doubled stays
+  doubled, as with no slow lane.
+- A wrong doubling onto 8th-note hats passes (a): none was measured, and Beat This!'s conf already needs its beats on
+  the midpoints.
+- The thresholds come from 38 votes on 7 tracks.
 
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 

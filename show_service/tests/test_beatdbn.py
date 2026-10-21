@@ -7,8 +7,10 @@
   publish the same beats; the quiet gate (gate none at once, silent frames, the forward state restarted when it
   ends); no audio (free, gate none, coasting, back); the corrections (half, double, out of range, tap, a run of taps,
   one, the slow lane's bar and octave votes); the octave map (a minute at x2 over a DBN at its own octave, ended by
-  the quiet room's new grid, the cold grid and a contrary vote); bar and phrase fields on a 4/4 loop; the body and
-  stats; a fuzz;
+  the quiet room's new grid, the cold grid and a contrary vote); the slow lane's octave evidence (the activation's
+  ratio at the beats an octave adds or drops; a x2 onto nothing refused, an unheard one too; a halving the audio
+  can't confirm refused at 126 bpm, applied at 184 or with a wider prior; one it confirms applied at 120); bar and
+  phrase fields on a 4/4 loop; the body and stats; a fuzz;
 - the published line (README S4.15 "Publishing"), on synthetic activations fed frame by frame (``act_clock``): the
   count only goes forward across a re-phase and a tempo jump; next_beat moves about half as much as the tracker's own
   line under a jittered DBN beat train; the downbeat stays put across a re-lock and a tempo jump; the epoch moves only
@@ -533,6 +535,110 @@ def test_the_dbn_coming_to_the_mapped_octave_itself_is_joined_not_a_new_grid():
     assert st["oct_maps_cleared"] == 1 and st["errors"] == 0
 
 
+# -- the slow lane's octave evidence (README S4.15 "Octave evidence") --------------------------------------------------
+def fed_tracker(a: np.ndarray, silent_from: float = math.inf) -> D.DbnTracker:
+    """A DbnTracker fed ``a`` frame by frame (frame i sounding at (i + 1) / FPS, as act_train's); silent from
+    ``silent_from`` s (no activation: a quiet room)."""
+    trk = D.DbnTracker()
+    for i, v in enumerate(a):
+        t = (i + 1) / D.FPS
+        trk.frame(float(v), t, silent=t >= silent_from)
+    return trk
+
+
+def test_octave_evidence_reads_the_beats_an_octave_adds_or_drops():
+    """DbnTracker.octave_evidence on act_train's 100 bpm beats (beat k at 0.3 + 0.6 k s once the tracker's lag is
+    out): x2 reads the beats midway against the beats (nothing there, act_train's 0.2 off-beats, as strong as the
+    beats); x0.5 reads every other beat against the parity it keeps (weak beats dropped, strong ones dropped, all
+    alike); nothing heard, a quiet stretch, or no octave says nothing."""
+    lag = D.SETTINGS["lag_ms"] / 1000.0
+    k40 = 0.3 + 0.6 * 40                                    # a strong beat (even), 6 s before the end
+
+    def ev(f: float, t_ref: float = k40, silent_from: float = math.inf, **kw) -> dict | None:
+        return fed_tracker(act_train([(100.0, 0.3, 30.0)], 30.0, lag, seed=7, **kw), silent_from).octave_evidence(
+            t_ref, 0.6, f)
+
+    assert ev(2.0, off=0.0)["ratio"] < 0.08
+    e = ev(2.0)
+    assert 0.2 < e["ratio"] < 0.32 and e["n"] == D.OCT_EV_N and e["floor"] < 0.06
+    assert ev(2.0, off=0.8)["ratio"] == pytest.approx(1.0, abs=0.1)
+    assert ev(0.5, weak=0.15)["ratio"] < 0.2                # the weak beats dropped: the audio confirms a halving
+    assert ev(0.5, t_ref=k40 + 0.6, weak=0.15)["ratio"] > 4.0   # ... onto the weak ones: the strong ones dropped
+    assert ev(0.5)["ratio"] == pytest.approx(1.0, abs=0.1)  # every beat alike: the audio can't tell
+    assert ev(2.0, silent_from=26.0) is None                # the last 4 s quiet: too few points heard
+    assert ev(1.0) is None and D.DbnTracker().octave_evidence(1.0, 0.5, 2.0) is None
+    # the period the gate reads it on (and the prior's tempo): the median over the line's last 16 beats, steady under
+    # 25 ms of beat-to-beat jitter
+    trk = fed_tracker(act_train([(100.0, 0.3, 30.0)], 30.0, lag, seed=7, jitter_s=0.025))
+    assert trk.period() == pytest.approx(0.6, rel=0.02) and D.DbnTracker().period() is None
+
+
+def test_a_slow_lane_x2_needs_peaks_midway():
+    """A x2 onto beats midway that carry nothing (a 100 bpm loop with no off-beats) is refused on the audio and
+    nothing moves; one the tracker can't judge (too little activation) is refused too (the octave-map tests above
+    apply x2s on act_train's 0.2 off-beats)."""
+    lag = C.AubioActivation.lag_s
+    x2 = {12.0: lambda c, tt: c.apply_integer_correction(None, None, 2.0)}
+    clk, pubs = act_clock(act_train([(100.0, 0.3, 24.0)], 24.0, lag, seed=31, off=0.0), x2)
+    st = clk.stats()
+    assert st["corr_octave_refused_audio"] == 1 and st["last_correction"]["result"] == "octave_refused_audio"
+    assert st["oct_evidence"]["result"] == "audio" and st["oct_evidence"]["ratio"] < 0.1
+    assert st["oct_factor"] == 1.0 and st.get("oct_maps_applied", 0) == 0 and st["errors"] == 0
+    assert all(d["bpm"] == pytest.approx(100.0, rel=0.03) for tt, d, _ in pubs if tt >= 10.0)
+
+    def deaf(c: C.Clock, tt: float) -> None:
+        c._trk.octave_evidence = lambda *a, **kw: None
+        c.apply_integer_correction(None, None, 2.0)
+
+    clk, pubs = act_clock(act_train([(100.0, 0.3, 24.0)], 24.0, lag, seed=31), {12.0: deaf})
+    st = clk.stats()
+    ev = st["oct_evidence"]
+    assert st["corr_octave_refused_unheard"] == 1 and st["last_correction"]["result"] == "octave_refused_unheard"
+    assert (ev["octave"], ev["ratio"], ev["n"], ev["result"]) == (2.0, None, 0, "unheard")
+    assert ev["bpm"] == pytest.approx(100.0, rel=0.03) and pubs[-1][1]["bpm"] == pytest.approx(100.0, rel=0.03)
+
+
+def test_a_halving_the_audio_cant_confirm_needs_a_plausible_tempo():
+    """26's room-mic pop song in miniature: every beat of a 126 bpm loop alike (the beats a halving drops carry peaks
+    as strong: the audio can't tell) and the half, 63, more than 0.8 octave under the prior's 120: refused, nothing
+    moves. The call's own prior_oct (mllink sends show.yaml's) widens it: applied. At 184 (26's reggae, locked at the
+    double) the half, 92, is plausible: applied."""
+    lag = C.AubioActivation.lag_s
+
+    def x05(**kw):
+        return {12.0: lambda c, tt: c.apply_integer_correction(None, None, 0.5, **kw)}
+
+    clk, pubs = act_clock(act_train([(126.0, 0.3, 24.0)], 24.0, lag, seed=31), x05())
+    st = clk.stats()
+    assert st["corr_octave_refused_prior"] == 1 and st["oct_factor"] == 1.0 and st["errors"] == 0
+    assert st["oct_evidence"]["ratio"] > C.OCT_DROP_MAX and st["oct_evidence"]["bpm"] == pytest.approx(126, rel=0.03)
+    assert all(d["bpm"] == pytest.approx(126.0, rel=0.03) for tt, d, _ in pubs if tt >= 10.0)
+    clk, pubs = act_clock(act_train([(126.0, 0.3, 24.0)], 24.0, lag, seed=31), x05(prior_oct=1.2))
+    assert clk.stats()["corr_applied"] == 1 and pubs[-1][1]["bpm"] == pytest.approx(63.0, rel=0.03)
+    clk, pubs = act_clock(act_train([(184.0, 0.3, 24.0)], 24.0, lag, seed=31), x05())
+    st = clk.stats()
+    assert st["corr_applied"] == 1 and st["oct_factor"] == 0.5 and st["oct_evidence"]["result"] == "ok"
+    assert st["oct_evidence"]["ratio"] > C.OCT_DROP_MAX and pubs[-1][1]["bpm"] == pytest.approx(92.0, rel=0.03)
+
+
+def test_a_halving_the_audio_confirms_applies_whatever_the_tempo():
+    """Every other beat of a 120 bpm loop weak (x0.3: the DBN still locks at 120; at x0.15 it takes the strong ones
+    at 60 itself) and the bars' one on a strong beat: a x0.5 drops the weak ones, so the audio confirms it, and the
+    half (60, under the prior's 69) applies, on the strong beats."""
+    lag = C.AubioActivation.lag_s
+    at = {10.45: lambda c, tt: c.one(10.3),                 # beat 20 (strong: act_train's even beats)
+          12.0: lambda c, tt: c.apply_integer_correction(None, None, 0.5)}
+    clk, pubs = act_clock(act_train([(120.0, 0.3, 24.0)], 24.0, lag, seed=31, weak=0.3), at)
+    st = clk.stats()
+    assert st["corr_applied"] == 1 and st["oct_factor"] == 0.5 and st["errors"] == 0
+    assert st["oct_evidence"]["result"] == "ok" and st["oct_evidence"]["ratio"] < C.OCT_DROP_MAX
+    d = pubs[-1][1]
+    assert d["bpm"] == pytest.approx(60.0, rel=0.03)
+    for i in range(40, 44):                                 # the strong beats are its beats, the weak ones between
+        b = C.beat_at(d, 0.3 + 0.5 * i) - (0.5 if i % 2 else 0.0)
+        assert abs((b + 0.5) % 1.0 - 0.5) < 0.06, i
+
+
 def test_a_tap_rephases_the_line_and_one_that_agrees_moves_nothing():
     clk, pubs, beats = locked_clock()
     d = clk.snapshot()
@@ -588,12 +694,18 @@ def test_one_and_the_slow_lanes_bar_and_octave_votes():
     lc = clk.stats()["last_correction"]
     assert lc["result"] == "applied" and d["beats_per_bar"] == 3 and (d["bar_anchor_beat"] - one) % 3 == 0
     assert d["bar_conf"] >= 0.6
-    clk.apply_integer_correction(None, None, 0.5)           # the slow lane: the beat is half as fast
+    # the slow lane: "the beat is half as fast". Every beat of the loop is a kick (the beats a halving drops are as
+    # strong as the ones it keeps: the audio can't tell) and 60 bpm is no plausible tempo: refused, nothing moves
+    # (26's room-mic pop song, 21 Oct: Beat This! heard its 125 at 61-65)
+    clk.apply_integer_correction(None, None, 0.5)
     more(clk, 18.0, 6.0)
     d2 = clk.snapshot()
     st = clk.stats()
-    assert d2["bpm"] == pytest.approx(60.0, rel=0.02) and st["last_correction"]["result"] == "applied"
-    assert st["octave_votes"] == 1 and st["errors"] == 0
+    assert d2["bpm"] == pytest.approx(120.0, rel=0.02) and st["last_correction"]["result"] == "octave_refused_prior"
+    ev = st["oct_evidence"]
+    assert st["corr_octave_refused_prior"] == 1 and st.get("octave_votes", 0) == 0 and st["oct_factor"] == 1.0
+    assert ev["octave"] == 0.5 and ev["result"] == "prior" and ev["ratio"] > C.OCT_DROP_MAX and ev["n"] >= 8
+    assert d2["beats_per_bar"] == 3 and d2["epoch"] == d["epoch"] and st["errors"] == 0
     clk2 = C.Clock(None, activation="aubio")                # no line: no correction
     clk2.apply_integer_correction(8, 4, 1.0)
     clk2.tick(T0)
@@ -643,25 +755,29 @@ def test_bar_and_phrase_fields_come_from_the_bar_code_on_a_4_4_loop():
 
 # -- the published line (README S4.15 "Publishing") --------------------------------------------------------------------
 def act_train(segs: list[tuple[float, float, float]], t_end: float, lag: float, *, jitter_s: float = 0.0,
-              seed: int = 5, noise_until: float = 0.0) -> np.ndarray:
+              seed: int = 5, noise_until: float = 0.0, off: float = 0.2, weak: float = 1.0) -> np.ndarray:
     """A beat activation at 100 fps, frame i sounding at (i + 1) / FPS: a 15 ms peak on every beat of ``segs``
-    ((bpm, from, to) each), ``lag`` late as the activation's own lag, plus N(0, ``jitter_s``); a smaller one on each
-    off-beat; noise; random onsets with no pulse before ``noise_until``."""
+    ((bpm, from, to) each), ``lag`` late as the activation's own lag, plus N(0, ``jitter_s``), every other beat of a
+    segment (its 2nd, 4th ...) x ``weak``; a smaller one (``off``) on each off-beat; noise; random onsets with no
+    pulse before ``noise_until``."""
     rng = np.random.default_rng(seed)
     n = int(round(t_end * D.FPS))
     t = (np.arange(n) + 1) / D.FPS
     a = 0.02 + 0.04 * rng.random(n)
     beats: list[float] = []
+    level: list[float] = []
     for bpm, t0, t1 in segs:
-        beats += list(np.arange(t0, t1, 60.0 / bpm))
-    for b in beats:
+        seg = list(np.arange(t0, t1, 60.0 / bpm))
+        beats += seg
+        level += [0.8 * (weak if i % 2 else 1.0) for i in range(len(seg))]
+    for b, lv in zip(beats, level):
         bj = b + lag + (float(rng.normal(0.0, jitter_s)) if jitter_s else 0.0)
         m = np.abs(t - bj) < 0.08
-        a[m] += 0.8 * np.exp(-0.5 * ((t[m] - bj) / 0.015) ** 2)
+        a[m] += lv * np.exp(-0.5 * ((t[m] - bj) / 0.015) ** 2)
     for b0, b1 in zip(beats, beats[1:]):
-        if b1 - b0 < 1.0:
+        if b1 - b0 < 1.0 and off > 0.0:
             m = np.abs(t - (0.5 * (b0 + b1) + lag)) < 0.08
-            a[m] += 0.2 * np.exp(-0.5 * ((t[m] - 0.5 * (b0 + b1) - lag) / 0.015) ** 2)
+            a[m] += off * np.exp(-0.5 * ((t[m] - 0.5 * (b0 + b1) - lag) / 0.015) ** 2)
     if noise_until > 0.0:
         m = t < noise_until
         a[m] = 0.02 + 0.5 * rng.random(int(m.sum())) ** 4

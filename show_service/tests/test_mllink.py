@@ -1,8 +1,8 @@
 """mllink (README S4.5): MLFeed into a real pipe (frames, the receiver's times through soxr, segments, GAP, a full
 pipe, a dead reader, the cost), ``beat_vote`` on synthetic beats (each octave, a 3:2 tempo, bar and one; read where
 the clock's line holds: a 2 % drifting line, the other phase, split, random and jump-cut windows, and 26's quickstep
-window that failed read whole), MLLink's apply rule (agree_runs, cooldown, only what differs, an octave alone,
-confirmations) on a fake clock, and MLLink
+window that failed read whole), MLLink's apply rule (agree_runs, cooldown, only what differs, an octave alone with
+show.yaml's octave evidence thresholds, confirmations) on a fake clock, and MLLink
 against ``python -m show_service.ml.worker --fake`` (sys.executable, a tmp models dir): hello, the feed attached, the
 view filled, CPU read, a killed worker restarted, disabled by show.yaml, stop as brain.py awaits it.
 
@@ -356,7 +356,9 @@ def test_apply_octave_alone_and_low_agreement():
     L = Link(cooldown_s=0)
     halves = beats_msg([t_of(180) + i * 0.25 for i in range(100)], [t_of(180)], bar_len=3)
     L.vote(halves)
-    assert L.vote(halves)["applied"] and L.calls == [{"octave": 2.0}]           # never with bar or one
+    assert L.vote(halves)["applied"] and L.calls == [{"octave": 2.0, "add_min": 0.2, "drop_max": 0.5,
+                                                      "prior_oct": 0.8}]       # never with bar or one; with the
+    #                                                   octave evidence's thresholds (the clock judges it on the audio)
     off = beats_msg([t_of(k) + (0.2 if k >= 214 else 0.0) for k in range(180, 230)])  # the local span off the grid
     v = L.vote(off)
     assert v["why"] == "low agreement" and len(L.calls) == 1
@@ -404,6 +406,19 @@ def test_configure_problems_keep_the_starting_points():
     assert len(probs) == 4 and L.link.votes_cfg == M.BEAT_VOTES_FALLBACK and L.link.stale_s == 3.0
     L.link.configure({"ml": "yes"})
     assert L.link.snapshot()["problems"] == ["ml: 'yes' is not a section: the starting points are used"]
+
+
+def test_an_octave_carries_show_yamls_evidence_thresholds_to_the_clock():
+    """ml.beat_votes' octave_* keys go with each octave (the clock's gate reads them, README S4.15 "Octave
+    evidence"); an unusable one keeps its starting point (a problems line); a bar or one vote carries none."""
+    L = Link(cooldown_s=0, octave_add_min=0.35, octave_prior_oct=1.0, octave_drop_max=-1)
+    assert L.link.snapshot()["problems"] == ["ml.beat_votes.octave_drop_max: -1 is not usable: 0.5 used"]
+    halves = beats_msg([t_of(180) + i * 0.25 for i in range(100)], [t_of(180)], bar_len=3)
+    L.vote(halves)
+    assert L.vote(halves)["applied"]
+    assert L.calls == [{"octave": 2.0, "add_min": 0.35, "drop_max": 0.5, "prior_oct": 1.0}]
+    L.vote(one_two_msg())
+    assert L.vote(one_two_msg())["applied"] and set(L.calls[-1]) == {"beat_is_one"}
 
 
 def test_freshness_follows_the_workers_intervals():
