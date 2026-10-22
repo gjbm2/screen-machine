@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pathlib
+import tempfile
 from types import SimpleNamespace
 
 import aiohttp
@@ -63,9 +65,17 @@ class Rig:
         self.upstream: TestServer | None = None
         self.proxy: TestServer | None = None
         self.http: aiohttp.ClientSession | None = None
+        self.tmp = tempfile.TemporaryDirectory()
 
     async def start(self) -> "Rig":
+        flac = pathlib.Path(self.tmp.name) / "k.flac"
+        flac.write_bytes(BLOB)
+
+        async def _flac(request: web.Request) -> web.FileResponse:     # as show_service serves Play on Sonos
+            return web.FileResponse(flac, headers={"Content-Type": "audio/flac", "Cache-Control": "no-cache"})
+
         up = web.Application(client_max_size=64 * 1024 * 1024)
+        up.router.add_get("/api/v1/piano/audio/{key}.flac", _flac)
         up.router.add_route("*", "/api/echo", _echo)
         up.router.add_post("/dev/blob", _blob)
         up.router.add_get("/api/sessions/{sid}", _missing)
@@ -91,6 +101,7 @@ class Rig:
         await self.proxy.close()
         await self.upstream.close()
         await self.http.close()
+        self.tmp.cleanup()
 
 
 @pytest_asyncio.fixture
@@ -175,3 +186,23 @@ async def test_show_pass_through(rig: Rig) -> None:
             assert r.status == 502 and (await r.json())["error"] == "show_unreachable"
     finally:
         await srv.close()
+
+
+async def test_show_range_pass_through(rig: Rig) -> None:
+    """Sonos seeks in a FLAC from show_service: Range goes up; the 206, Content-Range, Accept-Ranges and
+    Content-Length come back with exactly those bytes (HEAD and a plain GET too)."""
+    u, n = rig.url("/show/api/v1/piano/audio/k.flac"), len(BLOB)
+    async with rig.http.get(u, headers={"Range": "bytes=100-199"}) as r:
+        assert r.status == 206 and r.headers["Content-Range"] == f"bytes 100-199/{n}"
+        assert r.headers["Accept-Ranges"] == "bytes" and r.headers["Content-Length"] == "100"
+        assert r.headers["Content-Type"] == "audio/flac" and await r.read() == BLOB[100:200]
+    async with rig.http.get(u, headers={"Range": f"bytes={n - 10}-"}) as r:
+        assert r.status == 206 and r.headers["Content-Range"] == f"bytes {n - 10}-{n - 1}/{n}"
+        assert await r.read() == BLOB[-10:]
+    async with rig.http.get(u) as r:
+        assert r.status == 200 and r.headers["Accept-Ranges"] == "bytes" and r.headers["Content-Length"] == str(n)
+        assert await r.read() == BLOB
+    async with rig.http.head(u) as r:
+        assert r.status == 200 and r.headers["Content-Length"] == str(n) and r.headers["Accept-Ranges"] == "bytes"
+    async with rig.http.get(u, headers={"Range": f"bytes={n + 5}-"}) as r:
+        assert r.status == 416                                           # the upstream's own answer, relayed
