@@ -571,6 +571,10 @@ class WorkerPool:
         self._room_dir = (data, t)
         self._forward(("room_dir", data, t))
 
+    def on_gesture(self, data: dict, t: float) -> None:
+        """room.gesture (gestures.on_room): each worker's own gestures.BOOK takes the parts of its screen's player."""
+        self._forward(("gesture", data, t))
+
     def on_scope(self, frame: Any) -> None:
         self._forward(("scope", frame))
 

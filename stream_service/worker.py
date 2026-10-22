@@ -551,6 +551,11 @@ class Worker:
             self.scope.latest = d[1]
         elif kind == "room_dir":
             self.music_feed.on_room_direction(d[1], d[2])
+            from .gestures import BOOK
+            BOOK.on_direction(d[1])                  # the ensemble: which player this screen is (gestures.py)
+        elif kind == "gesture":
+            from .gestures import BOOK
+            BOOK.on_gesture(d[1], d[2])              # room.gesture: the gesture_accents slot reads it
         elif kind == "show_up":
             self.inputs.on_connected(d[1] or {})
         elif kind == "show_down":
