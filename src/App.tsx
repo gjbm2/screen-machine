@@ -16,6 +16,7 @@ import LightSense from './pages/LightSense';
 import AndroidApp from './pages/AndroidApp';
 import AdminPanel from './pages/AdminPanel';
 import LightsPage from './pages/Lights';
+import MusicPage from './pages/Music';
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/app" element={<AndroidApp />} />
             <Route path="/adminadmin" element={<AdminPanel />} />
             <Route path="/lights" element={<LightsPage />} />
+            <Route path="/music" element={<MusicPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
