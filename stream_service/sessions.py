@@ -328,6 +328,10 @@ class Session(EngineListener):
         self._ens_lv: Optional[dict] = None         # their own copy (SessionRuntime.lever)
         self._ens_fx_key: Any = None                # the levers the FX director was last configured with
         self._event_sweep = False                   # the hinted room.event carries sweep_beats: cut unstaggered
+        # -- one picture by design (rooms.py; docs/ENSEMBLE.md §8.9) --
+        self.scene_t0: Optional[float] = None       # the current scene's room moment (photon time, monotonic s):
+                                                    # its scene clock's 0 on every screen; None: not a room cut
+        self._room_dg_sent: tuple = ((), None)      # the room's degrade floor last handed to the engine
 
     # -- helpers -----------------------------------------------------------------
     def emit(self, type_: str, **data) -> None:
@@ -446,6 +450,11 @@ class Session(EngineListener):
         """A transition instance, set up on a worker thread when the engine supports it (R20).  ``mapped``: sample
         its cue-mode music mappings (never for go / exit: art <-> live stays as authored)."""
         spec = self._sample_transition(spec) if mapped else spec
+        if mapped and self.room_leader() is not None:   # a room's transition: a "random" seed drawn once, here, so
+            cls = self.mgr.registry.transition(spec.transition)    # the followers (frozen_spec) play the same one
+            params = rooms.fix_seeds(cls.param_props(), spec.params, secrets.randbits(31))
+            if params is not spec.params:
+                spec = dataclasses.replace(spec, params=params)
         t = self._transition(spec)
         t.frozen_spec = spec
         if hasattr(self.engine, "prepare_transition") and getattr(self.engine, "ctx", None) is not None:
@@ -608,7 +617,8 @@ class Session(EngineListener):
         for f in self.followers():
             f.follow_cue(cue["spec"], getattr(cue["trans"], "frozen_spec", None) or cue["trans_spec"], cue["at"],
                          f"{self.screen}: {cue.get('detail') or cue['scene']}",
-                         cue.get("photon_base", cue.get("photon_at")), stagger=self._stagger_ok(cue))
+                         cue.get("photon_base", cue.get("photon_at")), stagger=self._stagger_ok(cue),
+                         room_t0=cue.get("room_t0"))
 
     def _stagger_ok(self, cue: dict) -> bool:
         """An auto cue the ensemble may stagger across the room (rooms.UNSTAGGERED and person-made cues never are;
@@ -686,16 +696,19 @@ class Session(EngineListener):
             self._retire(pk["src"], pk["trans"])
 
     def follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
-                   photon_at: Optional[float] = None, stagger: bool = False) -> None:
+                   photon_at: Optional[float] = None, stagger: bool = False,
+                   room_t0: Optional[float] = None) -> None:
         """``photon_at``: the leader's glass time for the cut, so every screen lands on the same beat (its own
         lead subtracted here), not each on its own next beat.  ``stagger``: the ensemble's stagger for this screen
-        applies (the leader's cue was a staggered kind; ``photon_at`` is then the room's moment, before any)."""
+        applies (the leader's cue was a staggered kind; ``photon_at`` is then the room's moment, before any).
+        ``room_t0``: the room's moment the scene's clock runs from (the leader's; docs/ENSEMBLE.md §8.9)."""
         if self.exited or self.state not in LIVE_STATES:
             return
-        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail, photon_at, stagger))
+        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail, photon_at, stagger, room_t0))
 
     async def _follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
-                          photon_at: Optional[float] = None, stagger: bool = False) -> None:
+                          photon_at: Optional[float] = None, stagger: bool = False,
+                          room_t0: Optional[float] = None) -> None:
         want = (spec.name, trans_spec.name)
         epoch = self._epoch
         try:
@@ -716,6 +729,7 @@ class Session(EngineListener):
                 cue = self._new_cue("auto", pk["spec"], pk["trans_spec"], pk["src"], pk["trans"], at, "room", detail,
                                     photon_at=photon_at)
                 cue["stagger"] = stagger
+                cue["room_t0"] = room_t0
                 if self._dispatch(cue) != "skipped":
                     self.scene_spec = pk["spec"]
         except Exception as e:
@@ -795,7 +809,7 @@ class Session(EngineListener):
             self._room_synced = ld.id
             if ld.current_spec is not None and ld.current_name != self.current_name \
                     and ld.scene_cause in ("go", "auto") and ld.state == "live":
-                self.follow_cue(ld.current_spec, self.t_in, "now", f"joined {ld.screen}")
+                self.follow_cue(ld.current_spec, self.t_in, "now", f"joined {ld.screen}", room_t0=ld.scene_t0)
         self._fx_follow(now)
 
     def _fx_follow(self, now: float) -> None:
@@ -864,10 +878,23 @@ class Session(EngineListener):
                                   "transition": self.t_in.name}
             self.inflight[tid] = {"cue_id": cue_id, "cause": "go"}
             self.set_state("entering")
-            self.engine.submit(StartTransition("in", tid, src, trans))
+            self.engine.submit(StartTransition("in", tid, src, trans, clock=self._go_clock()))
             self.director.note_cue(self.scene_spec.name, self.t_in.name, self.sampler.snapshot())
             self.scene_cause = "go"
             return {"cue_id": cue_id, "duration_s": trans.duration_s}
+
+    def _go_clock(self) -> Optional[float]:
+        """go in a room: the first scene's clock (docs/ENSEMBLE.md §8.9) runs from the room's moment for it: the
+        leader's while it shows this scene already (a screen joining the room's scene), else this go's own glass
+        time.  None outside a room (stream time, as before)."""
+        ld = self.room_leader()
+        if ld is None:
+            self.scene_t0 = None
+            return None
+        lead = self.sampler.lead
+        rt0 = ld.scene_t0 if ld is not self and ld.current_name == self.scene_spec.name else None
+        self.scene_t0 = rt0 = time.monotonic() + lead if rt0 is None else rt0
+        return rt0 - lead
 
     def _patched_spec(self, body: dict) -> SceneSpec:
         """The scene spec a PATCH asks for, from the current one (raises ParamError)."""
@@ -1092,6 +1119,14 @@ class Session(EngineListener):
             cue["photon_base"], cue["stagger_s"] = base, round(st, 3)
             at_mono = (now if base is None else base - lead) + st
         cue["photon_at"] = None if at_mono is None else at_mono + lead
+        # one picture by design (docs/ENSEMBLE.md §8.9): a room cut's scene runs its clock from the room's moment (the
+        # leader's base photon time, before any stagger, or its glass time for an immediate cut; a follower takes the
+        # leader's), so every screen draws the same scene time at the same photon time
+        rt0 = cue.get("room_t0")
+        if rt0 is None and cue["cause"] == "auto" and self.room_leader() is not None:
+            rt0 = cue.get("photon_base") if st > 0.0 else cue["photon_at"]
+            rt0 = cue["room_t0"] = now + lead if rt0 is None else rt0
+        self.scene_t0 = rt0
         tid = self.next_tid()
         cue["tid"] = tid
         cue["at_pts"] = self._pts_at(at_mono)
@@ -1104,7 +1139,8 @@ class Session(EngineListener):
         self.current_spec = cue["spec"]
         self.current_scene = cue["src"]
         self.current_name = cue["scene"]
-        self.engine.submit(StartTransition("scene", tid, cue["src"], cue["trans"], at_mono=at_mono))
+        self.engine.submit(StartTransition("scene", tid, cue["src"], cue["trans"], at_mono=at_mono,
+                                           clock=None if rt0 is None else rt0 - lead))
         self._cue_event("scheduled", cue)
         self.director.note_cue(cue["scene"], cue["transition"], self.sampler.snapshot())
         if cue["cause"] != "auto" and self.director.dwell_start is not None:
@@ -1667,6 +1703,7 @@ class Session(EngineListener):
     def tick(self, now: float) -> None:
         if self.state in ("starting", "ended", "failed"):   # nothing is ticked or emitted before session.ready
             return
+        self._room_degrade_tick()
         d = self.director
         snap = self.sampler.snapshot()
         fresh = self.sampler.freshness(now, snap) is None
@@ -1723,11 +1760,25 @@ class Session(EngineListener):
         self._fx_follow(now)        # its own effects (or, when the ensemble names another screen lead, that one's)
         self._inputs_tick(now)
 
+    def _room_degrade_tick(self) -> None:
+        """One degrade decision per room (docs/ENSEMBLE.md §8.9): this screen's engine takes at least the steps its
+        room's other screens took by their own measurement (rooms.degrade_floor), so one screen never drops frame rate
+        or scene rate alone.  Not in a room: nothing is ever sent (the engine's floor stays empty, as before)."""
+        fn = getattr(self.engine, "set_room_degrade", None)
+        if fn is None:
+            return
+        floor = rooms.degrade_floor(self.room_peers())
+        if floor != self._room_dg_sent:
+            self._room_dg_sent = floor
+            fn(list(floor[0]), floor[1])
+
     def _ens_tick(self, now: float) -> dict:
         """Loop thread, each tick: this screen's part of the room ensemble (docs/ENSEMBLE.md §8.3, §8.5, §8.6) for
         the runtime's ``extra`` (the frames glide it at photon time: depth, pulse, motion, energy, palette, register),
         and, glided here too, its FX director's fx_density and energy_bias.  {} without a part: unison."""
-        w = ensemble.wire(self._ens_now(now), self.screen)
+        ens = self._ens_now(now)
+        g = self.mgr.music_grid(now) if ens is not None else None
+        w = ensemble.wire(ens, self.screen, g[1] if g is not None else None)
         try:
             lv = self._ens_glide.at(w, (now + self.sampler.lead) * 1000.0)
         except Exception:

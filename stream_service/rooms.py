@@ -21,6 +21,18 @@ time (before its own stagger) to the followers.  Not staggered: a song change (f
 person made, a scene's failure, a transition with ``sweep_beats``.  A screen whose part has role ``lead`` is the one
 whose auto effects the others mirror (``fx_source``); a mirror takes the first round(n x fx_density) of them
 (ensemble.fx_trim).  No ensemble, or every stagger 0: exactly the unison above.
+
+One picture by design (docs/ENSEMBLE.md §8.9; owner 22 Oct: "the same effects and scenes at the same time, but
+rendering is often v. different"): a room cut shares
+  * the scene's clock: the leader decides the room's moment (its base photon time, before any stagger, or its glass
+    time for an immediate cut) and every member's scene runs its time from there (``room_t0``; layers.SourceLayer),
+    so frame k after the cut is the same scene time on each screen, whatever its frame grid, lead or resyncs; canon's
+    clock offset runs a screen a round behind (ensemble.py);
+  * the seeds: a scene's seed is its preset's (params ``seed``), the same on every screen; a "random" seed (a
+    negative ``seed`` where the plug-in's schema allows one: -1 = random, the transitions' convention) is drawn once
+    by the leader and frozen into the spec the followers prepare (``fix_seeds``);
+  * the degrade ladder: each screen takes at least the steps the room's other screens took by their own measurement
+    (``degrade_floor``; degrade.Controller.set_room), so one screen never drops frame rate or scene rate alone.
 """
 from __future__ import annotations
 
@@ -130,6 +142,39 @@ def stagger_s(ens: Optional[dict], screen: str, beat_s: Optional[float], at_mono
     monotonic s): its part in effect then (current or next); stagger_beats x ``beat_s`` while the renderer's clock
     is sure (SessionManager.music_grid), else its stagger_s; 0 without an ensemble."""
     return ensemble.stagger_s(ens, screen, beat_s, at_mono * 1000.0)
+
+
+def fix_seeds(props: dict, params: dict, seed: int) -> dict:
+    """``params`` with a "random" seed made ``seed``: the numeric param ``seed`` when its schema allows a negative
+    value and its value is negative (-1 = a new random seed each time, drawn by the plug-in on each screen).  The
+    same dict when there is none."""
+    prop, v = props.get("seed"), params.get("seed")
+    if not isinstance(prop, dict) or prop.get("type") not in ("integer", "number") \
+            or not isinstance(prop.get("minimum"), (int, float)) or prop["minimum"] >= 0 \
+            or not isinstance(v, (int, float)) or isinstance(v, bool) or v >= 0:
+        return params
+    hi = prop.get("maximum")
+    return {**params, "seed": int(seed) % (int(hi) + 1) if isinstance(hi, (int, float)) and hi > 0 else int(seed)}
+
+
+def degrade_floor(peers: list) -> tuple[tuple, Optional[str]]:
+    """One degrade decision per room: the steps a screen's room's other screens took by their own measurement
+    (their state's ``own``, else its ``steps``), in the ladder's order, and the words why ("in step with
+    south-screen (GPU busy)": the screen with the most of them).  ((), None): none, or no peers."""
+    from .degrade import STEPS
+    have: set = set()
+    who, most = None, 0
+    for p in peers:
+        st = getattr(p, "degrade", None) or {}
+        own = st.get("own") if "own" in st else st.get("steps")
+        own = [x for x in (own or ()) if x in STEPS]
+        have.update(own)
+        if len(own) > most:
+            most, who = len(own), (p.screen, st.get("why"))
+    steps = tuple(x for x in STEPS if x in have)
+    if not steps or who is None:
+        return (), None
+    return steps, f"in step with {who[0]}" + (f" ({who[1]})" if who[1] else "")
 
 
 def room_body(spec: Any) -> Any:

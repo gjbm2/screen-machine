@@ -67,7 +67,8 @@ TEMPO_EASE_S = 0.4        # ... and its scale eases in and out: the clock comes 
 def beat_clock(runtime: Any) -> Optional[BeatClock]:
     """The session's beat clock at this frame's photon time while it is sure, else None: show_service's clock while
     fresh, gate "beat", locked or holding (what cuts use: SessionManager.music_grid), else the lighting desk's
-    locked follower (no bars).  Render thread (``runtime``: modulation.SessionRuntime, after begin_frame); never
+    locked follower (no bars).  Under canon's clock offset (SessionRuntime.clock_off) it is read that far back, as
+    the scene's beat signals are.  Render thread (``runtime``: modulation.SessionRuntime, after begin_frame); never
     raises."""
     try:
         if runtime is None:
@@ -76,7 +77,7 @@ def beat_clock(runtime: Any) -> Optional[BeatClock]:
         sampler = getattr(runtime, "sampler", None)
         if sampler is not None and getattr(sampler, "follow", "extrapolate") != "extrapolate":
             return None
-        t = now + float(getattr(sampler, "lead", 0.0) or 0.0)
+        t = now + float(getattr(sampler, "lead", 0.0) or 0.0) - float(getattr(runtime, "clock_off", 0.0) or 0.0)
         feed = getattr(runtime, "feed", None)
         c = feed.clock(now) if feed is not None else None
         if c is not None and c.get("gate") == "beat" and c.get("state") in ("locked", "holding"):

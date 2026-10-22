@@ -27,7 +27,16 @@ SETTLE_S of coming off doubles its wait (up to WAIT_MAX_X); one that stays off t
 (no change, windows restart) across the entry (until the master bus is fully open) and the exit.  It never stops a
 stream and never refuses: every step keeps the stream playing.
 
-``state()`` is what /api/sessions (``degrade``), the session.degrade event and the details panel show.
+One decision per room (docs/ENSEMBLE.md §8.9; owner 22 Oct: the screens drifted apart): each screen keeps its own
+measurement and its own steps (``steps``), and takes a room floor (``set_room``: the steps its room's other screens
+took by their own measurement, from the session).  The steps in effect (``effective``) are its own and the room's:
+a step one screen takes lifts the room, a step can't come off below the room's floor, and the room comes back up
+only once every screen's own measurement lets it.  A step the room already has is never its own next step down.
+Never a refusal: the floor only adds steps that keep the stream playing.  No room: an empty floor, as before.
+
+``state()`` is what /api/sessions (``degrade``), the session.degrade event and the details panel show.  With a room
+floor it also carries ``own`` and ``room`` (the steps behind it), and the words say whose ("60 -> 30 fps: in step
+with south-screen (GPU busy)").
 """
 from __future__ import annotations
 
@@ -178,6 +187,28 @@ class Controller:
         self.floor = False                         # overloaded with no step left
         self.load: Optional[dict] = None
         self.downs = self.ups = self.failed_ups = 0
+        self.room: tuple = ()                      # the room's floor: steps its other screens took (set_room)
+        self.room_why: Optional[str] = None        # ... in words ("in step with south-screen (GPU busy)")
+
+    # -- the room (one decision per room) -------------------------------------------------------------------------
+    def effective(self) -> list:
+        """The steps in effect: its own, then the room's that it doesn't have (in the ladder's order)."""
+        if not self.room:
+            return self.steps
+        return self.steps + [s for s in STEPS if s in self.room and s not in self.steps]
+
+    def set_room(self, steps: Iterable[str], why: Optional[str], now: float) -> bool:
+        """The room's floor (the steps the room's other screens took for themselves).  True when it changed what is
+        in effect (or its words): the engine applies it; a change restarts the windows, as its own steps do."""
+        room = tuple(s for s in STEPS if s in tuple(steps or ()))
+        why = why if room else None
+        if room == self.room and why == self.room_why:
+            return False
+        before = list(self.effective())
+        self.room, self.room_why = room, why
+        if self.effective() != before:
+            self._changed(now)
+        return True
 
     # -- when ----------------------------------------------------------------------------------------------------
     def window_start(self, now: float) -> float:
@@ -251,7 +282,7 @@ class Controller:
 
     def _next_down(self, stage: str, ctx: Ctx) -> Optional[str]:
         for step in STEPS:
-            if step in self.steps:
+            if step in self.steps or step in self.room:     # (the room's floor has it on already)
                 continue
             if step == "scene_rate" and stage in ("host", "gpu") and ctx.own_div < SCENE_FLOOR:
                 return step
@@ -302,17 +333,22 @@ class Controller:
     # -- reporting -----------------------------------------------------------------------------------------------
     @property
     def out_fps(self) -> int:
-        return self.grid_fps // 2 if "fps" in self.steps else self.grid_fps
+        return self.grid_fps // 2 if "fps" in self.effective() else self.grid_fps
 
     def state(self) -> dict:
-        return {"mode": "on", "level": len(self.steps), "step": self.steps[-1] if self.steps else None,
-                "steps": list(self.steps), "why": WHY.get(self.why) if self.steps and self.why else None,
-                "since": None if self.since is None else _iso(self.since),
-                "text": text(self.steps, self.why if self.steps else None, self.grid_fps),
-                "out_fps": self.out_fps, "scene_div": SCENE_FLOOR if "scene_rate" in self.steps else 1,
-                "fx_trim": False, "floor": self.floor, "frozen": self.frozen, "load": self.load,
-                "up_wait_s": {s: UP_WAIT_S[s] * self.mult[s] for s in STEPS},
-                "downs": self.downs, "ups": self.ups, "failed_ups": self.failed_ups}
+        eff = self.effective()
+        why = self.why if self.steps else self.room_why if eff else None     # its own words, else the room's
+        st = {"mode": "on", "level": len(eff), "step": eff[-1] if eff else None,
+              "steps": list(eff), "why": WHY.get(why, why) if why else None,
+              "since": None if self.since is None else _iso(self.since),
+              "text": text(eff, why, self.grid_fps),
+              "out_fps": self.out_fps, "scene_div": SCENE_FLOOR if "scene_rate" in eff else 1,
+              "fx_trim": False, "floor": self.floor, "frozen": self.frozen, "load": self.load,
+              "up_wait_s": {s: UP_WAIT_S[s] * self.mult[s] for s in STEPS},
+              "downs": self.downs, "ups": self.ups, "failed_ups": self.failed_ups}
+        if self.room:
+            st["own"], st["room"] = list(self.steps), list(self.room)
+        return st
 
 
 def off_state(grid_fps: int) -> dict:

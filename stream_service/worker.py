@@ -470,8 +470,8 @@ class Worker:
         if eng is None:
             return
         try:
-            if op == "st":
-                _, kind, tid, src_ref, trans_ref, at_mono = d
+            if op == "st":                          # (+ the room's scene clock when the control sends one)
+                _, kind, tid, src_ref, trans_ref, at_mono, *more = d
                 src = self.table.give(src_ref["hid"])
                 if src is not None and src_ref.get("chain") is not None:
                     src.fx_chain = EffectChain([self._slot(s) for s in src_ref["chain"]])
@@ -486,7 +486,7 @@ class Worker:
                         if o is not None:
                             eng.submit(Retire(o))
                     return
-                eng.submit(StartTransition(kind, tid, src, trans, at_mono))
+                eng.submit(StartTransition(kind, tid, src, trans, at_mono, more[0] if more else None))
             elif op == "up":
                 _, hid, params, bindings = d
                 src = self.table.get(hid)
@@ -519,6 +519,10 @@ class Worker:
             sp.lead = d["lead"]
         if "follow" in d:
             sp.follow = d["follow"]
+        rd = d.get("room_degrade")
+        eng = self.engine
+        if rd is not None and eng is not None:      # the room's degrade floor (docs/ENSEMBLE.md §8.9)
+            eng.set_room_degrade(*rd)
 
     def _hud(self, on: bool) -> None:
         self.hud_on = bool(on)
