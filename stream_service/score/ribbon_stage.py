@@ -672,7 +672,7 @@ class Stage:
         pend = self.pend
         for key, tgt in out.heads.items():
             new_keys.add(key)
-            x, y, glyph, staff, nid, piece, acc, acc_dx, dot, _lst = tgt
+            x, y, glyph, staff, nid, piece, acc, acc_dx, dot, _lst = tgt[:10]
             i = Hd.idx.get(key)
             info = note_info.get(nid)
             lt = (A, tgt, final, info[2] if info else None)
