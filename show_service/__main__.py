@@ -121,8 +121,10 @@ RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on
 #: Brain component modules, in add order (README S3.2, S4.2, S5.4 and S5.22: room, situations, autopilot, sources, ml,
 #: structure, listener, cues, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
 #: cues.attach the cue engine (it fires what the listener arms), outputs.attach the rig, after the director: it reads
-#: the director's palette_fn and look_fn; recorder.attach the Room page's Record, 22 Oct: on_midi taps it after NoteTap)
-BRAIN_MODULES = ("autopilot", "sources", "recorder", "mllink", "structure", "listener", "cues", "director", "outputs")
+#: the director's palette_fn and look_fn; recorder.attach the Room page's Record, 22 Oct: on_midi taps it after NoteTap;
+#: playlist.attach the Music page's player, 22 Oct: after sources and recorder, it drives the test piano)
+BRAIN_MODULES = ("autopilot", "sources", "recorder", "playlist", "mllink", "structure", "listener", "cues", "director",
+                 "outputs")
 NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
                                           "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
@@ -249,13 +251,28 @@ class Show:
                                                              state_file=pathlib.Path(self.opts.state_dir) / "mic.json"))
         if self.mic is None:
             log.error("no mic.py: the receiver keeps every room mic off (privacy first); MIDI and tests as usual")
+        # the Music page (8f, 22 Oct): the library (GET /api/v1/library...; recordings through the recorder component)
+        # and, with the brain, the player's routes (GET/POST /api/v1/player, /api/v1/playlists: Brain.call)
+        self.library: Any = None
+        try:
+            from . import library as lib_mod             # like levels/inputs: not one of the engine's modules
+            self.library = lib_mod.Library(state_dir=pathlib.Path(self.opts.state_dir), recordings_fn=self._recordings,
+                                           rec_dir_fn=self._recordings_folder,
+                                           recorder_ops=lib_mod.RecorderOps(lambda: self.brain))
+        except Exception:
+            log.exception("library.py not loaded: the Music page has no library (the show carries on)")
+        pl_mod = self._import("playlist") if opts.brain else None
 
         def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
-                    mc: Any = self.mic) -> None:
+                    mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod) -> None:
             lv.routes(app)
             inp.routes(app)
             if mc is not None:
                 mc.routes(app)
+            if lib is not None:
+                lib.routes(app)
+            if plm is not None:
+                plm.routes(app, lambda: self.brain)
             if api is not None:
                 api(app)
         self.bus = Bus(self.cfg.bus_bind[0], self.cfg.bus_bind[1], state_fn=self.state, health_fn=self.health,
@@ -434,6 +451,9 @@ class Show:
         }.get(name, {})
         if name == "outputs":
             kw = self._rig_kw(patch_path)
+        if name == "playlist":                           # the Music page's player: it drives sources' test piano
+            kw = {"state_dir": pathlib.Path(self.opts.state_dir), "library": self.library,
+                  "sources_fn": lambda: self._component("sources")}
         extra = dict(self._brain_kw.get(name, {}))
         if name == "outputs" and isinstance(extra.get("driver_kw"), dict):       # per driver kind, on top
             dk = {k: dict(v) for k, v in (kw.get("driver_kw") or {}).items()}
@@ -442,6 +462,18 @@ class Show:
             kw["driver_kw"] = dk
         kw.update(extra)
         return kw
+
+    def _component(self, name: str) -> Any:
+        comps = getattr(self.brain, "components", None)
+        return comps.get(name) if isinstance(comps, dict) else None
+
+    def _recordings(self) -> list:
+        """The library's ``recordings_fn``: the recorder's list (none without it)."""
+        rec = self._component("recorder")
+        return rec.recordings() if rec is not None else []
+
+    def _recordings_folder(self) -> Any:
+        return getattr(self._component("recorder"), "folder", None)
 
     def _child_pids(self) -> list:
         """mllink's ``child_pids``: show_service's other children counted in its CPU share (the owner's 0.8): the

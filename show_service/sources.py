@@ -38,7 +38,9 @@ test-source words to the program that plays them; senders, ports, streams, folde
 - ``start_test(source, piece, instrument, output, once)``: the piano's defaults are windows-gs (a POST without an
   instrument keeps today's sound for scripts and other sessions; the Room page always names one), "pc22", and
   once = False for a library piece, True for ``rec:<id>`` (a recording in recorder.py's folder, played by its absolute
-  path; never listed in ``pieces()``). ValueError("unknown_instrument" | "unknown_output").
+  path; never listed in ``pieces()``). ValueError("unknown_instrument" | "unknown_output"). The Music page's
+  ``lib:<id>`` and ``user:<id>`` pieces (library.py, 8f 22 Oct) play exactly like ``rec:``: library.resolve gives the
+  absolute .mid (else "unknown_piece"), the title is the label, once by default, never in ``pieces()``.
 - argv: windows-gs + pc22 + loop is exactly today's; windows-gs + none adds ``--no-speaker``; another instrument adds
   ``--instrument ID --output pc22|none|sonos:<zone> --status-file STATE_DIR/test-piano.status.json`` (removed before
   each start), ``--title LABEL`` (the piece's label: what the Sonos app shows) on Sonos, and ``--lead-ms L`` when the
@@ -71,7 +73,7 @@ import sys
 import time
 from typing import Any, Callable, Collection, Optional
 
-from . import contract, recorder
+from . import contract, library, recorder
 from .contract import Sender
 
 log = logging.getLogger("show.sources")
@@ -97,6 +99,7 @@ SILENT_OUTPUT = "none"
 LEAD_MS_DEFAULT = 650.0                # show.yaml tests.piano.lead_ms: the rendered sound starts this long after its MIDI
 LEAD_MS_MAX = 1900.0                   # below stream_service sound_view's FUTURE_MAX_MS (2000)
 REC_PREFIX = "rec:"
+LIBRARY_PREFIXES = (library.LIB_PREFIX, library.USER_PREFIX)   # the Music page's pieces, played by absolute path
 #: show_sender's newer flags (the other builder's): passed only when its script takes them (its text names them), so
 #: an older show_sender keeps today's argv; the rendered sounds are offered only with RENDER_FLAGS
 SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once", "--title",
@@ -539,6 +542,8 @@ class Sources:
         path: Optional[pathlib.Path] = None
         if midi and isinstance(piece, str) and piece.startswith(REC_PREFIX):
             info, path = self._recording(piece)
+        elif midi and isinstance(piece, str) and piece.startswith(LIBRARY_PREFIXES):
+            info, path = self._library_piece(piece)
         else:
             choices = self.pieces()[source]
             if piece is None:
@@ -682,6 +687,14 @@ class Sources:
             raise ValueError("unknown_piece")
         title = meta.get("title") if isinstance(meta.get("title"), str) and meta.get("title") else "Recording"
         return {"id": piece, "label": title, "kind": "recording"}, folder / f"{rid}.mid"
+
+    def _library_piece(self, piece: str) -> tuple[contract.PieceInfo, pathlib.Path]:
+        """A ``lib:``/``user:`` piece: its row (the library's title) and absolute .mid. ValueError("unknown_piece")."""
+        path = library.resolve(piece)
+        if path is None:
+            raise ValueError("unknown_piece")
+        title = library.piece_title(piece) or _label(path.stem)
+        return {"id": piece, "label": title, "kind": piece.split(":", 1)[0]}, path
 
     def _folder(self, source: str) -> pathlib.Path:
         raw = self._tests_cfg(source).get(PLAYERS[source]["dir_key"])
