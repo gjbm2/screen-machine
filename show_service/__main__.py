@@ -5,7 +5,8 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
  [show-rx]   Receiver (receiver.py): recv -> on_audio -> Features.process, then Clock.process, then Rings.write, then
                                                          MLFeed.write (the active stream's blocks only, the same
                                                          block, each under its own guard)
-                                            on_midi  -> NoteTap.on_midi, then Piano(stream).on_midi (one Piano per
+                                            on_midi  -> NoteTap.on_midi, Recorder.on_midi (a take's append; guard
+                                                        "recorder"), then Piano(stream).on_midi (one Piano per
                                                         MIDI stream, lazily; state_channels: show.yaml
                                                         situations.midi.channels, the keys' channel)
                                             on_tick  -> Piano.tick, the voice, Features.tick, Harmony.tick,
@@ -120,8 +121,8 @@ RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on
 #: Brain component modules, in add order (README S3.2, S4.2, S5.4 and S5.22: room, situations, autopilot, sources, ml,
 #: structure, listener, cues, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
 #: cues.attach the cue engine (it fires what the listener arms), outputs.attach the rig, after the director: it reads
-#: the director's palette_fn and look_fn)
-BRAIN_MODULES = ("autopilot", "sources", "mllink", "structure", "listener", "cues", "director", "outputs")
+#: the director's palette_fn and look_fn; recorder.attach the Room page's Record, 22 Oct: on_midi taps it after NoteTap)
+BRAIN_MODULES = ("autopilot", "sources", "recorder", "mllink", "structure", "listener", "cues", "director", "outputs")
 NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
                                           "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
 
@@ -218,6 +219,9 @@ class Show:
         self.mlfeed: Any = None                      # Stage 4: mllink.MLFeed (show-rx writer), with the brain only
         self.ml: Any = None                          # Stage 4: the MLLink component
         self.rig: Any = None                         # Stage 5: outputs.Rig (the rig component), with the brain only
+        self.recorder: Any = None                    # recorder.Recorder (the Room page's Record; on_midi's tap)
+        self._runtime_offsets: dict[str, float] = {}   # sources.py's (a rendered test-piano run), over latency.json's
+        self._offsets_lock = threading.Lock()        # main thread (latency.json) vs show-brain (sources)
         self._out_cfg: dict = {}                     # artnet_out's config (the rig's neutral colour, patch.yaml)
         self._amod: Any = None                       # the artnet_out module (its DEFAULT_RGB, HUE_DEPTH)
         self._brain_kw = {k: dict(v) for k, v in (brain_kw or {}).items()}
@@ -274,7 +278,7 @@ class Show:
         self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
                                           "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot",
                                           "ring.write", "notetap", "piano.view", "ml.feed", "rig.hit",
-                                          "artnet.set_look", "rig.set_look")}
+                                          "artnet.set_look", "rig.set_look", "recorder")}
 
     # -- building (main thread) ----------------------------------------------------------------------------------
     def _read_show_file(self) -> dict:
@@ -521,8 +525,22 @@ class Show:
                 self.ml = got
             if name == "outputs" and not isinstance(got, (list, tuple)):
                 self.rig = got
+            if name == "recorder" and callable(getattr(got, "on_midi", None)):
+                self.recorder = got                      # on_midi's tap (show-rx), after NoteTap
+        self._wire_sources()
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
+
+    def _wire_sources(self) -> None:
+        """sources.py's runtime acoustic offset seam (a rendered test-piano run's lead): Show.set_runtime_offset."""
+        comps = getattr(self.brain, "components", None)
+        src = comps.get("sources") if isinstance(comps, dict) else None
+        fn = getattr(src, "set_offset_fn", None)
+        if callable(fn):
+            try:
+                fn(self.set_runtime_offset)
+            except Exception:
+                log.exception("sources: the runtime offset seam wasn't wired: rendered test runs play without it")
 
     def _wire_mic(self) -> None:
         """README S5.16: the mic's brain-side inputs (each optional): the ring, Auto's live on/off (and its wake on a
@@ -686,12 +704,30 @@ class Show:
             self.features.gate_offsets = dict(offsets)
 
     def set_offsets(self, offsets: dict[str, float]) -> None:
-        self.offsets = dict(offsets)
-        if self.rx is not None:
-            try:
-                self.rx.set_offsets(dict(offsets))
-            except Exception:
-                log.exception("set_offsets failed")
+        """latency.json's acoustic offsets (main thread); the runtime ones (``set_runtime_offset``) win over them."""
+        with self._offsets_lock:
+            self.offsets = dict(offsets)
+            merged = {**self.offsets, **self._runtime_offsets}
+            if self.rx is not None:
+                try:
+                    self.rx.set_offsets(merged)
+                except Exception:
+                    log.exception("set_offsets failed")
+
+    def set_runtime_offset(self, stream: str, ms: Optional[float]) -> None:
+        """A brain component's acoustic offset for one stream, merged over latency.json's (sources.py: the test
+        piano's lead while a rendered run plays; any thread); None removes it (latency.json's value is back)."""
+        with self._offsets_lock:
+            if ms is None:
+                self._runtime_offsets.pop(str(stream), None)
+            else:
+                self._runtime_offsets[str(stream)] = float(ms)
+            merged = {**self.offsets, **self._runtime_offsets}
+            if self.rx is not None:
+                try:
+                    self.rx.set_offsets(merged)
+                except Exception:
+                    log.exception("set_runtime_offset failed")
 
     # -- show-rx callbacks (the hot thread: no I/O, no locks) ---------------------------------------------------
     def on_audio(self, stream: str, n0: int, t0_host_s: float, pcm: Any, fs: int, flags: int) -> None:
@@ -752,6 +788,12 @@ class Show:
                 tap.on_midi(stream, msg, arrival_s, to_host)
             except Exception:
                 self._g["notetap"].failed()
+        rec = self.recorder
+        if rec is not None:                  # the Room page's Record (recorder.py): one append while a take runs
+            try:
+                rec.on_midi(stream, msg, arrival_s, to_host)
+            except Exception:
+                self._g["recorder"].failed()
         piano = self.pianos.get(stream)
         if piano is None:
             if self._midi_mod is None:

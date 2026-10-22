@@ -24,6 +24,31 @@
 Nothing here branches on a source's name: ``PLAYERS`` (built from contract.TEST_SOURCE_PLAYERS) maps the contract's
 test-source words to the program that plays them; senders, ports, streams, folders and ranking are show.yaml's. Everything runs on show-brain and never blocks (spawning is a fork/exec; exits are polled), except
 ``stop()`` at shutdown, which waits at most 2 s for the children.
+
+**The test piano's sound, output and recordings** (the Room page, 22 Oct; the show_sender side is another builder's):
+- ``instruments()`` reads config/piano/instruments.json (``INSTRUMENTS_FILE``; re-read every RELOAD_S): an instrument is
+  offered when its engine is ``windows-gs`` (kind "live": PC22's GS synth through pc22_synth, today's sound) or its
+  ``file`` exists under its ``root`` (or the file's top-level ``root``; ~ expanded); ordered by ``order``. No file: the
+  windows-gs entry alone. ``default_instrument``: the file's ``default`` when offered, else the windows-gs one, else
+  the first. ``OUTPUTS``: "pc22" (PC22 speakers) or "none" (screens only).
+- ``start_test(source, piece, instrument, output, once)``: the piano's defaults are the default instrument, "pc22", and
+  once = False for a library piece, True for ``rec:<id>`` (a recording in recorder.py's folder, played by its absolute
+  path; never listed in ``pieces()``). ValueError("unknown_instrument" | "unknown_output").
+- argv: windows-gs + pc22 + loop is exactly today's; windows-gs + none adds ``--no-speaker``; another instrument adds
+  ``--instrument ID --output pc22|none --status-file STATE_DIR/test-piano.status.json`` (removed before each start),
+  and ``--lead-ms L`` when the runtime offset below is applied; ``--once`` when once. The status file
+  (``{"stage": "preparing"|"playing"|"done"|"error", "progress", "error"}``) is read on every poll: ``preparing``
+  while it says so (fast-polled like ``starting``, never timed out), ``progress`` and an ``error`` from it; a once
+  child that exits 0 is ``finished``.
+- **An older show_sender keeps today's argv**: each new flag (SENDER_FLAGS) is passed only when the piano script's
+  text names it (its argparse; re-read when the script changes). Without ``--instrument``/``--output``/
+  ``--status-file`` only the windows-gs sound is offered (and is the default, whatever the file says); without
+  ``--once`` a run loops; without ``--lead-ms`` no offset is applied.
+- **Runtime acoustic offset** (tests/test_future_offset.py checks the engine with notes up to 0.6 s ahead): while a
+  rendered run is heard (an instrument other than windows-gs, output not "none") the test piano's stream gets
+  acoustic_offset_ms = L (show.yaml ``tests.piano.lead_ms``, default LEAD_MS_DEFAULT 650) through ``set_offset_fn``
+  (``__main__.Show.set_runtime_offset``: merged over latency.json's offsets, then Receiver.set_offsets); removed when
+  the run ends. Without that seam no offset is applied and ``--lead-ms`` isn't passed.
 """
 from __future__ import annotations
 
@@ -39,7 +64,7 @@ import sys
 import time
 from typing import Any, Callable, Collection, Optional
 
-from . import contract
+from . import contract, recorder
 from .contract import Sender
 
 log = logging.getLogger("show.sources")
@@ -53,7 +78,22 @@ NO_HEALTH_PLAYING_S = 2.0              # without ctx.health, alive this long cou
 LOG_TAIL_LINES = 5
 LOG_HEADER = "# show_service starts: "            # the first line of a child's log (left out of ``error``)
 LOCAL_BIND = "127.0.0.1"
-RUNNING = ("starting", "playing")
+RUNNING = ("starting", "playing", "preparing")
+STARTING = ("starting", "preparing")             # fast-polled; "preparing": the sound is being rendered
+#: the test piano's sounds (module docstring); the other builder's file, read only
+INSTRUMENTS_FILE = contract.REPO_ROOT / "config/piano/instruments.json"
+LIVE_ENGINE = "windows-gs"
+LIVE_INSTRUMENT = {"id": "windows-gs", "label": "Basic (Windows synth)", "kind": "live"}
+OUTPUTS: tuple[dict[str, str], ...] = ({"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"})
+DEFAULT_OUTPUT = "pc22"
+SILENT_OUTPUT = "none"
+LEAD_MS_DEFAULT = 650.0                # show.yaml tests.piano.lead_ms: the rendered sound starts this long after its MIDI
+LEAD_MS_MAX = 1900.0                   # below stream_service sound_view's FUTURE_MAX_MS (2000)
+REC_PREFIX = "rec:"
+#: show_sender's newer flags (the other builder's): passed only when its script takes them (its text names them), so
+#: an older show_sender keeps today's argv; the rendered sounds are offered only with RENDER_FLAGS
+SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once")
+RENDER_FLAGS = frozenset(("--instrument", "--output", "--status-file"))
 PIANO_REPLAY = contract.REPO_ROOT / "stream_service" / "piano_replay.py"   # PHRASE_LABELS, read by file path
 NAME_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
@@ -200,6 +240,93 @@ def audio_pieces(folder: pathlib.Path) -> list[contract.PieceInfo]:
     return out
 
 
+# -- the test piano's sounds and status (pure) --------------------------------------------------------------------------
+def _num_or(v: Any, default: float) -> float:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else default
+
+
+def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict], Optional[str], list[str]]:
+    """config/piano/instruments.json -> (the offered instruments in order, each ``{"id", "label", "kind", "engine"}``;
+    the file's ``default``; problems). A missing file: the windows-gs entry alone; an unreadable one: the same, and a
+    problem. Shapes taken: ``{"root"?, "default"?, "instruments": [{id, label, engine, file, root?, order?}] | {id:
+    {...}}}`` or a bare list."""
+    try:
+        doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None, []
+    except (OSError, ValueError) as e:
+        return ([dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None,
+                [f"{path.name}: not read ({type(e).__name__}: {e}): only the Windows synth is offered"])
+    top = doc if isinstance(doc, dict) else {}
+    raw = top.get("instruments") if isinstance(doc, dict) else doc
+    if isinstance(raw, dict):
+        raw = [{"id": k, **v} for k, v in raw.items() if isinstance(v, dict)]
+    if not isinstance(raw, list):
+        return [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None, [f"{path.name}: no instruments list"]
+    root_top = top.get("root") if isinstance(top.get("root"), str) else None
+    rows, problems = [], []
+    for i, spec in enumerate(raw):
+        if not isinstance(spec, dict):
+            continue
+        iid, engine = spec.get("id"), spec.get("engine")
+        if not isinstance(iid, str) or not iid or not set(iid) <= NAME_OK:
+            problems.append(f"{path.name}: instrument {i}: bad id (skipped)")
+            continue
+        label = spec.get("label") if isinstance(spec.get("label"), str) and spec.get("label") else iid
+        if engine == LIVE_ENGINE:
+            kind = "live"
+        else:
+            f = spec.get("file")
+            if not isinstance(f, str) or not f.strip():
+                continue                                 # nothing to render with: not offered
+            p = pathlib.Path(f.strip()).expanduser()
+            if not p.is_absolute():
+                root = spec.get("root") if isinstance(spec.get("root"), str) else root_top
+                base = pathlib.Path(root).expanduser() if root else contract.REPO_ROOT
+                p = (base if base.is_absolute() else contract.REPO_ROOT / base) / p
+            try:
+                if not p.exists():
+                    continue                             # not installed (yet)
+            except OSError:
+                continue
+            kind = "rendered"
+        rows.append(((_num_or(spec.get("order"), 1e9), i), {"id": iid, "label": label, "kind": kind,
+                                                             "engine": engine if isinstance(engine, str) else None}))
+    rows.sort(key=lambda r: r[0])
+    out, seen = [], set()
+    for _, r in rows:
+        if r["id"] not in seen:
+            seen.add(r["id"])
+            out.append(r)
+    default = top.get("default", top.get("default_instrument"))
+    return out, default if isinstance(default, str) else None, problems
+
+
+def sender_flags(script: pathlib.Path) -> frozenset:
+    """The SENDER_FLAGS a show_sender script takes: the ones its text names as a quoted literal (its argparse)."""
+    try:
+        text = pathlib.Path(script).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return frozenset()
+    return frozenset(f for f in SENDER_FLAGS if f'"{f}"' in text or f"'{f}'" in text)
+
+
+def read_status(path: Optional[pathlib.Path]) -> Optional[dict]:
+    """show_sender's status file: ``{"stage", "progress" (0..1 or None), "error"}``; None while it is missing or torn."""
+    if path is None:
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or doc.get("stage") not in ("preparing", "playing", "done", "error"):
+        return None
+    prog = doc.get("progress")
+    prog = min(1.0, max(0.0, float(prog))) if _num_or(prog, -1.0) >= 0.0 else None
+    err = doc.get("error")
+    return {"stage": doc["stage"], "progress": prog, "error": err if isinstance(err, str) and err else None}
+
+
 # -- the component -----------------------------------------------------------------------------------------------------
 class _Child:
     """One requested run of a test source: pending (proc None) until the port is free, then a process."""
@@ -215,6 +342,17 @@ class _Child:
         self.killed = False
         self.error: Optional[str] = None
         self.log_path: Optional[pathlib.Path] = None
+        # the test piano's sound (module docstring): None/False for test audio and for today's defaults
+        self.instrument: Optional[str] = None
+        self.live = True                                 # the windows-gs engine (today's sound), or nothing chosen
+        self.output: Optional[str] = None
+        self.once = False
+        self.path: Optional[pathlib.Path] = None         # a rec: piece's .mid
+        self.lead_ms: Optional[float] = None             # the runtime acoustic offset this run applies
+        self.status_path: Optional[pathlib.Path] = None
+        self.stage: Optional[str] = None
+        self.progress: Optional[float] = None
+        self.status_error: Optional[str] = None
 
     def set(self, state: str, now: float) -> None:
         if state != self.state:
@@ -242,8 +380,20 @@ class Sources:
                  piano_script: pathlib.Path = contract.TEST_PIANO_SCRIPT,
                  audio_cmd: Optional[list[str]] = None, log_dir: pathlib.Path = contract.STATE_DIR,
                  clock: Callable[[], float] = time.monotonic,
-                 popen: Callable[..., subprocess.Popen] = subprocess.Popen, pdeath: bool = True) -> None:
-        """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it)."""
+                 popen: Callable[..., subprocess.Popen] = subprocess.Popen, pdeath: bool = True,
+                 instruments_file: pathlib.Path = INSTRUMENTS_FILE,
+                 recordings_dir: pathlib.Path = recorder.RECORDINGS_DIR,
+                 set_offset: Optional[Callable[[str, Optional[float]], None]] = None) -> None:
+        """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it).
+        ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins): tests pass tmp ones.
+        ``set_offset(stream, ms | None)``: the runtime acoustic offset seam (also :meth:`set_offset_fn`)."""
+        self.instruments_file = pathlib.Path(instruments_file)
+        self.recordings_dir = pathlib.Path(recordings_dir)
+        self._set_offset = set_offset
+        self._instr: Optional[tuple[list[dict], Optional[str], list[str]]] = None
+        self._instr_at = -1e18
+        self._flags: tuple[Any, frozenset] = (None, frozenset())
+        self._offsets_applied: dict[str, float] = {}
         self.ctx = ctx
         self.pdeath = bool(pdeath)
         self.python, self.piano_script = python, pathlib.Path(piano_script)
@@ -327,27 +477,69 @@ class Sources:
             self._pieces, self._pieces_at = out, now
         return self._pieces
 
-    def start_test(self, source: str, piece: Optional[str] = None) -> contract.SourceStatus:
-        """Start (or switch) a test source. ValueError("unknown_source" | "unknown_piece")."""
+    def instruments(self) -> tuple[list[dict], Optional[str]]:
+        """The test piano's offered sounds (``{"id", "label", "kind"}``, in order) and the default's id."""
+        rows, default = self._instruments()
+        return [{"id": r["id"], "label": r["label"], "kind": r["kind"]} for r in rows], default
+
+    def choices(self) -> dict:
+        """GET /api/v1/test's ``instruments``, ``default_instrument`` and ``outputs``."""
+        rows, default = self.instruments()
+        return {"instruments": rows, "default_instrument": default, "outputs": [dict(o) for o in OUTPUTS]}
+
+    def start_test(self, source: str, piece: Optional[str] = None, instrument: Optional[str] = None,
+                   output: Optional[str] = None, once: Optional[bool] = None) -> contract.SourceStatus:
+        """Start (or switch) a test source. ValueError("unknown_source" | "unknown_piece" | "unknown_instrument" |
+        "unknown_output"). ``instrument``/``output``/``once`` are the piano's (module docstring); test audio ignores
+        them."""
         if source not in PLAYERS:
             raise ValueError("unknown_source")
-        choices = self.pieces()[source]
-        if piece is None:
-            if not choices:
-                raise ValueError("unknown_piece")
-            info = choices[0]
+        midi = PLAYERS[source]["kind"] == "midi"
+        path: Optional[pathlib.Path] = None
+        if midi and isinstance(piece, str) and piece.startswith(REC_PREFIX):
+            info, path = self._recording(piece)
         else:
-            info = next((p for p in choices if p["id"] == piece), None)
-            if info is None:
-                raise ValueError("unknown_piece")
+            choices = self.pieces()[source]
+            if piece is None:
+                if not choices:
+                    raise ValueError("unknown_piece")
+                info = choices[0]
+            else:
+                info = next((p for p in choices if p["id"] == piece), None)
+                if info is None:
+                    raise ValueError("unknown_piece")
+        spec: Optional[dict] = None
+        out = None
+        if midi:
+            rows, default = self._instruments()
+            iid = instrument if instrument is not None else default
+            spec = next((r for r in rows if r["id"] == iid), None)
+            if spec is None:
+                raise ValueError("unknown_instrument")
+            out = output if output is not None else DEFAULT_OUTPUT
+            if out not in {o["id"] for o in OUTPUTS}:
+                raise ValueError("unknown_output")
         now = self.clock()
         old = self._cur.get(source)
         if old is not None and old.proc is not None and old.proc.poll() is None:
             self._terminate(old, now)
             self._retiring.append(old)
         sender, stream = self._test_sender(source)
-        self._cur[source] = _Child(source, info["id"], info["label"], sender, stream, now)
-        log.info("test %s: %s (%s)", source, info["label"], info["id"])
+        c = _Child(source, info["id"], info["label"], sender, stream, now)
+        if spec is not None:
+            flags = self._sender_flags()
+            c.instrument, c.live, c.output = spec["id"], spec.get("engine") == LIVE_ENGINE, out
+            c.once = (bool(once) if once is not None else path is not None) and "--once" in flags
+            c.path = path
+            if not c.live:
+                c.status_path = self.log_dir / f"test-{source}.status.json"
+                lead = self._lead_ms(source)
+                if (out != SILENT_OUTPUT and lead is not None and self._set_offset is not None
+                        and "--lead-ms" in flags):
+                    c.lead_ms = lead
+        self._cur[source] = c
+        log.info("test %s: %s (%s)%s", source, info["label"], info["id"],
+                 "" if spec is None else f", {c.instrument} on {c.output}{', once' if c.once else ''}")
         self._poll(now)
         self._apply()
         self._rebuild()
@@ -369,7 +561,7 @@ class Sources:
                 else:
                     c.set("off", now)
                 log.info("test %s: stopped", src)
-            elif c.state == "failed":
+            elif c.state in ("failed", "finished"):
                 c.set("off", now)
         self._poll(now)
         self._apply()
@@ -381,11 +573,57 @@ class Sources:
         now = self.clock()
         return {s: self._status(s, now) for s in PLAYERS}
 
+    def set_offset_fn(self, fn: Optional[Callable[[str, Optional[float]], None]]) -> None:
+        """``__main__``: the runtime acoustic offset seam (Show.set_runtime_offset), before the brain starts."""
+        self._set_offset = fn
+
     # -- internals -----------------------------------------------------------------------------------------------------
     def _tests_cfg(self, source: str) -> dict:
         tests = self.settings.get("tests")
         cfg = tests.get(source) if isinstance(tests, dict) else None
         return cfg if isinstance(cfg, dict) else {}
+
+    def _instruments(self) -> tuple[list[dict], Optional[str]]:
+        """(offered rows with their engine, the default id), instruments.json re-read every RELOAD_S. Nothing offered:
+        the Windows synth (degrade to today's sound)."""
+        now = self.clock()
+        if self._instr is None or now - self._instr_at >= contract.RELOAD_S:
+            self._instr, self._instr_at = load_instruments(self.instruments_file), now
+        rows, want, _ = self._instr
+        if not RENDER_FLAGS <= self._sender_flags():          # an older show_sender: today's sound only
+            rows = [r for r in rows if r.get("engine") == LIVE_ENGINE]
+        if not rows:
+            rows = [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)]
+        ids = [r["id"] for r in rows]
+        if want in ids:
+            return rows, want
+        return rows, next((r["id"] for r in rows if r.get("engine") == LIVE_ENGINE), ids[0])
+
+    def _sender_flags(self) -> frozenset:
+        """SENDER_FLAGS the test piano's script takes (re-read when the script changes)."""
+        try:
+            st = self.piano_script.stat()
+            stamp: Any = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            return frozenset()
+        if self._flags[0] != stamp:
+            self._flags = (stamp, sender_flags(self.piano_script))
+        return self._flags[1]
+
+    def _lead_ms(self, source: str) -> Optional[float]:
+        """show.yaml ``tests.<source>.lead_ms`` (default LEAD_MS_DEFAULT, at most LEAD_MS_MAX); None when 0 or less."""
+        v = _num_or(self._tests_cfg(source).get("lead_ms"), LEAD_MS_DEFAULT)
+        return min(v, LEAD_MS_MAX) if v > 0 else None
+
+    def _recording(self, piece: str) -> tuple[contract.PieceInfo, pathlib.Path]:
+        """A ``rec:<id>`` piece: its row and .mid in recorder.py's folder. ValueError("unknown_piece")."""
+        folder = recorder.recordings_folder(self.settings, self.recordings_dir)
+        rid = piece[len(REC_PREFIX):]
+        meta = recorder.read_meta(folder, rid)
+        if meta is None:
+            raise ValueError("unknown_piece")
+        title = meta.get("title") if isinstance(meta.get("title"), str) and meta.get("title") else "Recording"
+        return {"id": piece, "label": title, "kind": "recording"}, folder / f"{rid}.mid"
 
     def _folder(self, source: str) -> pathlib.Path:
         raw = self._tests_cfg(source).get(PLAYERS[source]["dir_key"])
@@ -418,8 +656,21 @@ class Sources:
                     same = False
                 if not same:                                   # show_sender resolves file: ids in its own library
                     piece = str(folder / piece[5:])
-            return [self.python, str(self.piano_script), "--test-piano", piece, "--port", port,
+            elif c.path is not None:                           # a recording: its absolute path
+                piece = str(c.path)
+            argv = [self.python, str(self.piano_script), "--test-piano", piece, "--port", port,
                     "--bind", LOCAL_BIND]
+            if c.live:                                         # windows-gs + pc22: today's argv exactly
+                if c.output == SILENT_OUTPUT:
+                    argv.append("--no-speaker")
+            elif c.instrument is not None:
+                argv += ["--instrument", c.instrument, "--output", str(c.output or DEFAULT_OUTPUT),
+                         "--status-file", str(c.status_path)]
+                if c.lead_ms is not None:
+                    argv += ["--lead-ms", f"{c.lead_ms:g}"]
+            if c.once:
+                argv.append("--once")
+            return argv
         path = self._folder(c.source) / c.piece[5:]
         return [*self.audio_cmd, "--file", str(path), "--port", port, "--bind", LOCAL_BIND, "--stream", c.stream]
 
@@ -427,6 +678,11 @@ class Sources:
         argv = self._argv(c)
         c.log_path = self.log_dir / f"test-{c.source}.log"
         env = dict(os.environ, PYTHONUNBUFFERED="1")
+        if c.status_path is not None:                          # never read the last run's status
+            try:
+                c.status_path.unlink()
+            except OSError:
+                pass
         try:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             with open(c.log_path, "wb") as logf:               # truncated at each start
@@ -497,12 +753,24 @@ class Sources:
             if c.proc is None:
                 continue
             rc = c.proc.poll()
+            if c.status_path is not None and c.state in RUNNING:
+                st = read_status(c.status_path)           # show_sender's stage, progress and error
+                if st is not None:
+                    c.stage, c.progress, c.status_error = st["stage"], st["progress"], st["error"]
             if c.state in RUNNING and rc is not None:
-                c.error = self._tail(c) or f"exited with code {rc}"
-                c.set("failed", now)
-                log.warning("test %s: exited by itself (code %s)", source, rc)
-            elif c.state == "starting" and self._stream_live(c, now):
+                if rc == 0 and c.once and c.stage != "error":
+                    c.set("finished", now)                 # a once-only play ended by itself
+                    log.info("test %s: finished", source)
+                else:
+                    c.error = c.status_error or self._tail(c) or f"exited with code {rc}"
+                    c.set("failed", now)
+                    log.warning("test %s: exited by itself (code %s)", source, rc)
+            elif c.state in STARTING and c.stage == "preparing":
+                c.set("preparing", now)                    # rendering the sound: no timeout, fast-polled a while
+            elif c.state in STARTING and self._stream_live(c, now):
                 c.set("playing", now)
+            elif c.state == "preparing":
+                c.set("starting", now)                     # rendered: now wait for its stream
             elif c.state == "stopping":
                 if rc is not None:
                     c.set("off", now)
@@ -524,7 +792,7 @@ class Sources:
                 continue
             if c.state == "stopping":
                 return True
-            if c.state == "starting" and (c.proc is None or now - c.since_s < FAST_POLL_FOR_S):
+            if c.state in STARTING and (c.proc is None or now - c.since_s < FAST_POLL_FOR_S):
                 return True
         return False
 
@@ -584,18 +852,49 @@ class Sources:
                     self._prio_applied = prio_t
                 except Exception as e:                         # noqa: BLE001
                     errors.append(f"set_priority failed: {type(e).__name__}: {e}")
+        errors += self._apply_offsets()
         self._apply_errors = errors
         self._wanted = (eff, prio_t)
+
+    def _apply_offsets(self) -> list[str]:
+        """The runtime acoustic offsets (module docstring): each running rendered run's lead on its stream; a stream
+        whose run ended gets None (latency.json's own offset back). Returns problems."""
+        want: dict[str, float] = {}
+        for c in self._cur.values():
+            if c is not None and c.state in RUNNING and c.lead_ms is not None:
+                want[c.stream] = float(c.lead_ms)
+        if want == self._offsets_applied or self._set_offset is None:
+            return []
+        problems = []
+        for stream in sorted(set(self._offsets_applied) | set(want)):
+            ms = want.get(stream)
+            if self._offsets_applied.get(stream) == ms:
+                continue
+            try:
+                self._set_offset(stream, ms)
+                if ms is None:
+                    self._offsets_applied.pop(stream, None)
+                else:
+                    self._offsets_applied[stream] = ms
+                log.info("test piano: %s acoustic offset %s", stream, "removed" if ms is None else f"{ms:g} ms")
+            except Exception as e:                             # noqa: BLE001
+                problems.append(f"set_offset failed: {type(e).__name__}: {e}")
+        return problems
 
     def _status(self, source: str, now: float) -> contract.SourceStatus:
         c = self._cur.get(source)
         if c is None:
             sender, stream = self._test_sender(source)
+            midi = PLAYERS[source]["kind"] == "midi"
             return {"source": source, "state": "off", "piece": None, "label": None, "stream": stream,
-                    "sender": sender.name, "pid": None, "since_s": None, "error": None}
+                    "sender": sender.name, "pid": None, "since_s": None, "error": None,
+                    "instrument": self._instruments()[1] if midi else None,
+                    "output": DEFAULT_OUTPUT if midi else None, "once": False, "progress": None}
+        error = c.error if c.state == "failed" else (c.status_error if c.state in RUNNING else None)
         return {"source": source, "state": c.state, "piece": c.piece, "label": c.label, "stream": c.stream,
                 "sender": c.sender.name, "pid": c.proc.pid if c.proc is not None else None,
-                "since_s": round(max(0.0, now - c.since_s), 3), "error": c.error if c.state == "failed" else None}
+                "since_s": round(max(0.0, now - c.since_s), 3), "error": error,
+                "instrument": c.instrument, "output": c.output, "once": c.once, "progress": c.progress}
 
     def _rebuild(self) -> None:
         now = self.clock()
@@ -617,8 +916,11 @@ class Sources:
                 errors.append(f"tests.{source}.{PLAYERS[source]['dir_key']}: no folder {self._folder(source)}"
                               + (" (run tools/show/fetch_test_music.py)" if PLAYERS[source]["kind"] == "audio"
                                  else ""))
+        if self._instr is not None:
+            errors += self._instr[2]
         self._snap = {"senders": rows, "tests": {s: self._status(s, now) for s in PLAYERS},
-                      "priority": list(self._prio_applied or ()), "errors": errors}
+                      "priority": list(self._prio_applied or ()), "errors": errors,
+                      "offsets_ms": dict(self._offsets_applied)}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Sources:
