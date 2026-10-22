@@ -86,6 +86,8 @@ P_SEED = 0.6                       # free time's beat before any phrase has had 
 S_OMEGA, S_AMAX_SP = 1.6, 60.0     # the paper: spring (rad/s) with tempo feed-forward, acceleration cap (sp/s^2)
 V_IDLE_SP = 0.25                   # the paper's creep with nothing playing (sp/s)
 AHEAD_BEATS = 2.0                  # with nothing sounding the paper runs on at most this far past the last sound
+ROOM_PASS_S = 0.08                 # span: room: at most a layout pass this often (a birth waits up to this long)
+ROOM_HOT_N = 32                    # span: room: a pass lays out again the bars holding the newest this many notes
 ROOM_CHORD_S = 0.045               # span: room: onsets this close are one column (a spread chord)
 ROOM_GAP_SP = 1.7                  # ... and columns at least this far apart (heads, a little white), from onsets alone
 AHEAD_ROOM_S = 1.0                 # span: room: with nothing sounding the paper runs on this long past the last sound
@@ -338,6 +340,7 @@ class ScoreRibbon(Source):
         self._held_outs = None                                   # a batch's bars, synced once after it
         self._heavy = False                                      # this frame laid out a rewrite
         self._passed = False                                     # this frame's layout pass was heavy
+        self._pp = None                                          # a pass prepared, to lay out and apply next frame
         self._lay = None                                         # [phrase, bars to go, out so far, q0, fifths]
         self._c0 = 0.0
 
@@ -458,7 +461,7 @@ class ScoreRibbon(Source):
         self.serial += 1
         ph = _Phrase(self.serial, A, self.Q)
         ph.T_ref = tr
-        ph.pl.local_wkey = self._roomy
+        ph.pl.local_wkey = True
         if prev is not None:
             ph.slot_s = prev.slot_s
         self.phrases.append(ph)
@@ -600,6 +603,16 @@ class ScoreRibbon(Source):
                                 "units": bar.units})
             self.dirty = True
             return
+        if True:                                   # written over the next frames (a frame's budget each, then on
+            if self._lay is None:                  # stage newest first), not all in the frame it arrives
+                self._lay = [ph, collections.deque(), RL.Out(), q0 if pl.wbars == 0 else pl.q0,
+                             ph.fifths if ph.fifths is not None else 0]
+            self._lay[1].append(bar)
+            self.stats["bars"] += 1
+            self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
+                                "units": bar.units})
+            self.dirty = True
+            return
         ov = {}
         for bb in ([] if self._joining else (getattr(self, "_batch", None) or [bar])):   # this bar's notes at their
             if bb.marker:                                                                 # written 16ths (a join
@@ -726,7 +739,16 @@ class ScoreRibbon(Source):
         pl = ph.pl
         n = 0
         while q and (t0_cpu is None or n == 0 or time.thread_time() - t0_cpu < JOIN_BUDGET_S):
-            one = pl.write(q.popleft(), fifths, q0)
+            bar = q.popleft()
+            if pl.wbars > 0 and bar.units:                        # (its notes anchor the map where it's written)
+                ov = {}
+                for st_ in bar.staves:
+                    for e in st_:
+                        for i_, tin in zip(e.ids, e.tie_in):
+                            if not tin:
+                                ov[i_] = bar.pos * bar.units + e.start
+                self._fit_warp(ph, ov, pl.q0, bar.units, None, min_slot=(bar.pos - 1) * bar.units)
+            one = pl.write(bar, fifths, q0)
             for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
                 getattr(acc, name).update(getattr(one, name))
             n += 1
@@ -876,14 +898,15 @@ class ScoreRibbon(Source):
             return b.clock.P / 4.0
         return None
 
-    def _fit_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None) -> bool:
+    def _fit_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None,
+                  min_slot: float | None = None) -> bool:
         """The phrase's warp: each note drawn so far anchored where it is drawn now, at its 16th under the newest
         reading (``override``: nid -> 16th; else its written 16th).  A rewrite, a
         better clock or a re-read then moves the bar lines, beams and values around the notes, not the notes (only
         those whose order changed: a note re-read past its neighbours, two that became a chord).  New notes go on
         from the last ones at their recent width.  False (no warp yet) with fewer than two notes drawn."""
         if self._roomy:
-            return self._fit_time_warp(ph, override, q0, units, d)
+            return self._fit_time_warp(ph, override, q0, units, d, min_slot)
         ph.warp_dirty = False
         pl = ph.pl
         Hd = self.stage.T["heads"]
@@ -940,7 +963,8 @@ class ScoreRibbon(Source):
         self._event("warp", {"n": len(ws), "Q": qt})
         return True
 
-    def _fit_time_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None) -> bool:
+    def _fit_time_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None,
+                       min_slot: float | None = None) -> bool:
         """span: room: the phrase's warp through each note at its onset time (x = pace x (onset - T_ref)), the same on
         every screen from the room's data alone; a chord at its first onset; bar lines, rests and values laid around
         the notes; collisions push locally.  A re-read never moves a note."""
@@ -949,7 +973,10 @@ class ScoreRibbon(Source):
         if ph.T_ref is None:
             return False
         items = []
-        for nid, slot in list(override.items()) + [(k, v) for k, v in pl.written_slot.items() if k not in override]:
+        ws_ = pl.written_slot
+        src = list(override.items()) + [(k, v) for k, v in ws_.items()
+                                        if k not in override and (min_slot is None or v >= min_slot)]
+        for nid, slot in src:
             t = ph.ton.get(nid)
             if t is None:
                 m = self.notes.get(nid)
@@ -958,9 +985,19 @@ class ScoreRibbon(Source):
                 items.append((t, nid, slot))
         # each onset's x from the onsets alone (not the reading, not the values): pace x time, a spread chord at its
         # first onset, and never closer than ROOM_GAP_SP to the onset before (a dense run spreads, and is back on
-        # time at its first breath): the same on every screen, unmoved by a re-read
-        xon, last_t, last_x = {}, None, None
-        for t, nid, _slot in sorted(items):
+        # time at its first breath): the same on every screen, unmoved by a re-read.  Kept per phrase and extended
+        # as onsets arrive (they arrive in order); worked out again only if one comes out of order
+        xon = getattr(ph, "xon", None)
+        if xon is None:
+            xon = ph.xon = {}
+        chain = getattr(ph, "chain", None)                     # (last t, last x) of the chained onsets
+        new = sorted((t, nid) for t, nid, _s in items if nid not in xon)
+        if new and chain is not None and new[0][0] < chain[0]:  # (out of order: all again, from the phrase's onsets)
+            xon.clear()
+            chain = None
+            new = sorted({(t, nid) for nid, t in ph.ton.items() if t is not None} | {(t, nid) for t, nid, _s in items})
+        last_t, last_x = chain if chain is not None else (None, None)
+        for t, nid in new:
             if last_t is not None and t - last_t < ROOM_CHORD_S:
                 xon[nid] = last_x
                 continue
@@ -969,8 +1006,8 @@ class ScoreRibbon(Source):
                 x = max(x, last_x + ROOM_GAP_SP)
             xon[nid], last_t, last_x = x, t, x
         if last_x is not None:
+            ph.chain = (last_t, last_x)
             ph.x_last = (last_t, last_x)                       # (the playhead keeps up with a spread run)
-        ph.xon = xon
         pts: dict = {}
         for t, nid, slot in items:
             x = xon[nid]
@@ -1049,10 +1086,39 @@ class ScoreRibbon(Source):
         # phrase keeps the paper's pace, so the notes stay about where they are (the grid often counts the beat at
         # half or twice the clock's rate: the notes would all slide two-fold)
         qkey = (mode, b.beats * b.unit if b.grid is not None else 16, b.unit if b.grid is not None else 4)
+        tl = None
+        if metred and mode != "free":
+            tl = b.grid if b.grid is not None else b.clock
+            if b.grid is not None:
+                _m, _qf, cf, _u = self._slot_fn(ph)
+
+                class _TL:                                 # the grid, extrapolated as _slot_fn does
+                    @staticmethod
+                    def beat(t, cf=cf, u=b.unit):
+                        return cf(t) / u
+                tl = _TL
+        k0 = b.next_bar
+        ph.hot_cut = None
+        min_slot = None
+        if notes and self._roomy and len(notes) > 8:
+            # span: room: only the unwritten notes this screen shows (and a margin): the rest are another screen's,
+            # or already gone (a note's staff reads the builder's notes, not this list: the same answer); of those
+            # only the bars with the newest ROOM_HOT_N (the rest stay as they are on stage)
+            xon, sp_ = getattr(ph, "xon", {}), self.sp
+            lo = (self._vis_left() - ph.A) / sp_ - 24.0
+            hi = (self._S_draw() + self.WV - ph.A) / sp_ + 24.0
+            notes = [n for n in notes if lo <= xon.get(n.id, self.pace * (n.t_on - (ph.T_ref or n.t_on))) <= hi]
+            if len(notes) > ROOM_HOT_N:
+                notes, k0 = self._hot(ph, notes, tl, qf, now, k0)
+            if notes:
+                units_h = (b.beats * b.unit if b.grid is not None else 16) if tl is not None else 16
+                min_slot = (k0 - 1) * units_h if tl is not None else min(float(qf(n.t_on)) for n in notes) - 16
+        if not self._roomy and len(notes) > ROOM_HOT_N and pl.warp is not None:
+            notes, k0 = self._hot(ph, notes, tl, qf, now, k0)   # (one screen: the same cut, no window)
         if ph.warp_dirty or qkey != ph.q_mode:
             units_l = (b.beats * b.unit if b.grid is not None else 16) if metred and mode != "free" else None
             if self._fit_warp(ph, {n.id: float(qf(n.t_on)) for n in notes if n.id not in pl.written_slot}, q0,
-                              units_l):
+                              units_l, min_slot=min_slot):
                 ph.q_mode = qkey
         if pl.wspacer is None and qkey != ph.q_mode:
             if mode == "free":
@@ -1066,36 +1132,34 @@ class ScoreRibbon(Source):
             self._set_q(ph, qkey, [(n.id, float(qf(n.t_on))) for n in notes], q0,
                         qkey[1] if metred and mode != "free" else None, d)
         bars, chords = [], None
-        if notes and self._roomy and len(notes) > 8:
-            # span: room: only the unwritten notes this screen shows (and a margin): the rest are another screen's,
-            # or already gone (a note's staff reads the builder's notes, not this list: the same answer)
-            xon, sp_ = getattr(ph, "xon", {}), self.sp
-            lo = (self._vis_left() - ph.A) / sp_ - 24.0
-            hi = (self._S_draw() + self.WV - ph.A) / sp_ + 24.0
-            notes = [n for n in notes if lo <= xon.get(n.id, self.pace * (n.t_on - (ph.T_ref or n.t_on))) <= hi]
         if notes:
             staffs = b.staves(notes)
             if metred and mode != "free":
-                tl = b.grid if b.grid is not None else b.clock
-                if b.grid is not None:
-                    _m, _qf, cf, _u = self._slot_fn(ph)
-
-                    class _TL:                             # the grid, extrapolated as _slot_fn does
-                        @staticmethod
-                        def beat(t, cf=cf, u=b.unit):
-                            return cf(t) / u
-                    tl = _TL
-                bars = RL.metred_bars(b, notes, staffs, b.next_bar, now, tl)
+                bars = RL.metred_bars(b, notes, staffs, k0, now, tl)
             else:
                 slots = [float(qf(n.t_on)) for n in notes]
                 ends = [float(qf(n.t_off if n.t_off is not None else now)) for n in notes]
                 ends = [max(e, s + (1 if mode != "free" else 0.25)) for s, e in zip(slots, ends)]
                 chords = RL.open_chords(notes, staffs, slots, ends, unit)
+        pp = {"ph": ph, "bars": bars, "chords": chords, "fifths": fifths, "q0": q0, "metred": metred, "mode": mode,
+              "unit": unit, "n": len(notes), "wbars": pl.wbars, "nb": b.next_bar}
+        self._pp = pp                                            # laid out and put on stage next frame
+
+
+    def _pass_apply(self, pp: dict) -> None:
+        """A pass's second half: the unwritten bars laid out (reusing those unchanged) and put on stage."""
+        ph, bars, chords, fifths, q0 = pp["ph"], pp["bars"], pp["chords"], pp["fifths"], pp["q0"]
+        metred, mode, unit = pp["metred"], pp["mode"], pp["unit"]
+        b = self.builder
+        pl = ph.pl
         units = (b.beats * b.unit if b.grid is not None else 16) if metred else None
         beats = b.beats if b.grid is not None else 4
-        pl.provisional(bars, chords, fifths, q0, units, unit if b.grid is not None else 4, beats)
+        pl.provisional(bars, chords, fifths, q0, units, unit if b.grid is not None else 4, beats,
+                       fresh=ph.hot_cut is not None)
         self._event("pass", {"mode": mode, "q0": q0, "Q": ph.Q, "wbars": pl.wbars, "nb": b.next_bar,
-                             "units": units, "n": len(notes)})
+                             "units": units, "n": pp["n"], "nbars": len(bars), "memo": list(getattr(pl, "memo_n", [0, 0])),
+                             "cut": None if ph.hot_cut is None else ph.hot_cut[0]})
+        pl.memo_n = [0, 0]
         out = pl.prov
         # the phrase's pace (free time for the next phrase starts from it)
         if b.grid is not None and len(b.grid.t) >= 2:
@@ -1115,8 +1179,73 @@ class ScoreRibbon(Source):
         ph.end_x = max(ph.end_x, out.end_x, pl.written.end_x)
         self.regrid = False
 
+    def _hot(self, ph: _Phrase, notes: list, tl, qf, now: float, k0: int):
+        """span: room: the unwritten notes a pass lays out again: the bars holding the newest ROOM_HOT_N, from a bar
+        line no note sounds across (a tie over the cut would renumber its pieces).  The older unwritten bars keep
+        what is on stage (frozen) until the room writes them: a dense run costs the same each pass, not more."""
+        b = self.builder
+        if tl is not None:
+            bar_u = (b.beats * b.unit) if b.grid is not None else 16
+
+            def s_of(t):
+                return b._q(tl.beat(t))
+        else:
+            bar_u = 16
+
+            def s_of(t):
+                return int(math.floor(qf(t)))
+        se = [(n, s_of(n.t_on), s_of(n.t_off if n.t_off is not None else now)) for n in notes]
+        se.sort(key=lambda x: x[0].t_on)
+        k = se[-ROOM_HOT_N][1] // bar_u
+        prev = getattr(ph, "k_hot", None)
+        if prev is not None and prev[0] == (tl is not None, bar_u) and k0 < prev[1] <= k \
+                and sum(1 for _n, s_, _e in se if s_ // bar_u >= prev[1]) <= 2 * ROOM_HOT_N:
+            k = prev[1]                                          # (the cut stays put while it can: bars laid out
+        else:                                                    # before are reused, not laid out again)
+            ph.k_hot = None
+        free = tl is None and not self._roomy                    # (one screen unmetred: no ties to keep whole;
+        for _ in range(0 if free else 6):                        # a room span keeps its cuts where all agree)
+            cross = [s // bar_u for _n, s, e in se if s // bar_u < k and e > k * bar_u]
+            if not cross:
+                break
+            k = min(cross)
+        else:
+            if not free:
+                return notes, k0
+        if k <= k0 or tl is None and k <= min(s for _n, s, _e in se) // bar_u:
+            return notes, k0
+        hot = [n for n, s_, _e in se if s_ // bar_u >= k]
+        ph.hot_cut = (k, bar_u, {n.id for n, s_, _e in se if s_ // bar_u < k}, tl is not None, k0)
+        ph.k_hot = ((tl is not None, bar_u), k)
+        return hot, max(k0, k)
+
+    def _frozen(self, ph: _Phrase, owned: set) -> set:
+        """The provisional marks of the unwritten bars a pass left as they are (see _hot)."""
+        hc = getattr(ph, "hot_cut", None)
+        if hc is None:
+            return set()
+        k_hot, bar_u, cold, metred, k_next = hc
+        fz = set()
+        for key in owned:
+            t = key[0]
+            if t in ("h", "s", "o", "t", "b"):
+                if key[2] in cold:
+                    fz.add(key)
+            elif metred and t == "r":
+                if k_next * bar_u <= key[2] < k_hot * bar_u:
+                    fz.add(key)
+            elif metred and t == "l" and isinstance(key[2], int):
+                if k_next <= key[2] < k_hot:
+                    fz.add(key)
+        return fz
+
     def _note_info_sync(self, ph: _Phrase, out, final: bool) -> None:
-        info = {nid: (m.pitch, m.t_on, m.t_off) for nid, m in ph.notes.items()}
+        notes_ = ph.notes
+        info = {}
+        for key in out.heads:                                    # (what the stage reads: the heads synced)
+            m = notes_.get(key[2])
+            if m is not None:
+                info[key[2]] = (m.pitch, m.t_on, m.t_off)
         if final:
             self.stage.sync(ph.serial, out, ph.A, self.t_sound, final=True, mapver=ph.mapver, regrid=self.regrid,
                             owned=set(), note_info=info, reuse=ph.prov_owned - ph.pl.written_keys)
@@ -1124,8 +1253,9 @@ class ScoreRibbon(Source):
                 | set(out.bars)
         else:
             owned = ph.prov_owned - ph.pl.written_keys
+            fz = self._frozen(ph, owned)
             ph.prov_owned = self.stage.sync(ph.serial, out, ph.A, self.t_sound, final=False, mapver=ph.mapver,
-                                            regrid=self.regrid, owned=owned, note_info=info)
+                                            regrid=self.regrid, owned=owned - fz, note_info=info) | fz
         Hd = self.stage.T["heads"]
         st = self.stage
         for key in out.heads:
@@ -1345,7 +1475,26 @@ class ScoreRibbon(Source):
             # a birth is laid out at once; anything else at most every 50 ms (a burst of releases and replies
             # is one pass)
             # (a join's bars took this frame: its layout, the paper and the stage from the next)
-            if (self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05)) and not self._joining \
+            gap = ROOM_PASS_S                                      # (births wait for the next slot)
+            pp = self._pp
+            if pp is not None and not self._joining and not self._heavy:
+                ph_ = pp["ph"]
+                if ph_ is not self.ph or ph_.closed or ph_.pl.wbars != pp["wbars"] or \
+                        self.builder.next_bar != pp["nb"] or self._lay is not None:
+                    self._pp = None                              # (written meanwhile: prepared again)
+                    self.dirty = True
+                elif time.thread_time() - _c0 < 0.004:           # (a heavy frame already: the next one)
+                    self._pp = None
+                    self._passed = True
+                    try:
+                        self._pass_apply(pp)
+                    except Exception:
+                        if not getattr(self.ph, "logged", False):
+                            log.exception("score_ribbon: layout pass failed")
+                            if self.ph is not None:
+                                self.ph.logged = True
+            elif ((self.dirty_now and self.clock - self.last_pass >= gap)
+                    or (self.dirty and self.clock - self.last_pass >= max(0.05, gap))) and not self._joining \
                     and not self._heavy:                    # (nor a rewrite's: that frame lays it out)
                 self._passed = True
                 self.dirty = self.dirty_now = False
