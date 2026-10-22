@@ -995,9 +995,11 @@ class Engine:
                 self._hook_failed = True
                 log.exception("[%s] frame hook failed; signals frozen for this session", self.name)
         snd = self.sound
-        if snd is not None:     # the ensemble's register window for the note drawers (ensemble.py, sound.py)
-            lv = getattr(self.bus.runtime, "lever", None)
+        if snd is not None:     # the ensemble's register window and segment for the scenes (ensemble.py, sound.py)
+            rt = self.bus.runtime
+            lv = getattr(rt, "lever", None)
             snd.register = None if lv is None else lv.get("register")
+            snd.segment = getattr(rt, "segment", None)
         slot.ev_start.record(stream)
         timer = self.timer
         if timer is not None:

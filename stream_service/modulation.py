@@ -51,7 +51,9 @@ the binding depth, motion x the scene clock, pulse x the bindings' beat, energy_
 pivots, so the pivot never re-centres it away), pal_shift reads the session palette that far along.  Canon's clock
 offset (§8.7, §8.9; ``clock_off``, s, 0 in unison): the beat-bound signals (the clock's beat_phase, bar_phase,
 downbeat, the beat ladder's pulse) are read at photon time - clock_off, and a room scene's clock runs that far behind
-the room's (layers.SourceLayer, which reads ``clock_off`` and ``clock_off_ok``).
+the room's (layers.SourceLayer, which reads ``clock_off`` and ``clock_off_ok``).  ``segment``: this screen's (k, n)
+across the ensemble's screens (``extra["segment"]``, ensemble.segment; None alone or without one), read each frame;
+the engine hands it to Sound.segment.
 
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
@@ -311,6 +313,7 @@ class SessionRuntime:
         self._lever_glide = ensemble.LeverGlide()
         self.clock_off = 0.0                      # canon's clock offset this frame (s): beat signals and room scene
         self.clock_off_ok = True                  # clocks run this far behind; ok: a running scene clock may follow it
+        self.segment: Optional[tuple] = None      # this screen's (k, n) across the ensemble's screens, or None
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -343,6 +346,7 @@ class SessionRuntime:
         fast, follow, src, wa = None, 0.0, None, w
         lead = self.sampler.lead if self.sampler is not None else 0.0
         ens = ex.get("ensemble")
+        self.segment = ensemble.clean_segment(ex.get("segment"))
         try:                                    # the room ensemble's levers at photon time (never breaks a frame)
             lv = self._lever_glide.at(ens, (now + lead) * 1000.0)
             bs = ens.get("beat_s") if lv is not None and isinstance(ens, dict) else None

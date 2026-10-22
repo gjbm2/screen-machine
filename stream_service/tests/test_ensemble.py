@@ -142,6 +142,26 @@ def test_signals_direction_and_note_weights():
     assert list(w) == [1.0, 1.0, 1.0, 0.25, 0.25]                                     # 64.5 = the middle of A0..C8
 
 
+def test_segment_orders_the_screens_by_x():
+    e = ens(north=part(x=0.71), south=part(x=-0.71))                       # south on the left, north on the right
+    assert ensemble.segment(e, "south-screen") == (0, 2) and ensemble.segment(e, "north-screen") == (1, 2)
+    assert ensemble.segment(e, "devtest") is None and ensemble.segment(None, "north-screen") is None
+    assert ensemble.segment({**e, "screens": {"north-screen": "screen.north"}}, "north-screen") is None   # alone
+    tie = ens()                                                             # both at x -1: show's (x, id) order
+    assert ensemble.segment(tie, "north-screen") == (0, 2) and ensemble.segment(tie, "south-screen") == (1, 2)
+    assert ensemble.segment(ens(north=part(x=None)), "south-screen") is None   # no x: never placed, so it is alone
+    assert ensemble.clean_segment((1, 2)) == (1, 2) and ensemble.clean_segment([0, 3]) == (0, 3)
+    for bad in (None, (2, 2), (-1, 2), (0, 1), (True, 2), (0.5, 2), "ab", (0, 2, 3)):
+        assert ensemble.clean_segment(bad) is None
+    rt = SessionRuntime(None)
+    rt.extra = {"segment": (1, 2)}
+    rt.begin_frame(0.0)
+    assert rt.segment == (1, 2)
+    rt.extra = {"segment": "bad"}
+    rt.begin_frame(1.0)
+    assert rt.segment is None
+
+
 def test_hud_line():
     e = ens(south=part("lead"))
     assert ensemble.hud_line(e, None, NOW_MS) == "Together: a round, right follows left by 2 beats · lead south-screen"
@@ -206,6 +226,15 @@ async def test_followers_cut_at_their_own_stagger(client):
     await a.cue({"to": "auto"}, cause="auto", reason="room_event", detail="test", stagger=False)   # a sweep's
     await settle(a, b)
     assert scene_cmds(eb)[-1].at_mono is None
+
+
+async def test_segment_reaches_the_runtime_without_a_part(client):
+    (sa, a, ea), (sb, b, eb) = await room_pair(client)
+    say(client.app[MANAGER], ens(north=part(x=0.71), south=part(x=-0.71)))      # unison: no levers
+    now = asyncio.get_running_loop().time()
+    a.tick(now), b.tick(now)
+    assert a.runtime.extra["segment"] == (1, 2) and b.runtime.extra["segment"] == (0, 2)
+    assert "ensemble" not in a.runtime.extra and "ensemble" not in b.runtime.extra
 
 
 async def test_lead_screen_is_the_fx_source_and_levers_reach_the_runtime(client):
