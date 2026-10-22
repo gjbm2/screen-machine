@@ -1,0 +1,12 @@
+# piano_render: venv ~/.venvs/sm-piano (python3.12 -m venv ~/.venvs/sm-piano; ~/.venvs/sm-piano/bin/pip install -r piano_render/requirements.txt)
+# Pinned to the set that installed cleanly together on 22 Oct 2026 (Python 3.12.3, WSL Ubuntu 24.04).
+# pyfluidsynth loads the system libfluidsynth (/lib/x86_64-linux-gnu/libfluidsynth.so.3, apt libfluidsynth3).
+# libsfizz is not on PyPI: piano_render.engines.sfizz loads it by ctypes from <engines_root>/sfizz/.
+numpy==2.5.4
+scipy==1.18.1
+soundfile==0.14.0
+mido==1.3.3
+pyfluidsynth==1.4.0
+numba==0.68.0
+llvmlite==0.50.0
+pytest==9.1.1
