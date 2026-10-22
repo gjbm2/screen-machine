@@ -217,6 +217,23 @@ if __name__ == '__main__':
     ws_thread.start()
     alerts_health.register_ws_thread(ws_thread)
 
+    # Room control: room_service runs in this process on its own thread, event loop and LAN port
+    # (ROOM_PORT, default 8700); this :5000 door has no room routes. Never blocks or breaks start-up:
+    # while the separate room_service still holds :8700 it waits and retries. ROOM_IN_APP=0 turns it off.
+    try:
+        import room_in_app
+        room_in_app.start_in_background(on_crash=lambda summary, exc: alert(
+            "room.service_died", summary, severity="error", exc=exc))
+    except Exception as e:
+        error(f"room_service could not be started in the app: {e}")
+
+    # Room -> scheduler: mode, Auto and art/live changes become scheduler events (routes/room_events_bridge.py)
+    try:
+        from routes.room_events_bridge import start_bridge
+        start_bridge()
+    except Exception as e:
+        error(f"room events bridge could not be started: {e}")
+
     if DEBUG:
         info(f"Starting Flask dev server on port {PORT} (DEBUG)")
         app.run(host=HOST, debug=True, port=PORT, use_reloader=False)

@@ -3,8 +3,8 @@ exec 9>/tmp/webview-manager.lock
 flock -n 9 || exit 0
 # Screen-1 -> URL1  Screen-2 -> URL2 (if present).  No forced reloads.
 
-URL1="http://185.254.136.253:8000/display/north-screen"
-URL2="http://185.254.136.253:8000/display/south-screen"
+URL1="http://95.141.21.170:8000/display/north-screen"
+URL2="http://95.141.21.170:8000/display/south-screen"
 WIDTH=3840
 HEIGHT=2160
 
@@ -17,7 +17,8 @@ xset s off -dpms s noblank
 
 prev_state=""
 while sleep 2; do
-    mapfile -t CONN < <(xrandr --query | awk '/^HDMI-[0-9] connected/{print $1}' | sort)
+    # --current: read cached state, don't force an EDID re-probe (log spam)
+    mapfile -t CONN < <(xrandr --current | awk '/^HDMI-[0-9] connected/{print $1}' | sort)
     state=$(printf '%s\n' "${CONN[@]}")
 
     [[ "$state" == "$prev_state" ]] && continue     # nothing changed

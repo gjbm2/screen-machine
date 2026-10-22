@@ -1,6 +1,12 @@
 #!/bin/bash
 # Kiosk System Deployment Script
 # Usage: ./deploy-kiosk.sh [remote-host] [remote-user]
+#
+# Installs the Wayland kiosk as the default (since 2026-10-13): kiosk.service runs sway, which starts
+# kiosk-wayland.sh (one full-screen Chrome per TV). The X11 kiosk (Xorg + kiosk-loop.sh, one X screen per TV) is
+# installed as kiosk-x11.service, DISABLED, as the fallback. Switch back on the box:
+#   sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11
+# Files are read from media-server/remote-scripts/ (run from the repo, or from a copy of media-server/).
 
 set -e  # Exit on any error
 
@@ -10,6 +16,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Kiosk files, relative to SRC_DIR
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/remote-scripts"
+KIOSK_FILES=(
+    kiosk.service wayland/sway-kiosk.conf wayland/kiosk-wayland.sh            # default: Wayland (sway)
+    kiosk-x11.service kiosk-wait-start.sh kiosk-loop.sh xorg/20-zaphod.conf    # fallback: X11, disabled
+    webview-manager.sh
+)
 
 # Function to print colored output
 print_status() {
@@ -46,29 +60,53 @@ check_sudo() {
     fi
 }
 
+# Function to check that every kiosk file is present (before anything is installed)
+check_files() {
+    for file in "${KIOSK_FILES[@]}"; do
+        if [[ ! -f "$SRC_DIR/$file" ]]; then
+            print_error "Required file not found: $SRC_DIR/$file"
+            print_status "Run this script from a copy of media-server/ (it reads media-server/remote-scripts/)"
+            exit 1
+        fi
+    done
+}
+
 # Function to install dependencies
 install_dependencies() {
     print_status "Installing system dependencies..."
     
+    # No apt upgrade, and --no-upgrade on installs: a re-run on a live box must not upgrade the kernel, Chrome or
+    # the display stack behind the back of lockdown_system's masked auto-updates
     sudo apt update
-    sudo apt upgrade -y
     
-    sudo apt install -y \
+    # X packages are for the kiosk-x11.service fallback (x11-xserver-utils provides xrandr and xset);
+    # jq is used by the status scripts (check-status*.sh, restart-kiosk.sh) and the admin API's display check
+    sudo apt install -y --no-upgrade \
         xorg \
         xserver-xorg-core \
         openbox \
         unclutter \
         wmctrl \
-        xrandr \
-        xset \
+        x11-xserver-utils \
         snapd \
         wget \
         gnupg \
-        curl
+        curl \
+        jq
+    
+    # sway for the default (Wayland) kiosk.service; no recommends (skips xwayland, swayidle, foot, ...)
+    sudo apt install -y --no-upgrade --no-install-recommends sway
 }
 
 # Function to install Google Chrome
 install_chrome() {
+    # an installed Chrome is left alone: the kiosk's video flags were tested on the box's Chrome (136.0.7103,
+    # 2026-10-13), so upgrade it on purpose, not as a side effect of a re-run
+    if dpkg-query -W -f='${Status}' google-chrome-stable 2>/dev/null | grep -q "ok installed"; then
+        print_warning "Google Chrome already installed -- not upgrading"
+        return
+    fi
+    
     print_status "Installing Google Chrome..."
     
     # Add Google Chrome repository
@@ -115,30 +153,33 @@ create_user() {
 deploy_scripts() {
     print_status "Deploying kiosk scripts..."
     
-    # Check if script files exist in current directory
-    local script_dir="$(dirname "$0")"
-    local scripts=("kiosk-wait-start.sh" "kiosk-loop.sh" "webview-manager.sh")
-    
-    for script in "${scripts[@]}"; do
-        if [[ ! -f "$script_dir/$script" ]]; then
-            print_error "Script $script not found in $script_dir"
-            print_status "Please ensure all script files are in the same directory as this deployment script"
-            exit 1
-        fi
-    done
-    
-    # Copy scripts to system locations
-    sudo cp "$script_dir/kiosk-wait-start.sh" /usr/local/bin/
-    sudo cp "$script_dir/kiosk-loop.sh" /usr/local/bin/
-    sudo cp "$script_dir/webview-manager.sh" /usr/local/bin/
+    # Copy scripts to system locations (kiosk-wayland.sh: default; kiosk-wait-start.sh + kiosk-loop.sh: X11 fallback)
+    sudo cp "$SRC_DIR/wayland/kiosk-wayland.sh" /usr/local/bin/
+    sudo cp "$SRC_DIR/kiosk-wait-start.sh" /usr/local/bin/
+    sudo cp "$SRC_DIR/kiosk-loop.sh" /usr/local/bin/
+    sudo cp "$SRC_DIR/webview-manager.sh" /usr/local/bin/
     
     # Set correct ownership
     sudo chown root:root /usr/local/bin/kiosk-*.sh
     sudo chown gjbm2:gjbm2 /usr/local/bin/webview-manager.sh
     
     # Make executable
-    sudo chmod +x /usr/local/bin/kiosk-*.sh
+    sudo chmod 755 /usr/local/bin/kiosk-*.sh
     sudo chmod +x /usr/local/bin/webview-manager.sh
+    
+    # sway config for the Wayland kiosk (read by kiosk.service)
+    sudo install -D -m 644 -o root -g root "$SRC_DIR/wayland/sway-kiosk.conf" /usr/local/share/kiosk/sway-kiosk.conf
+    
+    # One X screen per TV for the X11 fallback (only Xorg reads it, so it is inert while sway is the kiosk)
+    sudo install -D -m 644 -o root -g root "$SRC_DIR/xorg/20-zaphod.conf" /etc/X11/xorg.conf.d/20-zaphod.conf
+    
+    # kiosk-wayland.sh options: created once, so a later KIOSK_VIDEO=copy survives a re-run
+    if [[ ! -f /etc/default/kiosk-wayland ]]; then
+        echo "KIOSK_VIDEO=zerocopy" | sudo tee /etc/default/kiosk-wayland >/dev/null
+        print_success "Created /etc/default/kiosk-wayland (KIOSK_VIDEO=zerocopy)"
+    else
+        print_warning "/etc/default/kiosk-wayland already exists -- keeping it"
+    fi
     
     print_success "Scripts deployed successfully"
 }
@@ -147,8 +188,8 @@ deploy_scripts() {
 lockdown_system() {
     print_status "Locking down system for kiosk use..."
 
-    # Mask getty on tty1 -- prevents login prompt stealing VT1 from Xorg
-    print_status "Masking getty@tty1.service (prevents VT1 conflict with Xorg)..."
+    # Mask getty on tty1 -- prevents login prompt stealing VT1 from the kiosk (sway, or Xorg in the fallback)
+    print_status "Masking getty@tty1.service (prevents VT1 conflict with the kiosk)..."
     sudo systemctl stop getty@tty1.service 2>/dev/null || true
     sudo systemctl disable getty@tty1.service 2>/dev/null || true
     sudo systemctl mask getty@tty1.service
@@ -176,36 +217,32 @@ lockdown_system() {
 
 # Function to install systemd service
 install_service() {
-    print_status "Installing systemd service..."
+    print_status "Installing systemd services..."
     
-    local script_dir="$(dirname "$0")"
-    
-    if [[ ! -f "$script_dir/kiosk.service" ]]; then
-        print_error "Service file kiosk.service not found in $script_dir"
-        exit 1
-    fi
-    
-    # Copy service file
-    sudo cp "$script_dir/kiosk.service" /etc/systemd/system/
+    # Copy service files (kiosk = Wayland default, kiosk-x11 = X11 fallback)
+    sudo cp "$SRC_DIR/kiosk.service" /etc/systemd/system/
+    sudo cp "$SRC_DIR/kiosk-x11.service" /etc/systemd/system/
     
     # Reload systemd
     sudo systemctl daemon-reload
     
-    # Enable service
+    # Enable the Wayland kiosk; the X11 fallback stays disabled (both units take tty1)
     sudo systemctl enable kiosk.service
+    sudo systemctl disable kiosk-x11.service 2>/dev/null || true
     
-    # Create log file
+    # Create log file (kiosk-wayland.sh and kiosk-loop.sh both log here as gjbm2)
     sudo touch /var/log/kiosk.log
     sudo chown gjbm2:gjbm2 /var/log/kiosk.log
     
-    print_success "Systemd service installed and enabled"
+    print_success "Systemd services installed (kiosk.service enabled, kiosk-x11.service disabled)"
 }
 
 # Function to start service
 start_service() {
     print_status "Starting kiosk service..."
     
-    sudo systemctl start kiosk.service
+    # restart, not start: on a re-run (or a box whose kiosk.service was the X11 unit) the new files take effect now
+    sudo systemctl restart kiosk.service
     
     # Wait a moment for service to start
     sleep 3
@@ -245,25 +282,33 @@ verify_installation() {
         print_error "✗ Kiosk service is not running"
     fi
     
-    # Check if Xorg is running
-    if ps aux | grep -q "[X]org :0"; then
-        print_success "✓ Xorg is running"
+    if [[ "$(systemctl is-enabled kiosk-x11.service 2>/dev/null)" == "disabled" ]]; then
+        print_success "✓ X11 fallback (kiosk-x11.service) installed and disabled"
     else
-        print_warning "✗ Xorg is not running"
+        print_warning "✗ kiosk-x11.service is not installed+disabled -- check: systemctl is-enabled kiosk-x11.service"
     fi
     
-    # Check if Chrome processes are running
-    if ps aux | grep -q "google-chrome-stable.*kiosk"; then
+    # Check if sway is running
+    if pgrep -x sway >/dev/null; then
+        print_success "✓ sway is running"
+    else
+        print_warning "✗ sway is not running"
+    fi
+    
+    # Check if Chrome processes are running (the real binary is /opt/google/chrome/chrome)
+    if pgrep -f "chrome.*--kiosk" >/dev/null; then
         print_success "✓ Chrome kiosk processes are running"
     else
-        print_warning "✗ Chrome kiosk processes not found"
+        print_warning "✗ Chrome kiosk processes not found (may take a moment)"
     fi
     
-    # Test display access
-    if sudo -u gjbm2 DISPLAY=:0 xrandr --query >/dev/null 2>&1; then
-        print_success "✓ Display access working"
+    # Check the TVs (DRM connector status: works under sway and Xorg, needs no display socket)
+    local connected
+    connected=$(cat /sys/class/drm/card*-HDMI-A-*/status 2>/dev/null | grep -cx connected || true)
+    if [[ "$connected" -ge 2 ]]; then
+        print_success "✓ Both HDMI outputs report a connected display"
     else
-        print_warning "✗ Display access test failed"
+        print_warning "✗ ${connected:-0} HDMI output(s) report a connected display (expected 2)"
     fi
     
     print_status "Installation verification complete"
@@ -280,12 +325,12 @@ show_usage() {
     echo "  $0 192.168.1.100 ubuntu"
     echo ""
     echo "This script will:"
-    echo "  1. Install system dependencies"
-    echo "  2. Install Google Chrome"
+    echo "  1. Install system dependencies (sway; X packages for the fallback)"
+    echo "  2. Install Google Chrome (skipped if already installed; nothing installed is upgraded)"
     echo "  3. Create user account (gjbm2)"
     echo "  4. Lock down system (mask getty@tty1, disable auto-updates)"
-    echo "  5. Deploy kiosk scripts"
-    echo "  6. Install systemd service"
+    echo "  5. Deploy kiosk scripts and configs"
+    echo "  6. Install systemd services (kiosk = Wayland/sway, enabled; kiosk-x11 = X11 fallback, disabled)"
     echo "  7. Start the kiosk service"
     echo "  8. Verify installation"
 }
@@ -294,7 +339,6 @@ show_usage() {
 deploy_remote() {
     local remote_host=$1
     local remote_user=$2
-    local script_dir="$(dirname "$0")"
     
     print_status "Deploying to remote host: $remote_user@$remote_host"
     
@@ -304,20 +348,13 @@ deploy_remote() {
     fi
     
     # Validate files exist
-    for file in kiosk-wait-start.sh kiosk-loop.sh webview-manager.sh kiosk.service; do
-        if [[ ! -f "$script_dir/$file" ]]; then
-            print_error "Required file not found: $file"
-            exit 1
-        fi
-    done
+    check_files
     
-    # Copy files to remote host
+    # Copy files to remote host (flat into /tmp; every basename is unique)
     print_status "Copying files to remote host..."
-    scp "$script_dir/kiosk-wait-start.sh" \
-        "$script_dir/kiosk-loop.sh" \
-        "$script_dir/webview-manager.sh" \
-        "$script_dir/kiosk.service" \
-        $remote_user@$remote_host:/tmp/
+    local sources=()
+    for file in "${KIOSK_FILES[@]}"; do sources+=("$SRC_DIR/$file"); done
+    scp "${sources[@]}" $remote_user@$remote_host:/tmp/
     
     # Execute deployment on remote host
     print_status "Executing deployment on remote host..."
@@ -336,20 +373,31 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Update system
-print_status "Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+# apt/dpkg get </dev/null and no prompts: this script arrives on stdin, so a prompt would read the rest of it
+export DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+# Update package lists. No upgrade, and --no-upgrade on installs: a re-run on a live box must not upgrade the
+# kernel, Chrome or the display stack behind the back of the masked auto-updates
+print_status "Updating package lists..."
+sudo -E apt-get update </dev/null
+
+# Install dependencies (X packages for the kiosk-x11 fallback; sway for the default kiosk, no recommends;
+# jq for the status scripts and the admin API's display check)
 print_status "Installing system dependencies..."
-sudo apt install -y xorg xserver-xorg-core openbox unclutter wmctrl xrandr xset snapd wget gnupg curl
+sudo -E apt-get install -y --no-upgrade xorg xserver-xorg-core openbox unclutter wmctrl x11-xserver-utils snapd wget gnupg curl jq </dev/null
+sudo -E apt-get install -y --no-upgrade --no-install-recommends sway </dev/null
 
-# Install Chrome
-print_status "Installing Google Chrome..."
-wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-sudo apt update
-sudo apt install -y google-chrome-stable
+# Install Chrome, unless installed: the kiosk's video flags were tested on the box's Chrome (136.0.7103, 2026-10-13),
+# so upgrade it on purpose, not as a side effect of a re-run
+if dpkg-query -W -f='${Status}' google-chrome-stable 2>/dev/null | grep -q "ok installed"; then
+    print_warning "Google Chrome already installed -- not upgrading"
+else
+    print_status "Installing Google Chrome..."
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+    sudo -E apt-get update </dev/null
+    sudo -E apt-get install -y google-chrome-stable </dev/null
+fi
 
 # Create user
 print_status "Setting up user account..."
@@ -359,7 +407,7 @@ sudo usermod -aG audio,video gjbm2
 # Lock down system for kiosk use
 print_status "Locking down system for kiosk use..."
 
-# Mask getty on tty1 (prevents VT1 conflict with Xorg)
+# Mask getty on tty1 (prevents VT1 conflict with the kiosk: sway, or Xorg in the fallback)
 sudo systemctl stop getty@tty1.service 2>/dev/null || true
 sudo systemctl disable getty@tty1.service 2>/dev/null || true
 sudo systemctl mask getty@tty1.service
@@ -373,29 +421,42 @@ for svc in unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer a
 done
 print_success "Automatic updates disabled and masked"
 
-# Copy scripts
+# Copy scripts (kiosk-wayland.sh: default; kiosk-wait-start.sh + kiosk-loop.sh: X11 fallback)
 print_status "Deploying scripts..."
-sudo cp /tmp/kiosk-*.sh /usr/local/bin/
+sudo cp /tmp/kiosk-wayland.sh /tmp/kiosk-wait-start.sh /tmp/kiosk-loop.sh /usr/local/bin/
 sudo cp /tmp/webview-manager.sh /usr/local/bin/
 sudo chown root:root /usr/local/bin/kiosk-*.sh
 sudo chown gjbm2:gjbm2 /usr/local/bin/webview-manager.sh
-sudo chmod +x /usr/local/bin/kiosk-*.sh
+sudo chmod 755 /usr/local/bin/kiosk-*.sh
 sudo chmod +x /usr/local/bin/webview-manager.sh
 
-# Install service
-print_status "Installing systemd service..."
-sudo cp /tmp/kiosk.service /etc/systemd/system/
+# sway config (default kiosk) and one X screen per TV (X11 fallback; only Xorg reads it)
+sudo install -D -m 644 -o root -g root /tmp/sway-kiosk.conf /usr/local/share/kiosk/sway-kiosk.conf
+sudo install -D -m 644 -o root -g root /tmp/20-zaphod.conf /etc/X11/xorg.conf.d/20-zaphod.conf
+
+# kiosk-wayland.sh options: created once, so a later KIOSK_VIDEO=copy survives a re-run
+if [[ ! -f /etc/default/kiosk-wayland ]]; then
+    echo "KIOSK_VIDEO=zerocopy" | sudo tee /etc/default/kiosk-wayland >/dev/null
+    print_success "Created /etc/default/kiosk-wayland (KIOSK_VIDEO=zerocopy)"
+else
+    print_warning "/etc/default/kiosk-wayland already exists -- keeping it"
+fi
+
+# Install services: kiosk (Wayland) enabled, kiosk-x11 (fallback) disabled -- both take tty1
+print_status "Installing systemd services..."
+sudo cp /tmp/kiosk.service /tmp/kiosk-x11.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable kiosk.service
+sudo systemctl disable kiosk-x11.service 2>/dev/null || true
 
 # Create log directory
 print_status "Creating log directory..."
 sudo touch /var/log/kiosk.log
 sudo chown gjbm2:gjbm2 /var/log/kiosk.log
 
-# Start service
+# Start service (restart, so a re-run picks up the new files)
 print_status "Starting kiosk service..."
-sudo systemctl start kiosk.service
+sudo systemctl restart kiosk.service
 
 # Wait for service to start
 sleep 5
@@ -423,19 +484,27 @@ else
     print_status "Check logs with: sudo journalctl -u kiosk.service"
 fi
 
-# Check if Xorg is running
-if ps aux | grep -q "[X]org :0"; then
-    print_success "✓ Xorg is running"
+if [[ "$(systemctl is-enabled kiosk-x11.service 2>/dev/null)" == "disabled" ]]; then
+    print_success "✓ X11 fallback (kiosk-x11.service) installed and disabled"
 else
-    print_warning "✗ Xorg is not running yet (may take a moment)"
+    print_warning "✗ kiosk-x11.service is not installed+disabled"
+fi
+
+# Check if sway is running
+if pgrep -x sway >/dev/null; then
+    print_success "✓ sway is running"
+else
+    print_warning "✗ sway is not running yet (may take a moment)"
 fi
 
 # Clean up temp files
 print_status "Cleaning up temporary files..."
-rm -f /tmp/kiosk-*.sh /tmp/webview-manager.sh /tmp/kiosk.service
+rm -f /tmp/kiosk-wayland.sh /tmp/kiosk-wait-start.sh /tmp/kiosk-loop.sh /tmp/webview-manager.sh \
+      /tmp/kiosk.service /tmp/kiosk-x11.service /tmp/sway-kiosk.conf /tmp/20-zaphod.conf
 
 print_success "Remote deployment complete!"
 print_status "Monitor service with: sudo journalctl -u kiosk.service -f"
+print_status "X11 fallback: sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11"
 EOF
 }
 
@@ -461,6 +530,7 @@ main() {
     # Check prerequisites
     check_root
     check_sudo
+    check_files
     
     # Execute deployment steps
     install_dependencies
@@ -476,9 +546,12 @@ main() {
     echo ""
     print_status "Useful commands:"
     echo "  Check service status: sudo systemctl status kiosk.service"
-    echo "  View service logs: sudo journalctl -u kiosk.service -f"
+    echo "  View service logs: sudo journalctl -u kiosk.service -f   (launcher log: /var/log/kiosk.log)"
     echo "  Restart service: sudo systemctl restart kiosk.service"
-    echo "  Check processes: ps aux | grep -E '(Xorg|chrome|kiosk)'"
+    echo "  Check processes: ps aux | grep -E '(sway|Xorg|chrome|kiosk)'"
+    echo "  Switch to X11 fallback: sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11"
+    echo "  Video path: KIOSK_VIDEO=zerocopy|copy in /etc/default/kiosk-wayland (restart kiosk.service after a change)"
+    print_status "Not done here: VA-API hardware decode (experiments/stream-latency/beelink/enable-hwdecode.sh)"
 }
 
 # Run main function with all arguments

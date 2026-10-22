@@ -1,0 +1,12 @@
+# Wired-first networking for the kiosk (installed by media-server/local-scripts/install-ethernet-primary.sh).
+# enp1s0 (powerline Ethernet) takes the default route (metric 100); Wi-Fi (wlp2s0, 50-cloud-init.yaml,
+# untouched) keeps its default route at metric 600 and takes over if the cable link drops.
+# optional: true = boot does not wait for the cable.
+network:
+  version: 2
+  ethernets:
+    enp1s0:
+      dhcp4: true
+      optional: true
+      dhcp4-overrides:
+        route-metric: 100

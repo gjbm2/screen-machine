@@ -33,20 +33,21 @@ This directory provides a complete maintenance and deployment system for the Scr
 ┌─────────────────────────────────────────────────────────────────┐
 │              Media Server (Ubuntu 24.04 Headless)                │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Xorg :0 (Display Server)                                   │ │
-│  │  - Manages dual 4K HDMI displays                            │ │
-│  │  - Runs headless (no physical monitor needed)              │ │
+│  │  sway (Wayland display server) — since 2026-10-13 (§8)      │ │
+│  │  - HDMI-A-1 north = workspace 1, HDMI-A-2 south = ws 2      │ │
+│  │  - 3840x2160@60 on both TVs, zero-copy 4K60 video           │ │
+│  │  (X11 fallback: kiosk-x11.service, Xorg + kiosk-loop.sh)    │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  kiosk.service (systemd)                                    │ │
-│  │  - Starts Xorg on boot                                      │ │
-│  │  - Runs kiosk-loop.sh as user gjbm2                        │ │
+│  │  - Starts sway on boot (logind session on tty1, gjbm2)      │ │
+│  │  - sway runs kiosk-wayland.sh                               │ │
 │  │  - Auto-restarts on failure                                 │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  kiosk-loop.sh                                              │ │
-│  │  - Detects HDMI displays                                    │ │
-│  │  - Launches Chrome in kiosk mode with console logging      │ │
+│  │  kiosk-wayland.sh                                           │ │
+│  │  - One full-screen Chrome per TV, restarted if it exits     │ │
+│  │  - Keeps the north page on the north TV if south is off     │ │
 │  │  - North: http://IP:8000/display/north-screen              │ │
 │  │  - South: http://IP:8000/display/south-screen              │ │
 │  │  - Logs: /tmp/chrome-{north,south}/chrome_console.log     │ │
@@ -78,15 +79,28 @@ media-server/
 │   ├── remote-maintenance.sh    # Main operations harness
 │   ├── diagnose-lightsensor.sh  # Light sensor diagnostic
 │   ├── deploy-kiosk.sh          # Automated deployment
+│   ├── install-deadman.sh       # Install the Deadman watchdog
+│   ├── install-wifi-prefer-ap.sh  # Install the Wi-Fi access-point lock
+│   ├── install-ethernet-primary.sh  # Make powerline Ethernet the primary link (Wi-Fi fallback)
 │   ├── .env.example             # Configuration template
 │   └── .env                     # Your credentials (gitignored)
 │
 └── remote-scripts/         # Deployed to media server
-    ├── kiosk-wait-start.sh      # Startup wrapper
-    ├── kiosk-loop.sh            # Main kiosk manager
+    ├── kiosk.service            # The kiosk: sway (Wayland) — default since 2026-10-13
+    ├── wayland/                 # sway-kiosk.conf (→ /usr/local/share/kiosk/), kiosk-wayland.sh (→ /usr/local/bin/)
+    ├── kiosk-x11.service        # X11 fallback (disabled): Xorg + kiosk-wait-start.sh + kiosk-loop.sh
+    ├── kiosk-wait-start.sh      # X11 fallback: startup wrapper
+    ├── kiosk-loop.sh            # X11 fallback: kiosk manager
     ├── webview-manager.sh       # Alternative manager
-    └── kiosk.service            # Systemd service definition
+    ├── wifi-prefer-ap.sh        # Keeps Wi-Fi on the fast access point (→ /usr/local/sbin/wifi-prefer-ap)
+    ├── wifi-prefer-ap.service   # Its systemd unit
+    ├── network/                 # Wired-first config: netplan 60-ethernet.yaml, Wi-Fi source-route drop-in,
+    │                            #   ARP sysctl, eth-primary-rollback.sh
+    └── xorg/20-zaphod.conf      # X11 fallback: one X screen per TV (→ /etc/X11/xorg.conf.d/)
 ```
+
+Measured hardware, network and clock facts, and the reasons behind the changes below, are in
+[docs/KIOSK_INFRASTRUCTURE_NOTES.md](../docs/KIOSK_INFRASTRUCTURE_NOTES.md).
 
 ---
 
@@ -173,7 +187,118 @@ automatic reboots:
 Unattended-Upgrade::Automatic-Reboot "false";
 ```
 
+### 4. Hardware video decode (VA-API) — enabled 2026-10-11
+
+Without it every video the kiosk plays is decoded in software on the N95's four cores (Linux Chrome cannot
+play HEVC at all without it). Three parts, all required:
+
+- Packages (installed 2026-10-11, nothing upgraded): `intel-media-va-driver-non-free` 24.1.0, `vainfo` 2.12.0,
+  `intel-gpu-tools` 1.28 (for `intel_gpu_top`), plus the automatic `libva2`, `libva-drm2`, `libva-x11-2`,
+  `libva-wayland2` and `libigdgmm12`. Installed with `experiments/stream-latency/beelink/enable-hwdecode.sh`,
+  which runs `apt-get update`, refuses to upgrade or remove anything and stops needrestart from restarting
+  `kiosk.service` mid-install. To undo, see `docs/KIOSK_INFRASTRUCTURE_NOTES.md` §2.
+- `gjbm2` in the `render` and `video` groups (Chrome opens `/dev/dri/renderD128` itself).
+- `--enable-features=AcceleratedVideoDecodeLinuxGL` in `kiosk-loop.sh`. **Keep every feature in that one
+  `--enable-features` switch**; a second `--enable-features` (e.g. via `CHROME_EXTRA`) silently replaces it.
+
+```bash
+# Verify on the media server:
+LIBVA_DRIVER_NAME=iHD vainfo --display drm --device /dev/dri/renderD128 | grep -E "Driver version|VAProfile(H264|HEVC|AV1)"
+id gjbm2 | grep -o render
+grep -c -- '--enable-features=AcceleratedVideoDecodeLinuxGL' /usr/local/bin/kiosk-loop.sh   # 1
+```
+
+`deploy-kiosk.sh` does not install the packages or set the groups (and does not install `wifi-prefer-ap`, §5):
+on a fresh box run `enable-hwdecode.sh` and `install-wifi-prefer-ap.sh` afterwards. Chrome is not apt-held, so a
+manual `apt upgrade` would move it from 136 to 155.x; the flag above was verified for 136 only, so re-check it
+after any Chrome upgrade (or `sudo apt-mark hold google-chrome-stable`).
+
+### 5. Wi-Fi access-point lock (`wifi-prefer-ap`) — installed 2026-10-11
+
+Two access points reach the kiosk at the same weak signal, but one gives ~20 Mbit/s and the other ~5 Mbit/s.
+The APs' steering kept moving the box onto the slow one. `wifi-prefer-ap.service` pins the box to the fast AP,
+falls back to any AP if the fast one disappears for 40 s, and switches back when it returns. Details, test
+results and limits: [docs/KIOSK_INFRASTRUCTURE_NOTES.md §4](../docs/KIOSK_INFRASTRUCTURE_NOTES.md#4-wi-fi).
+
+```bash
+# Install / update (from the repo root in WSL; keeps the recorded AP). Needs sshpass and
+# MEDIA_SERVER_PASSWORD in media-server/local-scripts/.env (used for sudo on the box), like install-deadman.sh:
+bash media-server/local-scripts/install-wifi-prefer-ap.sh
+# Re-record the preferred AP as the one the box is on now (make sure it is the fast one, freq=5640):
+bash media-server/local-scripts/install-wifi-prefer-ap.sh --prefer-current
+# On the media server:
+journalctl -u wifi-prefer-ap -n 20                       # pins, fallbacks, switch-backs
+sudo systemctl disable --now wifi-prefer-ap              # undo: releases the pin, stock roaming again
+```
+
+### 6. Wired-first networking (powerline Ethernet) — installed 2026-10-13
+
+`enp1s0` (powerline Ethernet, DHCP 192.168.1.10) carries the default route at metric 100; Wi-Fi (`wlp2s0`,
+192.168.1.92) stays configured at metric 600 and takes over if the cable link drops. A source route keeps the Wi-Fi
+address answering over Wi-Fi, so SSH to 192.168.1.92 (what the admin scripts use) works even if the powerline path
+fails. Measured ~170-190 Mbit/s and loaded ping p99 ~40 ms, against 15-20 Mbit/s on Wi-Fi. Details, failover test and
+the known gap (powerline path dead while the adapter link stays up):
+[docs/KIOSK_INFRASTRUCTURE_NOTES.md §5](../docs/KIOSK_INFRASTRUCTURE_NOTES.md#5-powerline-ethernet-primary-since-2026-10-13).
+
+```bash
+# Install / re-apply (from the repo root in WSL; 5-minute auto-rollback unless both addresses answer):
+bash media-server/local-scripts/install-ethernet-primary.sh
+# On the media server:
+ip -br -4 addr; ip route show default       # enp1s0 192.168.1.10 metric 100 = wired primary
+sudo eth-primary-rollback                   # undo: back to Wi-Fi only
+```
+The netplan Wi-Fi file (`50-cloud-init.yaml`, holds the Wi-Fi password) is never edited; the Ethernet config is a
+separate `/etc/netplan/60-ethernet.yaml`. Plug the powerline adapters straight into wall sockets.
+
+### 7. One X screen per TV (ZaphodHeads) — installed 2026-10-13; X11 fallback only since the Wayland switch (§8)
+
+`/etc/X11/xorg.conf.d/20-zaphod.conf` (repo: `remote-scripts/xorg/20-zaphod.conf`) makes each HDMI output its own X
+screen: `:0.0` = HDMI-1 (north), `:0.1` = HDMI-2 (south). `kiosk-loop.sh` sees two screens and starts openbox
+and one Chrome on each, plus one unclutter on north (the pointer's screen). Without it, both TVs share one 7680x2160 screen, no Chrome window can be
+page-flipped, and video tears and runs at about 30 fps per TV (4K video dropped 31-34 % of frames). With it: 60 fps
+and 0 missed refreshes on both TVs, 0.2-0.3 % dropped frames on 4K30 live video. Details:
+[docs/KIOSK_INFRASTRUCTURE_NOTES.md §3](../docs/KIOSK_INFRASTRUCTURE_NOTES.md#smooth-motion-one-x-screen-per-tv-since-2026-10-13).
+
+```bash
+# Install (from the repo root in WSL), then restart the kiosk (TVs go black ~10-20 s):
+scp media-server/remote-scripts/xorg/20-zaphod.conf media-server/remote-scripts/kiosk-loop.sh gjbm2@192.168.1.92:/tmp/
+ssh -t gjbm2@192.168.1.92 'sudo install -m 644 /tmp/20-zaphod.conf /etc/X11/xorg.conf.d/ && sudo install -m 755 /tmp/kiosk-loop.sh /usr/local/bin/ && sudo systemctl restart kiosk'
+# On the media server:
+DISPLAY=:0 xdpyinfo | grep 'number of screens'     # 2
+grep 'per-TV X screens' /var/log/kiosk.log | tail -1
+for s in 0 1; do DISPLAY=:0.$s wmctrl -lG; done      # each Chrome window 0 0 3840 2160
+# Undo: sudo rm /etc/X11/xorg.conf.d/20-zaphod.conf && sudo systemctl restart kiosk   (kiosk-loop falls back by itself)
+```
+Anything that talks to X on the box must now name the screen: `DISPLAY=:0.1` for the south TV (plain `:0` is north
+only). The screen count comes from `xdpyinfo` (package `x11-utils`, pulled in by `xorg`).
+
 ---
+
+### 8. Wayland (sway) kiosk — default since 2026-10-13
+
+`kiosk.service` now starts **sway** (Wayland) instead of Xorg. sway runs in a logind session on tty1 for `gjbm2` with
+`/usr/local/share/kiosk/sway-kiosk.conf` (repo `remote-scripts/wayland/`) and starts
+`/usr/local/bin/kiosk-wayland.sh`, which runs one `--ozone-platform=wayland` Chrome per TV: north on HDMI-A-1
+(workspace 1), south on HDMI-A-2 (workspace 2), same URLs, profiles and CDP ports (9222/9223) as before. Why: on X11
+two 4K60 video streams dropped 74-82 % of frames and Chrome's zero-copy video path crashes; under sway zero-copy works
+and both TVs play 4K60 with 0.03 % dropped. Details and tests (reboot, Chrome crash, TV missing or unplugged):
+[docs/KIOSK_INFRASTRUCTURE_NOTES.md §3](../docs/KIOSK_INFRASTRUCTURE_NOTES.md#wayland-sway-kiosk-since-2026-10-13-4k60-on-both-tvs).
+
+```bash
+# On the media server:
+systemctl is-active kiosk; systemctl is-enabled kiosk kiosk-x11      # active / enabled disabled
+export SWAYSOCK=$(ls /run/user/1000/sway-ipc.*.sock)
+swaymsg -p -t get_outputs | grep -E '^Output|Current mode|Workspace'   # both 3840x2160 @ 60 Hz, ws 1 and 2
+cat /etc/default/kiosk-wayland                                       # KIOSK_VIDEO=zerocopy (or copy)
+grep -E 'kiosk-wayland start|spawn|re-showed' /var/log/kiosk.log | tail
+# Back to the X11 kiosk (kept installed, disabled):
+sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11
+```
+Installed with Ubuntu's `sway` package (`apt-get install --no-install-recommends --no-upgrade sway`: 10 new packages,
+nothing upgraded). Things that differ from X11: no `xrandr`, `wmctrl` or `DISPLAY=` (use `swaymsg` with `SWAYSOCK` as
+above); sway's child processes live in the login session, so `kiosk.service` kills the launcher and Chromes in
+`ExecStopPost`; `KIOSK_VIDEO=copy` turns zero-copy off (and keeps it off on Chrome 155, which enables it by default).
+The previous X11 unit file is kept on the box as `/etc/systemd/system/kiosk.service.x11-backup-*`.
 
 ## Quick Admin Commands
 
@@ -199,18 +324,16 @@ For daily operations, use these simple scripts from the `media-server/` director
 - **Light sensor service** status (light-relay.service)
   - USB sensor detection (Yoctopuce Yocto-Light-V5)
   - WebSocket connection to Flask server (:8765)
-- Display processes (Xorg, Chrome)
-- Connected displays (xrandr)
-- **Chrome console logs** - proof that pages are rendering
-  - `/tmp/chrome-north/chrome_console.log`
-  - `/tmp/chrome-south/chrome_console.log`
-  - Shows JavaScript errors, network requests, page load events
+- Display server (sway, or Xorg on the X11 fallback) and Chrome processes
+- Connected displays (kernel connector status, plus modes from `swaymsg` or `xrandr`)
+- **Open pages** per screen, read from Chrome's DevTools port (9222 north, 9223 south) - proof the right page is loaded
 - Network connections to Flask server
 - Recent errors from logs
 - Disk and memory usage
 
-**Chrome Console Logging:**
-Chrome now logs all console output (errors, warnings, network activity) to dedicated log files. This lets you verify pages are actually loading and rendering without looking at the displays. Run `./check-status.sh --verbose` to see the console logs.
+**Chrome output:** Chrome has run without `--enable-logging` since 2026-07-28, so `/tmp/chrome-{north,south}/chrome_console.log`
+holds only Chrome's own stderr, not page console messages. The page check therefore uses the DevTools port instead.
+`check-status*.sh` use `jq` on the box.
 
 These scripts automatically load credentials from `local-scripts/.env` and log all operations to `maintenance.log`.
 
@@ -285,8 +408,8 @@ cd local-scripts/
 Quick health check showing:
 - System uptime
 - Kiosk service status
-- Display processes (Xorg, Chrome)
-- Connected displays
+- Display server (sway or Xorg) and Chrome processes
+- Connected displays and modes
 - Network connections
 - Recent errors
 - Resource usage
@@ -436,13 +559,15 @@ VITE_FRONTEND_URL=http://95.141.21.170:8000
 ### kiosk.service (systemd)
 **Location:** `/etc/systemd/system/kiosk.service`
 
-**What it does:**
+**What it does (since 2026-10-13, Critical System Configuration §8):**
 - Starts on boot (`multi-user.target`)
-- Creates user runtime directory (`/run/user/1000`)
-- **Conflicts with `getty@tty1.service`** to prevent VT1 ownership race (see below)
-- Launches Xorg :0 on vt1
-- Executes kiosk-wait-start.sh as post-start hook
+- Runs sway as `gjbm2` in a logind session on tty1 (`PAMName=login`); sway starts `kiosk-wayland.sh`
+- **Conflicts with `getty@tty1.service`** (VT1 race, see below) and with `kiosk-x11.service`
+- On stop, kills the launcher and the kiosk Chromes (`ExecStopPost`), which live in the login session
 - Auto-restarts on failure (RestartSec=5)
+
+The X11 version described below (Xorg :0 on vt1 + `kiosk-wait-start.sh` + `kiosk-loop.sh`) is now
+`kiosk-x11.service`, installed but disabled.
 
 **Critical: VT1 / getty conflict**
 
@@ -471,15 +596,36 @@ sudo journalctl -u kiosk.service -f
 - Launches kiosk-loop.sh as user gjbm2
 - Exits with error if Xorg doesn't stabilize
 
-### kiosk-loop.sh
-**Location:** `/usr/local/bin/kiosk-loop.sh`
+### kiosk-wayland.sh
+**Location:** `/usr/local/bin/kiosk-wayland.sh` (repo `remote-scripts/wayland/`), options in `/etc/default/kiosk-wayland`
+
+**What it does:**
+- Started by sway (`exec` in `sway-kiosk.conf`); replaces any older launcher (`/tmp/kiosk-wayland.pid`) and exits
+  when its sway is gone
+- Starts the north Chrome on workspace 1 (HDMI-A-1) and the south one on workspace 2 (HDMI-A-2), full screen,
+  `--ozone-platform=wayland`, CDP 9222/9223, profiles `/tmp/chrome-{north,south}`
+- Video path: `KIOSK_VIDEO=zerocopy` (default; `--use-angle=gl-egl` + `AcceleratedVideoDecodeLinuxZeroCopyGL`) or
+  `copy` (zero-copy explicitly disabled)
+- Every 5 s: restarts a Chrome that exited; if the south TV is missing, keeps the north page showing on the north TV
+- **Logs:** `/var/log/kiosk.log`; Chrome output in `/tmp/chrome-{north,south}/chrome_console.log`
+
+### kiosk-loop.sh (X11 fallback)
+**Location:** `/usr/local/bin/kiosk-loop.sh` — used only by `kiosk-x11.service`
 
 **What it does:**
 - Polls HDMI connections every 2 seconds
 - Configures displays with xrandr (3840x2160)
-- Launches Chrome in kiosk mode per display
+- Launches Chrome in kiosk mode per display, with VA-API hardware decode
+  (`--enable-features=AcceleratedVideoDecodeLinuxGL`; keep all features in that one switch)
+- With two X screens (Critical System Configuration §7, the normal setup since 2026-10-13): one openbox
+  and Chrome per screen, north on `:0.0`, south on `:0.1`, and a single unclutter on north. `ONE_SCREEN` and `DIALOG_TAMER` apply only
+  to the old single-screen layout, which it falls back to when X has one screen
 - Manages dialog windows (DIALOG_TAMER)
 - Supports single-screen mode (ONE_SCREEN)
+
+**Deployed copy:** `/usr/local/bin/kiosk-loop.sh`. Backups: `.bak-20261011-140753` (before the VA-API flag),
+`.bak-20261013-182218` (before per-TV screens); `.bak-20261013-1828*`/`-1836*`/`-1838*` are the intermediate per-TV
+versions from the same evening (the last differences: openbox on the south screen, one unclutter instead of two).
 
 **Environment Variables:**
 - `ONE_SCREEN=1` - Disable HDMI-2, single display
@@ -493,6 +639,21 @@ sudo journalctl -u kiosk.service -f
 - South screen: `http://IP:8000/display/south-screen`
 
 **Logs:** `/var/log/kiosk.log`
+
+### wifi-prefer-ap.service (systemd)
+**Location:** `/etc/systemd/system/wifi-prefer-ap.service`, script `/usr/local/sbin/wifi-prefer-ap`,
+config `/etc/default/wifi-prefer-ap` (`PREFERRED=<BSSID>`; optional `IFACE` (wlp2s0), `NET_ID` (0), `GRACE`, `RETRY`, `RETRY_MAX`, `MIN_SIGNAL`)
+
+**What it does:**
+- Every 5 s reads `wpa_cli status` for `wlp2s0` (netplan's wpa_supplicant, control socket `/run/wpa_supplicant`)
+- On the preferred AP: pins the network to its BSSID, so steering requests to the slow AP are refused
+- Disconnected 40 s while pinned: releases the pin so any AP can be used
+- On another AP: every 120 s re-pins and reassociates if the preferred AP is visible at -78 dBm or better; if
+  that attempt leaves the box disconnected for 40 s, the pin is released and the interval doubles (up to 30 min)
+- The pin is held only in wpa_supplicant's memory; stopping the service clears it (`ExecStopPost=... --release`)
+- Never edits netplan or the stored Wi-Fi credentials
+
+**Logs:** `journalctl -u wifi-prefer-ap` (only the last two octets of BSSIDs are logged)
 
 ### webview-manager.sh
 **Location:** `/usr/local/bin/webview-manager.sh`
@@ -616,15 +777,24 @@ cd media-server/local-scripts/
 
 ### What Gets Installed
 
-1. **System packages:** xorg, openbox, wmctrl, unclutter, xrandr, snapd
+1. **System packages:** sway (no recommends; the default kiosk), jq, and for the X11 fallback xorg, openbox, wmctrl,
+   unclutter, x11-xserver-utils, snapd. Nothing is upgraded (`--no-upgrade`, no `apt upgrade`)
 2. **Google Chrome:** From official repository
 3. **User account:** gjbm2 (UID 1000)
 4. **System lockdown:**
    - `getty@tty1.service` masked (prevents VT1 conflict)
    - `unattended-upgrades` + all `apt-daily*` services masked (prevents automatic updates)
 5. **Scripts:** Deployed to `/usr/local/bin/` with correct ownership
-6. **Service:** Installed, enabled, and started (with `Conflicts=getty@tty1.service`)
+6. **Services:** `kiosk.service` (sway) installed, enabled and (re)started; `kiosk-x11.service` installed disabled;
+   `sway-kiosk.conf`, `kiosk-wayland.sh`, `/etc/default/kiosk-wayland` and the X11 fallback files including
+   `20-zaphod.conf`
 7. **Logs:** `/var/log/kiosk.log` created
+
+Not done by `deploy-kiosk.sh` (run separately afterwards): VA-API hardware decode packages and groups
+(`experiments/stream-latency/beelink/enable-hwdecode.sh`, see Critical System Configuration §4), the Wi-Fi
+access-point lock (`local-scripts/install-wifi-prefer-ap.sh`, §5), wired-first networking
+(`local-scripts/install-ethernet-primary.sh`, §6) and the Deadman watchdog (`install-deadman.sh`). Without the VA-API
+step, Chrome falls back to software video decode (no 4K live video).
 
 ### Post-Deployment
 
@@ -729,13 +899,14 @@ Complete walkthrough for configuring a fresh Ubuntu 24.04 box as a kiosk from sc
 # ============================================================
 # STEP 1: Install dependencies
 # ============================================================
-sudo apt update && sudo apt upgrade -y
+sudo apt update            # no 'apt upgrade': the box is deliberately kept on its tested versions
 wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
 echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | \
   sudo tee /etc/apt/sources.list.d/google-chrome.list
 sudo apt update
-sudo apt install -y google-chrome-stable xorg xserver-xorg-core openbox \
-  unclutter wmctrl xrandr xset snapd
+sudo apt install -y --no-upgrade --no-install-recommends sway          # the default (Wayland) kiosk
+sudo apt install -y --no-upgrade google-chrome-stable jq xorg xserver-xorg-core openbox \
+  unclutter wmctrl x11-xserver-utils snapd                             # jq: status scripts; the rest: X11 fallback
 
 # ============================================================
 # STEP 2: Create kiosk user
@@ -805,8 +976,9 @@ sudo chown gjbm2:gjbm2 /var/log/kiosk.log
 # ============================================================
 systemctl status kiosk.service                    # should be active (running)
 systemctl is-enabled getty@tty1.service           # should be masked
-DISPLAY=:0 xrandr --query 2>/dev/null | grep " connected"  # should show HDMI outputs
-ps aux | grep "google-chrome-stable.*kiosk"       # should show Chrome processes
+cat /sys/class/drm/card*-HDMI-A-*/status             # should say connected for each TV
+SWAYSOCK=$(ls /run/user/1000/sway-ipc.*.sock) swaymsg -p -t get_outputs | grep -E '^Output|Current mode'
+curl -s localhost:9222/json | grep -o 'display/[a-z]*-screen'   # north page (9223: south)
 ```
 
 ---
@@ -895,7 +1067,9 @@ cat /var/log/kiosk.log
 - Chrome not installed: `which google-chrome-stable`
 - User doesn't exist: `id gjbm2`
 - Runtime dir missing: `ls -la /run/user/1000/`
-- X11 display issues: `sudo -u gjbm2 DISPLAY=:0 xrandr --query`
+- Display issues (sway, the default): `journalctl -u kiosk.service -n 50`, `tail /var/log/kiosk.log`,
+  `SWAYSOCK=$(ls /run/user/1000/sway-ipc.*.sock) swaymsg -t get_outputs`
+- X11 fallback only: `sudo -u gjbm2 DISPLAY=:0.0 xrandr --query` (and `:0.1` for the south TV)
 
 ### Display Issues
 
@@ -1088,7 +1262,7 @@ sudo systemctl restart kiosk.service       # try restarting
 
 ### Software Versions
 - **Xorg:** Any recent version
-- **Chrome:** 136.0.7103.113 (updates automatically)
+- **Chrome:** 136.0.7103.113 (does not update by itself because the apt timers are masked, but is not apt-held: a manual `apt upgrade` would install 155.x; re-check the VA-API flag after any upgrade)
 - **Python:** 3.10+ (for light sensor client)
 - **Node.js:** Not required on media server
 
@@ -1142,9 +1316,9 @@ sudo systemctl restart kiosk.service       # try restarting
 ## Support & Documentation
 
 ### Related Documentation
-- **../DEPLOYMENT_IP_CONFIGURATION.md** - Project-wide IP configuration logic
+- **../docs/DEPLOYMENT_IP_CONFIGURATION.md** - Project-wide IP configuration logic
 - **../README.md** - Main project documentation
-- **../protocol.md** - WebSocket and API protocols
+- **../docs/AUDIO_WS_PROTOCOL.md** - WebSocket and API protocols
 
 ### Getting Help
 

@@ -1,8 +1,10 @@
+# FALLBACK since 2026-10-13: the X11 kiosk (Xorg + kiosk-loop.sh). Installed as kiosk-x11.service, DISABLED.
+# The default kiosk.service is now Wayland (sway). Switch back: sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11
 [Unit]
-Description=Dual-HDMI kiosk (north/south rules) with verbose logging
+Description=Dual-HDMI kiosk on X11 (fallback; north/south rules) with verbose logging
 After=network.target snapd.seeded.service
 Requires=snapd.seeded.service
-Conflicts=getty@tty1.service
+Conflicts=getty@tty1.service kiosk.service
 
 [Service]
 Type=simple

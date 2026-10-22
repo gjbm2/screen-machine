@@ -53,7 +53,7 @@ else
 fi
 
 # Execute status check on remote server and capture output
-OUTPUT=$(ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" << EOF
+OUTPUT=$(ssh -T -o LogLevel=ERROR -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" << EOF
 # Colors for remote
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -69,14 +69,19 @@ if [ "\$VERBOSE" = true ]; then
 fi
 
 echo "=== Kiosk Service Status ==="
-if systemctl is-active --quiet kiosk.service; then
-    echo -e "${GREEN}✓ Service is RUNNING${NC}"
+# kiosk.service is the sway (Wayland) kiosk since 2026-10-13; report the X11 fallback instead when that is the one running
+KIOSK_UNIT=kiosk.service
+if ! systemctl is-active --quiet kiosk.service && systemctl is-active --quiet kiosk-x11.service; then
+    KIOSK_UNIT=kiosk-x11.service
+fi
+if systemctl is-active --quiet \$KIOSK_UNIT; then
+    echo -e "${GREEN}✓ Service is RUNNING (\$KIOSK_UNIT)${NC}"
     echo ""
-    systemctl status kiosk.service --no-pager | head -20
+    systemctl status \$KIOSK_UNIT --no-pager | head -20
 else
     echo -e "${RED}✗ Service is NOT RUNNING${NC}"
     echo ""
-    systemctl status kiosk.service --no-pager | head -20
+    systemctl status \$KIOSK_UNIT --no-pager | head -20
 fi
 echo ""
 
@@ -99,26 +104,53 @@ fi
 echo ""
 
 echo "=== Display Processes ==="
-if ps aux | grep -E "(Xorg|chrome)" | grep -v grep >/dev/null; then
-    echo -e "${GREEN}✓ Display processes running${NC}"
-    ps aux | grep -E "(Xorg|chrome)" | grep -v grep | head -10
+# display server: sway (kiosk.service, default since 2026-10-13) or Xorg (kiosk-x11.service fallback)
+if pgrep -x sway >/dev/null; then
+    echo -e "\${GREEN}✓ Display processes running (sway)\${NC}"
+elif pgrep -x Xorg >/dev/null; then
+    echo -e "\${GREEN}✓ Display processes running (Xorg, X11 fallback)\${NC}"
 else
-    echo -e "${RED}✗ No display processes found${NC}"
+    echo -e "\${RED}✗ No display server (sway or Xorg) running\${NC}"
 fi
+ps aux | grep -E "(sway|Xorg|kiosk-(wayland|loop)|chrome)" | grep -v grep | head -10
 echo ""
 
 echo "=== Displays Detected ==="
-if DISPLAY=:0 xrandr --query 2>/dev/null | grep " connected" >/dev/null; then
-    echo -e "\${GREEN}✓ Displays connected\${NC}"
-    DISPLAY=:0 xrandr --query 2>/dev/null | grep " connected"
+# HDMI connectors from sysfs (the same under sway and X11, needs no display socket), then the display server's
+# view: swaymsg under sway, xrandr under the X11 fallback (one X screen per TV, :0.0 north, :0.1 south)
+DISPLAY_COUNT=0
+for C in /sys/class/drm/card*-HDMI-A-*; do
+    [ "\$(cat "\$C/status" 2>/dev/null)" = connected ] && [ "\$(cat "\$C/enabled" 2>/dev/null)" = enabled ] && DISPLAY_COUNT=\$((DISPLAY_COUNT + 1))
+done
+if [ "\$DISPLAY_COUNT" -eq 2 ]; then
+    echo -e "\${GREEN}✓ 2 displays connected\${NC}"
+elif [ "\$DISPLAY_COUNT" -eq 1 ]; then
+    echo -e "\${YELLOW}⚠ Only 1 display connected\${NC}"
 else
-    echo -e "\${YELLOW}⚠ Could not query displays\${NC}"
+    echo -e "\${RED}✗ No displays detected\${NC}"
+fi
+for C in /sys/class/drm/card*-HDMI-A-*; do
+    echo "  \${C##*/}: \$(cat "\$C/status" 2>/dev/null), \$(cat "\$C/enabled" 2>/dev/null)"
+done
+SWAY_PID=\$(pgrep -xo sway)
+if [ -n "\$SWAY_PID" ]; then
+    # this sway's own socket (a crashed sway can leave a stale one behind)
+    OUTPUTS=\$(SWAYSOCK=\$(ls /run/user/*/sway-ipc.*."\$SWAY_PID".sock 2>/dev/null | head -1) swaymsg -t get_outputs -r 2>/dev/null \
+        | jq -r '.[] | "  sway: " + .name + " " + (if .active then "\(.current_mode.width)x\(.current_mode.height)@\(.current_mode.refresh / 10 | round / 100)Hz" else "disabled" end)' 2>/dev/null)
+    if [ -n "\$OUTPUTS" ]; then
+        echo "\$OUTPUTS"
+    else
+        echo -e "  \${YELLOW}⚠ Could not query sway\${NC}"
+    fi
+elif pgrep -x Xorg >/dev/null; then
+    { DISPLAY=:0.0 xrandr --current; DISPLAY=:0.1 xrandr --current; } 2>/dev/null | grep " connected" | sed 's/^/  X11: /'
 fi
 echo ""
 
 echo "=== Chrome URLs and Status ==="
-# Get Chrome process details
-CHROME_PIDS=\$(pgrep -f "google-chrome-stable.*kiosk" || echo "")
+# Get Chrome process details (match the page URL, not the binary: under sway the browser's command line starts
+# /opt/google/chrome/chrome)
+CHROME_PIDS=\$(pgrep -f "chrome.*display/(north|south)-screen" || echo "")
 if [ -n "\$CHROME_PIDS" ]; then
     echo "Chrome kiosk processes found:"
     for PID in \$CHROME_PIDS; do
@@ -156,29 +188,54 @@ if [ -n "\$CHROME_PIDS" ]; then
     done
     
     echo ""
-    echo "=== Chrome Console Logs: Proof Pages Are Rendering ==="
+    echo "=== Open Pages: Proof Pages Are Loaded ==="
+    # each Chrome's DevTools endpoint lists its open pages (north :9222, south :9223; the same under sway and X11)
+    for S in north:9222 south:9223; do
+        NAME=\${S%:*}; PORT=\${S#*:}
+        echo ""
+        echo "--- \${NAME^^} Screen (DevTools localhost:\$PORT) ---"
+        if ! command -v jq >/dev/null; then
+            echo -e "\${YELLOW}⚠ jq not installed: open pages not checked\${NC}"
+        elif JSON=\$(curl -s -m 2 "localhost:\$PORT/json"); then
+            PAGES=\$(echo "\$JSON" | jq -r '.[] | select(.type == "page") | .url + (if (.title // "") != "" then "  (" + .title + ")" else "" end)' 2>/dev/null)
+            N=\$(echo "\$PAGES" | grep -c "display/\$NAME-screen")
+            if [ "\$N" -eq 1 ]; then
+                echo -e "\${GREEN}✓ display/\$NAME-screen loaded\${NC}"
+            elif [ "\$N" -gt 1 ]; then
+                echo -e "\${YELLOW}⚠ display/\$NAME-screen open in \$N tabs (expected 1)\${NC}"
+            else
+                echo -e "\${YELLOW}⚠ display/\$NAME-screen not open\${NC}"
+            fi
+            echo "\${PAGES:-(no pages open)}"
+        else
+            echo -e "\${YELLOW}⚠ DevTools port \$PORT not answering\${NC}"
+        fi
+    done
+
+    # Chrome runs without --enable-logging since 2026-07-28, so these logs only hold Chrome's own stderr
     echo ""
-    echo "--- NORTH Screen Console (last 25 lines) ---"
+    echo "=== Chrome stderr (chrome_console.log) ==="
+    echo ""
+    echo "--- NORTH Screen (last 25 lines) ---"
     if [ -f "/tmp/chrome-north/chrome_console.log" ]; then
         tail -25 /tmp/chrome-north/chrome_console.log 2>/dev/null | grep -v "^$" || echo "(log is empty)"
     else
-        echo -e "\${YELLOW}⚠ No console log at /tmp/chrome-north/chrome_console.log\${NC}"
-        echo "   (Chrome needs to be restarted after kiosk-loop.sh update)"
+        echo -e "\${YELLOW}⚠ No log at /tmp/chrome-north/chrome_console.log\${NC}"
     fi
-    
+
     echo ""
-    echo "--- SOUTH Screen Console (last 25 lines) ---"
+    echo "--- SOUTH Screen (last 25 lines) ---"
     if [ -f "/tmp/chrome-south/chrome_console.log" ]; then
         tail -25 /tmp/chrome-south/chrome_console.log 2>/dev/null | grep -v "^$" || echo "(log is empty)"
     else
-        echo -e "\${YELLOW}⚠ No console log at /tmp/chrome-south/chrome_console.log\${NC}"
-        echo "   (Chrome needs to be restarted after kiosk-loop.sh update)"
+        echo -e "\${YELLOW}⚠ No log at /tmp/chrome-south/chrome_console.log\${NC}"
     fi
-    
+
     echo ""
     echo "=== What URLs Were Loaded at Startup ==="
     echo "(from kiosk startup log)"
-    grep -E "spawn (NORTH|SOUTH)" /var/log/kiosk.log 2>/dev/null | tail -3 || echo "(no spawn logs found)"
+    # kiosk-wayland.sh logs "spawn north ...", the X11 kiosk-loop.sh "spawn NORTH ..."
+    grep -iE "spawn (north|south)" /var/log/kiosk.log 2>/dev/null | tail -3 || echo "(no spawn logs found)"
     
     # Check for GPU issues (common cause of white screens)
     echo ""
@@ -196,21 +253,27 @@ echo ""
 
 echo "=== Network Verification: Are Pages Actually Loaded? ==="
 echo "Active connections from Chrome to the frontend origin (port 8000 -> Flask :5000):"
-CHROME_CONNS=\$(lsof -i -n -P 2>/dev/null | grep chrome | grep ":8000" | grep ESTABLISHED | wc -l)
+# counted by port with ss: lsof cannot see Chrome's sockets (checked 2026-10-13: none listed while the pages were
+# loaded), and on this box only the kiosk Chromes talk to port 8000
+CHROME_CONNS=\$(ss -Htn state established '( dport = :8000 )' 2>/dev/null | wc -l)
 if [ "\$CHROME_CONNS" -gt 0 ]; then
     echo -e "\${GREEN}✓ \$CHROME_CONNS active connections to port 8000\${NC}"
     echo "Connection details:"
-    lsof -i -n -P 2>/dev/null | grep chrome | grep ":8000" | grep ESTABLISHED | head -10
+    ss -tn state established '( dport = :8000 )' 2>/dev/null | head -10
 else
     echo -e "\${RED}✗ No active connections to port 8000 - pages may not be loaded!\${NC}"
 fi
 echo ""
 echo "WebSocket connections (port 8765):"
-lsof -i -n -P 2>/dev/null | grep ":8765" | grep ESTABLISHED | head -5 || echo "No WebSocket connections"
+ss -tnp state established '( dport = :8765 )' 2>/dev/null | head -6
 echo ""
 
 echo "=== Recent Errors (last 10) ==="
-echo "$MEDIA_SERVER_PASSWORD" | sudo -S journalctl -u kiosk.service -p err --since "24 hours ago" --no-pager | tail -10 || echo "No errors in last 24 hours"
+# no sudo: the kiosk user is in the adm group, which can read the system journal. Filtered: every sway start logs two
+# PAM lines (pam_lastlog.so is missing), and every stop more from the ExecStopPost pkills, which also open a login
+# session (PAMName=login); unfiltered they push real errors out of the last 10
+journalctl -u \$KIOSK_UNIT -p err --since "24 hours ago" --no-pager \
+    | grep -vE 'pam_lastlog|PAM adding faulty module|^[^ ]+ +[0-9]+ [0-9:]+ [^ ]+ \(pkill\)' | tail -10 || echo "No errors in last 24 hours"
 echo ""
 
 echo "=== Disk Usage ==="

@@ -274,32 +274,36 @@ echo ""
 OLD_ESC=\$(echo "$old_ip" | sed 's/\./\\./g')
 NEW_IP="$new_ip"
 
+# The production URLs live in both kiosk launchers: kiosk-wayland.sh (Wayland, default since 2026-10-13)
+# and kiosk-loop.sh (X11 fallback). A file missing on the box is skipped.
+FILES="/usr/local/bin/kiosk-wayland.sh /usr/local/bin/kiosk-loop.sh /usr/local/bin/webview-manager.sh"
+
 echo "Files to update:"
-echo "  - /usr/local/bin/kiosk-loop.sh"
-echo "  - /usr/local/bin/webview-manager.sh"
+for f in \$FILES; do echo "  - \$f"; done
 echo ""
 
 # Backup first
 echo "Creating backups..."
-sudo cp /usr/local/bin/kiosk-loop.sh /usr/local/bin/kiosk-loop.sh.bak-$TIMESTAMP
-sudo cp /usr/local/bin/webview-manager.sh /usr/local/bin/webview-manager.sh.bak-$TIMESTAMP
+for f in \$FILES; do
+    if [ -f "\$f" ]; then sudo cp "\$f" "\$f.bak-$TIMESTAMP"; else echo "  not present, skipping: \$f"; fi
+done
 
 # Update IPs
-echo "Updating kiosk-loop.sh..."
-sudo sed -i "s/\$OLD_ESC/\$NEW_IP/g" /usr/local/bin/kiosk-loop.sh
-
-echo "Updating webview-manager.sh..."
-sudo sed -i "s/\$OLD_ESC/\$NEW_IP/g" /usr/local/bin/webview-manager.sh
+for f in \$FILES; do
+    [ -f "\$f" ] || continue
+    echo "Updating \$(basename "\$f")..."
+    sudo sed -i "s/\$OLD_ESC/\$NEW_IP/g" "\$f"
+done
 
 # Verify changes
 echo ""
 echo "=== Verification ==="
-echo "kiosk-loop.sh URLs:"
-grep -n "URL_" /usr/local/bin/kiosk-loop.sh || true
-
-echo ""
-echo "webview-manager.sh URLs:"
-grep -n "URL" /usr/local/bin/webview-manager.sh || true
+for f in \$FILES; do
+    [ -f "\$f" ] || continue
+    echo "\$(basename "\$f") URLs:"
+    grep -n 'URL[_0-9A-Z]*="' "\$f" || true
+    echo ""
+done
 
 echo ""
 echo "=== Backups created ==="
@@ -307,9 +311,12 @@ ls -lah /usr/local/bin/*.bak-$TIMESTAMP
 
 echo ""
 echo "=== Restarting kiosk service ==="
-sudo systemctl restart kiosk.service
+# whichever kiosk is running: kiosk.service (sway, default) or the X11 fallback kiosk-x11.service (never switch modes)
+KIOSK_UNIT=kiosk.service
+systemctl is-active --quiet kiosk-x11.service && KIOSK_UNIT=kiosk-x11.service
+sudo systemctl restart \$KIOSK_UNIT
 sleep 3
-sudo systemctl status kiosk.service --no-pager
+sudo systemctl status \$KIOSK_UNIT --no-pager
 
 echo ""
 echo "✓ Update complete!"
@@ -425,6 +432,7 @@ cmd_system_status() {
     
     print_status "Generating system status report..."
     
+    $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" "mkdir -p $REMOTE_TMP"
     $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" "cat > $REMOTE_TMP/status.sh" <<'EOF'
 #!/bin/bash
 echo "=== System Status Report ==="
@@ -433,15 +441,31 @@ echo "Hostname: $(hostname)"
 echo ""
 
 echo "=== Kiosk Service ==="
-sudo systemctl status kiosk.service --no-pager || true
+# kiosk.service is the sway (Wayland) kiosk since 2026-10-13; kiosk-x11.service is the X11 fallback
+sudo systemctl status kiosk.service kiosk-x11.service --no-pager || true
 echo ""
 
 echo "=== Running Processes ==="
-ps aux | grep -E "(Xorg|chrome|kiosk|sensor|python)" | grep -v grep || echo "No relevant processes found"
+ps aux | grep -E "(sway|Xorg|chrome|kiosk|sensor|python)" | grep -v grep || echo "No relevant processes found"
 echo ""
 
 echo "=== Display Status ==="
-sudo -u gjbm2 DISPLAY=:0 xrandr --query 2>&1 || echo "Cannot query display"
+# HDMI connectors from sysfs (the same under sway and X11, needs no display socket), then the display server's view
+for c in /sys/class/drm/card*-HDMI-A-*; do
+    echo "${c##*/}: $(cat "$c/status" 2>/dev/null), $(cat "$c/enabled" 2>/dev/null)"
+done
+SWAY_PID=$(pgrep -xo sway)
+if [ -n "$SWAY_PID" ]; then
+    # this sway's own socket (a crashed sway can leave a stale one behind). Run as the ssh user, who owns the socket
+    # (gjbm2): sudo -u would need a password, and there is no tty to read it from
+    SWAYSOCK="$(ls /run/user/*/sway-ipc.*."$SWAY_PID".sock 2>/dev/null | head -1)" swaymsg -p -t get_outputs 2>&1 || echo "Cannot query sway"
+elif pgrep -x Xorg >/dev/null; then
+    # X11 fallback: one X screen per TV (:0.0 north, :0.1 south; :0.1 is absent on the old single-screen layout)
+    sudo -u gjbm2 DISPLAY=:0.0 xrandr --query 2>&1 || echo "Cannot query display"
+    sudo -u gjbm2 DISPLAY=:0.1 xrandr --query 2>/dev/null || true
+else
+    echo "No display server (sway or Xorg) running"
+fi
 echo ""
 
 echo "=== Network Connections ==="
@@ -584,10 +608,17 @@ cmd_deploy_scripts() {
     
     print_header "Deploy Kiosk Scripts"
     
-    # Determine which scripts to deploy
+    # "deploy-scripts --restart" (no script named) means all scripts, then restart
+    if [[ "$script_name" == "--restart" ]] || [[ "$script_name" == "-r" ]]; then
+        auto_restart="$script_name"
+        script_name="all"
+    fi
+    
+    # Determine which scripts to deploy (kiosk-wayland.sh + sway-kiosk.conf: Wayland kiosk, the default since
+    # 2026-10-13; kiosk-loop.sh + kiosk-wait-start.sh: X11 fallback)
     local scripts_to_deploy
     if [ "$script_name" == "all" ]; then
-        scripts_to_deploy=("kiosk-loop.sh" "kiosk-wait-start.sh" "webview-manager.sh")
+        scripts_to_deploy=("kiosk-wayland.sh" "sway-kiosk.conf" "kiosk-loop.sh" "kiosk-wait-start.sh" "webview-manager.sh")
         print_status "Deploying ALL kiosk scripts..."
     else
         scripts_to_deploy=("$script_name")
@@ -600,6 +631,16 @@ cmd_deploy_scripts() {
     local deployed_count=0
     for script in "${scripts_to_deploy[@]}"; do
         local local_path="$MEDIA_SERVER_DIR/remote-scripts/$script"
+        local remote_path="/usr/local/bin/$script"
+        local mode=755
+        case "$script" in
+            kiosk-wayland.sh)
+                local_path="$MEDIA_SERVER_DIR/remote-scripts/wayland/$script" ;;
+            sway-kiosk.conf)
+                local_path="$MEDIA_SERVER_DIR/remote-scripts/wayland/$script"
+                remote_path="/usr/local/share/kiosk/$script"
+                mode=644 ;;
+        esac
         
         if [ ! -f "$local_path" ]; then
             print_error "Local script not found: $local_path"
@@ -618,20 +659,23 @@ cmd_deploy_scripts() {
         # Move to final location and set permissions
         if [ ! -z "$SSH_PASSWORD" ] && command -v sshpass &> /dev/null; then
             sshpass -p "$SSH_PASSWORD" $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" << EOF
-echo "$SSH_PASSWORD" | sudo -S mv /tmp/$script /usr/local/bin/$script
-echo "$SSH_PASSWORD" | sudo -S chmod 755 /usr/local/bin/$script
-echo "$SSH_PASSWORD" | sudo -S chown root:root /usr/local/bin/$script
+echo "$SSH_PASSWORD" | sudo -S mkdir -p ${remote_path%/*}
+echo "$SSH_PASSWORD" | sudo -S mv /tmp/$script $remote_path
+echo "$SSH_PASSWORD" | sudo -S chmod $mode $remote_path
+echo "$SSH_PASSWORD" | sudo -S chown root:root $remote_path
 EOF
         else
             $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" << EOF
-sudo mv /tmp/$script /usr/local/bin/$script
-sudo chmod 755 /usr/local/bin/$script
-sudo chown root:root /usr/local/bin/$script
+sudo mkdir -p ${remote_path%/*}
+sudo mv /tmp/$script $remote_path
+sudo chmod $mode $remote_path
+sudo chown root:root $remote_path
 EOF
         fi
         
-        print_status "✓ Deployed: $script"
-        ((deployed_count++))
+        print_status "✓ Deployed: $script → $remote_path"
+        # not ((deployed_count++)): that returns 1 while the count is 0, and set -e then stops after the first file
+        deployed_count=$((deployed_count + 1))
         echo ""
     done
     
@@ -652,46 +696,53 @@ EOF
         
         if [ ! -z "$SSH_PASSWORD" ] && command -v sshpass &> /dev/null; then
             sshpass -p "$SSH_PASSWORD" $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" << EOF
-echo "=== Stopping kiosk service ==="
-echo "$SSH_PASSWORD" | sudo -S systemctl stop kiosk.service
+# whichever kiosk is running: kiosk.service (sway, default) or the X11 fallback kiosk-x11.service (never switch modes)
+KIOSK_UNIT=kiosk.service
+systemctl is-active --quiet kiosk-x11.service && KIOSK_UNIT=kiosk-x11.service
+echo "=== Stopping kiosk service (\$KIOSK_UNIT) ==="
+echo "$SSH_PASSWORD" | sudo -S systemctl stop \$KIOSK_UNIT
 sleep 2
 echo "✓ Stopped"
 echo ""
 
-echo "=== Starting kiosk service ==="
-echo "$SSH_PASSWORD" | sudo -S systemctl start kiosk.service
+echo "=== Starting kiosk service (\$KIOSK_UNIT) ==="
+echo "$SSH_PASSWORD" | sudo -S systemctl start \$KIOSK_UNIT
 sleep 3
 echo "✓ Started"
 echo ""
 
 echo "=== Service Status ==="
-systemctl status kiosk.service --no-pager | head -15
+systemctl status \$KIOSK_UNIT --no-pager | head -15
 EOF
         else
             $SSH_CMD "$REMOTE_USER@$REMOTE_HOST" << EOF
-echo "=== Stopping kiosk service ==="
-sudo systemctl stop kiosk.service
+# whichever kiosk is running: kiosk.service (sway, default) or the X11 fallback kiosk-x11.service (never switch modes)
+KIOSK_UNIT=kiosk.service
+systemctl is-active --quiet kiosk-x11.service && KIOSK_UNIT=kiosk-x11.service
+echo "=== Stopping kiosk service (\$KIOSK_UNIT) ==="
+sudo systemctl stop \$KIOSK_UNIT
 sleep 2
 echo "✓ Stopped"
 echo ""
 
-echo "=== Starting kiosk service ==="
-sudo systemctl start kiosk.service
+echo "=== Starting kiosk service (\$KIOSK_UNIT) ==="
+sudo systemctl start \$KIOSK_UNIT
 sleep 3
 echo "✓ Started"
 echo ""
 
 echo "=== Service Status ==="
-systemctl status kiosk.service --no-pager | head -15
+systemctl status \$KIOSK_UNIT --no-pager | head -15
 EOF
         fi
         
         echo ""
         print_status "Kiosk service restarted"
         echo ""
-        echo "Chrome console logs are now available at:"
+        echo "Chrome output (stderr only; Chrome runs without --enable-logging) is at:"
         echo "  - /tmp/chrome-north/chrome_console.log"
         echo "  - /tmp/chrome-south/chrome_console.log"
+        echo "Open pages, on the box: curl -s -m 2 localhost:9222/json (north), localhost:9223/json (south)"
     else
         echo "To apply changes, you need to restart the kiosk service."
         echo "This will briefly interrupt the displays."
@@ -747,8 +798,9 @@ case "${1:-}" in
         echo "Examples:"
         echo "  $0 diagnose-lightsensor"
         echo "  $0 update-ip 185.254.136.244 95.141.21.170"
-        echo "  $0 deploy-scripts --restart          # Deploy all and auto-restart"
-        echo "  $0 deploy-scripts kiosk-loop.sh -r  # Deploy specific and auto-restart"
+        echo "  $0 deploy-scripts --restart              # Deploy all and auto-restart"
+        echo "  $0 deploy-scripts kiosk-wayland.sh -r   # Deploy specific (Wayland kiosk) and auto-restart"
+        echo "  $0 deploy-scripts kiosk-loop.sh         # X11 fallback launcher (used by kiosk-x11.service)"
         echo "  $0 system-status"
         echo "  $0 fix-lightsensor 95.141.21.170"
         echo "  $0 run-script my-custom-check.sh"

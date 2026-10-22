@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# scripts/ctl — start/stop the production GPU renderer (stream_service, on-demand worker).
+#
+# Same pattern as start.sh uses for Flask/ngrok: it runs in GNU screen session sm-stream.
+# Spectre's Live renderer card calls this script. Flags and port: deploy/sm-stream.env (owner
+# screen-machine-04). Room management runs inside the Flask process (since 14 Oct), not here.
+#
+# Usage:
+#   scripts/ctl start|stop|restart <stream|all> [--force]
+#   scripts/ctl status [stream|all]          exit 0 running+healthy, 3 stopped, 1 unhealthy
+#   scripts/ctl health stream                GET /healthz
+#   scripts/ctl logs stream [N]              last N log lines (default 200)
+#   scripts/ctl ports
+#
+# A *_HOLD line in a service's env file blocks start/restart (exit 2) until its owner deletes it;
+# --force overrides. stop is never blocked. This script never pkills anything.
+
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_DIR="${CTL_ENV_DIR:-$REPO/deploy}"
+LOG_DIR="${CTL_LOG_DIR:-$HOME/.local/state/screen-machine/logs}"
+RUN_DIR="${CTL_RUN_DIR:-$HOME/.local/state/screen-machine/run}"
+SUFFIX="${CTL_SESSION_SUFFIX:-}"   # tests only
+
+svc_def() {
+  case "$1" in
+    stream)
+      SESSION="sm-stream$SUFFIX"; MODULE=stream_service; PY="$HOME/.venvs/sm-stream/bin/python"
+      ENVF="$ENV_DIR/sm-stream.env"; KEY=STREAM; LOG="$LOG_DIR/stream_service.log"; WAIT=45 ;;
+    show)
+      SESSION="sm-show$SUFFIX"; MODULE=show_service; PY="$HOME/.venvs/sm-show/bin/python"
+      ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
+    room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
+    *) echo "ctl: unknown service '$1' (stream|show|all)" >&2; exit 64 ;;
+  esac
+  PIDF="$RUN_DIR/$SESSION.pid"
+}
+
+# KEY=VALUE reader (the env file is never sourced).
+env_get() {
+  [[ -f "$ENVF" ]] || return 0
+  sed -n "s/^$1=//p" "$ENVF" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+svc_port() { env_get "${KEY}_PORT"; }
+
+running() { screen -ls 2>/dev/null | grep -q "[0-9]\.${SESSION}[[:space:]]"; }
+
+svc_pid() {
+  local pid
+  pid="$(cat "$PIDF" 2>/dev/null || true)"
+  if [[ -n "$pid" ]] && tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- "$MODULE\|fake_service"; then
+    echo "$pid"
+  fi
+}
+
+healthy() { curl -fsS -m 3 -o /dev/null "http://127.0.0.1:$1/healthz" 2>/dev/null; }
+
+do_start() {
+  local svc="$1" force="$2" port args hold holder envs=() line k
+  svc_def "$svc"
+  hold="$(env_get "${KEY}_HOLD")"
+  if running; then echo "$svc: already running"; return 0; fi
+  if [[ -n "$hold" && "$force" != 1 ]]; then
+    echo "ctl: start REFUSED: $svc is on hold: $hold" >&2; return 2
+  fi
+  port="$(svc_port)"; args="$(env_get "${KEY}_ARGS")"
+  if [[ -z "$port" ]]; then echo "ctl: ${KEY}_PORT missing in $ENVF" >&2; return 1; fi
+  if [[ " $args " == *" --port"* ]]; then echo "ctl: remove --port from ${KEY}_ARGS (the port is ${KEY}_PORT)" >&2; return 1; fi
+  holder="$(ss -Hltnp "sport = :$port" 2>/dev/null || true)"
+  if [[ -n "$holder" ]]; then
+    echo "ctl: start REFUSED: port $port is already in use: $holder" >&2; return 2
+  fi
+  # Extra KEY=VALUE lines in the env file (e.g. CUDA_DEVICE_ORDER) become environment variables.
+  while IFS= read -r line; do
+    k="${line%%=*}"
+    case "$k" in "${KEY}_PORT"|"${KEY}_ARGS"|"${KEY}_HOLD") continue ;; esac
+    envs+=("$k=$(env_get "$k")")
+  done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$ENVF" 2>/dev/null || true)
+  envs+=("PYTHONUNBUFFERED=1" "PATH=/usr/lib/wsl/lib:$PATH")
+  mkdir -p "$LOG_DIR" "$RUN_DIR"
+  local cmd
+  if [[ -n "${CTL_FAKE:-}" ]]; then   # tests only
+    cmd="$(printf '%q ' env "${envs[@]}" python3 "$REPO/tests/ops/fake_service.py" --port "$port" --name "$svc")"
+  else
+    # shellcheck disable=SC2086  # ARGS is deliberately split into flags
+    cmd="$(printf '%q ' env "${envs[@]}" "$PY" -m "$MODULE" --port "$port" $args)"
+  fi
+  { echo; echo "=== $(date -Is) ctl start $svc (:$port) ==="; } >>"$LOG"
+  screen -dmS "$SESSION" -L -Logfile "$LOG" bash -c "echo \$\$ > $(printf %q "$PIDF"); cd $(printf %q "$REPO") && exec $cmd"
+  screen -S "$SESSION" -X logfile flush 1 >/dev/null 2>&1 || true
+  local i
+  for ((i = 0; i < WAIT * 2; i++)); do
+    if healthy "$port"; then echo "$svc: started (pid $(svc_pid), :$port)"; return 0; fi
+    if ! running; then
+      echo "ctl: $svc exited during startup; last log lines:" >&2; tail -n 20 "$LOG" >&2; return 1
+    fi
+    sleep 0.5
+  done
+  echo "ctl: $svc is running but /healthz on :$port did not answer within ${WAIT}s (see scripts/ctl logs $svc)" >&2
+  return 1
+}
+
+do_stop() {
+  local svc="$1" pid i
+  svc_def "$svc"
+  pid="$(svc_pid)"
+  if ! running && [[ -z "$pid" ]]; then echo "$svc: not running"; return 0; fi
+  if [[ -n "$pid" ]]; then
+    kill -TERM "$pid" 2>/dev/null || true          # graceful: the services end their sessions/children
+    for ((i = 0; i < 30; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    if kill -0 "$pid" 2>/dev/null; then kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true; fi
+  fi
+  screen -S "$SESSION" -X quit >/dev/null 2>&1 || true
+  rm -f "$PIDF"
+  echo "$svc: stopped"
+}
+
+do_status() {
+  local svc="$1" port hold
+  svc_def "$svc"
+  port="$(svc_port)"; hold="$(env_get "${KEY}_HOLD")"
+  local note=""; [[ -n "$hold" ]] && note=" [HOLD: $hold]"
+  if ! running; then echo "$svc: stopped (:$port)$note"; return 3; fi
+  if healthy "$port"; then echo "$svc: running (pid $(svc_pid), :$port, healthy)$note"; return 0; fi
+  echo "$svc: running but /healthz on :$port is not answering (pid $(svc_pid))$note"; return 1
+}
+
+for_each() {   # for_each <fn> <stream|all> [args...] — aggregates exit codes (1 beats 2 beats 3)
+  local fn="$1" target="$2"; shift 2
+  local list rc=0 r
+  case "$target" in
+    all) list="stream show" ;;
+    stream|show) list="$target" ;;
+    room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
+    *) echo "ctl: unknown service '$target' (stream|show|all)" >&2; exit 64 ;;
+  esac
+  for s in $list; do
+    r=0; "$fn" "$s" "$@" || r=$?
+    if (( r != 0 )) && { (( rc == 0 )) || (( r < rc )); }; then rc=$r; fi
+  done
+  return "$rc"
+}
+
+with_lock() {
+  mkdir -p "$RUN_DIR"
+  exec 9>"$RUN_DIR/ctl$SUFFIX.lock"
+  flock -w 25 9 || { echo "ctl: busy (another ctl command is running)" >&2; exit 75; }
+}
+
+cmd="${1:-help}"; target="${2:-all}"; force=0
+for a in "$@"; do [[ "$a" == --force ]] && force=1; done
+
+case "$cmd" in
+  start)   with_lock; for_each do_start "$target" "$force" ;;
+  stop)    with_lock; for_each do_stop "$target" ;;
+  restart)
+    with_lock
+    if [[ "$target" != all ]]; then svc_def "$target"
+      if [[ -n "$(env_get "${KEY}_HOLD")" && "$force" != 1 ]]; then
+        echo "ctl: restart REFUSED: $target is on hold: $(env_get "${KEY}_HOLD")" >&2; exit 2; fi
+    fi
+    for_each do_stop "$target"; for_each do_start "$target" "$force" ;;
+  status)  for_each do_status "$target" ;;
+  health)  svc_def "$target"; curl -sS -m 3 "http://127.0.0.1:$(svc_port)/healthz"; echo ;;
+  logs)    svc_def "$target"; tail -n "${3:-200}" "$LOG" 2>/dev/null || echo "($target: no log yet: $LOG)" ;;
+  ports)
+    printf '%-8s %-6s %s\n' service port scope stream 8702 "LAN (TV media sockets); never WAN" \
+      "room" 8700 "LAN; inside Flask" "show-bus" 8701 "localhost; inside Flask" \
+      "show" 8703 "localhost (bus + API; pages via :8700/show/*)" "show-vban" "6980/udp" "WSL socket; receiver-initiated"
+    echo "Register: docs/PORTS.md" ;;
+  help|-h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "ctl: unknown command '$cmd' (try: scripts/ctl help)" >&2; exit 64 ;;
+esac
