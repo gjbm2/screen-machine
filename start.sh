@@ -129,7 +129,14 @@ start_ngrok() {
 # ── Stop functions ────────────────────────────────────────────────────
 
 stop_flask() {
-  pkill -f "python.*app\\.py" 2>/dev/null || true
+  # Exact match (-x) on the server's own command line ("python3 app.py"): a loose -f pattern also hit any shell
+  # whose command line merely mentions it (it killed an agent's shell on 11 Oct), and with -9 below that matters.
+  pkill -fx 'python3? app\.py' 2>/dev/null || true
+  # Wait for it to really exit (up to 20 s): room_service runs inside Flask and stops the Hue stream, show bus and
+  # snapshot browser first. Returning early let a following start see the old screen session, say "already running"
+  # and start nothing (17 Oct 02:26, Spectre restart: Flask stayed down).
+  for _ in $(seq 1 40); do pgrep -fx 'python3? app\.py' >/dev/null || break; sleep 0.5; done
+  pkill -9 -fx 'python3? app\.py' 2>/dev/null || true
   screen -S flask -X quit 2>/dev/null || true
   screen_wipe
   echo "Flask: stopped"

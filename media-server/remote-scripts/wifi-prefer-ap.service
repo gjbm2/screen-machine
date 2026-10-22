@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep kiosk Wi-Fi on its preferred access point (falls back to any AP if it disappears)
+After=netplan-wpa-wlp2s0.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/wifi-prefer-ap
+# stopping or crashing always clears the pin, so the box can never be left locked to a missing AP
+ExecStopPost=/usr/local/sbin/wifi-prefer-ap --release
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

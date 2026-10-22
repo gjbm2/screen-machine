@@ -1,0 +1,33 @@
+# The kiosk: sway (Wayland) with one full-screen Chrome per TV. Default since 2026-10-13, replacing Xorg
+# (now kiosk-x11.service, disabled). Why: on X11 Chrome's zero-copy video path crashes and two 4K60 streams saturate
+# the GPU's video-processing engine; under sway zero-copy works and both TVs play 4K60
+# (docs/KIOSK_INFRASTRUCTURE_NOTES.md §3). sway runs in a logind session on tty1 for the kiosk user (PAMName=login).
+# Config /usr/local/share/kiosk/sway-kiosk.conf, launcher /usr/local/bin/kiosk-wayland.sh, options /etc/default/kiosk-wayland.
+# Back to X11: sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11
+[Unit]
+Description=Kiosk on Wayland (sway): one Chrome per TV
+Conflicts=kiosk-x11.service getty@tty1.service
+After=systemd-user-sessions.service network.target snapd.seeded.service
+
+[Service]
+User=gjbm2
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+ExecStart=/usr/bin/sway --config /usr/local/share/kiosk/sway-kiosk.conf
+# sway's children live in the login session, not this unit's cgroup: clean them up on stop
+ExecStopPost=-/usr/bin/pkill -u gjbm2 -f /usr/local/bin/kiosk-wayland.sh
+ExecStopPost=-/usr/bin/pkill -u gjbm2 -f -- --user-data-dir=/tmp/chrome-(north|south)
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

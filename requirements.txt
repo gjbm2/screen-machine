@@ -69,3 +69,6 @@ hypercorn>=0.15.0
 
 # Astral package for solar calculations
 astral>=2.2
+
+# BroadLink RM4 Pro (room_service/adapters/broadlink_rf.py: the glitterball)
+broadlink==0.19.0
