@@ -303,6 +303,7 @@ class PhraseLayout:
         self.prov_push = 0.0
         self.warp = None                           # (slots, x, tail width): see Spacer
         self.warp_ver = 0
+        self.local_wkey = False                    # reuse a bar's layout while the warp around it is unchanged
         self.slot_of: dict = {}                    # nid -> the 16th its first piece was last laid out at
         self.side_of: dict = {}                    # nid -> its head's offset from its column (sp)
         self.written_slot: dict = {}               # nid -> its written 16th
@@ -409,7 +410,7 @@ class PhraseLayout:
             if memo is not None:
                 # a bar laid out before, from the same events and the same state, is the same: reuse it
                 ids = sorted({i for st in staves for e in st for i in e.ids})
-                mkey = (k, units, U, self.Q, self.warp_ver, f, rests,
+                mkey = (k, units, U, self._mkw(k, units), f, rests,
                        tuple(tuple((e.start, e.dur, tuple(e.pitches), tuple(e.ids), tuple(e.tie_in), tuple(e.tie_out))
                                    for e in st) for st in staves),
                        (sp.q0, sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.first_left, tuple(sp.ott),
@@ -507,6 +508,22 @@ class PhraseLayout:
                 out_main.end_x = max(out_main.end_x, dest.end_x)
                 out = out_main
         out.end_slot = max(out.end_slot, (bars[-1][0] + 1) * units if bars else 0)
+
+    def _mkw(self, k: int, units) -> tuple:
+        """The warp as bar k's layout sees it: the whole warp's version, or (local_wkey: a warp that only ever gains
+        points as notes arrive, span: room) its points around the bar, and its tail width only where the bar
+        reaches past them."""
+        w = self.warp
+        if not self.local_wkey or w is None or not units:
+            return (self.Q, self.warp_ver)
+        ws, wx, qt = w
+        lo, hi = k * units - units, (k + 1) * units + units
+        i0 = max(0, bisect.bisect_left(ws, lo) - 1)
+        i1 = min(len(ws), bisect.bisect_right(ws, hi) + 1)
+        key = (tuple(ws[i0:i1]), tuple(wx[i0:i1]))
+        if hi >= ws[-1] or lo <= ws[0]:
+            key += (qt,)
+        return key
 
     def _open(self, chords_in: list, out: Out, sp: Spacer, pieces: dict, fifths: int) -> None:
         sig = mei.signature(fifths)

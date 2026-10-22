@@ -577,6 +577,34 @@ def place(a: np.ndarray, i: int, c0: int, value: float, now: float) -> None:
     a[i, c0:c0 + 5] = (value, 0.0, value, now, 0.0)
 
 
+class PinRing:
+    """Pinned host buffers for async uploads: each is reused once the GPU has copied it (its event done), and the
+    ring grows by one instead of waiting when all are still in flight: the render thread never blocks on the GPU."""
+
+    def __init__(self, cp, nfloats: int, n: int = 3) -> None:
+        self.cp, self.nf = cp, int(nfloats)
+        self.bufs = [self._new() for _ in range(n)]
+        self.grown = 0
+
+    def _new(self) -> list:
+        m = self.cp.cuda.alloc_pinned_memory(4 * self.nf)
+        return [m, np.frombuffer(m, np.float32, self.nf), None]
+
+    def take(self) -> list:
+        for b in self.bufs:
+            if b[2] is None or b[2].done:
+                return b
+        b = self._new()
+        self.bufs.append(b)
+        self.grown += 1
+        return b
+
+    def sent(self, b: list, stream) -> None:
+        if b[2] is None:
+            b[2] = self.cp.cuda.Event(block=False, disable_timing=True)
+        b[2].record(stream)
+
+
 def ease_to(a: np.ndarray, i: int, c0: int, target: float, now: float, k: float) -> None:
     """An eased channel (v0, vt, t0) at c0: from where it is now toward ``target``."""
     if abs(float(a[i, c0 + 1]) - target) < 1e-6:
@@ -1177,8 +1205,7 @@ class Stage:
         self.st_off["hdr"] = o
         o += N_HDR * NF
         self.st_n = o
-        self._st_pin = [cp.cuda.alloc_pinned_memory(4 * o) for _ in range(2)]
-        self._st_host = [np.frombuffer(m, np.float32, o) for m in self._st_pin]
+        self._st_ring = PinRing(cp, o)
         self._st_ev = [None, None]
         self._st_k = 0
         # the record regions
@@ -1197,8 +1224,7 @@ class Stage:
         self.LST = cp.zeros(self.n_bins * BIN_CAP, cp.int32)
         self.U = cp.zeros(16, cp.float32)
         self.RNG = cp.zeros(32, cp.int32)
-        self._u_pin = [cp.cuda.alloc_pinned_memory(64 * 4) for _ in range(2)]
-        self._u_host = [np.frombuffer(m, np.float32, 64) for m in self._u_pin]
+        self._u_ring = PinRing(cp, 64, 4)
         self._u_ev = [None, None]
         self._u_k = 0
         self.sm_dirty = True
@@ -1232,24 +1258,16 @@ class Stage:
             jobs.append(("hdr", h.ravel(), self._rec("hdr").data.ptr))
             self.hdr_dirty = False
         if jobs:
-            k = self._st_k = 1 - self._st_k
-            ev = self._st_ev[k]
-            if ev is not None and not ev.done:
-                ev.synchronize()                       # two uploads ago: long done in practice
-            host = self._st_host[k]
+            sb = self._st_ring.take()                  # (a staging buffer the GPU has finished with: never a wait)
+            host = sb[1]
             for name, arr, dst in jobs:
                 o = self.st_off[name]
                 n = min(len(arr), CAP.get(name, 0) * STRIDE.get(name, 0) or len(arr))
                 host[o:o + n] = arr[:n]
                 rt.memcpyAsync(dst, host[o:].ctypes.data, 4 * n, rt.memcpyHostToDevice, st.ptr)
-            if ev is None:
-                ev = self._st_ev[k] = cp.cuda.Event(block=False, disable_timing=True)
-            ev.record(st)
-        kk = self._u_k = 1 - self._u_k
-        ev = self._u_ev[kk]
-        if ev is not None and not ev.done:
-            ev.synchronize()
-        u = self._u_host[kk]
+            self._st_ring.sent(sb, st)
+        ub = self._u_ring.take()
+        u = ub[1]
         sp = self.sp
         u[:16] = (self.tt(now_s), S_px - self.x_ref, sp, RL.T1 * sp, RL.T2 * sp, self.flourish, 0.32 * sp, 0, 0, 0,
                   0, 0, 0, 0, 0, 0)
@@ -1264,9 +1282,7 @@ class Stage:
         rt = cp.cuda.runtime
         rt.memcpyAsync(self.U.data.ptr, u.ctypes.data, 64, rt.memcpyHostToDevice, st.ptr)
         rt.memcpyAsync(self.RNG.data.ptr, u[16:].ctypes.data, 128, rt.memcpyHostToDevice, st.ptr)
-        if ev is None:
-            ev = self._u_ev[kk] = cp.cuda.Event(block=False, disable_timing=True)
-        ev.record(st)
+        self._u_ring.sent(ub, st)
         self.counts = {k_: self.T[k_].hi for k_ in self.T}
 
     def launches(self, P_dev) -> None:

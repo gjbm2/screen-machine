@@ -35,45 +35,43 @@ class Painter:
                   (self.page, np.int32(w), np.int32(h), np.int32(1 if night else 0), np.uint32(seed & 0x7FFFFFFF)))
         self.NC = (w + RK.BIN_W - 1) // RK.BIN_W
         self.P = cp.zeros(RK.NP, cp.float32)
-        self._pin = [cp.cuda.alloc_pinned_memory(4 * RK.NP) for _ in range(2)]
-        self.host = [np.frombuffer(m, np.float32, RK.NP) for m in self._pin]
-        self.ev = [None, None]
-        self.k_half = 0
+        self.ring = RS.PinRing(cp, RK.NP, 4)                     # the uniforms' staging (never waited on)
         self.last = {"rec": 0}
         self.graphs: dict = {}
         self.mode = "graph"
         self._cap = None
 
     def draw(self, out, Ph: np.ndarray, stage, S_px: float, now_s: float) -> None:
+        """Uniforms and changed tables up (pinned staging the GPU has finished with: the render thread never waits
+        on the GPU), the stage's evaluation and binning (one CUDA graph a stage, whatever the output buffer), then the
+        drawing pass straight into ``out`` (one launch: a worker's output buffers rotate)."""
         cp = self.cp
-        k = self.k_half = 1 - self.k_half
-        ev = self.ev[k]
-        if ev is not None and not ev.done:
-            ev.synchronize()                                   # the GPU is two frames behind: this half is queued
-        host = self.host[k]
+        b = self.ring.take()
+        host = b[1]
         host[:] = Ph
         st = cp.cuda.get_current_stream()
         rt = cp.cuda.runtime
         rt.memcpyAsync(self.P.data.ptr, host.ctypes.data, 4 * RK.NP, rt.memcpyHostToDevice, st.ptr)
-        if ev is None:
-            ev = self.ev[k] = cp.cuda.Event(block=False, disable_timing=True)
-        ev.record(st)
+        self.ring.sent(b, st)
         stage.upload(S_px, now_s)
         self.last = {"rec": sum(stage.counts.values())}
         g = self._graph(out, stage) if self.mode == "graph" else None
         if g is not None:
             g.launch(st)
         else:
-            self._launch(out, stage)
+            stage.launches(self.P)
+        self._draw(out, stage)
 
-    def _launch(self, out, stage) -> None:
-        stage.launches(self.P)
+    def _draw(self, out, stage) -> None:
         self.launch_2d(self.k, self.w, self.h, (out, self.P, stage.CNT, stage.LST, stage.REC, self.atlas, self.AW,
                                                 self.page, np.int32(RS.BIN_CAP)))
 
+    def _launch(self, out, stage) -> None:
+        stage.launches(self.P)
+
     def _graph(self, out, stage):
-        """The frame's launches captured once per output buffer (degrade: direct launches if capture fails)."""
-        key = out.data.ptr
+        """The stage's launches captured once per stage (degrade: direct launches if capture fails)."""
+        key = id(stage)
         g = self.graphs.get(key)
         if g is not None:
             return g
@@ -108,4 +106,4 @@ class Painter:
     def close(self) -> None:
         self.graphs = {}
         self.atlas = self.page = self.P = None
-        self.host = self._pin = self.ev = None
+        self.ring = None
