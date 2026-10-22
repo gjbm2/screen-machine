@@ -1085,13 +1085,21 @@ class Stage:
         self.T[name].release(i)
 
     # -- housekeeping (the host's only per-frame work besides the launch) -------------------------------------------------
-    def step(self, now_s: float, cull_x: float, every: int = 6) -> None:
+    def step(self, now_s: float, cull_x: float, every: int = 6, defer: bool = False, cap: int = 64) -> None:
+        """Every ``every`` frames: the dead and the scrolled-off released (at most ``cap`` a time, the rest next
+        time), membership pruned.  ``defer``: this frame is heavy already: wait for a light one (30 frames at most)."""
         self.frame_n = getattr(self, "frame_n", 0) + 1
-        if self.frame_n % every:
+        if self.frame_n % every and not getattr(self, "_step_due", False):
             return
+        if defer and self.frame_n - getattr(self, "_step_last", 0) < 30:
+            self._step_due = True
+            return
+        self._step_due = False
+        self._step_last = self.frame_n
         now = self.tt(now_s)
         cx = self.tx(cull_x)
         xcol = {"heads": H_X1, "rests": R_X1, "bars": L_X1, "sigs": Q_X1}
+        n = 0
         for name, Tb in self.T.items():
             hi = Tb.hi
             if not hi:
@@ -1101,7 +1109,11 @@ class Stage:
             if name in xcol:
                 gone |= al & (Tb.a[:hi, xcol[name]] < cx)
             for i in np.flatnonzero(gone):
+                if n >= cap:
+                    self._step_due = True                       # (the rest next frame)
+                    break
                 self._release(name, int(i))
+                n += 1
         if self.topo_dirty:
             self._topology()
 

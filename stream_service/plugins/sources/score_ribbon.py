@@ -79,6 +79,7 @@ ROOM_KEY = "room"
 SPANS = ("screen", "room")           # room: one row a screen, one tape across the screens, notes enter on the right
 SPAN_HEADERS = ("every", "first")    # room: brace, clefs, key and time on every screen's row, or the leftmost only
 SPAN_SIZE = 1.15                     # room: the staff this much larger (two screens, headers on both: ~15 s at 12 sp/s)
+PASS_BUDGET_S = 0.006                # a layout pass is spread over frames while a frame's own CPU is over this
 JOIN_BUDGET_S = 0.006                # a join's bars go on stage while the frame's own CPU is under this
 X_PLAY = 0.83                      # the playhead, of the width
 LAG0, LAG_A = 0.35, 0.12           # the notes' arrival lag (s): its seed, and how fast the estimate follows
@@ -1146,38 +1147,92 @@ class ScoreRibbon(Source):
         self._pp = pp                                            # laid out and put on stage next frame
 
 
-    def _pass_apply(self, pp: dict) -> None:
-        """A pass's second half: the unwritten bars laid out (reusing those unchanged) and put on stage."""
+    def _pass_apply(self, pp: dict, t0_cpu: float | None = None) -> bool:
+        """A pass's second half: the unwritten bars laid out (reusing those unchanged) and put on stage; with
+        ``t0_cpu``, only while the frame's CPU stays under PASS_BUDGET_S (a dense bar a few columns a frame, the
+        stage the frame after): False until it's done."""
         ph, bars, chords, fifths, q0 = pp["ph"], pp["bars"], pp["chords"], pp["fifths"], pp["q0"]
         metred, mode, unit = pp["metred"], pp["mode"], pp["unit"]
         b = self.builder
         pl = ph.pl
         units = (b.beats * b.unit if b.grid is not None else 16) if metred else None
         beats = b.beats if b.grid is not None else 4
-        pl.provisional(bars, chords, fifths, q0, units, unit if b.grid is not None else 4, beats,
-                       fresh=ph.hot_cut is not None)
-        self._event("pass", {"mode": mode, "q0": q0, "Q": ph.Q, "wbars": pl.wbars, "nb": b.next_bar,
-                             "units": units, "n": pp["n"], "nbars": len(bars), "memo": list(getattr(pl, "memo_n", [0, 0])),
-                             "cut": None if ph.hot_cut is None else ph.hot_cut[0]})
-        pl.memo_n = [0, 0]
-        out = pl.prov
-        # the phrase's pace (free time for the next phrase starts from it)
-        if b.grid is not None and len(b.grid.t) >= 2:
-            ph.slot_s = min(0.4, max(0.05, (b.grid.t[-1] - b.grid.t[-2]) / b.unit))
-        elif b.clock.running:
-            ph.slot_s = b.clock.P / 4.0
-        # the phrase's opening signature, once the metre is known (the key only where it changes)
-        sigs = {}
-        if metred:
-            meter = ph.meter or self._meter_now() or (4, 4)
-            k = self.phrases.index(ph)
-            prev = self.phrases[k - 1] if k > 0 else None
-            show_key = prev is not None and prev.fifths is not None and prev.fifths != fifths
-            sigs = RL.signature_marks(ph.serial, 0.0, pl.first_left, fifths, show_key, meter)
-        out.sigs = sigs
-        self._note_info_sync(ph, out, final=False)
-        ph.end_x = max(ph.end_x, out.end_x, pl.written.end_x)
+        if not pp.get("laid"):
+            gen = pp.get("gen")
+            if gen is None:
+                gen = pp["gen"] = pl.provisional_gen(bars, chords, fifths, q0, units, unit if b.grid is not None else 4,
+                                                     beats, fresh=ph.hot_cut is not None)
+            for _ in gen:
+                if t0_cpu is not None and time.thread_time() - t0_cpu > PASS_BUDGET_S:
+                    return False
+            pp["laid"] = True
+            pp["gen"] = None
+            if t0_cpu is not None and time.thread_time() - t0_cpu > PASS_BUDGET_S:
+                return False
+        if "chunks" not in pp:
+            self._event("pass", {"mode": mode, "q0": q0, "Q": ph.Q, "wbars": pl.wbars, "nb": b.next_bar,
+                                 "units": units, "n": pp["n"], "nbars": len(bars),
+                                 "memo": list(getattr(pl, "memo_n", [0, 0])),
+                                 "cut": None if ph.hot_cut is None else ph.hot_cut[0]})
+            pl.memo_n = [0, 0]
+            out = pl.prov
+            # the phrase's pace (free time for the next phrase starts from it)
+            if b.grid is not None and len(b.grid.t) >= 2:
+                ph.slot_s = min(0.4, max(0.05, (b.grid.t[-1] - b.grid.t[-2]) / b.unit))
+            elif b.clock.running:
+                ph.slot_s = b.clock.P / 4.0
+            # the phrase's opening signature, once the metre is known (the key only where it changes)
+            sigs = {}
+            if metred:
+                meter = ph.meter or self._meter_now() or (4, 4)
+                k = self.phrases.index(ph)
+                prev = self.phrases[k - 1] if k > 0 else None
+                show_key = prev is not None and prev.fifths is not None and prev.fifths != fifths
+                sigs = RL.signature_marks(ph.serial, 0.0, pl.first_left, fifths, show_key, meter)
+            out.sigs = sigs
+            owned = ph.prov_owned - ph.pl.written_keys
+            fz = self._frozen(ph, owned)
+            # on stage a bar at a time, newest first, within the frame's budget; what it no longer has goes at the end
+            pp["out"], pp["owned"], pp["fz"], pp["new"] = out, owned - fz, fz, set()
+            pp["chunks"] = collections.deque(_by_bar(out, units or 16)) if t0_cpu is not None else \
+                collections.deque([out])
+        chunks = pp["chunks"]
+        n = 0
+        while chunks and (t0_cpu is None or n == 0 or time.thread_time() - t0_cpu < PASS_BUDGET_S):
+            pp["new"] |= self._prov_sync(ph, chunks.popleft(), pp["owned"])
+            n += 1
+        if chunks:
+            return False
+        dead = pp["owned"] - pp["new"]
+        if dead:
+            self.stage.sync(ph.serial, RL.Out(), ph.A, self.t_sound, final=False, mapver=ph.mapver, regrid=False,
+                            owned=dead, note_info={})
+        ph.prov_owned = pp["new"] | pp["fz"]
+        ph.end_x = max(ph.end_x, pp["out"].end_x, pl.written.end_x)
         self.regrid = False
+        return True
+
+    def _prov_sync(self, ph: _Phrase, out, reuse: set) -> set:
+        """One part of a pass's provisional marks on stage (nothing killed here: see _pass_apply) -> its keys."""
+        notes_ = ph.notes
+        info = {}
+        for key in out.heads:
+            m = notes_.get(key[2])
+            if m is not None:
+                info[key[2]] = (m.pitch, m.t_on, m.t_off)
+        new = self.stage.sync(ph.serial, out, ph.A, self.t_sound, final=False, mapver=ph.mapver, regrid=self.regrid,
+                              owned=set(), note_info=info, reuse=reuse)
+        Hd = self.stage.T["heads"]
+        st = self.stage
+        for key in out.heads:
+            i = Hd.idx.get(key)
+            if i is not None:
+                m = notes_.get(key[2])
+                if m is not None and m.t_on is not None:
+                    Hd.a[i, RS.H_TON] = st.tt(m.t_on)
+                    Hd.a[i, RS.H_TOFF] = st.tt(m.t_off) if m.t_off is not None else 1e9
+                    Hd.a[i, RS.H_VEL] = m.vel
+        return new
 
     def _hot(self, ph: _Phrase, notes: list, tl, qf, now: float, k0: int):
         """span: room: the unwritten notes a pass lays out again: the bars holding the newest ROOM_HOT_N, from a bar
@@ -1482,13 +1537,16 @@ class ScoreRibbon(Source):
                 if ph_ is not self.ph or ph_.closed or ph_.pl.wbars != pp["wbars"] or \
                         self.builder.next_bar != pp["nb"] or self._lay is not None:
                     self._pp = None                              # (written meanwhile: prepared again)
+                    if pp.get("new"):                            # (what it put on stage stays its phrase's)
+                        ph_.prov_owned |= pp["new"]
                     self.dirty = True
                 elif time.thread_time() - _c0 < 0.004:           # (a heavy frame already: the next one)
-                    self._pp = None
                     self._passed = True
                     try:
-                        self._pass_apply(pp)
+                        if self._pass_apply(pp, _c0):
+                            self._pp = None
                     except Exception:
+                        self._pp = None
                         if not getattr(self.ph, "logged", False):
                             log.exception("score_ribbon: layout pass failed")
                             if self.ph is not None:
@@ -1529,7 +1587,8 @@ class ScoreRibbon(Source):
             st.rebase_x(S - st.x_ref)
         cull = S - (self.R - 1) * self.WV - 8 * self.sp
         _t2 = time.perf_counter()
-        st.step(self.t_sound, cull)                          # housekeeping: the dead released, the culled
+        st.step(self.t_sound, cull, defer=time.thread_time() - _c0 > 0.004)   # housekeeping: the dead released, the
+                                                                             # culled (in a light frame)
         _t3 = time.perf_counter()
         tm["paper"], tm["step"] = _t2 - _t1, _t3 - _t2
         for ph in list(self.phrases):                            # phrases scrolled away

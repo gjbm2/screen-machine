@@ -361,10 +361,15 @@ class PhraseLayout:
         return ("l", self.serial, "end"), self.wspacer.barline(self.last_bar_k + 1, 0.0) + 0.3
 
     # -- the unwritten notes -----------------------------------------------------------------------------------------
-    def provisional(self, bars: list, open_chords: Optional[list], fifths: int, q0: float,
-                    units: Optional[int], unit: int, beats: int, fresh: bool = False) -> None:
+    def provisional(self, *a, **kw) -> None:
+        for _ in self.provisional_gen(*a, **kw):
+            pass
+
+    def provisional_gen(self, bars: list, open_chords: Optional[list], fifths: int, q0: float,
+                        units: Optional[int], unit: int, beats: int, fresh: bool = False):
         """``bars``: [(k, staves)] metred provisional bars (ScoreBuilder._voice events); ``open_chords``:
-        [(staff, slot, dur, [(pitch, nid)])] when the metre isn't known."""
+        [(staff, slot, dur, [(pitch, nid)])] when the metre isn't known.  A generator: it yields between bars and
+        every few columns, so a caller can spread a layout over frames (provisional() runs it through)."""
         out = Out()
         pieces = dict(self.pieces)
         touts = dict(self.touts)
@@ -378,7 +383,8 @@ class PhraseLayout:
             self.q0, self.units, self.unit, self.beats = q0, units, unit, beats
             sp = Spacer(q0, units, self.Q, self)
         if bars:
-            self._bars(bars, out, sp, pieces, rests=False, beams=True, final=False, fifths=fifths, touts=touts)
+            yield from self._bars_gen(bars, out, sp, pieces, rests=False, beams=True, final=False, fifths=fifths,
+                                      touts=touts)
         if open_chords:
             self._open(open_chords, out, sp, pieces, fifths)
         out.end_x = max(sp.edge) if max(sp.edge) > -1e8 else 0.0
@@ -398,8 +404,12 @@ class PhraseLayout:
         return o
 
     # -- laying out events -------------------------------------------------------------------------------------------
-    def _bars(self, bars: list, out: Out, sp: Spacer, pieces: dict, *, rests: bool, beams: bool, final: bool,
-              fifths: Optional[int] = None, touts: Optional[dict] = None) -> None:
+    def _bars(self, *a, **kw) -> None:
+        for _ in self._bars_gen(*a, **kw):
+            pass
+
+    def _bars_gen(self, bars: list, out: Out, sp: Spacer, pieces: dict, *, rests: bool, beams: bool, final: bool,
+                  fifths: Optional[int] = None, touts: Optional[dict] = None):
         f = self.fifths if fifths is None else fifths
         f = 0 if f is None else f
         sig = mei.signature(f)
@@ -408,7 +418,10 @@ class PhraseLayout:
         units = sp.units
         q0 = sp.q0
         memo = None if final else self.__dict__.setdefault("memo", {})
-        for k, staves in bars:
+        for bi, (k, staves) in enumerate(bars):
+            if bi:
+                yield
+                self._final = final
             mkey = None
             if memo is not None:
                 # a bar laid out before, from the same events and the same state, is the same: reuse it
@@ -500,7 +513,7 @@ class PhraseLayout:
                 for g in groups:
                     if len(g) >= 2 and beams:
                         self._beam(g, out)
-            self._place(cols, out, sp, k, touts)
+            yield from self._place_gen(cols, out, sp, k, touts, final)
             if mkey is not None:
                 p_upd = {i: pieces[i] for i in ids if pieces.get(i) != p_before[i]}
                 t_upd = {kk: v for kk, v in (touts or {}).items() if kk[0] in p_before}
@@ -574,13 +587,23 @@ class PhraseLayout:
             i = j + 1
 
     def _place(self, cols: dict, out: Out, sp: Spacer, k: Optional[int], touts: Optional[dict]) -> None:
-        """Columns in slot order: x, then every mark's target; bar k's line at its start."""
+        for _ in self._place_gen(cols, out, sp, k, touts, None):
+            pass
+
+    def _place_gen(self, cols: dict, out: Out, sp: Spacer, k: Optional[int], touts: Optional[dict], final,
+                   every: int = 6):
+        """Columns in slot order: x, then every mark's target; bar k's line at its start (yielding every few
+        columns: a dense bar can be laid out over frames)."""
         Q = self.Q
         units = sp.units
         lo = k * units if (k is not None and units) else None
         key = ("l", self.serial, k)
         need_bl = lo is not None and lo > sp.q0 + 1e-6
-        for slot in sorted(cols):
+        for ci, slot in enumerate(sorted(cols)):
+            if ci and ci % every == 0:
+                yield
+                if final is not None:
+                    self._final = final
             chs = cols[slot]
             ext: dict = {}
             for ch in chs:
