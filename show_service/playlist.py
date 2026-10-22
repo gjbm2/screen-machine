@@ -669,8 +669,9 @@ class Player:
             return "Playing"
         if self.state == "preparing":
             if self.phase == "preparing":
-                return (f"Preparing the sound {round(self.progress * 100)}%" if self.progress is not None
-                        else "Preparing the sound")
+                pct = round(self.progress * 100) if self.progress is not None else 0
+                return ("First play of this piece with this sound: making it…"     # 1c's words (22 Oct)
+                        + (f" {pct}%" if pct > 0 else ""))
             return "Starting"
         if self.state == "stepped_aside":
             return f"Stepped aside: {ASIDE_WORDS[0].lower()}{ASIDE_WORDS[1:]}"
