@@ -66,6 +66,10 @@ log = logging.getLogger("stream_service.plugins.score_v2")
 LOOKS = ("paper", "night")
 LAYOUTS = ("page", "scroll")
 SPACINGS = ("proportional", "classic")
+SPANS = ("screen", "room")                                 # scroll: each screen its own tape, or one across the room
+SPAN_HEADERS = ("every", "first")                          # span: room: the sticky header on every screen, or the first
+SPAN_SP, SPAN_NMAX = 1.25, 3                               # span: the staff this much larger (one row); the ring holds n
+SPAN_DT, SPAN_NS = 1.5, 9                                  # span: the paper is where the music was, averaged over this
 NAT_SEED = {"proportional": 8.1, "classic": 7.2}         # a beat's natural width (sp) until the engraver says
 PROP_AC = {"proportional": (1.17, 0.33), "classic": (1.39, 0.82)}   # a head's origin x = x0 + a + f (w - a - c)
 # f: the onset's place in the bar's natural spacing: 16ths at K16 each, plus room for an accidental before an onset and
@@ -769,6 +773,8 @@ class ScoreV2(Source):
             "look": enum(LOOKS, "paper", "Look", tier="structural", basic=True),
             "lines": num(3, 5, 4, "Lines on the page", tier="structural", integer=True),
             "rows": num(1, 3, 2, "Scroll rows", tier="structural", integer=True),
+            "span": enum(SPANS, "screen", "Span (scroll)", tier="structural"),
+            "span_header": enum(SPAN_HEADERS, "every", "Header when spanning", tier="structural"),
             "staff_size": num(0.6, 1.5, 1.0, "Staff size", tier="structural"),
             "spacing": enum(SPACINGS, "proportional", "Spacing", tier="structural"),
             "line_s": num(4.0, 14.0, LINE_S, "Music a line holds", unit="s", tier="structural"),
@@ -784,13 +790,20 @@ class ScoreV2(Source):
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.layout = params.get("layout") if params.get("layout") in LAYOUTS else "page"
         self.scroll = self.layout == "scroll"
+        self._ctx0, self._params0 = ctx, dict(params)
+        self.span_room = self.scroll and params.get("span") == "room"
+        self.span_first = params.get("span_header") == "first"
+        seg = getattr(self, "_seg_cfg", None)
+        if seg is None:
+            seg = self._segment()
+        self.span = seg if (self.span_room and seg is not None and seg[1] > 1) else None     # (k, n): spanning
         self.spacing = params.get("spacing") if params.get("spacing") in SPACINGS else "proportional"
         self.line_s = float(params.get("line_s", LINE_S))
         self.flourish = float(params.get("flourish", 0.7))
         self.NL = int(min(5, max(3, int(params.get("lines", 4))))) if not self.scroll else 1
         size = float(params["staff_size"])
         if self.scroll:
-            sp = SP_SCROLL * self.h * size
+            sp = SP_SCROLL * self.h * size * (SPAN_SP if self.span is not None else 1.0)
         else:
             sp = min(SP_PAGE * self.h * size, 0.975 * self.h / ((self.NL - 1) * PITCH_SP + ROW_SP))
         self.sp = sp = round(max(4.0, sp), 2)
@@ -810,9 +823,12 @@ class ScoreV2(Source):
                   (self.page, np.int32(self.w), np.int32(self.h), np.int32(LOOKS.index(params["look"])),
                    np.uint32(self.seed)))
         self.SR = int(min(3, max(1, int(params.get("rows", 2))))) if self.scroll else 1
+        if self.span is not None:
+            self.SR = 1                                      # (one row a screen: the screens are the rows, side by side)
         if self.scroll:
             self.NC = 2                                      # the tape (a ring) and the sticky header
-            self.TW = int(math.ceil((max(2, self.SR) * self.w + 64 * sp) / 64.0) * 64)
+            nw = min(self.span[1], SPAN_NMAX) if self.span is not None else max(2, self.SR)
+            self.TW = int(math.ceil((nw * self.w + 64 * sp) / 64.0) * 64)
             self.HW = int(HW_MAX_SP * sp)
             self.cwid = [self.TW, self.HW]
             sizes = [self.ch * self.TW, self.ch * self.HW]
@@ -1191,6 +1207,7 @@ class ScoreV2(Source):
                 i = N.alloc(n.id)
             N.note[i], N.ph[i] = n, ph
             N.pitch[i], N.t_on[i], N.t_born[i] = n.pitch, n.t_on, now
+            ph.t_last = max(getattr(ph, "t_last", -1e18), float(n.t_on))
             if n.t_off is not None:
                 N.t_off[i] = n.t_off
             else:
@@ -1822,6 +1839,7 @@ class ScoreV2(Source):
     def _written_row(self, ph: _Phrase, nid: int, pitch: int, staff: int, q: int, t_on: float, t_off: float):
         """A note written before this scene joined: a settled glyph at its place (no pop, no glow) until its ink."""
         N = self.N
+        ph.t_last = max(getattr(ph, "t_last", -1e18), float(t_on))
         i = N.alloc(nid)
         if i is None:
             i = self._evict()
@@ -1845,7 +1863,7 @@ class ScoreV2(Source):
             if self.scroll:
                 u0, fit = self._s_slot(ph, k)
                 if (self.frontier is not None
-                        and u0 + fit < self.S - (self.SR - 1) * self.tape_w - 4.0 * self.sp):
+                        and u0 + fit < self.S_win - 4.0 * self.sp):
                     ph.items[k] = SKIP                      # already scrolled away: never engraved
                     ph.wait.pop(0)
                     continue
@@ -2417,8 +2435,7 @@ class ScoreV2(Source):
         phrase carries on after its ink with the new time signature (_carry_on)."""
         ph = self.ph
         if self.scroll:
-            in_view = (ph.U0 is not None
-                       and ph.U0 + self.offx[0] + (self.SR - 1) * self.tape_w > self.X_left - 2.0 * self.sp)
+            in_view = ph.U0 is not None and ph.U0 > self.S_lo - 2.0 * self.sp     # (span: the room's view)
         else:
             ln0 = ph.lines.get(0)
             in_view = ln0 is not None and ln0.erase_t is None
@@ -2769,7 +2786,7 @@ class ScoreV2(Source):
                      * _cl((x - self._c_erase[ci]) * (1.0 / (ERASE_FEATHER_SP * sp)) + 0.5, 0.0, 1.0))
             s = s * (1.0 + 0.4 * pu)
             if self.scroll:
-                alpha = alpha * _cl((X - self.X_left) * (0.5 / sp), 0.0, 1.0)
+                alpha = alpha * _cl((X - self.X_fade) * (0.5 / sp), 0.0, 1.0)
                 if self.SR > 1:
                     alpha = alpha * np.where(wj > 0, _cl((self.X_left + self.tape_w - X) * (0.5 / sp), 0.0, 1.0), 1.0)
             if self.dbg is not None:
@@ -2871,7 +2888,7 @@ class ScoreV2(Source):
         if self.scroll:
             wj, wx, wy = self._s_wrap(Xs)
             Xs, top, bot = Xs + wx, top + wy, bot + wy
-            a = a * _cl((Xs - self.X_left) * (0.5 / sp), 0.0, 1.0)
+            a = a * _cl((Xs - self.X_fade) * (0.5 / sp), 0.0, 1.0)
             if self.SR > 1:
                 a = a * np.where(wj > 0, _cl((self.X_left + self.tape_w - Xs) * (0.5 / sp), 0.0, 1.0), 1.0)
         a = np.where(bar & (self.g_t0[idx] > now), 0.0, a)
@@ -2905,7 +2922,7 @@ class ScoreV2(Source):
                 cx = self.offx[0] + ph.U0 + 0.5 * TS_SP * sp
                 wj, wx, wy = self._s_wrap(np.array([cx]))
                 cx, tsy = cx + float(wx[0]), float(wy[0])
-                a = min(1.0, max(0.0, (cx - self.X_left) / (2.0 * sp)))
+                a = min(1.0, max(0.0, (cx - self.X_fade) / (2.0 * sp)))
                 if wj[0] > 0:
                     a *= min(1.0, max(0.0, (self.X_left + self.tape_w - cx) / (2.0 * sp)))
                 if cx < self.X_left - 3.0 * sp or cx > self.w + 3.0 * sp:
@@ -2962,10 +2979,33 @@ class ScoreV2(Source):
 
     def _s_geom(self) -> None:
         sp = self.sp
+        if self.span is not None:
+            self._span_geom()
+            return
         self.X_left = self.x_h0 + self.hdr_wd + 1.5 * sp
         self.X_R = self.w - 2.0 * sp
         self.tape_w = max(sp, self.X_R - self.X_left)
         self.offx[0] = self.X_left - self.S
+        self.S_win = self.S - (self.SR - 1) * self.tape_w      # (the tape's left end on screen)
+        self.S_lo = self.S_win
+        self.X_fade = self.X_left
+
+    def _span_geom(self) -> None:
+        """span: room.  Screen j's tape area runs from after its header (every screen's, or the first's only) to
+        its right edge (the last screen's: a margin); screen j+1's starts where screen j's ends.  S is the tape at
+        the left of the last screen's area (its playhead at PLAY_X of it); this screen shows its own part."""
+        sp = self.sp
+        k, n = self.span
+        hdr = self.x_h0 + self.hdr_wd + 1.5 * sp
+        left = [hdr if (j == 0 or not self.span_first) else 0.0 for j in range(n)]
+        W = [(self.w - 2.0 * sp if j == n - 1 else float(self.w)) - left[j] for j in range(n)]
+        self.X_left = left[k]
+        self.X_R = left[k] + W[k]
+        self.tape_w = max(sp, W[n - 1])
+        self.S_win = self.S - sum(W[k:n - 1])
+        self.S_lo = self.S - sum(W[0:n - 1])                 # (the room's left end: the first screen's)
+        self.offx[0] = self.X_left - self.S_win
+        self.X_fade = self.X_left if left[k] > 0 else -1e6     # (no fade in at a seam)
 
     def _s_header(self, fifths: int) -> None:
         h = self.hdr
@@ -2998,7 +3038,7 @@ class ScoreV2(Source):
     def _s_v(self) -> float:
         """px a second on the tape before the metre: the last phrase's, else bars at SQUEEZE of their natural width
         at 100 bpm (the tape then holds about 15 s)."""
-        if self.v_last:
+        if self.v_last and self.span is None:
             return self.v_last
         return SQUEEZE * NAT_SEED[self.spacing] * self.sp / 0.6
 
@@ -3009,6 +3049,8 @@ class ScoreV2(Source):
             ph.v = self._s_v()
         lag = max(0.0, self.t_sound - (ph.t0 or self.t_sound))
         u_play = self.S + PLAY_X * self.tape_w - lag * ph.v - self.A
+        if self.span is not None:
+            ph.U_pre = self.S + PLAY_X * self.tape_w if self.frontier is not None else None
         ph.U0 = u_play - TS_SP * sp if self.frontier is None else max(self.frontier + 2.0 * sp, u_play - TS_SP * sp)
         ph.Um0 = ph.U0 + TS_SP * sp
         ph.ruler = None
@@ -3023,7 +3065,10 @@ class ScoreV2(Source):
         bar_s = b.bar_seconds() or ph.L * self._beat_period()
         nat_px = (ph.nat or NAT_SEED[self.spacing]) * (1.5 if ph.unit == 6 else 1.0) * ph.L * self.sp
         w = max(SQUEEZE * nat_px, ph.v * bar_s)
+        if self.span is not None:
+            w = self._span_w(ph, bar_s)
         ph.ruler = Ruler(ph.U0, ph.Um0 - ph.U0, w)
+        ph.span_fz = 0
         ph.v_bar = w / max(0.2, bar_s)
         self.v_last = ph.v_bar
         self._s_gates(ph)
@@ -3031,6 +3076,15 @@ class ScoreV2(Source):
     def _s_slot(self, ph: _Phrase, k: int):
         """Bar k's place on the tape (its slot frozen when first asked for: written bars never move)."""
         r = ph.ruler
+        if self.span is not None:                           # a committed bar's slot from its own length, frozen;
+            j = getattr(ph, "span_fz", 0)                   # later ones at the tempo now (both from the room)
+            while j in ph.bar_t:
+                t0, t1 = ph.bar_t[j]
+                r.freeze(j, self._span_w(ph, t1 - t0))
+                j += 1
+            ph.span_fz = j
+            r.set_prov(self._span_w(ph, self.builder.bar_seconds() or ph.L * self._beat_period()))
+            return r.u0(k), r.width(k)
         for j in range(len(r.w), k + 1):
             r.freeze(j, r.w_prov)
         return r.u0(k), r.width(k)
@@ -3057,7 +3111,7 @@ class ScoreV2(Source):
             split, dy1, dy2 = self._composite(ln, img, m, crop, m["x1"] + 1, u)
             t_land = self._settle(ph, ln, k, meta, crop, u, split, dy1, dy2, width, bkey=(ph.id, k))
             nat = meta.get("natural")
-            if nat:
+            if nat and self.span is None:
                 v = min(30.0, max(1.5, nat / (ph.L * sp * (1.5 if ph.unit == 6 else 1.0))))
                 ph.nat = v if ph.nat is None else ph.nat + 0.25 * (v - ph.nat)
         else:
@@ -3094,7 +3148,7 @@ class ScoreV2(Source):
             return
         ln = self.tape_line
         now = self.t_sound
-        lo = self.S - (self.SR - 1) * self.tape_w - 4.0 * self.sp
+        lo = self.S_win - 4.0 * self.sp
         hi = self.S + self.tape_w + 4.0 * self.sp
         k = max(0, len(r.w) - 12)
         while k < len(r.w) + 4:
@@ -3129,6 +3183,16 @@ class ScoreV2(Source):
         ph = self.ph
         N = self.N
         inew = ph.newest if (ph.t0 is not None and not ph.ended) else None
+        if self.span is not None:
+            inew = None
+            S0 = self.S
+            u = self._span_u()
+            if u is not None:
+                self.S = u - PLAY_X * self.tape_w
+            self.V = (self.S - S0) / dt if dt > 0 else self.V
+            dt_ = 0.0
+        else:
+            dt_ = dt
         v_t = 0.0
         if inew is not None and N.used[inew] and N.ph[inew] is ph:
             v_ff = ph.v_bar if (ph.metre is not None and ph.v_bar) else ph.v
@@ -3139,11 +3203,11 @@ class ScoreV2(Source):
                 err = 0.0                                   # at the newest notes, at the music's pace
                 self.V = self.S_ff = v_ff
                 self.tape_line.front = min(self.tape_line.front,
-                                           self.S - (self.SR - 1) * self.tape_w - self.FE)
+                                           self.S_win - self.FE)
             v_t = max(0.0, v_ff + S_PULL * err)
             if self.t_sound - N.t_on[inew] > 2.5:                                    # a pause in the playing
                 v_t *= max(0.0, 1.0 - (self.t_sound - N.t_on[inew] - 2.5) / 2.0)
-        if dt > 0:
+        if dt_ > 0:
             self.S_ff += (v_t - self.S_ff) * (1.0 - math.exp(-dt / S_TAU))
             amax = S_AMAX_SP * sp
             dv = min(amax * dt, max(-amax * dt, self.S_ff - self.V))
@@ -3161,11 +3225,48 @@ class ScoreV2(Source):
         N = self.N
         back = (self.SR - 1) * self.tape_w
         off = N.used & (N.state >= 2) & (N.tx + self.offx[0] + back < self.X_left - 6.0 * sp)
+        back = self.S - self.S_win
         for i in np.nonzero(off)[0]:
             N.free(int(i))
         ln = self.tape_line
         for key in [k for k, b in ln.bars.items() if b[0] + b[1] < self.S - back - 8.0 * sp and b[0] + b[1] < ln.front]:
             del ln.bars[key]
+
+    def _span_u(self):
+        """(span) Where the music was LAG_S ago on the tape, averaged over SPAN_DT (the paper's speed eased across
+        bars of different widths): from the phrase's layout and the music's time only, so every screen's instance,
+        started whenever, puts the paper in the same place."""
+        ph = self.ph
+        if ph.t0 is None or getattr(ph, "U0", None) is None:
+            return None
+        t = self.t_sound - LAG_S
+        t_stop = max(ph.t0, getattr(ph, "t_last", ph.t0)) + 2.5          # a pause: the paper stops (eased)
+        acc = 0.0
+        for j in range(SPAN_NS):
+            tau = t - SPAN_DT * j / (SPAN_NS - 1)
+            if tau > t_stop:
+                x = min(2.0, tau - t_stop)
+                tau = t_stop + x - 0.25 * x * x
+            if tau < ph.t0 and getattr(ph, "U_pre", None) is not None:
+                acc += ph.U_pre
+                continue
+            acc += self._span_u_at(ph, max(tau, ph.t0))
+        return acc / SPAN_NS
+
+    def _span_u_at(self, ph: _Phrase, tau: float) -> float:
+        r = ph.ruler
+        if r is not None and ph.k_base is not None:
+            pos = self.builder.position(tau)
+            if pos is not None and pos >= ph.k_base:
+                pos -= ph.k_base
+                k = int(math.floor(pos))
+                return r.u0(k) + (pos - k) * r.width(k)
+        return ph.Um0 + self.A + max(0.0, tau - ph.t0) * ph.v
+
+    def _span_w(self, ph: _Phrase, d: float) -> float:
+        """(span) A bar's slot from its length alone (no history: the screens' instances agree)."""
+        nat_px = NAT_SEED[self.spacing] * (1.5 if ph.unit == 6 else 1.0) * ph.L * self.sp
+        return max(SQUEEZE * nat_px, ph.v * min(6.0, max(0.3, d)))
 
     def _s_front_target(self, ln: _Line) -> float:
         x = ln.front
@@ -3264,11 +3365,12 @@ class ScoreV2(Source):
             Rh[o + 14], Rh[o + 15] = -1e12, 1.0
             Rh[o + 16] = ln.ink_a
             Rh[o + 17] = self.TW
-            Rh[o + 18], Rh[o + 19] = self.X_left + sp, 2.0 * sp
+            Rh[o + 18], Rh[o + 19] = self.X_fade + sp, 2.0 * sp
             Rh[o + 20] = self.TW
             Rh[o + 21] = 1e9 if j == 0 else self.X_left + W - sp
             o += RS
-            Rh[o + 0], Rh[o + 1], Rh[o + 2] = self.x_h0, self.row_y[j], 1.0
+            Rh[o + 0], Rh[o + 1] = self.x_h0, self.row_y[j]
+            Rh[o + 2] = 0.0 if (self.span is not None and self.span_first and self.span[0] > 0) else 1.0
             Rh[o + 3], Rh[o + 4] = 1e9, self.FE
             Rh[o + 7], Rh[o + 8] = float(self.HW), h["a"]
             Rh[o + 9], Rh[o + 10] = h["x0"], self.X_left - self.x_h0 + 3.0 * sp
@@ -3288,7 +3390,23 @@ class ScoreV2(Source):
         return j, j * W, -j * self.pitch
 
     # -- render ---------------------------------------------------------------------------------------------------
+    def _segment(self):
+        seg = getattr(getattr(self, "sound", None), "segment", None)
+        try:
+            k, n = int(seg[0]), int(seg[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        return (min(max(k, 0), n - 1), n) if n > 1 else None
+
     def render(self, t_local: float, dt: float, out) -> None:
+        if self.span_room:
+            want = self._segment()
+            if (want is None) != (self.span is None) or (want is not None and want[1] != self.span[1]):
+                self._seg_cfg = want                        # (spanning starts or stops: the layout set up again)
+                self.close()
+                self.setup(self._ctx0, self._params0)
+            elif want is not None and want != self.span:
+                self.span = want
         p = self.step_params(dt)
         self._params = p
         dt = min(max(dt, 0.0), 0.1)
@@ -3449,7 +3567,7 @@ class ScoreV2(Source):
         Q[0] = self.sp
         Q[1] = POP * self.flourish
         if self.scroll:
-            Q[2], Q[3], Q[4], Q[5], Q[6] = 1.0, self.SR, self.X_left, self.tape_w, self.pitch
+            Q[2], Q[3], Q[4], Q[5], Q[6] = 1.0, self.SR, self.X_fade, self.tape_w, self.pitch
         Q[7] = float(p["palette_period"]) / 12.0
         Q[8] = self.drift % 10.0
         Q[9] = float(p["note_glow"]) * (0.8 + 0.6 * e)

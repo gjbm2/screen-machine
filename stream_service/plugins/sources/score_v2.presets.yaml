@@ -63,6 +63,7 @@ live-score-v2-scroll-night:
   params:
     layout: scroll
     rows: 2
+    span: room
     look: night
     palette: ember
     note_glow: 1.0
