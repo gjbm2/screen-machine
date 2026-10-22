@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import logging
 import math
+import queue
+import threading
 import time
 
 import numpy as np
@@ -89,13 +91,15 @@ ERASE_S, ERASE_FEATHER_SP, SHOW_S, HDR_FADE_S = 0.6, 3.0, 0.4, 0.3
 AGE_ALPHA = (1.0, 1.0, 0.86, 0.7, 0.62)
 HDR_WAIT_S, PART_TIMEOUT_S, PARK_MAX = 1.5, 5.0, 8
 RESULTS_PER_FRAME = 3
+INK_SLOTS = 6                                             # (pinned slots the ink thread fills: results in flight)
+SETTLE_PER_FRAME = 16                                     # (a landed bar's notes set off a frame; the rest next)
 PLACE_PER_FRAME = 1                                       # (bars landed a frame: a burst lands over frames)
 PUMP_S = 0.004
 LIFT_S = 0.3
 JOIN_SCROLL_S = 16.0                                      # joining mid-phrase: the music kept, behind the playhead
 JOIN_PAGE_S = 18.0                                        # ... on the page (at most: lines - 1 of them)
 JOIN_ROWS_S = 1.5                                         # bars the room hands over this soon after: drawn at once
-JOIN_PER_FRAME = 40                                       # (that many of their notes a frame, newest first)
+JOIN_PER_FRAME = 16                                       # (that many of their notes a frame, newest first)
 # notes
 NCAP = 512
 POP, POP_S, BIRTH_S = 0.22, 0.14, 0.03
@@ -108,8 +112,8 @@ HALF_BEATS, WHOLE_BEATS = 2.0, 4.0
 STEM_SP = 3.5
 FRESH_S, REL_S = 0.7, 0.6
 EPOCH_MIN_S = 0.1
-RELAYOUT_PER_FRAME = 32                                   # (notes laid out a frame, newest first; the rest next frame)
-BIRTH_PER_FRAME = 24                                      # (a join's unwritten notes: born over a few frames)
+RELAYOUT_PER_FRAME = 24                                   # (notes laid out a frame, newest first; the rest next frame)
+BIRTH_PER_FRAME = 8                                       # (a join's unwritten notes: born over a few frames)
 MOVE_MIN_SP = 0.3                                         # a shown note doesn't glide for less (the settle takes it)
 HALO_SP = 0.4
 # gates (bar lines and beat ticks)
@@ -395,6 +399,7 @@ class _Notes:
         self.free_rows = list(range(cap - 1, -1, -1))         # (a stack: alloc / free without a scan)
         self.grp = [None] * cap                              # (line, bar) it was last laid out in (_relayout)
         self.moves = np.zeros(cap, np.int64)
+        self.pend = np.zeros(cap, bool)                      # engraved, its settle still queued (_settle_step)
         self.fixed = np.zeros(cap, bool)                     # its bar is committed: its 16th and staff are known
         self.bar_end = z(np.inf)                             # (engraved) its bar's right edge on its line
 
@@ -422,6 +427,7 @@ class _Notes:
         self.k[i] = -1
         self.moves[i] = 0
         self.fixed[i] = False
+        self.pend[i] = False
         self.bar_end[i] = np.inf
         self.arc[i] = 0.0
         return i
@@ -563,6 +569,191 @@ class _Notes:
         self.a_t0[i] = t0
 
 
+
+# -- the glyph records on the GPU (perf: no per-frame numpy over the notes) ---------------------------------------
+NFLD = 44                                                  # a row's fields in the upload (rows x NCAP, see _pack)
+_REC_SRC = r"""
+#define NF %(NF)d
+#define MAXN %(MAXN)d
+#define NCAP %(NCAP)d
+#define NFLD %(NFLD)d
+__device__ __forceinline__ float cl01(float x) { return fminf(fmaxf(x, 0.f), 1.f); }
+__device__ __forceinline__ float ease(float u) { u = cl01(u); return u * u * (3.f - 2.f * u); }
+
+extern "C" __global__ void recs(const float* __restrict__ F, const float* __restrict__ IX, const int n,
+                                const float* __restrict__ XR, const int m, const float* __restrict__ L, const int NC,
+                                const float* __restrict__ P, const float* __restrict__ ADV, float* __restrict__ REC,
+                                float* __restrict__ GN, float* __restrict__ GU)
+{
+    __shared__ float key[512];
+    __shared__ int ord[512];
+    __shared__ float r0[512], r1[512], r2[512], r3[512], r4[512];
+    const int t = threadIdx.x;
+    const int tot = n + m;
+    const float sp = P[0];
+    float q[NF];
+    for (int f = 0; f < NF; ++f) q[f] = 0.f;
+    if (t < n) {
+        const int i = (int)IX[t];
+#define FV(f) F[(f) * NCAP + i]
+        const int ci = (int)FV(42);
+        const float T = FV(1);
+        const float tau = fminf(fmaxf(FV(0), 0.f), T);
+        const bool fin = tau >= T;
+        float x, y;
+        if (fin) { x = FV(3); y = FV(4); }
+        else {
+            x = FV(5) + tau * (FV(6) + tau * (FV(7) + tau * (FV(8) + tau * (FV(9) + tau * FV(10)))));
+            y = FV(11) + tau * (FV(12) + tau * (FV(13) + tau * (FV(14) + tau * (FV(15) + tau * FV(16)))));
+            y -= FV(2) * sinf(3.14159265358979f * tau / fmaxf(T, 1e-6f));
+        }
+        float X = x + L[ci], Y = y + L[NC + ci];
+        float wy = 0.f, wj = 0.f;
+        const int scroll = (int)P[2];
+        const float SR = P[3], XL = P[4], TW = P[5];
+        if (scroll && SR > 1.f) {
+            wj = fminf(fmaxf(ceilf((XL - X) / TW), 0.f), SR - 1.f);
+            wy = -wj * P[6];
+            X += wj * TW; Y += wy;
+        }
+        const float age = FV(17);
+        float s = 1.f + P[1] * (1.f - ease(age * (1.f / %(POP_S)r)));
+        const float ht = cl01(FV(18) * (1.f / %(HAND_S)r)), pu = cl01(FV(19) * (1.f / %(PUFF_S)r));
+        float alpha = fminf(1.f, 0.85f + age * (0.15f / %(BIRTH_S)r)) * (1.f - ht) * (1.f - pu) * L[2 * NC + ci]
+                      * cl01((x - L[3 * NC + ci]) * (1.f / (%(ERASE)r * sp)) + 0.5f);
+        s *= 1.f + 0.4f * pu;
+        if (scroll) {
+            alpha *= cl01((X - XL) * (0.5f / sp));
+            if (SR > 1.f && wj > 0.f) alpha *= cl01((XL + TW - X) * (0.5f / sp));
+        }
+        const float ga = FV(21), gb = FV(22);
+        const float mt = cl01(FV(20) * (1.f / %(MORPH_S)r));
+        const float OX = X + (0.5f * sp) * ADV[(int)gb] * (1.f - s);
+        const float su = cl01(FV(23) / FV(24));
+        const float se = su * su * (3.f - 2.f * su);
+        const bool sa = FV(25) > 0.5f, sb = FV(26) > 0.5f, flip = FV(27) > 0.5f;
+        const bool useB = sb && (!sa || (flip && su >= 0.5f));
+        const bool lerp = sa && sb && !flip;
+        const float A0 = FV(28), A1 = FV(29), A2 = FV(30), B0 = FV(31), B1 = FV(32), B2 = FV(33);
+        const float sx_ = lerp ? A0 + (B0 - A0) * se : (useB ? B0 : A0);
+        const float sy0 = lerp ? A1 + (B1 - A1) * se : (useB ? B1 : A1);
+        const float cosu = cosf(3.14159265358979f * su);
+        const float kk = lerp ? 1.f : ((sa && sb) ? fabsf(cosu) : (sa ? 1.f - se : se));
+        const float ty1 = lerp ? A2 + (B2 - A2) * se : (useB ? B2 : A2);
+        const float sy1 = lerp ? ty1 : sy0 + (ty1 - sy0) * kk;
+        const bool son = (sa || sb) && fabsf(sy1 - sy0) > 0.05f;
+        const float au = cl01(FV(34) * (1.f / %(ACC_S)r));
+        const float aa = FV(35), ab = FV(36);
+        const bool same = aa == ab, first = !same && au < 0.5f;
+        const float ag = first ? aa : ab;
+        const float adx = same ? FV(37) + (FV(38) - FV(37)) * (au * au * (3.f - 2.f * au)) : (first ? FV(37) : FV(38));
+        float asc = same ? 1.f : fabsf(1.f - 2.f * au);
+        asc = ag >= 0.f ? asc : 0.f;
+        const float tyt = FV(4) + wy;
+        float top = FV(39) + wy;
+        float bot = top + 4.f * sp;
+        const float nab = fminf(floorf((top - tyt) * (1.f / sp) + 0.01f), 6.f);
+        const float nbe = fminf(floorf((tyt - bot) * (1.f / sp) + 0.01f), 6.f);
+        const bool above = nab >= 1.f;
+        top += Y - tyt;
+        bot += Y - tyt;
+        const float gadv = ADV[(int)(mt >= 0.5f ? gb : ga)];
+        const float tint = fmodf(FV(40) * 7.f, 12.f) * P[7] + P[8];
+        const float hold = __expf(-fmaxf(0.f, FV(41)) * (1.f / %(REL_S)r));
+        const float fresh = fmaxf(__expf(-age * (1.f / %(FRESH_S)r)), 0.75f * hold);
+        const float halo = P[9] * (age < 0.25f ? P[10] : 1.f);
+        q[0] = OX; q[1] = Y; q[2] = sp * s; q[3] = sp * s;
+        q[4] = ga; q[5] = gb; q[6] = mt; q[7] = alpha;
+        q[8] = X + sx_ * sp; q[9] = Y + sy0 * sp; q[10] = Y + sy1 * sp;
+        q[11] = son ? %(STEM_HW)r * sp : 0.f;
+        q[12] = asc > 0.01f ? ag : -1.f;
+        q[13] = X + adx * sp; q[14] = asc;
+        q[15] = above ? top - sp : bot + sp;
+        q[16] = above ? -sp : sp;
+        q[17] = above ? nab : fmaxf(nbe, 0.f);
+        q[18] = 0.5f * fresh; q[19] = halo * fresh;
+        for (int c = 0; c < 3; ++c)
+            q[20 + c] = cl01(P[12 + c] + P[15 + c] * cosf(6.28318530717959f * (P[18 + c] * tint + P[21 + c])));
+        q[27] = X - %(LEDGER_EXT)r * sp; q[28] = X + (gadv + %(LEDGER_EXT)r) * sp; q[29] = Y;
+#undef FV
+    } else if (t < tot) {
+        for (int f = 0; f < NF; ++f) q[f] = XR[(t - n) * NF + f];
+    }
+    float kx = 3.0e38f;
+    if (t < tot) {                                       // its box (glyphs.boxes_sort)
+        const float BIG = 1e9f;
+        const float pad = (%(PAD)r + 2.5f * P[11]) * sp + 2.f;
+        const bool hg = q[4] >= 0.f;
+        const float sx = fabsf(q[2]), sy = fabsf(q[3]);
+        const float gadv = ADV[(int)fmaxf(q[4], 0.f)];
+        float x0 = hg ? q[0] - 0.1f * sx : BIG, x1 = hg ? q[0] + (gadv + 0.2f) * sx : -BIG;
+        float y0 = hg ? q[1] - 2.2f * sy : BIG, y1 = hg ? q[1] + 2.2f * sy : -BIG;
+        if (q[11] > 0.f) {
+            x0 = fminf(x0, q[8] - q[11]); x1 = fmaxf(x1, q[8] + q[11]);
+            y0 = fminf(y0, fminf(q[9], q[10])); y1 = fmaxf(y1, fmaxf(q[9], q[10]));
+        }
+        if (q[12] >= 0.f && q[14] > 0.01f) {
+            const float r = 1.2f * sp * q[14];
+            x0 = fminf(x0, q[13] - r); x1 = fmaxf(x1, q[13] + r);
+            y0 = fminf(y0, q[29] - 2.f * sp); y1 = fmaxf(y1, q[29] + 2.f * sp);
+        }
+        if (q[17] > 0.f) {
+            const float lend = q[15] + fmaxf(q[17] - 1.f, 0.f) * q[16];
+            x0 = fminf(x0, q[27]); x1 = fmaxf(x1, q[28]);
+            y0 = fminf(y0, fminf(q[15], lend)); y1 = fmaxf(y1, fmaxf(q[15], lend));
+        }
+        if (x0 > x1) { q[7] = 0.f; x0 = x1 = y0 = y1 = 0.f; }
+        q[23] = x0 - pad; q[24] = y0 - pad; q[25] = x1 + pad; q[26] = y1 + pad;
+        for (int f = 0; f < NF; ++f) REC[t * NF + f] = q[f];
+        kx = q[23];
+        r0[t] = q[23]; r1[t] = q[24]; r2[t] = q[25]; r3[t] = q[26]; r4[t] = q[25] - q[23];
+    } else {
+        r0[t] = 3.0e38f; r1[t] = 3.0e38f; r2[t] = -3.0e38f; r3[t] = -3.0e38f; r4[t] = -3.0e38f;
+    }
+    key[t] = kx;
+    ord[t] = t;
+    __syncthreads();
+    for (int k = 2; k <= 512; k <<= 1) {                 // bitonic, ascending by (x0, order): numpy's stable sort
+        for (int j = k >> 1; j > 0; j >>= 1) {
+            const int o = t ^ j;
+            if (o > t) {
+                const float a = key[t], b = key[o];
+                const int oa = ord[t], ob = ord[o];
+                const bool gt = (a > b) || (a == b && oa > ob);
+                if (gt == ((t & k) == 0)) { key[t] = b; key[o] = a; ord[t] = ob; ord[o] = oa; }
+            }
+            __syncthreads();
+        }
+    }
+    for (int w = 256; w > 0; w >>= 1) {
+        if (t < w) {
+            r0[t] = fminf(r0[t], r0[t + w]); r1[t] = fminf(r1[t], r1[t + w]);
+            r2[t] = fmaxf(r2[t], r2[t + w]); r3[t] = fmaxf(r3[t], r3[t + w]); r4[t] = fmaxf(r4[t], r4[t + w]);
+        }
+        __syncthreads();
+    }
+    if (t < tot) {
+        const int sidx = ord[t];
+        for (int f = 0; f < NF; ++f) GN[t * NF + f] = REC[sidx * NF + f];
+    }
+    if (t < 16) {
+        float u = 0.f;
+        if (t == 0) u = (float)tot;
+        else if (tot > 0 && t == 2) u = r0[0];
+        else if (tot > 0 && t == 3) u = r1[0];
+        else if (tot > 0 && t == 4) u = r2[0];
+        else if (tot > 0 && t == 5) u = r3[0];
+        else if (tot > 0 && t == 6) u = r4[0];
+        else if (t == 7) u = sp;
+        else if (t == 8) u = P[11];
+        GU[t] = u;
+    }
+}
+""" % dict(NF=GL.NF, MAXN=GL.MAXN, NCAP=NCAP, NFLD=NFLD, POP_S=POP_S, HAND_S=HAND_S, PUFF_S=PUFF_S, BIRTH_S=BIRTH_S,
+           ERASE=ERASE_FEATHER_SP, MORPH_S=MORPH_S, ACC_S=ACC_S, REL_S=REL_S, FRESH_S=FRESH_S, STEM_HW=GL.STEM_HW,
+           LEDGER_EXT=GL.LEDGER_EXT, PAD=GL.PAD)
+
+
 class ScoreV2(Source):
     name = "score_v2"
     label = "Live score v2"
@@ -635,17 +826,29 @@ class ScoreV2(Source):
         self.offx = np.zeros(self.NC)
         self.offy = np.zeros(self.NC)
         # staging for engraved parts
-        self.stage_bytes = RESULTS_PER_FRAME * self.ch * max(self.cw, self.HW if self.scroll else 0)
-        self._pinned = cp.cuda.alloc_pinned_memory(self.stage_bytes)
-        self.stage = np.frombuffer(self._pinned, np.uint8, self.stage_bytes)
-        self.gstage = cp.zeros(self.stage_bytes, cp.uint8)
-        self._stage_done = None
+        self.slot_bytes = self.ch * max(self.cw, self.HW if self.scroll else 0)
+        self._pinned = [cp.cuda.alloc_pinned_memory(self.slot_bytes) for _ in range(INK_SLOTS)]
+        self.slots = [np.frombuffer(m, np.uint8, self.slot_bytes) for m in self._pinned]
+        self.slot_free: "queue.Queue" = queue.Queue()
+        for j in range(INK_SLOTS):
+            self.slot_free.put(j)
+        self.slot_fly: list = []                    # (slot, event): copies queued, the slot reused once done
+        self.ink_ready: "queue.Queue" = queue.Queue()
+        self.ink_thread = None
+        self.ink_stop = False
+        self.side = cp.cuda.Stream(non_blocking=True)
+        self.settle_q: list = []                    # landed bars' notes still to set off (_settle_step)
         # the frame's parameters: one async upload a frame from pinned memory, double-buffered
         self.UP_R = 64
         self.UP_RI = (self.UP_R + self.NR * RS + 15) // 16 * 16
         self.UP_GN = (self.UP_RI + self.NR + 15) // 16 * 16
         self.UP_GU = self.UP_GN + GL.MAXN * GL.NF
-        self.UP_N = self.UP_GU + GL.NU
+        self.UP_F = (self.UP_GU + GL.NU + 15) // 16 * 16              # (GPU records) the note rows' fields
+        self.UP_IX = self.UP_F + NFLD * NCAP                         # the drawn rows
+        self.UP_X = self.UP_IX + GL.MAXN                             # bar line / time signature records
+        self.UP_L = self.UP_X + GL.MAXN * GL.NF                      # per canvas: offx, offy, alpha, erase
+        self.UP_Q = self.UP_L + 4 * self.NC                          # the frame's scalars
+        self.UP_N = self.UP_Q + 32
         self.up_dev = cp.zeros(self.UP_N, cp.float32)
         self._up_pin = [cp.cuda.alloc_pinned_memory(4 * self.UP_N) for _ in range(2)]
         self.up_host = [np.frombuffer(m, np.float32, self.UP_N) for m in self._up_pin]
@@ -656,6 +859,12 @@ class ScoreV2(Source):
         self.RI = self.up_dev[self.UP_RI:self.UP_RI + self.NR].view(cp.int32)
         self.GN = self.up_dev[self.UP_GN:self.UP_GU]
         self.GU = self.up_dev[self.UP_GU:self.UP_GU + GL.NU]
+        self.krec = raw_module(_REC_SRC).get_function("recs")
+        self.rec_scratch = cp.zeros(GL.MAXN * GL.NF, cp.float32)
+        self.gpu_recs = None                         # (n notes, m other records) when this frame's are the GPU's
+        d = self.up_dev
+        self._rv = (d[self.UP_F:self.UP_IX], d[self.UP_IX:self.UP_X], d[self.UP_X:self.UP_L], d[self.UP_L:self.UP_Q],
+                    d[self.UP_Q:self.UP_N])
         self.Ph = np.zeros(64, np.float32)
         self.Rh = np.zeros(self.NR * RS, np.float32)
         self.RIh = np.array(self.coff * self.SR if self.scroll else self.coff, np.int32)
@@ -665,6 +874,7 @@ class ScoreV2(Source):
         self.nrec = 0
         self.gatlas, self.gtable, gt = GL.device_atlas(cp)
         self.adv = gt[:, 10].astype(np.float64)
+        self.adv_dev = cp.asarray(self.adv.astype(np.float32))
         self.gcent = GL.centres()
         self.pump_until = 0.0
         from stream_service.score import mei  # noqa: F401  (first use loads it: here, not on a frame)
@@ -1095,11 +1305,31 @@ class ScoreV2(Source):
             for q in [ph] + self.old:
                 changed.update(i for i in q.rows if N.used[i] and N.line[i] in lines)
         todo = [i for i in changed if N.used[i] and N.state[i] == 0 and N.ph[i] is not None]
-        if len(todo) > RELAYOUT_PER_FRAME:                  # a frame's share, the newest (by the playhead) first
-            todo.sort(key=N.t_on.__getitem__, reverse=True)
-            self.dirty_rows.update(todo[RELAYOUT_PER_FRAME:])
-            self.epoch_carry = True
-            todo = todo[:RELAYOUT_PER_FRAME]
+        if len(todo) > RELAYOUT_PER_FRAME:                  # a frame's share, the newest (by the playhead) first,
+            todo.sort(key=N.t_on.__getitem__, reverse=True)  # counted in whole bars (mates are laid out together)
+            grp = N.grp
+            cnt: dict = {}
+            for q in {id(N.ph[i]): N.ph[i] for i in todo}.values():
+                for i in q.rows:
+                    g = grp[i]
+                    if g is not None:
+                        cnt[g] = cnt.get(g, 0) + 1
+            take, rest, groups, cost = [], [], set(), 0
+            for i in todo:
+                g = grp[i]
+                if g is not None and g in groups:
+                    take.append(i)
+                elif cost < RELAYOUT_PER_FRAME:
+                    take.append(i)
+                    cost += cnt.get(g, 1) if g is not None else 1
+                    if g is not None:
+                        groups.add(g)
+                else:
+                    rest.append(i)
+            if rest:
+                self.dirty_rows.update(rest)
+                self.epoch_carry = True
+            todo = take
         by_ph: dict = {}
         for i in todo:
             by_ph.setdefault(id(N.ph[i]), (N.ph[i], set()))[1].add(i)
@@ -1661,39 +1891,98 @@ class ScoreV2(Source):
             if time.perf_counter() > self.pump_until:
                 break
 
+    def _ink_loop(self) -> None:
+        """(a thread) The engraver's results made ready to land: the ink copied into a free pinned slot, a bar's
+        staff split found, its heads read; numpy and Python only (no CUDA calls off the render thread)."""
+        eng = self.engraver
+        while not self.ink_stop and eng is not None:
+            try:
+                key, meta, ink = eng.out.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                slot = None
+                if key:
+                    kind = key.split(":", 1)[0]
+                    ok = bool(meta.get("ok")) and bool(meta.get("measures"))
+                    w, h = (int(meta.get("w", 0)), int(meta.get("h", 0))) if ok else (0, 0)
+                    if ok and (w * h > self.ch * max(self.cwid) or len(ink) < w * h or w * h > self.slot_bytes
+                               or w * h <= 0):
+                        ok = False
+                    if ok:
+                        while not self.ink_stop:
+                            try:
+                                j = self.slot_free.get(timeout=0.2)
+                                break
+                            except queue.Empty:
+                                continue
+                        else:
+                            return
+                        arr = np.frombuffer(ink, np.uint8, w * h)
+                        self.slots[j][:w * h] = arr
+                        ms = meta["measures"][0]
+                        if kind == "b" and len(ms.get("staves") or ()) > 1:
+                            self._split_row(ms, arr.reshape(h, w))
+                        if kind in ("b", "i") and meta.get("notes"):
+                            meta["_heads"] = self._heads(meta)
+                        slot = (j, w, h)
+                self.ink_ready.put((key, meta, slot))
+            except Exception as e:                          # (never the thread: that result is dropped)
+                log.warning("score_v2 ink thread: %s", e)
+
+    def _heads(self, meta: dict) -> list:
+        """The engraver's head centres -> glyph origins, left to right."""
+        cen = self.gcent
+        sp = self.sp
+        notes = []
+        for e in meta.get("notes") or []:
+            g = GL.GI.get(e.get("glyph"), GL.BLACK)
+            notes.append((int(e["id"]), g, e["x"] - float(cen[g, 0]) * sp, e["y"] - float(cen[g, 1]) * sp,
+                          e.get("stem"), e.get("dir"), e.get("accid")))
+        notes.sort(key=lambda r: r[2])
+        return notes
+
     def _take_renders(self) -> None:
         if self.engraver is None:
             return
-        results = self.engraver.results(RESULTS_PER_FRAME)
+        if self.ink_thread is None:
+            self.ink_thread = threading.Thread(target=self._ink_loop, daemon=True, name="score_v2-ink")
+            self.ink_thread.start()
+        if self.slot_fly:                                   # slots whose copies are done go back to the thread
+            keep = []
+            for j, ev in self.slot_fly:
+                if ev.done:
+                    self.slot_free.put(j)
+                else:
+                    keep.append((j, ev))
+            self.slot_fly = keep
+        results = []
+        while len(results) < RESULTS_PER_FRAME:
+            try:
+                results.append(self.ink_ready.get_nowait())
+            except queue.Empty:
+                break
         if not results:
             return
         cp = self.ctx.cp
-        if self._stage_done is not None:
-            self._stage_done.synchronize()
-            self._stage_done = None
-        off = 0
+        main = cp.cuda.get_current_stream()
         touched = []
-        for key, meta, ink in results:
+        for key, meta, slot in results:
             if not key:
+                if slot is not None:
+                    self.slot_free.put(slot[0])
                 continue
             kind = key.split(":", 1)[0]
-            ok = bool(meta.get("ok")) and bool(meta.get("measures"))
-            w, h = (int(meta.get("w", 0)), int(meta.get("h", 0))) if ok else (0, 0)
-            if ok and (w * h > self.ch * max(self.cwid) or len(ink) < w * h or off + w * h > self.stage_bytes):
-                ok = False
             render = None
-            if ok:
-                arr = np.frombuffer(ink, np.uint8, w * h)
-                self.stage[off:off + w * h] = arr
-                ms = meta["measures"][0]
-                if kind == "b" and len(ms.get("staves") or ()) > 1:
-                    self._split_row(ms, arr.reshape(h, w))
-                g = self.gstage[off:off + w * h]
-                g.set(self.stage[off:off + w * h], stream=cp.cuda.get_current_stream())
-                render = (g.reshape(h, w), meta)
-                off += w * h
-                if self._stage_done is None:
-                    self._stage_done = cp.cuda.Event(block=False, disable_timing=True)
+            if slot is not None:
+                j, w, h = slot
+                g = cp.empty((h, w), cp.uint8)
+                g.set(self.slots[j][:w * h].reshape(h, w), stream=self.side)
+                ev = cp.cuda.Event(block=False, disable_timing=True)
+                ev.record(self.side)
+                main.wait_event(ev)                         # (the GPU orders it; nothing waits here)
+                self.slot_fly.append((j, ev))
+                render = (g, meta)
             if kind == "h":
                 _h, uid, req = key.split(":")[:3]
                 ln = next((x for x in self.lines if x.uid == int(uid) and x.hreq == int(req)), None)
@@ -1713,12 +2002,10 @@ class ScoreV2(Source):
             if ph is None:
                 continue
             k = ph.sub.pop(key)
-            ph.items[k] = (render[0].copy(), render[1]) if render is not None else EMPTY
+            ph.items[k] = render if render is not None else EMPTY
             touched.append(ph)
         for ph in touched:
             self._drain(ph)
-        if self._stage_done is not None:
-            self._stage_done.record(cp.cuda.get_current_stream())
 
     def _drain(self, ph: _Phrase) -> None:
         dead = self.engraver is not None and not self.engraver.ok
@@ -1959,22 +2246,19 @@ class ScoreV2(Source):
                 self.dbg.append(("respill", ph.id, self.t_sound, k))
 
     def _settle(self, ph: _Phrase, ln: _Line, k: int, meta: dict, crop: float, dst: float, split, dy1, dy2,
-                width: float) -> float:
+                width: float, bkey=None) -> float:
         """A bar's engraving landed: each of its notes hops to its engraved head, morphs its head, sets its stem and
-        accidental as engraved.  Returns when the last lands (the front waits for it)."""
+        accidental as engraved.  The notes are marked engraved now and set off by _settle_step (SETTLE_PER_FRAME a
+        frame, left to right); returns inf while some wait (_settle_step sets the bar's landing time: the front
+        waits for it)."""
         N = self.N
         sp = self.sp
         now = self.t_sound
-        cen = self.gcent
-        notes = []
-        for e in meta.get("notes") or []:                     # (the engraver's head centres -> glyph origins)
-            g = GL.GI.get(e.get("glyph"), GL.BLACK)
-            notes.append((int(e["id"]), g, e["x"] - cen[g, 0] * sp, e["y"] - cen[g, 1] * sp, e.get("stem"),
-                          e.get("dir"), e.get("accid")))
-        notes.sort(key=lambda r: r[2])
+        notes = meta.get("_heads")
+        if notes is None:
+            notes = self._heads(meta)
         t_start = max(now, ph.last_wave + WAVE_S)
         ph.last_wave = t_start
-        t_land = now
         stems: dict = {}
         for nid, g, hx, hy, stem, d, acc in notes:            # a chord's stem goes to the head at its base
             if stem is not None:
@@ -1983,9 +2267,8 @@ class ScoreV2(Source):
                 b = stems.get(key)
                 if b is None or abs(hy - base) < abs(b[1] - base):
                     stems[key] = (nid, hy)
-        bu = ph.L * ph.unit
-        fl = self.flourish
-        for idx, (nid, g, hx, hy, stem, sdir, acc) in enumerate(notes):
+        jobs = []
+        for nid, g, hx, hy, stem, sdir, acc in notes:
             dy = dy1 if hy < split else dy2
             X = dst + hx - crop
             Y = hy + dy
@@ -2002,37 +2285,74 @@ class ScoreV2(Source):
             i = N.by_id.get(int(nid))
             if i is None or N.ph[i] is not ph or N.state[i] >= 2:
                 continue
-            key = N.key[i]
-            ci = int(N.lid[i])
-            cx = N.tx[i] + self.offx[ci] - self.offx[ln.ci]
-            cy = N.ty[i] + self.offy[ci] - self.offy[ln.ci]
-            d = math.hypot(X - cx, Y - cy) / sp
-            frac_k = ((key[1] - k * bu) / bu) if (key is not None and key[0] == "bars") else -1.0
-            T = min(SETTLE_MAX, SETTLE_S0 + SETTLE_SPS * d)
-            dxs = abs(X - cx) / sp
-            arc = min(SETTLE_ARC, 0.3 * dxs) * sp * fl if dxs > 0.3 else 0.0
-            start = t_start + WAVE_SPREAD_S * min(1.0, max(0.0, (X - dst) / max(1.0, width)))
-            N.hop(i, ln, X, Y, T, arc, now, self.offx, self.offy, start=start)
-            t0 = max(now, N.h_t0[i])
-            N.set_glyph(i, g, t0)
-            if srel is not None:
-                N.set_stem(i, True, *srel, t0)
-            else:
-                N.set_stem(i, False, 0.0, 0.0, 0.0, t0)
-            if arel is not None:
-                N.set_acc(i, arel[0], arel[1], t0)
-            else:
-                N.set_acc(i, -1, 0.0, t0)
             N.state[i] = 1
+            N.pend[i] = True
             N.k[i] = k
             N.bar_end[i] = dst + width
             N.st_top[i] = ln.t1 if Y < split + dy1 else ln.t2
-            end = max(N.h_t0[i] + T, t0 + max(MORPH_S, N.s_T[i], ACC_S))
-            t_land = max(t_land, end)
-            if self.dbg is not None:
-                self.dbg.append(("settle", int(nid), now, d, T, int(N.moves[i]), (X - cx) / sp, (Y - cy) / sp,
-                                 frac_k, k, float(X + self.offx[ln.ci]), float(Y + self.offy[ln.ci])))
-        return t_land
+            start = t_start + WAVE_SPREAD_S * min(1.0, max(0.0, (X - dst) / max(1.0, width)))
+            jobs.append((i, int(nid), g, X, Y, srel, arel, start))
+        if not jobs:
+            return now
+        self.settle_q.append([ph, ln, k if bkey is None else bkey, k, jobs, 0, now])
+        return math.inf
+
+    def _settle_step(self) -> None:
+        """Landed bars' notes set off, SETTLE_PER_FRAME a frame (oldest bar first, left to right): each hops to its
+        engraved head (from where it is drawn now), morphs, sets its stem and accidental."""
+        q = self.settle_q
+        if not q:
+            return
+        N = self.N
+        sp = self.sp
+        now = self.t_sound
+        fl = self.flourish
+        budget = SETTLE_PER_FRAME
+        while q and budget > 0:
+            grp = q[0]
+            ph, ln, bkey, k, jobs, j, t_land = grp
+            bu = ph.L * ph.unit if ph.L else 0
+            while j < len(jobs) and budget > 0:
+                i, nid, g, X, Y, srel, arel, start = jobs[j]
+                j += 1
+                budget -= 1
+                if not (N.used[i] and int(N.nid[i]) == nid):
+                    continue
+                N.pend[i] = False
+                if N.state[i] != 1:
+                    continue
+                ci = int(N.lid[i])
+                cx = float(N.tx[i] + self.offx[ci] - self.offx[ln.ci])
+                cy = float(N.ty[i] + self.offy[ci] - self.offy[ln.ci])
+                d = math.hypot(X - cx, Y - cy) / sp
+                T = min(SETTLE_MAX, SETTLE_S0 + SETTLE_SPS * d)
+                dxs = abs(X - cx) / sp
+                arc = min(SETTLE_ARC, 0.3 * dxs) * sp * fl if dxs > 0.3 else 0.0
+                N.hop(i, ln, X, Y, T, arc, now, self.offx, self.offy, start=start)
+                t0 = max(now, float(N.h_t0[i]))
+                N.set_glyph(i, g, t0)
+                if srel is not None:
+                    N.set_stem(i, True, *srel, t0)
+                else:
+                    N.set_stem(i, False, 0.0, 0.0, 0.0, t0)
+                if arel is not None:
+                    N.set_acc(i, arel[0], arel[1], t0)
+                else:
+                    N.set_acc(i, -1, 0.0, t0)
+                end = max(float(N.h_t0[i]) + T, t0 + max(MORPH_S, float(N.s_T[i]), ACC_S))
+                t_land = max(t_land, end)
+                if self.dbg is not None:
+                    key = N.key[i]
+                    frac_k = ((key[1] - k * bu) / bu) if (key is not None and key[0] == "bars" and bu) else -1.0
+                    self.dbg.append(("settle", nid, now, d, T, int(N.moves[i]), (X - cx) / sp, (Y - cy) / sp,
+                                     frac_k, k, float(X + self.offx[ln.ci]), float(Y + self.offy[ln.ci])))
+            grp[5], grp[6] = j, t_land
+            if j < len(jobs):
+                break
+            q.pop(0)
+            e = ln.bars.get(bkey)
+            if e is not None and e[2] == math.inf:
+                e[2] = t_land
 
     def _phrase_end(self) -> None:
         ph = self.ph
@@ -2394,7 +2714,7 @@ class ScoreV2(Source):
             # hand over: an engraved note that has landed, its line's front past it
             eng = live[st == 1]
             if len(eng):
-                ok = ((now >= N.h_t0[eng] + N.h_T[eng]) & (now >= N.g_t0[eng] + MORPH_S)
+                ok = (~N.pend[eng] & (now >= N.h_t0[eng] + N.h_T[eng]) & (now >= N.g_t0[eng] + MORPH_S)
                       & (now >= N.s_t0[eng] + N.s_T[eng]) & (now >= N.a_t0[eng] + ACC_S)
                       & (self._c_front[N.lid[eng]] >= np.minimum(N.tx[eng] + (self.adv[N.gb[eng]] * sp + 0.5 * self.FE),
                                                                     N.bar_end[eng])))
@@ -2418,6 +2738,13 @@ class ScoreV2(Source):
         n = len(idx)
         R = self.recs
         nrec = 0
+        if self.dbg is None:                                # the GPU builds the notes' records (_pack, recs)
+            nrec = self._emit_gates(R, n)
+            nrec = self._emit_ts(R, nrec)
+            nrec = min(nrec, GL.MAXN)
+            self.gpu_recs = (idx, n, nrec - n, p, e)
+            return nrec
+        self.gpu_recs = None
         if n:
             ci = N.lid[idx]
             T = N.h_T[idx]
@@ -2728,7 +3055,7 @@ class ScoreV2(Source):
             crop = m["x0"] + 0.35 * sp
             width = m["x1"] + 1 - crop
             split, dy1, dy2 = self._composite(ln, img, m, crop, m["x1"] + 1, u)
-            t_land = self._settle(ph, ln, k, meta, crop, u, split, dy1, dy2, width)
+            t_land = self._settle(ph, ln, k, meta, crop, u, split, dy1, dy2, width, bkey=(ph.id, k))
             nat = meta.get("natural")
             if nat:
                 v = min(30.0, max(1.5, nat / (ph.L * sp * (1.5 if ph.unit == 6 else 1.0))))
@@ -2985,6 +3312,7 @@ class ScoreV2(Source):
             if ph.lift_t is None:
                 self._pump(ph)
                 self._drain(ph)
+        self._settle_step()
         glow_s = max(0.05, float(p["ink_glow"]))
         if self.scroll:
             self._scroll_step(dt)
@@ -3053,24 +3381,95 @@ class ScoreV2(Source):
         h[0:64] = self.Ph
         h[self.UP_R:self.UP_R + self.NR * RS] = self.Rh
         h[self.UP_RI:self.UP_RI + self.NR].view(np.int32)[:] = self.RIh
-        n = int(self.GUh[0])
-        if n:
-            h[self.UP_GN:self.UP_GN + GL.NF * n] = self.GNh[:n].ravel()
-        h[self.UP_GU:self.UP_GU + GL.NU] = self.GUh
+        if self.gpu_recs is not None:
+            self._pack(h)
+        else:
+            n = int(self.GUh[0])
+            if n:
+                h[self.UP_GN:self.UP_GN + GL.NF * n] = self.GNh[:n].ravel()
+            h[self.UP_GU:self.UP_GU + GL.NU] = self.GUh
         st = cp.cuda.get_current_stream()
         self.up_dev.set(h, stream=st)
         if ev is None:
             ev = self.up_ev[k] = cp.cuda.Event(block=False, disable_timing=True)
         ev.record(st)
+        if self.gpu_recs is not None:
+            n, m = self.gpu_recs[1], self.gpu_recs[2]
+            F, IX, XR, L, Q = self._rv
+            self.krec((1,), (512,), (F, IX, np.int32(n), XR, np.int32(m), L, np.int32(self.NC), Q, self.adv_dev,
+                                     self.rec_scratch, self.GN, self.GU))
+
+    def _pack(self, h) -> None:
+        """The note rows' fields for recs (times relative to now: float32 can't hold the clock), the drawn rows,
+        the other records, the canvases' offsets / alpha / erase fronts and the frame's scalars."""
+        idx, n, m, p, e = self.gpu_recs
+        N = self.N
+        now = self.t_sound
+        F = h[self.UP_F:self.UP_IX].reshape(NFLD, NCAP)
+        sub = np.subtract
+        sub(now, N.h_t0, out=F[0])
+        F[1] = N.h_T
+        F[2] = N.arc
+        F[3] = N.tx
+        F[4] = N.ty
+        F[5:17] = N.C.reshape(12, NCAP)
+        sub(now, N.t_born, out=F[17])
+        sub(now, N.hand_t0, out=F[18])
+        sub(now, N.die_t0, out=F[19])
+        sub(now, N.g_t0, out=F[20])
+        F[21] = N.ga
+        F[22] = N.gb
+        sub(now, N.s_t0, out=F[23])
+        F[24] = N.s_T
+        F[25] = N.sa
+        F[26] = N.sb
+        F[27] = N.s_flip
+        F[28:34] = N.S.reshape(6, NCAP)
+        sub(now, N.a_t0, out=F[34])
+        F[35] = N.aa
+        F[36] = N.ab
+        F[37] = N.adxa
+        F[38] = N.adxb
+        F[39] = N.st_top
+        F[40] = N.pitch
+        sub(now, N.t_off, out=F[41])
+        F[42] = N.lid
+        if n:
+            h[self.UP_IX:self.UP_IX + n] = idx
+        if m:
+            h[self.UP_X:self.UP_X + GL.NF * m] = self.recs[n:n + m].ravel()
+        NC = self.NC
+        Lh = h[self.UP_L:self.UP_Q]
+        Lh[0:NC] = self.offx
+        Lh[NC:2 * NC] = self.offy
+        Lh[2 * NC:3 * NC] = self._c_alpha
+        np.maximum(self._c_erase, -1e30, out=Lh[3 * NC:4 * NC])
+        Q = h[self.UP_Q:self.UP_N]
+        Q[:] = 0.0
+        Q[0] = self.sp
+        Q[1] = POP * self.flourish
+        if self.scroll:
+            Q[2], Q[3], Q[4], Q[5], Q[6] = 1.0, self.SR, self.X_left, self.tape_w, self.pitch
+        Q[7] = float(p["palette_period"]) / 12.0
+        Q[8] = self.drift % 10.0
+        Q[9] = float(p["note_glow"]) * (0.8 + 0.6 * e)
+        Q[10] = 1.0 + 0.6 * self.kick
+        Q[11] = HALO_SP
+        pc = self._pal
+        Q[12:15], Q[15:18], Q[18:21], Q[21:24] = pc[0], pc[1], pc[2], pc[3]
 
     def close(self) -> None:
+        self.ink_stop = True
+        t = getattr(self, "ink_thread", None)
+        if t is not None:
+            t.join(timeout=1.0)
         if self.engraver is not None:
             self.engraver.close()
             self.engraver = None
         room, self.room = getattr(self, "room", None), None
         if room is not None:
             room.leave(self)
-        self.buf = self.canvas = self.P = self.R = self.RI = self.page = self.gstage = None
+        self.buf = self.canvas = self.P = self.R = self.RI = self.page = None
         self.up_dev = self.up_host = self._up_pin = self.up_ev = None
         self.GN = self.GU = self.gatlas = self.gtable = None
-        self.stage = self._pinned = None
+        self.slots = self._pinned = self.slot_fly = None
