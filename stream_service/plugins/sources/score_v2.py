@@ -91,6 +91,9 @@ HDR_WAIT_S, PART_TIMEOUT_S, PARK_MAX = 1.5, 5.0, 8
 RESULTS_PER_FRAME = 3
 PUMP_S = 0.004
 LIFT_S = 0.3
+JOIN_SCROLL_S = 16.0                                      # joining mid-phrase: the music kept, behind the playhead
+JOIN_PAGE_S = 18.0                                        # ... on the page (at most: lines - 1 of them)
+JOIN_ROWS_S = 1.5                                         # bars the room hands over this soon after: drawn at once
 # notes
 NCAP = 512
 POP, POP_S, BIRTH_S = 0.22, 0.14, 0.03
@@ -694,6 +697,10 @@ class ScoreV2(Source):
         self.spills = 0
         self.bars_empty = 0
         self.dbg = None                              # the harness's event log (a list), or None
+        self.joined = False                          # the room's first music taken (a scene may join mid-phrase)
+        self.join_t = None
+        self.join_rows = False
+        self.join_fresh: set = set()
         # gates
         G = NGATE
         self.g_used = np.zeros(G, bool)
@@ -833,6 +840,12 @@ class ScoreV2(Source):
         self.t_sound = t
         b = self.builder
         bars, rev = self.room.tick(self, f, t)
+        if not self.joined:
+            self.joined = self._join(bars)
+            if self.joined:
+                self.join_t = self.t_sound
+                last = max((j for j, bar in enumerate(bars) if bar.marker), default=-1)
+                bars = bars[last + 1:]                      # (bars before a rewrite in the hand-over: superseded)
         self._metre_check()
         self._births()
         self._metre_check()
@@ -851,10 +864,51 @@ class ScoreV2(Source):
                 if len(ph.queued) < 64:
                     ph.queued.append(bar)
                 continue
+            self.join_rows = self.join_t is not None and self.t_sound - self.join_t < JOIN_ROWS_S
             self._commit(ph, bar)
+            self.join_rows = False
+        if self.join_fresh:
+            fresh, self.join_fresh = self.join_fresh, set()
+            self._relayout(self.ph, fresh=fresh)
         self._sync_held()
         self._epoch(b)
         return f
+
+    def _join(self, bars) -> bool:
+        """The room's first music for this scene (it may start mid-phrase: cued while the piano plays, or switched
+        from another layout; the room hands it the phrase's bars and unwritten notes so far).  Only the recent part
+        is kept (what the page or the tape shows) and starts the phrase: its written notes are drawn at once as
+        glyphs (_commit_keys) while their ink is engraved, and the empty tape is placed with its playhead at the
+        newest notes (_scroll_step).  False: no music yet (it joins when some comes)."""
+        cur = []
+        for bar in bars:
+            if bar.marker:
+                cur = []
+                continue
+            cur.append(bar)
+        notes = self.builder.notes
+        times = [bar.t_start for bar in cur] + [n.t_on for n in notes]
+        if not times:
+            return False
+        ph = self.ph
+        if ph.t0 is not None:
+            return True
+        keep = JOIN_SCROLL_S if self.scroll else min(JOIN_PAGE_S, (self.NL - 1) * self.line_s)
+        cut = self.t_sound - keep
+        earliest = min(times)
+        if earliest < cut:
+            ph.cut_t = cut
+            ph.k_base = next((bar.pos for bar in cur if bar.t_end > cut + 0.05), None)
+            if ph.k_base is None and cur:
+                ph.k_base = cur[-1].pos + 1
+            if ph.k_base is None:
+                pos = self.builder.position(cut)
+                ph.k_base = int(math.floor(pos)) if pos is not None else None
+        ph.t0 = max(earliest, cut)
+        self._phrase_started(ph)
+        if self.dbg is not None:
+            self.dbg.append(("join", ph.id, self.t_sound, len(cur), ph.cut_t, ph.k_base))
+        return True
 
     def _metre_check(self) -> None:
         ph = self.ph
@@ -899,7 +953,7 @@ class ScoreV2(Source):
         now = self.t_sound
         new = []
         for n in notes[i0:]:
-            if n.id in N.by_id:
+            if n.id in N.by_id or (ph.cut_t is not None and n.t_on < ph.cut_t - 0.05):
                 continue
             if ph.t0 is None:
                 ph.t0 = n.t_on
@@ -941,6 +995,9 @@ class ScoreV2(Source):
 
     def _staff_of(self, i: int) -> int:
         n = self.N.note[i]
+        if n is None:                                       # (written before the scene joined)
+            k = self.N.key[i]
+            return k[2] if k is not None else (0 if self.N.pitch[i] >= 60 else 1)
         try:
             return int(self.builder._staff(n))
         except Exception:
@@ -1102,9 +1159,10 @@ class ScoreV2(Source):
         """A note still placed by time (its estimate not yet on the bars) under a phrase with bars: its 16th by the
         builder's beats (the next estimate takes over)."""
         try:
-            return max(0, int(round(self.builder.timeline.beat(float(self.N.tq[i])) * ph.unit)))
+            q = int(round(self.builder.timeline.beat(float(self.N.tq[i])) * ph.unit))
         except Exception:
             return 0
+        return max(0, q - (ph.k_base or 0) * ph.L * ph.unit)
 
     def _open_line_at(self, ph: _Phrase, t: float):
         """(line, its start time): before the metre a phrase's lines are laid out in time, ph.v px a second, each
@@ -1286,6 +1344,11 @@ class ScoreV2(Source):
             self._s_metre(ph)
             self.epoch_force = True
             return
+        if ph.cut_t is not None:                            # joined mid-phrase, or carried on after a rewrite: its
+            ph.plan = LinePlan()                            # bars are known, so its lines are planned by the tempo
+            ph.open_m = set()                               # (_ensure_plan) rather than fitted to open lines
+            self.epoch_force = True
+            return
         b = self.builder
         tl = b.timeline
         bar_s = b.bar_seconds() or beats * self._beat_period()
@@ -1418,10 +1481,16 @@ class ScoreV2(Source):
         bu = bar.beats * bar.unit
         moved = False
         span = (bar.t_end - bar.t_start) / bu
+        fresh = set()
         for st, events in enumerate(bar.staves):
             for ev in events:
-                for nid, tin, tout in zip(ev.ids, ev.tie_in, ev.tie_out):
+                for nid, tin, tout, pitch in zip(ev.ids, ev.tie_in, ev.tie_out, ev.pitches):
                     i = N.by_id.get(int(nid))
+                    if i is None and self.join_rows and not tin:
+                        i = self._written_row(ph, int(nid), int(pitch), st, k * bu + ev.start,
+                                              bar.t_start + ev.start * span, bar.t_start + (ev.start + ev.dur) * span)
+                        if i is not None:
+                            fresh.add(i)
                     if i is not None and not tout and np.isinf(N.t_off[i]):
                         N.t_off[i] = bar.t_start + (ev.start + ev.dur) * span        # written to end here
                     if tin:
@@ -1434,15 +1503,41 @@ class ScoreV2(Source):
                     if N.key[i] != key:
                         N.key[i] = key
                         moved = True
+        if fresh:
+            self.join_fresh |= fresh                        # laid out once, after the tick's bars (_listen)
         if moved:
             self.relayout_due = True
+
+    def _written_row(self, ph: _Phrase, nid: int, pitch: int, staff: int, q: int, t_on: float, t_off: float):
+        """A note written before this scene joined: a settled glyph at its place (no pop, no glow) until its ink."""
+        N = self.N
+        i = N.alloc(nid)
+        if i is None:
+            i = self._evict()
+            if i is None:
+                return None
+            i = N.alloc(nid)
+        N.ph[i] = ph
+        N.pitch[i], N.t_on[i], N.t_off[i] = pitch, t_on, t_off
+        N.t_born[i] = self.t_sound - 10.0
+        N.key[i] = ("bars", q, staff)
+        N.tq[i] = t_on
+        N.fixed[i] = True
+        N.readable[i] = True
+        ph.rows.add(i)
+        return i
 
     def _pump(self, ph: _Phrase) -> None:
         from stream_service.score import mei
         while ph.wait:
             k, bar = ph.wait[0]
             if self.scroll:
-                fit = self._s_fit(ph, k)
+                u0, fit = self._s_slot(ph, k)
+                if (self.frontier is not None
+                        and u0 + fit < self.S - (self.SR - 1) * self.tape_w - 4.0 * self.sp):
+                    ph.items[k] = SKIP                      # already scrolled away: never engraved
+                    ph.wait.pop(0)
+                    continue
                 ln = self.tape_line
                 fifths = ph.bar_fifths.get(k, ph.fifths_tape)
             else:
@@ -2230,6 +2325,9 @@ class ScoreV2(Source):
             for i in pf[now - N.die_t0[pf] >= PUFF_S]:
                 N.free(int(i))
         idx = np.nonzero(N.used & (N.state != 3))[0]
+        cap = GL.MAXN - 64                                  # (room for the bar lines and time signatures)
+        if len(idx) > cap:                                  # degrade: the newest notes drawn, the oldest wait for ink
+            idx = np.sort(idx[np.argsort(-N.t_on[idx], kind="stable")[:cap]])
         n = len(idx)
         R = self.recs
         nrec = 0
@@ -2440,7 +2538,7 @@ class ScoreV2(Source):
         self.hdr = {"w": self._hdr_est(self._key_now()), "a": 0.0, "fifths": None, "req": 0, "x0": (MARGIN_SP + 0.4) * sp}
         self.hdr_wd = self.hdr["w"]
         self.S, self.V, self.S_ff, self.S_tp = 0.0, 0.0, 0.0, None
-        self.frontier = 0.0
+        self.frontier = None                         # the tape's last ink (None: nothing written yet)
         self.v_last = None
         self._s_geom()
         self.offy[0] = self.offy[1] = self.y0
@@ -2497,7 +2595,7 @@ class ScoreV2(Source):
             ph.v = self._s_v()
         lag = max(0.0, self.t_sound - (ph.t0 or self.t_sound))
         u_play = self.S + PLAY_X * self.tape_w - lag * ph.v - self.A
-        ph.U0 = max(self.frontier + 2.0 * sp, u_play - TS_SP * sp)
+        ph.U0 = u_play - TS_SP * sp if self.frontier is None else max(self.frontier + 2.0 * sp, u_play - TS_SP * sp)
         ph.Um0 = ph.U0 + TS_SP * sp
         ph.ruler = None
         ph.fifths_tape = self._key_now()
@@ -2553,13 +2651,13 @@ class ScoreV2(Source):
             self.bars_empty += 1
         r.place(k, width)
         ln.bars[(ph.id, k)] = [u, width, t_land]
-        self.frontier = max(self.frontier, u + width)
+        self.frontier = max(self.frontier if self.frontier is not None else -1e18, u + width)
         if abs(width - wslot) > 0.5:
             self.relayout_due = True
         self._s_gates(ph)
         if ph.ended and k >= ph.committed - 1:
             self._gate(ln, (ln.uid, "f", ph.id), FINAL, u + width + 0.6 * sp, 1.0, now)
-            self.frontier = max(self.frontier, u + width + sp)
+            self.frontier = max(self.frontier, u + width + sp)                      # (set just above)
 
     def _s_staff_fill(self, u0: float, u1: float) -> None:
         from stream_service.score.motion import ring_slices
@@ -2622,6 +2720,12 @@ class ScoreV2(Source):
             v_ff = ph.v_bar if (ph.metre is not None and ph.v_bar) else ph.v
             u_new = N.tx[inew] + (self.t_sound - LAG_S - N.t_on[inew]) * v_ff      # where 'now' is on the tape
             err = u_new - (self.S + PLAY_X * self.tape_w)
+            if self.frontier is None:                       # nothing written on the tape yet (a start, or a join
+                self.S += err                               # mid-phrase): the paper is simply placed, the playhead
+                err = 0.0                                   # at the newest notes, at the music's pace
+                self.V = self.S_ff = v_ff
+                self.tape_line.front = min(self.tape_line.front,
+                                           self.S - (self.SR - 1) * self.tape_w - self.FE)
             v_t = max(0.0, v_ff + S_PULL * err)
             if self.t_sound - N.t_on[inew] > 2.5:                                    # a pause in the playing
                 v_t *= max(0.0, 1.0 - (self.t_sound - N.t_on[inew] - 2.5) / 2.0)
@@ -2666,7 +2770,7 @@ class ScoreV2(Source):
             u, w = old.ruler.u0(k), old.ruler.width(k)
             ln = self.tape_line
             self._gate(ln, (ln.uid, "f", old.id), FINAL, u + w + 0.6 * self.sp, 1.0, self.t_sound)
-            self.frontier = max(self.frontier, u + w + self.sp)
+            self.frontier = max(self.frontier if self.frontier is not None else -1e18, u + w + self.sp)
         for key, gi in list(self.g_key.items()):                 # bar lines planned past its end
             if len(key) == 3 and key[1] == old.id and isinstance(key[2], int) and key[2] >= old.committed:
                 self.g_at[gi] = 0.0
@@ -2717,7 +2821,7 @@ class ScoreV2(Source):
             for k in mine:
                 del ln.bars[k]
             ln.front = min(ln.front, u0 - 0.5 * self.FE)
-            self.frontier = max(ph.U0 or 0.0, min(self.frontier, u0))
+            self.frontier = max(ph.U0 or 0.0, min(self.frontier if self.frontier is not None else u0, u0))
         for key, gi in list(self.g_key.items()):
             if len(key) == 3 and key[1] == ph.id:
                 self.g_at[gi] = 0.0
