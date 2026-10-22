@@ -496,7 +496,9 @@ const Index = () => {
         return;
       }
 
-      const ws = new WebSocket(import.meta.env.VITE_WS_HOST);
+      // Over HTTPS (the friendly LAN name) the overlay socket comes through Caddy at /ws/; http keeps VITE_WS_HOST.
+      const wsUrl = window.location.protocol === 'https:' ? `wss://${window.location.host}/ws/` : import.meta.env.VITE_WS_HOST;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {

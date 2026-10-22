@@ -6,7 +6,13 @@
 // .env), exactly as the old src/utils/api.ts resolved it. Deriving it from window.location
 // instead is REFACTOR_PLAN P3 step 1 and an owner decision.
 
-export const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Exception (owner, 14 Oct): loaded over HTTPS (only the friendly LAN name https://screen.finsburybankforsavings.com,
+// Caddy -> Flask), the API is same-origin: an https page can't call the http public-IP origin (mixed content).
+// The TVs and the public address load over http and keep VITE_API_URL.
+export const API_URL: string =
+  typeof window !== 'undefined' && window.location.protocol === 'https:'
+    ? `${window.location.origin}/api`
+    : import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /** Same-origin API prefix. Only the admin page uses it (its token must not go via the public IP). */
 export const RELATIVE_API_URL = '/api';

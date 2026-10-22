@@ -10,18 +10,23 @@ export interface Overlay {
   position?: string;
   visible: boolean;
   fadein?: number;
+  /** Fade-out override in ms (set only by the controlled page's freeze; absent everywhere else). */
+  fadeout?: number;
 }
 
 function getOverlayStyle(
   position: string,
   visible: boolean,
-  fadein?: number
+  fadein?: number,
+  fadeout?: number
 ): React.CSSProperties {
   const fadeDuration = visible
     ? typeof fadein === "number"
       ? fadein
       : OVERLAY_FADEIN_DURATION
-    : OVERLAY_FADEOUT_DURATION;
+    : typeof fadeout === "number"
+      ? fadeout
+      : OVERLAY_FADEOUT_DURATION;
 
   const baseStyle: React.CSSProperties = {
     position: "absolute",
@@ -65,9 +70,9 @@ export function OverlayContainer({ overlays }: { overlays: Overlay[] }) {
       {overlays.map((o) => {
         const hasPosition = !!o.position;
 
-        const wrapperStyle = hasPosition
+        const wrapperStyle: React.CSSProperties = hasPosition
           ? {
-              ...getOverlayStyle(o.position!, o.visible, o.fadein),
+              ...getOverlayStyle(o.position!, o.visible, o.fadein, o.fadeout),
               fontSize: "clamp(0.5rem, 2.5vmin, 1.8rem)",
               display: "block",
               maxWidth: "100%",
@@ -81,7 +86,7 @@ export function OverlayContainer({ overlays }: { overlays: Overlay[] }) {
               height: "100vh",
               zIndex: 10000,
               opacity: o.visible ? 1 : 0,
-              transition: `opacity ${(o.fadein || OVERLAY_FADEIN_DURATION)}ms ease`,
+              transition: `opacity ${!o.visible && typeof o.fadeout === "number" ? o.fadeout : (o.fadein || OVERLAY_FADEIN_DURATION)}ms ease`,
               pointerEvents: "none",
               fontSize: "clamp(0.5rem, 2.5vmin, 1.8rem)",
             };

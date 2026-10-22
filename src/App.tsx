@@ -15,6 +15,7 @@ import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import LightSense from './pages/LightSense';
 import AndroidApp from './pages/AndroidApp';
 import AdminPanel from './pages/AdminPanel';
+import RoomPage from './pages/Room';
 import LightsPage from './pages/Lights';
 import MusicPage from './pages/Music';
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />
             <Route path="/adminadmin" element={<AdminPanel />} />
+            <Route path="/room" element={<RoomPage />} />
             <Route path="/lights" element={<LightsPage />} />
             <Route path="/music" element={<MusicPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

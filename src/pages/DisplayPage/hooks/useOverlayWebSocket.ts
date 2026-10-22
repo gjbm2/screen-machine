@@ -1,7 +1,12 @@
 // src/pages/DisplayPage/hooks/useOverlayWebSocket.ts
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-const WS_HOST = import.meta.env.VITE_WS_HOST;
+// Over HTTPS (the friendly LAN name) the overlay socket comes through Caddy at /ws/ (an insecure ws:// is blocked there
+// and used to crash the page layer: black screen, owner 17 Oct); over http (the TVs, the public IP) VITE_WS_HOST as before.
+const wsUrl = (): string =>
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? `wss://${window.location.host}/ws/`
+    : import.meta.env.VITE_WS_HOST;
 
 interface OverlayMessage {
   html: string;
@@ -28,8 +33,14 @@ function generateId(): string {
 
 export default function useOverlayWebSocket(
   screenId: string | undefined,
-  setOverlays: React.Dispatch<React.SetStateAction<Overlay[]>>
+  setOverlays: React.Dispatch<React.SetStateAction<Overlay[]>>,
+  // Optional gate (controlled page only): return false to drop an overlay message, e.g. while
+  // the screen is frozen or live (LIVE_V1 §2.2 rule 5). Without it, every message is shown as today.
+  accept?: () => boolean,
 ) {
+  const acceptRef = useRef(accept);
+  acceptRef.current = accept;
+
   useEffect(() => {
     if (!screenId) return;
 
@@ -38,11 +49,20 @@ export default function useOverlayWebSocket(
     let reconnectTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
-      socket = new WebSocket(WS_HOST);
+      const url = wsUrl();
+      try {
+        socket = new WebSocket(url);
+      } catch (e) {
+        // degrade, never refuse: no overlays, but the art stays up; try again later
+        console.warn("🔌 overlay socket unavailable:", e);
+        reconnectAttempts++;
+        reconnectTimeout = setTimeout(connect, Math.min(30000, 1000 * 2 ** reconnectAttempts));
+        return;
+      }
 
       socket.onopen = () => {
         reconnectAttempts = 0;
-        console.log("🟢 WebSocket connected to", WS_HOST);
+        console.log("🟢 WebSocket connected to", url);
       };
 
       socket.onclose = () => {
@@ -65,6 +85,7 @@ export default function useOverlayWebSocket(
             console.log(`🛑 Message not for this screen: ${screenId}`);
             return;
           }
+          if (acceptRef.current && !acceptRef.current()) return;
 
           const { html, duration, position, clear, fadein } = msg;
           const id = generateId();

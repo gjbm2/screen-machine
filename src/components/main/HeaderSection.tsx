@@ -1,34 +1,13 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { 
-  Terminal, 
-  Menu, 
-  Info, 
-  Clock, 
-  StopCircle, 
-  Monitor, 
-  Settings,
-  Edit,
-  FileJson,
-  Sparkles
-} from 'lucide-react';
+import { Terminal, Menu, Info, StopCircle, SlidersHorizontal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal
-} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { generationApi } from '@/shared/api';
-import { usePublishDestinations } from '@/hooks/usePublishDestinations';
+import { useRoomLink, liveStateOf, roomPageUrl } from '@/components/room/roomLink';
+import { AppMenu } from '@/components/nav/AppMenu';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
@@ -37,12 +16,21 @@ interface HeaderSectionProps {
   onOpenAboutDialog?: () => void;
 }
 
+// The generator's own menu actions, under "On this page" in the shared menu.
+const PAGE_ACTION =
+  'flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-base font-medium hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const PAGE_ICON = 'grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600';
+
 const HeaderSection: React.FC<HeaderSectionProps> = ({ 
   onToggleConsole,
   isConsoleVisible,
   onOpenAboutDialog
 }) => {
-  const { destinations } = usePublishDestinations();
+  const [menuOpen, setMenuOpen] = useState(false);
+  // This header is shared by the generator (/) and the scheduler (/scheduler).
+  const current = useLocation().pathname.startsWith('/scheduler') ? 'scheduler' : 'generator';
+  const room = useRoomLink();
+  const liveCount = Object.values(room.status?.screens ?? {}).filter(s => liveStateOf(s) === 'live').length;
 
   const handleCancelAllJobs = async () => {
     toast.loading("Cancelling all jobs...");
@@ -64,6 +52,26 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       <Header onOpenAboutDialog={onOpenAboutDialog} />
       
       <div className="flex items-center space-x-1">
+        {/* Room console: up front whenever the room's LAN door answers */}
+        {room.onLan && (
+          <Button
+            asChild
+            size="sm"
+            className="h-10 rounded-full px-3 sm:px-4 mr-1 bg-teal-700 text-white hover:bg-teal-800"
+          >
+            <a href={roomPageUrl()} data-testid="home-room-button">
+              <SlidersHorizontal className="h-4 w-4" />
+              <span className="ml-1.5">Room</span>
+              {liveCount > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" />
+                  {liveCount} live
+                </span>
+              )}
+            </a>
+          </Button>
+        )}
+
         {/* Only show console button outside the menu if visible */}
         {isConsoleVisible && (
           <Tooltip>
@@ -83,103 +91,36 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Tooltip>
         )}
         
-        {/* Burger menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            {/* 0. Generate */}
-            <DropdownMenuItem asChild>
-              <Link to="/">
-                <Sparkles className="h-4 w-4 mr-2" />
-                <span>Generate</span>
-              </Link>
-            </DropdownMenuItem>
-            
-            {/* 1. Scheduler */}
-            <DropdownMenuItem asChild>
-              <Link to="/scheduler" target="_blank" rel="noopener noreferrer">
-                <Clock className="h-4 w-4 mr-2" />
-                <span>Scheduler</span>
-              </Link>
-            </DropdownMenuItem>
-            
-            {/* 2. Displays sub-menu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Monitor className="h-4 w-4 mr-2" />
-                <span>Displays</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent>
-                  {destinations.length > 0 ? (
-                    destinations.map(dest => (
-                      <DropdownMenuItem key={dest.id} asChild>
-                        <Link to={`/display/${dest.id}`} target="_blank" rel="noopener noreferrer">
-                          <span>{dest.name || dest.id}</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <DropdownMenuItem disabled>
-                      <span>No displays found</span>
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
-            
-            {/* 3. Manage sub-menu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Settings className="h-4 w-4 mr-2" />
-                <span>Manage</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={handleCancelAllJobs}>
-                    <StopCircle className="h-4 w-4 mr-2" />
-                    <span>Cancel All Jobs</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuItem disabled>
-                    <Edit className="h-4 w-4 mr-2" />
-                    <span>Edit Displays</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuItem disabled>
-                    <FileJson className="h-4 w-4 mr-2" />
-                    <span>Edit Workflows</span>
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
-            
-            {/* 4. Console (if not visible) */}
-            {!isConsoleVisible && (
-              <DropdownMenuItem onClick={onToggleConsole}>
-                <Terminal className="h-4 w-4 mr-2" />
-                <span>Console View</span>
-              </DropdownMenuItem>
-            )}
-            
-            {/* 5. About */}
-            <DropdownMenuItem onClick={onOpenAboutDialog}>
-              <Info className="h-4 w-4 mr-2" />
-              <span>About</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* The shared menu (same as the Room console's): Go to, Screens, this page, Developer */}
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menu"
+          data-testid="menu-button"
+          className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current={current} pageTitle="On this page">
+          <div className="space-y-1">
+            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void handleCancelAllJobs(); }}>
+              <span className={PAGE_ICON}><StopCircle className="h-5 w-5" /></span>
+              Cancel all jobs
+            </button>
+            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onToggleConsole(); }}>
+              <span className={PAGE_ICON}><Terminal className="h-5 w-5" /></span>
+              {isConsoleVisible ? 'Hide the console' : 'Show the console'}
+            </button>
+            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onOpenAboutDialog?.(); }}>
+              <span className={PAGE_ICON}><Info className="h-5 w-5" /></span>
+              About
+            </button>
+          </div>
+        </AppMenu>
       </div>
     </div>
   );
 };
 
-export default HeaderSection; 
+export default HeaderSection;
