@@ -445,7 +445,8 @@ def test_python_m_show_service_with_the_brain(tmp_path):
             code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
             assert code == 200 and body["brain"]["running"] is True, body.get("brain")
             assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "recorder",
-                                                        "ml", "structure", "listener", "cues", "director", "rig"}
+                                                        "player", "ml", "structure", "listener", "cues", "director",
+                                                        "rig"}
             assert body["ml"]["state"] in ("failed", "backoff"), body["ml"]   # HOME is tmp: no ML venv there
             # Stage 5: the rig reads the real fixtures.yaml (read only): six fixtures, every output off, no problems
             rig = body["rig"]
@@ -669,8 +670,8 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert all(v == "ok" for v in show.modules.values()), show.modules
         assert {"api", "ring", "situations", "brain", "autopilot", "sources", "listener", "director"} <= set(show.modules)
         assert show.brain.running and list(show.brain.components) == ["room", "situations", "autopilot", "sources",
-                                                                      "recorder", "ml", "structure", "listener",
-                                                                      "cues", "director", "rig"]
+                                                                      "recorder", "player", "ml", "structure",
+                                                                      "listener", "cues", "director", "rig"]
         # files come from the options, test kwargs on top
         sd = tmp_path / "state"
         assert made["director"].kw == {"log_path": sd / "director.jsonl", "vibes_path": tmp_path / "vibes.yaml",
