@@ -742,6 +742,7 @@ class PianoStrings(Source):
             self._symM[keys[o:], keys[:-o]] = wgt
             self._symM[keys[:-o], keys[o:]] = wgt
         self._silent = np.zeros((128, 4), np.float32)     # the notes table when nothing is heard
+        self._reg_key, self._reg_w = None, None           # the ensemble's register window, its weights
         self._silent[:, 2:] = np.inf
         self._K = np.zeros((_N_KEY, 128))                 # the per-key terms, one row each (copied to S as K.T)
         self._x = np.zeros((5, 128))
@@ -767,6 +768,17 @@ class PianoStrings(Source):
         self._r0 = (c[:, 11] + 1.2 * c[:, 4]).astype(np.float64)   # reach: strings + margin ...
         self._r1 = (1.3 * c[:, 2]).astype(np.float64)              # ... + swing
 
+    def _reg_weights(self, snd) -> "np.ndarray | None":
+        """Per-pitch weights (128) for the room ensemble's register window (``sound.register``: notes outside it dim
+        to its ``outside`` level, never hidden), cached per window; None without one (all at full)."""
+        reg = getattr(snd, "register", None) if snd is not None else None
+        if not reg:
+            return None
+        if self._reg_key != reg:
+            from stream_service.ensemble import note_weights
+            self._reg_key, self._reg_w = reg, np.asarray(note_weights(reg, np.arange(128)), np.float32)
+        return self._reg_w
+
     def _shape(self, dt: float, S: np.ndarray, p: dict, e: float, mode: int, Ph: np.ndarray) -> float:
         """Every per-key term into ``S`` (128 x _N_KEY): a few dozen numpy calls over the 128 keys, no Python loop;
         returns the soft pedal (0-1)."""
@@ -781,6 +793,9 @@ class PianoStrings(Source):
         K, x, a, b, c, d = self._K, self._x, self._a, self._b, self._c, self._d
         lv, und, s = a, b, c
         np.maximum(n[:, 0], 0.0, out=lv)
+        w = self._reg_weights(snd)
+        if w is not None:                                # the register split: outside the window dims
+            lv *= w
         np.maximum(n[:, 3] < 0.0, damper, out=und)       # dampers up: the pedal or the key held
         # sympathy: partners a partial apart; undamped strings answer, a string sounding itself is busy
         np.matmul(self._symM, lv, out=s)
