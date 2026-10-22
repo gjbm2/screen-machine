@@ -3,11 +3,14 @@
 # piano starts at once (a cache hit) instead of rendering on the first press (22 Oct: only concert-d was prerendered,
 # and any other sound rendered on its first press: 15 s to over 2 min a piece).
 #
-#   scripts/piano_prerender_all.sh [--dry-run] [ID ...]
+#   scripts/piano_prerender_all.sh [--dry-run] [--pins] [ID ...]
 #
 #   ID ...      the sounds to do, in that order (default: every installed one, the likeliest first: fazioli-sf2,
 #               grand-c5, steinway-b, bright-cf3, upright, honky-tonk, then the rest in the Room page's order)
 #   --dry-run   say what is cached and what would be rendered; render nothing
+#   --pins      the Music page's pinned pieces (~/.local/state/screen-machine/show/library-pins.json, $PIANO_PINS;
+#               ids resolved by show_service/library.py's resolve()) instead of the test-piano folder; default sound
+#               only, unless IDs are given (22 Oct, with 8f: the whole library renders on demand, pins ahead of time)
 #
 # - Sequential, one piece at a time, at SCHED_IDLE + nice 19, single-threaded. Each new render takes the shared CPU
 #   lock (~/.cache/screen-machine/cpu.lock, the CLAUDE.md rule; waits up to PIANO_PRERENDER_LOCK_WAIT_S, 3600 s) and
@@ -90,9 +93,35 @@ class CpuLock:
         return False
 
 
+PINS = Path(os.environ.get("PIANO_PINS", str(Path.home() / ".local/state/screen-machine/show/library-pins.json")))
+
+
+def pinned_pieces() -> list:
+    """The pinned pieces' files (library.resolve: lib:/user:/file:/rec: ids), in pin order; [] without pins."""
+    import importlib.util
+    import json
+    try:
+        pins = json.loads(PINS.read_text(encoding="utf-8")).get("pins") or []
+    except (OSError, ValueError, AttributeError):
+        return []
+    spec = importlib.util.spec_from_file_location("sm_library", Path.cwd() / "show_service" / "library.py")
+    lib = importlib.util.module_from_spec(spec)
+    sys.modules["sm_library"] = lib
+    spec.loader.exec_module(lib)
+    out = []
+    for pid in pins:
+        p = lib.resolve(pid) if isinstance(pid, str) else None
+        if p is None:
+            say(f"pin {pid!r}: no file (skipped)")
+        elif p not in out:
+            out.append(p)
+    return out
+
+
 def main(argv: list) -> int:
     dry = "--dry-run" in argv
-    want = [a for a in argv if a != "--dry-run"]
+    pins = "--pins" in argv
+    want = [a for a in argv if a not in ("--dry-run", "--pins")]
     lower_priority()
     reg = instruments.load()
     rendered = [i for i in reg.ids() if reg.get(i).get("engine") not in engines.NEVER_RENDERED]
@@ -106,12 +135,18 @@ def main(argv: list) -> int:
                 say(f"{i}: skipped ({reg.why_unavailable(i)})")
             else:
                 say(f"{i}: skipped (not a rendered sound in {reg.path})")
+    elif pins:
+        order = [reg.default] if reg.default in avail else avail[:1]
     else:
         order = [i for i in LIKELY if i in avail] + [i for i in avail if i not in LIKELY]
-    mids = sorted(p for p in TEST_PIANO_DIR.iterdir() if p.suffix.lower() in (".mid", ".midi")) \
-        if TEST_PIANO_DIR.is_dir() else []
+    if pins:
+        mids, where = pinned_pieces(), PINS
+    else:
+        mids = sorted(p for p in TEST_PIANO_DIR.iterdir() if p.suffix.lower() in (".mid", ".midi")) \
+            if TEST_PIANO_DIR.is_dir() else []
+        where = TEST_PIANO_DIR
     if not order or not mids:
-        say(f"nothing to do ({len(order)} sounds, {len(mids)} pieces in {TEST_PIANO_DIR})")
+        say(f"nothing to do ({len(order)} sounds, {len(mids)} pieces in {where})")
         return 1 if want else 0
     say(f"{'dry run' if dry else 'start'}: {len(order)} sounds x {len(mids)} pieces: {', '.join(order)}")
     bad = 0
