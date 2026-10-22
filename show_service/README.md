@@ -2415,6 +2415,29 @@ track) into a real Receiver, through a switch and a stop. The library is fetched
     - public domain: Musopen via Wikimedia Commons;
     - nothing NonCommercial.
 
+
+#### S3.10a Record (recorder.py) and the test piano's sound (sources.py), 22 Oct (screen-machine-1c)
+- **Record:** the Room page's Piano card calls `POST /api/v1/piano/record {on}`. A guarded tap right after NoteTap in
+  `on_midi` appends the real piano's events while a take runs. It takes only `situations.midi` streams and channels
+  (room-piano, channel 1), never test streams, and does nothing when no take is running. Gaps and duplicates are handled
+  as in `midi.Piano`. Within a wire session it uses the sender's `t_ns` spacing; across sessions it uses `to_host`.
+  - Stop writes SMF type 0 (PPQ 960, note-off velocities, raw CC64/66/67, hot-repeat cap, 0.5 s lead) to
+    `~/.local/share/screen-machine/piano-recordings/<id>.mid` + `.json` (`tests.piano.recordings` overrides the folder).
+    A take with no notes isn't saved.
+  - Routes: `GET /piano/recordings`, `PATCH|DELETE /piano/recordings/{id}`, `GET /piano/recordings/{id}.mid`.
+- **Sound:** `POST /test` takes `instrument` (config/piano/instruments.json; only installed ones are offered, in
+  "order"), `output` (`pc22` | `none`) and `once` (the default for `rec:<id>` pieces). With no instrument the sound is
+  `windows-gs`, today's GS synth through pc22_synth; only the Room page names a rendered one.
+  - A rendered instrument makes show_sender run `piano_render.session` (venv ~/.venvs/sm-piano). It renders the .mid
+    once (cached under ~/.cache/screen-machine/piano/renders, at SCHED_IDLE); meanwhile the state is "preparing" with a
+    %, read from the status file. It then plays on PC22 over WASAPI and sends each MIDI event at t_audio0 + t - L.
+  - L = `tests.piano.lead_ms` (650 by default). Sources sets a runtime +L acoustic offset on test-piano for the run
+    (`Show.set_runtime_offset`, merged over latency.json's), so sound_view holds each note until its sound.
+    tests/test_future_offset.py covers notes up to 0.6 s ahead. Known shifts: Harmony describes a note up to L early;
+    `last_note_age_s` stays 0 until the note is heard.
+  - A `once` run that ends by itself is "finished".
+  - New show_sender flags are passed only once the script names them (`SENDER_FLAGS`), so an older sender keeps
+    today's argv.
 ### S3.11 room_service/adapters/show.py (B5; aa's contract, room venv)
 
 ```python
