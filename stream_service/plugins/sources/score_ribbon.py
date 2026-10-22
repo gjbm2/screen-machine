@@ -231,11 +231,15 @@ class ScoreRibbon(Source):
             for m in msgs:
                 self._rx = m.get("_rx")                  # (the harness stamps arrivals; production messages don't)
                 bars_m = list(m.get("bars") or ())
+                pre = self._joining and bars_m and m.get("view") is not None
+                if pre:                                  # a join: its bars were written under the state that comes
+                    room.builder.apply(m["view"])        # with them (key, metre, grid); the scene has no other yet
                 for j, bar in enumerate(bars_m):
                     self._batch = bars_m[j:]
                     self._on_bar(bar)
                 if m.get("view") is not None:
-                    room.builder.apply(m["view"])
+                    if not pre:
+                        room.builder.apply(m["view"])
                     self._on_view()
                 room.rev = int(m.get("rev", room.rev))
                 self._do_refit()
@@ -730,7 +734,7 @@ class ScoreRibbon(Source):
         if sp_ is None:
             x = (slot - pl.q0) * (ph.Q or self.Q)
         else:
-            x = sp_.base(slot) + sp_.push
+            x = sp_.base(slot) + sp_.off()
         return ph.A + x * self.sp
 
     def _paper(self, dt: float) -> None:
