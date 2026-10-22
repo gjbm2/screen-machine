@@ -41,6 +41,7 @@ no analysis -> the room's beat clock in 4/4; no clock yet -> free time at the la
 """
 from __future__ import annotations
 
+import collections
 import logging
 import math
 import os
@@ -75,6 +76,7 @@ log = logging.getLogger("stream_service.plugins.score_ribbon")
 
 LOOKS = ("paper", "night")
 ROOM_KEY = "room"
+JOIN_BUDGET_S = 0.006                # a join's bars go on stage while the frame's own CPU is under this
 X_PLAY = 0.83                      # the playhead, of the width
 LAG0, LAG_A = 0.35, 0.12           # the notes' arrival lag (s): its seed, and how fast the estimate follows
 P_SEED = 0.6                       # free time's beat before any phrase has had one (s)
@@ -86,6 +88,77 @@ FRESH_S, REL_TAU = 0.6, 0.6        # a note's halo fades over this; its colour c
 Q_MIN, Q_MAX = 1.35, 4.0           # a 16th's width (sp): no tighter than heads allow, no wider than shows enough music
 WARP_MIN = 0.6                     # a re-read may squeeze drawn notes to this many sp a 16th (pushes keep them apart)
 WARP_TAIL = 12.0                   # new notes go on at the slope of the last this many 16ths drawn
+
+
+def _superseded_dropped(bars: list) -> list:
+    """A batch without the bars a later rewrite marker in it drops anyway (a join hands over a phrase with every
+    reading the room wrote of it: only the last counts).  A phrase end between them keeps the earlier bars."""
+    last = -1
+    for j, b in enumerate(bars):
+        if b.marker and b.rewrite:
+            last = j
+    if last <= 0:
+        return bars
+    end = -1                                    # the last phrase end before that rewrite
+    for j in range(last):
+        if bars[j].marker and not bars[j].rewrite:
+            end = j
+    return bars[:end + 1] + bars[last:]
+
+
+def _merged(outs: list) -> list:
+    """[(phrase, out)] -> one out a phrase, in order."""
+    res: dict = {}
+    for ph, o in outs:
+        m = res.get(id(ph))
+        if m is None:
+            m = res[id(ph)] = (ph, RL.Out())
+        for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
+            getattr(m[1], name).update(getattr(o, name))
+        m[1].end_x = max(m[1].end_x, o.end_x)
+    return list(res.values())
+
+
+def _by_bar(out, units: int) -> list:
+    """A phrase's written marks split by bar, newest bar first; each bar's stems, beams and octave marks with its
+    heads, a tie with its first head's bar (synced after the bar it ends in), a bar line with the bar it opens."""
+    def bar_of(slot) -> int:
+        return int(math.floor((float(slot) + 1e-6) / units))
+    parts: dict = {}
+
+    def part(b):
+        o = parts.get(b)
+        if o is None:
+            o = parts[b] = RL.Out()
+        return o
+    hb, sb = {}, {}
+    for k, v in out.heads.items():
+        hb[k] = b = bar_of(v[10])
+        part(b).heads[k] = v
+    for k, v in out.stems.items():
+        b = hb.get(v[1], next((hb[h] for h in v[0] if h in hb), None))
+        if b is not None:
+            sb[k] = b
+            part(b).stems[k] = v
+    for k, v in out.beams.items():
+        b = next((sb[s_] for s_ in v[0] if s_ in sb), None)
+        if b is not None:
+            part(b).beams[k] = v
+    for k, v in out.ties.items():
+        b = hb.get(v[0], hb.get(v[1]))
+        if b is not None:
+            part(b).ties[k] = v
+    for k, v in out.otts.items():
+        if v[0] in hb:
+            part(hb[v[0]]).otts[k] = v
+    for k, v in out.rests.items():
+        part(bar_of(k[2])).rests[k] = v
+    last = max(parts) if parts else 0
+    for k, v in out.bars.items():
+        part(k[2] if isinstance(k[2], int) else last).bars[k] = v
+    if out.sigs:
+        part(min(parts) if parts else 0).sigs.update(out.sigs)
+    return [parts[b] for b in sorted(parts, reverse=True)]
 
 
 class _Note:
@@ -214,6 +287,8 @@ class ScoreRibbon(Source):
         self._snap = False                                       # a join: put the paper at 'now' once laid out
         self._joining = False
         self._join_outs: list = []
+        self._jchunks = collections.deque()                     # a join's bars still to go on stage
+        self._held_outs = None                                   # a batch's bars, synced once after it
 
     # -- the room ---------------------------------------------------------------------------------------------------
     def _drain(self, frame, t: float) -> None:
@@ -230,19 +305,28 @@ class ScoreRibbon(Source):
             self._joining = self.S is None and any(m.get("bars") for m in msgs)
             for m in msgs:
                 self._rx = m.get("_rx")                  # (the harness stamps arrivals; production messages don't)
-                bars_m = list(m.get("bars") or ())
+                bars_m = _superseded_dropped(list(m.get("bars") or ()))
                 pre = self._joining and bars_m and m.get("view") is not None
                 if pre:                                  # a join: its bars were written under the state that comes
                     room.builder.apply(m["view"])        # with them (key, metre, grid); the scene has no other yet
+                if self._joining and self.ph is None:
+                    bars_m = self._join_visible(bars_m)
+                nb_ = sum(1 for b_ in bars_m if not b_.marker)
+                self._held_outs = [] if nb_ >= 2 and not self._joining else None   # (a rewrite's phrase at once)
                 for j, bar in enumerate(bars_m):
                     self._batch = bars_m[j:]
+                    self._batch_head = j == 0 or bars_m[j - 1].marker
                     self._on_bar(bar)
                 if m.get("view") is not None:
                     if not pre:
                         room.builder.apply(m["view"])
                     self._on_view()
                 room.rev = int(m.get("rev", room.rev))
-                self._do_refit()
+                held, self._held_outs = self._held_outs, None
+                done = self._do_refit()                      # (a phrase laid out again whole: that sync covers it)
+                for ph_, o in _merged(held or ()):
+                    if ph_ is not done:
+                        self._note_info_sync(ph_, o, final=True)
             rev = room.rev
         else:                                                    # an in-process room (tests)
             bars, rev = room.tick(self, frame, t)
@@ -340,6 +424,9 @@ class ScoreRibbon(Source):
                     ph.prov_owned |= pl.written_keys            # what the new bars don't write again goes
                     pl.reset_written()
                     self._join_outs = [(p_, o) for p_, o in self._join_outs if p_ is not ph]   # (not yet shown)
+                    self._jchunks = collections.deque((p_, o) for p_, o in self._jchunks if p_ is not ph)
+                    if getattr(self, "_held_outs", None):
+                        self._held_outs = [(p_, o) for p_, o in self._held_outs if p_ is not ph]
                     self.regrid = True
                     self.dirty = True
                     self.stats["rewrites"] += 1
@@ -382,43 +469,78 @@ class ScoreRibbon(Source):
                 ph.fifths = self._fifths()
             ph.meter = bar.meter
         ov = {}
-        for bb in getattr(self, "_batch", None) or [bar]:        # this bar's notes at their written 16ths
-            if bb.marker:
-                break
+        for bb in ([] if self._joining else (getattr(self, "_batch", None) or [bar])):   # this bar's notes at their
+            if bb.marker:                                                                 # written 16ths (a join
+                break                                                                     # has none drawn yet)
             for st_ in bb.staves:
                 for e in st_:
                     for i_, tin in zip(e.ids, e.tie_in):
                         if not tin and i_ not in ov:
                             ov[i_] = bb.pos * bb.units + e.start
         d_bar = (bar.t_end - bar.t_start) / max(1, bar.units)
-        self._fit_warp(ph, ov, q0 if pl.wbars == 0 else pl.q0, bar.units, d_bar if d_bar > 0 else None)
+        if not self._joining and getattr(self, "_batch_head", True):   # (once a batch: the rest of it is in ov)
+            self._fit_warp(ph, ov, q0 if pl.wbars == 0 else pl.q0, bar.units, d_bar if d_bar > 0 else None)
         out = pl.write(bar, ph.fifths, q0 if pl.wbars == 0 else pl.q0)
         self.stats["bars"] += 1
         self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
                             "units": bar.units})
         if self._joining:                          # a join: laid out now, put on stage once the paper is placed
             self._join_outs.append((ph, out))
+        elif getattr(self, "_held_outs", None) is not None:   # a batch: one sync after it (or none if refitted)
+            self._held_outs.append((ph, out))
         else:
             self._note_info_sync(ph, out, final=True)
         ph.end_x = max(ph.end_x, pl.written.end_x)
         self.dirty = True
 
-    def _flush_join(self) -> None:
-        """A join's written bars on stage in one go, only what the paper shows (the rest would be culled at once):
-        a phrase a minute long joined mid-way costs one sync, not one a bar."""
-        outs, self._join_outs = self._join_outs, []
-        sp = self.sp
-        for ph in {id(p_): p_ for p_, _o in outs}.values():
-            merged = RL.Out()
-            for p_, o in outs:
-                if p_ is ph:
-                    for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
-                        getattr(merged, name).update(getattr(o, name))
-            x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
-            for name in ("heads", "rests", "bars", "sigs"):
-                d = getattr(merged, name)
-                setattr(merged, name, {k: v for k, v in d.items() if v[0] >= x_min})
-            self._note_info_sync(ph, merged, final=True)
+    def _flush_join(self, t0_cpu: float) -> None:
+        """A join's written bars on stage, only what the paper shows (the rest would be culled at once), a bar at a
+        time over the next frames, newest first (the playhead's stretch appears first): at least one bar a frame,
+        more while the frame's render-thread CPU stays under JOIN_BUDGET_S."""
+        if self._join_outs:
+            outs, self._join_outs = self._join_outs, []
+            sp = self.sp
+            for ph in reversed(list({id(p_): p_ for p_, _o in outs}.values())):
+                merged = RL.Out()
+                for p_, o in outs:
+                    if p_ is ph:
+                        for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
+                            getattr(merged, name).update(getattr(o, name))
+                x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+                for name in ("heads", "rests", "bars", "sigs"):
+                    d = getattr(merged, name)
+                    setattr(merged, name, {k: v for k, v in d.items() if v[0] >= x_min})
+                self._jchunks.extend((ph, o) for o in _by_bar(merged, ph.pl.units or 16))
+        n = 0
+        while self._jchunks and (n == 0 or time.thread_time() - t0_cpu < JOIN_BUDGET_S):
+            ph, o = self._jchunks.popleft()
+            self._note_info_sync(ph, o, final=True)
+            n += 1
+
+    def _join_visible(self, bars: list) -> list:
+        """A join's bars less those that would land left of the tape the scene shows (laid out only to be dropped):
+        counted back from 'now' at a 16th no wider than the narrowest the phrase will get (pushes only widen)."""
+        head = 0
+        while head < len(bars) and bars[head].marker:     # (a leading marker: the rewrite they follow)
+            head += 1
+        body = bars[head:]
+        if len(body) < 4 or any(b.marker for b in body):  # only a plain run of one phrase's bars
+            return bars
+        ds = [(b.t_end - b.t_start) / max(1, b.units) for b in body if b.t_end > b.t_start]
+        if not ds:
+            return bars
+        q = 0.8 * min(Q_MAX, max(Q_MIN, self.pace * min(ds)))
+        room_sp = (X_PLAY * self.w - self.XL + (self.R - 1) * self.WV) / self.sp + 24.0
+        used = max(0.0, self.t_sound - self.lag - body[-1].t_end) * self.pace * 0.8
+        j = len(body)
+        while j > 1 and used < room_sp:
+            j -= 1
+            used += body[j].units * q + RL.BAR_G
+        if j > 1:
+            j -= 1                                         # (and one more: its ties in, its first bar line)
+        if j > 0:
+            self._event("join_skip", {"bars": j, "kept": len(body) - j})
+        return bars[:head] + body[j:]
 
     def _q0_written(self, ph: _Phrase, bar) -> float:
         first = None
@@ -481,14 +603,14 @@ class ScoreRibbon(Source):
             return (t - t0) / d
         return "free", free, free, 4
 
-    def _do_refit(self) -> None:
+    def _do_refit(self):
         """After a phrase's first written bars (its metre, or a rewrite) and the state they came with: the width that
         moves all its notes least, written and not yet written together; the bars laid out again if it changed (the
         same frame: their notes simply aim elsewhere)."""
         ph, self._refit = getattr(self, "_refit", None), None
         b = self.builder
         if ph is None or ph.closed or ph is not self.ph or b is None or not ph.pl.bars_written:
-            return
+            return None
         pl = ph.pl
         pairs, seen = [], set()
         for bar in pl.bars_written:
@@ -506,6 +628,8 @@ class ScoreRibbon(Source):
             self._note_info_sync(ph, out, final=True)
             ph.end_x = max(ph.end_x, pl.written.end_x)
             self.dirty_now = True
+            return ph
+        return None
 
     def _sixteenth_s(self, ph: _Phrase):
         """Seconds a 16th under the room's newest reading (None before a clock)."""
@@ -861,6 +985,7 @@ class ScoreRibbon(Source):
         if self.t_base is None:
             self.t_base = self.stage.t_ref = self.t_sound
         tm = self.tm = {}
+        _c0 = time.thread_time()
         _t0 = time.perf_counter()
         self._wall = time.monotonic()
         if self.builder is not None:
@@ -878,7 +1003,8 @@ class ScoreRibbon(Source):
             tm["drain"] = _t1 - _t0
             # a birth is laid out at once; anything else at most every 50 ms (a burst of releases and replies
             # is one pass)
-            if self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05):
+            # (a join's bars took this frame: its layout, the paper and the stage from the next)
+            if (self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05)) and not self._joining:
                 self.dirty = self.dirty_now = False
                 self.last_pass = self.clock
                 try:
@@ -889,7 +1015,7 @@ class ScoreRibbon(Source):
                         if self.ph is not None:
                             self.ph.logged = True
             tm["pass"] = time.perf_counter() - _t1
-        if self._snap and self.ph is not None:
+        if self._snap and self.ph is not None and not self._joining:
             U = self._playhead_target()
             if U is not None:                                    # (a join: the scene's first content), moving at
                 U2 = self._playhead_target(0.25)                 # the music's pace from the first frame
@@ -898,8 +1024,8 @@ class ScoreRibbon(Source):
                 self.U, self.V, self.v_ff = U, v, v
                 self._snap = False
                 self._event("snap", {"S": self.S})
-        if self._join_outs:
-            self._flush_join()
+        if (self._join_outs or self._jchunks) and not self._joining:
+            self._flush_join(_c0)
         self._joining = False
         _t1 = time.perf_counter()
         self._paper(dt)
