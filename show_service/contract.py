@@ -1497,7 +1497,8 @@ class WhyData(TypedDict):
                                    #  ("Piano -> Gallery: the piano has stopped") or None}
     listening: dict                # {"on": the AI listening switch, "effective": clips going now, "why": why not, or None}
     mic: dict                      # {"on": bool, "why": the mic's reason in words}
-    look: dict                     # {"why": the last look change's reason in words, or None, "age_s": int or None}
+    look: dict                     # {"why": the last look change's reason in words, or None, "age_s": int or None,
+                                   #  "together": the card's "Playing together: ..." line, or None (docs/ENSEMBLE.md)}
 RHYTHM_HZ = 10.0
 CONTEXT_HZ = 1.0                   # music.context
 
