@@ -1,5 +1,5 @@
 // The Now playing card at the top of /music: what's on (title, composer · performer), what it's doing in words
-// (First play of this piece with this sound: making it… 40% with a bar, Playing 1:23 / 4:32, Stopped, Stepped aside: something else started the
+// (Getting ready… with a bar, Playing 1:23 / 4:32, Stopped, Stepped aside: something else started the
 // piano, or the problem), what's next, Back · Play/Stop · Next, Repeat (Off / All / One), Shuffle, and the sound and
 // where it plays (the player's own, server side; also remembered as the Room page's piano choice so both agree).
 
@@ -123,9 +123,6 @@ export function NowPlaying() {
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden>
               <div className="h-full rounded-full bg-teal-600 transition-[width] duration-500" style={{ width: `${pct ?? 4}%` }} />
             </div>
-          )}
-          {v.state === "preparing" && pct !== null && (
-            <p className="mt-1 text-sm text-muted-foreground">Once made it's kept, so next time it starts at once.</p>
           )}
           {v.state === "playing" && typeof v.elapsed_s === "number" && (v.duration_s ?? cur?.duration_s) ? (
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-stone-100" aria-hidden>
