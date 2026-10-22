@@ -89,11 +89,13 @@ ERASE_S, ERASE_FEATHER_SP, SHOW_S, HDR_FADE_S = 0.6, 3.0, 0.4, 0.3
 AGE_ALPHA = (1.0, 1.0, 0.86, 0.7, 0.62)
 HDR_WAIT_S, PART_TIMEOUT_S, PARK_MAX = 1.5, 5.0, 8
 RESULTS_PER_FRAME = 3
+PLACE_PER_FRAME = 1                                       # (bars landed a frame: a burst lands over frames)
 PUMP_S = 0.004
 LIFT_S = 0.3
 JOIN_SCROLL_S = 16.0                                      # joining mid-phrase: the music kept, behind the playhead
 JOIN_PAGE_S = 18.0                                        # ... on the page (at most: lines - 1 of them)
 JOIN_ROWS_S = 1.5                                         # bars the room hands over this soon after: drawn at once
+JOIN_PER_FRAME = 40                                       # (that many of their notes a frame, newest first)
 # notes
 NCAP = 512
 POP, POP_S, BIRTH_S = 0.22, 0.14, 0.03
@@ -106,6 +108,8 @@ HALF_BEATS, WHOLE_BEATS = 2.0, 4.0
 STEM_SP = 3.5
 FRESH_S, REL_S = 0.7, 0.6
 EPOCH_MIN_S = 0.1
+RELAYOUT_PER_FRAME = 32                                   # (notes laid out a frame, newest first; the rest next frame)
+BIRTH_PER_FRAME = 24                                      # (a join's unwritten notes: born over a few frames)
 MOVE_MIN_SP = 0.3                                         # a shown note doesn't glide for less (the settle takes it)
 HALO_SP = 0.4
 # gates (bar lines and beat ticks)
@@ -388,15 +392,16 @@ class _Notes:
         self.cand = [None] * cap
         self.k = np.full(cap, -1, np.int64)
         self.by_id: dict = {}
+        self.free_rows = list(range(cap - 1, -1, -1))         # (a stack: alloc / free without a scan)
+        self.grp = [None] * cap                              # (line, bar) it was last laid out in (_relayout)
         self.moves = np.zeros(cap, np.int64)
         self.fixed = np.zeros(cap, bool)                     # its bar is committed: its 16th and staff are known
         self.bar_end = z(np.inf)                             # (engraved) its bar's right edge on its line
 
     def alloc(self, nid: int):
-        free = np.flatnonzero(~self.used)
-        if not len(free):
+        if not self.free_rows:
             return None
-        i = int(free[0])
+        i = self.free_rows.pop()
         self.used[i] = True
         self.state[i] = 0
         self.nid[i] = nid
@@ -413,6 +418,7 @@ class _Notes:
         self.a_t0[i] = -1e9
         self.readable[i] = False
         self.key[i] = self.cand[i] = None
+        self.grp[i] = None
         self.k[i] = -1
         self.moves[i] = 0
         self.fixed[i] = False
@@ -424,6 +430,7 @@ class _Notes:
         if not self.used[i]:
             return
         self.used[i] = False
+        self.free_rows.append(i)
         if self.by_id.get(int(self.nid[i])) == i:
             del self.by_id[int(self.nid[i])]
         ph = self.ph[i]
@@ -434,18 +441,18 @@ class _Notes:
     # -- motion: quintic (minimum-jerk) hops, re-planned from the drawn state ------------------------------------
     def state_at(self, i: int, t: float):
         """(x, vx, ax, y, vy, ay) as drawn at t (the arc included)."""
-        T = self.h_T[i]
-        tau = min(max(t - self.h_t0[i], 0.0), T)
+        T = float(self.h_T[i])
+        tau = min(max(t - float(self.h_t0[i]), 0.0), T)
         if tau >= T:
-            return self.tx[i], 0.0, 0.0, self.ty[i], 0.0, 0.0
+            return float(self.tx[i]), 0.0, 0.0, float(self.ty[i]), 0.0, 0.0
         out = []
         for a in (0, 1):
-            c = self.C[a, :, i]
+            c = self.C[a, :, i].tolist()
             x = c[0] + tau * (c[1] + tau * (c[2] + tau * (c[3] + tau * (c[4] + tau * c[5]))))
             v = c[1] + tau * (2 * c[2] + tau * (3 * c[3] + tau * (4 * c[4] + tau * 5 * c[5])))
             acc = 2 * c[2] + tau * (6 * c[3] + tau * (12 * c[4] + tau * 20 * c[5]))
             out += [x, v, acc]
-        arc = self.arc[i]
+        arc = float(self.arc[i])
         if arc:
             w = math.pi / T
             u = tau / T
@@ -469,8 +476,8 @@ class _Notes:
         self.line[i] = ln
         oc = int(self.lid[i])
         if oc != ci:
-            x += offx[oc] - offx[ci]
-            y += offy[oc] - offy[ci]
+            x += float(offx[oc] - offx[ci])
+            y += float(offy[oc] - offy[ci])
             self.lid[i] = ci
         t0 = now
         if start is not None and start > now and abs(vx) + abs(vy) < 1.0:
@@ -692,7 +699,14 @@ class ScoreV2(Source):
         self.epoch_sig = None
         self.epoch_t = -1e9
         self.epoch_force = False
-        self.relayout_due = False
+        self.epoch_carry = False                     # (rows carried to the next frame)
+        self._placed_n = 0
+        self.relayout_due = False                    # every unwritten note re-laid (a layout change) ...
+        self.dirty_rows: set = set()                 # ... or just these notes (and their bar and chord mates)
+        self.dirty_lines: set = set()                # ... or the notes on these lines
+        self.join_queue: list = []                   # (joining) written notes still to draw, a few a frame
+        self._tcache: dict = {}                      # one layout pass's bar geometry
+        self._spell_pass = None
         self.play_g = 0
         self.spills = 0
         self.bars_empty = 0
@@ -700,7 +714,6 @@ class ScoreV2(Source):
         self.joined = False                          # the room's first music taken (a scene may join mid-phrase)
         self.join_t = None
         self.join_rows = False
-        self.join_fresh: set = set()
         # gates
         G = NGATE
         self.g_used = np.zeros(G, bool)
@@ -850,8 +863,7 @@ class ScoreV2(Source):
         self._births()
         self._metre_check()
         if rev != self.seen_rev:
-            self.seen_rev = rev
-            self.epoch_force = True
+            self.seen_rev = rev                             # (a new estimate: _epoch's signature changes)
         for bar in bars:
             if bar.rewrite:
                 self._rewrite()
@@ -867,9 +879,8 @@ class ScoreV2(Source):
             self.join_rows = self.join_t is not None and self.t_sound - self.join_t < JOIN_ROWS_S
             self._commit(ph, bar)
             self.join_rows = False
-        if self.join_fresh:
-            fresh, self.join_fresh = self.join_fresh, set()
-            self._relayout(self.ph, fresh=fresh)
+        if self.join_queue:
+            self._join_step()
         self._sync_held()
         self._epoch(b)
         return f
@@ -952,9 +963,13 @@ class ScoreV2(Source):
         N = self.N
         now = self.t_sound
         new = []
+        last = notes[-1].id
         for n in notes[i0:]:
             if n.id in N.by_id or (ph.cut_t is not None and n.t_on < ph.cut_t - 0.05):
                 continue
+            if len(new) >= BIRTH_PER_FRAME:
+                last = n.id - 1                             # (the rest next frame)
+                break
             if ph.t0 is None:
                 ph.t0 = n.t_on
                 self._phrase_started(ph)
@@ -978,9 +993,9 @@ class ScoreV2(Source):
             new.append(i)
             if self.dbg is not None:
                 self.dbg.append(("birth", int(n.id), now, float(n.t_on), time.perf_counter()))
-        self.last_nid = notes[-1].id
+        self.last_nid = last
         if new:
-            self._relayout(ph, fresh=set(new))
+            self._relayout(ph, fresh=set(new), only=set(new))
 
     def _evict(self):
         """No free row: the oldest inked row goes (its ink stays), else the oldest puffing, handing over, ... one."""
@@ -1038,19 +1053,25 @@ class ScoreV2(Source):
         shown note moving only when two estimates in a row agree on its new place."""
         now = self.t_sound
         g = b.grid
-        sig = (self.seen_rev, b.clock.P, b.clock.t0, b.clock.b0, (len(g.t), g.t[-1], g.idx0) if g is not None else None,
-               b.beats, b.unit)
-        if sig == self.epoch_sig and not self.epoch_force and not self.relayout_due:
+        sig = (self.seen_rev, (b.clock.P, b.clock.t0, b.clock.b0) if g is None else None,
+               (len(g.t), g.t[-1], g.idx0) if g is not None else None, b.beats, b.unit)
+        if (sig == self.epoch_sig and not self.epoch_force and not self.relayout_due and not self.dirty_rows
+                and not self.dirty_lines):
             return
-        if now - self.epoch_t < EPOCH_MIN_S and not self.epoch_force:
+        if now - self.epoch_t < EPOCH_MIN_S and not self.epoch_force and not self.epoch_carry:
             return
+        self.epoch_carry = False
         new_est = sig != self.epoch_sig or self.epoch_force
+        full = self.relayout_due or self.epoch_force
         self.epoch_sig = sig
         self.epoch_t = now
         self.epoch_force = False
         self.relayout_due = False
         ph = self.ph
         N = self.N
+        changed = self.dirty_rows
+        self.dirty_rows = set()
+        lines, self.dirty_lines = self.dirty_lines, set()
         if new_est and ph.lift_t is None:
             for i in list(ph.rows):
                 if not N.used[i] or N.state[i] != 0 or N.fixed[i]:
@@ -1060,12 +1081,30 @@ class ScoreV2(Source):
                 if new == cur:
                     N.cand[i] = None
                 elif cur is None or new[0] != cur[0] or new == N.cand[i]:
+                    if cur is not None and new[0] != cur[0]:
+                        full = True                          # (a better kind of grid: everything re-placed)
                     N.key[i], N.cand[i] = new, None          # a better kind of grid took over, or agreed twice
                     N.tq[i] = self._tq(ph, new, i)
+                    changed.add(i)
                 else:
                     N.cand[i] = new
-        for q in [ph] + self.old:
-            self._relayout(q)
+        if full:                                            # (every unwritten note: spread newest first below)
+            for q in [ph] + self.old:
+                changed.update(q.rows)
+        elif lines:
+            for q in [ph] + self.old:
+                changed.update(i for i in q.rows if N.used[i] and N.line[i] in lines)
+        todo = [i for i in changed if N.used[i] and N.state[i] == 0 and N.ph[i] is not None]
+        if len(todo) > RELAYOUT_PER_FRAME:                  # a frame's share, the newest (by the playhead) first
+            todo.sort(key=N.t_on.__getitem__, reverse=True)
+            self.dirty_rows.update(todo[RELAYOUT_PER_FRAME:])
+            self.epoch_carry = True
+            todo = todo[:RELAYOUT_PER_FRAME]
+        by_ph: dict = {}
+        for i in todo:
+            by_ph.setdefault(id(N.ph[i]), (N.ph[i], set()))[1].add(i)
+        for q, rows in by_ph.values():
+            self._relayout(q, only=rows)
 
     def _pitch_info(self, pitch: int, fifths: int, staff: int):
         """(staff step offset from the staff's top line in sp*0.5 units, letter, alteration, octave)."""
@@ -1095,17 +1134,21 @@ class ScoreV2(Source):
         return c[1]
 
     def _bar_x(self, ph: _Phrase, k: int, frac: float):
-        self._ensure_plan(ph, k)
-        if not ph.plan.lines:
-            return None
-        j = ph.plan.line_of(k)
-        PL = ph.plan.line(j)
-        ln = self._line_of(ph, j)
-        pl = ln.bars.get(k)
-        if pl is not None:
-            x0, w = pl[0], pl[1]
-        else:
-            x0, w = ph.plan.slot_x0(j, k), PL.bw
+        g = self._tcache.get((ph.id, k))
+        if g is None:
+            self._ensure_plan(ph, k)
+            if not ph.plan.lines:
+                return None
+            j = ph.plan.line_of(k)
+            PL = ph.plan.line(j)
+            ln = self._line_of(ph, j)
+            pl = ln.bars.get(k)
+            if pl is not None:
+                x0, w = pl[0], pl[1]
+            else:
+                x0, w = ph.plan.slot_x0(j, k), PL.bw
+            g = self._tcache[(ph.id, k)] = (ln, x0, w)
+        ln, x0, w = g
         return ln, x0 + self.A + frac * max(self.sp, w - self.A - self.C), x0, w
 
     def _target(self, ph: _Phrase, key, i: int):
@@ -1132,7 +1175,9 @@ class ScoreV2(Source):
             x = ln.music_x0 + self.A + max(0.0, t - t_s) * ph.v
             barid = q // 16 if typ == "prov" else q // 2000
             geo = None
-        off, letter, alt, octave = self._pitch_info(int(self.N.pitch[i]), self._spelling(), st)
+        off, letter, alt, octave = self._pitch_info(int(self.N.pitch[i]),
+                                                    self._spell_pass if self._spell_pass is not None
+                                                    else self._spelling(), st)
         top = ln.t1 if st == 0 else ln.t2
         return ln, x, top + off * self.sp, top, (letter, alt, octave), barid, geo
 
@@ -1151,7 +1196,9 @@ class ScoreV2(Source):
         else:
             x = ph.Um0 + self.A + max(0.0, float(self.N.tq[i]) - ph.t0) * ph.v
             barid, geo = (q // 16 if typ == "prov" else q // 2000), None
-        off, letter, alt, octave = self._pitch_info(int(self.N.pitch[i]), self._spelling(), st)
+        off, letter, alt, octave = self._pitch_info(int(self.N.pitch[i]),
+                                                    self._spell_pass if self._spell_pass is not None
+                                                    else self._spelling(), st)
         top = ln.t1 if st == 0 else ln.t2
         return ln, x, top + off * self.sp, top, (letter, alt, octave), barid, geo
 
@@ -1177,37 +1224,59 @@ class ScoreV2(Source):
             t_s += T
             m += 1
 
-    def _relayout(self, ph: _Phrase, fresh=()) -> None:
-        """Every unwritten note of the phrase to its place (accidentals by the bar's rule, chords sharing a stem)."""
+    def _relayout(self, ph: _Phrase, fresh=(), only=None) -> None:
+        """The phrase's unwritten notes to their places (accidentals by the bar's rule, chords sharing a stem):
+        all of them, or ``only`` these and their bar mates (the groups their places depend on)."""
         N = self.N
         sp = self.sp
         now = self.t_sound
-        rows = [i for i in ph.rows if N.used[i] and N.state[i] == 0 and N.key[i] is not None]
-        if not rows:
+        if not ph.rows:
             return
+        ra = np.fromiter(ph.rows, np.intp, len(ph.rows))
+        ra = ra[N.used[ra] & (N.state[ra] == 0)]
+        key = N.key
+        rows_all = [i for i in ra.tolist() if key[i] is not None]
+        if not rows_all:
+            return
+        self._tcache = {}
+        self._spell_pass = self._spelling()
         info = {}
+        keys: set = set()
+        if only is None:
+            rows = rows_all
+        else:
+            keys = {N.grp[i] for i in only if N.grp[i] is not None}
+            rows = [i for i in rows_all if i in only or N.grp[i] in keys]
+        for i in rows:
+            r = self._target(ph, key[i], i)
+            if r is not None:
+                info[i] = r
+        if only is not None:                                # rows that moved to another bar: its mates too
+            new = {(r[0].uid, r[5]) for r in info.values()} - keys
+            if new:
+                for i in rows_all:
+                    if i not in info and N.grp[i] in new:
+                        r = self._target(ph, N.key[i], i)
+                        if r is not None:
+                            info[i] = r
+        self._spell_pass = None
+        if not info:
+            return
         chords: dict = {}
         accs: dict = {}
-        for i in rows:
-            r = self._target(ph, N.key[i], i)
-            if r is None:
-                continue
-            info[i] = r
+        for i, r in info.items():
             ln = r[0]
+            N.grp[i] = (ln.uid, r[5])
             chords.setdefault((ln.uid, N.key[i][2], N.key[i][1]), []).append(i)
             accs.setdefault((ln.uid, N.key[i][2], r[5]), []).append(i)
-        by_staff: dict = {}
-        for i in info:
-            by_staff.setdefault(N.key[i][2], []).append(i)
-        for grp in by_staff.values():                       # a note is written to its staff's next onset
-            grp.sort(key=lambda i: N.t_on[i])
-            ons = [N.t_on[i] for i in grp]
-            j = 0
-            for a, i in enumerate(grp):
-                j = max(j, a)
-                while j < len(grp) and ons[j] <= ons[a] + 0.045:
-                    j += 1
-                N.t_next[i] = ons[j] if j < len(grp) else np.inf
+        ra = np.array(rows_all, np.intp)                    # a note is written to its staff's next onset
+        stf = np.array([key[i][2] for i in rows_all], np.int64)
+        for v in set(stf.tolist()):                      # (not np.unique: its first call imports numpy.ma, 50 ms)
+            g = ra[stf == v]
+            g = g[np.argsort(N.t_on[g], kind="stable")]
+            ons = N.t_on[g]
+            j = np.searchsorted(ons, ons + 0.045, side="right")
+            N.t_next[g] = np.where(j < len(g), ons[np.minimum(j, len(g) - 1)], np.inf)
         from stream_service.score.mei import signature
         acc = {}
         for grp in accs.values():
@@ -1487,10 +1556,9 @@ class ScoreV2(Source):
                 for nid, tin, tout, pitch in zip(ev.ids, ev.tie_in, ev.tie_out, ev.pitches):
                     i = N.by_id.get(int(nid))
                     if i is None and self.join_rows and not tin:
-                        i = self._written_row(ph, int(nid), int(pitch), st, k * bu + ev.start,
-                                              bar.t_start + ev.start * span, bar.t_start + (ev.start + ev.dur) * span)
-                        if i is not None:
-                            fresh.add(i)
+                        self.join_queue.append((bar.t_start + ev.start * span, ph, int(nid), int(pitch), st,
+                                                k * bu + ev.start, bar.t_start + (ev.start + ev.dur) * span))
+                        continue
                     if i is not None and not tout and np.isinf(N.t_off[i]):
                         N.t_off[i] = bar.t_start + (ev.start + ev.dur) * span        # written to end here
                     if tin:
@@ -1502,11 +1570,24 @@ class ScoreV2(Source):
                     N.cand[i] = None
                     if N.key[i] != key:
                         N.key[i] = key
-                        moved = True
-        if fresh:
-            self.join_fresh |= fresh                        # laid out once, after the tick's bars (_listen)
-        if moved:
-            self.relayout_due = True
+                        self.dirty_rows.add(i)
+        del fresh, moved
+
+    def _join_step(self) -> None:
+        """Written notes handed over at a join, drawn newest first, JOIN_PER_FRAME a frame (a join's hundreds of
+        notes would otherwise cost one frame tens of ms)."""
+        q = self.join_queue
+        q.sort(key=lambda e: e[0])
+        take, self.join_queue = q[-JOIN_PER_FRAME:], q[:-JOIN_PER_FRAME]
+        fresh: dict = {}
+        for t_on, ph, nid, pitch, st, qq, t_off in take:
+            if nid in self.N.by_id or ph is not self.ph:
+                continue
+            i = self._written_row(ph, nid, pitch, st, qq, t_on, t_off)
+            if i is not None:
+                fresh.setdefault(id(ph), (ph, set()))[1].add(i)
+        for ph, rows in fresh.values():
+            self._relayout(ph, fresh=rows, only=rows)
 
     def _written_row(self, ph: _Phrase, nid: int, pitch: int, staff: int, q: int, t_on: float, t_off: float):
         """A note written before this scene joined: a settled glyph at its place (no pop, no glow) until its ink."""
@@ -1654,6 +1735,10 @@ class ScoreV2(Source):
                     if kk == k:
                         del ph.sub[key]
             if it is not SKIP:
+                if self._placed_n >= PLACE_PER_FRAME:
+                    ph.items[k] = it                        # (next frame)
+                    break
+                self._placed_n += 1
                 self._place_bar(ph, k, it)
                 placed = True
             ph.next_place += 1
@@ -1777,6 +1862,8 @@ class ScoreV2(Source):
                 PL.hdr_w = ln.music_x0
                 PL.bw = (self.cw - PAD_R_SP * self.sp - ln.music_x0) / max(1, PL.n)
                 self._bar_gates(ph, ln)
+            self.dirty_lines.add(ln)
+            return
         self.relayout_due = True
 
     def _staff_fill(self, ln: _Line, x0: float, x1: float, barline: bool) -> None:
@@ -1846,7 +1933,7 @@ class ScoreV2(Source):
         self._bar_gates(ph, ln)
         self._fit_check(ph, k, PL, dst + width)
         if PL.E != 0.0:
-            self.relayout_due = True
+            self.dirty_lines.add(ln)                        # (the line's later slots moved)
 
     def _fit_check(self, ph: _Phrase, k: int, PL, x_end: float) -> None:
         """The bars landing are wider than their slots (dense music): if the line's later bars, not yet sent to the
@@ -2303,7 +2390,7 @@ class ScoreV2(Source):
                     N.gb[idx] = want[chg]
                     N.g_t0[idx] = now
                     if (want[chg] == GL.WHOLE).any():
-                        self.relayout_due = True
+                        self.dirty_rows.update(int(j) for j in idx[want[chg] == GL.WHOLE])
             # hand over: an engraved note that has landed, its line's front past it
             eng = live[st == 1]
             if len(eng):
@@ -2891,6 +2978,7 @@ class ScoreV2(Source):
         c = Ph[0:12].astype(np.float64)
         self._pal = (c[0:3], c[3:6], c[6:9], c[9:12])
         self.pump_until = time.perf_counter() + PUMP_S
+        self._placed_n = 0
         self._listen()
         self._take_renders()
         for ph in [self.ph] + self.old:
