@@ -27,6 +27,11 @@ The room ensemble's register (docs/ENSEMBLE.md §8.6; register_split: low notes 
                      that draws notes draws those inside the window at full and the others at ``outside`` (0..1;
                      never hidden): ``stream_service.ensemble.note_weights(sound.register, pitches)`` gives the
                      per-pitch weights (None: all at full).  Set by the engine each frame from the session's levers.
+  sound.segment      None, or this screen's place in one picture across the room's screens (owner, 22 Oct: a score
+                     scene's one tape, notes entering on the right-hand screen and flowing into the left): (k, n), k
+                     its index among the ensemble's screens ordered by their players' x (0 the leftmost), n how many
+                     screens.  None: no ensemble, or this screen is its only one (draw the whole picture).  Set by
+                     the engine each frame (``stream_service.ensemble.segment``, from room.direction.ensemble).
 
 Ages are evaluated at photon time (the frame's time plus the session's measured lead), so what a scene draws for
 a note matches what the ear hears at the TV.  Read-only for plug-ins; both scenes of a transition see the same
@@ -62,6 +67,7 @@ class Sound(ScopeFields):
         self._failed = False
         self.feed = feed                      # scope_feed.ScopeFeed (process-wide) or None
         self.register: Optional[tuple] = None  # the ensemble's register window (lo, hi, outside), or None (all full)
+        self.segment: Optional[tuple] = None   # (k, n): this screen's place across the ensemble's screens, or None
         self.scope = ScopeState()
         self._scope_t: Optional[float] = None
         self._scope_errors = 0

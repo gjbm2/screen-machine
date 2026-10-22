@@ -22,6 +22,11 @@ The numbers come final in ``part.scale`` (show.yaml ensemble.roles); nothing her
 over ``ensemble.glide_ms`` from ``next.at_ms`` (smoothstep, as show's Ensemble.scale); the register switches at
 next.at_ms.  ``LeverGlide`` keeps the glide across show folding ``next`` in (the target doesn't move then).
 
+The segment (one picture across the screens; owner, 22 Oct): ``segment`` gives this screen's ``(k, n)``, its place
+among the ensemble's screens by their players' x (0 the leftmost).  Not a lever: it never glides and needs no part.
+The session puts it in the runtime's ``extra["segment"]`` each tick (synced to a render worker as it is); the runtime
+reads it each frame (``clean_segment``, SessionRuntime.segment) and the engine sets Sound.segment from it.
+
 Staggered scene changes (§8.4): ``stagger_s`` is this screen's part's stagger in seconds (stagger_beats x the sure
 clock's beat, else its stagger_s); rooms.stagger_s wraps it for Session._submit.
 
@@ -305,6 +310,41 @@ def direction(eff: dict, lv: Optional[Mapping]) -> dict:
     if lv["fx_density"] != 1.0 and isinstance(fx, Mapping) and isinstance(fx.get("density"), (int, float)):
         out["fx"] = {**fx, "density": round(min(1.0, max(0.0, fx["density"] * lv["fx_density"])), 3)}
     return out
+
+
+# -- the segment (one picture across the screens) -------------------------------------------------------------------
+def segment(ens: Optional[Mapping], screen: str) -> Optional[tuple[int, int]]:
+    """This screen's place in one picture spanning the ensemble's screens (owner, 22 Oct: a score scene's one tape,
+    notes entering on the right-hand screen and flowing into the left): ``(k, n)``, k its index among the ensemble's
+    screens ordered by their players' ``x`` (0 the leftmost; a tie by player id, show's own order), n how many
+    screens.  A screen whose player has no ``x`` is left out (never placed at a made-up x).  None: no ensemble, this
+    screen isn't one of its screens, or it is the only one."""
+    if not isinstance(ens, Mapping):
+        return None
+    scr, players = ens.get("screens"), ens.get("players")
+    if not isinstance(scr, Mapping) or not isinstance(players, Mapping):
+        return None
+    placed = []
+    for name, pid in scr.items():
+        p = players.get(pid) if isinstance(pid, str) else None
+        x = _num(p.get("x"), math.nan) if isinstance(p, Mapping) else math.nan
+        if isinstance(name, str) and math.isfinite(x):
+            placed.append((x, pid, name))
+    names = [name for _, _, name in sorted(placed)]
+    if len(names) < 2 or screen not in names:
+        return None
+    return names.index(screen), len(names)
+
+
+def clean_segment(v: Any) -> Optional[tuple[int, int]]:
+    """A segment as received (the runtime's ``extra["segment"]``, synced to a render worker as it is): ``(k, n)`` with
+    n >= 2 and 0 <= k < n, else None, so a bad message can never break a frame."""
+    if not isinstance(v, (list, tuple)) or len(v) != 2:
+        return None
+    k, n = v
+    if isinstance(k, bool) or isinstance(n, bool) or not isinstance(k, int) or not isinstance(n, int):
+        return None
+    return (k, n) if n >= 2 and 0 <= k < n else None
 
 
 # -- the register (note drawers) ------------------------------------------------------------------------------------

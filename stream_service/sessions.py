@@ -1775,7 +1775,8 @@ class Session(EngineListener):
     def _ens_tick(self, now: float) -> dict:
         """Loop thread, each tick: this screen's part of the room ensemble (docs/ENSEMBLE.md §8.3, §8.5, §8.6) for
         the runtime's ``extra`` (the frames glide it at photon time: depth, pulse, motion, energy, palette, register),
-        and, glided here too, its FX director's fx_density and energy_bias.  {} without a part: unison."""
+        and, glided here too, its FX director's fx_density and energy_bias; and its segment (ensemble.segment: its
+        (k, n) place across the room's screens, with or without a part).  {} without either: unison."""
         ens = self._ens_now(now)
         g = self.mgr.music_grid(now) if ens is not None else None
         w = ensemble.wire(ens, self.screen, g[1] if g is not None else None)
@@ -1789,7 +1790,11 @@ class Session(EngineListener):
             self._ens_fx_key = key
             self.fx_director.configure((self.director.auto or {}).get("fx"),
                                        ensemble.direction(self.direction_effective, lv))
-        return {} if w is None else {"ensemble": w}
+        out = {} if w is None else {"ensemble": w}
+        seg = ensemble.segment(ens, self.screen)
+        if seg is not None:
+            out["segment"] = seg
+        return out
 
     def _fx_tick(self, now: float) -> None:
         fd = self.fx_director
