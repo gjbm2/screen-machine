@@ -3,6 +3,8 @@
 
 import type {
   Catalog,
+  RendererDiag,
+  RendererState,
   CueBody,
   Desired,
   FxBus,
@@ -293,6 +295,16 @@ export class RoomApi {
       },
       { body, signal, timeoutMs },
     );
+  }
+
+  /** The PC's load and the live screens' frame rates, for the header's "PC busy" (GET /renderer/api/diag and
+   *  /renderer/api/state through room_service's pass-through). */
+  async pcLoad(signal?: AbortSignal): Promise<{ diag: RendererDiag; state: RendererState }> {
+    const [diag, state] = await Promise.all([
+      this.json<RendererDiag>("GET", "/renderer/api/diag", undefined, signal, 8_000),
+      this.json<RendererState>("GET", "/renderer/api/state", undefined, signal, 8_000),
+    ]);
+    return { diag, state };
   }
 
   healthz(signal?: AbortSignal) {
