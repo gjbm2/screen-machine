@@ -287,6 +287,7 @@ class ScoreRibbon(Source):
         self.painter.graphs = {}                                # (captured with the old stage's buffers)
         self.stage = RS.Stage(sp, float(params.get("flourish", 0.7)))
         self.stage.gpu_setup(cp, raw_module, HELPERS, R, self.painter.NC, launch_2d)
+        self.painter._graph(None, self.stage)                   # (captured now, not in a render)
         # the room's one transcription
         self.room = None
         try:
@@ -457,6 +458,7 @@ class ScoreRibbon(Source):
         self.serial += 1
         ph = _Phrase(self.serial, A, self.Q)
         ph.T_ref = tr
+        ph.pl.local_wkey = self._roomy
         if prev is not None:
             ph.slot_s = prev.slot_s
         self.phrases.append(ph)
@@ -968,6 +970,7 @@ class ScoreRibbon(Source):
             xon[nid], last_t, last_x = x, t, x
         if last_x is not None:
             ph.x_last = (last_t, last_x)                       # (the playhead keeps up with a spread run)
+        ph.xon = xon
         pts: dict = {}
         for t, nid, slot in items:
             x = xon[nid]
@@ -1063,6 +1066,13 @@ class ScoreRibbon(Source):
             self._set_q(ph, qkey, [(n.id, float(qf(n.t_on))) for n in notes], q0,
                         qkey[1] if metred and mode != "free" else None, d)
         bars, chords = [], None
+        if notes and self._roomy and len(notes) > 8:
+            # span: room: only the unwritten notes this screen shows (and a margin): the rest are another screen's,
+            # or already gone (a note's staff reads the builder's notes, not this list: the same answer)
+            xon, sp_ = getattr(ph, "xon", {}), self.sp
+            lo = (self._vis_left() - ph.A) / sp_ - 24.0
+            hi = (self._S_draw() + self.WV - ph.A) / sp_ + 24.0
+            notes = [n for n in notes if lo <= xon.get(n.id, self.pace * (n.t_on - (ph.T_ref or n.t_on))) <= hi]
         if notes:
             staffs = b.staves(notes)
             if metred and mode != "free":
