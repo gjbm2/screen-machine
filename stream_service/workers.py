@@ -670,6 +670,7 @@ class EngineProxy:
         self._lock = threading.Lock()
         self.t_created = time.monotonic()
         self.t_ready: Optional[float] = None
+        self.room_degrade: Optional[list] = None     # [steps, why]: the room's degrade floor (set_room_degrade)
         self.conn = pool.acquire(gpu, self)
         self.worker: dict = {"mode": "proc", "n": None if self.conn is None else self.conn.n}
 
@@ -868,6 +869,9 @@ class EngineProxy:
                 log.error("[%s] %s transition with an object the worker does not have: skipped", self.name, cmd.kind)
                 return
             msg = ("st", cmd.kind, cmd.tid, src, trans, cmd.at_mono)
+            clock = getattr(cmd, "clock", None)
+            if clock is not None:                    # a room's scene clock (docs/ENSEMBLE.md §8.9): only when set,
+                msg = msg + (clock,)                 # so a cue without one reads as before
         elif isinstance(cmd, UpdateParams):
             hid = self._hid(cmd.source)
             if hid is None:
@@ -922,6 +926,12 @@ class EngineProxy:
         return {"slot_id": s.slot_id, "hid": hid, "name": s.name, "preset": s.preset, "stage": s.stage,
                 "mix": s.mix, "level": s.level, "target": s.target, "fade_s": s.fade_s, "seq": s.seq,
                 "where": s.where, "label": s.label, "mod": _mod_spec(s.modulation)}
+
+    def set_room_degrade(self, steps: Any, why: Optional[str] = None) -> None:
+        """The room's degrade floor (Engine.set_room_degrade): to the worker with the next tick's sync."""
+        if self._local is not None:
+            return self._local.set_room_degrade(steps, why)
+        self.room_degrade = [list(steps or ()), why]
 
     def request_keyframe(self) -> None:
         if self._local is not None:
@@ -1010,6 +1020,8 @@ class EngineProxy:
         cur = {"speed_target": rt.speed_target, "depth_target": rt.depth_target, "palette": rt.palette,
                "palette_s": rt.palette_s, "ease_s": rt.ease_s, "extra": rt.extra, "lead": sp.lead,
                "follow": sp.follow}
+        if self.room_degrade is not None:            # (never set outside a room: the sync is as before)
+            cur["room_degrade"] = self.room_degrade
         diff = {k: v for k, v in cur.items() if self._synced.get(k, self) != v}
         if diff:
             self._synced.update(diff)

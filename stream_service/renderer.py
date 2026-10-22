@@ -63,6 +63,16 @@ still lands; the encode thread Reconfigure()s NVENC before the first frame of th
 slot's step in ticks, so the timeline stays contiguous (tfdt = id x tick).  The FX trim reaches the session's FX
 director through ``on_degrade``.  The repeat rule stays the per-slot catch-up; the scene's own rate divider stays its
 own (the floor bounds it from below).
+
+One degrade decision per room (docs/ENSEMBLE.md §8.9): the session sets ``set_room_degrade(steps, why)`` (loop thread):
+the steps its room's other screens took by their own measurement.  At the next frame boundary while the controller is
+not frozen, they become its room floor (degrade.Controller.set_room; the fps step only where this engine can take it)
+and the steps in effect (its own and the room's) are applied, so one screen never drops frame rate or scene rate
+alone.  Outside a room nothing is ever set: exactly as before.
+
+A room's scene clock (docs/ENSEMBLE.md §8.9): a StartTransition may carry ``clock``, the room's moment for the cut on
+this engine's CLOCK_MONOTONIC (render time); the scene's layer then runs its time from there on the frame's own time
+(``FrameCtx.mono``; layers.SourceLayer), so every screen in the room draws the same scene time at the same photon time.
 """
 from __future__ import annotations
 
@@ -76,7 +86,7 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from .degrade import DECIDE_S, Controller, Ctx, off_state
+from .degrade import DECIDE_S, SCENE_FLOOR, STEPS, Controller, Ctx, off_state
 from .effects import BUS_CLOSE_S, POOL_RESERVE, EffectLayer, FxUpdate, MasterBus, SlotUpdate, close_with_effects, \
     smoothstep
 from .encode.bitstream import StreamConfig
@@ -149,6 +159,8 @@ class StartTransition:
     source: Any             # set-up Source for the new b side
     transition: Any         # Transition instance
     at_mono: Optional[float] = None   # start on the first frame at/after this CLOCK_MONOTONIC time (None: now)
+    clock: Optional[float] = None     # a room's scene clock: when the scene's time is 0 here (CLOCK_MONOTONIC, render
+                                      # time; docs/ENSEMBLE.md §8.9); None: stream time from its first frame
 
 
 @dataclass
@@ -331,6 +343,7 @@ class Engine:
         self.fps_steps = 0
         self.reconfigure_ms: Optional[float] = None
         self.reconfigure_error: Optional[str] = None
+        self._room_req: Optional[tuple] = None        # (steps, why): the room's floor the session asks for (loop thread)
 
     # ------------------------------------------------------------------------
     # setup (called from a worker thread, never the asyncio loop)
@@ -628,7 +641,7 @@ class Engine:
                         self.resyncs += 1
                         self.resync_times.append(pace_clock())
                     fc.n = n
-                    self.frame_mono = deadline + (time.monotonic() - pace_clock())
+                    self.frame_mono = fc.mono = deadline + (time.monotonic() - pace_clock())
                     self._poll_timer()                # trips land before this frame's commands (an exit)
                     self._drain_commands(fc)
                     if self.stop_evt.is_set():
@@ -688,6 +701,15 @@ class Engine:
             dg = self.degrade
             if dg is None:
                 return
+            req = self._room_req
+            if req is not None and not dg.frozen:      # the room's floor (one decision per room), at a boundary
+                can = self._can_fps()
+                if dg.set_room(tuple(x for x in req[0] if x != "fps" or can), req[1], pace_clock()):
+                    self._apply_steps(fc, n)
+                    log.info("[%s] degrade: the room's floor %s: now %s", self.name, list(dg.room) or "none",
+                             dg.state().get("text"))
+                    if not self.stop_evt.is_set():
+                        self.post(self.listener.on_degrade, self.degrade_state())
             now = pace_clock()
             if now < self._dg_next:
                 return
@@ -696,16 +718,29 @@ class Engine:
                            1000.0 * self.step / self.fps)
             if ch is None:
                 return
-            if ch.step == "scene_rate":
-                fc.rate_floor = 2 if ch.on else 1
-            elif ch.step == "fps":
-                self._step_want = 2 if ch.on else 1
-                if n % self._step_want == 0:
-                    self._set_step(fc, self._step_want)
+            self._apply_steps(fc, n)
             self._degrade_changed(ch)
         except Exception:                          # the controller must never take the stream down
             log.exception("[%s] degradation controller failed; off for this session (its steps stay)", self.name)
             self.degrade = None
+
+    def _apply_steps(self, fc: FrameCtx, n: int) -> None:
+        """The steps in effect (the controller's own and its room's floor): the scene-rate floor at once, the fps step
+        on a frame id that is a multiple of it (here or at a later boundary)."""
+        eff = self.degrade.effective() if self.degrade is not None else []
+        fc.rate_floor = SCENE_FLOOR if "scene_rate" in eff else 1
+        self._step_want = 2 if "fps" in eff and self._fps_lost is None else 1
+        if self._step_want != self.step and n % self._step_want == 0:
+            self._set_step(fc, self._step_want)
+
+    def _can_fps(self) -> bool:
+        """This engine can take the fps step: the GPU-encode path at 60 fps (as _degrade_ctx's can_fps)."""
+        return self._gpu_enc is not None and self.fps == 60 and self._fps_lost is None
+
+    def set_room_degrade(self, steps: Any, why: Optional[str] = None) -> None:
+        """Loop thread: the steps this screen's room's other screens took by their own measurement (the session's
+        room floor; () when none or not in a room).  Applied at the next frame boundary (render thread)."""
+        self._room_req = (tuple(x for x in (steps or ()) if x in STEPS), why if isinstance(why, str) else None)
 
     def _set_step(self, fc: FrameCtx, step: int) -> None:
         self.step = fc.step = step
@@ -750,7 +785,7 @@ class Engine:
         own = int(getattr(lay, "rate_div", 1) or 1)
         frozen = self._out_applied or not bus.is_open or bus.level < 1.0
         return Ctx(frozen=frozen, has_fx=bool(live), fx_host_ms=fh, fx_gpu_ms=fg, own_div=own,
-                   can_fps=self._gpu_enc is not None and self.fps == 60 and self._fps_lost is None,
+                   can_fps=self._can_fps(),
                    nvenc_busy=self._nvenc_busy())
 
     def _nvenc_busy(self) -> Optional[float]:
@@ -841,7 +876,7 @@ class Engine:
         if cmd.kind == "out":
             self._out_applied = True
             frozen = self._freeze_if_slow(fc)
-        b: Layer = SourceLayer(cmd.source, fc.t)
+        b: Layer = SourceLayer(cmd.source, fc.t, getattr(cmd, "clock", None))
         chain = getattr(cmd.source, "fx_chain", None)
         if chain is not None:
             b = EffectLayer(b, chain)

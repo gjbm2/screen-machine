@@ -48,7 +48,10 @@ triggers, phases or DMX positions (inputs.pivotable).
 The room ensemble (ensemble.py; docs/ENSEMBLE.md §8.3, §8.5): the session puts this screen's part in ``extra``
 (``ensemble``: its levers now and next, glided here at photon time, ``lever``; None = unison, today's path): depth x
 the binding depth, motion x the scene clock, pulse x the bindings' beat, energy_bias + their energy (after the
-pivots, so the pivot never re-centres it away), pal_shift reads the session palette that far along.
+pivots, so the pivot never re-centres it away), pal_shift reads the session palette that far along.  Canon's clock
+offset (§8.7, §8.9; ``clock_off``, s, 0 in unison): the beat-bound signals (the clock's beat_phase, bar_phase,
+downbeat, the beat ladder's pulse) are read at photon time - clock_off, and a room scene's clock runs that far behind
+the room's (layers.SourceLayer, which reads ``clock_off`` and ``clock_off_ok``).
 
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
@@ -306,6 +309,8 @@ class SessionRuntime:
         self.pivots = Pivots()                    # the adaptive pivot (per session)
         self.lever: Optional[dict] = None         # this screen's ensemble levers this frame (ensemble.py); None: unison
         self._lever_glide = ensemble.LeverGlide()
+        self.clock_off = 0.0                      # canon's clock offset this frame (s): beat signals and room scene
+        self.clock_off_ok = True                  # clocks run this far behind; ok: a running scene clock may follow it
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -336,17 +341,26 @@ class SessionRuntime:
         wf = 0.0
         ex = self.extra
         fast, follow, src, wa = None, 0.0, None, w
+        lead = self.sampler.lead if self.sampler is not None else 0.0
+        ens = ex.get("ensemble")
+        try:                                    # the room ensemble's levers at photon time (never breaks a frame)
+            lv = self._lever_glide.at(ens, (now + lead) * 1000.0)
+            bs = ens.get("beat_s") if lv is not None and isinstance(ens, dict) else None
+            self.clock_off = ensemble.clock_offset_s(lv, bs)
+            self.clock_off_ok = ensemble.clock_glide_ok(self._lever_glide, bs)
+        except Exception:
+            lv, self.clock_off, self.clock_off_ok = None, 0.0, True
         feed = self.feed
         if feed is not None:                    # the room's sound and beat clock (music_feed.py) over the desk's
             wf = feed.liveness(now)
-            lead = self.sampler.lead if self.sampler is not None else 0.0
             r = feed.response.cfg
             snap, clk = feed.snapshot(), feed.clock(now)
-            csig = self.clock_sig.sample(clk, now + lead)
+            tb = now + lead - self.clock_off    # the beat-bound signals' photon time (canon: a round behind)
+            csig = self.clock_sig.sample(clk, tb)
             src = music_feed.blend(sig, snap, wf, csig, feed.levels(now), feed.onset_pulse(now))
             if r.ladder_on and wf > 0.0:        # the bindings' beat: one source at photon time
                 desk = bool(sig.get("beat_locked")) and getattr(self.sampler, "follow", None) == "extrapolate"
-                src = self.ladder.resolve(sig, feed, clk, csig, self.clock_sig, wf, now, now + lead, desk)
+                src = self.ladder.resolve(sig, feed, clk, csig, self.clock_sig, wf, now, tb, desk)
             else:                               # the feed gone: the desk's (or nothing), as blend left it
                 self.ladder.active = False
             follow = r.follow * wf if wf > 0.0 else 0.0
@@ -389,11 +403,6 @@ class SessionRuntime:
             self.maestro_rows = target if self.maestro_rows is None else \
                 self.maestro_rows + (target - self.maestro_rows) * ac
         self.colour_avail += ((w if col is not None else 0.0) - self.colour_avail) * ac
-        try:                                    # the room ensemble's levers at photon time (never breaks a frame)
-            lv = self._lever_glide.at(ex.get("ensemble"),
-                                      (now + (self.sampler.lead if self.sampler is not None else 0.0)) * 1000.0)
-        except Exception:
-            lv = None
         self.lever = lv
         if lv is not None:
             ensemble.apply_signals(sig, lv)

@@ -26,9 +26,16 @@ Staggered scene changes (§8.4): ``stagger_s`` is this screen's part's stagger i
 clock's beat, else its stagger_s); rooms.stagger_s wraps it for Session._submit.
 
 Pure helpers, no I/O and no locks: the loop thread builds ``wire`` for the runtime's ``extra`` (synced to a render
-worker as it is), and each thread runs its own LeverGlide.  Later (§8.7, §8.9: one seed, one t0 and one degrade per
-room, canon's clock offset) the same ``my_part`` / ``wire`` carry the part's ``clock_offset_beats`` and the room's
-shared fields to the renderer.
+worker as it is), and each thread runs its own LeverGlide.
+
+The same picture a round later (§8.7, §8.9; canon, and echo with clock_offset): ``clock_beats`` is the part's
+clock_offset_beats and ``clock_s`` its seconds without a sure grid (clock_offset_beats x the part's own seconds per
+beat, stagger_s / stagger_beats; 0 when the part has no stagger to say it).  They glide like the other levers.  Each
+frame the runtime turns them into ``clock_offset_s`` (x the renderer's sure beat, which the wire carries as
+``beat_s``, else ``clock_s``): the beat-bound signals (beat_phase, bar_phase, the beat ladder's pulse, an effect's
+beat clock) are read at photon time - that offset, and a room scene's clock runs that far behind the room's
+(layers.SourceLayer).  A scene clock follows a change of the offset only while the clock keeps running forward at a
+sane rate (CLOCK_SLOW, CLOCK_FAST: ``clock_glide_ok``); a steeper change waits for the next cut.
 """
 from __future__ import annotations
 
@@ -42,8 +49,15 @@ REGISTER_A0, REGISTER_SPAN = 21, 87           # MIDI A0 .. C8 -> register 0 .. 1
 OUTSIDE_DEFAULT = 0.25                        # register_split's own default ``outside`` (show's FORM_PARAMS), for a
                                               # register that arrives in ``next`` (which carries no params)
 SCALE_LEVERS = ("depth", "pulse", "motion", "fx_density")
+CLOCK_LEVERS = ("clock_beats", "clock_s")     # canon's clock offset, in beats and in seconds without a sure grid
 NEUTRAL: dict = {"depth": 1.0, "pulse": 1.0, "motion": 1.0, "fx_density": 1.0, "energy_bias": 0.0,
-                 "pal_shift": 0.0, "register": None}
+                 "pal_shift": 0.0, "register": None, "clock_beats": 0.0, "clock_s": 0.0}
+# A room scene's clock follows a change of its clock offset while the offset grows at most CLOCK_SLOW s per s (the
+# scene keeps at least a quarter of its pace) and shrinks at most CLOCK_FAST s per s (at most 4x); a steeper change
+# (or one with no glide) waits for the next cut.  Starting points, chosen on paper.
+CLOCK_SLOW = 0.75
+CLOCK_FAST = 3.0
+GLIDE_PEAK = 1.5                              # smoothstep's steepest slope, x the mean (glide's from -> to over g)
 
 
 def _num(v: Any, default: float) -> float:
@@ -138,6 +152,10 @@ def levers(part: Optional[Mapping], params: Optional[Mapping] = None) -> dict:
     out = {k: max(0.0, _num(sc.get(k), 1.0)) for k in SCALE_LEVERS}
     out["energy_bias"] = max(-1.0, min(1.0, _num(part.get("energy_bias"), 0.0)))
     out["pal_shift"] = palette_shift(part.get("palette_role"))
+    cb = max(0.0, _num(part.get("clock_offset_beats"), 0.0))
+    sb, ss = _num(part.get("stagger_beats"), 0.0), _num(part.get("stagger_s"), 0.0)
+    out["clock_beats"] = cb
+    out["clock_s"] = cb * ss / sb if cb > 0.0 and sb > 0.0 and ss > 0.0 else 0.0
     reg = part.get("register")
     out["register"] = None
     if isinstance(reg, (list, tuple)) and len(reg) == 2:
@@ -149,9 +167,11 @@ def levers(part: Optional[Mapping], params: Optional[Mapping] = None) -> dict:
     return NEUTRAL if out == NEUTRAL else out
 
 
-def wire(ens: Optional[Mapping], screen: str) -> Optional[dict]:
+def wire(ens: Optional[Mapping], screen: str, beat_s: Optional[float] = None) -> Optional[dict]:
     """This screen's levers as the runtime's ``extra["ensemble"]`` (loop thread; plain values, synced to a render
-    worker as they are): {cur, next, at_ms, glide_ms}.  None: no part now or next (unison: today's path)."""
+    worker as they are): {cur, next, at_ms, glide_ms, beat_s}; ``beat_s``: the renderer's beat while its clock is
+    sure (SessionManager.music_grid), else None (the clock offset is then each part's clock_s).  None: no part now or
+    next (unison: today's path)."""
     pid = player_id(ens, screen)
     if pid is None:
         return None
@@ -165,8 +185,9 @@ def wire(ens: Optional[Mapping], screen: str) -> Optional[dict]:
             nxt = levers(p, params)
     if cur is NEUTRAL and nxt in (None, NEUTRAL):
         return None
+    b = _num(beat_s, 0.0)
     return {"cur": cur, "next": nxt, "at_ms": at if nxt is not None else None,
-            "glide_ms": max(0.0, _num(ens.get("glide_ms"), 0.0))}
+            "glide_ms": max(0.0, _num(ens.get("glide_ms"), 0.0)), "beat_s": b if b > 0.0 else None}
 
 
 def clean(d: Any) -> dict:
@@ -177,6 +198,8 @@ def clean(d: Any) -> dict:
     out = {k: max(0.0, _num(d.get(k), 1.0)) for k in SCALE_LEVERS}
     out["energy_bias"] = max(-1.0, min(1.0, _num(d.get("energy_bias"), 0.0)))
     out["pal_shift"] = _num(d.get("pal_shift"), 0.0) % 1.0
+    for k in CLOCK_LEVERS:                    # (a control that predates them sends none: 0, unison)
+        out[k] = max(0.0, _num(d.get(k), 0.0))
     reg = d.get("register")
     out["register"] = None
     if isinstance(reg, (list, tuple)) and len(reg) == 3:
@@ -205,7 +228,7 @@ class LeverGlide:
             return self.to
         s = _smooth((t_ms - self.t0) / self.g)
         f, to = self.frm, self.to
-        out = {k: f[k] + (to[k] - f[k]) * s for k in SCALE_LEVERS}
+        out = {k: f[k] + (to[k] - f[k]) * s for k in SCALE_LEVERS + CLOCK_LEVERS}
         out["energy_bias"] = f["energy_bias"] + (to["energy_bias"] - f["energy_bias"]) * s
         out["pal_shift"] = (f["pal_shift"] + _wrap(to["pal_shift"] - f["pal_shift"]) * s) % 1.0
         out["register"] = to["register"]
@@ -228,6 +251,30 @@ class LeverGlide:
         v = self._eval(t_ms)
         self.value = None if v is NEUTRAL or v == NEUTRAL else v
         return self.value
+
+
+# -- the clock offset (canon, echo with clock_offset; §8.7, §8.9) ---------------------------------------------------
+def clock_offset_s(lv: Optional[Mapping], beat_s: Optional[float]) -> float:
+    """How far behind the room this screen's beat-bound motion runs (s): clock_beats x ``beat_s`` while the clock is
+    sure, else clock_s; 0 without levers (unison)."""
+    if not lv:
+        return 0.0
+    b = _num(beat_s, 0.0)
+    v = lv.get("clock_beats", 0.0) * b if b > 0.0 else lv.get("clock_s", 0.0)
+    return v if v > 0.0 else 0.0
+
+
+def clock_glide_ok(g: "LeverGlide", beat_s: Optional[float]) -> bool:
+    """May a running scene clock follow the glide ``g`` is on (its clock offset from ``g.frm`` to ``g.to`` over
+    ``g.g`` ms)?  Yes while the offset doesn't move, or it moves over a glide no steeper than CLOCK_SLOW (growing:
+    the scene slows, never runs backwards) or CLOCK_FAST (shrinking: it hurries); no glide is a jump: no."""
+    d = clock_offset_s(g.to, beat_s) - clock_offset_s(g.frm, beat_s)
+    if abs(d) < 1e-6:
+        return True
+    if g.g <= 0.0:
+        return False
+    slope = GLIDE_PEAK * d / (g.g / 1000.0)
+    return -CLOCK_FAST <= slope <= CLOCK_SLOW
 
 
 def apply_signals(sig: dict, lv: Optional[Mapping]) -> None:

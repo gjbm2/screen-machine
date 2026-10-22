@@ -3,6 +3,15 @@
 * ``SourceLayer(source, t0)`` renders a source at local time ``t - t0``.  A scene source with a session
   modulation runs on the scene clock instead: its ``dt`` is scaled by the speed master and ``t_local`` is
   integrated from that (transitions always run in stream seconds).
+* ``SourceLayer(source, t0, t0_mono)``: a room's scene (docs/ENSEMBLE.md §8.9, one picture by design): its time runs
+  from the room's moment for the cut, ``t0_mono`` (CLOCK_MONOTONIC s on this screen's render clock: the room's photon
+  time minus this screen's lead), read from the frame's own time (``FrameCtx.mono``) instead of its frame id, so every
+  screen in the room draws the same scene time at the same photon time: a screen that cuts later (a stagger, a slow
+  prepare) joins the scene where the room is, a resync never sets it back, and the screens' frame grids don't matter.
+  Canon's clock offset (SessionRuntime.clock_off, ensemble.py) runs it that far behind (a round later); before the
+  room's moment (the offset past the stagger) it holds its first frame.  It follows a change of the offset only while
+  the change keeps the clock running forward at a sane rate (ensemble.CLOCK_SLOW / CLOCK_FAST and the runtime's
+  ``clock_off_ok``); a steeper one waits for the next cut.  Without ``t0_mono`` (no room, a person's cue): as above.
 * ``TransitionLayer(a, b, transition, n_start)`` renders ``a`` and ``b`` into pooled buffers and blends them.
   Transitions nest: a transition started while another runs takes the running ``TransitionLayer`` as its
   ``a``.  When a transition reaches progress 1 the tree collapses it to its ``b`` (after that frame), and
@@ -44,6 +53,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional, Protocol
 
 from .easing import ease
+from .ensemble import CLOCK_FAST, CLOCK_SLOW
 
 log = logging.getLogger("stream_service.layers")
 
@@ -95,6 +105,7 @@ class FrameCtx:
     div: int = 1
     step: int = 1           # frame ids per output slot (2: the degradation controller's fps step, 60 -> 30)
     rate_floor: int = 1     # the degradation controller's floor under every scene's rate_div (2: every 2nd slot)
+    mono: Optional[float] = None   # this frame's time on CLOCK_MONOTONIC (s; the engine's frame_mono): room clocks
 
     @property
     def t(self) -> float:
@@ -128,9 +139,13 @@ class Layer:
 
 
 class SourceLayer(Layer):
-    def __init__(self, source: Any, t0: float):
+    def __init__(self, source: Any, t0: float, t0_mono: Optional[float] = None):
         self.source = source
         self.t0 = t0
+        self.t0_mono = t0_mono                      # the room's scene clock (module doc); None: stream time
+        self.off: Optional[float] = None            # ... its clock offset in effect (s), from its first frame
+        self.off_held = False                       # an offset change it could not glide: kept until the next cut
+        self._off_t: Optional[float] = None
         self.last_t: Optional[float] = None
         self.scene_t = 0.0
         self.failed = False
@@ -191,14 +206,18 @@ class SourceLayer(Layer):
             fc.held += 1
             fc.div = max(fc.div, div)
             return
-        t_local = fc.t - self.t0
-        dt = 0.0 if self.last_t is None else max(0.0, t_local - self.last_t)
-        self.last_t = t_local
         mod = getattr(self.source, "modulation", None)
-        if mod is not None:
-            dt = mod.scale_dt(dt)
-            self.scene_t += dt
-            t_local = self.scene_t
+        mono = getattr(fc, "mono", None)
+        if self.t0_mono is not None and mono is not None:
+            t_local, dt = self._room_clock(mono, mod)
+        else:
+            t_local = fc.t - self.t0
+            dt = 0.0 if self.last_t is None else max(0.0, t_local - self.last_t)
+            self.last_t = t_local
+            if mod is not None:
+                dt = mod.scale_dt(dt)
+                self.scene_t += dt
+                t_local = self.scene_t
         if self.failed:
             fc.ops.fill(out, (0, 0, 0))
             return
@@ -224,6 +243,47 @@ class SourceLayer(Layer):
         fc.div = max(fc.div, div)
         if dst is not out:
             fc.ops.copy(dst, out)
+
+    def _room_clock(self, mono: float, mod: Any) -> tuple[float, float]:
+        """(t_local, dt) on the room's scene clock at this frame (``mono``): the time since the room's moment, back by
+        the clock offset, never backwards; a scene source's on its scene clock (x the speed master and motion), from
+        where the room is when it joins late."""
+        raw = mono - self.t0_mono - self._offset(mono, getattr(mod, "runtime", None))
+        if self.last_t is None:                     # its first frame: the room's scene time so far, not 0
+            lead_in, dt = max(0.0, raw), 0.0
+            self.last_t = lead_in
+        else:
+            lead_in, dt = 0.0, max(0.0, raw - self.last_t)
+            self.last_t = max(self.last_t, raw)
+        if mod is None:
+            return self.last_t, dt
+        if lead_in > 0.0:
+            self.scene_t += mod.scale_dt(lead_in)
+        dt = mod.scale_dt(dt)
+        self.scene_t += dt
+        return self.scene_t, dt
+
+    def _offset(self, mono: float, rt: Any) -> float:
+        """The clock offset this frame (s): the runtime's (canon; 0 in unison), taken whole on the first frame, then
+        followed while each step keeps the clock running forward at a sane rate and the runtime says its glide can be
+        followed; else held (to the next cut: a new layer takes the offset then)."""
+        try:
+            want = float(getattr(rt, "clock_off", 0.0) or 0.0) if rt is not None else 0.0
+            ok = bool(getattr(rt, "clock_off_ok", True)) if rt is not None else True
+        except (TypeError, ValueError):
+            want, ok = 0.0, True
+        if self.off is None:
+            self.off, self._off_t = want, mono
+            return want
+        adv = max(0.0, mono - (self._off_t if self._off_t is not None else mono))
+        self._off_t = mono
+        d = want - self.off
+        if d != 0.0 and not self.off_held:
+            if ok and -CLOCK_FAST * adv - 1e-9 <= d <= CLOCK_SLOW * adv + 1e-9:
+                self.off = want
+            else:
+                self.off_held = True
+        return self.off
 
     def trip(self, fc: FrameCtx, exc: BaseException) -> None:
         """Over its GPU budget (guard.py): black from the next frame, like a failing scene."""
