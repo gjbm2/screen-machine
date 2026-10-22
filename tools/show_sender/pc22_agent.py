@@ -23,6 +23,7 @@ deploy-pc22.sh.
 from __future__ import annotations
 
 import argparse
+import collections
 import logging
 import queue
 import threading
@@ -39,7 +40,9 @@ log = logging.getLogger("pc22_agent")
 PORT = 6984
 CHECK_S = 2.0
 SCAN_S = 5.0                                                 # device list refresh while the mic is off
-MISSING_RESCAN_S = 10.0                                      # the chosen mic isn't listed yet: rescan this often
+MISSING_RESCAN_S = 10.0                                      # the chosen mic isn't listed yet: rescan this often,
+MISSING_RESCANS = 3                                          # this many times, then only when Windows' inputs change
+                                                             # (each rescan reopens: a gap and a new sess for show_service)
 now_ns = time.perf_counter_ns
 ss.now_ns = now_ns                                           # one clock for everything this process stamps
 
@@ -208,6 +211,8 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
     last_scan = 0.0
     last_eps: Optional[frozenset] = None
     was = None
+    missing_tries = MISSING_RESCANS                          # rescans for a chosen mic not in Windows' list since its
+                                                             # inputs last changed (none before: fresh at each open)
     while not stop.is_set():
         mode = choice.mode(stream)
         if mode != was:
@@ -252,12 +257,14 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
         chans = 1 if info["max_input_channels"] >= 1 else info["max_input_channels"]
         q: queue.Queue = queue.Queue(maxsize=400)            # ~1 s of packets
 
+        line = _StampLine()
+
         def cb(indata, frames, time_info, status):
             # Stamped when Windows hands the block over, less its own length. Not PortAudio's inputBufferAdcTime: on
             # WASAPI it reads ~12.5 ms in the FUTURE of the callback (measured 16 Oct, perf_counter - adc = -12.5 ms
-            # p50), while its currentTime is perf_counter to 0.1 ms. WASAPI shared mode delivers 10 ms bursts; the
-            # receiver's lower envelope takes the earliest stamps.
-            t_cap = now_ns() - int(frames / FS * 1e9)
+            # p50), while its currentTime is perf_counter to 0.1 ms. WASAPI shared mode delivers 10 ms bursts, so a
+            # block's hand-over is up to a burst late; _StampLine keeps the earliest over the last second.
+            t_cap = line.stamp(now_ns(), frames, bool(status.input_overflow))
             try:
                 q.put_nowait((indata.copy(), t_cap, bool(status.input_overflow)))
             except queue.Full:
@@ -301,9 +308,12 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                     want = choice.want(stream)
                     target = want if want in au.devices else next(
                         (d for d in au.devices if match and match.lower() in d.lower()), None)
-                    if want and want not in au.devices and time.monotonic() - opened_at >= MISSING_RESCAN_S:
-                        log.info("mic: %s chosen but not in Windows' list yet; reopening to rescan", want)
-                        break
+                    if want and want not in au.devices:
+                        if missing_tries < MISSING_RESCANS and time.monotonic() - opened_at >= MISSING_RESCAN_S:
+                            missing_tries += 1
+                            log.info("mic: %s chosen but not in Windows' list yet; reopening to rescan (%d of %d)",
+                                     want, missing_tries, MISSING_RESCANS)
+                            break
                     if target and target != name:
                         log.info("mic: %s %s; reopening", target, "chosen" if target == want else "(the default)")
                         break
@@ -316,8 +326,91 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                     now_eps = capture_endpoints()
                     if now_eps is not None and endpoints is not None and now_eps != endpoints:
                         log.info("mic: Windows' inputs changed (%d -> %d); reopening to rescan", len(endpoints), len(now_eps))
+                        missing_tries = 0
                         break
         stop.wait(0.2)
+
+
+class _StampLine:
+    """Capture times on one smooth line through the stream's samples (one open of the device).
+
+    A block's hand-over time less its length is when its first sample was captured, plus however late Windows handed
+    it over: WASAPI shared mode delivers 10 ms bursts, so up to a burst, and some stretches of a second or more run a
+    few ms later still. Where sample 0 would sit by each block (``t - (n + frames) / FS``) is that lateness plus the
+    true start. Each BUCKET_NS keeps its least-late block, and the fit is the lower envelope of the last KEEP buckets
+    (the lower convex hull's edge with the least total gap above it), which follows the device clock's drift against
+    QPC and ignores the lateness. The stamps never jump to a new fit: they run on at the fit's drift and are steered
+    toward it by at most SLEW_NS_PER_S, so t_cap stays linear in n to well under show_service's 2 ms CaptureMap
+    tolerance (a pair off its line twice running is a "sender step": a new segment that resets the beat clock; c8,
+    17 Oct: every ~10 s with stamps taken straight from the callback, then from a 1 s sliding minimum). Simulated
+    against CaptureMap for 5 min with bursts, late stretches and +-250 ppm: 0-2 steps, against ~55 and ~140.
+    Until FIT_MIN buckets are in, the open bucket's least-late block stands in. An overflow (time lost) starts it
+    over; a fit more than SNAP_NS from the stamps (the device lost time without saying so) is jumped to."""
+
+    BUCKET_NS = 1_000_000_000
+    KEEP = 60
+    FIT_MIN = 4
+    SLEW_NS_PER_S = 300_000                               # 0.3 ms per second of audio
+    SNAP_NS = 15_000_000
+
+    def __init__(self) -> None:
+        self.n = 0
+        self._reset()
+
+    def _reset(self) -> None:
+        self.buckets: "collections.deque[tuple[int, float]]" = collections.deque(maxlen=self.KEEP)  # (n, start ns)
+        self.cur: Optional[tuple[int, float]] = None
+        self.cur_t0 = 0
+        self.fit: Optional[tuple[float, float]] = None       # start(n) = a + c * n, ns
+        self.base: Optional[float] = None                     # the stamps' start(n) at self.n
+
+    def _refit(self) -> None:
+        pts = list(self.buckets)
+        if len(pts) < self.FIT_MIN:
+            return
+        hull: list = []                                       # lower convex hull, by n (monotone chain)
+        for p in pts:
+            while len(hull) >= 2 and ((hull[-1][0] - hull[-2][0]) * (p[1] - hull[-2][1])
+                                      - (hull[-1][1] - hull[-2][1]) * (p[0] - hull[-2][0])) <= 0:
+                hull.pop()
+            hull.append(p)
+        best = None
+        for (x0, y0), (x1, y1) in zip(hull, hull[1:]):
+            if x1 == x0:
+                continue
+            c = (y1 - y0) / (x1 - x0)
+            if abs(c) > 1e9 / FS * 1400e-6:                   # > 1400 ppm (ns per sample): not a clock drift
+                continue
+            gap = sum(y - (y0 + c * (x - x0)) for x, y in pts)
+            if best is None or gap < best[0]:
+                best = (gap, y0 - c * x0, c)
+        if best is not None:
+            self.fit = (best[1], best[2])
+
+    def stamp(self, t_ns: int, frames: int, overflow: bool) -> int:
+        if overflow:
+            self._reset()
+        n = self.n
+        start = float(t_ns) - (n + frames) * 1e9 / FS
+        if self.cur is None or t_ns - self.cur_t0 >= self.BUCKET_NS:
+            if self.cur is not None:
+                self.buckets.append(self.cur)
+                self._refit()
+            self.cur, self.cur_t0 = (n, start), t_ns
+        elif start < self.cur[1]:
+            self.cur = (n, start)
+        if self.fit is None:
+            base = self.cur[1]                                # least late so far in this bucket
+        else:
+            a, c = self.fit
+            target = a + c * n
+            if self.base is None or abs(target - self.base) > self.SNAP_NS:
+                self.base = target
+            base = self.base
+            step = self.SLEW_NS_PER_S * frames / FS
+            self.base = base + c * frames + max(-step, min(step, target - base))
+        self.n += frames
+        return int(round(base + n * 1e9 / FS))
 
 
 def _device_changed(sd, match: Optional[str], name: str) -> bool:

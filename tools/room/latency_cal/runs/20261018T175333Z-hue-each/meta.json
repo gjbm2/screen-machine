@@ -1,0 +1,250 @@
+{
+ "run": "20261018T175333Z-hue-each",
+ "lamps": [
+  "hue.ne",
+  "hue.nw",
+  "hue.se",
+  "hue.sw"
+ ],
+ "all_lamps": [
+  "hue.ne",
+  "hue.nw",
+  "hue.se",
+  "hue.sw"
+ ],
+ "each": true,
+ "host": "gjbm2@192.168.1.10",
+ "args": {
+  "host": "gjbm2@192.168.1.10",
+  "lamps": null,
+  "each": true,
+  "each_pulses": 6,
+  "pulses": 20,
+  "interval": 1.5,
+  "jitter": 0.2,
+  "dark_level": 0.0,
+  "preroll": 8.0,
+  "baseline": 3.0,
+  "freq": "100/s",
+  "early_check": 5,
+  "dry_run": false,
+  "dry_seconds": 3.0,
+  "yes": true,
+  "reanalyse": null,
+  "update_latest": false
+ },
+ "zero": "Art-Net frame sent (WSL)",
+ "preflight": {
+  "mode": "gallery",
+  "targets": {
+   "hue.ne": {
+    "believed": "off",
+    "confidence": "confirmed",
+    "age_s": 1.6,
+    "sent_age_s": 246617.9,
+    "moving": false,
+    "inflight": null,
+    "desired": null,
+    "policy": null,
+    "settled": null,
+    "retry": null,
+    "drift": null
+   },
+   "hue.nw": {
+    "believed": "off",
+    "confidence": "confirmed",
+    "age_s": 1.6,
+    "sent_age_s": 246617.9,
+    "moving": false,
+    "inflight": null,
+    "desired": null,
+    "policy": null,
+    "settled": null,
+    "retry": null,
+    "drift": null
+   },
+   "hue.se": {
+    "believed": "off",
+    "confidence": "confirmed",
+    "age_s": 1.6,
+    "sent_age_s": 246617.9,
+    "moving": false,
+    "inflight": null,
+    "desired": null,
+    "policy": null,
+    "settled": null,
+    "retry": null,
+    "drift": null
+   },
+   "hue.sw": {
+    "believed": "off",
+    "confidence": "confirmed",
+    "age_s": 1.6,
+    "sent_age_s": 246617.9,
+    "moving": false,
+    "inflight": null,
+    "desired": null,
+    "policy": null,
+    "settled": null,
+    "retry": null,
+    "drift": null
+   }
+  },
+  "artnet_input": {
+   "bind": "0.0.0.0:6454",
+   "bind_error": null,
+   "universe": 0,
+   "online": true,
+   "age_ms": 3.2,
+   "pps": 35.0,
+   "packets": 324911,
+   "last_from": "127.0.0.1",
+   "last_seq": 40,
+   "source": "artnet",
+   "other_universes": {},
+   "ignored": 0
+  },
+  "hue": {
+   "state": "idle",
+   "detail": "",
+   "area": "71a764d6-9d22-413b-9818-3ee3a44b2c53",
+   "wanted": []
+  }
+ },
+ "clock_before": {
+  "offset_box_minus_wsl_ms": -51.653,
+  "offset_uncertainty_ms": 1.037,
+  "perf_minus_date_ms": 0.0,
+  "rtt_ms": {
+   "n": 200,
+   "p10": 2.6,
+   "p50": 5.5,
+   "p90": 12.2,
+   "mean": 6.6,
+   "sd": 4.0
+  },
+  "method": "UDP echo (box time.time_ns() on receipt); median of the 8 minimum-RTT midpoints",
+  "probes": {
+   "sent": 200,
+   "answered": 200
+  }
+ },
+ "sensor_header": {
+  "kind": "header",
+  "version": "calib-2",
+  "t_ns": 1792346019812969415,
+  "module": {
+   "serial": "LIGHTMK5-2C5D7D",
+   "firmware": "70007"
+  },
+  "requested": {},
+  "applied": {
+   "reportFrequency": "100/s",
+   "measureType": 0,
+   "advMode": 0
+  },
+  "original": {
+   "reportFrequency": "OFF"
+  },
+  "hold_output": true,
+  "held_lux": 2.2,
+  "seconds": 180.0
+ },
+ "artnet": {
+  "target": [
+   "127.0.0.1",
+   6454
+  ],
+  "source": "127.0.0.2",
+  "hz": 40.0,
+  "universe": 0,
+  "dark_level": 0.0
+ },
+ "exclusive": {
+  "after_s": 7.3,
+  "pps": 40.0,
+  "last_from": "127.0.0.2"
+ },
+ "streaming": {
+  "after_s": 0.0,
+  "area": "71a764d6-9d22-413b-9818-3ee3a44b2c53",
+  "sent": {
+   "hue.ne": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.nw": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.se": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.sw": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   }
+  }
+ },
+ "restore": {
+  "hue.ne": "restored",
+  "hue.nw": "restored",
+  "hue.se": "restored",
+  "hue.sw": "restored"
+ },
+ "monitor": {
+  "polls": 110,
+  "errors": 0,
+  "foreign_polls": 0,
+  "events": [],
+  "abort": "the Hue output stopped streaming our lamps (state idle, wanted []: )"
+ },
+ "sender": {
+  "frames": 2558,
+  "errors": 0,
+  "last_error": null
+ },
+ "clock_after": {
+  "offset_box_minus_wsl_ms": -51.638,
+  "offset_uncertainty_ms": 1.075,
+  "perf_minus_date_ms": 0.0,
+  "rtt_ms": {
+   "n": 200,
+   "p10": 2.6,
+   "p50": 3.3,
+   "p90": 6.6,
+   "mean": 4.2,
+   "sd": 3.0
+  },
+  "method": "UDP echo (box time.time_ns() on receipt); median of the 8 minimum-RTT midpoints",
+  "probes": {
+   "sent": 200,
+   "answered": 200
+  }
+ },
+ "clock": {
+  "offset_box_minus_wsl_ms": -51.65,
+  "offset_uncertainty_ms": 1.075,
+  "perf_minus_date_ms": 0.0,
+  "rtt_ms": {
+   "n": 200,
+   "p10": 2.6,
+   "p50": 5.5,
+   "p90": 12.2,
+   "mean": 6.6,
+   "sd": 4.0
+  },
+  "method": "UDP echo (box time.time_ns() on receipt); median of the 8 minimum-RTT midpoints",
+  "probes": {
+   "sent": 200,
+   "answered": 200
+  },
+  "offset_change_ms": 0.02,
+  "stable": true
+ }
+}

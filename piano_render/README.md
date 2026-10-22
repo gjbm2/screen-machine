@@ -87,6 +87,7 @@ Instrument fields read here:
 | `half_pedal` | optional, default false; see Engines |
 | `una_corda` | optional, default true; false turns off the soft-pedal shaping (an engine that models CC67) |
 | `resonance_pan` | optional, default 0.3; the bank's key-tracked pan width (bass left), negative = audience view |
+| `layers` | optional, a blend: `[{file, gain_db, offset_ms}]`, each file rendered by the instrument's engine with the same events and summed (see Engines, Layers). `file` stays the main layer, the one show_service checks; the instrument is available only when every layer file exists |
 
 Rooms: `ir` (a 48 kHz float WAV, 4 channels true stereo L→L, L→R, R→L, R→R; 2 = mono in, stereo out),
 `synth` `{rt60_s, predelay_ms, width}` (the fallback when `ir` is null or not installed), `wet_db` (null = no
@@ -168,6 +169,8 @@ wet). IRs are normalised to unit energy, so `wet_db` is the wet level relative t
 Files: `<cache>/<key>.flac` + `<key>.json` (the RenderResult). The key is a sha256 over:
 - the MIDI bytes;
 - the instrument id and entry (minus the cosmetic `label`, `order`, `credit` and `_comment`);
+- the instrument's files: an SFZ's text and its #includes, an SF2's size and mtime; for a blend, every layer's too
+  (a single-file instrument's key is unchanged by this);
 - the room entry;
 - the realism flag;
 - `RENDER_VERSION` and `realism.VERSION`;
@@ -222,6 +225,19 @@ How a render is written and shared:
 - `pitch_cents` uses RPN 0 plus a pitch bend.
 - TimGM6mb's key 69 sample has about 6 ms of silence at its start (key 60 doesn't).
 
+**Layers (blends)** (`engines.base.LayeredEngine`; `engines.create` makes one for an instrument with `layers`)
+- Each layer's file is rendered by the instrument's engine with identical events and `pitch_cents`. It is scaled by
+  its `gain_db`, moved by `offset_ms` rounded to whole samples (positive = later; a negative value drops the layer's
+  first samples), and summed. Sample 0 stays MIDI time 0.
+- Each layer keeps the tail rules, with its floor taken after the instrument's `gain_db` plus its own.
+- Only one layer is loaded at a time, since a bitKlavier mic set takes about 4.8 GB in sfizz. The layer loaded last
+  stays loaded and renders first next time. The sum is always made in the configured order, so it is the same
+  whichever ran first.
+- `stats.engine.layers` holds each layer's engine stats. The realism stage (detune, partial analysis) renders
+  through the blend.
+- A blend costs one engine render and one sample load per layer. Chopin excerpt: 55 s wall against 37 s for one mic
+  set; the second load falls in the `engine` stage.
+
 **Measured: Chopin Nocturne Op. 9/2 on Salamander V3 SFZ (sfizz)**
 
 | Measure | Value |
@@ -245,6 +261,10 @@ by measurement only; nothing has been judged by ear yet.
 | id | Room page label | Library | Room | Resonance | γ | gain_db | onset_ms |
 |---|---|---|---|---|---|---|---|
 | `concert-d` (default) | Concert grand (Steinway D) | bitKlavier Grand, stage ORTF, 16 layers | recital | -35 | 1.0 | 11.8 | 1.8 |
+| `concert-d-hall` | Concert grand (Steinway D, audience seat) | bitKlavier Grand, house ORTF | recital | -35 | 1.0 | 12.5 | 1.8 |
+| `concert-d-blend` | Concert grand (Steinway D, stage + hall) | layers: stage ORTF 0 dB + house ORTF -4 dB | recital | -35 | 1.0 | 10.3 | 1.5 |
+| `concert-d-tail` | Concert grand (Steinway D, darker, from the tail) | bitKlavier Grand, tail omni (Decca tail) | recital | -35 | 1.0 | 14.3 | 2.4 |
+| `steinway-b-162` | Steinway B (Piano in 162) | Ivy Audio Piano in 162, close pair, 5 layers, pedal-down samples | room | off (own samples) | 0.75 | 24.9 | 1.7 |
 | `grand-c5` | Grand piano (Yamaha C5) | Accurate-Salamander 6.2a, sfz_live, 16 layers | recital | off (own samples) | 1.0 | 10.3 | 1.5 |
 | `bright-cf3` | Bright concert grand (Yamaha CF3) | Maestro Concert Grand, 5 layers | recital | -35 | 1.0 | 12.9 | 5.5 |
 | `steinway-b` | Steinway B (close, dry) | VCSL, 3 layers | recital | off | 1.35 | 9.0 | 0.8 |
@@ -293,6 +313,92 @@ wrapper; the installed copies were rewritten in place by `fetch`):
    - Engine only, Chopin excerpt: 117 → 41 peak voices, tail 30 → 1.0 s, render 15 → 3.7 s. LUFS unchanged.
 3. `grand-c5` and `vintage-grand` now set `"half_pedal": true` (see Engines). `grand-c5`'s Chopin rose 0.5 dB
    with it, so its `gain_db` went from 10.8 to 10.3.
+
+**The bitKlavier Grand's other mic sets (`concert-d-hall`, `-blend`, `-tail`, added 22 Oct).**
+- What they are: the same Steinway D recordings as `concert-d`, made at the same time through other mic pairs, from
+  archive.org (48 kHz/24-bit, 2.7-2.8 GB each). Every set has the same 664 files. The map is the same generator
+  (`post: bitklavier-sfz`).
+  - House ORTF: Schoeps cardioids 9 ft up at the stage edge, the audience's sound.
+  - Tail Omni: Schoeps omnis about 8 ft behind the tail.
+  - Stage Lid Omni (`bitklavier-stage-omni`) is installed too. The makers suggest blending it with the stage
+    ORTF; it is not offered yet.
+  - Not fetched: House Wide Cardioid, Lip Cardioid, Harp Omni, Piano Bar, Binaural (KU100 at the player; meant for
+    headphones). Sizes are 2.7-2.9 GB at 48k/24, listed by `archive.org/advancedsearch.php?q=bitklavier`.
+- Time alignment: every file in every set was trimmed to its own onset. There is no acoustic delay between the
+  sets: attack times (-20 dB under the peak) differ from the stage set's by a median of +0.06 ms (house), -0.10
+  ms (tail) and +0.06 ms (stage omni), and by under 1 ms on 92-97% of the 480 notes. That spread is per file, so
+  no `offset_ms` can improve it, and the blend uses 0. Summed, the blend's third-octave bands are -1.2 to +1.6 dB
+  off the power sum of its layers: partly coherent, with no cancellation.
+- Noise levels differ per set. The block's `levels` holds each set's own, from its raw files against its own C4
+  note, the same way as the stage set's:
+  - pedal takes: each take at the stage set's level against the C4 velocity-64 note;
+  - key-release noise: the median over the 88 keys;
+  - release resonance: against the notes' sustain (1.5-2.5 s), not their attack.
+  - Through sfizz (the noise probe), every pedal take of house and tail measures -38.0 dB (±0.1) under the C4 mf
+    note. Key-release noise at velocity 64, as the mean over 6 keys, is -35.6 (house), -36.4 (tail) and -36.7
+    (stage omni) against -36.6 for the stage set. Before, the tail set's pedal-down takes were 4-5 dB louder and
+    its release noise 3.4 dB louder; the house set's resonance was 4.2 dB louder.
+- Room: `recital`, like `concert-d`, so an A/B differs only in the mics.
+  - The house set holds little more hall than the stage set: +0.3 dB (30-300 ms) and +1.0 dB (0.3-1 s) more late
+    energy against each note's first 30 ms.
+  - Any recorded hall stops at a key release (`ampeg_release` 0.5 s). After a staccato note, the house set with
+    no room is -34.6 dB at 0.25-0.75 s, the same as the stage set with no room (-35.7). With `room` it is -32.0,
+    and `concert-d` (recital) is -19.7.
+  - So `dry` or `room` would leave the audience seat drier than the default.
+- What changes, on the Chopin excerpt:
+
+  | | `concert-d` | `-hall` | `-blend` | `-tail` |
+  |---|---|---|---|---|
+  | Bass (< 120 Hz), energy share | -19.1 dB | -24.8 dB | -20.2 dB | -25.9 dB |
+  | 2-6 kHz, energy share | -23.9 dB | -27.6 dB | -25.9 dB | -29.3 dB |
+  | L/R correlation | +0.45 | +0.85 | +0.65 | +0.45 |
+
+  The house pair is narrower and duller, and the tail pair is the darkest.
+- Excerpts 1-5, LUFS: hall -20.0, -22.8, -20.9, -16.6, -15.1; blend -20.0, -23.0, -20.9, -16.8, -16.7; tail
+  -20.0, -23.2, -21.9, -15.6, -16.8.
+  - All are within 1.5 dB of the medians except hall's Rachmaninoff (+2.5 dB). Its soft-to-loud spread before the
+    ceiling is 7.0 dB, within the grands' range. The ceiling cut its Rachmaninoff only 2.1 dB (concert-d 4.2)
+    because its true peaks are lower: the distant pair's transients are softer.
+- Cost: a 40 s excerpt took 11-18 s (one set) and 36-55 s (blend). Each set's sample load is about 20 s.
+
+**`steinway-b-162` (Ivy Audio Piano in 162, added 22 Oct).**
+- Where it comes from: BitTorrent only. ivyaudio.com/freebies says "Direct downloads will be back soon!" and
+  gives one magnet per edition. The SFZ edition is btih `4c1609b3…d9c9`; the page's 2022 and 2025 Wayback
+  copies give the same magnet. No official mirror was found (archive.org, GitHub, sfzinstruments).
+  - The fetch block's `url` is that magnet. `fetch` never downloads a magnet: the zip must already be at
+    `root/_downloads/57ebdd690cf6-Ivy_Audio_-_Piano_in_162_sfz.zip` (4,919,223,206 bytes, sha256 in the
+    block), else the entry fails at once and says so.
+  - 22 Oct: fetched with aria2c 1.37 (Ubuntu's deb, unpacked into `engines_root/tools/aria2`), in 2 min from 7
+    seeders. The magnet's trackers are dead and aria2's DHT found nobody, so the seeders came from a DHT crawl
+    and were probed by hand. All 587 pieces were checked, nothing was uploaded, and it did not seed.
+- The library is two SFZs (close pair, ambient pair) over 1,760 FLACs each (24-bit/44.1 kHz): every key, 5
+  layers, 2 round robins, with pedal-up and pedal-down samples, chosen at the note-on by `hicc64=63` /
+  `locc64=64`. There are no pedal-noise or key-release samples. Only the close pair is used, with the `room` IR.
+- The wrap (`IvyAudio-PianoIn162-Close.screen-machine.sfz`) changes three things:
+  1. One take per note: round robin 2 (`2Close.flac`) is mapped to round robin 1. sfizz keeps whole samples
+     in memory as float32, so all 1,760 would be 10.0 GB per render process, with up to 3 at once. Now 880
+     samples, 5.2 GB.
+  2. `sustain_lo=64`, as for the other SFZs.
+  3. `offset=` on 136 samples whose attack came late (before: up to 101 ms of silence first, and 62 samples
+     over 10 ms). Each now starts at most 1 ms before its first sound, with the main attack (-20 dB re
+     peak) at most 10 ms in. About 15 ms of key noise before some forte strikes is kept, but cut to 10 ms.
+- Measured 22 Oct (engine and realism, own room):
+  - Pedal: CC64 picks the pedal-down sample (correlation with the file 1.00). Held 3-5 s, pedal-down notes
+    are 8-13 dB louder than pedal-up, with 3-9 dB more energy between the note's partials. That is real
+    resonance, so `resonance_db` is null.
+  - Noise probe (`pedalprobe/probe.py`): pedal noise none (no samples); after a velocity-20 C4, the note's own
+    release tail is -35.9 dB under the velocity-64 C4 peak.
+  - The samples are about 21 dB quieter than the other grands' (C4 at velocity 64 peaks at -46.8 dBFS before
+    gain; the others at -25.9), hence `gain_db` 24.9. In the quietest 10% of each excerpt, the hiss in the
+    8-16 kHz band is -98 to -104 dBFS at -20 LUFS (`concert-d`: -93 to -95).
+  - γ 0.75 brings the spread from 8.4 dB (γ 1) to 6.8 dB.
+  - Excerpts 1-5: -20.0, -24.0, -21.9, -17.0 (limited 2.4 dB) and -17.7 LUFS (limited 4.6 dB). All are within
+    1.2 dB of the medians.
+  - `onset_ms` 1.7 is the configured -50 dBFS threshold, taken at the others' level (-64.9 dBFS before this
+    gain). Taken literally (-50 dBFS before gain) it is 9.0 ms. To -20 dB under the peak it is 5.1 ms, up to
+    14 ms on fortes.
+  - Cost: the samples take about 60 s to load (FLAC decoding) for each render process. After that a 40 s
+    excerpt renders in 6-20 s, with 21-45 peak voices and tails of 0.9-1.0 s.
 
 Known defects, measured 22 Oct:
 1. `bright-cf3` measures 7-19 dB less bass than the other grands below 250 Hz on the Chopin.

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference Clock</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #000; --fg: #fff; --dim: #9a9a9a; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body { display: grid; place-items: center; font-family: ui-monospace, "DejaVu Sans Mono", monospace; }
+  main { text-align: center; padding: 0 16px; }
+  #t { font-size: min(14vw, 22vh); font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+  #s, #h { color: var(--dim); font-size: max(13px, 2.2vw); margin-top: 1em; }
+  #h { font-size: max(12px, 1.6vw); }
+</style>
+</head>
+<body>
+<main>
+  <div id="t">--:--:--.---</div>
+  <div id="s">syncing with server clock…</div>
+  <div id="h">TV latency ≈ this clock − clock in the TV frame + this screen's own lag</div>
+</main>
+<script type="module">
+  // Glass-to-glass reference: put this device next to the TV and photograph both.
+  // The TV shows the server clock burned into the frame at capture time; this screen shows server time as
+  // of its own last render, i.e. it lags true time by its own display lag. So, from one photo:
+  //   TV latency (capture -> TV glass) ≈ this clock − clock in the TV frame + this screen's own lag.
+  // The raw difference UNDERSTATES the latency by this screen's lag unless it is added back.
+  // (client.js's nowclock=1 overlay is no substitute: it goes through the same compositor and TV path as
+  // the video, so it measures capture -> composite only.)
+  import { ClockSync, fmtUtc } from "./sync.js";
+  const sync = new ClockSync();
+  const tEl = document.getElementById("t"), sEl = document.getElementById("s");
+  function connect() {
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+    let stop = null;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "hello", role: "clock", mode: "clock", info: { ua: navigator.userAgent } }));
+      stop = sync.start(ws); // a new connection starts sync from scratch
+    };
+    ws.onmessage = (ev) => { if (typeof ev.data === "string") { const m = JSON.parse(ev.data); if (m.type === "pong") sync.pong(m); } };
+    ws.onclose = () => { stop?.(); sEl.textContent = "disconnected — reconnecting…"; setTimeout(connect, 1000); };
+  }
+  connect();
+  const tick = () => {
+    if (sync.ready) {
+      tEl.textContent = fmtUtc(sync.serverNow());
+      sEl.textContent = `UTC server time · sync rtt ${sync.rtt.toFixed(1)} ms (±${(sync.rtt / 2).toFixed(1)} ms)` +
+        (sync.fitted ? ` · skew ${sync.ppm.toFixed(0)} ppm · resid ${sync.resid.toFixed(1)} ms` : " · fitting skew…");
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

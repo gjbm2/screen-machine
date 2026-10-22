@@ -1,0 +1,16 @@
+{
+ "_comment": "Generative real-time video on the kiosk (first device run, 2026-10-13, over powerline Ethernet). source=cuda renders a GPU fractal per frame (worst case for the encoder). Needs a CuPy venv (requirements-lab.txt). Primary candidate = HEVC 4K30 over MSE (plan D11 / P6A). Panels run 3840x2160@60 since 2026-10-13 (one X screen per TV).",
+ "warmup": 8,
+ "dwell": 30,
+ "base": {"gpu": "0", "render_gpu": 0, "complexity": 2, "gop": 1.0, "source": "cuda"},
+ "runs": [
+  {"codec": "hevc", "size": "3840x2160", "fps": 30, "bitrate": "18M", "client": {"mode": "mse", "target": 2}},
+  {"codec": "hevc", "size": "3840x2160", "fps": 30, "bitrate": "18M", "client": {"mode": "wctrack"}},
+  {"codec": "hevc", "size": "3840x2160", "fps": 30, "bitrate": "12M", "client": {"mode": "mse", "target": 2}},
+  {"codec": "hevc", "size": "3840x2160", "fps": 30, "bitrate": "18M", "client": {"mode": "mse", "target": 1}},
+  {"codec": "h264", "size": "3840x2160", "fps": 30, "bitrate": "25M", "client": {"mode": "mse", "target": 2}},
+  {"codec": "av1",  "size": "3840x2160", "fps": 30, "bitrate": "15M", "client": {"mode": "wctrack"}},
+  {"codec": "h264", "size": "1920x1080", "fps": 60, "bitrate": "12M", "client": {"mode": "wctrack"}},
+  {"codec": "hevc", "size": "3840x2160", "fps": 30, "bitrate": "18M", "source": "pattern", "client": {"mode": "mse", "target": 2}}
+ ]
+}

@@ -3,7 +3,8 @@
 Built in: "sfizz" (SFZ via libsfizz) and "fluidsynth" (SF2 via pyfluidsynth). "windows-gs" is the live PC22 GS
 synth and is never rendered here. A new engine (Pianoteq's CLI, a VST3 host such as pedalboard) is a subclass of
 base.Engine in its own module, added to _BUILTIN below or registered at run time with register(name, cls), and
-imported only when used, so a missing optional dependency never breaks the others.
+imported only when used, so a missing optional dependency never breaks the others. An instrument with "layers"
+(a blend of several files, e.g. mic positions) gets a base.LayeredEngine from create().
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import importlib
 from pathlib import Path
 from typing import Union
 
-from .base import Engine, EngineError
+from .base import Engine, EngineError, LayeredEngine
 
 _BUILTIN: dict[str, str] = {
     "sfizz": "piano_render.engines.sfizz:SfizzEngine",
@@ -66,8 +67,13 @@ def version(name: str, engines_root: "str | Path") -> str:
 
 
 def create(inst: dict, engines_root: "str | Path") -> Engine:
+    """The instrument's engine; for an instrument with "layers", a base.LayeredEngine over one engine of its kind
+    per layer file (base.py's docstring)."""
+    if inst.get("layers"):
+        engine_class(inst.get("engine", ""))          # an unknown engine fails here, before any layer loads
+        return LayeredEngine(inst, engines_root, create)
     return engine_class(inst.get("engine", ""))(inst, engines_root)
 
 
-__all__ = ["Engine", "EngineError", "register", "unregister", "names", "engine_class", "available", "version",
-           "create"]
+__all__ = ["Engine", "EngineError", "LayeredEngine", "register", "unregister", "names", "engine_class", "available",
+           "version", "create"]

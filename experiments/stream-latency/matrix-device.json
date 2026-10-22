@@ -1,0 +1,164 @@
+{
+  "_comment": "Device run for the N95 kiosk. Start with: server.py --matrix matrix-device.json, then open the client on the lab Chrome. Each run: warmup s, then dwell s of measurement. Panel is 3840x2160@30 unless the TV mode is changed. Runs with source=cuda need the server started from a venv with CuPy (requirements-lab.txt).",
+  "warmup": 6,
+  "dwell": 30,
+  "base": {
+    "gpu": "0",
+    "complexity": 2,
+    "gop": 1.0,
+    "bitrate": "8M"
+  },
+  "runs": [
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "client": {
+        "mode": "webcodecs"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "client": {
+        "mode": "mse",
+        "target": 2
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "client": {
+        "mode": "mse",
+        "target": 1
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "no_reorder_fix": true,
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "no_reorder_fix": true,
+      "client": {
+        "mode": "mse",
+        "target": 2
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "25M",
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "25M",
+      "client": {
+        "mode": "webcodecs"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "25M",
+      "client": {
+        "mode": "mse",
+        "target": 2
+      }
+    },
+    {
+      "codec": "hevc",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "18M",
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "av1",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "15M",
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 60,
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "complexity": 3,
+      "bitrate": "20M",
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "hevc",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "25M",
+      "source": "cuda",
+      "complexity": 2,
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "3840x2160",
+      "fps": 30,
+      "bitrate": "25M",
+      "source": "cuda",
+      "complexity": 3,
+      "client": {
+        "mode": "wctrack"
+      }
+    },
+    {
+      "codec": "h264",
+      "size": "1920x1080",
+      "fps": 30,
+      "bitrate": "12M",
+      "source": "cuda",
+      "complexity": 2,
+      "client": {
+        "mode": "mse",
+        "target": 1
+      }
+    }
+  ]
+}

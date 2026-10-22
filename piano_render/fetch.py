@@ -12,6 +12,9 @@ other heavy jobs on this box; set SM_CPU_LOCK_HELD=1 when a caller already holds
 
 A "fetch" block (on an instrument or a room):
   url, sha256, bytes, unpack ("zip" | "tar" | "7z" | "deb" | "none"), subdir (a dir under root)
+            url may be a BitTorrent magnet (a library whose only free release is a torrent, e.g. Piano in 162):
+            nothing is downloaded; the archive must already be in root/_downloads/ under its cache name
+            (<sha256[:12]>-<the magnet's dn>), else the entry fails at once saying so
   optional: strip   (int) leading path parts to drop from every member, like tar --strip-components
             members (list) fnmatch patterns a member (after strip) must match to be unpacked
             post    (str)  a recipe run on the unpacked dir: "bitklavier-sfz" writes the SFZ map bitKlavier lacks;
@@ -19,7 +22,12 @@ A "fetch" block (on an instrument or a room):
                            text fixes (post_sfz_wrap). When only "wrap" changes, a later run rewrites the wrapper
                            files in place (each to a temp name, then renamed) instead of unpacking again; when
                            this module's bitKlavier map changes, a later run rewrites that file the same way.
+            levels  (dict) "bitklavier-sfz" only: this mic set's own noise levels, measured like the defaults
+                           (BITKLAVIER_*): {"pedal_db": {take file name: region volume}, "rel_db", "harm_db"}; a
+                           value left out keeps the default (a change rewrites the map in place, like the generator)
 Entries that share a subdir (VCSL Keys: steinway-b, upright-vcsl, harpsichord) share one download and one unpack.
+An instrument's "fetch" may be a list of blocks (a blend whose "layers" come from several downloads); each is
+installed as above, and the instrument counts as installed when its file and every layer file exist.
 An instrument without a fetch block may carry "copy_from": {"path", "sha256", "bytes"}: a local file (the owner's
 own SoundFont) copied to root/<file>.
 
@@ -127,6 +135,23 @@ def _target_file(kind: str, entry: dict) -> Optional[str]:
     return entry.get("ir") if kind == "room" else entry.get("file")
 
 
+def _target_files(kind: str, entry: dict) -> list[str]:
+    """Every file the entry needs under root: its file (or IR) and, for a blend, each layer's file."""
+    f = _target_file(kind, entry)
+    out = [f] if f else []
+    if kind == "instrument":
+        out += [layer.get("file") or "" for layer in entry.get("layers") or [] if isinstance(layer, dict)]
+    return out
+
+
+def _blocks(entry: dict) -> list[dict]:
+    """The entry's fetch blocks: none, one, or a list (a blend whose layers come from several downloads)."""
+    b = entry.get("fetch")
+    if not b:
+        return []
+    return [x for x in b if x] if isinstance(b, list) else [b]
+
+
 # ---------------------------------------------------------------- priority and the shared CPU lock
 
 def lower_priority() -> None:
@@ -197,6 +222,9 @@ def sha256_file(path: Path) -> str:
 
 
 def url_basename(url: str) -> str:
+    if url.startswith("magnet:"):  # a BitTorrent magnet: its dn= (display name) is the file's name
+        dn = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("dn") or [""]
+        return PurePosixPath(dn[0].replace("\\", "/")).name or "download"
     return urllib.parse.unquote(PurePosixPath(urllib.parse.urlsplit(url).path).name) or "download"
 
 
@@ -215,6 +243,10 @@ def download(url: str, dest: Path, sha256: Optional[str] = None, size: Optional[
             return dest
         log(f"  {label}: cached file is wrong, downloading again")
         dest.unlink()
+    if url.startswith("magnet:"):
+        raise FetchError(f"{label}: BitTorrent only (no direct download): fetch {url_basename(url)} with a BitTorrent "
+                         f"client from the magnet in the registry, then put it at {dest}"
+                         + (f" (sha256 {sha256})" if sha256 else ""))
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
     last_err: Optional[BaseException] = None
@@ -494,8 +526,14 @@ BITKLAVIER_HARM_DB = -6.0
 BITKLAVIER_HARM_RT_DECAY = (3.0, 8.0)
 
 
-def bitklavier_sfz_text(dst: Path) -> tuple[str, dict]:
-    """The SFZ map for a bitKlavier Grand mic set unpacked in dst (post_bitklavier_sfz), and the sample counts."""
+def bitklavier_sfz_text(dst: Path, levels: Optional[dict] = None) -> tuple[str, dict]:
+    """The SFZ map for a bitKlavier Grand mic set unpacked in dst (post_bitklavier_sfz), and the sample counts.
+    levels (a fetch block's "levels"): this mic set's own {"pedal_db": {take: volume}, "rel_db", "harm_db"} in place of
+    the BITKLAVIER_* defaults (each mic position hears the mechanical noises at its own level against the notes)."""
+    lv = levels or {}
+    pedal_db = {**BITKLAVIER_PEDAL_DB, **(lv.get("pedal_db") or {})}
+    rel_db = float(lv.get("rel_db", BITKLAVIER_REL_DB))
+    harm_db = float(lv.get("harm_db", BITKLAVIER_HARM_DB))
     wavs: dict[str, str] = {}
     for p in dst.rglob("*.wav"):
         if not p.name.startswith("._"):
@@ -553,7 +591,7 @@ def bitklavier_sfz_text(dst: Path) -> tuple[str, dict]:
         d0, d1 = BITKLAVIER_HARM_RT_DECAY
         L += ["", "<group>", "// release resonance: the ring after a key comes up (played when the damper falls, so after",
               "// the pedal lifts), quieter the longer the key was held (rt_decay, faster in the treble)",
-              "trigger=release", f"volume={BITKLAVIER_HARM_DB:g}", "amp_veltrack=0"]
+              "trigger=release", f"volume={harm_db:g}", "amp_veltrack=0"]
         for lo, hi, k in ranges(list(harm)):
             rt = d0 + (d1 - d0) * (k - 21) / 87
             for vlo, vhi, path in vel_split(harm[k]):
@@ -561,7 +599,7 @@ def bitklavier_sfz_text(dst: Path) -> tuple[str, dict]:
                          f" lovel={vlo} hivel={vhi} rt_decay={rt:.1f}")
     if rel:
         L += ["", "<group>", "// key-release noise (hammer and key return), one per key, at the key's release even with",
-              "// the pedal down", "trigger=release_key", f"volume={BITKLAVIER_REL_DB:g}", "amp_veltrack=50",
+              "// the pedal down", "trigger=release_key", f"volume={rel_db:g}", "amp_veltrack=50",
               "pitch_keytrack=0"]
         for k in sorted(rel):
             L.append(f"<region> sample={rel[k]} key={k} pitch_keycenter={k}")
@@ -576,7 +614,7 @@ def bitklavier_sfz_text(dst: Path) -> tuple[str, dict]:
         vs = sorted(pedal[kind])
         for i, v in enumerate(vs):
             path = pedal[kind][v]
-            vol = BITKLAVIER_PEDAL_DB.get(PurePosixPath(path).name, BITKLAVIER_PEDAL_FALLBACK_DB[kind])
+            vol = pedal_db.get(PurePosixPath(path).name, BITKLAVIER_PEDAL_FALLBACK_DB[kind])
             L.append(f"<region> sample={path} lorand={i / len(vs):.3f} hirand={(i + 1) / len(vs):.3f} volume={vol:g}")
     counts = {"main": sum(len(v) for v in main.values()), "resonance": sum(len(v) for v in harm.values()),
               "release": len(rel), "pedal": sum(len(v) for v in pedal.values())}
@@ -592,7 +630,7 @@ def post_bitklavier_sfz(dst: Path, block: dict, log: Log = print) -> Path:
     harm[note][octave]v[vel].wav release resonance (the ring after key release), rel[1-88].wav one hammer/damper
     release noise per key, pedal[D|U][vel].wav pedal down/up noise. bitKlavier publishes no SFZ of its own.
     Written to a temp name and renamed; refresh_generated() rewrites an installed map when this code changes."""
-    text, n = bitklavier_sfz_text(dst)
+    text, n = bitklavier_sfz_text(dst, block.get("levels"))
     out = dst / BITKLAVIER_OUT
     write_text_atomic(out, text)
     log(f"  bitklavier-sfz: {n['main']} main, {n['resonance']} resonance, {n['release']} release, {n['pedal']} pedal"
@@ -606,7 +644,7 @@ def refresh_generated(dst: Path, block: dict, log: Log = print) -> bool:
     unpack). True when it was rewritten."""
     if block.get("post") != "bitklavier-sfz":
         return False
-    text, _ = bitklavier_sfz_text(dst)
+    text, _ = bitklavier_sfz_text(dst, block.get("levels"))
     out = dst / BITKLAVIER_OUT
     if not write_text_atomic(out, text):
         return False
@@ -676,7 +714,8 @@ def install_engine(name: str, engines_root: Path, log: Log = print) -> str:
 
 def _block_key(block: dict) -> tuple:
     return (block.get("url"), block.get("sha256"), block.get("unpack"), int(block.get("strip", 0)),
-            tuple(block.get("members") or ()), block.get("post"), json.dumps(block.get("wrap"), sort_keys=True))
+            tuple(block.get("members") or ()), block.get("post"), json.dumps(block.get("wrap"), sort_keys=True),
+            json.dumps(block.get("levels"), sort_keys=True))
 
 
 def _marker(dst: Path) -> Optional[dict]:
@@ -800,8 +839,8 @@ def status(registry_path=None) -> dict[str, str]:
     reg, root, engines_root = load_registry(registry_path)
     out = {"sfizz": "ok" if engine_path("sfizz", engines_root).exists() else "missing"}
     for eid, (kind, entry) in _entries(reg).items():
-        f = _target_file(kind, entry)
-        out[eid] = "no-file" if not f else ("ok" if (root / f).exists() else "missing")
+        fs = _target_files(kind, entry)
+        out[eid] = "no-file" if not fs else ("ok" if all(f and (root / f).exists() for f in fs) else "missing")
     return out
 
 
@@ -834,26 +873,30 @@ def fetch(ids: Optional[Iterable[str]] = None, registry_path=None, *, log: Log =
             if eid == "sfizz":
                 continue
             kind, entry = entries[eid]
-            block = entry.get("fetch")
+            blocks = _blocks(entry)
             try:
-                if block:
-                    k = _block_key(block)
-                    sub = block["subdir"].strip("/")
-                    if sub in by_sub and by_sub[sub][0] != k:
-                        raise FetchError(f"subdir {sub!r} is used by {by_sub[sub][1]} with a different fetch block")
-                    if sub in by_sub:
-                        results[eid] = by_sub[sub][2]
-                    else:
-                        st = fetch_block(block, root, engines_root, log, eid)
-                        by_sub[sub] = (k, eid, st)
-                        results[eid] = st
+                if blocks:
+                    sts = []
+                    for block in blocks:
+                        k = _block_key(block)
+                        sub = block["subdir"].strip("/")
+                        if sub in by_sub and by_sub[sub][0] != k:
+                            raise FetchError(f"subdir {sub!r} is used by {by_sub[sub][1]} with a different fetch block")
+                        if sub in by_sub:
+                            sts.append(by_sub[sub][2])
+                        else:
+                            st = fetch_block(block, root, engines_root, log, eid)
+                            by_sub[sub] = (k, eid, st)
+                            sts.append(st)
+                    results[eid] = next((st for st in sts if st != "present"), "present")
                 elif entry.get("copy_from"):
                     results[eid] = copy_local(entry, root, log, eid)
                 else:
                     results[eid] = "present" if not _target_file(kind, entry) else "skipped: no fetch block"
-                f = _target_file(kind, entry)
-                if f and not (root / f).exists():
-                    results[eid] = f"failed: {f} not found under {root} after install"
+                for f in _target_files(kind, entry):
+                    if not f or not (root / f).exists():
+                        results[eid] = f"failed: {f or '(a layer without a file)'} not found under {root} after install"
+                        break
             except Exception as e:  # noqa: BLE001
                 results[eid] = f"failed: {e}"
                 log(f"{eid}: FAILED: {e}")

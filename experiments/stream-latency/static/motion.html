@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Motion test</title><link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 2%; bottom: 3%; color: #ccc; font: 28px/1.3 monospace; background: rgba(0,0,0,.7); padding: 8px 14px; }
+</style></head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<script>
+// Display-path test with NO video: the browser itself draws a full-height white bar moving at a constant speed.
+// If this tears ("vertical breaking") or jitters on a TV, the cause is the display path (compositing, X, HDMI,
+// One Connect, panel), not encoding or decoding.  ?speed=px/s (default 1920 = a 4K width in 2 s),
+// ?fps=30 steps the bar only 30 times a second (the same cadence as the 30 fps test video).
+// window.motionStats is readable over DevTools (cdp_probe.py <port> eval 'JSON.stringify(motionStats)').
+const q = new URLSearchParams(location.search);
+const speed = +(q.get("speed") || 1920), stepFps = +(q.get("fps") || 0);
+const c = document.getElementById("c"), hud = document.getElementById("hud"), g = c.getContext("2d");
+function size() { c.width = innerWidth; c.height = innerHeight; }
+addEventListener("resize", size); size();
+const st = window.motionStats = { frames: 0, missed: 0, deltas: [], refreshMs: null, since: performance.now() };
+let last = null;
+function draw(t) {
+  if (last !== null) {
+    const d = t - last;
+    st.deltas.push(d); if (st.deltas.length > 600) st.deltas.shift();
+    if (st.deltas.length > 30) {
+      const s = [...st.deltas].sort((a, b) => a - b); st.refreshMs = s[s.length >> 1];
+      if (d > 1.5 * st.refreshMs) st.missed += Math.round(d / st.refreshMs) - 1;
+    }
+  }
+  last = t; st.frames++;
+  const tt = stepFps ? Math.floor(t / (1000 / stepFps)) * (1000 / stepFps) : t;
+  const W = c.width, H = c.height, bw = Math.max(8, W / 160 | 0);
+  const x = ((tt / 1000) * speed) % (W - bw);
+  g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#fff"; g.fillRect(x | 0, 0, bw, H);
+  // a second, slower bar in the lower third makes judder easier to see by comparison
+  g.fillRect(((tt / 1000) * speed / 4) % (W - bw) | 0, H * 2 / 3, bw, H / 3);
+  if (st.frames % 15 === 0) {
+    const hz = st.refreshMs ? (1000 / st.refreshMs).toFixed(2) : "?";
+    hud.textContent = `refresh ${hz} Hz | frames ${st.frames} | missed vsyncs ${st.missed} | ${stepFps ? stepFps + " fps steps" : "every vsync"} | ${speed} px/s`;
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
+</body></html>

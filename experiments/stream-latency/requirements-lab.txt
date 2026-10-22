@@ -1,0 +1,7 @@
+cupy-cuda12x
+nvidia-cuda-nvrtc-cu12
+nvidia-cuda-runtime-cu12
+aiohttp
+websockets
+numpy
+opencv-python-headless

@@ -31,6 +31,15 @@ for the realism stage (score.Performance.controls).
 
 Engine subclasses implement the hooks used by Engine.render (_load, _reset, _set_pitch, _send, _render_block,
 _active_voices); a paid engine that renders a whole file in one go (Pianoteq's CLI, say) can override render().
+
+Layers (LayeredEngine, made by engines.create for an instrument with "layers"): a blend of several files of one
+engine, e.g. mic positions of one sampled piano recorded at the same time. Each layer {"file", "gain_db" (default 0),
+"offset_ms" (default 0)} is rendered by the instrument's own engine with the same events (and the same pitch_cents),
+scaled by its gain_db, moved by offset_ms rounded to whole samples (positive = later; a negative one drops the
+layer's first samples, so sample 0 stays MIDI time 0), and summed. Each layer keeps the tail rules above with the
+floor taken after the instrument's gain_db plus its own. Only one layer's engine is loaded at a time (a bitKlavier
+mic set takes ~4.8 GB in sfizz), and the one loaded last stays loaded and renders first next time; the sum is
+always made in the configured order.
 """
 
 from __future__ import annotations
@@ -214,3 +223,125 @@ class Engine:
                           tail_s=round(max(0.0, end / sr - last_t), 3), tail_end=ended,
                           tail_floor_dbfs=round(floor_db, 1), peak_voices=peak_voices)
         return np.ascontiguousarray(out[:, :end].T)
+
+
+def layer_specs(inst: dict) -> list[dict]:
+    """The instrument's "layers" as [{"file", "gain_db", "offset_ms"}] (floats filled in), [] when it has none.
+    Raises EngineError for a layer without a file."""
+    out = []
+    for i, layer in enumerate(inst.get("layers") or []):
+        if not isinstance(layer, dict) or not layer.get("file"):
+            raise EngineError(f"instrument {inst.get('id')!r}: layer {i} has no file")
+        out.append({"file": layer["file"], "gain_db": float(layer.get("gain_db") or 0.0),
+                    "offset_ms": float(layer.get("offset_ms") or 0.0)})
+    return out
+
+
+class LayeredEngine(Engine):
+    """An instrument with "layers" (module docstring): one engine of the instrument's own kind per layer file,
+    rendered with identical events and summed sample-aligned. ``create(inst, engines_root)`` makes a layer's engine
+    (engines.create, given a copy of the instrument with that layer's file, no "layers", and gain_db = the
+    instrument's plus the layer's, so its tail floor is the one its output is heard at)."""
+
+    name = "layers"
+    KEEP_LOADED = 1                  # layer engines kept loaded between renders
+
+    def __init__(self, inst: dict, engines_root: "str | Path", create: Callable[[dict, "str | Path"], Engine]):
+        super().__init__(inst, engines_root)
+        self.layers = layer_specs(inst)
+        if not self.layers:
+            raise EngineError(f"instrument {inst.get('id')!r} has no layers")
+        self._create = create
+        self._subs: list[Optional[Engine]] = [None] * len(self.layers)
+        self._order: list[int] = list(range(len(self.layers)))     # last rendered (still loaded) first
+
+    def _layer_inst(self, i: int) -> dict:
+        spec = self.layers[i]
+        sub = {k: v for k, v in self.inst.items() if k != "layers"}
+        sub["file"] = spec["file"]
+        sub["gain_db"] = float(self.inst.get("gain_db") or 0.0) + spec["gain_db"]
+        return sub
+
+    def _sub(self, i: int) -> Engine:
+        """Layer i's engine, current with self.inst; every other loaded one beyond KEEP_LOADED - 1 is closed first."""
+        e = self._subs[i]
+        if e is None:
+            e = self._subs[i] = self._create(self._layer_inst(i), self.engines_root)
+        else:
+            e.inst = self._layer_inst(i)
+        e.gamma = self.gamma
+        return e
+
+    def _make_room(self, i: int) -> None:
+        loaded = [j for j in self._order if j != i and self._subs[j] is not None
+                  and self._subs[j]._loaded_sr is not None]
+        for j in loaded[max(0, self.KEEP_LOADED - 1):]:
+            self._subs[j].close()
+
+    def ensure_loaded(self, sr: int) -> None:
+        """Load the layer the next render starts with (render.py's "load" stage); the others load as they render."""
+        i = self._order[0]
+        e = self._sub(i)
+        if e._loaded_sr != sr:
+            self._make_room(i)
+            t0 = time.monotonic()
+            e.ensure_loaded(sr)
+            self.stats["load_s"] = round(time.monotonic() - t0, 3)
+        self._loaded_sr = sr
+
+    def render(self, perf: Performance, sr: int = 48000, progress: Progress = None,
+               pitch_cents: float = 0.0) -> np.ndarray:
+        sr = int(sr)
+        n = len(self.layers)
+        outs: list[Optional[np.ndarray]] = [None] * n
+        per: list[dict] = [{} for _ in range(n)]
+        last_t = perf.duration_s
+        order = list(self._order)
+        t_wall, c0 = time.monotonic(), time.process_time()
+        for j, i in enumerate(order):
+            e = self._sub(i)
+            if e._loaded_sr != sr:
+                self._make_room(i)
+            t0 = time.monotonic()
+            loaded_before = e._loaded_sr == sr
+            e.ensure_loaded(sr)
+            cb = None
+            if progress is not None:
+                cb = (lambda d, t, j=j: progress(last_t * (j + (min(d, t) / t if t > 0 else 1.0)) / n, last_t))
+            a = np.asarray(e.render(perf, sr=sr, progress=cb, pitch_cents=pitch_cents), np.float32)
+            g = 10.0 ** (self.layers[i]["gain_db"] / 20.0)
+            if g != 1.0:
+                a = a * np.float32(g)
+            outs[i] = a
+            per[i] = dict(e.stats, file=self.layers[i]["file"], gain_db=self.layers[i]["gain_db"],
+                          offset_ms=self.layers[i]["offset_ms"], layer_load_s=0.0 if loaded_before
+                          else round(e.stats.get("load_s", 0.0), 3), layer_wall_s=round(time.monotonic() - t0, 3))
+        self._order = [order[-1]] + order[:-1]
+        shifts = [int(round(spec["offset_ms"] * sr / 1000.0)) for spec in self.layers]
+        total = max(max(0, a.shape[0] + s) for a, s in zip(outs, shifts))
+        out = np.zeros((total, 2), np.float32)
+        for a, s in zip(outs, shifts):                 # configured order: the same sum whatever ran first
+            src = a[-s:] if s < 0 else a
+            out[max(0, s):max(0, s) + src.shape[0]] += src
+        del outs
+        if progress is not None:
+            progress(last_t, last_t)
+        wall, cpu = time.monotonic() - t_wall, time.process_time() - c0
+        longest = max(range(n), key=lambda i: per[i].get("audio_s", 0.0) + shifts[i] / sr)
+        self.stats.update(
+            layers=per, render_wall_s=round(wall, 3), render_cpu_s=round(cpu, 3), audio_s=round(total / sr, 3),
+            x_realtime_cpu=round(total / sr / cpu, 2) if cpu > 0 else None,
+            tail_s=round(max(0.0, total / sr - last_t), 3), tail_end=per[longest].get("tail_end"),
+            tail_floor_dbfs=per[longest].get("tail_floor_dbfs"),
+            peak_voices=max(int(p.get("peak_voices") or 0) for p in per),
+            layer_loads_s=round(sum(p["layer_load_s"] for p in per), 3))
+        return out
+
+    def _active_voices(self) -> int:
+        return -1
+
+    def close(self) -> None:
+        for e in getattr(self, "_subs", []):
+            if e is not None:
+                e.close()
+        self._loaded_sr = None
