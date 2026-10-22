@@ -161,9 +161,14 @@ class Spacer:
     def base(self, p: float) -> float:
         return self.W(p) + BAR_G * self.nb(p)
 
+    def off(self) -> float:
+        """What earlier pushes add to a column: proportional, all of them; warped, none (the warp runs through where
+        the notes are drawn, pushes included: adding them again would move the phrase on at every refit)."""
+        return self.push if self.warp() is None else 0.0
+
     def place(self, p: float, ext: dict) -> float:
         """A column at slot p with {staff: (left, right)} -> its x."""
-        x = self.base(p) + self.push
+        x = self.base(p) + self.off()
         if self.first_left is None:
             self.first_left = max((lr[0] for lr in ext.values()), default=0.0)
         need = 0.0
@@ -185,7 +190,7 @@ class Spacer:
 
     def barline(self, k: int, left: float) -> float:
         """Bar k's line (its downbeat column's leftmost mark at ``left`` sp from the column, 0 if none)."""
-        x = self.base(k * self.units) + self.push
+        x = self.base(k * self.units) + self.off()
         return max(x - left - BL_OFF, max(self.edge) + 0.45)
 
 
