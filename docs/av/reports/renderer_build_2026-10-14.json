@@ -1,0 +1,150 @@
+{
+ "status": "done",
+ "summary": "I built stream_service (renderer, NVENC encoder, media server and dev page) and it works end to end. The one real limit is 4K60 smoothness: 1.3 % (P4000) and 3.5 % (RTX 4060) of frames were produced late, in bursts. The cause is the 12.4 MB-per-frame pipe into ffmpeg, not rendering. All 95 tests pass (93 unit, 2 GPU integration, 1 headless Chrome; 1 Chrome run before the final fixes) and there is no breaking change to LIVE_V1.\n\nWhat runs: `python -m stream_service`, with the LIVE_V1 \u00a71 API and per-session state machine (starting \u2192 holding \u2192 entering \u2192 live \u2192 exiting \u2192 held, plus failed and ended). Sessions have a TTL and idempotency keys, and creating one gives a 0600 token file plus a per-session media key. Rendering, NVENC and media serving follow the brief, built from the lab code. Presets reload from config/live/*.yaml when the files change. The dev page at /dev uses a reusable player (static/live-player.js) that the display-page track can copy.\n\nfractal_zoom: the endless float32 zoom in 2f's design works and loops seamlessly. At the wrap, the mean difference is 0.01\u20130.13/255 for nebula, dendrite and rabbit, against 7\u201316/255 between consecutive frames. For seahorse it is 3.1 against 55. I kept the design's maths and made three additions that don't break the self-similarity:\n- **Faster start:** a 12-term Taylor series for the starting point cuts warm-up iterations 4\u20138\u00d7 (seahorse 192 \u2192 39).\n- **Inside points:** detecting points that have settled into a cycle took rabbit at 4K on the P4000 from about 16 ms to about 5 ms.\n- **`natural_spin` setting:** the zoom's built-in spiral would otherwise turn 88\u00b0/s (dendrite) to about 290\u00b0/s (rabbit) at the default speed. It defaults to a pure zoom plus 3\u00b0/s of gentle rotation.\n\nThe default scene is the `nebula` spiral with the `ember` palette; dendrite, rabbit and seahorse are also selectable, and I checked all four visually at 4K.\n\nOn performance:\n- **Rendering is cheap:** 3\u20135 ms per 4K frame.\n- **The bottleneck:** ffmpeg with the lab's `-delay 0` only accepts about 66 4K frames per second on the P4000, too close to 60. A 2-frame encoder delay raises that to about 94 for 33 ms of extra latency, so the hevc-2160p60 profile now uses it.\n- **Other fixes:** a deeper buffer of 6 frames, and no longer repeating the previous frame when the pipe (not the render) is behind.\n- **Result:** no duplicate frames are shown, 0 gaps and 0 drops at the client, and the worst delivery delay (about 150 ms) stays inside the player's 300 ms buffer.\n\nThe full fix is encoding straight from GPU memory, the later step in AV_PROGRAMME \u00a74.4.\n\nTwo other findings:\n- **Exit cut:** the frame at `hold_pts` is rendered as the exact target, but the encoded frame carries a faint residue for one frame (luma error mean 1.3, max 7 levels).\n- **Colour in headless Chrome:** it shows greys exactly but gets saturated blues wrong by up to 12 levels in the blue channel. ffmpeg decodes the same stream within \u00b12, so the encoder is right. The kiosk colour check is still needed.",
+ "files": [
+  "/home/gjbm2/dev/screen-machine/stream_service/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/__main__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/server.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/sessions.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/renderer.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/layers.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/gpu.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/media.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/events.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/presets.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/profiles.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/easing.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/stats.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tokens.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/encode/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/encode/encoder.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/encode/fmp4.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/encode/bitstream.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/base.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/sources/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/sources/fractal_zoom.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/sources/image.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/sources/solid.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/transitions/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/transitions/crossfade.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/plugins/transitions/cut.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/static/dev.html",
+  "/home/gjbm2/dev/screen-machine/stream_service/static/live-player.js",
+  "/home/gjbm2/dev/screen-machine/stream_service/tools/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tools/perf.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tools/fractal_preview.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/__init__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/conftest.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/pytest.ini",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_plugins.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_presets.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_layers.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_fmp4.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_api.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_integration_gpu.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_playback_chrome.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/README.md",
+  "/home/gjbm2/dev/screen-machine/config/live/scenes.yaml",
+  "/home/gjbm2/dev/screen-machine/config/live/transitions.yaml"
+ ],
+ "tests": [
+  {
+   "name": "unit: plug-in registry, discovery, catalog schemas checked as JSON Schema, validation (unknown param 400, out-of-range clamped, wrong type 400), colour params, transition common params, easing time constant, CSS easing curves (test_plugins.py)",
+   "result": "pass (9 tests)"
+  },
+  {
+   "name": "unit: presets: repo presets include fractal-zoom and crossfade-3s, all spec forms, invalid presets skipped, bad specs, hot reload, a YAML error keeps the last good set (test_presets.py)",
+   "result": "pass (13)"
+  },
+  {
+   "name": "unit: layer tree with NumPy fakes: local time and dt, progress/start/done pts, collapse to b, zero-duration cut, nesting (running transition becomes a), inner finishing first, superseded done, whole-frame tolerance (test_layers.py)",
+   "result": "pass (8); caught a real bug: the first transition frame had progress 1e-9, so both sides rendered and blended"
+  },
+  {
+   "name": "unit: fMP4 init segment is low-delay (mvhd duration 0, no mehd) and carries the colour box; fragment layout (tfdt, trun data offset); config message and [0x02][key][frame_id u32 BE] framing (test_fmp4.py)",
+   "result": "pass (4)"
+  },
+  {
+   "name": "unit: API auth (401 on all 11 routes x 4 bad headers), open routes, catalog shape, create validation (10 error cases), bad JSON / 404, /api/state GPUs, events socket token, media key (wrong key 4403, missing key 4403, unknown session 4404, config/init/keyframe/eos order), token file 0600 64 hex (test_api.py)",
+   "result": "pass (59)"
+  },
+  {
+   "name": "GPU integration 1 (SM_GPU_TESTS=1, port 8082, GPU 1, h264-720p30): ready <5 s, idempotency, go (repeat go 409), in started/done 2.0 s apart, PATCH params (unknown param 400), exit, held hold_pts = out done pts, delete, ended, eos; frames contiguous with an IDR every second; ffprobe colour tags; decoded PNGs: anchor hold, mid-crossfade in, live zoom, mid-crossfade out, frame before hold_pts (still mixing), the hold_pts frame (target), held target",
+   "result": "pass (ready 1.1-2.5 s, 0-2 late frames, render 1.3-1.5 ms p50); PNGs inspected"
+  },
+  {
+   "name": "GPU integration 2: 4:3 PNG anchor letterboxed (black bars checked), cut in, two in-stream scene changes (crossfade 0.5 s, then cut), re-exit while exiting (first out marked superseded, one held), exit again from held",
+   "result": "pass; PNGs inspected"
+  },
+  {
+   "name": "headless Chrome for Testing 145 playback of /dev?attach= at h264-720p30 (SM_BROWSER_TESTS=1): presented vs expected over 10 s, dropped, playbackRate, edge jumps, stalls, exit cut at the first frame at/after hold_pts, catalog-driven forms load",
+   "result": "pass: presented 301/300, decoded 301, dropped 0, buffered ~290 ms, rate 1.0, 0 edge jumps / 0 gap skips / 0 stalls, exit cut at mediaTime 16.967 for hold_pts 16.9667"
+  },
+  {
+   "name": "fractal seamlessness check (tools/fractal_preview --seam): u=0 vs u just below 1",
+   "result": "mean diff 0.012/255 (dendrite), 0.030 (rabbit), 0.128 (nebula), 3.1 (seahorse); consecutive frames differ by 8.9 / 15.9 / 6.8 / 55.0"
+  },
+  {
+   "name": "profile sanity: av1-720p30 on GPU 0, AV1 on GPU 1, hevc-2160p30 on GPU 1 for 10 s",
+   "result": "AV1 works on GPU 0 (av01.0.05M.08); AV1 on GPU 1 gives 400 unsupported_profile; 2160p30: 0 late, 29.9 fps, 20 Mbit/s"
+  }
+ ],
+ "known_gaps": [
+  "4K60 smoothness is limited by the pipe into ffmpeg: 1.3 % (P4000) and 3.5 % (RTX 4060) of frames were produced more than a frame late, in short bursts. Content and pts stay correct, the client shows 0 gaps and 0 drops, and the worst delay (~150 ms) is inside the 300 ms player buffer. The full fix is encoding straight from GPU memory (AV_PROGRAMME \u00a74.4). The 4060 ceiling is 70-80 fps whatever the encoder delay, so screens on GPU 0 have less headroom.",
+  "hevc-2160p60 now uses a 2-frame NVENC output delay (33 ms of extra latency). Set nvenc_delay=0 in profiles.py if latency matters more than smoothness.",
+  "HEVC and 4K playback in a browser are untested here: headless Chrome cannot decode HEVC and I have no kiosk access. The dev page and player were exercised only at 720p H.264 headless.",
+  "Exit cut: the encoded frame at hold_pts carries a faint residue for one frame (luma error mean 1.3, max 7 levels; 0.05 one frame later). The contract meaning of hold_pts is kept. If it is visible on the TVs, room_service can send hold_pts + 2/fps in live.leave.",
+  "Colour: headless Chrome's software video path decodes blue with roughly the BT.601 gain (greys exact, saturated blues off by up to 12 levels; the transfer tag made no difference). The kiosk colour check in AV_PROGRAMME \u00a73.3 is still outstanding; color_trc (bt709 or sRGB) can be set per session for it.",
+  "Heavy scenes on the P4000: seahorse costs 12 ms per 4K frame and supersampling (aa=2) 16 ms for nebula. The defaults (nebula, aa=1) cost about 5.5 ms.",
+  "Changing the fractal preset or c live eases c through other Julia sets, which can look chaotic mid-morph. Use a scene change with a crossfade to switch fractals.",
+  "Only API calls renew the session TTL, as the contract says; an attached media socket does not.",
+  "GET /api/sessions also lists sessions ended in the last 10 minutes (state 'ended'); /api/state lists active ones only.",
+  "Drop-to-keyframe and transport-backlog handling are ported from the lab but were tested only with a fake hub, not under real network congestion.",
+  "Performance numbers were measured while other agents were using the same machine (another stream_service on :8092 with an encoder on GPU 1, plus Chrome and pytest runs), so expect some run-to-run variance.",
+  "Filters and the photosafe flag are not built; they are out of scope for v1."
+ ],
+ "processes_left_running": [],
+ "how_to_run": "cd ~/dev/screen-machine && ~/.venvs/sm-stream/bin/python -m stream_service --port 8082   (other flags: --host, --public-base ws://host:port, --config-dir config/live, --token-file ~/.config/screen-machine/stream_service.token, --max-sessions). The first start creates the token file (64 hex, mode 0600). The dev page is http://127.0.0.1:8082/dev: paste the token once. Unit tests: ~/.venvs/sm-stream/bin/python -m pytest stream_service/tests -q. GPU integration on :8082 (GPU 1 by default): SM_GPU_TESTS=1 ... -s. Add the headless Chrome test with SM_BROWSER_TESTS=1, and SM_TEST_OUT=<dir> to keep the PNGs. Performance (against a running service): python -m stream_service.tools.perf --gpu 0 --profile hevc-2160p60 --seconds 60 [--token-file ...]. Fractal stills and seam check: python -m stream_service.tools.fractal_preview --gpu 1 --params '{\"preset\":\"rabbit\"}' --seam --bench 20 --out <dir>.",
+ "contract_deviations": [
+  "No breaking changes. Additive items, all documented in README.md:",
+  "/healthz needs no auth.",
+  "Catalog profiles also carry color {primaries, trc, matrix, range}, target_buffer_ms and nvenc_delay_frames.",
+  "POST /api/sessions accepts an optional color_trc.",
+  "Exit is also accepted from the held state (a new target re-runs the out transition).",
+  "Session summaries carry extra fields (gpu, codec, size, fps, color_trc, scene_params, transitions, hold_pts, error, end_reason, expires_in_s, stats including repeats, write/slip/encode ms and bitrate, client_stats).",
+  "session.transition events carry superseded:true when a transition was discarded before it finished, so every started gets exactly one done.",
+  "On connect, the events socket first sends a session.state (and session.held) for each active session, so a restarted room_service can adopt them.",
+  "session.ended may carry a detail field.",
+  "The media config message also carries the session id.",
+  "New debug route: GET /api/sessions/{id}/frames?since=N.",
+  "Not a deviation, but clients should note: the HEVC codec_string is hev1.\u2026 (the lab's sample entry, which plays on the kiosk), while LIVE_V1's example shows hvc1.\u2026. Clients should use the string they receive."
+ ],
+ "findings_fixed": [
+  "Layer-tree bug: the first frame of a transition had progress 1e-9 instead of 0, so both sides were rendered and blended (found by unit test, fixed).",
+  "The pipe write was the 4K60 bottleneck: switched hevc-2160p60 to a 2-frame encoder delay (P4000 input ceiling ~66 \u2192 ~94 fps), deepened the pinned buffer from 3 to 6 frames, and stopped showing repeated frames when the pipe (not rendering) is behind. Late frames went from 1.8 % / 5.0 % (repeated) to 1.3 % / 3.5 % (rendered late with the right content, 0 repeats).",
+  "fractal_zoom: frames popped at the wrap where the iteration cut-off fell; fixed by fading by depth in the self-similar coordinates.",
+  "fractal_zoom: Taylor-series start cuts warm-up iterations 4-8\u00d7; detecting points that settle into a cycle cuts rabbit at 4K on the P4000 from ~16 ms to ~5 ms per frame.",
+  "fractal_zoom: added natural_spin (default 0 = pure zoom), because the built-in spiral turned 88-290\u00b0/s at the default speed.",
+  "GPU memory of removed sources is now freed only after the GPU has finished with it.",
+  "Engine start/stop are serialised and stop is safe to call twice, so a failed encoder plus a DELETE, or a DELETE during start, cannot leave ffmpeg running.",
+  "A PNG that fails to decode is now a clean 400 before any session exists or emits events.",
+  "Concurrent creates with the same idempotency key are serialised.",
+  "Encoder start-up (NVENC init) is no longer counted as late frames.",
+  "The encoder pipe write now loops until the whole frame is written."
+ ],
+ "measurements": [
+  "hevc-2160p60, fractal-zoom live, 60 s, Quadro P4000 (GPU 1): 48/3600 frames late (1.3 %, one ~0.8 s burst, max 84 ms late), 0 repeats, 0 resyncs; GPU render (layer tree + RGBA\u2192NV12) p50 5.15 / p95 5.72 ms; GPU\u2192host copy p50 1.13 ms; host enqueue p50 1.08 ms; NV12 pipe write p50 8.2 / p95 12.0 / p99 19.1 / max 50 ms; write done \u2192 packet out p50 22.1 / p95 26.1 ms (includes the 2-frame encoder delay); encoder 59.95 fps at 30.05 Mbit/s; media client 59.99 fps, 0 gaps, 0 server drops.",
+  "hevc-2160p60, 60 s, RTX 4060 (GPU 0, shared with the Windows desktop): 125/3600 late (3.5 %, two bursts, max 117 ms late), 0 repeats; GPU render p50 3.21 / p95 4.50 ms; GPU\u2192host copy p50 2.13 ms; pipe write p50 9.1 / p95 16.0 / p99 22.0 / max 53 ms; write \u2192 packet p50 22.4 / p95 27.1 ms; encoder 59.97 fps at 30.0 Mbit/s; client 59.99 fps, 0 gaps.",
+  "Before the fixes (3-slot buffer, encoder delay 0, repeat on any lateness): P4000 1.78 % and 4060 4.97 % repeated frames, with late bursts up to 132 / 173 ms.",
+  "Pipe microbenchmark at 4K NV12 (12.4 MB per frame): bare pipe ~118 fps (1.47 GB/s, 8.2 ms per frame); ffmpeg reading raw video ~108 fps; hevc_nvenc with realistic content on the P4000: delay 0 = 66 fps, delay 1 = 68, delay 2 = 94.5, default = 94; on the 4060: 74 / 77 / 70 / 80 (noisy).",
+  "hevc-2160p30 on the P4000, 10 s: 0 late, render p50 5.35 ms, write p50 8.8 ms, encoder 29.89 fps at 20.1 Mbit/s.",
+  "fractal_zoom kernel at 3840x2160: RTX 4060 nebula 1.60, dendrite 0.76, rabbit 1.77, seahorse 4.16 ms; P4000 nebula 5.55, dendrite 2.23, rabbit 5.59, seahorse 12.04 ms; nebula with aa=2 on the P4000 15.87 ms.",
+  "Fractal seam (u=0 vs u just below 1, mean abs diff out of 255): dendrite 0.012, rabbit 0.030, nebula 0.128, seahorse 3.12 (only in the chaotic detail); consecutive frames at the default zoom differ by 8.86 / 15.86 / 6.83 / 54.98.",
+  "Warm-up iterations, first-order start vs Taylor start: dendrite 38\u21925, seahorse 192\u219239, nebula 110\u219224, rabbit 120\u219222.",
+  "Session ready (first keyframe muxed) 1.1-2.5 s after POST /api/sessions (720p, GPU 1).",
+  "Headless Chrome 145, 720p30 H.264 through the dev page player: 301 of 300 expected frames presented in 10 s, 0 dropped of 301 decoded, buffer ~290 ms, playbackRate 1.0, 0 edge jumps, 0 stalls; exit cut fired at mediaTime 16.967 for hold_pts 16.9667.",
+  "Exit-cut residue (720p H.264, 4 Mbit/s): luma error against the settled target: frame before hold_pts mean 3.3; hold_pts frame mean 1.30, max 7; +1 frame 0.05; 0 from the next keyframe.",
+  "Colour, headless Chrome vs the PNG: greys 16/40/128/235/255 exact; (30,90,200)\u2192(29,90,193); pure blue B 255\u2192243; pure green B 0\u219211; identical with the sRGB and bt709 transfer tags. ffmpeg decodes the same stream within \u00b12."
+ ]
+}

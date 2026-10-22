@@ -1,0 +1,114 @@
+{
+ "status": "done",
+ "summary": "I reviewed stream_service against LIVE_V1 and the task and fixed 15 defects. All 117 tests pass (114 unit, 2 GPU integration, 1 headless Chrome); I added 21 unit tests and every Python fix has a test, while the JS fixes are covered only by the Chrome run. There are no breaking contract changes, and nothing touches production Flask, :8765, dist/ or the kiosk.\n\nThe fixes that mattered most for room_service and for the cuts:\n- **Lost events:** the events socket took its snapshot before the handshake but subscribed after it. An event emitted in between (for example `session.ready` while room_service reconnects) reached neither, and room_service would time out the switch. The socket now subscribes and snapshots in one step.\n- **Stalls at every exit:** decoding a 4K PNG body (`json.loads` plus base64) held the GIL for about 125 ms, so every live session's render thread went late at the start of each exit. A new parser (`bodies.py`, run in a worker thread) cuts the longest stall from 81 ms to 9 ms.\n- **PATCH while holding:** new params were queued as eased updates to the scene that was not yet visible. After `go` the scene started on the old params and morphed for about 0.8 s during the in crossfade (for the fractal, through other Julia sets). It is now rebuilt with the new params.\n- **Spurious 503s:** sessions being created were counted twice, so concurrent creates could get `too_many_sessions`.\n- **False late frames:** the catch-up after NVENC start-up was counted as late frames, which made the integration test flaky (5 against a limit of 4.8).\n- **GPU memory leak:** an exit target or scene prepared while its session was ending kept its GPU buffers (about 33 MB per 4K still).\n- **Plain-text errors:** aiohttp's own 404, 405 and 413 responses were plain text; they are now the contract's JSON.\n\nSmaller fixes: a media sender that could die silently and leave the page on an open, silent socket; client stats echoed verbatim in every summary; shutdown waiting 10 s for the events sockets; a non-atomic token-file create; a buffer copy per append in the reference player; a duplicate events socket in the dev page; and stale README claims, including the new production port 8702.\n\nTwo findings change the builder's picture:\n1. **4K60 is not robust when the host is busy.** With other agents loading the machine (load average 5 to 19), `hevc-2160p60` on the P4000 had 31 % and then 87 % late frames, with 8 and 26 resyncs and the encoder at 37-54 fps. `hevc-2160p30` under the same load had 0 late frames at 29.9 fps. The builder's 1.3 % / 3.5 % was measured under lighter load. My changes don't touch the render or write path, so this is the known limit of piping raw frames into ffmpeg. It supports AV_PROGRAMME \u00a74.4's plan to demo at 4K30 until encoding runs straight from GPU memory. I did not change the default profile, because the contract names `hevc-2160p60` as the TV default.\n2. **The exit cut is softer than the entry cut on real stills.** The builder measured a flat colour with linear easing. With a textured still and the production ease-in-out, the frame at `hold_pts` is off the PNG by luma mean 3.2 (p99 10 to 11) at both 4K HEVC and 720p, and stays there 2 frames later. The entry anchor, encoded for about 1.5 s, is off by only 1.1 to 1.6. So the builder's \"`hold_pts` + 2/fps\" mitigation would not help. Room_service can cut on the first keyframe at or after `hold_pts` (keyframes fall on whole stream seconds), which costs up to 1 s; the real fix needs the GPU-memory encoder.\n\nThe headless Chrome colour error is not a BT.601 decode, as the builder thought. It matches libyuv's BT.709 conversion with its blue coefficient clamped to 2.0: pure blue shows as 243 and (30,90,200) as about (30,90,194), where BT.601 would give (36,89,195). The colour tags are in the H.264 bitstream itself, so the stream is correct, but the kiosk colour check is still needed.",
+ "files": [
+  "/home/gjbm2/dev/screen-machine/stream_service/bodies.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/events.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/server.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/sessions.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/renderer.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/media.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tokens.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/__main__.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/static/live-player.js",
+  "/home/gjbm2/dev/screen-machine/stream_service/static/dev.html",
+  "/home/gjbm2/dev/screen-machine/stream_service/README.md",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_sessions.py",
+  "/home/gjbm2/dev/screen-machine/stream_service/tests/test_bodies.py"
+ ],
+ "tests": [
+  {
+   "name": "unit suite (no GPU): the builder's 93 + test_sessions.py (14) + test_bodies.py (7)",
+   "result": "pass: 114 passed, 3 skipped (GPU/browser opt-in)"
+  },
+  {
+   "name": "test_sessions: state machine with a fake engine (409s, go/exit, re-exit from held, superseded outs, event order and screen field)",
+   "result": "pass"
+  },
+  {
+   "name": "test_sessions: PATCH in holding rebuilds the pending scene; live PATCH is an eased UpdateParams of the visible scene",
+   "result": "pass (fails on the old code)"
+  },
+  {
+   "name": "test_sessions: no event lost during the events handshake (an event emitted inside prepare() arrives after the snapshot)",
+   "result": "pass (fails on the old code)"
+  },
+  {
+   "name": "test_sessions: concurrent idempotent creates give one session; two more concurrent creates fit max_sessions=3, then 503",
+   "result": "pass (the old code gave a spurious 503)"
+  },
+  {
+   "name": "test_sessions: 404/405/400 under /api and 413 over the body limit are JSON {error, detail}",
+   "result": "pass (the old code returned plain text)"
+  },
+  {
+   "name": "test_sessions: failure -> failed + eos; TTL reaper ends the session; bad PNG -> 400 before any session; media client stats sanitised; commands submitted after release are disposed of (an UpdateParams source never is); 8 threads creating the token file concurrently get one token, mode 0600, no temp files",
+   "result": "pass"
+  },
+  {
+   "name": "test_bodies: parse_body matches json.loads (duplicate keys, escapes, whitespace, non-ASCII); invalid base64 is left for decode_still (400); invalid JSON -> ValueError; a 21 MB body stalls a 1 ms ticker thread for < 40 ms",
+   "result": "pass (measured 9.1 ms longest stall vs 80.8 ms for the old path)"
+  },
+  {
+   "name": "GPU integration 1 + 2 (SM_GPU_TESTS=1, :8082, GPU 1, h264-720p30), rerun after all fixes",
+   "result": "pass: ready 1.07-1.55 s; late 0 after the start-up fix (2-5 before); decoded PNGs inspected"
+  },
+  {
+   "name": "headless Chrome 145 playback of /dev?attach= (SM_BROWSER_TESTS=1), rerun with the view-append player and the dev page fix",
+   "result": "pass: presented 301/301 in 10 s, 0 dropped, buffer 292 ms, rate 1, 0 edge jumps / gap skips / stalls; exit cut at mediaTime 16.333 for hold_pts 16.333333"
+  },
+  {
+   "name": "scratch cutcheck (textured PNG anchor/target, crossfade-1s ease-in-out, Y'CbCr comparison with the renderer's own conversion)",
+   "result": "ran at h264-720p30 and hevc-2160p30 on GPU 1; numbers under measurements"
+  },
+  {
+   "name": "scratch: CuPy RawModule launched alternately on GPU 0 and GPU 1; CuPy pool growth with a fresh stream per prepare; colour tags in the raw H.264 bitstream (ffprobe on Annex B)",
+   "result": "pass: per-device loading works; no pool growth; SPS VUI bt709 / iec61966-2-1 / tv, has_b_frames=0"
+  }
+ ],
+ "known_gaps": [
+  "4K60 through the ffmpeg pipe is not robust to host load. With other agents loading this machine (load average 5-19), hevc-2160p60 on the P4000 had 31 % late frames and 8 resyncs in 25 s, then 87 % late, 26 resyncs and 37 fps encoder in 20 s (pipe write p50 14-18 ms, p95 29-59 ms). hevc-2160p30 under the same load: 0 late, 29.9 fps. The builder's 1.3 % / 3.5 % were measured under lighter load. A resync permanently moves the stream behind real time, and since the player never speeds up, it eats into the 300 ms buffer. Recommendation: demo at hevc-2160p30 until the GPU-memory encoder lands (AV_PROGRAMME \u00a74.4). The contract default is unchanged.",
+  "Exit-cut softness on textured stills: the encoded frame at hold_pts is luma mean 3.2 / p99 10-11 / max 22-27 levels off the PNG (4K HEVC and 720p), against 1.1-1.6 for the entry anchor. It stays the same 1-2 frames later and recovers only around the next keyframe. hold_pts + 2/fps does not help. Options: room_service cuts on the first keyframe at or after hold_pts (keyframes are at frame ids that are multiples of gop_s*fps, verified at 720p30; up to 1 s longer exit), or a forced keyframe at hold_pts, which needs the GPU-memory encoder. Not changed: hold_pts semantics are contract.",
+  "Some late frames remain around exits under load. The GIL stall is fixed (9 ms worst), but the per-frame records still showed pipe-bound bursts (slot waits 30-140 ms, writes 20-44 ms) in 1 of 3 4K30 runs on this loaded machine.",
+  "HEVC and 4K playback in a browser are untested here (headless Chrome cannot decode HEVC; no kiosk access). The kiosk colour check (AV_PROGRAMME \u00a73.3) is still outstanding. The headless Chrome blue error is explained by libyuv's clamped BT.709 blue coefficient, not by the stream.",
+  "An idempotency_key keeps returning the same session for 10 minutes after it ended or failed (literal contract reading). room_service should use a fresh key per entry attempt.",
+  "Only API calls renew the session TTL; an attached media socket does not (as the contract says).",
+  "Drop-to-keyframe and transport-backlog handling are still tested only with fakes and the local loopback, not under real network congestion.",
+  "The HEVC codec_string is hev1.\u2026 (LIVE_V1's example shows hvc1.\u2026); clients must use the string they receive.",
+  "Filters and photosafe are not built (out of scope for v1)."
+ ],
+ "processes_left_running": [],
+ "how_to_run": "cd ~/dev/screen-machine && ~/.venvs/sm-stream/bin/python -m stream_service --port 8082   (production per LIVE_V1 \u00a70: --port 8702 --public-base ws://192.168.1.205:8702). Dev page: http://127.0.0.1:8082/dev (paste the token from ~/.config/screen-machine/stream_service.token). Unit tests: ~/.venvs/sm-stream/bin/python -m pytest stream_service/tests -q -p no:cacheprovider (114). GPU integration on :8082 (GPU 1 by default): SM_GPU_TESTS=1 [SM_TEST_GPU=1] [SM_TEST_OUT=<dir>] ... -s; add the headless Chrome test with SM_BROWSER_TESTS=1. Performance against a running service: python -m stream_service.tools.perf --gpu 1 --profile hevc-2160p30|hevc-2160p60 --seconds 20 --token-file <file>.",
+ "contract_deviations": [
+  "No breaking changes. Additive only:",
+  "API errors that aiohttp raises itself are now JSON {error, detail}, which brings them into line with LIVE_V1 \u00a70. New codes: method_not_allowed (405, Allow header kept), too_large (413, body over 64 MB), bad_request (400, e.g. a plain GET on /api/events).",
+  "PATCH in holding rebuilds the pending scene, so new params apply from its first frame (holding was already an additive state for PATCH).",
+  "The builder's additive items stand: /healthz open; catalog profiles carry color, target_buffer_ms and nvenc_delay_frames; optional color_trc on create; exit accepted from held; extra summary fields; superseded:true on discarded transitions; an events snapshot on connect; session.ended detail; session id in the media config message; GET /api/sessions/{id}/frames; media close 4404 for an unknown session; HEVC codec_string is hev1.\u2026."
+ ],
+ "findings_fixed": [
+  "Events socket handshake race (events.py, server.py): the snapshot was taken before `await ws.prepare()` but the queue was subscribed after it, so an event emitted during the handshake (e.g. session.ready, transition done, held) reached neither and a reconnecting room_service missed it. Now snapshot and subscribe happen in one synchronous step before the handshake; unsubscribed if it fails.",
+  "GIL stall from big PNG bodies (new bodies.py; server.read_json and sessions.decode_still): json.loads (56 ms) plus b64decode (68 ms) on a 21 MB body are single GIL-holding C calls that stalled every render thread (other threads up to 81 ms; 5 late frames seen at 4K30 at an exit). The body is now parsed in a worker thread, png_b64 strings are cut out before json.loads and decoded in 1 MiB chunks: longest stall 9 ms. Exact json.loads fallback when the fast path does not apply.",
+  "PATCH params in holding (sessions.py) were eased updates to the not-yet-visible scene; easing only advances while rendering, so after go the scene started on the old params and morphed for ~0.8 s during the in crossfade (fractal c through other Julia sets). It now rebuilds the pending scene with the final params.",
+  "max_sessions double-counted sessions being created (in both active() and _creating), which could return a spurious 503 too_many_sessions on concurrent creates or re-entries. Only creations not yet in sessions are counted now.",
+  "Late-frame accounting (renderer.py) counted the catch-up after NVENC initialisation (slots 9-11 at 720p, 9-20 at 4K30) while the anchor was held. This made the integration test flaky (5 > 4.8) and the stats misleading. Counting now starts at the first on-time slot after the first encoded frame, or 2 s after it at the latest, so a pipeline that never catches up is still reported.",
+  "Leak (renderer.py): a scene or exit target prepared while its session ended was submitted to an already-released engine and kept its GPU buffers (~33 MB per 4K still). submit() now disposes of them (put-then-check, no race with release); the release marks itself done even when it fails; UpdateParams sources are never closed twice.",
+  "Media sender (media.py): any exception other than ConnectionError killed the sender silently and left an open but silent socket, which the page would only notice as a 2 s stall. It now logs and closes with 1011.",
+  "Media client stats were stored verbatim (up to 1 MB of arbitrary JSON) and echoed in every session summary. Only finite numbers are kept now.",
+  "aiohttp's own 404/405/413/400 under /api were plain text, contrary to LIVE_V1 \u00a70. They are now JSON {error, detail}.",
+  "Shutdown left the events sockets open, so a graceful stop waited the full 10 s shutdown_timeout while room_service was connected. They now close after the session.ended events.",
+  "SessionManager.post on a closed loop (during shutdown) raised RuntimeError in engine threads; in the encoder reader thread that killed ffmpeg as a reader error. It is now ignored.",
+  "Token file (tokens.py): creating with O_EXCL and then writing let a concurrently starting process read an empty file (SystemExit), and a crash left an empty file. It is now written to a 0600 temp file and hard-linked into place (atomic, still never overwrites), with a fallback for filesystems without hard links.",
+  "Reference player (static/live-player.js) copied every fragment into a new buffer per append, contrary to LIVE_V1 \u00a72.2 rule 11. Single fragments are now appended as views; fragments are joined only when appends fall behind.",
+  "Dev page (static/dev.html): saving the token again opened a second events socket, because the replaced socket's onclose reconnected.",
+  "README and __main__ help: fixed stale claims (3 slots, -delay 0 everywhere, repeats on any lateness, production port 8081 -> 8702 per the updated LIVE_V1); corrected the headless Chrome colour explanation (libyuv's clamped BT.709 coefficient, not BT.601); documented the exit-cut and GIL measurements, the PATCH-in-holding behaviour and the new tests."
+ ],
+ "measurements": [
+  "GIL, 21 MB JSON body with a base64 PNG: old path (json.loads + b64decode) 137 ms, longest stall of a 1 ms ticker thread 80.8 ms; new bodies.parse_body 81 ms, longest stall 9.1 ms. load_png of a 4K PNG 249-262 ms with a worst stall of 6.8 ms (incl. letterbox); ImageSource.setup upload 8-27 ms, stall 1.2 ms. So Pillow and CuPy release the GIL.",
+  "Late accounting, h264-720p30 on GPU 1: late slots 9-11 come from start-up catch-up (first pipe write blocked 292-299 ms by NVENC init); late_frames counted 3 -> 0 after the fix. hevc-2160p30: start-up slots 9-20 excluded.",
+  "Exit/entry cut quality, textured grainy 4K/720p PNGs, crossfade-1s ease-in-out, compared in Y'CbCr with the renderer's conversion. hevc-2160p30 on the P4000: entry anchor Y mean/p99/max 1.55-1.8 / 5-6 / 10-11; hold_pts 3.2 / 10 / 26-28; +1 and +2 frames 3.1 / 10 / 20-21; +1 s 1.8 / 6 / 11. h264-720p30: entry 1.09 / 4 / 7; hold_pts 3.22 / 11 / 22; +1 and +2 the same; +1 s 2.2 / 7 / 14.",
+  "Performance under heavy host load from other agents (load average 5-19, 14 Oct 00:48-00:50), P4000: hevc-2160p60 25 s: 418/1351 late (31 %), 8 resyncs, encoder 53.8 fps, render p50 5.2 ms, pipe write p50 14.3 / p95 29.4 ms, client 54 fps, 0 gaps. hevc-2160p60 20 s: 87 % late, 26 resyncs, encoder 37.5 fps, write p50 18.3 / p95 59 ms. hevc-2160p30 20 s: 0 late, 0 resyncs, 29.89 fps, write p50 14.4 / p95 33.7 ms, slip p99 2 ms.",
+  "Headless Chrome 145 after the fixes: 301/301 presented in 10 s, 0 dropped, buffer 292 ms, exit cut at mediaTime 16.333 for hold_pts 16.333333. The held target (30,90,200) shows as (28.9, 89.8, 192.6). The BT.709 decode with libyuv's clamped blue coefficient of 2.0 predicts about (30, 90, 194) and pure blue B 242-243 (builder measured 243). A BT.601 decode would give (36, 89, 195).",
+  "Colour tags in the raw H.264 bitstream (Annex B, ffprobe): color_space bt709, color_transfer iec61966-2-1, color_primaries bt709, color_range tv, has_b_frames 0.",
+  "CuPy RawModule launched alternately on GPU 0 and GPU 1 from one module: correct results on both. The CuPy pool stays at 33 MB after 6 prepares on fresh streams (no growth)."
+ ]
+}

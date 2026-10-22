@@ -1,0 +1,161 @@
+# Philips Hue integration for a music-reactive room driven by Art-Net virtual fixtures (Hue Entertainment/CLIP v2 limits, ownership, restore, libraries incl. Apollon77/artnet-bridge, colour, latency)
+
+## 1. 0. Site fact: which Hue bridge(s) are actually on the LAN, and can the GPU workstation (WSL) reach them?
+[high] There are TWO bridges, both square Hue Bridge v2 (modelid BSB002), not a Bridge Pro. I found them with Philips cloud discovery plus the bridges' unauthenticated GET /api/0/config, both read-only. Bridge 1: 192.168.1.162, name "18½ 2F", bridgeid ECB5FAFFFEA216AE. Bridge 2: 192.168.1.217, name "Kitchen Bridge", bridgeid 001788FFFE62A0D0. Both run swversion 1978418030 (apiversion 1.78.0), which is well past the firmware that introduced CLIP v2. Both answered HTTPS/443 from inside WSL (outbound TCP through NAT works). I did not test outbound UDP 2100 (DTLS) from WSL. It should work through NAT conntrack, but that is an inference.
+-> IMPLICATION: The spec's 'existing Philips Hue Bridge' (singular) is wrong: there are two. We still need to find which bridge holds the music-room lights. Two bridges also means two independent entertainment streams (10 lights each) would be possible if the room's lights were split across them. Bridge Pro-only behaviour (HTTPS-only local API) does not apply today. To inventory the lights, the owner must press the link button once so we can get an app key and clientkey (POST /api with generateclientkey:true).
+Sources: curl https://discovery.meethue.com/ (2026-10-13); curl -k https://192.168.1.162/api/0/config and https://192.168.1.217/api/0/config (2026-10-13, read-only)
+
+## 2. 1a. Entertainment limits: max lights/channels per entertainment area on the square Bridge v2 and on the Bridge Pro; max concurrent streams per bridge.
+[medium] Philips' own support FAQ says up to 10 colour-capable Hue or Friends of Hue lights per Entertainment area, and only ONE area can be active (streaming) per bridge at a time. Several areas can be created. The Bridge Pro is the same: Hueblog's Pro FAQ (2025-09-04) says 'only one sync per Hue Bridge with a maximum of 10 lights … will not change for the time being', and iConnectHue says 'still only ONE active entertainment zone with 10 lights'. None of the Bridge Pro release notes up to 6.1.2071524030 (2026-09-24) mention any entertainment change. The HueStream v2 packet can carry up to 20 channels, so gradient lights contribute several channels while the light count is still capped at 10. Hueblog attributes the cap to how many devices fit in one Zigbee broadcast frame. The bridge rejects a second streamer with 403 'active streamer'.
+-> IMPLICATION: If the room has more than 10 colour lights, the extra lights must use REST (slow), a second area on the other bridge, or stay out of the show. Only one consumer can stream per bridge. Any Hue Sync TV app on the Frames, the Hue Sync desktop app, Hue Essentials, Music Assistant or a spike tool will fight our adapter for the slot, so the supervisor must detect the 'active streamer' state and report it. The official developer docs (developers.meethue.com) are login-gated, so the exact channel cap was not read from a primary source.
+Sources: https://www.philips-hue.com/en-gb/support/topic/entertainment/100085 (FAQ answers only visible via search snippets of regional copies); https://hueblog.com/2025/09/04/hue-bridge-pro-almost-all-the-answers-to-the-most-important-questions/; https://iconnecthue.com/iconnecthue-5-12-official-hue-pro-bridge-support-as-first-3rd-party-app/; https://www.philips-hue.com/en-us/support/release-notes/bridge-pro; https://iotech.blog/posts/philips-hue-entertainment-api/; https://lumasync.app/docs/hue/troubleshooting/; https://music-assistant.io/plugins/hue-entertainment/
+
+## 3. 1b. Recommended send rate vs effective Zigbee update rate; stream inactivity timeout.
+[medium] Secondary sources quoting the login-gated Philips docs: stream at 50–60 Hz, and the bridge forwards over Zigbee at about 25 Hz (one broadcast via a 'proxy' node; entertainment_configuration.stream_proxy has mode auto|manual). Streaming faster than 25 Hz is redundancy against UDP loss. LumaSync calls a 20 Hz bridge cap 'the real ceiling'. artnet-bridge's code comment reads 'bridge sends at 25Hz over ZigBee, visible effect rate <12.5Hz'. The session ends by itself after about 10 s without packets: hue-entertainment-pykit resends the last frame every 9.5 s to avoid timeout, and other sources say the area 'quickly stops' if there is no streaming activity.
+-> IMPLICATION: Design the Hue adapter as a fixed 50 Hz latest-value sender fed from show-state. Do not forward every Art-Net packet. Expect at most about 20–25 colour updates per second per light. The 10 s auto-timeout is a useful fail-safe: if the room service dies, the bridge frees the lights by itself, but the restore still has to be done by us.
+Sources: https://iotech.blog/posts/philips-hue-entertainment-api/; https://github.com/hyperion-project/hyperion.ng/pull/592 (cites Philips: max 25 Hz over ZigBee); https://lumasync.app/docs/hue/troubleshooting/; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueProtocolAdapter.ts; https://github.com/hrdasdominik/hue-entertainment-pykit/blob/main/README.md; https://raw.githubusercontent.com/openhue/openhue-api/main/src/entertainment_configuration/schemas/EntertainmentConfigurationGet.yaml
+
+## 4. 1c. DTLS-PSK details (port, cipher, identity), pairing and packet format.
+[high] Transport is DTLS 1.2 over UDP 2100 with cipher TLS_PSK_WITH_AES_128_GCM_SHA256 only. The PSK identity is the application key (v1 'username') and the PSK is the hex-decoded 'clientkey'. The clientkey is returned once, when pairing with generateclientkey:true, and cannot be retrieved again. The stream is started with a CLIP v2 PUT to /clip/v2/resource/entertainment_configuration/{id} {"action":"start"}, then the DTLS handshake, then frames; it is stopped with {"action":"stop"}. HueStream v2 frame layout: 'HueStream' magic, version 2.0, sequence byte (ignored), colour-space byte (0x00 RGB, 0x01 xy+brightness), 36-char entertainment_configuration UUID, then 7 bytes per channel (channel id plus three 16-bit big-endian values). I read artnet-bridge's HueDtlsStream.ts: HUE_DTLS_PORT = 2100, ciphers ["TLS_PSK_WITH_AES_128_GCM_SHA256"], STREAM_INTERVAL_MS = 20, RGB only, backoff from 1 s to 30 s.
+-> IMPLICATION: Python's ssl module has no DTLS, so a Python adapter needs a DTLS-PSK library (see the Python finding). The pairing secrets (app key and clientkey) are the 'Hue pairing secrets' the spec says to keep out of git. Store them alongside the repo's other secret files, not in routes/ or scheduler JSON.
+Sources: https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueDtlsStream.ts; https://github.com/michielpost/Q42.HueApi/blob/master/EntertainmentApi.md; https://iotech.blog/posts/philips-hue-entertainment-api/; https://raw.githubusercontent.com/openhue/openhue-api/main/src/entertainment_configuration/schemas/EntertainmentConfigurationPut.yaml
+
+## 5. 1d. How streaming 'owns' lights; can non-streaming lights be controlled meanwhile; what the Hue app and automations do while streaming.
+[medium] While an area streams, its lights switch to light.mode = 'streaming' (CLIP v2 enum normal|streaming). The bridge ignores ordinary commands to those lights: Light DJ's developer write-up says 'When in streaming mode, the bridge will ignore legacy Hue commands', and Home Assistant users report that 'no commands from HA seem to work' while sync is active. Lights outside the streaming area stay fully controllable by REST at the same time. artnet-bridge is built on this: entertainment members stream, all other lights and groups use REST. Hue app scenes, automations and motion sensors therefore cannot change streamed lights until the stream ends. However, any app can END the stream: Hue Essentials has a 'stop entertainment' action, and HA users send PUT {"action":"stop"}. I found no Philips statement on whether bridge automations are suspended or silently dropped. Whether REST traffic to other lights slows during streaming (shared Zigbee airtime) was not found.
+-> IMPLICATION: A show can be killed by anyone in the house who uses the Hue app or an automation. The supervisor must watch entertainment_configuration.status / active_streamer on the eventstream, then either re-claim or report 'Hue taken over'. It must not report 'Hue OK' just because we are still sending. Lights that must keep obeying wall switches, sensors or automations during a show should be left out of the entertainment area.
+Sources: https://raw.githubusercontent.com/openhue/openhue-api/main/src/light/schemas/LightGet.yaml; https://lightdjapp.com/blog/2018/10/25/creating-stunning-visuals-using-hue-entertainment; https://community.home-assistant.io/t/overriding-philips-hue-light-sync-with-home-assistant/892474; https://community.hueessentials.com/t/start-an-automation-using-the-api-or-other-apps/3362; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueProtocolAdapter.ts
+
+## 6. 1e. When streaming stops, do lights revert or hold?
+[low] The bridge does not reliably put things back as they were. LumaSync saw this on hardware (2026-09-23): after action:stop the bridge 'restore[d] each light's colour but left it on', so lamps that had been off came back on. LumaSync also measured, on a real BSB002 (2026-09-24), that 300–600 ms after their own restore the bridge applied its 'own post-entertainment state' (e.g. 30.83 % / 367 mirek) and kept it. The same happened after a DTLS drop and reconnect. diyHue's emulator only reset the mode and left the streamed colours. Kodi, Plex and iLightShow integrations all do their own snapshot/restore, and so do artnet-bridge's disconnect() (which calls stopEntertainment and nothing else) and the music-assistant lib. I found no official Philips statement on this.
+-> IMPLICATION: The Hue adapter must snapshot before start and restore after stop, wait at least 1 s after stop, then re-check and re-assert the restore. This needs an acceptance test on our own BSB002 firmware 1978418030.
+Sources: https://github.com/voyvodka/LumaSync/pull/425; https://github.com/voyvodka/LumaSync/pull/486; https://github.com/luka-kovac/diyHue/pull/1; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueProtocolAdapter.ts
+
+## 7. 2a. CLIP v2 REST rate limits (lights/s, groups/s) and concurrency.
+[medium] Philips developer guidance (v1-era, reproduced on a public developer FAQ page and in forum quotes of the login-gated 'Hue System Performance' page): about 10 commands/s to lights in total, i.e. a 100 ms gap between calls, and at most 1/s for groups. aiohue (Home Assistant's library) notes 'The bridge will deny more than 3 requests at the same time with a 429 error'. It caps itself at 3 connections per host and retries 429/503 with linear backoff. One openHAB post claims 20 req/s (unverified). artnet-bridge declares light 10/s, group 1/s, scene 1/s. Its Hue adapter backs off 1 s on 429, but its REST payload carries no transition time.
+-> IMPLICATION: Over REST, a 10-light room gets about 1 update per light per second if each light is addressed individually. REST is fine for Ambient/Piano fades (send one command with a long transition) but not for beat-reactive Disco. One budget must be shared by the REST path, the snapshot/restore and other house apps.
+Sources: https://developers.meethue.com/?p=497; https://community.openhab.org/t/hue-lights-misbehaving/59156/9; https://raw.githubusercontent.com/home-assistant-libs/aiohue/main/aiohue/v2/__init__.py; https://github.com/Apollon77/artnet-bridge/blob/main/docs/configuration.md
+
+## 8. 2b. Eventstream (SSE) for observed state.
+[medium] GET https://<bridge>/eventstream/clip/v2 with headers hue-application-key and Accept: text/event-stream. Signify's migration guide (quoted on a forum) says: 'there is a 1 second rate limit on the amount of event containers the Bridge will send. If the same property has changed twice within that timeframe, you only get the last state'. HTTP/2 is recommended so the stream and normal requests share one connection. aiohue implements the eventstream and refetches full state after a disconnect longer than 60 s.
+-> IMPLICATION: The eventstream is the right source for 'observed state', as the spec asks: entertainment status, external changes made by the Hue app, and restore verification. It is too coarse (1 Hz) to confirm streamed frames. The status API should show bridge-reported state separately from what we sent.
+Sources: https://forum.logicmachine.net/showthread.php?pid=24892; https://support.comfortclick.com/communities/4/topics/10569-philips-hue-api-v2-events-server-side-events; https://raw.githubusercontent.com/home-assistant-libs/aiohue/main/aiohue/v2/__init__.py
+
+## 9. 2c. Scene recall and best practice for 'snapshot then restore' around a show.
+[medium] Scene recall is PUT /clip/v2/resource/scene/{id} {"recall":{"action":"active"|"static"|"dynamic_palette","duration":<transition>}}, and scene.status.active reports inactive|static|dynamic_palette. Smart scenes are a separate resource. CLIP v2 has no 'save current state' call. My synthesis (not a vendor procedure):
+(1) Before start, GET light (on, dimming, color.xy, color_temperature.mirek, gradient) for the area's lights, plus the active scene and smart_scene per room/zone. Write this snapshot to disk with a 'show_active' flag.
+(2) Start the area and stream.
+(3) On stop, send PUT action:stop (or DTLS close_notify) and wait about 1 s.
+(4) Restore: if a scene was active, recall it (group budget 1/s) with a gentle duration. Otherwise PUT each light's saved state at ≤10/s, including on:false for lights that were off.
+(5) Verify through the eventstream or a GET, and re-assert once if the bridge's post-stream state has overwritten ours.
+(6) On service start, if the snapshot file still says show_active, run the restore (crash recovery). The bridge itself frees the lights about 10 s after packets stop.
+-> IMPLICATION: This is the 'Off/normal room mode' the lead flagged. Snapshot/restore belongs in the room supervisor's mode transitions, persisted outside git (not in routes/scheduler/*.json, which are tracked and modified in this checkout). Neither artnet-bridge nor any of the libraries reviewed does it.
+Sources: https://raw.githubusercontent.com/openhue/openhue-api/main/src/scene/schemas/SceneRecall.yaml; https://raw.githubusercontent.com/openhue/openhue-api/main/src/scene/schemas/SceneGet.yaml; https://github.com/voyvodka/LumaSync/pull/425; https://github.com/voyvodka/LumaSync/pull/486
+
+## 10. 3. Which bulb types support Entertainment; gradient segments as channels.
+[medium] Only colour-capable lights can join an Entertainment area: Hue White and Color Ambiance, Hue colour lightstrips and gradients, Friends of Hue colour. Philips' FAQ: 'only Hue and Friends of Hue color-capable lights are compatible'; the app hides other lights during setup. White-ambiance (tunable white) and white-only bulbs cannot stream, so they can only be driven by REST (brightness and mirek). Gradient products contribute several entertainment channels; Hueblog, 2021, notes Philips may change these: Play Gradient Lightstrip 7 (vs 5 in normal mode), Ambiance Gradient Lightstrip 3, Play Gradient Light Tube 3, Gradient Signe table 2 / floor 3. CLIP v2 models this as channels[] with members {service, index} and positions, and light.gradient.points_capable / pixel_count.
+-> IMPLICATION: A bulb inventory (model, gamut_type, gradient, white-only) is a gating task before any patch design. Gradient lights could act as multi-cell fixtures. White-ambiance bulbs need a separate slow 'warmth/dimmer' mapping.
+Sources: https://www.philips-hue.com/en-us/support/topic/entertainment/100085 (answer text via search snippets); https://hueblog.com/2021/09/06/this-is-how-many-colours-the-new-gradient-products-from-philips-hue-can-display/; https://raw.githubusercontent.com/openhue/openhue-api/main/src/entertainment_configuration/schemas/EntertainmentConfigurationGet.yaml; https://raw.githubusercontent.com/openhue/openhue-api/main/src/light/schemas/LightGet.yaml
+
+## 11. 4a. Apollon77/artnet-bridge: does it exist, language, maturity, features, config model, and is it a suitable day-one spike?
+[high] Basics:
+- It exists: TypeScript, ESM-only, Node >= 22.13 (WSL has v22.21.0), MIT, by Ingo Fischer (ioBroker maintainer).
+- Created 2026-03-28, last push 2026-08-11 (recent commits are dependency bumps), 3 stars, 0 forks, 114 commits.
+- No GitHub releases. npm 'artnet-bridge' has a single 0.0.1 from 2026-03-29, so npm lags the repo.
+- Monorepo: artnet (its own Art-Net 4 receiver), protocol-hue (CLIP v2, DTLS via node-dtls-client 2.0.2, discovery, pairing), bridge (CLI, Express web UI on :8080, schedulers).
+
+Config: ~/.artnet-bridge/config.json, editable in the web UI. Each bridge entry has protocol 'hue', a universe, connection {host, username, clientkey}, channelMappings [{targetId, targetType light|group|scene-selector, dmxStart, channelMode 8bit | 8bit-dimmable (Dim,R,G,B) | 16bit | brightness | scene-selector}], rateLimits, and protocolConfig.entertainmentConfigId. DMX ranges may not overlap across all bridges.
+
+What I read in the code:
+- Entertainment lights stream RGB16 over DTLS at 50 Hz, but value changes are throttled by RealtimeScheduler to the adapter's 'realtime-light' budget of 6/s. That is also the hard max, so users cannot raise it; changes are latest-value-wins, about one every 167 ms.
+- REST lights convert RGB to xy with no gamut clamping, use a linear brightness curve and no transition time.
+- No gradient support, no ACTIVITY handling.
+- No Art-Net loss timeout: last values are held forever. The only loss detection is an ArtPoll watchdog that just logs.
+- No snapshot/restore; disconnect() just stops entertainment.
+- If the area is claimed by another app, it retries every 30 s.
+-> IMPLICATION: It is good as a day-one, throwaway spike: run it from git HEAD, pair, map 1 DMX block per light, and point Maestro (or a test Art-Net sender) at it to prove Art-Net → Hue Entertainment on our bridge and bulbs. It is not a good fit as the production hue-adapter: the 6 Hz cap, no loss fallback, no restore, no ACTIVITY, and its own UI/port/config sitting outside the room supervisor. It also cannot receive Art-Net if run inside WSL (NAT, TCP-only portproxy), so the spike has to run on a LAN-native host: Windows-native Node, the N95 kiosk, or a Pi.
+Sources: https://github.com/Apollon77/artnet-bridge; https://api.github.com/repos/Apollon77/artnet-bridge; https://registry.npmjs.org/artnet-bridge; https://github.com/Apollon77/artnet-bridge/blob/main/docs/configuration.md; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueProtocolAdapter.ts; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueDtlsStream.ts; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/bridge/src/BridgeOrchestrator.ts; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/bridge/src/scheduler/RealtimeScheduler.ts
+
+## 12. 4b. Python options: hue-entertainment-pykit, aiohue, python-mbedtls (plus anything better).
+[high] hue-entertainment-pykit:
+- PyPI 0.9.4 (2025-12-15), 16 stars, 7 commits; requires Python >=3.10,<3.13.
+- Depends on python-mbedtls; features discovery, RGB/xyb, a threaded streamer and a 9.5 s keepalive.
+
+python-mbedtls: the GitHub repo was ARCHIVED on 2026-01-31 ('active development … has ceased'). It is tested on Python 3.8–3.12 and has no 3.13 wheels, so the pykit sits on a dead dependency. WSL's Python is 3.12.3, so it would still install today.
+
+music-assistant/hue-entertainment (newer):
+- PyPI 'hue-entertainment' 0.1.2 (2026-06-28), Apache-2.0, Python >=3.11.
+- Deps: aiohttp, cryptography, zeroconf.
+- Pure-Python DTLS 1.2 PSK and HueStream v2 on top of 'cryptography' (no C bindings, no openssl subprocess), with an asyncio facade and a sender thread.
+- RGB only; the bridge does gamut mapping. Enforces one stream per bridge. Tested on the Bridge V2 and Bridge Pro.
+- 0 stars, 8 commits, but backed by the Music Assistant organisation and used by its experimental Hue plugin.
+
+aiohue (home-assistant-libs, pushed 2026-10-05, 75 stars):
+- Maintained CLIP v2 REST and eventstream client.
+- The v2 controllers I listed (lights, groups, scenes, sensors, config, devices, speakers) show no entertainment controller and no DTLS streaming.
+
+Writing our own DTLS by driving 'openssl s_client' as a subprocess is fragile, so not recommended.
+-> IMPLICATION: For an asyncio room_service written in Python, the best fit today is aiohue (REST, eventstream, snapshot/restore) plus music-assistant 'hue-entertainment' (streaming), pinned to exact versions. It is young, so wrap it behind our own adapter interface so it can be swapped. Avoid adopting hue-entertainment-pykit or python-mbedtls for new work.
+Sources: https://pypi.org/pypi/hue-entertainment-pykit/json; https://github.com/hrdasdominik/hue-entertainment-pykit; https://github.com/Synss/python-mbedtls; https://api.github.com/repos/Synss/python-mbedtls; https://pypi.org/pypi/hue-entertainment/json; https://github.com/music-assistant/hue-entertainment; https://api.github.com/repos/home-assistant-libs/aiohue; https://raw.githubusercontent.com/home-assistant-libs/aiohue/main/aiohue/v2/__init__.py; https://raw.githubusercontent.com/home-assistant-libs/aiohue/main/aiohue/v2/controllers/groups.py
+
+## 13. 4c. Other Art-Net→Hue bridges (Hue Essentials, diyHue, QLC+, others).
+[medium] - jeffreykog/artnet-hue-entertainment: TypeScript, Entertainment API, 54 stars, last push 2024-07-10. Credited by artnet-bridge as its inspiration.
+- sinedied/dmx-hue: JavaScript Art-Net node, 248 stars, last push 2025-06-12. REST only, about 10 bulb updates/s in total, default 100 ms transition, optional white channels.
+- asaril/hue-artnet: Python on python-mbedtls; one area, one universe, ≤10 lights; the author calls it 'neither clean, nor efficient'.
+- daniel1111/HueLibEnt: C library, 10 lights at 25 updates/s.
+- QLC+: no native Hue output plugin found; users chain QLC+ to dmx-hue.
+- Hue Essentials: no Art-Net/DMX input feature found (it can start and stop entertainment).
+- diyHue: a bridge emulator, not an Art-Net bridge; nothing relevant found.
+-> IMPLICATION: No mature, maintained off-the-shelf Art-Net→Hue Entertainment product exists. Plan to own a small Hue adapter, using a spike tool only to de-risk.
+Sources: https://api.github.com/repos/jeffreykog/artnet-hue-entertainment; https://api.github.com/repos/sinedied/dmx-hue; https://github.com/sinedied/dmx-hue; https://github.com/asaril/hue-artnet; https://github.com/daniel1111/HueLibEnt; https://forum.qlcplus.org/viewtopic.php?p=48329
+
+## 14. 5. Colour: RGB→xy gamut conversion per gamut A/B/C; brightness curve; minimum transition times.
+[medium] Entertainment RGB mode (colour-space 0x00): send 16-bit RGB and the bridge maps it to each light's gamut. xy mode (0x01) gives the client control of colour.
+
+REST needs xy. The standard method (Philips doc is login-gated; rgbxy library and artnet-bridge code agree):
+- sRGB gamma expansion ((c+0.055)/1.055)^2.4.
+- 'Wide RGB D65' matrix, e.g. X=0.664511r+0.154324g+0.162028b, Y=0.283881r+0.668433g+0.047685b, Z=0.000088r+0.072310g+0.986039b.
+- x=X/(X+Y+Z), y=Y/(X+Y+Z).
+- If outside the light's gamut triangle, project to the closest point on the triangle.
+
+CLIP v2 reports each light's color.gamut and gamut_type (A|B|C|other) live; it may be absent on some bulbs. Fallback tables (rgbxy):
+- A: R(0.704,0.296) G(0.2151,0.7106) B(0.138,0.08)
+- B: R(0.675,0.322) G(0.4091,0.518) B(0.167,0.04)
+- C: R(0.692,0.308) G(0.17,0.7) B(0.153,0.048)
+
+Brightness: dimming.brightness 0–100 %; 'writing 0 changes it to lowest possible brightness'; per-light min_dim_level. Whether the scale is perceptual or linear is not publicly documented. artnet-bridge maps it linearly.
+
+Transitions: v2 dynamics.duration is in ms. The developer FAQ says the default transition is 400 ms and 0 gives the fastest response. v1 transitiontime was in 100 ms steps; whether v2 rounds the same way is unverified. Scene recall also takes a duration. Signaling effects (on_off, on_off_color, alternating) have a 1 s step size. Streaming has no transition parameter.
+-> IMPLICATION: Use the gamut each light reports, not hard-coded tables. Map DMX DIMMER through a measured curve (a LUT), not a linear one. Always set an explicit duration on REST commands (0 for snappy cues, seconds for Ambient), otherwise the 400 ms default smears every cue.
+Sources: https://raw.githubusercontent.com/benknight/hue-python-rgb-converter/master/rgbxy/__init__.py; https://raw.githubusercontent.com/openhue/openhue-api/main/src/light/schemas/LightGet.yaml; https://raw.githubusercontent.com/openhue/openhue-api/main/src/common/Brightness.yaml; https://raw.githubusercontent.com/openhue/openhue-api/main/src/light/schemas/LightDynamics.yaml; https://raw.githubusercontent.com/openhue/openhue-api/main/src/common/Signaling.yaml; https://developers.meethue.com/?p=497; https://github.com/music-assistant/hue-entertainment; https://iotech.blog/posts/philips-hue-entertainment-api/
+
+## 15. 6. End-to-end latency Art-Net → bridge → bulb, and flash/strobe limits.
+[low] I found no authoritative or measured end-to-end figure for Entertainment streaming.
+
+REST: Philips' 'Hue System Performance' figures (via a forum quote) give average Zigbee-side latency of 55 ms for brightness only, 95 ms for brightness+colour and 125 ms with on/off as well. HTTP time and the 400 ms default transition come on top.
+
+Entertainment: the 25 Hz Zigbee cadence adds up to about 40 ms of frame quantisation, plus the proxy broadcast and the bulb. A reasonable working estimate is 50–100 ms bridge-to-photon (estimate only). Our chain would add Maestro's Art-Net cadence (unknown) and any adapter throttling; artnet-bridge's 6 Hz scheduler alone adds 0–167 ms. Music Assistant's Hue plugin defaults its latency offset to 20 ms (a tuning knob, not a measurement).
+
+Flashes: on/off alternation is bounded by about 20–25 updates/s, so at most about 10–12 Hz in theory; artnet-bridge's comment says 'visible effect rate <12.5Hz'. Hue bulbs are not strobes, and with artnet-bridge only about 3 flashes/s are possible, with short flashes between ticks lost. For photosensitivity, WCAG 2.3.1's general limit is no more than 3 flashes in any 1 s.
+-> IMPLICATION: Hue will trail the physical moving heads by roughly 50–150 ms but still lead the screens (about 200–300 ms). That is acceptable for washes; Hue should not be used for strobe-type beats. Put a flash limiter in the Hue adapter (≤3 large-luminance transitions/s, configurable, on by default). Measure real latency and the brightness curve in the room with a phone slow-motion camera or a photodiode/lux sensor. The existing Yoctopuce sensor is at the screens, and show modes must freeze the screen mask anyway.
+Sources: https://community.openhab.org/t/hue-lights-misbehaving/59156/9; https://iotech.blog/posts/philips-hue-entertainment-api/; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/protocol-hue/src/HueProtocolAdapter.ts; https://raw.githubusercontent.com/Apollon77/artnet-bridge/main/packages/bridge/src/scheduler/RealtimeScheduler.ts; https://music-assistant.io/plugins/hue-entertainment/; https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html
+
+## SURPRISES
+- The spec assumes one 'existing Philips Hue Bridge'. The LAN has TWO square Hue Bridge v2 units (BSB002): 192.168.1.162 '18½ 2F' and 192.168.1.217 'Kitchen Bridge', both on firmware 1978418030 / API 1.78.0. Neither is a Bridge Pro.
+- The spec's single 'Hue-Ambience' fixture (RGB+DIMMER+ACTIVITY at DMX 33–37) does not fit artnet-bridge. artnet-bridge maps one non-overlapping DMX block to ONE light, group or scene-selector and has no ACTIVITY or fan-out logic. Driving 10 lights from one fixture would mean either a REST group (1 command/s) or patching about 10 RGB(+dim) fixtures in Maestro (40 channels). Otherwise our own adapter must expand one fixture into per-light looks.
+- artnet-bridge's Entertainment path streams at 50 Hz but hard-caps value changes at 6 Hz ('realtime-light' maxPerSecond 6; users cannot exceed it). It also holds the last values forever on Art-Net loss and does no snapshot/restore, gamut clamping or gradients. The project is young: created 2026-03-28, 3 stars, no GitHub releases, only npm 0.0.1. The spec's 'reuse artnet-bridge' suits a spike only.
+- Hue Entertainment allows at most 10 colour lights per area and only one active stream per bridge, on both the v2 and the Bridge Pro (unchanged up to Sept 2026 firmware). White-ambiance and white bulbs cannot be streamed at all.
+- The bridge does not cleanly restore lights after a stream. Field reports from 2026 say lights that were off come back on, and the bridge writes its own post-entertainment state 300–600 ms after an app's restore. So 'restore normal Hue control cleanly' (spec §8) needs an explicit snapshot, a delay and a re-assert.
+- Anyone using the Hue app, Hue Essentials or a Hue/HA automation can stop our stream (PUT action:stop), and a Hue Sync TV app on the Frames would compete for the single slot. The spec's failure matrix has no 'Hue taken over by another app' case.
+- python-mbedtls, the DTLS library behind hue-entertainment-pykit and asaril/hue-artnet, was archived on 2026-01-31 and is stuck at Python ≤3.12. The only maintained Python streaming option is the 4-month-old pure-Python music-assistant 'hue-entertainment' 0.1.2.
+- An Art-Net→Hue service cannot run inside WSL as deployed (NAT plus TCP-only netsh portproxy). Maestro's unicast UDP 6454 and ArtPoll broadcasts will not reach it. Hue REST and DTLS outbound from WSL should work, but the Art-Net receiver must be LAN-native: Windows native, WSL mirrored networking, the N95 kiosk, or a Pi.
+- The Philips developer docs (Entertainment API, CLIP v2 reference, colour conversion, system performance) are login-gated, so several limits here come from secondary sources and code reads rather than the primary spec. Someone with a Hue developer account should confirm the 20-channel cap, the 10 s timeout and the rate guidance.
+
+## OPEN QUESTIONS
+- Which of the two bridges (192.168.1.162 '18½ 2F' or 192.168.1.217 'Kitchen Bridge') controls the music-room lights, and are any room lights on the other bridge?
+- Bulb inventory for the room: models, gamut_type, gradient capability, and white-ambiance/white-only units. This needs a one-time link-button pairing by the owner to get an app key and clientkey; pairing writes a user to the bridge, so it needs the owner's go-ahead.
+- Does any existing consumer already use an Entertainment area on that bridge (Hue Sync TV app on the Frames, Hue Sync desktop, Hue Play HDMI Sync Box, Hue Essentials, Music Assistant)?
+- Where will the Art-Net receiver and Hue adapter run, given WSL NAT: Windows-native process, WSL mirrored networking (would affect the existing netsh portproxy setup), the N95 kiosk, or a dedicated Pi?
+- Does the owner accept patching one Maestro virtual fixture per Hue light (Maestro does the spatial variation), or one 'Hue-Ambience' fixture that our adapter fans out (we design the variation)? This decides whether a generic Art-Net→Hue tool fits at all.
+- Measured on our hardware: Entertainment end-to-end latency, the achievable update/flash rate per bulb, the DIMMER→brightness curve, and the bridge's post-stream behaviour on firmware 1978418030.
+- Are any Hue room lights on wall switches or power-cut automations? Unpowered lights silently drop out of an Entertainment area.
+- Is a Hue developer account available so the login-gated primary docs (Entertainment API: channel cap, timeout, rate guidance) can be checked?
