@@ -45,8 +45,6 @@ TAKE_ORDER = ("performance", "transcription", "roll", "arrangement", "sequenced"
 TAKE_TAG = {"performance": "performance", "transcription": "transcription", "roll": "piano roll",
             "arrangement": "arrangement", "sequenced": "sequenced"}
 ID_MAX = 80
-TAIL_MIN_S = 2.0          # trailing pedal-only silence shorter than this stays
-TAIL_MAX_S = 8.0          # a sustain pedal held past the last key release rings at most this long
 CATALOG_FIELDS = ("title", "composer", "performer", "genre", "era", "year", "duration_s", "notes", "source",
                   "licence", "tags", "rank")
 
@@ -89,67 +87,6 @@ def load_staged(staging: pathlib.Path) -> tuple[list[dict], list[str]]:
     return items, problems
 
 
-def _smf0(ppq: int, events: list[tuple], end_tick: int) -> bytes:
-    """parse_smf events (a cleaned file's: notes, pedals, metas) as SMF type 0, the track ending at ``end_tick``."""
-    trk, prev = bytearray(), 0
-    for e in events:
-        t, st = e[0], e[2]
-        if st == 0xFF:
-            if e[3] == 0x2F:
-                continue
-            raw = b"\xff" + bytes((e[3],)) + L._vlq(len(e[4])) + e[4]
-        elif st & 0xF0 in (0xC0, 0xD0):
-            raw = bytes((st, e[3]))
-        else:
-            raw = bytes((st, e[3], e[4]))
-        trk += L._vlq(t - prev) + raw
-        prev = t
-    trk += L._vlq(max(0, end_tick - prev)) + b"\xff\x2f\x00"
-    return (b"MThd" + (6).to_bytes(4, "big") + (0).to_bytes(2, "big") + (1).to_bytes(2, "big")
-            + ppq.to_bytes(2, "big") + b"MTrk" + len(trk).to_bytes(4, "big") + bytes(trk))
-
-
-def trim_tail(body: bytes, report: dict, title: str) -> tuple[bytes, dict, float]:
-    """A cleaned file whose pedal events run on long after the last note (PIAST transcriptions carry the video's
-    tempo map and pedal noise to its end, up to minutes of silence) is cut where the sound ends: the last key
-    release, or the sustain pedal's release after it (at most TAIL_MAX_S later; the pedal is then lifted there).
-    The cut file goes through clean_midi again, so the result is still exactly its output. -> (bytes, report,
-    seconds cut); unchanged when less than TAIL_MIN_S would go."""
-    _fmt, ppq, ev = L.parse_smf(body)
-    timed, tempo, last_t, sec = [], 500_000, 0, 0.0
-    for e in ev:
-        sec += (e[0] - last_t) * tempo / (ppq * 1e6)
-        last_t = e[0]
-        if e[2] == 0xFF and e[3] == 0x51 and len(e[4]) == 3:
-            tempo = int.from_bytes(e[4], "big") or 500_000
-        timed.append((sec, tempo, e))                 # the tempo in force after this event
-    off_i = max((i for i, (_s, _t, e) in enumerate(timed) if e[2] != 0xFF and e[2] & 0xF0 in (0x80, 0x90)),
-                default=None)
-    if off_i is None:
-        return body, {}, 0.0
-    s_off = timed[off_i][0]
-    down = False
-    for s, _t, e in timed[:off_i + 1]:
-        if e[2] == 0xB0 and e[3] == 64:
-            down = e[4] >= 64
-    end_s, lift = s_off, False
-    if down:
-        up = next((s for s, _t, e in timed[off_i + 1:] if e[2] == 0xB0 and e[3] == 64 and e[4] < 64), None)
-        end_s = min(up if up is not None else float("inf"), s_off + TAIL_MAX_S)
-        lift = up is None or up > end_s
-    length = float(report.get("duration_s") or 0.0)    # clean_midi's: the last kept note or pedal
-    if length - end_s < TAIL_MIN_S:
-        return body, {}, 0.0
-    j = max(i for i, (s, _t, _e) in enumerate(timed) if s <= end_s)
-    s_j, tempo_j, e_j = timed[j]
-    end_tick = e_j[0] + int(round((end_s - s_j) * ppq * 1e6 / tempo_j))
-    keep = [e for s, _t, e in timed if s <= end_s]
-    if lift:
-        keep.append((end_tick, 1 << 30, 0xB0, 64, 0))
-    cut, cut_report = L.clean_midi(_smf0(ppq, keep, end_tick), title)
-    return cut, cut_report, round(length - cut_report["duration_s"], 1)
-
-
 def clean_all(items: list[dict], staging: pathlib.Path) -> tuple[list[dict], list[dict]]:
     kept, rejected = [], []
     for it in items:
@@ -164,7 +101,7 @@ def clean_all(items: list[dict], staging: pathlib.Path) -> tuple[list[dict], lis
             continue
         try:
             body, report = L.clean_midi(path.read_bytes(), it["title"])
-            cut_body, cut_report, cut_s = trim_tail(body, report, it["title"])
+            cut_body, cut_report, cut_s = L.trim_tail(body, report, it["title"])
             if cut_s:
                 body, report = cut_body, cut_report
         except L.Rejected as e:
