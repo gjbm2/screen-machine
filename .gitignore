@@ -46,3 +46,8 @@ samsungtvws/example/web_interface/images
 bun.lockb
 # TV pairing tokens must never be added again (the two live ones are still tracked; see REFACTOR_PLAN P2)
 /*-token*.txt
+
+# Local runtime leftovers (22 Oct commit-everything pass)
+/*.pid
+/dist_prev_*/
+/xdg/
