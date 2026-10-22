@@ -71,6 +71,12 @@ class FxMove:
     level: float = 1.0          # the added effect's level (x its amount): the interplay's ceiling
 
 
+def bus_slots(stack: list) -> list:
+    """The bus as the director sees it: without the room's gesture slot (origin "gesture", fx_state.GESTURE;
+    docs/ENSEMBLE.md §8.2), which it never counts, moves or removes, nor lets take a stage."""
+    return [s for s in stack if getattr(s, "origin", "manual") != "gesture"]
+
+
 def interval_for(rate: float) -> float:
     return FX_INTERVAL_AT_0 * (FX_INTERVAL_AT_1 / FX_INTERVAL_AT_0) ** max(0.0, min(1.0, rate))
 
@@ -376,6 +382,7 @@ class FxDirector:
               pixels_ratio: float, queued: tuple) -> Optional[tuple[str, str]]:
         """One more effect for the queue: what could come in at the next move (the oldest auto effect freed),
         not already queued.  None when nothing else fits."""
+        stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         freed = autos[0] if autos else None
         names = [n for n in self.candidates(now, stack, presets, cost, pixels_ratio, freed=freed) if n not in queued]
@@ -388,6 +395,7 @@ class FxDirector:
         ``prefer``: the queued effects, in order (an add or a swap takes the first that fits)."""
         if not self.enabled:
             return None
+        stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         ev = self.event
         on = f" (on the {ev.replace('_', ' ')})" if ev else ""
@@ -423,6 +431,7 @@ class FxDirector:
         auto effect for a new pick, or adds one when there is none; manual (hand-placed) effects are never touched.
         Nothing fits the stage rules: the same again with them relaxed (``candidates(relaxed=True)``); None only when
         that is empty too, or the bus is full with no auto effect to swap."""
+        stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         old = autos[0] if autos else None
         if old is None and len(stack) >= MAX_BUS_SLOTS:

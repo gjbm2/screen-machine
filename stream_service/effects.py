@@ -207,7 +207,7 @@ class EffectSlot:
         self.target = max(0.0, min(1.0, float(target)))
         self.fade_s = max(0.0, float(fade_s))
         self.seq = seq
-        self.where = where                   # "bus" | "scene" (the failure action differs)
+        self.where = where                   # "bus" | "scene" (the failure action differs) | "gesture" (a bus slot, last)
         self.failed = False
         self.slow = False                    # tripped by the GPU guard
         self.removing = False
@@ -275,6 +275,9 @@ class EffectSlot:
             return False
         try:
             self.effect.beat_clock = self.clock     # plugins/_lib/beat.py: an opt-in phase lock reads it
+            # the session's runtime (read-only: the frame's time, the render->photon lead, the palette), for a plug-in
+            # that times things on the glass (gesture_accents, docs/ENSEMBLE.md §8.2)
+            self.effect.session_runtime = getattr(self.modulation, "runtime", None)
         except Exception:
             pass
         g = smoothstep(self.level) * outer_gain
@@ -380,7 +383,8 @@ class EffectChain:
         self._seq += 1
         slot.seq = self._seq
         self.slots.append(slot)
-        self.slots.sort(key=lambda s: (stage_index(s.stage), s.seq))
+        # the room's gesture slot (where "gesture", fx_state.GESTURE) is the last on the bus, after every overlay
+        self.slots.sort(key=lambda s: (stage_index(s.stage), s.where == "gesture", s.seq))
 
     def get(self, slot_id: str) -> Optional[EffectSlot]:
         return next((s for s in self.slots if s.slot_id == slot_id), None)

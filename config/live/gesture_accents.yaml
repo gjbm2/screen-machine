@@ -1,0 +1,48 @@
+# Gesture accents: how a screen shows the room's gestures (docs/ENSEMBLE.md §8.2; stream_service/gestures.py and
+# stream_service/plugins/effects/gesture_accents.py).  Hot-reloaded (looked at once a second).
+#
+# Every number is a STARTING POINT, chosen on paper: tune by watching the room.  Delete a kind and that kind shows
+# nothing on the screens; delete the file and no gesture is drawn.  Light is only ever added: a gesture never dims a
+# screen or takes it to black.
+#
+# Timing: a part peaks on the glass at its at_ms (show's clock, photon time).  It starts at at_ms - lead - attack,
+# the attack, hold and decay from the gesture's shape (show.yaml ensemble.gestures.shapes); a swell rises over its
+# dur_ms instead.  A part already inside the lead starts at once, its attack squeezed.  A part whose peak would land
+# more than one beat late is not shown.
+version: 1
+
+late_attack_ms: 60        # the shortest rise of a part that is already late
+no_grid_beat_s: 0.5       # "one beat" for the late rule while the renderer's beat clock is not sure
+keep_s: 30                # the gesture slot stays on a screen's FX bus this long after the last part for it
+fade_s: 1.0               # the slot fades in and out over this
+own_colour: 0.6           # a part without a colour: how much of the picture's own colour (the rest white) its light takes
+max_accents: 24           # accents drawn at once on a screen; the oldest go first
+
+roles:                    # a part's colour (show's palette role word) -> a place on the screen's palette, 0..1
+  base: 0.0
+  accent: 0.33
+  highlight: 0.66
+
+colour:                   # the short palette pop of a part that carries a colour
+  level: 0.25
+  decay_ms: 350
+
+# Each kind: one look, or a list of looks drawn together.  ``level`` is x the part's strength (final from show).
+#   flash   light added over the picture.  centre: 0 even .. 1 only the middle
+#   swell   a bloom-like lift, strongest on the picture's brights
+#   ring    a ring of light that spreads from the part's peak.  size: final radius (frame heights); grow_ms: its
+#           spread time constant; width: frame heights; refract 0..1: how much the ring bends the picture; trail
+#           0..1: a second ring inside it; x: centre | register (low notes left, high right); y: 0 top .. 1 bottom
+#   shake   a small tap of the whole picture.  level: frame heights; hz: its wobble
+kinds:
+  accent:   {look: flash, level: 0.15, centre: 0.6}
+  downbeat: {look: flash, level: 0.25, centre: 0.4}
+  hit:
+    - {look: ring, level: 0.7, size: 1.4, grow_ms: 450, width: 0.03, refract: 0.5, trail: 0.4, x: centre, y: 0.5}
+    - {look: flash, level: 0.3, centre: 0.0}
+  section:  {look: swell, level: 0.5}
+  phrase:   {look: swell, level: 0.3}
+  fill:     {look: shake, level: 0.006, hz: 9}
+  note:     {look: ring, level: 0.5, size: 0.22, grow_ms: 500, width: 0.008, refract: 0.15, trail: 0.5, x: register, y: 0.6}
+  chord:    {look: ring, level: 0.55, size: 0.6, grow_ms: 400, width: 0.02, refract: 0.25, trail: 0.0, x: register, y: 0.5}
+  swell:    {look: swell, level: 0.6}

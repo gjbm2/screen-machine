@@ -2675,6 +2675,11 @@ class SessionManager:
     def on_room_message(self, msg: dict) -> None:
         """Loop thread (the music bus): show_service's room.direction, validated, for MusicDirection (§8.7), and
         its room.events (cue hints, G9).  room.look (the palette) goes through room_service, the one palette writer."""
+        if msg.get("type") in ("room.gesture", "room.direction") and isinstance(msg.get("data"), dict):
+            from . import gestures                   # the gesture layer (docs/ENSEMBLE.md §8.2): who plays, the parts
+            gestures.on_room(self, msg["type"], msg["data"])
+            if msg["type"] == "room.gesture":
+                return
         if msg.get("type") == "room.event" and isinstance(msg.get("data"), dict):
             self._room_event(msg["data"])
             return
@@ -3043,6 +3048,8 @@ class SessionManager:
                     s.tick(now)
                 except Exception:
                     log.exception("[%s] tick failed", s.id)
+            from . import gestures
+            gestures.sync_slots(self, now)           # the room's gesture slot on each live screen's bus (never raises)
 
     async def shutdown(self) -> None:
         await asyncio.gather(*(s.end("deleted", "service shutdown") for s in self.active()),

@@ -34,6 +34,12 @@ FADE_MAX_S = 30.0
 FX_STATES = ("starting", "holding", "entering", "live")
 ITEM_KEYS = {"id", "level", "bypass", "preset", "effect", "params", "bindings"}
 READ_ONLY_KEYS = {"label", "stage", "origin", "state", "level_now", "amount_now", "cost_ms"}
+# The room's gesture slot (gestures.py, docs/ENSEMBLE.md §8.2): origin GESTURE, id GESTURE_ID, last on the bus.  The
+# ensemble's own: gestures.sync_slots adds and removes it (:meth:`SessionFx.gesture`); a PUT keeps it as it is (an
+# echoed GET entry with its id is left out of the parse), a removal never takes it, and it is never counted toward
+# MAX_BUS_SLOTS.  The FX director never sees it (fx_director.bus_slots).
+GESTURE = "gesture"
+GESTURE_ID = "gesture"
 
 
 @dataclass
@@ -42,7 +48,7 @@ class SlotState:
     spec: EffectSpec
     level: float
     bypass: bool
-    origin: str                         # manual | auto
+    origin: str                         # manual | auto | gesture (GESTURE)
     stage: str
     label: str
     engine_slot: Any = None             # effects.EffectSlot (render-thread object; plain reads only)
@@ -174,6 +180,7 @@ class SessionFx:
         stack = body.get("stack")
         if not isinstance(stack, list):
             raise ParamError("bad_request", "stack must be a list of effect specs")
+        stack = [raw for raw in stack if not (isinstance(raw, dict) and raw.get("id") == GESTURE_ID)]   # kept as is
         if len(stack) > MAX_BUS_SLOTS:
             raise ParamError("too_many_effects", f"at most {MAX_BUS_SLOTS} effects on the bus")
         items = [self.parse_item(raw, i) for i, raw in enumerate(stack)]
@@ -199,16 +206,37 @@ class SessionFx:
         async with self.lock:
             if parsed["if_rev"] is not None and parsed["if_rev"] != self.rev:
                 raise SessionError(409, "fx_conflict", f"the FX stack is at rev {self.rev}, not {parsed['if_rev']}")
-            return await self._apply(parsed["items"], parsed["fade_s"], parsed["master"], cause, detail)
+            items = parsed["items"]
+            g = next((st for st in self.stack if st.origin == GESTURE), None)
+            if g is not None:                              # the room's gesture slot stays as it is
+                items = [*items, _Item(g.id, g.spec, g.level, g.bypass, index=len(items))]
+            return await self._apply(items, parsed["fade_s"], parsed["master"], cause, detail)
+
+    async def gesture(self, on: bool, spec: Optional[EffectSpec], fade_s: float) -> Optional[dict]:
+        """The room's gesture slot (gestures.sync_slots, loop thread): ``on`` puts ``spec`` last on the bus (origin
+        GESTURE), off takes it away; nothing else on the bus changes.  None when the session is not live or the
+        slot is already so."""
+        if self.s.state != "live" or self.s.exited:
+            return None
+        async with self.lock:
+            if any(st.origin == GESTURE for st in self.stack) == on:
+                return None
+            items = [_Item(st.id, st.spec, st.level, st.bypass, index=i)
+                     for i, st in enumerate(st for st in self.stack if st.origin != GESTURE)]
+            if on:
+                if spec is None:
+                    return None
+                items.append(_Item(GESTURE_ID, spec, 1.0, False, origin=GESTURE, index=len(items)))
+            return await self._apply(items, fade_s, None, GESTURE, "the room's gestures " + ("on" if on else "off"))
 
     async def remove(self, keep: Any, fade_s: float, detail: Optional[str] = None) -> Optional[dict]:
-        """Take slots off the bus (loop thread): every slot for which ``keep(slot)`` is false.  None when the state
-        no longer allows it."""
+        """Take slots off the bus (loop thread): every slot for which ``keep(slot)`` is false (never the room's
+        gesture slot).  None when the state no longer allows it."""
         if self.s.state != "live" or self.s.exited:
             return None
         async with self.lock:
             items = [_Item(st.id, st.spec, st.level, st.bypass, index=i)
-                     for i, st in enumerate(st for st in self.stack if keep(st))]
+                     for i, st in enumerate(st for st in self.stack if keep(st) or st.origin == GESTURE)]
             if len(items) == len(self.stack):
                 return self.summary()
             return await self._apply(items, fade_s, None, "manual", detail)
@@ -223,7 +251,7 @@ class SessionFx:
             items = [_Item(st.id, st.spec, st.level, st.bypass, index=i)
                      for i, st in enumerate(st for st in self.stack if st.id != move.remove)]
             if move.add is not None:
-                if len(items) >= MAX_BUS_SLOTS:
+                if sum(1 for st in self.stack if st.id != move.remove and st.origin != GESTURE) >= MAX_BUS_SLOTS:
                     return None
                 level = max(0.0, min(1.0, float(getattr(move, "level", 1.0))))   # the interplay's ceiling
                 items.append(_Item(None, self.presets.resolve_effect(move.add), level, False, origin="auto",
@@ -305,7 +333,7 @@ class SessionFx:
         stack = [st for st in stack if st is not None]
         from .effects import stage_index
 
-        stack.sort(key=lambda st: (stage_index(st.stage), st.seq))
+        stack.sort(key=lambda st: (stage_index(st.stage), st.origin == GESTURE, st.seq))
         self.stack = stack
         self.rev += 1
         self.fade_s = fade_s
@@ -322,7 +350,8 @@ class SessionFx:
 
     async def _prepare_slot(self, sid: str, it: _Item, fade_s: float, cause: str) -> SlotState:
         s = self.s
-        cls = self.registry.effect(it.spec.effect)
+        g = it.origin == GESTURE                           # the room's gesture slot: an internal plug-in, last
+        cls = self.registry.effect(it.spec.effect, allow_internal=g)
         eff = cls()
         eff = await s.prepare_effect(eff, it.spec.params)
         self._eid += 1
@@ -331,7 +360,7 @@ class SessionFx:
         slot = EffectSlot(f"e{self._eid}", eff, name=cls.name, preset=it.spec.preset,
                           stage=getattr(cls, "stage", "stylise"), modulation=mod,
                           mix=getattr(cls, "amount_mode", "native") == "mix", level=0.0,
-                          target=0.0 if it.bypass else it.level, fade_s=fade_s, where="bus",
+                          target=0.0 if it.bypass else it.level, fade_s=fade_s, where="gesture" if g else "bus",
                           label=it.spec.label)
         origin = it.origin or ("auto" if cause == "auto" else "manual")
         return SlotState(sid, it.spec, it.level, it.bypass, origin, slot.stage, it.spec.label or cls.name,
