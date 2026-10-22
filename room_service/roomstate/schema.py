@@ -127,6 +127,10 @@ def entry_schema(value_schema: dict | None = None, put_back_max_age_s: float | N
         "policy": {"type": "string", "enum": [off, "enforce"], "default": off, "x-ui": {
             "label": "Keep it there", "widget": "checkbox", "switch": {"on": "enforce", "off": off},
             "description": "If someone moves it while this mode is on, move it back once"}},
+        "skip_if": {"type": "object", "additionalProperties": {"type": "array", "minItems": 1}, "x-ui": {
+            "label": "Leave it as it is while", "advanced": True, "unset_label": "Always change it",
+            "description": "Don't change it (or remember it) when the room switches to this mode while one of these "
+                           "is so, for example while our own piano sound is playing on the speaker"}},
         "opts": {"type": "object", "x-ui": {"label": "Device hints", "advanced": True}},
     }, "x-ui": {"label": "Options"}}
 
@@ -181,7 +185,9 @@ def room_config_schema(target_schemas: dict[str, dict], groups: list[str]) -> di
     def has(*keys: str) -> dict:
         return {"anyOf": [{"required": [k]} for k in keys]}
     slot = {"type": "string", "minLength": 1}
-    common = {"policy": {"enum": ["respect", "enforce", "ignore"]}, "opts": {"type": "object"}}
+    common = {"policy": {"enum": ["respect", "enforce", "ignore"]}, "opts": {"type": "object"},
+              "skip_if": {"type": "object", "minProperties": 1,
+                          "additionalProperties": {"type": "array", "minItems": 1}}}
     age = {"type": "number", "exclusiveMinimum": 0}
     retrieve_only = {"else": {}, "max_age_s": age}
     put_back = {"restore": {"type": "boolean"}, "store_if": {"type": "array"}, "max_age_s": age}

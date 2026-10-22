@@ -308,13 +308,15 @@ class Coordinator:
             if tr.get("skip"):                    # Auto: these targets are left alone this time (not stored, not set)
                 to = replace(to, state={t: e for t, e in to.state.items() if t not in set(tr["skip"])})
             async with self._work:
-                # 1. Read every readable target the destination names, plus anything still in flight.
-                await self._refresh(self._level(to.state) | self._inflight())
+                # 1. Read every readable target the destination names, plus anything still in flight, plus what its
+                #    rows' "Leave it as it is while" (skip_if) look at.
+                await self._refresh(self._level(to.state) | self._inflight() | self._level(self._skip_watch(to)))
+                to, left = self._leave_alone(to, tr)     # rows whose skip_if holds now: not stored, not set
                 # 2. Store, into slots that are empty, or closed and still valid (§4.6). Saved, with the plan, before
                 #    any command.
-                await self._store(to, tr)
+                fresh = await self._store(to, tr)
                 # 3-4. What the destination wants, what must be sent, the rule, and every row as 'pending'.
-                p = self._plan(to, tr, cfg)
+                p = self._plan(to, tr, cfg, left=left)
                 self.s["desired"] = {t: {"value": v, "policy": to.state[t].policy, "slot": p.slots.get(t),
                                          "settled": False, "retry": None, "reasserted": False}
                                      for t, v in p.desired.items()}
@@ -360,6 +362,13 @@ class Coordinator:
                     for t in [t for t in batch if t in self._hand_wins]:     # set by hand during the switch: it stays
                         batch.pop(t)
                         self._row(tr, t, "skipped", "set by hand during the switch", "hand")
+                    watch = [t for t in batch if t in to.state and to.state[t].skip_targets]
+                    if watch:                     # skip_if again, on fresh readings, now that this step would send
+                        await self._refresh(self._level({c for t in watch for c, _ in to.state[t].skip_targets}))
+                        for t in watch:
+                            if why := self._left_alone(to.state[t]):
+                                batch.pop(t)
+                                self._left_at_step(tr, t, to.state[t], why, fresh)
                     worked = bool(batch)
                     later = {t: batch.pop(t) for t in list(batch) if self._proved_behind(t, step)}
                     if later:                     # sent now (in order on its channel); the next step doesn't wait
@@ -411,7 +420,9 @@ class Coordinator:
             self._finish(tr, completed=False)
             return None
 
-    def _plan(self, to: Mode, tr: dict, cfg: RoomConfig, mutate: bool = True) -> Plan:
+    def _plan(self, to: Mode, tr: dict, cfg: RoomConfig, mutate: bool = True,
+              left: dict[str, tuple[Entry, str]] | None = None) -> Plan:
+        """`left`: rows _leave_alone took out of `to` (target -> (entry, why)); each gets a skipped row in its step."""
         desired, slots = self._desired(to, mutate)
         pending: dict[str, Any] = {}
         unsent: dict[str, tuple[str, str]] = {}
@@ -430,7 +441,7 @@ class Coordinator:
         changes = {t: ((self.s["believed"].get(t) or {}).get("value"), desired[t]) for t in [*pending, *unsent]}
         tr["rule"] = cfg.transition_for({tr["from"], *tr["via"]}, to.name, changes)   # `when` sees what changes
         steps = cfg.plan_steps({tr["from"], *tr["via"]}, to.name, changes)
-        rows, ref = self._rows(exits, steps, enters, desired, pending, unsent, slots, to, cfg)
+        rows, ref = self._rows(exits, steps, enters, desired, pending, unsent, slots, to, cfg, left or {})
         return Plan(desired, slots, pending, unsent, exits, enters, steps, rows, ref)
 
     def _hand_rows(self, tr: dict, targets) -> None:
@@ -470,9 +481,12 @@ class Coordinator:
         tr.setdefault("notes", {})[t] = text
 
     # rows (§7.2) -------------------------------------------------------------------------------------------------
-    def _rows(self, exits, steps, enters, desired, pending, unsent, slots, to, cfg) -> tuple[list[dict], dict]:
+    def _rows(self, exits, steps, enters, desired, pending, unsent, slots, to, cfg,
+              left: dict | None = None) -> tuple[list[dict], dict]:
         """Every row in run order, as 'pending' (an unsent target already has its final status). `step` is 0 for exit
-        signals, 1..N for the rule's steps, N+1 for enter signals; `id` is i<k> in row order (§4.12)."""
+        signals, 1..N for the rule's steps, N+1 for enter signals; `id` is i<k> in row order (§4.12). A row left alone
+        by its skip_if (`left`) is skipped already, in the step that would have sent it, saying why."""
+        left = left or {}
         rows: list[dict] = []
         ref: dict = {}
 
@@ -496,8 +510,17 @@ class Coordinator:
             elif step.kind == "signal":
                 signal(("step", k), step, k + 1)
             else:
-                names = step.targets if step.kind == "targets" else self._rest(steps, pending, unsent)
+                names = step.targets if step.kind == "targets" else self._rest(steps, {**pending, **left}, unsent)
                 for t in names:
+                    if t in left and t not in done:
+                        done.add(t)
+                        e, why = left[t]
+                        v = e.set if e.sets else None
+                        text = self._adapter(t).show(t.split(".", 1)[1], v)
+                        add(t, t, f"left alone, not set {text}" if e.sets else "left alone, not put back", k + 1,
+                            "retrieve" if e.retrieve else "set", "skipped", why, value=v, reason="left_alone",
+                            **({"guarded": True} if t in step.abort_on else {}))
+                        continue
                     if t in done or (t not in pending and t not in unsent):
                         continue
                     done.add(t)
@@ -558,9 +581,9 @@ class Coordinator:
     @staticmethod
     def _any_not_ok(tr: dict) -> bool:
         """failed or unconfirmed rows, or a skipped guarded one (allow_skipped); other skipped rows never count, nor
-        one the person set by hand during the switch."""
+        one the person set by hand during the switch, nor one its skip_if left alone (the config asked for that)."""
         return any(r["status"] in ("failed", "unconfirmed")
-                   or (r["status"] == "skipped" and r.get("guarded") and r.get("reason") != "hand")
+                   or (r["status"] == "skipped" and r.get("guarded") and r.get("reason") not in ("hand", "left_alone"))
                    for r in tr["steps"])
 
     # store, desired values, send decisions (§4.4) --------------------------------------------------------------
@@ -583,7 +606,58 @@ class Coordinator:
         have = self.s["stored"].get(e.retrieve, {}).get(t)
         return bool(have) and not _expired(have, e, self.now())
 
-    async def _store(self, to: Mode, tr: dict) -> None:
+    # "leave it as it is while" (skip_if) ------------------------------------------------------------------------
+    @staticmethod
+    def _skip_watch(mode: Mode) -> set[str]:
+        """Every target a row of `mode` looks at through its skip_if."""
+        return {c for e in mode.state.values() for c, _ in e.skip_targets}
+
+    def _left_alone(self, e: Entry | None) -> tuple[str, Any] | None:
+        """The first of a row's skip_if conditions that holds on what the room believes now: (target, its value). A
+        value that is unknown, or stale (unreadable), never holds: the row applies as usual."""
+        for c, pats in (e.skip_targets if e is not None else ()):
+            b = self.s["believed"].get(c)
+            if b and b.get("confidence") in ("confirmed", "unconfirmed") and any(value_matches(p, b.get("value"))
+                                                                               for p in pats):
+                return c, b.get("value")
+        return None
+
+    def _alone_words(self, c: str, v: Any) -> str:
+        """Page words for why a row was left alone: "left alone: Drawing Room music is Play Chopin"."""
+        try:
+            a, m = self._adapter(c), c.split(".", 1)[1]
+            what, value = self.cfg.labels.get(c) or a.label(m), a.words(m, v)
+        except Exception:                         # a target the adapter can't word: plain text
+            what, value = c, json.dumps(v, default=str)
+        return f"left alone: {what} is {value}"
+
+    def _leave_alone(self, to: Mode, tr: dict) -> tuple[Mode, dict[str, tuple[Entry, str]]]:
+        """skip_if at entry, on the readings just taken: rows whose condition holds leave this entry, not stored and not
+        set (as Auto's skip: what earlier modes stored for them stays). Returns the mode without them and
+        target -> (entry, why) for their skipped rows; each is noted on the transition."""
+        left = {t: (e, self._alone_words(*why)) for t, e in to.state.items() if (why := self._left_alone(e))}
+        for t, (_, words) in left.items():
+            self._note(tr, t, words)
+        if not left:
+            return to, left
+        tr["left_alone"] = sorted(left)
+        return replace(to, state={t: e for t, e in to.state.items() if t not in left}), left
+
+    def _left_at_step(self, tr: dict, t: str, e: Entry, why: tuple[str, Any], fresh: set[str]) -> None:
+        """skip_if at the step that would send t: the row is skipped, what this entry stored for it is taken back, and
+        the room doesn't hold it (nothing to retry, re-assert or report as drift)."""
+        words = self._alone_words(*why)
+        if e.store and t in fresh:
+            self._unstore(e.store, t)
+        self.s["desired"].pop(t, None)
+        self.s["drift"].pop(t, None)
+        tr["left_alone"] = sorted({*tr.get("left_alone", []), t})
+        self._note(tr, t, words)
+        self._row(tr, t, "skipped", words, "left_alone")
+
+    async def _store(self, to: Mode, tr: dict) -> set[str]:
+        """Returns the targets it stored a new value for (a row a later skip_if leaves alone takes its own back)."""
+        fresh: set[str] = set()
         stores = [t for t, e in to.state.items() if e.store and not
                   ((have := self.s["stored"].get(e.store, {}).get(t)) and not have.get("closed"))]
         await self._refresh(stores)               # what it is now, never an old belief: a failed read makes it stale,
@@ -608,10 +682,12 @@ class Coordinator:
                 continue
             slot[t] = {"value": b["value"], "at": b["at"], "confidence": b["confidence"],    # F7/G9: the belief's own
                        "from_mode": tr["from"], "stored_at": self.now(), "closed": False}     # time and confidence
+            fresh.add(t)
             limit = e.max_age_s or (self.cfg.put_back_max_age_s if e.restore else None)
             if limit:
                 slot[t]["max_age_s"] = limit         # the put-back, by whichever mode comes next, honours it
         self.s["stored"] = {s: e for s, e in self.s["stored"].items() if e}
+        return fresh
         # saved with the plan, which comes next and sends nothing (§3.4 rule 1: slots on disk before the first command)
 
     async def _settled_belief(self, t: str) -> dict | None:
@@ -984,8 +1060,12 @@ class Coordinator:
             return
         gen, before = self._gen, self._fingerprint()
         observe_only = self.s["mode"]["target"] is not None    # failed and not rolled back: never enforce (F4)
-        if a.kind == "level":
-            await self._refresh(watched + also)
+        mode = self.cfg.modes.get(self.s["mode"]["current"])
+        alone = {t: e for t in watched if mode and (e := mode.state.get(t)) is not None and e.skip_targets}
+        looks = self._level({c for e in alone.values() for c, _ in e.skip_targets}) - set(watched) - set(also)
+        reads = (watched + also if a.kind == "level" else []) + sorted(looks)   # skip_if's targets: fresh readings
+        if reads:
+            await self._refresh(reads)
             if gen != self._gen or self._busy():
                 return
         todo: dict[str, tuple[Any, str]] = {}
@@ -1005,6 +1085,8 @@ class Coordinator:
                     continue                      # it; accept, never fight
                 if r.get("gave_up") or a.dry_run or observe_only or self.now() < r["next_at"]:
                     continue
+                if t in alone and self._left_alone(alone[t]):
+                    continue                      # skip_if holds: no retry while it does (none used up either)
                 if r["attempts"] >= len(BACKOFF):
                     r["gave_up"] = True
                     self._log("gave_up", "reconcile", target=t, attempts=r["attempts"])
@@ -1020,7 +1102,10 @@ class Coordinator:
                 continue
             drift = self.s["drift"].get(t) or {"observed": b["value"], "desired": d["value"], "at": self.now()}
             drift["observed"] = b["value"]
-            if d["policy"] == "enforce" and not d["reasserted"] and not observe_only:
+            if (d["policy"] == "enforce" and not d["reasserted"] and not observe_only
+                    and t in alone and self._left_alone(alone[t])):
+                pass                              # skip_if holds: not re-asserted while it does (the drift is shown)
+            elif d["policy"] == "enforce" and not d["reasserted"] and not observe_only:
                 todo[t] = (d["value"], "reassert")
                 d["reasserted"] = drift["reasserted"] = True
             elif d["policy"] == "enforce":
@@ -1369,6 +1454,8 @@ class Coordinator:
                               "words": a.words(m, e.set) if e.sets else None, "restore": e.restore,
                               "store_if": list(e.store_if), "policy": e.policy, "max_age_s": e.max_age_s,
                               "opts": e.opts, "from": src, "selector": sel}
+                if e.skip_if:
+                    entries[t]["skip_if"] = {k: list(v) for k, v in e.skip_if.items()}   # as written
                 if (slot := e.retrieve or (None if e.restore else e.store)):
                     entries[t]["slot"] = slot     # an old-style pair only: the page keeps pairs whole when deleting
             modes[name] = {"label": mode.label, "description": mode.description, "icon": mode.icon, "voice": mode.voice,
@@ -1407,14 +1494,15 @@ class Coordinator:
         cfg = config or self.cfg
         to = self._with_restores(cfg.mode(name))
         if refresh and not self._busy():
-            await self._refresh(self._level(to.state))
+            await self._refresh(self._level(to.state) | self._level(self._skip_watch(to)))
         m = self.s["mode"]
         via = m["via"] + ([m["target"]] if m["target"] and m["target"] not in m["via"] else [])
         tr = {"id": None, "from": m["current"], "via": via, "to": name,
               "reapply": m["target"] is None and name == m["current"], "fired": []}
         saved, self.cfg = self.cfg, cfg           # no awaits below: placeholders come from the draft
         try:
-            p = self._plan(to, tr, cfg, mutate=False)
+            to, left = self._leave_alone(to, tr)  # what skip_if would leave alone now
+            p = self._plan(to, tr, cfg, mutate=False, left=left)
         finally:
             self.cfg = saved
         return {"from": tr["from"], "via": via, "to": name, "reapply": tr["reapply"],

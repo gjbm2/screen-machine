@@ -20,7 +20,8 @@ Entries:
   {"retrieve": slot, "else": v|"leave"}  put the saved value back and clear it; if nothing usable is saved, hold `else`
   null                                   unmanaged: drop an inherited entry
   options: "policy" (respect | enforce | ignore; default respect, ignore for a retrieve), "opts" (adapter hints),
-           and on retrieve only "max_age_s" (and "else")
+           "skip_if" ({target: [value patterns]}: left alone while one matches), and on retrieve only "max_age_s"
+           (and "else")
 Through extends, per target: (1) a value or {"set"} replaces the value and the options it names, keeping the rest of
 an inherited set or store entry; over a retrieve it becomes a plain set entry; (2) an object with store or retrieve
 replaces the entry; (3) an object with only options patches it; (4) null drops it. Every set and else value goes
@@ -52,7 +53,11 @@ from .contract import Adapter, Placeholder
 LEAVE = "leave"
 _UNSET = object()
 VERBS = {"set", "store", "retrieve"}
-OPTIONS = {"policy", "opts", "else", "max_age_s", "store_if", "restore"}
+OPTIONS = {"policy", "opts", "else", "max_age_s", "store_if", "restore", "skip_if"}
+# skip_if ("Leave it as it is while", owner 22 Oct: Piano leaves Sonos alone while our own piano sound plays on it, by
+# config): {"<target or selector>": [value patterns], ...}, on any entry. When the mode is entered, or a step would
+# send the row, and any named target's believed value matches one of its patterns, the row is left out of that entry:
+# not stored, not set, a skipped row saying why; a re-assert or retry waits while it holds. An unknown value never holds.
 RESTORE_SLOT = "_restore"
 # restore (owner, 16 Oct: "any mode ... can STORE setting x and then RESTORE it after", generic, no named slots):
 # {"set": v, "restore": true} stores the target's current value on entry (if nothing is stored for it yet), sets v, and
@@ -72,9 +77,36 @@ _ANY = object()
 
 
 def value_matches(pattern: Any, value: Any) -> bool:
-    """A `when` value pattern: equal, "*" for anything, or a key of an object value ("live" matches {"live": {...}})."""
-    return (pattern == "*" or pattern == value
-            or (isinstance(pattern, str) and isinstance(value, dict) and pattern in value))
+    """A value pattern (`when`, store_if, skip_if, Auto's skip): equal, "*" for anything, a key of an object value
+    ("live" matches {"live": {...}}), a string with * ? [ matching a string value (fnmatch, case-sensitive), or an
+    object whose every key's pattern matches that key of an object value, by these same rules
+    ({"uri": "http://*/piano/*"} matches {"uri": "http://host/piano/x.flac", "volume": 40})."""
+    if pattern == "*" or pattern == value:
+        return True
+    if isinstance(pattern, str):
+        if isinstance(value, dict):
+            return pattern in value
+        return isinstance(value, str) and bool(WILDCARD & set(pattern)) and fnmatch.fnmatchcase(value, pattern)
+    if isinstance(pattern, dict) and pattern and isinstance(value, dict):
+        return all(k in value and value_matches(p, value[k]) for k, p in pattern.items())
+    return False
+
+
+def pattern_problem(pattern: Any) -> str | None:
+    """Why a value pattern can't be used, or None. An object pattern names at least one key (an empty one would say
+    nothing about the value), and each of its keys' patterns is one too; anything else JSON is a pattern."""
+    if isinstance(pattern, dict):
+        if not pattern:
+            return "bad value pattern: an empty {} names nothing to look for"
+        for k, p in pattern.items():
+            if not isinstance(k, str):
+                return f"bad value pattern: {k!r} is not a field name"
+            if why := pattern_problem(p):
+                return why
+        return None
+    if pattern is None or isinstance(pattern, (str, int, float, bool, list)):
+        return None
+    return f"bad value pattern: {pattern!r} is not a JSON value"
 POLICIES = {"respect", "enforce", "ignore"}
 WILDCARD = set("*?[")
 SIGNAL = re.compile(r"[^.\s]+(\.[^.\s]+)+")
@@ -121,6 +153,8 @@ class Entry:
     opts: dict = field(default_factory=dict)
     store_if: tuple = ()             # value patterns: store only a current value that matches one (empty: always)
     restore: bool = False            # "put back afterwards": stored in RESTORE_SLOT on entry, put back on leaving
+    skip_if: dict = field(default_factory=dict)   # "leave it as it is while", as written: {selector: [patterns]}
+    skip_targets: tuple = ()         # ... resolved: ((target, (patterns, ...)), ...); empty: always applies
 
     @property
     def sets(self) -> bool:
@@ -376,6 +410,33 @@ class RoomConfig:
     def _expand(self, sel: Any, path: str, in_group: bool = False) -> list[str]:
         return list(dict.fromkeys(t for t, _ in self._select(sel, path, in_group)))
 
+    def _condition_targets(self, sel: Any) -> list[str] | None:
+        """The targets a skip_if name picks: a target, a group, a prefix or a wildcard, as a state key does. [] for a
+        name under a placeholder or dynamic subsystem that names nothing (yet); None when it names nothing real (a
+        typo: never a new placeholder)."""
+        if not isinstance(sel, str) or not sel:
+            return None
+        if sel in self._group_names:
+            return list(self.groups.get(sel, []))
+        if WILDCARD & set(sel):
+            hits = [t for t in self.targets if fnmatch.fnmatchcase(t, sel)]
+        else:
+            hits = [sel] if sel in self.targets else [t for t in self.targets if t.startswith(sel + ".")]
+        sub = sel.split(".", 1)[0]
+        if hits or (not WILDCARD & set(sub) and sub in self.adapters
+                    and (self.adapters[sub].placeholder or self._dynamic(sub))):
+            return hits
+        return None
+
+    def _skip_targets(self, d: dict) -> tuple:
+        """An entry's skip_if as ((target, (patterns, ...)), ...), each target once, its patterns merged."""
+        out: dict[str, list] = {}
+        for sel, pats in _own(d.get("skip_if")).items():
+            for t in self._condition_targets(sel) or []:
+                have = out.setdefault(t, [])
+                have += [p for p in pats if p not in have]
+        return tuple((t, tuple(ps)) for t, ps in out.items())
+
     # entries --------------------------------------------------------------------------------------
     def _spec(self, raw: Any, path: str) -> dict | None:
         """One state entry as the keys it names ({"set": v} for a plain value), or None if it is invalid."""
@@ -409,6 +470,18 @@ class RoomConfig:
             problems.append((f"{path}/max_age_s", "max_age_s must be a positive number"))
         if "store_if" in d and (not isinstance(d["store_if"], list) or not (d.keys() & {"store", "restore"})):
             problems.append((f"{path}/store_if", "store_if is a list of value patterns, on an entry that stores"))
+        elif "store_if" in d:
+            problems += [(f"{path}/store_if/{i}", why) for i, p in enumerate(d["store_if"]) if (why := pattern_problem(p))]
+        if "skip_if" in d:
+            si = d["skip_if"]
+            if not (isinstance(si, dict) and _own(si) and all(isinstance(p, list) and p for p in _own(si).values())):
+                problems.append((f"{path}/skip_if", "skip_if is an object of {name: [value patterns]}"))
+            else:
+                for sel, pats in _own(si).items():
+                    at = f"{path}/skip_if" + ptr(sel)
+                    if self._condition_targets(sel) is None:
+                        problems.append((at, f"skip_if names an unknown target: {sel}"))
+                    problems += [(at + ptr(i), why) for i, p in enumerate(pats) if (why := pattern_problem(p))]
         if "opts" in d and not isinstance(d["opts"], dict):
             problems.append((f"{path}/opts", "opts must be an object"))
         for p, message in problems:
@@ -527,7 +600,8 @@ class RoomConfig:
             voice = None
         mode = Mode(name, str(raw.get("label", name)), bool(raw.get("abstract")), ext,
                     (parent.family if parent else []) + [name],
-                    {t: _entry(specs[t], self._default_policy(t)) for t in self.targets if t in specs},
+                    {t: _entry(specs[t], self._default_policy(t), self._skip_targets(specs[t]))
+                     for t in self.targets if t in specs},
                     {t: origin[t] for t in self.targets if t in origin},
                     signals["on_enter"], signals["on_exit"],
                     description=str(raw.get("description") or ""), icon=icon,
@@ -690,8 +764,16 @@ class RoomConfig:
                     if not cond or set(cond) - {"from", "to"}:
                         self._fail(cpath, "a condition is a value, or {\"from\"?: ..., \"to\"?: ...}")
                         continue
+                    bad = [(k, why) for k in ("from", "to") if k in cond and (why := pattern_problem(cond[k]))]
+                    for k, why in bad:
+                        self._fail(cpath + ptr(k), why)
+                    if bad:
+                        continue
                     conds.append((ts, cond.get("from", _ANY), cond.get("to", _ANY)))
                 else:
+                    if why := pattern_problem(cond):
+                        self._fail(cpath, why)
+                        continue
                     conds.append((ts, _ANY, cond))
             if conds:
                 out.append(conds)
@@ -846,14 +928,15 @@ def _merge(parent: dict | None, child: dict) -> dict:
     return {**(parent or {}), **child}                    # 1 over a set or store entry, and 3: patch what it names
 
 
-def _entry(d: dict, default_policy: str | None = None) -> Entry:
-    """default_policy: the target's own (its value schema's x-ui.default_policy), for a row that names none."""
+def _entry(d: dict, default_policy: str | None = None, skip_targets: tuple = ()) -> Entry:
+    """default_policy: the target's own (its value schema's x-ui.default_policy), for a row that names none.
+    skip_targets: d's skip_if resolved to targets (RoomConfig._skip_targets)."""
     restore = bool(d.get("restore"))
     return Entry(set=d.get("set", _UNSET), store=RESTORE_SLOT if restore else d.get("store"), retrieve=d.get("retrieve"),
                  else_=d.get("else", LEAVE),
                  policy=d.get("policy", "ignore" if "retrieve" in d else default_policy or "respect"),
                  max_age_s=d.get("max_age_s"), opts=d.get("opts", {}), store_if=tuple(d.get("store_if", ())),
-                 restore=restore)
+                 restore=restore, skip_if=_own(d.get("skip_if")), skip_targets=tuple(skip_targets))
 
 
 def sets_value(mode: Mode, t: str) -> Any:
@@ -891,6 +974,11 @@ _ERRORS = [   # (substring of the internal message, code, text; {sel} = the row'
     ("reserved", "reserved_name", "Names starting with _ are reserved"),
     ("needs one of set, store, retrieve", "no_value", "This row needs a value"),
     ("store_if is a list", "bad_remember_if", "'Remember it only if' needs choices, on a row that puts back"),
+    ("skip_if is an object", "bad_leave_alone_while",
+     "'Leave it as it is while' needs a setting and the values to look for"),
+    ("skip_if names an unknown target", "bad_leave_alone_while",
+     "'Leave it as it is while' names an unknown setting: {detail}"),
+    ("bad value pattern", "bad_pattern", "A value to look for can't be used: {detail}"),
     ("policy must be", "bad_policy", "'Keep it there' can only be on or off"),
     ("max_age_s must be", "bad_age", "'Only if it was changed within' needs a positive number of seconds"),
     ("put_back_max_age_s must be", "bad_age", "The default put-back time needs a positive number of seconds"),
