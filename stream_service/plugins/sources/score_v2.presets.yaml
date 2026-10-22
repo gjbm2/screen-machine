@@ -57,24 +57,22 @@ live-score-v2-page-wide-paper:
     dims: 2d
     weight: 0.8
 
-# live-score-v2-scroll-night is held back (22 Oct, 7c): on a real preview session that started mid-music the
-# scroll showed empty staves for 30 s of playing; it returns once that is fixed.
-# live-score-v2-scroll-night:
-#   label: "Live score v2: scroll (night)"
-#   source: score_v2
-#   params:
-#     layout: scroll
-#     rows: 2
-#     look: night
-#     palette: ember
-#     note_glow: 1.0
-#     ink_glow: 1.6
-#   bindings:
-#     pulse: {kick: note_on, amount: 0.6}
-#   tags:
-#     energy: [0.0, 1.0]
-#     moods: [elegant, dreamy, dark]
-#     modes: [piano]
-#     family: score
-#     dims: 2d
-#     weight: 1.0
+live-score-v2-scroll-night:
+  label: "Live score v2: scroll (night)"
+  source: score_v2
+  params:
+    layout: scroll
+    rows: 2
+    look: night
+    palette: ember
+    note_glow: 1.0
+    ink_glow: 1.6
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
