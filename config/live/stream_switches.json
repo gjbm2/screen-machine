@@ -1,7 +1,7 @@
 {
   "default": {
     "encoder": "ffmpeg",
-    "workers": "inproc",
+    "workers": "proc",
     "fps": 30,
     "degrade": "on"
   },

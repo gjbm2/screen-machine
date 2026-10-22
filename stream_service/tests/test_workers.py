@@ -418,7 +418,8 @@ async def test_inproc_screens_never_touch_the_pool(monkeypatch):
     app = make_app(config_dir=REPO_CONFIG, max_sessions=3, workers=True)
     async with TestClient(TestServer(app)) as c:
         mgr = c.app[MANAGER]
-        r = await c.post("/api/sessions", json=body(screen="the-beast"))   # not in the shipped switches file: in-process
+        monkeypatch.setattr(mgr.switches, "workers", lambda screen: "inproc")   # a screen switched to in-process
+        r = await c.post("/api/sessions", json=body(screen="the-beast"))
         assert r.status == 201
         s = mgr.sessions[(await r.json())["session"]]
         assert isinstance(s.engine, FakeEngine) and s.engine.started_with is not None     # started inside the POST

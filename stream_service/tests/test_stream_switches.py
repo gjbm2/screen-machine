@@ -84,7 +84,7 @@ def test_in_dir_and_the_shipped_file():
     assert [s.encoder(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["nvenc", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
     assert [s.workers(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
-        ["proc", "proc", "proc", "inproc"]                            # change 3: every TV in a worker
+        ["proc", "proc", "proc", "proc"]                              # change 3: every TV in a worker; 22 Oct: previews too
     assert [s.fps(k) for k in ("north-screen", "south-screen", "devtest", "other")] == [60, 60, 30, 30]   # 4K60 on the TVs
     assert {s.degrade(k) for k in ("north-screen", "south-screen", "devtest", "other")} == {"on"}
 
