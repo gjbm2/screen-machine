@@ -2,6 +2,7 @@ score-ribbon-paper:
   label: Score ribbon (paper)
   source: score_ribbon
   params:
+    span: room
     look: paper
     palette: ember
     note_glow: 0.8
@@ -22,6 +23,7 @@ score-ribbon-night:
   label: Score ribbon (night)
   source: score_ribbon
   params:
+    span: room
     look: night
     palette: ember
     note_glow: 1.0
@@ -43,6 +45,7 @@ score-ribbon-night-wide:
   label: Score ribbon (night, three systems)
   source: score_ribbon
   params:
+    span: screen
     look: night
     rows: 3
     palette: ice

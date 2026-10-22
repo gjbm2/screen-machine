@@ -76,6 +76,9 @@ log = logging.getLogger("stream_service.plugins.score_ribbon")
 
 LOOKS = ("paper", "night")
 ROOM_KEY = "room"
+SPANS = ("screen", "room")           # room: one row a screen, one tape across the screens, notes enter on the right
+SPAN_HEADERS = ("every", "first")    # room: brace, clefs, key and time on every screen's row, or the leftmost only
+SPAN_SIZE = 1.15                     # room: the staff this much larger (two screens, headers on both: ~15 s at 12 sp/s)
 JOIN_BUDGET_S = 0.006                # a join's bars go on stage while the frame's own CPU is under this
 X_PLAY = 0.83                      # the playhead, of the width
 LAG0, LAG_A = 0.35, 0.12           # the notes' arrival lag (s): its seed, and how fast the estimate follows
@@ -83,6 +86,9 @@ P_SEED = 0.6                       # free time's beat before any phrase has had 
 S_OMEGA, S_AMAX_SP = 1.6, 60.0     # the paper: spring (rad/s) with tempo feed-forward, acceleration cap (sp/s^2)
 V_IDLE_SP = 0.25                   # the paper's creep with nothing playing (sp/s)
 AHEAD_BEATS = 2.0                  # with nothing sounding the paper runs on at most this far past the last sound
+ROOM_CHORD_S = 0.045               # span: room: onsets this close are one column (a spread chord)
+ROOM_GAP_SP = 1.7                  # ... and columns at least this far apart (heads, a little white), from onsets alone
+AHEAD_ROOM_S = 1.0                 # span: room: with nothing sounding the paper runs on this long past the last sound
 PHRASE_GAP_SP = 6.0                # between a phrase's last mark and the next one's first (plus its signature)
 FRESH_S, REL_TAU = 0.6, 0.6        # a note's halo fades over this; its colour cools after release with this tau
 Q_MIN, Q_MAX = 1.35, 4.0           # a 16th's width (sp): no tighter than heads allow, no wider than shows enough music
@@ -190,6 +196,8 @@ class _Phrase:
         self.t_last = None                          # the last sound (onset, or release) in the phrase
         self.end_x = 0.0                            # sp: the right edge of its last mark
         self.deferred = False                       # its written bars are recorded, laid out once after their batch
+        self.T_ref = None                           # span: room: the bus time its x counts from (its first onset)
+        self.ton: dict = {}                         # span: room: nid -> the room's onset time (shared by all screens)
 
 
 class ScoreRibbon(Source):
@@ -211,6 +219,9 @@ class ScoreRibbon(Source):
             "note_glow": num(0.0, 1.5, 0.8, "Note glow", basic=True),
             "flourish": num(0.0, 1.0, 0.7, "Flourish"),
             "playhead": num(0.0, 1.0, 0.35, "Playhead glow"),
+            # spanning the room's screens (left to right, the renderer's segment): one row each, one tape
+            "span": enum(SPANS, "screen", "Span", tier="structural"),
+            "span_header": enum(SPAN_HEADERS, "every", "Span header", tier="structural"),
         }
 
     # -- setup ------------------------------------------------------------------------------------------------------
@@ -222,10 +233,41 @@ class ScoreRibbon(Source):
         self.direct = (self.w, self.h) == (ctx.width, ctx.height)
         self.buf = None if self.direct else cp.zeros((self.h, self.w, 4), cp.uint8)
         self.night = params.get("look") == "night"
-        self.R = int(params.get("rows", 2))
-        size = float(params["staff_size"])
+        self._params = params
+        self.span = params.get("span", "screen")
+        self.span_header = params.get("span_header", "every")
         self.pace = float(params.get("pace", 12.0))
         self.Q = RL.Q16
+        self.painter = RP.Painter(ctx, self.w, self.h, self.night, int(params["seed"]), raw_module, launch_2d, HELPERS)
+        self.Ph = np.zeros(RK.NP, np.float32)
+        self.room = None
+        self.stage = None
+        self._build(self._mode_of(self._seg_now()))
+
+    def _seg_now(self):
+        """(k, n): this screen's place left to right among the room's n screens (the renderer's), else None."""
+        seg = getattr(getattr(self, "sound", None), "segment", None)
+        try:
+            k, n = int(seg[0]), int(seg[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        return (k, n) if n >= 1 and 0 <= k < n else None
+
+    def _mode_of(self, seg) -> tuple:
+        if self.span == "room" and seg is not None and seg[1] > 1:
+            return ("room", seg[0], seg[1])
+        return ("screen",)
+
+    def _build(self, mode: tuple) -> None:
+        """Geometry, stage, the room's transcription and a fresh scene state for a layout mode (this screen alone, or
+        its row of a tape across the room).  A change of mode starts again from the room (as a screen joining)."""
+        params, ctx = self._params, self.ctx
+        cp = ctx.cp
+        self._mode = mode
+        roomy = self._roomy = mode[0] == "room"
+        self.k, self.n = (mode[1], mode[2]) if roomy else (0, 1)
+        self.R = 1 if roomy else int(params.get("rows", 2))
+        size = float(params["staff_size"]) * (SPAN_SIZE if roomy else 1.0)
         R, w, h = self.R, self.w, self.h
         # the systems: as large as the screen allows up to the default staff space
         sp = 0.013 * h * size
@@ -235,13 +277,16 @@ class ScoreRibbon(Source):
         self.rowh = 24 * sp
         self.y0 = 8 * round((h - (R * self.pitch_px - sp)) / 16)
         self.XM = round(0.016 * w)
-        self.XL = self.XM + 13.0 * sp
+        self.hdr_here = not roomy or self.span_header == "every" or self.k == 0
+        self.XLp = self.XM + 0.5 * sp                           # a row's tape start without a header
+        self.XLh = self.XM + 13.0 * sp                          # ... and with one (eased to the key's width)
+        self.XL = self.XLh if self.hdr_here else self.XLp
         self.XL_t = self.XL
         self.WV = w - self.XL - self.XM
-        self.painter = RP.Painter(ctx, w, h, self.night, int(params["seed"]), raw_module, launch_2d, HELPERS)
+        self._hkey = None
+        self.painter.graphs = {}                                # (captured with the old stage's buffers)
         self.stage = RS.Stage(sp, float(params.get("flourish", 0.7)))
         self.stage.gpu_setup(cp, raw_module, HELPERS, R, self.painter.NC, launch_2d)
-        self.Ph = np.zeros(RK.NP, np.float32)
         # the room's one transcription
         self.room = None
         try:
@@ -295,6 +340,48 @@ class ScoreRibbon(Source):
         self._lay = None                                         # [phrase, bars to go, out so far, q0, fifths]
         self._c0 = 0.0
 
+    def _rebuild(self, mode: tuple) -> None:
+        room, self.room = self.room, None
+        if room is not None:
+            try:
+                room.leave(self)
+            except Exception:
+                pass
+        rec, events = getattr(self, "record_events", False), getattr(self, "events", [])
+        self._build(mode)
+        self.record_events, self.events = rec, events
+        self._event("span", {"mode": list(mode)})
+
+    def _XL_of(self, j: int) -> float:
+        """Screen j's tape start (all instances agree: the header width follows the room's open phrase)."""
+        return self.XLh if (self.span_header == "every" or j == 0) else self.XLp
+
+    def _D(self) -> float:
+        """px from the paper's tape point (the playhead screen's tape start) to the playhead."""
+        if self._mode[0] == "room":
+            return X_PLAY * self.w - self._XL_of(self.n - 1)
+        return X_PLAY * self.w - self.XL
+
+    def _off(self) -> float:
+        """Tape px this screen's tape start lies behind the playhead screen's (0 alone)."""
+        if self._mode[0] != "room":
+            return 0.0
+        return sum(self.w - self._XL_of(j) - self.XM for j in range(self.k, self.n - 1))
+
+    def _S_draw(self) -> float:
+        return (self.S if self.S is not None else 0.0) - self._off()
+
+    def _off_room(self) -> float:
+        """Tape px the leftmost screen's tape start lies behind the playhead screen's: what every instance of a room
+        span lays out (so all lay out the same bars, the same way)."""
+        if self._mode[0] != "room":
+            return 0.0
+        return sum(self.w - self._XL_of(j) - self.XM for j in range(0, self.n - 1))
+
+    def _vis_left(self) -> float:
+        """The tape px of this screen's leftmost visible point, less a margin."""
+        return self._S_draw() - (self.R - 1) * self.WV - 8 * self.sp
+
     # -- the room ---------------------------------------------------------------------------------------------------
     def _drain(self, frame, t: float) -> None:
         room = self.room
@@ -347,22 +434,29 @@ class ScoreRibbon(Source):
             self.last_rev = rev
             self.dirty = True
 
-    def _new_phrase(self, t_on: float | None) -> _Phrase:
+    def _new_phrase(self, t_on: float | None, t_ref: float | None = None) -> _Phrase:
         sp = self.sp
         prev = self.phrases[-1] if self.phrases else None
+        tr = t_on if t_on is not None else t_ref
         if self.S is None:
             A = 0.0
-            self.S = A - (X_PLAY * self.w - self.XL)
+            self.S = A - self._D()
             self._snap = True                    # nothing drawn yet: the paper goes straight to 'now' after layout
+        elif self._roomy and prev is not None and prev.T_ref is not None and tr is not None:
+            # span: room: on from the last phrase by the time between (a pause counts only up to where the paper
+            # stopped): every screen that saw both phrases places this one the same
+            t_stop = tr if prev.t_last is None else min(tr, prev.t_last + AHEAD_ROOM_S)
+            A = prev.A + self.pace * (t_stop - prev.T_ref) * sp
         else:
             v = self.pace * sp
-            A = self.S + (X_PLAY * self.w - self.XL)
+            A = self.S + self._D()
             if t_on is not None:
                 A += (t_on - (self.t_sound - self.lag)) * v
         if prev is not None:
             A = max(A, prev.A + (prev.end_x + PHRASE_GAP_SP) * sp)
         self.serial += 1
         ph = _Phrase(self.serial, A, self.Q)
+        ph.T_ref = tr
         if prev is not None:
             ph.slot_s = prev.slot_s
         self.phrases.append(ph)
@@ -384,12 +478,18 @@ class ScoreRibbon(Source):
                 m = _Note(n.id, n.pitch, n.vel, n.t_on, n.t_off, self.clock, ph)
                 self.notes[n.id] = m
                 ph.notes[n.id] = m
+                ph.ton.setdefault(n.id, n.t_on)
+                if ph.T_ref is None:
+                    ph.T_ref = n.t_on
+                if self._roomy:
+                    ph.warp_dirty = True                             # (its place comes from its onset)
                 if ph.t_first is None or n.t_on < ph.t_first:
                     ph.t_first = n.t_on
                     if ph.ref is None or ph.pl.wbars == 0:          # (a phrase joined mid-way keeps its bars'
                         ph.ref = n.id                                # first note)
                 lagv = t - n.t_on
-                if 0.0 <= lagv < 2.0 and not self._joining:         # notes from before a join aren't lag
+                if 0.0 <= lagv < 2.0 and not self._joining and not self._roomy:   # (pre-join notes aren't lag;
+                                                                                   # a room span keeps one lag)
                     self.lag += (lagv - self.lag) * LAG_A
                 self.stats["births"] += 1
                 self.dirty_now = True
@@ -450,12 +550,14 @@ class ScoreRibbon(Source):
             return
         if self._lay is not None and self._lay[0] is ph and not ph.closed:   # (its rewrite still being laid out)
             self._note_bar_ids(ph, bar)
+            self._note_tons(ph, bar)
             self._lay[1].append(bar)
             self.stats["bars"] += 1
             self.dirty = True
             return
         if ph is None or ph.closed:
-            ph = self._new_phrase(None)
+            ph = self._new_phrase(None, self._bar_t0(bar) if self._roomy else None)
+        self._note_tons(ph, bar)
         pl = ph.pl
         for st in bar.staves:                                   # notes the scene never saw (joined mid-phrase)
             for e in st:
@@ -534,7 +636,7 @@ class ScoreRibbon(Source):
                     if p_ is ph:
                         for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
                             getattr(merged, name).update(getattr(o, name))
-                x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+                x_min = (self._vis_left() - ph.A) / sp
                 for name in ("heads", "rests", "bars", "sigs"):
                     d = getattr(merged, name)
                     setattr(merged, name, {k: v for k, v in d.items() if v[0] >= x_min})
@@ -544,6 +646,28 @@ class ScoreRibbon(Source):
             ph, o = self._jchunks.popleft()
             self._note_info_sync(ph, o, final=True)
             n += 1
+
+    def _onset(self, bar, e, i) -> float:
+        """A written note's onset on the bus clock: the room's (carried with the bar), else the scene's own record of
+        it, else its place in the bar's time."""
+        on = getattr(bar, "onsets", None)
+        if on and i in on:
+            return float(on[i])
+        m = self.notes.get(i)
+        if m is not None and m.t_on is not None:
+            return float(m.t_on)
+        return bar.t_start + e.start / max(1, bar.units) * (bar.t_end - bar.t_start)
+
+    def _note_tons(self, ph: _Phrase, bar) -> None:
+        for st in bar.staves:
+            for e in st:
+                for i, tin in zip(e.ids, e.tie_in):
+                    if not tin and i not in ph.ton:
+                        ph.ton[i] = self._onset(bar, e, i)
+
+    def _bar_t0(self, bar):
+        ts = [self._onset(bar, e, i) for st in bar.staves for e in st for i, tin in zip(e.ids, e.tie_in) if not tin]
+        return min(ts) if ts else (bar.t_start if bar.t_end > bar.t_start else None)
 
     def _note_bar_ids(self, ph: _Phrase, bar) -> None:
         for st in bar.staves:
@@ -575,12 +699,13 @@ class ScoreRibbon(Source):
         if not pl.bars_written:
             return
         sp = self.sp
-        x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+        x_min = (self._vis_left() - ph.A) / sp
+        x_cut = x_min - self._off_room() / sp + self._off() / sp     # (the room's leftmost screen: all cut alike)
         if pl.warp is not None and self.S is not None and len(pl.bars_written) >= 4:
             spc = RL.Spacer(pl.q0, pl.units, pl.Q, pl)
             k = 0
             for j, bar in enumerate(pl.bars_written):
-                if spc.base((bar.pos + 1) * bar.units) < x_min - 8.0:
+                if spc.base((bar.pos + 1) * bar.units) < x_cut - 8.0:
                     k = j + 1
             k = max(0, k - 1)                                   # (and one more: its ties in, its first bar line)
             if k:
@@ -609,7 +734,7 @@ class ScoreRibbon(Source):
         self._lay = None
         ph.end_x = max(ph.end_x, pl.written.end_x)
         sp = self.sp
-        x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+        x_min = (self._vis_left() - ph.A) / sp
         for name in ("heads", "rests", "bars", "sigs"):
             d = getattr(acc, name)
             setattr(acc, name, {k_: v for k_, v in d.items() if v[0] >= x_min})
@@ -629,7 +754,7 @@ class ScoreRibbon(Source):
         if not ds:
             return bars
         q = 0.8 * min(Q_MAX, max(Q_MIN, self.pace * min(ds)))
-        room_sp = (X_PLAY * self.w - self.XL + (self.R - 1) * self.WV) / self.sp + 24.0
+        room_sp = (self._D() + self._off_room() + (self.R - 1) * self.WV) / self.sp + 24.0
         used = max(0.0, self.t_sound - self.lag - body[-1].t_end) * self.pace * 0.8
         j = len(body)
         while j > 1 and used < room_sp:
@@ -755,6 +880,8 @@ class ScoreRibbon(Source):
         better clock or a re-read then moves the bar lines, beams and values around the notes, not the notes (only
         those whose order changed: a note re-read past its neighbours, two that became a chord).  New notes go on
         from the last ones at their recent width.  False (no warp yet) with fewer than two notes drawn."""
+        if self._roomy:
+            return self._fit_time_warp(ph, override, q0, units, d)
         ph.warp_dirty = False
         pl = ph.pl
         Hd = self.stage.T["heads"]
@@ -804,6 +931,62 @@ class ScoreRibbon(Source):
         qt = min(Q_MAX, max(Q_MIN, qt))
         if len(ws) < 2:
             return False
+        pl.warp = (ws, wx, qt)
+        pl.warp_ver += 1
+        ph.Q = pl.Q = qt
+        self.regrid = True
+        self._event("warp", {"n": len(ws), "Q": qt})
+        return True
+
+    def _fit_time_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None) -> bool:
+        """span: room: the phrase's warp through each note at its onset time (x = pace x (onset - T_ref)), the same on
+        every screen from the room's data alone; a chord at its first onset; bar lines, rests and values laid around
+        the notes; collisions push locally.  A re-read never moves a note."""
+        ph.warp_dirty = False
+        pl = ph.pl
+        if ph.T_ref is None:
+            return False
+        items = []
+        for nid, slot in list(override.items()) + [(k, v) for k, v in pl.written_slot.items() if k not in override]:
+            t = ph.ton.get(nid)
+            if t is None:
+                m = self.notes.get(nid)
+                t = m.t_on if m is not None else None
+            if t is not None:
+                items.append((t, nid, slot))
+        # each onset's x from the onsets alone (not the reading, not the values): pace x time, a spread chord at its
+        # first onset, and never closer than ROOM_GAP_SP to the onset before (a dense run spreads, and is back on
+        # time at its first breath): the same on every screen, unmoved by a re-read
+        xon, last_t, last_x = {}, None, None
+        for t, nid, _slot in sorted(items):
+            if last_t is not None and t - last_t < ROOM_CHORD_S:
+                xon[nid] = last_x
+                continue
+            x = self.pace * (t - ph.T_ref)
+            if last_x is not None:
+                x = max(x, last_x + ROOM_GAP_SP)
+            xon[nid], last_t, last_x = x, t, x
+        if last_x is not None:
+            ph.x_last = (last_t, last_x)                       # (the playhead keeps up with a spread run)
+        pts: dict = {}
+        for t, nid, slot in items:
+            x = xon[nid]
+            if units:
+                x -= RL.BAR_G * (math.floor((slot + 1e-6) / units) - math.floor((q0 + 1e-6) / units))
+            sl = float(slot)
+            pts[sl] = min(pts.get(sl, x), x)
+        if not pts:
+            return False
+        ws = sorted(pts)
+        wx = [pts[s_] for s_ in ws]
+        for k in range(1, len(ws)):                            # monotone (no gap forced: pushes keep heads apart)
+            wx[k] = max(wx[k], wx[k - 1])
+        if d is None:
+            d = self._sixteenth_s(ph)
+        qt = min(Q_MAX, max(Q_MIN, self.pace * d)) if d else (ph.Q or self.Q)
+        w = pl.warp
+        if w is not None and w[0] == ws and w[1] == wx and abs(w[2] - qt) < 1e-9:
+            return True
         pl.warp = (ws, wx, qt)
         pl.warp_ver += 1
         ph.Q = pl.Q = qt
@@ -950,6 +1133,18 @@ class ScoreRibbon(Source):
         ``ahead`` seconds from now."""
         ph = self.ph
         b = self.builder
+        if self._roomy:                                          # span: room: the time map, shared by every screen
+            if ph is None or ph.closed or b is None or ph.T_ref is None:
+                return None
+            t_n = self.t_sound - self.lag + ahead
+            held = any(n.t_off is None for n in b.notes if n.id in ph.notes)
+            if not held and ph.t_last is not None:
+                t_n = min(t_n, ph.t_last + AHEAD_ROOM_S)
+            x = self.pace * (t_n - ph.T_ref)
+            xl = getattr(ph, "x_last", None)
+            if xl is not None and t_n >= xl[0]:
+                x = max(x, xl[1])
+            return ph.A + x * self.sp
         if ph is None or ph.closed or b is None or ph.pl.q0 is None:
             return None
         pl = ph.pl
@@ -969,8 +1164,14 @@ class ScoreRibbon(Source):
     def _paper(self, dt: float) -> None:
         if self.S is None:
             return
-        D = X_PLAY * self.w - self.XL
+        D = self._D()
         U = self._playhead_target()
+        if self._roomy:                                          # span: room: the paper is where the time map says
+            if U is not None:
+                self.V = max(0.0, (U - D - self.S) / dt) if dt > 0 else self.V
+                self.S = max(self.S, U - D)
+                self.U = U
+            return
         if U is None:
             U = (self.U if self.U is not None else self.S + D) + V_IDLE_SP * self.sp * dt
         if self.U is not None and dt > 0:
@@ -980,6 +1181,9 @@ class ScoreRibbon(Source):
         if dt <= 0:
             return
         target = U - D
+        if self.clock < getattr(self, "_snap_until", -1.0) and abs(target - self.S) > 6.0 * self.sp:
+            self.S, self.V = target, self.v_ff                   # (a join's layout landing: every screen alike)
+            return
         w = S_OMEGA
         a = w * w * (target - self.S) + 2.0 * w * (self.v_ff - self.V)
         amax = S_AMAX_SP * self.sp
@@ -990,13 +1194,16 @@ class ScoreRibbon(Source):
     # -- the systems' headers -----------------------------------------------------------------------------------------
     def _headers(self) -> np.ndarray:
         sp, R = self.sp, self.R
+        if not self.hdr_here:                                    # (span: room, a screen past the first: a plain edge)
+            self._hdr_w = 0.0
+            return np.zeros((0, RR.NF), np.float32), ("none",)
         t1, t2 = RL.T1 * sp, RL.T2 * sp
         out = []
         XM = self.XM
         GI = RG.GI
         keys = []
         for r in range(R):
-            u = self.S - (R - 1 - r) * self.WV if self.S is not None else 0.0
+            u = self._S_draw() - (R - 1 - r) * self.WV if self.S is not None else 0.0
             fifths, meter = 0, None
             for ph in self.phrases:
                 if ph.A - 4 * sp <= u or ph is self.phrases[0]:
@@ -1055,6 +1262,18 @@ class ScoreRibbon(Source):
             hs["w"] = x - XM
         return (np.concatenate(out) if out else np.zeros((0, RR.NF), np.float32)), tuple(keys)
 
+    def _room_hdr_w(self) -> float:
+        """The header's width (sp) for the room's open (else last) phrase's key and time: what every screen of a
+        room span leaves for its header, so each computes the others' tape the same."""
+        ph = self.ph if self.ph is not None else (self.phrases[-1] if self.phrases else None)
+        if ph is None:
+            return 0.0
+        is_open = ph is self.ph and not ph.closed
+        fifths = ph.fifths if ph.fifths is not None else (self._fifths() if is_open else 0)
+        meter = ph.meter or (self._meter_now() if is_open else None)
+        n = abs(fifths or 0)
+        return 5.0 + ((n * RL.KS_STEP + 0.5) if n else 0.0) + (2 * RL.TS_W if meter is not None else 0.0)
+
     def _meter_now(self):
         b = self.builder
         if b is None:
@@ -1071,6 +1290,9 @@ class ScoreRibbon(Source):
             self.events.append((self.t_sound - (self.t_base or 0.0), self.t_sound, kind, data))
 
     def render(self, t_local: float, dt: float, out) -> None:
+        mode = self._mode_of(self._seg_now())
+        if mode != self._mode:                                   # (the renderer set or changed this screen's place)
+            self._rebuild(mode)
         p = self.step_params(dt)
         self._p = p
         dt = min(max(dt, 0.0), 0.1)
@@ -1131,16 +1353,17 @@ class ScoreRibbon(Source):
             if U is not None:                                    # (a join: the scene's first content), moving at
                 U2 = self._playhead_target(0.25)                 # the music's pace from the first frame
                 v = max(0.0, (U2 - U) / 0.25) if U2 is not None else 0.0
-                self.S = U - (X_PLAY * self.w - self.XL)
+                self.S = U - self._D()
                 self.U, self.V, self.v_ff = U, v, v
                 self._snap = False
+                self._snap_until = self.clock + 3.0
                 self._event("snap", {"S": self.S})
         if (self._join_outs or self._jchunks) and not self._joining and not self._heavy:
             self._flush_join(_c0)
         self._joining = False
         _t1 = time.perf_counter()
         self._paper(dt)
-        S = self.S if self.S is not None else 0.0
+        S = self._S_draw()                                       # (this screen's tape start)
         st = self.stage
         st.flourish = float(p["flourish"])
         if S - st.x_ref > 1.0e5:                              # keep float32 positions near the tape's origin
@@ -1161,10 +1384,15 @@ class ScoreRibbon(Source):
         if hkey != getattr(self, "_hkey", None):
             st.set_header(hdr)
             self._hkey = hkey
-        need = self.XM + max(13.0 * self.sp, getattr(self, "_hdr_w", 0.0) + 1.5 * self.sp)
+        if self._mode[0] == "room":                              # every screen the same header width: the room's
+            need = self.XM + max(13.0 * self.sp, self._room_hdr_w() + 1.5 * self.sp)   # open phrase's key and time
+        else:
+            need = self.XM + max(13.0 * self.sp, getattr(self, "_hdr_w", 0.0) + 1.5 * self.sp)
         self._hdr_w = 0.0
         self.XL_t = need
-        self.XL += (self.XL_t - self.XL) * (1.0 - math.exp(-dt / 0.4)) if dt > 0 else 0.0
+        a_ = (1.0 - math.exp(-dt / 0.4)) if dt > 0 else 0.0
+        self.XLh += (self.XL_t - self.XLh) * a_
+        self.XL = self.XLh if self.hdr_here else self.XLp
         self.WV = self.w - self.XL - self.XM
         tm["headers"] = time.perf_counter() - _t3
         Ph = self.Ph
@@ -1177,7 +1405,8 @@ class ScoreRibbon(Source):
         Ph[RK.U_GAIN] = float(p["intensity"])
         Ph[RK.U_BREATH] = 1.0 + 0.012 * math.sin(self.breath)
         Ph[RK.U_PX] = X_PLAY * self.w
-        Ph[RK.U_PA] = float(p["playhead"]) * (0.35 if self.night else 0.25) * (0.7 + 0.3 * e)
+        Ph[RK.U_PA] = float(p["playhead"]) * (0.35 if self.night else 0.25) * (0.7 + 0.3 * e) \
+            if self.k == self.n - 1 else 0.0                     # (span: room, the playhead's screen only)
         Ph[RK.U_KICK] = self.kick
         pal = self.pal
         Ph[RK.U_PR:RK.U_PB + 1] = np.clip(pal[0:3] + pal[3:6] * np.cos(2.0 * np.pi * (pal[6:9] * (self.drift + 0.1)
