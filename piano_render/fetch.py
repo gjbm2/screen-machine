@@ -17,7 +17,8 @@ A "fetch" block (on an instrument or a room):
             post    (str)  a recipe run on the unpacked dir: "bitklavier-sfz" writes the SFZ map bitKlavier lacks;
                            "sfz-wrap" writes an SFZ beside block["wrap"]["base"] with new defaults and/or exact
                            text fixes (post_sfz_wrap). When only "wrap" changes, a later run rewrites the wrapper
-                           files in place (each to a temp name, then renamed) instead of unpacking again.
+                           files in place (each to a temp name, then renamed) instead of unpacking again; when
+                           this module's bitKlavier map changes, a later run rewrites that file the same way.
 Entries that share a subdir (VCSL Keys: steinway-b, upright-vcsl, harpsichord) share one download and one unpack.
 An instrument without a fetch block may carry "copy_from": {"path", "sha256", "bytes"}: a local file (the owner's
 own SoundFont) copied to root/<file>.
@@ -393,6 +394,23 @@ def _midi(name: str, octave: str) -> int:
     return 12 * (int(octave) + 1) + _NOTE[name]
 
 
+def write_text_atomic(path: Path, text: str) -> bool:
+    """Write text to a temp name beside path, then rename it over path (a reader sees the old file or the new).
+    A file that already holds exactly this text is left alone (its mtime keys the realism analysis cache), and
+    False is returned."""
+    with contextlib.suppress(OSError):
+        if path.read_text(encoding="utf-8") == text:
+            return False
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+    return True
+
+
 def post_sfz_wrap(dst: Path, block: dict, log: Log = print) -> Path:
     """Write an SFZ beside a library's own (so its relative paths still resolve) with fixed defaults.
     block["wrap"] (one spec, or a list of them for a subdir several instruments share) =
@@ -403,12 +421,16 @@ def post_sfz_wrap(dst: Path, block: dict, log: Log = print) -> Path:
                               of base (or a <global> of their own on top when it has none), e.g. "sustain_lo=64":
                               sfizz's sustain pedal is on/off at sustain_lo, default 1, so without it any CC64 > 0
                               (the classical test pieces' half pedalling) held every note;
+      "inline": [path, ...]   files base #includes (the path exactly as base writes it) copied into out in place of
+                              their #include line, first, so "replace" can fix text a library keeps in an included
+                              file (Maestro CF3's pedal and lid noise regions are in Data/effect.txt); each #include
+                              line must occur exactly once in base;
       "replace": [{"old", "new", "count"}]   exact text fixes to base, applied in order before "global" (line ends
                               read as \\n); "old" must occur exactly "count" times (default: at least once), else
                               the fetch fails, so a changed library is never patched blindly. E.g. K18's pedal-noise
                               groups set lokey=-1 without hikey=-1, so sfizz played pedal.on.wav on every key.}
-    Without "global" or "replace" the out file just #includes base; with either, out is a patched copy of base.
-    Each out file is written to a temp name and renamed, so a renderer never reads half a file."""
+    Without "global", "inline" or "replace" the out file just #includes base; with any, out is a patched copy of
+    base. Each out file is written to a temp name and renamed, so a renderer never reads half a file."""
     spec = block.get("wrap") or {}
     if isinstance(spec, list):
         outs = [post_sfz_wrap(dst, {"wrap": w}, log) for w in spec]
@@ -423,8 +445,17 @@ def post_sfz_wrap(dst: Path, block: dict, log: Log = print) -> Path:
     head = "// written by piano_render/fetch.py (sfz-wrap): " + (w.get("note") or f"{base.name} with new defaults")
     g = (w.get("global") or "").strip()
     reps = w.get("replace") or []
-    if g or reps:
+    inline = w.get("inline") or []
+    if g or reps or inline:
         body = base.read_text(encoding="utf-8", errors="replace")
+        for rel in inline:
+            line = f'#include "{rel}"'
+            inc = base.parent / rel.replace("\\", "/")
+            n = body.count(line)
+            if n != 1 or not inc.is_file():
+                raise FetchError(f"sfz-wrap: {base.name}: {line!r} occurs {n} times (expected 1)"
+                                 + ("" if inc.is_file() else f", and {rel} is missing"))
+            body = body.replace(line, inc.read_text(encoding="utf-8", errors="replace").rstrip("\n"))
         for r in reps:
             n, want = body.count(r["old"]), r.get("count")
             if n == 0 or (want is not None and n != int(want)):
@@ -440,23 +471,31 @@ def post_sfz_wrap(dst: Path, block: dict, log: Log = print) -> Path:
         text = [head, f'#include "{base.name}"']
     if cc:
         text += ["", "<control>", cc]
-    tmp = out.with_name(f".{out.name}.tmp{os.getpid()}")
-    try:
-        tmp.write_text("\n".join(text) + "\n", encoding="utf-8")
-        os.replace(tmp, out)
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            tmp.unlink()
-    log(f"  sfz-wrap: {out.name} = {base.name}" + (f" + {len(reps)} fix(es)" if reps else "")
-        + (f" + <global> {g}" if g else "") + (f" + {cc}" if cc else ""))
+    wrote = write_text_atomic(out, "\n".join(text) + "\n")
+    log(f"  sfz-wrap: {out.name} = {base.name}" + (f" + {len(inline)} inlined" if inline else "")
+        + (f" + {len(reps)} fix(es)" if reps else "") + (f" + <global> {g}" if g else "") + (f" + {cc}" if cc else "")
+        + ("" if wrote else " (unchanged)"))
     return out
 
 
-def post_bitklavier_sfz(dst: Path, block: dict, log: Log = print) -> Path:
-    """Write an SFZ for a bitKlavier Grand mic set, from its documented file naming (bitklavier.com, 'File
-    Naming Convention'): [note][octave]v[vel].wav main notes (16 layers every minor third from A0),
-    harm[note][octave]v[vel].wav release resonance (the ring after key release), rel[1-88].wav one hammer/damper
-    release noise per key, pedal[D|U][vel].wav pedal down/up noise. bitKlavier publishes no SFZ of its own."""
+# bitKlavier Grand's mechanical noises (measured 22 Oct through sfizz on the Stage Lid ORTF set, in dB relative to
+# the C4 velocity-64 note's peak; research r4 item 9: mechanical noises at least ~35 dB under a mezzo-forte note).
+# Pedal takes: region volumes that put each take 38 dB under that note (the two takes of each pedal were recorded
+# 4-17 dB apart; before: down -28.7/-45.5, up -15.7/-19.6). A take not listed (another mic set) keeps the old level.
+BITKLAVIER_PEDAL_DB = {"pedalD1.wav": 1.5, "pedalD2.wav": -15.3, "pedalU1.wav": -27.4, "pedalU2.wav": -31.2}
+BITKLAVIER_PEDAL_FALLBACK_DB = {"D": -6.0, "U": -9.0}
+# Key-release noise: 35 dB under the note at velocity 64 (before: -12.8, and -14.6 after a velocity-20 C4, louder than
+# that soft note), fired at the key's release even with the pedal down (trigger=release_key): with trigger=release
+# sfizz held every one back to the pedal lift and fired them together (8 notes: -0.8 dB, as loud as the mf note).
+BITKLAVIER_REL_DB = -28.2
+# Release resonance: 6 dB down, and losing 3 (A0) to 8 (C8) dB per second the key was down (was 0 dB and a flat
+# 2 dB/s: after 2-8 s under the pedal it came in 8-16 dB above the decayed strings it followed when the pedal lifted).
+BITKLAVIER_HARM_DB = -6.0
+BITKLAVIER_HARM_RT_DECAY = (3.0, 8.0)
+
+
+def bitklavier_sfz_text(dst: Path) -> tuple[str, dict]:
+    """The SFZ map for a bitKlavier Grand mic set unpacked in dst (post_bitklavier_sfz), and the sample counts."""
     wavs: dict[str, str] = {}
     for p in dst.rglob("*.wav"):
         if not p.name.startswith("._"):
@@ -499,8 +538,9 @@ def post_bitklavier_sfz(dst: Path, block: dict, log: Log = print) -> Path:
     L = ["// bitKlavier Grand (Steinway D, Princeton, CC-BY 4.0): SFZ map written by piano_render/fetch.py from the",
          "// library's documented file naming. The 16 layers carry the dynamics (bitKlavier balanced them about",
          "// 1.7-2.2 dB apart, measured 22 Oct); amp_velcurve makes each rise 1.9 dB across its own velocity span",
-         "// (sfizz applies a velcurve only through amp_veltrack, hence 100). Levels of",
-         "// the release resonance (0 dB), key release (-6 dB) and pedal noise (-6/-9 dB) are starting points.",
+         "// (sfizz applies a velcurve only through amp_veltrack, hence 100). The noise levels are measured through",
+         "// sfizz against the C4 velocity-64 note (fetch.py, BITKLAVIER_*): pedal takes 38 dB under it, key release",
+         "// 35 dB under it at velocity 64.",
          "<control>", "default_path=./", "",
          "<global>", "amp_veltrack=100", "ampeg_release=0.5",
          "// sfizz's sustain pedal is on/off at sustain_lo (default 1, so any CC64 > 0 held every note): 64 = GM",
@@ -510,37 +550,68 @@ def post_bitklavier_sfz(dst: Path, block: dict, log: Log = print) -> Path:
             L.append(f"<region> sample={path} lokey={lo} hikey={hi} pitch_keycenter={k} lovel={vlo} hivel={vhi}"
                      f" amp_velcurve_{vlo}=0.8 amp_velcurve_{vhi}=1")
     if harm:
+        d0, d1 = BITKLAVIER_HARM_RT_DECAY
         L += ["", "<group>", "// release resonance: the ring after a key comes up (played when the damper falls, so after",
-              "// the pedal lifts), quieter the longer the key was held", "trigger=release", "rt_decay=2",
-              "amp_veltrack=0"]
+              "// the pedal lifts), quieter the longer the key was held (rt_decay, faster in the treble)",
+              "trigger=release", f"volume={BITKLAVIER_HARM_DB:g}", "amp_veltrack=0"]
         for lo, hi, k in ranges(list(harm)):
+            rt = d0 + (d1 - d0) * (k - 21) / 87
             for vlo, vhi, path in vel_split(harm[k]):
                 L.append(f"<region> sample={path} lokey={lo} hikey={hi} pitch_keycenter={k}"
-                         f" lovel={vlo} hivel={vhi}")
+                         f" lovel={vlo} hivel={vhi} rt_decay={rt:.1f}")
     if rel:
-        L += ["", "<group>", "// key/damper release noise, one per key", "trigger=release", "volume=-6",
-              "amp_veltrack=50", "pitch_keytrack=0"]
+        L += ["", "<group>", "// key-release noise (hammer and key return), one per key, at the key's release even with",
+              "// the pedal down", "trigger=release_key", f"volume={BITKLAVIER_REL_DB:g}", "amp_veltrack=50",
+              "pitch_keytrack=0"]
         for k in sorted(rel):
             L.append(f"<region> sample={rel[k]} key={k} pitch_keycenter={k}")
     # pedal noise as Accurate-Salamander does it: down on CC64 = 127, up on CC64 = 0 (so continuous half-pedal
-    # data does not fire a thump on every change), one of the two takes at random, one at a time
-    if pedal["D"]:
-        L += ["", "<group> group=901 off_by=902 polyphony=1 lokey=-1 hikey=-1 on_locc64=127 on_hicc64=127"
-              " pitch_keytrack=0 amp_veltrack=0 volume=-6"]
-        vs = sorted(pedal["D"])
+    # data does not fire a thump on every change), one of the two takes at random, one at a time; each take has its
+    # own volume (BITKLAVIER_PEDAL_DB)
+    for kind, head in (("D", "group=901 off_by=902 polyphony=1 lokey=-1 hikey=-1 on_locc64=127 on_hicc64=127"),
+                       ("U", "group=902 off_by=901 polyphony=1 lokey=-1 hikey=-1 on_locc64=0 on_hicc64=0")):
+        if not pedal[kind]:
+            continue
+        L += ["", f"<group> {head} pitch_keytrack=0 amp_veltrack=0"]
+        vs = sorted(pedal[kind])
         for i, v in enumerate(vs):
-            L.append(f"<region> sample={pedal['D'][v]} lorand={i / len(vs):.3f} hirand={(i + 1) / len(vs):.3f}")
-    if pedal["U"]:
-        L += ["", "<group> group=902 off_by=901 polyphony=1 lokey=-1 hikey=-1 on_locc64=0 on_hicc64=0"
-              " pitch_keytrack=0 amp_veltrack=0 volume=-9"]
-        vs = sorted(pedal["U"])
-        for i, v in enumerate(vs):
-            L.append(f"<region> sample={pedal['U'][v]} lorand={i / len(vs):.3f} hirand={(i + 1) / len(vs):.3f}")
-    out = dst / "bitKlavierGrand.sfz"
-    out.write_text("\n".join(L) + "\n", encoding="utf-8")
-    log(f"  bitklavier-sfz: {sum(len(v) for v in main.values())} main, {sum(len(v) for v in harm.values())} "
-        f"resonance, {len(rel)} release, {sum(len(v) for v in pedal.values())} pedal samples -> {out.name}")
+            path = pedal[kind][v]
+            vol = BITKLAVIER_PEDAL_DB.get(PurePosixPath(path).name, BITKLAVIER_PEDAL_FALLBACK_DB[kind])
+            L.append(f"<region> sample={path} lorand={i / len(vs):.3f} hirand={(i + 1) / len(vs):.3f} volume={vol:g}")
+    counts = {"main": sum(len(v) for v in main.values()), "resonance": sum(len(v) for v in harm.values()),
+              "release": len(rel), "pedal": sum(len(v) for v in pedal.values())}
+    return "\n".join(L) + "\n", counts
+
+
+BITKLAVIER_OUT = "bitKlavierGrand.sfz"
+
+
+def post_bitklavier_sfz(dst: Path, block: dict, log: Log = print) -> Path:
+    """Write an SFZ for a bitKlavier Grand mic set, from its documented file naming (bitklavier.com, 'File
+    Naming Convention'): [note][octave]v[vel].wav main notes (16 layers every minor third from A0),
+    harm[note][octave]v[vel].wav release resonance (the ring after key release), rel[1-88].wav one hammer/damper
+    release noise per key, pedal[D|U][vel].wav pedal down/up noise. bitKlavier publishes no SFZ of its own.
+    Written to a temp name and renamed; refresh_generated() rewrites an installed map when this code changes."""
+    text, n = bitklavier_sfz_text(dst)
+    out = dst / BITKLAVIER_OUT
+    write_text_atomic(out, text)
+    log(f"  bitklavier-sfz: {n['main']} main, {n['resonance']} resonance, {n['release']} release, {n['pedal']} pedal"
+        f" samples -> {out.name}")
     return out
+
+
+def refresh_generated(dst: Path, block: dict, log: Log = print) -> bool:
+    """An installed subdir whose SFZ map this module writes (post "bitklavier-sfz"): write the map again when the
+    generator's output differs from the installed file (a fix to the generator reaches the install without a new
+    unpack). True when it was rewritten."""
+    if block.get("post") != "bitklavier-sfz":
+        return False
+    text, _ = bitklavier_sfz_text(dst)
+    out = dst / BITKLAVIER_OUT
+    if not write_text_atomic(out, text):
+        return False
+    log(f"  bitklavier-sfz: {out.name} rewritten (the generator changed; the unpacked library is unchanged)")
+    return True
 
 
 POST = {"bitklavier-sfz": post_bitklavier_sfz, "sfz-wrap": post_sfz_wrap}
@@ -653,6 +724,9 @@ def fetch_block(block: dict, root: Path, engines_root: Path, log: Log = print, l
         raise FetchError(f"bad subdir {sub!r}")
     dst = root / sub
     if _subdir_ok(dst, block):
+        if refresh_generated(dst, block, log):
+            log(f"{label or sub}: SFZ map rewritten in {dst}")
+            return "regenerated"
         return "present"
     if rewrap(dst, block, log):
         log(f"{label or sub}: wrapper rewritten in {dst} (the unpacked library is unchanged)")
@@ -734,8 +808,8 @@ def status(registry_path=None) -> dict[str, str]:
 def fetch(ids: Optional[Iterable[str]] = None, registry_path=None, *, log: Log = print,
           lower: bool = True) -> dict[str, str]:
     """Install what the registry names (all of it, or `ids`: instrument ids, room ids, 'sfizz'), idempotently.
-    Returns id -> 'present' | 'installed' | 'rewrapped' | 'skipped: ...' | 'failed: ...'. Never raises for one bad
-    entry."""
+    Returns id -> 'present' | 'installed' | 'rewrapped' | 'regenerated' | 'skipped: ...' | 'failed: ...'. Never raises
+    for one bad entry."""
     if lower:
         lower_priority()
     reg, root, engines_root = load_registry(registry_path)
