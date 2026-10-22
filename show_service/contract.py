@@ -307,7 +307,8 @@ TEST_SOURCE_PLAYERS: dict[str, dict[str, Any]] = {
 }
 TEST_SOURCES: tuple[str, ...] = tuple(TEST_SOURCE_PLAYERS)
 TestSource = Literal["piano", "audio"]
-TestState = Literal["off", "starting", "playing", "stopping", "failed"]
+TestState = Literal["off", "starting", "playing", "stopping", "failed",
+                    "preparing", "finished"]   # 22 Oct: rendering the sound first; a once-only play ended by itself
 
 # -- rates (show-brain) ------------------------------------------------------------------------------------------------
 BRAIN_TICK_HZ = 10.0     # director
@@ -1081,6 +1082,11 @@ class SourceStatus(TypedDict):
     pid: Optional[int]
     since_s: Optional[float]
     error: Optional[str]           # the child's last log lines when it failed
+    # the test piano's sound (sources.py, 22 Oct; None/False for test audio)
+    instrument: Optional[str]      # an id of GET /api/v1/test's "instruments"
+    output: Optional[str]          # "pc22" | "none"
+    once: bool                     # plays once, then "finished" (a recording's default), else loops
+    progress: Optional[float]      # 0..1 from show_sender's status file (rendering, then playing), else None
 
 
 # -- the ring (§3.3; ring.py) ------------------------------------------------------------------------------------------------

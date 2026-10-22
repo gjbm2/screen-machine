@@ -115,6 +115,11 @@ DIRECTOR, AUTOPILOT, LISTENER, SITUATIONS, SOURCES, ROOM = ("director", "autopil
                                                             "sources", "room")
 STRUCTURE = "structure"                              # Stage 4 (README S4.7): music.context for the hearing line
 RIG = "rig"                                          # Stage 5 (README S5.4): outputs.Rig
+RECORDER = "recorder"                                # the Room page's Record (recorder.py, 22 Oct)
+NO_RECORDER = "Recording isn't available here (recorder.py isn't loaded)."
+RECORD_TIMEOUT_S = 30.0                              # Stop encodes and writes the take (in a worker thread)
+RECORDING_FILE_TIMEOUT_S = 10.0                      # a rename or delete
+UNKNOWN_RECORDING = "There's no recording with that id (it may have been deleted)."
 NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
 #: README S5.23: the Lights page's writes answer 400 for a light that can't be added as asked, except these
 RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500,
@@ -168,6 +173,9 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
     ("GET", "/api/v1/situations"),
     ("GET", "/api/v1/test"), ("POST", "/api/v1/test"), ("DELETE", "/api/v1/test"), ("DELETE", "/api/v1/test/{source}"),
+    ("GET", "/api/v1/piano/recordings"), ("POST", "/api/v1/piano/record"),
+    ("GET", "/api/v1/piano/recordings/{id}.mid"), ("PATCH", "/api/v1/piano/recordings/{id}"),
+    ("DELETE", "/api/v1/piano/recordings/{id}"),
     ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
 )
 
@@ -557,7 +565,21 @@ def neutral_autopilot(line: str) -> dict:
 def neutral_source(source: str, why: Optional[str] = None) -> dict:
     player = contract.TEST_SOURCE_PLAYERS.get(source) or {}
     return {"source": source, "state": "off", "piece": None, "label": None, "stream": player.get("stream", ""),
-            "sender": "", "pid": None, "since_s": None, "error": why}
+            "sender": "", "pid": None, "since_s": None, "error": why,
+            "instrument": None, "output": None, "once": False, "progress": None}
+
+
+#: GET /api/v1/test's sound choices when the sources component can't say (an older one, or none)
+NO_TEST_CHOICES: dict[str, Any] = {"instruments": [], "default_instrument": None, "outputs": []}
+NO_RECORDINGS: dict[str, Any] = {"recording": {"state": "off", "since_s": None, "notes": 0, "duration_s": 0.0},
+                                 "recordings": []}
+
+
+def content_disposition(title: str) -> str:
+    """``attachment`` with the title as the file name: an ASCII ``filename`` and the exact one as ``filename*``."""
+    from urllib.parse import quote
+    safe = re.sub(r"[^A-Za-z0-9 ._()\-]", "_", title).strip(" ._") or "recording"
+    return f"attachment; filename=\"{safe[:100]}.mid\"; filename*=UTF-8''{quote(title + '.mid', safe='')}"
 
 
 # -- moving lights and the Room map (docs/LIGHTS.md §8.1; pure) ------------------------------------------------------------
@@ -1068,6 +1090,11 @@ class Api:
             ("POST", "/api/v1/test", self._test_post),
             ("DELETE", "/api/v1/test", self._test_delete),
             ("DELETE", "/api/v1/test/{source}", self._test_delete),
+            ("GET", "/api/v1/piano/recordings", self._rec_view),
+            ("POST", "/api/v1/piano/record", self._rec_record),
+            ("GET", "/api/v1/piano/recordings/{id}.mid", self._rec_file),
+            ("PATCH", "/api/v1/piano/recordings/{id}", self._rec_rename),
+            ("DELETE", "/api/v1/piano/recordings/{id}", self._rec_delete),
             ("GET", "/api/v1/look", self._look),
             ("GET", "/api/v1/log", self._log),
             ("GET", "/api/v1/rig", self._rig),
@@ -2524,7 +2551,16 @@ class Api:
         status = _d(await self._call(brain, src.status))
         pieces = _d(await self._call(brain, src.pieces))
         return _json({"sources": {s: status.get(s) or neutral_source(s) for s in TEST_SOURCES},
-                      "pieces": {s: pieces.get(s) or [] for s in TEST_SOURCES}})
+                      "pieces": {s: pieces.get(s) or [] for s in TEST_SOURCES},
+                      **(await self._test_choices(brain, src))})
+
+    async def _test_choices(self, brain: Any, src: Any) -> dict:
+        """The test piano's ``instruments``, ``default_instrument`` and ``outputs`` (Sources.choices)."""
+        fn = getattr(src, "choices", None)
+        if not callable(fn):
+            return dict(NO_TEST_CHOICES)
+        got = _d(await self._call(brain, fn))
+        return {k: got.get(k, v) for k, v in NO_TEST_CHOICES.items()}
 
     async def _test_post(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)
@@ -2534,15 +2570,41 @@ class Api:
         piece = self._word(body, "piece") if isinstance(body, dict) else None
         if source not in TEST_SOURCES:
             return _err(400, "unknown_source", SAY_SOURCE, choices=list(TEST_SOURCES))
+        # the test piano's sound (22 Oct): passed on only when sent, so an older Sources keeps working
+        opts: dict[str, Any] = {}
+        for key in ("instrument", "output"):
+            v = self._word(body, key) if isinstance(body, dict) else None
+            if v is not None:
+                opts[key] = v
+        once = body.get("once") if isinstance(body, dict) else None
+        if once is not None and not isinstance(once, bool):
+            return _err(400, "bad_request", "“once” is true or false.", choices=[True, False])
+        if once is not None:
+            opts["once"] = once
         src = _components(brain).get(SOURCES)
         if src is None:
             return _json(neutral_source(source, MISSING[SOURCES]))
         try:
-            out = await self._call(brain, src.start_test, source, piece)
+            if opts:
+                out = await self._call(brain, lambda: src.start_test(source, piece, **opts))
+            else:
+                out = await self._call(brain, src.start_test, source, piece)
         except ValueError as e:
             code, _ = _code(e, "unknown_piece")
             if code == "unknown_source":
                 return _err(400, code, SAY_SOURCE, choices=list(TEST_SOURCES))
+            if code in ("unknown_instrument", "unknown_output"):
+                key = "instruments" if code == "unknown_instrument" else "outputs"
+                ids: list = []
+                try:
+                    ids = [x.get("id") for x in (await self._test_choices(brain, src)).get(key) or []
+                           if isinstance(x, dict) and x.get("id")]
+                except Exception:
+                    pass
+                what = opts.get("instrument" if key == "instruments" else "output")
+                word = "sound" if key == "instruments" else "place to play"
+                text = f"There's no piano {word} called “{what}”." if what else f"No piano {word} is available."
+                return _err(400, code, text, choices=ids)
             choices: list = []
             try:
                 pieces = _d(await self._call(brain, src.pieces)).get(source) or []
@@ -2572,6 +2634,63 @@ class Api:
         if stopped:
             self._changed()
         return _json({"stopped": stopped})
+
+    # -- piano recordings (the Room page's Record; recorder.py) -------------------------------------------------------------
+    async def _rec_view(self, request: web.Request, brain: Any) -> web.Response:
+        rec = _components(brain).get(RECORDER)
+        if rec is None:
+            return _json({**NO_RECORDINGS, "detail": NO_RECORDER})
+        return _json(await self._call(brain, rec.view))
+
+    async def _rec_record(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad:
+            return bad
+        on = body.get("on") if isinstance(body, dict) else body
+        if not isinstance(on, bool):
+            return _err(400, "bad_request", "Say {\"on\": true} to record, or {\"on\": false} to stop and keep it.",
+                        choices=[True, False])
+        rec = _components(brain).get(RECORDER)
+        if rec is None:
+            return _json({**NO_RECORDINGS, **({} if on else {"last": None}), "detail": NO_RECORDER})
+        return _json(await self._call(brain, rec.record, on, timeout=RECORD_TIMEOUT_S))
+
+    async def _rec_rename(self, request: web.Request, brain: Any) -> web.Response:
+        rid = request.match_info.get("id", "")
+        body, bad = await self._body(request)
+        if bad:
+            return bad
+        title = body.get("title") if isinstance(body, dict) else body
+        rec = _components(brain).get(RECORDER)
+        if rec is None:
+            return _err(503, "unavailable", NO_RECORDER)
+        try:
+            return _json(await self._call(brain, rec.rename, rid, title, timeout=RECORDING_FILE_TIMEOUT_S))
+        except LookupError:
+            return _err(404, "unknown_recording", UNKNOWN_RECORDING)
+
+    async def _rec_delete(self, request: web.Request, brain: Any) -> web.Response:
+        rid = request.match_info.get("id", "")
+        rec = _components(brain).get(RECORDER)
+        if rec is None:
+            return _err(503, "unavailable", NO_RECORDER)
+        try:
+            return _json(await self._call(brain, rec.delete, rid, timeout=RECORDING_FILE_TIMEOUT_S))
+        except LookupError:                    # already gone: what is true now (degrade, never refuse)
+            return _json({"deleted": rid, "detail": "That recording was already gone."})
+
+    async def _rec_file(self, request: web.Request, brain: Any) -> web.StreamResponse:
+        rid = request.match_info.get("id", "")
+        rec = _components(brain).get(RECORDER)
+        if rec is None:
+            return _err(404, "unknown_recording", NO_RECORDER)
+        try:
+            path, title = await self._call(brain, rec.file_of, rid)
+            data = await asyncio.get_running_loop().run_in_executor(None, Path(path).read_bytes)
+        except (LookupError, OSError):
+            return _err(404, "unknown_recording", UNKNOWN_RECORDING)
+        return web.Response(body=data, content_type="audio/midi",
+                            headers={"Content-Disposition": content_disposition(str(title))})
 
     # -- the console ---------------------------------------------------------------------------------------------------------
     async def _look(self, request: web.Request, brain: Any) -> web.Response:
