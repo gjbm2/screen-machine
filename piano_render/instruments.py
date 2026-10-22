@@ -3,7 +3,10 @@
 Config path: load(path) > $PIANO_RENDER_CONFIG > <repo>/config/piano/instruments.json. "root" and "engines_root"
 expand "~"; a relative one is taken against the config file's directory. An instrument's "file" and a room's "ir"
 are under root unless absolute. Registry.get(id) returns a copy of the entry with "id", "file" (absolute) and
-"room" untouched; Registry.rooms holds the rooms with "ir" absolute.
+"room" untouched; Registry.rooms holds the rooms with "ir" absolute. An instrument may also list "layers"
+([{"file", "gain_db", "offset_ms"}], a blend rendered by engines.base.LayeredEngine): each layer's file is under root
+the same way, and the instrument is available only when every layer's file exists ("file" stays the main one, the
+file other readers such as show_service check).
 
 The "windows-gs" engine stands for today's live GS Wavetable path on PC22: always available, never rendered here.
 """
@@ -98,7 +101,17 @@ class Registry:
         out["id"] = inst_id
         if entry.get("file"):
             out["file"] = _under(self.root, entry["file"])
+        if isinstance(entry.get("layers"), list):
+            out["layers"] = [dict(layer, file=_under(self.root, layer.get("file"))) if isinstance(layer, dict) else layer
+                             for layer in entry["layers"]]
         return out
+
+    def layer_files(self, inst_id: str) -> list[str]:
+        """The absolute files of the instrument's "layers" ([] without layers; a layer without a file counts as "")."""
+        layers = self._raw[inst_id].get("layers") if inst_id in self._raw else None
+        if not isinstance(layers, list):
+            return []
+        return [(_under(self.root, layer.get("file")) or "") if isinstance(layer, dict) else "" for layer in layers]
 
     def room(self, room_id: Optional[str]) -> Optional[dict]:
         if room_id is None:
@@ -129,6 +142,9 @@ class Registry:
             return "no file"
         if not Path(f).exists():
             return f"missing {f}"
+        for lf in self.layer_files(inst_id):
+            if not lf or not Path(lf).exists():
+                return f"missing layer {lf or '(no file)'}"
         return None
 
     def available(self) -> list[str]:
@@ -145,7 +161,8 @@ class Registry:
                 continue
             if eng not in cache:
                 cache[eng] = self.engine_available(eng)
-            if cache[eng] and Path(_under(self.root, inst["file"])).exists():
+            if cache[eng] and Path(_under(self.root, inst["file"])).exists() and all(
+                    lf and Path(lf).exists() for lf in self.layer_files(i)):
                 out.append(i)
         return out
 

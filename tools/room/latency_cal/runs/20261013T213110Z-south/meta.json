@@ -1,0 +1,67 @@
+{
+ "run": "20261013T213110Z-south",
+ "screen": "south",
+ "host": "gjbm2@192.168.1.10",
+ "args": {
+  "host": "gjbm2@192.168.1.10",
+  "screen": "south",
+  "pulses": 60,
+  "interval": 2.0,
+  "jitter": 0.4,
+  "baseline": 3.0,
+  "freq": "100/s",
+  "sensor": "relay",
+  "measure_type": "human_eye",
+  "relay": "tty",
+  "early_check": 5,
+  "stream_to_presented_ms": 130.0,
+  "stream_source": "bd lab: HEVC 4K60 30M MSE, sway, both TVs, rVFC p50 128-132 ms (13 Oct)",
+  "yes": true,
+  "probe": false,
+  "probe_seconds": 3.0,
+  "reanalyse": null
+ },
+ "ping": {
+  "target": "192.168.1.10",
+  "sent": 40,
+  "received": 40,
+  "rtt_ms": {
+   "n": 40,
+   "p10": 1.6,
+   "p50": 2.3,
+   "p90": 3.7,
+   "mean": 2.8,
+   "sd": 1.9
+  }
+ },
+ "page_url": "http://95.141.21.170:8000/display/south-screen",
+ "clock": {
+  "offset_box_minus_wsl_ms": -57.33,
+  "offset_uncertainty_ms": 2.19,
+  "perf_minus_date_ms": 0.5,
+  "cdp_rtt_ms": {
+   "n": 40,
+   "p10": 3.9,
+   "p50": 4.4,
+   "p90": 6.2,
+   "mean": 4.9,
+   "sd": 1.2
+  }
+ },
+ "sensor_header": {
+  "kind": "header",
+  "version": "calib-1",
+  "t_ns": 1791927081598189872,
+  "applied": {
+   "reportFrequency": "100/s",
+   "measureType": 0,
+   "advMode": 0
+  },
+  "original": {
+   "reportFrequency": "OFF"
+  },
+  "hold_output": true,
+  "held_lux": 4.0,
+  "seconds": 267.0
+ }
+}

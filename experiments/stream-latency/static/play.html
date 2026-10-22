@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Playback test</title><link rel="icon" href="data:,">
+<style>html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; } video { display: block; width: 100%; height: 100%; }</style>
+</head><body>
+<video id="v" muted autoplay loop playsinline></video>
+<script>
+// Display-path test with a pre-made file, no live stream: isolates decode + compositing + output from the
+// generator's frame pacing. ?src=<file in static/> (default test-4k60.mp4; make one with the ffmpeg line in README).
+// Read results over DevTools: document.querySelector("video").getVideoPlaybackQuality().
+document.getElementById("v").src = new URLSearchParams(location.search).get("src") || "test-4k60.mp4";
+</script>
+</body></html>

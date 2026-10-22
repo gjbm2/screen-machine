@@ -1,0 +1,489 @@
+{
+ "run": "20261018T175333Z-hue-each",
+ "lamps": [
+  "hue.ne",
+  "hue.nw",
+  "hue.se",
+  "hue.sw"
+ ],
+ "each": true,
+ "measured_at": "2026-10-18T17:53:33+00:00",
+ "method": "hue: ArtDmx to room_service's receiver (127.0.0.1:6454) -> HueOutput 25 Hz -> Hue Bridge Pro Entertainment (xy+bri) -> lamp; zero = the first frame with the new level sent (WSL time.time_ns); box-clock photon timing; Yocto timed reports; WSL<->box offset by UDP echo (min RTT)",
+ "zero": "Art-Net frame sent (WSL)",
+ "sensor_header": {
+  "kind": "header",
+  "version": "calib-2",
+  "t_ns": 1792346019812969415,
+  "module": {
+   "serial": "LIGHTMK5-2C5D7D",
+   "firmware": "70007"
+  },
+  "requested": {},
+  "applied": {
+   "reportFrequency": "100/s",
+   "measureType": 0,
+   "advMode": 0
+  },
+  "original": {
+   "reportFrequency": "OFF"
+  },
+  "hold_output": true,
+  "held_lux": 2.2,
+  "seconds": 180.0
+ },
+ "clock": {
+  "offset_box_minus_wsl_ms": -51.65,
+  "offset_uncertainty_ms": 1.075,
+  "perf_minus_date_ms": 0.0,
+  "rtt_ms": {
+   "n": 200,
+   "p10": 2.6,
+   "p50": 5.5,
+   "p90": 12.2,
+   "mean": 6.6,
+   "sd": 4.0
+  },
+  "method": "UDP echo (box time.time_ns() on receipt); median of the 8 minimum-RTT midpoints",
+  "probes": {
+   "sent": 200,
+   "answered": 200
+  },
+  "offset_change_ms": 0.02,
+  "stable": true
+ },
+ "artnet": {
+  "target": [
+   "127.0.0.1",
+   6454
+  ],
+  "source": "127.0.0.2",
+  "hz": 40.0,
+  "universe": 0,
+  "dark_level": 0.0
+ },
+ "exclusive": {
+  "after_s": 7.3,
+  "pps": 40.0,
+  "last_from": "127.0.0.2"
+ },
+ "streaming": {
+  "after_s": 0.0,
+  "area": "71a764d6-9d22-413b-9818-3ee3a44b2c53",
+  "sent": {
+   "hue.ne": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.nw": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.se": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   },
+   "hue.sw": {
+    "x": 0.3227,
+    "y": 0.329,
+    "bri": 0.0
+   }
+  }
+ },
+ "monitor": {
+  "polls": 110,
+  "errors": 0,
+  "foreign_polls": 0,
+  "events": [],
+  "abort": "the Hue output stopped streaming our lamps (state idle, wanted []: )"
+ },
+ "restore": {
+  "hue.ne": "restored",
+  "hue.nw": "restored",
+  "hue.se": "restored",
+  "hue.sw": "restored"
+ },
+ "lamps_seen": {
+  "hue.ne": {
+   "detected": 0,
+   "flips": 6,
+   "lux_step": null,
+   "snr": null,
+   "t50": {}
+  },
+  "hue.nw": {
+   "detected": 0,
+   "flips": 6,
+   "lux_step": null,
+   "snr": null,
+   "t50": {}
+  },
+  "hue.se": {
+   "detected": 0,
+   "flips": 6,
+   "lux_step": null,
+   "snr": null,
+   "t50": {}
+  },
+  "hue.sw": {
+   "detected": 6,
+   "flips": 6,
+   "lux_step": {
+    "n": 6,
+    "p10": 0.5,
+    "p50": 0.5,
+    "p90": 0.6,
+    "mean": 0.5,
+    "sd": 0.0
+   },
+   "snr": {
+    "n": 6,
+    "p10": 42.3,
+    "p50": 54.4,
+    "p90": 54.7,
+    "mean": 52.6,
+    "sd": 4.7
+   },
+   "t50": {
+    "rise": {
+     "mean": 111.7,
+     "se": 1.6,
+     "n": 3
+    },
+    "fall": {
+     "mean": 87.0,
+     "se": 11.9,
+     "n": 3
+    }
+   }
+  }
+ },
+ "pulses": [
+  {
+   "i": 0,
+   "dir": "rise",
+   "apply_box_ms": 1792346036803.59,
+   "cmd_to_apply_ms": 0.28,
+   "base_lux": 2.199,
+   "top_lux": 2.371,
+   "snr": 8.9,
+   "detected": false,
+   "why": "no clear step (\u0394=0.17, noise=0.02)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 1,
+   "dir": "fall",
+   "apply_box_ms": 1792346038347.16,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.371,
+   "top_lux": 2.204,
+   "snr": 8.7,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.17, noise=0.02)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 2,
+   "dir": "rise",
+   "apply_box_ms": 1792346040002.17,
+   "cmd_to_apply_ms": 0.2,
+   "base_lux": 2.217,
+   "top_lux": 2.345,
+   "snr": 5.1,
+   "detected": false,
+   "why": "no clear step (\u0394=0.13, noise=0.03)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 3,
+   "dir": "fall",
+   "apply_box_ms": 1792346041499.35,
+   "cmd_to_apply_ms": 0.22,
+   "base_lux": 2.345,
+   "top_lux": 2.221,
+   "snr": 9.3,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.12, noise=0.01)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 4,
+   "dir": "rise",
+   "apply_box_ms": 1792346043036.13,
+   "cmd_to_apply_ms": 0.22,
+   "base_lux": 2.208,
+   "top_lux": 2.354,
+   "snr": 7.6,
+   "detected": false,
+   "why": "no clear step (\u0394=0.15, noise=0.02)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 5,
+   "dir": "fall",
+   "apply_box_ms": 1792346044445.93,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.354,
+   "top_lux": 2.197,
+   "snr": 15.7,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.16, noise=0.00)",
+   "lamp": "hue.ne"
+  },
+  {
+   "i": 6,
+   "dir": "rise",
+   "apply_box_ms": 1792346046946.99,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.229,
+   "top_lux": 2.319,
+   "snr": 9.0,
+   "detected": false,
+   "why": "no clear step (\u0394=0.09, noise=0.01)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 7,
+   "dir": "fall",
+   "apply_box_ms": 1792346048603.17,
+   "cmd_to_apply_ms": 0.55,
+   "base_lux": 2.319,
+   "top_lux": 2.217,
+   "snr": 5.3,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.10, noise=0.02)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 8,
+   "dir": "rise",
+   "apply_box_ms": 1792346050156.44,
+   "cmd_to_apply_ms": 0.54,
+   "base_lux": 2.208,
+   "top_lux": 2.343,
+   "snr": 10.1,
+   "detected": false,
+   "why": "no clear step (\u0394=0.13, noise=0.01)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 9,
+   "dir": "fall",
+   "apply_box_ms": 1792346051681.03,
+   "cmd_to_apply_ms": 0.2,
+   "base_lux": 2.336,
+   "top_lux": 2.229,
+   "snr": 9.0,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.11, noise=0.01)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 10,
+   "dir": "rise",
+   "apply_box_ms": 1792346053334.27,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.234,
+   "top_lux": 2.319,
+   "snr": 6.4,
+   "detected": false,
+   "why": "no clear step (\u0394=0.08, noise=0.01)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 11,
+   "dir": "fall",
+   "apply_box_ms": 1792346054895.98,
+   "cmd_to_apply_ms": 0.34,
+   "base_lux": 2.328,
+   "top_lux": 2.199,
+   "snr": 12.9,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.13, noise=0.00)",
+   "lamp": "hue.nw"
+  },
+  {
+   "i": 12,
+   "dir": "rise",
+   "apply_box_ms": 1792346057396.59,
+   "cmd_to_apply_ms": 0.3,
+   "base_lux": 2.225,
+   "top_lux": 2.465,
+   "snr": 24.0,
+   "detected": false,
+   "why": "no clear step (\u0394=0.24, noise=0.01)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 13,
+   "dir": "fall",
+   "apply_box_ms": 1792346059089.18,
+   "cmd_to_apply_ms": 0.24,
+   "base_lux": 2.465,
+   "top_lux": 2.199,
+   "snr": 22.4,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.27, noise=0.01)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 14,
+   "dir": "rise",
+   "apply_box_ms": 1792346060682.56,
+   "cmd_to_apply_ms": 0.24,
+   "base_lux": 2.199,
+   "top_lux": 2.469,
+   "snr": 27.0,
+   "detected": false,
+   "why": "no clear step (\u0394=0.27, noise=0.00)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 15,
+   "dir": "fall",
+   "apply_box_ms": 1792346062043.96,
+   "cmd_to_apply_ms": 1.02,
+   "base_lux": 2.461,
+   "top_lux": 2.217,
+   "snr": 18.3,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.24, noise=0.01)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 16,
+   "dir": "rise",
+   "apply_box_ms": 1792346063569.77,
+   "cmd_to_apply_ms": 0.23,
+   "base_lux": 2.221,
+   "top_lux": 2.456,
+   "snr": 23.5,
+   "detected": false,
+   "why": "no clear step (\u0394=0.23, noise=0.01)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 17,
+   "dir": "fall",
+   "apply_box_ms": 1792346064969.7,
+   "cmd_to_apply_ms": 1.87,
+   "base_lux": 2.456,
+   "top_lux": 2.234,
+   "snr": 22.2,
+   "detected": false,
+   "why": "no clear step (\u0394=-0.22, noise=0.00)",
+   "lamp": "hue.se"
+  },
+  {
+   "i": 18,
+   "dir": "rise",
+   "apply_box_ms": 1792346067470.85,
+   "cmd_to_apply_ms": 0.27,
+   "base_lux": 2.208,
+   "top_lux": 2.773,
+   "snr": 42.3,
+   "raw_t10_ms": 93.4,
+   "raw_t50_ms": 164.23,
+   "raw_t90_ms": 265.57,
+   "detected": true,
+   "intermediate_points": 5,
+   "t10_ms": 42.12,
+   "t50_ms": 112.95,
+   "t90_ms": 214.29,
+   "lamp": "hue.sw"
+  },
+  {
+   "i": 19,
+   "dir": "fall",
+   "apply_box_ms": 1792346069066.05,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.773,
+   "top_lux": 2.212,
+   "snr": 56.1,
+   "raw_t10_ms": 69.69,
+   "raw_t50_ms": 112.34,
+   "raw_t90_ms": 155.0,
+   "detected": true,
+   "intermediate_points": 1,
+   "t10_ms": 18.41,
+   "t50_ms": 61.06,
+   "t90_ms": 103.72,
+   "lamp": "hue.sw"
+  },
+  {
+   "i": 20,
+   "dir": "rise",
+   "apply_box_ms": 1792346070508.81,
+   "cmd_to_apply_ms": 0.28,
+   "base_lux": 2.217,
+   "top_lux": 2.764,
+   "snr": 54.7,
+   "raw_t10_ms": 121.32,
+   "raw_t50_ms": 165.4,
+   "raw_t90_ms": 209.49,
+   "detected": true,
+   "intermediate_points": 2,
+   "t10_ms": 70.04,
+   "t50_ms": 114.12,
+   "t90_ms": 158.21,
+   "lamp": "hue.sw"
+  },
+  {
+   "i": 21,
+   "dir": "fall",
+   "apply_box_ms": 1792346072021.29,
+   "cmd_to_apply_ms": 0.25,
+   "base_lux": 2.756,
+   "top_lux": 2.225,
+   "snr": 53.1,
+   "raw_t10_ms": 99.65,
+   "raw_t50_ms": 139.87,
+   "raw_t90_ms": 180.09,
+   "detected": true,
+   "intermediate_points": 1,
+   "t10_ms": 48.37,
+   "t50_ms": 88.59,
+   "t90_ms": 128.81,
+   "lamp": "hue.sw"
+  },
+  {
+   "i": 22,
+   "dir": "rise",
+   "apply_box_ms": 1792346073704.19,
+   "cmd_to_apply_ms": 0.25,
+   "base_lux": 2.217,
+   "top_lux": 2.764,
+   "snr": 54.7,
+   "raw_t10_ms": 112.28,
+   "raw_t50_ms": 159.21,
+   "raw_t90_ms": 237.17,
+   "detected": true,
+   "intermediate_points": 2,
+   "t10_ms": 61.0,
+   "t50_ms": 107.93,
+   "t90_ms": 185.89,
+   "lamp": "hue.sw"
+  },
+  {
+   "i": 23,
+   "dir": "fall",
+   "apply_box_ms": 1792346075223.54,
+   "cmd_to_apply_ms": 0.21,
+   "base_lux": 2.769,
+   "top_lux": 2.225,
+   "snr": 54.4,
+   "raw_t10_ms": 81.31,
+   "raw_t50_ms": 162.75,
+   "raw_t90_ms": 253.37,
+   "detected": true,
+   "intermediate_points": 1,
+   "t10_ms": 30.03,
+   "t50_ms": 111.47,
+   "t90_ms": 202.09,
+   "lamp": "hue.sw"
+  }
+ ]
+}

@@ -1,0 +1,102 @@
+{
+  "_note": "Room modes. See docs/av/ROOM_STATE_MODEL.md. Keys starting with _ are comments.",
+  "default": "normal",
+
+  "groups": {
+    "all_blinds": "blinds",
+    "privacy_blinds": ["blinds.ch02", "blinds.ch03", "blinds.ch14"],
+    "frames": ["screens.north-screen", "screens.south-screen"],
+    "frame_tvs": ["tv.north-screen", "tv.south-screen"]
+  },
+
+  "modes": {
+    "house": {
+      "abstract": true,
+      "_note": "What every mode wants unless it says otherwise. retrieve = put back what a live mode stored.",
+      "state": {
+        "screens": "art",
+        "sensor_mask": "follow",
+        "page": true,
+        "mirror_ball": "stopped",
+        "plug.dmx_power": "off",
+        "privacy_blinds": {"retrieve": "pre_live", "max_age_s": 43200},
+        "frame_tvs": {"retrieve": "pre_live"},
+        "sonos.lounge": {"retrieve": "pre_live"}
+      }
+    },
+
+    "normal": {"label": "Normal", "extends": "house"},
+
+    "piano": {
+      "label": "Piano", "extends": "house",
+      "_note": "Sonos paused on arrival; after that it is the user's (ignore).",
+      "state": {"sonos.lounge.playback": {"set": "paused", "policy": "ignore"}}
+    },
+
+    "off": {
+      "label": "Off", "extends": "house",
+      "state": {"frame_tvs": "standby",
+                "sonos.lounge.playback": {"set": "paused", "policy": "ignore"}}
+    },
+
+    "live": {
+      "abstract": true, "extends": "house",
+      "_note": "Every live mode: blinds down and TVs on HDMI, each storing its old value first.",
+      "state": {
+        "sensor_mask": "suspended",
+        "page": false,
+        "privacy_blinds": {"store": "pre_live", "set": 100, "policy": "enforce"},
+        "frame_tvs": {"store": "pre_live", "set": "hdmi"},
+        "frames": {"live": {"scene": "fractal-zoom",
+                            "transitions": {"in": "crossfade-3s", "out": "crossfade-3s"}}}
+      },
+      "on_enter": [{"signal": "log.info", "args": {"msg": "show starting"}}],
+      "on_exit": [{"signal": "log.info", "args": {"msg": "show over"}}]
+    },
+
+    "ambient": {"label": "Ambient", "extends": "live"},
+
+    "disco": {
+      "label": "Disco", "extends": "live",
+      "state": {
+        "frames": {"live": {"scene": {"preset": "fractal-zoom", "params": {"zoom_rate": 0.6}},
+                            "transitions": {"in": "crossfade-3s", "out": "crossfade-3s"}}},
+        "plug.dmx_power": "on",
+        "mirror_ball": "spinning",
+        "sonos.lounge.volume": {"store": "pre_live", "set": 60, "opts": {"over_s": 5}},
+        "sonos.lounge.playback": {"store": "pre_live", "set": {"favourite": "Disco"}}
+      }
+    }
+  },
+
+  "transitions": [
+    {
+      "_note": "Into any live mode, from anywhere, including from another live mode.",
+      "from": "*", "to": "@live",
+      "steps": [
+        ["sensor_mask", "page"],
+        {"targets": ["privacy_blinds", "frame_tvs"], "on_fail": {"abort_on": "privacy_blinds"}},
+        "plug.dmx_power",
+        {"delay": 2},
+        "frames",
+        "mirror_ball",
+        "rest"
+      ]
+    },
+    {
+      "_note": "Out of a live mode: ball off, DMX power off (if that can't be confirmed, stop with the blinds still down), screens back to art, then blinds up.",
+      "from": "@live", "to": "*",
+      "steps": [
+        "mirror_ball",
+        {"targets": "plug.dmx_power", "on_fail": {"abort_on": "plug.dmx_power", "rollback": false}},
+        "frames",
+        "rest"
+      ]
+    },
+    {
+      "_note": "Everything else.",
+      "from": "*", "to": "*",
+      "steps": ["rest"]
+    }
+  ]
+}

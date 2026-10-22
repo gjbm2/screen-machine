@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Latency Lab</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #000; --fg: #e8e8e8; --dim: #8a8a8a; --ok: #6bd18f; --warn: #f0b75a; --bad: #ff6b6b; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; cursor: none; }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  #stage video, #stage canvas { width: 100vw; height: 100vh; object-fit: contain; background: #000; display: block; }
+  #hud {
+    position: fixed; top: 6vh; right: 1.5vw; min-width: 26ch; padding: 0.8em 1em;
+    font: 500 clamp(11px, 1.05vw, 28px)/1.35 ui-monospace, "DejaVu Sans Mono", monospace;
+    color: var(--fg); background: rgba(0, 0, 0, 0.72); border-radius: 0.5em; white-space: pre;
+  }
+  #hud .ok { color: var(--ok); } #hud .warn { color: var(--warn); } #hud .bad { color: var(--bad); }
+  #hud .dim { color: var(--dim); }
+  #nowclock {
+    position: fixed; right: 1.5vw; bottom: 3vh; padding: 0.2em 0.5em; background: #000; color: #fff;
+    font: 600 clamp(14px, 3.4vw, 120px)/1 ui-monospace, "DejaVu Sans Mono", monospace; display: none;
+  }
+  /* same compositor + TV path as the video: overlay − burned-in clock = capture → composite, not glass */
+  #nowclock::after { content: " composite"; font-size: 0.3em; font-weight: 400; color: var(--dim); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hud">connecting…</div>
+<div id="nowclock"></div>
+<script type="module" src="client.js"></script>
+</body>
+</html>

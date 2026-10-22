@@ -11,7 +11,8 @@ shift it.
 Cache: <cache>/<key>.flac + <key>.json (the RenderResult) in $PIANO_RENDER_CACHE or
 ~/.cache/screen-machine/piano/renders. key = sha256 over the MIDI bytes, the instrument id and entry (minus the
 cosmetic "label", "order", "credit", "_comment"), the instrument file's content (instrument_files_digest: an SFZ's
-text and its #includes, an SF2's size and mtime), the room entry, the realism flag, RENDER_VERSION,
+text and its #includes, an SF2's size and mtime; for an instrument with "layers", every layer file's too), the room
+entry, the realism flag, RENDER_VERSION,
 realism.VERSION (with or without realism: it holds the EQ too), the engine's version string and the sample rate.
 Files are written under temporary names and
 renamed (the .json last, so a .json means a complete render). While rendering, <key>.progress.json holds
@@ -185,6 +186,21 @@ def instrument_files_digest(file: "str | os.PathLike | None") -> Optional[str]:
     return h.hexdigest()
 
 
+def inst_files_digest(inst: dict) -> Optional[str]:
+    """instrument_files_digest of the instrument's file; with "layers" (a blend, engines.base.LayeredEngine), a
+    sha256 over that and each layer file's digest in order (without layers it is the file's digest alone, so the keys
+    of single-file instruments are unchanged)."""
+    main = instrument_files_digest(inst.get("file"))
+    layers = inst.get("layers")
+    if not layers:
+        return main
+    h = hashlib.sha256(f"main\0{main}\0".encode())
+    for layer in layers:
+        f = layer.get("file") if isinstance(layer, dict) else None
+        h.update(f"layer\0{instrument_files_digest(f)}\0".encode())
+    return h.hexdigest()
+
+
 def compute_key(midi_bytes: bytes, inst_id: str, inst_raw: dict, room_raw: Optional[dict], realism: bool,
                 engine_version: str, sr: int = SAMPLE_RATE, files_digest: Optional[str] = None) -> str:
     payload = {
@@ -250,7 +266,7 @@ def plan(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str] 
     midi_bytes = Path(midi_path).read_bytes()
     ever = _engines.version(eng, reg.engines_root)
     key = compute_key(midi_bytes, inst_id, reg.raw(inst_id), room_raw, realism, ever,
-                      files_digest=instrument_files_digest(inst.get("file")))
+                      files_digest=inst_files_digest(inst))
     return Plan(key=key, midi_path=str(Path(midi_path).resolve()), midi_sha256=hashlib.sha256(midi_bytes).hexdigest(),
                 inst=inst, inst_id=inst_id, room_id=room_id, room=room_entry, realism=bool(realism),
                 engine_version=ever, dir=cache_dir(cache_dir_override))
@@ -378,7 +394,8 @@ KEEP_ENGINES = 1
 
 
 def _engine_for(inst: dict, engines_root) -> "_engines.Engine":
-    ek = json.dumps([inst.get("engine"), inst.get("file"), inst.get("preset"), str(engines_root)], sort_keys=True)
+    ek = json.dumps([inst.get("engine"), inst.get("file"), inst.get("preset"), str(engines_root),
+                     inst.get("layers")], sort_keys=True)
     eng = _ENGINES.pop(ek, None)
     if eng is None:
         while len(_ENGINES) >= KEEP_ENGINES:

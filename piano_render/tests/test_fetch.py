@@ -194,6 +194,25 @@ def test_fetch_reports_a_bad_entry_without_stopping(server, tmp_path):
         F.fetch(["zzz"], reg, log=lambda s: None, lower=False)
 
 
+def test_magnet_block_installs_from_the_cached_archive_and_never_downloads(tmp_path):
+    """A BitTorrent-only library: its block's url is the magnet. Its cache name comes from the magnet's dn; without
+    the archive there the entry fails at once (no retries) and says where to put it; with it, it installs."""
+    data = _zip({"Lib sfz/lib.sfz": b"<region> sample=x.flac\n"})
+    mag = ("magnet:?xt=urn:btih:" + "ab" * 20 + "&dn=Some%20Lib%20sfz.zip"
+           "&tr=udp%3a%2f%2ftracker.example%3a80%2fannounce")
+    block = {"url": mag, "sha256": _sha(data), "bytes": len(data), "unpack": "zip", "strip": 1, "subdir": "lib"}
+    assert F.url_basename(mag) == "Some Lib sfz.zip"
+    assert F._cache_name(mag, block["sha256"]) == block["sha256"][:12] + "-Some_Lib_sfz.zip"
+    reg = _registry(tmp_path, "http://unused", {"t": ("lib/lib.sfz", block)})
+    res = F.fetch(["t"], reg, log=lambda s: None, lower=False)
+    assert res["t"].startswith("failed") and "BitTorrent only" in res["t"] and "Some Lib sfz.zip" in res["t"]
+    cached = tmp_path / "inst/_downloads" / F._cache_name(mag, block["sha256"])
+    assert str(cached) in res["t"] and not cached.exists()
+    cached.write_bytes(data)
+    assert F.fetch(["t"], reg, log=lambda s: None, lower=False) == {"t": "installed"}
+    assert (tmp_path / "inst/lib/lib.sfz").exists() and F.status(reg)["t"] == "ok"
+
+
 def test_fetch_conflicting_blocks_on_one_subdir(server, tmp_path):
     base, h = server
     d1, d2 = _zip({"a.sf2": b"a"}), _zip({"b.sf2": b"b"})
@@ -340,19 +359,20 @@ def test_shipped_wraps_apply_to_the_installed_libraries(tmp_path):
     reg, root, _ = F.load_registry(REPO / "config/piano/instruments.json")
     seen, checked = set(), 0
     for iid, inst in reg["instruments"].items():
-        b = inst.get("fetch") or {}
-        if b.get("post") != "sfz-wrap" or b["subdir"] in seen or not (root / b["subdir"] / F.MARKER).exists():
-            continue
-        seen.add(b["subdir"])
-        src, dst = root / b["subdir"], tmp_path / b["subdir"]
-        for w in (b["wrap"] if isinstance(b["wrap"], list) else [b["wrap"]]):
-            base_dir = Path(w["base"]).parent
-            for rel in [w["base"]] + [str(base_dir / i) for i in w.get("inline", [])]:
-                (dst / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src / rel, dst / rel)
-            out = F.post_sfz_wrap(dst, {"wrap": w}, log=lambda s: None)
-            assert out.read_text() == (src / w["out"]).read_text(), f"{iid}: the installed {w['out']} is not the spec's"
-            checked += 1
+        for b in F._blocks(inst):
+            if b.get("post") != "sfz-wrap" or b["subdir"] in seen or not (root / b["subdir"] / F.MARKER).exists():
+                continue
+            seen.add(b["subdir"])
+            src, dst = root / b["subdir"], tmp_path / b["subdir"]
+            for w in (b["wrap"] if isinstance(b["wrap"], list) else [b["wrap"]]):
+                base_dir = Path(w["base"]).parent
+                for rel in [w["base"]] + [str(base_dir / i) for i in w.get("inline", [])]:
+                    (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(src / rel, dst / rel)
+                out = F.post_sfz_wrap(dst, {"wrap": w}, log=lambda s: None)
+                assert out.read_text() == (src / w["out"]).read_text(), \
+                    f"{iid}: the installed {w['out']} is not the spec's"
+                checked += 1
     if not checked:
         pytest.skip("no sfz-wrap library installed")
 
@@ -378,13 +398,80 @@ def test_shipped_registry_shape():
             assert "file" not in i and "fetch" not in i
             continue
         assert i.get("fetch") or i.get("copy_from"), iid
-        b = i.get("fetch")
-        if b:
-            assert re.fullmatch(r"[0-9a-f]{64}", b["sha256"]) and b["bytes"] > 0 and b["url"].startswith("http")
+        blocks = F._blocks(i)
+        for b in blocks:
+            assert re.fullmatch(r"[0-9a-f]{64}", b["sha256"]) and b["bytes"] > 0 and b["url"].startswith(("http", "magnet:"))
             assert b["unpack"] in ("zip", "tar", "7z", "deb", "none")
-            assert i["file"].startswith(b["subdir"] + "/"), iid
             key = F._block_key(b)
             assert subdirs.setdefault(b["subdir"], key) == key, f"{iid}: subdir {b['subdir']} block differs"
+        if blocks:
+            assert any(i["file"].startswith(b["subdir"] + "/") for b in blocks), iid
         if i["engine"] == "fluidsynth":
             assert set(i.get("preset", {})) <= {"bank", "program"}
     assert max(orders) == inst["windows-gs"]["order"] and len(set(orders)) == len(orders)
+
+
+# --- blends (layers) and per-mic-set levels ---------------------------------------------------------------------------------------------------
+def test_bitklavier_levels_per_mic_set(tmp_path):
+    """A block's "levels" replace the default noise levels in that set's map; without them the map is the default."""
+    _bitklavier_set(tmp_path)
+    default, _ = F.bitklavier_sfz_text(tmp_path)
+    levels = {"pedal_db": {"pedalD1.wav": -2.5, "pedalU2.wav": -30}, "rel_db": -31.5, "harm_db": -7}
+    text = F.post_bitklavier_sfz(tmp_path, {"levels": levels}, log=lambda s: None).read_text()
+    assert text != default and F.bitklavier_sfz_text(tmp_path, {})[0] == default
+    assert re.search(r"sample=pedalD1\.wav .* volume=-2\.5$", text, re.M)
+    assert re.search(r"sample=pedalU2\.wav .* volume=-30$", text, re.M)
+    assert re.search(rf"sample=pedalD2\.wav .* volume={F.BITKLAVIER_PEDAL_DB['pedalD2.wav']:g}$", text, re.M)
+    assert "trigger=release_key\nvolume=-31.5\n" in text and "trigger=release\nvolume=-7\n" in text
+    # the levels are part of the block's identity, and a change to them rewrites the installed map in place
+    assert F._block_key({"subdir": "s", "levels": levels}) != F._block_key({"subdir": "s"})
+    assert F.refresh_generated(tmp_path, {"post": "bitklavier-sfz"}) is True
+    assert (tmp_path / F.BITKLAVIER_OUT).read_text() == default
+
+
+def test_fetch_a_blend_from_two_blocks(server, tmp_path):
+    """An instrument's "fetch" may be a list (its layers come from several downloads): each block is installed (or
+    shared with the entry that has it), and the instrument counts as installed only when every layer file exists."""
+    base, h = server
+    blocks = {}
+    for name in ("s1", "s2"):
+        data = _zip({f"{name}/lib.sfz": b"<region> sample=x.wav\n"})
+        h.files[f"/{name}.zip"] = data
+        blocks[name] = {"url": f"{base}/{name}.zip", "sha256": _sha(data), "bytes": len(data), "unpack": "zip",
+                        "strip": 1, "subdir": name}
+    reg = {"root": str(tmp_path / "inst"), "engines_root": str(tmp_path / "eng"), "rooms": {}, "instruments": {
+        "a": {"engine": "x", "file": "s1/lib.sfz", "fetch": blocks["s1"]},
+        "ab": {"engine": "x", "file": "s1/lib.sfz", "fetch": [blocks["s1"], blocks["s2"]],
+               "layers": [{"file": "s1/lib.sfz"}, {"file": "s2/lib.sfz", "gain_db": -4}]},
+        "ghost": {"engine": "x", "file": "s1/lib.sfz", "fetch": [blocks["s1"]],
+                  "layers": [{"file": "s1/lib.sfz"}, {"file": "s3/lib.sfz"}]}}}
+    p = tmp_path / "instruments.json"
+    p.write_text(json.dumps(reg))
+    assert F.status(p)["ab"] == "missing"
+    res = F.fetch(["a", "ab", "ghost"], p, log=lambda s: None, lower=False)
+    assert res["a"] == "installed" and res["ab"] == "installed"
+    assert res["ghost"].startswith("failed: s3/lib.sfz not found")
+    assert sum(1 for q, _ in h.log if q == "/s1.zip") == 1                     # one download for both users
+    st = F.status(p)
+    assert st["a"] == "ok" and st["ab"] == "ok" and st["ghost"] == "missing"
+    assert F.fetch(["ab"], p, log=lambda s: None, lower=False) == {"ab": "present"}
+
+
+def test_shipped_layers_are_installed_by_their_blocks():
+    """Every shipped blend's layer files live in the subdirs its own fetch blocks install, and each layer block is
+    the very block of the instrument that owns that subdir."""
+    reg, _root, _ = F.load_registry(REPO / "config/piano/instruments.json")
+    by_sub = {}
+    for iid, inst in reg["instruments"].items():
+        for b in F._blocks(inst):
+            by_sub.setdefault(b["subdir"], []).append((iid, F._block_key(b)))
+    for iid, inst in reg["instruments"].items():
+        if not inst.get("layers"):
+            continue
+        subs = {b["subdir"] for b in F._blocks(inst)}
+        assert inst["file"] in [layer["file"] for layer in inst["layers"]], iid
+        for layer in inst["layers"]:
+            assert any(layer["file"].startswith(s + "/") for s in subs), (iid, layer["file"])
+            assert set(layer) <= {"file", "gain_db", "offset_ms"}, iid
+    for sub, users in by_sub.items():
+        assert len({k for _, k in users}) == 1, f"subdir {sub}: blocks differ between {[u for u, _ in users]}"
