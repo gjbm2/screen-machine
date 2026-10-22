@@ -1,3 +1,418 @@
 {
- "ratings": {}
+ "ratings": {
+  "scene/black_hole": {
+   "at": "2026-10-14T21:30:17+00:00",
+   "stars": 2
+  },
+  "scene/copper_bars": {
+   "at": "2026-10-14T21:07:32+00:00",
+   "stars": 2
+  },
+  "scene/crystal_mirror": {
+   "at": "2026-10-15T00:14:01+00:00",
+   "stars": 1
+  },
+  "scene/curl_particles": {
+   "at": "2026-10-14T21:07:35+00:00",
+   "stars": 4
+  },
+  "scene/demo_fire": {
+   "at": "2026-10-15T00:15:46+00:00",
+   "stars": 1
+  },
+  "scene/drift_clouds": {
+   "at": "2026-10-14T21:09:04+00:00",
+   "stars": 3
+  },
+  "scene/dune_sea": {
+   "at": "2026-10-14T21:09:01+00:00",
+   "stars": 3
+  },
+  "scene/fireflies_sync": {
+   "at": "2026-10-15T00:14:15+00:00",
+   "stars": 2
+  },
+  "scene/firework_show": {
+   "at": "2026-10-15T00:14:17+00:00",
+   "stars": 2
+  },
+  "scene/fluid_ink": {
+   "at": "2026-10-17T01:18:35+00:00",
+   "stars": 5
+  },
+  "scene/flurry": {
+   "at": "2026-10-14T21:09:09+00:00",
+   "stars": 2
+  },
+  "scene/glow_tunnel": {
+   "at": "2026-10-15T00:15:00+00:00",
+   "looks": [
+    {
+     "name": "look 1",
+     "params": {
+      "bend": 0.7,
+      "drift_speed": 0.03,
+      "glow_falloff": 1.25,
+      "glow_kick": 1,
+      "intensity": 1,
+      "palette": "ember",
+      "palette_period": 1.6,
+      "seed": 1,
+      "speed": 1,
+      "strand_mix": 0.35,
+      "travel_speed": 2.77,
+      "tunnel_radius": 1.4,
+      "turbulence_frequency": 1,
+      "turbulence_octaves": 3.4,
+      "twist": 1.4
+     }
+    }
+   ],
+   "stars": 3
+  },
+  "scene/harmonograph_3d": {
+   "at": "2026-10-14T21:09:22+00:00",
+   "stars": 2
+  },
+  "scene/hyperspace_jump": {
+   "at": "2026-10-14T21:09:27+00:00",
+   "stars": 1
+  },
+  "scene/infinite_boxes": {
+   "at": "2026-10-14T21:09:39+00:00",
+   "stars": 2
+  },
+  "scene/ink_marbling": {
+   "at": "2026-10-14T21:09:45+00:00",
+   "stars": 3
+  },
+  "scene/isf_301_s_fire_shader_remix_gpt_modified": {
+   "at": "2026-10-15T00:10:01+00:00",
+   "stars": 4
+  },
+  "scene/isf_doodler": {
+   "at": "2026-10-15T00:20:36+00:00",
+   "reject": true
+  },
+  "scene/isf_endless_living_creature": {
+   "at": "2026-10-15T00:20:47+00:00",
+   "stars": 2
+  },
+  "scene/isf_grid_move": {
+   "at": "2026-10-15T00:20:53+00:00",
+   "reject": true
+  },
+  "scene/isf_im_3_meta_ball_problem": {
+   "at": "2026-10-15T00:20:58+00:00",
+   "reject": true
+  },
+  "scene/isf_im_ascend": {
+   "at": "2026-10-15T00:21:03+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_atera_field_candid1": {
+   "at": "2026-10-15T00:21:09+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_cosmic_ray_marcher": {
+   "at": "2026-10-15T00:21:12+00:00",
+   "stars": 2
+  },
+  "scene/isf_im_elcosmo_final_opt": {
+   "at": "2026-10-15T00:21:17+00:00",
+   "stars": 3
+  },
+  "scene/isf_im_emo_cube1": {
+   "at": "2026-10-15T00:21:30+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_emo_cube_complex": {
+   "at": "2026-10-15T00:21:27+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_emo_cube_complex_2": {
+   "at": "2026-10-15T00:21:22+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_ethernal_waves_star": {
+   "at": "2026-10-15T00:21:34+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_flowers": {
+   "at": "2026-10-15T00:21:48+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_fork_truchet_final": {
+   "at": "2026-10-15T00:22:01+00:00",
+   "stars": 3
+  },
+  "scene/isf_im_fractal1": {
+   "at": "2026-10-15T00:22:43+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_fractal_demon2": {
+   "at": "2026-10-15T00:22:08+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_fractal_mage_final_correction_lic_mit": {
+   "at": "2026-10-15T00:22:10+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_fractal_mountain_optimized": {
+   "at": "2026-10-15T00:22:17+00:00",
+   "stars": 3
+  },
+  "scene/isf_im_fractal_speed_smooth": {
+   "at": "2026-10-15T00:22:24+00:00",
+   "reject": true
+  },
+  "scene/isf_im_fractal_symetry": {
+   "at": "2026-10-15T00:22:31+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_fractal_torbulance_double_final": {
+   "at": "2026-10-15T21:02:35+00:00",
+   "stars": 3
+  },
+  "scene/isf_im_gfractl_blobl": {
+   "at": "2026-10-15T00:22:58+00:00",
+   "stars": 1
+  },
+  "scene/isf_im_glass_fractal_flight_twist": {
+   "at": "2026-10-15T00:23:00+00:00",
+   "reject": true
+  },
+  "scene/isf_im_glow_heart": {
+   "at": "2026-10-15T00:23:05+00:00",
+   "stars": 2
+  },
+  "scene/isf_im_kaleido_knot": {
+   "at": "2026-10-15T00:23:17+00:00",
+   "reject": true
+  },
+  "scene/isf_im_kbmarcher_dampening": {
+   "at": "2026-10-15T00:23:22+00:00",
+   "stars": 2
+  },
+  "scene/isf_im_lopyfrac": {
+   "at": "2026-10-15T00:23:29+00:00",
+   "reject": true
+  },
+  "scene/isf_im_lopyfrac3_d_ortho": {
+   "at": "2026-10-15T00:23:32+00:00",
+   "reject": true
+  },
+  "scene/isf_im_noise_texture_landscape_fractal_cloud": {
+   "at": "2026-10-15T00:23:45+00:00",
+   "stars": 2
+  },
+  "scene/isf_im_origami_final_correctopacity": {
+   "at": "2026-10-15T20:06:49+00:00",
+   "stars": 3
+  },
+  "scene/isf_im_rhodium_lquid_carbon": {
+   "at": "2026-10-15T00:24:34+00:00",
+   "stars": 4
+  },
+  "scene/isf_im_swirl_smooth_transition": {
+   "at": "2026-10-15T00:24:22+00:00",
+   "stars": 3
+  },
+  "scene/isf_the_weave": {
+   "at": "2026-10-15T00:25:14+00:00",
+   "stars": 3
+  },
+  "scene/isf_zebra_lines_projectile_objects": {
+   "at": "2026-10-15T00:25:02+00:00",
+   "stars": 2
+  },
+  "scene/kifs_crystal": {
+   "at": "2026-10-14T21:10:24+00:00",
+   "stars": 1
+  },
+  "scene/lava_lake": {
+   "at": "2026-10-14T21:10:31+00:00",
+   "stars": 2
+  },
+  "scene/lichtenberg": {
+   "at": "2026-10-14T21:10:35+00:00",
+   "stars": 3
+  },
+  "scene/mandelbulb": {
+   "at": "2026-10-14T21:10:49+00:00",
+   "stars": 1
+  },
+  "scene/matrix_maelstrom": {
+   "at": "2026-10-14T21:10:53+00:00",
+   "stars": 1
+  },
+  "scene/megastructure": {
+   "at": "2026-10-14T21:04:39+00:00",
+   "stars": 2
+  },
+  "scene/menger_flythrough": {
+   "at": "2026-10-15T00:12:23+00:00",
+   "stars": 3
+  },
+  "scene/ocean_flyover": {
+   "at": "2026-10-14T21:12:12+00:00",
+   "stars": 3
+  },
+  "scene/quaternion_julia": {
+   "at": "2026-10-15T00:12:59+00:00",
+   "stars": 2
+  },
+  "scene/reaction_diffusion": {
+   "at": "2026-10-15T00:13:06+00:00",
+   "stars": 3
+  },
+  "scene/sakura_storm": {
+   "at": "2026-10-15T00:13:20+00:00",
+   "stars": 1
+  },
+  "scene/solid": {
+   "at": "2026-10-14T21:13:06+00:00",
+   "stars": 1
+  },
+  "scene/st_apollian_with_a_twist": {
+   "at": "2026-10-14T21:29:41+00:00",
+   "stars": 2
+  },
+  "scene/st_circuits": {
+   "at": "2026-10-14T22:18:11+00:00",
+   "stars": 3
+  },
+  "scene/st_cosmic_2": {
+   "at": "2026-10-15T00:16:51+00:00",
+   "stars": 3
+  },
+  "scene/st_cross_distance_2_d": {
+   "at": "2026-10-15T00:16:55+00:00",
+   "stars": 3
+  },
+  "scene/st_cyclic_redundancy_engine": {
+   "at": "2026-10-15T00:17:03+00:00",
+   "stars": 1
+  },
+  "scene/st_dragon_eye_ii": {
+   "at": "2026-10-15T00:17:01+00:00",
+   "stars": 1
+  },
+  "scene/st_elemental_ring": {
+   "at": "2026-10-15T00:17:08+00:00",
+   "stars": 1
+  },
+  "scene/st_flux_core": {
+   "at": "2026-10-14T21:09:13+00:00",
+   "stars": 2
+  },
+  "scene/st_fly_on_buckaroo": {
+   "at": "2026-10-15T00:17:20+00:00",
+   "reject": true
+  },
+  "scene/st_ghostly_cavern": {
+   "at": "2026-10-15T00:26:02+00:00",
+   "stars": 4
+  },
+  "scene/st_gimbal_harmonics": {
+   "at": "2026-10-15T00:17:24+00:00",
+   "reject": true
+  },
+  "scene/st_golden_apollian": {
+   "at": "2026-10-15T00:17:29+00:00",
+   "stars": 2
+  },
+  "scene/st_gradient_isolines": {
+   "at": "2026-10-15T00:26:07+00:00",
+   "stars": 3
+  },
+  "scene/st_hsv_and_hsl": {
+   "at": "2026-10-15T00:17:37+00:00",
+   "stars": 2
+  },
+  "scene/st_hyperspace_perlin_red": {
+   "at": "2026-10-15T00:26:25+00:00",
+   "stars": 3
+  },
+  "scene/st_islamic_ornaments00": {
+   "at": "2026-10-15T00:17:42+00:00",
+   "stars": 2
+  },
+  "scene/st_jungle_gym": {
+   "at": "2026-10-15T00:17:57+00:00",
+   "stars": 1
+  },
+  "scene/st_neural_gimme_five": {
+   "at": "2026-10-15T00:26:40+00:00",
+   "stars": 1
+  },
+  "scene/st_packed_spheres_sdf": {
+   "at": "2026-10-15T00:18:24+00:00",
+   "stars": 3
+  },
+  "scene/st_perlin_noise_fire": {
+   "at": "2026-10-15T00:26:54+00:00",
+   "stars": 2
+  },
+  "scene/st_rotational_symmetry": {
+   "at": "2026-10-15T00:18:52+00:00",
+   "stars": 3
+  },
+  "scene/st_sphere_fbm": {
+   "at": "2026-10-15T00:13:26+00:00",
+   "stars": 2
+  },
+  "scene/st_spiral_galaxy": {
+   "at": "2026-10-15T00:19:00+00:00",
+   "reject": true
+  },
+  "scene/st_star_nest_retro": {
+   "at": "2026-10-15T00:19:05+00:00",
+   "stars": 2
+  },
+  "scene/st_stractium": {
+   "at": "2026-10-15T00:19:13+00:00",
+   "stars": 1
+  },
+  "scene/st_symmetric_origins": {
+   "at": "2026-10-15T00:19:16+00:00",
+   "stars": 1
+  },
+  "scene/st_topologica": {
+   "at": "2026-10-15T00:13:46+00:00",
+   "stars": 3
+  },
+  "scene/st_triangle_distance_3_d": {
+   "at": "2026-10-15T00:19:21+00:00",
+   "stars": 1
+  },
+  "scene/st_tunnel_tryout_001": {
+   "at": "2026-10-15T21:09:28+00:00",
+   "stars": 1
+  },
+  "scene/st_twitch_ps1_singularity_jorts": {
+   "at": "2026-10-15T21:09:16+00:00",
+   "reject": true
+  },
+  "scene/st_warped_liquid_metal": {
+   "at": "2026-10-15T00:19:27+00:00",
+   "stars": 4
+  },
+  "scene/st_wind_of_change": {
+   "at": "2026-10-15T00:19:47+00:00",
+   "stars": 3
+  },
+  "scene/star_nest": {
+   "at": "2026-10-14T21:13:34+00:00",
+   "stars": 3
+  },
+  "scene/strange_attractors": {
+   "at": "2026-10-15T00:13:42+00:00",
+   "stars": 3
+  },
+  "scene/wire_terrain": {
+   "at": "2026-10-15T00:13:56+00:00",
+   "stars": 1
+  }
+ }
 }

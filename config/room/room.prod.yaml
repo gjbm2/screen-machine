@@ -1,0 +1,24 @@
+# config/room/room.prod.yaml: the PRODUCTION room_service (inside Flask: room_in_app.py, :8700).
+# No auth (owner, 14 Oct). A dev or smoke instance uses a temp copy of this file (own state_dir and port).
+stream_service: {url: "http://127.0.0.1:8702"}
+flask: {url: "http://127.0.0.1:5000", ws: "ws://127.0.0.1:8765/"}   # read-only; never send a frame on :8765
+# The snapshotter renders <art_page_base>/display/<id>?artonly from the deployed app.
+art_page_base: "http://127.0.0.1:5000"
+# Light sensor -> screens, near-instant (owner, 15 Oct). At night the room reads ~2 lux, where most lamp
+# changes are under the default 0.75 EV snap, so they crawled on the drift path (2.5 s filter, one update
+# per 3 s, 1 s fade). Now: snap on one reading past 0.25 EV; drift filter 0.6 s, updates every 0.25 s.
+mask: {deadband_brightness: 0.005, deadband_warm_alpha: 0.002, transition_ms: 200, backstop_s: 1.0,
+       drift_interval_s: 0.25, drift_transition_ms: 300, snap_delta_brightness: 0.02}
+ingest: {filter: {snap_ev: 0.25, snap_confirm: 1, drift_tau_s: 0.6}}
+# Screens are defined once, in routes/data/publish-destinations.json: each destination with a "live" block
+# ({enabled, gpu, profile, mask_push}) is a room screen. Live and its snapshot take the glass's shape (the page's
+# viewport) at the profile's pixel count; maxwidth x maxheight (the art's bounds) only when no page has reported one.
+# Which room holds what is routes/data/rooms.json. A `screens:` block here would override per screen and field.
+# Hosts and browser origins come from .env (SM_LAN_HOST, VITE_URL); no addresses here.
+dmx: {enabled: true}
+# A cold renderer GPU compiles its transitions on the first session (~8 s); allow for it.
+# A 4K anchor of detailed art is an ~11 MB PNG: 2-3 s to capture, more with both TVs at once (3 s failed
+# north, 15 Oct). The page holds its art while frozen, so the longer bound is invisible.
+# exit_session_s (18 Oct, 4K60 plan change 3): exit used to share create's 20 s; kept at 20 until exits are measured.
+timeouts: {create_session_s: 20, exit_session_s: 20, snapshot_s: 10, session_ready_s: 15}
+snapshot: {timeout_s: 10}

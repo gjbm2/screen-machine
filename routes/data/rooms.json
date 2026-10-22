@@ -1,0 +1,40 @@
+{
+  "_comment": "The site: which room holds what. Devices are referenced by id and defined once elsewhere: screens in publish-destinations.json (with their live settings), lamps in config/room/patch.yaml (Hue, hue.<id>), \"light\" names every DMX light registered on the Lights setup page (show_service's rig, light.<id>), blinds in config/room/rf/blinds.json, sensors in the light relay config, effects are devices, each an on/off target plus setting targets ({power, settings}: the glitterball, config/room/rf/glitterball.json); their names and words come from that config and the modes.json labels. The Room page renders one section per room from this file; room_service derives '<room>:<kind>' groups (e.g. drawing-room:blinds) for modes.json.",
+  "drawing-room": {
+    "name": "Drawing room",
+    "screens": [
+      "north-screen",
+      "south-screen"
+    ],
+    "blinds": [
+      "ch02",
+      "ch03",
+      "ch14"
+    ],
+    "lights": [
+      "hue.ne",
+      "hue.nw",
+      "hue.se",
+      "hue.sw",
+      "light"
+    ],
+    "sensors": [
+      "living-room"
+    ],
+    "effects": [
+      {
+        "power": "mirror_ball.main",
+        "settings": [
+          "mirror_ball_motor.speed",
+          "mirror_ball_motor.direction"
+        ]
+      }
+    ]
+  },
+  "lab": {
+    "name": "Lab",
+    "screens": [
+      "devtest"
+    ]
+  }
+}

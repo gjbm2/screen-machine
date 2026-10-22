@@ -1,0 +1,61 @@
+# config/room/patch.yaml: the virtual DMX devices on MaestroDMX's Art-Net universe (AV_PROGRAMME v1 K2).
+# room_service/dmx/patch.py documents the format. Not secret. room_service re-reads this file when it changes.
+#
+# Each device is one fixture in Maestro's Patcher, on its Art-Net universe, using the profile of the same
+# name ("SM Screen", "SM Hue"). Maestro profiles are built by hand in its UI (no public schema, r3 §4); keep their
+# channel order identical to `profiles` below. Maestro rules (v1 K2): MASTER DIMMER static at 255, smoothing 0,
+# strobe/blinder triggers off. Maestro allows 4 fixture groups. Suggested: G1 heads; G2 north = screen.north +
+# hue.ne (above it) + hue.nw (opposite it); G3 south = screen.south + hue.se (above) + hue.sw (opposite); G4 spare.
+# Grouping each screen with its lamps makes Maestro colour them as one area of the room.
+
+artnet:
+  bind: "0.0.0.0:6454"     # WSL: LAN Art-Net arrives via the Windows UDP relay (docs/PORTS.md)
+  universe: 0              # Port-Address Maestro sends (its "Offset Universes" off -> 0, on -> 1)
+  stale_after_ms: 1500     # bus feed -> hold, input.online false
+
+profiles:
+  screen:
+    label: "SM Screen"     # one Frame TV, read by the renderer as its show-bus fixture (LIVE_V1 §1.9)
+    channels:
+      - {attr: RED, field: r}
+      - {attr: GREEN, field: g}
+      - {attr: BLUE, field: b}
+      - {attr: DIMMER, field: pulse}                 # dynamic: Maestro pulses it with the music
+      - {attr: ACTIVITY, field: global.activity}     # Maestro's activity measurement -> bus global.activity
+      - {attr: PAN, field: pan, range: [-1, 1]}
+      - {attr: TILT, field: tilt, range: [-1, 1]}
+      - {attr: ZOOM, field: zoom}
+      - {attr: GOBO, field: effect, raw: true}       # steps change on musical sections (follow_dmx)
+      - {attr: PRISM, field: variant, raw: true}
+      - {attr: INTENSITY, field: level, default: 255}  # picture intensity (owner, 17 Oct: one director decision
+                                                     # dims every appliance); senders write 255 when undecided
+  hue:
+    label: "SM Hue"        # one Hue colour light, streamed to the bridge's Entertainment area
+    channels:
+      - {attr: MASTER DIMMER, field: dimmer, default: 255}
+      - {attr: RED, field: r}
+      - {attr: GREEN, field: g}
+      - {attr: BLUE, field: b}
+
+devices:
+  # The two Frame TVs (renderer fixtures; the names are LIVE_V1's fixture ids).
+  screen.north: {label: North Frame, profile: screen, address: 1, screen: north-screen}
+  screen.south: {label: South Frame, profile: screen, address: 17, screen: south-screen}
+  # The four Drawing-room colour lamps on the Hue Bridge Pro (192.168.1.72), Entertainment area "Screen Machine".
+  # Owner, 14 Oct: SE is above the south screen and SW opposite it; NE is above the north screen and NW opposite it.
+  hue.ne: {label: Drawing room NE, profile: hue, address: 33, light: 9e4f2b85-7129-44cc-9f2b-aa16f5b37e79,
+           screen: north-screen, placement: above}
+  hue.nw: {label: Drawing room NW, profile: hue, address: 37, light: b952000c-b775-4a7c-bbc9-d8ac6bb453ca,
+           screen: north-screen, placement: opposite}
+  hue.se: {label: Drawing room SE, profile: hue, address: 41, light: 2c0084d1-b408-4936-aa89-aee935d8c99b,
+           screen: south-screen, placement: above}
+  hue.sw: {label: Drawing room SW, profile: hue, address: 45, light: 014c5c6c-2d07-4315-ace7-d030a7086c29,
+           screen: south-screen, placement: opposite}
+
+hue:
+  bridge: fc268cfffe106fa2            # pairing secrets: ~/.config/screen-machine/hue/<bridge>.json (0600)
+  host: 192.168.1.72
+  area: 71a764d6-9d22-413b-9818-3ee3a44b2c53   # "Screen Machine"
+  stop_after_s: 10                    # no Art-Net this long -> stop streaming, the bridge hands the lights back
+  gamma: 0.6                          # lamp brightness = max(r,g,b) ** gamma; lower = brighter mid-levels (live)
+  writes_enabled: true                # owner, 14 Oct (identify test passed: stream + exact restore)
