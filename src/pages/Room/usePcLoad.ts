@@ -10,8 +10,10 @@ import { friendlyName } from "./words";
 const POLL_MS = 10_000;
 /** The 1-minute load at or over this share of the cores reads as busy (it is already a smoothed average). */
 const LOAD_BUSY = 0.85;
-/** Memory left under this share of the total, or swap over this share used, reads as nearly full. */
+/** Memory left under this share of the total reads as nearly full; so does swap over SWAP_HIGH used while memory left
+ *  is under MEM_TIGHT (swap stays used long after the pressure has gone, so on its own it would hold the badge up). */
 const MEM_LOW = 0.1;
+const MEM_TIGHT = 0.25;
 const SWAP_HIGH = 0.75;
 
 export interface PcLoad {
@@ -42,9 +44,9 @@ export function usePcLoad(api: RoomApi, enabled: boolean): PcLoad | null {
         const cpus = h.cpus && h.cpus > 0 ? h.cpus : null;
         const load1 = h.load?.[0] ?? null;
         const cpuBusy = cpus !== null && load1 !== null && load1 >= LOAD_BUSY * cpus;
-        const memLow =
-          (h.mem_total_mb && h.mem_available_mb != null && h.mem_available_mb < MEM_LOW * h.mem_total_mb) ||
-          (h.swap_total_mb && h.swap_used_mb != null && h.swap_used_mb > SWAP_HIGH * h.swap_total_mb);
+        const left = h.mem_total_mb && h.mem_available_mb != null ? h.mem_available_mb / h.mem_total_mb : null;
+        const swapped = h.swap_total_mb && h.swap_used_mb != null ? h.swap_used_mb / h.swap_total_mb : null;
+        const memLow = left !== null && (left < MEM_LOW || (swapped !== null && swapped > SWAP_HIGH && left < MEM_TIGHT));
         // Screens slowed for the host's sake (the renderer's own words: "computer busy", also "in step with <screen>
         // (computer busy)"); a GPU-heavy scene slowing itself is the scene's cost, not the PC's load.
         const slowed = (state?.sessions ?? []).filter(
