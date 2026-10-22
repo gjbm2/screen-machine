@@ -132,7 +132,7 @@ def test_plays_once_with_the_named_sound_and_advances_on_the_finished_edge_only(
     rig.src.set("preparing", progress=0.4)
     rig.tick()
     v = rig.p.view()
-    assert v["state"] == "preparing" and v["words"] == "First play of this piece with this sound: making it… 40%" and v["progress"] == 0.4
+    assert v["state"] == "preparing" and v["words"] == "Getting ready" and v["progress"] == 0.4
     rig.playing()
     rig.clock.t += 10
     v = rig.p.view()

@@ -369,11 +369,8 @@ export function percent(p: number | null | undefined): number | null {
 export function playerWords(v: PlayerView): string {
   switch (v.state) {
     case "preparing": {
-      // 1c's words (22 Oct): the first play of a piece with a sound renders it; 0% for the first seconds while the
-      // sound's samples load, so no number until it moves
-      const pct = percent(v.progress);
-      if (pct === null) return "Getting ready…";
-      return `First play of this piece with this sound: making it…${pct > 0 ? ` ${pct}%` : ""}`;
+      // loading the sound: a second or two (1c, 22 Oct: the piano renders as it plays, nothing is made ahead)
+      return "Getting ready…";
     }
     case "playing": {
       const at = clock(v.elapsed_s);

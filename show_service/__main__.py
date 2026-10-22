@@ -258,8 +258,7 @@ class Show:
             from . import library as lib_mod             # like levels/inputs: not one of the engine's modules
             self.library = lib_mod.Library(state_dir=pathlib.Path(self.opts.state_dir), recordings_fn=self._recordings,
                                            rec_dir_fn=self._recordings_folder,
-                                           recorder_ops=lib_mod.RecorderOps(lambda: self.brain),
-                                           prerender_cmd=lib_mod.PRERENDER_CMD)    # a new pin renders ahead (1c)
+                                           recorder_ops=lib_mod.RecorderOps(lambda: self.brain))
         except Exception:
             log.exception("library.py not loaded: the Music page has no library (the show carries on)")
         pl_mod = self._import("playlist") if opts.brain else None
