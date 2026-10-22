@@ -36,6 +36,10 @@ tile is zero; a pixel whose taps are all unflagged is copied), the source looked
 the glow screen-blended over it (soft-clipped 1 - e^-x, in sRGB) at ``opacity``; ``scene_tint`` takes the glow's
 colour from the picture underneath instead of the palette.  Both kernels compile with ``--use_fast_math``.
 
+The room ensemble's register (docs/ENSEMBLE.md §8.6; ``self.sound.register``, register_split): a note outside this
+screen's window ripples at ``outside`` strength (glow, swell and held glow; its size and life as struck), one inside
+at full; never hidden.  The weight is fixed when the note is struck.
+
 amount scales the glow and the displacement together (amount 0 copies the input exactly; ripples keep their state).
 pulse adds glow and a little lens (amplitude kicks, never a position).  No sound, or nothing sounding: the input
 passes through untouched (live ripples finish fading).  dt = 0: nothing ages; dt is clamped to 1 s.
@@ -54,6 +58,7 @@ import math
 
 import numpy as np
 
+from stream_service import ensemble
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
@@ -307,6 +312,7 @@ class NoteRipples(Effect):
         self.rmax = np.zeros(MAXR)
         self.sus = np.zeros(MAXR)
         self.ph = np.zeros(MAXR)
+        self.wt = np.ones(MAXR)                      # the ensemble's register weight, fixed at the strike
         self.owner = np.full(128, -1, np.int64)      # pitch -> its newest slot (the one that carries the held glow)
         self.clock = 0.0
         self.drift = 0.0
@@ -352,6 +358,8 @@ class NoteRipples(Effect):
         self.rmax[i] = 0.28 * float(p["size"]) * (1.25 - 0.6 * u) * (0.6 + 0.5 * vel)
         self.sus[i] = 0.0
         self.ph[i] = self.rng.uniform(0.0, 2.0 * math.pi)
+        wr = ensemble.note_weights(getattr(getattr(self, "sound", None), "register", None), pitch)
+        self.wt[i] = 1.0 if wr is None else float(wr)
         self.owner[pitch] = i
 
     def _step(self, p: dict, dt: float, lens_on: bool) -> int:
@@ -404,13 +412,14 @@ class NoteRipples(Effect):
         env = bloom * (1.0 - a) ** 1.4
         R = 0.006 + self.rmax[idx] * (1.0 - np.exp(-GROW_K * a)) / (1.0 - math.exp(-GROW_K))
         wd = (0.0018 + 0.012 * R) * (0.85 + 0.35 * (1.0 - u)) * (0.75 + 0.25 * size)
-        amp = (0.3 + 0.7 * vel) * env
+        wt = self.wt[idx]                                               # the ensemble's register (1: full)
+        amp = (0.3 + 0.7 * vel) * env * wt
         hw = HALO_W * wd
         lw = LENS_R * R + LENS_H * hw                                   # the wavefront swell's width
-        lens = (0.3 + 0.7 * vel) * bloom * (1.0 - a) ** 0.8 * LENS_A * lw if lens_on else np.zeros(idx.size)
+        lens = (0.3 + 0.7 * vel) * bloom * (1.0 - a) ** 0.8 * LENS_A * lw * wt if lens_on else np.zeros(idx.size)
         sp = 3.6 * wd + 0.01
         br = 0.78 + 0.22 * np.sin(2.0 * math.pi * BREATH_HZ * self.clock + self.ph[idx])
-        sus = self.sus[idx] * float(p["sustain"]) * br * SUS_GAIN
+        sus = self.sus[idx] * float(p["sustain"]) * br * SUS_GAIN * wt
         rs = (0.012 + 0.012 * (1.0 - u)) * size * (0.94 + 0.06 * br) * (0.7 + 0.4 * float(p["sustain"]))
         P = self._palette(p["palette"])
         per = float(p["palette_period"])
@@ -445,7 +454,7 @@ class NoteRipples(Effect):
         h[:n, 9:12] = col[vis]
         h[:n, 12] = np.minimum(inner, outer)[vis]
         h[:n, 13] = outer[vis]
-        h[:n, 14] = (SUS_LENS * rs * self.sus[idx] * float(p["sustain"]))[vis]
+        h[:n, 14] = (SUS_LENS * rs * self.sus[idx] * float(p["sustain"]) * wt)[vis]
         h[:n, 15] = np.where(lens_live, lens, 0.0)[vis]
         h[:n, 16] = 1.0 / hw[vis]
         h[:n, 17] = 2.0 * wd[vis]

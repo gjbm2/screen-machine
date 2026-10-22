@@ -16,6 +16,10 @@ own decay; a sounding key also lights its lane and pools light on the now line. 
 than the screen at the now line, so the middle six octaves fill it and the outermost lanes come into view as
 they recede.
 
+The room ensemble's register (docs/ENSEMBLE.md §8.6; ``self.sound.register``, register_split): a pitch outside this
+screen's window draws its tiles, ribbon and lane light at ``outside`` strength (a per-pitch weight in the upload),
+one inside at full; never hidden.
+
 How it works.  Host side, a ring of the last K strikes per pitch (strike, key-up, sound end, velocity: the
 waterfall's bookkeeping, healed against the notes table) is kept on the sound clock and written into the upload
 only when something happens; the kernel subtracts "now".  One small ``.set()`` per frame carries it with the
@@ -42,6 +46,7 @@ import math
 
 import numpy as np
 
+from stream_service import ensemble
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
@@ -56,8 +61,10 @@ NP = 64                                 # camera + look params
 NCOL = 128 * 3                          # per-pitch colour table
 NPOOL = 96                              # blurred lane light (88 lanes + padding)
 NSEG = 128 * K * 4                      # per-pitch strike slots: t_on, t_off, t_end (s since base), vel
+NWGT = 128                              # per-pitch weight: the ensemble's register (1 = full)
 OFF_COL, OFF_POOL, OFF_SEG = NP, NP + NCOL, NP + NCOL + NPOOL
-NPACK = OFF_SEG + NSEG
+OFF_WGT = OFF_SEG + NSEG
+NPACK = OFF_WGT + NWGT
 VFOV_DEG = 50.0
 NOW_NDC = -0.70                         # the now line's screen height (ndc, -1 bottom) at the base camera
 H_REF = 0.5                             # the camera height at which the sheet has its reference width
@@ -87,6 +94,7 @@ _SRC = HELPERS + r"""
 #define OFF_COL """ + str(OFF_COL) + r"""
 #define OFF_POOL """ + str(OFF_POOL) + r"""
 #define OFF_SEG """ + str(OFF_SEG) + r"""
+#define OFF_WGT """ + str(OFF_WGT) + r"""
 
 __device__ __forceinline__ float nh_sdbox(float px, float py, float hx, float hy, float r) {
     const float qx = fabsf(px) - hx + r, qy = fabsf(py) - hy + r;
@@ -286,9 +294,10 @@ void nh_draw(uchar4* __restrict__ ov, const float* __restrict__ B, const float* 
             }
         }
         if (k > 0.f) {
-            const float kk = k * P[27] * sheet, ww = kw * P[27] * sheet;
+            const float wg = B[OFF_WGT + pc];                // the ensemble's register weight for this pitch
+            const float kk = k * wg * P[27] * sheet, ww = kw * wg * P[27] * sheet;
             acc.x += kk * C[0] + ww; acc.y += kk * C[1] + ww; acc.z += kk * C[2] + ww;
-            dimn += dimk * sheet;
+            dimn += dimk * wg * sheet;
         }
     }
     const float dim = fminf(0.85f, P[24] * sheet * pres + 0.6f * dimn);
@@ -461,6 +470,9 @@ class NoteHighway3D(Effect):
         self.bl1 = cp.zeros((self.bh, self.bw, 4), cp.float32)
         self.dev = cp.zeros(NPACK, cp.float32)
         self.host = np.zeros(NPACK, np.float32)
+        self.wgt = self.host[OFF_WGT:OFF_WGT + NWGT]     # a view into the upload: the register weights
+        self.wgt[:] = 1.0
+        self.pitches = np.arange(128)
         self.quiet = cp.zeros((128, 4), cp.float32)
         iw, ih, bw, bh = (np.int32(v) for v in (self.w, self.h, self.bw, self.bh))
         self._i = (iw, ih, bw, bh, np.int32(ctx.width), np.int32(ctx.height))
@@ -697,11 +709,15 @@ class NoteHighway3D(Effect):
         H[35:38] = 0.55 * np.clip(a_ + b_ * np.cos(2 * np.pi * (c_ * t0 + d_)), 0.0, 1.0) + 0.45
         H[38], H[39], H[40] = self.presence, lw, now
         H[41] = 0.0 if p["direction"] == "away" else TOWARDS_AT * depth
+        # the ensemble's register: per-pitch weights (1 everywhere without a window)
+        wr = ensemble.note_weights(getattr(getattr(self, "sound", None), "register", None), self.pitches)
+        self.wgt[:] = 1.0 if wr is None else wr
         # the lane-light pool: sounding levels (bloomed in), blurred across a few lanes
         pool = H[OFF_POOL:OFF_POOL + NPOOL]
         if lvl is not None:
             bloom = np.clip(self.sound.frame.notes[LOW:HIGH + 1, 2] * 10.0, 0.0, 1.0)
-            self.pool_lin[:] = np.minimum(lvl[LOW:HIGH + 1], 1.0) * bloom * bloom * (3.0 - 2.0 * bloom)
+            self.pool_lin[:] = np.minimum(lvl[LOW:HIGH + 1], 1.0) * bloom * bloom * (3.0 - 2.0 * bloom) \
+                * self.wgt[LOW:HIGH + 1]
             pool[:NL] = np.convolve(self.pool_lin, self.pool_kernel, mode="same")
             pool[NL:] = 0.0
         else:
