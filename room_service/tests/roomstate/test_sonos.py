@@ -118,7 +118,8 @@ def test_the_playback_schema_offers_the_real_favourites_and_playlists_after_a_po
         s = a.value_schema("drawing-room.playback")
         assert s["oneOf"][2]["properties"]["favourite"]["enum"] == ["BBC Radio 4", "Disco"]
         assert s["oneOf"][3]["properties"]["sonos_playlist"]["enum"] == ["Dinner"]
-        assert set(s["oneOf"][2]["properties"]) == {"favourite", "shuffle", "volume", "only_if_idle"}
+        assert set(s["oneOf"][2]["properties"]) == {"favourite", "shuffle", "volume", "only_if_idle", "fade_s"}
+        assert s["oneOf"][2]["properties"]["fade_s"]["x-ui"]["advanced"] is True
         assert s["x-ui"]["default_policy"] == "ignore" and s["x-ui"]["store_if_labels"][0]["value"][0] == "favourite"
         assert a.value_schema("drawing-room.now_playing")["readOnly"] is True
         v = a.value_schema("drawing-room.volume")["x-ui"]
@@ -205,3 +206,92 @@ def test_entering_piano_with_the_player_stopped_sends_nothing(tmp_path):
         await r.c.reconcile_once()
         assert len(sent(r, "sonos")) == n and r.c.s["desired"]["sonos.lounge.playback"]["retry"] is None
     asyncio.run(body())
+
+
+class TitledSoCo(FakeSoCo):
+    """SoCo's real play_uri signature (title=...), and every volume set and play_uri call, in order."""
+
+    def __init__(self, ip: str) -> None:
+        self.events: list[tuple] = []
+        self._volume = 0
+        super().__init__(ip)
+        self.events.clear()
+
+    @property
+    def volume(self):
+        return self._volume
+
+    @volume.setter
+    def volume(self, v):
+        self._volume = v
+        self.events.append(("volume", v))
+
+    def play_uri(self, uri, meta="", title=""):
+        self.events.append(("play_uri", uri, title))
+        super().play_uri(uri, meta)
+
+
+PIANO = "http://192.168.1.205:8080/output/piano/chopin-op9-2.flac"
+
+
+def titled() -> tuple[SonosAdapter, TitledSoCo, list]:
+    dev = TitledSoCo("192.168.1.17")
+    a = SonosAdapter({"drawing-room": {"room": "Drawing Room", "ip": dev.ip}}, factory=lambda ip: dev, ramp_s=0.05)
+    a.change_time_s = 1.0
+    z, ramps = a.zones["drawing-room"], []
+    orig = z.ramp
+
+    def ramp(target, over_s, gen):
+        ramps.append((target, over_s))
+        return orig(target, over_s, gen)
+    z.ramp = ramp
+    return a, dev, ramps
+
+
+def test_fade_s_0_sets_the_volume_then_plays_at_once_and_title_is_shown():
+    """Our own piano sound (owner, 22 Oct): no fade-out of what's playing, no fade-in, the volume first, then
+    play_uri(uri, title=...); it reads back as the same playback, so confirm (and the room's settle) holds."""
+    async def body():
+        a, dev, ramps = titled()
+        dev.state, dev._volume = "PLAYING", 50                    # the radio is on
+        v = a.normalize("drawing-room.playback", {"uri": PIANO, "title": "Chopin", "fade_s": 0, "volume": 40})
+        out = await a.apply({"drawing-room.playback": v}, {"over_s": 4.0})
+        assert out.status == "ok" and ramps == []
+        assert dev.events == [("volume", 40), ("play_uri", PIANO, "Chopin")] and dev.state == "PLAYING"
+        got = (await a.read(["drawing-room.playback"]))["drawing-room.playback"].value
+        assert got == v
+        a.zones["drawing-room"].played = None                    # e.g. after a restart: only the address is known
+        got = (await a.read(["drawing-room.playback"]))["drawing-room.playback"].value
+        assert got == {"uri": PIANO} and a.equivalent(got, {"uri": PIANO, "title": "Chopin", "fade_s": 0})
+        assert not a.equivalent(got, {"uri": PIANO + "x", "title": "Chopin"}) and not a.equivalent(got, v)
+        assert (await a._confirm("drawing-room.playback", {"uri": PIANO, "title": "Chopin"})).status == "ok"
+    asyncio.run(body())
+
+
+def test_fade_s_sets_this_changes_fade_and_without_it_nothing_changes():
+    async def body():
+        a, dev, ramps = titled()
+        dev.state, dev._volume = "PLAYING", 50
+        out = await a.apply({"drawing-room.playback": {"uri": PIANO, "fade_s": 0.1}}, {"over_s": 4.0})
+        assert out.status == "ok" and ramps == [(0, 0.1), (50, 0.1)]        # out and back in over fade_s
+        assert ("play_uri", PIANO, "") in dev.events and dev._volume == 50
+        ramps.clear()
+        out = await a.apply({"drawing-room.playback": {"favourite": "BBC Radio 4"}}, {"over_s": 0.05})
+        assert out.status == "ok" and ramps == [(0, 0.05), (50, 0.05)]       # no fade_s: the usual fade
+    asyncio.run(body())
+
+
+def test_fade_s_and_title_are_checked_and_worded():
+    a, _ = adapter()
+    n = a.normalize("drawing-room.playback", {"uri": PIANO, "title": "Chopin", "fade_s": 0, "volume": 40})
+    assert n == {"uri": PIANO, "title": "Chopin", "fade_s": 0, "volume": 40}
+    assert a.normalize("drawing-room.playback", {"favourite": "A", "fade_s": 1.5})["fade_s"] == 1.5
+    for bad in [{"favourite": "A", "title": "x"}, {"uri": PIANO, "title": ""}, {"uri": PIANO, "title": 3},
+                {"uri": PIANO, "fade_s": -1}, {"uri": PIANO, "fade_s": "0"}, {"uri": PIANO, "fade_s": True},
+                {"uri": PIANO, "fade_s": float("nan")}, {"uri": PIANO, "fade_s": float("inf")}]:
+        with pytest.raises(ValueError):
+            a.normalize("drawing-room.playback", bad)
+    assert a.words("drawing-room.playback", n) == "Play Chopin, at 40%, without a fade"
+    assert a.words("drawing-room.playback", {"favourite": "Disco", "fade_s": 2}) == "Play Disco, fading over 2 s"
+    assert a.words("drawing-room.playback", {"uri": PIANO}) == "Play a stream"
+    assert a.show("drawing-room.playback", n) == "play Chopin"

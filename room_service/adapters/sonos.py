@@ -5,8 +5,10 @@ Members per zone `<zone>`:
   <zone>.volume       level, 0..100 (tolerance 1); opts {"over_s": n} ramps it
   <zone>.playback     level: "paused" | "stopped" | {"favourite": "<Sonos favourite title>"} |
                       {"sonos_playlist": "<Sonos playlist title>"} | {"spotify_link": "<share link>"} | {"uri": uri},
-                      the object forms optionally with shuffle (bool), volume (0..100: the fade target) and only_if_idle
-                      (bool: leave music that is already playing alone).
+                      the object forms optionally with shuffle (bool), volume (0..100: the fade target), only_if_idle
+                      (bool: leave music that is already playing alone) and fade_s (seconds >= 0: this change's fade
+                      out and in instead of ramp_s / opts over_s; 0 = no fade: the volume is set first, then it plays);
+                      {"uri": ...} also takes title (the name the Sonos app shows: play_uri(uri, title=...)).
                       read() gives the playback *context*, never the track: what we started reads back as we said it
                       (same context URI), a playing favourite as {"favourite": ...}, anything else as {"uri": ...}; so a
                       store captures the station or playlist and a retrieve brings it back
@@ -37,7 +39,9 @@ CONTEXTS = ("favourite", "sonos_playlist", "spotify_link", "uri")    # what a pl
 SPOTIFY_LINK = r"^(https://open.spotify.com/|spotify:)"
 CACHE_S = 60.0
 PLAYING = ("PLAYING", "TRANSITIONING")
-EXTRAS = ("shuffle", "volume", "only_if_idle")        # options any playback object may carry
+EXTRAS = ("shuffle", "volume", "only_if_idle", "fade_s", "title")    # options a playback object may carry
+URI_ONLY = ("title",)                                 # ... only a {"uri": ...} one
+START_ONLY = ("fade_s", "title")                      # how it was started, not what plays: ignored when comparing
 FIELD_WORDS = {"volume": "volume", "playback": "music", "now_playing": "now playing"}
 SOURCE_WORDS = {"tv": "TV sound", "line-in": "Line-in", "radio": "A radio stream", "queue": "The Sonos queue",
                 "spotify": "Spotify", "group": "Grouped with another room"}
@@ -192,6 +196,8 @@ class _Zone:
                 co.clear_queue()
                 _add_share_link(co, v["spotify_link"])
                 co.play_from_queue(0)
+            elif v.get("title"):
+                co.play_uri(v["uri"], title=v["title"])   # SoCo makes minimal metadata: the Sonos app shows the name
             else:
                 co.play_uri(v["uri"])
             if "shuffle" in v:
@@ -206,10 +212,15 @@ class _Zone:
         """One mode-driven change, smoothly. Pause or stop: fade out, pause, then put the volume back silently so the
         next play isn't at zero. Play: fade out what's playing, switch, fade up from 0 to the target (the volume
         member, else the playback's own volume, else where the volume was). Volume alone: a ramp while playing, a
-        silent set while not. Returns a note when only_if_idle left playing music alone ("" otherwise)."""
+        silent set while not. A playback's fade_s replaces over_s for the whole change; fade_s 0 plays at once: no
+        fade-out, the volume set first, then play, no ramp. Returns a note when only_if_idle left playing music alone
+        ("" otherwise)."""
         playing = self._state() in PLAYING
         before = self._vol()
         note = ""
+        fade = playback.get("fade_s") if isinstance(playback, dict) else None
+        if fade is not None:
+            over_s = float(fade)
         if isinstance(playback, dict) and playback.get("only_if_idle") and playing:
             playback, note = None, "music already playing: left alone (only_if_idle)"
         if playback in ("paused", "stopped"):
@@ -221,11 +232,16 @@ class _Zone:
                     co.pause() if playback == "paused" else co.stop()
             self._set_vol(before if volume is None else volume)
         elif playback is not None:
+            target = volume if volume is not None else playback.get("volume", before)
+            if fade is not None and over_s <= 0:          # no fade: at the volume from the first note
+                self._set_vol(target)
+                self._play(playback)
+                return note
             if playing and not self.ramp(0, over_s, gen):
                 return note
             self._set_vol(0)
             self._play(playback)
-            self.ramp(volume if volume is not None else playback.get("volume", before), over_s, gen)
+            self.ramp(target, over_s, gen)
         elif volume is not None:
             if playing:
                 self.ramp(volume, over_s, gen)
@@ -259,7 +275,11 @@ class SonosAdapter(Adapter):
         return self.zones[zone], field
 
     def equivalent(self, x, y):
-        """Paused and stopped both mean "no music": a mode that wants one is already there with the other."""
+        """Paused and stopped both mean "no music": a mode that wants one is already there with the other. Two
+        playbacks that differ only in how they were started (fade_s, title) play the same thing."""
+        if isinstance(x, dict) and isinstance(y, dict):
+            return ({k: v for k, v in x.items() if k not in START_ONLY}
+                    == {k: v for k, v in y.items() if k not in START_ONLY})
         return isinstance(x, str) and isinstance(y, str) and {x, y} == {"paused", "stopped"}
 
     def label(self, member: str) -> str:
@@ -277,10 +297,14 @@ class SonosAdapter(Adapter):
     @staticmethod
     def _playback_schema(z: _Zone) -> dict:
         """Pause, stop, or play one thing: the household's real favourites and Sonos playlists from the poll's cache
-        (no I/O here; empty until the first poll), or a Spotify link. {"uri": ...} is accepted but not offered."""
+        (no I/O here; empty until the first poll), or a Spotify link. {"uri": ...} (and its title) is accepted but
+        not offered."""
         extras = {"shuffle": {"type": "boolean", "x-ui": {"label": "Shuffle"}},
                   "volume": range_schema(0, 100, "Volume", unit="%", ends=("Silent", "Loud")),
-                  "only_if_idle": {"type": "boolean", "x-ui": {"label": "Don't interrupt music that's already playing"}}}
+                  "only_if_idle": {"type": "boolean", "x-ui": {"label": "Don't interrupt music that's already playing"}},
+                  "fade_s": {"type": "number", "minimum": 0, "x-ui": {
+                      "label": "Fade", "unit": "s", "advanced": True, "unset_label": "The usual fade",
+                      "description": "How long the music fades out and back in; 0 starts it at once, at its volume"}}}
         for x in extras.values():
             x.pop("default", None)
 
@@ -325,10 +349,18 @@ class SonosAdapter(Adapter):
             raise ValueError(f"playback has unknown keys {extra}; it takes {list(EXTRAS)}")
         if ctx[0] == "spotify_link" and not re.match(SPOTIFY_LINK, value["spotify_link"]):
             raise ValueError("a Spotify link starts https://open.spotify.com/ or spotify:")
+        if ctx[0] != "uri" and (only := sorted(set(value) & set(URI_ONLY))):
+            raise ValueError(f"{', '.join(only)} is only for a {{\"uri\": ...}} playback")
         out = dict(value)
         for k in ("shuffle", "only_if_idle"):
             if k in out and not isinstance(out[k], bool):
                 raise ValueError(f"{k} is true or false")
+        if "fade_s" in out:
+            f = out["fade_s"]
+            if isinstance(f, bool) or not isinstance(f, (int, float)) or not 0 <= f < float("inf"):
+                raise ValueError("fade_s is a number of seconds, 0 or more")
+        if "title" in out and not (isinstance(out["title"], str) and out["title"].strip()):
+            raise ValueError("title is the name to show")
         if "volume" in out:
             v = out["volume"]
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
@@ -339,16 +371,20 @@ class SonosAdapter(Adapter):
     def show(self, member: str, value: Any) -> str:
         if isinstance(value, dict) and (k := next((k for k in CONTEXTS[:2] if k in value), None)):
             return f"play {value[k]}"
+        if isinstance(value, dict) and "uri" in value and value.get("title"):
+            return f"play {value['title']}"
         return value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
 
     def words(self, member: str, value: Any) -> str:
         if not isinstance(value, dict):
             return {"paused": "Paused", "stopped": "Stopped"}.get(value, super().words(member, value))
         what = (value.get("favourite") or value.get("sonos_playlist")
-                or ("a Spotify link" if "spotify_link" in value else "a stream"))
+                or ("a Spotify link" if "spotify_link" in value else value.get("title") or "a stream"))
+        fade = value.get("fade_s")
         bits = [f"Play {what}"] + (["shuffled"] if value.get("shuffle") else []) \
             + ([f"at {value['volume']}%"] if "volume" in value else []) \
-            + (["unless music is already playing"] if value.get("only_if_idle") else [])
+            + (["unless music is already playing"] if value.get("only_if_idle") else []) \
+            + ([] if fade is None else ["without a fade"] if fade == 0 else [f"fading over {fade:g} s"])
         return ", ".join(bits)
 
     async def _call(self, fn, *args):
@@ -376,9 +412,11 @@ class SonosAdapter(Adapter):
         for zk, fields in by_zone.items():
             z, members = self.zones[zk], [f"{zk}.{f}" for f in fields]
             z.gen += 1
+            pb = fields.get("playback")
+            span = float(pb["fade_s"]) if isinstance(pb, dict) and "fade_s" in pb else over   # the fade it will use
             try:
-                note = await asyncio.wait_for(asyncio.to_thread(z.change, fields.get("volume"), fields.get("playback"),
-                                                                over, z.gen), over * 3 + 15)
+                note = await asyncio.wait_for(asyncio.to_thread(z.change, fields.get("volume"), pb, over, z.gen),
+                                              span * 3 + 15)
             except asyncio.CancelledError:
                 z.gen += 1                                # stop the ramp: the next change carries on from here
                 raise
@@ -408,8 +446,9 @@ class SonosAdapter(Adapter):
             except Exception:
                 got = None
             if got == v or (isinstance(v, int) and isinstance(got, int) and abs(got - v) <= self.tolerance) \
-                    or (v == "paused" and got == "stopped"):  # nothing was playing: paused or stopped is the same here
-                return Outcome("ok")
+                    or (v == "paused" and got == "stopped") \
+                    or (isinstance(v, dict) and self.equivalent(got, v)):   # paused/stopped: no music either way;
+                return Outcome("ok")                      # a playback differing only in fade_s / title: the same
             await asyncio.sleep(0.5)
         return Outcome("unconfirmed", f"reads {self.show(member, got)}")
 
