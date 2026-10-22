@@ -614,3 +614,33 @@ def test_guard_pairs_each_calls_cpu_and_real_gpu_span():
     drive(layer, timer, gpu, 0, 10, guard=False)
     st = layer.gpu_stat
     assert st.gpu_bound_ms == pytest.approx(80.0) and 0.0 <= st.cpu_ms < 50.0
+
+
+def test_a_first_call_stalled_on_the_host_is_a_cold_start_not_a_hang():
+    """7c, 22 Oct: staff_roll's first frame in a cold in-process preview read 6229 ms of span, all of it the host's
+    submit (the GPU idle between the events).  A first call like that is kept; a GPU-bound one, or a later host-bound
+    one, still stops."""
+    import time as _time
+
+    class HostStall(Heavy):
+        def render(self, *args):
+            _time.sleep(self.cost() / 1000.0)                       # the host's own time inside the bracket
+            self.gpu.now += self.cost() / 1000.0
+            self.renders += 1
+            args[-1][...] = self.value
+
+    for plugin, stops in (("host", (False, True)), ("gpu", (True,))):
+        gpu = FakeGpu()
+        timer = timer_for(gpu)
+        timer.mon.frame_ms = 40.0                                    # a short "hang" so the test sleeps briefly
+        src = HostStall(gpu, 60.0) if plugin == "host" else Heavy(gpu, 60.0)
+        layer = SourceLayer(src, 0.0)
+        for i, want in enumerate(stops):
+            fc = FrameCtx(i, FPS, Pool(), timer=timer)
+            timer.frame_begin()
+            layer.render(fc, np.zeros((1, 1, 4)))
+            timer.frame_end()
+            gpu.now += 1.0
+            fc = FrameCtx(i + 30, FPS, Pool(), timer=timer)
+            timer.poll(fc)
+            assert bool(fc.errors) == want, (plugin, i)
