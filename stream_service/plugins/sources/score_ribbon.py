@@ -211,6 +211,9 @@ class ScoreRibbon(Source):
         self.record_events = False
         self._batch = None
         self._refit = None
+        self._snap = False                                       # a join: put the paper at 'now' once laid out
+        self._joining = False
+        self._join_outs: list = []
 
     # -- the room ---------------------------------------------------------------------------------------------------
     def _drain(self, frame, t: float) -> None:
@@ -222,6 +225,9 @@ class ScoreRibbon(Source):
             with room._lock:
                 msgs = list(inbox)
                 inbox.clear()
+            # the first content after setup may be a phrase well under way (the room hands a screen that joins
+            # mid-phrase its bars so far): its notes aren't fresh, and the paper starts at 'now', not at its start
+            self._joining = self.S is None and any(m.get("bars") for m in msgs)
             for m in msgs:
                 self._rx = m.get("_rx")                  # (the harness stamps arrivals; production messages don't)
                 bars_m = list(m.get("bars") or ())
@@ -251,6 +257,7 @@ class ScoreRibbon(Source):
         if self.S is None:
             A = 0.0
             self.S = A - (X_PLAY * self.w - self.XL)
+            self._snap = True                    # nothing drawn yet: the paper goes straight to 'now' after layout
         else:
             v = self.pace * sp
             A = self.S + (X_PLAY * self.w - self.XL)
@@ -281,10 +288,12 @@ class ScoreRibbon(Source):
                 m = _Note(n.id, n.pitch, n.vel, n.t_on, n.t_off, self.clock, ph)
                 self.notes[n.id] = m
                 ph.notes[n.id] = m
-                if ph.ref is None or n.t_on < ph.t_first:
-                    ph.ref, ph.t_first = n.id, n.t_on
+                if ph.t_first is None or n.t_on < ph.t_first:
+                    ph.t_first = n.t_on
+                    if ph.ref is None or ph.pl.wbars == 0:          # (a phrase joined mid-way keeps its bars'
+                        ph.ref = n.id                                # first note)
                 lagv = t - n.t_on
-                if 0.0 <= lagv < 2.0:
+                if 0.0 <= lagv < 2.0 and not self._joining:         # notes from before a join aren't lag
                     self.lag += (lagv - self.lag) * LAG_A
                 self.stats["births"] += 1
                 self.dirty_now = True
@@ -326,6 +335,7 @@ class ScoreRibbon(Source):
                     pl = ph.pl
                     ph.prov_owned |= pl.written_keys            # what the new bars don't write again goes
                     pl.reset_written()
+                    self._join_outs = [(p_, o) for p_, o in self._join_outs if p_ is not ph]   # (not yet shown)
                     self.regrid = True
                     self.dirty = True
                     self.stats["rewrites"] += 1
@@ -376,14 +386,35 @@ class ScoreRibbon(Source):
                     for i_, tin in zip(e.ids, e.tie_in):
                         if not tin and i_ not in ov:
                             ov[i_] = bb.pos * bb.units + e.start
-        self._fit_warp(ph, ov, q0 if pl.wbars == 0 else pl.q0, bar.units)
+        d_bar = (bar.t_end - bar.t_start) / max(1, bar.units)
+        self._fit_warp(ph, ov, q0 if pl.wbars == 0 else pl.q0, bar.units, d_bar if d_bar > 0 else None)
         out = pl.write(bar, ph.fifths, q0 if pl.wbars == 0 else pl.q0)
         self.stats["bars"] += 1
         self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
                             "units": bar.units})
-        self._note_info_sync(ph, out, final=True)
+        if self._joining:                          # a join: laid out now, put on stage once the paper is placed
+            self._join_outs.append((ph, out))
+        else:
+            self._note_info_sync(ph, out, final=True)
         ph.end_x = max(ph.end_x, pl.written.end_x)
         self.dirty = True
+
+    def _flush_join(self) -> None:
+        """A join's written bars on stage in one go, only what the paper shows (the rest would be culled at once):
+        a phrase a minute long joined mid-way costs one sync, not one a bar."""
+        outs, self._join_outs = self._join_outs, []
+        sp = self.sp
+        for ph in {id(p_): p_ for p_, _o in outs}.values():
+            merged = RL.Out()
+            for p_, o in outs:
+                if p_ is ph:
+                    for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
+                        getattr(merged, name).update(getattr(o, name))
+            x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+            for name in ("heads", "rests", "bars", "sigs"):
+                d = getattr(merged, name)
+                setattr(merged, name, {k: v for k, v in d.items() if v[0] >= x_min})
+            self._note_info_sync(ph, merged, final=True)
 
     def _q0_written(self, ph: _Phrase, bar) -> float:
         first = None
@@ -472,7 +503,20 @@ class ScoreRibbon(Source):
             ph.end_x = max(ph.end_x, pl.written.end_x)
             self.dirty_now = True
 
-    def _fit_warp(self, ph: _Phrase, override: dict, q0: float, units) -> bool:
+    def _sixteenth_s(self, ph: _Phrase):
+        """Seconds a 16th under the room's newest reading (None before a clock)."""
+        b = self.builder
+        if b is None:
+            return None
+        if b.grid is not None and len(b.grid.t) >= 2:
+            gt = b.grid.t
+            ibis = sorted(y - x for x, y in zip(gt[-9:], gt[-8:]) if y > x)
+            return (ibis[len(ibis) // 2] if ibis else gt[-1] - gt[-2]) / b.unit
+        if b.clock.running:
+            return b.clock.P / 4.0
+        return None
+
+    def _fit_warp(self, ph: _Phrase, override: dict, q0: float, units, d: float | None = None) -> bool:
         """The phrase's warp: each note drawn so far anchored where it is drawn now, at its 16th under the newest
         reading (``override``: nid -> 16th; else its written 16th).  A rewrite, a
         better clock or a re-read then moves the bar lines, beams and values around the notes, not the notes (only
@@ -510,13 +554,20 @@ class ScoreRibbon(Source):
                 cnt.append(1)
         for k in range(1, len(ws)):                            # monotone, never squeezed past WARP_MIN
             wx[k] = max(wx[k], wx[k - 1] + WARP_MIN * (ws[k] - ws[k - 1]))
-        qt = None
-        for k in range(len(ws) - 2, -1, -1):
-            if ws[-1] - ws[k] >= WARP_TAIL:
-                qt = (wx[-1] - wx[k]) / (ws[-1] - ws[k])
-                break
-        if qt is None:
-            qt = ph.Q or self.Q
+        # new notes (and 'now') go on at the width that keeps the paper's pace under the newest reading: steady, so
+        # the playhead's target doesn't jump with each refit (the drawn notes' own local width swings after rewrites)
+        if d is None:
+            d = self._sixteenth_s(ph)
+        if d:
+            qt = self.pace * d
+        else:
+            qt = None
+            for k in range(len(ws) - 2, -1, -1):
+                if ws[-1] - ws[k] >= WARP_TAIL:
+                    qt = (wx[-1] - wx[k]) / (ws[-1] - ws[k])
+                    break
+            if qt is None:
+                qt = ph.Q or self.Q
         qt = min(Q_MAX, max(Q_MIN, qt))
         if len(ws) < 2:
             return False
@@ -661,15 +712,16 @@ class ScoreRibbon(Source):
                     Hd.a[i, RS.H_VEL] = m.vel
 
     # -- the paper -----------------------------------------------------------------------------------------------------
-    def _playhead_target(self) -> float | None:
-        """The tape px where the playhead should be now (the open phrase's 'now', less the arrival lag)."""
+    def _playhead_target(self, ahead: float = 0.0) -> float | None:
+        """The tape px where the playhead should be now (the open phrase's 'now', less the arrival lag), or
+        ``ahead`` seconds from now."""
         ph = self.ph
         b = self.builder
         if ph is None or ph.closed or b is None or ph.pl.q0 is None:
             return None
         pl = ph.pl
         _mode, _qf, cf, unit = self._slot_fn(ph)
-        t_n = self.t_sound - self.lag
+        t_n = self.t_sound - self.lag + ahead
         held = any(n.t_off is None for n in b.notes if n.id in ph.notes)
         if not held and ph.t_last is not None:
             t_n = min(t_n, ph.t_last + AHEAD_BEATS * 4 * ph.slot_s)
@@ -833,6 +885,18 @@ class ScoreRibbon(Source):
                         if self.ph is not None:
                             self.ph.logged = True
             tm["pass"] = time.perf_counter() - _t1
+        if self._snap and self.ph is not None:
+            U = self._playhead_target()
+            if U is not None:                                    # (a join: the scene's first content), moving at
+                U2 = self._playhead_target(0.25)                 # the music's pace from the first frame
+                v = max(0.0, (U2 - U) / 0.25) if U2 is not None else 0.0
+                self.S = U - (X_PLAY * self.w - self.XL)
+                self.U, self.V, self.v_ff = U, v, v
+                self._snap = False
+                self._event("snap", {"S": self.S})
+        if self._join_outs:
+            self._flush_join()
+        self._joining = False
         _t1 = time.perf_counter()
         self._paper(dt)
         S = self.S if self.S is not None else 0.0
