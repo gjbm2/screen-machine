@@ -189,6 +189,7 @@ class _Phrase:
         self.slot_s = P_SEED / 4.0                  # seconds a 16th (free time before the clock starts)
         self.t_last = None                          # the last sound (onset, or release) in the phrase
         self.end_x = 0.0                            # sp: the right edge of its last mark
+        self.deferred = False                       # its written bars are recorded, laid out once after their batch
 
 
 class ScoreRibbon(Source):
@@ -289,6 +290,9 @@ class ScoreRibbon(Source):
         self._join_outs: list = []
         self._jchunks = collections.deque()                     # a join's bars still to go on stage
         self._held_outs = None                                   # a batch's bars, synced once after it
+        self._heavy = False                                      # this frame laid out a rewrite
+        self._lay = None                                         # [phrase, bars to go, out so far, q0, fifths]
+        self._c0 = 0.0
 
     # -- the room ---------------------------------------------------------------------------------------------------
     def _drain(self, frame, t: float) -> None:
@@ -327,6 +331,9 @@ class ScoreRibbon(Source):
                 for ph_, o in _merged(held or ()):
                     if ph_ is not done:
                         self._note_info_sync(ph_, o, final=True)
+                for ph_ in self.phrases:
+                    if ph_.deferred:
+                        self._lay_deferred(ph_, self._c0)
             rev = room.rev
         else:                                                    # an in-process room (tests)
             bars, rev = room.tick(self, frame, t)
@@ -423,6 +430,9 @@ class ScoreRibbon(Source):
                     pl = ph.pl
                     ph.prov_owned |= pl.written_keys            # what the new bars don't write again goes
                     pl.reset_written()
+                    ph.deferred = False
+                    if self._lay is not None and self._lay[0] is ph:
+                        self._lay = None
                     self._join_outs = [(p_, o) for p_, o in self._join_outs if p_ is not ph]   # (not yet shown)
                     self._jchunks = collections.deque((p_, o) for p_, o in self._jchunks if p_ is not ph)
                     if getattr(self, "_held_outs", None):
@@ -433,7 +443,15 @@ class ScoreRibbon(Source):
                     self._event("rewrite", {"serial": ph.serial})
                 return
             if ph is not None and not ph.closed:
+                if self._lay is not None and self._lay[0] is ph:
+                    self._lay_step(None)
                 self._close(ph)
+            return
+        if self._lay is not None and self._lay[0] is ph and not ph.closed:   # (its rewrite still being laid out)
+            self._note_bar_ids(ph, bar)
+            self._lay[1].append(bar)
+            self.stats["bars"] += 1
+            self.dirty = True
             return
         if ph is None or ph.closed:
             ph = self._new_phrase(None)
@@ -468,6 +486,15 @@ class ScoreRibbon(Source):
             if ph.fifths is None:
                 ph.fifths = self._fifths()
             ph.meter = bar.meter
+        # a rewrite (or a phrase's first bars) arriving at once: recorded now, laid out once after the batch, under
+        # the warp fitted then (_do_refit), and put on stage over the next frames
+        if getattr(self, "_held_outs", None) is not None and not self._joining and (pl.wbars == 0 or ph.deferred):
+            self._defer_bar(ph, bar, q0 if pl.wbars == 0 else pl.q0)
+            self.stats["bars"] += 1
+            self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
+                                "units": bar.units})
+            self.dirty = True
+            return
         ov = {}
         for bb in ([] if self._joining else (getattr(self, "_batch", None) or [bar])):   # this bar's notes at their
             if bb.marker:                                                                 # written 16ths (a join
@@ -517,6 +544,77 @@ class ScoreRibbon(Source):
             self._note_info_sync(ph, o, final=True)
             n += 1
 
+    def _note_bar_ids(self, ph: _Phrase, bar) -> None:
+        for st in bar.staves:
+            for e in st:
+                for p_, i in zip(e.pitches, e.ids):
+                    if i not in self.notes:
+                        m = _Note(i, p_, 0.6, None, None, self.clock, ph)
+                        self.notes[i] = m
+                        ph.notes[i] = m
+
+    def _defer_bar(self, ph: _Phrase, bar, q0: float) -> None:
+        pl = ph.pl
+        if pl.wbars == 0:
+            pl.units, pl.unit, pl.beats = bar.units, bar.unit, bar.beats
+            pl.q0, pl.fifths = q0, ph.fifths
+        pl.bars_written.append(bar)
+        pl.wbars += 1
+        pl.last_bar_k = bar.pos
+        pl.wend_slot = (bar.pos + 1) * bar.units
+        ph.deferred = True
+
+    def _lay_deferred(self, ph: _Phrase, t0_cpu=None) -> None:
+        """A rewrite's bars laid out once (only from just left of the tape the scene shows, under a warp: the rest
+        would be culled at once), then on stage a bar at a time, newest first, from the next frame."""
+        ph.deferred = False
+        pl = ph.pl
+        if self._lay is not None and self._lay[0] is not ph:     # (another phrase's still going: finish it first)
+            self._lay_step(None)
+        if not pl.bars_written:
+            return
+        sp = self.sp
+        x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+        if pl.warp is not None and self.S is not None and len(pl.bars_written) >= 4:
+            spc = RL.Spacer(pl.q0, pl.units, pl.Q, pl)
+            k = 0
+            for j, bar in enumerate(pl.bars_written):
+                if spc.base((bar.pos + 1) * bar.units) < x_min - 8.0:
+                    k = j + 1
+            k = max(0, k - 1)                                   # (and one more: its ties in, its first bar line)
+            if k:
+                pl.bars_written = pl.bars_written[k:]
+                self._event("rewrite_skip", {"bars": k, "kept": len(pl.bars_written)})
+        bars = list(pl.bars_written)
+        q0, fifths = pl.q0, ph.fifths if ph.fifths is not None else 0
+        pl.reset_written()
+        self._lay = [ph, collections.deque(bars), RL.Out(), q0, fifths]
+        self._lay_step(t0_cpu)
+
+    def _lay_step(self, t0_cpu) -> None:
+        """The pending rewrite's bars laid out in order, at least one a frame, more while the frame's own CPU stays
+        under JOIN_BUDGET_S (None: all now); when done its marks go on stage a bar at a time, newest first."""
+        ph, q, acc, q0, fifths = self._lay
+        pl = ph.pl
+        n = 0
+        while q and (t0_cpu is None or n == 0 or time.thread_time() - t0_cpu < JOIN_BUDGET_S):
+            one = pl.write(q.popleft(), fifths, q0)
+            for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
+                getattr(acc, name).update(getattr(one, name))
+            n += 1
+        self._heavy = True
+        if q:
+            return
+        self._lay = None
+        ph.end_x = max(ph.end_x, pl.written.end_x)
+        sp = self.sp
+        x_min = ((self.S if self.S is not None else 0.0) - (self.R - 1) * self.WV - 8 * sp - ph.A) / sp
+        for name in ("heads", "rests", "bars", "sigs"):
+            d = getattr(acc, name)
+            setattr(acc, name, {k_: v for k_, v in d.items() if v[0] >= x_min})
+        self._jchunks.extend((ph, o) for o in _by_bar(acc, pl.units or 16))
+        self.dirty_now = True
+
     def _join_visible(self, bars: list) -> list:
         """A join's bars less those that would land left of the tape the scene shows (laid out only to be dropped):
         counted back from 'now' at a 16th no wider than the narrowest the phrase will get (pushes only widen)."""
@@ -560,6 +658,8 @@ class ScoreRibbon(Source):
         return float(first if first is not None else bar.pos * bar.units)
 
     def _close(self, ph: _Phrase) -> None:
+        if ph.deferred:
+            self._lay_deferred(ph)
         ph.closed = True
         fb = ph.pl.final_bar()
         if fb is not None:
@@ -623,7 +723,11 @@ class ScoreRibbon(Source):
         if b.grid is not None or b.clock.running:
             _m, qf, _c, _u = self._slot_fn(ph)
             pairs += [(n.id, float(qf(n.t_on))) for n in b.notes if n.id in ph.notes and n.id not in seen]
-        if self._fit_warp(ph, dict(pairs), pl.q0, pl.units):
+        fit = self._fit_warp(ph, dict(pairs), pl.q0, pl.units)
+        if ph.deferred:
+            self._lay_deferred(ph, self._c0)
+            return ph
+        if fit:
             out = pl.rewrite_all(ph.fifths if ph.fifths is not None else 0, pl.q0)
             self._note_info_sync(ph, out, final=True)
             ph.end_x = max(ph.end_x, pl.written.end_x)
@@ -985,8 +1089,9 @@ class ScoreRibbon(Source):
         if self.t_base is None:
             self.t_base = self.stage.t_ref = self.t_sound
         tm = self.tm = {}
-        _c0 = time.thread_time()
+        _c0 = self._c0 = time.thread_time()
         _t0 = time.perf_counter()
+        self._heavy = False
         self._wall = time.monotonic()
         if self.builder is not None:
             self._drain(f, self.t_sound)
@@ -999,12 +1104,15 @@ class ScoreRibbon(Source):
                     if s != self.last_pass_slot:
                         self.last_pass_slot = s
                         self.dirty = True
+            if self._lay is not None and not self._heavy:          # a rewrite still being laid out
+                self._lay_step(_c0)
             _t1 = time.perf_counter()
             tm["drain"] = _t1 - _t0
             # a birth is laid out at once; anything else at most every 50 ms (a burst of releases and replies
             # is one pass)
             # (a join's bars took this frame: its layout, the paper and the stage from the next)
-            if (self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05)) and not self._joining:
+            if (self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05)) and not self._joining \
+                    and not self._heavy:                    # (nor a rewrite's: that frame lays it out)
                 self.dirty = self.dirty_now = False
                 self.last_pass = self.clock
                 try:
@@ -1024,7 +1132,7 @@ class ScoreRibbon(Source):
                 self.U, self.V, self.v_ff = U, v, v
                 self._snap = False
                 self._event("snap", {"S": self.S})
-        if (self._join_outs or self._jchunks) and not self._joining:
+        if (self._join_outs or self._jchunks) and not self._joining and not self._heavy:
             self._flush_join(_c0)
         self._joining = False
         _t1 = time.perf_counter()
