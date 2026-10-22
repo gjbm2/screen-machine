@@ -3,7 +3,7 @@
 import { createContext, useMemo } from "react";
 import type { RoomApi } from "./api";
 import type { PickChip, PickFacet, PickItem } from "./Picker";
-import { isPicked } from "./roomFx";
+import { isPicked, ownStack } from "./roomFx";
 import type { FxEntry, Library, LibraryScene, Look } from "./types";
 
 /** The scroll area thumbnails live in (a picker's grid), so they start loading a little before they show. */
@@ -228,7 +228,7 @@ export function presetLabel(name: string, lib: Library | null): string {
 /** A look's effects as chips: the bus (yours and the room's picks, filtered by `kinds`), then the scene's own. */
 export function fxChips(look: Look | null | undefined, lib: Library | null, kinds: { yours: boolean; picked: boolean } = { yours: true, picked: true }): FxChip[] {
   const out: FxChip[] = [];
-  for (const e of look?.fx?.stack ?? []) {
+  for (const e of ownStack(look?.fx?.stack)) {
     const picked = isPicked(e);
     if (picked ? !kinds.picked : !kinds.yours) continue;
     out.push({ key: e.id, label: fxLabel(e, lib), kind: picked ? "picked" : "yours", entry: e, preset: e.preset ?? null });
