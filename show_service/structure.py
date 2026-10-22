@@ -95,6 +95,9 @@ are show.yaml structure.fastled):
              vouches for the song (playing, its end more than arm_s away: a break inside the song) or the piano does
              (``piano_vouches``: a key or the damper down, or a note within track.piano_rest_s: a rest inside the
              piece; owner, 21 Oct: practice kept going dark). Once it stops vouching, the same gap ends the song.
+             The same vouch holds the dsp track change (after a gap, or a novelty spike: the tagger's genre flips
+             and the key moves inside one piece; 22 Oct, ff: both TVs re-cued twice in 30 s of practice), counted
+             ``ends["piano_held"]``.
   back       after a track_end, sound again with no track change (at once via dsp; via sonos after end_slack_s,
              the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
              that went dark come back. A later silence after music sends track_end (the same id) again.
@@ -734,7 +737,7 @@ class Structure:
         self._trk_e = [0.0, 0]                           # this song's energy while it sounded: (sum, n)
         self._kind_n: collections.Counter = collections.Counter()   # per-track counts for event ids
         self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, "sound_back": 0, "waited": 0,
-                     "hook_errors": 0}
+                     "hook_errors": 0, "piano_held": 0}
         self._ctx_parts: dict = {}
         self._build_snapshot(mono())
 
@@ -2013,6 +2016,9 @@ class Structure:
 
     def _track_jump(self, now_s: float, tau: float, nov_v: float, thr: float, grid: _Grid) -> Optional[str]:
         tr = self.cfg["track"]
+        if piano_vouches(self.ctx, tr["piano_rest_s"]):  # the piano says it's one piece: no dsp track change
+            self.ends["piano_held"] += 1
+            return None
         now_sig = self._signature(now_s, grid)
         g = self._gap_for(now_s, tau)
         if g is not None:
@@ -2035,6 +2041,10 @@ class Structure:
             self._pending_gap = None
             return
         j = self._jump(pg["sig"], sig)
+        if j and piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+            self._pending_gap = None                      # a rest inside the piece (_track_jump's rule)
+            self.ends["piano_held"] += 1
+            return
         if j:
             self._pending_gap = None
             rec = {"t_s": round(self.cur["start_s"], 3), "novelty": None, "snapped": round(self.cur["start_s"], 3),
