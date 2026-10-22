@@ -959,6 +959,10 @@ class Engine:
             except Exception:   # modulation must never take the stream down: render unmodulated from here on
                 self._hook_failed = True
                 log.exception("[%s] frame hook failed; signals frozen for this session", self.name)
+        snd = self.sound
+        if snd is not None:     # the ensemble's register window for the note drawers (ensemble.py, sound.py)
+            lv = getattr(self.bus.runtime, "lever", None)
+            snd.register = None if lv is None else lv.get("register")
         slot.ev_start.record(stream)
         timer = self.timer
         if timer is not None:

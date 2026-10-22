@@ -55,7 +55,7 @@ import secrets
 import time
 from typing import Any, Callable, Optional
 
-from . import binding, fx_interplay, palettes, rooms
+from . import binding, ensemble, fx_interplay, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     validate_auto, validate_direction, weighted_pick
@@ -323,6 +323,11 @@ class Session(EngineListener):
         self._fx_want: Optional[tuple] = None     # (leader's auto presets, fade_s, why) to mirror
         self._fx_check_t = 0.0
         self._following = False
+        # -- the room ensemble (ensemble.py; docs/ENSEMBLE.md §8): this screen's part of show_service's form --
+        self._ens_glide = ensemble.LeverGlide()     # its levers on the loop (FX director, mirrors); the frames glide
+        self._ens_lv: Optional[dict] = None         # their own copy (SessionRuntime.lever)
+        self._ens_fx_key: Any = None                # the levers the FX director was last configured with
+        self._event_sweep = False                   # the hinted room.event carries sweep_beats: cut unstaggered
 
     # -- helpers -----------------------------------------------------------------
     def emit(self, type_: str, **data) -> None:
@@ -363,6 +368,7 @@ class Session(EngineListener):
         fast = None if w is None else feed.energy_now(now)
         music_signals(sig, ex, self.sampler.w if w is None else w, fast, wf)
         self.runtime.pivots.apply(sig)            # each level centred on its own norm, as the frames see it
+        ensemble.apply_signals(sig, self._ens_lv)   # this screen's part: its energy bias, its pulse (as the frames)
         return sig
 
     def _sample_transition(self, spec: TransitionSpec) -> TransitionSpec:
@@ -597,10 +603,36 @@ class Session(EngineListener):
             await asyncio.wait(tasks, timeout=rooms.READY_S)
 
     def _room_go(self, cue: dict) -> None:
-        """Leader: an auto cue just started here; the followers cut to the same scene."""
+        """Leader: an auto cue just started here; the followers cut to the same scene.  With the ensemble, at the
+        room's moment (the leader's base photon time, before its own stagger) + each follower's own stagger."""
         for f in self.followers():
             f.follow_cue(cue["spec"], getattr(cue["trans"], "frozen_spec", None) or cue["trans_spec"], cue["at"],
-                         f"{self.screen}: {cue.get('detail') or cue['scene']}", cue.get("photon_at"))
+                         f"{self.screen}: {cue.get('detail') or cue['scene']}",
+                         cue.get("photon_base", cue.get("photon_at")), stagger=self._stagger_ok(cue))
+
+    def _stagger_ok(self, cue: dict) -> bool:
+        """An auto cue the ensemble may stagger across the room (rooms.UNSTAGGERED and person-made cues never are;
+        a room follow only when the leader's was)."""
+        if cue["cause"] != "auto" or cue.get("stagger") is False:
+            return False
+        if cue.get("reason") == "room":
+            return cue.get("stagger") is True
+        return cue.get("reason") not in rooms.UNSTAGGERED
+
+    def _ens_now(self, now: float) -> Optional[dict]:
+        """show_service's room.direction.ensemble while the direction is fresh, else None (unison)."""
+        e = (self.mgr.room_direction_now(now) or {}).get("ensemble")
+        return e if isinstance(e, dict) else None
+
+    def _cue_stagger(self, cue: dict, now: float, ref_photon: float) -> float:
+        """This screen's stagger (s) for a cue whose room moment is at ``ref_photon``; 0: today's path."""
+        if not self._stagger_ok(cue):
+            return 0.0
+        ens = self._ens_now(now)
+        if ens is None:
+            return 0.0
+        g = self.mgr.music_grid(now)
+        return rooms.stagger_s(ens, self.screen, g[1] if g is not None else None, ref_photon)
 
     async def _prepare_like(self, spec: SceneSpec, trans_spec: TransitionSpec) -> dict:
         """The leader's scene and transition, prepared on this session's GPU (with its own fit)."""
@@ -654,15 +686,16 @@ class Session(EngineListener):
             self._retire(pk["src"], pk["trans"])
 
     def follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
-                   photon_at: Optional[float] = None) -> None:
+                   photon_at: Optional[float] = None, stagger: bool = False) -> None:
         """``photon_at``: the leader's glass time for the cut, so every screen lands on the same beat (its own
-        lead subtracted here), not each on its own next beat."""
+        lead subtracted here), not each on its own next beat.  ``stagger``: the ensemble's stagger for this screen
+        applies (the leader's cue was a staggered kind; ``photon_at`` is then the room's moment, before any)."""
         if self.exited or self.state not in LIVE_STATES:
             return
-        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail, photon_at))
+        asyncio.create_task(self._follow_cue(spec, trans_spec, at, detail, photon_at, stagger))
 
     async def _follow_cue(self, spec: SceneSpec, trans_spec: TransitionSpec, at: str, detail: str,
-                          photon_at: Optional[float] = None) -> None:
+                          photon_at: Optional[float] = None, stagger: bool = False) -> None:
         want = (spec.name, trans_spec.name)
         epoch = self._epoch
         try:
@@ -682,6 +715,7 @@ class Session(EngineListener):
                     return
                 cue = self._new_cue("auto", pk["spec"], pk["trans_spec"], pk["src"], pk["trans"], at, "room", detail,
                                     photon_at=photon_at)
+                cue["stagger"] = stagger
                 if self._dispatch(cue) != "skipped":
                     self.scene_spec = pk["spec"]
         except Exception as e:
@@ -696,23 +730,35 @@ class Session(EngineListener):
     def fx_source(self) -> Optional["Session"]:
         """The session whose auto effects this one mirrors, or None when it directs its own: a screen that set its
         effects for itself (``own`` fx) does; the room's effects come from the leader, or, when the leader set its
-        own, from the first other screen that didn't."""
+        own, from the first other screen that didn't.  With the ensemble, a screen whose part has role ``lead`` is
+        the room's source (rooms.fx_source)."""
         if "fx" in self.own or not self.room or self.director.auto is None or self.exited:
             return None
         ld = self.room_leader()
         if ld is None:
             return None
-        if "fx" not in ld.own:
+        leads = self._ens_leads()
+        if not leads and "fx" not in ld.own:
             return None if ld is self else ld
-        heads = [m for m in rooms.members(self.mgr.sessions.values(), self.room) if "fx" not in m.own]
-        return None if not heads or heads[0] is self else heads[0]
+        return rooms.fx_source(self, ld, rooms.members(self.mgr.sessions.values(), self.room), leads)
+
+    def _ens_leads(self) -> list:
+        """The screens the ensemble names ``lead`` at this screen's photon time ([] without an ensemble)."""
+        now = time.monotonic()
+        ens = self._ens_now(now)
+        return [] if ens is None else ensemble.lead_screens(ens, (now + self.sampler.lead) * 1000.0)
+
+    def _fx_mirror(self, want: list) -> list:
+        """This screen's share of its source's auto effects: the first round(n x fx_density) (ensemble.fx_trim)."""
+        lv = self._ens_lv
+        return want if lv is None else ensemble.fx_trim(want, lv["fx_density"])
 
     def _room_fx(self) -> None:
         """This screen's auto FX just moved: the screens mirroring it follow."""
         want = [p for _, p in rooms.auto_fx(self.fx.stack)]
         for f in self.room_peers():
             if f.fx_source() is self:
-                f.follow_fx(want, self.fx_director.fade_s(), "room")
+                f.follow_fx(f._fx_mirror(want), self.fx_director.fade_s(), "room")
 
     def follow_fx(self, want: list, fade_s: float, why: str) -> None:
         self._fx_want = (list(want), fade_s, why)
@@ -750,12 +796,17 @@ class Session(EngineListener):
             if ld.current_spec is not None and ld.current_name != self.current_name \
                     and ld.scene_cause in ("go", "auto") and ld.state == "live":
                 self.follow_cue(ld.current_spec, self.t_in, "now", f"joined {ld.screen}")
+        self._fx_follow(now)
+
+    def _fx_follow(self, now: float) -> None:
+        """Direct this screen's effects, or keep them equal to its source's (fx_source: the leader's, or the
+        ensemble's lead screen's, trimmed to this screen's fx_density)."""
         src = self.fx_source()
         if src is None:                             # its own effects (or the room's, from here): direct them
             self._fx_tick(now)
         elif now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and src._fx_task is None:
             self._fx_check_t = now
-            want = [p for _, p in rooms.auto_fx(src.fx.stack)]
+            want = self._fx_mirror([p for _, p in rooms.auto_fx(src.fx.stack)])
             if rooms.fx_step(rooms.auto_fx(self.fx.stack), want) != (None, None):
                 self.follow_fx(want, src.fx_director.fade_s(), "room")
 
@@ -1034,6 +1085,12 @@ class Session(EngineListener):
                 lead = self.sampler.lead
                 k = math.ceil((now + lead + BEAT_MARGIN_S - anchor) / period)
                 at_mono = anchor + k * period - lead
+        st = self._cue_stagger(cue, now, pa if pa is not None else (now if at_mono is None else at_mono) + lead)
+        if st > 0.0:              # the ensemble (docs/ENSEMBLE.md §8.4): the room's moment + this screen's stagger
+            base = pa if pa is not None and pa + st - lead > now + BEAT_MARGIN_S else \
+                None if at_mono is None else at_mono + lead
+            cue["photon_base"], cue["stagger_s"] = base, round(st, 3)
+            at_mono = (now if base is None else base - lead) + st
         cue["photon_at"] = None if at_mono is None else at_mono + lead
         tid = self.next_tid()
         cue["tid"] = tid
@@ -1367,7 +1424,8 @@ class Session(EngineListener):
         return {**result, "upnext": self.upnext_view()}
 
     async def cue(self, body: Any, *, cause: str = "manual", reason: Optional[str] = None,
-                  detail: Optional[str] = None, photon_at: Optional[float] = None) -> dict:
+                  detail: Optional[str] = None, photon_at: Optional[float] = None, stagger: bool = True) -> dict:
+        """``stagger`` False: the ensemble never staggers this cue across the room (a sweep's room.event)."""
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         unknown = set(body) - {"to", "via", "at", "idempotency_key", "source"}
@@ -1455,6 +1513,7 @@ class Session(EngineListener):
                 self._cue_event("cancelled", c, reason="exit" if self.exited else self.state)
                 raise SessionError(409, "bad_state", f"session is {self.state}")
             cue = self._new_cue(cause, spec, trans_spec, src, trans, at, reason, detail, source, photon_at)
+            cue["stagger"] = stagger
             outcome = self._dispatch(cue)
             if outcome != "skipped":
                 self.scene_spec = spec
@@ -1575,7 +1634,7 @@ class Session(EngineListener):
         self.runtime.speed_target = speed_for(eff["pace"])     # eased over direction_ease_s
         self.runtime.depth_target = eff["intensity"]
         fd = self.fx_director
-        fd.configure((self.director.auto or {}).get("fx"), eff)
+        fd.configure((self.director.auto or {}).get("fx"), ensemble.direction(eff, self._ens_lv))   # its part's
         if head_only:                                   # (picked for the new direction: after it is set)
             self._replan_head()
         if fd.next_at is not None:                      # a busier direction may bring the next move earlier, never later
@@ -1634,7 +1693,7 @@ class Session(EngineListener):
         # they stop (the fast energy fades with it, no jump to idle), handing over to the desk's (None) at the end
         lw = feed.liveness(now)
         mw = lw if self.music.feeding else max(lw, self.sampler.w) if lw > 0.0 else None
-        self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn}
+        self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn, **self._ens_tick(now)}
         ld = self.following()
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self.upnext.clear()     # the leader's plan is the room's
@@ -1661,8 +1720,25 @@ class Session(EngineListener):
             # pick for the new direction (between songs, the next song's own cue brings the scene in)
             if due is not None:
                 self._auto_task = asyncio.create_task(self._auto_cue(*due))
-        self._fx_tick(now)
+        self._fx_follow(now)        # its own effects (or, when the ensemble names another screen lead, that one's)
         self._inputs_tick(now)
+
+    def _ens_tick(self, now: float) -> dict:
+        """Loop thread, each tick: this screen's part of the room ensemble (docs/ENSEMBLE.md §8.3, §8.5, §8.6) for
+        the runtime's ``extra`` (the frames glide it at photon time: depth, pulse, motion, energy, palette, register),
+        and, glided here too, its FX director's fx_density and energy_bias.  {} without a part: unison."""
+        w = ensemble.wire(self._ens_now(now), self.screen)
+        try:
+            lv = self._ens_glide.at(w, (now + self.sampler.lead) * 1000.0)
+        except Exception:
+            lv = None
+        self._ens_lv = lv
+        key = None if lv is None else (round(lv["fx_density"], 3), round(lv["energy_bias"], 3))
+        if key != self._ens_fx_key:
+            self._ens_fx_key = key
+            self.fx_director.configure((self.director.auto or {}).get("fx"),
+                                       ensemble.direction(self.direction_effective, lv))
+        return {} if w is None else {"ensemble": w}
 
     def _fx_tick(self, now: float) -> None:
         fd = self.fx_director
@@ -1730,6 +1806,7 @@ class Session(EngineListener):
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
             self._event_hint = at_s
+            self._event_sweep = bool(data.get("sweep_beats"))   # a sweep's change: never staggered (rooms.py)
 
     # -- song ends (c8's room.events; SHOW_ENGINE §8.5 "Song ends") ------------------------------------------------
     def _track_event(self, kind: str, at_s: Optional[float], detail: str, data: dict) -> None:
@@ -2062,12 +2139,14 @@ class Session(EngineListener):
         try:
             if self._pick_task is not None:             # a pre-prepare is in flight: use it
                 await asyncio.shield(self._pick_task)
-            at, photon_at = (self.director.auto or AUTO_DEFAULTS)["snap"], None
+            at, photon_at, stagger = (self.director.auto or AUTO_DEFAULTS)["snap"], None, True
             if reason == "room_event":              # show_service's section / drop / track: on its time, or the bar
                 at, hint, self._event_hint = "bar", self._event_hint, None
+                stagger, self._event_sweep = not self._event_sweep, False
                 if hint is not None and hint >= time.monotonic() + self.sampler.lead + EVENT_MARGIN_S:
                     photon_at = hint
-            await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail, photon_at=photon_at)
+            await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail, photon_at=photon_at,
+                           stagger=stagger)
         except SessionError as e:
             if self.state == "live":
                 log.warning("[%s] auto cue failed: %s", self.id, e.detail)
@@ -2703,7 +2782,8 @@ class SessionManager:
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
                                "beat_lock": data.get("beat_lock"), "hold": data.get("hold") is True,
-                               "seq": data.get("seq"), "t": time.monotonic()}
+                               "seq": data.get("seq"), "t": time.monotonic(),
+                               "ensemble": data.get("ensemble") if isinstance(data.get("ensemble"), dict) else None}
 
     def _room_event(self, data: dict) -> None:
         kind = data.get("kind")

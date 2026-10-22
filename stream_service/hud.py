@@ -28,6 +28,8 @@ from typing import Any, Optional
 
 import numpy as np
 
+from . import ensemble
+
 log = logging.getLogger("stream_service.hud")
 
 COLS, ROWS = 64, 16
@@ -317,7 +319,10 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
                "go": "the first scene"}.get(cause, "-")
     add(f"why  {_cut(why, COLS - 5)}")
     up = s.upnext_view(now)
+    then_i = None
     for label, e in zip(("next", "then"), up.get("scenes", [])[:2]):
+        if label == "then":
+            then_i = len(lines)
         add(f"{label} {_cut(e.get('scene'), 28)} via {_cut(e.get('transition') or 'auto', 18)} {_eta(e.get('eta_s'))}")
     # effects
     stack = [st for st in getattr(s.fx, "stack", [])]
@@ -370,6 +375,12 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     add(f"room vibe {_cut((r or {}).get('vibe'), 10)} | sec {_cut(sec.get('letter') or sec.get('phase'), 8)}"
         f" | {_cut(genre, 10)} | key {_cut(key, 9)}" + (" | HELD" if r and r.get("hold") else ""))
     rw = getattr(s.mgr, "room_why", None)
+    # the room ensemble (docs/ENSEMBLE.md §8.8): how the screens play together, the card's words when room.why has them
+    look = ((rw[0] if rw is not None and now - rw[1] <= 5.0 else None) or {}).get("look")
+    tl = ensemble.hud_line((r or {}).get("ensemble"), (look or {}).get("together") if isinstance(look, dict) else None,
+                           (now + s.sampler.lead) * 1000.0)
+    if tl:
+        add(_cut(tl, COLS))
     if rw is not None and now - rw[1] <= 5.0:
         d = rw[0]
         au, mic, li, lk = (d.get(k) or {} for k in ("auto", "mic", "listening", "look"))
@@ -380,4 +391,7 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     evs = list(getattr(s.mgr, "room_events_ring", []))[-3:]
     add("evt  " + ("; ".join(f"{time.strftime('%H:%M:%S', time.localtime(t))} {k}" for t, k, _ in reversed(evs))
                    if evs else "-"))
+    if tl and len(lines) > ROWS and then_i is not None:   # the ensemble's line takes Up next's second row
+        del lines[then_i]
+        warn = [i - 1 if i > then_i else i for i in warn if i != then_i]
     return lines[:ROWS], warn
