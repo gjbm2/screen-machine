@@ -17,7 +17,7 @@ Sources (keys used in WORKS below):
 Output (an assembler step cleans the files and builds the catalogue):
   ~/.local/share/screen-machine/midi-library/_staging/ragtime/{files/*.mid, manifest.json, SOURCES.md}
 Downloads are cached under ~/.local/share/screen-machine/midi-library/_cache/ragtime/, so a re-run is
-resumable and fetches only what is missing.  Polite: >= 1.2 s between requests to a small site, 75 s to the
+resumable and fetches only what is missing.  Polite: >= 1.2 s between requests to a small site, 150 s to the
 Wayback Machine (which is only used in a second pass, and waited out for 5 minutes when it answers 429),
 retries with backoff, a browser User-Agent.
 
@@ -47,7 +47,7 @@ CACHE = os.path.join(ROOT, '_cache', KEY)
 
 UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/130.0 Safari/537.36')
-HOST_DELAY = {'web.archive.org': 75.0, 'drive.usercontent.google.com': 0.3, 'zenodo.org': 0.5,
+HOST_DELAY = {'web.archive.org': 150.0, 'drive.usercontent.google.com': 0.3, 'zenodo.org': 0.5,
               'huggingface.co': 0.3, 'cas-bridge.xethub.hf.co': 0.3}
 DEFAULT_DELAY = 1.2
 BYTES = {'n': 0}
@@ -66,7 +66,7 @@ class WaybackDown(Exception):
     """The Wayback Machine kept this IP blocked (HTTP 429) for longer than --wayback-wait-min."""
 
 
-WAYBACK = {'enabled': False, 'down': False, 'blocked_since': None, 'give_up_s': 3600.0}
+WAYBACK = {'enabled': False, 'down': False, 'blocked_since': None, 'give_up_s': 3600.0, 'deadline': None}
 WAYBACK_FALLBACK = []  # works staged with a lesser take because the archive was blocked; re-run later
 
 
@@ -93,7 +93,9 @@ def http(url, rng=None, tries=7, timeout=90):
         hdr['Range'] = 'bytes=%d-%d' % rng
     delay = 5.0
     for i in range(tries):
-        if host == 'web.archive.org' and WAYBACK['down']:
+        if host == 'web.archive.org' and (WAYBACK['down'] or
+                                          (WAYBACK['deadline'] and time.time() > WAYBACK['deadline'])):
+            WAYBACK['down'] = True
             raise WaybackDown(url)
         _wait(host)
         try:
@@ -116,6 +118,8 @@ def http(url, rng=None, tries=7, timeout=90):
                         WAYBACK['down'] = True
                         log('  Wayback Machine still blocking this IP; falling back to other takes for now')
                         raise WaybackDown(url)
+                if host == 'web.archive.org' and WAYBACK['deadline']:
+                    w = max(1.0, min(w, WAYBACK['deadline'] - time.time() + 1))
                 log(f'  HTTP {e.code} {url[:90]} ; retry in {w:.0f}s')
                 time.sleep(min(w, 300))
                 delay = min(delay * 2, 180)
@@ -416,10 +420,14 @@ def src_rtp(key):
     """Sue Keller / Ragtime Press. key = site path like 'mid/mud/maple_sk.mid'."""
     path = cpath('rtp', safe_name(key))
     url = 'https://www.rtpress.com/' + urllib.parse.quote(key)
-    try:
-        data = cached_get(url, path, validate=is_midi)
-        ref = url
-    except (NotFound, ValueError):
+    data = None
+    if not os.path.exists(path + '.404'):  # a '.404' marker means the cached copy came from the Wayback Machine
+        try:
+            data = cached_get(url, path, validate=is_midi)
+            ref = url
+        except (NotFound, ValueError):
+            data = None
+    if data is None:
         rows = cdx('rtpress.com/mid/', 'rtpress')
         want = urllib.parse.unquote(key).lower()
         caps = [r for r in rows if r[2] == '200' and
@@ -641,7 +649,7 @@ def src_rtm(key):
     data = cached_get(url, cpath('rtm', safe_name(key)), validate=is_midi)
     return data, {'source': "Colin D. MacDonald's ragtimemusic.com", 'source_ref': url,
                   'licence': 'Copyright 1994-2001 Colin D. MacDonald', 'take': 'sequenced',
-                  'performer': 'Colin D. MacDonald (sequenced)'}
+                  'performer': 'Colin D. MacDonald'}
 
 
 TAKE_ORDER = {'performance': 0, 'transcription': 1, 'roll': 2, 'sequenced': 3, 'arrangement': 3}
@@ -933,9 +941,12 @@ def build(args):
     WAYBACK['enabled'] = False
     deferred = resolve(works, items, gaps, log_rows, args)
     if deferred:
-        deferred.sort(key=lambda w: -w['rank'])  # best-known first, in case the archive runs slow
+        # the archive can be very slow: titles with no other source first, then best-known first
+        deferred.sort(key=lambda w: (any(c[0] not in ('rtp', 'roache') for c in w['cands']), -w['rank']))
         log(f'--- second pass: {len(deferred)} works need the Wayback Machine')
         WAYBACK['enabled'] = True
+        if args.wayback_budget_min:
+            WAYBACK['deadline'] = time.time() + args.wayback_budget_min * 60
         resolve(deferred, items, gaps, log_rows, args)
     items.sort(key=lambda it: it.pop('_i'))
     return finish(items, gaps, log_rows, args)
@@ -1017,7 +1028,7 @@ SOURCE_DOCS = [
     ('Ragtime Press (Sue Keller)',
      "Sue Keller's own arrangements, played live on a weighted MIDI keyboard and recorded uncut (every key and "
      "pedal event). https://www.rtpress.com/titles.htm ; files under https://www.rtpress.com/mid/ , the album "
-     "folders that now return 404 from the Internet Archive (http://web.archive.org/web/<ts>id_/http://rtpress.com:80/mid/...).",
+     "folders that now return 404 come from the Internet Archive (http://web.archive.org/web/<ts>id_/http://rtpress.com:80/mid/...).",
      "Copyright (c) Ragtime Press / Sue Keller, all rights reserved (as stated in each file)."),
     ("John Roache's Ragtime MIDI Library",
      "John E. Roache's performances, played into a sequencer (1995-1999). Live site down; per-piece zips from the "
@@ -1077,7 +1088,7 @@ def sources_md(items, gaps):
                 for i in sorted(items, key=lambda i: -i['rank']) if i['source'] == name]
         out.append('')
     if gaps:
-        out += ['## Not found', '', ', '.join(gaps), '']
+        out += ['## Missing (not staged)', '', ', '.join(gaps), '']
     if WAYBACK_FALLBACK:
         out += ['## Waiting on the Wayback Machine', '',
                 'The archive was rate-limiting this IP, so these use the next-best take (or are missing); '
@@ -1092,6 +1103,8 @@ def main():
     ap.add_argument('--wayback-wait-min', type=float, default=60,
                     help='how long to wait out a Wayback Machine block before using the next-best takes '
                          '(a later re-run upgrades them once the archive answers again)')
+    ap.add_argument('--wayback-budget-min', type=float, default=0,
+                    help='stop asking the Wayback Machine after this many minutes of the second pass (0 = no limit)')
     ap.add_argument('--no-wayback', action='store_true',
                     help='use only what is already cached from the Wayback Machine (next-best takes otherwise)')
     args = ap.parse_args()
