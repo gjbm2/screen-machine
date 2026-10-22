@@ -217,3 +217,336 @@ def test_mic_captures_only_while_subscribed(monkeypatch):
     finally:
         stop.set()
         th.join(timeout=2)
+
+
+# -- the test piano's rendered sound (piano_render/session.py's protocol; a fake helper, no audio) ----------------
+import json  # noqa: E402
+import os  # noqa: E402
+import signal  # noqa: E402
+import statistics  # noqa: E402
+import subprocess  # noqa: E402
+import types  # noqa: E402
+
+HERE = __import__("pathlib").Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+EVENTS = [(0.0, 0x90, 60, 80), (0.1, 0x80, 60, 40), (0.2, 0x90, 64, 80), (0.3, 0x80, 64, 40),
+          (0.4, 0x90, 67, 80), (0.6, 0x80, 67, 40)]
+FAKE_HELPER = r'''
+import json, os, select, sys, time
+args = sys.argv[1:]
+def log(o):
+    with open(os.environ["FAKE_LOG"], "a") as f:
+        f.write(json.dumps(o) + "\n")
+def emit(o):
+    sys.stdout.write(json.dumps(o) + "\n")
+    sys.stdout.flush()
+log({"argv": args})
+mode = os.environ.get("FAKE_MODE", "ok")
+dur = float(os.environ.get("FAKE_DUR", "1.0"))
+start_in = float(os.environ.get("FAKE_START_IN", "0.15"))
+pad = float(args[args.index("--pad-s") + 1])
+emit({"ev": "progress", "stage": "rendering", "step": "engine", "done_s": 0.5, "total_s": 1.0, "frac": 0.4})
+time.sleep(0.15)
+if mode == "error":
+    emit({"ev": "error", "why": "the instrument's samples are missing"})
+    sys.exit(1)
+if mode == "die":
+    sys.exit(3)
+emit({"ev": "rendered", "path": "/nowhere.flac", "duration_s": dur, "onset_ms": 2.0, "cached": False, "render_s": 0.15})
+buf, until = b"", None
+while True:
+    r, _, _ = select.select([0], [], [], 0.005)
+    if until is not None and time.monotonic() >= until:
+        until = None
+        emit({"ev": "played", "frames": 1, "underruns": 0})
+    if not r:
+        continue
+    chunk = os.read(0, 4096)
+    if not chunk:
+        log({"cmd": "EOF", "t": time.monotonic()})
+        break
+    buf += chunk
+    while b"\n" in buf:
+        line, buf = buf.split(b"\n", 1)
+        cmd = line.decode().strip()
+        log({"cmd": cmd, "t": time.monotonic()})
+        if cmd == "play":
+            t_audio0 = time.monotonic() + start_in + pad
+            log({"t_audio0": t_audio0})
+            emit({"ev": "started", "t_audio0": t_audio0, "pad_s": pad, "startup_s": start_in})
+            until = t_audio0 + dur
+        elif cmd == "stop":
+            until = None
+            emit({"ev": "stopped"})
+'''
+
+
+class RecOut:
+    """An Out stand-in: every packet with the monotonic ns it was sent at."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[int, bytes]] = []
+        self.lock = threading.Lock()
+
+    def send(self, stream: str, packet: bytes) -> bool:
+        with self.lock:
+            self.sent.append((time.monotonic_ns(), packet))
+        return True
+
+    def events(self) -> list[tuple]:
+        """[(t_sent_ns, stamp_ns, status, d1, d2)] of every MIDI event sent."""
+        with self.lock:
+            sent = list(self.sent)
+        out = []
+        for t, pk in sent:
+            p = vban.parse(pk)
+            if vban.classify(p) == "midi_events":
+                out += [(t, *e) for e in vban.parse_midi_events(p).ev]
+        return out
+
+
+@pytest.fixture
+def tiny(tmp_path):
+    p = tmp_path / "tiny.mid"
+    p.write_bytes(ss.smf_bytes(EVENTS))
+    return p
+
+
+@pytest.fixture
+def helper(tmp_path, monkeypatch):
+    script = tmp_path / "fake_helper.py"
+    script.write_text(FAKE_HELPER)
+    logp = tmp_path / "helper.log"
+    monkeypatch.setenv(ss.SESSION_CMD_ENV, f"{sys.executable} {script}")
+    monkeypatch.setenv("FAKE_LOG", str(logp))
+
+    def lines() -> list[dict]:
+        return [json.loads(x) for x in logp.read_text().splitlines()] if logp.exists() else []
+    return types.SimpleNamespace(log=lines, cmds=lambda: [e["cmd"] for e in lines() if "cmd" in e],
+                                 t_audio0=lambda: [e["t_audio0"] for e in lines() if "t_audio0" in e])
+
+
+def record_stages(monkeypatch) -> list:
+    stages = []
+    real = ss.TestStatus.set
+
+    def rec(self, stage, progress=None, error=None):
+        stages.append((stage, progress, error))
+        real(self, stage, progress, error)
+    monkeypatch.setattr(ss.TestStatus, "set", rec)
+    return stages
+
+
+def check_timing(ev, events, t_audio0: float, lead_s: float) -> list[float]:
+    """Each event stamped at t_audio0 + t_s - lead (1 ms) and sent within a few ms of it; the send errors in ms."""
+    assert [(st, d1, d2) for *_, st, d1, d2 in ev] == [(st, d1, d2) for _, st, d1, d2 in events]
+    errs = []
+    for (t_sent, stamp, *_), (t_s, *_) in zip(ev, events):
+        ideal = (t_audio0 + t_s - lead_s) * 1e9
+        assert abs(stamp - ideal) < 1e6
+        errs.append((t_sent - ideal) / 1e6)
+    assert min(errs) > -1.0 and max(errs) < 10.0 and statistics.median(errs) < 3.0, errs
+    return errs
+
+
+def test_smf_round_trip_and_pad():
+    from stream_service.piano_replay import read_midi
+    back = read_midi(ss.smf_bytes(EVENTS + [(1.23456, 0xB0, 64, 127)]))
+    assert [(st, a, b) for _, st, a, b in back] == [(st, a, b) for _, st, a, b in EVENTS] + [(0xB0, 64, 127)]
+    assert all(abs(x[0] - y[0]) < 1e-4 for x, y in zip(back, EVENTS + [(1.23456, 0, 0, 0)]))
+    assert ss.pad_for(EVENTS, 0.65) == pytest.approx(0.75)                 # first note at 0: lead + 0.1
+    assert ss.pad_for([(2.0, 0x90, 60, 1)], 0.65) == 0.0                     # a late first note needs none
+    assert ss.pad_for([(0.5, 0x90, 60, 1)], 0.65) == pytest.approx(0.25)
+    assert ss.pad_for(EVENTS, 0.0) == pytest.approx(0.1)
+    assert ss.is_rendered("concert-d") and not ss.is_rendered("windows-gs") and not ss.is_rendered(None)
+
+
+def test_sources_sees_the_flags_and_its_argv_parses(tmp_path):
+    """show_service's own argv for a rendered run against this very script: every flag recognised and parsed."""
+    from show_service import contract, sources
+    from show_service.contract import BrainContext
+    script = HERE / "show_sender.py"
+    assert sources.sender_flags(script) == frozenset(sources.SENDER_FLAGS)
+    (tmp_path / "piano").mkdir()
+    (tmp_path / "piano" / "Nocturne.mid").write_bytes(ss.smf_bytes(EVENTS))
+    (tmp_path / "grand.sf2").write_bytes(b"RIFF")
+    (tmp_path / "instruments.json").write_text(json.dumps({"root": str(tmp_path), "instruments": [
+        {"id": "grand", "label": "Grand", "engine": "fluidsynth", "file": "grand.sf2", "order": 1},
+        {"id": "windows-gs", "label": "Basic", "engine": "windows-gs", "order": 2}]}))
+    argvs = []
+
+    class P:
+        pid = 1
+
+        def __init__(self, argv, **kw):
+            argvs.append(list(argv))
+            self.rc = None
+
+        def poll(self):
+            return self.rc
+
+        def terminate(self):
+            self.rc = -15
+
+        def kill(self):
+            self.rc = -9
+
+        def wait(self, timeout=None):
+            return self.rc
+    ctx = BrainContext(publish=lambda m: None, set_senders=lambda s: None, set_priority=lambda p: None)
+    src = sources.Sources(ctx, python="py", piano_script=script, log_dir=tmp_path / "state", popen=P, pdeath=False,
+                          instruments_file=tmp_path / "instruments.json", recordings_dir=tmp_path / "recs",
+                          set_offset=lambda s, ms: None)
+    src.configure({"tests": {"piano": {"pieces": str(tmp_path / "piano")}}})
+    src.start()
+    assert [r["id"] for r in src.instruments()[0]] == ["grand", "windows-gs"]     # rendered sounds offered
+    src.start_test("piano", "file:Nocturne.mid", instrument="grand", once=True)
+    a = ss.build_parser().parse_args(argvs[-1][2:])
+    assert (a.instrument, a.output, a.lead_ms, a.once) == ("grand", "pc22", 650.0, True)
+    assert a.status_file == str(tmp_path / "state" / "test-piano.status.json") and a.test_piano.endswith(".mid")
+    src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs", output="none")
+    src.tick(0.0)                                                          # the old child has let go: spawned
+    a = ss.build_parser().parse_args(argvs[-1][2:])
+    assert a.no_speaker and a.instrument is None and not a.once
+    src.stop()
+    assert contract.TEST_PIANO_SCRIPT.resolve() == script
+
+
+def test_rendered_timing_pad_status_and_once(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setenv("FAKE_DUR", "0.8")
+    stages = record_stages(monkeypatch)
+    status = tmp_path / "status.json"
+    out, stop = RecOut(), threading.Event()
+    rc = ss.run_test_piano(out, stop, str(tiny), True, instrument="concert-d", output="pc22",
+                           status_file=str(status), lead_ms=300, once=True)
+    t_end = time.monotonic()
+    assert rc == 0
+    argv = helper.log()[0]["argv"]
+    assert argv[argv.index("--midi") + 1] == str(tiny.resolve()) and argv[argv.index("--instrument") + 1] == "concert-d"
+    assert argv[argv.index("--pad-s") + 1] == "0.400"                       # 0.3 lead - 0.0 first note + 0.1
+    assert helper.cmds() == ["play", "stop", "EOF"]
+    (t_audio0,) = helper.t_audio0()
+    errs = check_timing(out.events(), EVENTS, t_audio0, 0.3)
+    print(f"send error ms: median {statistics.median(errs):.2f} max {max(errs):.2f}")
+    assert t_end >= t_audio0 + 0.8                                         # after the audio, not just the MIDI
+    names = [s[0] for s in stages]
+    assert names[0] == "preparing" and ("preparing", 0.4, None) in stages and "playing" in names
+    assert stages[-1] == ("done", 1.0, None)
+    assert json.loads(status.read_text()) == {"stage": "done", "progress": 1.0, "error": None}
+
+
+def test_rendered_loops_with_a_new_t_audio0_each_pass(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setenv("FAKE_DUR", "0.7")
+    monkeypatch.setattr(ss, "LOOP_GAP_S", 0.1)
+    status = tmp_path / "status.json"
+    out, stop, rc = RecOut(), threading.Event(), []
+    th = threading.Thread(target=lambda: rc.append(ss.run_test_piano(
+        out, stop, str(tiny), True, instrument="concert-d", output="pc22", status_file=str(status), lead_ms=200)))
+    th.start()
+    t_end = time.monotonic() + 8.0
+    while time.monotonic() < t_end and len(out.events()) < 2 * len(EVENTS):
+        time.sleep(0.02)
+    stop.set()
+    th.join(5.0)
+    assert rc == [0] and not th.is_alive()
+    a1, a2 = helper.t_audio0()[:2]
+    assert a2 >= a1 + 0.7                                                  # the next play after the audio ended
+    ev = out.events()
+    check_timing(ev[:len(EVENTS)], EVENTS, a1, 0.2)
+    check_timing(ev[len(EVENTS):2 * len(EVENTS)], EVENTS, a2, 0.2)
+    assert helper.cmds()[:2] == ["play", "play"] and helper.cmds()[-2:] == ["stop", "EOF"]
+    assert json.loads(status.read_text())["stage"] == "done"
+
+
+@pytest.mark.parametrize("mode, why", [("error", "the instrument's samples are missing"), ("die", "exit code 3")])
+def test_a_helper_failure_is_a_status_error_and_exit_1(tiny, tmp_path, helper, monkeypatch, mode, why):
+    monkeypatch.setenv("FAKE_MODE", mode)
+    status = tmp_path / "status.json"
+    rc = ss.run_test_piano(RecOut(), threading.Event(), str(tiny), True, instrument="concert-d", output="pc22",
+                           status_file=str(status), lead_ms=300, once=True)
+    doc = json.loads(status.read_text())
+    assert rc == 1 and doc["stage"] == "error" and why in doc["error"]
+
+
+def test_no_helper_installed_is_a_status_error(tiny, tmp_path, monkeypatch):
+    monkeypatch.setenv(ss.SESSION_CMD_ENV, str(tmp_path / "no-such-python"))
+    status = tmp_path / "status.json"
+    rc = ss.run_test_piano(RecOut(), threading.Event(), str(tiny), True, instrument="concert-d", output="pc22",
+                           status_file=str(status), once=True)
+    doc = json.loads(status.read_text())
+    assert rc == 1 and doc["stage"] == "error" and "isn't installed" in doc["error"]
+
+
+def test_rendered_screens_only_is_midi_only_without_lead(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setattr(ss, "ONCE_TAIL_S", 0.1)
+    status = tmp_path / "status.json"
+    out = RecOut()
+    t = time.monotonic()
+    rc = ss.run_test_piano(out, threading.Event(), str(tiny), True, instrument="concert-d", output="none",
+                           status_file=str(status), lead_ms=300, once=True)
+    assert rc == 0 and helper.log() == []                                  # no helper, no render, no sound
+    ev = out.events()
+    t0 = ev[0][1] / 1e9
+    assert 0 <= t0 - t < 0.05                                              # no lead: from now
+    check_timing(ev, EVENTS, t0, 0.0)
+    assert json.loads(status.read_text()) == {"stage": "done", "progress": 1.0, "error": None}
+
+
+def test_windows_synth_once_without_speaker_ends(tiny, monkeypatch):
+    monkeypatch.setattr(ss, "ONCE_TAIL_S", 0.1)
+    out = RecOut()
+    t = time.monotonic()
+    assert ss.run_test_piano(out, threading.Event(), str(tiny), False, once=True) == 0
+    assert 0.6 <= time.monotonic() - t < 1.5 and len(out.events()) == len(EVENTS)
+
+
+def _sender(tiny, status, *extra):
+    return subprocess.Popen([sys.executable, str(HERE / "show_sender.py"), "--test-piano", str(tiny), "--port", "0",
+                             "--bind", "127.0.0.1", "--instrument", "concert-d", "--output", "pc22",
+                             "--status-file", str(status), "--lead-ms", "300", *extra], cwd=str(REPO),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+
+def test_sigterm_stops_the_helper_and_exits_0(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setenv("FAKE_DUR", "30")
+    status = tmp_path / "status.json"
+    p = _sender(tiny, status)
+    try:
+        t_end = time.monotonic() + 10.0
+        while time.monotonic() < t_end:
+            try:
+                if json.loads(status.read_text())["stage"] == "playing":
+                    break
+            except (OSError, ValueError):
+                pass
+            time.sleep(0.02)
+        else:
+            raise AssertionError("never playing: " + p.stderr.read1(4096).decode())
+        t = time.monotonic()
+        p.send_signal(signal.SIGTERM)
+        assert p.wait(timeout=5) == 0
+        assert time.monotonic() - t < 1.5
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert helper.cmds()[-2:] == ["stop", "EOF"]
+    assert json.loads(status.read_text())["stage"] == "done"
+
+
+def test_main_exits_1_on_a_helper_error(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "error")
+    status = tmp_path / "status.json"
+    p = _sender(tiny, status, "--once")
+    assert p.wait(timeout=10) == 1
+    assert json.loads(status.read_text())["error"] == "the instrument's samples are missing"
+
+
+def test_module_load_imports_nothing_of_the_test_piano():
+    """The kiosk runs this file for room-mic/room-piano: loading it starts and imports none of the test piano."""
+    code = ("import sys, threading; sys.path.insert(0, sys.argv[1]); import show_sender; "
+            "print(sorted(m for m in ('piano_render', 'stream_service.piano_replay', 'queue', 'shlex', 'hashlib') "
+            "if m in sys.modules), threading.active_count())")
+    out = subprocess.run([sys.executable, "-I", "-c", code, str(HERE)], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    loaded, threads = out.stdout.rsplit(" ", 1)
+    assert "piano_render" not in loaded and "piano_replay" not in loaded and threads.strip() == "1"

@@ -31,7 +31,8 @@ test-source words to the program that plays them; senders, ports, streams, folde
   ``file`` exists under its ``root`` (or the file's top-level ``root``; ~ expanded); ordered by ``order``. No file: the
   windows-gs entry alone. ``default_instrument``: the file's ``default`` when offered, else the windows-gs one, else
   the first. ``OUTPUTS``: "pc22" (PC22 speakers) or "none" (screens only).
-- ``start_test(source, piece, instrument, output, once)``: the piano's defaults are the default instrument, "pc22", and
+- ``start_test(source, piece, instrument, output, once)``: the piano's defaults are windows-gs (a POST without an
+  instrument keeps today's sound for scripts and other sessions; the Room page always names one), "pc22", and
   once = False for a library piece, True for ``rec:<id>`` (a recording in recorder.py's folder, played by its absolute
   path; never listed in ``pieces()``). ValueError("unknown_instrument" | "unknown_output").
 - argv: windows-gs + pc22 + loop is exactly today's; windows-gs + none adds ``--no-speaker``; another instrument adds
@@ -511,8 +512,8 @@ class Sources:
         spec: Optional[dict] = None
         out = None
         if midi:
-            rows, default = self._instruments()
-            iid = instrument if instrument is not None else default
+            rows, _ = self._instruments()
+            iid = instrument if instrument is not None else LIVE_ENGINE   # unnamed: today's sound (not the file's default)
             spec = next((r for r in rows if r["id"] == iid), None)
             if spec is None:
                 raise ValueError("unknown_instrument")

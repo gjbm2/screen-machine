@@ -31,6 +31,16 @@ Streams:
               is also played out loud, in step, on Windows' built-in GS synth through the default speakers
               (pc22_synth.py, run by Windows Python through interop; --no-speaker: MIDI only), so PC22's mic hears
               it as the boundary mic will hear the Steinway.  Without Windows it is MIDI only.
+              --once: the piece once, then exit 0 (default: loop, 3 s between passes).
+              --instrument ID (not windows-gs) --output pc22: a rendered sound instead (the Room page's choice): the
+              helper ``~/.venvs/sm-piano/bin/python -m piano_render.session`` (piano_render/session.py; its own
+              session, stopped by "stop" + EOF on every exit path) renders the piece (cached; idle CPU) and plays it
+              on PC22; its "started" t_audio0 (when MIDI time 0 is heard) times the MIDI: each event is sent, and
+              stamped, at t_audio0 + t_s - L (--lead-ms L: show_service holds the stream's notes L ms, so the screens
+              match the sound).  The file played is the library .mid itself (so prerendered files are hit) or, for a
+              built-in phrase, a .mid written from the same events.  --output none: MIDI only (no render, no lead).
+              --status-file PATH: {"stage": preparing|playing|done|error, "progress", "error"} for show_service,
+              written atomically, at least every second while preparing or playing.  SIGTERM: silence and exit 0.
 """
 from __future__ import annotations
 
@@ -73,6 +83,17 @@ RETRY_S = 2.0
 MIDI_PREV = 2
 PEDALS = (64, 66, 67)
 now_ns = time.monotonic_ns
+# the test piano (PC22 only; nothing below runs or imports on the kiosk)
+LOOP_GAP_S = 3.0                                  # between passes of a looping piece (after its last event)
+ONCE_TAIL_S = 1.5                                 # --once on the GS synth: its release rings this long, then exit
+LIVE_INSTRUMENT = "windows-gs"                    # today's sound: PC22's GS synth (Speaker)
+OUTPUTS = ("pc22", "none")
+SESSION_PY = "~/.venvs/sm-piano/bin/python"       # piano_render's venv
+SESSION_CMD_ENV = "PIANO_SESSION_CMD"             # overrides the helper's command (tests)
+PAD_EXTRA_S = 0.1                                 # the first event is never due sooner than this after "started"
+PHRASE_MIDI_DIR = "~/.cache/screen-machine/piano/phrases"
+SMF_TPQ = 10000                                   # with tempo 1 s a quarter: 0.1 ms ticks
+STATUS_S = 0.5
 
 
 def new_sess(prefix: str) -> str:
@@ -370,49 +391,379 @@ class Speaker:
         self.proc = None
 
 
-def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = False) -> None:
-    """A piece from the test-piano library played in real time as test-piano MIDI, looping; with ``speaker`` also
-    out loud on PC22 (Speaker), so PC22's mic hears it as the boundary mic will hear the Steinway."""
-    from stream_service.piano_replay import PHRASES, TestPiano, resolve
-    piano = resolve(piece) if piece.startswith("file:") or piece in PHRASES else TestPiano.from_file(piece, loop=True)
-    events = piano.midi()
-    length = max(t for t, *_ in events) + 3.0
-    ms = MidiStream("test-piano", out.send)
-    spk = Speaker() if speaker else None
+class TestStatus:
+    """--status-file for show_service (sources.read_status): {"stage", "progress", "error"}, written atomically
+    (tmp + rename) on every change and every STATUS_S while preparing or playing. No path: does nothing."""
+
+    __test__ = False                                       # not a pytest class
+
+    def __init__(self, path: Optional[str]) -> None:
+        self.path = pathlib.Path(path) if path else None
+        self.doc: Optional[dict] = None
+        self.lock = threading.Lock()
+        self.halt = threading.Event()
+        self.thread: Optional[threading.Thread] = None
+
+    @property
+    def stage(self) -> Optional[str]:
+        return self.doc["stage"] if self.doc else None
+
+    def set(self, stage: str, progress: Optional[float] = None, error: Optional[str] = None) -> None:
+        if self.path is None:
+            return
+        prog = None if progress is None else round(min(1.0, max(0.0, float(progress))), 4)
+        with self.lock:
+            self.doc = {"stage": stage, "progress": prog, "error": error}
+            self._write()
+        if self.thread is None and stage in ("preparing", "playing"):
+            self.thread = threading.Thread(target=self._beat, name="status", daemon=True)
+            self.thread.start()
+
+    def _write(self) -> None:                              # under self.lock
+        import json
+        tmp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+        try:
+            tmp.write_text(json.dumps(self.doc), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except OSError as e:
+            log.debug("status %s: %s", self.path, e)
+
+    def _beat(self) -> None:
+        while not self.halt.wait(STATUS_S):
+            with self.lock:
+                if self.doc and self.doc["stage"] in ("preparing", "playing"):
+                    self._write()
+
+    def close(self) -> None:
+        self.halt.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
+
+
+def is_rendered(instrument: Optional[str]) -> bool:
+    """--instrument names a rendered sound (absent or windows-gs: PC22's GS synth, today's)."""
+    return bool(instrument) and instrument != LIVE_INSTRUMENT
+
+
+def pad_for(events: list, lead_s: float) -> float:
+    """--pad-s for the helper: silence before MIDI time 0, so the first event (sent lead_s before its sound) is due
+    PAD_EXTRA_S after "started", never in the past."""
+    return max(0.0, lead_s - events[0][0] + PAD_EXTRA_S)
+
+
+def smf_bytes(events: list) -> bytes:
+    """(t_s, status, d1, d2) events -> a type-0 standard MIDI file (tempo 1 s a quarter, SMF_TPQ: 0.1 ms ticks)."""
+    import struct
+
+    def varlen(v: int) -> bytes:
+        out = [v & 0x7F]
+        v >>= 7
+        while v:
+            out.append(0x80 | (v & 0x7F))
+            v >>= 7
+        return bytes(reversed(out))
+
+    tr = bytearray(b"\x00\xff\x51\x03" + (1_000_000).to_bytes(3, "big"))
+    last = 0
+    for t_s, st, d1, d2 in events:
+        tick = max(last, int(round(t_s * SMF_TPQ)))
+        tr += varlen(tick - last) + bytes((st & 0xFF, d1 & 0x7F, d2 & 0x7F))
+        last = tick
+    tr += b"\x00\xff\x2f\x00"
+    return b"MThd" + struct.pack(">IHHH", 6, 0, 1, SMF_TPQ) + b"MTrk" + struct.pack(">I", len(tr)) + bytes(tr)
+
+
+def render_midi(piece: str, events: list) -> pathlib.Path:
+    """The .mid the rendered sound is made from: the library file itself (piano_render's cache, prerendered from the
+    library, is then hit), a recording's own path, or for a built-in phrase a .mid written (once, by content) from the
+    very events the MIDI loop sends."""
+    from stream_service.piano_replay import LIBRARY_DIR, PHRASES
+    if piece.startswith("file:"):
+        return LIBRARY_DIR / piece[5:]
+    if piece not in PHRASES:
+        return pathlib.Path(piece).resolve()
+    import hashlib
+    data = smf_bytes(events)
+    folder = pathlib.Path(PHRASE_MIDI_DIR).expanduser()
+    path = folder / f"{piece}-{hashlib.sha256(data).hexdigest()[:12]}.mid"
+    if not path.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    return path
+
+
+def session_argv(midi: pathlib.Path, instrument: str, pad_s: float) -> list[str]:
+    import shlex
+    cmd = os.environ.get(SESSION_CMD_ENV)
+    base = shlex.split(cmd) if cmd else [os.path.expanduser(SESSION_PY), "-m", "piano_render.session"]
+    return [*base, "--midi", str(midi), "--instrument", instrument, "--pad-s", f"{pad_s:.3f}"]
+
+
+class HelperFailed(Exception):
+    """The rendered sound's helper said why it can't go on (or died): plain words for the Room page."""
+
+
+class PianoSession:
+    """The rendered sound's helper (piano_render/session.py): its JSON lines in a queue, commands on its stdin. It runs
+    in a session of its own, so show_service's SIGKILL to our process group (2 s after its SIGTERM) can't cut it
+    before the sound has stopped; it stops and exits by itself at EOF on its stdin (our exit, however it happens)."""
+
+    EOF = "_eof"
+
+    def __init__(self, argv: list[str]) -> None:
+        import queue
+        self._empty = queue.Empty
+        self.q: "queue.Queue[dict]" = queue.Queue()
+        self.proc = subprocess.Popen(argv, cwd=str(REPO), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     start_new_session=True)
+        threading.Thread(target=self._read, name="piano-session", daemon=True).start()
+
+    def _read(self) -> None:
+        import json
+        for raw in iter(self.proc.stdout.readline, b""):
+            line = raw.decode("utf-8", "replace").strip()
+            try:
+                msg = json.loads(line) if line else None
+            except ValueError:
+                log.warning("piano session: not a protocol line: %r", line[:200])
+                continue
+            if isinstance(msg, dict):
+                self.q.put(msg)
+        try:
+            rc = self.proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            rc = None
+        self.q.put({"ev": self.EOF, "rc": rc})
+
+    def get(self, timeout: float) -> Optional[dict]:
+        try:
+            return self.q.get(timeout=timeout) if timeout > 0 else self.q.get_nowait()
+        except self._empty:
+            return None
+
+    def send(self, cmd: str) -> bool:
+        try:
+            self.proc.stdin.write((cmd + "\n").encode("utf-8"))
+            self.proc.stdin.flush()
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def close(self, timeout: float = 1.5) -> None:
+        """"stop" and EOF (it silences and exits), then SIGTERM, then SIGKILL."""
+        if self.proc.poll() is None:
+            self.send("stop")
+        try:
+            self.proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+        for wait_s, nxt in ((timeout, self.proc.terminate), (1.0, self.proc.kill), (1.0, None)):
+            try:
+                self.proc.wait(timeout=wait_s)
+                return
+            except subprocess.TimeoutExpired:
+                if nxt is None:
+                    log.error("piano session pid %d didn't exit after SIGKILL", self.proc.pid)
+                    return
+                log.warning("piano session pid %d still running: %s", self.proc.pid, nxt.__name__)
+                nxt()
+
+
+def _why(msg: dict) -> str:
+    if msg.get("ev") == "error":
+        return str(msg.get("why") or "the rendered piano failed")
+    return f"the rendered piano stopped (exit code {msg.get('rc')})"
+
+
+class _Beat:
+    """test-piano state packets every STATE_S."""
+
+    def __init__(self, ms: MidiStream) -> None:
+        self.ms, self.last = ms, 0.0
+
+    def __call__(self, now: float) -> bool:
+        if now - self.last < STATE_S:
+            return False
+        self.ms.state(now_ns())
+        self.last = now
+        return True
+
+
+def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = False, *,
+                   instrument: Optional[str] = None, output: Optional[str] = None, status_file: Optional[str] = None,
+                   lead_ms: Optional[float] = None, once: bool = False) -> int:
+    """A piece from the test-piano library played in real time as test-piano MIDI, looping (``once``: one pass);
+    with ``speaker`` also out loud on PC22 (Speaker), so PC22's mic hears it as the boundary mic will hear the
+    Steinway. A rendered ``instrument`` on output pc22: _run_rendered. Returns the exit code (1: it failed)."""
+    status = TestStatus(status_file)
     try:
-        _play_test_piano(ms, stop, piece, events, length, spk)
+        from stream_service.piano_replay import PHRASES, TestPiano, resolve
+        piano = (resolve(piece) if piece.startswith("file:") or piece in PHRASES
+                 else TestPiano.from_file(piece, loop=True))
+        events = piano.midi()
+        length = max(t for t, *_ in events) + LOOP_GAP_S
+        ms = MidiStream("test-piano", out.send)
+        silent = output == "none" or (output is None and not speaker)        # --no-speaker: MIDI only too
+        if is_rendered(instrument) and not silent:
+            return _run_rendered(ms, stop, piece, events, length, instrument, status,
+                                 max(0.0, float(lead_ms or 0.0)) / 1000.0, once)
+        if lead_ms:
+            log.info("test piano: --lead-ms ignored (the sound isn't rendered on PC22)")
+        spk = Speaker() if speaker and not silent and not is_rendered(instrument) else None
+        try:
+            status.set("playing", 0.0)
+            _play_test_piano(ms, stop, piece, events, length, spk, once=once, status=status)
+        finally:
+            if spk is not None:
+                spk.close()
+        status.set("done", None if stop.is_set() else 1.0)
+        return 0
+    except Exception as e:                                 # noqa: BLE001  said in the status and the log; exit 1
+        log.exception("test piano: %s", piece)
+        status.set("error", None, f"test piano: {e}")
+        return 1
     finally:
+        status.close()
+
+
+def _send_due(ms: MidiStream, events: list, i: int, t0: float, now: float, spk: Optional[Speaker] = None) -> int:
+    """Send events[i:] due by ``now`` (event t_s is due at t0 + t_s), each stamped with its due time; the new i."""
+    due = []
+    while i < len(events) and t0 + events[i][0] <= now:
+        t_s, st, d1, d2 = events[i]
+        due.append((now_ns() - int((now - t0 - t_s) * 1e9), st, d1, d2))
+        i += 1
+    if due:
+        ms.events(due)
         if spk is not None:
-            spk.close()
+            spk.play(due)
+    return i
 
 
 def _play_test_piano(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
-                     spk: Optional[Speaker]) -> None:
-    log.info("test piano: %s (%d events, %.0f s)", piece, len(events), length)
+                     spk: Optional[Speaker], *, once: bool = False, status: Optional[TestStatus] = None) -> None:
+    log.info("test piano: %s (%d events, %.0f s%s)", piece, len(events), length, ", once" if once else "")
     t0 = time.monotonic()
+    end = max(t for t, *_ in events) + ONCE_TAIL_S
     i, last_state = 0, 0.0
     while not stop.is_set():
         now = time.monotonic()
         if i >= len(events):
-            if now - t0 >= length:
+            if once and now - t0 >= end:
+                return
+            if now - t0 >= length and not once:
                 t0, i = now, 0
             else:
                 stop.wait(0.01)
             continue
-        due = []
-        while i < len(events) and t0 + events[i][0] <= now:
-            t_s, st, d1, d2 = events[i]
-            due.append((now_ns() - int((now - t0 - t_s) * 1e9), st, d1, d2))
-            i += 1
-        if due:
-            ms.events(due)
-            if spk is not None:
-                spk.play(due)
+        i = _send_due(ms, events, i, t0, now, spk)
         if now - last_state >= STATE_S:
             ms.state(now_ns())
             last_state = now
+            if status is not None:
+                status.set("playing", (now - t0) / (end if once else length))
         nxt = (t0 + events[i][0] - time.monotonic()) if i < len(events) else 0.01
         stop.wait(max(0.0005, min(0.01, nxt)))
+
+
+def _await(helper: PianoSession, stop: threading.Event, beat: _Beat, want: str,
+           on_msg: Optional[Callable[[dict], None]] = None) -> Optional[dict]:
+    """The helper's next ``want`` message (None on stop), state packets meanwhile; HelperFailed on error or exit."""
+    while not stop.is_set():
+        msg = helper.get(0.02)
+        beat(time.monotonic())
+        if msg is None:
+            continue
+        ev = msg.get("ev")
+        if ev == want:
+            return msg
+        if ev in ("error", PianoSession.EOF):
+            raise HelperFailed(_why(msg))
+        if on_msg is not None:
+            on_msg(msg)
+    return None
+
+
+def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
+                  instrument: str, status: TestStatus, lead_s: float, once: bool) -> int:
+    """The rendered sound on PC22 (module docstring): preparing while the helper renders, then per pass "play" and
+    the MIDI from its t_audio0 (each event sent at t_audio0 + t_s - lead_s); a pass ends when both the MIDI and the
+    audio have; looping, the next "play" goes LOOP_GAP_S after the last event at the earliest."""
+    pad_s = pad_for(events, lead_s)
+    last_t = max(t for t, *_ in events)
+    status.set("preparing", 0.0)
+    try:
+        midi = render_midi(piece, events)
+        argv = session_argv(midi, instrument, pad_s)
+        log.info("test piano: %s on %s (lead %.0f ms, pad %.3f s): %s", piece, instrument, lead_s * 1000, pad_s,
+                 " ".join(argv))
+        helper = PianoSession(argv)
+    except OSError as e:
+        why = (f"the rendered piano isn't installed here ({e.filename or e})" if isinstance(e, FileNotFoundError)
+               else f"the rendered piano couldn't start: {e}")
+        log.error("test piano: %s", why)
+        status.set("error", None, why)
+        return 1
+    beat = _Beat(ms)
+    try:
+        rendered = _await(helper, stop, beat, "rendered",
+                          lambda m: status.set("preparing", m.get("frac")) if m.get("ev") == "progress" else None)
+        if rendered is None:
+            status.set("done")
+            return 0
+        duration = max(float(rendered.get("duration_s") or 0.0), last_t, 0.001)
+        log.info("test piano: rendered %s (%.1f s, %s)", rendered.get("path"), duration,
+                 "cached" if rendered.get("cached") else f"{float(rendered.get('render_s') or 0):.1f} s")
+        while not stop.is_set():
+            t_play = time.monotonic()
+            helper.send("play")
+            started = _await(helper, stop, beat, "started")
+            if started is None:
+                break
+            t_audio0 = float(started["t_audio0"])
+            t0 = t_audio0 - lead_s
+            now = time.monotonic()
+            log.info("test piano: started %.0f ms after play; t_audio0 %.6f (in %+.0f ms), MIDI t0 %.6f (in %+.0f ms)",
+                     (now - t_play) * 1000, t_audio0, (t_audio0 - now) * 1000, t0, (t0 - now) * 1000)
+            status.set("playing", 0.0)
+            i, played = 0, False
+            while not stop.is_set() and not (i >= len(events) and played):
+                now = time.monotonic()
+                i = _send_due(ms, events, i, t0, now)
+                msg = helper.get(0)
+                while msg is not None:
+                    if msg.get("ev") == "played":
+                        played = True
+                        log.info("test piano: audio ended (%s)", {k: msg[k] for k in ("frames", "underruns")
+                                                                  if k in msg})
+                    elif msg.get("ev") in ("error", PianoSession.EOF):
+                        raise HelperFailed(_why(msg))
+                    msg = helper.get(0)
+                if beat(now):
+                    status.set("playing", (now - t_audio0) / duration)
+                nxt = (t0 + events[i][0] - time.monotonic()) if i < len(events) else 0.01
+                stop.wait(max(0.0005, min(0.01, nxt)))
+            if stop.is_set():
+                break
+            if once:
+                status.set("done", 1.0)
+                return 0
+            status.set("playing", 1.0)
+            while not stop.is_set() and time.monotonic() < t0 + length:
+                msg = helper.get(0.01)
+                if msg is not None and msg.get("ev") in ("error", PianoSession.EOF):
+                    raise HelperFailed(_why(msg))
+                beat(time.monotonic())
+        status.set("done")
+        return 0
+    except HelperFailed as e:
+        log.error("test piano: %s", e)
+        status.set("error", None, str(e))
+        return 1
+    finally:
+        helper.close()
 
 
 # -- audio ---------------------------------------------------------------------------------------------------------
@@ -572,7 +923,7 @@ def _have(cmd: str) -> bool:
 
 
 # -- main ----------------------------------------------------------------------------------------------------------
-def main(argv: Optional[list] = None) -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=vban.PORT)
     ap.add_argument("--bind", default="0.0.0.0")
@@ -585,17 +936,30 @@ def main(argv: Optional[list] = None) -> None:
                     help="play a test-piano piece (file:<name>.mid from config/live/test-piano/, or a phrase)")
     ap.add_argument("--no-speaker", action="store_true",
                     help="test piano: MIDI only, not also out loud on PC22's speakers (pc22_synth.py)")
+    ap.add_argument("--instrument", default=None, metavar="ID",
+                    help="test piano: the sound (config/piano/instruments.json id); absent or windows-gs: PC22's GS "
+                         "synth (today's); another: rendered by piano_render and played on --output")
+    ap.add_argument("--output", default=None, choices=OUTPUTS,
+                    help="test piano: pc22 (PC22's speakers; the default) or none (MIDI only, like --no-speaker)")
+    ap.add_argument("--status-file", default=None, metavar="PATH",
+                    help="test piano: keep {stage, progress, error} here for show_service")
+    ap.add_argument("--lead-ms", type=float, default=None, metavar="L",
+                    help="test piano, rendered on pc22: send each MIDI event L ms before its sound (show_service "
+                         "holds the stream's notes that long)")
+    ap.add_argument("--once", action="store_true", help="test piano: play the piece once, then exit 0")
     ap.add_argument("-v", "--verbose", action="store_true")
-    a = ap.parse_args(argv)
+    return ap
+
+
+def main(argv: Optional[list] = None) -> Optional[int]:
+    a = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Out(a.port, a.bind)
     stop = threading.Event()
     threads = [threading.Thread(target=out.serve, args=(stop,), name="net", daemon=True)]
     if a.test_piano:
-        threads.append(threading.Thread(target=run_test_piano, args=(out, stop, a.test_piano, not a.no_speaker),
-                                        name="test-piano",
-                                        daemon=True))
+        return _main_test_piano(a, out, stop, threads[0])
     else:
         if not a.no_midi:
             threads.append(threading.Thread(target=run_rawmidi, args=(out, stop, a.midi_match), name="midi",
@@ -613,7 +977,40 @@ def main(argv: Optional[list] = None) -> None:
         pass
     finally:
         stop.set()
+    return None
+
+
+def _main_test_piano(a: argparse.Namespace, out: Out, stop: threading.Event, net: threading.Thread) -> int:
+    """--test-piano: until the piece ends (--once), it fails, or SIGTERM/SIGHUP/Ctrl-C (silence, then exit 0)."""
+    import signal
+    rc = [0]
+
+    def play() -> None:
+        try:
+            rc[0] = run_test_piano(out, stop, a.test_piano, not a.no_speaker, instrument=a.instrument,
+                                   output=a.output, status_file=a.status_file, lead_ms=a.lead_ms, once=a.once)
+        except BaseException:                              # noqa: BLE001
+            log.exception("test piano")
+            rc[0] = 1
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, lambda *_: stop.set())
+        except (ValueError, OSError):                      # not the main thread (tests)
+            pass
+    th = threading.Thread(target=play, name="test-piano", daemon=True)
+    net.start()
+    th.start()
+    log.info("show-sender on udp %s:%d (net, test-piano)", a.bind, a.port)
+    try:
+        while th.is_alive():
+            th.join(0.5)
+    except KeyboardInterrupt:
+        stop.set()
+        th.join(4.0)
+    stop.set()
+    return rc[0]
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
