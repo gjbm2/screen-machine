@@ -307,6 +307,28 @@ def test_pins_persist_and_unknown_pieces_cant_be_pinned(f):
     assert [p["id"] for p in again.pin("medley", False)] == ["lib:ragtime-joplin-maple-leaf-rag"]
 
 
+def test_a_new_pin_starts_the_prerender_detached_and_at_most_every_ten_seconds(f, monkeypatch):
+    """1c's prerender (22 Oct): a NEW pin starts scripts/piano_prerender_all.sh --pins in its own session, output
+    nowhere; a repin, an unpin or a pin within PRERENDER_MIN_S starts nothing; no prerender_cmd (tests) is off."""
+    import subprocess
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append((cmd, kw)))
+    f.catalog({k: dict(v) for k, v in CATALOG.items()})
+    f.library().pin("lib:ragtime-joplin-maple-leaf-rag", True)
+    assert calls == []                                              # off without prerender_cmd
+    lib = f.library(prerender_cmd=("/x/piano_prerender_all.sh", "--pins"))
+    lib.pin("lib:ragtime-joplin-the-entertainer", True)
+    assert len(calls) == 1 and calls[0][0] == ["/x/piano_prerender_all.sh", "--pins"]
+    assert calls[0][1]["start_new_session"] is True and calls[0][1]["stdout"] == subprocess.DEVNULL
+    lib.pin("lib:ragtime-joplin-the-entertainer", True)             # already pinned
+    lib.pin("lib:ragtime-joplin-the-entertainer", False)            # an unpin
+    lib.pin("lib:classical-satie-gymnopedie-1", True)   # new, but within 10 s
+    assert len(calls) == 1
+    lib._prerender_at -= 11
+    lib.pin("lib:jazz-ellington-nocturne", True)
+    assert len(calls) == 2
+
+
 # -- uploads ----------------------------------------------------------------------------------------------------------
 def test_upload_cleans_keeps_and_dedupes(f):
     lib = f.library()
