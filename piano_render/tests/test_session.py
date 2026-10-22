@@ -144,14 +144,15 @@ def run(tmp_path, monkeypatch):
     script.write_text(FAKE_RENDER)
     made = []
 
-    def make(mode: str = "ok", pad_s: float = 0.4, env: "dict | None" = None, **out_kw):
+    def make(mode: str = "ok", pad_s: float = 0.4, env: "dict | None" = None, output: str = "pc22", fake=None,
+             **out_kw):
         monkeypatch.setenv("FAKE_RENDER_MODE", mode)
         for k, v in (env or {}).items():
             monkeypatch.setenv(k, v)
         sink = Sink()
-        out = FakeOutput(**out_kw)
+        out = fake if fake is not None else FakeOutput(**out_kw)
         s = session.Session("/x.mid", "grand", pad_s, proto=session.Proto(sink), output_factory=lambda: out,
-                            render_argv=[sys.executable, str(script)])
+                            render_argv=[sys.executable, str(script)], output=output)
         r, w = os.pipe()
         cmds, wf = os.fdopen(r, "r"), os.fdopen(w, "w")
         rc: list[int] = []
@@ -274,6 +275,97 @@ def test_a_playback_failure_is_an_error_and_exit_1(run):
     err = r.sink.next("error")
     r.th.join(5.0)
     assert err["why"] == "couldn't play on PC22: no WASAPI output" and r.rc == [1]
+
+
+# -- Play on Sonos (a stubbed SonosOutput; piano_render/tests/test_sonos.py tests the real one against fakes) -------
+class FakeSonos(FakeOutput):
+    """SonosOutput's shape: start(path, lead_in_ms, url, title, volume) -> t_audio0, pad_s (its own), settle()."""
+
+    def __init__(self, pad_min: float = 0.0, error: "str | None" = None, **kw) -> None:
+        super().__init__(**kw)
+        self.pad_min, self.error_after = pad_min, error
+        self.pad_s = 0.0
+        self.settled = False
+
+    def start(self, path, **kw) -> float:
+        self.pad_s = max(self.pad_min, kw.get("lead_in_ms", 0.0) / 1000.0)
+        t0 = super().start(path, **{**kw, "lead_in_ms": self.pad_s * 1000.0})
+        self.calls[-1] = ("start", path, kw)
+        if self.error_after:
+            self.done = None
+            self.session = SimpleNamespace(error=self.error_after)
+        return t0
+
+    def _run(self) -> None:
+        super()._run()
+        if self.error_after:
+            self.done = None
+
+    def settle(self, timeout: float = 2.0) -> None:
+        self.settled = True
+
+
+def test_play_sonos_plays_with_its_url_title_and_volume_and_play_repeats_it(run):
+    out = FakeSonos(pad_min=4.5, dur=0.2)
+    r = run(output="sonos:drawing-room", fake=out, pad_s=0.75)
+    r.sink.next("rendered")
+    r.send('play-sonos {"url": "http://h:8700/show/api/v1/piano/audio/k.flac", "title": "Piano: X", "volume": 30}')
+    st = r.sink.next("started")
+    assert out.calls[0] == ("start", "/r.flac", {"lead_in_ms": 750.0, "url": "http://h:8700/show/api/v1/piano/audio/"
+                                                 "k.flac", "title": "Piano: X", "volume": 30})
+    assert st["pad_s"] == 4.5                                                    # the output's own pad
+    r.sink.next("played")
+    r.send("play")                                                               # a loop: the last play-sonos again
+    r.sink.next("started")
+    assert out.calls[-1][2]["url"].endswith("/k.flac")
+    r.sink.next("played")
+    r.close()
+    assert r.rc == [0] and ("stop",) in out.calls and out.settled               # EOF: stop, then settle
+
+
+@pytest.mark.parametrize("output, cmd, why", [
+    ("sonos:drawing-room", "play", "play-sonos"),
+    ("sonos:drawing-room", "play-sonos {}", "takes"),
+    ("sonos:drawing-room", "play-sonos not json", "takes"),
+    ("sonos:drawing-room", 'play-sonos {"url": "http://h/k.flac", "zone": "kitchen"}', "kitchen"),
+    ("pc22", 'play-sonos {"url": "http://h/k.flac"}', "--output sonos"),
+])
+def test_a_bad_sonos_command_is_an_error_and_exit_1(run, output, cmd, why):
+    r = run(output=output, fake=FakeSonos())
+    r.sink.next("rendered")
+    r.send(cmd)
+    err = r.sink.next("error")
+    r.th.join(5.0)
+    assert why in err["why"] and r.rc == [1] and not [c for c in r.out.calls if c[0] == "start"]
+
+
+def test_sonos_leaving_our_file_says_so_in_its_own_words(run):
+    r = run(output="sonos:drawing-room", fake=FakeSonos(error="Sonos paused", dur=0.1))
+    r.sink.next("rendered")
+    r.send('play-sonos {"url": "http://h/k.flac"}')
+    r.sink.next("started")
+    err = r.sink.next("error")
+    r.th.join(5.0)
+    assert err["why"] == "Sonos paused" and r.rc == [1]
+    q = run(output="sonos:drawing-room", fake=FakeSonos(fail="room_service isn't answering (refused)"))
+    q.sink.next("rendered")
+    q.send('play-sonos {"url": "http://h/k.flac"}')
+    assert q.sink.next("error")["why"] == "couldn't play on Sonos: room_service isn't answering (refused)"
+
+
+def test_main_on_sonos_refuses_the_gain_and_an_unknown_zone(tmp_path):
+    base = [sys.executable, "-m", "piano_render.session", "--midi", "x.mid", "--instrument", "grand-c5"]
+    env = dict(os.environ, PIANO_SESSION_GAIN_DB="-120")
+    p = subprocess.run(base + ["--output", "sonos:drawing-room"], cwd=str(ROOT), capture_output=True, text=True,
+                       timeout=60, env=env, input="")
+    assert p.returncode == 1 and "as it is" in json.loads(p.stdout)["why"]
+    env = {k: v for k, v in os.environ.items() if k != session.GAIN_ENV}
+    p = subprocess.run(base + ["--output", "sonos:no-such-zone"], cwd=str(ROOT), capture_output=True, text=True,
+                       timeout=60, env=env, input="")
+    assert p.returncode == 1 and "no Sonos zone" in json.loads(p.stdout)["why"]
+    p = subprocess.run(base + ["--output", "sonos:"], cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+                       env=env, input="")
+    assert p.returncode == 2 and "pc22 or sonos:<zone>" in p.stderr
 
 
 # -- the render child (in this process, render stubbed) -----------------------------------------------------------

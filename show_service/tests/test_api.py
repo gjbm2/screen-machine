@@ -414,7 +414,7 @@ def test_everything_answers_starting_before_the_brain_runs(tmp_path):
     async def go():
         async with served(api) as cl:
             for method, path in apimod.ROUTES:
-                if path in (c.EVENTS_PATH, "/api/v1/hue/release"):
+                if path in (c.EVENTS_PATH, "/api/v1/hue/release", apimod.PIANO_AUDIO_PATH):
                     continue
                 path = path.replace("{id}", "all").replace("{source}", "piano").replace("{name}", "piano") \
                     .replace("{n}", "0")
@@ -428,6 +428,42 @@ def test_everything_answers_starting_before_the_brain_runs(tmp_path):
             assert r.status == 200 and (await body(r))["released"] is True
 
     run(go())
+
+
+def test_piano_audio_serves_renders_and_padded_copies_with_ranges(tmp_path, monkeypatch):
+    """Play on Sonos: GET /api/v1/piano/audio/<key>.flac from the render cache ($PIANO_RENDER_CACHE) or its sonos/
+    padded copies, before the brain runs too; Range -> 206 + Content-Range; a key that isn't 32 hex digits -> 404."""
+    cache = tmp_path / "renders"
+    (cache / "sonos").mkdir(parents=True)
+    key, padded = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+    data = bytes(range(256)) * 40
+    (cache / f"{key}.flac").write_bytes(data)
+    (cache / "sonos" / f"{padded}.flac").write_bytes(b"P" * 1000)
+    (tmp_path / "secret.flac").write_bytes(b"no")
+    monkeypatch.setenv(apimod.PIANO_RENDER_CACHE_ENV, str(cache))
+    api = apimod.routes(lambda: None, lambda: ENGINE, patch_path=tmp_path / "patch.yaml",
+                        fixtures_path=tmp_path / "fixtures.yaml")
+
+    async def go():
+        async with served(api) as cl:
+            r = await cl.get(f"/api/v1/piano/audio/{key}.flac")
+            assert r.status == 200 and await r.read() == data
+            assert r.headers["Content-Type"] == "audio/flac" and r.headers["Cache-Control"] == "no-cache"
+            assert r.headers.get("Accept-Ranges") == "bytes"
+            r = await cl.get(f"/api/v1/piano/audio/{key}.flac", headers={"Range": "bytes=100-199"})
+            assert r.status == 206 and await r.read() == data[100:200]
+            assert r.headers["Content-Range"] == f"bytes 100-199/{len(data)}"
+            r = await cl.head(f"/api/v1/piano/audio/{key}.flac")
+            assert r.status == 200 and int(r.headers["Content-Length"]) == len(data)
+            r = await cl.get(f"/api/v1/piano/audio/{padded}.flac", headers={"Range": "bytes=-10"})
+            assert r.status == 206 and await r.read() == b"P" * 10
+            for bad in (key.upper(), key[:31], "0" * 33, "..%2Fsecret", "%2E%2E%2F%2E%2E%2Fsecret", "f" * 32):
+                r = await cl.get(f"/api/v1/piano/audio/{bad}.flac")
+                assert r.status == 404, bad
+                assert (await body(r))["error"] == "not_found"
+
+    run(go())
+    assert apimod.piano_audio_path("../" + key) is None and apimod.piano_audio_path(key, cache) == cache / f"{key}.flac"
 
 
 @pytest.mark.parametrize("streamer,hue_on,want", [("show", True, False), ("show", False, True), ("room", True, True),

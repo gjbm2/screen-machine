@@ -30,14 +30,19 @@ test-source words to the program that plays them; senders, ports, streams, folde
   offered when its engine is ``windows-gs`` (kind "live": PC22's GS synth through pc22_synth, today's sound) or its
   ``file`` exists under its ``root`` (or the file's top-level ``root``; ~ expanded); ordered by ``order``. No file: the
   windows-gs entry alone. ``default_instrument``: the file's ``default`` when offered, else the windows-gs one, else
-  the first. ``OUTPUTS``: "pc22" (PC22 speakers) or "none" (screens only).
+  the first. ``OUTPUTS``: "pc22" (PC22 speakers) or "none" (screens only), plus **Play on Sonos** (22 Oct): one
+  ``"sonos:<zone>"`` ("Sonos (<room>)") per zone in config/room/sonos.json (``SONOS_FILE``, room_service's; re-read
+  every RELOAD_S; a zone key outside NAME_OK is skipped and listed in ``errors``), offered while a rendered sound is
+  offered and the piano script names ``"sonos:"`` and ``--title`` (SONOS_FLAGS). The Windows synth plays only on
+  PC22: asked for on Sonos, it plays on PC22 and the status says so in ``error`` (degrade, never refuse).
 - ``start_test(source, piece, instrument, output, once)``: the piano's defaults are windows-gs (a POST without an
   instrument keeps today's sound for scripts and other sessions; the Room page always names one), "pc22", and
   once = False for a library piece, True for ``rec:<id>`` (a recording in recorder.py's folder, played by its absolute
   path; never listed in ``pieces()``). ValueError("unknown_instrument" | "unknown_output").
 - argv: windows-gs + pc22 + loop is exactly today's; windows-gs + none adds ``--no-speaker``; another instrument adds
-  ``--instrument ID --output pc22|none --status-file STATE_DIR/test-piano.status.json`` (removed before each start),
-  and ``--lead-ms L`` when the runtime offset below is applied; ``--once`` when once. The status file
+  ``--instrument ID --output pc22|none|sonos:<zone> --status-file STATE_DIR/test-piano.status.json`` (removed before
+  each start), ``--title LABEL`` (the piece's label: what the Sonos app shows) on Sonos, and ``--lead-ms L`` when the
+  runtime offset below is applied; ``--once`` when once. The status file
   (``{"stage": "preparing"|"playing"|"done"|"error", "progress", "error"}``) is read on every poll: ``preparing``
   while it says so (fast-polled like ``starting``, never timed out), ``progress`` and an ``error`` from it; a once
   child that exits 0 is ``finished``.
@@ -46,10 +51,11 @@ test-source words to the program that plays them; senders, ports, streams, folde
   ``--status-file`` only the windows-gs sound is offered (and is the default, whatever the file says); without
   ``--once`` a run loops; without ``--lead-ms`` no offset is applied.
 - **Runtime acoustic offset** (tests/test_future_offset.py checks the engine with notes up to 0.6 s ahead): while a
-  rendered run is heard (an instrument other than windows-gs, output not "none") the test piano's stream gets
-  acoustic_offset_ms = L (show.yaml ``tests.piano.lead_ms``, default LEAD_MS_DEFAULT 650) through ``set_offset_fn``
-  (``__main__.Show.set_runtime_offset``: merged over latency.json's offsets, then Receiver.set_offsets); removed when
-  the run ends. Without that seam no offset is applied and ``--lead-ms`` isn't passed.
+  rendered run is heard (an instrument other than windows-gs, output not "none": PC22 or Sonos) the test piano's
+  stream gets acoustic_offset_ms = L (show.yaml ``tests.piano.lead_ms``, default LEAD_MS_DEFAULT 650) through
+  ``set_offset_fn`` (``__main__.Show.set_runtime_offset``: merged over latency.json's offsets, then
+  Receiver.set_offsets); removed when the run ends. Without that seam no offset is applied and ``--lead-ms`` isn't
+  passed.
 """
 from __future__ import annotations
 
@@ -93,8 +99,14 @@ LEAD_MS_MAX = 1900.0                   # below stream_service sound_view's FUTUR
 REC_PREFIX = "rec:"
 #: show_sender's newer flags (the other builder's): passed only when its script takes them (its text names them), so
 #: an older show_sender keeps today's argv; the rendered sounds are offered only with RENDER_FLAGS
-SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once")
+SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once", "--title",
+                                 "sonos:")
 RENDER_FLAGS = frozenset(("--instrument", "--output", "--status-file"))
+SONOS_PREFIX = "sonos:"                # an output "sonos:<zone>": a zone of SONOS_FILE (Play on Sonos)
+SONOS_FLAGS = frozenset(("--title", SONOS_PREFIX))     # show_sender's Sonos output (its text names "sonos:")
+#: room_service's Sonos zones (screen-machine-ff's file, read only): {"zones": {<zone>: {"room", "ip", ...}}}
+SONOS_FILE = contract.REPO_ROOT / "config/room/sonos.json"
+LIVE_ON_SONOS = "The Windows synth plays on PC22 only, so it's playing there; pick a rendered sound for Sonos."
 PIANO_REPLAY = contract.REPO_ROOT / "stream_service" / "piano_replay.py"   # PHRASE_LABELS, read by file path
 NAME_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
@@ -303,6 +315,28 @@ def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict],
     return out, default if isinstance(default, str) else None, problems
 
 
+def load_sonos_outputs(path: pathlib.Path = SONOS_FILE) -> tuple[list[dict], list[str]]:
+    """config/room/sonos.json -> (the Sonos outputs in file order, ``{"id": "sonos:<zone>", "label": "Sonos
+    (<room>)"}``; problems). A missing file: none, quietly; an unreadable one or a bad zone key: listed."""
+    try:
+        doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [], []
+    except (OSError, ValueError) as e:
+        return [], [f"{pathlib.Path(path).name}: not read ({type(e).__name__}: {e}): no Sonos to play on"]
+    zones = doc.get("zones") if isinstance(doc, dict) else None
+    if not isinstance(zones, dict):
+        return [], [f"{pathlib.Path(path).name}: no zones: no Sonos to play on"]
+    out, problems = [], []
+    for zone, spec in zones.items():
+        if not isinstance(zone, str) or not zone or not set(zone) <= NAME_OK or not isinstance(spec, dict):
+            problems.append(f"{pathlib.Path(path).name}: zone {zone!r}: bad name or entry (skipped)")
+            continue
+        room = spec.get("room") if isinstance(spec.get("room"), str) and spec.get("room").strip() else zone
+        out.append({"id": f"{SONOS_PREFIX}{zone}", "label": f"Sonos ({room.strip()})"})
+    return out, problems
+
+
 def sender_flags(script: pathlib.Path) -> frozenset:
     """The SENDER_FLAGS a show_sender script takes: the ones its text names as a quoted literal (its argparse)."""
     try:
@@ -354,6 +388,7 @@ class _Child:
         self.stage: Optional[str] = None
         self.progress: Optional[float] = None
         self.status_error: Optional[str] = None
+        self.note: Optional[str] = None                  # said in ``error`` while it runs (a degraded choice)
 
     def set(self, state: str, now: float) -> None:
         if state != self.state:
@@ -384,15 +419,20 @@ class Sources:
                  popen: Callable[..., subprocess.Popen] = subprocess.Popen, pdeath: bool = True,
                  instruments_file: pathlib.Path = INSTRUMENTS_FILE,
                  recordings_dir: pathlib.Path = recorder.RECORDINGS_DIR,
-                 set_offset: Optional[Callable[[str, Optional[float]], None]] = None) -> None:
+                 set_offset: Optional[Callable[[str, Optional[float]], None]] = None,
+                 sonos_file: pathlib.Path = SONOS_FILE) -> None:
         """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it).
-        ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins): tests pass tmp ones.
+        ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins), ``sonos_file``: tests
+        pass tmp ones.
         ``set_offset(stream, ms | None)``: the runtime acoustic offset seam (also :meth:`set_offset_fn`)."""
         self.instruments_file = pathlib.Path(instruments_file)
         self.recordings_dir = pathlib.Path(recordings_dir)
         self._set_offset = set_offset
         self._instr: Optional[tuple[list[dict], Optional[str], list[str]]] = None
         self._instr_at = -1e18
+        self.sonos_file = pathlib.Path(sonos_file)
+        self._sonos: Optional[tuple[list[dict], list[str]]] = None
+        self._sonos_at = -1e18
         self._flags: tuple[Any, frozenset] = (None, frozenset())
         self._offsets_applied: dict[str, float] = {}
         self.ctx = ctx
@@ -486,7 +526,7 @@ class Sources:
     def choices(self) -> dict:
         """GET /api/v1/test's ``instruments``, ``default_instrument`` and ``outputs``."""
         rows, default = self.instruments()
-        return {"instruments": rows, "default_instrument": default, "outputs": [dict(o) for o in OUTPUTS]}
+        return {"instruments": rows, "default_instrument": default, "outputs": self._outputs()}
 
     def start_test(self, source: str, piece: Optional[str] = None, instrument: Optional[str] = None,
                    output: Optional[str] = None, once: Optional[bool] = None) -> contract.SourceStatus:
@@ -518,8 +558,11 @@ class Sources:
             if spec is None:
                 raise ValueError("unknown_instrument")
             out = output if output is not None else DEFAULT_OUTPUT
-            if out not in {o["id"] for o in OUTPUTS}:
+            if out not in {o["id"] for o in self._outputs()}:
                 raise ValueError("unknown_output")
+            note = None
+            if out.startswith(SONOS_PREFIX) and spec.get("engine") == LIVE_ENGINE:
+                out, note = DEFAULT_OUTPUT, LIVE_ON_SONOS          # the GS synth is PC22's: play it there, say so
         now = self.clock()
         old = self._cur.get(source)
         if old is not None and old.proc is not None and old.proc.poll() is None:
@@ -532,6 +575,7 @@ class Sources:
             c.instrument, c.live, c.output = spec["id"], spec.get("engine") == LIVE_ENGINE, out
             c.once = (bool(once) if once is not None else path is not None) and "--once" in flags
             c.path = path
+            c.note = note
             if not c.live:
                 c.status_path = self.log_dir / f"test-{source}.status.json"
                 lead = self._lead_ms(source)
@@ -600,6 +644,19 @@ class Sources:
             return rows, want
         return rows, next((r["id"] for r in rows if r.get("engine") == LIVE_ENGINE), ids[0])
 
+    def _outputs(self) -> list[dict]:
+        """The places the piano can play (module docstring): OUTPUTS, plus a "sonos:<zone>" per sonos.json zone (re-read
+        every RELOAD_S) while a rendered sound is offered and the piano script names SONOS_FLAGS."""
+        out = [dict(o) for o in OUTPUTS]
+        rows, _ = self._instruments()
+        if not (RENDER_FLAGS | SONOS_FLAGS) <= self._sender_flags() or all(r.get("engine") == LIVE_ENGINE
+                                                                           for r in rows):
+            return out
+        now = self.clock()
+        if self._sonos is None or now - self._sonos_at >= contract.RELOAD_S:
+            self._sonos, self._sonos_at = load_sonos_outputs(self.sonos_file), now
+        return out + [dict(o) for o in self._sonos[0]]
+
     def _sender_flags(self) -> frozenset:
         """SENDER_FLAGS the test piano's script takes (re-read when the script changes)."""
         try:
@@ -667,6 +724,8 @@ class Sources:
             elif c.instrument is not None:
                 argv += ["--instrument", c.instrument, "--output", str(c.output or DEFAULT_OUTPUT),
                          "--status-file", str(c.status_path)]
+                if str(c.output).startswith(SONOS_PREFIX) and "--title" in self._sender_flags():
+                    argv += ["--title", c.label]
                 if c.lead_ms is not None:
                     argv += ["--lead-ms", f"{c.lead_ms:g}"]
             if c.once:
@@ -891,7 +950,7 @@ class Sources:
                     "sender": sender.name, "pid": None, "since_s": None, "error": None,
                     "instrument": self._instruments()[1] if midi else None,
                     "output": DEFAULT_OUTPUT if midi else None, "once": False, "progress": None}
-        error = c.error if c.state == "failed" else (c.status_error if c.state in RUNNING else None)
+        error = c.error if c.state == "failed" else ((c.status_error or c.note) if c.state in RUNNING else None)
         return {"source": source, "state": c.state, "piece": c.piece, "label": c.label, "stream": c.stream,
                 "sender": c.sender.name, "pid": c.proc.pid if c.proc is not None else None,
                 "since_s": round(max(0.0, now - c.since_s), 3), "error": error,
@@ -919,6 +978,8 @@ class Sources:
                                  else ""))
         if self._instr is not None:
             errors += self._instr[2]
+        if self._sonos is not None:
+            errors += self._sonos[1]
         self._snap = {"senders": rows, "tests": {s: self._status(s, now) for s in PLAYERS},
                       "priority": list(self._prio_applied or ()), "errors": errors,
                       "offsets_ms": dict(self._offsets_applied)}
