@@ -989,3 +989,25 @@ export type ShowEvent =
   | { type: "auto"; seq?: number; event: ShowAutoNote }
   | { type: "describe"; seq?: number; result: ShowDescribeResult }
   | { type: "pong"; seq?: number };
+
+/** GET /renderer/api/diag's host block (stream_service diag.host); the memory fields are optional (newer renderers). */
+export interface RendererDiag {
+  host?: {
+    load?: number[];
+    cpus?: number;
+    mem_total_mb?: number | null;
+    mem_available_mb?: number | null;
+    swap_total_mb?: number | null;
+    swap_used_mb?: number | null;
+  };
+}
+
+/** GET /renderer/api/state: the live sessions' summaries; only what the "PC busy" badge reads. */
+export interface RendererState {
+  sessions?: Array<{
+    screen?: string;
+    state?: string;
+    degrade?: { level?: number; why?: string | null; out_fps?: number | null; scene_div?: number | null } | null;
+    fps?: number | null;
+  }>;
+}

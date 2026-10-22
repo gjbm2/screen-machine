@@ -35,6 +35,7 @@ import { ScreenCard } from "./ScreenCard";
 import { CARD_CLASS, RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import { TokenDialog } from "./TokenPrompt";
 import type { ModeDef, RoomStatus, SiteEffect, TrackedTransition } from "./types";
+import { usePcLoad } from "./usePcLoad";
 import { useRoomConnection } from "./useRoomConnection";
 import { liveOf } from "./useScreenControls";
 import { friendlyName } from "./words";
@@ -184,6 +185,8 @@ export default function RoomPage() {
   const show = useShowFeed(room.api, !!status, room.addLog);
   const micState = useShowState(show).card?.mic_state;
   const micOn = !!micState?.on && !micState.muted;
+  // "PC busy" in the header when other work overloads the PC (owner, 22 Oct).
+  const pc = usePcLoad(room.api, !!status);
   const lampIds = useMemo(() => {
     if (fixtures.missing || (fixtures.view && !fixtures.view.enabled)) return [];
     return fixtures.view ? fixtures.view.fixtures.filter((f) => f.kind === "hue").map((f) => f.id) : null;
@@ -258,7 +261,7 @@ export default function RoomPage() {
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
-        <Header link={link} onMenu={openMenu} screen={focusScreen} micOn={micOn} />
+        <Header link={link} onMenu={openMenu} screen={focusScreen} micOn={micOn} pc={pc} />
 
         <main className="space-y-5 pt-1">
           {conn.authRequired && !tokenOpen && (

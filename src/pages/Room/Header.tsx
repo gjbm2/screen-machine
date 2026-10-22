@@ -4,6 +4,7 @@
 // Under it: the way to the generator (on this screen's tab when opened for one screen,
 // /room?screen=<id>, the TVs' QR codes) and the renderer's Library.
 
+import { useState } from "react";
 import { Library, Menu, Sparkles } from "lucide-react";
 import { generatorUrl } from "@/components/nav/appNav";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Dot } from "./bits";
 import type { LinkState } from "./connection";
 import { friendlyName } from "./words";
 import { defaultRoomUrl } from "./api";
+import type { PcLoad } from "./usePcLoad";
 
 const PILL =
   "inline-flex h-9 items-center gap-2 rounded-full border border-stone-200/80 bg-card px-3 text-[15px] font-medium text-stone-700 shadow-sm group-hover:bg-stone-50 group-focus-visible:ring-2 group-focus-visible:ring-ring";
@@ -23,17 +25,35 @@ export function Header({
   onMenu,
   screen,
   micOn,
+  pc,
 }: {
   link: LinkState;
   onMenu: () => void;
   screen?: string | null;
   /** The room mic is listening (owner, 16 Oct: always know, anywhere on the page). */
   micOn?: boolean;
+  /** Other work is overloading the PC (owner, 22 Oct): a "PC busy" badge; tapping it says what it costs. */
+  pc?: PcLoad | null;
 }) {
+  const [pcOpen, setPcOpen] = useState(false);
+  const pcBusy = !!pc?.busy;
   return (
     <header className="pb-1 pt-3">
       <div className="flex items-center gap-1">
         <h1 className="mr-auto text-[28px] font-semibold leading-tight tracking-tight">Room</h1>
+        {pcBusy && (
+          <button
+            type="button"
+            data-testid="pc-busy-badge"
+            onClick={() => setPcOpen((o) => !o)}
+            aria-expanded={pcOpen}
+            title={pc?.sentence}
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-900"
+          >
+            <span aria-hidden className="h-2 w-2 rounded-full bg-amber-500" />
+            PC busy
+          </button>
+        )}
         {micOn && (
           <span
             data-testid="mic-on-badge"
@@ -68,6 +88,11 @@ export function Header({
           <Menu />
         </Button>
       </div>
+      {pcBusy && pcOpen && (
+        <p data-testid="pc-busy-sentence" className="pb-1 text-[15px] leading-snug text-amber-900">
+          {pc?.sentence}
+        </p>
+      )}
       <nav
         aria-label="Elsewhere in the app"
         data-testid="screen-links"
