@@ -724,12 +724,10 @@ parse_palette(spec) -> (r, g, b) | None              # PALETTES name or "r,g,b" 
   black"). Through such a stretch (`status()["held"]`: `quiet` or `no_features`) the frame is steady: `hue_depth` 0,
   no DIMMER pulses, no beat edges or PRISM flips; PAN, TILT and ZOOM hold, ACTIVITY is 0.
   While we send, room's test show yields to us (fake_artnet treats any other sender as real Art-Net).
-- **Yield.** Every 5 s it polls `GET :8700/api/v1/dmx` (`input`: last_from, age_ms, pps, source). With the input
-  fresh (≤ 1500 ms), it pauses and logs when:
-  - `input.last_from` is not one of ours (127.0.0.1 or our socket's address); or
-  - while we send, `input.pps` is over our own rate + 8 (review, 16 Oct): a second sender interleaves with us. With
-    us at ~42 packets/s and a Maestro at ~44, last_from showed us about half the time, which left 10-30 s of two
-    senders flickering on one universe; and a sender relayed from 127.0.0.1 was never seen at all.
+- **Yield.** Every 5 s it polls `GET :8700/api/v1/dmx` (`input`: last_from, age_ms, source). With the input fresh
+  (≤ 1500 ms), it pauses and logs when `input.last_from` is not one of ours (127.0.0.1 or our socket's address).
+  There is no packet-rate test (09's audit F4, 21 Oct): "over our own rate + 8" tripped on our own beat-edge frames,
+  38 yields from 127.0.0.1 since 16 Oct, each stopping the lamps for 5 s; Maestro is coming out.
   While paused we send nothing, so any fresh real Art-Net (`source` "artnet", any address) keeps us paused; the
   first poll that shows the input stale (or only room's own test show) resumes. A failed poll changes nothing.
 - **patch.yaml** is read-only for us. It is re-read on an mtime change, and a bad edit keeps the last good layout.
@@ -1134,8 +1132,8 @@ CUDA_VISIBLE_DEVICES=
     displaces, cycles section colours. **Stage 3:** once a mode (or `PUT /api/v1/vibe`) sets a vibe, the director's
     `palette_fn` gives every screen and lamp its colour, and `set_look` sets the swell depth and beat lock per vibe;
     `status()["palette"]` says which (`fixed` | `director`).
-  - It yields to a real Maestro: room's `:8700/api/v1/dmx` is polled every 5 s (its `last_from`, and its `pps`
-    against our own rate, so a Maestro relayed from 127.0.0.1 is seen too).
+  - It yields to another Art-Net sender: room's `:8700/api/v1/dmx` is polled every 5 s (its `last_from`; no
+    packet-rate test since 09's audit F4).
 - **Before the kiosk sender exists:** `SHOW_ARGS="--log-level INFO"`. With no senders it listens and serves
   `/healthz`, and Art-Net is off.
 - **PC22's test piano** (`tools/show_sender/show_sender.py --test-piano … --port 6981`) can be added as a second
@@ -1364,7 +1362,7 @@ class Brain:
   |---|---|
   | `director` | `{"target": VibeTarget \| null, "target_source": "mode" \| "api", "target_set_at": epoch \| null, "mode": str \| null, "nudges": {"steps": int, "palette": "auto" \| "art" \| <name>, "moods": [str] \| null, "keep_until": epoch \| null, "house": bool, "low": bool}}`. Chips are rebuilt from the nudges. At restore, a passed `keep_until` is dropped, and the first RoomView whose mode differs from `mode` clears every nudge. |
   | `listener` | `{"on": bool, "set_at": epoch}`. With nothing saved: `{"on": false}`. |
-  | `autopilot` | `{"entered": {"mode", "previous", "rule", "at", "transition_id", "by": "auto" \| "person"} \| null, "hold": {"mode", "by": "person" \| "undo" \| "correction", "since", "until"} \| null, "pause": {"why": "flap", "until"} \| null, "backoff_until": epoch \| null, "suppressed": [{"mode", "rule", "since", "until"}], "switches": [epoch, ...], "last": {"at", "from", "to", "reason", "rule", "transition_id", "status"} \| null}` |
+  | `autopilot` | `{"entered": {"mode", "previous", "rule", "at", "transition_id", "by": "auto" \| "person"} \| null, "hold": {"mode", "by": "person" \| "undo" \| "correction", "since", "until"} \| null, "suppressed": [{"mode", "rule", "since", "until"}], "switches": [epoch, ...] (the last 24 h), "last": {"at", "from", "to", "reason", "rule", "transition_id", "status"} \| null}` |
   | `sources` | Nothing: tests stop on restart. |
 
 - **Starts cold, deliberately:** the clock, sections, LLM beliefs, situation timers and the RoomView.
@@ -1660,7 +1658,7 @@ class Director:                                        # Component "director", t
    - `time`: inside `dwell_s`, at energy-novelty points.
    - `between_pieces`: no strike for ≥ 2 s with the damper < 0.1 (PianoView), once per pause.
    - Next look lands on the next bar (≤ `next_max_wait_s`).
-   - Keep this look stops changes (variations go on).
+   - Keep this look stops changes (variations go on); a second tap stops keeping (09's audit F13).
    - Each change is announced as `room.event {kind: "look_change", at_ms}`, as early as the clock allows (≥ lead +
      250 ms when it can be). At `at_ms` comes the new room.look, `ctx.section_change()` (GOBO +1), and the
      crossfade.
@@ -1840,7 +1838,7 @@ class NoteTap:
 
 | id (label) | source, rank | params | true | false | unknown |
 |---|---|---|---|---|---|
-| `piano_playing` ("the piano is playing") | midi, 0 | `situations.midi`: `streams`, `channels`, `include_test` (false), `window_s`, `min_notes`, `min_span_s`, `min_pitches`, `heard_by`, `heard_min_lufs` | In the last `window_s`, NoteTap shows ≥ `min_notes` note-ons on `streams` × `channels`, spanning ≥ `min_span_s`, on ≥ `min_pitches` distinct pitches. While `heard_by` is up and is the features' stream, the window's max `lufs_s` must also be ≥ `heard_min_lufs`. | otherwise, with a listed stream up | no listed stream up |
+| `piano_playing` ("the piano is playing") | midi, 0 | `situations.midi`: `streams`, `channels`, `include_test` (false), `window_s`, `min_notes`, `min_span_s`, `min_pitches` | In the last `window_s`, NoteTap shows ≥ `min_notes` note-ons on `streams` × `channels`, spanning ≥ `min_span_s`, on ≥ `min_pitches` distinct pitches. MIDI alone (21 Oct: no mic check). | otherwise, with a listed stream up | no listed stream up |
 | `piano_idle` ("the piano has stopped") | midi, 0 | `streams`, `channels`, `include_test`, `idle_note_s` (1) | No note-on on them in the last `idle_note_s`, and no key or damper down (PianoView, when the voice is a listed stream). `for_s` is the idle length. | a note-on in the last `idle_note_s` | no listed stream up |
 | `music_audible` ("music is playing") | audio, 2 | `situations.music`: `stream`, `min_prob`, `dsp_min_gate`, `include_test`; plus `situations.sonos` | With a classifier (P1): music ≥ `min_prob` on `stream`. Without one: `stream` is the features' stream, gate ≥ `dsp_min_gate`, and the clock gate is `beat` or `dmx` (or harmony conf ≥ 0.3). Or: `sonos_playing` and the mic agrees (gate ≥ `dsp_min_gate`). | stream up and neither | stream down and Sonos unknown |
 | `sonos_playing` ("Sonos is playing") | sonos, 1 | `situations.sonos`: `now_playing`, `volume`, `own_change_s` | RoomView member `now_playing.state` is PLAYING or TRANSITIONING, not muted, and the `volume` member > 0 | otherwise | room unreachable, a member unknown, or `sent_age_s` < `own_change_s` on either |
@@ -1907,12 +1905,12 @@ conditions.
 | Key | Shape | Design default when absent |
 |---|---|---|
 | `on` | bool | false. At run time the room target `autopilot.main` wins (aa's adapter seeds itself from this). |
-| `quiet_hours` | `{"from": "HH:MM", "to": "HH:MM"}` or `null` (none) | `{"from": "23:00", "to": "08:00"}` (§8.9) |
-| `min_dwell_s` | s | 300 |
-| `max_switches` | `{"count", "per_s", "pause_s"}` | `{"count": 4, "per_s": 1800, "pause_s": 1800}` |
-| `backoff_s` | s | 1800 |
+| `quiet_hours` | `{"from": "HH:MM", "to": "HH:MM"}` or `null` (none) | none (owner, 16 Oct: never invented) |
+| `min_dwell_s` | s | 60 |
 | `hold` | `{"until": <cond>, "max_s", "correction_s", "suppress_s"}` | `{"until": {"all": [{"piano_idle": {}}, {"not": {"music_audible": {}}}], "for_s": 600}, "max_s": 7200, "correction_s": 60, "suppress_s": 14400}` |
 | `chips` | `{"switch_s", "suggest_s"}` | `{"switch_s": 45, "suggest_s": 120}` |
+
+A max_switches or backoff_s left in modes.json is ignored (21 Oct: no flap guard, no backoff).
 
 **RoomLink (autopilot.py).** It is the only room client in show_service.
 ```python
@@ -1952,29 +1950,26 @@ class Autopilot:                                      # Component "autopilot", t
 | State | Meaning | Leaves for |
 |---|---|---|
 | `off` ("Auto is off") | `autopilot.main` isn't "on" | watching when it turns on (suppressions are kept) |
-| `watching` ("Auto · watching") | it evaluates rules | acting, holding, paused, backoff, blind |
-| `acting` ("Auto → Piano…") | its PUT got 202 and the transition runs | watching (done, or partial: the mode landed and a skipped or unconfirmed step is only logged, 21 Oct); backoff (failed or rolled back); holding (cancelled by someone else's request) |
+| `watching` ("Auto · watching") | it evaluates rules | acting, holding, paused, blind |
+| `acting` ("Auto → Piano…") | its PUT got 202 and the transition runs | watching (done, or partial: the mode landed and a skipped or unconfirmed step is only logged, 21 Oct); watching (failed or rolled back: said once, and that rule isn't tried again until it goes false, 21 Oct); holding (cancelled by someone else's request) |
 | `holding` ("Auto paused · you chose Disco · Resume") | a person picked a mode | watching when `hold.until` holds, at `hold.max_s`, or on Resume |
 | `paused`, why `quiet_hours` ("Auto paused · quiet hours") | inside quiet hours: it may **leave** a mode it entered, never enter one | watching at the end of quiet hours |
-| `paused`, why `flap` ("Auto paused · too many changes · Resume") | `max_switches.count` switches within `per_s` | watching after `pause_s`, or on Resume |
-| `backoff` ("Auto waiting · the last switch didn't finish · Resume") | after a failed or rolled-back switch (not a partial one: its mode landed) | watching after `backoff_s`, or on Resume |
-| `blind` ("Auto · not listening" / "Auto · modes.json has an error") | room unreachable, or `status.config.error` | the previous state when it comes back |
+| `blind` ("Auto can't reach the room right now" / "Auto is paused: a mode has a problem; open its editor") | room unreachable, or `status.config.error` | the previous state when it comes back |
 
 **Each tick (1 Hz):**
 1. Room unreachable or a config error: `blind`. `autopilot_on` not true: `off`.
-2. Expire holds, pauses, backoff and suppressions, and compute the quiet-hours flag.
+2. Expire holds and suppressions, forget failed rules that went false, and compute the quiet-hours flag.
 3. If a transition is running (`transition` or `target` not null), only wait. In `acting`, the outcome comes from the
    transition with Auto's own id.
 4. Evaluate candidates for every mode that has an `autopilot` block (no code knows any mode):
-   - **enter:** mode ≠ current; `from` allows the current mode; not suppressed; `enter_when` holds.
+   - **enter:** mode ≠ current; `from` allows the current mode; not suppressed; `enter_when` holds; its last switch
+     didn't fail (until `enter_when` has gone false).
    - **suggest:** `otherwise_suggest_when` holds and enter doesn't.
-   - **leave:** `current == entered.mode`, `leave_when` holds, and `ctx.engaged()` is false (nudges stop Auto
-     leaving).
+   - **leave:** `current == entered.mode` and `leave_when` holds (a nudge no longer stops Auto leaving, 21 Oct).
 5. **In `watching`:**
    1. a leave first;
    2. else the best enter candidate: lowest situation rank in its rule (§8.9: MIDI > Sonos > mic > LLM), then file
-      order. It also needs: the current mode's `since_age_s` ≥ `min_dwell_s`, under the flap limit, and outside quiet
-      hours;
+      order. It also needs: the current mode's `since_age_s` ≥ `min_dwell_s`, and outside quiet hours;
    3. else a suggestion, announced once per episode per mode.
 
    In `paused` (quiet hours): leave only. In every other state: nothing.
@@ -1986,14 +1981,16 @@ class Autopilot:                                      # Component "autopilot", t
    ```
    - It never names the current mode.
    - 202 → `acting`.
-   - 409 `stale` → stay `watching` (timers kept; no backoff).
+   - 409 `stale` → stay `watching` (timers kept).
    - 404 or 400 → log, and block that rule until the config revision changes.
    - Unreachable → `blind`.
 7. **When Auto's transition ends:**
    - `done` → `watching`. An enter sets `entered = {mode, previous, rule, at, transition_id, by: "auto"}`; a leave
-     clears it. Announce `switch` (a chip with Undo for `chips.switch_s`) and record the switch time for the flap
-     guard.
-   - `failed` or rolled back → `backoff`, and announce `failed`. `partial` (the mode landed, a step skipped or unconfirmed) is a switch, logged as `partial` (owner, 21 Oct).
+     clears it. Announce `switch` (a chip with Undo for `chips.switch_s`) and record the switch time (`switches`, the last
+     24 h).
+   - `failed` or rolled back → `watching`; announce `failed` ("Auto couldn't switch to Piano"; the room's detail in
+     the log only), and that rule is blocked ("the last try didn't work; it tries again the next time …") until it
+     goes false. Resume or Auto on forget it (owner, 21 Oct: no backoff). `partial` (the mode landed, a step skipped or unconfirmed) is a switch, logged as `partial` (owner, 21 Oct).
    - `cancelled` → `holding` (`by: "person"`).
 
 **People win** (a `mode.transition` `started` whose source isn't `autopilot`, `auto-undo`, `boot`, `resume` or
@@ -2012,24 +2009,25 @@ class Autopilot:                                      # Component "autopilot", t
   `skip`: a person's undo applies the mode fully.
 - Then a correction, as above, and `holding` (`by: "undo"`).
 
-**Resume** clears any hold, pause or backoff. The state goes to `watching`, with timers restarted.
+**Resume** clears a hold and forgets failed switches. The state goes to `watching`, with timers restarted.
 
-**Announcements:** every switch, suggestion, hold, undo, pause, backoff and failure goes to
+**Announcements:** every switch, suggestion, undo, quiet-hours pause and failure goes to
 `ctx.notify("auto", AutoAnnouncement)`, to `AutopilotState.chip`/`suggest`, and to `contract.AUTOPILOT_LOG` (one
 JSON line: `{at, kind, mode, rule, reason, evidence: {word: SituationReading}, room: {current, revision}}`).
+A person's hold is only logged (kind "hold"; 21 Oct: the Auto line says it), and it clears the current chip.
 
 **Exposed:** `contract.AutopilotState`.
 
 **Tests (B2)**, against a fake room (an aiohttp test server on an ephemeral port: status, room/config, mode,
 room/targets, and a WS that pushes status and `mode.transition`):
 - NoteTap: dedupe (new, old, restart), the channel filter, test streams excluded.
-- `piano_playing` thresholds, and the heard-by check.
+- `piano_playing` thresholds (MIDI alone).
 - The grammar: all/any/not, `for_s`, unknown.
 - The supervisor:
   - enter after `for_s`, sending `expect` and `skip`;
-  - 409 → no backoff;
+  - 409 → stays watching; a failed switch waits for its rule to go false, and leave rules still run;
   - a person → holding; undo → suppressed;
-  - the flap guard; quiet hours (leave only);
+  - quiet hours (leave only);
   - `leave_to` previous;
   - it never re-requests the current mode;
   - Auto off → no PUT.
@@ -2051,8 +2049,9 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
 - **Situation params** resolve in this order: `situations.DESIGN_DEFAULTS` (marked "design default (starting point)"
   in the vocabulary's x-ui `source`), then show.yaml's section, then the rule. Null means unset: any stream, every
   channel, or no check. No device or stream name is ever a default.
-- **Self-cause:** while the room changed `situations.sonos`' targets within `own_change_s`, `sonos_playing`,
-  `music_audible` and `quiet` read unknown.
+- **Self-cause:** while the room changed `situations.sonos`' targets within `own_change_s`, `sonos_playing` (and the
+  Sonos part of `music_audible`) reads unknown; the mic's words (`music_audible`, `quiet`) read the mic as usual
+  (21 Oct, H9).
 - **Decisions where the table was open:**
   - `music_audible`:
     - mic down and Sonos stopped → false;
@@ -2068,9 +2067,9 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
   - Params may be `{}`, `true` or `null`.
   - Readings are memoised per `now_s`, so rules that share a leaf share its reading.
 - **The supervisor:**
-  - **State precedence:** blind > off > acting > holding > paused (flap) > backoff > paused (quiet hours) > watching.
+  - **State precedence:** blind > off > acting > holding > paused (quiet hours) > watching.
   - **`on`:** the room's `autopilot.main`. While the room has no such target, modes.json's `autopilot.on` (default
-    false). Turning Auto on clears a hold, pause or backoff, but keeps suppressions.
+    false). Turning Auto on clears a hold and forgets failed switches, but keeps suppressions.
   - **Agreeing:** a person who picks a mode whose `enter_when` or `otherwise_suggest_when` holds (taking the tile
     counts), or who re-picks the mode Auto entered, is agreeing. That is not a hold, and `entered.by` becomes
     "person". Except: a pick of `last.from` within `correction_s` is a correction first (review, 16 Oct).
@@ -2084,7 +2083,7 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
     - a PUT with no answer (or one cancelled mid-way) leaves a **maybe**: `{source, to, rule, reason, sent_at}`. The
       room's next `started` with Auto's source (or Undo's, for an Undo) and the same `to`, within `MAYBE_S` (30 s),
       is adopted as Auto's own (also when it came before the PUT gave up): `acting`, `last`, then on `done` the
-      announcement, `entered`, the flap count and Undo, exactly as after a 202 (the log's `request` says
+      announcement, `entered`, the switch count and Undo, exactly as after a 202 (the log's `request` says
       `adopted`). An adopted Undo records the correction and the hold. An Undo whose PUT got no answer still answers
       502 `room_unreachable` (the room may or may not have done it; if it did, the card shows "Undone" from the
       announcement);
@@ -2094,8 +2093,7 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
     `correction_s` of Auto's request) and a hold.
   - **Corrections and undo:** a correction or Undo after a leave suppresses that `leave_when`. Undo of a leave puts
     `entered` back.
-  - **A partial switch:** it still sets `entered` and counts as a switch, then backs off.
-  - **The flap guard:** checked at the next attempt. Leaves count too.
+  - **A partial switch:** it still sets `entered` and counts as a switch (logged `partial`; no backoff, 21 Oct).
   - **Announcements:**
     - the quiet-hours pause, once per night;
     - a hold's end, as `resume` ("Auto · watching again");
@@ -2124,7 +2122,7 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
 | `WS /v1/events` | see below | | 503 `too_many_clients` (more than 64) |
 | `POST /api/v1/step` | `{"dir": "calmer" \| "wilder"}` | `{"steps": StepsView, "chips": [ChipData]}` (at a limit: `at_limit` true) | 400 `bad_request` |
 | `PUT /api/v1/palette` | `{"name": "auto" \| "art" \| <catalog name>}` | `{"palette": {"pick", "current"}, "chips"}` | 400 `unknown_palette` `{choices}` |
-| `POST /api/v1/action` | `{"do": next \| keep \| house \| low \| tap \| half \| double \| one}` | director words: `{"done", "chips", "look": {"id", "next_pending"}}`; clock words (stamped on arrival): `{"done", "clock": ClockData \| null}` | 400 `unknown_action` |
+| `POST /api/v1/action` | `{"do": next \| keep \| house \| low \| tap \| half \| double \| one, "on"?: bool}`: `on` (house, low) is the state wanted, and without it they toggle; keep toggles (a second tap stops keeping) | director words: `{"done", "chips", "look": {"id", "next_pending"}}`; clock words (stamped on arrival): `{"done", "clock": ClockData \| null}` | 400 `unknown_action` |
 | `DELETE /api/v1/nudge/{id}` (`all` = Back to auto) | none | `{"cleared": [ids], "chips"}` (an unknown id clears nothing) | none |
 | `GET /api/v1/vibes` | none | `VibesCatalog` | none |
 | `GET /api/v1/vibe` | none | `VibeReadback` (with `problems` and `boot_id`) | none |
@@ -2150,7 +2148,8 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
    and the RoomView: `{"vibe", "persona", "palettes", "moods", "modes": [{"name", "label"}], "current_mode"}`.
 2. `chips = await brain.call(director.apply_describe, intent)`.
 3. The answer is `DescribeResult(ok=True, via, text, reply, applied=chips, suggest={"mode", "label"} if intent.switch_mode else None)`.
-   It never switches a mode itself (§7.4).
+   It never switches a mode itself (§7.4). The card's `describe.suggest` is null once the room's current mode is the
+   suggested one (09's audit F7).
 
 **WS /v1/events (the card's socket):**
 - No handshake. The first message is `{"type": "welcome", "v": 1, "seq", "t_ms", "card": CardData}`.
@@ -2174,10 +2173,11 @@ from its events (announced, entered, counted, undoable) and so is a slow Undo.
   5. `music_audible` → "Music";
   6. else "Listening".
 - `hearing.level` is energy (0 when stale). `hearing.loose` is `direction.loose`, shown as "following loosely".
-- `palette.choices` = Auto, From the art, then the vibe's first 5.
+- `palette.choices` = Let it choose (`auto`; only the room's Auto is called "Auto", 09's audit F10), From the art,
+  then the vibe's first 5.
 - The rest maps straight from the director, listener, autopilot and sources snapshots.
 - **"More: lamp brightness" (§10.1 item 6) is Lights low** (c8's decision, 16 Oct): `POST /api/v1/action {"do":
-  "low"}` toggles it, `CardData.low` shows it, and its chip "Lights low" clears it. It dims the lamps to
+  "low", "on": bool}` sets it (without `on` it toggles), `CardData.low` shows it, and its chip "Lights low" clears it. It dims the lamps to
   `director.low.level` over `low.fade_s`, never the screens, and reaches the lamps in a quiet room too. No separate
   brightness route or slider: a level nudge can follow if the owner wants finer steps (2f: draw the More unroll's
   "Lamp brightness" as the Lights low toggle).
@@ -2842,7 +2842,8 @@ under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins a
 7. **68:** the Art-Net layout is unchanged. Once a vibe is set, screens and lamps take the director's colours, and
    `hue_depth` and `beat_lock` vary per vibe. (Review, 16 Oct) While a vibe is set, a quiet room or stale features no
    longer stop Art-Net: the director's relaxed look keeps going out, steady, with no pulses (artnet_out "Idle"), so
-   room's Hue output keeps following; with no vibe, the P0 idle is as before.
+   room's Hue output keeps following; with no vibe, director.no_feel's colours do the same (09's audit F3, 21 Oct);
+   only with no palette at all is it the P0 idle.
 
 ## Stage 4: local ML, the medium lane and sections (P3)
 
@@ -6326,7 +6327,7 @@ at all.
     `palette: null` (the screen card's "The scene's own colours", LivePanel) reads "the scene's own" (S5.14, the
     Room page's own words; 2f to confirm); anything else "custom colours";
   - a newer pick replaces it (the chip follows);
-  - it counts as a nudge for `engaged()` (Auto won't leave the mode under it);
+  - it counts as a nudge for `engaged()` (the card's word; since 21 Oct it no longer keeps Auto in the mode);
   - the lamps are unchanged (they keep the director's palette).
 - **It ends** at the next mode change (`on_mode_change` clears every nudge), Back to auto (`clear("all")`), or the
   chip's × (`clear("screen_pick")`, through the existing `DELETE /api/v1/nudge/{id}`). Then the record of what was sent
@@ -6895,7 +6896,7 @@ with the senders' capture devices actually closed. The Room page's Mute always w
   dropped before the upload ("the mic went off").
 - **`situations.py`**: features and CED readings of an off stream read as missing. So quiet, talking,
   music_audible and energy_above read unknown while the mic is off ("the mic is off"), a rule on "quiet" never
-  fires because the mic was switched off, and piano_playing's heard_by check is skipped (as when that mic is down).
+  fires because the mic was switched off.
 - **The card** (`api.card`): top-level `mic_state` (the GET body). `hearing.text` is "Mic muted" or "Mic off"
   when that is why no room sound comes in, ahead of the connection words, with `hearing.level` 0. "The microphone
   is starting" covers every room stream still "off" while the mic is on.
@@ -7377,7 +7378,9 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
     `track_end` {id `track_end:<track id>`, detail `stop`, fade-dark out 0.2 in 1.0}, and `sound_back` (the same id)
     if the sound returns before structure's own track_end takes over. structure's outro phase fires `track_end`
     {detail `fade`, fade-dark, out_s = the time to the floor from lufs_s's 4 s slope, 3..12} with `sound_back` when
-    lufs_s comes 3 dB back over where it was. The listener's ending: cold = the stop only, fade = both, segue =
+    lufs_s comes 3 dB back over where it was. Once a song has had a sound_back, neither fires again in it until a
+    track_change (logged `repeat`, `counts.repeat`; the sheet drops their Ready lines; 09's audit live-F8).
+    structure's own gap-based end is untouched. The listener's ending: cold = the stop only, fade = both, segue =
     neither, unknown = both. Structure's own drop, breakdown, track_change and track_end_armed are untouched.
   - **Forecasts:** each `coming` armed once (by its id), one per kind (newer replaces), disarmed at the window's end
     + 2 s ("missed") or a track change. Confident (>= 0.6) + a phrase line (16 bars at phrase_conf 0.5, else 8) in the
@@ -7396,7 +7399,7 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
     transitions, conf}). Words: "Big change at the chorus, likely in 10-25 s", "Change when the band comes in, any
     moment now", "Watching for the drop, ...", "Ready: snap to dark if the music stops", "Ready: slow fade if the
     music fades", "Ready: straight on into the next song", "Dark: the music stopped; back if it returns".
-  - **Log:** arm, schedule, fire, held, replaced, missed, disarmed, skipped, the standing fires, sound_back, handed,
+  - **Log:** arm, schedule, fire, held, replaced, missed, disarmed, skipped, the standing fires, sound_back, repeat, handed,
     and each forecast's `outcome` once its window has passed: `structure_saw` lists structure's own events in that
     window (the hit rate). Memory ring (snapshot `log`) and `cues.jsonl` (1 MB rotation).
 - **Validated with real calls** (18 Oct; 8 clips of 10 s from the test-music files, never room audio; the real prompt
@@ -7430,7 +7433,7 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
 - **Tests:** test_listener (the new answer and its cleaning, the beliefs' approach agreement, ending hold, coming
   windows, an older clip arriving second, the cadence steady and fast and its reasons, two in flight, min gap between
   starts, the section call's slowing, the estimate's blend and measured share, the view's character, approach and
-  sheet, the "Now" line); test_cues (new: the stop and its sound_back, a slide or a dip is no stop, music / hold /
+  sheet, the "Now" line); test_cues (new: the stop and its sound_back, no second dark in a song that came back, a slide or a dip is no stop, music / hold /
   segue / cold, structure's end taking over, the fade's time to the floor, cold never fades, every sign detector, the
   downbeat fire, the phrase-line schedule, medium / small, a miss and its outcome, replace and disarm, the hold, one
   fire a bar, the phrase_line sign, key_change, settings and the real show.yaml); test_director (the listener's genre
@@ -7518,8 +7521,8 @@ director from the music. Docs: SHOW_ENGINE §9.1 "Light scenes". Files: `show_se
   showing now while another is there. The why is short words: what fits ("energy 0.6, euphoric, techno"), else "a
   change", after the reason ("a new song: ...").
 - **The director** picks while a palette resolves (a feel, or `director.no_feel`): when a feel is set, at every look
-  that lands (`_land`), at a song change and on Next look (with no feel no look lands, so those two pick at once),
-  and when none is set yet or the one showing left the catalogue. Never while Keep this look holds, except a person's
+  that lands (`_land`; a song change's and a Next look's among them), with no feel at a song change that lands no
+  look (held, people talking), and when none is set yet (once each: 09's audit F5, they used to pick twice) or the one showing left the catalogue. Never while Keep this look holds, except a person's
   own Next look. Neutral (no palette): null. room.look gains `light_scene`, `light_scene_why` and
   `light_scene_drop` (contract.LightSceneDrop {id, at_ms, strength}); a scene change publishes room.look at once. The
   snapshot gains `light_scene` {name, label, why, age_s, drop, picks, drops, catalogue}; each pick and drop is logged
@@ -7549,7 +7552,7 @@ director from the music. Docs: SHOW_ENGINE §9.1 "Light scenes". Files: `show_se
 - **Tests:** test_light_scenes (new: load, labels, the genre fill, tags.py by path, problems, the last good on a
   broken file, hot reload and weak subscribers, scoring, the seeded draw and no repeats, the why, the real catalogue
   loading clean and compiling against the real rig and picking by the music, the engine recompiling on a change; the
-  director picking on a feel, Next look under Keep, a song change and Next with no feel, Keep holding, an empty
+  director picking on a feel, Next look under Keep, a song change and Next with no feel picking once as their look lands, Keep holding, an empty
   catalogue, a scene leaving, and drops once a beat into the engine); test_looks (scenes replacing layers, the
   crossfade, a scene's hits and cap, drop flashes and LookData's drop once per id, identify, follow and its rise
   limit; the stats shape); test_director (the name scan covers light_scenes.py, and the scenes' names and layer ids).
