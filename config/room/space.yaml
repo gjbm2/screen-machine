@@ -4,21 +4,25 @@
 # Room map (or here), never guess. Anything set here can't be moved on the page (it shows as fixed), so leave a thing
 # commented while it is placed on the map.
 #
-# The drawing room as known (owner, 14 Oct; config/room/patch.yaml and fixtures.yaml): the two Frame TVs hang on the
-# north and south walls, facing each other across the room; the four Hue lamps are named for the room's corners (NE
-# above the north screen and NW opposite it; SE above the south screen and SW opposite it); the Steinway and the
+# The drawing room as known: the two Frame TVs hang side by side on the SAME wall, the west wall, both FACING EAST
+# (owner, 22 Oct: "they're not on opposite walls ... they are on the same side, facing east"): the south screen at the
+# south end, on the left as you face them, and the north screen at the north end, on the right. The four Hue lamps
+# (owner, 14 Oct; config/room/patch.yaml and fixtures.yaml): "SE is above the south screen and SW opposite it; NE is
+# above the north screen and NW opposite it"; the Steinway and the
 # glitterball (room device mirror_ball: its motor turns with the flow, docs/LIGHTS.md §4.4) are in the room. Every
 # measurement below is a commented starting point in <angle brackets>: measure it, or place it on the Room map.
 # Ids are fixtures.yaml's (screen.north, hue.ne, ...) and the Lights page's lights (dmx.*).
 version: 1
 room:
   # size: [<east-west m>, <north-south m>, <floor to ceiling m>]   # measure
-  # front: north                   # the wall people face (left/right are as seen facing it). Unset: north, the frame's
-  #                                # own convention; set it on the Room map ("Which wall do people face?") or here
+  front: west                      # the wall people face: the screens' wall (owner, 22 Oct), so the south screen is on
+                                   # the left and the north screen on the right
 appliances: {}                     # fixture id or room device -> where it is (the page writes these; the room's own:)
-  # screen.north: {at: [<x: the picture's centre along the wall>, <Y: the room's north-south length>, <z: centre
-  #               height>], plane: {normal: [0, -1, 0], up: [0, 0, 1], size: [<picture width m>, <height m>]}}
-  # screen.south: {at: [<x>, 0, <z>], plane: {normal: [0, 1, 0], up: [0, 0, 1], size: [<width m>, <height m>]}}
+  # Both screens: on the west wall (x = 0), facing east (normal [1, 0, 0]); north screen at the larger y.
+  # screen.north: {at: [0, <y: the picture's centre along the wall>, <z: centre height>],
+  #               plane: {normal: [1, 0, 0], up: [0, 0, 1], size: [<picture width m>, <height m>]}}
+  # screen.south: {at: [0, <y: south of the north screen>, <z>], plane: {normal: [1, 0, 0], up: [0, 0, 1],
+  #               size: [<width m>, <height m>]}}
   # hue.ne: {at: [<x>, <y>, <z>]}                  # by the NE corner, above the north screen
   # hue.nw: {at: [<x>, <y>, <z>]}                  # by the NW corner, opposite the north screen
   # hue.se: {at: [<x>, <y>, <z>]}                  # by the SE corner, above the south screen
