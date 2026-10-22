@@ -1,0 +1,62 @@
+score-ribbon-paper:
+  label: Score ribbon (paper)
+  source: score_ribbon
+  params:
+    look: paper
+    palette: ember
+    note_glow: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    style: gentle
+    modes: [piano]
+    family: score
+    dims: 2d
+    technique: [sdf, analytic]
+    weight: 1.0
+
+score-ribbon-night:
+  label: Score ribbon (night)
+  source: score_ribbon
+  params:
+    look: night
+    palette: ember
+    note_glow: 1.0
+    playhead: 0.45
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    style: gentle
+    modes: [piano]
+    family: score
+    dims: 2d
+    technique: [sdf, analytic]
+    weight: 1.0
+
+score-ribbon-night-wide:
+  label: Score ribbon (night, three systems)
+  source: score_ribbon
+  params:
+    look: night
+    rows: 3
+    palette: ice
+    note_glow: 0.9
+    playhead: 0.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [elegant, cosmic, dark]
+    style: gentle
+    modes: [piano]
+    family: score
+    dims: 2d
+    technique: [sdf, analytic]
+    weight: 0.6
