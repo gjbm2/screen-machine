@@ -307,6 +307,28 @@ def test_pins_persist_and_unknown_pieces_cant_be_pinned(f):
     assert [p["id"] for p in again.pin("medley", False)] == ["lib:ragtime-joplin-maple-leaf-rag"]
 
 
+def test_trailing_pedal_silence_is_cut_where_the_sound_ends(f):
+    """PIAST-style tails (pedal events running on a minute after the last note) end at the last key release, or at
+    most TAIL_MAX_S after it while the sustain pedal is still down (then lifted there); a short tail stays."""
+    from show_service.library import TAIL_MAX_S, clean_midi, trim_tail
+    notes = run_notes(0, 20)                                         # 20 x 240 ticks at 120 bpm: 5 s of notes
+    lonely = smf([[(0, b"\xff\x51\x03\x07\xa1\x20")], notes + [(57600, b"\xb0\x40\x7f"), (480, b"\xb0\x40\x00")]])
+    body, rep = clean_midi(lonely)
+    assert rep["duration_s"] > 60
+    cut, crep, gone = trim_tail(body, rep)
+    assert abs(crep["duration_s"] - 5.0) < 0.1 and gone > 55 and crep["notes"] == rep["notes"]
+    held = smf([[(0, b"\xff\x51\x03\x07\xa1\x20")], [(0, b"\xb0\x40\x7f")] + notes + [(57600, b"\xb0\x40\x00")]])
+    body, rep = clean_midi(held)
+    cut, crep, gone = trim_tail(body, rep)
+    assert abs(crep["duration_s"] - (5.0 + TAIL_MAX_S)) < 0.1
+    assert [e for e in channel_events(cut) if e[2] == 0xB0][-1][3:5] == (64, 0)       # the pedal is lifted at the cut
+    short = smf([[(0, b"\xff\x51\x03\x07\xa1\x20")], notes + [(960, b"\xb0\x40\x7f"), (480, b"\xb0\x40\x00")]])
+    body, rep = clean_midi(short)
+    assert trim_tail(body, rep)[2] == 0.0                              # 1.5 s of tail stays
+    item, _ = f.library().add_upload(lonely, "Lonely pedal.mid")
+    assert abs(item["duration_s"] - 5.0) < 0.2                         # uploads are trimmed too
+
+
 # -- uploads ----------------------------------------------------------------------------------------------------------
 def test_upload_cleans_keeps_and_dedupes(f):
     lib = f.library()
