@@ -177,9 +177,33 @@ def gpus(devices: list[dict]) -> list[dict]:
         return res
 
 
+def _meminfo() -> dict:
+    """/proc/meminfo in MB: total, available, swap total and used (the Room page's "PC busy": memory nearly full);
+    {} where it can't be read."""
+    kb: dict[str, int] = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                if k in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
+                    kb[k] = int(v.split()[0])
+    except (OSError, ValueError, IndexError):
+        return {}
+    out = {}
+    if "MemTotal" in kb:
+        out["mem_total_mb"] = kb["MemTotal"] // 1024
+    if "MemAvailable" in kb:
+        out["mem_available_mb"] = kb["MemAvailable"] // 1024
+    if "SwapTotal" in kb:
+        out["swap_total_mb"] = kb["SwapTotal"] // 1024
+        if "SwapFree" in kb:
+            out["swap_used_mb"] = (kb["SwapTotal"] - kb["SwapFree"]) // 1024
+    return out
+
+
 def host() -> dict:
     load = os.getloadavg()
-    return {"load": [round(x, 2) for x in load], "cpus": os.cpu_count() or 1}
+    return {"load": [round(x, 2) for x in load], "cpus": os.cpu_count() or 1, **_meminfo()}
 
 
 def verdict(h: dict, gpu_list: list[dict], sessions: list[dict]) -> dict:
