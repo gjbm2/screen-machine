@@ -13,6 +13,9 @@ is behind (below), and the cost is reported (``stats()``: the worst call, how ma
 the details panel and the log).  The one stop (:class:`TripMonitor`) is a hang:
   * ``stuck``: a call still running on the GPU ``HANG_MS`` (3 s) after it was seen to start;
   * ``frame``: a call that took ``HANG_MS`` or more (read after it finished).
+    A plug-in's first call whose span is the host's own submit (the GPU waited on it: a cold start's imports, kernel
+    compiles, an atlas build, a GIL stall in an in-process session) is the host's time, not a GPU hang: never
+    stopped, only logged (7c, 22 Oct: staff_roll's first frame read 6229 ms in a cold in-process preview).
 A stop calls the owner's ``trip(fc, SlowPlugin)``, which substitutes through the failure paths the layers already
 have (layers.py, effects.py): a scene shows black and the session cues a recovery, a transition finishes as a cut,
 an effect is dropped.  Internal plug-ins (the anchor / exit stills) are never timed.
@@ -253,6 +256,7 @@ class GpuTimer:
         fr.total += ms
         self.samples += 1
         st = rec.owner.gpu_stat
+        first = st.probation
         if st.probation:
             st.probation = False
             self.probation -= 1
@@ -264,6 +268,10 @@ class GpuTimer:
             self.over += 1
         if self.worst is None or ms > self.worst["ms"]:
             self.worst = {"kind": rec.kind, "name": plugin_name(rec.kind, rec.owner, rec.obj), "ms": round(ms, 1)}
+        if why == "frame" and first and not st.gpu_bound_ms:
+            log.info("GPU guard: %s %s's first call took %.0f ms, all of it the host's submit (a cold start), "
+                     "not a GPU hang: kept", rec.kind, plugin_name(rec.kind, rec.owner, rec.obj), ms)
+            why = None
         if why is not None:
             self._trip(fc, rec, ms, why)
 
