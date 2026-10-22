@@ -66,6 +66,10 @@ TEST_PIANO_DIR = REPO_ROOT / "config" / "live" / "test-piano"                   
 RECORDINGS_DIR = pathlib.Path.home() / ".local" / "share" / "screen-machine" / "piano-recordings"   # recorder's
 SHOW_FILE = REPO_ROOT / "config" / "room" / "show.yaml"                                # contract.SHOW_FILE
 PIANO_REPLAY = REPO_ROOT / "stream_service" / "piano_replay.py"                        # PHRASE_LABELS
+# 1c's prerender (22 Oct): a new pin renders ahead of time with the default sound (idle priority, under the CPU lock;
+# cache hits are skipped, so a second run is harmless). Detached; at most one start per PRERENDER_MIN_S.
+PRERENDER_CMD = (str(REPO_ROOT / "scripts" / "piano_prerender_all.sh"), "--pins")
+PRERENDER_MIN_S = 10.0
 CATALOG = "catalog.json"
 USER_JSON = "user.json"
 USER_DIR = "user"
@@ -874,7 +878,10 @@ class Library:
                  rec_dir_fn: Optional[Callable[[], Optional[pathlib.Path]]] = None,
                  recordings_fn: Optional[Callable[[], list]] = None, recorder_ops: Any = None,
                  phrases_fn: Optional[Callable[[], dict]] = None, web_sources: Optional[list] = None,
-                 session_factory: Optional[Callable[[], Any]] = None, wall: Callable[[], float] = time.time) -> None:
+                 session_factory: Optional[Callable[[], Any]] = None, wall: Callable[[], float] = time.time,
+                 prerender_cmd: Optional[tuple[str, ...]] = None) -> None:
+        self.prerender_cmd = prerender_cmd                # None: a pin renders nothing ahead (tests); __main__ passes it
+        self._prerender_at = -1e18
         self.lib_dir = pathlib.Path(lib_dir) if lib_dir is not None else LIB_DIR
         self.state_dir = pathlib.Path(state_dir) if state_dir is not None else STATE_DIR
         self.file_dir_fn = file_dir_fn or file_dir
@@ -1238,13 +1245,34 @@ class Library:
             if on:
                 if self.item(piece) is None:
                     raise LookupError("unknown_piece")
-                if piece not in ids:
+                added = piece not in ids
+                if added:
                     ids.append(piece)
             else:
+                added = False
                 ids = [p for p in ids if p != piece]
             write_json(self.state_dir / PINS_FILE, {"v": 1, "pins": ids})
             self._pins_file.get(force=True)
+        if added:
+            self._kick_prerender()
         return self.pins()
+
+    def _kick_prerender(self) -> None:
+        """Start 1c's prerender of the pinned pieces, detached (its own session, output to /dev/null; it logs to
+        ~/.local/state/screen-machine/piano-prerender.log). Never raises; at most once per PRERENDER_MIN_S."""
+        if not self.prerender_cmd:
+            return
+        now = time.monotonic()
+        if now - self._prerender_at < PRERENDER_MIN_S:
+            return
+        self._prerender_at = now
+        try:
+            import subprocess
+            subprocess.Popen(list(self.prerender_cmd), cwd=str(REPO_ROOT), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                             close_fds=True)
+        except Exception as e:                           # noqa: BLE001  a pin never fails over its prerender
+            log.warning("prerender of the pins didn't start: %s", e)
 
     # -- uploads and imports -----------------------------------------------------------------------------------------
     def add_upload(self, data: bytes, filename: Optional[str] = None, title: Any = None, composer: Any = None,
