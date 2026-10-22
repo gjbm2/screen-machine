@@ -42,10 +42,10 @@ score-ribbon-night:
     weight: 1.0
 
 score-ribbon-night-wide:
-  label: Score ribbon (night, three systems)
+  label: Score ribbon (night, ice)
   source: score_ribbon
   params:
-    span: screen
+    span: room                        # owner 22 Oct: on both TVs, one row each (rows: 3 is for one screen alone)
     look: night
     rows: 3
     palette: ice
