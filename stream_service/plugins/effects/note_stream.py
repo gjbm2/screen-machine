@@ -31,6 +31,10 @@ the eased amount (1 - (1 - amount)^2) x ``opacity``.  amount 0, no sound or no n
 exactly.  pulse -> a soft glow kick (eased; amplitude only).  Strikes bloom in over ~0.2 s and ease out.
 Colour: the shared cosine palette along the keyboard (``palette_period``), drifting (``drift_speed``), ``hue``.
 
+The room ensemble's register (docs/ENSEMBLE.md §8.6; ``self.sound.register``, register_split): a streak whose pitch
+is outside this screen's window is drawn at ``outside`` brightness (core, glow and trail; its width as struck), one
+inside at full; never hidden.
+
 Cost (P4000, 4K, render_scale 0.5, kernels timed alone): draw ~0.6-0.95 ms + composite ~0.67 ms for normal
 playing; ~2.5 + 0.7 ms in a synthetic storm (all 256 streaks over all 88 keys at maximum width, glow, warp and
 trail).  Host ~1-1.5 ms per frame (numpy on <= 256 events), which overlaps the GPU.  fxtest's effect path does
@@ -42,6 +46,7 @@ import math
 
 import numpy as np
 
+from stream_service import ensemble
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
@@ -508,6 +513,9 @@ class NoteStream(Effect):
         lane = ps - LOW
         v = self.vel[order]
         b = self.bloom[order] * self.vis[order] * fade
+        wr = ensemble.note_weights(getattr(getattr(self, "sound", None), "register", None), ps)
+        if wr is not None:                                  # the ensemble's register: outside the window, dimmer
+            b = b * wr
         gl = self.glow[order]
         span = float(p["spread"]) * span_n * (z0 / CAM_D)
         ls = span / (N_LANE - 1)
