@@ -116,7 +116,7 @@ HALF_BEATS, WHOLE_BEATS = 2.0, 4.0
 STEM_SP = 3.5
 FRESH_S, REL_S = 0.7, 0.6
 EPOCH_MIN_S = 0.1
-RELAYOUT_PER_FRAME = 24                                   # (notes laid out a frame, newest first; the rest next frame)
+RELAYOUT_PER_FRAME = 16                                   # (notes laid out a frame, newest first; the rest next frame)
 BIRTH_PER_FRAME = 8                                       # (a join's unwritten notes: born over a few frames)
 MOVE_MIN_SP = 0.3                                         # a shown note doesn't glide for less (the settle takes it)
 HALO_SP = 0.4
@@ -377,21 +377,26 @@ class _Notes:
         self.used = np.zeros(cap, bool)
         self.state = np.zeros(cap, np.int8)                  # 0 provisional 1 engraved 2 handing over 3 inked 4 puff
         self.nid = np.zeros(cap, np.int64)
-        self.pitch, self.t_on, self.t_off, self.t_born = z(), z(), z(np.inf), z()   # t_off inf: held
+        FB = self.FB = np.zeros((35, cap))                    # the fields the GPU reads (_pack), views below
+        self.h_t0, self.t_born, self.hand_t0, self.die_t0 = FB[0], FB[1], FB[2], FB[3]     # (0-7: times)
+        self.g_t0, self.s_t0, self.a_t0, self.t_off = FB[4], FB[5], FB[6], FB[7]
+        self.h_T, self.arc, self.tx, self.ty = FB[8], FB[9], FB[10], FB[11]
+        self.C = FB[12:24].reshape(2, 6, cap)                # quintic coefficients, x and y
+        self.S = FB[24:30].reshape(2, 3, cap)                # stem (x, y0, y1) rel. to the head origin (sp): from, to
+        self.s_T, self.adxa, self.adxb, self.st_top, self.pitch = FB[30], FB[31], FB[32], FB[33], FB[34]
+        self.t_off[:] = np.inf                               # (held)
+        self.h_T[:] = 1e-6
+        self.g_t0[:] = self.s_t0[:] = self.a_t0[:] = -1e9
+        self.s_T[:] = STEM_S
+        self.hand_t0[:] = self.die_t0[:] = np.inf            # inf: not (yet)
+        self.t_on = z()
         self.lid = np.zeros(cap, np.int64)
         self.tq = z()                                        # its time on the grid it's placed by (open lines)
         self.t_next = z(np.inf)                              # the next onset in its staff (its written end)
-        self.C = np.zeros((2, 6, cap))                       # quintic coefficients, x and y
-        self.h_t0, self.h_T, self.arc = z(), z(1e-6), z()
-        self.tx, self.ty = z(), z()
-        self.ga, self.gb, self.g_t0 = np.zeros(cap, np.int64), np.zeros(cap, np.int64), z(-1e9)
+        self.ga, self.gb = np.zeros(cap, np.int64), np.zeros(cap, np.int64)
         self.sa, self.sb = np.zeros(cap, bool), np.zeros(cap, bool)       # stem on (from, to)
-        self.S = np.zeros((2, 3, cap))                       # stem (x, y0, y1) rel. to the head origin (sp): from, to
-        self.s_t0, self.s_T, self.s_flip = z(-1e9), z(STEM_S), np.zeros(cap, bool)
+        self.s_flip = np.zeros(cap, bool)
         self.aa, self.ab = np.full(cap, -1, np.int64), np.full(cap, -1, np.int64)
-        self.adxa, self.adxb, self.a_t0 = z(), z(), z(-1e9)
-        self.st_top = z()
-        self.hand_t0, self.die_t0 = z(np.inf), z(np.inf)                        # inf: not (yet)
         self.readable = np.zeros(cap, bool)
         self.note = [None] * cap
         self.line = [None] * cap
@@ -404,6 +409,7 @@ class _Notes:
         self.grp = [None] * cap                              # (line, bar) it was last laid out in (_relayout)
         self.moves = np.zeros(cap, np.int64)
         self.pend = np.zeros(cap, bool)                      # engraved, its settle still queued (_settle_step)
+        self.tn_st = np.full(cap, -1, np.int64)              # the staff its t_next was found on (_relayout)
         self.fixed = np.zeros(cap, bool)                     # its bar is committed: its 16th and staff are known
         self.bar_end = z(np.inf)                             # (engraved) its bar's right edge on its line
 
@@ -581,19 +587,21 @@ _REC_SRC = r"""
 #define MAXN %(MAXN)d
 #define NCAP %(NCAP)d
 #define NFLD %(NFLD)d
+#define NGATE %(NGATE)d
 __device__ __forceinline__ float cl01(float x) { return fminf(fmaxf(x, 0.f), 1.f); }
 __device__ __forceinline__ float ease(float u) { u = cl01(u); return u * u * (3.f - 2.f * u); }
 
 extern "C" __global__ void recs(const float* __restrict__ F, const float* __restrict__ IX, const int n,
                                 const float* __restrict__ XR, const int m, const float* __restrict__ L, const int NC,
                                 const float* __restrict__ P, const float* __restrict__ ADV, float* __restrict__ REC,
-                                float* __restrict__ GN, float* __restrict__ GU)
+                                float* __restrict__ GN, float* __restrict__ GU, const float* __restrict__ GF,
+                                const int mg)
 {
     __shared__ float key[512];
     __shared__ int ord[512];
     __shared__ float r0[512], r1[512], r2[512], r3[512], r4[512];
     const int t = threadIdx.x;
-    const int tot = n + m;
+    const int tot = n + mg + m;
     const float sp = P[0];
     float q[NF];
     for (int f = 0; f < NF; ++f) q[f] = 0.f;
@@ -601,15 +609,15 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
         const int i = (int)IX[t];
 #define FV(f) F[(f) * NCAP + i]
         const int ci = (int)FV(42);
-        const float T = FV(1);
+        const float T = FV(8);
         const float tau = fminf(fmaxf(FV(0), 0.f), T);
         const bool fin = tau >= T;
         float x, y;
-        if (fin) { x = FV(3); y = FV(4); }
+        if (fin) { x = FV(10); y = FV(11); }
         else {
-            x = FV(5) + tau * (FV(6) + tau * (FV(7) + tau * (FV(8) + tau * (FV(9) + tau * FV(10)))));
-            y = FV(11) + tau * (FV(12) + tau * (FV(13) + tau * (FV(14) + tau * (FV(15) + tau * FV(16)))));
-            y -= FV(2) * sinf(3.14159265358979f * tau / fmaxf(T, 1e-6f));
+            x = FV(12) + tau * (FV(13) + tau * (FV(14) + tau * (FV(15) + tau * (FV(16) + tau * FV(17)))));
+            y = FV(18) + tau * (FV(19) + tau * (FV(20) + tau * (FV(21) + tau * (FV(22) + tau * FV(23)))));
+            y -= FV(9) * sinf(3.14159265358979f * tau / fmaxf(T, 1e-6f));
         }
         float X = x + L[ci], Y = y + L[NC + ci];
         float wy = 0.f, wj = 0.f;
@@ -620,9 +628,9 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
             wy = -wj * P[6];
             X += wj * TW; Y += wy;
         }
-        const float age = FV(17);
+        const float age = FV(1);
         float s = 1.f + P[1] * (1.f - ease(age * (1.f / %(POP_S)r)));
-        const float ht = cl01(FV(18) * (1.f / %(HAND_S)r)), pu = cl01(FV(19) * (1.f / %(PUFF_S)r));
+        const float ht = cl01(FV(2) * (1.f / %(HAND_S)r)), pu = cl01(FV(3) * (1.f / %(PUFF_S)r));
         float alpha = fminf(1.f, 0.85f + age * (0.15f / %(BIRTH_S)r)) * (1.f - ht) * (1.f - pu) * L[2 * NC + ci]
                       * cl01((x - L[3 * NC + ci]) * (1.f / (%(ERASE)r * sp)) + 0.5f);
         s *= 1.f + 0.4f * pu;
@@ -630,15 +638,15 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
             alpha *= cl01((X - XL) * (0.5f / sp));
             if (SR > 1.f && wj > 0.f) alpha *= cl01((XL + TW - X) * (0.5f / sp));
         }
-        const float ga = FV(21), gb = FV(22);
-        const float mt = cl01(FV(20) * (1.f / %(MORPH_S)r));
+        const float ga = FV(35), gb = FV(36);
+        const float mt = cl01(FV(4) * (1.f / %(MORPH_S)r));
         const float OX = X + (0.5f * sp) * ADV[(int)gb] * (1.f - s);
-        const float su = cl01(FV(23) / FV(24));
+        const float su = cl01(FV(5) / FV(30));
         const float se = su * su * (3.f - 2.f * su);
-        const bool sa = FV(25) > 0.5f, sb = FV(26) > 0.5f, flip = FV(27) > 0.5f;
+        const bool sa = FV(37) > 0.5f, sb = FV(38) > 0.5f, flip = FV(39) > 0.5f;
         const bool useB = sb && (!sa || (flip && su >= 0.5f));
         const bool lerp = sa && sb && !flip;
-        const float A0 = FV(28), A1 = FV(29), A2 = FV(30), B0 = FV(31), B1 = FV(32), B2 = FV(33);
+        const float A0 = FV(24), A1 = FV(25), A2 = FV(26), B0 = FV(27), B1 = FV(28), B2 = FV(29);
         const float sx_ = lerp ? A0 + (B0 - A0) * se : (useB ? B0 : A0);
         const float sy0 = lerp ? A1 + (B1 - A1) * se : (useB ? B1 : A1);
         const float cosu = cosf(3.14159265358979f * su);
@@ -646,15 +654,15 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
         const float ty1 = lerp ? A2 + (B2 - A2) * se : (useB ? B2 : A2);
         const float sy1 = lerp ? ty1 : sy0 + (ty1 - sy0) * kk;
         const bool son = (sa || sb) && fabsf(sy1 - sy0) > 0.05f;
-        const float au = cl01(FV(34) * (1.f / %(ACC_S)r));
-        const float aa = FV(35), ab = FV(36);
+        const float au = cl01(FV(6) * (1.f / %(ACC_S)r));
+        const float aa = FV(40), ab = FV(41);
         const bool same = aa == ab, first = !same && au < 0.5f;
         const float ag = first ? aa : ab;
-        const float adx = same ? FV(37) + (FV(38) - FV(37)) * (au * au * (3.f - 2.f * au)) : (first ? FV(37) : FV(38));
+        const float adx = same ? FV(31) + (FV(32) - FV(31)) * (au * au * (3.f - 2.f * au)) : (first ? FV(31) : FV(32));
         float asc = same ? 1.f : fabsf(1.f - 2.f * au);
         asc = ag >= 0.f ? asc : 0.f;
-        const float tyt = FV(4) + wy;
-        float top = FV(39) + wy;
+        const float tyt = FV(11) + wy;
+        float top = FV(33) + wy;
         float bot = top + 4.f * sp;
         const float nab = fminf(floorf((top - tyt) * (1.f / sp) + 0.01f), 6.f);
         const float nbe = fminf(floorf((tyt - bot) * (1.f / sp) + 0.01f), 6.f);
@@ -662,8 +670,8 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
         top += Y - tyt;
         bot += Y - tyt;
         const float gadv = ADV[(int)(mt >= 0.5f ? gb : ga)];
-        const float tint = fmodf(FV(40) * 7.f, 12.f) * P[7] + P[8];
-        const float hold = __expf(-fmaxf(0.f, FV(41)) * (1.f / %(REL_S)r));
+        const float tint = fmodf(FV(34) * 7.f, 12.f) * P[7] + P[8];
+        const float hold = __expf(-fmaxf(0.f, FV(7)) * (1.f / %(REL_S)r));
         const float fresh = fmaxf(__expf(-age * (1.f / %(FRESH_S)r)), 0.75f * hold);
         const float halo = P[9] * (age < 0.25f ? P[10] : 1.f);
         q[0] = OX; q[1] = Y; q[2] = sp * s; q[3] = sp * s;
@@ -680,8 +688,33 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
             q[20 + c] = cl01(P[12 + c] + P[15 + c] * cosf(6.28318530717959f * (P[18 + c] * tint + P[21 + c])));
         q[27] = X - %(LEDGER_EXT)r * sp; q[28] = X + (gadv + %(LEDGER_EXT)r) * sp; q[29] = Y;
 #undef FV
+    } else if (t < n + mg) {                           // a bar line / beat tick (_emit_gates)
+        const int g = t - n;
+        const float x = GF[g], kind = GF[NGATE + g], ga = GF[3 * NGATE + g], rt0 = GF[4 * NGATE + g];
+        const int ci = (int)GF[2 * NGATE + g];
+        const float d = cl01(rt0 * (1.f / %(GATE_DROP_S)r));
+        const bool bar = kind == 1.f;
+        const float grow = bar ? ease(d) * (1.f + 0.1f * P[24] * sinf(3.14159265358979f * d)) : 1.f;
+        float top = L[NC + ci] + L[4 * NC + ci];
+        float bot = L[NC + ci] + L[5 * NC + ci] + 4.f * sp;
+        float a = ga * L[2 * NC + ci] * cl01((x - L[3 * NC + ci]) * (1.f / (%(ERASE)r * sp)) + 0.5f);
+        float Xs = x + L[ci];
+        if ((int)P[2]) {
+            const float SR = P[3], XL = P[4], TW = P[5];
+            float wj = 0.f;
+            if (SR > 1.f) {
+                wj = fminf(fmaxf(ceilf((XL - Xs) / TW), 0.f), SR - 1.f);
+                Xs += wj * TW; top -= wj * P[6]; bot -= wj * P[6];
+            }
+            a *= cl01((Xs - XL) * (0.5f / sp));
+            if (SR > 1.f && wj > 0.f) a *= cl01((XL + TW - Xs) * (0.5f / sp));
+        }
+        if (bar && rt0 < 0.f) a = 0.f;
+        q[4] = -1.f; q[5] = -1.f; q[12] = -1.f;
+        q[7] = a; q[8] = Xs; q[9] = top; q[10] = top + (bot - top) * fminf(grow, 1.1f);
+        q[11] = kind == 0.f ? 0.04f * sp : (kind == 2.f ? 0.25f * sp : %(BAR_HW)r * sp);
     } else if (t < tot) {
-        for (int f = 0; f < NF; ++f) q[f] = XR[(t - n) * NF + f];
+        for (int f = 0; f < NF; ++f) q[f] = XR[(t - n - mg) * NF + f];
     }
     float kx = 3.0e38f;
     if (t < tot) {                                       // its box (glyphs.boxes_sort)
@@ -753,7 +786,7 @@ extern "C" __global__ void recs(const float* __restrict__ F, const float* __rest
         GU[t] = u;
     }
 }
-""" % dict(NF=GL.NF, MAXN=GL.MAXN, NCAP=NCAP, NFLD=NFLD, POP_S=POP_S, HAND_S=HAND_S, PUFF_S=PUFF_S, BIRTH_S=BIRTH_S,
+""" % dict(NF=GL.NF, MAXN=GL.MAXN, NCAP=NCAP, NFLD=NFLD, NGATE=NGATE, GATE_DROP_S=GATE_DROP_S, BAR_HW=GL.BAR_HW, POP_S=POP_S, HAND_S=HAND_S, PUFF_S=PUFF_S, BIRTH_S=BIRTH_S,
            ERASE=ERASE_FEATHER_SP, MORPH_S=MORPH_S, ACC_S=ACC_S, REL_S=REL_S, FRESH_S=FRESH_S, STEM_HW=GL.STEM_HW,
            LEDGER_EXT=GL.LEDGER_EXT, PAD=GL.PAD)
 
@@ -857,14 +890,15 @@ class ScoreV2(Source):
         # the frame's parameters: one async upload a frame from pinned memory, double-buffered
         self.UP_R = 64
         self.UP_RI = (self.UP_R + self.NR * RS + 15) // 16 * 16
-        self.UP_GN = (self.UP_RI + self.NR + 15) // 16 * 16
-        self.UP_GU = self.UP_GN + GL.MAXN * GL.NF
-        self.UP_F = (self.UP_GU + GL.NU + 15) // 16 * 16              # (GPU records) the note rows' fields
+        self.UP_F = (self.UP_RI + self.NR + 15) // 16 * 16            # (GPU records) the note rows' fields
         self.UP_IX = self.UP_F + NFLD * NCAP                         # the drawn rows
-        self.UP_X = self.UP_IX + GL.MAXN                             # bar line / time signature records
-        self.UP_L = self.UP_X + GL.MAXN * GL.NF                      # per canvas: offx, offy, alpha, erase
-        self.UP_Q = self.UP_L + 4 * self.NC                          # the frame's scalars
-        self.UP_N = self.UP_Q + 32
+        self.UP_L = self.UP_IX + GL.MAXN                             # per canvas: offx, offy, alpha, erase
+        self.UP_Q = self.UP_L + 6 * self.NC                          # the frame's scalars
+        self.UP_G = (self.UP_Q + 32 + 15) // 16 * 16                 # the gates drawn: x, kind, canvas, alpha, t
+        self.UP_X = self.UP_G + 5 * NGATE                            # time signature records
+        self.UP_GN = self.UP_X + GL.MAXN * GL.NF                     # the records drawn (the GPU writes them)
+        self.UP_GU = self.UP_GN + GL.MAXN * GL.NF
+        self.UP_N = self.UP_GU + GL.NU
         self.up_dev = cp.zeros(self.UP_N, cp.float32)
         self._up_pin = [cp.cuda.alloc_pinned_memory(4 * self.UP_N) for _ in range(2)]
         self.up_host = [np.frombuffer(m, np.float32, self.UP_N) for m in self._up_pin]
@@ -878,9 +912,10 @@ class ScoreV2(Source):
         self.krec = raw_module(_REC_SRC).get_function("recs")
         self.rec_scratch = cp.zeros(GL.MAXN * GL.NF, cp.float32)
         self.gpu_recs = None                         # (n notes, m other records) when this frame's are the GPU's
+        self._pal_c: dict = {}
         d = self.up_dev
-        self._rv = (d[self.UP_F:self.UP_IX], d[self.UP_IX:self.UP_X], d[self.UP_X:self.UP_L], d[self.UP_L:self.UP_Q],
-                    d[self.UP_Q:self.UP_N])
+        self._rv = (d[self.UP_F:self.UP_IX], d[self.UP_IX:self.UP_L], d[self.UP_X:self.UP_GN],
+                    d[self.UP_L:self.UP_Q], d[self.UP_Q:self.UP_Q + 32], d[self.UP_G:self.UP_X])
         self.Ph = np.zeros(64, np.float32)
         self.Rh = np.zeros(self.NR * RS, np.float32)
         self.RIh = np.array(self.coff * self.SR if self.scroll else self.coff, np.int32)
@@ -1516,14 +1551,22 @@ class ScoreV2(Source):
             N.grp[i] = (ln.uid, r[5])
             chords.setdefault((ln.uid, N.key[i][2], N.key[i][1]), []).append(i)
             accs.setdefault((ln.uid, N.key[i][2], r[5]), []).append(i)
-        ra = np.array(rows_all, np.intp)                    # a note is written to its staff's next onset
-        stf = np.array([key[i][2] for i in rows_all], np.int64)
-        for v in set(stf.tolist()):                      # (not np.unique: its first call imports numpy.ma, 50 ms)
-            g = ra[stf == v]
-            g = g[np.argsort(N.t_on[g], kind="stable")]
-            ons = N.t_on[g]
-            j = np.searchsorted(ons, ons + 0.045, side="right")
-            N.t_next[g] = np.where(j < len(g), ons[np.minimum(j, len(g) - 1)], np.inf)
+        tk = (len(rows_all), sum(rows_all))                 # a note is written to its staff's next onset: again
+        need = bool(fresh) or getattr(ph, "tn_key", None) != tk     # only when the notes or a staff changed
+        if not need:
+            tst = N.tn_st
+            need = any(key[i][2] != tst[i] for i in info)
+        if need:
+            ph.tn_key = tk
+            ra = np.array(rows_all, np.intp)
+            stf = np.array([key[i][2] for i in rows_all], np.int64)
+            N.tn_st[ra] = stf
+            for v in set(stf.tolist()):                  # (not np.unique: its first call imports numpy.ma, 50 ms)
+                g = ra[stf == v]
+                g = g[np.argsort(N.t_on[g], kind="stable")]
+                ons = N.t_on[g]
+                j = np.searchsorted(ons, ons + 0.045, side="right")
+                N.t_next[g] = np.where(j < len(g), ons[np.minimum(j, len(g) - 1)], np.inf)
         from stream_service.score.mei import signature
         acc = {}
         for grp in accs.values():
@@ -1597,18 +1640,47 @@ class ScoreV2(Source):
                 tip = max(hi2 + STEM_SP * sp, mid)
                 rel = (0.05, 0.16, (tip - info[base][2]) / sp)
             stems[base] = rel
+        adv = self.adv
+        rows_, xs, ys, tops, gacc, adxs, son, sv, same = [], [], [], [], [], [], [], [], []
         for i, (ln, x, y, top, _sp, _b, _g) in info.items():
             x = nat_x.get(i, x) + dxs.get(i, 0.0)
-            N.st_top[i] = top
             g_acc = acc.get(i, -1)
-            adx = -(0.247 + 0.5 * self.adv[g_acc]) if g_acc >= 0 else 0.0
+            adx = -(0.247 + 0.5 * float(adv[g_acc])) if g_acc >= 0 else 0.0
             if i in fresh:
+                N.st_top[i] = top
                 N.place(i, ln, x, y)
                 N.set_acc(i, g_acc, adx, now, instant=True)
                 s = stems.get(i)
                 N.set_stem(i, s is not None, *(s or (0.0, 0.0, 0.0)), now, instant=True)
                 self._show(ln)
                 continue
+            st_ = stems.get(i)
+            rows_.append(i)
+            xs.append(x)
+            ys.append(y)
+            tops.append(top)
+            gacc.append(g_acc)
+            adxs.append(adx)
+            son.append(st_ is not None)
+            sv.append(st_ or (0.0, 0.0, 0.0))
+            same.append(N.line[i] is ln)
+        if not rows_:
+            return
+        ri = np.array(rows_, np.intp)                       # (whole-array: which notes changed at all)
+        X, Y = np.array(xs), np.array(ys)
+        N.st_top[ri] = tops
+        G, AD = np.array(gacc, np.int64), np.array(adxs)
+        ON, SV = np.array(son, bool), np.array(sv, np.float64).reshape(-1, 3)
+        SM = np.array(same, bool)
+        mv = ~SM | (np.abs(N.tx[ri] - X) > MOVE_MIN_SP * sp) | (np.abs(N.ty[ri] - Y) > 0.05)
+        ac = (G != N.ab[ri]) | ((G >= 0) & (np.abs(N.adxb[ri] - AD) >= 1e-3))
+        S1 = N.S[1][:, ri].T
+        sc = (ON != N.sb[ri]) | (ON & (np.abs(S1 - SV) >= 1e-3).any(axis=1))
+        todo = np.nonzero(mv | ac | sc)[0]
+        for j in todo.tolist():
+            i = rows_[j]
+            ln, x, y = info[i][0], xs[j], ys[j]
+            g_acc, adx = gacc[j], adxs[j]
             ci = int(N.lid[i])
             moved = N.line[i] is not ln or abs(N.tx[i] - x) > MOVE_MIN_SP * sp or abs(N.ty[i] - y) > 0.05
             if moved:
@@ -1624,8 +1696,7 @@ class ScoreV2(Source):
                     self.dbg.append(("move", int(N.nid[i]), now, d))
                 self._show(ln)
             N.set_acc(i, g_acc, adx, now)
-            s = stems.get(i)
-            N.set_stem(i, s is not None, *(s or (0.0, 0.0, 0.0)), now)
+            N.set_stem(i, son[j], *sv[j], now)
 
     # -- phrases, metre, bars -------------------------------------------------------------------------------
     def _phrase_started(self, ph: _Phrase) -> None:
@@ -2593,12 +2664,17 @@ class ScoreV2(Source):
         if not len(u):
             return
         if dt > 0:
-            w = 30.0
-            e = self.g_x[u] - self.g_tx[u]
-            k = math.exp(-w * dt)
-            c = (self.g_v[u] + w * e) * dt
-            self.g_x[u] = self.g_tx[u] + (e + c) * k
-            self.g_v[u] = (self.g_v[u] - w * c) * k
+            mv = u[(self.g_x[u] != self.g_tx[u]) | (self.g_v[u] != 0.0)]     # (the spring: gates still moving)
+            if len(mv):
+                w = 30.0
+                e = self.g_x[mv] - self.g_tx[mv]
+                k = math.exp(-w * dt)
+                c = (self.g_v[mv] + w * e) * dt
+                x = self.g_tx[mv] + (e + c) * k
+                v = (self.g_v[mv] - w * c) * k
+                rest = (np.abs(x - self.g_tx[mv]) < 1e-3) & (np.abs(v) < 1e-3)        # (settled: exactly there)
+                self.g_x[mv] = np.where(rest, self.g_tx[mv], x)
+                self.g_v[mv] = np.where(rest, 0.0, v)
         # bar lines the front has passed: the ink's own bar line is there now
         fr = self._c_front[self.g_lid[u]]
         passed = (self.g_kind[u] == BARL) & (fr >= np.minimum(self.g_x[u], self.g_tx[u]) + 0.25 * self.FE)
@@ -2755,11 +2831,12 @@ class ScoreV2(Source):
         n = len(idx)
         R = self.recs
         nrec = 0
-        if self.dbg is None:                                # the GPU builds the notes' records (_pack, recs)
-            nrec = self._emit_gates(R, n)
-            nrec = self._emit_ts(R, nrec)
+        if self.dbg is None:                                # the GPU builds the notes' and gates' records
+            gu = np.flatnonzero(self.g_used & (self.g_a > 0.003))[:max(0, GL.MAXN - n)]
+            mg = len(gu)
+            nrec = self._emit_ts(R, n + mg)
             nrec = min(nrec, GL.MAXN)
-            self.gpu_recs = (idx, n, nrec - n, p, e)
+            self.gpu_recs = (idx, n, nrec - n - mg, p, e, gu)
             return nrec
         self.gpu_recs = None
         if n:
@@ -3419,9 +3496,14 @@ class ScoreV2(Source):
         a = 1.0 - math.exp(-dt / 0.15) if dt > 0 else 1.0
         self.kick += (pulse - self.kick) * a
         Ph = self.Ph
-        Ph[0:12] = palette_coeffs(p["palette"]) if p.get("palette") else palette_coeffs("ember")
+        pn = p.get("palette") or "ember"
+        pc = self._pal_c.get(pn)
+        if pc is None:
+            pc = self._pal_c[pn] = np.asarray(palette_coeffs(pn), np.float32)
+        Ph[0:12] = pc
         c = Ph[0:12].astype(np.float64)
         self._pal = (c[0:3], c[3:6], c[6:9], c[9:12])
+        self._palv = c
         self.pump_until = time.perf_counter() + PUMP_S
         self._placed_n = 0
         self._listen()
@@ -3458,9 +3540,13 @@ class ScoreV2(Source):
         Ph[33] = self.NR
         self._canvas_params(e)
         self._upload()
-        launch_2d(self.k, self.w, self.h, (self.buf, self.P, self.canvas, self.R, self.RI, self.page, self.GN,
-                                           self.GU, self.gatlas, np.int32(self.gatlas.shape[1]), self.gtable))
-        present(self.ctx, self.buf, out)
+        direct = (getattr(out, "shape", None) == self.buf.shape and out.dtype == self.buf.dtype
+                  and out.flags.c_contiguous)
+        launch_2d(self.k, self.w, self.h, (out if direct else self.buf, self.P, self.canvas, self.R, self.RI,
+                                           self.page, self.GN, self.GU, self.gatlas, np.int32(self.gatlas.shape[1]),
+                                           self.gtable))
+        if not direct:
+            present(self.ctx, self.buf, out)
 
     def _canvas_params(self, e: float) -> None:
         Rh = self.Rh
@@ -3507,74 +3593,61 @@ class ScoreV2(Source):
                 h[self.UP_GN:self.UP_GN + GL.NF * n] = self.GNh[:n].ravel()
             h[self.UP_GU:self.UP_GU + GL.NU] = self.GUh
         st = cp.cuda.get_current_stream()
-        self.up_dev.set(h, stream=st)
+        hp, dp = h.ctypes.data, self.up_dev.data
+        end = self.UP_X + GL.NF * self.gpu_recs[2] if self.gpu_recs is not None else self.UP_N
+        dp.copy_from_host_async(hp, 4 * end, st)            # (one call)
         if ev is None:
             ev = self.up_ev[k] = cp.cuda.Event(block=False, disable_timing=True)
         ev.record(st)
         if self.gpu_recs is not None:
-            n, m = self.gpu_recs[1], self.gpu_recs[2]
-            F, IX, XR, L, Q = self._rv
+            n, m, gu = self.gpu_recs[1], self.gpu_recs[2], self.gpu_recs[5]
+            F, IX, XR, L, Q, GF = self._rv
             self.krec((1,), (512,), (F, IX, np.int32(n), XR, np.int32(m), L, np.int32(self.NC), Q, self.adv_dev,
-                                     self.rec_scratch, self.GN, self.GU))
+                                     self.rec_scratch, self.GN, self.GU, GF, np.int32(len(gu))))
 
     def _pack(self, h) -> None:
         """The note rows' fields for recs (times relative to now: float32 can't hold the clock), the drawn rows,
         the other records, the canvases' offsets / alpha / erase fronts and the frame's scalars."""
-        idx, n, m, p, e = self.gpu_recs
+        idx, n, m, p, e, gu = self.gpu_recs
         N = self.N
         now = self.t_sound
         F = h[self.UP_F:self.UP_IX].reshape(NFLD, NCAP)
-        sub = np.subtract
-        sub(now, N.h_t0, out=F[0])
-        F[1] = N.h_T
-        F[2] = N.arc
-        F[3] = N.tx
-        F[4] = N.ty
-        F[5:17] = N.C.reshape(12, NCAP)
-        sub(now, N.t_born, out=F[17])
-        sub(now, N.hand_t0, out=F[18])
-        sub(now, N.die_t0, out=F[19])
-        sub(now, N.g_t0, out=F[20])
-        F[21] = N.ga
-        F[22] = N.gb
-        sub(now, N.s_t0, out=F[23])
-        F[24] = N.s_T
-        F[25] = N.sa
-        F[26] = N.sb
-        F[27] = N.s_flip
-        F[28:34] = N.S.reshape(6, NCAP)
-        sub(now, N.a_t0, out=F[34])
-        F[35] = N.aa
-        F[36] = N.ab
-        F[37] = N.adxa
-        F[38] = N.adxb
-        F[39] = N.st_top
-        F[40] = N.pitch
-        sub(now, N.t_off, out=F[41])
+        np.subtract(now, N.FB[0:8], out=F[0:8])             # (times relative to now)
+        F[8:35] = N.FB[8:35]
+        F[35] = N.ga
+        F[36] = N.gb
+        F[37] = N.sa
+        F[38] = N.sb
+        F[39] = N.s_flip
+        F[40] = N.aa
+        F[41] = N.ab
         F[42] = N.lid
         if n:
             h[self.UP_IX:self.UP_IX + n] = idx
+        mg = len(gu)
         if m:
-            h[self.UP_X:self.UP_X + GL.NF * m] = self.recs[n:n + m].ravel()
+            h[self.UP_X:self.UP_X + GL.NF * m] = self.recs[n + mg:n + mg + m].ravel()
+        if mg:
+            G = h[self.UP_G:self.UP_X].reshape(5, NGATE)
+            G[0, :mg] = self.g_x[gu]
+            G[1, :mg] = self.g_kind[gu]
+            G[2, :mg] = self.g_lid[gu]
+            G[3, :mg] = self.g_a[gu]
+            G[4, :mg] = now - self.g_t0[gu]
         NC = self.NC
         Lh = h[self.UP_L:self.UP_Q]
         Lh[0:NC] = self.offx
         Lh[NC:2 * NC] = self.offy
         Lh[2 * NC:3 * NC] = self._c_alpha
         np.maximum(self._c_erase, -1e30, out=Lh[3 * NC:4 * NC])
-        Q = h[self.UP_Q:self.UP_N]
-        Q[:] = 0.0
-        Q[0] = self.sp
-        Q[1] = POP * self.flourish
-        if self.scroll:
-            Q[2], Q[3], Q[4], Q[5], Q[6] = 1.0, self.SR, self.X_fade, self.tape_w, self.pitch
-        Q[7] = float(p["palette_period"]) / 12.0
-        Q[8] = self.drift % 10.0
-        Q[9] = float(p["note_glow"]) * (0.8 + 0.6 * e)
-        Q[10] = 1.0 + 0.6 * self.kick
-        Q[11] = HALO_SP
-        pc = self._pal
-        Q[12:15], Q[15:18], Q[18:21], Q[21:24] = pc[0], pc[1], pc[2], pc[3]
+        Lh[4 * NC:5 * NC] = self._c_t1
+        Lh[5 * NC:6 * NC] = self._c_t2
+        sc = (1.0, self.SR, self.X_fade, self.tape_w, self.pitch) if self.scroll else (0.0, 0.0, 0.0, 0.0, 0.0)
+        h[self.UP_Q:self.UP_Q + 12] = (self.sp, POP * self.flourish) + sc + (
+            float(p["palette_period"]) / 12.0, self.drift % 10.0, float(p["note_glow"]) * (0.8 + 0.6 * e),
+            1.0 + 0.6 * self.kick, HALO_SP)
+        h[self.UP_Q + 12:self.UP_Q + 24] = self._palv
+        h[self.UP_Q + 24] = self.flourish
 
     def close(self) -> None:
         self.ink_stop = True
