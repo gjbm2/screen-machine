@@ -1,0 +1,78 @@
+live-score-v2-page-paper:
+  label: "Live score v2: page (paper)"
+  source: score_v2
+  params:
+    layout: page
+    look: paper
+    lines: 4
+    palette: ember
+    note_glow: 0.8
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
+
+live-score-v2-page-night:
+  label: "Live score v2: page (night)"
+  source: score_v2
+  params:
+    layout: page
+    look: night
+    lines: 4
+    palette: ember
+    note_glow: 1.0
+    ink_glow: 1.6
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
+
+live-score-v2-page-wide-paper:
+  label: "Live score v2: wide page, 5 lines (paper)"
+  source: score_v2
+  params:
+    layout: page
+    look: paper
+    lines: 5
+    line_s: 9.0
+    palette: ember
+    note_glow: 0.8
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [elegant, busy, warm]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 0.8
+
+live-score-v2-scroll-night:
+  label: "Live score v2: scroll (night)"
+  source: score_v2
+  params:
+    layout: scroll
+    rows: 2
+    look: night
+    palette: ember
+    note_glow: 1.0
+    ink_glow: 1.6
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
