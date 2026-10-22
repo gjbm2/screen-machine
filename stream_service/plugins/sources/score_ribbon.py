@@ -291,6 +291,7 @@ class ScoreRibbon(Source):
         self._jchunks = collections.deque()                     # a join's bars still to go on stage
         self._held_outs = None                                   # a batch's bars, synced once after it
         self._heavy = False                                      # this frame laid out a rewrite
+        self._passed = False                                     # this frame's layout pass was heavy
         self._lay = None                                         # [phrase, bars to go, out so far, q0, fifths]
         self._c0 = 0.0
 
@@ -488,7 +489,7 @@ class ScoreRibbon(Source):
             ph.meter = bar.meter
         # a rewrite (or a phrase's first bars) arriving at once: recorded now, laid out once after the batch, under
         # the warp fitted then (_do_refit), and put on stage over the next frames
-        if getattr(self, "_held_outs", None) is not None and not self._joining and (pl.wbars == 0 or ph.deferred):
+        if (self._joining or getattr(self, "_held_outs", None) is not None) and (pl.wbars == 0 or ph.deferred):
             self._defer_bar(ph, bar, q0 if pl.wbars == 0 else pl.q0)
             self.stats["bars"] += 1
             self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
@@ -538,8 +539,8 @@ class ScoreRibbon(Source):
                     d = getattr(merged, name)
                     setattr(merged, name, {k: v for k, v in d.items() if v[0] >= x_min})
                 self._jchunks.extend((ph, o) for o in _by_bar(merged, ph.pl.units or 16))
-        n = 0
-        while self._jchunks and (n == 0 or time.thread_time() - t0_cpu < JOIN_BUDGET_S):
+        n = 0                                     # (at least one a frame, unless the frame's pass already took it)
+        while self._jchunks and ((n == 0 and not self._passed) or time.thread_time() - t0_cpu < JOIN_BUDGET_S):
             ph, o = self._jchunks.popleft()
             self._note_info_sync(ph, o, final=True)
             n += 1
@@ -1092,6 +1093,7 @@ class ScoreRibbon(Source):
         _c0 = self._c0 = time.thread_time()
         _t0 = time.perf_counter()
         self._heavy = False
+        self._passed = False
         self._wall = time.monotonic()
         if self.builder is not None:
             self._drain(f, self.t_sound)
@@ -1113,6 +1115,7 @@ class ScoreRibbon(Source):
             # (a join's bars took this frame: its layout, the paper and the stage from the next)
             if (self.dirty_now or (self.dirty and self.clock - self.last_pass >= 0.05)) and not self._joining \
                     and not self._heavy:                    # (nor a rewrite's: that frame lays it out)
+                self._passed = True
                 self.dirty = self.dirty_now = False
                 self.last_pass = self.clock
                 try:
