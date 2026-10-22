@@ -362,7 +362,7 @@ class PhraseLayout:
 
     # -- the unwritten notes -----------------------------------------------------------------------------------------
     def provisional(self, bars: list, open_chords: Optional[list], fifths: int, q0: float,
-                    units: Optional[int], unit: int, beats: int) -> None:
+                    units: Optional[int], unit: int, beats: int, fresh: bool = False) -> None:
         """``bars``: [(k, staves)] metred provisional bars (ScoreBuilder._voice events); ``open_chords``:
         [(staff, slot, dur, [(pitch, nid)])] when the metre isn't known."""
         out = Out()
@@ -371,6 +371,9 @@ class PhraseLayout:
         if self.wspacer is not None:
             sp = self.wspacer.copy()
             fifths = self.fifths
+            if fresh and self.warp is not None:                  # (a cut: the bars before it aren't laid out
+                sp.edge, sp.edge_slot = [-1e9, -1e9], [None, None]   # again; a warped x doesn't need them)
+                sp.ott, sp.ott_m, sp.ott_x = [0, 0], [0, 0], [-1e9, -1e9]
         else:
             self.q0, self.units, self.unit, self.beats = q0, units, unit, beats
             sp = Spacer(q0, units, self.Q, self)
@@ -418,6 +421,8 @@ class PhraseLayout:
                        tuple((i, pieces.get(i, 0), touts.get((i, pieces.get(i, 0) - 1)) if touts is not None else None)
                              for i in ids))
                 hit = memo.get(mkey)
+                self.memo_n = getattr(self, "memo_n", [0, 0])
+                self.memo_n[0 if hit is not None else 1] += 1
                 if hit is not None:
                     bar_out, sp_state, p_upd, t_upd = hit
                     for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
@@ -517,7 +522,7 @@ class PhraseLayout:
         if not self.local_wkey or w is None or not units:
             return (self.Q, self.warp_ver)
         ws, wx, qt = w
-        lo, hi = k * units - units, (k + 1) * units + units
+        lo, hi = k * units, (k + 1) * units                     # (and the point either side: what W reads there)
         i0 = max(0, bisect.bisect_left(ws, lo) - 1)
         i1 = min(len(ws), bisect.bisect_right(ws, hi) + 1)
         key = (tuple(ws[i0:i1]), tuple(wx[i0:i1]))
