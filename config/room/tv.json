@@ -1,0 +1,8 @@
+{
+  "_note": "The Frame TVs as room targets tv.<screen id> (room_service/adapters/devices.py). members = the screens that have a TV (room_service derives '<room>:tv' groups from them); values = the inputs a mode can name. A placeholder until TV IP Control writes are approved: modes can name it, nothing is sent. member_label: {name} is the screen id's first word, capitalised (north-screen -> North TV).",
+  "label": "TVs",
+  "members": ["north-screen", "south-screen"],
+  "values": ["standby", "art_mode", "hdmi"],
+  "value_labels": {"standby": "Off (standby)", "art_mode": "Art mode", "hdmi": "Our screens (HDMI)"},
+  "member_label": "{name} TV"
+}

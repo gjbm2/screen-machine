@@ -92,6 +92,11 @@
           "trigger_actions": {
             "instructions_block": [
               {
+                "action": "terminate",
+                "mode": "block",
+                "test": "{{ (screen_layer | default('art')) == 'live' }}"
+              },
+              {
                 "action": "import_var",
                 "as": "_a_theme",
                 "scope": "living-room",
@@ -305,6 +310,11 @@
           "trigger_actions": {
             "instructions_block": [
               {
+                "action": "terminate",
+                "mode": "block",
+                "test": "{{ (screen_layer | default('art')) == 'live' }}"
+              },
+              {
                 "action": "set_var",
                 "input": {
                   "value": "{{ ( _event.payload.raw_text ~ ' ' ~ _event.payload.text ).split()[-200:] | join(' ') }}"
@@ -378,6 +388,92 @@
           },
           "type": "event",
           "value": "_auto_upscale"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "input": {
+                  "value": "{{ _event.payload.layer }}"
+                },
+                "var": "screen_layer"
+              },
+              {
+                "action": "log",
+                "message": "This screen is now showing {{ screen_layer }} (AI generation pauses while live)"
+              }
+            ],
+            "important": true
+          },
+          "type": "event",
+          "value": "_screen_layer"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "input": {
+                  "value": "{{ _event.payload.mode }}"
+                },
+                "var": "room_mode"
+              },
+              {
+                "action": "log",
+                "message": "Room mode is now {{ _event.payload.label }} (by {{ _event.payload.source }})"
+              }
+            ],
+            "important": true
+          },
+          "type": "event",
+          "value": "_room_mode"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "input": {
+                  "value": "{{ _event.payload.on }}"
+                },
+                "var": "room_auto"
+              }
+            ],
+            "important": true
+          },
+          "type": "event",
+          "value": "_room_auto"
+        },
+        {
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "02:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "set_auto",
+                    "on": false
+                  },
+                  {
+                    "action": "log",
+                    "message": "02:00: Auto off, so the room doesn't listen overnight"
+                  }
+                ],
+                "important": true
+              }
+            }
+          ],
+          "type": "day_of_week"
         }
       ]
     }
@@ -385,431 +481,431 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Imagined encounters with figures of fantasy within the verdant maze",
-        "_b_theme": "Hidden corners of a resurgent garden",
-        "_style": "Art Nouveau illustration, inspired by Alphonse Mucha's natural motifs",
-        "_guidance": "Select urban scenes where rain enhances the narrative qualities of the setting, capturing dynamic interactions and emotions while ensuring these compositions differ from recent mid-summer and aviation themes.",
-        "prompt": "Secluded Art Nouveau cafe under a dripping vine canopy, fantasy figures converse with shadowed patrons around rain-slicked tables, intertwined spirals of nature and mystery in ochre and jade.",
+        "_a_theme": "Obscured skylines \u2014 architectural silhouettes dissolving into dense autumn fog",
+        "_b_theme": "Hidden interiors \u2014 the secret, dimly lit corners and tucked-away alleyways of the city",
+        "_style": "Bill Brandt-inspired high-contrast, moody black-and-white photography with deep shadows and atmospheric grain",
+        "_guidance": "Capture the atmospheric tension of late-autumn London by alternating between silhouettes of iconic city structures fading into mist and the intimate, clandestine details of narrow, shadowed alleyways, utilizing Brandt's stark chiaroscuro technique while ensuring all locations and architectural details are entirely new to the gallery history.",
+        "prompt": "Skeletal silhouette of a wrought-iron gas lamp post fading into thick autumn mist, high-contrast black-and-white, gritty film grain, deep-shadowed textures, moody Bill Brandt chiaroscuro aesthetic.",
         "history_var": [
           {
-            "timestamp": "2026-06-27 22:30:04",
+            "timestamp": "2026-10-21 07:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Subdued image of rain filling a cracked city sidewalk; silhouetted feet step lightly across, water cascading into hidden drains, encapsulating transient movement and urban solitude in monochrome."
+              "prompt": "Wide-angle view of majestic wooden warships engulfed in fire and heavy gunpowder haze, turbulent oceanic swells, diffused sun rays, emotive Turner-esque oil painting, 1805."
             },
-            "text_input": "'Instruments of the urban environment respondin...",
-            "explanation": "This prompt explores a close-up of a city sidewalk capturing the understated drama of rain intera..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To avoid duplicating the previous prompt's focus on a single collapsing mast, I shifted the persp..."
           },
           {
-            "timestamp": "2026-06-27 23:30:03",
+            "timestamp": "2026-10-21 09:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Black and white image of a bustling outdoor caf\u00e9 where raindrops form delicate patterns on glass tabletops, patrons lost in conversation under the soft glow of antique street lamps."
+              "prompt": "Nelson\u2019s Column rising through heavy London fog, towering silhouette against a tempestuous, golden-grey sky; Turner-inspired oil painting, diffused light, energetic, swirling impasto brushwork."
             },
-            "text_input": "'Symphony of cascading raindrops' in the style ...",
-            "explanation": "To create a novel scene, I focused on the interaction between rain and urban life at an outdoor c..."
+            "text_input": "'The silent permanence of legacy \u2014 Nelson\u2019s Col...",
+            "explanation": "I shifted the focus from naval combat to the architectural permanence of the urban silhouette. By..."
           },
           {
-            "timestamp": "2026-06-28 06:00:12",
+            "timestamp": "2026-10-21 10:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Intricate Art Nouveau cityscape balcony overlooking a resurgent garden, enveloped in soft rain. Vines intertwine with wrought iron, delicate droplets glisten in muted pastel tones."
+              "prompt": "Stone lions of Trafalgar Square emerging through swirling London fog, tempestuous atmospheric grey light, energetic impasto brushwork in the style of J.M.W. Turner's Romanticist oils."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "This prompt focuses on the interaction between urban architecture and a garden, emphasizing natur..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "I focused on the reflective, lower-level perspective of the stone lions in Trafalgar Square amids..."
           },
           {
-            "timestamp": "2026-06-28 07:30:04",
+            "timestamp": "2026-10-21 11:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Intimate terrace with intricate Art Nouveau trellis, vine-draped, overlooking rejuvenated garden in gentle rain. Twinkling droplets, pastel harmonies accentuate nature's gentle whispers and urban solitude."
+              "prompt": "Admiralty Arch silhouetted against a bruising, tempestuous sunset; rain-slicked stones reflecting diffused, golden light, rendered with Turner\u2019s signature atmospheric impasto and energetic, swirling oil brushwork."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "I depicted a terrace to avoid previously used settings like balconies or urban facades. The focus..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To avoid previous combat or column/lion perspectives, I shifted to a low-angle, shore-bound view ..."
           },
           {
-            "timestamp": "2026-06-28 08:30:03",
+            "timestamp": "2026-10-21 12:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau-inspired gazebo amidst rain-nurtured flora, water droplets coalescing on glass roof, vibrant botanical revival witnessed through intricate metalwork, rich earth tones coexist with verdant life."
+              "prompt": "Stern of a wooden ship silhouetted within sulfuric gunpowder haze, listing amidst turbulent, grey Atlantic swells; dramatic Turner-esque light, visceral, swirling impasto oil brushwork."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "The prompt focuses on a gazebo, differing from previous terraces or balconies, integrating rain i..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To avoid previous depictions of specific combat vessels, columns, lions, or arches, I focused on ..."
           },
           {
-            "timestamp": "2026-06-28 09:30:04",
+            "timestamp": "2026-10-21 13:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Exquisite Art Nouveau archway framed by cascading ivy, rain peeking through ornamental gate, glimpses of a flourishing hidden garden; serene interplay of water and foliage in muted greens."
+              "prompt": "View from a high, swaying crow's nest overlooking an endless, smoke-shrouded 1805 battle line; turbulent, tempestuous horizons rendered in Turner\u2019s signature diffused light and energetic oil brushwork."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "The prompt highlights a detailed archway, focusing on an entrance rather than larger structures l..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To distinguish this prompt from previous naval combat and static architectural views, I focused o..."
           },
           {
-            "timestamp": "2026-06-28 10:30:03",
+            "timestamp": "2026-10-21 14:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Enclosed urban courtyard with decorative Art Nouveau walls, rain glistening on ornate floral patterns, revealing a secluded garden's vibrant charm, immersed in nature's resurgence and tranquility."
+              "prompt": "A small jolly boat adrift amidst immense, smoke-shrouded wreckage, turbulent Atlantic swells reflecting bruised light; Turner-inspired visceral oil painting, energetic brushwork, deep atmospheric emotional intensity."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "This prompt introduces an urban courtyard setting, distinct from previous terraces, balconies, or..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To ensure novelty, I focused on the aftermath and perspective of a small, storm-tossed jolly boat..."
           },
           {
-            "timestamp": "2026-06-28 11:30:02",
+            "timestamp": "2026-10-21 15:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau-inspired urban staircase with intricate railings, dripping rain nurturing hidden plants sprouting from cracks, pastel hues capturing a secret garden's resurgence amid urban conformity."
+              "prompt": "Blinding broadside flash rupturing the thick Atlantic gunpowder fog, searing light contrasting dark, swirling swells; visceral Turner-inspired oil painting, energetic brushwork, intense atmospheric drama."
             },
-            "text_input": "'Hidden corners of a resurgent garden' in the s...",
-            "explanation": "I created a prompt focusing on an urban staircase with Art Nouveau railings, a setting not previo..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To ensure novelty, I focused on the moment of ignition\u2014the blinding, ephemeral flash of a broadsi..."
           },
           {
-            "timestamp": "2026-06-28 12:30:04",
+            "timestamp": "2026-10-21 16:30:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Mystical forest pathway flanked by Art Nouveau timbers, ethereal rain blurring fantasy figures like elves and nymphs, soft greens entwine with delicate beiged gold motifs."
+              "prompt": "Sunlight piercing through a splintered hull into a ship\u2019s cramped cockpit, swirling gunpowder haze and blood-stained charts; visceral, Turner-inspired oil painting, energetic, dark impasto brushwork."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I used a vivid forest pathway scene instead of urban settings, focusing on encounters with fantas..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To ensure novelty while adhering to the alternating naval/urban pattern, I chose a unique perspec..."
           },
           {
-            "timestamp": "2026-06-28 13:30:03",
+            "timestamp": "2026-10-21 17:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Enchanted Art Nouveau urban plaza where rain creates shimmering pools, capturing fantasy figures' reflections. Twirling wisps of ivy frame elusive encounters, muted gold and emerald hues."
+              "prompt": "Ornate, rain-slicked cobblestones of Trafalgar Square reflecting a bruised, tempestuous sky; flickering gaslight shadows, Turner-inspired oil painting, energetic, swirling impasto, deep atmospheric intensity."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "To ensure uniqueness, I depicted an urban plaza setting with a focus on reflections and framing f..."
+            "text_input": "'The chaos of naval engagement \u2014 1805 battle li...",
+            "explanation": "To differentiate from previous naval and architecture prompts, I focused on a specific, rarely de..."
           },
           {
-            "timestamp": "2026-06-28 14:30:03",
+            "timestamp": "2026-10-21 18:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Mystical creatures like faeries and satyrs, interacting with city dwellers in a rain-soaked Art Nouveau park, with flowing lines of foliage and soft luminescent hues."
+              "prompt": "National Gallery portico looming through heavy, Turner-esque atmospheric vapor, reflecting bruised light onto rain-washed square, rendered with swirling, energetic impasto oil brushwork and intensity."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I combined the presence of fantasy figures with an urban park setting, different from the plaza o..."
+            "text_input": "'The silent permanence of legacy \u2014 Nelson\u2019s Col...",
+            "explanation": "To avoid previous prompts focusing on the column itself, lions, architecture, or specific combat ..."
           },
           {
-            "timestamp": "2026-06-28 15:30:04",
+            "timestamp": "2026-10-21 19:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau arcade sheltering fantasy figures amidst gentle rain, blossom petals under vibrant vines; nuanced interplay of enchantment, soft whispers, emerald and pastel intricacy."
+              "prompt": "Nelson\u2019s Column apex piercing a turbulent, swirling London firmament, rendered in Turner\u2019s signature diffused golden light, energetic impasto brushwork, and profound, moody, atmospheric oil intensity."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I chose an arcade setting, distinctly different from previous urban scenes like plazas or parks. ..."
+            "text_input": "'The silent permanence of legacy \u2014 Nelson\u2019s Col...",
+            "explanation": "To provide a fresh perspective while maintaining the thematic oscillation, I chose to focus on th..."
           },
           {
-            "timestamp": "2026-06-28 16:30:03",
+            "timestamp": "2026-10-21 20:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau greenhouse, fantasy beings like nymphs and dryads seen through dripping glass, delicate entwined vines with iridescent rainbows, surreal play of ethereal whispers and nature's vibrancy."
+              "prompt": "Nelson\u2019s Column base in silhouette against an apocalyptic, storm-tossed London sky; immense, swirling atmospheric clouds, golden diffused light, energetic, heavy impasto oil brushwork."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I depicted a greenhouse, setting it apart from previous urban terraces and plazas. The image main..."
+            "text_input": "'The silent permanence of legacy \u2014 Nelson\u2019s Col...",
+            "explanation": "To distinguish from the previous apex view of the column, I shifted the perspective to a wide, lo..."
           },
           {
-            "timestamp": "2026-06-28 17:30:02",
+            "timestamp": "2026-10-21 21:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Enchanted Art Nouveau alleyway, where rain-kissed cobblestones reflect floating ethereal figures. Ivy-draped arcades frame mystical encounters, muted aqua and sapphire tones embrace the scene."
+              "prompt": "Trafalgar Square\u2019s edge dissolving into a swirling, vaporous London fog; ghostly gaslights flickering through Turner-esque golden haze, rendered with energetic, impasto oil brushwork and atmospheric depth."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I selected an intimate alleyway instead of larger urban settings like plazas or arcades. This all..."
+            "text_input": "'The silent permanence of legacy \u2014 Nelson\u2019s Col...",
+            "explanation": "To avoid duplicating previous architectural studies of the Column, I shifted the focus to the sur..."
           },
           {
-            "timestamp": "2026-06-28 18:30:03",
+            "timestamp": "2026-10-22 06:00:13",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau-inspired tower terrace, rain-spattered archways unveil mystical figures above intricate labyrinth paths, whimsical ivy harmonizes with delicate blues and viridescent accents."
+              "prompt": "High-contrast black-and-white photograph of a jagged, soot-stained Victorian chimney stack vanishing into dense autumn mist; deep-shadowed, narrow alleyway foreground, gritty, atmospheric grain, moody chiaroscuro."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I chose a tower terrace, which is distinct from past urban and garden scenes, while integrating r..."
+            "text_input": "'Obscured skylines \u2014 architectural silhouettes ...",
+            "explanation": "To ensure complete novelty, I focused on a forgotten industrial brick chimney stack and narrow al..."
           },
           {
-            "timestamp": "2026-06-28 19:30:03",
+            "timestamp": "2026-10-22 07:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau fountain courtyard, where rain beads on ivy-veiled statues, revealing phantom figures in mist; a serene fusion of nature and ethereal magic in azure and emerald shades."
+              "prompt": "A narrow, sunken cellar threshold hidden behind a rusted Victorian gate; high-contrast chiaroscuro, deep-shadowed damp brickwork, gritty atmospheric grain, moody black-and-white Bill Brandt aesthetic."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I focused on a fountain courtyard setting distinct from previously depicted urban elements like p..."
+            "text_input": "'Hidden interiors \u2014 the secret, dimly lit corne...",
+            "explanation": "To ensure complete novelty, I shifted the focus away from industrial chimneys toward a claustroph..."
           },
           {
-            "timestamp": "2026-06-28 20:30:04",
+            "timestamp": "2026-10-22 18:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau-inspired conservatory, gentle rain trickles on stained glass domes; beneath, fantasy creatures gather amid verdant foliage, haloed in soft luminescent hues and flowing floral motifs."
+              "prompt": "A narrow, twisting Victorian attic staircase swallowed by ink-black shadows; stark light filtering through a cracked skylight, gritty film grain, moody Bill Brandt chiaroscuro style."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I focused on a conservatory setting, distinct from previous urban and outdoor locales like alleys..."
+            "text_input": "'Hidden interiors \u2014 the secret, dimly lit corne...",
+            "explanation": "I moved the focus from exterior threshold/cellar views to a tight, claustrophobic internal perspe..."
           },
           {
-            "timestamp": "2026-06-28 21:30:04",
+            "timestamp": "2026-10-22 19:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau-inspired rooftop garden under twilight rain, marble fountains, and celestial figures lingering on ivied paths, pastel skies melding with whispered hues of emerald and violet."
+              "prompt": "Rusted iron water tower silhouette looming over a skeletal rooftop, dissolving into dense autumn fog; high-contrast, moody black-and-white photography, deep-shadowed textures, gritty atmospheric grain."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I centered the prompt around a rooftop garden\u2014a unique urban setting not previously explored\u2014enha..."
+            "text_input": "'Obscured skylines \u2014 architectural silhouettes ...",
+            "explanation": "To ensure novelty, I shifted the focus to a distinct urban element\u2014a rusted iron water tower silh..."
           },
           {
-            "timestamp": "2026-07-28 11:21:35",
+            "timestamp": "2026-10-22 21:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Art Nouveau balcony overlooking laneway, ethereal figures glimpsed through rain-veiled ironwork and flowering vines, blending celestial whispers amid muted gold and sage strokes."
+              "prompt": "Low-angle view of a desolate brick archway in a narrow London alley; deep-shadowed damp stonework, stark chiaroscuro, high-contrast black-and-white, gritty grain, late-autumn atmospheric tension."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I focused on an Art Nouveau balcony, using the perspective of looking down a laneway. This distin..."
+            "text_input": "'Hidden interiors \u2014 the secret, dimly lit corne...",
+            "explanation": "To ensure absolute novelty, I shifted away from cellars, attics, chimneys, and water towers. I fo..."
           },
           {
-            "timestamp": "2026-07-28 11:30:03",
+            "timestamp": "2026-10-22 22:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Secluded Art Nouveau cafe under a dripping vine canopy, fantasy figures converse with shadowed patrons around rain-slicked tables, intertwined spirals of nature and mystery in ochre and jade."
+              "prompt": "Skeletal silhouette of a wrought-iron gas lamp post fading into thick autumn mist, high-contrast black-and-white, gritty film grain, deep-shadowed textures, moody Bill Brandt chiaroscuro aesthetic."
             },
-            "text_input": "'Imagined encounters with figures of fantasy wi...",
-            "explanation": "I chose a secluded cafe setting, distinct from other urban environments like balconies or gardens..."
+            "text_input": "'Obscured skylines \u2014 architectural silhouettes ...",
+            "explanation": "To ensure novelty, I avoided previously used subjects like chimneys, water towers, cellars, and a..."
           }
         ],
         "prompt_history": [
           {
-            "timestamp": "2026-06-27 23:30:06",
+            "timestamp": "2026-10-21 07:30:06",
             "type": "generation",
-            "prompt": "Black and white image of a bustling outdoor caf...",
+            "prompt": "Wide-angle view of majestic wooden warships eng...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260627-223030-557c3c38.jpg"
+              "20261021-063101-a725a71d.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 06:00:14",
+            "timestamp": "2026-10-21 09:30:05",
             "type": "generation",
-            "prompt": "Intricate Art Nouveau cityscape balcony overloo...",
+            "prompt": "Nelson\u2019s Column rising through heavy London fog...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-050105-e410c292.jpg"
+              "20261021-083057-8ad17e58.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 07:30:07",
+            "timestamp": "2026-10-21 10:30:05",
             "type": "generation",
-            "prompt": "Intimate terrace with intricate Art Nouveau tre...",
+            "prompt": "Stone lions of Trafalgar Square emerging throug...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-063036-f5b77e66.jpg"
+              "20261021-093047-31148e09.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 08:30:06",
+            "timestamp": "2026-10-21 11:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired gazebo amidst rain-nurture...",
+            "prompt": "Admiralty Arch silhouetted against a bruising, ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-073031-8922ef0d.jpg"
+              "20261021-103058-d7655f6d.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 09:30:07",
+            "timestamp": "2026-10-21 12:30:04",
             "type": "generation",
-            "prompt": "Exquisite Art Nouveau archway framed by cascadi...",
+            "prompt": "Stern of a wooden ship silhouetted within sulfu...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-083039-088900d4.jpg"
+              "20261021-113048-35612b65.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 10:30:05",
+            "timestamp": "2026-10-21 13:30:05",
             "type": "generation",
-            "prompt": "Enclosed urban courtyard with decorative Art No...",
+            "prompt": "View from a high, swaying crow's nest overlooki...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-093040-7c35ab3d.jpg"
+              "20261021-123107-3a3caff0.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 11:30:05",
+            "timestamp": "2026-10-21 14:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired urban staircase with intri...",
+            "prompt": "A small jolly boat adrift amidst immense, smoke...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-103032-aec1b71d.jpg"
+              "20261021-133053-45e0c146.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 12:30:07",
+            "timestamp": "2026-10-21 15:30:05",
             "type": "generation",
-            "prompt": "Mystical forest pathway flanked by Art Nouveau ...",
+            "prompt": "Blinding broadside flash rupturing the thick At...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-113032-9aac0605.jpg"
+              "20261021-143126-644a1c1f.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 13:30:06",
+            "timestamp": "2026-10-21 16:30:04",
             "type": "generation",
-            "prompt": "Enchanted Art Nouveau urban plaza where rain cr...",
+            "prompt": "Sunlight piercing through a splintered hull int...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-123031-56952601.jpg"
+              "20261021-153057-1aef75c5.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 14:30:06",
+            "timestamp": "2026-10-21 17:30:05",
             "type": "generation",
-            "prompt": "Mystical creatures like faeries and satyrs, int...",
+            "prompt": "Ornate, rain-slicked cobblestones of Trafalgar ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-133030-6eff3c9a.jpg"
+              "20261021-163054-066ddb9d.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 15:30:07",
+            "timestamp": "2026-10-21 18:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau arcade sheltering fantasy figures a...",
+            "prompt": "National Gallery portico looming through heavy,...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-143033-6ca3fc63.jpg"
+              "20261021-173051-bf6e9d65.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 16:30:05",
+            "timestamp": "2026-10-21 19:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau greenhouse, fantasy beings like nym...",
+            "prompt": "Nelson\u2019s Column apex piercing a turbulent, swir...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-153036-a0a22062.jpg"
+              "20261021-183050-9e2c898a.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 17:30:05",
+            "timestamp": "2026-10-21 20:30:06",
             "type": "generation",
-            "prompt": "Enchanted Art Nouveau alleyway, where rain-kiss...",
+            "prompt": "Nelson\u2019s Column base in silhouette against an a...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-163030-a803c16e.jpg"
+              "20261021-193118-5caf2576.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 18:30:06",
+            "timestamp": "2026-10-21 21:30:08",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired tower terrace, rain-spatte...",
+            "prompt": "Trafalgar Square\u2019s edge dissolving into a swirl...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-173030-2ea09896.jpg"
+              "20261021-203053-55d2b548.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 19:30:06",
+            "timestamp": "2026-10-22 06:00:14",
             "type": "generation",
-            "prompt": "Art Nouveau fountain courtyard, where rain bead...",
+            "prompt": "High-contrast black-and-white photograph of a j...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-183030-0fa79da5.jpg"
+              "20261022-050049-a5e8fce1.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 20:30:06",
+            "timestamp": "2026-10-22 07:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired conservatory, gentle rain ...",
+            "prompt": "A narrow, sunken cellar threshold hidden behind...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-193031-81a3f8e1.jpg"
+              "20261022-063030-cc964a79.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-06-28 21:30:06",
+            "timestamp": "2026-10-22 18:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired rooftop garden under twili...",
+            "prompt": "A narrow, twisting Victorian attic staircase sw...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260628-203035-01bfd624.jpg"
+              "20261022-173029-8041d06c.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-07-12 21:30:05",
+            "timestamp": "2026-10-22 19:30:05",
             "type": "generation",
-            "prompt": "Art Nouveau-inspired rooftop garden under twili...",
+            "prompt": "Rusted iron water tower silhouette looming over...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260712-203227-49851807.jpg"
+              "20261022-183030-27a6cfbc.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-07-28 11:21:38",
+            "timestamp": "2026-10-22 21:30:09",
             "type": "generation",
-            "prompt": "Art Nouveau balcony overlooking laneway, ethere...",
+            "prompt": "Low-angle view of a desolate brick archway in a...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260728-102249-5af1627e.jpg"
+              "20261022-203048-bfc4eff0.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2026-07-28 11:30:05",
+            "timestamp": "2026-10-22 22:30:06",
             "type": "generation",
-            "prompt": "Secluded Art Nouveau cafe under a dripping vine...",
+            "prompt": "Skeletal silhouette of a wrought-iron gas lamp ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20260728-103032-1f845457.jpg"
+              "20261022-213031-1f3301dd.jpg"
             ],
             "published": true
           }
@@ -1240,1379 +1336,1799 @@
         "hair_prompt": "bald as a bowling ball with a beard that would make a lumberjack jealous and a handlebar mustache that could hold a teacup",
         "hairballed_image": "20250721-202326-ef9e2d17.jpg",
         "session_countwhere ": 0,
-        "working_image": "/home/gjbm2/dev/screen-machine/output/north-screen/20250721-205215-ca6e6b24.jpg"
+        "working_image": "/home/gjbm2/dev/screen-machine/output/north-screen/20250721-205215-ca6e6b24.jpg",
+        "screen_layer": "art",
+        "room_mode": "gallery",
+        "room_auto": true
       },
-      "last_generated": "20260728-103032-1f845457.jpg"
+      "last_generated": "20261022-213031-1f3301dd.jpg"
     }
   ],
   "state": "running",
-  "last_updated": "2026-07-28T11:32:31.332565",
+  "last_updated": "2026-10-22T22:58:16.042605",
   "last_trigger_executions": {
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-28_1": "2026-07-28T10:05:00.410533",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-28_3": "2026-07-28T10:30:00.253742",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-28_4": "2026-07-28T11:30:00.527899"
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_0": "2026-10-20T00:15:00.288416",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_1": "2026-10-20T00:30:01.623705",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_2": "2026-10-20T00:45:01.198053",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_3": "2026-10-20T01:00:00.603911",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_4": "2026-10-20T01:15:01.900784",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_5": "2026-10-20T01:30:01.274953",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_6": "2026-10-20T01:45:00.633620",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_7": "2026-10-20T02:00:00.312307",
+    "0b3a0979a9b906d6105d40d812f40a99_2026-10-20": "2026-10-20T02:00:00.312307",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_8": "2026-10-20T02:15:01.841341",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_9": "2026-10-20T02:30:01.304012",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_10": "2026-10-20T02:45:00.791310",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-10-20": "2026-10-20T03:00:00.411616",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_11": "2026-10-20T03:00:00.411616",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_12": "2026-10-20T03:15:00.019362",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_13": "2026-10-20T03:30:01.144943",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_14": "2026-10-20T03:45:00.467374",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_15": "2026-10-20T04:00:01.789010",
+    "158578f4060f785538defa5246c1f15b_2026-10-20": "2026-10-20T04:10:01.255455",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_16": "2026-10-20T04:15:01.577827",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_17": "2026-10-20T04:30:00.924929",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_18": "2026-10-20T04:45:00.470406",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_19": "2026-10-20T05:00:01.955656",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_20": "2026-10-20T05:15:01.342703",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_21": "2026-10-20T05:30:00.507350",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_22": "2026-10-20T05:45:01.801494",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_23": "2026-10-20T06:00:00.758176",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_24": "2026-10-20T06:15:01.285637",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_25": "2026-10-20T06:30:00.500325",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-20_26": "2026-10-20T06:45:01.651129",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_0": "2026-10-20T07:30:01.102755",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_0": "2026-10-20T08:05:00.149011",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_1": "2026-10-20T08:30:01.057806",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_2": "2026-10-20T09:30:00.779789",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_1": "2026-10-20T10:05:01.821641",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_3": "2026-10-20T10:30:00.531475",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_4": "2026-10-20T11:30:01.459858",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_2": "2026-10-20T12:05:01.799970",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_5": "2026-10-20T12:30:00.607448",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_6": "2026-10-20T13:30:01.865740",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_3": "2026-10-20T14:05:00.594260",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_7": "2026-10-20T14:30:01.573722",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_8": "2026-10-20T15:30:01.002204",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_4": "2026-10-20T16:05:00.069078",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_9": "2026-10-20T16:30:01.204289",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_10": "2026-10-20T17:30:01.236283",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_5": "2026-10-20T18:05:00.346674",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_11": "2026-10-20T18:30:01.469478",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_12": "2026-10-20T19:30:01.956998",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_6": "2026-10-20T20:05:00.661926",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_13": "2026-10-20T20:30:00.857661",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_14": "2026-10-20T21:30:00.702809",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-20_7": "2026-10-20T22:05:01.752830",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_15": "2026-10-20T22:30:00.742139",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-20_16": "2026-10-20T23:30:00.847735",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_0": "2026-10-21T00:15:01.439012",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_1": "2026-10-21T00:30:00.577118",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_2": "2026-10-21T00:45:00.024810",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_3": "2026-10-21T01:00:01.773777",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_4": "2026-10-21T01:15:00.805664",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_5": "2026-10-21T01:30:00.410247",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_6": "2026-10-21T01:45:01.367873",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_7": "2026-10-21T02:00:00.879548",
+    "0b3a0979a9b906d6105d40d812f40a99_2026-10-21": "2026-10-21T02:00:00.879548",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_8": "2026-10-21T02:15:00.811735",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_9": "2026-10-21T02:30:00.185400",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_10": "2026-10-21T02:45:01.720224",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-10-21": "2026-10-21T03:00:00.439455",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_11": "2026-10-21T03:00:00.439455",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_12": "2026-10-21T03:15:00.584703",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_13": "2026-10-21T03:30:00.182975",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_14": "2026-10-21T03:45:01.848015",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_15": "2026-10-21T04:00:01.441678",
+    "158578f4060f785538defa5246c1f15b_2026-10-21": "2026-10-21T04:10:01.310366",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_16": "2026-10-21T04:15:01.853517",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_17": "2026-10-21T04:30:01.485343",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_18": "2026-10-21T04:45:01.444544",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_19": "2026-10-21T05:00:01.040365",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_20": "2026-10-21T05:15:00.726475",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_21": "2026-10-21T05:30:00.120001",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_22": "2026-10-21T05:45:01.822675",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_23": "2026-10-21T06:00:01.687576",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_24": "2026-10-21T06:15:00.300351",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_25": "2026-10-21T06:30:00.416707",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-21_26": "2026-10-21T06:45:00.489448",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_0": "2026-10-21T07:30:01.942547",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_0": "2026-10-21T08:05:00.056573",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_1": "2026-10-21T08:30:00.890154",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_2": "2026-10-21T09:30:00.909401",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_1": "2026-10-21T10:05:00.540937",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_3": "2026-10-21T10:30:00.705514",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_4": "2026-10-21T11:30:00.810178",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_2": "2026-10-21T12:05:01.855860",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_5": "2026-10-21T12:30:00.442353",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_6": "2026-10-21T13:30:01.312859",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_3": "2026-10-21T14:05:01.573593",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_7": "2026-10-21T14:30:00.684096",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_8": "2026-10-21T15:30:01.234808",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_4": "2026-10-21T16:05:02.001908",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_9": "2026-10-21T16:30:00.172725",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_10": "2026-10-21T17:30:01.485580",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_5": "2026-10-21T18:05:01.440649",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_11": "2026-10-21T18:30:01.707595",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_12": "2026-10-21T19:30:00.911568",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_6": "2026-10-21T20:05:01.441187",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_13": "2026-10-21T20:30:01.784805",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_14": "2026-10-21T21:30:00.582638",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-21_7": "2026-10-21T22:05:00.973467",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_15": "2026-10-21T22:30:00.442735",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-21_16": "2026-10-21T23:30:01.808922",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_0": "2026-10-22T00:15:01.986803",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_1": "2026-10-22T00:30:00.749018",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_2": "2026-10-22T00:45:01.468289",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_3": "2026-10-22T01:00:01.180016",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_4": "2026-10-22T01:15:01.162478",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_5": "2026-10-22T01:30:01.450597",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_6": "2026-10-22T01:45:01.603218",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_7": "2026-10-22T02:00:01.308270",
+    "0b3a0979a9b906d6105d40d812f40a99_2026-10-22": "2026-10-22T02:00:01.308270",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_8": "2026-10-22T02:15:00.844217",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_9": "2026-10-22T02:30:00.413402",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_10": "2026-10-22T02:45:00.978829",
+    "86fcab81240ed277bf13e63c5c2c9595_2026-10-22": "2026-10-22T03:00:00.929555",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_11": "2026-10-22T03:00:00.929555",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_12": "2026-10-22T03:15:00.977737",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_13": "2026-10-22T03:30:00.355700",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_14": "2026-10-22T03:45:00.137488",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_15": "2026-10-22T04:00:00.241495",
+    "158578f4060f785538defa5246c1f15b_2026-10-22": "2026-10-22T04:10:00.045878",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_16": "2026-10-22T04:15:00.741959",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_17": "2026-10-22T04:30:01.953804",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_18": "2026-10-22T04:45:00.029042",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_19": "2026-10-22T05:00:01.721235",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_20": "2026-10-22T05:15:01.431955",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_21": "2026-10-22T05:30:00.602977",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_22": "2026-10-22T05:45:01.934312",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_23": "2026-10-22T06:00:01.902027",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_24": "2026-10-22T06:15:01.724443",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_25": "2026-10-22T06:30:01.415488",
+    "62f2a3630480757a87877f58eafcf4bf_2026-10-22_26": "2026-10-22T06:45:00.897140",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_0": "2026-10-22T07:30:01.671988",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_0": "2026-10-22T08:05:00.526359",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_1": "2026-10-22T08:30:00.010523",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_2": "2026-10-22T09:30:00.671115",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_1": "2026-10-22T10:05:00.152468",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_3": "2026-10-22T10:30:02.020825",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_4": "2026-10-22T11:30:00.359172",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_2": "2026-10-22T12:05:00.247054",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_5": "2026-10-22T12:30:00.081592",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_6": "2026-10-22T13:30:00.153793",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_3": "2026-10-22T14:05:01.540285",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_7": "2026-10-22T14:30:00.458594",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_8": "2026-10-22T15:30:00.415105",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_4": "2026-10-22T16:05:01.870050",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_9": "2026-10-22T16:30:00.883605",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_10": "2026-10-22T17:30:01.278214",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_5": "2026-10-22T18:05:00.643296",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_11": "2026-10-22T18:30:01.340361",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_12": "2026-10-22T19:30:01.418749",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_6": "2026-10-22T20:05:00.967556",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_13": "2026-10-22T20:30:00.671471",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_14": "2026-10-22T21:30:00.676395",
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-10-22_7": "2026-10-22T22:05:00.901530",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-10-22_15": "2026-10-22T22:30:01.323711"
   },
-  "active_events": {},
+  "active_events": {
+    "_room_mode": []
+  },
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2026-07-17T15:30:00.149700",
-      "expires": "2026-07-17T15:31:00.149700",
+      "active_from": "2026-10-22T11:30:00.522268",
+      "expires": "2026-10-22T11:31:00.522268",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T15:30:00.149700",
-      "unique_id": "5d896284-bf64-4e04-8fd4-9dfabe1d4bb8",
+      "created_at": "2026-10-22T11:30:00.522268",
+      "unique_id": "789f9d61-c2b7-45db-a44a-f4ae59d5f09b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T15:30:02.219146"
+      "consumed_at": "2026-10-22T11:30:02.444729"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-17T15:30:00.149700",
-      "expires": "2026-07-17T15:31:00.149700",
+      "active_from": "2026-10-22T11:30:00.522268",
+      "expires": "2026-10-22T11:31:00.522268",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T15:30:00.149700",
-      "unique_id": "5d896284-bf64-4e04-8fd4-9dfabe1d4bb8",
+      "created_at": "2026-10-22T11:30:00.522268",
+      "unique_id": "789f9d61-c2b7-45db-a44a-f4ae59d5f09b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T15:30:02.219146"
+      "consumed_at": "2026-10-22T11:30:02.444729"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T16:05:00.506249",
-      "expires": "2026-07-17T16:06:00.506249",
+      "active_from": "2026-10-22T11:30:02.574790",
+      "expires": "2026-10-22T11:31:02.574790",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T16:05:00.506249",
-      "unique_id": "5b8cc2e6-baff-4525-91be-04ada07c699d",
+      "created_at": "2026-10-22T11:30:02.574790",
+      "unique_id": "110973ce-8bb5-466a-b152-bf636373eb8c",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T16:05:02.324902"
+      "consumed_at": "2026-10-22T11:30:04.548718"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T16:05:00.506249",
-      "expires": "2026-07-17T16:06:00.506249",
+      "active_from": "2026-10-22T11:30:02.574790",
+      "expires": "2026-10-22T11:31:02.574790",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T16:05:00.506249",
-      "unique_id": "5b8cc2e6-baff-4525-91be-04ada07c699d",
+      "created_at": "2026-10-22T11:30:02.574790",
+      "unique_id": "110973ce-8bb5-466a-b152-bf636373eb8c",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T16:05:02.324902"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T16:30:01.265948",
-      "expires": "2026-07-17T16:31:01.265948",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T16:30:01.265948",
-      "unique_id": "e2fc6503-a142-4d38-895d-886f12f13b43",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T16:30:03.227745"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T16:30:01.265948",
-      "expires": "2026-07-17T16:31:01.265948",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T16:30:01.265948",
-      "unique_id": "e2fc6503-a142-4d38-895d-886f12f13b43",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T16:30:03.227745"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T17:30:01.579750",
-      "expires": "2026-07-17T17:31:01.579750",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T17:30:01.579750",
-      "unique_id": "c8969367-e4a0-4570-8f3d-2f156e92ae73",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T17:30:03.645514"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T17:30:01.579750",
-      "expires": "2026-07-17T17:31:01.579750",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T17:30:01.579750",
-      "unique_id": "c8969367-e4a0-4570-8f3d-2f156e92ae73",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T17:30:03.645514"
+      "consumed_at": "2026-10-22T11:30:04.548718"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T18:05:00.800117",
-      "expires": "2026-07-17T18:06:00.800117",
+      "active_from": "2026-10-22T12:05:00.812043",
+      "expires": "2026-10-22T12:06:00.812043",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T18:05:00.800117",
-      "unique_id": "bd47d076-ecd3-45b2-bb0d-f9027feae7ed",
+      "created_at": "2026-10-22T12:05:00.812043",
+      "unique_id": "f9e96720-f4a9-48c6-ae21-3ffcd952dd51",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T18:05:02.654560"
+      "consumed_at": "2026-10-22T12:05:02.261219"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T18:05:00.800117",
-      "expires": "2026-07-17T18:06:00.800117",
+      "active_from": "2026-10-22T12:05:00.812043",
+      "expires": "2026-10-22T12:06:00.812043",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T18:05:00.800117",
-      "unique_id": "bd47d076-ecd3-45b2-bb0d-f9027feae7ed",
+      "created_at": "2026-10-22T12:05:00.812043",
+      "unique_id": "f9e96720-f4a9-48c6-ae21-3ffcd952dd51",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T18:05:02.654560"
+      "consumed_at": "2026-10-22T12:05:02.261219"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-17T18:30:00.056095",
-      "expires": "2026-07-17T18:31:00.056095",
+      "active_from": "2026-10-22T12:30:00.166429",
+      "expires": "2026-10-22T12:31:00.166429",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T18:30:00.056095",
-      "unique_id": "87444702-3def-4a47-bead-33a306e97be8",
+      "created_at": "2026-10-22T12:30:00.166429",
+      "unique_id": "ac915cb4-0ed7-43df-b390-39537cf261fe",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T18:30:02.050789"
+      "consumed_at": "2026-10-22T12:30:02.116926"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-17T18:30:00.056095",
-      "expires": "2026-07-17T18:31:00.056095",
+      "active_from": "2026-10-22T12:30:00.166429",
+      "expires": "2026-10-22T12:31:00.166429",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T18:30:00.056095",
-      "unique_id": "87444702-3def-4a47-bead-33a306e97be8",
+      "created_at": "2026-10-22T12:30:00.166429",
+      "unique_id": "ac915cb4-0ed7-43df-b390-39537cf261fe",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T18:30:02.050789"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T19:30:00.752472",
-      "expires": "2026-07-17T19:31:00.752472",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T19:30:00.752472",
-      "unique_id": "c202c0ff-6f3e-47f2-a667-69d22c077e0a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T19:30:02.828965"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T19:30:00.752472",
-      "expires": "2026-07-17T19:31:00.752472",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T19:30:00.752472",
-      "unique_id": "c202c0ff-6f3e-47f2-a667-69d22c077e0a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T19:30:02.828965"
+      "consumed_at": "2026-10-22T12:30:02.116926"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T20:05:01.999715",
-      "expires": "2026-07-17T20:06:01.999715",
+      "active_from": "2026-10-22T12:30:02.236361",
+      "expires": "2026-10-22T12:31:02.236361",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T20:05:01.999715",
-      "unique_id": "85f84c33-8af2-449a-baec-edca7a080445",
+      "created_at": "2026-10-22T12:30:02.236361",
+      "unique_id": "01e72b17-25fa-477d-9ab2-966eaa603987",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T20:05:03.849631"
+      "consumed_at": "2026-10-22T12:30:04.206913"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T20:05:01.999715",
-      "expires": "2026-07-17T20:06:01.999715",
+      "active_from": "2026-10-22T12:30:02.236361",
+      "expires": "2026-10-22T12:31:02.236361",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T20:05:01.999715",
-      "unique_id": "85f84c33-8af2-449a-baec-edca7a080445",
+      "created_at": "2026-10-22T12:30:02.236361",
+      "unique_id": "01e72b17-25fa-477d-9ab2-966eaa603987",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T20:05:03.849631"
+      "consumed_at": "2026-10-22T12:30:04.206913"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-17T20:30:01.185899",
-      "expires": "2026-07-17T20:31:01.185899",
+      "active_from": "2026-10-22T13:30:00.207031",
+      "expires": "2026-10-22T13:31:00.207031",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T20:30:01.185899",
-      "unique_id": "5cca94e3-b67e-46ee-a8a7-117076a06b58",
+      "created_at": "2026-10-22T13:30:00.207031",
+      "unique_id": "554aa789-184f-4b52-8b8d-c43469074aef",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T20:30:03.182281"
+      "consumed_at": "2026-10-22T13:30:02.246096"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-17T20:30:01.185899",
-      "expires": "2026-07-17T20:31:01.185899",
+      "active_from": "2026-10-22T13:30:00.207031",
+      "expires": "2026-10-22T13:31:00.207031",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-17T20:30:01.185899",
-      "unique_id": "5cca94e3-b67e-46ee-a8a7-117076a06b58",
+      "created_at": "2026-10-22T13:30:00.207031",
+      "unique_id": "554aa789-184f-4b52-8b8d-c43469074aef",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T20:30:03.182281"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T21:30:00.529973",
-      "expires": "2026-07-17T21:31:00.529973",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T21:30:00.529973",
-      "unique_id": "f04bbba2-fff3-4b21-9aa6-c6db884336a4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T21:30:02.507935"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T21:30:00.529973",
-      "expires": "2026-07-17T21:31:00.529973",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T21:30:00.529973",
-      "unique_id": "f04bbba2-fff3-4b21-9aa6-c6db884336a4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T21:30:02.507935"
+      "consumed_at": "2026-10-22T13:30:02.246096"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T22:05:01.411113",
-      "expires": "2026-07-17T22:06:01.411113",
+      "active_from": "2026-10-22T13:30:02.336785",
+      "expires": "2026-10-22T13:31:02.336785",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T22:05:01.411113",
-      "unique_id": "612c6ca1-49bc-4927-bf32-2af1c4187e28",
+      "created_at": "2026-10-22T13:30:02.336785",
+      "unique_id": "54469f65-bee9-4a0e-808c-3b9053c24dcb",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T22:05:03.244396"
+      "consumed_at": "2026-10-22T13:30:04.297371"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-17T22:05:01.411113",
-      "expires": "2026-07-17T22:06:01.411113",
+      "active_from": "2026-10-22T13:30:02.336785",
+      "expires": "2026-10-22T13:31:02.336785",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-17T22:05:01.411113",
-      "unique_id": "612c6ca1-49bc-4927-bf32-2af1c4187e28",
+      "created_at": "2026-10-22T13:30:02.336785",
+      "unique_id": "54469f65-bee9-4a0e-808c-3b9053c24dcb",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T22:05:03.244396"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T22:30:00.621084",
-      "expires": "2026-07-17T22:31:00.621084",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T22:30:00.621084",
-      "unique_id": "a9413bcd-321e-4767-85ef-d9a5bce18b16",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T22:30:02.607659"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T22:30:00.621084",
-      "expires": "2026-07-17T22:31:00.621084",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T22:30:00.621084",
-      "unique_id": "a9413bcd-321e-4767-85ef-d9a5bce18b16",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T22:30:02.607659"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T23:30:01.057728",
-      "expires": "2026-07-17T23:31:01.057728",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T23:30:01.057728",
-      "unique_id": "3920a6ac-156f-4dd5-b9b3-350571722e05",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T23:30:03.111693"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T23:30:01.057728",
-      "expires": "2026-07-17T23:31:01.057728",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T23:30:01.057728",
-      "unique_id": "3920a6ac-156f-4dd5-b9b3-350571722e05",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T23:30:03.111693"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T06:00:11.187441",
-      "expires": "2026-07-18T06:01:11.187441",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2026-07-18T06:00:11.187441",
-      "unique_id": "cf01465a-dc71-484a-8488-2ecdd536d25f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T06:00:11.736438"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T06:00:11.187441",
-      "expires": "2026-07-18T06:01:11.187441",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2026-07-18T06:00:11.187441",
-      "unique_id": "cf01465a-dc71-484a-8488-2ecdd536d25f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T06:00:11.736438"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T07:30:01.101105",
-      "expires": "2026-07-18T07:31:01.101105",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T07:30:01.101105",
-      "unique_id": "bcbe78f0-2382-4588-bfe1-7ccd154daf23",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T07:30:03.166183"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T07:30:01.101105",
-      "expires": "2026-07-18T07:31:01.101105",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T07:30:01.101105",
-      "unique_id": "bcbe78f0-2382-4588-bfe1-7ccd154daf23",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T07:30:03.166183"
+      "consumed_at": "2026-10-22T13:30:04.297371"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T08:05:01.634076",
-      "expires": "2026-07-18T08:06:01.634076",
+      "active_from": "2026-10-22T14:05:01.842236",
+      "expires": "2026-10-22T14:06:01.842236",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T08:05:01.634076",
-      "unique_id": "fdc57ec3-65f8-42d4-9af9-e1c289b1c5bb",
+      "created_at": "2026-10-22T14:05:01.842236",
+      "unique_id": "151112ee-29ab-477e-ac0c-966d1231d543",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T08:05:03.490942"
+      "consumed_at": "2026-10-22T14:05:03.585542"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T08:05:01.634076",
-      "expires": "2026-07-18T08:06:01.634076",
+      "active_from": "2026-10-22T14:05:01.842236",
+      "expires": "2026-10-22T14:06:01.842236",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T08:05:01.634076",
-      "unique_id": "fdc57ec3-65f8-42d4-9af9-e1c289b1c5bb",
+      "created_at": "2026-10-22T14:05:01.842236",
+      "unique_id": "151112ee-29ab-477e-ac0c-966d1231d543",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T08:05:03.490942"
+      "consumed_at": "2026-10-22T14:05:03.585542"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T08:30:00.922965",
-      "expires": "2026-07-18T08:31:00.922965",
+      "active_from": "2026-10-22T14:30:00.516609",
+      "expires": "2026-10-22T14:31:00.516609",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T08:30:00.922965",
-      "unique_id": "5ea8a8d2-372a-4449-a103-1b9851ff3b8e",
+      "created_at": "2026-10-22T14:30:00.516609",
+      "unique_id": "964bb785-81bd-497c-abbe-9be1177f0e29",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T08:30:03.010762"
+      "consumed_at": "2026-10-22T14:30:02.538028"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T08:30:00.922965",
-      "expires": "2026-07-18T08:31:00.922965",
+      "active_from": "2026-10-22T14:30:00.516609",
+      "expires": "2026-10-22T14:31:00.516609",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T08:30:00.922965",
-      "unique_id": "5ea8a8d2-372a-4449-a103-1b9851ff3b8e",
+      "created_at": "2026-10-22T14:30:00.516609",
+      "unique_id": "964bb785-81bd-497c-abbe-9be1177f0e29",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T08:30:03.010762"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T09:30:01.940658",
-      "expires": "2026-07-18T09:31:01.940658",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T09:30:01.940658",
-      "unique_id": "369b4a05-5793-4b55-a13b-19528694428b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T09:30:03.934608"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T09:30:01.940658",
-      "expires": "2026-07-18T09:31:01.940658",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T09:30:01.940658",
-      "unique_id": "369b4a05-5793-4b55-a13b-19528694428b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T09:30:03.934608"
+      "consumed_at": "2026-10-22T14:30:02.538028"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T10:05:01.688902",
-      "expires": "2026-07-18T10:06:01.688902",
+      "active_from": "2026-10-22T14:30:02.611484",
+      "expires": "2026-10-22T14:31:02.611484",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T10:05:01.688902",
-      "unique_id": "a3e32bde-f49a-43c5-9e4c-6c050971471a",
+      "created_at": "2026-10-22T14:30:02.611484",
+      "unique_id": "e6321f60-913f-4a93-9490-0402470b3ed4",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T10:05:03.534894"
+      "consumed_at": "2026-10-22T14:30:04.568543"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T10:05:01.688902",
-      "expires": "2026-07-18T10:06:01.688902",
+      "active_from": "2026-10-22T14:30:02.611484",
+      "expires": "2026-10-22T14:31:02.611484",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T10:05:01.688902",
-      "unique_id": "a3e32bde-f49a-43c5-9e4c-6c050971471a",
+      "created_at": "2026-10-22T14:30:02.611484",
+      "unique_id": "e6321f60-913f-4a93-9490-0402470b3ed4",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T10:05:03.534894"
+      "consumed_at": "2026-10-22T14:30:04.568543"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T10:30:01.699521",
-      "expires": "2026-07-18T10:31:01.699521",
+      "active_from": "2026-10-22T15:30:00.478154",
+      "expires": "2026-10-22T15:31:00.478154",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T10:30:01.699521",
-      "unique_id": "925df3ea-ea1b-4e09-9889-72784cf0595d",
+      "created_at": "2026-10-22T15:30:00.478154",
+      "unique_id": "268275e8-ebe6-4b49-8417-a74947d7d9f7",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T10:30:03.729459"
+      "consumed_at": "2026-10-22T15:30:02.448440"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T10:30:01.699521",
-      "expires": "2026-07-18T10:31:01.699521",
+      "active_from": "2026-10-22T15:30:00.478154",
+      "expires": "2026-10-22T15:31:00.478154",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T10:30:01.699521",
-      "unique_id": "925df3ea-ea1b-4e09-9889-72784cf0595d",
+      "created_at": "2026-10-22T15:30:00.478154",
+      "unique_id": "268275e8-ebe6-4b49-8417-a74947d7d9f7",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T10:30:03.729459"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T11:30:00.015727",
-      "expires": "2026-07-18T11:31:00.015727",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T11:30:00.015727",
-      "unique_id": "d9ba46aa-8275-47ec-a76b-ceea6005411c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T11:30:02.043701"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T11:30:00.015727",
-      "expires": "2026-07-18T11:31:00.015727",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T11:30:00.015727",
-      "unique_id": "d9ba46aa-8275-47ec-a76b-ceea6005411c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T11:30:02.043701"
+      "consumed_at": "2026-10-22T15:30:02.448440"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T12:05:01.701656",
-      "expires": "2026-07-18T12:06:01.701656",
+      "active_from": "2026-10-22T15:30:02.580180",
+      "expires": "2026-10-22T15:31:02.580180",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T12:05:01.701656",
-      "unique_id": "f7a8b759-928b-4fd8-b2b0-a3dd8e7d624d",
+      "created_at": "2026-10-22T15:30:02.580180",
+      "unique_id": "558580fb-8ce6-4cfc-ad43-c8974eb9d150",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T12:05:03.531233"
+      "consumed_at": "2026-10-22T15:30:04.461909"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T12:05:01.701656",
-      "expires": "2026-07-18T12:06:01.701656",
+      "active_from": "2026-10-22T15:30:02.580180",
+      "expires": "2026-10-22T15:31:02.580180",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T12:05:01.701656",
-      "unique_id": "f7a8b759-928b-4fd8-b2b0-a3dd8e7d624d",
+      "created_at": "2026-10-22T15:30:02.580180",
+      "unique_id": "558580fb-8ce6-4cfc-ad43-c8974eb9d150",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T12:05:03.531233"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T12:30:00.534181",
-      "expires": "2026-07-18T12:31:00.534181",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T12:30:00.534181",
-      "unique_id": "697a08d3-ae16-478f-b85a-8eeffd6e3b20",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T12:30:02.584123"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T12:30:00.534181",
-      "expires": "2026-07-18T12:31:00.534181",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T12:30:00.534181",
-      "unique_id": "697a08d3-ae16-478f-b85a-8eeffd6e3b20",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T12:30:02.584123"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T13:30:01.414267",
-      "expires": "2026-07-18T13:31:01.414267",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T13:30:01.414267",
-      "unique_id": "d5e9c961-23b4-4b12-a753-cb4d3f6fb11b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T13:30:03.468543"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T13:30:01.414267",
-      "expires": "2026-07-18T13:31:01.414267",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T13:30:01.414267",
-      "unique_id": "d5e9c961-23b4-4b12-a753-cb4d3f6fb11b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T13:30:03.468543"
+      "consumed_at": "2026-10-22T15:30:04.461909"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T14:05:01.500544",
-      "expires": "2026-07-18T14:06:01.500544",
+      "active_from": "2026-10-22T16:05:02.254577",
+      "expires": "2026-10-22T16:06:02.254577",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T14:05:01.500544",
-      "unique_id": "d2c5463f-167a-47d1-91e5-b2f431319966",
+      "created_at": "2026-10-22T16:05:02.254577",
+      "unique_id": "81978da4-171b-4730-8498-4d4d53993fa2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T14:05:03.325211"
+      "consumed_at": "2026-10-22T16:05:04.073814"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T14:05:01.500544",
-      "expires": "2026-07-18T14:06:01.500544",
+      "active_from": "2026-10-22T16:05:02.254577",
+      "expires": "2026-10-22T16:06:02.254577",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T14:05:01.500544",
-      "unique_id": "d2c5463f-167a-47d1-91e5-b2f431319966",
+      "created_at": "2026-10-22T16:05:02.254577",
+      "unique_id": "81978da4-171b-4730-8498-4d4d53993fa2",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T14:05:03.325211"
+      "consumed_at": "2026-10-22T16:05:04.073814"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T14:30:00.733068",
-      "expires": "2026-07-18T14:31:00.733068",
+      "active_from": "2026-10-22T16:30:00.949685",
+      "expires": "2026-10-22T16:31:00.949685",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T14:30:00.733068",
-      "unique_id": "b5bb3591-9e6c-4207-a8cc-7ac75bcd07f1",
+      "created_at": "2026-10-22T16:30:00.949685",
+      "unique_id": "02ab339c-694c-4e91-906c-3921c481c85d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T14:30:02.787482"
+      "consumed_at": "2026-10-22T16:30:02.892987"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T14:30:00.733068",
-      "expires": "2026-07-18T14:31:00.733068",
+      "active_from": "2026-10-22T16:30:00.949685",
+      "expires": "2026-10-22T16:31:00.949685",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T14:30:00.733068",
-      "unique_id": "b5bb3591-9e6c-4207-a8cc-7ac75bcd07f1",
+      "created_at": "2026-10-22T16:30:00.949685",
+      "unique_id": "02ab339c-694c-4e91-906c-3921c481c85d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T14:30:02.787482"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T15:30:00.596302",
-      "expires": "2026-07-18T15:31:00.596302",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T15:30:00.596302",
-      "unique_id": "84b42c1d-8347-49a0-8703-8df0e40c133e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T15:30:02.665476"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T15:30:00.596302",
-      "expires": "2026-07-18T15:31:00.596302",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T15:30:00.596302",
-      "unique_id": "84b42c1d-8347-49a0-8703-8df0e40c133e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T15:30:02.665476"
+      "consumed_at": "2026-10-22T16:30:02.892987"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T16:05:01.779175",
-      "expires": "2026-07-18T16:06:01.779175",
+      "active_from": "2026-10-22T16:30:03.139832",
+      "expires": "2026-10-22T16:31:03.139832",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T16:05:01.779175",
-      "unique_id": "5095b46a-5ac8-4c7f-a9b8-596ea477d865",
+      "created_at": "2026-10-22T16:30:03.139832",
+      "unique_id": "a3e76041-1cee-4528-9cf8-6505dba41483",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T16:05:03.606371"
+      "consumed_at": "2026-10-22T16:30:04.915341"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T16:05:01.779175",
-      "expires": "2026-07-18T16:06:01.779175",
+      "active_from": "2026-10-22T16:30:03.139832",
+      "expires": "2026-10-22T16:31:03.139832",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T16:05:01.779175",
-      "unique_id": "5095b46a-5ac8-4c7f-a9b8-596ea477d865",
+      "created_at": "2026-10-22T16:30:03.139832",
+      "unique_id": "a3e76041-1cee-4528-9cf8-6505dba41483",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T16:05:03.606371"
+      "consumed_at": "2026-10-22T16:30:04.915341"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T16:30:00.450401",
-      "expires": "2026-07-18T16:31:00.450401",
+      "active_from": "2026-10-22T17:30:01.310145",
+      "expires": "2026-10-22T17:31:01.310145",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T16:30:00.450401",
-      "unique_id": "571a2482-ace7-46e8-860c-5392205d98a6",
+      "created_at": "2026-10-22T17:30:01.310145",
+      "unique_id": "f9b1491b-6879-4acc-a21b-ce6f487fbd4e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T16:30:02.486175"
+      "consumed_at": "2026-10-22T17:30:03.311170"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T16:30:00.450401",
-      "expires": "2026-07-18T16:31:00.450401",
+      "active_from": "2026-10-22T17:30:01.310145",
+      "expires": "2026-10-22T17:31:01.310145",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T16:30:00.450401",
-      "unique_id": "571a2482-ace7-46e8-860c-5392205d98a6",
+      "created_at": "2026-10-22T17:30:01.310145",
+      "unique_id": "f9b1491b-6879-4acc-a21b-ce6f487fbd4e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T16:30:02.486175"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T17:30:00.261012",
-      "expires": "2026-07-18T17:31:00.261012",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T17:30:00.261012",
-      "unique_id": "dc3fd9ac-8951-43d9-b122-f7124a22e5e9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T17:30:02.319852"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T17:30:00.261012",
-      "expires": "2026-07-18T17:31:00.261012",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T17:30:00.261012",
-      "unique_id": "dc3fd9ac-8951-43d9-b122-f7124a22e5e9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T17:30:02.319852"
+      "consumed_at": "2026-10-22T17:30:03.311170"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T18:05:02.000221",
-      "expires": "2026-07-18T18:06:02.000221",
+      "active_from": "2026-10-22T17:30:03.419490",
+      "expires": "2026-10-22T17:31:03.419490",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T18:05:02.000221",
-      "unique_id": "fa0a98c1-81c8-47b8-ab26-06e438e96bf6",
+      "created_at": "2026-10-22T17:30:03.419490",
+      "unique_id": "1ff462f2-bac5-4037-aa22-fb55cab34614",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T18:05:03.954695"
+      "consumed_at": "2026-10-22T17:30:05.494012"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T18:05:02.000221",
-      "expires": "2026-07-18T18:06:02.000221",
+      "active_from": "2026-10-22T17:30:03.419490",
+      "expires": "2026-10-22T17:31:03.419490",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T18:05:02.000221",
-      "unique_id": "fa0a98c1-81c8-47b8-ab26-06e438e96bf6",
+      "created_at": "2026-10-22T17:30:03.419490",
+      "unique_id": "1ff462f2-bac5-4037-aa22-fb55cab34614",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T18:05:03.954695"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T18:30:01.403080",
-      "expires": "2026-07-18T18:31:01.403080",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T18:30:01.403080",
-      "unique_id": "66163df5-9b63-419d-96a1-9ef60bd38386",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T18:30:03.457514"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T18:30:01.403080",
-      "expires": "2026-07-18T18:31:01.403080",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T18:30:01.403080",
-      "unique_id": "66163df5-9b63-419d-96a1-9ef60bd38386",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T18:30:03.457514"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T19:30:01.851969",
-      "expires": "2026-07-18T19:31:01.851969",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T19:30:01.851969",
-      "unique_id": "5f67e5d8-337f-4fed-a472-68cad53f81b1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T19:30:03.915001"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T19:30:01.851969",
-      "expires": "2026-07-18T19:31:01.851969",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T19:30:01.851969",
-      "unique_id": "5f67e5d8-337f-4fed-a472-68cad53f81b1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T19:30:03.915001"
+      "consumed_at": "2026-10-22T17:30:05.494012"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T20:05:01.132597",
-      "expires": "2026-07-18T20:06:01.132597",
+      "active_from": "2026-10-22T18:05:01.055646",
+      "expires": "2026-10-22T18:06:01.055646",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T20:05:01.132597",
-      "unique_id": "3e9d9246-a750-467d-ab05-a6f82ae41d9d",
+      "created_at": "2026-10-22T18:05:01.055646",
+      "unique_id": "d8d8ba98-b9df-4e29-b859-3c2dcae07f2b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T20:05:03.016819"
+      "consumed_at": "2026-10-22T18:05:02.709476"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T20:05:01.132597",
-      "expires": "2026-07-18T20:06:01.132597",
+      "active_from": "2026-10-22T18:05:01.055646",
+      "expires": "2026-10-22T18:06:01.055646",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T20:05:01.132597",
-      "unique_id": "3e9d9246-a750-467d-ab05-a6f82ae41d9d",
+      "created_at": "2026-10-22T18:05:01.055646",
+      "unique_id": "d8d8ba98-b9df-4e29-b859-3c2dcae07f2b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T20:05:03.016819"
+      "consumed_at": "2026-10-22T18:05:02.709476"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:13:53.149393",
+      "expires": "2026-10-22T18:14:53.149393",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:13:53.149393",
+      "unique_id": "86cb3b16-1cca-446e-a065-022e98723c11",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:13:54.435099"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:13:53.149393",
+      "expires": "2026-10-22T18:14:53.149393",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:13:53.149393",
+      "unique_id": "86cb3b16-1cca-446e-a065-022e98723c11",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:13:54.435099"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:14:05.725955",
+      "expires": "2026-10-22T18:15:05.725955",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:05.725955",
+      "unique_id": "a84071c9-6c74-4aa0-8451-a8475dd9f368",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:06.559452"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:14:05.725955",
+      "expires": "2026-10-22T18:15:05.725955",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:05.725955",
+      "unique_id": "a84071c9-6c74-4aa0-8451-a8475dd9f368",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:06.559452"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:14:36.117849",
+      "expires": "2026-10-22T18:15:36.117849",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:36.117849",
+      "unique_id": "74e91a7f-0309-4d2e-9ce4-f93fc755dceb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:36.945660"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:14:36.117849",
+      "expires": "2026-10-22T18:15:36.117849",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:36.117849",
+      "unique_id": "74e91a7f-0309-4d2e-9ce4-f93fc755dceb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:36.945660"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:14:38.191842",
+      "expires": "2026-10-22T18:15:38.191842",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:38.191842",
+      "unique_id": "5de3705b-d81c-406c-8095-1e88836c1448",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:38.950759"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:14:38.191842",
+      "expires": "2026-10-22T18:15:38.191842",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:14:38.191842",
+      "unique_id": "5de3705b-d81c-406c-8095-1e88836c1448",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:14:38.950759"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:15:45.538530",
+      "expires": "2026-10-22T18:16:45.538530",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:15:45.538530",
+      "unique_id": "fd6cebea-e9db-406c-89be-ff0dbc6b558d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:15:47.623021"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:15:45.538530",
+      "expires": "2026-10-22T18:16:45.538530",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:15:45.538530",
+      "unique_id": "fd6cebea-e9db-406c-89be-ff0dbc6b558d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:15:47.623021"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:15:56.704130",
+      "expires": "2026-10-22T18:16:56.704130",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:15:56.704130",
+      "unique_id": "f85b4df0-ac1a-4116-a7b1-2c0f03c045ea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:15:57.753713"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:15:56.704130",
+      "expires": "2026-10-22T18:16:56.704130",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:15:56.704130",
+      "unique_id": "f85b4df0-ac1a-4116-a7b1-2c0f03c045ea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:15:57.753713"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:24:16.952653",
+      "expires": "2026-10-22T18:25:16.952653",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:24:16.952653",
+      "unique_id": "b5b45498-46ef-405c-8107-f3b01142ed0e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:24:18.914335"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:24:18.490734",
+      "expires": "2026-10-22T18:25:18.490734",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:24:18.490734",
+      "unique_id": "441264bb-c965-48b4-bb6e-8b4e83ec6be2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:24:18.914335"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:24:16.952653",
+      "expires": "2026-10-22T18:25:16.952653",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:24:16.952653",
+      "unique_id": "b5b45498-46ef-405c-8107-f3b01142ed0e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:24:18.914335"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:24:18.490734",
+      "expires": "2026-10-22T18:25:18.490734",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:24:18.490734",
+      "unique_id": "441264bb-c965-48b4-bb6e-8b4e83ec6be2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:24:18.914335"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:27:33.909475",
+      "expires": "2026-10-22T18:28:33.909475",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:27:33.909475",
+      "unique_id": "3bf2bcca-871f-44df-b4c3-d9a743dcec09",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:27:34.359500"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T18:27:33.909475",
+      "expires": "2026-10-22T18:28:33.909475",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:27:33.909475",
+      "unique_id": "3bf2bcca-871f-44df-b4c3-d9a743dcec09",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:27:34.359500"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:27:44.701397",
+      "expires": "2026-10-22T18:28:44.701397",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:27:44.701397",
+      "unique_id": "bd3fcf39-93fc-4884-a8ce-816fe2c88d35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:27:46.446877"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T18:27:44.701397",
+      "expires": "2026-10-22T18:28:44.701397",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "web",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T18:27:44.701397",
+      "unique_id": "bd3fcf39-93fc-4884-a8ce-816fe2c88d35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T18:27:46.446877"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T20:30:01.630501",
-      "expires": "2026-07-18T20:31:01.630501",
+      "active_from": "2026-10-22T18:30:01.363843",
+      "expires": "2026-10-22T18:31:01.363843",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T20:30:01.630501",
-      "unique_id": "4d85ef66-914a-4670-9c4c-ce7612caa93d",
+      "created_at": "2026-10-22T18:30:01.363843",
+      "unique_id": "2401753d-fcc7-4ae9-b335-890c271bc959",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T20:30:03.614874"
+      "consumed_at": "2026-10-22T18:30:03.424294"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T20:30:01.630501",
-      "expires": "2026-07-18T20:31:01.630501",
+      "active_from": "2026-10-22T18:30:01.363843",
+      "expires": "2026-10-22T18:31:01.363843",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T20:30:01.630501",
-      "unique_id": "4d85ef66-914a-4670-9c4c-ce7612caa93d",
+      "created_at": "2026-10-22T18:30:01.363843",
+      "unique_id": "2401753d-fcc7-4ae9-b335-890c271bc959",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T20:30:03.614874"
+      "consumed_at": "2026-10-22T18:30:03.424294"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T21:30:00.420173",
-      "expires": "2026-07-18T21:31:00.420173",
+      "active_from": "2026-10-22T19:30:01.442769",
+      "expires": "2026-10-22T19:31:01.442769",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T21:30:00.420173",
-      "unique_id": "7fefbb35-52a2-4c82-9ef8-1569627afc5b",
+      "created_at": "2026-10-22T19:30:01.442769",
+      "unique_id": "33c37cd5-fd74-486c-a80a-0bedee78a320",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T21:30:02.426079"
+      "consumed_at": "2026-10-22T19:30:03.425780"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T21:30:00.420173",
-      "expires": "2026-07-18T21:31:00.420173",
+      "active_from": "2026-10-22T19:30:01.442769",
+      "expires": "2026-10-22T19:31:01.442769",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T21:30:00.420173",
-      "unique_id": "7fefbb35-52a2-4c82-9ef8-1569627afc5b",
+      "created_at": "2026-10-22T19:30:01.442769",
+      "unique_id": "33c37cd5-fd74-486c-a80a-0bedee78a320",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T21:30:02.426079"
+      "consumed_at": "2026-10-22T19:30:03.425780"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T22:05:01.518513",
-      "expires": "2026-07-18T22:06:01.518513",
+      "active_from": "2026-10-22T20:05:01.299812",
+      "expires": "2026-10-22T20:06:01.299812",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T22:05:01.518513",
-      "unique_id": "8144f115-7c70-4c8d-b683-de1b8f97e48d",
+      "created_at": "2026-10-22T20:05:01.299812",
+      "unique_id": "383caf2d-dff9-4cd6-82cd-1b967e7d6be6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T22:05:03.317760"
+      "consumed_at": "2026-10-22T20:05:03.032670"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-18T22:05:01.518513",
-      "expires": "2026-07-18T22:06:01.518513",
+      "active_from": "2026-10-22T20:05:01.299812",
+      "expires": "2026-10-22T20:06:01.299812",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-18T22:05:01.518513",
-      "unique_id": "8144f115-7c70-4c8d-b683-de1b8f97e48d",
+      "created_at": "2026-10-22T20:05:01.299812",
+      "unique_id": "383caf2d-dff9-4cd6-82cd-1b967e7d6be6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T22:05:03.317760"
+      "consumed_at": "2026-10-22T20:05:03.032670"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T20:23:33.851638",
+      "expires": "2026-10-22T20:24:33.851638",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:23:33.851638",
+      "unique_id": "4dcc16dd-af4d-4f01-889b-36d05c753d93",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:23:35.747796"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T20:23:35.704860",
+      "expires": "2026-10-22T20:24:35.704860",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:23:35.704860",
+      "unique_id": "1dfb439b-aebc-4d10-9c03-c9e639258d55",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:23:35.747796"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T20:23:33.851638",
+      "expires": "2026-10-22T20:24:33.851638",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:23:33.851638",
+      "unique_id": "4dcc16dd-af4d-4f01-889b-36d05c753d93",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:23:35.747796"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T20:23:35.704860",
+      "expires": "2026-10-22T20:24:35.704860",
+      "display_name": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:23:35.704860",
+      "unique_id": "1dfb439b-aebc-4d10-9c03-c9e639258d55",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:23:35.747796"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T22:30:01.752800",
-      "expires": "2026-07-18T22:31:01.752800",
+      "active_from": "2026-10-22T20:30:00.786475",
+      "expires": "2026-10-22T20:31:00.786475",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T22:30:01.752800",
-      "unique_id": "a3ba74e4-4c25-4f9c-a263-e2e9fb80d8bf",
+      "created_at": "2026-10-22T20:30:00.786475",
+      "unique_id": "cd68b806-7afe-45f3-9729-16810ea24147",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T22:30:03.785295"
+      "consumed_at": "2026-10-22T20:30:02.728007"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-18T22:30:01.752800",
-      "expires": "2026-07-18T22:31:01.752800",
+      "active_from": "2026-10-22T20:30:00.786475",
+      "expires": "2026-10-22T20:31:00.786475",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-18T22:30:01.752800",
-      "unique_id": "a3ba74e4-4c25-4f9c-a263-e2e9fb80d8bf",
+      "created_at": "2026-10-22T20:30:00.786475",
+      "unique_id": "cd68b806-7afe-45f3-9729-16810ea24147",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T22:30:03.785295"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T23:30:01.950531",
-      "expires": "2026-07-18T23:31:01.950531",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T23:30:01.950531",
-      "unique_id": "cbaa301b-04cc-44bb-bbeb-1cc228b782d8",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T23:30:03.898276"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-18T23:30:01.950531",
-      "expires": "2026-07-18T23:31:01.950531",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-18T23:30:01.950531",
-      "unique_id": "cbaa301b-04cc-44bb-bbeb-1cc228b782d8",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-18T23:30:03.898276"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T06:00:10.399109",
-      "expires": "2026-07-19T06:01:10.399109",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2026-07-19T06:00:10.399109",
-      "unique_id": "04ec723f-d22e-4b58-bf68-d09610b7c21f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T06:00:10.442304"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T06:00:10.399109",
-      "expires": "2026-07-19T06:01:10.399109",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2026-07-19T06:00:10.399109",
-      "unique_id": "04ec723f-d22e-4b58-bf68-d09610b7c21f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T06:00:10.442304"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T07:30:00.252229",
-      "expires": "2026-07-19T07:31:00.252229",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-19T07:30:00.252229",
-      "unique_id": "3eb6d770-532d-4846-b38c-9ca5cc9691af",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T07:30:02.275374"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T07:30:00.252229",
-      "expires": "2026-07-19T07:31:00.252229",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-19T07:30:00.252229",
-      "unique_id": "3eb6d770-532d-4846-b38c-9ca5cc9691af",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T07:30:02.275374"
+      "consumed_at": "2026-10-22T20:30:02.728007"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-19T08:05:00.278833",
-      "expires": "2026-07-19T08:06:00.278833",
+      "active_from": "2026-10-22T20:30:03.327476",
+      "expires": "2026-10-22T20:31:03.327476",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-19T08:05:00.278833",
-      "unique_id": "5e266062-ccbc-4930-97a4-ca93e695429e",
+      "created_at": "2026-10-22T20:30:03.327476",
+      "unique_id": "6b8d03d1-d580-4498-a26a-e49f6f396224",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T08:05:02.124603"
+      "consumed_at": "2026-10-22T20:30:04.827539"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-19T08:05:00.278833",
-      "expires": "2026-07-19T08:06:00.278833",
+      "active_from": "2026-10-22T20:30:03.327476",
+      "expires": "2026-10-22T20:31:03.327476",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-19T08:05:00.278833",
-      "unique_id": "5e266062-ccbc-4930-97a4-ca93e695429e",
+      "created_at": "2026-10-22T20:30:03.327476",
+      "unique_id": "6b8d03d1-d580-4498-a26a-e49f6f396224",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T08:05:02.124603"
+      "consumed_at": "2026-10-22T20:30:04.827539"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T20:45:26.282780",
+      "expires": "2026-10-22T20:46:26.282780",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:45:26.282780",
+      "unique_id": "8a857d79-e531-420e-8224-d75e4516f86a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:45:27.441549"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T20:45:26.282780",
+      "expires": "2026-10-22T20:46:26.282780",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:45:26.282780",
+      "unique_id": "8a857d79-e531-420e-8224-d75e4516f86a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:45:27.441549"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T20:45:39.810678",
+      "expires": "2026-10-22T20:46:39.810678",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:45:39.810678",
+      "unique_id": "19037ab6-2cf3-43dd-ab6c-5213fb226a9c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:45:41.623616"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T20:45:39.810678",
+      "expires": "2026-10-22T20:46:39.810678",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T20:45:39.810678",
+      "unique_id": "19037ab6-2cf3-43dd-ab6c-5213fb226a9c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T20:45:41.623616"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T21:00:25.020251",
+      "expires": "2026-10-22T21:01:25.020251",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": null,
+        "source": "autopilot",
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.020251",
+      "unique_id": "59888dcb-b777-4ec3-9cc9-37ccca85732d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_room_auto",
+      "active_from": "2026-10-22T21:00:25.023645",
+      "expires": "2026-10-22T21:01:25.023645",
+      "display_name": null,
+      "payload": {
+        "on": true,
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.023645",
+      "unique_id": "7f286b45-a0ae-48bf-8235-6a4b3ce87f2d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T21:00:25.037179",
+      "expires": "2026-10-22T21:01:25.037179",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.037179",
+      "unique_id": "70954b55-86cd-4f48-bb38-a32755a2644c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T21:00:25.037179",
+      "expires": "2026-10-22T21:01:25.037179",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.037179",
+      "unique_id": "70954b55-86cd-4f48-bb38-a32755a2644c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T21:00:25.020251",
+      "expires": "2026-10-22T21:01:25.020251",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": null,
+        "source": "autopilot",
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.020251",
+      "unique_id": "59888dcb-b777-4ec3-9cc9-37ccca85732d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_room_auto",
+      "active_from": "2026-10-22T21:00:25.023645",
+      "expires": "2026-10-22T21:01:25.023645",
+      "display_name": null,
+      "payload": {
+        "on": true,
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:00:25.023645",
+      "unique_id": "7f286b45-a0ae-48bf-8235-6a4b3ce87f2d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:00:25.377579"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T21:08:31.007898",
+      "expires": "2026-10-22T21:09:31.007898",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": null,
+        "source": "autopilot",
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.007898",
+      "unique_id": "cca27b76-765c-4d8a-a4ca-51e40043a5f9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
+    },
+    {
+      "key": "_room_auto",
+      "active_from": "2026-10-22T21:08:31.040755",
+      "expires": "2026-10-22T21:09:31.040755",
+      "display_name": null,
+      "payload": {
+        "on": true,
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.040755",
+      "unique_id": "2064aba5-b3b2-48ec-8937-36e1803ced4b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T21:08:31.062788",
+      "expires": "2026-10-22T21:09:31.062788",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.062788",
+      "unique_id": "7d04c8cc-912a-4338-8f61-819de23faf72",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
+    },
+    {
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T21:08:31.062788",
+      "expires": "2026-10-22T21:09:31.062788",
+      "display_name": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.062788",
+      "unique_id": "7d04c8cc-912a-4338-8f61-819de23faf72",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
+    },
+    {
+      "key": "_room_mode",
+      "active_from": "2026-10-22T21:08:31.007898",
+      "expires": "2026-10-22T21:09:31.007898",
+      "display_name": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": null,
+        "source": "autopilot",
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.007898",
+      "unique_id": "cca27b76-765c-4d8a-a4ca-51e40043a5f9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
+    },
+    {
+      "key": "_room_auto",
+      "active_from": "2026-10-22T21:08:31.040755",
+      "expires": "2026-10-22T21:09:31.040755",
+      "display_name": null,
+      "payload": {
+        "on": true,
+        "from": null,
+        "initial": true
+      },
+      "single_consumer": false,
+      "created_at": "2026-10-22T21:08:31.040755",
+      "unique_id": "2064aba5-b3b2-48ec-8937-36e1803ced4b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-10-22T21:08:32.466796"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-19T08:30:00.145053",
-      "expires": "2026-07-19T08:31:00.145053",
+      "active_from": "2026-10-22T21:30:00.796256",
+      "expires": "2026-10-22T21:31:00.796256",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-19T08:30:00.145053",
-      "unique_id": "3d27936c-e1e4-49bb-9e1d-1759382725d7",
+      "created_at": "2026-10-22T21:30:00.796256",
+      "unique_id": "3cd2c9a3-defe-47c0-95a4-a10f57fcd22b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T08:30:02.124299"
+      "consumed_at": "2026-10-22T21:30:02.733998"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-19T08:30:00.145053",
-      "expires": "2026-07-19T08:31:00.145053",
+      "active_from": "2026-10-22T21:30:00.796256",
+      "expires": "2026-10-22T21:31:00.796256",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-19T08:30:00.145053",
-      "unique_id": "3d27936c-e1e4-49bb-9e1d-1759382725d7",
+      "created_at": "2026-10-22T21:30:00.796256",
+      "unique_id": "3cd2c9a3-defe-47c0-95a4-a10f57fcd22b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T08:30:02.124299"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T09:30:01.228603",
-      "expires": "2026-07-19T09:31:01.228603",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-19T09:30:01.228603",
-      "unique_id": "0d2c245a-473f-486f-8832-1bd21e7a5743",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T09:30:03.306805"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-19T09:30:01.228603",
-      "expires": "2026-07-19T09:31:01.228603",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-19T09:30:01.228603",
-      "unique_id": "0d2c245a-473f-486f-8832-1bd21e7a5743",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T09:30:03.306805"
+      "consumed_at": "2026-10-22T21:30:02.733998"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-19T10:05:01.506985",
-      "expires": "2026-07-19T10:06:01.506985",
+      "active_from": "2026-10-22T22:05:01.413069",
+      "expires": "2026-10-22T22:06:01.413069",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-19T10:05:01.506985",
-      "unique_id": "88c10660-9954-4d25-8952-9a0429e7cd7f",
+      "created_at": "2026-10-22T22:05:01.413069",
+      "unique_id": "8ebb3404-1174-4d49-aee5-453c34ee3665",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T10:05:03.426111"
+      "consumed_at": "2026-10-22T22:05:02.993876"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2026-07-19T10:05:01.506985",
-      "expires": "2026-07-19T10:06:01.506985",
+      "active_from": "2026-10-22T22:05:01.413069",
+      "expires": "2026-10-22T22:06:01.413069",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2026-07-19T10:05:01.506985",
-      "unique_id": "88c10660-9954-4d25-8952-9a0429e7cd7f",
+      "created_at": "2026-10-22T22:05:01.413069",
+      "unique_id": "8ebb3404-1174-4d49-aee5-453c34ee3665",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T10:05:03.426111"
+      "consumed_at": "2026-10-22T22:05:02.993876"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-19T10:30:00.737397",
-      "expires": "2026-07-19T10:31:00.737397",
+      "active_from": "2026-10-22T22:30:01.397076",
+      "expires": "2026-10-22T22:31:01.397076",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-19T10:30:00.737397",
-      "unique_id": "cb21e8ac-f769-40c8-8cea-6867834ad961",
+      "created_at": "2026-10-22T22:30:01.397076",
+      "unique_id": "ce8fd0ad-8b13-49ba-8f25-e3dede5f62fa",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T10:30:02.768699"
+      "consumed_at": "2026-10-22T22:30:03.422242"
     },
     {
       "key": "Generate",
-      "active_from": "2026-07-19T10:30:00.737397",
-      "expires": "2026-07-19T10:31:00.737397",
+      "active_from": "2026-10-22T22:30:01.397076",
+      "expires": "2026-10-22T22:31:01.397076",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2026-07-19T10:30:00.737397",
-      "unique_id": "cb21e8ac-f769-40c8-8cea-6867834ad961",
+      "created_at": "2026-10-22T22:30:01.397076",
+      "unique_id": "ce8fd0ad-8b13-49ba-8f25-e3dede5f62fa",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-19T10:30:02.768699"
+      "consumed_at": "2026-10-22T22:30:03.422242"
     },
     {
-      "key": "__exit_block__",
-      "active_from": "2026-07-28T10:05:00.585172",
-      "expires": "2026-07-28T10:06:00.585172",
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T22:53:08.308626",
+      "expires": "2026-10-22T22:54:08.308626",
       "display_name": null,
       "payload": {
-        "mode": "block"
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
       },
       "single_consumer": false,
-      "created_at": "2026-07-28T10:05:00.585172",
-      "unique_id": "e428db3d-7ee8-4422-abec-4b08e4b8b9f4",
+      "created_at": "2026-10-22T22:53:08.308626",
+      "unique_id": "7aaa55b0-0596-46c6-a2a6-3c125220d8d0",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T10:05:02.414152"
+      "consumed_at": "2026-10-22T22:53:09.649003"
     },
     {
-      "key": "__exit_block__",
-      "active_from": "2026-07-28T10:05:00.585172",
-      "expires": "2026-07-28T10:06:00.585172",
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T22:53:08.308626",
+      "expires": "2026-10-22T22:54:08.308626",
       "display_name": null,
       "payload": {
-        "mode": "block"
+        "screen": "north-screen",
+        "layer": "live",
+        "from": "art",
+        "initial": false
       },
       "single_consumer": false,
-      "created_at": "2026-07-28T10:05:00.585172",
-      "unique_id": "e428db3d-7ee8-4422-abec-4b08e4b8b9f4",
+      "created_at": "2026-10-22T22:53:08.308626",
+      "unique_id": "7aaa55b0-0596-46c6-a2a6-3c125220d8d0",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T10:05:02.414152"
+      "consumed_at": "2026-10-22T22:53:09.649003"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T10:30:00.267703",
-      "expires": "2026-07-28T10:31:00.267703",
+      "key": "_room_mode",
+      "active_from": "2026-10-22T22:53:12.082762",
+      "expires": "2026-10-22T22:54:12.082762",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T10:30:00.267703",
-      "unique_id": "5bf48037-6085-4587-a23c-dfd3a76b3de8",
+      "created_at": "2026-10-22T22:53:12.082762",
+      "unique_id": "cf83c2d5-6389-472a-8e51-b1bad5185267",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T10:30:02.299587"
+      "consumed_at": "2026-10-22T22:53:13.988294"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T10:30:00.267703",
-      "expires": "2026-07-28T10:31:00.267703",
+      "key": "_room_mode",
+      "active_from": "2026-10-22T22:53:12.082762",
+      "expires": "2026-10-22T22:54:12.082762",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "mode": "piano",
+        "label": "Piano",
+        "from": "gallery",
+        "source": "autopilot",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T10:30:00.267703",
-      "unique_id": "5bf48037-6085-4587-a23c-dfd3a76b3de8",
+      "created_at": "2026-10-22T22:53:12.082762",
+      "unique_id": "cf83c2d5-6389-472a-8e51-b1bad5185267",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T10:30:02.299587"
+      "consumed_at": "2026-10-22T22:53:13.988294"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T11:21:34.541816",
-      "expires": "2026-07-28T11:22:34.541816",
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T22:58:06.282328",
+      "expires": "2026-10-22T22:59:06.282328",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T11:21:34.541816",
-      "unique_id": "a46a3324-d497-4df7-ad0a-472b9a64929a",
+      "created_at": "2026-10-22T22:58:06.282328",
+      "unique_id": "a8d5b9a1-8766-4a14-af3a-f5206ea47f5b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T11:21:35.287579"
+      "consumed_at": "2026-10-22T22:58:07.945274"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T11:21:34.541816",
-      "expires": "2026-07-28T11:22:34.541816",
+      "key": "_screen_layer",
+      "active_from": "2026-10-22T22:58:06.282328",
+      "expires": "2026-10-22T22:59:06.282328",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "screen": "north-screen",
+        "layer": "art",
+        "from": "live",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T11:21:34.541816",
-      "unique_id": "a46a3324-d497-4df7-ad0a-472b9a64929a",
+      "created_at": "2026-10-22T22:58:06.282328",
+      "unique_id": "a8d5b9a1-8766-4a14-af3a-f5206ea47f5b",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T11:21:35.287579"
+      "consumed_at": "2026-10-22T22:58:07.945274"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T11:30:00.549639",
-      "expires": "2026-07-28T11:31:00.549639",
+      "key": "_room_mode",
+      "active_from": "2026-10-22T22:58:12.598548",
+      "expires": "2026-10-22T22:59:12.598548",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T11:30:00.549639",
-      "unique_id": "2b480825-c8cf-4987-9df2-3553f5d43073",
+      "created_at": "2026-10-22T22:58:12.598548",
+      "unique_id": "5add1348-e073-4459-af73-cdef8cc634d6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T11:30:02.544728"
+      "consumed_at": "2026-10-22T22:58:14.385479"
     },
     {
-      "key": "Generate",
-      "active_from": "2026-07-28T11:30:00.549639",
-      "expires": "2026-07-28T11:31:00.549639",
+      "key": "_room_mode",
+      "active_from": "2026-10-22T22:58:12.598548",
+      "expires": "2026-10-22T22:59:12.598548",
       "display_name": null,
-      "payload": null,
+      "payload": {
+        "mode": "gallery",
+        "label": "Normal",
+        "from": "piano",
+        "source": "autopilot",
+        "initial": false
+      },
       "single_consumer": false,
-      "created_at": "2026-07-28T11:30:00.549639",
-      "unique_id": "2b480825-c8cf-4987-9df2-3553f5d43073",
+      "created_at": "2026-10-22T22:58:12.598548",
+      "unique_id": "5add1348-e073-4459-af73-cdef8cc634d6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-28T11:30:02.544728"
+      "consumed_at": "2026-10-22T22:58:14.385479"
     }
   ]
 }

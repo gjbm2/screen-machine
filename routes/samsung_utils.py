@@ -260,13 +260,13 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
     def _sync_task():
         try:
             info(f"[device_sync] Starting image sync for {publish_destination}")
-            log_debug(f"Loading meta for {publish_destination}")
+            debug(f"Loading meta for {publish_destination}")
 
             # 1) Collect JPG favourites in bucket order --------------------
             try:
                 from routes.bucketer import load_meta, bucket_path  # lazy import – heavy modules
                 meta = load_meta(publish_destination)
-                log_debug(f"Loaded meta: {meta}")
+                debug(f"Loaded meta: {meta}")
             except Exception as e:
                 error(f"[device_sync] Failed to load bucket meta: {e}")
                 if debug_mode:
@@ -276,8 +276,8 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
 
             fav_set = set(meta.get("favorites", []))
             seq_raw = meta.get("sequence", [])
-            log_debug(f"fav_set: {fav_set}")
-            log_debug(f"seq_raw: {seq_raw}")
+            debug(f"fav_set: {fav_set}")
+            debug(f"seq_raw: {seq_raw}")
 
             # Use the utility function to normalize sequence entries
             filenames = seq_to_filenames(seq_raw)
@@ -288,11 +288,11 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
                 if fname in fav_set and Path(fname).suffix.lower() in {".jpg", ".jpeg"}
             ]
 
-            log_debug(f"Ordered JPGs before limit: {ordered_jpgs}")
+            debug(f"Ordered JPGs before limit: {ordered_jpgs}")
             # --- TEMPORARY TEST LIMIT ------------------------------------
             # Limit to first 3 images so test runs quickly
             #ordered_jpgs = ordered_jpgs[:3]
-            #log_debug(f"Ordered JPGs after limit: {ordered_jpgs}")
+            #debug(f"Ordered JPGs after limit: {ordered_jpgs}")
 
             if not ordered_jpgs:
                 info(f"[device_sync] No favourite JPGs in bucket {publish_destination}; nothing to sync")
@@ -304,21 +304,21 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
             for p in desired_paths:
                 if not p.exists():
                     warning(f"[device_sync] Expected file missing in bucket: {p}")
-                log_debug(f"Resolved path: {p}")
+                debug(f"Resolved path: {p}")
 
             # 3) Connect to TV ---------------------------------------------
             tv = _get_tv(publish_destination, timeout)
             if not tv:
                 error(f"[device_sync] Unable to get TV object for {publish_destination}")
                 return
-            log_debug(f"Connected to TV: {tv}")
+            debug(f"Connected to TV: {tv}")
 
             # Ensure Art Mode supported
             try:
                 if not tv.art(timeout).supported():
                     error(f"[device_sync] Art Mode not supported on device {publish_destination}")
                     return
-                log_debug(f"Art Mode supported on device {publish_destination}")
+                debug(f"Art Mode supported on device {publish_destination}")
             except Exception as e:
                 error(f"[device_sync] Error checking Art Mode support: {e}")
                 if debug_mode:
@@ -330,8 +330,8 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
             try:
                 existing_items = tv.art(timeout).available("MY-C0002")  # category for uploads
                 existing_ids = [item.get("content_id") for item in existing_items if item.get("content_id")]
-                log_debug(f"Existing items: {existing_items}")
-                log_debug(f"Existing IDs: {existing_ids}")
+                debug(f"Existing items: {existing_items}")
+                debug(f"Existing IDs: {existing_ids}")
             except Exception as e:
                 error(f"[device_sync] Failed to list existing art: {e}")
                 if debug_mode:
@@ -344,7 +344,7 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
             first_content_id = None
             try:
                 first_path = desired_paths[0]
-                log_debug(f"Uploading first image early: {first_path}")
+                debug(f"Uploading first image early: {first_path}")
                 first_content_id = tv.art(timeout).upload(
                     str(first_path),
                     matte="none",
@@ -356,7 +356,7 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
                     # Immediately display it so default image is avoided
                     try:
                         tv.art(timeout).select_image(first_content_id)
-                        log_debug("Displayed first uploaded image to avoid default art")
+                        debug("Displayed first uploaded image to avoid default art")
                     except Exception as e:
                         warning(f"[device_sync] Failed to display first image: {e}")
                 else:
@@ -372,7 +372,7 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
                 try:
                     tv.art().delete_list(existing_ids)
                     info(f"[device_sync] Deleted {len(existing_ids)} existing images from TV")
-                    log_debug(f"Deleted IDs: {existing_ids}")
+                    debug(f"Deleted IDs: {existing_ids}")
                     time.sleep(1)
                 except Exception as e:
                     warning(f"[device_sync] Failed to delete some images: {e}")
@@ -383,7 +383,7 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
             # 7) Upload the remaining desired images ----------------------------
             for idx, path in enumerate(desired_paths[1:], start=2):
                 try:
-                    log_debug(f"Uploading {path} (index {idx})")
+                    debug(f"Uploading {path} (index {idx})")
                     content_id = tv.art(timeout).upload(
                         str(path),
                         matte="none",
@@ -392,13 +392,13 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
                     if content_id:
                         uploaded_ids.append(content_id)
                         info(f"[device_sync] ({idx}/{len(desired_paths)}) Uploaded {path.name} as {content_id}")
-                        log_debug(f"Upload success: {path} as {content_id}")
+                        debug(f"Upload success: {path} as {content_id}")
                     else:
                         warning(f"[device_sync] ({idx}/{len(desired_paths)}) Upload returned no content_id for {path.name}")
-                        log_debug(f"Upload returned no content_id: {path}")
+                        debug(f"Upload returned no content_id: {path}")
                 except Exception as e:
                     error(f"[device_sync] ({idx}/{len(desired_paths)}) Failed to upload {path.name}: {e}")
-                    log_debug(f"Upload failed: {path} error: {e}")
+                    debug(f"Upload failed: {path} error: {e}")
                     if debug_mode:
                         import traceback
                         traceback.print_exc()
@@ -406,12 +406,12 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
             # 8) Ensure slideshow is enabled -----------------------------------
             try:
                 tv.art(timeout).set_slideshow_status(duration=2, type=True, category=2)  # 2-minute shuffle slideshow of My Photos
-                log_debug("Enabled slideshow (2-minute shuffle) on TV")
+                debug("Enabled slideshow (2-minute shuffle) on TV")
             except Exception as e:
                 warning(f"[device_sync] Unable to enable slideshow: {e}")
 
             info(f"[device_sync] Sync complete for {publish_destination}: {len(uploaded_ids)} images uploaded")
-            log_debug(f"Uploaded IDs: {uploaded_ids}")
+            debug(f"Uploaded IDs: {uploaded_ids}")
 
         except Exception as e:
             error(f"[device_sync] Unexpected error: {e}")

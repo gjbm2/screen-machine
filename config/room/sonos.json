@@ -1,0 +1,6 @@
+{
+  "_comment": "Sonos zones for room_service/adapters/sonos.py (S2, UPnP on; SoCo over HTTP :1400). Key = the zone name used in modes.json targets (sonos.<zone>.volume|playback|now_playing); room = the Sonos room name; ip = its player (found 16 Oct by reading :1400/xml/device_description.xml; a DHCP reservation would keep it stable).",
+  "zones": {
+    "drawing-room": {"room": "Drawing Room", "ip": "192.168.1.17", "udn": "RINCON_347E5C06384C01400"}
+  }
+}

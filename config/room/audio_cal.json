@@ -1,0 +1,148 @@
+{
+  "_comment": "Room audio calibration per mic stream (tools/room/audio_cal; local, not in git). show_service reads streams.<stream>.summary.music_lufs every 2 s: the median dsp lufs_s of music at party volume on that mic; the loudness gate's reference moves by music_lufs - (-30) dB for that stream.",
+  "streams": {
+    "pc22-mic": {
+      "run": "20261018T145602Z-pc22-mic",
+      "measured_at": "2026-10-18T14:56:02+00:00",
+      "device": "Echo Cancelling Speakerphone (U3224KB/A)",
+      "summary": {
+        "music_lufs": -48.64101,
+        "music_lufs_note": "the music at the mic as dsp's loudness gate reads it: median short-term (3 s) loudness while the calibration track played (party volume); integrated: music_lufs_integrated",
+        "music_lufs_p10": -51.17005,
+        "music_lufs_p90": -46.20169,
+        "music_lufs_integrated": -48.43,
+        "music_rms_dbfs": -45.06703,
+        "system_gain_db": -29.96349,
+        "room_sound_dbfs": -54.78192,
+        "room_sound_lufs": -50.57,
+        "music_over_room_sound_db": 5.12237,
+        "floor_dbfs": -94.93885,
+        "gated_share": 0.17721,
+        "low_6db_hz": 116.45225,
+        "high_6db_hz": 3044.37021,
+        "high_20db_hz": 8365.64712,
+        "acoustic_lag_ms": 10.5803,
+        "coherence_median_200_4k": 0.14655,
+        "processing": [
+          "dropouts",
+          "gate",
+          "scramble"
+        ],
+        "onset_r": 0.14568,
+        "live_f": 0.36872,
+        "stack_real": {
+          "gate_-30": {
+            "hit25": 0.13514,
+            "hit70_gated": 0.0,
+            "t_lock": null,
+            "f": 0.24096
+          },
+          "gate_-47": {
+            "hit25": 0.78378,
+            "hit70_gated": 0.6036,
+            "t_lock": 7.17327,
+            "f": 0.84932
+          }
+        }
+      },
+      "model": "tools/room/audio_cal/runs/20261018T145602Z-pc22-mic/model/model.json"
+    },
+    "room-mic": {
+      "summary": {
+        "music_lufs": -24.93641,
+        "music_lufs_method": "music_lufs_party = music_lufs_test (median dsp lufs_s over the steady songs at the main volume, the piano left out, pass 1's songs pooled in) + the ladder's rise from the main to the party volume (linear curve, pass 1's ladder)",
+        "music_lufs_note": "the music at this mic at party volume as dsp's loudness gate reads it (median lufs_s), predicted from the test volume by the Sonos volume ladder; show_service moves this stream's gate reference by music_lufs - (-30) dB",
+        "music_lufs_u_db": 3.56854,
+        "music_lufs_test": -42.82,
+        "music_lufs_test_here": -42.85,
+        "music_lufs_test_pass1": -42.79,
+        "test_volume": 40.0,
+        "party_volume": 70,
+        "ladder": {
+          "ok": true,
+          "model": "linear",
+          "db_per_step": 0.59612,
+          "db_per_db_volume": 2.2217,
+          "volumes": [
+            20.0,
+            30.0,
+            40.0,
+            50.0
+          ],
+          "top_rung": 50.0,
+          "extrapolation_steps": 20.0,
+          "room_tone_lufs": -69.54097,
+          "rungs": [
+            {
+              "volume": 20.0,
+              "lufs": -57.175,
+              "used": true
+            },
+            {
+              "volume": 30.0,
+              "lufs": -51.465,
+              "used": true
+            },
+            {
+              "volume": 40.0,
+              "lufs": -45.275,
+              "used": true
+            },
+            {
+              "volume": 50.0,
+              "lufs": -39.64,
+              "used": true
+            }
+          ],
+          "party": {
+            "volume": 70.0,
+            "music_lufs": -27.61166,
+            "lufs": -27.61138,
+            "u_db": 3.24254,
+            "fit_se_db": 0.49295,
+            "curves_disagree_db": 6.4097,
+            "other_curve_lufs": -34.02013,
+            "range_lufs": [
+              -34.09549,
+              -21.12652
+            ]
+          },
+          "main": {
+            "volume": 40.0,
+            "music_lufs": -45.49525,
+            "lufs": -45.47817,
+            "u_db": 0.37526,
+            "fit_se_db": 0.16432,
+            "curves_disagree_db": -0.67475,
+            "other_curve_lufs": -44.80588,
+            "range_lufs": [
+              -46.22548,
+              -44.73035
+            ]
+          },
+          "rise": {
+            "from": 40.0,
+            "to": 70.0,
+            "db": 17.88359,
+            "u_db": 3.56854,
+            "other_curve_db": 10.79915,
+            "by_gain_db": 18.20069,
+            "u_levels_only_db": 3.56502
+          },
+          "source_run": "20261021T071507Z-room-mic"
+        },
+        "room_tone_lufs": -71.12265,
+        "room_tone_lufs_dsp": -70.0,
+        "levels_source": "offline",
+        "programme": "pass2-20261021",
+        "ladder_run": "20261021T071507Z-room-mic",
+        "live_f_mean": 0.86816
+      },
+      "run": "20261021T074506Z-room-mic",
+      "measured_at": "2026-10-21T07:45:06+00:00",
+      "device": "UM04",
+      "model": "tools/room/audio_cal/runs/20261021T074506Z-room-mic/model/model.json",
+      "model_note": "21 Oct, from pass 2 (the programme file as the original); its room-sound bed (-45.6 LUFS) caught other sound in the gaps: replay it with --snr-db 27 (dsp read the gaps at -70 against -42.8 music)"
+    }
+  }
+}

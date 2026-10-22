@@ -1,0 +1,492 @@
+{
+  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md). Flat (owner, 16 Oct): every mode carries all of its own settings; transition rules match what a switch changes. Keys starting with _ are comments.",
+  "default": "gallery",
+  "labels": {
+    "blinds.ch02": "Privacy blind ch02",
+    "blinds.ch03": "Privacy blind ch03",
+    "blinds.ch14": "Privacy blind ch14",
+    "plug.dmx_power": "DMX power",
+    "sonos.drawing-room.volume": "Drawing room volume",
+    "sonos.drawing-room.playback": "Drawing room music",
+    "mirror_ball.main": "Glitterball",
+    "mirror_ball_motor.speed": "Glitterball speed",
+    "mirror_ball_motor.direction": "Glitterball direction"
+  },
+  "_groups": "drawing-room:blinds (ch02, ch03, ch14), drawing-room:screens and drawing-room:tv come from routes/data/rooms.json.",
+  "groups": {
+    "all_blinds": "blinds"
+  },
+  "modes": {
+    "gallery": {
+      "label": "Normal",
+      "voice": "normal",
+      "state": {
+        "screens": "art",
+        "page": true,
+        "sensor_mask": "follow",
+        "mirror_ball": "stopped",
+        "show.ai": {
+          "set": false
+        }
+      }
+    },
+    "live-test": {
+      "label": "Live test (devtest)",
+      "_note": "Uses the display's own profile (publish-destinations live block); no timed hard reloads while live.",
+      "state": {
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "page": true,
+        "page.devtest.timed_reload": false,
+        "sensor_mask": "follow",
+        "mirror_ball": "stopped",
+        "screens.devtest": {
+          "live": {
+            "auto": true,
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        }
+      }
+    },
+    "piano": {
+      "label": "Piano",
+      "voice": "piano",
+      "_note": "Owner 15 Oct: the Art Director picks only from the piano scenes, scene_tags [piano] (a closed set: presets tagged modes: [piano], e.g. the waterfall and note fluid, which listen to the Steinway's MIDI); gentle direction and slow crossfades, the piano's own dynamics steer the rest. Sonos fades out and pauses; both are put back afterwards, so whichever mode comes next (unless it sets the music itself) resumes what was playing at its old volume. Nothing playing before: nothing is stored or stopped (owner, 16 Oct).",
+      "state": {
+        "drawing-room:screens": {
+          "live": {
+            "scene_tags": [
+              "modes:piano"
+            ],
+            "direction": {
+              "energy": 0.35,
+              "moods": [
+                "elegant",
+                "dreamy",
+                "calm"
+              ],
+              "transition_style": "gentle"
+            },
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "screens": "art",
+        "page": false,
+        "sensor_mask": "suspended",
+        "drawing-room:tv": {
+          "set": "hdmi",
+          "restore": true
+        },
+        "sonos.drawing-room.playback": {
+          "set": "paused",
+          "restore": true,
+          "store_if": [
+            "favourite",
+            "uri"
+          ],
+          "policy": "ignore",
+          "skip_if": {
+            "sonos.drawing-room.playback": [
+              {
+                "uri": "http://*/show/api/v1/piano/audio/*"
+              }
+            ]
+          }
+        },
+        "sonos.drawing-room.volume": {
+          "set": 0,
+          "restore": true,
+          "policy": "ignore",
+          "skip_if": {
+            "sonos.drawing-room.playback": [
+              {
+                "uri": "http://*/show/api/v1/piano/audio/*"
+              }
+            ]
+          }
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        }
+      },
+      "on_enter": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show starting"
+          }
+        }
+      ],
+      "on_exit": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show over"
+          }
+        }
+      ],
+      "autopilot": {
+        "enter_when": {
+          "piano_playing": {
+            "for_s": 10,
+            "include_test": true
+          }
+        },
+        "from": [
+          "gallery",
+          "lights-only"
+        ],
+        "leave_when": {
+          "piano_idle": {
+            "for_s": 30,
+            "include_test": true
+          }
+        },
+        "leave_to": "previous",
+        "skip": [
+          "drawing-room:blinds",
+          "mirror_ball",
+          {
+            "drawing-room:tv": {
+              "from": "standby"
+            }
+          }
+        ]
+      }
+    },
+    "off": {
+      "label": "Off",
+      "state": {
+        "screens": "art",
+        "page": true,
+        "sensor_mask": "follow",
+        "drawing-room:tv": "standby",
+        "sonos.drawing-room.playback": {
+          "set": "paused",
+          "policy": "ignore"
+        },
+        "mirror_ball": "stopped",
+        "show.ai": {
+          "set": false
+        }
+      }
+    },
+    "lights-only": {
+      "label": "Lights only",
+      "voice": "lights only",
+      "_note": "The Drawing-room Hue lamps follow the show (Maestro, or the Room page's test show); the screens stay on art, blinds and TVs as they are. The sensor mask is held so our own pulsing lamps don't make the art breathe.",
+      "state": {
+        "screens": "art",
+        "page": true,
+        "sensor_mask": "suspended",
+        "mirror_ball": "stopped",
+        "hue": {
+          "set": "dmx",
+          "restore": true
+        },
+        "light": {
+          "set": "dmx",
+          "restore": true
+        },
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "show.ai": {
+          "set": false
+        }
+      }
+    },
+    "ambient": {
+      "label": "Ambient",
+      "voice": "ambient",
+      "_note": "Effects ON the art, never other scenes: scene_tags [ambient] is a closed set, the presets tagged modes: [ambient] (just live-art, the screen's own art every second, with the Normal mask held). The director still picks effects.",
+      "state": {
+        "drawing-room:screens": {
+          "live": {
+            "scene_tags": [
+              "modes:ambient"
+            ],
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "screens": "art",
+        "page": false,
+        "sensor_mask": "suspended",
+        "drawing-room:blinds": {
+          "set": 100,
+          "restore": true,
+          "policy": "enforce",
+          "max_age_s": 43200
+        },
+        "drawing-room:tv": {
+          "set": "hdmi",
+          "restore": true
+        },
+        "mirror_ball": "stopped",
+        "hue": {
+          "set": "dmx",
+          "restore": true
+        },
+        "light": {
+          "set": "dmx",
+          "restore": true
+        },
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        }
+      },
+      "on_enter": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show starting"
+          }
+        }
+      ],
+      "on_exit": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show over"
+          }
+        }
+      ]
+    },
+    "party": {
+      "label": "Party",
+      "voice": "party",
+      "_note": "Ambient with more excitement: no scene named (owner, 15 Oct: the Art Director picks scenes, effects and transitions). The director steers by direction: energy 0.8, euphoric/playful/bright, wild transitions, over its whole vetted pool; the music trims it. The glitterball is stopped (owner, 15 Oct 22:46); its speed is set to medium for when it is switched on.",
+      "state": {
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "drawing-room:screens": {
+          "live": {
+            "auto": true,
+            "direction": {
+              "energy": 0.8,
+              "moods": [
+                "euphoric",
+                "playful",
+                "bright"
+              ],
+              "transition_style": "wild"
+            },
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "screens": "art",
+        "page": false,
+        "sensor_mask": "suspended",
+        "drawing-room:blinds": {
+          "set": 100,
+          "restore": true,
+          "policy": "enforce",
+          "max_age_s": 43200
+        },
+        "drawing-room:tv": {
+          "set": "hdmi",
+          "restore": true
+        },
+        "mirror_ball": "stopped",
+        "mirror_ball_motor.speed": "medium",
+        "hue": {
+          "set": "dmx",
+          "restore": true
+        },
+        "light": {
+          "set": "dmx",
+          "restore": true
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        }
+      },
+      "on_enter": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show starting"
+          }
+        }
+      ],
+      "on_exit": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show over"
+          }
+        }
+      ]
+    },
+    "disco": {
+      "label": "Disco",
+      "voice": "disco",
+      "_note": "No scene named: the director steers by direction (energy 0.9, euphoric/geometric, lively transitions) over its whole pool. The glitterball spins fast. Sonos is left alone (owner, 16 Oct: no invented values; pick a favourite in the editor if Disco should start music).",
+      "state": {
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "drawing-room:screens": {
+          "live": {
+            "auto": true,
+            "direction": {
+              "energy": 0.9,
+              "moods": [
+                "euphoric",
+                "geometric"
+              ],
+              "transition_style": "lively"
+            },
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "screens": "art",
+        "page": false,
+        "sensor_mask": "suspended",
+        "drawing-room:blinds": {
+          "set": 100,
+          "restore": true,
+          "policy": "enforce",
+          "max_age_s": 43200
+        },
+        "drawing-room:tv": {
+          "set": "hdmi",
+          "restore": true
+        },
+        "mirror_ball": "spinning",
+        "mirror_ball_motor.speed": "high",
+        "hue": {
+          "set": "dmx",
+          "restore": true
+        },
+        "light": {
+          "set": "dmx",
+          "restore": true
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        }
+      },
+      "on_enter": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show starting"
+          }
+        }
+      ],
+      "on_exit": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show over"
+          }
+        }
+      ]
+    }
+  },
+  "transitions": [
+    {
+      "_note": "Anything that lights the room (screens going live, the ball spinning): mask first, privacy blinds down before anything lights up.",
+      "from": "*",
+      "to": "*",
+      "steps": [
+        [
+          "sensor_mask",
+          "page"
+        ],
+        {
+          "targets": [
+            "drawing-room:blinds",
+            "drawing-room:tv"
+          ],
+          "on_fail": {
+            "abort_on": "drawing-room:blinds",
+            "allow_skipped": true
+          }
+        },
+        "drawing-room:screens",
+        "mirror_ball",
+        "rest"
+      ],
+      "when": [
+        {
+          "drawing-room:screens": {
+            "to": "live"
+          }
+        },
+        {
+          "mirror_ball": "spinning"
+        }
+      ]
+    },
+    {
+      "_note": "Lights going out (screens back to art, the ball stopping): ball first, then screens, then blinds up.",
+      "from": "*",
+      "to": "*",
+      "steps": [
+        "mirror_ball",
+        "drawing-room:screens",
+        "rest"
+      ],
+      "when": [
+        {
+          "drawing-room:screens": {
+            "from": "live",
+            "to": "art"
+          }
+        },
+        {
+          "mirror_ball": {
+            "from": "spinning",
+            "to": "stopped"
+          }
+        }
+      ]
+    },
+    {
+      "_note": "Everything else.",
+      "from": "*",
+      "to": "*",
+      "steps": [
+        "rest"
+      ]
+    }
+  ],
+  "autopilot": {
+    "min_dwell_s": 60
+  }
+}

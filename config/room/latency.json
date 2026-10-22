@@ -1,0 +1,266 @@
+{
+ "screens": {
+  "south": {
+   "run": "20261013T214230Z-south",
+   "screen": "south",
+   "measured_at": "2026-10-13T21:42:30+00:00",
+   "method": "dom-overlay via CDP; box-clock photon timing; Yocto timed reports; Element Timing",
+   "sensor_header": {
+    "kind": "header",
+    "version": "calib-2",
+    "t_ns": 1791927757353358045,
+    "module": {
+     "serial": "LIGHTMK5-2C5D7D",
+     "firmware": "62070"
+    },
+    "requested": {},
+    "applied": {
+     "reportFrequency": "100/s",
+     "measureType": 0,
+     "advMode": 0
+    },
+    "original": {
+     "reportFrequency": "OFF"
+    },
+    "hold_output": true,
+    "held_lux": 0.1,
+    "seconds": 151.0
+   },
+   "network": {
+    "ping": {
+     "target": "192.168.1.10",
+     "sent": 20,
+     "received": 20,
+     "rtt_ms": {
+      "n": 20,
+      "p10": 1.6,
+      "p50": 2.4,
+      "p90": 4.0,
+      "mean": 2.5,
+      "sd": 1.0
+     }
+    },
+    "cdp_rtt_ms": {
+     "n": 30,
+     "p10": 4.0,
+     "p50": 4.7,
+     "p90": 7.5,
+     "mean": 5.6,
+     "sd": 1.7
+    },
+    "one_way_ms_est": 0.8,
+    "clock_offset_box_minus_wsl_ms": -57.27,
+    "clock_offset_uncertainty_ms": 2.17,
+    "clock_stable": true
+   },
+   "summary": {
+    "pulses": 20,
+    "detected": 20,
+    "sensor": {
+     "report_hz": 101.3,
+     "measurement_ms": 100.0,
+     "integration_ms": 92.9,
+     "integration_source": "fitted from partial measurements",
+     "integration_fit": {
+      "integration_ms": 92.9,
+      "se_ms": 49.6,
+      "n": 9,
+      "plausible": true
+     },
+     "bias_removed_ms": 46.5,
+     "intermediate_points": {
+      "n": 20,
+      "p10": 1,
+      "p50": 2,
+      "p90": 3,
+      "mean": 1.8,
+      "sd": 1.1
+     }
+    },
+    "frame_ms": 16.7,
+    "cmd_to_callback_ms": {
+     "n": 20,
+     "p10": 5.0,
+     "p50": 15.6,
+     "p90": 18.7,
+     "mean": 13.1,
+     "sd": 5.1
+    },
+    "cmd_to_apply_ms": {
+     "n": 20,
+     "p10": 4.0,
+     "p50": 14.4,
+     "p90": 17.3,
+     "mean": 12.0,
+     "sd": 5.0
+    },
+    "apply_to_presented_ms": {
+     "n": 20,
+     "p10": 19.3,
+     "p50": 35.3,
+     "p90": 36.6,
+     "mean": 33.7,
+     "sd": 7.6
+    },
+    "apply_to_photon_ms": {
+     "rise": {
+      "t10": {
+       "n": 10,
+       "p10": 99.5,
+       "p50": 130.4,
+       "p90": 154.2,
+       "mean": 129.8,
+       "sd": 21.9
+      },
+      "t50": {
+       "n": 10,
+       "p10": 191.4,
+       "p50": 211.2,
+       "p90": 233.8,
+       "mean": 212.6,
+       "sd": 16.6
+      },
+      "t90": {
+       "n": 10,
+       "p10": 343.2,
+       "p50": 355.5,
+       "p90": 381.3,
+       "mean": 359.1,
+       "sd": 15.5
+      }
+     },
+     "fall": {
+      "t10": {
+       "n": 10,
+       "p10": 48.7,
+       "p50": 79.1,
+       "p90": 109.7,
+       "mean": 80.4,
+       "sd": 24.6
+      },
+      "t50": {
+       "n": 10,
+       "p10": 112.6,
+       "p50": 131.9,
+       "p90": 161.1,
+       "mean": 137.3,
+       "sd": 18.9
+      },
+      "t90": {
+       "n": 10,
+       "p10": 163.6,
+       "p50": 195.2,
+       "p90": 210.7,
+       "mean": 192.1,
+       "sd": 18.9
+      }
+     }
+    },
+    "presented_to_photon_ms": {
+     "rise": {
+      "n": 10,
+      "p10": 168.2,
+      "p50": 175.9,
+      "p90": 188.4,
+      "mean": 178.7,
+      "sd": 9.2
+     },
+     "fall": {
+      "n": 10,
+      "p10": 84.9,
+      "p50": 97.3,
+      "p90": 124.5,
+      "mean": 103.7,
+      "sd": 17.2
+     }
+    },
+    "lux_step": {
+     "n": 20,
+     "p10": 14.1,
+     "p50": 14.8,
+     "p90": 14.9,
+     "mean": 14.7,
+     "sd": 0.3
+    },
+    "snr": {
+     "n": 20,
+     "p10": 62.8,
+     "p50": 588.0,
+     "p90": 1470.2,
+     "mean": 665.4,
+     "sd": 579.9
+    },
+    "standard_error_ms": 5.2,
+    "presented_to_photon_ms_used": 178.7,
+    "presented_source": "Element Timing renderTime (measured)",
+    "cmd_to_photon_ms": 224.6,
+    "rise_minus_fall_ms": 75.3
+   },
+   "effective": {
+    "render_to_photon_ms": 308.7,
+    "render_to_photon_fall_ms": 233.7,
+    "stream_to_presented_ms": 130.0,
+    "stream_to_presented_source": "bd lab, rVFC expectedDisplayTime, p50",
+    "presented_to_photon_ms": 178.7,
+    "presented_source": "Element Timing renderTime (measured)",
+    "random_uncertainty_ms": 5.2,
+    "note": "rise (dark\u2192bright) edge; the brightening edge is the one beats are phased to"
+   },
+   "run_dir": "tools/room/latency_cal/runs/20261013T214230Z-south"
+  }
+ },
+ "version": 2,
+ "outputs": {
+  "tv-south": {
+   "brightness": {
+    "rise": {
+     "t10": 96.1,
+     "t50": 178.9,
+     "t90": 325.4,
+     "n": 10
+    },
+    "fall": {
+     "t10": 46.7,
+     "t50": 103.6,
+     "t90": 158.4,
+     "n": 10
+    },
+    "trim_ms": 0.0,
+    "zero": "frame presented (Element Timing renderTime)",
+    "se_ms": 5.2,
+    "method": "dom-overlay via CDP; box-clock photon timing; Yocto timed reports; Element Timing",
+    "measured_at": "2026-10-13T21:42:30+00:00",
+    "run_dir": "tools/room/latency_cal/runs/20261013T214230Z-south"
+   }
+  },
+  "hue": {
+   "intensity": {
+    "rise": {
+     "t10": 80.0,
+     "t50": 129.8,
+     "t90": 184.2,
+     "n": 10
+    },
+    "fall": {
+     "t10": 27.9,
+     "t50": 78.5,
+     "t90": 129.2,
+     "n": 10
+    },
+    "trim_ms": 0.0,
+    "zero": "Art-Net frame sent (WSL)",
+    "se_ms": 7.6,
+    "method": "hue: ArtDmx to room_service's receiver (127.0.0.1:6454) -> HueOutput 25 Hz -> Hue Bridge Pro Entertainment (xy+bri) -> lamp; zero = the first frame with the new level sent (WSL time.time_ns); box-clock photon timing; Yocto timed reports; WSL<->box offset by UDP echo (min RTT)",
+    "measured_at": "2026-10-18T17:54:57+00:00",
+    "run_dir": "tools/room/latency_cal/runs/20261018T175457Z-hue",
+    "lamps": [
+     "hue.ne",
+     "hue.nw",
+     "hue.se",
+     "hue.sw"
+    ]
+   }
+  }
+ },
+ "sources": {}
+}

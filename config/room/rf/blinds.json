@@ -1,0 +1,101 @@
+{
+  "_note": "Bloc iQ Smart Hub (Dooya/Motion Connector protocol). Addresses only; the hub key lives in ~/.config/screen-machine/rf/bloc_hub.json (0600), never here. Positions: 0 = raised, 100 = lowered. Channel = last 4 hex digits of the blind's mac.",
+  "hub": {
+    "ip": "192.168.1.136",
+    "port": 32100,
+    "mac": "a4cf1288dd8c",
+    "device_type": "02000001",
+    "firmware": "A1.0.9_B0.2.0",
+    "protocol": "0.9",
+    "dhcp_reservation": "unknown: owner to confirm"
+  },
+  "blinds": {
+    "ch02": {
+      "mac": "a4cf1288dd8c0002",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -73
+    },
+    "ch03": {
+      "mac": "a4cf1288dd8c0003",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -76
+    },
+    "ch04": {
+      "mac": "a4cf1288dd8c0004",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -71
+    },
+    "ch05": {
+      "mac": "a4cf1288dd8c0005",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -72
+    },
+    "ch06": {
+      "mac": "a4cf1288dd8c0006",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -87
+    },
+    "ch07": {
+      "mac": "a4cf1288dd8c0007",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -88
+    },
+    "ch08": {
+      "mac": "a4cf1288dd8c0008",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -86
+    },
+    "ch09": {
+      "mac": "a4cf1288dd8c0009",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -87
+    },
+    "ch10": {
+      "mac": "a4cf1288dd8c000a",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -95
+    },
+    "ch11": {
+      "mac": "a4cf1288dd8c000b",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -96
+    },
+    "ch12": {
+      "mac": "a4cf1288dd8c000c",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -93
+    },
+    "ch13": {
+      "mac": "a4cf1288dd8c000d",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -91
+    },
+    "ch14": {
+      "mac": "a4cf1288dd8c000e",
+      "label": null,
+      "wireless": "bi",
+      "rssi_13oct": -78
+    }
+  },
+  "groups": {
+    "privacy": [
+      "ch02",
+      "ch03",
+      "ch14"
+    ]
+  },
+  "travel_time_s": {},
+  "_privacy_note": "Owner, 13 Oct ~23:32: the three blinds that matter are ch02, ch03, ch14 (raised then lowered by hand; the hub cache tracked all three both ways). Other blinds may move on their own Bloc timers."
+}

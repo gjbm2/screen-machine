@@ -85,11 +85,15 @@ def status():
     """Compact status: uptime, kiosk, disk, memory, displays, chrome."""
     cmd = r"""
 echo "UPTIME=$(uptime -p)"
-echo "KIOSK=$(systemctl is-active kiosk.service)"
+# kiosk.service is the sway kiosk (default since 2026-10-13); the X11 fallback kiosk-x11.service counts as active too
+KIOSK=$(systemctl is-active kiosk.service)
+[ "$KIOSK" != active ] && systemctl is-active --quiet kiosk-x11.service && KIOSK=active
+echo "KIOSK=$KIOSK"
 
-# Chrome screens
-NORTH_PID=$(pgrep -f 'google-chrome.*north-screen|chromium.*north-screen' | head -1)
-SOUTH_PID=$(pgrep -f 'google-chrome.*south-screen|chromium.*south-screen' | head -1)
+# Chrome screens. The browser's command line starts /opt/google/chrome/chrome, so anchor on a first word containing
+# "chrome": an unanchored pattern also matches this ssh shell's own command line (which contains the pattern)
+NORTH_PID=$(pgrep -f '^[^ ]*chrome[^ ]* .*display/north-screen' | head -1)
+SOUTH_PID=$(pgrep -f '^[^ ]*chrome[^ ]* .*display/south-screen' | head -1)
 echo "NORTH_CHROME=${NORTH_PID:+running}"
 echo "SOUTH_CHROME=${SOUTH_PID:+running}"
 [ -z "$NORTH_PID" ] && echo "NORTH_CHROME=stopped"
@@ -103,8 +107,25 @@ SOUTH_URL=$(echo "$SOUTH_CMD" | grep -oP 'https?://\S+' | tail -1)
 echo "NORTH_URL=${NORTH_URL:-unknown}"
 echo "SOUTH_URL=${SOUTH_URL:-unknown}"
 
-# Displays
-DISPLAY=:0 xrandr --query 2>/dev/null | grep ' connected' | while read line; do echo "DISPLAY_LINE=$line"; done
+# Displays: one "<output> connected ..." line per connected output, from sway (the Wayland kiosk, default since
+# 2026-10-13; every socket is tried, a crashed sway can leave a stale one), else Xorg (kiosk-x11 fallback: one X
+# screen per TV, :0.0 north, :0.1 south; on a single-screen X, :0.1 just fails), else the kernel's connector
+# status when no display server answers
+displays() {
+    for s in /run/user/$(id -u)/sway-ipc.*.sock; do
+        out=$(SWAYSOCK=$s timeout 3 swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | "\(.name) connected "
+            + (if .active then "\(.current_mode.width)x\(.current_mode.height)@\(.current_mode.refresh / 1000)Hz" else "(inactive)" end)' 2>/dev/null)
+        [ -n "$out" ] && { echo "$out"; return; }
+    done
+    out=$({ DISPLAY=:0.0 xrandr --query; DISPLAY=:0.1 xrandr --query; } 2>/dev/null | grep ' connected')
+    [ -n "$out" ] && { echo "$out"; return; }
+    for f in /sys/class/drm/card*-*/status; do
+        [ "$(cat "$f" 2>/dev/null)" = connected ] || continue
+        n=${f%/status}; n=${n##*/}
+        echo "${n#card*-} connected ($(cat "${f%/status}/enabled" 2>/dev/null))"
+    done
+}
+displays | while read line; do echo "DISPLAY_LINE=$line"; done
 
 # Resources
 echo "MEM_PERCENT=$(free | grep Mem | awk '{printf "%.0f", ($3/$2)*100}')"
@@ -126,15 +147,17 @@ def logs():
 @admin_api.route('/admin-355729b8/restart-kiosk', methods=['POST'])
 def restart_kiosk():
     """Full kiosk service restart (both screens)."""
+    # Restarts whichever kiosk unit is running: kiosk.service (sway, default since 2026-10-13) or the X11 fallback
+    # kiosk-x11.service, so a restart never switches modes. No pkill: both units stop their own Chrome
+    # (kiosk.service's ExecStopPost, kiosk-x11's KillMode=control-group), and a pkill -f pattern written here would
+    # match this ssh shell's own command line and kill it between the stop and the start.
     cmd = f"""
-echo "{SSH_PASS}" | sudo -S systemctl stop kiosk.service
-sleep 2
-pkill -f 'google-chrome.*kiosk' 2>/dev/null || true
-pkill -f 'chromium.*kiosk' 2>/dev/null || true
-sleep 1
-echo "{SSH_PASS}" | sudo -S systemctl start kiosk.service
+KIOSK_UNIT=kiosk.service
+systemctl is-active --quiet kiosk-x11.service && KIOSK_UNIT=kiosk-x11.service
+echo "{SSH_PASS}" | sudo -S systemctl restart $KIOSK_UNIT
 sleep 3
-echo "STATUS=$(systemctl is-active kiosk.service)"
+echo "UNIT=$KIOSK_UNIT"
+echo "STATUS=$(systemctl is-active $KIOSK_UNIT)"
 """
     return jsonify(_ssh_run(cmd, timeout=30))
 
@@ -151,14 +174,21 @@ def restart_screen():
             'timestamp': datetime.now().isoformat()
         }), 400
 
+    # Pattern anchored on the browser binary (first word contains "chrome"): unanchored, it matches this ssh shell's
+    # own command line and pkill kills the shell instead of Chrome.
     cmd = f"""
-pkill -f '(google-chrome|chromium).*{screen}-screen' 2>/dev/null || true
+# the X11 fallback's kiosk-loop.sh does not relaunch a Chrome that exits, so killing one would leave its TV blank
+if systemctl is-active --quiet kiosk-x11.service; then
+    echo "RESULT=unsupported: the X11 fallback (kiosk-x11.service) does not relaunch Chrome; restart the kiosk instead"
+    exit 1
+fi
+pkill -f '^[^ ]*chrome[^ ]* .*display/{screen}-screen' 2>/dev/null || true
 sleep 2
-# The kiosk service webview-manager will auto-relaunch the killed Chrome
-echo "Killed {screen}-screen Chrome. Webview manager will relaunch it."
+# under sway, kiosk-wayland.sh relaunches a Chrome that exits within 5 s
+echo "Killed {screen}-screen Chrome. kiosk-wayland.sh will relaunch it."
 # Check if it came back
 sleep 5
-if pgrep -f '(google-chrome|chromium).*{screen}-screen' >/dev/null; then
+if pgrep -f '^[^ ]*chrome[^ ]* .*display/{screen}-screen' >/dev/null; then
     echo "RESULT=restarted"
 else
     echo "RESULT=killed_awaiting_relaunch"
