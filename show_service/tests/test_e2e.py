@@ -606,7 +606,8 @@ def test_brain_end_to_end(tmp_path, monkeypatch):
         # -- C: the test piano, then Auto ----------------------------------------------------------------------------
         assert room.room.auto_puts() == []
         pc = first_piece(base)
-        code, st = http("POST", base + "/api/v1/test", {"source": "piano", "piece": pc})
+        code, st = http("POST", base + "/api/v1/test", {"source": "piano", "piece": pc,
+                                                         "output": "none"})   # MIDI only: no sound out of PC22
         assert code == 200 and st["state"] == "starting", st
         wait_for(lambda: http("GET", base + "/api/v1/test")[1]["sources"]["piano"]["state"] == "playing", 15,
                  "test piano playing")
