@@ -769,12 +769,19 @@ class Stage:
             else:
                 ease_to(H, i, H_DA0, 0.0, now, K_EASE)
         Hd.dirty = True
+        marked = set()
         for key, (hk, name, above) in out.otts.items():
             i = Hd.idx.get(hk)
             if i is not None:
+                marked.add(hk)
                 H[i, H_OG] = GI[name]
                 H[i, H_OUP] = 1.0 if above else 0.0
                 ease_to(H, i, H_OA0, 1.0, now, K_EASE)
+        for key in out.heads:                              # a mark that moved to its run's first chord (or went)
+            if key not in marked:
+                i = Hd.idx.get(key)
+                if i is not None and float(H[i, H_OA0 + 1]) > 0.0:
+                    ease_to(H, i, H_OA0, 0.0, now, K_EASE)
         # stems
         S = St.a
         for key, tgt in out.stems.items():

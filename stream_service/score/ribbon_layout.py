@@ -41,6 +41,8 @@ STEM_W = 0.12
 STEM_LEN = 3.5
 ACC_GAP = 0.18
 DOT_GAP, DOT_W = 0.32, 0.42
+OTT_ROOM = 3.0                   # an octave mark's width ('8va' at 0.8: 2.1 sp) and white: a run starting nearer the
+                                 # last mark on its staff than this goes on under that mark
 FLAG_W = 1.0
 T1, T2 = 6.0, 17.5               # the treble and bass staves' top lines, row-local
 TOP_D = (38, 26)                 # F5 and A3: each staff's top line as a diatonic step (octave * 7 + letter)
@@ -130,11 +132,15 @@ class Spacer:
         self.edge_slot = [None, None]
         self.last_x = 0.0
         self.first_left: Optional[float] = None
+        self.ott = [0, 0]                           # per staff: the last chord's octave line (0 none), ...
+        self.ott_m = [0, 0]                         # ... and the last shown mark's, at x
+        self.ott_x = [-1e9, -1e9]
 
     def copy(self) -> "Spacer":
         s = Spacer(self.q0, self.units, self.Q, self.owner)
         s.push, s.edge, s.edge_slot, s.last_x = self.push, list(self.edge), list(self.edge_slot), self.last_x
         s.first_left = self.first_left
+        s.ott, s.ott_m, s.ott_x = list(self.ott), list(self.ott_m), list(self.ott_x)
         return s
 
     def nb(self, p: float) -> int:
@@ -406,7 +412,8 @@ class PhraseLayout:
                 mkey = (k, units, U, self.Q, self.warp_ver, f, rests,
                        tuple(tuple((e.start, e.dur, tuple(e.pitches), tuple(e.ids), tuple(e.tie_in), tuple(e.tie_out))
                                    for e in st) for st in staves),
-                       (sp.q0, sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.first_left),
+                       (sp.q0, sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.first_left, tuple(sp.ott),
+                        tuple(sp.ott_m), tuple(sp.ott_x)),
                        tuple((i, pieces.get(i, 0), touts.get((i, pieces.get(i, 0) - 1)) if touts is not None else None)
                              for i in ids))
                 hit = memo.get(mkey)
@@ -418,6 +425,7 @@ class PhraseLayout:
                     sp.push, sp.edge, sp.edge_slot, sp.last_x, sp.first_left = (sp_state[0], list(sp_state[1]),
                                                                               list(sp_state[2]), sp_state[3],
                                                                               sp_state[4])
+                    sp.ott, sp.ott_m, sp.ott_x = list(sp_state[5]), list(sp_state[6]), list(sp_state[7])
                     pieces.update(p_upd)
                     if touts is not None:
                         touts.update(t_upd)
@@ -492,8 +500,8 @@ class PhraseLayout:
                 t_upd = {kk: v for kk, v in (touts or {}).items() if kk[0] in p_before}
                 if len(memo) > 256:
                     memo.clear()
-                memo[mkey] = (dest, (sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.last_x, sp.first_left), p_upd,
-                             t_upd)
+                memo[mkey] = (dest, (sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.last_x, sp.first_left,
+                                     tuple(sp.ott), tuple(sp.ott_m), tuple(sp.ott_x)), p_upd, t_upd)
                 for name in ("heads", "stems", "beams", "ties", "rests", "bars", "sigs", "otts"):
                     getattr(out_main, name).update(getattr(dest, name))
                 out_main.end_x = max(out_main.end_x, dest.end_x)
@@ -566,12 +574,13 @@ class PhraseLayout:
                     need_bl = False
                 x = sp.place(slot, ext)
             for ch in chs:
-                self._marks(ch, x, out, Q, touts)
+                self._marks(ch, x, out, Q, touts, sp)
         if need_bl:
             out.bars[key] = (sp.barline(k, 0.0), 0)
         out.end_x = max(out.end_x, max(sp.edge))
 
-    def _marks(self, ch: Chord, x: float, out: Out, Q: float, touts: Optional[dict] = None) -> None:
+    def _marks(self, ch: Chord, x: float, out: Out, Q: float, touts: Optional[dict] = None,
+               sp: Optional[Spacer] = None) -> None:
         s = self.serial
         st = ch.staff
         top = T1 if st == 0 else T2
@@ -625,7 +634,15 @@ class PhraseLayout:
                 L += 0.4
             out.stems[("s", s) + g_ch_key(ch)] = (keys, keys[ch.lead], ch.up, L, ch.flags if ch.beam is None else 0,
                                                   ch.beam)
-        if ch.ott:
+        # one octave mark a run of chords under the same line (rests don't break it), never two overlapping
+        show = bool(ch.ott)
+        if sp is not None:
+            if ch.ott and (sp.ott[st] == ch.ott or (sp.ott_m[st] == ch.ott and x - sp.ott_x[st] < OTT_ROOM)):
+                show = False
+            sp.ott[st] = ch.ott
+            if show:
+                sp.ott_m[st], sp.ott_x[st] = ch.ott, x
+        if show:
             name = {1: "ottavaAlta", 2: "quindicesima", -1: "ottavaBassaVb", -2: "quindicesima"}[ch.ott]
             out.otts[("o", s) + g_ch_key(ch)] = (keys[-1] if ch.ott > 0 else keys[0], name, ch.ott > 0)
 
