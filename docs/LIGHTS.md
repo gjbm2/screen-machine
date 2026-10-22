@@ -484,9 +484,10 @@ Fallbacks: with no extent, coords come from the placed things' bounding box. A f
 outward, so the two halves fire together. Patterns mirror across the front axis (§5.4).
 
 **screen_flow**: s = the screen's centre, n̂ = its plane normal (into the room), û = its up, and its right
-r̂ₛ = û × n̂ (the north screen, normal -y, has right = east). Then d = flow_vector(s), x = d·r̂ₛ, y = d·û,
-depth = d·n̂, angle = atan2(y, x), inplane = |(x, y)|, phase = flow_coord(s). The north screen sees "right" (east)
-at 0° and the south screen sees it at 180°: physically the same flow across the room.
+r̂ₛ = û × n̂ (a screen on the west wall, normal +x, has right = north). Then d = flow_vector(s), x = d·r̂ₛ, y = d·û,
+depth = d·n̂, angle = atan2(y, x), inplane = |(x, y)|, phase = flow_coord(s). In this room both screens face east
+(owner, 22 Oct), so a flow towards north reads "right" (0°) on both, and runs from the south screen to the north
+screen in phase. Screens facing each other would see one flow at 0° and 180°.
 
 ### 3.6 Mover pose: the teach-and-solve
 
@@ -1496,8 +1497,10 @@ What show_service sends, and what the renderer is asked to add. None of it is re
      transition at at_ms + flow.screens[s].phase × sweep_beats beats; without sweep_beats, at at_ms as today.
    - Lights and screens use the same at_ms and the same anchor/period, each at its own photon time. So a change, a
      wave or a sweep crosses screens and lights together.
-6. **Up and down are about the room.** On every screen up is up; left and right flip between opposite walls
-   (physically correct); cw/ccw keep one sense on every screen (spin).
+6. **Up and down are about the room.** On every screen up is up; left and right follow each screen's own plane
+   (space.screen_flow), never a name. In this room both screens hang side by side on the west wall facing east
+   (owner, 22 Oct), so "right" is the same way (north) on both; on screens facing each other it would flip. cw/ccw
+   keep one sense on every screen (spin).
 
 ## 10. Testing without hardware
 
