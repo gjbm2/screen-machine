@@ -433,8 +433,8 @@ def test_the_same_parallel_or_relative_key_is_no_key_jump():
     assert r.s._jumps(c, {"key": "E", "mode": "minor", "key_strength": 0.6})          # not C's relative
 
 
-def _spike_rig(*, key_after: str, mode_after: str, bpm_after: float, parents: tuple, settings: Optional[dict] = None
-               ) -> "Rig":
+def _spike_rig(*, key_after: str, mode_after: str, bpm_after: float, parents: tuple, settings: Optional[dict] = None,
+               piano: Optional[dict] = None) -> "Rig":
     """A to B at 30 s (a strong novelty spike, no gap): the key (music.harmony) and the tempo change at 30 s too;
     the tags' parents are ``parents`` (before, after)."""
     cfg = {"structure": {"key_hold": {"hold_s": 0}}, "genre_map": {"parents": {"Jazz": "jazz", "Rock": "rock"}}}
@@ -444,6 +444,8 @@ def _spike_rig(*, key_after: str, mode_after: str, bpm_after: float, parents: tu
             clock=lambda t: clock_body(t, bpm=120.0 if t < 30 else bpm_after), settings=cfg)
     r.harmony = {"chroma12": [0.0] * 12, "key": "C", "mode": "major", "tension": 0.1, "chord_change": 0.0,
                  "register": 0.5, "spread": 0.0, "t_ms": 0.0, "source": "audio", "conf": 0.6}
+    if piano is not None:
+        r.s.ctx.piano = lambda: piano
     r.run(30.0)
     r.harmony = {**r.harmony, "key": key_after, "mode": mode_after}
     r.run(45.0)
@@ -470,6 +472,20 @@ def test_a_no_gap_change_of_tempo_and_key_is_a_new_track_and_spike_k_null_turns_
                      settings={"structure": {"track": {"spike_k": None}}})
     assert off.s.cfg["track"]["spike_k"] is None and off.s.settings_problems == []
     assert not off.kinds("track_change")
+
+
+def test_a_piano_being_played_holds_the_dsp_track_change():
+    """22 Oct (ff: both TVs re-cued twice in 30 s of practice): while the piano vouches for the piece (a key or the
+    damper down, or a note within track.piano_rest_s), a novelty spike with a key, tempo and genre jump is no new
+    track; with no piano the same audio is one (the test above)."""
+    other = ({"Jazz": 0.6, "Rock": 0.1}, {"Jazz": 0.6, "Rock": 0.1})
+    playing = {"present": True, "stream": "room-piano", "keys_down": 2, "damper": 0.0, "last_note_age_s": 0.4}
+    r = _spike_rig(key_after="F#", mode_after="major", bpm_after=140.0, parents=other, piano=playing)
+    assert not r.kinds("track_change") and r.s.track_id == 0
+    assert r.s.ends["piano_held"] >= 1
+    rested = {"present": True, "stream": "room-piano", "keys_down": 0, "damper": 0.0, "last_note_age_s": 60.0}
+    r2 = _spike_rig(key_after="F#", mode_after="major", bpm_after=140.0, parents=other, piano=rested)
+    assert len(r2.kinds("track_change")) == 1                              # a piano long at rest vouches for nothing
 
 
 # -- the dsp fallback ------------------------------------------------------------------------------------------------------------
