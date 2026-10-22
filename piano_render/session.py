@@ -1,8 +1,11 @@
-"""One rendered test-piano run for show_sender: render (cached), then play it on PC22 on command.
+"""One rendered test-piano run for show_sender: render (cached), then play it on PC22 or a Sonos on command.
 
-    ~/.venvs/sm-piano/bin/python -m piano_render.session --midi PATH --instrument ID [--pad-s X]
+    ~/.venvs/sm-piano/bin/python -m piano_render.session --midi PATH --instrument ID [--pad-s X] [--output OUT]
 
-Started by tools/show_sender/show_sender.py (``--test-piano PIECE --instrument ID --output pc22``) from the repo root.
+Started by tools/show_sender/show_sender.py (``--test-piano PIECE --instrument ID --output pc22|sonos:<zone>``) from
+the repo root. --output: pc22 (the default: PC22's speakers, piano_render/pc22.py) or sonos:<zone> (a zone of
+config/room/sonos.json, through room_service: piano_render/sonos.py, whose docstring has the volume, pad, feature
+detection, start estimate and watch rules).
 
 stdout: the protocol only, one JSON object per line, flushed (anything else that writes to fd 1 goes to stderr; logs
 are on stderr):
@@ -18,15 +21,26 @@ are on stderr):
         once; then it waits for commands. duration_s: the file's (sample 0 = MIDI time 0, tail included).
   {"ev": "started", "t_audio0", "pad_s", "startup_s"}
         after each "play": t_audio0 = the WSL time.monotonic() at which MIDI time 0 is heard (file sample 0 at PC22's
-        DAC, after pad_s of digital silence), from piano_render.pc22.PC22Output.start.
-  {"ev": "played", "underruns", "frames", ...}   the audio ended by itself (the player's "done")
+        DAC, after pad_s of digital silence), from piano_render.pc22.PC22Output.start. On Sonos, after each
+        "play-sonos": SonosOutput.start's estimate; pad_s is the pad it used (at least --pad-s; more while
+        room_service still fades every play in).
+  {"ev": "rebase", "t_audio0", "was"}    Sonos only: its position says MIDI time 0 is heard at t_audio0 instead
+  {"ev": "warning", "why": plain words}  Sonos only: it plays, but e.g. "Sonos volume is 0"
+  {"ev": "played", "underruns", "frames", ...}   the audio ended by itself (the player's "done"; Sonos: {"by", ...})
   {"ev": "stopped"}                             after "stop": silent (also if nothing was playing)
-  {"ev": "error", "why": plain words}           then exit 1
+  {"ev": "error", "why": plain words}           then exit 1 (Sonos: "Sonos stopped" | "Sonos paused" | "Sonos is
+                                                playing something else" | "Sonos didn't start" | why it can't play)
 stdin: one command per line:
   play   start (or restart) PC22 playback of the rendered file, pad_s of silence first; a "play" before "rendered"
-         waits for it
+         waits for it. On Sonos: the last play-sonos again.
+  play-sonos {"url", "title"?, "volume"?, "zone"?}
+         --output sonos:<zone> only: play the rendered file on the zone from url (show_service's
+         /api/v1/piano/audio/<key>.flac, through room's LAN door: the Sonos fetches it); title: what the Sonos app
+         shows; volume 0..100 (default: SonosOutput's choice); zone, if given, must be --output's. Waits for
+         "rendered" like play.
   stop   silence within ~50 ms (the player's 10 ms fade, then the device buffer); a render still running goes on, and
-         the next "play" plays it
+         the next "play" plays it. On Sonos: playback "paused" through room_service (its fade-out), only while the
+         Sonos still plays our file.
   EOF    stop, then exit 0; a render still running goes on in the background (below). SIGTERM, SIGHUP and the
          parent's death (PR_SET_PDEATHSIG) do the same.
 
@@ -61,7 +75,8 @@ Every render child, waited for or not, has <cache>/.running/<pid>.json while it 
 time in clock ticks), "key", "midi", "instrument", "background", "t", "since"}.
 
 PIANO_SESSION_GAIN_DB (env, dB): scales the PCM sent to the player (-120 = a silent end-to-end check of the real PC22
-path). If pc22.py no longer sends its PCM through ``to_pcm``, a run with it set refuses to play (fails closed).
+path). If pc22.py no longer sends its PCM through ``to_pcm``, a run with it set refuses to play (fails closed); so
+does a Sonos run (the Sonos plays the file as it is).
 """
 from __future__ import annotations
 
@@ -116,6 +131,9 @@ TAKEOVER_WINDOW_S = 3.0             # a starved background render is judged over
 TAKEOVER_MAX_RUN = 0.3              # ...getting less than this share of a core
 TAKEOVER_MIN_WAIT = 0.5             # ...while waiting to run more than this share of the time
 TAKEOVER_MAX_FRAC = 0.5             # ...and less than this far through
+PC22_OUTPUT = "pc22"
+SONOS_PREFIX = "sonos:"
+SETTLE_S = 2.0                      # at exit, a Sonos pause that waits for our file to be heard gets this long
 
 
 class Proto:
@@ -818,8 +836,12 @@ class Session:
 
     def __init__(self, midi: str, instrument: str, pad_s: float = 0.0, *, proto: Proto,
                  output_factory: Optional[Callable[[], Any]] = None,
-                 render_argv: Optional[list[str]] = None) -> None:
+                 render_argv: Optional[list[str]] = None, output: str = PC22_OUTPUT) -> None:
         self.midi, self.instrument = str(midi), str(instrument)
+        self.output = str(output)
+        self.zone = self.output[len(SONOS_PREFIX):] if self.output.startswith(SONOS_PREFIX) else None
+        self.where = "Sonos" if self.zone else "PC22"
+        self.play_opts: Optional[dict] = None            # the last play-sonos's {url, title?, volume?}
         self.pad_s = min(PAD_MAX_S, max(0.0, float(pad_s)))
         self.proto = proto
         self.output_factory = output_factory or _default_output
@@ -879,18 +901,38 @@ class Session:
         threading.Thread(target=self._play_worker, args=(self.gen, self.rendered["path"]), name="play",
                          daemon=True).start()
 
+    def play_sonos(self, arg: str) -> Optional[str]:
+        """A play-sonos command's JSON -> self.play_opts; plain words when it can't be played."""
+        if self.zone is None:
+            return "play-sonos needs --output sonos:<zone> (this session plays on PC22)"
+        try:
+            doc = json.loads(arg) if arg.strip() else None
+        except ValueError:
+            doc = None
+        if not isinstance(doc, dict) or not isinstance(doc.get("url"), str) or not doc["url"].strip():
+            return 'play-sonos takes {"url": ..., "title"?, "volume"?}'
+        if doc.get("zone") not in (None, self.zone):
+            return f"this session plays on the Sonos zone “{self.zone}”, not “{doc.get('zone')}”"
+        self.play_opts = {"url": doc["url"].strip(), "title": doc.get("title") if isinstance(doc.get("title"), str)
+                          else None, "volume": doc.get("volume")}
+        return None
+
     def _play_worker(self, gen: int, path: str) -> None:
         out = self.out
         t = time.monotonic()
+        kw: dict = {"lead_in_ms": self.pad_s * 1000.0}
+        if self.zone is not None:
+            kw.update(self.play_opts or {})
         try:
-            t0 = out.start(path, lead_in_ms=self.pad_s * 1000.0)
-        except Exception as e:                           # noqa: BLE001  PC22Error and anything else
-            self.q.put(("play_error", (gen, f"couldn't play on PC22: {plain(e)}")))
+            t0 = out.start(path, **kw)
+        except Exception as e:                           # noqa: BLE001  PC22Error, SonosError and anything else
+            self.q.put(("play_error", (gen, f"couldn't play on {self.where}: {plain(e)}")))
             return
         if gen != self.gen:                              # a stop (or another play) came during the start
             out.stop()
             return
-        self.proto.emit({"ev": "started", "t_audio0": t0, "pad_s": self.pad_s,
+        pad = float(getattr(out, "pad_s", self.pad_s)) if self.zone is not None else self.pad_s
+        self.proto.emit({"ev": "started", "t_audio0": t0, "pad_s": pad,
                          "startup_s": round(time.monotonic() - t, 3)})
         out.wait()
         s = getattr(out, "session", None)
@@ -908,12 +950,22 @@ class Session:
         try:
             if self.out is not None:
                 self.out.stop()
+                settle = getattr(self.out, "settle", None)    # Sonos: a pause waiting for our file to be heard
+                if callable(settle):
+                    settle(SETTLE_S)
         finally:
             self._release_render()
 
     def handle(self, kind: str, val: Any) -> Optional[int]:
         """One event; returns an exit code to end the run."""
         if kind == "cmd":
+            if val.split(" ", 1)[0] == "play-sonos" or (val == "play" and self.zone is not None):
+                why = (self.play_sonos(val[len("play-sonos"):]) if val != "play"
+                       else None if self.play_opts else 'Sonos plays on "play-sonos {\"url\": ...}"')
+                if why:
+                    self.proto.emit({"ev": "error", "why": why})
+                    return 1
+                val = "play"
             if val == "play":
                 if self.rendered is not None:
                     self._play()
@@ -952,7 +1004,7 @@ class Session:
             gen, done, err = val
             if gen == self.gen:
                 if done is None and err:
-                    self.proto.emit({"ev": "error", "why": f"PC22 playback stopped: {err}"})
+                    self.proto.emit({"ev": "error", "why": err if self.zone else f"PC22 playback stopped: {err}"})
                     return 1
                 self.proto.emit({"ev": "played", **(done or {})})
         elif kind == "play_error":
@@ -986,11 +1038,21 @@ def _is_pipe(fd: int) -> bool:
         return False
 
 
+def output_arg(v: str) -> str:
+    """--output: "pc22" or "sonos:<zone>" (letters, digits, - _ .)."""
+    zone = v[len(SONOS_PREFIX):] if v.startswith(SONOS_PREFIX) else None
+    if v == PC22_OUTPUT or (zone and all(c.isalnum() or c in "-_." for c in zone)):
+        return v
+    raise argparse.ArgumentTypeError(f"{v!r}: pc22 or sonos:<zone>")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m piano_render.session", description=__doc__.split("\n")[0])
     ap.add_argument("--midi", required=True, help="the .mid to render and play")
     ap.add_argument("--instrument", required=True, help="instrument id (config/piano/instruments.json)")
     ap.add_argument("--pad-s", type=float, default=0.0, help="digital silence before MIDI time 0 on each play")
+    ap.add_argument("--output", default=PC22_OUTPUT, type=output_arg, metavar="pc22|sonos:<zone>",
+                    help="where it plays: PC22's speakers (default) or a Sonos zone of config/room/sonos.json")
     ap.add_argument("--render-child", action="store_true", help=argparse.SUPPRESS)
     return ap
 
@@ -1018,6 +1080,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     except ValueError:
         proto.emit({"ev": "error", "why": f"{GAIN_ENV}={os.environ.get(GAIN_ENV)!r} is not a number of dB"})
         return 1
+    if a.output.startswith(SONOS_PREFIX):
+        return _main_sonos(a, proto, gain_db)
     try:
         from . import pc22                               # now, while the render runs: the first play starts sooner
     except ImportError as e:
@@ -1030,6 +1094,27 @@ def main(argv: Optional[list[str]] = None) -> int:
             proto.emit({"ev": "error", "why": str(e)})
             return 1
     s = Session(a.midi, a.instrument, a.pad_s, proto=proto)
+    try:
+        return s.run(sys.stdin)
+    except _Term:
+        return 0
+    finally:
+        s.shutdown()
+
+
+def _main_sonos(a: argparse.Namespace, proto: Proto, gain_db: Optional[float]) -> int:
+    """--output sonos:<zone>: the Session with a SonosOutput (no PC22 player is loaded)."""
+    if gain_db is not None:
+        proto.emit({"ev": "error", "why": f"{GAIN_ENV} is set but the Sonos plays the file as it is: not playing"})
+        return 1
+    from . import sonos
+    zone = a.output[len(SONOS_PREFIX):]
+    try:
+        out = sonos.SonosOutput(zone, emit=proto.emit)
+    except sonos.SonosError as e:
+        proto.emit({"ev": "error", "why": f"couldn't play on Sonos: {e}"})
+        return 1
+    s = Session(a.midi, a.instrument, a.pad_s, proto=proto, output_factory=lambda: out, output=a.output)
     try:
         return s.run(sys.stdin)
     except _Term:

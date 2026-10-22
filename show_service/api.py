@@ -51,6 +51,10 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
     director, so the adapter retries. ``PUT /api/v1/vibe`` keeps any target as asked (an unknown vibe plays neutral, a
     bad override is dropped; the read-back's ``known`` and ``problems`` say so) and 400s only a body that isn't a
     target; ``{"vibe": null}`` and DELETE are no feel. Every read-back carries ``boot_id`` (this process).
+  - ``GET /api/v1/piano/audio/<key>.flac`` (Play on Sonos, 22 Oct): a rendered test-piano sound from piano_render's
+    cache (or its padded copy), with Range/206, ``Content-Type: audio/flac``, ``Cache-Control: no-cache``; the Sonos
+    fetches it through room's ``:8700/show/*``. 404 for a key that isn't 32 hex digits or isn't there. It answers
+    before the brain runs.
   - ``GET``/``PUT /api/v1/listening`` (owner, 20 Oct): the PUT takes ``{"on"?: bool, "mode"?: bool}`` (at least
     one; a bare bool is ``{"on": ...}``): ``on`` is the Room page's AI listening switch, ``mode`` the mode's
     permission (room_service's per-mode device ``show.ai``). Both answer the ListenerView (with ``mode``) and
@@ -77,6 +81,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import re
 import time
 import uuid
@@ -120,6 +125,15 @@ NO_RECORDER = "Recording isn't available here (recorder.py isn't loaded)."
 RECORD_TIMEOUT_S = 30.0                              # Stop encodes and writes the take (in a worker thread)
 RECORDING_FILE_TIMEOUT_S = 10.0                      # a rename or delete
 UNKNOWN_RECORDING = "There's no recording with that id (it may have been deleted)."
+#: Play on Sonos (22 Oct): GET /api/v1/piano/audio/<key>.flac serves piano_render's renders (render.py's cache:
+#: $PIANO_RENDER_CACHE, else PIANO_RENDER_CACHE) and their padded copies (piano_render/sonos.py: <cache>/sonos/) to
+#: the Sonos, through room's LAN door (:8700/show/*). Answers before the brain runs: it is only a file.
+PIANO_RENDER_CACHE_ENV = "PIANO_RENDER_CACHE"
+PIANO_RENDER_CACHE = Path("~/.cache/screen-machine/piano/renders")
+PIANO_PADDED_DIR = "sonos"
+PIANO_AUDIO_PATH = "/api/v1/piano/audio/{key}.flac"
+PIANO_AUDIO_KEY = re.compile(r"^[0-9a-f]{32}$")
+NO_PIANO_AUDIO = "There's no rendered piano sound with that key."
 NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
 #: README S5.23: the Lights page's writes answer 400 for a light that can't be added as asked, except these
 RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500,
@@ -175,7 +189,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/test"), ("POST", "/api/v1/test"), ("DELETE", "/api/v1/test"), ("DELETE", "/api/v1/test/{source}"),
     ("GET", "/api/v1/piano/recordings"), ("POST", "/api/v1/piano/record"),
     ("GET", "/api/v1/piano/recordings/{id}.mid"), ("PATCH", "/api/v1/piano/recordings/{id}"),
-    ("DELETE", "/api/v1/piano/recordings/{id}"),
+    ("DELETE", "/api/v1/piano/recordings/{id}"), ("GET", PIANO_AUDIO_PATH),
     ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
 )
 
@@ -1133,6 +1147,8 @@ class Api:
             self.mounted.append((method, path))
         r.add_post("/api/v1/hue/release", self._hue_release)        # answers even before the brain runs
         self.mounted.append(("POST", "/api/v1/hue/release"))
+        r.add_get(PIANO_AUDIO_PATH, self._piano_audio)              # a file: answers even before the brain runs
+        self.mounted.append(("GET", PIANO_AUDIO_PATH))
         r.add_get(EVENTS_PATH, self.events.handle)
         self.mounted.append(("GET", EVENTS_PATH))
         app.on_startup.append(self.events.on_startup)
@@ -2693,6 +2709,14 @@ class Api:
         return web.Response(body=data, content_type="audio/midi",
                             headers={"Content-Disposition": content_disposition(str(title))})
 
+    async def _piano_audio(self, request: web.Request) -> web.StreamResponse:
+        """A rendered piano sound for the Sonos (Play on Sonos): the file as it is, with Range (206) and conditional
+        requests (aiohttp's FileResponse). 404 for a key that isn't 32 hex digits or isn't in the cache."""
+        p = piano_audio_path(request.match_info.get("key", ""))
+        if p is None:
+            return _err(404, "not_found", NO_PIANO_AUDIO)
+        return web.FileResponse(p, headers={"Content-Type": "audio/flac", "Cache-Control": "no-cache"})
+
     # -- the console ---------------------------------------------------------------------------------------------------------
     async def _look(self, request: web.Request, brain: Any) -> web.Response:
         snap = _snap_of(_components(brain).get(DIRECTOR))
@@ -2723,6 +2747,28 @@ class Api:
 
     def stats(self) -> dict:
         return {"events": self.events.stats(), "mounted": len(self.mounted)}
+
+
+def piano_cache_dir() -> Path:
+    """render.py's cache folder: $PIANO_RENDER_CACHE, else PIANO_RENDER_CACHE (~ expanded)."""
+    raw = os.environ.get(PIANO_RENDER_CACHE_ENV)
+    return Path(raw).expanduser() if raw else PIANO_RENDER_CACHE.expanduser()
+
+
+def piano_audio_path(key: str, cache: Optional[Path] = None) -> Optional[Path]:
+    """<cache>/<key>.flac (a render), else <cache>/sonos/<key>.flac (a padded copy); None for a key that isn't
+    exactly 32 lower-case hex digits (no other path can be named) or that neither holds."""
+    if not isinstance(key, str) or not PIANO_AUDIO_KEY.match(key):
+        return None
+    base = cache if cache is not None else piano_cache_dir()
+    for p in (base / f"{key}.flac", base / PIANO_PADDED_DIR / f"{key}.flac"):
+        try:
+            real = p.resolve()
+            if real.is_file() and real.is_relative_to(base.resolve()):    # 3a: never outside the cache (symlinks)
+                return real
+        except OSError:
+            continue
+    return None
 
 
 def _chips_after(director: Any, cleared: list[str], nid: str) -> list:

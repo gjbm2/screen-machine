@@ -252,7 +252,8 @@ if mode == "error":
     sys.exit(1)
 if mode == "die":
     sys.exit(3)
-emit({"ev": "rendered", "path": "/nowhere.flac", "duration_s": dur, "onset_ms": 2.0, "cached": False, "render_s": 0.15})
+emit({"ev": "rendered", "path": os.environ.get("FAKE_PATH", "/nowhere.flac"), "duration_s": dur, "onset_ms": 2.0,
+      "cached": False, "render_s": 0.15})
 buf, until = b"", None
 while True:
     r, _, _ = select.select([0], [], [], 0.005)
@@ -270,10 +271,18 @@ while True:
         line, buf = buf.split(b"\n", 1)
         cmd = line.decode().strip()
         log({"cmd": cmd, "t": time.monotonic()})
-        if cmd == "play":
+        if cmd == "play" or cmd.startswith("play-sonos "):
+            if cmd != "play":
+                log({"sonos": json.loads(cmd[len("play-sonos "):])})
+                if os.environ.get("FAKE_WARN"):
+                    emit({"ev": "warning", "why": os.environ["FAKE_WARN"]})
             t_audio0 = time.monotonic() + start_in + pad
             log({"t_audio0": t_audio0})
             emit({"ev": "started", "t_audio0": t_audio0, "pad_s": pad, "startup_s": start_in})
+            if os.environ.get("FAKE_REBASE_S"):
+                t_audio0 += float(os.environ["FAKE_REBASE_S"])
+                log({"rebased": t_audio0})
+                emit({"ev": "rebase", "t_audio0": t_audio0, "was": t_audio0 - float(os.environ["FAKE_REBASE_S"])})
             until = t_audio0 + dur
         elif cmd == "stop":
             until = None
@@ -539,6 +548,83 @@ def test_main_exits_1_on_a_helper_error(tiny, tmp_path, helper, monkeypatch):
     p = _sender(tiny, status, "--once")
     assert p.wait(timeout=10) == 1
     assert json.loads(status.read_text())["error"] == "the instrument's samples are missing"
+
+
+# -- Play on Sonos ------------------------------------------------------------------------------------------------------
+KEY = "0123456789abcdef0123456789abcdef"
+
+
+def test_the_sonos_url_comes_from_sm_lan_host_in_env_and_the_rendered_key(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text("OTHER=1\nSM_LAN_HOST='10.9.8.7'\n")
+    monkeypatch.setattr(ss, "ENV_FILE", env)
+    monkeypatch.setenv("SM_LAN_HOST", "not-this-one")
+    assert ss.sonos_url(f"/c/renders/{KEY}.flac") == f"http://10.9.8.7:8700/show/api/v1/piano/audio/{KEY}.flac"
+    env.write_text("OTHER=1\n")
+    assert ss.lan_host() == "not-this-one"                                 # no .env line: the environment
+    monkeypatch.delenv("SM_LAN_HOST")
+    with pytest.raises(ss.HelperFailed, match="SM_LAN_HOST"):
+        ss.sonos_url(f"/c/{KEY}.flac")
+    with pytest.raises(ss.HelperFailed, match="serves"):
+        ss.sonos_url("/c/../etc.flac", host="h")
+    assert ss.piece_label("file:Jazz - Bill_Evans.mid") == "Jazz - Bill Evans"
+    assert ss.piece_label("/recs/20261022-140512-ab12.mid") == "20261022-140512-ab12"
+    a = ss.build_parser().parse_args(["--test-piano", "x", "--output", "sonos:drawing-room", "--title", "Nocturne"])
+    assert (a.output, a.title) == ("sonos:drawing-room", "Nocturne")
+    with pytest.raises(SystemExit):
+        ss.build_parser().parse_args(["--test-piano", "x", "--output", "sonos:a/b"])
+
+
+def test_rendered_on_sonos_play_sonos_url_title_pad_rebase_warning_and_once(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setattr(ss, "ENV_FILE", tmp_path / ".env")
+    (tmp_path / ".env").write_text("SM_LAN_HOST=192.0.2.5\n")
+    monkeypatch.setenv("FAKE_PATH", f"/cache/{KEY}.flac")
+    monkeypatch.setenv("FAKE_DUR", "0.8")
+    monkeypatch.setenv("FAKE_REBASE_S", "0.25")
+    monkeypatch.setenv("FAKE_WARN", "Sonos volume is 0")
+    stages = record_stages(monkeypatch)
+    status = tmp_path / "status.json"
+    out, stop = RecOut(), threading.Event()
+    rc = ss.run_test_piano(out, stop, str(tiny), True, instrument="concert-d", output="sonos:drawing-room",
+                           status_file=str(status), lead_ms=300, once=True, title="Tiny tune")
+    assert rc == 0
+    argv = helper.log()[0]["argv"]
+    assert argv[argv.index("--output") + 1] == "sonos:drawing-room"
+    assert argv[argv.index("--pad-s") + 1] == "0.750"                       # max(0.3 - 0 + 0.1, 0.75)
+    (cmd,) = [e["sonos"] for e in helper.log() if "sonos" in e]
+    assert cmd == {"url": f"http://192.0.2.5:8700/show/api/v1/piano/audio/{KEY}.flac", "title": "Piano: Tiny tune"}
+    assert helper.cmds()[0].startswith("play-sonos ") and helper.cmds()[-2:] == ["stop", "EOF"]
+    (rebased,) = [e["rebased"] for e in helper.log() if "rebased" in e]
+    check_timing(out.events(), EVENTS, rebased, 0.3)                       # the MIDI follows the rebased clock
+    assert ("playing", 0.0, "Sonos volume is 0") in stages                 # the warning, shown while it plays
+    assert stages[-1] == ("done", 1.0, None)
+
+
+def test_sonos_loops_by_playing_again_and_needs_a_lan_host(tiny, tmp_path, helper, monkeypatch):
+    monkeypatch.setattr(ss, "ENV_FILE", tmp_path / ".env")
+    (tmp_path / ".env").write_text("SM_LAN_HOST=192.0.2.5\n")
+    monkeypatch.setenv("FAKE_PATH", f"/cache/{KEY}.flac")
+    monkeypatch.setenv("FAKE_DUR", "0.7")
+    monkeypatch.setattr(ss, "LOOP_GAP_S", 0.1)
+    out, stop, rc = RecOut(), threading.Event(), []
+    th = threading.Thread(target=lambda: rc.append(ss.run_test_piano(
+        out, stop, str(tiny), True, instrument="concert-d", output="sonos:drawing-room",
+        status_file=str(tmp_path / "s.json"), lead_ms=200)))
+    th.start()
+    t_end = time.monotonic() + 10.0
+    while time.monotonic() < t_end and len(out.events()) < 2 * len(EVENTS):
+        time.sleep(0.02)
+    stop.set()
+    th.join(5.0)
+    assert rc == [0] and [c for c in helper.cmds() if c.startswith("play")][:2] == [helper.cmds()[0]] * 2
+    assert helper.cmds()[0].startswith("play-sonos ")
+    (tmp_path / ".env").write_text("")
+    monkeypatch.delenv("SM_LAN_HOST", raising=False)
+    status = tmp_path / "status.json"
+    rc = ss.run_test_piano(RecOut(), threading.Event(), str(tiny), True, instrument="concert-d",
+                           output="sonos:drawing-room", status_file=str(status), lead_ms=300, once=True)
+    doc = json.loads(status.read_text())
+    assert rc == 1 and doc["stage"] == "error" and "SM_LAN_HOST" in doc["error"]
 
 
 def test_module_load_imports_nothing_of_the_test_piano():

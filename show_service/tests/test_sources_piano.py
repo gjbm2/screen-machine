@@ -19,6 +19,7 @@ NEW_SENDER = """ap.add_argument("--test-piano")\nap.add_argument("--no-speaker")
 ap.add_argument("--output")\nap.add_argument("--status-file")\nap.add_argument("--lead-ms")\nap.add_argument("--once")
 """
 OLD_SENDER = """ap.add_argument("--test-piano")\nap.add_argument("--no-speaker")\n"""
+SONOS_SENDER = NEW_SENDER + """ap.add_argument("--title")\nSONOS_PREFIX = "sonos:"\n"""
 
 
 class Clock:
@@ -93,6 +94,7 @@ def lib(tmp_path):
     (tmp_path / "sf" / "salamander.sf2").write_bytes(b"RIFF")
     (tmp_path / "show_sender.py").write_text(NEW_SENDER)              # never run: the popen is fake
     (tmp_path / "old_sender.py").write_text(OLD_SENDER)
+    (tmp_path / "sonos_sender.py").write_text(SONOS_SENDER)
     return tmp_path
 
 
@@ -107,6 +109,7 @@ def instruments(lib, **extra) -> None:
 
 
 def make(lib, *, seam: bool = True, script: str = "show_sender.py", **piano):
+    """A Sources on tmp files only (instruments.json, sonos.json: lib's)."""
     clock = Clock()
     health = Health(clock)
     popen = Popen()
@@ -114,7 +117,8 @@ def make(lib, *, seam: bool = True, script: str = "show_sender.py", **piano):
     ctx = BrainContext(publish=lambda m: None, set_senders=lambda s: None, set_priority=lambda p: None, health=health)
     src = sources.Sources(ctx, python=PY, piano_script=lib / script, log_dir=lib / "state", clock=clock, popen=popen,
                           pdeath=False, instruments_file=lib / "instruments.json", recordings_dir=lib / "recs",
-                          set_offset=(lambda s, ms: offsets.append((s, ms))) if seam else None)
+                          set_offset=(lambda s, ms: offsets.append((s, ms))) if seam else None,
+                          sonos_file=lib / "sonos.json")
     src.configure(settings(lib, **piano))
     src.start()
     return types.SimpleNamespace(src=src, clock=clock, health=health, popen=popen, offsets=offsets)
@@ -292,6 +296,72 @@ def test_a_stop_and_a_failure_remove_the_offset_and_say_why(lib):
     r.src.tick(0.0)
     assert r.src.status()["piano"]["state"] == "failed"
     r.src.stop()
+
+
+# -- Play on Sonos --------------------------------------------------------------------------------------------------------------
+def sonos_json(lib, **zones) -> None:
+    (lib / "sonos.json").write_text(json.dumps({"_comment": "test", "zones": zones or {
+        "drawing-room": {"room": "Drawing Room", "ip": "192.0.2.17"}}}))
+
+
+def test_sonos_zones_are_outputs_for_a_sender_that_plays_on_sonos(lib):
+    instruments(lib)
+    sonos_json(lib, **{"drawing-room": {"room": "Drawing Room", "ip": "192.0.2.17"}, "bad zone": {"ip": "x"},
+                       "study": {"ip": "192.0.2.18"}})
+    r = make(lib, script="sonos_sender.py")
+    assert r.src.choices()["outputs"] == [{"id": "pc22", "label": "PC22 speakers"},
+                                          {"id": "none", "label": "Screens only"},
+                                          {"id": "sonos:drawing-room", "label": "Sonos (Drawing Room)"},
+                                          {"id": "sonos:study", "label": "Sonos (study)"}]
+    r.src.tick(0.0)
+    assert any("bad zone" in e for e in r.src.snapshot()["errors"])
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    assert r.popen.argv == today(lib, script="sonos_sender.py") + [
+        "--instrument", "salamander", "--output", "sonos:drawing-room", "--status-file",
+        str(lib / "state" / "test-piano.status.json"), "--title", "Nocturne", "--lead-ms", "650"]
+    assert st["output"] == "sonos:drawing-room" and r.offsets == [("test-piano", 650.0)]     # the offset applies
+    with pytest.raises(ValueError, match="unknown_output"):
+        r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:kitchen")
+    r.src.stop()
+
+
+def test_the_windows_synth_asked_for_on_sonos_plays_on_pc22_and_says_so(lib):
+    instruments(lib)
+    sonos_json(lib)
+    r = make(lib, script="sonos_sender.py")
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs", output="sonos:drawing-room")
+    assert r.popen.argv == today(lib, script="sonos_sender.py") and st["output"] == "pc22"
+    assert st["error"] == sources.LIVE_ON_SONOS and r.offsets == []
+    r.src.stop()
+
+
+def test_no_sonos_without_the_senders_flags_a_rendered_sound_or_the_file(lib):
+    instruments(lib)
+    sonos_json(lib)
+    r = make(lib)                                                     # a show_sender without "sonos:"/--title
+    assert [o["id"] for o in r.src.choices()["outputs"]] == ["pc22", "none"]
+    with pytest.raises(ValueError, match="unknown_output"):
+        r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    r.src.stop()
+    (lib / "instruments.json").unlink()                               # the Windows synth alone: nothing to render
+    q = make(lib, script="sonos_sender.py")
+    assert [o["id"] for o in q.src.choices()["outputs"]] == ["pc22", "none"]
+    q.src.stop()
+    instruments(lib)
+    (lib / "sonos.json").unlink()
+    z = make(lib, script="sonos_sender.py")
+    assert [o["id"] for o in z.src.choices()["outputs"]] == ["pc22", "none"]
+    z.src.tick(0.0)
+    assert not any("sonos" in e for e in z.src.snapshot()["errors"])
+    (lib / "sonos.json").write_text("{nope")
+    z.clock.t += 5.0
+    assert [o["id"] for o in z.src.choices()["outputs"]] == ["pc22", "none"]
+    z.src.tick(0.0)
+    assert any("sonos.json" in e for e in z.src.snapshot()["errors"])
+    sonos_json(lib)
+    z.clock.t += 5.0                                                  # re-read: no restart needed
+    assert [o["id"] for o in z.src.choices()["outputs"]][-1] == "sonos:drawing-room"
+    z.src.stop()
 
 
 # -- recordings as pieces -------------------------------------------------------------------------------------------------------
