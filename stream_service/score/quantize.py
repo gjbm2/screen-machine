@@ -139,6 +139,8 @@ class Bar:
     beats: int = BEATS                             # the metre: beats per bar ...
     unit: int = GRID                               # ... and 16ths per beat (4 simple, 6 compound)
     pos: int = 0                                   # the bar's number in its phrase from 0 (a rewrite restarts it)
+    onsets: dict = field(default_factory=dict)     # note id -> its onset (bus clock), so every screen, joined late
+                                                   # or not, places a written note at the same time
 
     @property
     def units(self) -> int:
@@ -781,18 +783,25 @@ class ScoreBuilder:
             lo_t = tl.time(self.next_bar * self.beats)
             if not any(n.t_off is None or n.t_off > lo_t for n in self.notes):
                 break           # trailing rests wait: a later note makes them real, the phrase's end drops them
-            out.append(self._build(self.next_bar, now, tl))
+            out.append(self._onsets_of(self._build(self.next_bar, now, tl)))
             self.next_bar += 1
         if self._silent(now):
             last = max((max(self._q(tl.beat(n.t_off)), self._q(tl.beat(n.t_on)) + 1)   # a note on the last bar line
                         for n in self.notes if n.t_off is not None), default=0)
             while self.next_bar * self.bar_units < last:
-                out.append(self._build(self.next_bar, now, tl))
+                out.append(self._onsets_of(self._build(self.next_bar, now, tl)))
                 self.next_bar += 1
             out.append(Bar(index=0, staves=([], []), t_start=now, t_end=now, phrase_end=True, empty=True,
                            marker=True, beats=self.beats, unit=self.unit))
             self._restart()
         return out
+
+    def _onsets_of(self, bar: Bar) -> Bar:
+        """The bar with its notes' onset times (span: room scenes place notes by them)."""
+        ids = {i for st in bar.staves for e in st for i in e.ids}
+        if ids:
+            bar.onsets = {n.id: n.t_on for n in self.notes if n.id in ids}
+        return bar
 
     def _silent(self, now: float) -> bool:
         return (self.last_event_t is not None and now - self.last_event_t > SILENCE_S
