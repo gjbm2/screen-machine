@@ -37,7 +37,7 @@ import {
 } from "./liveLib";
 import { ActionSheet } from "./overlays";
 import { Chip, Picker } from "./Picker";
-import { clearEffects, effectSlots, isPicked, pickEffect, type LiveMember } from "./roomFx";
+import { clearEffects, effectSlots, isPicked, ownStack, pickEffect, type LiveMember } from "./roomFx";
 import { THEME_CLASS } from "./theme";
 import { Thumb } from "./Thumb";
 import type { AutoBlock, Direction, Library, Look } from "./types";
@@ -824,7 +824,7 @@ export function LookControls({
   const both = bothWords(shared);
   const auto = look.auto ?? null;
   const fxOn = !!auto?.fx?.enabled;
-  const stack = look.fx?.stack ?? [];
+  const stack = ownStack(look.fx?.stack);
   const max = effectSlots(lib);
   const picks = stack.filter(isPicked).length;
   const amount = lv.masterDraft ?? (typeof look.fx?.master?.amount === "number" ? (look.fx.master.amount as number) : 1);
