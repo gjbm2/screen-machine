@@ -2559,6 +2559,9 @@ class Session(EngineListener):
             "slow_trips": self.slow_trips, "gpu_guard": e.get("gpu_guard"),
             # change 5: the degradation controller {level, step, why, since, text, out_fps, ...} (degrade.py)
             "degrade": e.get("degrade") or self.degrade,
+            # the room ensemble: this screen's (k, n) across the live screens (ensemble.segment), else None
+            "segment": list(self.runtime.extra["segment"]) if isinstance((self.runtime.extra or {}).get("segment"),
+                                                                         (list, tuple)) else None,
         }
 
     def snapshot_events(self) -> list[dict]:
