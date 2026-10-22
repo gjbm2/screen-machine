@@ -1661,17 +1661,18 @@ def test_room_why_is_the_cards_words_in_short():
                            "director": {"last_look": {"why": "a new section", "age_s": 12.4}}}}
     card_body = {"auto": {"on": True, "line": "Auto · Gallery" + "x" * 200},
                  "listening": {"on": True, "effective": False, "why": "Auto is off"},
-                 "mic_state": {"on": False, "why": "Off: nothing needs it"}}
+                 "mic_state": {"on": False, "why": "Off: nothing needs it"},
+                 "look": {"together": "Playing together: echo, left to right"}}
     w = A.why_of(snap, card_body, wall_ms=1000.0)
     assert set(w) == set(c.WhyData.__annotations__)
     assert w["auto"]["last"] == "Piano -> Gallery: the piano has stopped"
     assert len(w["auto"]["line"]) == c.WHY_TEXT_MAX
     assert w["listening"] == {"on": True, "effective": False, "why": "Auto is off"}
     assert w["mic"] == {"on": False, "why": "Off: nothing needs it"}
-    assert w["look"] == {"why": "a new section", "age_s": 12}
+    assert w["look"] == {"why": "a new section", "age_s": 12, "together": "Playing together: echo, left to right"}
     assert c.ROOM_WHY in c.WANT_ONLY_STAGE5
     w = A.why_of(None, None, wall_ms=0.0)                            # nothing yet: still the shape
-    assert w["auto"]["last"] is None and w["look"]["why"] is None
+    assert w["auto"]["last"] is None and w["look"]["why"] is None and w["look"]["together"] is None
 
 
 # -- README S5.23: the Lights page's routes ----------------------------------------------------------------------------

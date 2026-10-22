@@ -405,7 +405,8 @@ def why_of(brain_snapshot: Optional[dict], card_body: Optional[dict], *, wall_ms
                           "why": None if li.get("effective") else _cut(li.get("why"))},
             "mic": {"on": bool(ms.get("on")), "why": _cut(ms.get("why"))},
             "look": {"why": _cut(lk.get("why")),
-                     "age_s": int(lk["age_s"]) if isinstance(lk.get("age_s"), (int, float)) else None}}
+                     "age_s": int(lk["age_s"]) if isinstance(lk.get("age_s"), (int, float)) else None,
+                     "together": _cut(_d(cb.get("look")).get("together"))}}   # docs/ENSEMBLE.md §8 item 8 (ff's HUD)
 
 
 def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Optional[dict] = None) -> dict:
