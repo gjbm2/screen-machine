@@ -22,6 +22,7 @@ Three regions of a phrase, all on the same x:
 """
 from __future__ import annotations
 
+import bisect
 import math
 from dataclasses import dataclass, field
 from typing import Optional
@@ -115,10 +116,15 @@ class Out:
 
 class Spacer:
     """Columns in slot order -> x (sp), pushing where marks would collide; resumable (the written bars' state is
-    kept and the provisional region continues from it)."""
+    kept and the provisional region continues from it).
 
-    def __init__(self, q0: float, units: Optional[int], Q: float = Q16) -> None:
+    With its layout's ``warp`` (slots, x, tail width: a monotone piecewise-linear map through where the phrase's
+    notes are drawn now, refitted when the reading changes) a slot's x is the warp's, and a push is local: it moves
+    the colliding column only, so nothing anchored after it moves."""
+
+    def __init__(self, q0: float, units: Optional[int], Q: float = Q16, owner=None) -> None:
         self.q0, self.units, self.Q = q0, units, Q
+        self.owner = owner
         self.push = 0.0
         self.edge = [-1e9, -1e9]                    # per staff: the last mark's right edge
         self.edge_slot = [None, None]
@@ -126,7 +132,7 @@ class Spacer:
         self.first_left: Optional[float] = None
 
     def copy(self) -> "Spacer":
-        s = Spacer(self.q0, self.units, self.Q)
+        s = Spacer(self.q0, self.units, self.Q, self.owner)
         s.push, s.edge, s.edge_slot, s.last_x = self.push, list(self.edge), list(self.edge_slot), self.last_x
         s.first_left = self.first_left
         return s
@@ -136,8 +142,24 @@ class Spacer:
             return 0
         return int(math.floor((p + 1e-6) / self.units)) - int(math.floor((self.q0 + 1e-6) / self.units))
 
+    def warp(self):
+        return None if self.owner is None else self.owner.warp
+
+    def W(self, p: float) -> float:
+        """A slot's x without the bar gaps: the warp's, else proportional from the phrase's first note."""
+        w = self.warp()
+        if w is None:
+            return (p - self.q0) * self.Q
+        ws, wx, qt = w
+        if p >= ws[-1]:
+            return wx[-1] + (p - ws[-1]) * qt
+        if p <= ws[0]:
+            return wx[0] + (p - ws[0]) * qt
+        j = bisect.bisect_right(ws, p) - 1
+        return wx[j] + (wx[j + 1] - wx[j]) * (p - ws[j]) / (ws[j + 1] - ws[j])
+
     def base(self, p: float) -> float:
-        return (p - self.q0) * self.Q + BAR_G * self.nb(p)
+        return self.W(p) + BAR_G * self.nb(p)
 
     def place(self, p: float, ext: dict) -> float:
         """A column at slot p with {staff: (left, right)} -> its x."""
@@ -152,8 +174,9 @@ class Spacer:
                 room = BL_SPACE
             need = max(need, self.edge[st] + room + left - x)
         if need > 0.0:
-            self.push += need
-            x += need
+            if self.warp() is None:
+                self.push += need                       # proportional: what follows moves on with it
+            x += need                                   # warped: only this column moves
         for st, (_left, right) in ext.items():
             self.edge[st] = max(self.edge[st], x + right)
             self.edge_slot[st] = p
@@ -267,10 +290,17 @@ class PhraseLayout:
         self.last_out: Optional[Out] = None
         self.first_left = 0.0
         self.prov_push = 0.0
+        self.warp = None                           # (slots, x, tail width): see Spacer
+        self.warp_ver = 0
+        self.slot_of: dict = {}                    # nid -> the 16th its first piece was last laid out at
+        self.side_of: dict = {}                    # nid -> its head's offset from its column (sp)
+        self.written_slot: dict = {}               # nid -> its written 16th
+        self._final = False
 
     # -- written bars ------------------------------------------------------------------------------------------------
     def reset_written(self) -> None:
         self.bars_written = []
+        self.written_slot = {}
         self.touts = {}
         self.written_keys = set()
         self.written = Out()
@@ -285,7 +315,7 @@ class PhraseLayout:
             self.units, self.unit, self.beats = bar.units, bar.unit, bar.beats
             self.q0 = q0
             self.fifths = fifths
-            self.wspacer = Spacer(q0, bar.units, self.Q)
+            self.wspacer = Spacer(q0, bar.units, self.Q, self)
         one = Out()
         self.bars_written.append(bar)
         self._bars([(bar.pos, bar.staves)], one, self.wspacer, self.pieces, rests=True, beams=True, final=True,
@@ -331,7 +361,7 @@ class PhraseLayout:
             fifths = self.fifths
         else:
             self.q0, self.units, self.unit, self.beats = q0, units, unit, beats
-            sp = Spacer(q0, units, self.Q)
+            sp = Spacer(q0, units, self.Q, self)
         if bars:
             self._bars(bars, out, sp, pieces, rests=False, beams=True, final=False, fifths=fifths, touts=touts)
         if open_chords:
@@ -359,6 +389,7 @@ class PhraseLayout:
         f = 0 if f is None else f
         sig = mei.signature(f)
         U = self.unit
+        self._final = final
         units = sp.units
         q0 = sp.q0
         memo = None if final else self.__dict__.setdefault("memo", {})
@@ -367,7 +398,7 @@ class PhraseLayout:
             if memo is not None:
                 # a bar laid out before, from the same events and the same state, is the same: reuse it
                 ids = sorted({i for st in staves for e in st for i in e.ids})
-                mkey = (k, units, U, self.Q, f, rests,
+                mkey = (k, units, U, self.Q, self.warp_ver, f, rests,
                        tuple(tuple((e.start, e.dur, tuple(e.pitches), tuple(e.ids), tuple(e.tie_in), tuple(e.tie_out))
                                    for e in st) for st in staves),
                        (sp.q0, sp.push, tuple(sp.edge), tuple(sp.edge_slot), sp.first_left),
@@ -385,6 +416,9 @@ class PhraseLayout:
                     pieces.update(p_upd)
                     if touts is not None:
                         touts.update(t_upd)
+                    for key_ in bar_out.heads:
+                        if key_[3] == 0:
+                            self.slot_of[key_[2]] = bar_out.heads[key_][10]
                     continue
                 p_before = {i: pieces.get(i) for i in ids}
                 dest, out_main = Out(), out
@@ -480,6 +514,7 @@ class PhraseLayout:
             spell_chord(ch, [p for p, _ in notes], fifths, sig, states[st])
             finish_chord(ch)
             cols.setdefault(slot, []).append(ch)
+        self._final = False
         self._place(cols, out, sp, None, None)
 
     def _beam(self, g: list, out: Out) -> None:
@@ -563,7 +598,12 @@ class PhraseLayout:
                 on_line = (TOP_D[st] - h[2]) % 2 == 0
                 dot_col = x + hw + right * (hw - 0.06) + DOT_GAP
                 dot = (dot_col - hx, -0.5 if on_line else 0.0)
-            out.heads[key] = (hx, y, glyph, st, nid, piece, acc, acc_dx - h[5] * (hw - 0.06), dot, st)
+            out.heads[key] = (hx, y, glyph, st, nid, piece, acc, acc_dx - h[5] * (hw - 0.06), dot, st, ch.slot)
+            if piece == 0:
+                self.slot_of[nid] = ch.slot
+                self.side_of[nid] = hx - x                 # a head beside the stem (a second): off its column
+                if self._final:
+                    self.written_slot[nid] = ch.slot
             if tin and piece > 0 and (touts is None or touts.get((nid, piece - 1))):
                 up_tie = self._tie_up(ch, i)
                 out.ties[("t", s, nid, piece)] = (("h", s, nid, piece - 1), key, up_tie)

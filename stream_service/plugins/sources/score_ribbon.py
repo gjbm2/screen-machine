@@ -57,11 +57,8 @@ from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
-try:                                               # deployed: the helpers in stream_service/score
-    from stream_service.score import (ribbon_glyphs as RG, ribbon_kernel as RK, ribbon_layout as RL,
-                                      ribbon_paint as RP, ribbon_rec as RR, ribbon_stage as RS)
-except ImportError:                                # the scratch layout: the helpers next to this file
-    _HERE = pathlib.Path(__file__).resolve().parent
+_HERE = pathlib.Path(__file__).resolve().parent
+if (_HERE / "ribbon_layout.py").exists():          # scratch and tests: the helpers next to this file
     if str(_HERE) not in sys.path:
         sys.path.insert(0, str(_HERE))
     import ribbon_glyphs as RG  # noqa: E402
@@ -70,6 +67,9 @@ except ImportError:                                # the scratch layout: the hel
     import ribbon_paint as RP  # noqa: E402
     import ribbon_rec as RR  # noqa: E402
     import ribbon_stage as RS  # noqa: E402
+else:                                              # deployed: the helpers in stream_service/score
+    from stream_service.score import (ribbon_glyphs as RG, ribbon_kernel as RK, ribbon_layout as RL,
+                                      ribbon_paint as RP, ribbon_rec as RR, ribbon_stage as RS)
 
 log = logging.getLogger("stream_service.plugins.score_ribbon")
 
@@ -84,6 +84,8 @@ AHEAD_BEATS = 2.0                  # with nothing sounding the paper runs on at 
 PHRASE_GAP_SP = 6.0                # between a phrase's last mark and the next one's first (plus its signature)
 FRESH_S, REL_TAU = 0.6, 0.6        # a note's halo fades over this; its colour cools after release with this tau
 Q_MIN, Q_MAX = 1.35, 4.0           # a 16th's width (sp): no tighter than heads allow, no wider than shows enough music
+WARP_MIN = 0.6                     # a re-read may squeeze drawn notes to this many sp a 16th (pushes keep them apart)
+WARP_TAIL = 12.0                   # new notes go on at the slope of the last this many 16ths drawn
 
 
 class _Note:
@@ -107,6 +109,7 @@ class _Phrase:
         self.mapkey = None
         self.mapver = 0
         self.Q = None                               # a 16th's width (sp), set as each new clock takes over
+        self.warp_dirty = True                      # the reading changed: refit the warp before the next layout
         self.q_mode = None
         self.fifths = None                          # frozen at the first written bar
         self.meter = None
@@ -302,6 +305,7 @@ class ScoreRibbon(Source):
                     self.regrid = True
                 ph.mapkey = key
                 ph.mapver += 1
+                ph.warp_dirty = True
                 changed = True
         if changed:
             self.dirty = True
@@ -363,6 +367,16 @@ class ScoreRibbon(Source):
             if ph.fifths is None:
                 ph.fifths = self._fifths()
             ph.meter = bar.meter
+        ov = {}
+        for bb in getattr(self, "_batch", None) or [bar]:        # this bar's notes at their written 16ths
+            if bb.marker:
+                break
+            for st_ in bb.staves:
+                for e in st_:
+                    for i_, tin in zip(e.ids, e.tie_in):
+                        if not tin and i_ not in ov:
+                            ov[i_] = bb.pos * bb.units + e.start
+        self._fit_warp(ph, ov, q0 if pl.wbars == 0 else pl.q0, bar.units)
         out = pl.write(bar, ph.fifths, q0 if pl.wbars == 0 else pl.q0)
         self.stats["bars"] += 1
         self._event("bar", {"serial": ph.serial, "pos": bar.pos, "t_start": bar.t_start, "t_end": bar.t_end,
@@ -452,13 +466,66 @@ class ScoreRibbon(Source):
         if b.grid is not None or b.clock.running:
             _m, qf, _c, _u = self._slot_fn(ph)
             pairs += [(n.id, float(qf(n.t_on))) for n in b.notes if n.id in ph.notes and n.id not in seen]
-        old = ph.Q
-        self._set_q(ph, ph.q_mode, pairs, pl.q0, pl.units, (ph.Q or 1.65) / max(self.pace, 1e-3))
-        if old and abs(ph.Q - old) > 0.01 * old:
+        if self._fit_warp(ph, dict(pairs), pl.q0, pl.units):
             out = pl.rewrite_all(ph.fifths if ph.fifths is not None else 0, pl.q0)
             self._note_info_sync(ph, out, final=True)
             ph.end_x = max(ph.end_x, pl.written.end_x)
             self.dirty_now = True
+
+    def _fit_warp(self, ph: _Phrase, override: dict, q0: float, units) -> bool:
+        """The phrase's warp: each note drawn so far anchored where it is drawn now, at its 16th under the newest
+        reading (``override``: nid -> 16th; else its written 16th).  A rewrite, a
+        better clock or a re-read then moves the bar lines, beams and values around the notes, not the notes (only
+        those whose order changed: a note re-read past its neighbours, two that became a chord).  New notes go on
+        from the last ones at their recent width.  False (no warp yet) with fewer than two notes drawn."""
+        ph.warp_dirty = False
+        pl = ph.pl
+        Hd = self.stage.T["heads"]
+        xr = self.stage.x_ref - ph.A
+        sp = self.sp
+        pts = []
+        ser = ph.serial
+        ws_ = pl.written_slot
+        # only 16ths of the newest reading (the override, else written): a note it hasn't placed yet keeps its
+        # place until it does
+        for nid, slot in list(override.items()) + [(k, v) for k, v in ws_.items() if k not in override]:
+            i = Hd.idx.get(("h", ser, nid, 0))
+            if i is None or Hd.dying[i]:
+                continue
+            x = (float(Hd.a[i, RS.H_X1]) + xr) / sp - pl.side_of.get(nid, 0.0)     # its column, not its head
+            if units:
+                x -= RL.BAR_G * (math.floor((slot + 1e-6) / units) - math.floor((q0 + 1e-6) / units))
+            pts.append((float(slot), x))
+        if len(pts) < 2:
+            return False
+        pts.sort()
+        ws, wx, cnt = [], [], []
+        for sl, x in pts:                                      # one point a 16th (a chord: its mean)
+            if ws and abs(sl - ws[-1]) < 1e-6:
+                cnt[-1] += 1
+                wx[-1] += (x - wx[-1]) / cnt[-1]
+            else:
+                ws.append(sl)
+                wx.append(x)
+                cnt.append(1)
+        for k in range(1, len(ws)):                            # monotone, never squeezed past WARP_MIN
+            wx[k] = max(wx[k], wx[k - 1] + WARP_MIN * (ws[k] - ws[k - 1]))
+        qt = None
+        for k in range(len(ws) - 2, -1, -1):
+            if ws[-1] - ws[k] >= WARP_TAIL:
+                qt = (wx[-1] - wx[k]) / (ws[-1] - ws[k])
+                break
+        if qt is None:
+            qt = ph.Q or self.Q
+        qt = min(Q_MAX, max(Q_MIN, qt))
+        if len(ws) < 2:
+            return False
+        pl.warp = (ws, wx, qt)
+        pl.warp_ver += 1
+        ph.Q = pl.Q = qt
+        self.regrid = True
+        self._event("warp", {"n": len(ws), "Q": qt})
+        return True
 
     def _set_q(self, ph: _Phrase, qkey: tuple, pairs: list, q0: float, units, d: float) -> None:
         """A 16th's width for a new mapping (a better clock, a turned metre, a rewrite): the width that moves the
@@ -512,6 +579,11 @@ class ScoreRibbon(Source):
         # phrase keeps the paper's pace, so the notes stay about where they are (the grid often counts the beat at
         # half or twice the clock's rate: the notes would all slide two-fold)
         qkey = (mode, b.beats * b.unit if b.grid is not None else 16, b.unit if b.grid is not None else 4)
+        if ph.warp_dirty or qkey != ph.q_mode:
+            units_l = (b.beats * b.unit if b.grid is not None else 16) if metred and mode != "free" else None
+            if self._fit_warp(ph, {n.id: float(qf(n.t_on)) for n in notes if n.id not in pl.written_slot}, q0,
+                              units_l):
+                ph.q_mode = qkey
         if pl.wspacer is None and qkey != ph.q_mode:
             if mode == "free":
                 d = ph.slot_s
