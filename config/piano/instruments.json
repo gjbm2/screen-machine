@@ -48,7 +48,7 @@
       "file": "bitklavier-grand/bitKlavierGrand.sfz",
       "order": 10,
       "velocity_gamma": 1.0,
-      "gain_db": 11.8,
+      "gain_db": 12.2,
       "onset_ms": 1.8,
       "room": "recital",
       "width": 1.0,
@@ -73,7 +73,9 @@
       "detune_cents": [],
       "eq": [],
       "fetch": {"url": "https://archive.org/download/httpswww.ir.isas.jaxa.jpcyamauchaccuratesalamander/AccurateSalamanderGrandPianoV6.2a_48khz24bit_flac.zip", "sha256": "20f880fec714716a68173d5b15c7f99e88e59e3b0290c603a972ff3a3800b388", "bytes": 784289077, "unpack": "zip", "subdir": "accurate-salamander", "post": "sfz-wrap",
-                "wrap": {"base": "sfz_live/Accurate-SalamanderGrandPiano_flat.Recommended.sfz", "out": "sfz_live/Accurate-SalamanderGrandPiano_flat.Recommended.screen-machine.sfz", "set_cc": {"20": 127, "21": 127, "22": 127, "23": 127}, "note": "the recommended flat sfz_live set with its sampled release, hammer noise, pedal noise and pedal resonance on at their recorded level (CC20-23 = 127, the author's recommended CC23 for Accurate; off by default)"}},
+                "wrap": {"base": "sfz_live/Accurate-SalamanderGrandPiano_flat.Recommended.sfz", "out": "sfz_live/Accurate-SalamanderGrandPiano_flat.Recommended.screen-machine.sfz", "set_cc": {"20": 127, "21": 127, "22": 127, "23": 127},
+                         "replace": [{"old": "pedalD1.flac lorand=0 hirand=0.5\n", "new": "pedalD1.flac lorand=0 hirand=0.5 volume=-50.1\n", "count": 1}, {"old": "pedalD2.flac lorand=0.5 hirand=1\n", "new": "pedalD2.flac lorand=0.5 hirand=1 volume=-44.3\n", "count": 1}, {"old": "pedalU1.flac lorand=0 hirand=0.5\n", "new": "pedalU1.flac lorand=0 hirand=0.5 volume=-49.6\n", "count": 1}, {"old": "pedalU2.flac lorand=0.5 hirand=1\n", "new": "pedalU2.flac lorand=0.5 hirand=1 volume=-43.3\n", "count": 1}],
+                         "note": "the recommended flat sfz_live set with its sampled release, hammer noise, pedal noise and pedal resonance on at their recorded level (CC20-23 = 127, the author's recommended CC23 for Accurate; off by default); each pedal-noise take gets its own volume, 38 dB under the C4 velocity-64 note through sfizz (measured 22 Oct: down -26.9/-32.7, up -33.4/-39.7)"}},
       "credit": "Accurate-Salamander Grand Piano V6.2a by Chisato Yamauchi: a retuned, level-matched remaster of Alexander Holm's Salamander Grand Piano V3 (Yamaha C5), 16 velocity layers every minor third, hammer and string-resonance release samples, half pedal, pedal noise; sfz_live set, flat voicing, 48 kHz/24-bit FLAC. CC-BY."
     },
     "bright-cf3": {
@@ -90,7 +92,21 @@
       "detune_cents": [],
       "eq": [],
       "fetch": {"url": "https://github.com/sfzinstruments/MatsHelgesson.MaestroConcertGrandPiano/archive/717078b450eccc4a7733755f4b5973426ebc23e9.zip", "sha256": "2507c213538b850889bea4fbd90ca2a54abcc32d6a42febae53b81df1f677264", "bytes": 262207432, "unpack": "zip", "strip": 1, "subdir": "maestro-cf3", "post": "sfz-wrap",
-                "wrap": {"base": "Maestro Concert Grand.sfz", "out": "Maestro Concert Grand.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "note_polyphony=1\noff_time=0.5\n\n<master>\n#include \"Data/group.txt\"", "new": "off_time=0.5\n\n<master> note_polyphony=1\n#include \"Data/group.txt\"", "count": 1}], "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); note_polyphony=1 moved from <global> to the main notes' <master> (on the release samples too, sfizz 1.2.3 left voices hanging at -94 dBFS after pedalled passages, so renders ran to the 30 s tail cap)"}},
+                "wrap": {"base": "Maestro Concert Grand.sfz", "out": "Maestro Concert Grand.screen-machine.sfz", "global": "sustain_lo=64", "inline": ["Data/effect.txt"],
+                         "replace": [{"old": "note_polyphony=1\noff_time=0.5\n\n<master>\n#include \"Data/group.txt\"", "new": "off_time=0.5\n\n<master> note_polyphony=1\n#include \"Data/group.txt\"", "count": 1},
+                                     {"old": "sample=mcg_e_spr_mf.$EXT\n", "new": "sample=mcg_e_spr_mf.$EXT volume=1.4\n", "count": 1},
+                                     {"old": "sample=mcg_e_spr_f.$EXT\n", "new": "sample=mcg_e_spr_f.$EXT volume=0.2\n", "count": 1},
+                                     {"old": "sample=mcg_e_sp_mf.$EXT\n", "new": "sample=mcg_e_sp_mf.$EXT volume=-15.8\n", "count": 1},
+                                     {"old": "sample=mcg_e_sp_f.$EXT\n", "new": "sample=mcg_e_sp_f.$EXT volume=-14.8\n", "count": 1},
+                                     {"old": "sample=mcg_e_mpr_mf.$EXT\n", "new": "sample=mcg_e_mpr_mf.$EXT volume=4.7\n", "count": 1},
+                                     {"old": "sample=mcg_e_mpr_f.$EXT\n", "new": "sample=mcg_e_mpr_f.$EXT volume=1.1\n", "count": 1},
+                                     {"old": "sample=mcg_e_mp_mf.$EXT\n", "new": "sample=mcg_e_mp_mf.$EXT volume=-4.7\n", "count": 1},
+                                     {"old": "sample=mcg_e_mp_f.$EXT\n", "new": "sample=mcg_e_mp_f.$EXT volume=-7\n", "count": 1},
+                                     {"old": "sample=mcg_e_lc_mf.$EXT\n", "new": "sample=mcg_e_lc_mf.$EXT volume=-23.8\n", "count": 1},
+                                     {"old": "sample=mcg_e_lc_f.$EXT\n", "new": "sample=mcg_e_lc_f.$EXT volume=-13.6\n", "count": 1},
+                                     {"old": "sample=mcg_e_lo_mf.$EXT\n", "new": "sample=mcg_e_lo_mf.$EXT volume=-34.9\n", "count": 1},
+                                     {"old": "sample=mcg_e_lo_f.$EXT\n", "new": "sample=mcg_e_lo_f.$EXT volume=-32.8\n", "count": 1}],
+                         "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); note_polyphony=1 moved from <global> to the main notes' <master> (on the release samples too, sfizz 1.2.3 left voices hanging at -94 dBFS after pedalled passages, so renders ran to the 30 s tail cap); the pedal and lid noises (Data/effect.txt, inlined) get a volume per take, 38 dB under the C4 velocity-64 note through sfizz (measured 22 Oct: sustain down -23.3/-22.2, up -38.2/-39.4; sostenuto down -31.1/-33.4, up -42.7/-39.1; the lid noise this SFZ plays on the soft pedal, CC67: open -5.2/-3.1, close -24.5/-14.2)"}},
       "credit": "Maestro Concert Grand by Mats Helgesson (2003): an early-1990s Yamaha CF-3 sampled on every key, 5 velocity layers, Neumann KM84 X/Y pair, pedal up/down noise; SFZ by sfzinstruments. Free to use, not to sell or redistribute modified (mcgreadme.txt)."
     },
     "steinway-b": {
@@ -109,7 +125,7 @@
       "fetch": {"url": "https://versilian-studios.com/Distro/VCSL_Keys.zip", "sha256": "2e91c9aa7b16d936f035963149df1fe4cbd65911116fb3e3ea6daca52e92024b", "bytes": 655370475, "unpack": "zip", "subdir": "vcsl-keys", "post": "sfz-wrap",
                 "wrap": [{"base": "Grand Piano, S Model B 1895.sfz", "out": "Grand Piano, S Model B 1895.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
                          {"base": "Upright Piano, Y.sfz", "out": "Upright Piano, Y.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
-                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"}]},
+                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "//rt_decay=2\n", "new": "rt_decay=6\n", "count": 1}], "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); the release samples lose 6 dB per second the key was down (the library's own rt_decay line, commented out, switched on): held back to the pedal lift, 8 of them came in 23 dB above the decayed notes (measured 22 Oct)"}]},
       "credit": "VCSL Keys by Versilian Studios (Sam Gossner): an 1895 Steinway Model B, close mics, 3 velocity layers about every second key, separate pedal-down and pedal-up samples, release samples. CC0."
     },
     "vintage-grand": {
@@ -160,7 +176,12 @@
       "detune_cents": [],
       "eq": [],
       "fetch": {"url": "https://archive.org/download/K18UprightPiano/K18-Upright-Piano.tar.xz", "sha256": "8a64d2543ce4a7ced4517a6f057e019f987f6d92598105237f555a5a1f90e5d6", "bytes": 424364716, "unpack": "tar", "subdir": "k18-upright", "post": "sfz-wrap",
-                "wrap": {"base": "K18-Upright-Piano.sfz", "out": "K18-Upright-Piano.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "lokey=-1 ", "new": "lokey=-1 hikey=-1 ", "count": 2}, {"old": "trigger=release polyphony=1 ", "new": "trigger=release ", "count": 30}], "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); the two pedal-noise groups get hikey=-1 (they set lokey=-1 only, so sfizz also played pedal.on.wav on every key); the 30 key-release groups lose polyphony=1 (with it, sfizz 1.2.3 left release voices hanging at about -100 dBFS after pedalled passages, so renders ran to the 30 s tail cap)"}},
+                "wrap": {"base": "K18-Upright-Piano.sfz", "out": "K18-Upright-Piano.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "lokey=-1 ", "new": "lokey=-1 hikey=-1 ", "count": 2},
+                                     {"old": "trigger=release polyphony=1 volume=-3", "new": "trigger=release volume=4.9", "count": 30},
+                                     {"old": "pitch_keytrack=0 amp_veltrack=50", "new": "pitch_keytrack=0 amp_veltrack=100", "count": 30},
+                                     {"old": "off_by=33 volume=-9\n", "new": "off_by=33 volume=-14.9\n", "count": 1},
+                                     {"old": "on_hicc64=1 volume=-9\n", "new": "on_hicc64=1 volume=-6.2\n", "count": 1}],
+                         "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); the two pedal-noise groups get hikey=-1 (they set lokey=-1 only, so sfizz also played pedal.on.wav on every key); the 30 key-release groups lose polyphony=1 (with it, sfizz 1.2.3 left release voices hanging at about -100 dBFS after pedalled passages, so renders ran to the 30 s tail cap); measured 22 Oct through sfizz against the C4 velocity-64 note: pedal down -32.1 and up -40.8 -> both -38; key-release noise follows velocity fully (amp_veltrack 100, +7.9 dB so velocity 64 stays at -38): after a velocity-20 note it was within 1-4 dB of that soft note in the treble, now 19+ dB under it"}},
       "credit": "K18 Upright Piano by Rudi Fiasco: 6 velocity layers every minor third from A0, key-release noise per sampled key, pedal on/off noise, AB pair, 48 kHz/24-bit. CC-BY 4.0."
     },
     "upright-vcsl": {
@@ -179,7 +200,7 @@
       "fetch": {"url": "https://versilian-studios.com/Distro/VCSL_Keys.zip", "sha256": "2e91c9aa7b16d936f035963149df1fe4cbd65911116fb3e3ea6daca52e92024b", "bytes": 655370475, "unpack": "zip", "subdir": "vcsl-keys", "post": "sfz-wrap",
                 "wrap": [{"base": "Grand Piano, S Model B 1895.sfz", "out": "Grand Piano, S Model B 1895.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
                          {"base": "Upright Piano, Y.sfz", "out": "Upright Piano, Y.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
-                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"}]},
+                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "//rt_decay=2\n", "new": "rt_decay=6\n", "count": 1}], "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); the release samples lose 6 dB per second the key was down (the library's own rt_decay line, commented out, switched on): held back to the pedal lift, 8 of them came in 23 dB above the decayed notes (measured 22 Oct)"}]},
       "credit": "VCSL Keys by Versilian Studios (Sam Gossner): a Yamaha upright, 3 velocity layers plus release samples. CC0."
     },
     "honky-tonk": {
@@ -232,7 +253,7 @@
       "fetch": {"url": "https://versilian-studios.com/Distro/VCSL_Keys.zip", "sha256": "2e91c9aa7b16d936f035963149df1fe4cbd65911116fb3e3ea6daca52e92024b", "bytes": 655370475, "unpack": "zip", "subdir": "vcsl-keys", "post": "sfz-wrap",
                 "wrap": [{"base": "Grand Piano, S Model B 1895.sfz", "out": "Grand Piano, S Model B 1895.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
                          {"base": "Upright Piano, Y.sfz", "out": "Upright Piano, Y.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"},
-                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1)"}]},
+                         {"base": "Harpsichord, French.sfz", "out": "Harpsichord, French.screen-machine.sfz", "global": "sustain_lo=64", "replace": [{"old": "//rt_decay=2\n", "new": "rt_decay=6\n", "count": 1}], "note": "sustain pedal on/off at CC64 64, as General MIDI (sfizz's default threshold is 1); the release samples lose 6 dB per second the key was down (the library's own rt_decay line, commented out, switched on): held back to the pedal lift, 8 of them came in 23 dB above the decayed notes (measured 22 Oct)"}]},
       "credit": "VCSL Keys by Versilian Studios (Sam Gossner): a French harpsichord, sustain and release samples; its compass is C1-C6 (MIDI 24-84), so notes outside it are silent. CC0."
     },
     "gm-basic": {

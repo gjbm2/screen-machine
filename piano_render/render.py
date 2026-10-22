@@ -10,7 +10,8 @@ shift it.
 
 Cache: <cache>/<key>.flac + <key>.json (the RenderResult) in $PIANO_RENDER_CACHE or
 ~/.cache/screen-machine/piano/renders. key = sha256 over the MIDI bytes, the instrument id and entry (minus the
-cosmetic "label", "order", "credit", "_comment"), the room entry, the realism flag, RENDER_VERSION,
+cosmetic "label", "order", "credit", "_comment"), the instrument file's content (instrument_files_digest: an SFZ's
+text and its #includes, an SF2's size and mtime), the room entry, the realism flag, RENDER_VERSION,
 realism.VERSION (with or without realism: it holds the EQ too), the engine's version string and the sample rate.
 Files are written under temporary names and
 renamed (the .json last, so a .json means a complete render). While rendering, <key>.progress.json holds
@@ -28,6 +29,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -117,14 +119,81 @@ def resolve_room(registry, inst: dict, room: Optional[str], realism: bool) -> Op
     raise KeyError(f"unknown room {room!r} (known: {', '.join(sorted(registry.rooms)) or 'none'})")
 
 
+# --- the instrument's own files in the key -------------------------------------------------------------------
+# A rewritten SFZ (a new wrapper or generated map from fetch) changes the sound without changing instruments.json,
+# so the key also holds the file's content: an SFZ's text and every file it #includes (sfizz resolves an #include
+# against the top SFZ's folder; a missing one counts by its name), and for an SF2 (or any other binary) its size and
+# mtime (hashing 140 MB would cost a cached render ~0.3 s). Samples are not read. Each file is read once per
+# (size, mtime) and memoised, so a key costs a few stat() calls.
+_INCLUDE_RE = re.compile(rb'#include\s+"([^"]+)"')
+_FILE_MEMO: "dict[str, tuple[tuple[int, int], str, tuple[str, ...]]]" = {}
+_FILE_MEMO_LOCK = threading.Lock()
+
+
+def _file_sig(path: Path, text: bool) -> tuple[str, tuple[str, ...]]:
+    """(digest, the #include paths it names) for one file, memoised by (size, mtime_ns)."""
+    st = path.stat()
+    sig = (st.st_size, st.st_mtime_ns)
+    k = f"{int(text)}:{path}"
+    with _FILE_MEMO_LOCK:
+        hit = _FILE_MEMO.get(k)
+    if hit is not None and hit[0] == sig:
+        return hit[1], hit[2]
+    if text:
+        data = path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        incs = tuple(dict.fromkeys(m.decode("utf-8", "replace") for m in _INCLUDE_RE.findall(data)))
+    else:
+        digest, incs = f"size={st.st_size} mtime_ns={st.st_mtime_ns}", ()
+    with _FILE_MEMO_LOCK:
+        _FILE_MEMO[k] = (sig, digest, incs)
+    return digest, incs
+
+
+def instrument_files_digest(file: "str | os.PathLike | None") -> Optional[str]:
+    """sha256 over the instrument file's content signature (see above); None without a file, "missing" when the
+    file itself does not exist."""
+    if not file:
+        return None
+    top = Path(file)
+    if not top.is_file():
+        return "missing"
+    h = hashlib.sha256()
+    if top.suffix.lower() != ".sfz":
+        h.update(_file_sig(top, False)[0].encode())
+        return h.hexdigest()
+    seen: set[str] = set()
+    todo = [top]
+    while todo:
+        p = todo.pop(0)
+        if str(p) in seen:
+            continue
+        seen.add(str(p))
+        try:
+            digest, incs = _file_sig(p, True)
+        except OSError:                                  # vanished between the walk and the read
+            digest, incs = "unreadable", ()
+        h.update(f"{p.relative_to(top.parent) if p.is_relative_to(top.parent) else p}\0{digest}\0".encode())
+        for inc in incs:
+            rel = inc.replace("\\", "/")
+            cand = [top.parent / rel, p.parent / rel]
+            q = next((c for c in cand if c.is_file()), None)
+            if q is None:
+                h.update(f"missing {rel}\0".encode())
+            else:
+                todo.append(q)
+    return h.hexdigest()
+
+
 def compute_key(midi_bytes: bytes, inst_id: str, inst_raw: dict, room_raw: Optional[dict], realism: bool,
-                engine_version: str, sr: int = SAMPLE_RATE) -> str:
+                engine_version: str, sr: int = SAMPLE_RATE, files_digest: Optional[str] = None) -> str:
     payload = {
         "render_version": RENDER_VERSION,
         "realism_version": getattr(_realism_module(), "VERSION", "minimal-1"),   # also holds the EQ
         "midi_sha256": hashlib.sha256(midi_bytes).hexdigest(),
         "instrument_id": inst_id,
         "instrument": _clean(inst_raw),
+        "instrument_files": files_digest,
         "room": _clean(room_raw) if realism else None,
         "realism": bool(realism),
         "engine": engine_version,
@@ -180,7 +249,8 @@ def plan(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str] 
     room_raw = (reg.data.get("rooms") or {}).get(room_id) if room_id else None
     midi_bytes = Path(midi_path).read_bytes()
     ever = _engines.version(eng, reg.engines_root)
-    key = compute_key(midi_bytes, inst_id, reg.raw(inst_id), room_raw, realism, ever)
+    key = compute_key(midi_bytes, inst_id, reg.raw(inst_id), room_raw, realism, ever,
+                      files_digest=instrument_files_digest(inst.get("file")))
     return Plan(key=key, midi_path=str(Path(midi_path).resolve()), midi_sha256=hashlib.sha256(midi_bytes).hexdigest(),
                 inst=inst, inst_id=inst_id, room_id=room_id, room=room_entry, realism=bool(realism),
                 engine_version=ever, dir=cache_dir(cache_dir_override))

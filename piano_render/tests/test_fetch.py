@@ -242,70 +242,119 @@ def test_bitklavier_sfz_covers_the_keyboard(tmp_path):
     assert "._C4" not in text
 
 
-def test_sfz_wrap(tmp_path):
-    (tmp_path / "set").mkdir()
-    (tmp_path / "set/base.sfz").write_text("<region> sample=x.wav\n")
-    block = {"wrap": {"base": "set/base.sfz", "out": "set/wrapped.sfz", "set_cc": {"21": 127, "20": 100}}}
-    out = F.post_sfz_wrap(tmp_path, block, log=lambda s: None)
-    t = out.read_text()
-    assert '#include "base.sfz"' in t and t.index("#include") < t.index("<control>")
-    assert "set_cc20=100 set_cc21=127" in t
-    with pytest.raises(F.FetchError):
-        F.post_sfz_wrap(tmp_path, {"wrap": {"base": "set/base.sfz", "out": "other.sfz"}}, log=lambda s: None)
-    # "global": a patched copy, the opcodes in force after every <global> (or a <global> of their own on top)
-    (tmp_path / "set/g.sfz").write_text("<control> default_path=s/\n<global> volume=2\n<region> sample=a.wav\n"
-                                        "<global>\n<region> sample=b.wav\n")
-    spec = [{"base": "set/g.sfz", "out": "set/g2.sfz", "global": "sustain_lo=64"},
-            {"base": "set/base.sfz", "out": "set/b2.sfz", "global": "sustain_lo=64", "set_cc": {"64": 0}}]
-    F.post_sfz_wrap(tmp_path, {"wrap": spec}, log=lambda s: None)
-    g2 = (tmp_path / "set/g2.sfz").read_text()
-    assert g2.count("<global> sustain_lo=64") == 2 and "#include" not in g2 and "default_path=s/" in g2
-    b2 = (tmp_path / "set/b2.sfz").read_text()
-    assert b2.index("<global> sustain_lo=64") < b2.index("<region>") and b2.rstrip().endswith("set_cc64=0")
+def _bitklavier_set(d: Path) -> None:
+    """Empty files named like a bitKlavier set: 30 keys A0..C8 every minor third, 16 layers, 3 resonance layers,
+    88 release noises, 2 takes of each pedal."""
+    names = ["A0", "C1", "D#1", "F#1"] + [f"{n}{o + 1}" if n != "A" else f"A{o}" for o in range(1, 8)
+                                           for n in ("A", "C", "D#", "F#")]
+    names = [n for n in names if n not in ("D#8", "F#8")]
+    for n in names:
+        for v in range(1, 17):
+            (d / f"{n}v{v}.wav").write_bytes(b"")
+        for v in range(1, 4):
+            (d / f"harm{n}v{v}.wav").write_bytes(b"")
+    for k in range(1, 89):
+        (d / f"rel{k}.wav").write_bytes(b"")
+    for p in ("pedalD1", "pedalD2", "pedalU1", "pedalU2"):
+        (d / f"{p}.wav").write_bytes(b"")
 
 
-def test_sfz_wrap_replace(tmp_path):
-    (tmp_path / "base.sfz").write_bytes(b"<global> pan=1\r\n<group> lokey=-1 on_locc64=126\r\n<region> sample=a.wav\r\n"
-                                        b"<group> lokey=-1 on_locc64=0\r\n<region> sample=b.wav\r\n")
-    spec = {"base": "base.sfz", "out": "fixed.sfz", "global": "sustain_lo=64",
-            "replace": [{"old": "lokey=-1 ", "new": "lokey=-1 hikey=-1 ", "count": 2},
-                        {"old": "sample=b.wav\n", "new": "sample=b.wav volume=-3\n"}]}
-    out = F.post_sfz_wrap(tmp_path, {"wrap": spec}, log=lambda s: None)
-    text = out.read_text()
-    assert text.count("lokey=-1 hikey=-1 on_locc64") == 2 and "sample=b.wav volume=-3" in text
-    assert "<global> sustain_lo=64 pan=1" in text and "#include" not in text
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["base.sfz", "fixed.sfz"]        # no temp file left
-    # a library that changed is never patched blindly, and a failed wrap leaves the old wrapper as it was
-    for bad in ({"old": "lokey=-1 ", "new": "x", "count": 3}, {"old": "no such text", "new": "x"}):
-        with pytest.raises(F.FetchError, match="occurs"):
-            F.post_sfz_wrap(tmp_path, {"wrap": dict(spec, replace=[bad])}, log=lambda s: None)
-    assert out.read_text() == text
+def test_bitklavier_sfz_noise_levels(tmp_path):
+    """Each pedal take has its own measured volume, key-release noise fires at the key's release (never held back to
+    the pedal lift), and the release resonance decays faster in the treble."""
+    _bitklavier_set(tmp_path)
+    text = F.post_bitklavier_sfz(tmp_path, {}, log=lambda s: None).read_text()
+    groups = {}
+    for part in text.split("\n\n"):
+        if "<group>" in part:
+            groups[next((t for t in ("pedalD", "pedalU", "sample=rel", "sample=harm") if t in part), "main")] = part
+    for take, vol in F.BITKLAVIER_PEDAL_DB.items():
+        assert re.search(rf"sample={re.escape(take)} lorand=\S+ hirand=\S+ volume={vol:g}$", text, re.M), take
+    for kind in ("pedalD", "pedalU"):
+        head = groups[kind].splitlines()[0]
+        assert "volume" not in head and "polyphony=1" in head       # a region's volume would replace the group's
+    rel = groups["sample=rel"]
+    assert "trigger=release_key" in rel and f"volume={F.BITKLAVIER_REL_DB:g}" in rel
+    harm = groups["sample=harm"]
+    assert "\ntrigger=release\n" in harm and f"volume={F.BITKLAVIER_HARM_DB:g}" in harm
+    rt = {int(m.group(1)): float(m.group(2)) for m in re.finditer(r"pitch_keycenter=(\d+).* rt_decay=([\d.]+)", harm)}
+    assert rt[21] == F.BITKLAVIER_HARM_RT_DECAY[0] and rt[108] == F.BITKLAVIER_HARM_RT_DECAY[1] and rt[21] < rt[60] < rt[108]
+    # another mic set's takes (not in the table) keep the old starting levels
+    (tmp_path / "pedalD1.wav").unlink()
+    (tmp_path / "pedalD7.wav").write_bytes(b"")
+    text2, _ = F.bitklavier_sfz_text(tmp_path)
+    assert re.search(r"sample=pedalD7\.wav .* volume=-6$", text2, re.M)
 
 
-def test_fetch_rewraps_in_place_when_only_the_wrap_changes(server, tmp_path):
+def test_fetch_regenerates_the_bitklavier_map_in_place(server, tmp_path):
+    """A change to the generator reaches an installed bitKlavier set on the next fetch, without a download or an
+    unpack, through a temp file and a rename; an unchanged map is left alone (mtime kept)."""
     base, h = server
-    data = _zip({"lib/p.sfz": b"<group> lokey=-1 on_locc64=126\n<region> sample=a.wav\n"})
-    h.files["/p.zip"] = data
-    block = {"url": base + "/p.zip", "sha256": _sha(data), "bytes": len(data), "unpack": "zip", "strip": 1,
-             "subdir": "p", "post": "sfz-wrap", "wrap": {"base": "p.sfz", "out": "p.sm.sfz", "global": "sustain_lo=64"}}
-    reg = _registry(tmp_path, base, {"a": ("p/p.sm.sfz", block)})
+    files = {}
+    src = tmp_path / "src"
+    src.mkdir()
+    _bitklavier_set(src)
+    for p in src.iterdir():
+        files[f"set/{p.name}"] = b""
+    data = _zip(files)
+    h.files["/bk.zip"] = data
+    block = {"url": base + "/bk.zip", "sha256": _sha(data), "bytes": len(data), "unpack": "zip", "strip": 1,
+             "subdir": "bk", "post": "bitklavier-sfz"}
+    reg = _registry(tmp_path, base, {"a": ("bk/bitKlavierGrand.sfz", block)})
     assert F.fetch(["a"], reg, log=lambda s: None, lower=False) == {"a": "installed"}
-    marker0 = json.loads((tmp_path / "inst/p/.fetched.json").read_text())
-    wrapped = tmp_path / "inst/p/p.sm.sfz"
-    assert "hikey" not in wrapped.read_text()
-    block2 = dict(block, wrap=dict(block["wrap"], replace=[{"old": "lokey=-1 ", "new": "lokey=-1 hikey=-1 ",
-                                                            "count": 1}]))
-    reg = _registry(tmp_path, base, {"a": ("p/p.sm.sfz", block2)})
-    n = len(h.log)
-    assert F.fetch(["a"], reg, log=lambda s: None, lower=False) == {"a": "rewrapped"}
-    assert len(h.log) == n                                             # no download, no unpack
-    marker = json.loads((tmp_path / "inst/p/.fetched.json").read_text())
-    assert marker["unpacked"] == marker0["unpacked"] and marker["wrap"] == block2["wrap"]
-    assert "lokey=-1 hikey=-1 on_locc64" in wrapped.read_text()
+    out = tmp_path / "inst/bk/bitKlavierGrand.sfz"
+    good = out.read_text()
+    m0 = out.stat().st_mtime_ns
     assert F.fetch(["a"], reg, log=lambda s: None, lower=False) == {"a": "present"}
-    assert not [p for p in (tmp_path / "inst/p").iterdir() if ".tmp" in p.name]
-    # a different archive is a real re-install, not a rewrap
-    assert F.rewrap(tmp_path / "inst/p", dict(block2, sha256="0" * 64), log=lambda s: None) is False
+    assert out.stat().st_mtime_ns == m0
+    out.write_text(good.replace("trigger=release_key", "trigger=release"))      # an install from older code
+    n = len(h.log)
+    assert F.fetch(["a"], reg, log=lambda s: None, lower=False) == {"a": "regenerated"}
+    assert out.read_text() == good and len(h.log) == n
+    assert not [p for p in out.parent.iterdir() if ".tmp" in p.name]
+    assert F.fetch(["a"], reg, log=lambda s: None, lower=False) == {"a": "present"}
+
+
+def test_sfz_wrap_inline(tmp_path):
+    """"inline" copies an #include'd file into the wrapper so "replace" can fix text kept there."""
+    (tmp_path / "Data").mkdir()
+    (tmp_path / "Data/fx.txt").write_bytes(b"<group> on_locc64=127\r\n<region> sample=down.$EXT\r\n")
+    (tmp_path / "Data/notes.txt").write_text("<region> sample=n.wav\n")
+    (tmp_path / "lib.sfz").write_text('#define $EXT wav\n<global>\n#include "Data/notes.txt"\n<global>\n'
+                                      '#include "Data/fx.txt"\n')
+    spec = {"base": "lib.sfz", "out": "lib.sm.sfz", "inline": ["Data/fx.txt"],
+            "replace": [{"old": "sample=down.$EXT\n", "new": "sample=down.$EXT volume=-12\n", "count": 1}]}
+    text = F.post_sfz_wrap(tmp_path, {"wrap": spec}, log=lambda s: None).read_text()
+    assert "sample=down.$EXT volume=-12\n" in text and '#include "Data/notes.txt"' in text
+    assert "Data/fx.txt" not in text
+    assert (tmp_path / "Data/fx.txt").read_bytes().startswith(b"<group> on_locc64=127\r\n")   # the library untouched
+    with pytest.raises(F.FetchError, match="occurs 0 times"):
+        F.post_sfz_wrap(tmp_path, {"wrap": dict(spec, inline=["Data/none.txt"])}, log=lambda s: None)
+
+
+def test_shipped_wraps_apply_to_the_installed_libraries(tmp_path):
+    """Every shipped sfz-wrap spec still applies to its installed library (each fix finds its text) and gives the
+    installed wrapper: the base (and any inlined file) is copied to tmp, so the live files are only read. Skipped
+    for a library that is not installed."""
+    import shutil
+    reg, root, _ = F.load_registry(REPO / "config/piano/instruments.json")
+    seen, checked = set(), 0
+    for iid, inst in reg["instruments"].items():
+        b = inst.get("fetch") or {}
+        if b.get("post") != "sfz-wrap" or b["subdir"] in seen or not (root / b["subdir"] / F.MARKER).exists():
+            continue
+        seen.add(b["subdir"])
+        src, dst = root / b["subdir"], tmp_path / b["subdir"]
+        for w in (b["wrap"] if isinstance(b["wrap"], list) else [b["wrap"]]):
+            base_dir = Path(w["base"]).parent
+            for rel in [w["base"]] + [str(base_dir / i) for i in w.get("inline", [])]:
+                (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src / rel, dst / rel)
+            out = F.post_sfz_wrap(dst, {"wrap": w}, log=lambda s: None)
+            assert out.read_text() == (src / w["out"]).read_text(), f"{iid}: the installed {w['out']} is not the spec's"
+            checked += 1
+    if not checked:
+        pytest.skip("no sfz-wrap library installed")
 
 
 def test_shipped_registry_shape():

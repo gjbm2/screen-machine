@@ -292,3 +292,53 @@ def test_room_resolution(fake, registry_factory):
     assert render.resolve_room(reg, inst, "dry", True) == "dry"        # a configured room wins over any alias
     assert render.resolve_room(reg, inst, "hall", False) is None       # no realism, no room
     assert render.resolve_room(reg, reg.get("f2"), None, True) is None
+
+
+def test_key_follows_the_instrument_files(fake, midi, registry_factory, cache):
+    """The key holds the SFZ's text and every file it #includes (a rewritten wrapper or generated map changes the
+    sound without touching instruments.json), and an SF2's size and mtime; rewriting the same text keeps it."""
+    root = registry_factory.root
+    (root / "lib/Data").mkdir(parents=True)
+    sfz, inc, sf2 = root / "lib/w.sfz", root / "lib/Data/fx.txt", root / "lib/p.sf2"
+    sfz.write_text('<global> volume=0\n#include "Data/fx.txt"\n#include "Data/fx.txt"\n')
+    inc.write_text("<region> sample=a.wav volume=-6\n")
+    sf2.write_bytes(b"\0" * 64)
+    reg = registry_factory({"f": {"label": "Fake", "engine": "fake", "file": "lib/w.sfz", "order": 1},
+                            "g": {"label": "SF2", "engine": "fake", "file": "lib/p.sf2", "order": 2}})
+    m = midi([(0.1, "on", 60, 100), (0.3, "off", 60, 64)])
+    k0 = render.plan(m, "f", registry=reg).key
+    r0 = render.render(m, "f", registry=reg)
+    assert not r0.cached and r0.cache_key == k0 and render.render(m, "f", registry=reg).cached
+    inc.write_text("<region> sample=a.wav volume=-12\n")                        # an included file changes
+    k1 = render.plan(m, "f", registry=reg).key
+    assert k1 != k0
+    r1 = render.render(m, "f", registry=reg)
+    assert not r1.cached and r1.cache_key == k1 and FakeEngine.renders == 2     # the old render is not served
+    st = sfz.stat()
+    sfz.write_text(sfz.read_text())                                             # same text, new mtime
+    os.utime(sfz, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    assert render.plan(m, "f", registry=reg).key == k1
+    sfz.write_text(sfz.read_text() + "<region> sample=b.wav\n")                 # the SFZ itself changes
+    assert render.plan(m, "f", registry=reg).key not in (k0, k1)
+    inc.unlink()                                                                # a missing include counts
+    k_missing = render.plan(m, "f", registry=reg).key
+    assert k_missing not in (k0, k1) and render.instrument_files_digest(str(sfz)) != "missing"
+    # SF2 (binary): size and mtime, not the bytes
+    g0 = render.plan(m, "g", registry=reg).key
+    assert render.plan(m, "g", registry=reg).key == g0
+    st = sf2.stat()
+    os.utime(sf2, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    assert render.plan(m, "g", registry=reg).key != g0
+    assert render.instrument_files_digest(str(root / "nope.sfz")) == "missing"
+    assert render.instrument_files_digest(None) is None
+
+
+def test_files_digest_is_memoised(tmp_path, monkeypatch):
+    """A second key for an unchanged file reads nothing (one stat per file)."""
+    (tmp_path / "a.sfz").write_text('#include "b.txt"\n')
+    (tmp_path / "b.txt").write_text("<region> sample=x.wav\n")
+    d0 = render.instrument_files_digest(str(tmp_path / "a.sfz"))
+    reads = []
+    orig = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: reads.append(self) or orig(self))
+    assert render.instrument_files_digest(str(tmp_path / "a.sfz")) == d0 and reads == []
