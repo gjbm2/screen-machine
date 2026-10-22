@@ -21,6 +21,13 @@ to 60 frames a second, shared by the process (``feed``), stepped per session by 
   sound.wave / fft / fft_peak / fft_history   the same, host numpy (read-only)
 Without the fast feed, fft follows the smoothed spectrum32 and the wave eases to zeros.
 
+The room ensemble's register (docs/ENSEMBLE.md §8.6; register_split: low notes on one side, high on the other):
+
+  sound.register     None, or this screen's window (lo, hi, outside): lo..hi of register 0 (A0) .. 1 (C8).  A plug-in
+                     that draws notes draws those inside the window at full and the others at ``outside`` (0..1;
+                     never hidden): ``stream_service.ensemble.note_weights(sound.register, pitches)`` gives the
+                     per-pitch weights (None: all at full).  Set by the engine each frame from the session's levers.
+
 Ages are evaluated at photon time (the frame's time plus the session's measured lead), so what a scene draws for
 a note matches what the ear hears at the TV.  Read-only for plug-ins; both scenes of a transition see the same
 frame.  Every music.* and show.state message reaches each session's view (``on_message``, any thread, append only).
@@ -54,6 +61,7 @@ class Sound(ScopeFields):
         self.spectrum_gpu = None
         self._failed = False
         self.feed = feed                      # scope_feed.ScopeFeed (process-wide) or None
+        self.register: Optional[tuple] = None  # the ensemble's register window (lo, hi, outside), or None (all full)
         self.scope = ScopeState()
         self._scope_t: Optional[float] = None
         self._scope_errors = 0

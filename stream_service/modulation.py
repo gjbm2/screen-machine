@@ -45,6 +45,11 @@ ease to 0.5, x0 stays at the median) unless every binding re-evaluated its x0 wi
 cost: the clamp saturates an input more than 0.5 from its norm (rare for the low-range levels that need it).  Never
 triggers, phases or DMX positions (inputs.pivotable).
 
+The room ensemble (ensemble.py; docs/ENSEMBLE.md §8.3, §8.5): the session puts this screen's part in ``extra``
+(``ensemble``: its levers now and next, glided here at photon time, ``lever``; None = unison, today's path): depth x
+the binding depth, motion x the scene clock, pulse x the bindings' beat, energy_bias + their energy (after the
+pivots, so the pivot never re-centres it away), pal_shift reads the session palette that far along.
+
 The cut invariant (R1): only scene sources get a Modulation.  The ``image`` source (the anchor and exit
 targets) never does, so it always renders at identity and the frame at ``hold_pts`` equals the still.
 
@@ -62,7 +67,7 @@ import numpy as np
 
 import logging
 
-from . import binding, music_feed, palettes, piano
+from . import binding, ensemble, music_feed, palettes, piano
 from .inputs import BIND_SIGNALS, FEED_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value, pivotable
 from .piano import PIANO_LEVELS
 from .plugins.base import ParamError, is_bindable
@@ -299,6 +304,8 @@ class SessionRuntime:
         self.beat_source: Optional[str] = None    # the ladder's rung, else blend's ("clock" | "onset" | None)
         self.ladder = music_feed.BeatLadder()     # the bindings' beat from one source at photon time
         self.pivots = Pivots()                    # the adaptive pivot (per session)
+        self.lever: Optional[dict] = None         # this screen's ensemble levers this frame (ensemble.py); None: unison
+        self._lever_glide = ensemble.LeverGlide()
 
     def begin_frame(self, now: float) -> None:
         """Render thread, once per rendered frame (``now``: the frame's time on CLOCK_MONOTONIC)."""
@@ -382,6 +389,14 @@ class SessionRuntime:
             self.maestro_rows = target if self.maestro_rows is None else \
                 self.maestro_rows + (target - self.maestro_rows) * ac
         self.colour_avail += ((w if col is not None else 0.0) - self.colour_avail) * ac
+        try:                                    # the room ensemble's levers at photon time (never breaks a frame)
+            lv = self._lever_glide.at(ex.get("ensemble"),
+                                      (now + (self.sampler.lead if self.sampler is not None else 0.0)) * 1000.0)
+        except Exception:
+            lv = None
+        self.lever = lv
+        if lv is not None:
+            ensemble.apply_signals(sig, lv)
         self.now, self.dt = now, dt
         self.signals = sig
 
@@ -458,10 +473,22 @@ class Modulation:
         self.colour_mix = mix
 
     def scale_dt(self, dt: float) -> float:
-        """The speed master as the scene clock."""
-        return dt * self.runtime.speed
+        """The speed master as the scene clock (x the ensemble's motion on this screen)."""
+        lv = getattr(self.runtime, "lever", None)
+        return dt * self.runtime.speed if lv is None else dt * self.runtime.speed * lv["motion"]
 
     def palette_rows(self) -> Optional[np.ndarray]:
+        """The session palette for this item (the colour form's blend included), read ``pal_shift`` along when the
+        ensemble leans this screen to a palette role (t -> t + shift: d += c x shift)."""
+        rows = self._palette_rows()
+        lv = getattr(self.runtime, "lever", None)
+        if rows is None or lv is None or not lv["pal_shift"]:
+            return rows
+        r = np.array(rows, np.float64)
+        r[3] = r[3] + r[2] * lv["pal_shift"]
+        return r
+
+    def _palette_rows(self) -> Optional[np.ndarray]:
         rt = self.runtime
         rows = rt.palette_rows
         k = self._colour_k
@@ -482,7 +509,8 @@ class Modulation:
             return values
         rt = self.runtime
         sig = rt.signals
-        depth = rt.depth
+        lv = getattr(rt, "lever", None)
+        depth = rt.depth if lv is None else rt.depth * lv["depth"]
         out = dict(values)
         last = {}
         for key, bd in self._bound.items():
