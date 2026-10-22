@@ -725,6 +725,7 @@ class HarmonySpiral(Source):
         self._mode = "graph"
         self.calls = 0
         self._quiet = np.zeros((128, 4), np.float32)
+        self._reg_key, self._reg_w = None, None           # the ensemble's register window, its weights
         self._quiet[:, 2] = np.inf
         self._quiet[:, 3] = np.inf
         self.clock = self.breath = self.flow = self.dust = self.haze = self.vp = self.drift = self.kick = 0.0
@@ -754,8 +755,24 @@ class HarmonySpiral(Source):
         n = getattr(f, "notes", None) if f is not None else None
         if n is None or getattr(n, "shape", None) != (128, 4):
             return self._quiet, self.clock
+        w = self._reg_weights(snd)
+        if w is not None:                                 # the register split: outside the window dims, never hides
+            n = n.copy()
+            n[:, 0] *= w
+            n[:, 1] *= w
         t = getattr(f, "t_ms", None)
         return n, (float(t) / 1000.0 if isinstance(t, (int, float)) and math.isfinite(t) else self.clock)
+
+    def _reg_weights(self, snd) -> "np.ndarray | None":
+        """Per-pitch weights (128) for the room ensemble's register window (``sound.register``: notes outside it dim
+        to its ``outside`` level, never hidden), cached per window; None without one (all at full)."""
+        reg = getattr(snd, "register", None) if snd is not None else None
+        if not reg:
+            return None
+        if self._reg_key != reg:
+            from stream_service.ensemble import note_weights
+            self._reg_key, self._reg_w = reg, np.asarray(note_weights(reg, np.arange(128)), np.float32)
+        return self._reg_w
 
     def _build(self, hb, notes, p: dict, rot: float) -> float:
         """Choose and order the frame's notes; write their raw values, the class colour indices and the rim's levels
