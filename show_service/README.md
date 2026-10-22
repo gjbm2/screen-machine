@@ -5069,6 +5069,35 @@ fell out of the run waits again; octave 1 ungated as before).
 - The whole-replay acc1 and acc2 read the replay's median tempo. A map that holds for part of a song can put that
   median between the octaves (031: acc2 1 -> 0, while acc1 over time 0.127 -> 0.295).
 
+**26's full-song set at d170e94c** (`baseline.py run --subset fullsong-subset.json --stream room-mic --snr-db 27
+--conditions D --tag fullsong-roommic-runs3`; 24 songs; against e6b83d41's run, `fullsong-roommic-runs2`, and 26's D
+at a9867fd2; 3a's dbn scratch `runs3/fullsong_report.txt`). 21 of 24 are flash-identical to e6b83d41's, and 22 to
+26's D (044 again). Five octave votes reached the clock: both right ones applied, all three wrong ones refused, and
+044's wrong one waited for a gated vote that never came:
+
+| song (true bpm) | vote | the clock | effect |
+|---|---|---|---|
+| lookatmenow (73) | x0.5 at 62 s, 147 -> 73, right | applied (prior); **held to the end** (3 coasts, 2 joins) | acc1 over time 0.044 -> 0.661, acc1 0 -> 1; on the kicks' half, off the annotations: F 0.515 -> 0.234, precision 0.50 -> 0 |
+| 031 (91) | x0.5 at 169 s, other half, 182 -> 91, right | applied (audio); **held to the song's end** (a 2 s coast, a half move) | acc1 over time 0.127 -> 0.295; F 0.557 -> 0.548 |
+| 044 (147) | x0.5 at 71 s, 148 -> 74, wrong, two ungated turns | **waits: no gated vote** | flash-identical to 26's D: F 0.947 -> 0.960, acc1 over time 0.826 -> 0.864 |
+| the pop, 069 (126) | x0.5 at 137 s and 177 s, to 62-63, wrong | refused (prior) both | flash-identical |
+| 084 (128) | x0.5 at 35 s, other half, to 63, wrong | refused (prior) | flash-identical |
+
+| over the 24 | 26's D | e6b83d41 | d170e94c |
+|---|---|---|---|
+| F | 0.764 | 0.764 | 0.752 |
+| AMLt | 0.722 | 0.718 | 0.705 |
+| Acc1 | 0.667 | 0.667 | 0.708 |
+| Acc2 | 0.875 | 0.875 | 0.833 |
+| acc1 over time | 0.605 | 0.606 | **0.641** |
+| precision (gated flashes on a beat) | 0.954 | 0.954 | 0.930 |
+| wrong-lock (gated time locked off the beats) | 0.001 | 0.001 | 0.048 |
+| coverage (beats under the beat gate) | 0.349 | 0.349 | 0.349 |
+
+The right tempo is held: acc1 over time +0.035 over the set, from two songs. Everything that falls is lookatmenow's
+half: its held 73 sits half a beat off the annotations, with the room's kicks (F -0.28, precision 0.50 -> 0, wrong-lock
+0 -> 0.98 on that song). Acc2 falls from 031 alone, whose median tempo now lies between the octaves (above).
+
 ## Stage 5: the rig (fixtures, the look engine, Hue and Art-Net out) (P5)
 
 **Interfaces, 16 Oct (c8).** This section defines Stage 5 so that five builders can work in parallel, each in its own
