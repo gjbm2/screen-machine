@@ -88,6 +88,8 @@ TTL_MIN_S, TTL_MAX_S = 5.0, 3600.0
 ENDED_KEEP_S = 600.0          # ended sessions stay visible to GET /api/sessions/{id} (and idempotency) this long
 SCREEN_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 LIVE_STATES = ("entering", "live")
+SEGMENT_HOLD_S = 20.0         # a screen counts in the room's segment this long after its session left: a TV re-entering
+                              # after a fallback is live again in ~15 s (21 Oct), so a gap doesn't re-lay both twice
 LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_follow", "direction_ease_s")
 LOOK_SCOPES = ("room", "screen")    # owner 17 Oct: a control acts where it sits (a screen card: that screen only)
 MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more cue waits (R6)
@@ -1791,7 +1793,7 @@ class Session(EngineListener):
             self.fx_director.configure((self.director.auto or {}).get("fx"),
                                        ensemble.direction(self.direction_effective, lv))
         out = {} if w is None else {"ensemble": w}
-        seg = ensemble.segment(ens, self.screen)
+        seg = ensemble.segment(ens, self.screen, self.mgr.live_screens(now))
         if seg is not None:
             out["segment"] = seg
         return out
@@ -2577,6 +2579,7 @@ class SessionManager:
         self.max_sessions = max_sessions
         self.public_base = public_base.rstrip("/") if public_base else None
         self.sessions: dict[str, Session] = {}
+        self._screen_seen: dict[str, float] = {}     # screen -> last tick it had a session live here
         self.idempotency: dict[str, str] = {}
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._gpu_cache: tuple[float, list[dict]] = (0.0, [])
@@ -2880,6 +2883,17 @@ class SessionManager:
         if r is None or now - r["t"] > ROOM_STALE_S:
             return None
         return r
+
+    def live_screens(self, now: float) -> frozenset:
+        """Screens with a session entering or live here, or that had one within SEGMENT_HOLD_S (ensemble.segment
+        counts only these: 7c, 22 Oct: with one TV live, the score's tape must not leave half of itself on a dark TV)."""
+        seen = self._screen_seen
+        for s in list(self.sessions.values()):
+            if not s.exited and s.state in LIVE_STATES:
+                seen[s.screen] = now
+        for k in [k for k, t in seen.items() if now - t > SEGMENT_HOLD_S]:
+            del seen[k]
+        return frozenset(seen)
 
     CLOCK_FRESH_S = 1.5        # music.clock comes at 10 Hz and on every re-anchor
 

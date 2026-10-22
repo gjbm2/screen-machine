@@ -313,12 +313,13 @@ def direction(eff: dict, lv: Optional[Mapping]) -> dict:
 
 
 # -- the segment (one picture across the screens) -------------------------------------------------------------------
-def segment(ens: Optional[Mapping], screen: str) -> Optional[tuple[int, int]]:
+def segment(ens: Optional[Mapping], screen: str, live: Optional[Any] = None) -> Optional[tuple[int, int]]:
     """This screen's place in one picture spanning the ensemble's screens (owner, 22 Oct: a score scene's one tape,
     notes entering on the right-hand screen and flowing into the left): ``(k, n)``, k its index among the ensemble's
     screens ordered by their players' ``x`` (0 the leftmost; a tie by player id, show's own order), n how many
-    screens.  A screen whose player has no ``x`` is left out (never placed at a made-up x).  None: no ensemble, this
-    screen isn't one of its screens, or it is the only one."""
+    screens.  A screen whose player has no ``x`` is left out (never placed at a made-up x).  ``live``: the screen
+    names that count (a TV that is off holds no slot; SessionManager.live_screens), None for all.  None: no
+    ensemble, this screen isn't one of its counted screens, or it is the only one."""
     if not isinstance(ens, Mapping):
         return None
     scr, players = ens.get("screens"), ens.get("players")
@@ -328,7 +329,7 @@ def segment(ens: Optional[Mapping], screen: str) -> Optional[tuple[int, int]]:
     for name, pid in scr.items():
         p = players.get(pid) if isinstance(pid, str) else None
         x = _num(p.get("x"), math.nan) if isinstance(p, Mapping) else math.nan
-        if isinstance(name, str) and math.isfinite(x):
+        if isinstance(name, str) and math.isfinite(x) and (live is None or name in live):
             placed.append((x, pid, name))
     names = [name for _, _, name in sorted(placed)]
     if len(names) < 2 or screen not in names:

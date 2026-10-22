@@ -253,3 +253,27 @@ async def test_lead_screen_is_the_fx_source_and_levers_reach_the_runtime(client)
     assert fd.direction["fx"]["density"] == pytest.approx(round(a.direction_effective["fx"]["density"] * 0.5, 3))
     assert a.director.direction.get("energy") == a.direction_effective.get("energy")   # the room's picks: unbiased
     assert fd.direction["energy"] == pytest.approx(max(0.0, a.direction_effective["energy"] - 0.075), abs=1e-3)
+
+
+def test_segment_counts_only_live_screens():
+    """7c, 22 Oct: with only south live, south must not get (0, 2) and leave the tape's new notes on the dark north."""
+    ens = {"screens": {"south-screen": "screen.south", "north-screen": "screen.north"},
+           "players": {"screen.south": {"x": 0.2}, "screen.north": {"x": 0.8}}}
+    assert ensemble.segment(ens, "south-screen") == (0, 2)
+    assert ensemble.segment(ens, "south-screen", {"south-screen"}) is None
+    assert ensemble.segment(ens, "north-screen", {"south-screen", "north-screen"}) == (1, 2)
+
+
+def test_live_screens_hold_a_brief_gap():
+    from types import SimpleNamespace
+
+    from stream_service import sessions as S
+    mgr = S.SessionManager.__new__(S.SessionManager)
+    mgr._screen_seen = {}
+    a = SimpleNamespace(screen="south-screen", state="live", exited=False)
+    b = SimpleNamespace(screen="north-screen", state="live", exited=False)
+    mgr.sessions = {"a": a, "b": b}
+    assert mgr.live_screens(100.0) == {"south-screen", "north-screen"}
+    b.state = "ended"                                       # north drops out (a fallback)
+    assert mgr.live_screens(100.0 + S.SEGMENT_HOLD_S - 1) == {"south-screen", "north-screen"}
+    assert mgr.live_screens(100.0 + S.SEGMENT_HOLD_S + 1) == {"south-screen"}
