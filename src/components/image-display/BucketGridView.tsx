@@ -38,6 +38,7 @@ import { ImageItem } from '@/types/image-types';
 
 // Import the new SchedulerControl component
 import { SchedulerControl } from './SchedulerPanel';
+import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
 
 // Import the new DROP_ZONES
 import { DROP_ZONES } from '@/dnd/dropZones';
@@ -355,6 +356,9 @@ export const BucketGridView = ({
   const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   const [deleteImagesCount, setDeleteImagesCount] = useState(0);
   const [maskEnabled, setMaskEnabled] = useState(true);
+  // Live mode is the GPU renderer at full intensity: the light mask applies to art only.
+  const roomLink = useRoomLink();
+  const screenLive = liveStateOf(roomLink.status?.screens?.[destination]) === 'live';
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
@@ -2267,7 +2271,7 @@ export const BucketGridView = ({
             destination={destination}
             onActionComplete={debouncedFetchBucketDetails}
           />
-          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
+          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
             <div className="flex items-start gap-3">
               {/* Left side with droppable published image area */}
               <PublishedImageDroppable currentImage={currentPublishedImage} />
@@ -2331,18 +2335,24 @@ export const BucketGridView = ({
                   <div className="flex items-center gap-2">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant={maskEnabled ? "default" : "outline"}
-                          onClick={() => handleMaskToggle(!maskEnabled)}
-                          className="h-8 px-2 sm:px-3"
-                        >
-                          <Moon className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">Mask</span>
-                        </Button>
+                        {/* span: a disabled button gets no hover, so the tooltip still explains why */}
+                        <span tabIndex={screenLive ? 0 : undefined}>
+                          <Button
+                            size="sm"
+                            variant={maskEnabled && !screenLive ? "default" : "outline"}
+                            onClick={() => handleMaskToggle(!maskEnabled)}
+                            disabled={screenLive}
+                            className="h-8 px-2 sm:px-3"
+                          >
+                            <Moon className="h-4 w-4" />
+                            <span className="ml-1 hidden sm:inline">Mask</span>
+                          </Button>
+                        </span>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        {maskEnabled ? "Disable mask" : "Enable mask"}
+                        {screenLive
+                          ? "Live runs at full brightness; the mask is for art"
+                          : maskEnabled ? "Disable mask" : "Enable mask"}
                       </TooltipContent>
                     </Tooltip>
 

@@ -11,7 +11,8 @@ export default function useBaseFileName(screenId: string | undefined): string | 
     const getDestinations = async () => {
       try {
         const destinations = await apiService.getPublishDestinations();
-        const matched = destinations.find(d => d.id === screenId && d.type === "output_file");
+        // `type` is in the API response but not in the PublishDestination type.
+        const matched = destinations.find(d => d.id === screenId && (d as { type?: string }).type === "output_file");
         if (matched) {
           setBaseFileName(matched.file.replace(/\.(jpg|mp4)$/, ""));
         } else {

@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import useFullscreen from './hooks/useFullscreen';
 import RecentView from '@/components/recent/RecentView';
+import { ScreenLivePanel } from '@/components/room/ScreenLivePanel';
+import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -86,6 +88,7 @@ const TAB_BAR_HEIGHT = 48;
 export function ImageDisplay(props: ImageDisplayProps) {
   const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
   const [selectedTab, setSelectedTab] = useState<string>('recent');
+  const room = useRoomLink();
   const [bucketRefreshFlags, setBucketRefreshFlags] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -220,6 +223,15 @@ export function ImageDisplay(props: ImageDisplayProps) {
         };
       })
     ];
+  }, [destinationsWithBuckets]);
+
+  // ?publish=<id> (the Room page's "Art" link, the TV QR codes) opens that screen's tab, once.
+  const publishParamApplied = useRef(false);
+  useEffect(() => {
+    if (publishParamApplied.current || destinationsWithBuckets.length === 0) return;
+    publishParamApplied.current = true;
+    const want = new URLSearchParams(window.location.search).get('publish');
+    if (want && destinationsWithBuckets.some(d => d.id === want)) setSelectedTab(want);
   }, [destinationsWithBuckets]);
 
   // Find file property for a destination ID
@@ -707,6 +719,19 @@ export function ImageDisplay(props: ImageDisplayProps) {
         )}
         {tab.icon}
         <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
+        {(() => {
+          // Live screens are marked on their tab (red), and screens on the way in or out (amber).
+          const ls = liveStateOf(room.status?.screens?.[tab.id]);
+          if (ls === 'art') return null;
+          const tone = ls === 'live' ? 'bg-red-600' : ls === 'failed' ? 'bg-rose-400' : 'bg-amber-500';
+          return (
+            <span
+              title={ls === 'live' ? 'Live' : ls === 'failed' ? "Couldn't go live" : 'Switching'}
+              aria-label={ls === 'live' ? 'live' : undefined}
+              className={`ml-1.5 h-2 w-2 shrink-0 rounded-full ${tone} ${ls !== 'failed' ? 'motion-safe:animate-pulse' : ''}`}
+            />
+          );
+        })()}
       </button>
     );
   };
@@ -850,6 +875,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
           <MemoRecentView refreshRecent={refreshRecent}/>
         ) : (
           selectedTab && selectedTab !== 'generated' && (
+            <>
+            <ScreenLivePanel screenId={selectedTab} />
             <BucketGridView
               key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
               destination={selectedTab}
@@ -862,6 +889,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
               icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
               headerPinned={isTabBarFixed}
             />
+            </>
           )
         )}
       </div>

@@ -46,8 +46,8 @@ export function useMask(destinationId?: string, disabled = false) {
       } catch (err) {
         console.error("[useMask] fetch failed:", err);
         setError(err instanceof Error ? err.message : "Fetch failed");
-        // reset to neutral so screen never looks wrong
-        setState({ brightness: 0, warmHex: "#FFFFFF", warmAlpha: 0 });
+        // Keep the last mask. (This used to reset to brightness 0, which blacks the screen
+        // on any transient fetch failure: LIVE_V1 §2.2 rule 2, DCL I4.)
       } finally {
         setIsLoading(false);
         timer = setTimeout(fetchMask, POLL_MS);
