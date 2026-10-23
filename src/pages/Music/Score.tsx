@@ -44,6 +44,7 @@ import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
 import { isUnreached, musicWords, percent, SCORE_PAPERS, type ScoreKind, type ScorePaper, type ScoreSize, type ScoreStatus } from "./api";
 import { CHIP, CHIP_OFF, CHIP_ON, PRIMARY, SECONDARY } from "./bits";
 import { useMusic } from "./context";
+import { FollowLight, Transport, useFollow, type Follow } from "./follow";
 
 type Mode = "scroll" | "pages";
 
@@ -55,6 +56,11 @@ const STAND_MODE_KEY = "music.stand.mode";
 const standAtKey = (id: string) => `music.stand.at.${id}`;
 /** A staff's height in css px, smallest to largest. */
 const STAFFS = [26, 32, 40, 50, 62];
+/** The staff sizes a step either side: laid out ahead on the server, so A+ / A- are ready. */
+const nearStaffs = (staff: number) => {
+  const i = STAFFS.indexOf(staff);
+  return i < 0 ? [] : [STAFFS[i - 1], STAFFS[i + 1]].filter((x): x is number => typeof x === "number");
+};
 const POLL_MS = 1500;
 /** Nothing answered: ask again this often (the words say the page keeps trying). */
 const RETRY_MS = 3000;
@@ -342,6 +348,8 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const scrollToPage = useRef(0);
   /** The music stand: where it opened (a fraction of the way through), while it's open. */
   const [stand, setStand] = useState<number | null>(null);
+  const standOpenRef = useRef(false);
+  standOpenRef.current = stand !== null;
   const standOpen = stand !== null;
   /** While the stand is open the view doesn't lay out again (fullscreen and the scroll lock change its size). */
   const paused = useRef(false);
@@ -397,7 +405,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       try {
         const retry = retryNext.current;
         retryNext.current = false;
-        const st = await api.score(pieceId, { ...size, staff }, ac.signal, { kind: kind ?? "quick", retry });
+        const st = await api.score(pieceId, { ...size, staff }, ac.signal, { kind: kind ?? "quick", retry, near: nearStaffs(staff) });
         if (ac.signal.aborted) return;
         if (kind === null && st.better === "ready") {
           setKind("better");                     // asked for before: show it
@@ -447,6 +455,18 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       shown ? api.scorePageUrl(pieceId, n, { w: shown.w, h: shown.h, staff: shown.staff, rev: shown.st.rev, kind: shown.st.kind }) : "",
     [api, pieceId, shown],
   );
+  // follow along: the player's place lights the bar and notes playing; the page keeps up with it
+  const layout = useMemo(
+    () => (shown ? { w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: shown.st.rev } : null),
+    [shown],
+  );
+  const follow = useFollow(pieceId, standOpenRef.current ? null : layout);
+  const followPage = follow.head.playing ? follow.head.page : null;
+  useEffect(() => {
+    if (!followPage || standOpenRef.current) return;
+    if (mode === "pages") setPage(followPage);
+    else imgs.current[followPage - 1]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [followPage, mode]);
   const relaying = !!shown && !!size && (shown.w !== size.w || shown.h !== size.h || shown.staff !== staff);
 
   // Pages: the keys turn pages (not while typing, or in a sheet or the menu, or while the stand has them).
@@ -617,21 +637,23 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       mode === "scroll" ? (
         <div className="space-y-2">
           {Array.from({ length: count }, (_, i) => (
-            <img
-              key={i}
-              ref={(el) => {
-                imgs.current[i] = el;
-              }}
-              src={pageUrl(i + 1)}
-              alt={`Page ${i + 1} of ${count}`}
-              width={shown.w}
-              height={shown.h}
-              loading="lazy"
-              decoding="async"
-              title="Full screen from this page"
-              onClick={() => openStand(i + 1)}
-              className={cn(PAGE_CLASS, "cursor-zoom-in")}
-            />
+            <div key={i} className="relative">
+              <img
+                ref={(el) => {
+                  imgs.current[i] = el;
+                }}
+                src={pageUrl(i + 1)}
+                alt={`Page ${i + 1} of ${count}`}
+                width={shown.w}
+                height={shown.h}
+                loading="lazy"
+                decoding="async"
+                title="Full screen from this page"
+                onClick={() => openStand(i + 1)}
+                className={cn(PAGE_CLASS, "cursor-zoom-in")}
+              />
+              {layout && <FollowLight pieceId={pieceId} n={i + 1} layout={layout} head={follow.head} />}
+            </div>
           ))}
         </div>
       ) : (
@@ -658,6 +680,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
                   className={cn(PAGE_CLASS, n !== cur && "pointer-events-none absolute inset-x-0 top-0 opacity-0")}
                 />
               ))}
+            {layout && <FollowLight pieceId={pieceId} n={cur} layout={layout} head={follow.head} />}
             <ZoneHint zone={viewTurner.zone} canPrev={cur > 1} canNext={cur < count} withOpen />
           </div>
           <div className="flex items-center justify-center gap-4" style={{ height: PAGER_H }}>
@@ -962,7 +985,12 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         </p>
       )}
 
-      <div ref={area}>{body}</div>
+      <div ref={area}>{shown && count > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Transport follow={follow} pageInView={cur} />
+        </div>
+      )}
+      {body}</div>
 
       {stand !== null && shown && (
         <MusicStand
@@ -1108,7 +1136,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ask = async () => {
       try {
-        const st = await api.score(pieceId, want, ac.signal, { kind });
+        const st = await api.score(pieceId, want, ac.signal, { kind, near: nearStaffs(want.staff) });
         if (ac.signal.aborted) return;
         if (st.state === "ready") {
           setProblem(null);
@@ -1139,6 +1167,9 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     (n: number) => api.scorePageUrl(pieceId, n, { w: shown.w, h: shown.h, staff: shown.staff, rev: shown.st.rev, kind: shown.st.kind }),
     [api, pieceId, shown],
   );
+  // follow along on the stand's own layout: the light, and the pages keep up with the music
+  const layout = useMemo(() => ({ w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: shown.st.rev }), [shown]);
+  const follow: Follow = useFollow(pieceId, layout);
 
   const onScroll = useCallback(() => {
     const el = box.current;
@@ -1182,6 +1213,19 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     },
     [count, last, remember],
   );
+
+  // while it plays, the pages keep up: the spread (or page) with the bar playing is the one shown
+  const followPage = follow.head.playing ? follow.head.page : null;
+  useEffect(() => {
+    if (!followPage) return;
+    if (mode === "pages") {
+      const first = followPage - ((followPage - 1) % step);
+      if (first !== cur) go(first);
+    } else {
+      box.current?.querySelector(`[data-stand-page="${followPage}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followPage, mode, step]);
 
   // Every page of this layout comes into the browser's cache, nearest first, one at a time (the server draws them
   // ahead too): a turn, or a jump, never waits on the network. The window of mounted pages below makes it instant.
@@ -1328,8 +1372,8 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   const slot = want ?? { w: shown.w, h: shown.h };
   // the same two elements turn after turn: a browser keeps the old page up until the new one is there (no blank flash)
   const pageImg = (n: number, key: string) => (
+    <div key={key} className="relative shrink-0" style={{ width: slot.w, height: slot.h }}>
     <img
-      key={key}
       src={pageUrl(n)}
       alt={`Page ${n} of ${count}`}
       draggable={false}
@@ -1340,6 +1384,8 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
       className="block max-h-full max-w-full shrink-0 object-contain"
       style={{ width: slot.w, height: slot.h }}
     />
+    <FollowLight pieceId={pieceId} n={n} layout={layout} head={follow.head} />
+    </div>
   );
 
   let pages: ReactNode;
@@ -1348,17 +1394,19 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     pages = (
       <div className="divide-y divide-stone-200">
         {Array.from({ length: count }, (_, i) => (
-          <img
-            key={i}
-            src={pageUrl(i + 1)}
-            alt={`Page ${i + 1} of ${count}`}
-            width={shown.w}
-            height={shown.h}
-            loading="lazy"
-            decoding="async"
-            draggable={false}
-            className="block h-auto w-full"
-          />
+          <div key={i} className="relative" data-stand-page={i + 1}>
+            <img
+              src={pageUrl(i + 1)}
+              alt={`Page ${i + 1} of ${count}`}
+              width={shown.w}
+              height={shown.h}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              className="block h-auto w-full"
+            />
+            <FollowLight pieceId={pieceId} n={i + 1} layout={layout} head={follow.head} />
+          </div>
         ))}
       </div>
     );
@@ -1427,6 +1475,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
           </p>
         </div>
         {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
+        <Transport follow={follow} pageInView={cur} compact />
         <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
           {where}
         </span>

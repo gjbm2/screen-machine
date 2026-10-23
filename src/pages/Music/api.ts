@@ -16,6 +16,7 @@
 //          the quick pass; the better (neural) one when asked for: queued (ahead) / making (progress) / ready / failed
 //   GET    /show/api/v1/score/<id>/page/<n>.svg?w=&h=&staff=&rev=   page n as an image (an <img src>: the route is open)
 //   GET    /show/api/v1/score/<id>/pdf?paper=a4|a4-landscape|letter   the score as a PDF to print (A4 portrait by default)
+//   GET    /show/api/v1/score/<id>/follow, …/page/<n>.json   follow-along: the timings, and a page's bar boxes and note heads
 
 import { explainError, loadToken, RoomApiError } from "@/pages/Room/api";
 
@@ -105,7 +106,7 @@ export interface Playlist {
   items: PlaylistEntry[];
 }
 
-export type PlayerState = "stopped" | "preparing" | "playing" | "stepped_aside" | "error";
+export type PlayerState = "stopped" | "preparing" | "playing" | "paused" | "stepped_aside" | "error";
 export type Repeat = "off" | "all" | "one";
 
 export interface PlayerChoices {
@@ -130,13 +131,17 @@ export interface PlayerView {
   shuffle: boolean;
   /** The piece's tempo times this (owner, 23 Oct: a speed control, 1× by default); older show_service: absent. */
   speed?: number;
+  /** Wall-clock ms when elapsed_s was true (a newer player's): the score's light carries on from it. */
+  at_ms?: number;
   error: string | null;
   choices: PlayerChoices;
 }
 
 export type PlayerAction =
   | { action: "play"; playlist?: string; index?: number }
-  | { action: "play"; piece: string }
+  | { action: "play"; piece: string; start_s?: number }
+  | { action: "seek"; start_s: number }
+  | { action: "pause" | "resume" }
   | { action: "play"; items: string[]; name?: string }
   | { action: "stop" | "next" | "prev" }
   | { action: "add" | "play_next"; piece: string }
@@ -175,6 +180,20 @@ export interface ScoreStatus {
 }
 
 export type ScoreKind = "quick" | "better";
+
+/** GET /score/<id>/follow: [bar, t0, t1] in the piece's own seconds (the player's elapsed_s), [note id, t, bar], and
+ *  each page's [first bar, last bar]. */
+export interface ScoreFollow {
+  bars: [number, number, number][];
+  notes: [number, number, number][];
+  pages: [number, number][];
+}
+
+/** GET /score/<id>/page/<n>.json: [bar, x0, y0, x1, y1] and [note id, x, y], fractions of the page. */
+export interface ScoreGeometry {
+  bars: [number, number, number, number, number][];
+  heads: [number, number, number][];
+}
 
 /** One page in css px (w x h, multiples of 10) and a staff's height in css px. */
 export interface ScoreSize {
@@ -400,12 +419,31 @@ export class MusicApi {
 
   /** The first ask writes it (the quick pass comes back in that answer; the better one only when asked for, then keep
    * asking every 1.5 s while it's queued or making, or it's dropped). retry: forget an earlier failure. */
-  score(id: string, size: ScoreSize, signal?: AbortSignal, opts: { kind?: ScoreKind; retry?: boolean } = {}) {
-    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: opts.kind, retry: opts.retry || undefined });
+  score(id: string, size: ScoreSize, signal?: AbortSignal, opts: { kind?: ScoreKind; retry?: boolean; near?: number[] } = {}) {
+    const qs = queryString({
+      w: size.w,
+      h: size.h,
+      staff: size.staff,
+      kind: opts.kind,
+      retry: opts.retry || undefined,
+      near: opts.near?.length ? opts.near.join(",") : undefined,
+    });
     return this.request<ScoreStatus>("GET", `/score/${seg(id)}${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
   }
 
   /** Page n (1-based) as an SVG image (an <img src>: the route is open, so no key goes in it). */
+  /** Follow-along for a layout: when each bar and note sounds (the piece's own seconds) and each page's bars. */
+  scoreFollow(id: string, size: ScoreSize & { kind?: ScoreKind; rev?: string }, signal?: AbortSignal) {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
+    return this.request<ScoreFollow>("GET", `/score/${seg(id)}/follow${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
+  }
+
+  /** Page n's bar boxes and note heads (fractions of the page). */
+  scoreGeometry(id: string, n: number, size: ScoreSize & { kind?: ScoreKind; rev?: string }, signal?: AbortSignal) {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
+    return this.request<ScoreGeometry>("GET", `/score/${seg(id)}/page/${n}.json${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
+  }
+
   scorePageUrl(id: string, n: number, size: ScoreSize & { rev?: string; kind?: ScoreKind }): string {
     const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
     return `${this.baseUrl}/show/api/v1/score/${seg(id)}/page/${n}.svg${qs}`;
