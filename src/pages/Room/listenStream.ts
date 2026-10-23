@@ -266,6 +266,11 @@ export function listenTap() {
   else start();
 }
 
+/** Open the pianola (the live music screen) to watch the notes, whether or not this device plays the sound. */
+export function openPianola() {
+  set({ viewOpen: true, dismissed: false });
+}
+
 /** Open or close the live music screen. Closing it keeps the sound and keeps it closed until it's turned on again. */
 export function setListenView(open: boolean) {
   set(open ? { viewOpen: true } : { viewOpen: false, dismissed: true });
