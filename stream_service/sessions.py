@@ -1724,10 +1724,11 @@ class Session(EngineListener):
             self._emit_director()
         d.observe(snap, fresh, follow_desk=self.mgr.music_feed.fresh(now) is None)
         feed = self.mgr.music_feed
-        cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
-                                  room=self.mgr.room_direction_now(now), feed=feed.fresh(now))
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
         pn = self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)
+        cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
+                                  room=self.mgr.room_direction_now(now), feed=feed.fresh(now),
+                                  piano=pn)   # the piano's own levels (before the room harmony fills its gaps)
         hm = feed.harmony(now)
         if hm is not None:                  # no piano playing: the room's harmony (show_service, from the audio)
             for k in ("tension", "register", "spread"):

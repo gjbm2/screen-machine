@@ -7,6 +7,8 @@ ceiling on an effect's level, from:
     brightness rank, symmetry, palette-driven; fx_interplay.yaml scene_props: plug-ins whose content must stay
     legible, that already trail or already glitch);
   * the other effects already on the bus (pairs);
+  * the piano's feel (roles_by_piano, by direction.piano {lean: 0..1}, piano_direction.py: legato pedalling ->
+    trails, fast short notes -> camera / light), a role's row x its lean's strength, part of the music factor;
   * the music: which roles suit its genre (roles_by_music, p-weighted over direction.genres / genre) and how much
     the effects may take over (load: a budget from direction.energy plus a genre bias, part of it used by the
     scene's busyness and by the other effects' strength);
@@ -41,7 +43,7 @@ SCENE_PROPS = ("busy", "motion", "brightness", "symmetric", "self_coloured", "le
 CHECK_S = 1.0
 DEFAULTS: dict = {"level_min": 0.35, "multiplier_range": [0.25, 1.5], "tag_prior": 1.0, "refit_below": 0.5,
                   "symmetric_from": [0.3, 0.9], "scene_props": {}, "roles": {}, "pairs": {}, "role_overrides": {},
-                  "load": {}, "genre_groups": {}, "roles_by_music": {}, "listens": {}}
+                  "load": {}, "genre_groups": {}, "roles_by_music": {}, "roles_by_piano": {}, "listens": {}}
 
 
 def _c01(x: float) -> float:
@@ -212,6 +214,8 @@ class Interplay:
         other_roles = [self.role(pl) for _, pl in others]
         pairs = cfg.get("pairs") or {}
         rows = cfg.get("roles_by_music") or {}
+        piano = direction.get("piano") if isinstance(direction.get("piano"), dict) else {}
+        prow = cfg.get("roles_by_piano") or {}
         per_role: dict[str, tuple[float, float, float]] = {}
         for role in ROLES:
             m_scene = 1.0
@@ -235,6 +239,11 @@ class Interplay:
                               for k, p in groups.items()) / tot
             else:
                 m_music = float((rows.get("default") or {}).get(role, 1.0))
+            for lean, sv in piano.items():          # the piano's feel: its lean's row, by how strongly it leans
+                row, sv = prow.get(lean), _num(sv)
+                v = _num(row.get(role)) if isinstance(row, dict) else None
+                if v is not None and sv:
+                    m_music *= 1.0 + _c01(sv) * (v - 1.0)
             per_role[role] = (self._clamp(m_scene), self._clamp(m_pair), self._clamp(m_music))
         load = cfg.get("load") or {}
         e = _num(direction.get("energy"))

@@ -1,0 +1,43 @@
+# The piano's MIDI in the art director's choice (stream_service/piano_direction.py; owner, 24 Oct 2026). Hot-reloaded.
+# The piano's live signals (stream_service/piano.py: note_rate, velocity, register, spread, pedal, tension, 0..1)
+# shape the music's proposal on top of the room's audio reading. No piano playing (8 s of silence): the audio alone,
+# exactly as before. on: false switches all of this off.
+on: true
+
+# How strongly the piano plays: its energy and pace input are weighted sums of its signals.
+energy: {note_rate: 0.6, velocity: 0.4}
+pace:   {note_rate: 0.8, velocity: 0.2}
+
+# With the audio too (the mic may hear singing or other music as well): the stronger reading leads,
+#   blend = max(audio, piano) + both_boost x min x (1 - max);
+# weight scales the piano's share (0 = the audio alone). With no audio reading at all, the piano alone drives.
+weight: 1.0
+both_boost: 0.2
+
+# The pedal and spread are eased over this many seconds before they lean the words or the density.
+smooth_s: 4.0
+
+# Leans: strength = product of the `when` ramps x product of (1 - each `unless` ramp), [lo, hi] -> 0..1.
+# The strongest at or above lean_on leads the words (it holds until it falls under lean_off): its moods / fx_moods
+# go first, keeping keep_moods of the music band's own. Words must be vocab.yaml moods.
+# Every lean's strength also reaches the FX director (fx_interplay.yaml roles_by_piano).
+lean_on: 0.5
+lean_off: 0.3
+keep_moods: 1
+leans:
+  legato:                       # lots of sustain pedal: flowing, dreamy looks; smeary, trailing effects
+    when: {pedal: [0.35, 0.75]}
+    moods: [dreamy, liquid, calm]
+    fx_moods: [dreamy, liquid]
+  staccato:                     # fast, short notes with little pedal: sharp, busy looks; beat-hitting effects
+    when: {note_rate: [0.35, 0.65]}
+    unless: {pedal: [0.2, 0.5]}
+    moods: [playful, bright, geometric]
+    fx_moods: [glitchy, playful, geometric]
+
+# Full, spread chords -> denser scenes (the direction's density axis): spread [lo, hi] -> density [lo, hi];
+# with the audio's own density: (1 - weight) x audio + weight x piano.
+density:
+  spread: [0.15, 0.75]
+  to: [0.2, 0.9]
+  weight: 0.5
