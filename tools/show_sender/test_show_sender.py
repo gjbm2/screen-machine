@@ -683,3 +683,14 @@ def test_module_load_imports_nothing_of_the_test_piano():
     assert out.returncode == 0, out.stderr
     loaded, threads = out.stdout.rsplit(" ", 1)
     assert "piano_render" not in loaded and "piano_replay" not in loaded and threads.strip() == "1"
+
+
+def test_shape_events_speed_and_start():
+    ev = [(0.0, 0xB0, 64, 127), (1.0, 0x90, 60, 80), (2.0, 0x80, 60, 0), (2.5, 0xB0, 64, 0), (3.0, 0xB0, 64, 100),
+          (4.0, 0x90, 62, 70), (6.0, 0x80, 62, 0)]
+    assert ss.shape_events(ev) == ev                                                   # 1x from the top: as it was
+    assert [t for t, *_ in ss.shape_events(ev, 2.0)] == [0.0, 0.5, 1.0, 1.25, 1.5, 2.0, 3.0]
+    got = ss.shape_events(ev, 0.5, 3.5)                                                # from 3.5 s, half speed
+    assert got == [(0.0, 0xB0, 64, 100), (1.0, 0x90, 62, 70), (5.0, 0x80, 62, 0)]     # the pedal carried in
+    assert ss.shape_events(ev, 1.0, 99) == ev                                          # past the end: from the top
+    assert [t for t, *_ in ss.shape_events(ev, 100.0)][-1] == 6.0 / 4.0                # clamped to 4x

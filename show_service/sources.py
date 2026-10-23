@@ -115,7 +115,9 @@ LIBRARY_PREFIXES = (library.LIB_PREFIX, library.USER_PREFIX)   # the Music page'
 #: show_sender's newer flags (the other builder's): passed only when its script takes them (its text names them), so
 #: an older show_sender keeps today's argv; the rendered sounds are offered only with RENDER_FLAGS
 SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once", "--title",
-                                 "sonos:", "--calibration-mic")
+                                 "sonos:", "--calibration-mic", "--speed", "--start-s")
+SPEED_RANGE = (0.25, 4.0)                        # a piece's tempo times this (owner, 23 Oct: "a speed/pacing control
+                                                 # setting (1X obviously the default)"); show_sender's --speed
 CALIBRATION_FLAG = "--calibration-mic"           # show_sender -> piano_render.session -> calibrate.py's mic
 CALIBRATION_KEY = "calibration_mic"              # show.yaml tests.piano.calibration_mic (module docstring)
 RENDER_FLAGS = frozenset(("--instrument", "--output", "--status-file"))
@@ -423,7 +425,8 @@ def sender_flags(script: pathlib.Path) -> frozenset:
 
 
 def read_status(path: Optional[pathlib.Path]) -> Optional[dict]:
-    """show_sender's status file: ``{"stage", "progress" (0..1 or None), "error"}``; None while it is missing or torn."""
+    """show_sender's status file: ``{"stage", "progress" (0..1 or None), "error", "pos_s"}`` (pos_s: the place in the
+    piece at its own tempo, a newer show_sender's); None while it is missing or torn."""
     if path is None:
         return None
     try:
@@ -435,7 +438,9 @@ def read_status(path: Optional[pathlib.Path]) -> Optional[dict]:
     prog = doc.get("progress")
     prog = min(1.0, max(0.0, float(prog))) if _num_or(prog, -1.0) >= 0.0 else None
     err = doc.get("error")
-    return {"stage": doc["stage"], "progress": prog, "error": err if isinstance(err, str) and err else None}
+    pos = doc.get("pos_s")
+    return {"stage": doc["stage"], "progress": prog, "error": err if isinstance(err, str) and err else None,
+            "pos_s": float(pos) if _num_or(pos, -1.0) >= 0.0 else None}
 
 
 # -- the component -----------------------------------------------------------------------------------------------------
@@ -468,6 +473,9 @@ class _Child:
         self.cal_mic: Optional[str] = None               # --calibration-mic ("" = none hears it); None: not heard
         self.cal_why: Optional[str] = None               # where cal_mic came from, or why there is none
         self.claim: Optional[str] = None                 # the mic stream claimed while it runs (Sonos only)
+        self.speed = 1.0                                 # the piece's tempo times this (--speed)
+        self.start_s = 0.0                               # where in the piece it starts (--start-s, its own tempo)
+        self.pos_s: Optional[float] = None               # where in the piece it is now (show_sender's status)
 
     def set(self, state: str, now: float) -> None:
         if state != self.state:
@@ -613,13 +621,20 @@ class Sources:
 
     def start_test(self, source: str, piece: Optional[str] = None, instrument: Optional[str] = None,
                    output: Optional[str] = None, once: Optional[bool] = None,
-                   if_idle: bool = False) -> contract.SourceStatus:
+                   if_idle: bool = False, speed: Optional[float] = None,
+                   start_s: Optional[float] = None) -> contract.SourceStatus:
         """Start (or switch) a test source. ValueError("unknown_source" | "unknown_piece" | "unknown_instrument" |
         "unknown_output" | "busy"). ``instrument``/``output``/``once`` are the piano's (module docstring); test audio
         ignores them. ``if_idle`` (scripts, 23 Oct: a check's start replaced the owner's playing piece): start only
-        while the source is idle, else ValueError("busy"); a person's start (the pages) takes over as before."""
+        while the source is idle, else ValueError("busy"); a person's start (the pages) takes over as before.
+        ``speed`` (the piano): the piece's tempo times this, SPEED_RANGE, 1 by default; ``start_s``: start that far
+        into the piece (seconds at its own tempo; how a speed change carries on from where it was: its status's
+        ``pos_s``). ValueError("bad_speed")."""
         if source not in PLAYERS:
             raise ValueError("unknown_source")
+        if speed is not None and (not isinstance(speed, (int, float)) or isinstance(speed, bool)
+                                  or not SPEED_RANGE[0] <= float(speed) <= SPEED_RANGE[1]):
+            raise ValueError("bad_speed")
         cur = self._cur.get(source)
         if if_idle and cur is not None and cur.state in RUNNING + ("stopping",):
             raise ValueError("busy")
@@ -666,6 +681,11 @@ class Sources:
             c.once = (bool(once) if once is not None else path is not None) and "--once" in flags
             c.path = path
             c.note = note
+            if "--speed" in flags:
+                c.speed = float(speed) if speed is not None else 1.0
+                c.start_s = max(0.0, float(start_s or 0.0)) if "--start-s" in flags else 0.0
+                if c.live:                                 # a status file for the GS synth too: where it is
+                    c.status_path = self.log_dir / f"test-{source}.status.json"
             if not c.live:
                 c.status_path = self.log_dir / f"test-{source}.status.json"
                 lead = self._lead_ms(source)
@@ -858,6 +878,12 @@ class Sources:
                     argv += ["--lead-ms", f"{c.lead_ms:g}"]
                 if c.cal_mic is not None and CALIBRATION_FLAG in self._sender_flags():
                     argv += [CALIBRATION_FLAG, c.cal_mic]
+            if c.live and c.status_path is not None:
+                argv += ["--status-file", str(c.status_path)]
+            if c.speed != 1.0:
+                argv += ["--speed", f"{c.speed:g}"]
+            if c.start_s > 0:
+                argv += ["--start-s", f"{c.start_s:.3f}"]
             if c.once:
                 argv.append("--once")
             return argv
@@ -947,6 +973,7 @@ class Sources:
                 st = read_status(c.status_path)           # show_sender's stage, progress and error
                 if st is not None:
                     c.stage, c.progress, c.status_error = st["stage"], st["progress"], st["error"]
+                    c.pos_s = st.get("pos_s")
             if c.state in RUNNING and rc is not None:
                 if rc == 0 and c.once and c.stage != "error":
                     c.set("finished", now)                 # a once-only play ended by itself
@@ -1107,12 +1134,14 @@ class Sources:
             return {"source": source, "state": "off", "piece": None, "label": None, "stream": stream,
                     "sender": sender.name, "pid": None, "since_s": None, "error": None,
                     "instrument": self._instruments()[1] if midi else None,
-                    "output": DEFAULT_OUTPUT if midi else None, "once": False, "progress": None}
+                    "output": DEFAULT_OUTPUT if midi else None, "once": False, "progress": None, "speed": 1.0,
+                    "pos_s": None}
         error = c.error if c.state == "failed" else ((c.status_error or c.note) if c.state in RUNNING else None)
         return {"source": source, "state": c.state, "piece": c.piece, "label": c.label, "stream": c.stream,
                 "sender": c.sender.name, "pid": c.proc.pid if c.proc is not None else None,
                 "since_s": round(max(0.0, now - c.since_s), 3), "error": error,
-                "instrument": c.instrument, "output": c.output, "once": c.once, "progress": c.progress}
+                "instrument": c.instrument, "output": c.output, "once": c.once, "progress": c.progress,
+                "speed": c.speed, "pos_s": c.pos_s}
 
     def _rebuild(self) -> None:
         now = self.clock()

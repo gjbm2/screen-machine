@@ -2624,6 +2624,13 @@ class Api:
             return _err(400, "bad_request", "“if_idle” is true or false.", choices=[True, False])
         if if_idle:
             opts["if_idle"] = True                     # scripts: start only while the source is idle (23 Oct)
+        for key in ("speed", "start_s"):               # the piano's tempo and where to start (23 Oct)
+            v = body.get(key) if isinstance(body, dict) else None
+            if v is None:
+                continue
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v < 0:
+                return _err(400, "bad_request", f"“{key}” is a number.")
+            opts[key] = float(v)
         src = _components(brain).get(SOURCES)
         if src is None:
             return _json(neutral_source(source, MISSING[SOURCES]))
@@ -2638,6 +2645,8 @@ class Api:
                 return _err(400, code, SAY_SOURCE, choices=list(TEST_SOURCES))
             if code == "busy":
                 return _err(409, "busy", f"The {source} is already playing something; nothing was started.")
+            if code == "bad_speed":
+                return _err(400, "bad_speed", "Speed is from 0.25 (a quarter) to 4 (four times as fast).")
             if code in ("unknown_instrument", "unknown_output"):
                 key = "instruments" if code == "unknown_instrument" else "outputs"
                 ids: list = []
