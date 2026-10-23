@@ -104,16 +104,27 @@ async def wait_retry(h: Harness):
                  f"a retry scheduled (now {c.phase} {c.detail})")
 
 
-async def test_entry_timeout_no_frozen_ack(make_harness):
-    h = await make_harness(timeouts={"backoff_s": [30.0]})
+@pytest.mark.parametrize("how", ["slow", "never"])
+async def test_a_page_slow_to_freeze_still_goes_live_unmatched(make_harness, how):
+    """Owner, 23 Oct ("if the mode doesn't change after x seconds then it MUST JUST CHANGE"): the entry waits at most
+    entry_freeze_wait_s for ack frozen, then goes on without the page's ArtState: from the last anchor still, else
+    black, an unmatched cut. The page is unfrozen when it goes live, as usual."""
+    h = await make_harness(timeouts={"freeze_ack_s": 5.0, "entry_freeze_wait_s": 0.3, "backoff_s": [30.0]})
     page = await h.page()
-    page.ack_frozen = False
+    if how == "slow":
+        page.frozen_delay = 3.0                     # the page takes 3 s to freeze
+    else:
+        page.ack_frozen = False
     t0 = time.monotonic()
-    await put_live(h)
-    await wait_retry(h)
-    assert 0.35 < time.monotonic() - t0 < 1.5
-    await assert_clean_entry_abort(h, page, attached=False, session_created=False)
-    assert "ack frozen" in h.screen().last_error and not h.snap.calls
+    await h.go_live(page)
+    assert 0.25 < time.monotonic() - t0 < 1.5
+    c = h.screen()
+    body = next(iter(h.stream.sessions.values()))["body"]
+    assert body["anchor"] == {"rgb": [0, 0, 0]} and not h.snap.calls      # no earlier still: black
+    assert "did not confirm its freeze" in c.unmatched and c.last_error is None
+    freeze = page.of("freeze")[0]
+    await page.wait_for("unfreeze", lambda d: d["fid"] == freeze["fid"])
+    assert len(page.of("freeze")) == 1
 
 
 @pytest.mark.parametrize("how", ["slow", "error", "deaf"])
@@ -198,13 +209,13 @@ async def test_entry_failure_retries_with_backoff_and_never_parks(harness: Harne
     live by itself once the page answers. No new request needed."""
     h = harness
     page = await h.page()
-    page.ack_frozen = False
+    page.live_failed = True
     await put_live(h)
     c = h.screen()
-    await h.wait(lambda: len(page.of("freeze")) >= 5, 8, "five tries")
+    await h.wait(lambda: len(page.of("live.attach")) >= 5, 8, "five tries")
     assert c.phase != "failed" and "entry" in c.last_error
     assert "failed" not in c.snapshot_state()
-    page.ack_frozen = True
+    page.live_failed = False
     await h.wait(lambda: c.layer == "live" and c.phase in ("entering", "live"), 5, "live by itself")
 
 
@@ -1177,3 +1188,98 @@ async def test_a_switch_to_art_always_lands_by_its_deadline(make_harness):
     assert c.layer == "art" and "deadline" in c.last_error
     await h.wait(lambda: "live.abort" in page.types() and "unfreeze" in page.types()[-2:], 2.0, "page cut to art")
     await h.wait(lambda: any(m == "DELETE" for m, _, _ in h.stream.calls), 2.0, "session deleted")
+
+
+# ---------------------------------------------------------------------------
+# The switch deadline, art -> live (switch_to_live_s)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("slow", ["create", "ready"])
+async def test_a_slow_renderer_lets_the_page_go_at_the_deadline_then_cuts_to_live(make_harness, slow):
+    """Owner, 23 Oct: nothing holds the page frozen past switch_to_live_s. A renderer slow to start (its create or its
+    ready): at the deadline the page is unfrozen (its art goes on) and the screen reads "going live…", in progress;
+    when the session is ready the page cuts to live, unmatched, with no second freeze."""
+    h = await make_harness(timeouts={"switch_to_live_s": 1.0, "create_session_s": 5.0, "session_ready_s": 5.0,
+                                     "backoff_s": [30.0]})
+    if slow == "create":
+        h.stream.create_delay = 1.3
+    else:
+        h.stream.ready_delay = 1.3
+    page = await h.page()
+    c = h.screen()
+    t0 = time.monotonic()
+    await put_live(h)
+    freeze = await page.wait_for("freeze")
+    await page.wait_for("unfreeze", lambda d: d["fid"] == freeze["fid"], timeout=3)
+    assert 0.9 < time.monotonic() - t0 < 1.6, "unfrozen at the deadline"
+    assert c.layer == "art" and c.phase == "starting"
+    assert c.detail == "going live… (the renderer is still starting)"
+    assert page.frozen is None and not page.of("live.attach")
+    status, detail = await c.wait_settled(LIVE, 0.05)        # the mode row while it is still on its way
+    assert status == "unconfirmed" and detail == "going live… (the renderer is still starting)"
+    await h.wait(lambda: c.layer == "live" and c.phase in ("entering", "live"), 3, "live once ready")
+    assert time.monotonic() - t0 < 2.0, "inside twice the deadline"
+    assert [t for t, _ in msgs(page, "freeze", "unfreeze", "live.attach")] == ["freeze", "unfreeze", "live.attach"]
+    assert page.layer == "live" and c.last_error is None and "without a matched cut" in c.unmatched
+
+
+@pytest.mark.parametrize("stuck", ["create", "ready", "attach"])
+async def test_an_entry_not_live_by_twice_the_deadline_ends_and_is_retried(make_harness, stuck):
+    """Not on glass by twice switch_to_live_s: that try ends (its session deleted, or a create cut short found by its
+    key and ended; the page on art, not frozen) and live is tried again on the backoff: never given up."""
+    h = await make_harness(timeouts={"switch_to_live_s": 0.4, "create_session_s": 5.0, "session_ready_s": 5.0,
+                                     "live_visible_s": 5.0, "backoff_s": [30.0]})
+    page = await h.page()
+    if stuck == "create":
+        h.stream.create_delay = 3.0
+    elif stuck == "ready":
+        h.stream.emit_ready = False
+    else:
+        page.ack_live = False
+    c = h.screen()
+    t0 = time.monotonic()
+    await put_live(h)
+    await wait_retry(h)
+    assert 0.75 < time.monotonic() - t0 < 1.5
+    assert "not live within 0.8 s" in c.last_error and c._entry_failures == 1
+    assert c.layer == "art" and c.session is None and c.frozen_fid is None and c._handshake is None
+    assert page.layer == "art" and page.frozen is None
+    assert len(page.of("unfreeze")) == 1, "let go at the deadline; nothing frozen after"
+    assert bool(page.of("live.abort")) == (stuck == "attach")
+    await h.wait(lambda: not h.stream.sessions, 2, "no session left behind")
+    assert c.desired != "art" and c._next_attempt_at > 0
+
+
+async def test_a_fast_entry_is_untouched_by_its_deadline(make_harness):
+    """The normal path is unchanged: live well inside switch_to_live_s, and nothing fires afterwards (the deadline is
+    disarmed once the page shows live): one unfreeze, no abort, the same session, a matched cut."""
+    h = await make_harness(timeouts={"switch_to_live_s": 0.5})
+    page = await h.go_live()
+    c = h.screen()
+    sid = c.session["id"]
+    await asyncio.sleep(1.2)                                   # past twice the deadline
+    assert c.layer == "live" and c.phase == "live" and c.session["id"] == sid
+    assert [t for t, _ in msgs(page, "freeze", "unfreeze", "live.attach")] == ["freeze", "live.attach", "unfreeze"]
+    assert not page.of("live.abort") and c.last_error is None and c.unmatched is None
+    assert not c.detail.startswith("going live")
+
+
+async def test_switch_to_art_mid_create_aborts_promptly(make_harness):
+    """A switch to art cuts an entry short whatever it is waiting on, a slow create too (owner, 23 Oct: the switch
+    must just change): the page is unfrozen at once, and the session the create makes is found by its key and ended."""
+    h = await make_harness(timeouts={"create_session_s": 5.0})
+    h.stream.create_delay = 2.0
+    page = await h.page()
+    c = h.screen()
+    await put_live(h)
+    await h.wait(lambda: creates(h), 2, "the create sent")
+    t0 = time.monotonic()
+    st, _ = await h.api("PUT", "/api/v1/screens/devtest", {"desired": "art"})
+    assert st == 202
+    await h.wait(lambda: c._handshake is None and c.phase == "idle" and c.frozen_fid is None, 1, "entry cut short")
+    assert time.monotonic() - t0 < 0.5
+    assert c.layer == "art" and c.session is None and c.last_error is None
+    await page.wait_for("unfreeze")
+    await h.wait(lambda: not h.stream.sessions, 3, "the create's session found and ended")
+    await asyncio.sleep(0.3)
+    assert len(page.of("freeze")) == 1, "and no retry"

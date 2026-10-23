@@ -11,6 +11,11 @@ a live spec) with what it believes the screen shows, by running the handshakes:
 Every wait has the programme's timeout. A failure aborts cleanly (live.abort if
 attached, DELETE the session, unfreeze) and leaves the screen in art.
 
+Both switches have a deadline (owner, 23 Oct: "if the mode doesn't change after x seconds then it MUST JUST
+CHANGE"). An exit hard-cuts to art at switch_to_art_s. An entry lets the page go at switch_to_live_s (unfrozen,
+showing its art) and carries on behind it, cutting to live unmatched when the renderer is ready; a try that isn't
+on glass by twice that is ended and retried on the backoff.
+
 Inbound page messages and stream events arrive on other tasks. They go into the
 controller's Mailbox (the handshake scans it from a mark taken before each
 request, so nothing racing an HTTP response is lost) and, for unsolicited
@@ -240,6 +245,7 @@ class ScreenController:
         self._task: asyncio.Task | None = None
         self._handshake: str | None = None
         self._abort_entry = False
+        self._entry_cut: Callable[[], None] | None = None   # a paged entry before the cut: end it now (desired art)
         self._fallback_pending: str | None = None
         self._stale_session = False
         self._after_fallback = False        # the next entry is a re-anchor
@@ -516,17 +522,17 @@ class ScreenController:
             if not e.detail.startswith("timeout after"):
                 raise
 
-    async def _snapshotter_ready_or_warn(self) -> None:
+    async def _snapshotter_ready_or_warn(self, limit: float | None = None) -> None:
         """Readiness before a freeze, never fatal (degrade, never refuse): a snapshotter that isn't ready only means
         the still that follows may fail, and that falls back to the last still or black."""
         try:
-            await self._snapshotter_ready()
+            await self._snapshotter_ready(limit)
         except HandshakeError as e:
             self._log("warning", f"snapshotter not ready ({e.detail}); going on (the still may be unmatched)")
 
-    async def _snapshotter_ready(self) -> None:
+    async def _snapshotter_ready(self, limit: float | None = None) -> None:
         """Before a freeze: make sure the art-only page is loaded, so the 3 s snapshot
-        budget covers only render + capture (a cold Chrome takes longer than that)."""
+        budget covers only render + capture (a cold Chrome takes longer than that). `limit`: wait no longer."""
         ready = getattr(self.mgr.snapshotter, "ensure_ready", None)
         if ready is None:
             return
@@ -534,6 +540,8 @@ class ScreenController:
         self._changed()
         scfg = getattr(getattr(self.mgr, "cfg", None), "snapshot", None)
         bound = float(getattr(scfg, "page_load_timeout_s", 20.0)) + 5.0 + self.t.snapshot_s   # its own + its lock
+        if limit is not None:
+            bound = min(bound, limit)
         try:
             await bounded(ready(self.id), bound)
         except asyncio.TimeoutError:
@@ -561,7 +569,8 @@ class ScreenController:
             return
         fn(self.id, state)
 
-    async def _snapshot(self, state: Any) -> bytes:
+    async def _snapshot(self, state: Any, timeout: float | None = None) -> bytes:
+        timeout = self.t.snapshot_s if timeout is None else timeout
         if not isinstance(state, dict) or not state.get("base_url"):
             raise HandshakeError("snapshot", "ack frozen carried no usable ArtState")
         try:
@@ -578,9 +587,9 @@ class ScreenController:
             self.detail = "snapshot reused (identical ArtState)"
             return self._shot[1]
         try:
-            png = await bounded(self.mgr.snapshotter.snapshot(self.id, state), self.t.snapshot_s)
+            png = await bounded(self.mgr.snapshotter.snapshot(self.id, state), timeout)
         except asyncio.TimeoutError:
-            raise HandshakeError("snapshot", f"timeout after {self.t.snapshot_s:g} s") from None
+            raise HandshakeError("snapshot", f"timeout after {timeout:g} s") from None
         except Exception as e:
             raise HandshakeError("snapshot", describe_exc(e)) from None
         if not png or not png.startswith(b"\x89PNG"):
@@ -902,6 +911,8 @@ class ScreenController:
             # and the exit follows).
             self._abort_entry = True
             self.box.put({"src": "internal", "type": "abort_entry"})
+            if self._entry_cut is not None:
+                self._entry_cut()                # whatever it is waiting on (a slow create, the still): now
         if prev != d:
             log.info("%s: desired %s -> %s (%s)", self.id, desired_label(prev), desired_label(d), source)
         self._changed()
@@ -984,6 +995,8 @@ class ScreenController:
             return self.layer == "live" and self.phase in ("entering", "live")
 
         if not await wait_until(settled, self.changed, timeout):
+            if target != "art" and self.desired == target:
+                return "unconfirmed", self._going_live_words()   # still on its way: in progress, not stuck
             return "unconfirmed", f"not settled after {timeout:g} s (phase {self.phase})"
         if self.desired != target:
             return "cancelled", "desired changed meanwhile"
@@ -1706,6 +1719,31 @@ class ScreenController:
         self._schedule_retry(f"fallback {n}")     # degrade, never refuse (owner): the backoff tops out at 60 s (S2)
 
     # -- entry handshake ----------------------------------------------------
+    def _going_live_words(self, phase: str | None = None) -> str:
+        """A screen still on its way to live, in plain words: its detail once past the switch deadline, and the mode
+        row's when a switch outlasts the coordinator's wait (in progress, never "not settled")."""
+        phase = phase or self.phase
+        if phase == "starting":
+            why = "the renderer is still starting"
+        elif phase == "attaching":
+            why = "the screen is still loading the live picture"
+        elif phase == "idle" and self._handshake is None and self._next_attempt_at > self._now():
+            why = f"trying again in {math.ceil(self._next_attempt_at - self._now()):d} s"
+        elif phase == "idle" and not self.mgr.stream.reachable:
+            why = "waiting for the live pictures to come back"
+        else:
+            why = "still trying"
+        return f"going live… ({why})"
+
+    def _fallback_anchor(self, why: str) -> dict:
+        """Degrade, never refuse (owner, 23 Oct): no still for this entry -> it starts from the last anchor still,
+        else black, and the page's cut is unmatched."""
+        old = self.anchor_png
+        self.unmatched = f"went live without a matched cut ({why})"
+        self._log("warning", f"no entry still ({why}); going live from {'the last still' if old else 'black'}: "
+                             "an unmatched cut")
+        return {"png_b64": base64.b64encode(old).decode()} if old else {"rgb": [0, 0, 0]}
+
     async def _entry(self, page: PageClient) -> None:
         d = self.desired
         live = copy.deepcopy(d["live"])
@@ -1715,41 +1753,94 @@ class ScreenController:
         self._abort_entry = False
         sid: str | None = None
         attached = False
+        body: dict[str, Any] | None = None
+        creating = False                  # POST /api/sessions in flight (cut short: reclaim it by its key)
         mark = self.box.mark()
         t = self.t
+        # The switch deadline, art -> live (owner, 23 Oct: "if the mode doesn't change after x seconds then it MUST
+        # JUST CHANGE"). Nothing can force the renderer's first pixels, so at switch_to_live_s the page is let go: it
+        # is unfrozen (the art carries on as normal) and the entry goes on behind it; when the session is ready the
+        # page cuts to live unmatched, with no freeze held. Until then the optional steps (snapshotter, freeze ack,
+        # still) only get the time that is left. At twice the deadline a try that isn't on glass yet is ended
+        # (session deleted, page on art) and retried on the backoff: the switch never gives up for good. A switch to
+        # art cuts the entry short the same way, whatever it is waiting on (a slow create too).
+        loop = asyncio.get_running_loop()
+        task = asyncio.current_task()
+        due = self._now() + t.switch_to_live_s
+        late = False
+        cut: list[str] = []               # why this task was cancelled: "deadline" | "art"
+
+        def left() -> float:
+            return max(0.0, due - self._now())
+
+        def let_go() -> None:
+            nonlocal late
+            late = True
+            if self.frozen_fid == fid:
+                self._unfreeze(page)
+            if self.unmatched is None:
+                self.unmatched = f"went live without a matched cut (not live within {t.switch_to_live_s:g} s)"
+            self._log("warning", f"not live within {t.switch_to_live_s:g} s: the page shows its art meanwhile and "
+                                 "cuts to live (unmatched) when the renderer is ready")
+            self._set_phase(self.phase, self._going_live_words())
+
+        def stop(why: str) -> None:
+            if not cut and task is not None and not task.done():
+                cut.append(why)
+                task.cancel(f"entry: {why}")
+
+        timers = [loop.call_later(t.switch_to_live_s, let_go),
+                  loop.call_later(2 * t.switch_to_live_s, stop, "deadline")]
+        self._entry_cut = lambda: stop("art")
+
+        def disarm() -> None:
+            for h in timers:
+                h.cancel()
+            self._entry_cut = None
+
+        def phase(name: str, detail: str = "") -> None:
+            self._set_phase(name, self._going_live_words(name) if late else detail)
+
         try:
             await self.mgr.refresh_catalog()
-            await self._snapshotter_ready_or_warn()
+            await self._snapshotter_ready_or_warn(limit=left())
             if self._abort_entry:
                 raise EntryAborted()
-            # 1. freeze -> ack frozen [3 s]
-            self.frozen_fid = fid
-            self._set_phase("freezing", fid)
-            self._send(page, "freeze", {"fid": fid, "reason": "reanchor" if reanchor else "enter"})
-            ack = await self._wait(mark, lambda i: self._is_ack(i, "frozen", fid=fid), t.freeze_ack_s,
-                                   "ack frozen", page=page, abortable=True)
-            # 2. snapshot [3 s]
-            self._set_phase("snapshot")
-            self.art_shape = await self._art_shape_of(ack["data"].get("state"))
-            try:
-                png = await self._snapshot(self._shaped(ack["data"].get("state")))
-                self._keep_png("anchor", png)
-                anchor: dict = {"png_b64": base64.b64encode(png).decode()}
-                self.unmatched = None
-            except HandshakeError as e:
-                # Degrade, never refuse (owner, 23 Oct): a slow or failed still never stops a screen going live;
-                # it starts from the last anchor still, else black, and the page's cut is unmatched.
-                old = self.anchor_png
-                anchor = {"png_b64": base64.b64encode(old).decode()} if old else {"rgb": [0, 0, 0]}
-                self.unmatched = f"went live without a matched cut ({e.detail})"
-                self._log("warning", f"entry snapshot failed ({e.detail}); going live from "
-                                     f"{'the last still' if old else 'black'}: an unmatched cut")
+            # 1. freeze -> ack frozen, for at most entry_freeze_wait_s (and the time left). A page that doesn't confirm
+            # in time doesn't hold the switch: the entry goes on without its ArtState. Past the deadline: no freeze.
+            ack: dict | None = None
+            no_still = f"not live within {t.switch_to_live_s:g} s, so no freeze"
+            if not late:
+                self.frozen_fid = fid
+                self._set_phase("freezing", fid)
+                self._send(page, "freeze", {"fid": fid, "reason": "reanchor" if reanchor else "enter"})
+                wait_s = min(t.freeze_ack_s, t.entry_freeze_wait_s, left())
+                try:
+                    ack = await self._wait(mark, lambda i: self._is_ack(i, "frozen", fid=fid), wait_s,
+                                           "ack frozen", page=page, abortable=True)
+                except HandshakeError:
+                    no_still = f"the page did not confirm its freeze within {wait_s:g} s"
+            # 2. snapshot [snapshot_s, and the time left]
+            if ack is not None:
+                self._set_phase("snapshot")
+                self.art_shape = await self._art_shape_of(ack["data"].get("state"))
+                try:
+                    png = await self._snapshot(self._shaped(ack["data"].get("state")),
+                                               timeout=min(t.snapshot_s, left()))
+                    self._keep_png("anchor", png)
+                    anchor: dict = {"png_b64": base64.b64encode(png).decode()}
+                    if not late:
+                        self.unmatched = None
+                except HandshakeError as e:
+                    anchor = self._fallback_anchor(e.detail)
+            else:
+                anchor = self._fallback_anchor(no_still)
             if self._abort_entry:
                 raise EntryAborted()
-            # 3. POST session -> session.ready [5 s]
-            self._set_phase("starting")
+            # 3. POST session -> session.ready [create_session_s, session_ready_s]
+            phase("starting")
             profile = live.get("profile") or self.cfg.profile
-            body: dict[str, Any] = {
+            body = {
                 "screen": self.id, "gpu": self.cfg.gpu, "profile": profile, **self._render_size(profile),
                 "anchor": anchor,
                 **({"hud": True} if self.hud else {}),
@@ -1765,15 +1856,17 @@ class ScreenController:
                 body["scene"] = carried_scene
             if body.get("scene") is None:
                 body["scene"] = "auto"     # the renderer's director picks (weighted, ratings; a room's leader first)
+            creating = True
             try:
-                # Bounded: the page is frozen meanwhile, and its own freeze safety is 30 s.
                 resp = await self.mgr.stream.create_session(body, timeout=t.create_session_s)
             except StreamError as e:
+                creating = False
                 if isinstance(e, StreamUnreachable):
                     # It may still be created server-side (a slow start): reclaim it by its
                     # idempotency key and delete it, rather than leave it on the GPU until its TTL.
                     self.mgr.reclaim(body)
                 raise self._create_failed(e) from None
+            creating = False
             sid = str((resp or {}).get("session") or "")
             self.hud_applied, self.hud_failed = self.hud, None
             attach = (resp or {}).get("attach") or {}
@@ -1793,8 +1886,9 @@ class ScreenController:
                 await self._wait(mark, lambda i: self._is_stream(i, ("session.ready",), sid) or (
                     self._is_stream(i, ("session.state",), sid) and i.get("state") == "holding"),
                     t.session_ready_s, "session.ready", page=page, abortable=True, sid=sid)
-            # 4-5. live.attach -> ack live_visible [10 s] (the page gives up at 8 s: live_failed)
-            self._set_phase("attaching", sid)
+            # 4-5. live.attach -> ack live_visible [10 s] (the page gives up at 8 s: live_failed). The page has no
+            # "cut now on what you have" message: it cuts on its first frame once its buffer target is met.
+            phase("attaching", sid)
             self._send(page, "live.attach", {"session": sid, **{k: attach.get(k) for k in (
                 "url", "codec", "w", "h", "fps", "target_buffer_ms")}})
             attached = True
@@ -1802,6 +1896,7 @@ class ScreenController:
                                    t.live_visible_s, "ack live_visible", page=page, abortable=True, sid=sid)
             if ack["data"].get("kind") == "live_failed":
                 raise HandshakeError("live.attach", f"page live_failed: {ack['data'].get('reason')}")
+            disarm()                      # on glass: the deadline is met (settle and go are short and bounded)
             self.layer = "live"
             # 5b. settle: the page shows the held anchor (nothing visible changes) while its decoder warms up,
             # so the in-fade that `go` starts plays smoothly from its first frame.
@@ -1818,7 +1913,7 @@ class ScreenController:
             if not self.glass_device or self._own(page):   # S13: another device driving never takes the TV's place
                 self.glass_device = page.device or self.glass_device    # this show is shaped for this page's device
             self._set_phase("entering", sid)
-            # 7. unfreeze
+            # 7. unfreeze (already done if the page was let go at the deadline)
             self._unfreeze(page)
             self._entry_failures = 0
             self._after_fallback = False
@@ -1833,12 +1928,15 @@ class ScreenController:
             if self._scan(mark, lambda i: self._is_stream(i, ("session.error", "session.ended"), sid)):
                 self.session_lost("stream error during entry", gone=True)
         except EntryAborted:
+            disarm()
             self._log("info", "entry aborted (desired changed to art)")
             await self._abort_entry_cleanup(page, sid, attached, "desired art")
         except PageGone:
+            disarm()
             self._log("warning", "page went away during entry; aborting")
             await self._abort_entry_cleanup(page, sid, attached, "page gone")
         except (HandshakeError, StreamUnreachable) as e:
+            disarm()
             self.last_error = f"entry {e}"
             self._log("warning", f"entry failed: {e}; aborting cleanly")
             await self._abort_entry_cleanup(page, sid, attached, str(e)[:80])
@@ -1846,7 +1944,25 @@ class ScreenController:
                 self._entry_failures += 1       # an unreachable stream_service just waits for it
             if self.desired != "art":           # never parked: the backoff tops out and keeps trying (S1)
                 self._schedule_retry(f"entry failure {self._entry_failures}")
+        except asyncio.CancelledError:
+            disarm()
+            if not cut or task is None or task.uncancel() > 0:
+                raise                           # not ours (a shutdown): as before
+            if creating and body is not None:
+                self.mgr.reclaim(body)          # a create cut short may still make a session: find it, end it
+            if cut[0] == "art":
+                self._log("info", "entry aborted (desired changed to art)")
+                await self._abort_entry_cleanup(page, sid, attached, "desired art")
+            else:
+                why = f"not live within {2 * t.switch_to_live_s:g} s"
+                self.last_error = f"entry {why}"
+                self._log("warning", f"entry {why}; this try ends (the page is on art) and live is tried again")
+                await self._abort_entry_cleanup(page, sid, attached, why)
+                self._entry_failures += 1
+                if self.desired != "art":
+                    self._schedule_retry(f"entry failure {self._entry_failures}")
         finally:
+            disarm()
             self._handshake = None
             self._abort_entry = False
             self._changed()
@@ -2117,6 +2233,7 @@ class ScreenController:
             self._set_phase("idle", "exit complete")
             self._log("info", f"back to art from {sid}")
         except PageInArt as e:
+            dl.cancel()                    # (a deadline cancel inside a handler would end the screen's run task)
             self._log("warning", f"page already showed art during exit ({e}); finishing")
             self.layer = "art"
             self._publish("exit")
@@ -2130,6 +2247,7 @@ class ScreenController:
             task.uncancel()
             await self._exit_hard_cut(sid, f"not back on art within {t.switch_to_art_s:g} s (deadline)")
         except (HandshakeError, PageGone, StreamUnreachable) as e:
+            dl.cancel()
             await self._exit_hard_cut(sid, "page went away" if isinstance(e, PageGone) else str(e))
         finally:
             dl.cancel()
