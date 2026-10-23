@@ -129,6 +129,10 @@
             ]
           }
         },
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
         "show.ai": {
           "set": true,
           "restore": true

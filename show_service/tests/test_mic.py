@@ -87,8 +87,8 @@ ALL = ["pc22-mic", "room-mic", "room-piano", "test-audio"]
 def test_off_until_something_needs_it_and_the_receiver_is_told_once(tmp_path):
     e = Env(tmp_path)
     b = e.mic.state()
-    assert b == {"on": False, "muted": False, "wanted": False, "switch": False, "why": "Off: nothing needs it",
-                 "claims": [], "mode": False, "streams": {"capturing": [], "off": ["room-mic", "pc22-mic"]}, "error": None}
+    assert b == {"on": False, "muted": False, "wanted": False, "why": "Off: nothing needs it", "claims": [],
+                 "mode": False, "streams": {"capturing": [], "off": ["room-mic", "pc22-mic"]}, "error": None}
     assert e.rx.calls == [(["pc22-mic", "room-mic"], ALL)]          # MIDI and test streams are never in "off"
     assert e.rings.offs[-1] == ["pc22-mic", "room-mic"]
     for _ in range(5):
@@ -114,7 +114,7 @@ def test_the_mode_claim_turns_it_on_and_mute_always_wins(tmp_path):
     assert b["why"] == "Switched off" and b["wanted"] is False and b["claims"] == []
     b = e.mic.put(muted=False)
     assert b["why"] == "Off: nothing needs it"
-    assert json.loads(e.file.read_text()) == {"v": 1, "muted": False, "mode": False, "switch": False}
+    assert json.loads(e.file.read_text()) == {"v": 1, "muted": False, "mode": False}
 
 
 def test_auto_on_wants_it_live(tmp_path):
@@ -277,8 +277,8 @@ async def _routes(e):
     async with TestClient(TestServer(app)) as c:
         r = await c.get("/api/v1/mic")
         b = await r.json()
-        assert r.status == 200 and b["on"] is False and set(b) == {"on", "muted", "wanted", "switch", "why", "claims",
-                                                                  "mode", "streams", "error"}
+        assert r.status == 200 and b["on"] is False and set(b) == {"on", "muted", "wanted", "why", "claims", "mode",
+                                                                  "streams", "error"}
         r = await c.put("/api/v1/mic", json={"mode": True})
         assert r.status == 200 and (await r.json())["on"] is True
         r = await c.put("/api/v1/mic", json={"muted": True})
@@ -303,21 +303,3 @@ def test_inputs_that_fail_turn_every_possible_mic_off(tmp_path):
     assert b["on"] is False and e.rx.calls[-1][0] == ["pc22-mic", "room-mic"]     # never MIDI or a test stream
     assert b["wanted"] is True and "can't be listed" in b["why"]
     assert e.rings.offs[-1] == ["pc22-mic", "room-mic"]
-
-
-def test_the_room_mic_switch_turns_it_on_by_itself(tmp_path):
-    """Owner, 24 Oct: "I turned it on (so it delivers music data) but it's refusing to enable unless I turn auto on"."""
-    e = Env(tmp_path)
-    b = e.mic.put(switch=True)
-    assert b["on"] is True and b["switch"] is True and b["muted"] is False and b["why"] == "Listening: switched on"
-    assert b["claims"] == [{"by": "switch", "label": "Room mic switch"}]
-    assert b["streams"]["capturing"] == ["room-mic", "pc22-mic"]
-    b = e.mic.put(switch=False)
-    assert b["on"] is False and b["muted"] is True and b["switch"] is False and b["claims"] == []
-    assert json.loads(e.file.read_text()) == {"v": 1, "muted": True, "mode": False, "switch": False}
-
-
-def test_an_old_unmuted_file_reads_as_switched_on(tmp_path):
-    (tmp_path / "mic.json").write_text(json.dumps({"v": 1, "muted": False, "mode": False}))
-    e = Env(tmp_path)
-    assert e.mic.switch is True
