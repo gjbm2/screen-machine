@@ -17,14 +17,15 @@ PRINT_STAFF_MM = 7.0                 # a printed piano score's staff (rastral 2-
 PRINT_MARGINS_MM = (14.0, 12.0, 12.0, 12.0)    # top, right, bottom, left (inside a printer's unprintable edge)
 
 
-def _toolkit(mei: str, page_w: float, page_h: float, margins: tuple[float, float, float, float]):
-    """A Verovio toolkit with ``mei`` laid out on pages page_w x page_h (Verovio units at scale 100)."""
+def _toolkit(mei: str, page_w: float, page_h: float, margins: tuple[float, float, float, float], header: bool = True):
+    """A Verovio toolkit with ``mei`` laid out on pages page_w x page_h (Verovio units at scale 100); ``header``: the
+    title and composer on the first page and page numbers on the rest (paper; a screen's page shows its own)."""
     import verovio
     top, right, bottom, left = (int(m) for m in margins)
     tk = verovio.toolkit()
     tk.setOptions({"scale": 100, "pageWidth": int(max(400, page_w)), "pageHeight": int(max(400, page_h)),
                    "pageMarginTop": top, "pageMarginRight": right, "pageMarginBottom": bottom, "pageMarginLeft": left,
-                   "adjustPageHeight": False, "breaks": "smart", "breaksSmartSb": 0.0, "header": "auto",
+                   "adjustPageHeight": False, "breaks": "smart", "breaksSmartSb": 0.0, "header": "auto" if header else "none",
                    "footer": "none", "svgViewBox": True, "font": "Leipzig", "justifyVertically": True,
                    "pedalStyle": "line"})
     if not tk.loadData(mei):
@@ -36,7 +37,7 @@ def pages(mei: str, width_px: float, height_px: float, staff_px: float = 36.0) -
     """The score laid out as pages ``width_px`` x ``height_px`` (css px) with a staff ``staff_px`` high: SVGs that
     scale to that box (viewBox)."""
     k = STAFF_UNITS / max(12.0, staff_px)                  # Verovio units (scale 100) per css px
-    tk = _toolkit(mei, width_px * k, height_px * k, (50, 50, 50, 50))
+    tk = _toolkit(mei, width_px * k, height_px * k, (50, 50, 50, 50), header=False)    # the page names the piece
     return [tk.renderToSVG(p) for p in range(1, tk.getPageCount() + 1)]
 
 

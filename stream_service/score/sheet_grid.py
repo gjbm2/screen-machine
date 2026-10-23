@@ -12,7 +12,7 @@ beat), its dynamics levels and key profiles, mei.py's spelling and engraving.  A
 screens); triplets come out on the 16th grid.  Hands: a two-part file (two tracks or channels) puts its higher part
 on the treble staff and its lower on the bass (a note past 3 ledger lines goes to the other staff); one part splits
 at middle C.  Key: the file's key signatures; none (or all C) and the notes say otherwise, the Albrecht-Shanahan
-profile over the whole piece.
+profile over the whole piece, its opening and close weighing most.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ GRID_DIV = 12                        # the lattice a sequenced onset sits on: a 
 ON_GRID = 0.9                        # this share of onsets on it (a performance: ~25 % by chance)
 MIN_NOTES = 8
 KEY_MARGIN = 0.15                    # a C-only file is re-keyed when the best key's fit beats C's by this much
+HOME_W = 4.0                         # the first and last eighth of the notes weigh this much more for the key
 
 
 @dataclass
@@ -156,8 +157,9 @@ def _key(mf: MidiFile) -> list:
     """[(tick, fifths)]: the file's signatures, or the profile's best key for the whole piece."""
     declared = [(t, sf) for t, sf, _mi in mf.keys if -7 <= sf <= 7]
     w = [0.0] * 12
-    for n in mf.notes:
-        w[n.pitch % 12] += min(n.off - n.on, 4 * mf.ppq)
+    lo, hi = (mf.notes[len(mf.notes) // 8].on, mf.notes[-(len(mf.notes) // 8) - 1].on) if mf.notes else (0, 0)
+    for n in mf.notes:                   # the opening and the close weigh most: a piece starts and ends at home
+        w[n.pitch % 12] += min(n.off - n.on, 4 * mf.ppq) * (HOME_W if n.on <= lo or n.on >= hi else 1.0)
     major, minor = PROFILES[KEY_PROFILE]
 
     def fit(prof, tonic):
