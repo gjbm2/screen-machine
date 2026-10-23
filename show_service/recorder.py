@@ -33,7 +33,7 @@
 
 The API (api.py; the page reaches it through room_service's /show pass-through): ``GET /api/v1/piano/recordings`` ->
 :meth:`view`, ``POST /api/v1/piano/record {"on"}`` -> :meth:`record`, ``PATCH /api/v1/piano/recordings/{id}
-{"title"}`` -> :meth:`rename`, ``DELETE`` -> :meth:`delete`, ``GET .../{id}.mid`` -> :meth:`file_of`. Playback is the
+{"title"?, "composer"?, "genre"?}`` -> :meth:`edit`, ``DELETE`` -> :meth:`delete`, ``GET .../{id}.mid`` -> :meth:`file_of`. Playback is the
 test piano's: ``POST /api/v1/test {"source": "piano", "piece": "rec:<id>"}`` (sources.py reads this folder through
 :func:`recordings_folder` and :func:`read_meta`).
 """
@@ -253,9 +253,24 @@ def read_meta(folder: pathlib.Path, rid: str) -> Optional[dict]:
 
 
 def item(meta: dict) -> dict:
-    """The contract's row: {id, title, recorded_at, duration_s, notes}."""
-    return {"id": meta.get("id"), "title": meta.get("title"), "recorded_at": meta.get("recorded_at"),
+    """The contract's row: {id, title, composer, genre, recorded_at, duration_s, notes} (composer and genre: what the
+    player set, else null)."""
+    return {"id": meta.get("id"), "title": meta.get("title"), "composer": meta.get("composer"),
+            "genre": meta.get("genre"), "recorded_at": meta.get("recorded_at"),
             "duration_s": meta.get("duration_s"), "notes": meta.get("notes")}
+
+
+def clean_detail(value: Any, what: str) -> Optional[str]:
+    """A composer or genre as the page sent it: tidied text, or None (empty or null clears it). ValueError past
+    TITLE_MAX."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"bad_{what}: a {what} is text")
+    t = " ".join(_CTRL.sub(" ", value).split())
+    if len(t) > TITLE_MAX:
+        raise ValueError(f"bad_{what}: a {what} has at most {TITLE_MAX} characters")
+    return t or None
 
 
 # -- the take -----------------------------------------------------------------------------------------------------------
@@ -418,10 +433,21 @@ class Recorder:
     def rename(self, rid: str, title: Any) -> Any:
         """PATCH /api/v1/piano/recordings/{id} {"title"} -> the row. LookupError("unknown_recording"), ValueError
         ("bad_title")."""
-        t = clean_title(title)
+        return self.edit(rid, {"title": title})
+
+    def edit(self, rid: str, changes: dict) -> Any:
+        """PATCH /api/v1/piano/recordings/{id} {"title"?, "composer"?, "genre"?} -> the row (owner, 23 Oct: name a
+        take and say whose piece it is, so its score prints them).  A named null or "" clears composer or genre.
+        LookupError("unknown_recording"), ValueError("bad_title" ...)."""
+        ch: dict = {}
+        if "title" in changes:
+            ch["title"] = clean_title(changes["title"])
+        for k in ("composer", "genre"):
+            if k in changes:
+                ch[k] = clean_detail(changes[k], k)
         if read_meta(self.folder, rid) is None:
             raise LookupError("unknown_recording")
-        return self._off_thread(self._rename_files, self.folder, rid, t)
+        return self._off_thread(self._edit_files, self.folder, rid, ch)
 
     def delete(self, rid: str) -> Any:
         """DELETE /api/v1/piano/recordings/{id} -> {"deleted": id}. LookupError("unknown_recording")."""
@@ -601,18 +627,21 @@ class Recorder:
         return {"recording": self._state(self._take), "recordings": self.recordings(), "last": last,
                 **({"error": err} if err else {})}
 
-    def _rename_files(self, folder: pathlib.Path, rid: str, title: str) -> dict:
+    def _edit_files(self, folder: pathlib.Path, rid: str, ch: dict) -> dict:
         meta = read_meta(folder, rid)
         if meta is None:
             raise LookupError("unknown_recording")
-        mid = folder / f"{rid}.mid"
-        try:
-            data = retitle_smf(mid.read_bytes(), title)
-            if data is not None:
-                _atomic_write(mid, data)
-        except OSError:
-            log.warning("recording %s: the track name in the .mid wasn't changed", rid, exc_info=True)
-        meta["title"] = title
+        title = ch.get("title")
+        if title is not None and title != meta.get("title"):
+            mid = folder / f"{rid}.mid"
+            try:
+                data = retitle_smf(mid.read_bytes(), title)
+                if data is not None:
+                    _atomic_write(mid, data)
+            except OSError:
+                log.warning("recording %s: the track name in the .mid wasn't changed", rid, exc_info=True)
+        for k, v in ch.items():
+            meta[k] = v
         _atomic_write(folder / f"{rid}.json", (json.dumps(meta, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
         self._list = None
         return item(meta)

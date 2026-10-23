@@ -368,6 +368,8 @@ def test_edit_and_delete_uploads_and_recordings(f):
         assert got["title"] == "Better title" and "composer" not in got and got["genre"] == "jazz"
         got = await lib.edit(f"rec:{REC_ID}", "My take")                 # the recorder's rename
         assert got["title"] == "My take" and json.loads((f.recs / f"{REC_ID}.json").read_text())["title"] == "My take"
+        got = await lib.edit(f"rec:{REC_ID}", None, "Erik Satie", "classical", fields={"composer", "genre"})
+        assert (got["title"], got["composer"], got["genre"]) == ("My take", "Erik Satie", "classical")   # its score's
         with pytest.raises(ValueError, match="not_editable"):
             await lib.edit("lib:ragtime-joplin-maple-leaf-rag", "x")
         with pytest.raises(ValueError, match="bad_title"):

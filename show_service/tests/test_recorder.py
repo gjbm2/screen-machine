@@ -307,6 +307,11 @@ def test_rename_delete_and_the_file(rig):
         rec.rename(first["id"], "x" * 121)
     with pytest.raises(LookupError):
         rec.rename("20990101-000000-abcd", "x")
+    row = rec.edit(first["id"], {"composer": "  Frédéric   Chopin ", "genre": "classical"})   # the score prints them
+    assert (row["title"], row["composer"], row["genre"]) == ("Chopin — the good one", "Frédéric Chopin", "classical")
+    assert rec.edit(first["id"], {"composer": ""})["composer"] is None                          # "" clears it
+    with pytest.raises(ValueError, match="bad_composer"):
+        rec.edit(first["id"], {"composer": "x" * 121})
     with pytest.raises(LookupError):
         rec.file_of("../../etc/passwd")
     path, title = rec.file_of(second["id"])
