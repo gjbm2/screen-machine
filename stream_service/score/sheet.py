@@ -1,20 +1,30 @@
 """A whole piece's score, not in real time (owner, 23 Oct: "feed a midi that user has recorded (or selected from Music
 tab) to our score generator and display in browser ... no animation, just a generated score, suitable for scrolling
-or paginating").
+or paginating"; then: "first pass can't take minutes to generate a score ... if there's a more sophisticated neural
+analysis pass then user could request that on demand").
 
-The same generator as the live score: the MIDI is played into a ScoreBuilder in simulated time, frame by frame as the
-live scene feeds it, with the real analysis worker (client.Analyser: PM2S + metre.py, ~/.venvs/sm-score-ml, nice 19
-on the host's last 4 CPUs) answering each window.  The bars it writes (a rewrite replaces the phrase's bars so far, as
-on the screens) become one MEI document: every bar in the key it was written in, key and time changes inline, ties
-across bar lines, dynamics, pedal marks, octave lines, a new system after each phrase.  Verovio lays it out in pages
-of any size.
+Two passes:
+* **quick** (the default, ~1-2 s a piece): a sequenced file (its notes on its own beat grid) is read straight off
+  that grid, bar lines, metre and key from the file (sheet_grid.py); a performance (no grid: the Steinway's
+  recordings, most of the library) has its beat tracked once over the whole piece by dynamic programming and its
+  metre read from the accents (sheet_beats.py).
+* **better** (--neural, asked for on its own; ~25 ms of CPU a note: a minute or more for a long piece): the live
+  score's networks (PM2S) read the whole piece once (sheet_analysis.py), and the piece is played into the live
+  ScoreBuilder in simulated time, frame by frame as the screens feed it, its analysis requests answered from that
+  one reading (a rewrite replaces the phrase's bars so far, as on the screens).
+Either way the bars become one MEI document: every bar in the key it was written in, key and time changes inline,
+ties across bar lines, dynamics, pedal lines, octave lines, a new system after each phrase.  Verovio lays it out in
+pages of any size, or a PDF to print (sheet_pages.py).
 
-    python -m stream_service.score.sheet make  <file.mid> <out.mei> [--title T] [--composer C]
+    python -m stream_service.score.sheet make  <file.mid> <out.mei> [--neural] [--title T] [--composer C]
         progress as JSON lines on stdout: {"progress": 0-1}, then {"done": true, "bars": n, ...} or {"error": "..."}
     python -m stream_service.score.sheet pages <file.mei> --width PX --height PX [--staff PX]
         one JSON line: {"pages": ["<svg ...>", ...]}; pages are width x height css px with a staff --staff px high
+    python -m stream_service.score.sheet pdf <file.mei> <out.pdf> [--paper a4|a4-landscape|letter] [--title --composer]
+        one JSON line: {"done": true, "bytes": n}
 
-Run by sm-stream's python (Verovio); show_service's score_sheet.py runs both and keeps the MEI.
+make runs in sm-score-ml's python (numpy; torch for --neural), pages and pdf in sm-stream's (Verovio, Playwright);
+show_service's score_sheet.py runs them and keeps the MEI.
 """
 from __future__ import annotations
 
@@ -30,13 +40,13 @@ from xml.sax.saxutils import escape
 
 from .mei import _keysig, _layer, _octave_xml, _tstamp, signature
 from .quantize import Bar, ScoreBuilder
+from .sheet_pages import PAPERS, pages, pdf
 
 FPS = 30.0
 TAIL_S = 8.0                         # played on after the last event, so the last phrase ends and is written
 LATENCY_S = 0.6                      # a reply is taken this long after its request (the screens' worker: 0.3-1.5 s)
-WORKERS = 2                          # analysis workers (2 threads, ~0.5 GB each; on the host's last 4 CPUs)
-STAFF_UNITS = 72.0                   # a staff's height in Verovio units at scale 100 (4 spaces of 2 x unit 9)
-SOURCES = ("sheet.py", "quantize.py", "mei.py", "metre.py", "analyse.py", "pm2s_net.py")
+SOURCES = ("sheet.py", "sheet_grid.py", "sheet_beats.py", "sheet_analysis.py", "quantize.py", "mei.py", "metre.py",
+           "pm2s_net.py")
 
 
 def generator_version() -> str:
@@ -52,33 +62,21 @@ def generator_version() -> str:
 
 
 # -- the live score's input loop, in simulated time ---------------------------------------------------------------
-def transcribe(events: list, analysers=(), progress: Optional[Callable[[float], None]] = None) -> list:
+def transcribe(events: list, analyse: Optional[Callable[[dict], dict]] = None,
+               progress: Optional[Callable[[float], None]] = None) -> list:
     """MIDI events [(t s, status, d1, d2)] -> [(Bar, fifths)] as a reader ends up with them (markers kept: a phrase
-    ended there).  ``analysers``: client.Analyser workers, used in turn (none: the fallback 4/4 clock).  Each reply
-    is taken LATENCY_S after its request, as on the screens, so two workers answer two windows at once."""
+    ended there).  ``analyse``: answers the builder's analysis requests (sheet_analysis.WholePiece; None: the live
+    fallback, a 4/4 beat clock); each answer is taken LATENCY_S after its request, as on the screens."""
     from stream_service.piano_replay import CC, NOTE_OFF, NOTE_ON
-    analysers = [a for a in analysers if a is not None]
     sb = ScoreBuilder()
-    if analysers:
+    if analyse is not None:
         sb.use_analysis(True)
     evs = sorted(events)
     if not evs:
         return []
     end = evs[-1][0] + TAIL_S
     out: list = []
-    pending: collections.deque = collections.deque()      # [due, worker, reply or None], in request order
-
-    def collect(e: list) -> None:
-        if e[2] is None:
-            e[2] = e[1].out.get(timeout=60)[1]
-
-    def deliver(upto: float) -> None:
-        while pending and pending[0][0] <= upto:
-            e = pending.popleft()
-            collect(e)
-            if e[2].get("ok"):
-                sb.on_analysis(e[2])
-
+    pending: collections.deque = collections.deque()      # (due, reply), in request order
     i, t, frame, last_p = 0, 0.0, 0, -1.0
     while t <= end:
         while i < len(evs) and evs[i][0] <= t:
@@ -90,19 +88,14 @@ def transcribe(events: list, analysers=(), progress: Optional[Callable[[float], 
             elif st == CC and d1 == 64:
                 sb.pedal(d2 / 127.0, te)
             i += 1
-        deliver(t)
-        live = [a for a in analysers if a.ok]
-        if live:
+        while pending and pending[0][0] <= t:
+            rep = pending.popleft()[1]
+            if rep.get("ok"):
+                sb.on_analysis(rep)
+        if analyse is not None:
             req = sb.analysis_request(t)
             if req is not None:
-                busy = {id(e[1]) for e in pending if e[2] is None}
-                free = [a for a in live if id(a) not in busy]
-                if not free:                                  # every worker answering: wait for the oldest
-                    collect(next(e for e in pending if e[2] is None))
-                    busy = {id(e[1]) for e in pending if e[2] is None}
-                    free = [a for a in live if id(a) not in busy]
-                free[0].submit("a", req)
-                pending.append([t + LATENCY_S, free[0], None])
+                pending.append((t + LATENCY_S, analyse(req)))
         for bar in sb.poll(t):
             if bar.rewrite:
                 while out and not out[-1][0].marker:
@@ -195,40 +188,50 @@ def score_doc(bars: list, *, title: str = "", composer: str = "", pedal: bool = 
             f"<music><body><mdiv><score>{head}<section>{''.join(body)}</section></score></mdiv></body></music></mei>")
 
 
-# -- pages --------------------------------------------------------------------------------------------------------
-def pages(mei: str, width_px: float, height_px: float, staff_px: float = 36.0) -> list[str]:
-    """The score laid out as pages ``width_px`` x ``height_px`` (css px) with a staff ``staff_px`` high: SVGs that
-    scale to that box (viewBox)."""
-    import verovio
-    k = STAFF_UNITS / max(12.0, staff_px)                  # Verovio units (scale 100) per css px
-    tk = verovio.toolkit()
-    tk.setOptions({"scale": 100, "pageWidth": int(max(400, width_px * k)), "pageHeight": int(max(400, height_px * k)),
-                   "pageMarginLeft": 50, "pageMarginRight": 50, "pageMarginTop": 50, "pageMarginBottom": 50,
-                   "adjustPageHeight": False, "breaks": "smart", "breaksSmartSb": 0.0, "header": "auto",
-                   "footer": "none", "svgViewBox": True, "font": "Leipzig", "justifyVertically": True,
-                   "pedalStyle": "line"})
-    if not tk.loadData(mei):
-        raise ValueError("Verovio couldn't read the score")
-    return [tk.renderToSVG(p) for p in range(1, tk.getPageCount() + 1)]
-
-
 # -- the command line ---------------------------------------------------------------------------------------------
 def _say(**kw) -> None:
     sys.stdout.write(json.dumps(kw) + "\n")
     sys.stdout.flush()
 
 
-def make(midi: pathlib.Path, out: pathlib.Path, title: str = "", composer: str = "") -> dict:
+def _from_seconds(events: list):
+    """A MIDI file with no beat grid of its own (SMPTE time) as a sheet_grid.MidiFile: a quarter a second."""
+    from stream_service.piano_replay import CC, NOTE_OFF, NOTE_ON
+    from .sheet_grid import MidiFile, Note
+    mf = MidiFile(ppq=1000, tempos=[(0, 1_000_000)])
+    held: dict = {}
+    for te, st, d1, d2 in sorted(events):
+        tick = int(round(te * 1000))
+        if st == NOTE_ON and d2 > 0:
+            held.setdefault(d1, []).append((tick, d2))
+        elif st in (NOTE_ON, NOTE_OFF) and held.get(d1):
+            on, v = held[d1].pop(0)
+            mf.notes.append(Note(on, max(tick, on + 1), d1, v, (0, 0)))
+        elif st == CC and d1 == 64:
+            mf.pedal.append((tick, d2 >= 64))
+    for k, n in enumerate(sorted(mf.notes, key=lambda n: (n.on, n.pitch))):
+        n.id = k + 1
+    mf.notes.sort(key=lambda n: n.on)
+    return mf
+
+
+def make(midi: pathlib.Path, out: pathlib.Path, title: str = "", composer: str = "", neural: bool = False) -> dict:
     from stream_service.piano_replay import read_midi
-    from .client import Analyser
+    from . import sheet_beats, sheet_grid
     t = time.monotonic()
-    events = read_midi(midi.read_bytes())
-    workers = [Analyser() for _ in range(WORKERS)] if Analyser.available() else []
-    try:
-        bars = transcribe(events, workers, progress=lambda p: _say(progress=round(p, 3)))
-    finally:
-        for w in workers:
-            w.close()
+    data = midi.read_bytes()
+    if neural:
+        from .sheet_analysis import WholePiece
+        events = read_midi(data)
+        whole = WholePiece(events, progress=lambda p: _say(progress=round(p, 3)))
+        bars = transcribe(events, whole, progress=lambda p: _say(progress=round(0.8 + 0.2 * p, 3)))
+        how = "neural"
+    else:
+        mf = sheet_grid.read_ticks(data) or _from_seconds(read_midi(data))
+        if sheet_grid.sequenced(mf):
+            bars, how = sheet_grid.bars(mf), "grid"
+        else:
+            bars, how = sheet_beats.bars(mf), "beats"
     music = [b for b, _ in bars if not b.marker]
     if not music:
         raise ValueError("no notes to write")
@@ -236,7 +239,7 @@ def make(midi: pathlib.Path, out: pathlib.Path, title: str = "", composer: str =
     tmp = out.with_suffix(".part")
     tmp.write_text(mei)
     tmp.replace(out)
-    return {"bars": len(music), "analysed": bool(workers), "s": round(time.monotonic() - t, 1)}
+    return {"bars": len(music), "how": how, "s": round(time.monotonic() - t, 1)}
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -247,18 +250,31 @@ def main(argv: Optional[list] = None) -> int:
     m.add_argument("out", type=pathlib.Path)
     m.add_argument("--title", default="")
     m.add_argument("--composer", default="")
+    m.add_argument("--neural", action="store_true")
     p = sub.add_parser("pages")
     p.add_argument("mei", type=pathlib.Path)
     p.add_argument("--width", type=float, required=True)
     p.add_argument("--height", type=float, required=True)
     p.add_argument("--staff", type=float, default=36.0)
+    d = sub.add_parser("pdf")
+    d.add_argument("mei", type=pathlib.Path)
+    d.add_argument("out", type=pathlib.Path)
+    d.add_argument("--paper", default="a4", choices=sorted(PAPERS))
+    d.add_argument("--title", default="")
+    d.add_argument("--composer", default="")
     sub.add_parser("version")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "make":
-            _say(done=True, **make(a.midi, a.out, a.title, a.composer))
+            _say(done=True, **make(a.midi, a.out, a.title, a.composer, a.neural))
         elif a.cmd == "pages":
             _say(pages=pages(a.mei.read_text(), a.width, a.height, a.staff))
+        elif a.cmd == "pdf":
+            data = pdf(a.mei.read_text(), a.paper, title=a.title, composer=a.composer)
+            tmp = a.out.with_suffix(".part")
+            tmp.write_bytes(data)
+            tmp.replace(a.out)
+            _say(done=True, bytes=len(data))
         else:
             _say(version=generator_version())
     except Exception as e:                                  # one line the caller can show

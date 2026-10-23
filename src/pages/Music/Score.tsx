@@ -2,20 +2,22 @@
 // generator (show_service/score_sheet.py), no animation, to scroll through or read a page at a time. Opened from a
 // piece's ⋯ (Score) or from Now playing; the address carries it (?score=<piece id>), so Back closes it.
 //
-// The first time a piece's score is opened it is written (about a quarter of the piece's length): the page shows how
-// far it has got and asks again every 1.5 s, which also keeps the server writing it (paused while the tab is hidden).
-// After that it opens at once. Pages are SVG images laid out server side for exactly this screen: the score area's
+// The first time a piece's score is opened it is written by the quick pass (a second or two). "Better score" asks for the
+// slower neural pass (a minute or two for a long piece): the quick score stays up meanwhile, with how far it has got,
+// asked again every 1.5 s (which keeps the server writing it; paused while the tab is hidden); once it exists it is the
+// one shown, and Quick / Better switch between them. Pages are SVG images laid out server side for exactly this screen: the score area's
 // width by the height left below the controls (less the page turner's row), at the chosen staff size (A− / A+). Scroll
 // shows every page down the screen; Pages shows one at a time (‹ ›, the arrow keys, a swipe, or a tap on the page's
-// left or right third). Both use the same pages, so switching is instant.
+// left or right third). Both use the same pages, so switching is instant. PDF opens the whole score laid out for
+// paper (A4 portrait unless another paper is chosen) in a new tab, to print or keep.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FileDown, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
 import { Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
-import { isUnreached, musicWords, percent, type ScoreStatus } from "./api";
+import { isUnreached, musicWords, percent, SCORE_PAPERS, type ScoreKind, type ScorePaper, type ScoreStatus } from "./api";
 import { CHIP, CHIP_OFF, CHIP_ON, SECONDARY } from "./bits";
 import { useMusic } from "./context";
 
@@ -23,6 +25,7 @@ type Mode = "scroll" | "pages";
 
 const MODE_KEY = "music.score.mode";
 const STAFF_KEY = "music.score.staff";
+const PAPER_KEY = "music.score.paper";
 /** A staff's height in css px, smallest to largest. */
 const STAFFS = [26, 32, 40, 50, 62];
 const POLL_MS = 1500;
@@ -63,12 +66,19 @@ interface Problem {
 export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => void }) {
   const { api } = useMusic();
   const [mode, setMode] = useState<Mode>(() => (storageGet(MODE_KEY) === "pages" ? "pages" : "scroll"));
+  const [paper, setPaper] = useState<ScorePaper>(() => {
+    const p = storageGet(PAPER_KEY);
+    return SCORE_PAPERS.some(([id]) => id === p) ? (p as ScorePaper) : "a4";
+  });
   const [staff, setStaff] = useState(storedStaff);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [status, setStatus] = useState<ScoreStatus | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tick, setTick] = useState(0);
+  /** The pass shown: null until chosen (the better one once it exists, else the quick one). */
+  const [kind, setKind] = useState<ScoreKind | null>(null);
+  const retryNext = useRef(false);
   const [page, setPage] = useState(1);
   const area = useRef<HTMLDivElement>(null);
   const imgs = useRef<(HTMLImageElement | null)[]>([]);
@@ -114,8 +124,14 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         return;
       }
       try {
-        const st = await api.score(pieceId, { ...size, staff }, ac.signal);
+        const retry = retryNext.current;
+        retryNext.current = false;
+        const st = await api.score(pieceId, { ...size, staff }, ac.signal, { kind: kind ?? "quick", retry });
         if (ac.signal.aborted) return;
+        if (kind === null && st.better === "ready") {
+          setKind("better");                     // asked for before: show it
+          return;
+        }
         setStatus(st);
         setProblem(null);
         if (st.state === "ready") setShown({ st, ...size, staff });
@@ -140,13 +156,14 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [api, pieceId, size, staff, tick]);
+  }, [api, pieceId, size, staff, tick, kind]);
 
   const count = shown?.st.pages ?? 0;
   const cur = Math.min(Math.max(1, page), Math.max(1, count));
   const go = useCallback((n: number) => setPage(Math.min(Math.max(1, n), Math.max(1, count))), [count]);
   const pageUrl = useCallback(
-    (n: number) => (shown ? api.scorePageUrl(pieceId, n, { w: shown.w, h: shown.h, staff: shown.staff, rev: shown.st.rev }) : ""),
+    (n: number) =>
+      shown ? api.scorePageUrl(pieceId, n, { w: shown.w, h: shown.h, staff: shown.staff, rev: shown.st.rev, kind: shown.st.kind }) : "",
     [api, pieceId, shown],
   );
   const relaying = !!shown && !!size && (shown.w !== size.w || shown.h !== size.h || shown.staff !== staff);
@@ -235,8 +252,18 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const composer = status?.composer ?? shown?.st.composer ?? null;
   const retry = () => {
     setProblem(null);
+    retryNext.current = true;
     setTick((n) => n + 1);
   };
+  const choosePass = (k: ScoreKind) => {
+    if (k === "better" && status?.better === "failed") retryNext.current = true;
+    setKind(k);
+  };
+  // the better pass being written (or failed) while the quick score is on screen
+  const betterBusy = !!shown && status?.kind === "better" && (status.state === "queued" || status.state === "making");
+  const betterFailed = !!shown && status?.kind === "better" && status.state === "failed";
+  const shownKind = shown?.st.kind ?? "quick";
+  const haveBetter = status?.better === "ready" || shownKind === "better";
 
   let body: ReactNode = null;
   if (shown && count > 0) {
@@ -358,10 +385,6 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
             <div className="h-full rounded-full bg-teal-600 transition-[width] duration-500" style={{ width: `${Math.max(3, pct)}%` }} />
           </div>
         )}
-        <p className="text-sm text-muted-foreground">
-          The first time a piece's score is opened it's written from its MIDI, which takes about a quarter of its length. After
-          that it opens at once.
-        </p>
       </div>
     );
   } else if (status?.state === "ready") {
@@ -435,8 +458,98 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
             A+
           </button>
         </div>
+        {shown && count > 0 && (
+          <div className="flex items-center gap-1">
+            <a
+              href={api.scorePdfUrl(pieceId, paper, shown.st.rev, shown.st.kind)}
+              target="_blank"
+              rel="noopener"
+              title="The whole score as a PDF, to print or keep"
+              className={cn(CHIP, CHIP_OFF)}
+            >
+              <FileDown className="h-4 w-4" aria-hidden /> PDF
+            </a>
+            <select
+              aria-label="Paper"
+              value={paper}
+              onChange={(e) => {
+                const p = e.target.value as ScorePaper;
+                setPaper(p);
+                storageSet(PAPER_KEY, p);
+              }}
+              className={cn(CHIP, CHIP_OFF, "appearance-none bg-white pr-3.5")}
+            >
+              {SCORE_PAPERS.map(([id, words]) => (
+                <option key={id} value={id}>
+                  {words}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {shown && count > 0 && (haveBetter ? (
+          <div role="radiogroup" aria-label="Which score" className="flex gap-1.5">
+            {(
+              [
+                ["quick", "Quick"],
+                ["better", "Better"],
+              ] as [ScoreKind, string][]
+            ).map(([k, words]) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={shownKind === k}
+                onClick={() => choosePass(k)}
+                className={cn(CHIP, shownKind === k ? CHIP_ON : CHIP_OFF)}
+              >
+                {words}
+              </button>
+            ))}
+          </div>
+        ) : (
+          !betterBusy && (
+            <button
+              type="button"
+              onClick={() => choosePass("better")}
+              title="A slower, closer reading of the beat, bars and hands (the live score's neural networks): a minute or two for a long piece"
+              className={cn(CHIP, CHIP_OFF)}
+            >
+              <Sparkles className="h-4 w-4" aria-hidden /> Better score
+            </button>
+          )
+        ))}
         {relaying && !problem && <Spinner className="ml-auto h-5 w-5 text-muted-foreground" />}
       </div>
+
+      {betterBusy && status && (
+        <div className={cn(CARD_CLASS, "space-y-2 px-4 py-3")} role="status">
+          <p className="flex items-center gap-2 text-[15px] font-medium text-stone-800">
+            <Spinner />
+            {status.state === "queued" && (status.ahead ?? 0) > 0
+              ? "Better score: waiting for another to finish"
+              : `Making a better score… ${percent(status.progress) ?? 0}%`}
+          </p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden>
+            <div
+              className="h-full rounded-full bg-teal-600 transition-[width] duration-500"
+              style={{ width: `${Math.max(3, percent(status.progress) ?? 0)}%` }}
+            />
+          </div>
+          <p className="text-sm text-muted-foreground">The quick score stays here until it's ready.</p>
+        </div>
+      )}
+      {betterFailed && status && (
+        <p className="flex flex-wrap items-center gap-x-3 text-[15px] text-amber-800">
+          Couldn't make the better score{status.detail ? ` (${status.detail})` : ""}.
+          <button type="button" onClick={retry} className="font-medium underline underline-offset-2">
+            Try again
+          </button>
+          <button type="button" onClick={() => setKind("quick")} className="font-medium underline underline-offset-2">
+            Keep the quick one
+          </button>
+        </p>
+      )}
 
       {/* a new size that didn't lay out: the old pages stay */}
       {shown && count > 0 && problem && (

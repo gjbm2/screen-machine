@@ -12,8 +12,10 @@
 //   GET    /show/api/v1/library/web?q=            find MIDI on the web; POST …/web/import {ref, title?}
 //   GET    /show/api/v1/playlists                 POST {name, items?}; GET/PUT/DELETE …/<id>
 //   GET    /show/api/v1/player                    POST {action, …}
-//   GET    /show/api/v1/score/<id>?w=&h=&staff=   a piece's score: queued (ahead) / making (progress) / ready (pages, rev) / failed
+//   GET    /show/api/v1/score/<id>?w=&h=&staff=&kind=quick|better&retry=   a piece's score: ready (pages, rev) at once for
+//          the quick pass; the better (neural) one when asked for: queued (ahead) / making (progress) / ready / failed
 //   GET    /show/api/v1/score/<id>/page/<n>.svg?w=&h=&staff=&rev=   page n as an image (an <img src>: the route is open)
+//   GET    /show/api/v1/score/<id>/pdf?paper=a4|a4-landscape|letter   the score as a PDF to print (A4 portrait by default)
 
 import { explainError, loadToken, RoomApiError } from "@/pages/Room/api";
 
@@ -139,11 +141,24 @@ export type PlayerAction =
   | { action: "set"; instrument?: string; output?: string; repeat?: Repeat; shuffle?: boolean };
 
 /** A piece's score (show_service/score_sheet.py): written once from its MIDI, then laid out for the asking screen. */
+/** Paper for a score's PDF. */
+export type ScorePaper = "a4" | "a4-landscape" | "letter";
+
+export const SCORE_PAPERS: [ScorePaper, string][] = [
+  ["a4", "A4"],
+  ["a4-landscape", "A4 landscape"],
+  ["letter", "US Letter"],
+];
+
 export interface ScoreStatus {
   piece: string;
   title: string;
   composer?: string | null;
   state: "queued" | "making" | "ready" | "failed" | string;
+  /** Which pass this is: quick (the first, a second or two) or better (the neural one, asked for). */
+  kind?: ScoreKind;
+  /** The better pass's state: "none" until asked for, then as state. */
+  better?: string;
   /** queued: scores before it. */
   ahead?: number;
   /** making: 0..1. */
@@ -154,6 +169,8 @@ export interface ScoreStatus {
   /** failed: what went wrong. */
   detail?: string;
 }
+
+export type ScoreKind = "quick" | "better";
 
 /** One page in css px (w x h, multiples of 10) and a staff's height in css px. */
 export interface ScoreSize {
@@ -377,16 +394,22 @@ export class MusicApi {
 
   // ── Scores ──
 
-  /** The first ask starts writing it; keep asking (every 1.5 s) while it's queued or making, or it's dropped. */
-  score(id: string, size: ScoreSize, signal?: AbortSignal) {
-    const qs = queryString({ w: size.w, h: size.h, staff: size.staff });
+  /** The first ask writes it (the quick pass comes back in that answer; the better one only when asked for, then keep
+   * asking every 1.5 s while it's queued or making, or it's dropped). retry: forget an earlier failure. */
+  score(id: string, size: ScoreSize, signal?: AbortSignal, opts: { kind?: ScoreKind; retry?: boolean } = {}) {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: opts.kind, retry: opts.retry || undefined });
     return this.request<ScoreStatus>("GET", `/score/${seg(id)}${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
   }
 
   /** Page n (1-based) as an SVG image (an <img src>: the route is open, so no key goes in it). */
-  scorePageUrl(id: string, n: number, size: ScoreSize & { rev?: string }): string {
-    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, rev: size.rev });
+  scorePageUrl(id: string, n: number, size: ScoreSize & { rev?: string; kind?: ScoreKind }): string {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
     return `${this.baseUrl}/show/api/v1/score/${seg(id)}/page/${n}.svg${qs}`;
+  }
+
+  /** The whole score as a PDF to print (opened in a new tab: the browser's viewer prints or saves it). */
+  scorePdfUrl(id: string, paper: ScorePaper, rev?: string, kind?: ScoreKind): string {
+    return `${this.baseUrl}/show/api/v1/score/${seg(id)}/pdf${queryString({ paper, kind, rev })}`;
   }
 }
 
