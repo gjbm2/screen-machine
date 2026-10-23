@@ -110,7 +110,10 @@ class Paginator:
         self.items = _ITEM.findall(mei[a + 9:b])
         self.meas = [i for i, x in enumerate(self.items) if x.startswith("<measure")]
         self.nums = [int(_MNUM.search(self.items[i]).group(1)) for i in self.meas]
-        self.pos, self.n_bars = 0, CHUNK_BARS
+        # the first piece about two pages' worth: more bars fit a page the smaller the staff (page_w is in staff
+        # heights x STAFF_UNITS), so a small staff doesn't lay out a piece too short for a page, then double it
+        area = (page_w / STAFF_UNITS) * (page_h / STAFF_UNITS) / ((1180 / 40) * (780 / 40))
+        self.pos, self.n_bars = 0, int(min(96, max(8, CHUNK_BARS * area)))
 
     @property
     def estimate(self) -> int:
