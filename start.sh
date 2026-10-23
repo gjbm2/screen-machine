@@ -56,6 +56,20 @@ screen_wipe() {
 # The Flask window's console (tracebacks included) is logged here; the previous run is kept as .1
 FLASK_CONSOLE_LOG="$PROJECT_ROOT/logs/flask_console.log"
 
+# The server's PID, written by the launch below (the inner sh writes its own PID, then execs python3 in its place), so
+# stop_flask kills exactly that process instead of matching command lines.
+FLASK_PIDFILE="$PROJECT_ROOT/logs/flask.pid"
+
+flask_pid() {
+  # The pidfile's PID, only while that process is still the server (a reused PID is ignored)
+  local pid
+  [[ -f "$FLASK_PIDFILE" ]] || return 1
+  pid="$(cat "$FLASK_PIDFILE" 2>/dev/null)" || return 1
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ "$(tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline")" =~ ^python3?\ app\.py\ ?$ ]] || return 1
+  echo "$pid"
+}
+
 # ── Start functions ───────────────────────────────────────────────────
 
 start_flask() {
@@ -68,7 +82,7 @@ start_flask() {
   if [[ -f "$FLASK_CONSOLE_LOG" ]]; then mv -f "$FLASK_CONSOLE_LOG" "$FLASK_CONSOLE_LOG.1"; fi
   echo "=== $(date -Is) start.sh start flask ===" >"$FLASK_CONSOLE_LOG"
   setsid -w screen -dmS flask -L -Logfile "$FLASK_CONSOLE_LOG" \
-    bash -c "cd '$PROJECT_ROOT' && source .venv/bin/activate && python3 app.py; echo \"=== app.py exited (status \$?) ===\""
+    bash -c "cd '$PROJECT_ROOT' && source .venv/bin/activate && sh -c 'echo \$\$ > \"$FLASK_PIDFILE\" && exec python3 app.py'; echo \"=== app.py exited (status \$?) ===\""
   # Wait for :5000/api/health (30 s). If the session dies first, fail with its console tail so the caller sees why.
   local i
   for ((i = 0; i < 60; i++)); do
@@ -129,14 +143,22 @@ start_ngrok() {
 # ── Stop functions ────────────────────────────────────────────────────
 
 stop_flask() {
-  # Exact match (-x) on the server's own command line ("python3 app.py"): a loose -f pattern also hit any shell
-  # whose command line merely mentions it (it killed an agent's shell on 11 Oct), and with -9 below that matters.
-  pkill -fx 'python3? app\.py' 2>/dev/null || true
-  # Wait for it to really exit (up to 20 s): room_service runs inside Flask and stops the Hue stream, show bus and
-  # snapshot browser first. Returning early let a following start see the old screen session, say "already running"
-  # and start nothing (17 Oct 02:26, Spectre restart: Flask stayed down).
-  for _ in $(seq 1 40); do pgrep -fx 'python3? app\.py' >/dev/null || break; sleep 0.5; done
-  pkill -9 -fx 'python3? app\.py' 2>/dev/null || true
+  # The PID from the pidfile. Fallback for a server started before the pidfile existed: an exact match (-x) on its own
+  # command line ("python3 app.py"); a loose -f pattern also hit any shell that merely mentions it (11 Oct).
+  local pids
+  if ! pids="$(flask_pid)"; then pids="$(pgrep -fx 'python3? app\.py' || true)"; fi
+  if [[ -n "$pids" ]]; then
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    # Wait for it to really exit (up to 20 s): room_service runs inside Flask and stops the Hue stream, show bus and
+    # snapshot browser first. Returning early let a following start see the old screen session, say "already running"
+    # and start nothing (17 Oct 02:26, Spectre restart: Flask stayed down).
+    # shellcheck disable=SC2086
+    for _ in $(seq 1 40); do kill -0 $pids 2>/dev/null || break; sleep 0.5; done
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+  fi
+  rm -f "$FLASK_PIDFILE"
   screen -S flask -X quit 2>/dev/null || true
   screen_wipe
   echo "Flask: stopped"

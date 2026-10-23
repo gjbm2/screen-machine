@@ -81,9 +81,13 @@ app.register_blueprint(file_bp)
 # Installed before schedulers start so their failures are observable.
 init_alerting(app)
 
-# Initialize schedulers from saved states
-with app.app_context():
-    initialize_schedulers_from_disk()
+# Initialize schedulers from saved states. Not under pytest (PYTEST_VERSION is set by pytest >= 8.2): this loader reads
+# the live routes/scheduler/*.json, so a test that imports app would start the real schedulers and drive the screens.
+if os.environ.get("PYTEST_VERSION"):
+    info("app imported under pytest: the live schedulers are not started")
+else:
+    with app.app_context():
+        initialize_schedulers_from_disk()
 
 # API Routes
 @app.route(f'{API_PREFIX}/health', methods=['GET'])
