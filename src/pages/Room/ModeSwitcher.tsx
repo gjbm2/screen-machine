@@ -451,7 +451,7 @@ export function ModeSwitcher({
     const label = modeLabel(name, modes);
     if (switchTo) {
       try {
-        await api.setMode(switchTo);
+        await api.setMode(switchTo, "delete-mode");
         addLog({ type: "ui", summary: `mode → ${switchTo} (before deleting ${name})` });
       } catch (e) {
         setError(`${unreachable(e) ? "The room isn't answering" : explainError(e)}, so ${label} is still there.`);
@@ -479,7 +479,7 @@ export function ModeSwitcher({
     setTrying(!connected);
     for (;;) {
       try {
-        const r = await api.setMode(name);
+        const r = await api.setMode(name, "mode-tile");
         if (mine !== tap.current) return;
         addLog({ type: "ui", summary: `mode → ${name} accepted${r?.transition_id ? ` (${r.transition_id})` : ""}` });
         break;

@@ -561,7 +561,8 @@ export function MusicCard({
           : null,
     });
   const resume = () => void autoSend.send("resume", "Resume Auto", () => api.showAutoResume());
-  const switchTo = (mode: string, what: string, via: typeof autoSend) => void via.send("mode", what, () => api.setMode(mode));
+  const switchTo = (mode: string, what: string, via: typeof autoSend, from: string) =>
+    void via.send("mode", what, () => api.setMode(mode, from));
 
   // ── Nudges ──
   const step = (dir: "calmer" | "wilder") =>
@@ -656,7 +657,7 @@ export function MusicCard({
           {auto?.suggest?.text && auto.suggest.mode && (
             <button
               type="button"
-              onClick={() => switchTo(auto.suggest!.mode!, auto.suggest!.text!, autoSend)}
+              onClick={() => switchTo(auto.suggest!.mode!, auto.suggest!.text!, autoSend, "auto-suggestion")}
               className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-3 text-[15px] font-semibold text-teal-900 hover:bg-teal-100"
             >
               {autoSend.busy("mode") && <Spinner />} {auto.suggest.text}
@@ -890,7 +891,7 @@ export function MusicCard({
               {!working && describe?.state === "done" && describe.suggest?.mode && (
                 <button
                   type="button"
-                  onClick={() => switchTo(describe.suggest!.mode, `switch to ${suggestLabel}`, main)}
+                  onClick={() => switchTo(describe.suggest!.mode, `switch to ${suggestLabel}`, main, "describe-suggestion")}
                   className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-4 text-[15px] font-semibold text-teal-900 hover:bg-teal-100"
                 >
                   {busy("mode") && <Spinner />} Switch to {suggestLabel}?
