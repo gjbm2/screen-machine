@@ -95,6 +95,12 @@ ROOM_PUSH_CAP = 1.0                # span: room: a column moves at most this far
 ROOM_CHORD_S = 0.045               # span: room: onsets this close are one column (a spread chord)
 ROOM_GAP_SP = 1.7                  # ... and columns at least this far apart (heads, a little white), from onsets alone
 AHEAD_ROOM_S = 1.0                 # span: room: with nothing sounding the paper runs on this long past the last sound
+ARRIVE_ROOM_S = 0.12               # span: room: a note's way here on the render clock (bus, room tick, a layout pass)
+SMOOTH_ROOM_S = 0.3                # span: room: the paper follows the time map averaged over +-this (a triangle), so
+                                   # its speed changes gently where a dense run spreads and where it's back on time
+SMOOTH_TAPS = tuple((float(u), 1.0 - abs(float(u)) / SMOOTH_ROOM_S)
+                    for u in np.linspace(-SMOOTH_ROOM_S, SMOOTH_ROOM_S, 13))
+LEAD_MAX_S = 2.0                   # a photon lead outside 0..this is a test's own clock: taken as none
 PHRASE_GAP_SP = 6.0                # between a phrase's last mark and the next one's first (plus its signature)
 FRESH_S, REL_TAU = 0.6, 0.6        # a note's halo fades over this; its colour cools after release with this tau
 Q_MIN, Q_MAX = 1.35, 4.0           # a 16th's width (sp): no tighter than heads allow, no wider than shows enough music
@@ -317,6 +323,7 @@ class ScoreRibbon(Source):
         self.drift = 0.0
         self.kick = 0.0
         self.lag = LAG0
+        self._lead = None                                        # span: room: photon time ahead of the render clock
         self.S = None                                            # the paper (tape px at the lower row's left)
         self.V = 0.0
         self.U = None                                            # the playhead's tape target
@@ -1372,21 +1379,13 @@ class ScoreRibbon(Source):
                 return None
             t_n = self.t_sound - self.lag + ahead
             held = any(n.t_off is None for n in b.notes if n.id in ph.notes)
-            if not held and ph.t_last is not None:
-                t_n = min(t_n, ph.t_last + AHEAD_ROOM_S)
-            # the onset chain at t_n (through the chained onsets, at the pace past the last): what every screen
-            # has by then, not how many notes this one has chained so far
-            ts = getattr(ph, "chain_ts", None)
-            x = self.pace * (t_n - ph.T_ref)
-            if ts:
-                j = bisect.bisect_right(ts, (t_n, float("inf")))
-                if j:
-                    tk, xk = ts[j - 1]
-                    if j < len(ts) and ts[j][0] > tk:
-                        x = xk + (ts[j][1] - xk) * (t_n - tk) / (ts[j][0] - tk)
-                    else:
-                        x = xk + self.pace * (t_n - tk)
-            return ph.A + x * self.sp
+            t_cap = ph.t_last + AHEAD_ROOM_S if not held and ph.t_last is not None else math.inf
+            # averaged over +-SMOOTH_ROOM_S around t_n (the lag keeps all of it on onsets that have arrived)
+            num = den = 0.0
+            for u, w in SMOOTH_TAPS:
+                num += w * self._room_x(ph, min(t_n + u, t_cap))
+                den += w
+            return ph.A + num / den * self.sp
         if ph is None or ph.closed or b is None or ph.pl.q0 is None:
             return None
         pl = ph.pl
@@ -1402,6 +1401,37 @@ class ScoreRibbon(Source):
         else:
             x = sp_.base(slot) + sp_.off()
         return ph.A + x * self.sp
+
+    def _room_x(self, ph: _Phrase, t: float) -> float:
+        """span: room: the onset chain's x at music time ``t``, through the chained onsets: what every screen has by
+        then, not how many notes this one has chained so far.  Past the last one, on at the pace but no further than
+        the next onset would go (ROOM_GAP_SP past it until a spread run is back on time), so the next one never pulls
+        the paper back."""
+        x = self.pace * (t - ph.T_ref)
+        ts = getattr(ph, "chain_ts", None)
+        if ts:
+            j = bisect.bisect_right(ts, (t, float("inf")))
+            if j:
+                tk, xk = ts[j - 1]
+                if j < len(ts) and ts[j][0] > tk:
+                    x = xk + (ts[j][1] - xk) * (t - tk) / (ts[j][0] - tk)
+                else:
+                    x = max(x, xk + min(ROOM_GAP_SP, self.pace * (t - tk)))
+        return x
+
+    def _room_lag(self, dt: float, live: bool) -> None:
+        """span: room: the playhead runs late enough that every onset it passes, and the smoothing's reach past it, has
+        reached this screen: the frame's photon time ahead of the render clock (the session's lead) + a note's way here
+        + the smoothing.  Measured, not assumed: at the TVs' 0.44 s lead the old fixed 0.35 s put the playhead past
+        the newest note it could know, so every arriving note bent the paper's path (stops and lurches)."""
+        lead = self.t_sound - time.monotonic() if live else None
+        if lead is not None and 0.0 <= lead <= LEAD_MAX_S:
+            if self._lead is None:
+                self._lead = lead
+            else:                                                # up quickly (a later playhead is safe), down slowly
+                tau = 0.2 if lead > self._lead else 5.0
+                self._lead += (lead - self._lead) * (1.0 - math.exp(-dt / tau))
+        self.lag = max(LAG0, (self._lead or 0.0) + ARRIVE_ROOM_S + SMOOTH_ROOM_S)
 
     def _paper(self, dt: float) -> None:
         if self.S is None:
@@ -1553,6 +1583,8 @@ class ScoreRibbon(Source):
         self.t_sound = float(f.t_ms) / 1000.0 if f is not None else self.t_sound + dt
         if self.t_base is None:
             self.t_base = self.stage.t_ref = self.t_sound
+        if self._roomy:
+            self._room_lag(dt, f is not None)
         tm = self.tm = {}
         _c0 = self._c0 = time.thread_time()
         _t0 = time.perf_counter()
