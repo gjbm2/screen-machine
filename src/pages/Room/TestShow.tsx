@@ -210,7 +210,6 @@ function ShowTestCard({
             sound={sound}
             disabled={disabled}
             onInstrument={(id) => changeSound({ instrument: id })}
-            onOutput={(id) => changeSound({ output: id })}
           />
         )}
 

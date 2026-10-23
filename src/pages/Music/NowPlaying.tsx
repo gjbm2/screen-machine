@@ -1,13 +1,15 @@
 // The Now playing card at the top of /music: what's on (title, composer · performer), what it's doing in words
 // (Getting ready… with a bar, Playing 1:23 / 4:32, Stopped, Stepped aside: something else started the
-// piano, or the problem), what's next, Back · Play/Stop · Next, Repeat (Off / All / One), Shuffle, and the sound and
-// where it plays (the player's own, server side; also remembered as the Room page's piano choice so both agree).
+// piano, or the problem), what's next, Back · Play/Stop · Next, Repeat (Off / All / One), Shuffle, Play on (where it's
+// heard, in view: the Room page's PlayOnChoice, with This device) and the sound (the player's own, server side; also
+// remembered as the Room page's piano choice so both agree).
 // Beside the title, Score opens the piece's written-out score.
 
 import { FileMusic, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
+import { PlayOnChoice } from "@/pages/Room/PlayOn";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { usePianoSound, type PianoSound } from "@/pages/Room/usePianoSound";
 import { OLD_SHOW_WORDS, percent, playerWords, plural, type PlayerView, type Repeat as RepeatMode } from "./api";
@@ -70,12 +72,7 @@ export function NowPlaying() {
     void player.act({ action: "set", ...o }, o);
   };
   const setRepeat = (r: RepeatMode) => void player.act({ action: "set", repeat: r }, { repeat: r });
-  const soundHint = [
-    sound.instruments.find((i) => i.id === sound.instrument)?.label,
-    sound.outputs.find((o) => o.id === sound.output)?.label,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const soundHint = sound.instruments.find((i) => i.id === sound.instrument)?.label ?? "";
 
   return (
     <section aria-labelledby="music-now" data-testid="now-playing">
@@ -246,14 +243,12 @@ export function NowPlaying() {
           </button>
         </div>
 
+        <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
+
         {sound.available && (
-          <Unroll title="Sound and where it plays" hint={soundHint} testId="music-sound">
+          <Unroll title="Sound" hint={soundHint} testId="music-sound">
             <div className="pb-1">
-              <SoundChoice
-                sound={sound}
-                onInstrument={(id) => setSound({ instrument: id })}
-                onOutput={(id) => setSound({ output: id })}
-              />
+              <SoundChoice sound={sound} onInstrument={(id) => setSound({ instrument: id })} />
               {busy && <p className="mt-2 text-sm text-muted-foreground">A change starts the piece again with it.</p>}
             </div>
           </Unroll>
