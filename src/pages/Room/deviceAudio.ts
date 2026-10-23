@@ -193,6 +193,9 @@ function subscribe(l: () => void) {
   };
 }
 
+/** Called on every change, outside React (listenStream.ts); returns the unsubscribe. */
+export const subscribeDeviceAudio = subscribe;
+
 /** {status, lag, instrument} for a component. */
 export function useDeviceAudio(): DeviceAudioSnap {
   return useSyncExternalStore(subscribe, deviceAudioSnap, deviceAudioSnap);

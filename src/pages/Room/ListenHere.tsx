@@ -6,8 +6,8 @@
 //   - what's playing, while on: the music player's piece (GET /show/api/v1/player), else the test piano's (Test music
 //     or a recording), else "The piano" while the real one sends notes;
 //   - the notes, while on: WS /show/v1/show (music.note, music.pedal, music.notes; every source, as PianoRow), drawn
-//     the stream's delay later: measured against PC22's clock (deviceLag.ts: GET …/piano/live/clock), else
-//     show_service's 0.25 s plus the browser's buffer until the first reading. The first note after the sound is
+//     as late as this device hears them (deviceAudio.ts knows the exact frame it plays: deviceLag.ts), else 0.5 s
+//     until the first reading. The first note after the sound is
 //     turned on opens the screen; once closed it stays closed until it's turned on again.
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,19 +16,16 @@ import { cn } from "@/lib/utils";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
-import { getDeviceLag, useDeviceLag, useDeviceLagTracker } from "./deviceLag";
+import { useDeviceLag } from "./deviceLag";
 import {
+  behindS,
   configureListen,
   fetchDevices,
-  lagS,
-  listenAudio,
-  listenClockUrl,
   listenFlush,
   listenOff,
   myOutput,
   listenSnap,
   listenTap,
-  SERVER_LAG_S,
   setListenView,
   setRoomOutput,
   useListenHere,
@@ -50,19 +47,11 @@ const PLAYER_BUSY = ["preparing", "playing"];
 const PIANO_BUSY = ["preparing", "starting", "playing"];
 
 const BUSY_WORDS: Partial<Record<ListenStatus, string>> = {
-  checking: "Getting the sound ready…",
   connecting: "Getting the sound ready…",
-  reconnecting: "The sound dropped; reconnecting…",
 };
 const STOPPED_WORDS: Partial<Record<ListenStatus, string>> = {
-  unavailable: "Not available yet.",
-  busy: "Too many sounds playing; try the same sound as the others.",
   failed: "The sound stopped.",
 };
-
-/** The stream's delay behind the room, in seconds: as measured against PC22's clock (deviceLag.ts) once it has a
- *  reading, until then show_service's share plus the browser's buffer. */
-const behindS = () => getDeviceLag() ?? SERVER_LAG_S + lagS();
 
 /** "This device" in words, with its one action (Tap to start sound, Try again, Open). Nothing while it's off. */
 export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?: () => void; className?: string }) {
@@ -94,9 +83,9 @@ export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?:
 
   const busy = BUSY_WORDS[here.status];
   const stopped = STOPPED_WORDS[here.status];
-  const behind = Math.max(1, Math.round(behindS()));
+  const behind = Math.round(behindS() * 10) / 10;
   // connected, but the room's output moved elsewhere (another page or device): the stream carries silence
-  const quiet = !here.also && !!here.roomOutput && here.roomOutput !== myOutput();
+  const quiet = here.status === "quiet" || (!here.also && !!here.roomOutput && here.roomOutput !== myOutput());
   return (
     <div className={cn("flex min-h-11 items-center gap-2", className)} role="status">
       {busy ? (
@@ -155,12 +144,6 @@ export function ListenHere({ api }: { api: RoomApi }) {
   const [liveAt, setLiveAt] = useState(0);
   const feed = useMemo(() => new NoteFeed(), []);
   const sound = usePianoSound(test);
-  // how far behind the room this device hears it, against PC22's clock: the notes below wait by it (so does the score)
-  const streamSound = here.instrumentUsed ?? sound.instrument;
-  useDeviceLagTracker(
-    here.status === "playing" ? listenAudio() : null,
-    here.status === "playing" ? listenClockUrl(streamSound) : null,
-  );
 
   // show_service's sounds (and, while on, what's playing): only while the page is visible
   useEffect(() => {
@@ -229,7 +212,7 @@ export function ListenHere({ api }: { api: RoomApi }) {
           const m = JSON.parse(ev.data as string) as { type?: string; data?: Record<string, unknown> };
           if (m.type !== "music.note" && m.type !== "music.pedal" && m.type !== "music.notes") return;
           const s = listenSnap();
-          feed.push(m, s.status === "playing" ? behindS() * 1000 : 0);
+          feed.push(m, s.on ? behindS() * 1000 : 0);
           if (m.type === "music.note" && m.data?.on === true) {
             if (s.on && !s.dismissed && !s.viewOpen) setListenView(true);
             const now = Date.now();

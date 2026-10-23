@@ -45,6 +45,7 @@ import { isUnreached, musicWords, percent, SCORE_PAPERS, type ScoreKind, type Sc
 import { CHIP, CHIP_OFF, CHIP_ON, PRIMARY, SECONDARY } from "./bits";
 import { useMusic } from "./context";
 import { FollowLight, Transport, useFollow, type Follow } from "./follow";
+import { PlayOn } from "@/pages/Room/PlayOn";
 
 type Mode = "scroll" | "pages";
 
@@ -1003,6 +1004,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       <div ref={area}>{shown && count > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Transport follow={follow} pageInView={cur} />
+          <PlayOn baseUrl={api.baseUrl} compact className="ml-auto" />
         </div>
       )}
       {body}</div>
@@ -1492,6 +1494,10 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
         </div>
         {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
         <Transport follow={follow} pageInView={cur} compact />
+        {/* its own clicks stay its own: the bar's click hands focus to the page, which would close the choices */}
+        <span className="contents" onClick={(e) => e.stopPropagation()}>
+          <PlayOn baseUrl={api.baseUrl} compact className="mx-1 h-8 max-w-[8rem] px-2.5" />
+        </span>
         <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
           {where}
         </span>

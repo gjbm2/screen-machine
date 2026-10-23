@@ -5,8 +5,8 @@
 //
 // The notes come from the show bus (noteFeed.ts, fed by ListenHere from WS /show/v1/show: music.note, music.pedal and
 // the music.notes snapshots), the same notes PianoRow shows: test pieces, recordings and the real Steinway. They're drawn
-// `delayMs` after they arrive, the stream's delay behind the room (ListenHere: show_service's share plus the browser's
-// buffer), so the keys light with the sound rather than ahead of it. The bus's t_ms is PC22's clock: not used.
+// `delayMs` after they arrive, as far behind the room as this device hears it (ListenHere: deviceAudio's measured
+// lag), so the keys light with the sound rather than ahead of it. The bus's t_ms is PC22's clock: not used.
 // Drawn on one canvas, only while the screen is open and the page visible; nothing is kept once it has scrolled off.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -222,7 +222,7 @@ export function LiveMusicView({
             Sustain pedal
           </span>
         )}
-        {roll.idle && here.status === "playing" && (
+        {roll.idle && (here.status === "playing" || here.status === "quiet") && (
           <p className="pointer-events-none absolute inset-x-0 top-1/3 px-6 text-center text-base text-muted-foreground">
             The notes show here as the music plays.
           </p>

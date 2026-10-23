@@ -325,7 +325,7 @@ export default function RoomPage() {
                 />
               </section>
 
-              <PlayOnCard api={room.api} addLog={room.addLog} reportError={room.reportError} />
+              <PlayOnCard baseUrl={room.api.baseUrl} addLog={room.addLog} />
 
               <MusicCard api={room.api} feed={show} now={now} addLog={room.addLog} />
 
