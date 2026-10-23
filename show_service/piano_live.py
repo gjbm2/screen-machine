@@ -37,6 +37,7 @@ import math
 import os
 import pathlib
 import queue
+import struct
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -54,6 +55,10 @@ DEVICES_MAX = 8
 DEVICES_FILE = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show" / "piano-devices.json"
 PANIC = b'{"panic": true}\n'
 CHUNK = 4096
+SR = 48000
+PCM_FRAMES = 1024                    # a WebSocket message: 21 ms of s16le stereo
+PCM_BYTES = PCM_FRAMES * 4
+MAP_S = 0.5                          # how often a WebSocket listener is told where the piece is
 CLIENT_QUEUE = 256                   # chunks (~64 s at 128 kb/s) a listener may fall behind before it's dropped
 BITRATE = 128
 MAX_SYNTHS = 2                       # instruments streaming at once (each ~0.3-1 GB, ~0.5 core)
@@ -83,6 +88,9 @@ class _Synth:
         self.t0: Optional[float] = None                  # host time of the stream's first audio frame
         self.delay_s = 0.25                              # piano_render.live's DELAY_S (its clock line says)
         self.bytes_out = 0                               # MP3 bytes made so far: the stream's position, CBR
+        self.frames_out = 0                              # PCM frames made so far (the synth's own stream)
+        self.enc: Optional[asyncio.subprocess.Process] = None   # the MP3 encoder, while an MP3 listener is there
+        self.enc_t0: Optional[float] = None              # the MP3 stream's t0: the synth's at the frame it began
         self.heard = False                               # the notes go to it now (the output is its listener's)
         self.last_client = time.monotonic()
 
@@ -101,11 +109,13 @@ def _label(v: Any) -> Optional[str]:
 
 class PianoLive:
     def __init__(self, output_fn: Optional[Callable[[], Optional[str]]] = None,
-                 devices_file: Optional[pathlib.Path] = None) -> None:
+                 devices_file: Optional[pathlib.Path] = None,
+                 pos_fn: Optional[Callable[[], Optional[dict]]] = None) -> None:
         self.synths: dict[str, _Synth] = {}
         self._feeds: tuple = ()                          # the heard synths' queues, read by on_midi (show-rx)
         self._reaper: Optional[asyncio.Task] = None
         self.output_fn = output_fn                       # the piano's output now (sources' / the player's)
+        self.pos_fn = pos_fn                             # where the piece is: {piece, pos_s, at, speed, state}
         self.devices_file = devices_file if devices_file is not None else DEVICES_FILE
         self.devices: dict[str, dict] = self._load_devices()
         self._gate_task: Optional[asyncio.Task] = None
@@ -134,7 +144,7 @@ class PianoLive:
         target = self._target(out)
         if target is not None and s.instrument == self._instrument_for(target) and not s.clients:
             return True                                  # warm for the chosen device: it's about to connect
-        for dev, also in s.clients.values():
+        for dev, also, _kind in s.clients.values():
             if dev is None or also or dev == target:
                 return True                              # an older page (hears everything, as before), "as well as
         return False                                     # the speakers", or the chosen device
@@ -147,7 +157,7 @@ class PianoLive:
         out = self._output()
         feeds = []
         for s in self.synths.values():
-            h = self._hears(s, out)
+            h = s.ready and self._hears(s, out)          # a loading synth gets nothing: stale notes come out in a burst
             if s.heard and not h:
                 s.feed.put(PANIC)                        # the output moved away: nothing left ringing
             s.heard = h
@@ -233,7 +243,7 @@ class PianoLive:
                 for k, v in rows]
 
     def _streaming(self, device: str) -> bool:
-        return any(dev == device for s in self.synths.values() for dev, _also in s.clients.values())
+        return any(dev == device for s in self.synths.values() for dev, _also, _kind in s.clients.values())
 
     # -- the notes (show-rx thread) ------------------------------------------------------------------------------
     def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
@@ -270,7 +280,7 @@ class PianoLive:
         r, w = os.pipe()                                 # the notes' pipe: blocking, the writer thread's own
         try:
             s.proc = await asyncio.create_subprocess_exec(
-                str(PYTHON), "-m", "piano_render.live", "--instrument", s.instrument, "--bitrate", str(BITRATE),
+                str(PYTHON), "-m", "piano_render.live", "--instrument", s.instrument, "--format", "pcm",
                 cwd=str(REPO), stdin=r, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env={**os.environ, "PYTHONPATH": str(REPO)}, start_new_session=True)
         except BaseException:
@@ -315,6 +325,7 @@ class PianoLive:
                     m = {}
                 if m.get("ready"):
                     s.ready = True
+                    self._regate()
                     log.info("piano live: %s ready (load %.1f s, room %s)", s.instrument, m.get("load_s") or 0,
                              m.get("room"))
                     continue
@@ -328,22 +339,38 @@ class PianoLive:
             log.warning("piano live %s: %s", s.instrument, line[:300])
 
     async def _pump(self, s: _Synth) -> None:
-        """The MP3 out to every listener."""
+        """The synth's PCM to every WebSocket listener (with its frame number) and the MP3 encoder, if any."""
         proc = s.proc
         assert proc is not None and proc.stdout is not None
         try:
             while True:
-                chunk = await proc.stdout.read(CHUNK)
-                if not chunk:
+                try:
+                    chunk = await proc.stdout.readexactly(PCM_BYTES)
+                except asyncio.IncompleteReadError:
                     break
-                s.bytes_out += len(chunk)
-                for q in list(s.clients):
+                frame = s.frames_out
+                s.frames_out += PCM_FRAMES
+                mp3 = False
+                for q, (_d, _a, kind) in list(s.clients.items()):
+                    if kind == "mp3":
+                        mp3 = True
+                        continue
                     if q.qsize() >= CLIENT_QUEUE:
                         s.clients.pop(q, None)
                         q.put_nowait(None)               # too far behind: that listener ends
                     else:
-                        q.put_nowait(chunk)
+                        q.put_nowait((frame, chunk))
+                if mp3 and s.enc is None:
+                    await self._encoder(s, frame)
+                elif not mp3 and s.enc is not None:
+                    await self._encoder_stop(s)
+                if s.enc is not None and s.enc.stdin is not None:
+                    try:
+                        s.enc.stdin.write(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        await self._encoder_stop(s)
         finally:
+            await self._encoder_stop(s)
             for q in list(s.clients):
                 q.put_nowait(None)
             s.clients.clear()
@@ -355,6 +382,52 @@ class PianoLive:
                 proc.kill()
             await proc.wait()
             log.info("piano live: %s stopped", s.instrument)
+
+    async def _encoder(self, s: _Synth, frame: int) -> None:
+        """An MP3 encoder on the synth's PCM from ``frame`` on (an older page's stream: live.mp3)."""
+        s.enc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "2",
+            "-i", "pipe:0", "-c:a", "libmp3lame", "-b:a", f"{BITRATE}k", "-f", "mp3", "-flush_packets", "1", "pipe:1",
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True)
+        s.enc_t0 = (s.t0 or 0.0) + frame / SR
+        s.bytes_out = 0
+        asyncio.get_running_loop().create_task(self._mp3_pump(s, s.enc))
+
+    async def _mp3_pump(self, s: _Synth, enc: Any) -> None:
+        try:
+            while True:
+                chunk = await enc.stdout.read(CHUNK)
+                if not chunk:
+                    break
+                s.bytes_out += len(chunk)
+                for q, (_d, _a, kind) in list(s.clients.items()):
+                    if kind != "mp3":
+                        continue
+                    if q.qsize() >= CLIENT_QUEUE:
+                        s.clients.pop(q, None)
+                        q.put_nowait(None)
+                    else:
+                        q.put_nowait(chunk)
+        finally:
+            for q, (_d, _a, kind) in list(s.clients.items()):
+                if kind == "mp3":
+                    s.clients.pop(q, None)
+                    q.put_nowait(None)                   # a new encoder is a new stream: the page reconnects
+            if s.enc is enc:
+                s.enc = None
+
+    async def _encoder_stop(self, s: _Synth) -> None:
+        enc, s.enc = s.enc, None
+        s.enc_t0 = None
+        if enc is None:
+            return
+        try:
+            if enc.stdin is not None:
+                enc.stdin.close()
+            await asyncio.wait_for(enc.wait(), 3)
+        except (asyncio.TimeoutError, OSError):
+            enc.kill()
 
     async def _stop(self, s: _Synth) -> None:
         if self.synths.get(s.instrument) is s:
@@ -390,6 +463,7 @@ class PianoLive:
     # -- routes (show-bus) ---------------------------------------------------------------------------------------
     def routes(self, app: Any) -> None:
         app.router.add_get("/api/v1/piano/live.mp3", self._h_live)
+        app.router.add_get("/api/v1/piano/live.ws", self._h_ws)
         app.router.add_get("/api/v1/piano/live/clock", self._h_clock)
         app.router.add_get("/api/v1/piano/devices", self._h_devices)
         app.router.add_post("/api/v1/piano/devices", self._h_device_post)
@@ -400,7 +474,8 @@ class PianoLive:
         carries the sound time t0 + x - delay_s (host CLOCK_MONOTONIC); host_now is that clock now; pos_s the
         stream second a listener joining now starts at. A listener whose audio element's currentTime is c (from its
         own start) hears sound time t0 + pos_s(at its join) + c - delay_s: it is host_now minus that behind."""
-        return {"t0": s.t0, "delay_s": s.delay_s, "host_now": round(time.monotonic(), 4),
+        return {"t0": s.enc_t0 if s.enc_t0 is not None else s.t0, "delay_s": s.delay_s,
+                "host_now": round(time.monotonic(), 4),
                 "pos_s": round(pos_s if pos_s is not None else s.bytes_out * 8 / (BITRATE * 1000), 3),
                 "instrument": s.instrument}
 
@@ -452,18 +527,18 @@ class PianoLive:
         dev = self.register(request.query.get("device"), request.query.get("name"), inst) \
             if request.query.get("device") else None
         self._gate_soon()
-        s = self.synths.get(inst)
+        s = await self._synth(inst)
         if s is None:
-            if len(self.synths) >= MAX_SYNTHS:
-                return web.json_response({"error": "busy", "detail": "Two piano sounds are streaming already."},
-                                         status=503)
-            s = self.synths[inst] = _Synth(inst)
-            await self._start(s)
-            self._reap_soon()
+            return web.json_response({"error": "busy", "detail": "Two piano sounds are streaming already."},
+                                     status=503)
         q: asyncio.Queue = asyncio.Queue()
-        s.clients[q] = (dev, request.query.get("also") in ("1", "true", "yes"))
+        s.clients[q] = (dev, request.query.get("also") in ("1", "true", "yes"), "mp3")
         s.last_client = time.monotonic()
         self._regate()
+        for _ in range(100):                             # its encoder starts on the synth's next chunk
+            if s.enc_t0 is not None and s.enc is not None or s.proc is None:
+                break
+            await asyncio.sleep(0.05)
         # where in the stream this listener starts (its audio element's currentTime 0), and the stream's clock
         headers = {**headers, "X-Piano-Clock": json.dumps(self.clock(s)),
                    "Access-Control-Expose-Headers": "X-Piano-Instrument, X-Piano-Clock"}
@@ -483,3 +558,106 @@ class PianoLive:
             s.last_client = time.monotonic()
             self._regate()
         return resp
+
+    async def _synth(self, inst: str) -> Optional[_Synth]:
+        """The running synth for ``inst``, started if need be; None when MAX_SYNTHS are running already."""
+        s = self.synths.get(inst)
+        if s is None:
+            if len(self.synths) >= MAX_SYNTHS:
+                return None
+            s = self.synths[inst] = _Synth(inst)
+            await self._start(s)
+            self._reap_soon()
+        return s
+
+    async def _h_ws(self, request: Any) -> Any:
+        """GET /api/v1/piano/live.ws?instrument=&device=&name=&also=: the piano as raw PCM over a WebSocket, each
+        message stamped with the sound time it carries, so the page plays it with a small buffer it holds itself
+        (owner, 23 Oct: "alignment between midi and 'this device' audio is utterly terrible ... when I hit 'pause'
+        it pauses immediately ... rethink how to ensure sync"). Messages:
+          text   {"hello": {sr, channels: 2, format: "s16le", instrument, delay_s, host_now}}  first
+          binary <f8 T><f8 host_now><s16le stereo frames>   T: the host CLOCK_MONOTONIC sound time of the first
+                 frame (the MIDI it carries was due then), host_now: that clock as it was sent
+          text   {"map": {piece, pos_s, at, speed, state}, "host_now"} every MAP_S: the piece is at pos_s at host
+                 time at (moving at speed while state is playing), so the frame of sound time T is at
+                 pos_s + (T - at) * speed in the piece
+          text   {"quiet": true} / {"quiet": false}  whether the room's output is elsewhere (the notes don't come)
+        The page may send {"ping": <its clock>}; the answer is {"pong": <that>, "host_now"}."""
+        from aiohttp import WSMsgType, web
+        inst = self._pick(request.query.get("instrument"))
+        if inst is None or not PYTHON.exists():
+            return web.json_response({"error": "not_available", "detail": "There's no piano sound to stream."},
+                                     status=404)
+        dev = self.register(request.query.get("device"), request.query.get("name"), inst) \
+            if request.query.get("device") else None
+        self._gate_soon()
+        s = await self._synth(inst)
+        if s is None:
+            return web.json_response({"error": "busy", "detail": "Two piano sounds are streaming already."},
+                                     status=503)
+        ws = web.WebSocketResponse(heartbeat=20.0, max_msg_size=1 << 16, compress=False)
+        await ws.prepare(request)
+        q: asyncio.Queue = asyncio.Queue()
+        s.clients[q] = (dev, request.query.get("also") in ("1", "true", "yes"), "pcm")
+        s.last_client = time.monotonic()
+        self._regate()
+
+        async def reader() -> None:
+            async for msg in ws:
+                if msg.type != WSMsgType.TEXT:
+                    continue
+                try:
+                    m = json.loads(msg.data)
+                except ValueError:
+                    continue
+                if isinstance(m, dict) and "ping" in m:
+                    await ws.send_json({"pong": m["ping"], "host_now": time.monotonic()})
+            await q.put(None)
+
+        rd = asyncio.get_running_loop().create_task(reader())
+        try:
+            await ws.send_json({"hello": {"sr": SR, "channels": 2, "format": "s16le", "instrument": inst,
+                                          "delay_s": s.delay_s, "host_now": time.monotonic()}})
+            next_map = 0.0
+            quiet: Optional[bool] = None
+            while not ws.closed:
+                try:
+                    item = await asyncio.wait_for(q.get(), MAP_S)
+                except asyncio.TimeoutError:
+                    item = ()
+                if item is None:
+                    break
+                now = time.monotonic()
+                if now >= next_map:
+                    next_map = now + MAP_S
+                    pos = self._pos()
+                    if pos is not None:
+                        await ws.send_json({"map": pos, "host_now": now})
+                    q_now = not s.heard
+                    if q_now != quiet:
+                        quiet = q_now
+                        await ws.send_json({"quiet": quiet})
+                if item and s.t0 is not None:
+                    frame, chunk = item
+                    t = s.t0 + frame / SR - s.delay_s
+                    await ws.send_bytes(struct.pack("<dd", t, now) + chunk)
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            rd.cancel()
+            s.clients.pop(q, None)
+            s.last_client = time.monotonic()
+            self._regate()
+            await ws.close()
+        return ws
+
+    def _pos(self) -> Optional[dict]:
+        fn = self.pos_fn
+        if fn is None:
+            return None
+        try:
+            v = fn()
+        except Exception:                                # noqa: BLE001
+            log.debug("piano live: pos_fn failed", exc_info=True)
+            return None
+        return v if isinstance(v, dict) else None

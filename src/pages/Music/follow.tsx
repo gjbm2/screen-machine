@@ -19,12 +19,16 @@
 // "Starting…", and the button turns to Pause (a second tap stops it again) until the sound gets there. Carry on plays
 // from where the light stopped (a seek: what this device heard, not the player's own place, which runs ahead by the
 // stream's delay).
+//
+// When this device plays the piano itself over its own buffer (Room/deviceAudio.ts), the light is what it hears:
+// the place in the piece of the very frame playing (exact, no estimate), and Pause silences it at once.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, SkipBack, StepBack, StepForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MusicApi, PlayerAction, ScoreFollow, ScoreGeometry, ScoreKind, ScoreSize } from "./api";
 import { useDeviceLag } from "@/pages/Room/deviceLag";
+import { heardPiece, heardT, hostNow, hushDeviceAudio, unhushDeviceAudio, useDeviceAudio } from "@/pages/Room/deviceAudio";
 import { useMusic } from "./context";
 
 const TICK_MS = 80;
@@ -101,17 +105,19 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     () => (elapsed === null ? null : { pos: elapsed, at: performance.now() - (typeof atMs === "number" ? Math.min(5000, Math.max(0, Date.now() - atMs)) : 0), speed }),
     [elapsed, speed, atMs, v],
   );
+  const device = useDeviceAudio();
+  const hearing = device.status === "playing";
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
-    if (!playing) return;
+    if (!playing && !hearing) return;
     const t = setInterval(() => setNow(performance.now()), TICK_MS);
     return () => clearInterval(t);
-  }, [playing]);
+  }, [playing, hearing]);
 
   // a tap, shown at once (module comment); the player's view takes over once it bears it out
   const [intent, setIntent] = useState<Intent | null>(null);
   // where the last play started: the light never shows earlier than that (the sound's delay would pull it back)
-  const anchor = useRef<{ pos: number; until: number } | null>(null);
+  const anchor = useRef<{ pos: number; until: number; host: number | null } | null>(null);
   useEffect(() => {
     if (!intent?.answered) return; // the views from before the player's answer say nothing about the tap
     if (intent.kind === "play" && playing) setIntent(null);
@@ -146,6 +152,14 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     };
     if (intent?.kind === "pause") return at(intent.pos, false, false);
     if (intent?.kind === "play") return at(intent.pos, false, true);
+    const a0 = anchor.current && performance.now() < anchor.current.until ? anchor.current : null;
+    // this device's own sound: the place of the frame being heard
+    const heard = hearing ? heardPiece() : null;
+    if (heard && heard.piece === pieceId && mine) {
+      const t = heardT();
+      if (a0 && a0.host !== null && t !== null && t < a0.host) return at(a0.pos, false, true);   // the old sound
+      return at(heard.pos, heard.playing && playing, false);
+    }
     const b = base;
     if (!mine || !b) return { ...NO_HEAD, mine };
     const raw = Math.max(0, b.pos + (playing ? (Math.max(0, now - b.at) / 1000) * b.speed : 0) + (playing ? LEAD_S : 0) - (playing && lag ? lag * b.speed : 0));
@@ -153,7 +167,7 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     const waiting = (playing && a !== null && raw < a) || v?.state === "preparing";
     const pos = a !== null && v?.state !== "paused" ? Math.max(a, raw) : raw;
     return at(pos, playing && !waiting, waiting);
-  }, [mine, playing, now, data, base, lag, intent, v]);
+  }, [mine, playing, now, data, base, lag, intent, v, hearing, pieceId]);
 
   const barStart = useCallback(
     (n: number): number | null => {
@@ -179,7 +193,9 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
   );
   const shown = useCallback(async (it: Intent, run: () => Promise<{ ok: boolean }>) => {
     setIntent(it);
-    if (it.kind === "play") anchor.current = { pos: it.pos, until: performance.now() + 15_000 };
+    if (it.kind === "pause") hushDeviceAudio(); // silent here at once, whatever the round trip
+    else unhushDeviceAudio();
+    if (it.kind === "play") anchor.current = { pos: it.pos, until: performance.now() + 15_000, host: hostNow() };
     const r = await run();
     setIntent((i) => (i && i.at === it.at ? (r.ok ? { ...i, answered: true } : null) : i));
     return r;

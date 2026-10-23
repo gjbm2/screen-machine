@@ -1,11 +1,12 @@
 """Play what the room plays, live, as an endless MP3 (owner, 23 Oct: "synth on PC22 and then stream to local device
 browser": the Room page's "This device" output, a phone or iPad playing PC22's own piano sound).
 
-    python -m piano_render.live [--instrument ID] [--room ROOM|none] [--bitrate 128]
+    python -m piano_render.live [--instrument ID] [--room ROOM|none] [--bitrate 128] [--format mp3|pcm]
         stdin:  one JSON object a line, a MIDI event at its sound time on the host's CLOCK_MONOTONIC:
                 {"t": seconds, "s": status, "a": data1, "b": data2}  (note on / off, CC 64 / 66 / 67; others ignored)
                 {"panic": true}  every note and pedal off
-        stdout: MP3 (ffmpeg's libmp3lame, 48 kHz stereo, --bitrate kb/s CBR), for as long as stdin stays open
+        stdout: MP3 (ffmpeg's libmp3lame, 48 kHz stereo, --bitrate kb/s CBR), for as long as stdin stays open;
+                --format pcm: raw s16le, 48 kHz stereo interleaved (frame n is stream second n / 48000), no encoder
         stderr: one JSON line once loaded ({"ready": true, ...}), warnings, then the stats at the end
 
 The instrument is a live engine: sfizz in live mode (partial preload, engines/sfizz.py) or FluidSynth, one block at a
@@ -39,7 +40,8 @@ from .score import Event
 log = logging.getLogger("piano_render.live")
 
 SR = 48000
-DELAY_S = 0.25                       # an event plays this long after its sound time
+DELAY_S = 0.35                       # an event plays this long after its sound time (0.25 left 0.13 s for the bus)
+LATE_DROP_S = 0.2                    # a note on this late is dropped (a burst of stale notes is worse than a gap)
 AHEAD_S = 0.12                       # rendered this far ahead of the wall clock
 IDLE_S = 4.0                         # silence (no voice, no event) this long: zeros without the engine or chain
 NICE = 5
@@ -65,7 +67,8 @@ def _chain(reg, inst: dict, room_arg: Optional[str]):
 
 class Live:
     def __init__(self, instrument: Optional[str] = None, room: Optional[str] = None, bitrate: int = 128,
-                 out=None, clock=time.monotonic, sleep=time.sleep) -> None:
+                 out=None, clock=time.monotonic, sleep=time.sleep, fmt: str = "mp3") -> None:
+        self.fmt = fmt
         self.reg = _instruments.load()
         inst_id = instrument if instrument and instrument in self.reg.ids() else self.reg.default
         inst = self.reg.get(inst_id)
@@ -77,7 +80,8 @@ class Live:
         self.out = out if out is not None else sys.stdout.buffer
         self.clock, self.sleep = clock, sleep
         self.q: "queue.SimpleQueue" = queue.SimpleQueue()
-        self.stats: dict = {"instrument": inst.get("id"), "events": 0, "late": 0, "blocks": 0, "idle_blocks": 0}
+        self.stats: dict = {"instrument": inst.get("id"), "events": 0, "late": 0, "dropped": 0, "blocks": 0,
+                            "idle_blocks": 0}
         self._stop = threading.Event()
 
     # -- input ----------------------------------------------------------------------------------------------------
@@ -117,7 +121,8 @@ class Live:
     def run(self, stdin=None) -> dict:
         e = self.eng
         B = e.block
-        enc = self._encoder()
+        enc = self._encoder() if self.fmt == "mp3" else None
+        sink = enc.stdin if enc is not None else self.out
         if stdin is not None:
             threading.Thread(target=self._reader, args=(stdin,), daemon=True, name="live-in").start()
         half = e.half_pedal
@@ -158,6 +163,9 @@ class Live:
                         int(round((float(t) + DELAY_S - t0) * SR))
                     if f < frame:
                         self.stats["late"] += 1
+                        if ev.kind == "on" and frame - f > LATE_DROP_S * SR:
+                            self.stats["dropped"] += 1   # stale (it arrived while the sound loaded): not played
+                            continue
                         f = frame
                     pending.append((f, ev))
                     self.stats["events"] += 1
@@ -188,20 +196,25 @@ class Live:
                     elif frame - last_sound > IDLE_S * SR and not any(sent.values()):
                         idle = True                      # the chain's tail has long died away
                 if y.shape[0]:
-                    enc.stdin.write(np.ascontiguousarray(y, np.float32).tobytes())
+                    if enc is not None:
+                        sink.write(np.ascontiguousarray(y, np.float32).tobytes())
+                    else:
+                        sink.write((np.clip(y, -1.0, 1.0) * 32767.0).astype("<i2").tobytes())
+                        sink.flush()
                 frame += B
                 self.stats["blocks"] += 1
         except (BrokenPipeError, OSError) as ex:         # the listener went away
             self.stats["ended"] = f"{type(ex).__name__}"
         finally:
-            try:
-                enc.stdin.close()
-            except OSError:
-                pass
-            try:
-                enc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                enc.kill()
+            if enc is not None:
+                try:
+                    enc.stdin.close()
+                except OSError:
+                    pass
+                try:
+                    enc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    enc.kill()
             self.stats["audio_s"] = round(frame / SR, 1)
         return self.stats
 
@@ -235,10 +248,11 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--instrument")
     ap.add_argument("--room")
     ap.add_argument("--bitrate", type=int, default=128)
+    ap.add_argument("--format", choices=("mp3", "pcm"), default="mp3")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     proc = prepare_process(nice=NICE)
-    live = Live(a.instrument, a.room, a.bitrate)
+    live = Live(a.instrument, a.room, a.bitrate, fmt=a.format)
     st = live.open()
     sys.stderr.write(json.dumps({"ready": True, **st, **proc}) + "\n")
     sys.stderr.flush()
