@@ -885,7 +885,7 @@ def test_the_mic_decides_before_the_receiver_starts_and_its_routes_answer(monkey
         with urllib.request.urlopen(req, timeout=2) as r:
             b = json.loads(r.read())
         assert b["on"] is True and b["why"] == "Listening: this mode follows the music" and seen[-1][:2] == ([], True)
-        assert json.loads((sd / "mic.json").read_text()) == {"v": 1, "muted": False, "mode": True}
+        assert json.loads((sd / "mic.json").read_text()) == {"v": 1, "muted": False, "mode": True, "switch": False}
         code, st = _get(base + "/api/v1/state")
         assert code == 200 and st["mic"]["on"] is True and set(st["mic"]["receiver"]) >= {"off", "off_held"}
         assert {t.name for t in __import__("threading").enumerate()} >= {"show-mic"}

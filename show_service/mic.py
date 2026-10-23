@@ -3,7 +3,10 @@
 * **Wanted** while Auto is on (the autopilot's own on/off, read live: the room target ``autopilot.main``), the
   mode follows the music (a per-mode config row: room_service's device ``show.mic`` PUTs ``{"mode": true}`` here and
   ``{"mode": false}`` when it puts it back), or the Room page's AI listening switch is on (owner, 21 Oct: switching
-  it on claims the mic; ``set_listening``, the listener's ``on``, read live and woken on a set). **On** = wanted and not muted: the Room page's Mute always wins.
+  it on claims the mic; ``set_listening``, the listener's ``on``, read live and woken on a set), or the Room page's
+  Room mic switch is on (``switch``; owner, 24 Oct: "I turned it on (so it delivers music data) but it's refusing to
+  enable unless I turn auto on": the switch on is a claim of its own, off is Mute). **On** = wanted and not muted:
+  the Room page's Mute always wins.
 * **Stream claims** (:meth:`Mic.claim_stream`, 1c 23 Oct: the piano calibration hears the drawing room while a rendered
   test-piano run plays on Sonos): one named stream captures as well as whatever the rules here capture, while held
   and not muted. It never touches the Mic choice. The receiver still picks the room's sound from the live streams, so
@@ -112,6 +115,7 @@ class Mic:
         self._stream_claims: dict[str, tuple[str, str]] = {}   # claim_stream: by -> (stream, label)
         self.muted = False
         self.mode = False
+        self.switch = False                             # the Room page's Room mic switch is on: the owner's own claim
         self.error: Optional[str] = None
         self._lock = threading.RLock()
         self._wake = threading.Event()
@@ -253,7 +257,7 @@ class Mic:
             h = self._h()
             auto = self._auto() is True
             listening = self._listening() is True
-            wanted = auto or self.mode or listening
+            wanted = auto or self.mode or listening or self.switch
             on = wanted and not self.muted
             if on and self._on_since is None:
                 self._on_since = now
@@ -334,26 +338,34 @@ class Mic:
     def _build(self, on: bool, auto: bool, label: Optional[str], capturing: list[str], off: list[str],
                listening: bool = False) -> dict:
         side = [{"by": by, "label": lab, "stream": st} for by, (st, lab) in self._stream_claims.items()]
-        wanted = auto or self.mode or listening or bool(side)
-        claims = ([{"by": "auto", "label": "Auto"}] if auto else []) + \
+        wanted = auto or self.mode or listening or self.switch or bool(side)
+        claims = ([{"by": "switch", "label": "Room mic switch"}] if self.switch and not self.muted else []) + \
+                 ([{"by": "auto", "label": "Auto"}] if auto else []) + \
                  ([{"by": "mode", "label": label or THIS_MODE}] if self.mode else []) + \
                  ([{"by": "listening", "label": "AI listening"}] if listening else []) + side
-        return {"on": bool(on), "muted": self.muted, "wanted": bool(wanted),
-                "why": why_words(bool(on), self.muted, auto, self.mode, label, listening,
-                                 [c["label"] for c in side]), "claims": claims,
+        why = why_words(bool(on), self.muted, auto, self.mode, label, listening, [c["label"] for c in side])
+        if self.switch and not self.muted and not (auto or self.mode or listening or side):
+            why = "Listening: switched on" if on else why
+        return {"on": bool(on), "muted": self.muted, "wanted": bool(wanted), "switch": self.switch and not self.muted,
+                "why": why, "claims": claims,
                 "mode": self.mode,
                 "streams": {"capturing": list(capturing), "off": list(off)}, "error": self.error}
 
     # -- PUT ----------------------------------------------------------------------------------------------------------
-    def put(self, muted: Any = None, mode: Any = None) -> dict:
-        """Set ``muted`` and/or ``mode`` (bools; ValueError in plain words otherwise); persists, decides at once,
-        returns the GET body."""
-        if muted is None and mode is None:
-            raise ValueError('send {"muted": true|false} and/or {"mode": true|false}')
-        for name, v in (("muted", muted), ("mode", mode)):
+    def put(self, muted: Any = None, mode: Any = None, switch: Any = None) -> dict:
+        """Set ``muted``, ``mode`` and/or ``switch`` (bools; ValueError in plain words otherwise); persists, decides at
+        once, returns the GET body.  ``switch`` is the Room page's Room mic switch: on also unmutes, off also mutes."""
+        if muted is None and mode is None and switch is None:
+            raise ValueError('send {"switch": true|false}, {"muted": true|false} and/or {"mode": true|false}')
+        for name, v in (("muted", muted), ("mode", mode), ("switch", switch)):
             if v is not None and not isinstance(v, bool):
                 raise ValueError(f"{name} is true or false")
+        if switch is not None:
+            muted = not switch
         with self._lock:
+            if switch is not None and switch != self.switch:
+                self.switch = switch
+                log.info("mic: the Room mic switch %s", "on" if switch else "off")
             if muted is not None and muted != self.muted:
                 self.muted = muted
                 log.info("mic: %s by the Room page", "muted" if muted else "unmuted")
@@ -379,13 +391,16 @@ class Mic:
             log.warning("%s", self.error)
             return
         self.muted, self.mode = bool(o.get("muted", False)), bool(o.get("mode", False))
+        sw = o.get("switch")
+        # a file from before the switch was its own claim: unmuted meant the owner had it on (24 Oct)
+        self.switch = bool(sw) if isinstance(sw, bool) else not self.muted
 
     def _save(self) -> None:
         try:
             self._file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             tmp = self._file.with_suffix(".json.tmp")
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"v": 1, "muted": self.muted, "mode": self.mode}, f)
+                json.dump({"v": 1, "muted": self.muted, "mode": self.mode, "switch": self.switch}, f)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self._file)
@@ -407,10 +422,11 @@ class Mic:
             o = await request.json()
         except Exception:                               # noqa: BLE001
             o = None
-        if not isinstance(o, dict) or ("muted" not in o and "mode" not in o):
+        if not isinstance(o, dict) or ("muted" not in o and "mode" not in o and "switch" not in o):
             return web.json_response({"error": "bad_request",
-                                      "detail": 'send {"muted": true|false} and/or {"mode": true|false}'}, status=400)
+                                      "detail": 'send {"switch": true|false}, {"muted": true|false} and/or '
+                                                '{"mode": true|false}'}, status=400)
         try:
-            return web.json_response(self.put(o.get("muted"), o.get("mode")))
+            return web.json_response(self.put(o.get("muted"), o.get("mode"), o.get("switch")))
         except ValueError as e:
             return web.json_response({"error": "bad_request", "detail": str(e)}, status=400)
