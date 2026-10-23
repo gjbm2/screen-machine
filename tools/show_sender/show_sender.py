@@ -54,6 +54,9 @@ Streams:
               is logged and shown in the status's error while it plays.
               --status-file PATH: {"stage": preparing|playing|done|error, "progress", "error"} for show_service,
               written atomically, at least every second while preparing or playing.  SIGTERM: silence and exit 0.
+              --calibration-mic STREAM: the mic stream show_service says hears this output (sources.py: the
+              drawing room's for its Sonos, PC22's for PC22), handed to the helper as its own --calibration-mic
+              (calibrate.py watches that stream; "" = no mic hears it: no mic check).  Absent: the helper's default.
 """
 from __future__ import annotations
 
@@ -512,12 +515,17 @@ def render_midi(piece: str, events: list) -> pathlib.Path:
     return path
 
 
-def session_argv(midi: pathlib.Path, instrument: str, pad_s: float, output: Optional[str] = None) -> list[str]:
+def session_argv(midi: pathlib.Path, instrument: str, pad_s: float, output: Optional[str] = None,
+                 calibration_mic: Optional[str] = None) -> list[str]:
     import shlex
     cmd = os.environ.get(SESSION_CMD_ENV)
     base = shlex.split(cmd) if cmd else [os.path.expanduser(SESSION_PY), "-m", "piano_render.session"]
     argv = [*base, "--midi", str(midi), "--instrument", instrument, "--pad-s", f"{pad_s:.3f}"]
-    return argv + ["--output", output] if is_sonos(output) else argv
+    if is_sonos(output):
+        argv += ["--output", output]
+    if calibration_mic is not None:                        # show_service's word for the mic that hears it
+        argv += ["--calibration-mic", calibration_mic]
+    return argv
 
 
 def is_sonos(output: Optional[str]) -> bool:
@@ -673,11 +681,12 @@ class _Beat:
 
 def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = False, *,
                    instrument: Optional[str] = None, output: Optional[str] = None, status_file: Optional[str] = None,
-                   lead_ms: Optional[float] = None, once: bool = False, title: Optional[str] = None) -> int:
+                   lead_ms: Optional[float] = None, once: bool = False, title: Optional[str] = None,
+                   calibration_mic: Optional[str] = None) -> int:
     """A piece from the test-piano library played in real time as test-piano MIDI, looping (``once``: one pass);
     with ``speaker`` also out loud on PC22 (Speaker), so PC22's mic hears it as the boundary mic will hear the
     Steinway. A rendered ``instrument`` on output pc22 or sonos:<zone>: _run_rendered (``title``: the Sonos app's,
-    after TITLE_PREFIX). Returns the exit code (1: it failed)."""
+    after TITLE_PREFIX; ``calibration_mic``: the helper's). Returns the exit code (1: it failed)."""
     status = TestStatus(status_file)
     try:
         from stream_service.piano_replay import PHRASES, TestPiano, resolve
@@ -690,7 +699,7 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         if is_rendered(instrument) and not silent:
             return _run_rendered(ms, stop, piece, events, length, instrument, status,
                                  max(0.0, float(lead_ms or 0.0)) / 1000.0, once, output=output,
-                                 title=TITLE_PREFIX + (title or piece_label(piece)))
+                                 title=TITLE_PREFIX + (title or piece_label(piece)), calibration_mic=calibration_mic)
         if is_sonos(output):
             log.warning("test piano: the Windows synth plays on PC22 only: playing it there")
         if lead_ms:
@@ -772,7 +781,7 @@ def _await(helper: PianoSession, stop: threading.Event, beat: _Beat, want: str,
 
 def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
                   instrument: str, status: TestStatus, lead_s: float, once: bool, output: Optional[str] = None,
-                  title: Optional[str] = None) -> int:
+                  title: Optional[str] = None, calibration_mic: Optional[str] = None) -> int:
     """The rendered sound on PC22 or a Sonos (module docstring): preparing while the helper loads the sound, then per
     pass "play" (Sonos: "play-sonos {url, title}") and the MIDI from its t_audio0 (each event sent at t_audio0 + t_s -
     lead_s; a "rebase" moves it); a pass ends when both the MIDI and the audio have; looping, the next play goes
@@ -784,7 +793,7 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
     status.set("preparing", 0.0)
     try:
         midi = render_midi(piece, events)
-        argv = session_argv(midi, instrument, pad_s, output)
+        argv = session_argv(midi, instrument, pad_s, output, calibration_mic)
         log.info("test piano: %s on %s (lead %.0f ms, pad %.3f s): %s", piece, instrument, lead_s * 1000, pad_s,
                  " ".join(argv))
         helper = PianoSession(argv)
@@ -802,7 +811,8 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
             note[0] = str(m.get("why") or "") or None
             log.warning("test piano: %s", note[0])
         elif m.get("ev") == "calibration":
-            log.info("test piano: timing check: %s: %s", m.get("state"), m.get("why"))
+            log.info("test piano: timing check (%s): %s: %s", f"mic {m['mic']}" if m.get("mic") else "no mic",
+                     m.get("state"), m.get("why"))
     try:
         rendered = _await(helper, stop, beat, "rendered",
                           lambda m: status.set("preparing", m.get("frac")) if m.get("ev") == "progress" else None)
@@ -1063,6 +1073,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test piano, rendered on pc22: send each MIDI event L ms before its sound (show_service "
                          "holds the stream's notes that long)")
     ap.add_argument("--once", action="store_true", help="test piano: play the piece once, then exit 0")
+    ap.add_argument("--calibration-mic", default=None, metavar="STREAM",
+                    help="test piano, rendered: the mic stream that hears the output, for the helper's timing check "
+                         "(show_service names it; \"\" = none hears it)")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
@@ -1105,7 +1118,7 @@ def _main_test_piano(a: argparse.Namespace, out: Out, stop: threading.Event, net
         try:
             rc[0] = run_test_piano(out, stop, a.test_piano, not a.no_speaker, instrument=a.instrument,
                                    output=a.output, status_file=a.status_file, lead_ms=a.lead_ms, once=a.once,
-                                   title=a.title)
+                                   title=a.title, calibration_mic=a.calibration_mic)
         except BaseException:                              # noqa: BLE001
             log.exception("test piano")
             rc[0] = 1

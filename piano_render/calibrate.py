@@ -14,16 +14,22 @@ RelTime rebases). The delay starts at what this module measured last time on thi
 median of the last KEEP_N good measurements in ~/.local/state/screen-machine/piano/latency.json, 0 with none) and is
 then measured during the play:
 
-1. **The mic.** show_service's levels feed (``ws://127.0.0.1:8703/v1/levels?wave=2048``, show_service/levels.py)
-   carries the newest 2048 samples of the room's *active* input at up to 60 frames a second, with the newest
-   packet's counter ``c`` and its arrival time ``a`` (time.monotonic(), this box's clock: the one t_audio0 uses).
+1. **The mic.** show_service's levels feed (``ws://127.0.0.1:8703/v1/levels?wave=2048&stream=<mic>``,
+   show_service/levels.py) carries the newest 2048 samples of the named mic's stream (``?stream=``, 23 Oct: whether
+   or not it is the room's active input; it sends nothing while that mic isn't sending) at up to 60 frames a second,
+   with the newest packet's counter ``c`` and its arrival time ``a`` (time.monotonic(), this box's clock: the one
+   t_audio0 uses). An older feed ignores ``?stream`` and carries the *active* input only: the first frame of another
+   stream tells (``feed`` "active only"), and then the check runs only while the named mic is the active input (the
+   status says so otherwise).
    Frames overlap and are stitched on content (MicTap; tools/room/audio_cal/calibrate.py's tap: a whole-packet
    "race" where the wave is newer than ``c``, dropped frames filled with zeros and masked). The host time of a
    sample is the lower envelope of the arrivals (min of a - sample/fs over the window, the receiver's own rule),
    less the sender's input buffering beyond one packet (heartbeat ``in_lat_ms``) and TRANSPORT_S, plus
    config/room/latency.json ``sources.<mic>.acoustic_offset_ms`` (screen-machine-10's; 0 today). The mic per output:
-   MIC_FOR (the drawing room's kiosk "room-mic" for Sonos, "pc22-mic" for PC22; $PIANO_CALIBRATE_MIC overrides).
-   Read only: this module never changes show_service's input and never turns a mic on.
+   the session's ``mic`` (show_service's sources.py names it from show.yaml's senders and sonos.json: the one that
+   hears that room; "" = none does: no mic check, and the status says why), else $PIANO_CALIBRATE_MIC, else MIC_FOR
+   (the drawing room's kiosk "room-mic" for Sonos, "pc22-mic" for PC22). Read only: this module never changes
+   show_service's input and never turns a mic on (a Sonos run's mic is claimed by show_service itself).
 2. **What we sent.** The reference knows exactly what the sink was given: MIDI frame p plays at sink_t0 + p/fs.
    FileReference reads a rendered file; StreamReference takes the streamer's blocks (``sent(pos, data)``, cheap
    enough for the audio thread: a mono mix and an append; the work is done in the calibrator's thread).
@@ -972,6 +978,12 @@ def show_info(mic: str, show_url: str = SHOW_URL, get: Callable[[str], Any] = _g
     return out
 
 
+def levels_url(show_url: str, mic: Optional[str]) -> str:
+    """The levels feed for ``mic`` by name (``?stream=``; an older feed ignores it and sends the active input)."""
+    url = show_url.replace("http://", "ws://", 1) + LEVELS_PATH + f"?wave={WAVE_N}"
+    return url + f"&stream={urllib.parse.quote(mic, safe='')}" if mic else url
+
+
 def mic_latency_s(info: dict) -> float:
     """Seconds from a sample's ADC time to the lower envelope of its arrivals, less the acoustic offset."""
     packet_s = int(info.get("packet") or PACKET_DEFAULT) / float(info.get("fs") or 48000)
@@ -993,7 +1005,11 @@ class Calibrator:
         self.output = output
         self.kind = output_kind(output)
         self.key = output_key(output, device)
-        self.mic = mic or os.environ.get(MIC_ENV) or MIC_FOR[self.kind]
+        if mic is None:
+            mic = os.environ.get(MIC_ENV) or MIC_FOR[self.kind]
+        self.mic: Optional[str] = mic.strip() or None       # "": show_service named no mic that hears this output
+        self.no_mic_why = None if self.mic else f"show_service names no mic that hears {output}"
+        self.feed_named: Optional[bool] = None              # the feed honours ?stream (True), ignores it (False)
         self.emit_fn = emit
         self.show_url = (show_url or os.environ.get(SHOW_URL_ENV) or SHOW_URL).rstrip("/")
         self.lat_path = lat_path
@@ -1003,7 +1019,7 @@ class Calibrator:
         self.get = get
         self.lock = threading.RLock()
         self.info: dict = {"ok": False, "why": "not asked yet"}
-        self.tap = MicTap(self.mic)
+        self.tap = MicTap(self.mic or "")
         self.playing = False
         self.ref: Any = None
         self.sink_t0 = 0.0
@@ -1047,11 +1063,14 @@ class Calibrator:
             self.heard_s = None
             self.playing = True
             self.tap.reset("a new play")
+            log.info("calibrate %s: sink t0 %.3f, prior delay %s, mic %s", self.key, self.sink_t0,
+                     "none" if self.prior is None else f"{self.prior * 1000:.1f} ms", self.mic or self.no_mic_why)
+            if self.mic is None:                            # nothing to hear it with: the prior (or the sink) stands
+                self._set_status("off", f"{self.no_mic_why}: no mic check; {self._keeping()}", force=True)
+                return self.announced
             if self.connect:
                 self.info = {"ok": False, "pending": True}   # until the poll thread's first answer
-            self._set_status("listening", "waiting for the music to reach the mic")
-            log.info("calibrate %s: sink t0 %.3f, prior delay %s, mic %s", self.key, self.sink_t0,
-                     "none" if self.prior is None else f"{self.prior * 1000:.1f} ms", self.mic)
+            self._set_status("listening", f"waiting for the music to reach the {self.mic} mic")
         if self.connect:
             self._start_threads()
             self._poll_now.set()                            # ask show_service now, not at the next poll
@@ -1101,6 +1120,7 @@ class Calibrator:
     def status(self) -> dict:
         with self.lock:
             return {"state": self.state, "why": self.why, "output": self.key, "mic": self.mic,
+                    "feed": self._feed_word(),
                     "delay_ms": round(self.delay * 1000, 1), "prior_ms": None if self.prior is None
                     else round(self.prior * 1000, 1), "measured_ms": None if self.measured is None
                     else round((self.measured - self.sink_t0) * 1000, 1), "locked": self.locked,
@@ -1115,12 +1135,30 @@ class Calibrator:
             self.info = dict(info)
             fs, pk = int(info.get("fs") or 48000), int(info.get("packet") or PACKET_DEFAULT)
             if info.get("ok") and (fs != self.tap.fs or pk != self.tap.packet):
-                self.tap = MicTap(self.mic, fs=fs, packet=pk)
+                self.tap = MicTap(self.mic or "", fs=fs, packet=pk)
 
     def feed_frame(self, f: dict, now: float) -> None:
         with self.lock:
-            if self.playing:
-                self.tap.feed(f, now)
+            if not self.playing:
+                return
+            s = f.get("s")
+            if self.mic and "wb" in f and isinstance(s, str):
+                if s != self.mic:
+                    if self.feed_named is not False:        # asked for the mic by name, got another stream
+                        log.info("calibrate %s: the levels feed sent %s for ?stream=%s: it carries the active input "
+                                 "only", self.key, s, self.mic)
+                    self.feed_named = False
+                elif self.feed_named is None and self.info.get("ok") and self.info.get("active") not in (None, s):
+                    self.feed_named = True                  # our mic's frames while another input is active
+            self.tap.feed(f, now)
+
+    def new_feed(self) -> None:
+        """A new levels connection: whether it honours ?stream is learnt again from its frames."""
+        with self.lock:
+            self.feed_named = None
+
+    def _feed_word(self) -> Optional[str]:
+        return {True: "by name", False: "active only"}.get(self.feed_named) if self.mic else None
 
     # -- the control loop --
     def step(self, now: Optional[float] = None) -> None:
@@ -1151,6 +1189,9 @@ class Calibrator:
     def _gate(self, now: float) -> bool:
         i = self.info
         keep = self._keeping()
+        if self.mic is None:
+            self._set_status("off", f"{self.no_mic_why}: no mic check; {keep}")
+            return False
         if i.get("pending"):
             self._set_status("listening", "asking show_service which mic is on")
             return False
@@ -1162,9 +1203,10 @@ class Calibrator:
             why = i.get("mic_why")
             self._set_status("off", "the mic is off" + (f" ({why})" if why else "") + f": no mic check; {keep}")
             return False
-        if i.get("active") != self.mic:
+        if i.get("active") != self.mic and self.feed_named is False:     # an older feed: the active input only
             self._set_status("off", f"the room listens on the {i.get('active_label') or i.get('active')} mic, not "
-                                    f"the {label} one: no mic check; {keep}")
+                                    f"the {label} one, and show_service's feed carries only that one (it doesn't "
+                                    f"take ?stream): no mic check; {keep}")
             return False
         if i.get("mic_off") or i.get("state") == "off":
             self._set_status("off", f"the {label} mic is off: no mic check; {keep}")
@@ -1358,11 +1400,13 @@ class Calibrator:
             return
         self._status_sent, self._status_t = (state, why), now
         log.info("calibrate %s: %s: %s", self.key, state, why)
-        self._emit({"ev": "calibration", "state": state, "why": why, "mic": self.mic, "output": self.key,
-                    "delay_ms": round(self.delay * 1000, 1), "locked": self.locked})
+        self._emit({"ev": "calibration", "state": state, "why": why, "mic": self.mic, "feed": self._feed_word(),
+                    "output": self.key, "delay_ms": round(self.delay * 1000, 1), "locked": self.locked})
 
     # -- threads --
     def _start_threads(self) -> None:
+        if self.mic is None:
+            return
         if self._threads and all(t.is_alive() for t in self._threads):
             return
         self._stop.clear()
@@ -1384,7 +1428,7 @@ class Calibrator:
             self._poll_now.clear()
 
     def _run_tap(self) -> None:
-        url = self.show_url.replace("http://", "ws://", 1) + LEVELS_PATH + f"?wave={WAVE_N}"
+        url = levels_url(self.show_url, self.mic)
         backoff = 1.0
         last_step = 0.0
         while not self._stop.is_set():
@@ -1396,6 +1440,7 @@ class Calibrator:
                 try:
                     self._ws = WSClient(url).connect()
                     self.ws_error = None
+                    self.new_feed()
                     backoff = 1.0
                 except (OSError, ConnectionError, ValueError) as e:
                     self.ws_error = f"{type(e).__name__}: {e}"
@@ -1504,27 +1549,33 @@ def _cmd_listen(a) -> int:
     info = show_info(mic, show)
     print(json.dumps({k: info.get(k) for k in ("ok", "why", "active", "label", "state", "mic_on", "mic_why", "fs",
                                                "packet", "in_lat_ms", "offset_ms")}))
-    stream = mic if info.get("active") == mic else (info.get("active") or mic)
-    if stream != mic:
-        print(f"{mic} isn't the active input; listening to {stream} instead (the feed carries only the active one)")
-    tap = MicTap(stream, fs=int(info.get("fs") or 48000), packet=int(info.get("packet") or PACKET_DEFAULT))
-    ws = WSClient(show.replace("http://", "ws://", 1) + LEVELS_PATH + f"?wave={WAVE_N}").connect()
+    tap = MicTap(mic, fs=int(info.get("fs") or 48000), packet=int(info.get("packet") or PACKET_DEFAULT))
+    ws = WSClient(levels_url(show, mic)).connect()
     t0 = time.monotonic()
     c0 = time.process_time()
+    seen: collections.Counter = collections.Counter()
     try:
         while time.monotonic() - t0 < a.seconds:
             msg = ws.recv(0.5)
             if msg is None:
                 continue
-            tap.feed(json.loads(msg), time.monotonic())
+            f = json.loads(msg)
+            if isinstance(f.get("s"), str):
+                seen[f["s"]] += 1
+            tap.feed(f, time.monotonic())
     finally:
         ws.close()
+    stream = mic
+    if seen and mic not in seen:
+        print(f"the feed sent {', '.join(seen)} for ?stream={mic}: it carries the active input only (an older "
+              f"show_service)")
     tap.flush()
     cpu = time.process_time() - c0
     a_off = tap.arrival_offset()
     lags = tap.arrival_lateness()
     span = (tap.n / tap.fs) if tap.n else 0.0
-    out = {"stream": stream, "seconds": round(time.monotonic() - t0, 2), "samples_s": round(span, 3),
+    out = {"stream": stream, "frames_by_stream": dict(seen), "seconds": round(time.monotonic() - t0, 2),
+           "samples_s": round(span, 3),
            "tap": dict(tap.stats), "level_dbfs": tap.level_dbfs(), "cpu_pct": round(100 * cpu / a.seconds, 2),
            "frames_valid": int(tap.ring.ok[:min(tap.ring.end, tap.ring.cap)].sum()),
            "arrival_after_envelope_ms": None if not lags.size else

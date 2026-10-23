@@ -388,7 +388,6 @@ def test_calibrator_rechecks_drift(tmp_path, piece):
 
 @pytest.mark.parametrize("info, says", [
     ({"ok": False, "why": "can't reach show_service (URLError)"}, "can't reach show_service"),
-    (dict(INFO, active="pc22-mic", active_label="PC22"), "listens on the PC22 mic, not the Drawing room one"),
     (dict(INFO, mic_on=False, mic_why="Auto is off"), "the mic is off (Auto is off)"),
     (dict(INFO, state="off"), "the Drawing room mic is off"),
 ])
@@ -403,6 +402,68 @@ def test_calibrator_fails_closed(tmp_path, piece, heard, info, says):
     st = cal.status()
     assert st["state"] == "off" and says in st["why"] and "using the Sonos's own estimate" in st["why"], st
     assert not (tmp_path / "latency.json").exists()
+
+
+def test_an_older_feed_without_stream_falls_back_to_the_active_input(tmp_path, piece, heard):
+    """A feed that ignores ?stream sends the active input: with another input active, no check, and the status says
+    why; once the named mic is the active input, its frames calibrate as before."""
+    rec, d = heard
+    now, ev = [0.0], []
+    cal = make_cal(tmp_path, now, ev, persist=False)
+    cal.set_show(dict(INFO, active="pc22-mic", active_label="PC22"))
+    cal.begin(d + 0.1, C.ArrayReference(piece))
+    drive(cal, Feed(rec, 0.0, stream="pc22-mic"), now, until=30.0)
+    assert not rebases(ev) and cal.feed_named is False
+    st = cal.status()
+    assert st["state"] == "off" and st["feed"] == "active only", st
+    assert "listens on the PC22 mic, not the Drawing room one" in st["why"] and "doesn't take ?stream" in st["why"]
+    assert "using the Sonos's own estimate" in st["why"] and ev[-1]["feed"] == "active only"
+    cal.set_show(INFO)                                     # the drawing-room mic becomes the active input
+    t0 = now[0] + 1.0
+    cal.begin(t0 + d + 0.02, C.ArrayReference(piece))
+    drive(cal, Feed(rec, t0), now)
+    assert cal.locked and abs(cal.announced - (t0 + d)) < 0.005
+
+
+def test_the_named_mic_calibrates_while_another_input_is_active(tmp_path, piece, heard):
+    """show_service's ?stream feed: the drawing-room mic's frames while PC22's is the active input."""
+    rec, d = heard
+    now, ev = [0.0], []
+    cal = make_cal(tmp_path, now, ev, persist=False)
+    cal.set_show(dict(INFO, active="pc22-mic", active_label="PC22"))
+    cal.begin(d + 0.02, C.ArrayReference(piece))
+    drive(cal, Feed(rec, 0.0), now)
+    assert cal.feed_named is True and cal.status()["feed"] == "by name"
+    assert cal.locked and abs(cal.announced - d) < 0.005, cal.announced - d
+    assert any(e["ev"] == "calibration" and e["mic"] == "room-mic" and e["feed"] == "by name" for e in ev)
+    cal.new_feed()                                         # a reconnect learns it again
+    assert cal.feed_named is None
+
+
+def test_no_mic_named_means_no_check_and_no_feed(tmp_path, piece, monkeypatch):
+    """--calibration-mic "": show_service found no mic that hears the output: the prior stands, nothing connects."""
+    def no_get(url):
+        raise AssertionError(f"asked {url}")
+    now, ev = [0.0], []
+    cal = C.Calibrator("sonos:drawing-room", mic="", emit=ev.append, clock=lambda: now[0],
+                       lat_path=tmp_path / "latency.json", get=no_get, show_url="http://127.0.0.1:9")
+    try:
+        assert cal.mic is None and cal.begin(10.0, C.ArrayReference(piece)) == 10.0
+        assert cal._threads == []
+        cal.step(12.0)
+        st = cal.status()
+        assert st["state"] == "off" and st["mic"] is None and st["feed"] is None
+        assert st["why"] == ("show_service names no mic that hears sonos:drawing-room: no mic check; using the "
+                             "Sonos's own estimate")
+        assert ev[-1]["ev"] == "calibration" and ev[-1]["mic"] is None
+    finally:
+        cal.close()
+    monkeypatch.setenv(C.MIC_ENV, "other-mic")
+    assert C.Calibrator("sonos:drawing-room", connect=False, mic="room-mic").mic == "room-mic"   # named: it wins
+    assert C.Calibrator("sonos:drawing-room", connect=False).mic == "other-mic"
+    assert C.levels_url("http://127.0.0.1:8703", "room-mic") == \
+        "ws://127.0.0.1:8703/v1/levels?wave=2048&stream=room-mic"
+    assert C.levels_url("http://127.0.0.1:8703", None) == "ws://127.0.0.1:8703/v1/levels?wave=2048"
 
 
 @pytest.mark.parametrize("kind", ["silent", "noisy", "other music"])
@@ -649,7 +710,8 @@ def test_calibrator_threads_with_a_fake_feed(tmp_path, piece, heard):
         while cal.tap.stats["frames"] < 60 and time.monotonic() < deadline:
             time.sleep(0.05)
         assert cal.tap.stats["frames"] >= 60 and cal.info.get("ok") and cal.info["in_lat_ms"] == IN_LAT_MS
-        assert srv.paths == ["/v1/levels?wave=2048"]
+        assert srv.paths == ["/v1/levels?wave=2048&stream=room-mic"]       # the mic by name (?stream)
+        assert cal.feed_named is None                                      # it is the active input too: can't tell
         cal.end()
         assert srv.closed_by_client.wait(2.0), "the feed is let go between plays"
     finally:

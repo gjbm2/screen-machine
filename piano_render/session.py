@@ -2,6 +2,7 @@
 command. Nothing is rendered ahead and nothing is stored (owner, 22 Oct: "it should be rendered on demand").
 
     ~/.venvs/sm-piano/bin/python -m piano_render.session --midi PATH --instrument ID [--pad-s X] [--output OUT]
+        [--calibration-mic STREAM]
 
 Started by tools/show_sender/show_sender.py (``--test-piano PIECE --instrument ID --output pc22|sonos:<zone>``) from
 the repo root. --output: pc22 (the default: PC22's speakers, piano_render/pc22.py) or sonos:<zone> (a zone of
@@ -18,6 +19,9 @@ How a play works (piano_render/README.md, "Latency and compute", has the numbers
   * Each block handed to the sink also goes to piano_render/calibrate.py's StreamReference: the Calibrator hears the
     piano through the room's mic (PC22's own mic for PC22, the drawing room's for Sonos), and moves the MIDI clock with
     "rebase" lines. It reads show_service's levels feed only (never turns a mic on) and fails closed.
+    --calibration-mic STREAM (show_service's sources.py names it, through show_sender): the stream it watches
+    (``?stream=``; an older feed that ignores it gives the active input only, and the status says so); "" = no mic
+    hears this output (no mic check: the last measurement or the sink's estimate stands); absent: calibrate.MIC_FOR.
   * Nothing goes to disk, except: the Sonos's MP3 stream (sonos.py: deleted 10 min after it ends) and, only when
     $PIANO_SESSION_KEEP_DIR is set (default: unset, off), an MP3 copy of each play that played to its end
     (KeepCopy: ``<dir>/<UTC> <piece> - <instrument>.mp3``, the newest KEEP_MAX kept).
@@ -856,6 +860,14 @@ def output_arg(v: str) -> str:
     raise argparse.ArgumentTypeError(f"{v!r}: pc22 or sonos:<zone>")
 
 
+def mic_arg(v: str) -> str:
+    """--calibration-mic: a stream name (letters, digits, - _ .; at most 16, VBAN's limit) or "" (none)."""
+    v = v.strip()
+    if v == "" or (len(v) <= 16 and all(c.isalnum() or c in "-_." for c in v)):
+        return v
+    raise argparse.ArgumentTypeError(f"{v!r}: a stream name, or \"\" for none")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m piano_render.session", description=__doc__.split("\n")[0])
     ap.add_argument("--midi", required=True, help="the .mid to play")
@@ -863,6 +875,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--pad-s", type=float, default=0.0, help="the first MIDI event's need after 'started' (above)")
     ap.add_argument("--output", default=PC22_OUTPUT, type=output_arg, metavar="pc22|sonos:<zone>",
                     help="where it plays: PC22's speakers (default) or a Sonos zone of config/room/sonos.json")
+    ap.add_argument("--calibration-mic", default=None, type=mic_arg, metavar="STREAM",
+                    help="the mic stream that hears the output (show_service names it); \"\": none hears it")
     return ap
 
 
@@ -895,14 +909,16 @@ def files_argv(a: argparse.Namespace) -> list[str]:
             "--pad-s", f"{max(float(a.pad_s), OLD_SONOS_PAD_MIN_S):.3f}", "--output", a.output]
 
 
-def _calibrator(output: str, proto: Proto, gain_db: Optional[float]):
-    """One Calibrator for the session (module docstring); None when off ($PIANO_CALIBRATE=0, a silent check) or it
-    can't load."""
+def _calibrator(output: str, proto: Proto, gain_db: Optional[float], mic: Optional[str] = None):
+    """One Calibrator for the session (module docstring) on ``mic`` (--calibration-mic; "" = none hears it, None:
+    calibrate's default); None when off ($PIANO_CALIBRATE=0, a silent check) or it can't load."""
     if not _env_on(CALIBRATE_ENV, default=gain_db is None):
         return None
     try:
         from . import calibrate
-        return calibrate.Calibrator(output, emit=proto.emit)
+        cal = calibrate.Calibrator(output, emit=proto.emit, mic=mic)
+        log.info("calibration on %s: %s", output, f"mic {cal.mic}" if cal.mic else cal.no_mic_why)
+        return cal
     except Exception as e:                               # noqa: BLE001  the piano plays without it
         log.warning("no calibration this session: %s", e)
         return None
@@ -937,7 +953,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     from . import stream
     prep = stream.prepare_process()
     log.info("process: %s", prep)
-    cal = _calibrator(a.output, proto, gain_db)
+    cal = _calibrator(a.output, proto, gain_db, a.calibration_mic)
     folder = keep_dir()
     keep = (lambda: KeepCopy(folder, f"{Path(a.midi).stem} - {a.instrument}")) if folder is not None else None
     if a.output.startswith(SONOS_PREFIX):

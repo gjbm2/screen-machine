@@ -58,6 +58,18 @@ test-source words to the program that plays them; senders, ports, streams, folde
   ``set_offset_fn`` (``__main__.Show.set_runtime_offset``: merged over latency.json's offsets, then
   Receiver.set_offsets); removed when the run ends. Without that seam no offset is applied and ``--lead-ms`` isn't
   passed.
+- **The calibration mic** (1c, 23 Oct: piano_render/calibrate.py hears the rendered run through the mic in the room it
+  plays in). A rendered run that is heard gets ``--calibration-mic STREAM`` (when the piano script names it): the
+  room-sound stream of the show.yaml sender whose ``label`` (or name) is the output's room: a Sonos zone's ``room``
+  in SONOS_FILE (else the zone key), or the output id for "pc22"; case, spaces, hyphens and underscores ignored;
+  the sender's first stream that is room sound as inputs.Inputs counts it (not ``on_demand``, not ``room_sound:
+  false``, not a test or MIDI stream). show.yaml ``tests.piano.calibration_mic`` overrides it: a stream name for every
+  output, or ``{<output id>: <stream> | null}``. Nothing found: ``--calibration-mic ""`` (no mic check; the session
+  says so). While a run on a **Sonos** output is RUNNING, that stream is claimed through ``set_mic_claim_fn``
+  (``__main__``: ``Mic.claim_stream(stream, by="test", label="Test piano", on=...)``, so it captures as well; Mute
+  still wins) and released when the run ends, fails, is stopped, is replaced by one that doesn't need it, or the
+  service stops. PC22's mic is passed but never claimed: the owner's Mic choice governs it. Without the seam
+  nothing is claimed (``errors`` says so while such a run plays).
 """
 from __future__ import annotations
 
@@ -103,7 +115,9 @@ LIBRARY_PREFIXES = (library.LIB_PREFIX, library.USER_PREFIX)   # the Music page'
 #: show_sender's newer flags (the other builder's): passed only when its script takes them (its text names them), so
 #: an older show_sender keeps today's argv; the rendered sounds are offered only with RENDER_FLAGS
 SENDER_FLAGS: tuple[str, ...] = ("--instrument", "--output", "--status-file", "--lead-ms", "--once", "--title",
-                                 "sonos:")
+                                 "sonos:", "--calibration-mic")
+CALIBRATION_FLAG = "--calibration-mic"           # show_sender -> piano_render.session -> calibrate.py's mic
+CALIBRATION_KEY = "calibration_mic"              # show.yaml tests.piano.calibration_mic (module docstring)
 RENDER_FLAGS = frozenset(("--instrument", "--output", "--status-file"))
 SONOS_PREFIX = "sonos:"                # an output "sonos:<zone>": a zone of SONOS_FILE (Play on Sonos)
 SONOS_FLAGS = frozenset(("--title", SONOS_PREFIX))     # show_sender's Sonos output (its text names "sonos:")
@@ -340,6 +354,65 @@ def load_sonos_outputs(path: pathlib.Path = SONOS_FILE) -> tuple[list[dict], lis
     return out, problems
 
 
+def sonos_rooms(path: pathlib.Path = SONOS_FILE) -> dict[str, str]:
+    """config/room/sonos.json -> {zone: its Sonos room name} ({} when it can't be read; load_sonos_outputs says why)."""
+    try:
+        doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    zones = doc.get("zones") if isinstance(doc, dict) else None
+    if not isinstance(zones, dict):
+        return {}
+    return {z: (s["room"].strip() if isinstance(s.get("room"), str) and s["room"].strip() else z)
+            for z, s in zones.items() if isinstance(z, str) and isinstance(s, dict)}
+
+
+def _place(text: str) -> str:
+    """A room or sender name compared loosely: case, spaces, hyphens and underscores ignored."""
+    return "".join(ch for ch in text.lower() if not ch.isspace() and ch not in "-_")
+
+
+def calibration_mic(settings: dict, output: Optional[str], *, rooms: Optional[dict[str, str]] = None,
+                    health: Optional[dict] = None, override: Any = None) -> tuple[Optional[str], str]:
+    """The mic stream that hears ``output`` (module docstring, "The calibration mic"): (stream, where it came from), or
+    (None, why none) in plain words. ``rooms``: sonos_rooms(); ``health``: the receiver's (to leave out MIDI streams
+    it has classified); ``override``: show.yaml ``tests.piano.calibration_mic``. Pure."""
+    if not output or output == SILENT_OUTPUT:
+        return None, "nothing is heard"
+    if isinstance(override, dict) and output in override:
+        v = override[output]
+        if v is None or v == "":
+            return None, f"show.yaml tests.piano.{CALIBRATION_KEY} names no mic for {output}"
+        override = v
+    if isinstance(override, str) and override and set(override) <= NAME_OK:
+        return override, f"show.yaml tests.piano.{CALIBRATION_KEY}"
+    if output.startswith(SONOS_PREFIX):
+        zone = output[len(SONOS_PREFIX):]
+        room = (rooms or {}).get(zone) or zone
+        names, where = {_place(room), _place(zone)}, f"Sonos ({room})"
+    else:
+        names, where = {_place(output)}, output
+    raw = settings.get("senders") if isinstance(settings, dict) else None
+    specs = raw if isinstance(raw, dict) else {}
+    streams_h = (health or {}).get("streams") if isinstance(health, dict) else None
+    streams_h = streams_h if isinstance(streams_h, dict) else {}
+    for s in parse_senders(settings)[0]:
+        spec = specs.get(s.name) if isinstance(specs.get(s.name), dict) else {}
+        if s.on_demand or spec.get("room_sound") is False:
+            continue
+        label = spec["label"].strip() if isinstance(spec.get("label"), str) and spec["label"].strip() else s.name
+        if _place(label) not in names and _place(s.name) not in names:
+            continue
+        for st in s.streams:
+            m = streams_h.get(st) if isinstance(streams_h.get(st), dict) else {}
+            kind = m.get("kind")
+            if (st in contract.TEST_STREAMS or st.startswith("test-") or m.get("test") or kind == "midi"
+                    or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)):
+                continue
+            return st, f"show.yaml sender {s.name} ({label})"
+    return None, f"no room mic in show.yaml's senders is labelled for {where}"
+
+
 def sender_flags(script: pathlib.Path) -> frozenset:
     """The SENDER_FLAGS a show_sender script takes: the ones its text names as a quoted literal (its argparse)."""
     try:
@@ -392,6 +465,9 @@ class _Child:
         self.progress: Optional[float] = None
         self.status_error: Optional[str] = None
         self.note: Optional[str] = None                  # said in ``error`` while it runs (a degraded choice)
+        self.cal_mic: Optional[str] = None               # --calibration-mic ("" = none hears it); None: not heard
+        self.cal_why: Optional[str] = None               # where cal_mic came from, or why there is none
+        self.claim: Optional[str] = None                 # the mic stream claimed while it runs (Sonos only)
 
     def set(self, state: str, now: float) -> None:
         if state != self.state:
@@ -423,14 +499,18 @@ class Sources:
                  instruments_file: pathlib.Path = INSTRUMENTS_FILE,
                  recordings_dir: pathlib.Path = recorder.RECORDINGS_DIR,
                  set_offset: Optional[Callable[[str, Optional[float]], None]] = None,
-                 sonos_file: pathlib.Path = SONOS_FILE) -> None:
+                 sonos_file: pathlib.Path = SONOS_FILE,
+                 set_mic_claim: Optional[Callable[[str, bool], Any]] = None) -> None:
         """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it).
         ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins), ``sonos_file``: tests
         pass tmp ones.
-        ``set_offset(stream, ms | None)``: the runtime acoustic offset seam (also :meth:`set_offset_fn`)."""
+        ``set_offset(stream, ms | None)``: the runtime acoustic offset seam (also :meth:`set_offset_fn`).
+        ``set_mic_claim(stream, on)``: the calibration mic's claim seam (also :meth:`set_mic_claim_fn`)."""
         self.instruments_file = pathlib.Path(instruments_file)
         self.recordings_dir = pathlib.Path(recordings_dir)
         self._set_offset = set_offset
+        self._mic_claim = set_mic_claim
+        self._claim_applied: Optional[str] = None
         self._instr: Optional[tuple[list[dict], Optional[str], list[str]]] = None
         self._instr_at = -1e18
         self.sonos_file = pathlib.Path(sonos_file)
@@ -587,6 +667,13 @@ class Sources:
                 if (out != SILENT_OUTPUT and lead is not None and self._set_offset is not None
                         and "--lead-ms" in flags):
                     c.lead_ms = lead
+                if out != SILENT_OUTPUT:                       # heard: the mic that hears it (module docstring)
+                    mic, c.cal_why = self._calibration_mic(source, out)
+                    c.cal_mic = mic or ""
+                    if mic and out.startswith(SONOS_PREFIX):
+                        c.claim = mic                          # PC22's mic: the owner's Mic choice, never claimed
+                    log.info("test %s: calibration mic %s (%s)%s", source, mic or "none", c.cal_why,
+                             ", claimed while it plays" if c.claim else "")
         self._cur[source] = c
         log.info("test %s: %s (%s)%s", source, info["label"], info["id"],
                  "" if spec is None else f", {c.instrument} on {c.output}{', once' if c.once else ''}")
@@ -626,6 +713,11 @@ class Sources:
     def set_offset_fn(self, fn: Optional[Callable[[str, Optional[float]], None]]) -> None:
         """``__main__``: the runtime acoustic offset seam (Show.set_runtime_offset), before the brain starts."""
         self._set_offset = fn
+
+    def set_mic_claim_fn(self, fn: Optional[Callable[[str, bool], Any]]) -> None:
+        """``__main__``: the calibration mic's claim seam (``fn(stream, on)``: Mic.claim_stream), before the brain
+        starts."""
+        self._mic_claim = fn
 
     # -- internals -----------------------------------------------------------------------------------------------------
     def _tests_cfg(self, source: str) -> dict:
@@ -672,6 +764,23 @@ class Sources:
         if self._flags[0] != stamp:
             self._flags = (stamp, sender_flags(self.piano_script))
         return self._flags[1]
+
+    def _calibration_mic(self, source: str, output: str) -> tuple[Optional[str], str]:
+        """calibration_mic() on show.yaml, sonos.json (read now: once per start) and the receiver's health."""
+        rooms = sonos_rooms(self.sonos_file) if output.startswith(SONOS_PREFIX) else {}
+        health = None
+        if self.ctx.health is not None:
+            try:
+                health = self.ctx.health()
+            except Exception:                                  # noqa: BLE001  show.yaml alone then
+                health = None
+        override = self._tests_cfg(source).get(CALIBRATION_KEY)
+        if override is not None and not (isinstance(override, dict) or
+                                         (isinstance(override, str) and set(override) <= NAME_OK)):
+            log.warning("tests.%s.%s: %r isn't a stream name or a mapping (ignored)", source, CALIBRATION_KEY,
+                        override)
+            override = None
+        return calibration_mic(self.settings, output, rooms=rooms, health=health, override=override)
 
     def _lead_ms(self, source: str) -> Optional[float]:
         """show.yaml ``tests.<source>.lead_ms`` (default LEAD_MS_DEFAULT, at most LEAD_MS_MAX); None when 0 or less."""
@@ -741,6 +850,8 @@ class Sources:
                     argv += ["--title", c.label]
                 if c.lead_ms is not None:
                     argv += ["--lead-ms", f"{c.lead_ms:g}"]
+                if c.cal_mic is not None and CALIBRATION_FLAG in self._sender_flags():
+                    argv += [CALIBRATION_FLAG, c.cal_mic]
             if c.once:
                 argv.append("--once")
             return argv
@@ -850,9 +961,15 @@ class Sources:
                 elif c.term_s is not None and now - c.term_s >= KILL_AFTER_S and not c.killed:
                     _kill(c.proc)
                     c.killed = True
-        if self._running_key() != before:
-            self._apply()
+        if self._running_key() != before or self._claim_due():
+            self._apply()                                  # (a claim or release that failed is tried again)
         self._rebuild()
+
+    def _claim_wanted(self) -> Optional[str]:
+        return next((c.claim for c in self._cur.values() if c is not None and c.state in RUNNING and c.claim), None)
+
+    def _claim_due(self) -> bool:
+        return self._mic_claim is not None and self._claim_wanted() != self._claim_applied
 
     def _running_key(self) -> tuple:
         return tuple(c.state in RUNNING if c is not None else False for c in self._cur.values())
@@ -926,8 +1043,30 @@ class Sources:
                 except Exception as e:                         # noqa: BLE001
                     errors.append(f"set_priority failed: {type(e).__name__}: {e}")
         errors += self._apply_offsets()
+        errors += self._apply_claim()
         self._apply_errors = errors
         self._wanted = (eff, prio_t)
+
+    def _apply_claim(self) -> list[str]:
+        """The calibration mic's claim (module docstring): held for the running Sonos run's mic, released when no
+        running run needs it (a new stream replaces the old: one claim). Returns problems."""
+        want = self._claim_wanted()
+        if want == self._claim_applied:
+            return []
+        fn = self._mic_claim
+        if fn is None:
+            return [f"the mic can't be claimed (no seam): {want} listens only if something else turns it on"] \
+                if want else []
+        try:
+            if want is not None:
+                fn(want, True)
+            else:
+                fn(self._claim_applied, False)
+            log.info("test piano: mic %s %s", want or self._claim_applied, "claimed" if want else "released")
+            self._claim_applied = want
+        except Exception as e:                                 # noqa: BLE001
+            return [f"mic claim failed: {type(e).__name__}: {e}"]
+        return []
 
     def _apply_offsets(self) -> list[str]:
         """The runtime acoustic offsets (module docstring): each running rendered run's lead on its stream; a stream
@@ -993,9 +1132,13 @@ class Sources:
             errors += self._instr[2]
         if self._sonos is not None:
             errors += self._sonos[1]
+        cal = {src: {"output": c.output, "mic": c.cal_mic or None, "why": c.cal_why,
+                     "claimed": c.claim is not None and c.claim == self._claim_applied}
+               for src, c in self._cur.items() if c is not None and c.state in RUNNING and c.cal_mic is not None}
         self._snap = {"senders": rows, "tests": {s: self._status(s, now) for s in PLAYERS},
                       "priority": list(self._prio_applied or ()), "errors": errors,
-                      "offsets_ms": dict(self._offsets_applied)}
+                      "offsets_ms": dict(self._offsets_applied), "mic_claim": self._claim_applied,
+                      "calibration": cal}
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Sources:

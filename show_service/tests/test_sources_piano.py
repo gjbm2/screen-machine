@@ -512,3 +512,252 @@ def test_main_wires_the_sources_offset_seam(monkeypatch, tmp_path):
     finally:
         show.stop()
     assert contract.TEST_PIANO_STREAM == "test-piano"
+
+
+# -- the calibration mic: derived, named to show_sender, claimed while a Sonos run plays (1c, 23 Oct) ------------------
+CAL_SENDER = SONOS_SENDER + """ap.add_argument("--calibration-mic")\n"""
+ROOM_SENDERS = {"kiosk": {"hosts": ["192.0.2.10", "192.0.2.92"], "port": 6980, "streams": ["room-piano", "room-mic"],
+                          "label": "Drawing room"},
+                "pc22": {"hosts": ["192.0.2.205"], "port": 6984, "streams": ["pc22-mic"], "label": "PC22"}}
+
+
+def cal_make(lib, *, seam: bool = True, claim_fails: bool = False, **piano):
+    """A Sources on a show_sender that takes --calibration-mic, show.yaml's room senders, and a claim seam that
+    records every call (and fails while ``r.fail`` is set)."""
+    instruments(lib)
+    sonos_json(lib, **{"drawing-room": {"room": "Drawing Room", "ip": "192.0.2.17"}, "study": {"ip": "192.0.2.18"}})
+    (lib / "cal_sender.py").write_text(CAL_SENDER)
+    r = make(lib, script="cal_sender.py", **piano)
+    r.claims, r.fail = [], claim_fails
+
+    def claim(stream, on):
+        if r.fail:
+            raise RuntimeError("mic busy")
+        r.claims.append((stream, on))
+    if seam:
+        r.src.set_mic_claim_fn(claim)
+    r.src.configure({**settings(lib, **piano), "senders": {**settings(lib)["senders"], **ROOM_SENDERS}})
+    return r
+
+
+def cal_argv(r) -> list[str]:
+    argv = r.popen.argv
+    return argv[argv.index("--calibration-mic"):argv.index("--calibration-mic") + 2] if "--calibration-mic" in argv \
+        else []
+
+
+def test_a_sonos_run_claims_its_rooms_mic_and_names_it_to_show_sender(lib):
+    r = cal_make(lib)
+    assert sources.sender_flags(lib / "cal_sender.py") == frozenset(sources.SENDER_FLAGS)
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    assert st["state"] == "starting" and r.claims == [("room-mic", True)]       # room-piano is MIDI: not the mic
+    assert cal_argv(r) == ["--calibration-mic", "room-mic"]
+    snap = r.src.snapshot()
+    assert snap["mic_claim"] == "room-mic" and snap["calibration"] == {"piano": {
+        "output": "sonos:drawing-room", "mic": "room-mic", "why": "show.yaml sender kiosk (Drawing room)",
+        "claimed": True}}
+    (lib / "state" / "test-piano.status.json").write_text(json.dumps({"stage": "preparing", "progress": 0.1}))
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    assert r.src.status()["piano"]["state"] == "preparing"
+    (lib / "state" / "test-piano.status.json").write_text(json.dumps({"stage": "playing", "progress": 0.0}))
+    r.health.live = True
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    assert r.src.status()["piano"]["state"] == "playing" and r.claims == [("room-mic", True)]   # held throughout
+    assert r.src.stop_test("piano") == ["piano"] and r.claims[-1] == ("room-mic", False)       # stopped: released
+    assert r.src.snapshot()["mic_claim"] is None and r.src.snapshot()["calibration"] == {}
+    r.src.stop()
+    assert r.claims == [("room-mic", True), ("room-mic", False)]
+
+
+def test_the_claim_goes_on_every_exit_path(lib):
+    r = cal_make(lib)
+    sonos = dict(instrument="salamander", output="sonos:drawing-room")
+    # a failure
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    r.popen.procs[-1].rc = 1
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    assert r.src.status()["piano"]["state"] == "failed" and r.claims[-1] == ("room-mic", False)
+    # a once-only run that finishes
+    r.src.start_test("piano", "file:Nocturne.mid", once=True, **sonos)
+    r.src.tick(0.0)
+    assert r.claims[-1] == ("room-mic", True)
+    r.popen.procs[-1].rc = 0
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    assert r.src.status()["piano"]["state"] == "finished" and r.claims[-1] == ("room-mic", False)
+    # replaced by another Sonos run (the claim stays: no churn), then by PC22, then by screens only
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    n = len(r.claims)
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    assert len(r.claims) == n and r.claims[-1] == ("room-mic", True)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="pc22")
+    assert r.claims[-1] == ("room-mic", False)
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="none")
+    assert r.claims[-1] == ("room-mic", False)
+    # the windows synth replaces it
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs")
+    assert r.claims[-1] == ("room-mic", False)
+    # the service stops while it plays
+    r.src.start_test("piano", "file:Nocturne.mid", **sonos)
+    assert r.claims[-1] == ("room-mic", True)
+    r.src.stop()
+    assert r.claims[-1] == ("room-mic", False) and r.src.snapshot()["mic_claim"] is None
+    assert all(on is False for _s, on in r.claims[1::2]) and all(on for _s, on in r.claims[0::2])  # alternating
+
+
+def test_no_claim_for_pc22_screens_only_or_the_windows_synth(lib):
+    r = cal_make(lib)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="pc22")
+    assert r.claims == [] and cal_argv(r) == ["--calibration-mic", "pc22-mic"]   # named, never claimed
+    assert r.src.snapshot()["calibration"]["piano"]["claimed"] is False
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="none")
+    r.src.tick(0.0)
+    assert r.claims == [] and cal_argv(r) == [] and r.src.snapshot()["calibration"] == {}
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs", output="sonos:drawing-room")
+    r.src.tick(0.0)
+    assert st["output"] == "pc22" and r.claims == [] and cal_argv(r) == []     # GS synth: today's argv, no mic
+    assert r.popen.argv == today(lib, script="cal_sender.py")
+    r.src.stop()
+    assert r.claims == []
+
+
+def test_a_sonos_zone_no_mic_hears_gets_an_empty_mic_and_no_claim(lib):
+    r = cal_make(lib)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:study")
+    assert r.claims == [] and cal_argv(r) == ["--calibration-mic", ""]
+    cal = r.src.snapshot()["calibration"]["piano"]
+    assert cal["mic"] is None and cal["why"] == "no room mic in show.yaml's senders is labelled for Sonos (study)"
+    r.src.stop()
+
+
+def test_without_the_seam_nothing_is_claimed_and_errors_say_so(lib):
+    r = cal_make(lib, seam=False)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    assert cal_argv(r) == ["--calibration-mic", "room-mic"] and r.src.snapshot()["mic_claim"] is None
+    assert any("can't be claimed" in e and "room-mic" in e for e in r.src.snapshot()["errors"])
+    r.src.stop()
+    assert not any("claimed" in e for e in r.src.snapshot()["errors"])
+
+
+def test_a_claim_that_fails_is_tried_again(lib):
+    r = cal_make(lib, claim_fails=True)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    assert r.claims == [] and any("mic claim failed: RuntimeError: mic busy" in e
+                                  for e in r.src.snapshot()["errors"])
+    r.fail = False
+    r.clock.t += 1.0
+    r.src.tick(0.0)
+    assert r.claims == [("room-mic", True)] and r.src.snapshot()["mic_claim"] == "room-mic"
+    assert not any("claim failed" in e for e in r.src.snapshot()["errors"])
+    r.fail = True
+    r.src.stop_test("piano")
+    assert r.src.snapshot()["mic_claim"] == "room-mic"                          # the release failed: still held
+    r.fail = False
+    r.clock.t += 1.0
+    r.src.tick(0.0)
+    assert r.claims[-1] == ("room-mic", False) and r.src.snapshot()["mic_claim"] is None
+    r.src.stop()
+
+
+def test_show_yaml_can_name_the_calibration_mic(lib):
+    r = cal_make(lib, calibration_mic={"sonos:drawing-room": "pc22-mic", "pc22": None})
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
+    assert r.claims == [("pc22-mic", True)] and cal_argv(r) == ["--calibration-mic", "pc22-mic"]
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="pc22")
+    assert r.claims[-1] == ("pc22-mic", False) and cal_argv(r) == ["--calibration-mic", ""]
+    r.src.stop()
+    q = cal_make(lib, calibration_mic="room-mic")
+    q.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="pc22")
+    assert cal_argv(q) == ["--calibration-mic", "room-mic"] and q.claims == []   # PC22: named, still never claimed
+    q.src.stop()
+
+
+def test_calibration_mic_derivation():
+    s = {"senders": {
+        "phone": {"hosts": ["h"], "streams": ["phone-test"], "label": "Drawing room"},          # a test stream
+        "tv": {"hosts": ["h"], "streams": ["tv-audio"], "label": "Drawing room", "room_sound": False},
+        "odd": {"hosts": ["h"], "streams": ["odd-mic"], "label": "Drawing room", "on_demand": True},
+        "kiosk": {"hosts": ["h"], "streams": ["room-piano", "keys", "room-mic"], "label": " drawing  ROOM "},
+        "drawing_room2": {"hosts": ["h"], "streams": ["dr2-mic"]},
+        "bad": {"hosts": [], "streams": ["bad-mic"], "label": "Study"},
+        "pc22": {"hosts": ["h"], "port": 6984, "streams": ["pc22-mic"], "label": "PC22"}}}
+    rooms = {"drawing-room": "Drawing Room", "two": "Drawing Room 2"}
+    health = {"streams": {"keys": {"kind": "midi"}}}
+    f = sources.calibration_mic
+    assert f(s, "sonos:drawing-room", rooms=rooms, health=health) == ("room-mic",
+                                                                       "show.yaml sender kiosk (drawing  ROOM)")
+    assert f(s, "sonos:drawing-room", rooms=rooms)[0] == "keys"                 # unclassified: not a known MIDI name
+    assert f(s, "sonos:two", rooms=rooms) == ("dr2-mic", "show.yaml sender drawing_room2 (drawing_room2)")   # by name
+    assert f(s, "sonos:Drawing-Room", rooms={}, health=health)[0] == "room-mic"   # no room name: the zone key
+    assert f(s, "pc22") == ("pc22-mic", "show.yaml sender pc22 (PC22)")
+    assert f(s, "sonos:study", rooms={"study": "Study"}) == (
+        None, "no room mic in show.yaml's senders is labelled for Sonos (Study)")  # its sender is invalid
+    assert f(s, "none") == (None, "nothing is heard") and f(s, None)[0] is None
+    assert f(s, "pc22", override="room-mic") == ("room-mic", "show.yaml tests.piano.calibration_mic")
+    assert f(s, "pc22", override={"pc22": None}) == (None,
+                                                      "show.yaml tests.piano.calibration_mic names no mic for pc22")
+    assert f(s, "pc22", override={"sonos:x": "room-mic"})[0] == "pc22-mic"     # not this output: derived
+    assert f(s, "pc22", override="bad name!")[0] == "pc22-mic"                 # not a stream name: derived
+    assert f({}, "sonos:drawing-room", rooms=rooms)[0] is None
+    assert sources.sonos_rooms(sources.SONOS_FILE).get("drawing-room") == "Drawing Room"   # the real file, read only
+
+
+def test_main_wires_the_sources_mic_claim_seam(monkeypatch, tmp_path):
+    from show_service.tests.test_main import _brain_opts, _with_seams, install_brain_fakes, install_fakes
+    install_fakes(monkeypatch)
+    _with_seams(monkeypatch)
+    install_brain_fakes(monkeypatch)
+    seen: list = []
+
+    class Src:
+        name, tick_hz = "sources", 1.0
+
+        def __init__(self, ctx, **kw) -> None:
+            pass
+
+        def set_mic_claim_fn(self, fn) -> None:
+            seen.append(fn)
+
+        def provides(self):
+            return {}
+
+        def configure(self, s):
+            pass
+
+        def restore(self, s):
+            pass
+
+        def start(self):
+            pass
+
+        def tick(self, now):
+            pass
+
+        def snapshot(self):
+            return {}
+
+        def persist(self):
+            return None
+
+        def stop(self):
+            pass
+    m = types.ModuleType("show_service.sources")
+    m.attach = lambda ctx, **kw: Src(ctx, **kw)
+    monkeypatch.setitem(sys.modules, "show_service.sources", m)
+    show = main_mod.Show(_brain_opts(tmp_path))
+    show.start()
+    try:
+        assert len(seen) == 1
+        seen[0]("room-mic", True)
+        assert {"by": "test", "label": "Test piano", "stream": "room-mic"} in show.mic.state()["claims"]
+        seen[0]("room-mic", False)
+        assert not any(c.get("by") == "test" for c in show.mic.state()["claims"])
+    finally:
+        show.stop()

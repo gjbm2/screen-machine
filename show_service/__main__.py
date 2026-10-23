@@ -566,7 +566,9 @@ class Show:
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
 
     def _wire_sources(self) -> None:
-        """sources.py's runtime acoustic offset seam (a rendered test-piano run's lead): Show.set_runtime_offset."""
+        """sources.py's runtime acoustic offset seam (a rendered test-piano run's lead): Show.set_runtime_offset; and
+        its mic claim seam (a rendered run on Sonos claims the mic that hears that room, for its calibration):
+        Mic.claim_stream as the "test" claim."""
         comps = getattr(self.brain, "components", None)
         src = comps.get("sources") if isinstance(comps, dict) else None
         fn = getattr(src, "set_offset_fn", None)
@@ -575,6 +577,14 @@ class Show:
                 fn(self.set_runtime_offset)
             except Exception:
                 log.exception("sources: the runtime offset seam wasn't wired: rendered test runs play without it")
+        claim_fn = getattr(src, "set_mic_claim_fn", None)
+        mic = self.mic
+        if callable(claim_fn) and mic is not None and callable(getattr(mic, "claim_stream", None)):
+            try:
+                claim_fn(lambda stream, on: mic.claim_stream(stream, by="test", label="Test piano", on=on))
+            except Exception:
+                log.exception("sources: the mic claim seam wasn't wired: a test piano on Sonos is heard by its room's "
+                              "mic only if something else turns it on")
 
     def _wire_mic(self) -> None:
         """README S5.16: the mic's brain-side inputs (each optional): the ring, Auto's live on/off (and its wake on a

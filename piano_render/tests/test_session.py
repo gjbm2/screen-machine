@@ -579,6 +579,32 @@ def test_the_stream_route_probe_tells_shows_own_404_from_a_missing_route():
     assert argv[1:3] == ["-m", "piano_render.session_files"] and argv[argv.index("--pad-s") + 1] == "0.750"
 
 
+def test_the_calibration_mic_from_show_service_reaches_the_calibrator(monkeypatch):
+    """--calibration-mic (show_sender passes show_service's word): the Calibrator watches that stream; "" = no mic
+    hears the output (no mic check); absent: calibrate's default. The old file path has no calibration."""
+    from piano_render import calibrate
+    base = ["--midi", "m.mid", "--instrument", "x", "--output", "sonos:drawing-room"]
+    assert session.build_parser().parse_args(base).calibration_mic is None
+    assert session.build_parser().parse_args(base + ["--calibration-mic", "room-mic"]).calibration_mic == "room-mic"
+    a = session.build_parser().parse_args(base + ["--calibration-mic", ""])
+    assert a.calibration_mic == "" and "--calibration-mic" not in session.files_argv(a)
+    with pytest.raises(SystemExit):
+        session.build_parser().parse_args(base + ["--calibration-mic", "no such mic"])
+    monkeypatch.delenv(session.CALIBRATE_ENV, raising=False)
+    monkeypatch.delenv(calibrate.MIC_ENV, raising=False)
+    proto = session.Proto(Sink())
+    cals = [session._calibrator("sonos:drawing-room", proto, None, "room-mic"),
+            session._calibrator("sonos:drawing-room", proto, None, ""),
+            session._calibrator("pc22", proto, None, None)]
+    try:
+        assert [c.mic for c in cals] == ["room-mic", None, calibrate.MIC_FOR["pc22"]]
+        assert cals[1].no_mic_why == "show_service names no mic that hears sonos:drawing-room"
+    finally:
+        for c in cals:
+            c.close()
+    assert session._calibrator("pc22", proto, -120.0, "pc22-mic") is None        # a silent check: off
+
+
 def test_main_refuses_a_bad_gain_and_reports_a_missing_midi(tmp_path):
     env = dict(os.environ, PIANO_SESSION_GAIN_DB="quiet")
     p = _main(["--midi", "x.mid", "--instrument", "grand-c5"], env)
