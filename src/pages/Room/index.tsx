@@ -27,7 +27,9 @@ import { MenuSheet } from "./MenuSheet";
 import { ModeEditor } from "./ModeEditor";
 import { ModeSwitcher } from "./ModeSwitcher";
 import { MusicCard, useShowFeed, useShowState } from "./MusicCard";
+import { ListenHere } from "./ListenHere";
 import { PianoCard } from "./PianoCard";
+import { PlayOnCard } from "./PlayOn";
 import type { LookScope } from "./liveLib";
 import type { LiveMember } from "./roomFx";
 import { RoomLive } from "./RoomLive";
@@ -323,6 +325,8 @@ export default function RoomPage() {
                 />
               </section>
 
+              <PlayOnCard api={room.api} addLog={room.addLog} reportError={room.reportError} />
+
               <MusicCard api={room.api} feed={show} now={now} addLog={room.addLog} />
 
               <PianoCard api={room.api} connected={connected} addLog={room.addLog} reportError={room.reportError} />
@@ -434,6 +438,7 @@ export default function RoomPage() {
             )
           )}
         </main>
+        <ListenHere api={room.api} />
       </div>
 
       <MenuSheet

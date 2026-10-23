@@ -201,17 +201,16 @@ function useKeyFlash(api: RoomApi, on: boolean): boolean {
   return flash && on;
 }
 
-/** The piano's Sound and Play on, from show_service's lists (labels exactly as it sends them). Nothing without them. */
+/** The piano's Sound, from show_service's list (labels exactly as it sends them). Nothing without it. Where it plays is
+ *  its own control on the page (Play on: PlayOn.tsx), so the choice shows once. */
 export function SoundChoice({
   sound,
   disabled,
   onInstrument,
-  onOutput,
 }: {
   sound: PianoSound;
   disabled?: boolean;
   onInstrument?: (id: string) => void;
-  onOutput?: (id: string) => void;
 }) {
   if (!sound.available) return null;
   const group = (
@@ -242,12 +241,7 @@ export function SoundChoice({
       </div>
     </div>
   );
-  return (
-    <div className="space-y-3">
-      {group("Sound", sound.instruments, sound.instrument, onInstrument ?? sound.setInstrument)}
-      {sound.outputs.length > 0 && group("Play on", sound.outputs, sound.output, onOutput ?? sound.setOutput)}
-    </div>
-  );
+  return group("Sound", sound.instruments, sound.instrument, onInstrument ?? sound.setInstrument);
 }
 
 /** A take's score on the Music page (written from its MIDI the first time it's opened), keeping ?room=. */
@@ -575,7 +569,6 @@ export function PianoCard({
             sound={sound}
             disabled={!!busy && busy.startsWith("play:")}
             onInstrument={(id) => changeSound({ instrument: id })}
-            onOutput={(id) => changeSound({ output: id })}
           />
         )}
 

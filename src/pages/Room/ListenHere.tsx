@@ -1,0 +1,264 @@
+// "This device" on a page (the Room page and /music each mount one ListenHere): the stream's line in words
+// (ListenLine, also under Play on and on the music screen), a bar along the bottom while the sound plays here (Open the
+// music screen, Stop), the live music screen itself (LiveMusicView.tsx), and what they need:
+//   - the chosen sound, for the stream's ?instrument= (usePianoSound against GET /show/api/v1/test's list: read once at
+//     once, every 60 s, every 4 s while on), handed to listenHere.ts with where show_service is (the page's API base);
+//   - what's playing, while on: the music player's piece (GET /show/api/v1/player), else the test piano's (Test music
+//     or a recording), else "The piano" while the real one sends notes;
+//   - the notes, while on: WS /show/v1/show (music.note, music.pedal, music.notes; every source, as PianoRow), drawn
+//     the stream's delay later (show_service's 0.25 s plus the browser's buffer). The first note after the sound is
+//     turned on opens the screen; once closed it stays closed until it's turned on again.
+
+import { useEffect, useMemo, useState } from "react";
+import { Maximize2, Volume2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MusicApi, type PlayerView } from "@/pages/Music/api";
+import type { RoomApi } from "./api";
+import { Spinner } from "./bits";
+import {
+  configureListen,
+  lagS,
+  listenOff,
+  listenSnap,
+  listenTap,
+  SERVER_LAG_S,
+  setListenView,
+  useListenHere,
+  type ListenStatus,
+} from "./listenStream";
+import { LiveMusicView } from "./LiveMusicView";
+import { NoteFeed } from "./noteFeed";
+import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
+import type { ShowTestView } from "./types";
+import { usePianoSound } from "./usePianoSound";
+
+const POLL_ON_MS = 4_000;
+const POLL_OFF_MS = 60_000;
+const RETRY_MS = 2_000;
+const LAG_EVERY_MS = 2_000;
+/** The real piano counts as what's playing this long after its last note. */
+const LIVE_FOR_MS = 15_000;
+const PLAYER_BUSY = ["preparing", "playing"];
+const PIANO_BUSY = ["preparing", "starting", "playing"];
+
+const BUSY_WORDS: Partial<Record<ListenStatus, string>> = {
+  checking: "Getting the sound ready…",
+  connecting: "Getting the sound ready…",
+  reconnecting: "The sound dropped; reconnecting…",
+};
+const STOPPED_WORDS: Partial<Record<ListenStatus, string>> = {
+  unavailable: "Not available yet.",
+  busy: "Too many sounds playing; try the same sound as the others.",
+  failed: "The sound stopped.",
+};
+
+/** The stream's delay behind the room, in seconds (show_service's share plus the browser's buffer). */
+const behindS = () => SERVER_LAG_S + lagS();
+
+/** "This device" in words, with its one action (Tap to start sound, Try again, Open). Nothing while it's off. */
+export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?: () => void; className?: string }) {
+  const here = useListenHere();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (here.status !== "playing") return;
+    const id = window.setInterval(() => tick((n) => n + 1), LAG_EVERY_MS);
+    return () => window.clearInterval(id);
+  }, [here.status]);
+  if (!here.on || here.status === "off") return null;
+
+  if (here.status === "tap")
+    return (
+      <button
+        type="button"
+        onClick={listenTap}
+        className={cn(
+          TAP_BUTTON_CLASS,
+          "inline-flex w-full items-center justify-center gap-2 bg-primary font-semibold text-primary-foreground hover:bg-primary/90",
+          big && "h-14 text-[17px]",
+          className,
+        )}
+      >
+        <Volume2 className="h-5 w-5" aria-hidden /> Tap to start sound
+      </button>
+    );
+
+  const busy = BUSY_WORDS[here.status];
+  const stopped = STOPPED_WORDS[here.status];
+  const behind = Math.max(1, Math.round(behindS()));
+  return (
+    <div className={cn("flex min-h-11 items-center gap-2", className)} role="status">
+      {busy ? (
+        <Spinner className="shrink-0" />
+      ) : (
+        <span
+          aria-hidden
+          className={cn("h-2.5 w-2.5 shrink-0 rounded-full", stopped ? "bg-amber-500" : "bg-teal-600 motion-safe:animate-pulse")}
+        />
+      )}
+      <p className={cn("min-w-0 flex-1 text-base leading-snug", stopped ? "text-amber-800" : "text-stone-700")}>
+        {busy ?? stopped ?? (
+          <>
+            Playing on this device
+            <span className="text-muted-foreground"> · about {behind} s behind the room</span>
+          </>
+        )}
+      </p>
+      {stopped ? (
+        <button
+          type="button"
+          onClick={listenTap}
+          className="h-11 shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-[15px] font-medium hover:bg-stone-50"
+        >
+          Try again
+        </button>
+      ) : (
+        onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 text-[15px] font-medium hover:bg-stone-50"
+          >
+            <Maximize2 className="h-4 w-4" aria-hidden /> Open
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+/** The page's "This device": mount once, inside the page's themed root. */
+export function ListenHere({ api }: { api: RoomApi }) {
+  const here = useListenHere();
+  const music = useMemo(() => new MusicApi(api.baseUrl), [api.baseUrl]);
+  const [test, setTest] = useState<ShowTestView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [player, setPlayer] = useState<PlayerView | null>(null);
+  const [liveAt, setLiveAt] = useState(0);
+  const feed = useMemo(() => new NoteFeed(), []);
+  const sound = usePianoSound(test);
+
+  // show_service's sounds (and, while on, what's playing): only while the page is visible
+  useEffect(() => {
+    let stop = false;
+    let timer: number | undefined;
+    const ac = new AbortController();
+    const poll = async () => {
+      if (document.visibilityState === "visible") {
+        const [t, p] = await Promise.all([
+          api.showTest(ac.signal).catch(() => undefined),
+          here.on ? music.player(ac.signal).catch(() => null) : Promise.resolve(null),
+        ]);
+        if (stop) return;
+        if (t) setTest(t);
+        setPlayer(p);
+        setLoaded(true);
+      }
+      timer = window.setTimeout(() => void poll(), here.on ? POLL_ON_MS : POLL_OFF_MS);
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(timer);
+      void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    void poll();
+    return () => {
+      stop = true;
+      ac.abort();
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [api, music, here.on]);
+
+  // the stream's sound: once show_service has answered (or not), so the first connect has it
+  useEffect(() => {
+    if (loaded) configureListen(api.baseUrl, sound.instrument);
+  }, [loaded, api.baseUrl, sound.instrument]);
+
+  // the notes, while on
+  useEffect(() => {
+    if (!here.on) return;
+    const url = api.showEventsUrl().replace(/\/v1\/events$/, "/v1/show");
+    let sock: WebSocket | null = null;
+    let retry: number | undefined;
+    let closed = false;
+    let liveMark = 0;
+    const open = () => {
+      sock = new WebSocket(url);
+      sock.onopen = () =>
+        sock?.send(
+          JSON.stringify({ type: "hello", v: 2, role: "room-page", client_id: "room-listen-here", want: ["music.note", "music.pedal", "music.notes"] }),
+        );
+      sock.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(ev.data as string) as { type?: string; data?: Record<string, unknown> };
+          if (m.type !== "music.note" && m.type !== "music.pedal" && m.type !== "music.notes") return;
+          const s = listenSnap();
+          feed.push(m, s.status === "playing" ? behindS() * 1000 : 0);
+          if (m.type === "music.note" && m.data?.on === true) {
+            if (s.on && !s.dismissed && !s.viewOpen) setListenView(true);
+            const now = Date.now();
+            if (m.data.source === "live" && now - liveMark > 2_000) {
+              liveMark = now;
+              setLiveAt(now);
+            }
+          }
+        } catch {
+          /* a message we can't read: skipped */
+        }
+      };
+      sock.onclose = () => {
+        if (!closed) retry = window.setTimeout(open, RETRY_MS);
+      };
+    };
+    open();
+    return () => {
+      closed = true;
+      window.clearTimeout(retry);
+      sock?.close();
+    };
+  }, [api, feed, here.on]);
+
+  if (!here.on) return null;
+
+  // what's playing
+  const piano = test?.sources?.piano;
+  let title = "Nothing playing just now";
+  let sub: string | null = "It plays here as soon as the music starts.";
+  if (player && PLAYER_BUSY.includes(player.state) && player.current) {
+    title = player.current.title;
+    sub = [player.current.composer, player.current.performer].filter(Boolean).join(" · ") || null;
+  } else if (piano && PIANO_BUSY.includes(piano.state)) {
+    title = piano.label || "The test piano";
+    sub = "Test piano";
+  } else if (Date.now() - liveAt < LIVE_FOR_MS) {
+    title = "The piano";
+    sub = "Played in the room";
+  }
+  const used = here.instrumentUsed ?? sound.instrument;
+  const soundLabel = sound.instruments.find((i) => i.id === used)?.label ?? null;
+
+  return (
+    <>
+      {/* the bar sits over the page's foot: the page gets the room back under it */}
+      <div aria-hidden className="h-24" />
+      {!here.viewOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-testid="listen-here-bar">
+          <div className={cn(CARD_CLASS, "mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2")}>
+            <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />
+            <button
+              type="button"
+              aria-label="Stop sound here"
+              title="Stop sound here"
+              onClick={listenOff}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+            >
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+        </div>
+      )}
+      {here.viewOpen && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
+    </>
+  );
+}

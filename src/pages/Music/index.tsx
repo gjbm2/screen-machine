@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { loadToken, resolveRoomUrl, RoomApi, storageGet, storageSet } from "@/pages/Room/api";
 import { Dot, Unroll } from "@/pages/Room/bits";
 import { TestShowSection } from "@/pages/Room/TestShow";
+import { ListenHere } from "@/pages/Room/ListenHere";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import type { Tone } from "@/pages/Room/tones";
 import { MusicApi } from "./api";
@@ -267,6 +268,8 @@ export default function MusicPage() {
           </div>
         )}
       </MusicProvider>
+
+      <ListenHere api={roomApi} />
 
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="music" />
     </div>
