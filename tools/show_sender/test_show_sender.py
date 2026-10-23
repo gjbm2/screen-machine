@@ -16,6 +16,13 @@ import show_sender as ss  # noqa: E402
 from show_sender import vban  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _timing_log(tmp_path, monkeypatch):
+    """The rendered plays' timing log goes to the test's own folder, never the real one."""
+    monkeypatch.setattr(ss, "TIMING_LOG", tmp_path / "timing.jsonl")
+    monkeypatch.setenv("SM_PIANO_TIMING_LOG", str(tmp_path / "timing.jsonl"))      # and a sender run as a process
+
+
 class Sink:
     def __init__(self) -> None:
         self.packets: list[tuple[str, bytes]] = []

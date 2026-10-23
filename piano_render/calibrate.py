@@ -134,7 +134,7 @@ ROOM_LATENCY_FILE = REPO / "config" / "room" / "latency.json"    # screen-machin
 MIC_ENV = "PIANO_CALIBRATE_MIC"
 MIC_FOR = {"pc22": "pc22-mic", "sonos": "room-mic"}
 KEEP_N = 9                          # measurements kept per output; the prior is their median
-DELAY_LIMIT_S = 5.0                 # a persisted delay beyond this is ignored
+DELAY_LIMIT_S = 15.0                # a persisted delay beyond this is ignored (a Sonos radio stream: seconds)
 
 ENV_HZ = 500                        # envelope frames per second (1000: the same accuracy at twice the CPU)
 FFT_N_48K = 512                     # the envelope's FFT at 48 kHz (scaled to other rates)
@@ -146,6 +146,10 @@ WHITEN = 0.7                        # the cross-spectrum is divided by its magni
 WINDOW_S = 6.0
 HOP_S = 2.0
 SEARCH_S = 3.0
+# A Sonos plays a radio stream several seconds after its estimate (owner, 23 Oct: "when sonos plays music it's nowhere
+# NEAR in time with the midi notes ... its latency is MUCH longer"): until a play's first lock its windows search this
+# far either side, and that first correction is made in one step (a later one: MAX_JUMP_S at most, as before).
+SEARCH_WIDE_S = 12.0
 MAIN_LOBE_S = 0.06                  # the peak's own lobe (the room's early reflections make a comb inside it)
 PSR_MIN = 1.5
 Z_MIN = 7.0
@@ -1004,6 +1008,8 @@ class Calibrator:
                  get: Callable[[str], Any] = _get_json):
         self.output = output
         self.kind = output_kind(output)
+        self.search_s = SEARCH_WIDE_S if self.kind == "sonos" else SEARCH_S
+        self.first_jump = self.kind == "sonos"        # the first lock's correction in one step (module docstring)
         self.key = output_key(output, device)
         if mic is None:
             mic = os.environ.get(MIC_ENV) or MIC_FOR[self.kind]
@@ -1228,19 +1234,20 @@ class Calibrator:
         if k_end < 100:
             return None
         n_hi = tap.n
-        n_lo = max(0, tap.n - int((WINDOW_S + 2 * SEARCH_S + 2) * tap.fs))
+        search = self.search_s
+        n_lo = max(0, tap.n - int((WINDOW_S + 2 * search + 2) * tap.fs))
         t_mic_end = tap.frame_time(k_end - 1, mic_lat, n_lo, n_hi)
         if t_mic_end is None:
             return None
         w = int(WINDOW_S * ENV_HZ)
-        s = int(SEARCH_S * ENV_HZ)
-        j1 = int(math.floor((t_mic_end - SEARCH_S - self.announced) * ENV_HZ)) - 1
+        s = int(search * ENV_HZ)
+        j1 = int(math.floor((t_mic_end - search - self.announced) * ENV_HZ)) - 1
         j1 = min(j1, ref.end_frame())
         j0 = j1 - w
         self.heard_s = t_mic_end - self.announced
         if j0 < 0:
             self._set_status("listening", "waiting for the piece to start" if self.heard_s <= 0 else
-                             f"listening (the first check needs {WINDOW_S + SEARCH_S:.0f} s of the piece)")
+                             f"listening (the first check needs {WINDOW_S + search:.0f} s of the piece)")
             return None
         rp, rok = ref.bands(j0, j1)
         ref_db = db(float(np.mean(rp[rok, N_BANDS]))) if rok.any() else -300.0
@@ -1320,7 +1327,8 @@ class Calibrator:
             self.last_slew_t = -1e9
             slew = True
         else:
-            step = max(-MAX_JUMP_S, min(MAX_JUMP_S, d))
+            jump = SEARCH_WIDE_S if self.first_jump else MAX_JUMP_S
+            step = max(-jump, min(jump, d))
             was = self.announced
             self.announced += step
             self.target = None
@@ -1334,6 +1342,7 @@ class Calibrator:
                 self._persist(delay, run)
                 return
         self.locked = True
+        self.search_s, self.first_jump = SEARCH_S, False   # found: the narrow search and small steps from now on
         self._persist(delay, run)
         self._set_status("locked", self._locked_why(), force=True)
         if slew:

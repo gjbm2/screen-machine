@@ -355,18 +355,24 @@ def test_calibrator_locks_and_slews_small_errors(tmp_path, piece, heard):
 
 
 def test_calibrator_steps_big_errors_and_clamps(tmp_path, piece, heard):
+    """Once a play has locked, a big error is made up in steps of MAX_JUMP_S at most. Until then (owner, 23 Oct: a
+    Sonos's radio stream is heard seconds after its estimate) a Sonos is searched SEARCH_WIDE_S wide and its first
+    correction is one step, however big."""
     rec, d = heard
     t_rec0 = 100.0
     h0 = t_rec0 + d
-    for err, steps in ((0.5, 1), (2.6, 2)):
+    for err, steps, wide in ((0.5, 1, False), (2.6, 2, False), (2.6, 1, True), (-7.5, 1, True), (9.0, 1, True)):
         now, ev = [t_rec0], []
         cal = make_cal(tmp_path, now, ev, persist=False)
-        cal.begin(h0 + err, C.ArrayReference(piece))       # the sink says late: heard earlier than that
+        if not wide:                                     # as after a lock: the narrow search, small steps
+            cal.search_s, cal.first_jump = C.SEARCH_S, False
+        cal.begin(h0 + err, C.ArrayReference(piece))       # the sink's estimate is err off
         drive(cal, Feed(rec, t_rec0, seed=9), now)
         big = [r for r in rebases(ev) if abs(r["t_audio0"] - r["was"]) > C.SLEW_MAX_S]
-        assert len(big) == steps, [(r["t_audio0"] - r["was"]) for r in rebases(ev)]
-        assert all(abs(r["t_audio0"] - r["was"]) <= C.MAX_JUMP_S + 1e-9 for r in rebases(ev))
-        assert abs(cal.announced - h0) < 0.006, (err, cal.announced - h0)
+        assert len(big) == steps, (err, wide, [(r["t_audio0"] - r["was"]) for r in rebases(ev)])
+        most = C.SEARCH_WIDE_S if wide else C.MAX_JUMP_S
+        assert all(abs(r["t_audio0"] - r["was"]) <= most + 1e-9 for r in rebases(ev))
+        assert abs(cal.announced - h0) < 0.006, (err, wide, cal.announced - h0)
 
 
 def test_calibrator_rechecks_drift(tmp_path, piece):
