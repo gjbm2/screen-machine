@@ -336,6 +336,17 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const [staff, setStaff] = useState(storedStaff);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [status, setStatus] = useState<ScoreStatus | null>(null);
+  // the piece's name at once from the library (owner, 23 Oct: '"Finding the piece" takes weirdly long'): the score's
+  // own answer waits for its layout
+  const [named, setNamed] = useState<{ pieceId: string; title: string; composer: string | null } | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    api
+      .item(pieceId, ac.signal)
+      .then((it) => it?.title && setNamed({ pieceId, title: it.title, composer: it.composer ?? null }))
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [api, pieceId]);
   const [shown, setShown] = useState<Shown | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tick, setTick] = useState(0);
@@ -464,7 +475,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
     [shown],
   );
   const follow = useFollow(pieceId, standOpenRef.current ? null : layout);
-  const followPage = follow.head.playing ? follow.head.page : null;
+  const followPage = follow.head.playing || follow.head.starting ? follow.head.page : null;
   useEffect(() => {
     if (!followPage || standOpenRef.current) return;
     if (mode === "pages") setPage(followPage);
@@ -588,8 +599,9 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
     remeasure.current();
   };
 
-  const title = status?.title || shown?.st.title || (problem ? "Score" : null);
-  const composer = status?.composer ?? shown?.st.composer ?? null;
+  const early = named?.pieceId === pieceId ? named : null;
+  const title = status?.title || shown?.st.title || early?.title || (problem ? "Score" : null);
+  const composer = status?.composer ?? shown?.st.composer ?? early?.composer ?? null;
   const editable = !!(status?.editable ?? shown?.st.editable);
   const retry = () => {
     setProblem(null);
@@ -1219,7 +1231,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   );
 
   // while it plays, the pages keep up: the spread (or page) with the bar playing is the one shown
-  const followPage = follow.head.playing ? follow.head.page : null;
+  const followPage = follow.head.playing || follow.head.starting ? follow.head.page : null;
   useEffect(() => {
     if (!followPage) return;
     if (mode === "pages") {
