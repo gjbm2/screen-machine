@@ -95,13 +95,19 @@ def geometry(svg: str, width_px: float) -> list[dict]:
 _NOTE_ID = re.compile(r"n(\d+)-0")
 
 
-def heads(inner, k: float, ox: float, oy: float, space_px: float) -> list[list]:
-    """[note id, cx, cy] (bitmap px) of each note's first piece: its notehead glyph's origin, half a head right."""
+PIECE = 1_000_000                  # heads(pieces=True): piece k of note i (a tie's later heads) is i + k * PIECE
+_PIECE_ID = re.compile(r"n(\d+)-(\d+)")
+
+
+def heads(inner, k: float, ox: float, oy: float, space_px: float, pieces: bool = False) -> list[list]:
+    """[note id, cx, cy] (bitmap px) of each note's first piece: its notehead glyph's origin, half a head right.
+    ``pieces``: every piece of a tied note too, a later one as id + piece * PIECE (the score's light, which reaches
+    the held part of a tie when the music gets there)."""
     out = []
     for g in inner.iter(f"{SVG}g"):
         if "note" not in (g.get("class") or "").split():
             continue
-        m = _NOTE_ID.fullmatch(g.get("id") or "")
+        m = (_PIECE_ID if pieces else _NOTE_ID).fullmatch(g.get("id") or "")
         use = next(g.iter(f"{SVG}use"), None) if m else None
         if use is None:
             continue
@@ -112,7 +118,8 @@ def heads(inner, k: float, ox: float, oy: float, space_px: float) -> list[list]:
             if not t:
                 continue
             x, y = float(t.group(1)), float(t.group(2))
-        out.append([int(m.group(1)), round((x + ox) * k + 0.59 * space_px, 1), round((y + oy) * k, 1)])
+        nid = int(m.group(1)) + (int(m.group(2)) * PIECE if pieces else 0)
+        out.append([nid, round((x + ox) * k + 0.59 * space_px, 1), round((y + oy) * k, 1)])
     return out
 
 

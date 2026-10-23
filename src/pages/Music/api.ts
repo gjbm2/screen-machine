@@ -245,6 +245,8 @@ const WEB_TIMEOUT_MS = 20_000;
 const UPLOAD_TIMEOUT_MS = 30_000;
 /** A ready score's answer lays its pages out for a new size first (about 0.6 s, longer for a long piece). */
 const SCORE_TIMEOUT_MS = 30_000;
+/** The follow map's and the page heads' shape (a new one is a new URL: the browser's cached answers aren't used). */
+const FOLLOW_V = 2; // 2: the later pieces of tied notes (23 Oct)
 /** The room's pass-through takes bodies up to 1 MB. */
 export const MAX_UPLOAD_BYTES = 1024 * 1024;
 
@@ -436,13 +438,13 @@ export class MusicApi {
   /** Page n (1-based) as an SVG image (an <img src>: the route is open, so no key goes in it). */
   /** Follow-along for a layout: when each bar and note sounds (the piece's own seconds) and each page's bars. */
   scoreFollow(id: string, size: ScoreSize & { kind?: ScoreKind; rev?: string }, signal?: AbortSignal) {
-    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev, v: FOLLOW_V });
     return this.request<ScoreFollow>("GET", `/score/${seg(id)}/follow${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
   }
 
   /** Page n's bar boxes and note heads (fractions of the page). */
   scoreGeometry(id: string, n: number, size: ScoreSize & { kind?: ScoreKind; rev?: string }, signal?: AbortSignal) {
-    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev });
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, kind: size.kind, rev: size.rev, v: FOLLOW_V });
     return this.request<ScoreGeometry>("GET", `/score/${seg(id)}/page/${n}.json${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
   }
 

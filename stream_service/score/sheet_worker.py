@@ -106,8 +106,82 @@ def timemap(mei_path: str, midi_path: str, kind: str) -> dict:
     for i, (n, t) in enumerate(bars):
         t1 = bars[i + 1][1] if i + 1 < len(bars) else max(end, t + 0.5)
         out.append([n, round(t, 3), round(max(t1, t), 3)])
+    notes.extend(_tied_pieces(text, onset))
     notes.sort(key=lambda x: x[1])
     return {"bars": out, "notes": notes}
+
+
+def _tied_pieces(text: str, onset: dict) -> list:
+    """The later pieces of tied notes (owner, 23 Oct: "we are only lighting up notes that are at the start of a tie,
+    not the 2nd part of the tie even when the music gets to it"): [id + k * PIECE, t, bar] for piece k of note id,
+    t where the music reaches it. Each element's place in the piece (whole notes from the start: the MEI's own
+    durations, layer by layer, a bar as long as its longest layer) is turned into seconds between the first pieces
+    around it, whose seconds are the MIDI's."""
+    import xml.etree.ElementTree as ET
+    from .engrave import PIECE
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return []
+    tag = lambda e: e.tag.rsplit("}", 1)[-1]                    # noqa: E731
+    def length(e) -> float:
+        try:
+            d = 1.0 / float(e.get("dur"))
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.0
+        dots = int(e.get("dots") or 0)
+        return d * (2.0 - 0.5 ** dots)
+    firsts: list = []                                           # (place, seconds) of first pieces
+    later: list = []                                            # (place, note id, piece, bar)
+    start = 0.0
+    for m in root.iter():
+        if tag(m) != "measure":
+            continue
+        try:
+            bar = int(str(m.get("n")))
+        except ValueError:
+            continue
+        longest = 0.0
+        for layer in m.iter():
+            if tag(layer) != "layer":
+                continue
+            pos = 0.0
+            for e in layer.iter():
+                kind = tag(e)
+                if kind in ("note", "rest", "space", "chord"):
+                    if kind == "note" and e.get("dur") is None:  # a chord's note: the chord's place
+                        continue
+                    ids = [e] if kind == "note" else [x for x in e.iter() if tag(x) == "note"] if kind == "chord" \
+                        else []
+                    for x in ids:
+                        mm = re.fullmatch(r"n(\d+)-(\d+)", x.get("{http://www.w3.org/XML/1998/namespace}id") or "")
+                        if not mm:
+                            continue
+                        nid, k = int(mm.group(1)), int(mm.group(2))
+                        if k == 0 and nid in onset:
+                            firsts.append((start + pos, onset[nid]))
+                        elif k > 0:
+                            later.append((start + pos, nid, k, bar))
+                    pos += length(e)
+            longest = max(longest, pos)
+        start += longest
+    if not firsts or not later:
+        return []
+    firsts.sort()
+    places = [p for p, _ in firsts]
+    import bisect
+    out = []
+    for place, nid, k, bar in later:
+        i = bisect.bisect_right(places, place)
+        if 0 < i < len(firsts):
+            (p0, t0), (p1, t1) = firsts[i - 1], firsts[i]
+            t = t0 + (t1 - t0) * ((place - p0) / (p1 - p0) if p1 > p0 else 0.0)
+        elif i == 0:
+            t = firsts[0][1]
+        else:
+            t = firsts[-1][1] + (place - firsts[-1][0]) * 2.0   # past the last first piece: 2 s a whole note
+        out.append([nid + k * PIECE, round(t, 3), bar])
+    return out
 
 
 def geometry(svg: str, w: float, h: float) -> dict:
@@ -126,7 +200,7 @@ def geometry(svg: str, w: float, h: float) -> dict:
         if space is None and m["staves"]:
             space = (m["staves"][0][1] - m["staves"][0][0]) / 4
         bars.append([n, round(m["x0"] / w, 4), round(top / h, 4), round(m["x1"] / w, 4), round(bot / h, 4)])
-    hs = heads(inner, k, ox, oy, space or 8.0)
+    hs = heads(inner, k, ox, oy, space or 8.0, pieces=True)
     return {"bars": bars, "heads": [[i, round(x / w, 4), round(y / h, 4)] for i, x, y in hs], "space": round((space or 8.0) / h, 4)}
 
 

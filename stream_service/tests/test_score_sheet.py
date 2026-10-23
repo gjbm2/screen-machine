@@ -115,3 +115,17 @@ def test_performance_beat_tracked() -> None:
     downbeat_bass = sum(1 for b in music if b.staves[1] and b.staves[1][0].pitches and
                         b.staves[1][0].start == 0 and min(b.staves[1][0].pitches) in (43, 50))
     assert downbeat_bass >= 0.8 * len(music)                                   # the bar lines on the downbeats
+
+
+def test_a_tied_notes_later_piece_lights_when_the_music_gets_there():
+    """Owner, 23 Oct: 'we are only lighting up notes that are at the start of a tie, not the 2nd part'. The follow
+    map has the later pieces (id + k * PIECE) at their own place, between the first pieces around them."""
+    from stream_service.score.engrave import PIECE
+    from stream_service.score.sheet_worker import _tied_pieces
+    mei = ('<mei xmlns="http://www.music-encoding.org/ns/mei"><music><body><mdiv><score><section>'
+           '<measure n="1"><staff n="1"><layer n="1"><note xml:id="n1-0" dur="2" tie="i"/>'
+           '<note xml:id="n2-0" dur="2"/></layer></staff></measure>'
+           '<measure n="2"><staff n="1"><layer n="1"><chord dur="2"><note xml:id="n1-1" tie="t"/></chord>'
+           '<note xml:id="n3-0" dur="2"/></layer></staff></measure></section></score></mdiv></body></music></mei>')
+    got = _tied_pieces(mei, {1: 0.0, 2: 1.0, 3: 3.0})
+    assert got == [[1 + PIECE, 2.0, 2]]                 # half way between n2 (1.0 s) and n3 (3.0 s)
