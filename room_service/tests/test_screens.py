@@ -124,6 +124,21 @@ async def test_entry_snapshot_timeout(make_harness):
     assert "snapshot" in h.screen().last_error
 
 
+async def test_a_snapshot_that_ignores_its_cancel_cannot_hold_the_handshake(make_harness):
+    """23 Oct: south's exit sat in phase "snapshot" for 2+ min, no error: a call that swallowed its cancel held the
+    wait_for.  The handshake abandons it at the budget and goes on."""
+    h = await make_harness(timeouts={"backoff_s": [30.0]})
+    page = await h.page()
+    h.snap.deaf = asyncio.Event()
+    t0 = time.monotonic()
+    await put_live(h)
+    await wait_retry(h)
+    assert time.monotonic() - t0 < 3.0
+    await assert_clean_entry_abort(h, page, attached=False, session_created=False)
+    assert "snapshot" in h.screen().last_error
+    h.snap.deaf.set()
+
+
 async def test_entry_snapshot_error(make_harness):
     h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
