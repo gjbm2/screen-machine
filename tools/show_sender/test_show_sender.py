@@ -374,6 +374,18 @@ def test_smf_round_trip_and_pad():
     assert ss.is_rendered("concert-d") and not ss.is_rendered("windows-gs") and not ss.is_rendered(None)
 
 
+def test_session_argv_passes_the_calibration_mic_only_when_named(monkeypatch, tmp_path):
+    monkeypatch.setenv(ss.SESSION_CMD_ENV, "py -m piano_render.session")
+    m = tmp_path / "x.mid"
+    assert ss.session_argv(m, "grand", 0.4) == ["py", "-m", "piano_render.session", "--midi", str(m), "--instrument",
+                                                "grand", "--pad-s", "0.400"]
+    assert ss.session_argv(m, "grand", 0.4, "sonos:z", "room-mic")[-4:] == ["--output", "sonos:z", "--calibration-mic",
+                                                                          "room-mic"]
+    assert ss.session_argv(m, "grand", 0.4, "pc22", "")[-2:] == ["--calibration-mic", ""]     # none hears it
+    a = ss.build_parser().parse_args(["--test-piano", "x", "--calibration-mic", ""])
+    assert a.calibration_mic == "" and ss.build_parser().parse_args(["--test-piano", "x"]).calibration_mic is None
+
+
 def test_sources_sees_the_flags_and_its_argv_parses(tmp_path):
     """show_service's own argv for a rendered run against this very script: every flag recognised and parsed."""
     from show_service import contract, sources
@@ -410,12 +422,15 @@ def test_sources_sees_the_flags_and_its_argv_parses(tmp_path):
     src = sources.Sources(ctx, python="py", piano_script=script, log_dir=tmp_path / "state", popen=P, pdeath=False,
                           instruments_file=tmp_path / "instruments.json", recordings_dir=tmp_path / "recs",
                           set_offset=lambda s, ms: None)
-    src.configure({"tests": {"piano": {"pieces": str(tmp_path / "piano")}}})
+    src.configure({"tests": {"piano": {"pieces": str(tmp_path / "piano")}},
+                   "senders": {"pc22": {"hosts": ["192.0.2.205"], "port": 6984, "streams": ["pc22-mic"],
+                                        "label": "PC22"}}})
     src.start()
     assert [r["id"] for r in src.instruments()[0]] == ["grand", "windows-gs"]     # rendered sounds offered
     src.start_test("piano", "file:Nocturne.mid", instrument="grand", once=True)
     a = ss.build_parser().parse_args(argvs[-1][2:])
     assert (a.instrument, a.output, a.lead_ms, a.once) == ("grand", "pc22", 650.0, True)
+    assert a.calibration_mic == "pc22-mic"                                 # PC22's mic, named by show_service
     assert a.status_file == str(tmp_path / "state" / "test-piano.status.json") and a.test_piano.endswith(".mid")
     src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs", output="none")
     src.tick(0.0)                                                          # the old child has let go: spawned
@@ -591,10 +606,12 @@ def test_rendered_on_sonos_play_sonos_url_title_pad_rebase_warning_and_once(tiny
     status = tmp_path / "status.json"
     out, stop = RecOut(), threading.Event()
     rc = ss.run_test_piano(out, stop, str(tiny), True, instrument="concert-d", output="sonos:drawing-room",
-                           status_file=str(status), lead_ms=300, once=True, title="Tiny tune")
+                           status_file=str(status), lead_ms=300, once=True, title="Tiny tune",
+                           calibration_mic="room-mic")
     assert rc == 0
     argv = helper.log()[0]["argv"]
     assert argv[argv.index("--output") + 1] == "sonos:drawing-room"
+    assert argv[argv.index("--calibration-mic") + 1] == "room-mic"         # the helper watches that stream
     assert argv[argv.index("--pad-s") + 1] == "0.400"                       # 0.3 - 0 + 0.1 (the helper takes off
                                                                             # what the Sonos's own start gives)
     (cmd,) = [e["sonos"] for e in helper.log() if "sonos" in e]
