@@ -439,8 +439,10 @@ def read_status(path: Optional[pathlib.Path]) -> Optional[dict]:
     prog = min(1.0, max(0.0, float(prog))) if _num_or(prog, -1.0) >= 0.0 else None
     err = doc.get("error")
     pos = doc.get("pos_s")
+    at = doc.get("at")
     return {"stage": doc["stage"], "progress": prog, "error": err if isinstance(err, str) and err else None,
-            "pos_s": float(pos) if _num_or(pos, -1.0) >= 0.0 else None}
+            "pos_s": float(pos) if _num_or(pos, -1.0) >= 0.0 else None,
+            "pos_at": float(at) if _num_or(at, -1.0) > 0.0 else None}
 
 
 # -- the component -----------------------------------------------------------------------------------------------------
@@ -476,6 +478,7 @@ class _Child:
         self.speed = 1.0                                 # the piece's tempo times this (--speed)
         self.start_s = 0.0                               # where in the piece it starts (--start-s, its own tempo)
         self.pos_s: Optional[float] = None               # where in the piece it is now (show_sender's status)
+        self.pos_at: Optional[float] = None              # ... as of this CLOCK_MONOTONIC time (show_sender's)
 
     def set(self, state: str, now: float) -> None:
         if state != self.state:
@@ -973,7 +976,7 @@ class Sources:
                 st = read_status(c.status_path)           # show_sender's stage, progress and error
                 if st is not None:
                     c.stage, c.progress, c.status_error = st["stage"], st["progress"], st["error"]
-                    c.pos_s = st.get("pos_s")
+                    c.pos_s, c.pos_at = st.get("pos_s"), st.get("pos_at")
             if c.state in RUNNING and rc is not None:
                 if rc == 0 and c.once and c.stage != "error":
                     c.set("finished", now)                 # a once-only play ended by itself
@@ -1141,7 +1144,17 @@ class Sources:
                 "sender": c.sender.name, "pid": c.proc.pid if c.proc is not None else None,
                 "since_s": round(max(0.0, now - c.since_s), 3), "error": error,
                 "instrument": c.instrument, "output": c.output, "once": c.once, "progress": c.progress,
-                "speed": c.speed, "pos_s": c.pos_s}
+                "speed": c.speed, "pos_s": self._pos_now(c)}
+
+    @staticmethod
+    def _pos_now(c: _Child) -> Optional[float]:
+        """Where the piece is now: show_sender's last pos_s carried on to this moment at its speed (the score page's
+        follow-along lights the bar playing, 23 Oct); as it was when no time came with it or it isn't playing."""
+        if c.pos_s is None:
+            return None
+        if c.pos_at is None or c.state != "playing":
+            return round(c.pos_s, 3)
+        return round(c.pos_s + max(0.0, min(5.0, time.monotonic() - c.pos_at)) * c.speed, 3)
 
     def _rebuild(self) -> None:
         now = self.clock()

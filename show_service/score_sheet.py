@@ -11,7 +11,8 @@ stream_service/score/sheet.py writes a piece in one of two passes:
   ScoreBuilder; ~25 ms of CPU a note (seconds for a recording, a minute or two for a long piece).  One at a time
   box-wide, nice 19 on the host's last 4 CPUs (nice only ranks within WSL), dropped if nobody polls for ABANDON_S.
 What it keeps is the MEI (text, ~60 KB a piece, KEEP at most) in ~/.cache/screen-machine/score, named by the MIDI's
-hash, the generator's version and the pass, so a recording or a changed generator is written again.  Pages come from a
+hash, the generator's version and the pass: a changed recording is written again, a changed generator isn't (the
+score already written stays; the live score's work changes the generator's files several times a day).  Pages come from a
 warm worker (sheet_worker.py: Verovio kept loaded, the last few layouts kept): a size is laid out once and counted
 (~0.3-1.5 s), a page drawn only when it's asked for (~20-100 ms; the last PAGES_KEPT kept here).  Before it, every
 size drew every page in a fresh process (Islamey on a phone: 165 pages, 11-34 s, past the page's wait: "Finding
@@ -25,6 +26,10 @@ runs in sm-score-ml's python (numpy, torch), the worker and pdf in sm-stream's (
         404 {"error": "unknown_piece"}: no such piece, or no file (a phrase)
   GET /api/v1/score/<piece>/page/<n>.svg?w=&h=&staff=&kind=&rev=   page n (1-based) as image/svg+xml (rev: the
         status's, so a score written again isn't a cached old page)
+  GET /api/v1/score/<piece>/follow?w=&h=&staff=&kind=   follow-along: {"bars": [[n, t0, t1]], "notes": [[id, t, bar]],
+        "pages": [[first bar, last bar] per page]} (t: the MIDI's own seconds, as the player's elapsed_s)
+  GET /api/v1/score/<piece>/page/<n>.json?w=&h=&staff=&kind=   page n's bar boxes and note heads, fractions of the
+        page: {"bars": [[bar, x0, y0, x1, y1]], "heads": [[note id, x, y]]}
   GET /api/v1/score/<piece>/pdf?paper=a4|a4-landscape|letter&kind=[&download=1]   the score printed to a PDF (A4
         portrait by default; headless Chromium, ~5-10 s), inline unless download
 w x h is one page in css px (default 800 x 1100); staff is a staff's height in css px (default 36).
@@ -180,8 +185,22 @@ class ScoreSheets:
         return v
 
     async def _key(self, midi: pathlib.Path, kind: str = "quick") -> str:
+        """The score's cache key: the one already written for this MIDI and pass (whatever generator wrote it: owner,
+        23 Oct, 'why is ... writing the score again when I reload page? takes ages. Also has "forgotten" better score?'
+        -- the key held the generator's code hash, and the live score's own changes to quantize/metre made every
+        score stale), else a new one with today's generator.  A score is written once; it isn't redone by itself."""
         data = await asyncio.to_thread(midi.read_bytes)
-        return f"{hashlib.sha1(data).hexdigest()[:16]}-{await self.version()}-{kind}"
+        h = hashlib.sha1(data).hexdigest()[:16]
+        have = await asyncio.to_thread(self._written, h, kind)
+        return have or f"{h}-{await self.version()}-{kind}"
+
+    def _written(self, h: str, kind: str) -> Optional[str]:
+        """The newest score already written for MIDI hash ``h`` and pass ``kind`` (its key), or None."""
+        try:
+            got = sorted(self.cache.glob(f"{h}-*-{kind}.mei"), key=lambda f: f.stat().st_mtime, reverse=True)
+        except OSError:
+            return None
+        return got[0].stem if got else None
 
     def _mei(self, key: str) -> pathlib.Path:
         return self.cache / f"{key}.mei"
@@ -396,6 +415,22 @@ class ScoreSheets:
             self.svgs.popitem(last=False)
         return got
 
+    async def follow(self, key: str, midi: pathlib.Path, kind: str, w: float, h: float, staff: float) -> dict:
+        """What follow-along needs for this layout: when each bar and note sounds (the MIDI's own seconds, as the
+        player's elapsed_s counts) and each page's first and last bar."""
+        lk = self._lk(key, w, h, staff)
+        tm = await self.worker.ask({"op": "timemap", "mei": str(self._mei(key)), "midi": str(midi), "kind": kind})
+        pm = await self.worker.ask({"op": "pagemap", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+                                    "staff": lk[3]})
+        return {"bars": tm.get("bars") or [], "notes": tm.get("notes") or [], "pages": pm.get("pages") or []}
+
+    async def geometry(self, key: str, w: float, h: float, staff: float, n: int) -> dict:
+        """Page n's bar boxes and note heads (fractions of the page)."""
+        lk = self._lk(key, w, h, staff)
+        got = await self.worker.ask({"op": "geometry", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+                                     "staff": lk[3], "n": n})
+        return {"bars": got.get("bars") or [], "heads": got.get("heads") or []}
+
     async def pdf(self, key: str, paper: str, title: str, composer: str) -> bytes:
         """The score printed to a PDF on ``paper`` (sheet_pages.pdf: headless Chromium, ~5-10 s), kept in memory."""
         pk = (key, paper, title, composer)
@@ -448,6 +483,8 @@ class ScoreSheets:
         r.add_get("/api/v1/score/{id}", self._h_status)
         r.add_get("/api/v1/score/{id}/page/{n}.svg", self._h_page)
         r.add_get("/api/v1/score/{id}/pdf", self._h_pdf)
+        r.add_get("/api/v1/score/{id}/follow", self._h_follow)
+        r.add_get("/api/v1/score/{id}/page/{n}.json", self._h_geometry)
 
     @staticmethod
     def _kind(q: Any) -> str:
@@ -520,3 +557,38 @@ class ScoreSheets:
         return web.Response(body=data, content_type="application/pdf", headers={
             "Content-Disposition": f'{how}; filename="{ascii_name}.pdf"; filename*=UTF-8\'\'{quote(name)}.pdf',
             "Cache-Control": "private, max-age=300"})
+
+    async def _h_follow(self, request: Any) -> Any:
+        from aiohttp import web
+        try:
+            midi, _it = self._piece(request.match_info["id"])
+            kind = self._kind(request.query)
+            key = await self._key(midi, kind)
+            if not self._mei(key).exists():
+                return web.json_response({"error": "not_ready", "detail": "The score isn't written yet."}, status=404)
+            body = await self.follow(key, midi, kind, *self._size(request.query))
+        except LookupError:
+            return web.json_response({"error": "unknown_piece", "detail": "That piece has no MIDI file to write."},
+                                     status=404)
+        except Exception as e:                                              # noqa: BLE001
+            log.exception("score: follow failed")
+            return web.json_response({"error": "failed", "detail": f"{type(e).__name__}: {e}"}, status=500)
+        return web.json_response(body, headers={"Cache-Control": "private, max-age=300"})
+
+    async def _h_geometry(self, request: Any) -> Any:
+        from aiohttp import web
+        try:
+            midi, _it = self._piece(request.match_info["id"])
+            key = await self._key(midi, self._kind(request.query))
+            if not self._mei(key).exists():
+                return web.json_response({"error": "not_ready", "detail": "The score isn't written yet."}, status=404)
+            body = await self.geometry(key, *self._size(request.query), int(request.match_info["n"]))
+        except LookupError:
+            return web.json_response({"error": "unknown_piece", "detail": "That piece has no MIDI file to write."},
+                                     status=404)
+        except ValueError:
+            return web.json_response({"error": "no_page", "detail": "There's no such page."}, status=404)
+        except Exception as e:                                              # noqa: BLE001
+            log.exception("score: geometry failed")
+            return web.json_response({"error": "failed", "detail": f"{type(e).__name__}: {e}"}, status=500)
+        return web.json_response(body, headers={"Cache-Control": "private, max-age=3600"})

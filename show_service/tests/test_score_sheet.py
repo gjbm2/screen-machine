@@ -22,6 +22,12 @@ if sys.argv[2] == "stream_service.score.sheet_worker":
             say(id=q["id"], version="t1")
         elif q["op"] == "count":
             say(id=q["id"], pages=2)
+        elif q["op"] == "timemap":
+            say(id=q["id"], bars=[[1, 0.0, 2.0], [2, 2.0, 4.0]], notes=[[1, 0.0, 1], [2, 2.0, 2]])
+        elif q["op"] == "pagemap":
+            say(id=q["id"], pages=[[1, 1], [2, 2]])
+        elif q["op"] == "geometry":
+            say(id=q["id"], bars=[[q["n"], 0.1, 0.1, 0.9, 0.3]], heads=[[q["n"], 0.2, 0.2]])
         elif q["n"] <= 2:
             say(id=q["id"], svg=f"<svg>{{int(q['w'])}} {{q['n']}}</svg>")
         else:
@@ -94,6 +100,11 @@ def test_score_routes(tmp_path: pathlib.Path, monkeypatch) -> None:
             assert r.status == 200 and r.content_type == "image/svg+xml" and await r.text() == "<svg>400 2</svg>"
             r = await cl.get("/api/v1/score/lib:maple/page/3.svg", params={"w": "400", "h": "700"})
             assert r.status == 404
+            r = await cl.get("/api/v1/score/lib:maple/follow", params={"w": "400", "h": "700"})
+            f = await r.json()
+            assert r.status == 200 and f["bars"][1] == [2, 2.0, 4.0] and f["pages"] == [[1, 1], [2, 2]]
+            r = await cl.get("/api/v1/score/lib:maple/page/2.json", params={"w": "400", "h": "700"})
+            assert (await r.json())["bars"] == [[2, 0.1, 0.1, 0.9, 0.3]]
             r = await cl.get("/api/v1/score/lib:maple/pdf")
             assert r.status == 200 and r.content_type == "application/pdf" and await r.read() == b"%PDF-1.7 a4"
             assert r.headers["Content-Disposition"].startswith('inline; filename="Maple.pdf"')
