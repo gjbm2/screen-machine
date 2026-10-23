@@ -2,7 +2,8 @@
 // back/forward etc. and the currently playing bar / notes etc. are lit up"; "we already HAVE play features ... expose
 // them properly on this score page"). Nothing here plays anything: the controls are the Music page's player (its
 // play / pause / seek, falling back to play-from and stop on an older one), and the light follows its place in the
-// piece (elapsed_s, the piece's own seconds), carried on between its polls at its speed.
+// piece (elapsed_s, the piece's own seconds), carried on between its polls at its speed, and held back by the lag of
+// this device's own piano stream while it plays it (Room/deviceLag.ts).
 //
 //   useFollow     the score's timings for a layout (GET /score/<id>/follow: each bar's start and end, each note's onset,
 //                 each page's bars) and the playhead: is this piece playing, where it is now, the bar and the notes
@@ -16,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, SkipBack, StepBack, StepForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MusicApi, PlayerAction, ScoreFollow, ScoreGeometry, ScoreKind, ScoreSize } from "./api";
+import { useDeviceLag } from "@/pages/Room/deviceLag";
 import { useMusic } from "./context";
 
 const TICK_MS = 80;
@@ -92,10 +94,12 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     return () => clearInterval(t);
   }, [playing]);
 
+  // this device playing the piano itself hears it later than the room: the light waits for what it hears
+  const lag = useDeviceLag();
   const head: Playhead = useMemo(() => {
     const b = base;
     if (!mine || !b) return { ...NO_HEAD, mine };
-    const pos = b.pos + (playing ? (Math.max(0, now - b.at) / 1000) * b.speed : 0) + (playing ? LEAD_S : 0);
+    const pos = Math.max(0, b.pos + (playing ? (Math.max(0, now - b.at) / 1000) * b.speed : 0) + (playing ? LEAD_S : 0) - (playing && lag ? lag * b.speed : 0));
     if (!data) return { ...NO_HEAD, mine, playing, pos };
     const bi = lastAtOrBefore(data.bars, pos, (x) => x[1]);
     const bar = bi >= 0 ? data.bars[bi][0] : (data.bars[0]?.[0] ?? null);
@@ -106,7 +110,7 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     }
     const page = bar === null ? null : data.pages.findIndex(([a, z]) => a <= bar && bar <= z) + 1 || null;
     return { playing, mine, pos, bar, notes, page };
-  }, [mine, playing, now, data, base]);
+  }, [mine, playing, now, data, base, lag]);
 
   const barStart = useCallback(
     (n: number): number | null => {
