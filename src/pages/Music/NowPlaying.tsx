@@ -5,12 +5,12 @@
 // remembered as the Room page's piano choice so both agree).
 // Beside the title, Score opens the piece's written-out score.
 
-import { useEffect, useRef, useState } from "react";
-import { FileMusic, Gauge, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
+import { FileMusic, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
 import { PlayOnChoice } from "@/pages/Room/PlayOn";
+import { SpeedNudges } from "@/pages/Room/SpeedNudges";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { usePianoSound, type PianoSound } from "@/pages/Room/usePianoSound";
 import { OLD_SHOW_WORDS, percent, playerWords, plural, type PlayerView, type Repeat as RepeatMode } from "./api";
@@ -19,79 +19,6 @@ import { useMusic } from "./context";
 import { PLAYER_BUSY } from "./usePlayer";
 
 const ROUND = "grid h-12 w-12 shrink-0 place-items-center rounded-full border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-/** Playback speed by nudges (owner, 23 Oct: "FINE GRAINED. Nudges should be SLIGHTLY faster and SLIGHTLY slower
- *  e.g. +1%, +3% +5% +10% +50% and vice versa"; "implicit log scaling is obviously what's useful"): each nudge
- *  multiplies the current speed (faster n% = x(1 + n/100), slower n% = the inverse, so +3% then -3% is back where
- *  it was), shown as % of the piece's own tempo, 25-400% (the player's range). Sent once the taps stop (one
- *  restart, carrying on from where the piece is). */
-const NUDGES = [1, 3, 5, 10, 50];
-const SPEED_MIN = 0.25;
-const SPEED_MAX = 4;
-const SPEED_SETTLE_MS = 600;
-const speedWords = (s: number) => {
-  const pct = Math.round(s * 1000) / 10;
-  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
-};
-const snapSpeed = (s: number) => {
-  const v = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(s * 1000) / 1000));
-  return Math.abs(v - 1) < 0.004 ? 1 : v;                // back near the piece's own tempo: exactly 100%
-};
-
-function SpeedControl({ speed, onSpeed }: { speed: number; onSpeed: (s: number) => void }) {
-  const [draft, setDraft] = useState<number | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const shown = draft ?? speed;
-  const change = (s: number, now = false) => {
-    const v = snapSpeed(s);
-    setDraft(v);
-    clearTimeout(timer.current);
-    const send = () => {
-      setDraft(null);
-      if (Math.abs(v - speed) > 1e-6) onSpeed(v);
-    };
-    if (now) send();
-    else timer.current = setTimeout(send, SPEED_SETTLE_MS);
-  };
-  const nudge = "min-h-10 min-w-12 rounded-full border border-stone-200 bg-white px-2.5 text-[15px] font-medium tabular-nums text-stone-700 hover:bg-stone-50 disabled:opacity-40";
-  const row = (sign: 1 | -1) => (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="w-14 text-sm text-muted-foreground">{sign > 0 ? "Faster" : "Slower"}</span>
-      {NUDGES.map((n) => (
-        <button
-          key={n}
-          type="button"
-          className={nudge}
-          aria-label={`${sign > 0 ? "Faster" : "Slower"} by ${n}%`}
-          disabled={sign > 0 ? shown >= SPEED_MAX - 1e-6 : shown <= SPEED_MIN + 1e-6}
-          onClick={() => change(sign > 0 ? shown * (1 + n / 100) : shown / (1 + n / 100))}
-        >
-          {sign > 0 ? "+" : "−"}
-          {n}%
-        </button>
-      ))}
-    </div>
-  );
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[15px] font-medium">
-          <Gauge className="h-4 w-4" aria-hidden /> Speed
-        </span>
-        <span className="min-w-14 text-base font-semibold tabular-nums" aria-live="polite">{speedWords(shown)}</span>
-        {Math.abs(shown - 1) > 1e-6 && (
-          <button type="button" onClick={() => change(1, true)}
-            className="min-h-9 rounded-full border border-stone-200 bg-white px-3 text-[15px] font-medium text-stone-700 hover:bg-stone-50">
-            Normal
-          </button>
-        )}
-      </div>
-      {row(-1)}
-      {row(1)}
-    </div>
-  );
-}
 
 /** The player's sound and output as usePianoSound's PianoSound, so the Room page's SoundChoice chips fit. */
 export function usePlayerSound(view: PlayerView | null): PianoSound {
@@ -319,7 +246,7 @@ export function NowPlaying() {
           </button>
         </div>
 
-        {speed !== null && <SpeedControl speed={speed} onSpeed={setSpeed} />}
+        {speed !== null && <SpeedNudges speed={speed} onSpeed={setSpeed} />}
 
         <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
 
