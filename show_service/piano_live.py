@@ -11,6 +11,7 @@ page's "This device" output plays PC22's own piano sound, streamed.
   GET  /api/v1/piano/devices                    {"devices": [{"id": "device:<id>", "label", "streaming", "seen_s"}],
                                                  "output": the piano's output now, "hears": the device it plays on}
   POST /api/v1/piano/devices {id, name}         this device, by name (before it's chosen as the output)
+  DELETE /api/v1/piano/devices/<id>             forget a device (it leaves the outputs until it's seen again)
 
 Where it's heard (owner, 23 Oct: "I clicked play on PC22, and the sound came out of ipad... reason through how
 connections are created and destroyed"): the piano's output is one choice for the whole room (sources' "device:<id>"
@@ -467,6 +468,7 @@ class PianoLive:
         app.router.add_get("/api/v1/piano/live/clock", self._h_clock)
         app.router.add_get("/api/v1/piano/devices", self._h_devices)
         app.router.add_post("/api/v1/piano/devices", self._h_device_post)
+        app.router.add_delete("/api/v1/piano/devices/{id}", self._h_device_delete)
 
     def clock(self, s: _Synth, pos_s: Optional[float] = None) -> dict:
         """The stream's clock (owner, 23 Oct: "when playing from 'this device' we need to match latency with local
@@ -512,6 +514,15 @@ class PianoLive:
             return web.json_response({"error": "bad_device", "detail": "Say which device: an id of letters, digits, "
                                       "- or _ (up to 64)."}, status=400)
         self._gate_soon()
+        return web.json_response(self.devices_view(), headers={"Cache-Control": "no-store"})
+
+    async def _h_device_delete(self, request: Any) -> Any:
+        from aiohttp import web
+        d = request.match_info.get("id", "")
+        d = d.split(":", 1)[1] if d.startswith("device:") else d
+        if self.devices.pop(d, None) is None:
+            return web.json_response({"error": "unknown_device", "detail": "There's no such device."}, status=404)
+        self._save_devices()
         return web.json_response(self.devices_view(), headers={"Cache-Control": "no-store"})
 
     async def _h_live(self, request: Any) -> Any:

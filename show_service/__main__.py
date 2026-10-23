@@ -496,7 +496,7 @@ class Show:
             st = None
         if isinstance(st, dict) and st.get("state") in ("starting", "preparing", "playing") and st.get("output"):
             return str(st["output"])
-        pl = self._component("playlist")
+        pl = self._component("player")                   # playlist.py's component is named "player"
         out = getattr(pl, "output", None)
         return out if isinstance(out, str) and out else "pc22"
 
