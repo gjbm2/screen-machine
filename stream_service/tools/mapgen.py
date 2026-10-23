@@ -6,6 +6,8 @@
   python -m stream_service.tools.mapgen batches OUTDIR [--per N]   review batches for the LLM agents
   python -m stream_service.tools.mapgen merge FILE...          fold reviewed batches in (validated, trace-checked)
   python -m stream_service.tools.mapgen check                  validate the generated file against the plug-ins
+  python -m stream_service.tools.mapgen piano [--dry-run]      add the piano's live signals to the file's bindings
+                                                               (PIANO_TERMS; reviewed items too; idempotent)
 
 No GPU and no session: it reads the plug-in registry and the preset tables only.  Run it niced.
 """
@@ -145,6 +147,105 @@ SIGNAL_FAMS = {"beat_trigger", "brightness_exposure", "camera_angle", "camera_di
                "zoom_rate", "travel_rate", "position_xy", "saturation", "scale_size", "snap_character", "style_morph",
                "symmetry_count", "timing", "tint_colour_mix", "shake_displacement", "sway_amplitude",
                "sparkle_shimmer", "grain_texture", "chroma_split"}
+# The piano's live signals (piano.py; owner, 24 Oct: "many more scenes and effects bound to the piano"): one extra
+# input per binding, by family.  note_rate moves speeds, rates and counts; pedal the trails, haze and sway (a
+# sustained wash); velocity the hits, glow and amounts; register vertical positions and tints.  Without a piano
+# (n/a after piano.SILENT_S of silence) the input drops out and the binding is exactly its reviewed self.  A binding
+# that already has MAX_INPUTS inputs gives up its lightest one (the last of equals); one with a piano input, a
+# trigger input or op mul is left alone.  Transitions are sampled once per cut: not given piano inputs.
+PIANO_SIGS = ("note_rate", "velocity", "register", "spread", "pedal", "tension", "note_on", "chord_change")
+PIANO_TERMS: dict[str, tuple] = {
+    "macro.energy": ("note_rate", .3),
+    "motion_rate": ("note_rate", .3), "rotation_rate": ("note_rate", .3), "zoom_rate": ("note_rate", .3),
+    "travel_rate": ("note_rate", .3), "colour_cycle_rate": ("note_rate", .3), "density_count": ("note_rate", .3),
+    "glitch_noise": ("note_rate", .25), "timing": ("note_rate", .3, INV),
+    "feedback_trail": ("pedal", .5), "fog_atmosphere": ("pedal", .4), "blur_fog": ("pedal", .4),
+    "sway_amplitude": ("pedal", .3),
+    "glow_light": ("velocity", .3), "beat_trigger": ("velocity", .3), "macro.amount": ("velocity", .3),
+    "sparkle_shimmer": ("velocity", .3), "line_width": ("velocity", .3), "snap_character": ("velocity", .3),
+    "tint_colour_mix": ("register", .3),
+}
+PIANO_Y = {"position_xy": .4, "light_direction": .3, "camera_angle": .3}   # their vertical axis only: register
+# a hue param nobody binds (hue_palette_index): register shifts it a little, held per section; nothing else moves it
+PIANO_HUE = dict(at="section", in_=ins(("register", 1)), map={"around": [-.06, .06]}, ease=6.0)
+PIANO_HUE_RX = re.compile(r"(^|_)hue($|_)|hue_shift|colou?r_shift|colou?r_phase")
+PIANO_HUE_SKIP = re.compile(r"palette|index|templates|by$|spread|cycle")
+
+
+def piano_term(fam: Optional[str], name: str) -> Optional[dict]:
+    """The piano input a binding of family ``fam`` on param ``name`` takes, else None."""
+    if fam in PIANO_Y:
+        return {"sig": "register", "w": PIANO_Y[fam]} if _ytoken(name) else None
+    t = PIANO_TERMS.get(fam or "")
+    if t is None:
+        return None
+    return {"sig": t[0], "w": t[1], **(t[2] if len(t) > 2 else {})}
+
+
+def add_piano(fam: Optional[str], name: str, b: dict) -> Optional[dict]:
+    """``b`` with its piano input added (the lightest one dropped at MAX_INPUTS), else None (unchanged)."""
+    if not b or "colour" in b or b.get("op") == "mul":
+        return None
+    terms = list(b.get("in") or ())
+    if not terms or any(t.get("sig") in PIANO_SIGS or t.get("sig") in binding.TRIGGERS or t.get("sig") == "gobo"
+                        for t in terms):
+        return None
+    t = piano_term(fam, name)
+    if t is None:
+        return None
+    if len(terms) >= binding.MAX_INPUTS:
+        i = min(range(len(terms)), key=lambda j: (terms[j].get("w", 1.0), -j))
+        terms.pop(i)
+    return {**b, "in": terms + [t]}
+
+
+def piano_item(kind: str, props: dict, rec: dict) -> tuple[dict, dict]:
+    """One item's piano pass -> (record, {signal: bindings changed or added}); parse-checked, idempotent."""
+    got: dict[str, int] = {}
+    if kind == "transition" or not rec.get("follow", True):
+        return rec, got
+    bs = dict(rec.get("bindings") or {})
+    for p, b in list(bs.items()):
+        if p not in props or not b:
+            continue
+        fam = b.get("fam")
+        if fam in (None, "llm"):                                 # unset: what the param is
+            fam = families.classify(KINDS[kind][1], p, props[p])
+        nb = add_piano(fam, p, b)
+        if nb is None:
+            continue
+        try:
+            nb = binding.parse_v2(p, props[p], nb, kind=kind)
+        except binding.MappingError:
+            continue
+        bs[p] = nb
+        sig = nb["in"][-1]["sig"]
+        got[sig] = got.get(sig, 0) + 1
+    n_sec = sum(1 for b in bs.values() if b and b.get("at") == "section")
+    for p, prop in props.items():
+        if p in bs or n_sec >= MAX_SECTION or prop.get("type") != "number" or "enum" in prop:
+            continue
+        if not PIANO_HUE_RX.search(p.lower()) or PIANO_HUE_SKIP.search(p.lower()) or binding.not_mappable(p, prop):
+            continue
+        r = PIANO_HUE
+        b = _tier({"at": r["at"], "in": [dict(t) for t in r["in_"]], "op": "mean", "curve": "linear",
+                   "map": dict(r["map"]), "ease_s": r["ease"]}, prop, p, False, "hue_palette_index")
+        if b.get("at") != "section":
+            continue
+        try:
+            nb = binding.parse_v2(p, prop, b, kind=kind)
+        except binding.MappingError:
+            continue
+        if not trace_ok(p, prop, nb, f"{kind}/?")[0]:
+            continue
+        bs[p] = nb
+        n_sec += 1
+        got["register"] = got.get("register", 0) + 1
+    if not got:
+        return rec, got
+    return {**rec, "bindings": dict(sorted(bs.items()))}, got
+
+
 TRANSITION_SKIP = {"seed", "quality", "internal_smoothing", "legacy_input", "phase_offset", "other", "mode_enum",
                    "colour_rgb", "colour_background", "palette", "hue_palette_index", "iterations_detail"}
 
@@ -384,6 +485,7 @@ def cmd_rules(args) -> None:
             if prev and (prev.get("review") or {}).get("by") == "llm" and prev.get("schema_hash") == rec["schema_hash"]:
                 rec = prev                            # a reviewed item whose params have not changed
                 kept += 1
+            rec, _ = piano_item(kind, cls.param_props(), rec)
             items[key] = rec
             for b in rec.get("bindings", {}).values():
                 if b and "colour" in b:
@@ -620,6 +722,53 @@ def trace_ok(p: str, prop: dict, b: dict, key: str) -> tuple[bool, str]:
     return True, ""
 
 
+def piano_counts(items: dict) -> dict:
+    """{signal: [bindings reading it, items with one]} over a generated file's items."""
+    out: dict[str, list] = {}
+    for rec in items.values():
+        seen = set()
+        for b in (rec.get("bindings") or {}).values():
+            for t in (b or {}).get("in") or ():
+                if t.get("sig") in PIANO_SIGS:
+                    out.setdefault(t["sig"], [0, 0])[0] += 1
+                    seen.add(t["sig"])
+            k = (b or {}).get("kick") or {}
+            if k.get("sig") in PIANO_SIGS:
+                out.setdefault(k["sig"], [0, 0])[0] += 1
+                seen.add(k["sig"])
+        for sg in seen:
+            out[sg][1] += 1
+    return dict(sorted(out.items()))
+
+
+def cmd_piano(args) -> None:
+    reg = registry()
+    path = pathlib.Path(args.out)
+    data = load_gen(path)
+    items = data.get("items", {})
+    before = piano_counts(items)
+    changed, by_sig = 0, {}
+    for key, rec in sorted(items.items()):
+        kind, plugin = key.split("/", 1)
+        try:
+            cls = reg.table(KINDS[kind][0])[plugin]
+        except KeyError:
+            continue
+        new, got = piano_item(kind, cls.param_props(), rec)
+        if got:
+            items[key] = new
+            changed += 1
+            for sg, n in got.items():
+                by_sig[sg] = by_sig.get(sg, 0) + n
+    after = piano_counts(items)
+    print(json.dumps({"items_changed": changed, "added_by_signal": by_sig,
+                      "before": before, "after": after, "dry_run": bool(args.dry_run)}))
+    if args.dry_run or not changed:
+        return
+    data.setdefault("gen", {})["piano_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    write_gen(path, data)
+
+
 def main(argv: Optional[list[str]] = None) -> None:
     logging.basicConfig(level=logging.ERROR)
     ap = argparse.ArgumentParser(prog="mapgen")
@@ -627,6 +776,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("rules")
     sub.add_parser("check")
+    pp = sub.add_parser("piano")
+    pp.add_argument("--dry-run", action="store_true", help="count only: write nothing")
     b = sub.add_parser("batches")
     b.add_argument("dir")
     b.add_argument("--per", type=int, default=12)
@@ -635,7 +786,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     m.add_argument("files", nargs="+")
     m.add_argument("--dry-run", action="store_true", help="validate only: print rejections, write nothing")
     args = ap.parse_args(argv)
-    {"rules": cmd_rules, "check": cmd_check, "batches": cmd_batches, "merge": cmd_merge}[args.cmd](args)
+    {"rules": cmd_rules, "check": cmd_check, "batches": cmd_batches, "merge": cmd_merge,
+     "piano": cmd_piano}[args.cmd](args)
 
 
 if __name__ == "__main__":

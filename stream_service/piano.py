@@ -14,7 +14,8 @@ the music features (modulation.SessionRuntime.extra):
   tension       dissonance of the sounding pitch classes (semitones and tritones high, fifths low)
   chord_change  trigger: the harmony moved (a new set of pitch classes), decaying (tau 1 s)
 The level signals are n/a (None) once nothing has been played for SILENT_S, so a mapping falls back to its other
-inputs and then to the preset's value; pedal is n/a only without a piano feed.
+inputs and then to the preset's value; the pedal too (24 Oct: a resting pedal read 0 and held every pedal-bound
+trail below its base while nobody played).
 """
 from __future__ import annotations
 
@@ -132,7 +133,8 @@ class PianoSignals:
         rate = None if self.rate is None else 1.0 - math.exp(-self.rate / RATE_FULL)
         out = {"note_rate": None if silent else rate, "velocity": None if silent else self.vel,
                "register": None if silent else self.reg, "spread": None if silent else self.spr,
-               "tension": None if silent else self.ten, "pedal": max(0.0, min(1.0, float(st.pedal or 0.0))),
+               "tension": None if silent else self.ten,
+               "pedal": None if silent else max(0.0, min(1.0, float(st.pedal or 0.0))),
                "note_on_t": self.on_t, "note_on_vel": self.on_vel, "chord_change_t": self.chord_t}
         return {k: (None if v is None else round(v, 4) if isinstance(v, float) and not k.endswith("_t") else v)
                 for k, v in out.items()}

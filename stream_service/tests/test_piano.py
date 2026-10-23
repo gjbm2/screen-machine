@@ -34,7 +34,7 @@ def test_signals_follow_the_playing_and_go_na_when_silent():
     ps = PianoSignals()
     t = 0.0
     out = ps.step(t, NoteState(online=True))
-    assert out["velocity"] is None and out["pedal"] == 0.0                # connected, nothing played yet
+    assert out["velocity"] is None and out["pedal"] is None               # connected, nothing played yet
     # a fast, loud run high on the keyboard with the pedal down
     for i in range(40):
         t += 0.1
@@ -52,7 +52,7 @@ def test_signals_follow_the_playing_and_go_na_when_silent():
     for _ in range(100):                                                # silence
         t += 0.1
         out = ps.step(t, NoteState(online=True))
-    assert out["note_rate"] is None and out["velocity"] is None and out["pedal"] == 0.0
+    assert out["note_rate"] is None and out["velocity"] is None and out["pedal"] is None
     assert all(v is None for k, v in ps.step(t + 1, None).items() if k in piano.PIANO_LEVELS)
 
 
