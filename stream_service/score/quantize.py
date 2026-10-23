@@ -18,7 +18,11 @@ level and phase first (a reply that counts a stretch at twice or half the tempo,
 off, once turned the rest of a phrase to double time; BeatGrid.merge, _same_level).  After a break of 3+ beats the
 playing resumes on a beat.  A phrase with nothing metric in it (even onsets, no accents: a test pattern's scale) is
 written in 4/4 on an even beat from its onsets.  A bar is written once its end is TRUST_S before the newest
-analysed note (the networks look both ways: the newest beats are the weakest).  Notes go to the treble or bass
+analysed note (the networks look both ways: the newest beats are the weakest).  When the worker reads the whole
+phrase (its replies' metre carries "cls": analyse.py's phrase state), each reply already holds the earlier ones'
+evidence: it counts more (MEV_DECAY_PHRASE), compound needs more of it (COMP_PRIOR_PHRASE), the accent cue is left
+out (the phrase network has the accents), only confident replies count toward the lock (LOCK_P), and a rewrite into
+a metre whose beat is on another level re-lays the phrase on the reply's "grid".  Notes go to the treble or bass
 staff by the hand PM2S gives them, within 3 ledger lines of it; a single line (nothing else sounding) goes by
 register instead, keeping its staff within 2 ledger lines (the hand model calls a one-hand scale all left hand).
 Tests: tests/test_score.py and tests/test_score_roundtrip.py (scales in, a musically right score out).
@@ -93,14 +97,21 @@ REWRITE_P = 0.85                   # the evidence for another metre that rewrite
 REWRITE_RUN = 2                    # ... in this many replies running ...
 REWRITE_S = 45.0                   # ... while the phrase is younger than this
 MEV_DECAY = 0.9                    # the metre's class evidence: each reply's logits, a decaying mean (replies overlap)
+MEV_DECAY_PHRASE = 0.6             # ... when the replies read the whole phrase (metre "cls": analyse.py's phrase state),
+                                   # each already holds the earlier ones' evidence: the newest counts most
 TRIPLE_PRIOR = -0.5                # duple is likelier (logit)
 W_PM2S = 1.0                       # the networks' duple/triple logit ...
 W_CUE = 1.0                        # ... and the accent periodicity's (accent_cue), per unit of contrast
 W_CUE_AC = 2.0                     # ... and of autocorrelation
 COMP_PRIOR = -0.3                  # simple is likelier (logit)
+COMP_PRIOR_PHRASE = -2.0           # ... against the phrase network's reading: compound only when it is sure (at -1
+                                   # a 4/4 with triplet accompaniment, Schubert's D.899/1, and Scriabin's Op. 8/12
+                                   # read 12/8; swung eighths sit near the triplet's last third too)
 LOGIT_CAP = 4.0
 CUE_CAP = 1.5                      # the accents' logit at most this (a confident network reading stands)
 LOCK_RUN = 8                       # the written metre is kept for the phrase once this many replies running agree
+LOCK_P = 0.9                       # ... (phrase replies) this confident: early replies agreeing with the first, weakly
+                                   # read metre held it while the phrase's evidence later turned (a waltz at 20-40 s)
 HISTORY_S = 60.0                   # the phrase's notes kept (the analysis window, and a rewrite)
 TRUST_S = 0.15                     # a bar is written once it ends this long before the newest analysed note (0.6 until
                                    # 21 Oct: 0.15 writes every bar 0.43 s sooner at no measurable accuracy cost, 13 pieces)
@@ -482,6 +493,7 @@ class ScoreBuilder:
         self.ev_comp = 0.0
         self.mev = [0.0, 0.0, 0.0]              # the class evidence: triple logits (networks, accents), compound
         self.mev_n = 0.0
+        self.phrase_level = False               # the replies read the whole phrase (analyse.py's phrase state)
         self.agree_run = 0
         self.metre_locked = False
         self.flip_run = 0
@@ -622,20 +634,23 @@ class ScoreBuilder:
             # their logits: the windows overlap, so a reply isn't independent evidence), and the accents' own reading
             p3 = min(max(float(probs.get("3", 0.0)), 0.02), 0.98)
             z = [_clip(math.log(p3 / (1.0 - p3))), 0.0, _clip(math.log(cp / (1.0 - cp)))]
-            if W_CUE or W_CUE_AC:
+            phrase_level = isinstance(m.get("cls"), dict)
+            if (W_CUE or W_CUE_AC) and not phrase_level:     # the phrase's own reading has the accents in it
                 lo, hi = (beats[0] - 0.1, beats[-1] + 0.1) if beats else (0.0, -1.0)
                 cue = accent_cue([n for n in self.history if lo <= n.t_on <= hi], beats) if len(beats) >= 9 else None
                 if cue is not None:
                     c, ac = cue["c"], cue["ac"]
                     z[1] = max(-CUE_CAP, min(CUE_CAP, W_CUE * (c[3] - max(c[2], c[4]))
                                              + W_CUE_AC * (ac[3] - max(ac[2], ac[4]))))
-            self.mev = [MEV_DECAY * e + x for e, x in zip(self.mev, z)]
-            self.mev_n = MEV_DECAY * self.mev_n + 1.0
+            self.phrase_level = phrase_level
+            dec = MEV_DECAY_PHRASE if phrase_level else MEV_DECAY
+            self.mev = [dec * e + x for e, x in zip(self.mev, z)]
+            self.mev_n = dec * self.mev_n + 1.0
         if len(beats) < 4:
             return
         if self.mev_n > 0:
             lt = TRIPLE_PRIOR + (W_PM2S * self.mev[0] + self.mev[1]) / self.mev_n
-            lc = COMP_PRIOR + self.mev[2] / self.mev_n
+            lc = (COMP_PRIOR_PHRASE if self.phrase_level else COMP_PRIOR) + self.mev[2] / self.mev_n
             L = 3 if lt > 0 else (2 if self.ev[2] > self.ev[4] else 4)
             unit = COMPOUND_UNIT if lc > 0 else GRID
             conf = min(_sig(abs(lt)), _sig(abs(lc)))
@@ -670,14 +685,18 @@ class ScoreBuilder:
         young = self.phrase_t0 is not None and (self.last_event_t or t0) - self.phrase_t0 < REWRITE_S
         written = (self.beats == 3, self.unit == COMPOUND_UNIT)
         if m is not None and LOCK_RUN and not self.metre_locked:
-            self.agree_run = self.agree_run + 1 if family == written else 0
+            if family != written:
+                self.agree_run = 0
+            elif conf >= LOCK_P or not isinstance(m.get("cls"), dict):
+                self.agree_run += 1
             if self.agree_run >= LOCK_RUN:
                 self.metre_locked = True       # the evidence has agreed long enough: no more rewrites this phrase
         if (m is not None and young and family != written and conf >= REWRITE_P and not even
                 and not self.metre_locked):
             self.flip_run += 1
             if self.flip_run >= REWRITE_RUN:
-                self._rewrite(beats, L, unit, downbeat, conf)
+                whole = [t0 + float(b) for b in rep["grid"]] if rep.get("grid") else None
+                self._rewrite(beats, L, unit, downbeat, conf, whole)
         else:
             self.flip_run = 0
 
@@ -779,10 +798,17 @@ class ScoreBuilder:
         self.flip_run = 0
         self.agree_run = 0
 
-    def _rewrite(self, beats: list, L: int, unit: int, downbeat: Optional[float], conf: float) -> None:
+    def _rewrite(self, beats: list, L: int, unit: int, downbeat: Optional[float], conf: float,
+                 whole: Optional[list] = None) -> None:
         """The evidence turned: the phrase again from its start in the new metre (beats: ours under the old bars
-        where the new window doesn't reach)."""
-        self.grid.merge(beats)
+        where the new window doesn't reach).  When the new metre's beat is on another level (the analysis's
+        ``grid``, the phrase's written beats from its start: a 3/4 read in quarters turning 6/8 in dotted
+        quarters), the phrase is re-laid on those."""
+        ours = _median_ibi(self.grid.t[-(LOCAL_BEATS + 1):])
+        if whole and len(whole) >= 4 and not 0.8 < _median_ibi(whole) / ours < 1.25:
+            self.grid = BeatGrid(whole, 0)
+        else:
+            self.grid.merge(beats)
         self.grid.idx0 = 0
         self._set_metre(L, unit, downbeat, conf)
         start = (self.phrase_t0 or 0.0) - 0.01
