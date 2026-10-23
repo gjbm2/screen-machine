@@ -10,6 +10,7 @@ import subprocess
 import cv2
 import os
 import time
+import threading
 import re
 
 from utils.logger import info, error, warning, debug
@@ -56,7 +57,14 @@ def load_meta(bucket: str) -> Dict[str, Any]:
 def save_meta(bucket: str, meta: Dict[str, Any]):
     p = meta_path(bucket)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # One step: a hidden temp file in the same folder, then os.replace, so a reader or a crash never sees a
+    # half-written bucket.json. The name carries the thread too: web threads can save the same bucket at once.
+    tmp = p.with_name(f".{p.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        os.replace(tmp, p)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 def infer_meta_from_file(file_path: Path) -> dict:
     """

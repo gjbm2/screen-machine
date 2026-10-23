@@ -51,3 +51,10 @@ bun.lockb
 /*.pid
 /dist_prev_*/
 /xdg/
+
+# Live scheduler state: the running app rewrites these all the time, and the repo is public (23 Oct 2026).
+# Still on disk; their history stays in git. Schedule scripts (routes/scheduler/scripts/) and the schema template
+# (schedule.schema.json.j2) stay tracked.
+/routes/scheduler/*.json
+/routes/scheduler/*.json.bak
+/scheduler/_vars.json

@@ -512,7 +512,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         
         if source_sidecar.exists():
             try:
-                shutil.copy2(source_sidecar, published_info_path)
+                _copy_atomically(source_sidecar, published_info_path)
                 info(f"Copied sidecar from {source_sidecar} to {published_info_path}")
                 return
             except Exception as e:
@@ -520,8 +520,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
     
     if source_metadata:
         try:
-            with open(published_info_path, 'w', encoding='utf-8') as f:
-                json.dump(source_metadata, indent=2, sort_keys=True, ensure_ascii=False, fp=f)
+            _write_json_atomically(published_info_path, source_metadata)
             info(f"Created published sidecar with provided metadata at {published_info_path}")
             return
         except Exception as e:
@@ -542,8 +541,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
                     "type": "image" if extension.lower() in [".jpg", ".jpeg", ".png"] else "video",
                     "published_at": when
                 }
-                with open(published_info_path, 'w', encoding='utf-8') as f:
-                    json.dump(minimal_meta, indent=2, sort_keys=True, ensure_ascii=False, fp=f)
+                _write_json_atomically(published_info_path, minimal_meta)
                 info(f"Created minimal fallback sidecar at {published_info_path}")
             except Exception as e2:
                 error(f"Failed even to create minimal fallback sidecar: {e2}")
@@ -555,10 +553,37 @@ def _place_atomically(src: Path, dst: Path) -> None:
     to now as before. A reader (the TV page, room's live art feed) never sees a half-written file: at 06:37 on 23 Oct
     the live art feed hit "moov atom not found" mid-copy."""
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dst.with_name(f".{dst.name}.{os.getpid()}.tmp")
+    tmp = _tmp_beside(dst)
     try:
         shutil.copy2(src, tmp)
         tmp.touch()
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _tmp_beside(dst: Path) -> Path:
+    """A hidden temp name next to ``dst`` (same filesystem, so os.replace is one step), unique per process and thread:
+    two web threads publishing to the same screen at once must not share one."""
+    return dst.with_name(f".{dst.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+
+
+def _copy_atomically(src: Path, dst: Path) -> None:
+    """shutil.copy2 (mtime kept), but readers of the published sidecar never see it half-written."""
+    tmp = _tmp_beside(dst)
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _write_json_atomically(dst: Path, data) -> None:
+    """The published sidecar's json.dump, written in one step."""
+    tmp = _tmp_beside(dst)
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, indent=2, sort_keys=True, ensure_ascii=False, fp=f)
         os.replace(tmp, dst)
     finally:
         tmp.unlink(missing_ok=True)
