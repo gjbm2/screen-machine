@@ -2,7 +2,7 @@
   "name": "Screen Machine",
   "short_name": "Screen Machine",
   "display": "standalone",
-  "background_color": "#faf8f5",
+  "background_color": "#100d0c",
   "theme_color": "#faf8f5",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
