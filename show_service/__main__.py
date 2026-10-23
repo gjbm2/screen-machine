@@ -271,8 +271,17 @@ class Show:
             except Exception:
                 log.exception("score_sheet.py not loaded: no scores on the Music page (the show carries on)")
 
+        # the piano on a phone or iPad (1c, 23 Oct): GET /api/v1/piano/live.mp3, fed from on_midi (piano_live.py)
+        self.piano_live: Any = None
+        try:
+            from . import piano_live as live_mod
+            self.piano_live = live_mod.PianoLive()
+        except Exception:
+            log.exception("piano_live.py not loaded: no piano stream for devices (the show carries on)")
+
         def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
-                    mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod, sh: Any = self.sheets) -> None:
+                    mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod, sh: Any = self.sheets,
+                    pv: Any = self.piano_live) -> None:
             lv.routes(app)
             inp.routes(app)
             if mc is not None:
@@ -281,6 +290,8 @@ class Show:
                 lib.routes(app)
             if sh is not None:
                 sh.routes(app)
+            if pv is not None:
+                pv.routes(app)
             if plm is not None:
                 plm.routes(app, lambda: self.brain)
             if api is not None:
@@ -305,7 +316,7 @@ class Show:
         self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
                                           "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot",
                                           "ring.write", "notetap", "piano.view", "ml.feed", "rig.hit",
-                                          "artnet.set_look", "rig.set_look", "recorder")}
+                                          "artnet.set_look", "rig.set_look", "recorder", "piano_live")}
 
     # -- building (main thread) ----------------------------------------------------------------------------------
     def _read_show_file(self) -> dict:
@@ -848,6 +859,12 @@ class Show:
                 rec.on_midi(stream, msg, arrival_s, to_host)
             except Exception:
                 self._g["recorder"].failed()
+        live = self.piano_live
+        if live is not None:                 # devices playing the piano (piano_live.py): a queue put while any listen
+            try:
+                live.on_midi(stream, msg, arrival_s, to_host)
+            except Exception:
+                self._g["piano_live"].failed()
         piano = self.pianos.get(stream)
         if piano is None:
             if self._midi_mod is None:
