@@ -35,6 +35,21 @@
     <!-- the colour iPadOS gives its status bar in the Home Screen app, instead of blurring the top of the page: see
          .ios-status-bar-band in src/index.css. Here, not in React, so it is there from the first frame. -->
     <div class="ios-status-bar-band" aria-hidden="true"></div>
+    <script>
+      // iPadOS takes the status bar's colour from the band when it lays the page out; a change of the device's dark
+      // setting only changes the band's colour (CSS), which it may not look at again. So on that change (and on
+      // coming back to the app) the band's height moves by a pixel (12 <-> 13, both over WebKit's 10px rule): a new
+      // layout of the fixed edge, so the colour is read again. The band itself never goes away (a frame without it
+      // can bring the blur back).
+      (function () {
+        var band = document.querySelector(".ios-status-bar-band");
+        var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+        if (!band || !mq) return;
+        var nudge = function () { band.style.height = band.style.height === "13px" ? "12px" : "13px"; };
+        if (mq.addEventListener) mq.addEventListener("change", nudge); else if (mq.addListener) mq.addListener(nudge);
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) nudge(); });
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
