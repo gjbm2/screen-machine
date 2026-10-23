@@ -252,8 +252,12 @@ if mode == "error":
     sys.exit(1)
 if mode == "die":
     sys.exit(3)
-emit({"ev": "rendered", "path": os.environ.get("FAKE_PATH", "/nowhere.flac"), "duration_s": dur, "onset_ms": 2.0,
-      "cached": False, "render_s": 0.15})
+if os.environ.get("FAKE_STREAMING"):                  # today's helper: it renders as it plays
+    emit({"ev": "rendered", "streaming": True, "path": None, "duration_s": dur, "onset_ms": 2.0, "cached": False,
+          "render_s": 0.15, "load_s": 0.15})
+else:                                                 # an older helper: a rendered file
+    emit({"ev": "rendered", "path": os.environ.get("FAKE_PATH", "/nowhere.flac"), "duration_s": dur, "onset_ms": 2.0,
+          "cached": False, "render_s": 0.15})
 buf, until = b"", None
 while True:
     r, _, _ = select.select([0], [], [], 0.005)
@@ -560,6 +564,7 @@ def test_the_sonos_url_comes_from_sm_lan_host_in_env_and_the_rendered_key(tmp_pa
     monkeypatch.setattr(ss, "ENV_FILE", env)
     monkeypatch.setenv("SM_LAN_HOST", "not-this-one")
     assert ss.sonos_url(f"/c/renders/{KEY}.flac") == f"http://10.9.8.7:8700/show/api/v1/piano/audio/{KEY}.flac"
+    assert ss.sonos_url(None) == "http://10.9.8.7:8700/show"                # a stream: the door the Sonos reads it from
     env.write_text("OTHER=1\n")
     assert ss.lan_host() == "not-this-one"                                 # no .env line: the environment
     monkeypatch.delenv("SM_LAN_HOST")
@@ -590,7 +595,8 @@ def test_rendered_on_sonos_play_sonos_url_title_pad_rebase_warning_and_once(tiny
     assert rc == 0
     argv = helper.log()[0]["argv"]
     assert argv[argv.index("--output") + 1] == "sonos:drawing-room"
-    assert argv[argv.index("--pad-s") + 1] == "0.750"                       # max(0.3 - 0 + 0.1, 0.75)
+    assert argv[argv.index("--pad-s") + 1] == "0.400"                       # 0.3 - 0 + 0.1 (the helper takes off
+                                                                            # what the Sonos's own start gives)
     (cmd,) = [e["sonos"] for e in helper.log() if "sonos" in e]
     assert cmd == {"url": f"http://192.0.2.5:8700/show/api/v1/piano/audio/{KEY}.flac", "title": "Piano: Tiny tune"}
     assert helper.cmds()[0].startswith("play-sonos ") and helper.cmds()[-2:] == ["stop", "EOF"]
@@ -598,6 +604,30 @@ def test_rendered_on_sonos_play_sonos_url_title_pad_rebase_warning_and_once(tiny
     check_timing(out.events(), EVENTS, rebased, 0.3)                       # the MIDI follows the rebased clock
     assert ("playing", 0.0, "Sonos volume is 0") in stages                 # the warning, shown while it plays
     assert stages[-1] == ("done", 1.0, None)
+
+
+def test_a_streaming_helper_on_sonos_gets_the_door_and_the_midi_follows_its_t_audio0(tiny, tmp_path, helper,
+                                                                                      monkeypatch):
+    monkeypatch.setattr(ss, "ENV_FILE", tmp_path / ".env")
+    (tmp_path / ".env").write_text("SM_LAN_HOST=192.0.2.5\n")
+    monkeypatch.setenv("FAKE_STREAMING", "1")
+    monkeypatch.setenv("FAKE_DUR", "0.8")
+    monkeypatch.setenv("FAKE_START_IN", "1.6")                              # the Sonos is heard 1.6 s after "play"
+    stages = record_stages(monkeypatch)
+    out, stop = RecOut(), threading.Event()
+    rc = ss.run_test_piano(out, stop, str(tiny), True, instrument="concert-d", output="sonos:drawing-room",
+                           status_file=str(tmp_path / "status.json"), lead_ms=650, once=True, title="Tiny tune")
+    assert rc == 0
+    (cmd,) = [e["sonos"] for e in helper.log() if "sonos" in e]
+    assert cmd == {"url": "http://192.0.2.5:8700/show", "title": "Piano: Tiny tune"}
+    (t_audio0,) = helper.t_audio0()
+    errs = check_timing(out.events(), EVENTS, t_audio0, 0.65)               # later than the lead: later MIDI, on time
+    assert max(errs) < 10.0 and stages[0] == ("preparing", 0.0, None) and stages[-1] == ("done", 1.0, None)
+
+
+def test_a_memory_abort_is_said_plainly():
+    assert "ran out of memory" in ss._why({"ev": "_eof", "rc": -6})
+    assert "exit code 3" in ss._why({"ev": "_eof", "rc": 3})
 
 
 def test_sonos_loops_by_playing_again_and_needs_a_lan_host(tiny, tmp_path, helper, monkeypatch):

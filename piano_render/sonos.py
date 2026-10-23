@@ -1,8 +1,11 @@
-"""Play a rendered test-piano file on a Sonos zone through room_service, and watch it (session.py --output sonos:<zone>).
+"""Play a rendered test-piano file, or a stream rendered as it plays, on a Sonos zone through room_service, and watch
+it (session.py --output sonos:<zone>).
 
     out = SonosOutput("drawing-room", emit=print)
     t_audio0 = out.start(render_flac, lead_in_ms=750, title="Piano: Nocturne",
                          url="http://<SM_LAN_HOST>:8700/show/api/v1/piano/audio/<key>.flac")
+    t_audio0 = out.start(streamer, lead_in_ms=750, title="Piano: Nocturne",      # a stream (Streams, below)
+                         url="http://<SM_LAN_HOST>:8700/show")
     out.wait(); out.session.done / out.session.error
     out.stop()                  # pauses the Sonos only while it still plays our file; settle() waits for a late one
 
@@ -44,6 +47,39 @@ timed by the clock (a warning says so).
 stop(): if the Sonos still plays our URI, PUT playback "paused" through room_service, once per play (room_service fades
 it out over ramp_s first, and a second pause mid-fade would put back the faded volume); never otherwise. A stop during
 a start that has PUT but isn't heard yet watches for our URI (until it is due plus START_GRACE_S) and pauses it then.
+
+Streams (start's first argument not a path: piano_render.stream.Streamer, a callable f(position), or an iterable of
+(n, ch) float blocks; owner 22 Oct: render on demand, nothing kept):
+  * Mp3Stream: digital silence for the pad, then the source's blocks, as f32le into ffmpeg (libmp3lame, MP3_BITRATE
+    CBR; ~4.5% of a core, plus ~0.3 s and 1.5 CPU-s to start), written as it is made to
+    ``<streams dir>/<id>.mp3`` (``$PIANO_STREAM_DIR``, else ~/.local/state/screen-machine/piano/streams; id = 32 hex);
+    ``<id>.done`` once it ends (ffmpeg has written everything). Both are deleted STREAM_KEEP_S (10 min) after the
+    end (a detached sleeper, plus a sweep of old ones at every new stream). Nothing else is written.
+  * Pacing: a source with blocks(position) / f(position) is given the stream's position(): the wall clock since its
+    first block, in frames. That is an early estimate of the Sonos's own position (it starts playing later), so the
+    source's ahead_s (make the Streamer with ahead_s=STREAM_AHEAD_S, 4 s) is the least the Sonos's buffer gets; a
+    smaller one is logged. A plain iterable is paced here, STREAM_AHEAD_S ahead of the same clock. position() raises
+    pc22.Halted after a stop.
+  * show_service serves the growing file at ``GET /api/v1/piano/stream/<id>.mp3`` (api.py), following it to
+    ``<id>.done``; the Sonos fetches it through room_service's :8700/show door.
+  * The URI is ``x-rincon-mp3radio://<host:port>/show/api/v1/piano/stream/<id>.mp3`` (STREAM_SCHEME "radio": an
+    internet-radio stream to the Sonos, of no set length, never seeked, so no Range or Content-Length is needed; Sonos
+    stopped taking plain http: for radio streams in 6.4.2, see SoCo's play_uri). "http" plays it as http:// instead
+    (a track of unknown length) and is there to try if a Sonos ever refuses the radio form. The PUT always carries a
+    title (STREAM_TITLE at least): a radio URI needs one.
+  * The PUT goes once STREAM_PUT_AFTER_S of audio is in the file (or the stream has ended), so the Sonos's first
+    read finds its buffer's worth. t_audio0 = t_put + stream_start_ms/1000 + pad + MP3_DELAY_FRAMES/sr (+ the
+    fade-out, as for files). stream_start_ms: SonosOutput's (STREAM_START_MS_DEFAULT, a guess): piano_render/
+    calibrate.py measures the true delay after it with the room mic and moves the MIDI clock by that, so it is
+    not kept here.
+  * The watch: as for files, with these differences. Our URI is matched on TrackURI, mp3radio:// and http:// alike,
+    else on GetMediaInfo's CurrentURI (read-only). RelTime edges are only recorded (done "rel_start_ms": what they
+    say of MIDI time 0, against t_audio0), not rebased on (STREAM_REBASE), until a radio stream's RelTime is checked
+    against the mic. The end is known once the stream has ended: STOPPED near it is "played"; still PLAYING our URI
+    STREAM_END_SLACK_S after it, the play is over (done "by": "stream") and the Sonos is paused (once), so it never
+    sits on, or re-fetches, a finished stream. A stream that failed (the source raised, ffmpeg died) ends there and
+    the play's error says so. done also has "seen_ms" (PUT -> our URI PLAYING) for calibration.
+  * stop(): as for files, and the stream stops (its render ends; the file is closed and marked done).
 """
 from __future__ import annotations
 
@@ -52,14 +88,17 @@ import json
 import logging
 import os
 import re
+import subprocess
 import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
+from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 log = logging.getLogger("piano_render.sonos")
 
@@ -91,6 +130,26 @@ PADDED_DIR = "sonos"
 PADDED_KEEP = 12                                   # ~35 MB each for a typical piece
 PAD_BLOCK_S = 5.0
 KEY_RE = re.compile(r"^[0-9a-f]{32}$")
+# -- streams (module docstring, Streams) --
+STREAM_DIR_ENV = "PIANO_STREAM_DIR"                 # show_service's api.py reads the same
+STREAM_DIR = Path("~/.local/state/screen-machine/piano/streams")
+STREAM_ROUTE = "/api/v1/piano/stream/{id}.mp3"      # show_service's, under room's /show door
+RADIO_SCHEME = "x-rincon-mp3radio"
+STREAM_SCHEME = "radio"                             # "radio" (x-rincon-mp3radio://) or "http"
+STREAM_TITLE = "Piano"
+STREAM_KEEP_S = 600.0                               # a stream's files go this long after it ends
+STREAM_AHEAD_S = 4.0                                # the render runs this far ahead of the wall clock from its start
+STREAM_PUT_AFTER_S = 2.0                            # audio in the file before the PUT
+STREAM_READY_TIMEOUT_S = 20.0
+STREAM_START_MS_DEFAULT = 1500.0                    # PUT -> stream t=0 heard: a guess until the room mic measures it
+STREAM_START_GRACE_S = 10.0
+STREAM_END_SLACK_S = 4.0
+STREAM_REBASE = False                               # RelTime edges of a radio stream: recorded, not rebased on
+STREAM_RATE = 48000
+MP3_BITRATE = "320k"
+MP3_DELAY_FRAMES = 1105                             # LAME's 576 + the decoder's 529 (ffmpeg 6.1, measured 23 Oct)
+FFMPEG = "ffmpeg"
+FFMPEG_EXIT_S = 10.0
 
 
 class SonosError(Exception):
@@ -124,8 +183,284 @@ def rel_s(text: Any) -> Optional[int]:
     return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)) if m else None
 
 
+def _norm_uri(u: Any) -> str:
+    s = unquote(str(u or "")).strip()
+    if s.lower().startswith(RADIO_SCHEME + "://"):
+        s = "http://" + s[len(RADIO_SCHEME) + 3:]       # a radio stream is fetched over plain http
+    return s
+
+
 def same_uri(a: Any, b: Any) -> bool:
-    return bool(a) and bool(b) and unquote(str(a)).strip() == unquote(str(b)).strip()
+    """The same URI, unquoted; x-rincon-mp3radio:// and http:// of the same place count as the same."""
+    return bool(a) and bool(b) and _norm_uri(a) == _norm_uri(b)
+
+
+def streams_dir() -> Path:
+    raw = os.environ.get(STREAM_DIR_ENV)
+    return Path(raw).expanduser() if raw and raw.strip() else STREAM_DIR.expanduser()
+
+
+def stream_url(url: str, sid: str, scheme: str = STREAM_SCHEME) -> str:
+    """The URI the Sonos plays a stream from: <scheme>://<host:port><door>/api/v1/piano/stream/<sid>.mp3, from the
+    url show_sender gives (its .../api/v1/piano/audio/<key>.flac, or just the door, http://<host>:8700/show)."""
+    u = urlsplit(str(url or ""))
+    if not u.netloc:
+        raise SonosError(f"“{url}” isn't an address the Sonos can fetch from")
+    i = u.path.find("/api/v1/")
+    door = (u.path[:i] if i >= 0 else u.path).rstrip("/")
+    head = RADIO_SCHEME if scheme == "radio" else (u.scheme or "http")
+    return f"{head}://{u.netloc}{door}{STREAM_ROUTE.format(id=sid)}"
+
+
+def is_file_source(source: Any) -> bool:
+    return isinstance(source, (str, os.PathLike))
+
+
+STREAM_FILE_RE = re.compile(r"^\.?([0-9a-f]{32})\.(mp3|done|done\.tmp)$")
+
+
+def sweep_streams(folder: Path, keep_s: float = STREAM_KEEP_S, now: Optional[float] = None) -> list[str]:
+    """Delete the streams that ended more than keep_s ago (their .done says when), and those nobody has written to
+    for keep_s and that never ended (a writer that died: a live one adds to its file every few ms). Returns the ids
+    removed."""
+    now = time.time() if now is None else now
+    gone: list[str] = []
+    try:
+        names = list(folder.iterdir())
+    except OSError:
+        return gone
+    for f in names:
+        m = STREAM_FILE_RE.match(f.name)
+        if not m:
+            continue
+        sid, kind = m.groups()
+        try:
+            if now - f.stat().st_mtime <= keep_s:
+                continue
+        except OSError:
+            continue                                     # gone already (its .done took it)
+        if kind == "mp3" and (folder / f"{sid}.done").exists():
+            continue                                     # ended: its .done's time decides
+        for g in ([f, folder / f"{sid}.mp3"] if kind == "done" else [f]):
+            try:
+                g.unlink()
+            except OSError:
+                pass
+        if sid not in gone:
+            gone.append(sid)
+    return gone
+
+
+def _reap_later(paths: list, delay_s: float) -> None:
+    """Delete ``paths`` delay_s from now, from a detached sleeper (it outlives this process; nothing is waited on)."""
+    try:
+        subprocess.run(["sh", "-c", '(sleep "$0"; rm -f -- "$@") </dev/null >/dev/null 2>&1 &',
+                        str(max(0, int(round(delay_s)))), *[str(p) for p in paths]],
+                       start_new_session=True, timeout=5, check=False, stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("sonos: couldn't schedule the stream's deletion (the next stream's sweep will): %s", e)
+
+
+def _block_array(b: Any):
+    import numpy as np
+    a = np.asarray(getattr(b, "data", b), dtype=np.float32)
+    if a.ndim == 1:
+        a = a[:, None]
+    if a.ndim != 2 or a.shape[1] < 1:
+        raise ValueError(f"a block of shape {a.shape}: want (frames, channels)")
+    if a.shape[1] == 1:
+        a = np.repeat(a, 2, axis=1)
+    return a[:, :2]
+
+
+class Mp3Stream:
+    """One live stream for the Sonos (module docstring, Streams): the pad, then ``source``'s blocks -> ffmpeg ->
+    ``path`` as it is made; ``done_path`` once it has ended. start(); wait_ready(s); position(); stop(); ``ended`` (an
+    Event), ``frames`` (written, the pad included), ``duration_s`` (frames / sr), ``error`` (plain words or None)."""
+
+    def __init__(self, source: Any, *, pad_s: float = 0.0, sr: Optional[int] = None, folder: Optional[Path] = None,
+                 ahead_s: float = STREAM_AHEAD_S, keep_s: float = STREAM_KEEP_S, ffmpeg: str = FFMPEG,
+                 bitrate: str = MP3_BITRATE, clock: Callable[[], float] = time.monotonic) -> None:
+        from .pc22 import Halted
+        self._Halted = Halted
+        self.source = source
+        self.id = uuid.uuid4().hex
+        self.dir = Path(folder) if folder is not None else streams_dir()
+        self.path = self.dir / f"{self.id}.mp3"
+        self.done_path = self.dir / f"{self.id}.done"
+        self.sr = int(sr or getattr(source, "sr", None) or STREAM_RATE)
+        self.ahead_s = float(ahead_s)
+        self.paced = callable(getattr(source, "blocks", None)) or callable(source)
+        own = getattr(source, "ahead_s", None)
+        if self.paced and isinstance(own, (int, float)) and own < self.ahead_s:
+            log.info("sonos: the stream's render runs %.1f s ahead (%.1f s wanted): the Sonos's buffer gets that plus "
+                     "its own start delay", own, self.ahead_s)
+        self.pad_frames = max(0, int(round(float(pad_s) * self.sr)))
+        self.keep_s, self.ffmpeg, self.bitrate, self.clock = float(keep_s), ffmpeg, bitrate, clock
+        self.bytes_per_s = int(str(bitrate).rstrip("kK")) * 1000 / 8.0 if str(bitrate)[:-1].isdigit() else 40000.0
+        self.halt = threading.Event()
+        self.ended = threading.Event()
+        self.frames = 0
+        self.error: Optional[str] = None
+        self.t_first: Optional[float] = None
+        self.t_start = 0.0
+        self.proc: Optional[subprocess.Popen] = None
+        self.thread: Optional[threading.Thread] = None
+        self.stderr_tail: deque = deque(maxlen=10)
+        self.stats: dict = {}
+
+    @property
+    def duration_s(self) -> float:
+        return self.frames / self.sr
+
+    def position(self) -> float:
+        """The source's pacing position in frames: the wall clock since its first block (0 until then: loading
+        and first-call warm-ups don't count as late; module docstring); pc22.Halted after stop()."""
+        if self.halt.is_set():
+            raise self._Halted()
+        t = self.t_first
+        return 0.0 if t is None else (self.clock() - t) * self.sr
+
+    def start(self) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        sweep_streams(self.dir, self.keep_s)
+        cmd = [self.ffmpeg, "-hide_banner", "-nostats", "-loglevel", "error", "-probesize", "32",
+               "-analyzeduration", "0", "-f", "f32le", "-ar", str(self.sr), "-ac", "2", "-i", "pipe:0",
+               "-map", "0:a", "-c:a", "libmp3lame", "-b:a", str(self.bitrate), "-write_xing", "0",
+               "-id3v2_version", "0", "-flush_packets", "1", "-threads", "1", "-f", "mp3", "-y", str(self.path)]
+        self.t_start = self.clock()
+        try:
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.PIPE, bufsize=0, start_new_session=True)
+        except OSError as e:
+            raise SonosError(f"the MP3 encoder (ffmpeg) can't start: {e}") from None
+        threading.Thread(target=self._read_err, name="mp3-err", daemon=True).start()
+        self.thread = threading.Thread(target=self._run, name="mp3-stream", daemon=True)
+        self.thread.start()
+
+    def _read_err(self) -> None:
+        for raw in iter(self.proc.stderr.readline, b""):
+            line = raw.decode("utf-8", "replace").rstrip()
+            if line:
+                self.stderr_tail.append(line)
+                log.debug("ffmpeg: %s", line)
+
+    def _write(self, a) -> None:
+        import numpy as np
+        mv = memoryview(np.ascontiguousarray(a, dtype="<f4").tobytes())
+        fd = self.proc.stdin.fileno()
+        while mv:
+            mv = mv[os.write(fd, mv):]
+        self.frames += len(a)
+
+    def _iter(self):
+        src = self.source
+        if callable(getattr(src, "blocks", None)):
+            return iter(src.blocks(position=self.position))
+        if callable(src):
+            return iter(src(self.position))
+        return iter(src)
+
+    def _run(self) -> None:
+        import numpy as np
+        it = None
+        c0 = time.process_time()
+        try:
+            left = self.pad_frames
+            while left > 0 and not self.halt.is_set():
+                n = min(left, self.sr)
+                self._write(np.zeros((n, 2), np.float32))
+                left -= n
+            it = self._iter()
+            for b in it:
+                if self.halt.is_set():
+                    break
+                if self.t_first is None:
+                    self.t_first = self.clock()
+                a = _block_array(b)
+                if not self.paced:                       # a plain iterable: paced here, like a Streamer
+                    while not self.halt.is_set():
+                        pos = self.position()
+                        due = self.frames - self.pad_frames - (pos + self.ahead_s * self.sr)
+                        if due <= 0:
+                            break
+                        self.halt.wait(min(0.05, max(0.002, due / self.sr)))
+                    if self.halt.is_set():
+                        break
+                self._write(a)
+        except self._Halted:
+            pass
+        except OSError as e:                             # the encoder went away
+            if not self.halt.is_set():
+                self.error = f"the MP3 encoder stopped ({e})"
+        except Exception as e:                           # noqa: BLE001  the source broke: the stream ends there
+            if not self.halt.is_set():
+                self.error = f"{type(e).__name__}: {e}"
+                log.warning("sonos: the stream %s failed: %s", self.id, self.error)
+        finally:
+            close = getattr(it, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:                        # noqa: BLE001
+                    pass
+            self._close_encoder()
+            self.stats.update(frames=self.frames, audio_s=round(self.duration_s, 3),
+                              wall_s=round(self.clock() - self.t_start, 3),
+                              writer_cpu_s=round(time.process_time() - c0, 3))
+            self._mark_done()
+            self.ended.set()
+
+    def _close_encoder(self) -> None:
+        p = self.proc
+        try:
+            p.stdin.close()
+        except OSError:
+            pass
+        try:
+            p.wait(timeout=FFMPEG_EXIT_S)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+        if p.returncode != 0 and self.error is None:
+            self.error = "the MP3 encoder failed (rc %s): %s" % (p.returncode,
+                                                                " | ".join(list(self.stderr_tail)[-2:]) or "no output")
+
+    def _mark_done(self) -> None:
+        doc = {"id": self.id, "frames": self.frames, "duration_s": round(self.duration_s, 3), "error": self.error,
+               "t": round(time.time(), 3)}
+        tmp = self.dir / f".{self.id}.done.tmp"
+        try:
+            tmp.write_text(json.dumps(doc), encoding="utf-8")
+            os.replace(tmp, self.done_path)
+        except OSError as e:
+            log.warning("sonos: couldn't mark the stream %s done: %s", self.id, e)
+        _reap_later([self.path, self.done_path], self.keep_s)
+
+    def audio_in_file_s(self) -> float:
+        try:
+            return self.path.stat().st_size / self.bytes_per_s
+        except OSError:
+            return 0.0
+
+    def wait_ready(self, seconds: float, timeout: float) -> bool:
+        """True once ``seconds`` of audio are in the file, or the stream has ended with some; False on timeout."""
+        end = self.clock() + timeout
+        while self.clock() < end:
+            if self.audio_in_file_s() >= seconds or (self.ended.is_set() and self.audio_in_file_s() > 0):
+                return True
+            if self.ended.is_set():
+                return False
+            time.sleep(0.02)
+        return False
+
+    def stop(self, timeout: float = 1.0) -> None:
+        """Ends the stream (the render stops, the file is closed and marked done); waits at most ``timeout``."""
+        self.halt.set()
+        th = self.thread
+        if th is not None and th is not threading.current_thread():
+            th.join(timeout)
 
 
 def unknown_keys(detail: str) -> set:
@@ -221,6 +556,10 @@ class _Play:
         self.done: Optional[dict] = None
         self.error: Optional[str] = None
         self.rebased = 0
+        self.stream: Optional[Mp3Stream] = None          # a stream's (module docstring, Streams)
+        self.track_uri: Optional[str] = None             # a stream's TrackURI when the Sonos reports another one
+        self.t_seen: Optional[float] = None              # our URI first seen PLAYING
+        self.rel_est: Optional[float] = None             # MIDI time 0 from the RelTime edges (a stream: recorded)
 
 
 class SonosOutput:
@@ -230,7 +569,9 @@ class SonosOutput:
 
     def __init__(self, zone: str, *, emit: Optional[Callable[[dict], Any]] = None, room_url: str = ROOM_URL,
                  sonos_file: Path = SONOS_FILE, latency_file: Path = LATENCY_FILE, upnp_port: int = UPNP_PORT,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic, stream_scheme: str = STREAM_SCHEME,
+                 stream_dir: Optional[Path] = None, stream_start_ms: float = STREAM_START_MS_DEFAULT,
+                 stream_ahead_s: float = STREAM_AHEAD_S, put_after_s: float = STREAM_PUT_AFTER_S) -> None:
         cfg = _read_json(sonos_file)
         z = (cfg.get("zones") or {}).get(zone)
         if not isinstance(z, dict) or not isinstance(z.get("ip"), str) or not z["ip"].strip():
@@ -248,6 +589,10 @@ class SonosOutput:
         self._p: Optional[_Play] = None
         self._epoch = 0                                  # bumped by every stop(): a start in flight stops before its PUT
         self._pending: Optional[threading.Thread] = None
+        if stream_scheme not in ("radio", "http"):
+            raise ValueError(f"stream_scheme {stream_scheme!r}: radio or http")
+        self.stream_scheme, self.stream_dir, self.stream_start_ms = stream_scheme, stream_dir, float(stream_start_ms)
+        self.stream_ahead_s, self.put_after_s = float(stream_ahead_s), float(put_after_s)
 
     # -- what the last start learnt (PC22Output's names) --
     @property
@@ -281,8 +626,8 @@ class SonosOutput:
         return status, doc if isinstance(doc, dict) else {}
 
     def upnp(self, action: str) -> dict:
-        """One read-only AVTransport query (GetTransportInfo | GetPositionInfo) -> its fields."""
-        if action not in ("GetTransportInfo", "GetPositionInfo"):
+        """One read-only AVTransport query (GetTransportInfo | GetPositionInfo | GetMediaInfo) -> its fields."""
+        if action not in ("GetTransportInfo", "GetPositionInfo", "GetMediaInfo"):
             raise ValueError(action)
         path, urn = AVT
         env = (f'<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
@@ -358,9 +703,12 @@ class SonosOutput:
     # -- playing --
     def start(self, path, lead_in_ms: float = 0.0, url: Optional[str] = None, title: Optional[str] = None,
               volume: Any = None) -> float:
-        """Plays ``path`` (a render) on the zone from ``url``; returns t_audio0 (module docstring). SonosError."""
+        """Plays ``path`` (a render) on the zone from ``url``, or a stream (``path`` not a path: module docstring,
+        Streams; url: show_sender's, or the door's base); returns t_audio0 (module docstring). SonosError."""
         if not url:
             raise SonosError("no URL to play")
+        if not is_file_source(path):
+            return self._start_stream(path, lead_in_ms, url, title, volume)
         with self._lock:
             epoch = self._epoch
             old = self._p
@@ -411,6 +759,68 @@ class SonosOutput:
                  (t_audio0 - self.clock()) * 1000)
         return t_audio0
 
+    def _start_stream(self, source: Any, lead_in_ms: float, url: str, title: Optional[str], volume: Any) -> float:
+        with self._lock:
+            epoch = self._epoch
+            old = self._p
+        if old is not None:
+            old.halt.set()
+            if old.stream is not None:
+                old.stream.stop(0.0)
+        state = self.room_state()
+        if not state["available"]:
+            raise SonosError(f"room_service can't reach the {self.room_name} Sonos now")
+        vol = self.choose_volume(volume, state)
+        was_playing = self._playing_now(state)
+        pad = max(0.0, float(lead_in_ms) / 1000.0)
+        st = Mp3Stream(source, pad_s=pad, folder=self.stream_dir, ahead_s=self.stream_ahead_s, clock=self.clock)
+        play_url = stream_url(url, st.id, self.stream_scheme)
+        st.start()
+        try:
+            if not st.wait_ready(self.put_after_s, STREAM_READY_TIMEOUT_S):
+                raise SonosError(f"the piano stream didn't start: {st.error}" if st.error else
+                                 f"the piano stream made no sound in {STREAM_READY_TIMEOUT_S:.0f} s")
+            while True:
+                fade = "fade_s" not in UNSUPPORTED
+                value: dict = {"uri": play_url}
+                if "title" not in UNSUPPORTED:
+                    value["title"] = str(title or STREAM_TITLE)      # a radio URI needs one
+                if fade:
+                    value["fade_s"] = 0
+                if vol is not None:
+                    value["volume"] = vol
+                with self._lock:
+                    if epoch != self._epoch:
+                        raise SonosError("stopped before it played")
+                t_put = self.clock()
+                status, doc = self._http("PUT", "/api/v1/room/targets",
+                                         {"values": {self.target: value}, "source": SOURCE})
+                if status in (200, 202):
+                    break
+                detail = str(doc.get("detail") or doc.get("error") or "")
+                drop = unknown_keys(detail) & set(value) if status == 400 else set()
+                if not drop:
+                    raise SonosError(f"room_service refused the play ({status}: {detail or 'no detail'})")
+                UNSUPPORTED.update(drop)
+                log.info("sonos %s: room_service doesn't take %s yet: playing without", self.zone, sorted(drop))
+        except BaseException:
+            st.stop(0.5)
+            raise
+        if not fade:
+            self.emit({"ev": "warning", "why": "room_service fades the Sonos in: the start of the piece is quiet"})
+        if "title" in UNSUPPORTED:
+            self.emit({"ev": "warning", "why": "room_service sends no title: the Sonos may not play the stream"})
+        fade_out = self.ramp_s if (not fade and was_playing) else 0.0
+        t_audio0 = t_put + self.stream_start_ms / 1000.0 + pad + MP3_DELAY_FRAMES / st.sr + fade_out
+        p = _Play(play_url, pad, 0.0, t_put, t_audio0, t_put + fade_out + STREAM_START_GRACE_S)
+        p.stream = st
+        with self._lock:
+            self._p, self.pad_s = p, pad
+        threading.Thread(target=self._watch, args=(p,), name="sonos-watch", daemon=True).start()
+        log.info("sonos %s: stream %s at volume %s, pad %.2f s, %.1f s in the file at the PUT; t_audio0 in %+.0f ms",
+                 self.zone, play_url, vol, pad, st.audio_in_file_s(), (t_audio0 - self.clock()) * 1000)
+        return t_audio0
+
     @staticmethod
     def _duration(src: Path) -> float:
         try:
@@ -430,6 +840,40 @@ class SonosOutput:
             return url, 0.0
         return f"{head}/{padded_copy(src, pad).name}", pad
 
+    def _file_s(self, p: _Play) -> Optional[float]:
+        """The played file's length (pad included); a stream's once it has ended, None before."""
+        st = p.stream
+        if st is None:
+            return p.file_s
+        return st.duration_s if st.ended.is_set() else None
+
+    def _ours(self, uri: str, p: _Play) -> bool:
+        """``uri`` (a TrackURI) is our play's; for a stream also when GetMediaInfo's CurrentURI is (a radio stream's
+        TrackURI may differ), remembered for the next polls."""
+        if same_uri(uri, p.url) or (p.track_uri is not None and same_uri(uri, p.track_uri)):
+            return True
+        if p.stream is None:
+            return False
+        try:
+            cur = self.upnp("GetMediaInfo").get("CurrentURI", "")
+        except Exception:                                # noqa: BLE001  unreadable now: not ours by this poll
+            return False
+        if same_uri(cur, p.url) and uri:
+            p.track_uri = uri
+        return same_uri(cur, p.url)
+
+    def _finished(self, p: _Play, by: str, last_rel: Optional[int]) -> None:
+        """The end: p.done, or p.error when the stream failed."""
+        st = p.stream
+        if st is not None and st.error:
+            p.error = f"the piano stream failed: {st.error}"
+            return
+        p.done = {"by": by, "rel_s": last_rel, "rebased": p.rebased}
+        if st is not None:
+            p.done.update(stream_s=round(st.duration_s, 3),
+                          seen_ms=None if p.t_seen is None else round((p.t_seen - p.t_put) * 1000),
+                          rel_start_ms=None if p.rel_est is None else round((p.rel_est - p.t_audio0) * 1000))
+
     def _watch(self, p: _Play) -> None:
         period = 1.0 / WATCH_HZ
         last_ok = self.clock()
@@ -437,25 +881,27 @@ class SonosOutput:
         edges: list[tuple[float, float]] = []             # brackets of the file's start, (lo, hi)
         last_rel: Optional[int] = None
         warned = False
+        stream = p.stream is not None
         try:
             while not p.halt.wait(period):
                 now = self.clock()
+                file_s = self._file_s(p)
                 t = self.transport()
                 if t is None:
                     if now - last_ok >= UNREADABLE_S:
                         if not warned:
                             warned = True
                             self.emit({"ev": "warning", "why": "Sonos isn't answering: its end is timed by the clock"})
-                        if now >= p.t_audio0 - p.pad_s + p.file_s + END_SLACK_S:
-                            p.done = {"by": "clock", "rel_s": last_rel, "rebased": p.rebased}
+                        if file_s is not None and now >= p.t_audio0 - p.pad_s + file_s + END_SLACK_S:
+                            self._finished(p, "clock", last_rel)
                             return
                     continue
                 last_ok = now
                 state, uri, rel, t1, t2 = t
-                ours = same_uri(uri, p.url)
+                ours = self._ours(uri, p)
                 if not p.seen:
                     if ours and state in PLAYING:
-                        p.seen = True
+                        p.seen, p.t_seen = True, now
                     elif now > p.t_put + START_TIMEOUT_S:
                         p.error = "Sonos didn't start"
                         return
@@ -471,12 +917,24 @@ class SonosOutput:
                         elif prev is not None and rel != prev[0]:
                             edges = []                    # a seek, or a missed second: start the brackets again
                         prev, last_rel = (rel, t1), rel
+                    if stream and file_s is not None and now >= p.t_audio0 - p.pad_s + file_s + STREAM_END_SLACK_S:
+                        self._finished(p, "stream", last_rel)            # over: never left on a finished stream
+                        self._pause(p)
+                        return
                     continue
-                end = p.t_audio0 - p.pad_s + p.file_s
-                near_end = (p.file_s > 0 and ((last_rel is not None and last_rel >= p.file_s - END_SLACK_S)
-                                              or now >= end - END_SLACK_S))
+                if file_s is None:
+                    near_end = False                      # a stream still being made
+                elif stream:
+                    near_end = now >= p.t_audio0 - p.pad_s + file_s - END_SLACK_S
+                else:
+                    end = p.t_audio0 - p.pad_s + file_s
+                    near_end = (file_s > 0 and ((last_rel is not None and last_rel >= file_s - END_SLACK_S)
+                                                or now >= end - END_SLACK_S))
                 if state == "STOPPED" and near_end:
-                    p.done = {"by": "sonos", "rel_s": last_rel, "rebased": p.rebased}
+                    self._finished(p, "sonos", last_rel)
+                    return
+                if state == "STOPPED" and stream and p.stream.error:
+                    p.error = f"the piano stream failed: {p.stream.error}"     # it played what there was
                     return
                 p.error = "Sonos paused" if state == "PAUSED_PLAYBACK" else "Sonos stopped"
                 return
@@ -491,6 +949,11 @@ class SonosOutput:
             edges, (lo, hi) = [bracket], bracket
         if len(edges) >= MIN_EDGES:
             est = (lo + hi) / 2.0 + p.pad_s              # MIDI time 0: the file's start plus the pad
+            if p.stream is not None:
+                p.rel_est = est + MP3_DELAY_FRAMES / p.stream.sr
+                if not STREAM_REBASE:
+                    return edges
+                est = p.rel_est
             if abs(est - p.t_audio0) > REBASE_S:
                 was, p.t_audio0 = p.t_audio0, est
                 p.rebased += 1
@@ -504,11 +967,13 @@ class SonosOutput:
         return True if p is None else p.exited.wait(timeout)
 
     # -- stopping --
-    def ours_playing(self, url: str) -> bool:
-        """The Sonos plays ``url`` now (UPnP, else room_service's now_playing); False when neither can tell."""
+    def ours_playing(self, url: str, p: Optional[_Play] = None) -> bool:
+        """The Sonos plays ``url`` now (UPnP, else room_service's now_playing); False when neither can tell. With the
+        play ``p`` a stream's other TrackURI counts too (_ours)."""
         t = self.transport()
         if t is not None:
-            return t[0] in PLAYING and same_uri(t[1], url)
+            return t[0] in PLAYING and (same_uri(t[1], url) or (p is not None and p.stream is not None
+                                                               and self._ours(t[1], p)))
         try:
             st = self.room_state()
         except SonosError:
@@ -531,28 +996,33 @@ class SonosOutput:
             log.warning("sonos %s: couldn't pause: %s", self.zone, e)
 
     def stop(self, timeout: float = 1.0) -> None:
-        """Our file off the Sonos, if it still plays it (module docstring); safe to call any time."""
+        """Our file off the Sonos, if it still plays it (module docstring); a stream ends too; safe any time."""
         with self._lock:
             self._epoch += 1
             p = self._p
         if p is None:
             return
         p.halt.set()
-        if p.exited.is_set() and (p.done is not None or p.error is not None):
-            return                                       # it ended, or left our file, by itself: nothing of ours plays
-        if p.paused:
-            return
-        if self.ours_playing(p.url):
-            self._pause(p)
-        elif not p.seen and self.clock() < p.appear_by:
-            th = threading.Thread(target=self._pause_when_heard, args=(p,), name="sonos-late-pause", daemon=True)
-            self._pending = th
-            th.start()
+        try:
+            if p.exited.is_set() and (p.done is not None or p.error is not None):
+                return                                   # it ended, or left our file, by itself: nothing of ours plays
+            if p.paused:
+                return
+            if self.ours_playing(p.url, p):
+                self._pause(p)
+            elif not p.seen and self.clock() < p.appear_by:
+                th = threading.Thread(target=self._pause_when_heard, args=(p,), name="sonos-late-pause", daemon=True)
+                self._pending = th
+                th.start()
+        finally:
+            if p.stream is not None:
+                p.stream.stop(timeout)
 
     def _pause_when_heard(self, p: _Play) -> None:
         while self.clock() < p.appear_by:
             t = self.transport()
-            if t is not None and same_uri(t[1], p.url) and t[0] in PLAYING:
+            if t is not None and t[0] in PLAYING and (same_uri(t[1], p.url) or (p.stream is not None
+                                                                               and self._ours(t[1], p))):
                 self._pause(p)
                 return
             time.sleep(1.0 / WATCH_HZ)

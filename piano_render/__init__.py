@@ -1,10 +1,12 @@
-"""piano_render: MIDI file + instrument id -> a rendered, mastered audio file (offline, cached).
+"""piano_render: MIDI file + instrument id -> sampled piano, rendered on demand as it plays (nothing stored).
 
 Replaces the test piano's Windows GS Wavetable synth with sampled pianos (sfizz for SFZ libraries, FluidSynth for
 SF2s). Engines are pluggable (piano_render.engines): a paid engine (Pianoteq, a VST3 host) is one more module.
 
+    from piano_render import stream
+    st = stream.Streamer("piece.mid", "concert-d"); st.open()   # session.py plays it on PC22 or a Sonos
     from piano_render import render
-    res = render.render("piece.mid", "salamander")      # -> RenderResult (path to a 24-bit 48 kHz FLAC)
+    res = render.render("piece.mid", "concert-d", out="x.flac")  # offline only (audition): a 24-bit 48 kHz FLAC
 
 See piano_render/README.md for the contract and the CLI (python -m piano_render ...).
 """

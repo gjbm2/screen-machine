@@ -1,15 +1,20 @@
-"""MIDI file + instrument id -> a cached, mastered FLAC whose time 0 is the MIDI's time 0.
+"""MIDI file + instrument id -> a mastered FLAC whose time 0 is the MIDI's time 0, rendered offline (the audition
+set, comparisons). The live test piano never uses this: it renders as it plays (piano_render/stream.py, session.py).
 
-    res = render("piece.mid", "salamander")              # RenderResult; res.path is the FLAC
-    res = render("piece.mid", "salamander", room="none")   # dry (room=None: the instrument's own room)
+    res = render("piece.mid", "salamander", out="piece.flac")              # RenderResult; res.path is the FLAC
+    res = render("piece.mid", "salamander", cache_dir="work/renders")      # or kept in a cache of the caller's
+    res = render("piece.mid", "salamander", room="none", out="dry.flac")   # dry (room=None: the instrument's own room)
+
+Nothing is kept unless asked (owner, 22 Oct): with ``out`` the FLAC goes there and no cache is read or written; a cache
+is used only when one is named (``cache_dir``, or $PIANO_RENDER_CACHE). With neither, render() refuses.
 
 Pipeline: score.load_midi -> engine.render (raw stereo float32, sample 0 = MIDI 0) -> realism.apply (if realism;
 else realism.apply_dry, the instrument's EQ only) -> master.process (instrument gain_db, cut only to keep true
 peak <= -1 dBTP) -> FLAC 24-bit 48 kHz. The realism stage may lengthen the audio (resonance and room tails), never
 shift it.
 
-Cache: <cache>/<key>.flac + <key>.json (the RenderResult) in $PIANO_RENDER_CACHE or
-~/.cache/screen-machine/piano/renders. key = sha256 over the MIDI bytes, the instrument id and entry (minus the
+Cache (only when named): <cache>/<key>.flac + <key>.json (the RenderResult) in cache_dir or $PIANO_RENDER_CACHE.
+key = sha256 over the MIDI bytes, the instrument id and entry (minus the
 cosmetic "label", "order", "credit", "_comment"), the instrument file's content (instrument_files_digest: an SFZ's
 text and its #includes, an SF2's size and mtime; for an instrument with "layers", every layer file's too), the room
 entry, the realism flag, RENDER_VERSION,
@@ -49,7 +54,9 @@ RENDER_VERSION = "3"      # 2: the realism stage (piano_render/dsp); realism off
 #                           3: engines end the tail at an absolute floor (-70 dBFS after gain_db), with a 50 ms fade
 SAMPLE_RATE = 48000
 CACHE_ENV = "PIANO_RENDER_CACHE"
-DEFAULT_CACHE = Path("~/.cache/screen-machine/piano/renders").expanduser()
+DEFAULT_CACHE: Optional[Path] = None   # no cache unless one is named (module docstring)
+NO_CACHE = ("render(): nothing is kept unless asked: give out= (a file), or cache_dir= / $PIANO_RENDER_CACHE for a "
+            "cache")
 COSMETIC_KEYS = frozenset({"label", "order", "credit", "_comment"})
 NO_ROOM = ("none", "")              # room aliases for "no room" (unless the registry has a room by that id)
 ONSET_THRESHOLD_DBFS = -50.0
@@ -87,11 +94,12 @@ class RenderResult:
         return r
 
 
-def cache_dir(override: "str | os.PathLike | None" = None) -> Path:
+def cache_dir(override: "str | os.PathLike | None" = None) -> Optional[Path]:
+    """The cache named by ``override`` or $PIANO_RENDER_CACHE; None when there is none (nothing is kept)."""
     if override:
         return Path(override).expanduser()
     env = os.environ.get(CACHE_ENV)
-    return Path(env).expanduser() if env else DEFAULT_CACHE
+    return Path(env).expanduser() if env and env.strip() else DEFAULT_CACHE
 
 
 # --- the key -------------------------------------------------------------------------------------------------
@@ -231,7 +239,7 @@ class Plan:
     room: Optional[dict]
     realism: bool
     engine_version: str
-    dir: Path
+    dir: Optional[Path]                 # the cache; None: no cache (render() then needs ``out``)
 
     @property
     def flac(self) -> Path:
@@ -273,6 +281,8 @@ def plan(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str] 
 
 
 def _read_cached(p: Plan) -> Optional[RenderResult]:
+    if p.dir is None:
+        return None
     try:
         if not (p.sidecar.exists() and p.flac.exists()):
             return None
@@ -292,8 +302,11 @@ def cached(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str
 
 
 def read_progress(key: str, cache_dir_override=None) -> Optional[dict]:
+    d = cache_dir(cache_dir_override)
+    if d is None:
+        return None
     try:
-        with open(cache_dir(cache_dir_override) / f"{key}.progress.json", encoding="utf-8") as f:
+        with open(d / f"{key}.progress.json", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return None
@@ -337,19 +350,24 @@ def _key_lock(path: Path, timeout: Optional[float] = None):
 
 
 class _ProgressFile:
-    """<key>.progress.json, rewritten by a heartbeat thread every HEARTBEAT_S (and on stage changes)."""
+    """<key>.progress.json, rewritten by a heartbeat thread every HEARTBEAT_S (and on stage changes); with no path
+    (a render to ``out``, no cache) only the callback."""
 
-    def __init__(self, path: Path, cb: ProgressCb = None):
+    def __init__(self, path: Optional[Path], cb: ProgressCb = None):
         self.path = path
         self.cb = cb
         self.state = {"stage": "start", "done_s": 0.0, "total_s": 0.0}
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._write()
-        self._thread = threading.Thread(target=self._beat, name="piano-render-progress", daemon=True)
-        self._thread.start()
+        self._thread: Optional[threading.Thread] = None
+        if path is not None:
+            self._write()
+            self._thread = threading.Thread(target=self._beat, name="piano-render-progress", daemon=True)
+            self._thread.start()
 
     def _write(self) -> None:
+        if self.path is None:
+            return
         with self._lock:
             state = dict(self.state, pid=os.getpid(), updated=round(time.time(), 3))
         tmp = self.path.with_name(f"{self.path.name}.tmp{os.getpid()}-{threading.get_ident()}")
@@ -369,7 +387,7 @@ class _ProgressFile:
         changed = stage != self.state["stage"]
         with self._lock:
             self.state = {"stage": stage, "done_s": round(float(done_s), 3), "total_s": round(float(total_s), 3)}
-        if changed:
+        if changed and self.path is not None:
             self._write()
         if self.cb is not None:
             try:
@@ -382,9 +400,11 @@ class _ProgressFile:
 
     def close(self) -> None:
         self._stop.set()
-        self._thread.join(timeout=2)
-        with contextlib.suppress(FileNotFoundError):
-            self.path.unlink()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if self.path is not None:
+            with contextlib.suppress(FileNotFoundError):
+                self.path.unlink()
 
 
 # --- engines kept loaded between renders (a big library takes seconds to load) ------------------------------
@@ -450,14 +470,21 @@ def _tmp(path: Path) -> Path:
 
 def render(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str] = None, realism: bool = True,
            registry=None, progress: ProgressCb = None, force: bool = False, cache_dir=None,
-           lock_timeout: Optional[float] = None) -> RenderResult:
-    """Render (or fetch from the cache) ``midi_path`` on ``instrument_id`` (None = the registry's default).
+           lock_timeout: Optional[float] = None, out: "str | os.PathLike | None" = None) -> RenderResult:
+    """Render ``midi_path`` on ``instrument_id`` (None = the registry's default) into ``out``, or render (or fetch)
+    it in the cache named by cache_dir / $PIANO_RENDER_CACHE; ValueError with neither (module docstring).
 
     room: None = the instrument's own room, "none" = no room at all, else a room id. realism=False skips the realism stage
     (and the room). progress(state) gets {"stage", "done_s", "total_s"} as the progress file does. force=True
     renders again even if cached."""
     reg = registry if registry is not None else _instruments.load()
     p = plan(midi_path, instrument_id, room=room, realism=realism, registry=reg, cache_dir_override=cache_dir)
+    if out is not None:
+        dest = Path(out).expanduser()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        return _render_locked(p, reg, progress, dest=dest)
+    if p.dir is None:
+        raise ValueError(NO_CACHE)
     if not force:
         hit = _read_cached(p)
         if hit is not None:
@@ -471,11 +498,14 @@ def render(midi_path, instrument_id: Optional[str] = None, *, room: Optional[str
         return _render_locked(p, reg, progress)
 
 
-def _render_locked(p: Plan, reg, progress: ProgressCb) -> RenderResult:
+def _render_locked(p: Plan, reg, progress: ProgressCb, dest: Optional[Path] = None) -> RenderResult:
+    """One render into the cache (under the key's lock), or into ``dest`` (no cache, no sidecar, no progress file)."""
     t_wall, t_cpu = time.monotonic(), time.process_time()
     sr = SAMPLE_RATE
-    prog = _ProgressFile(p.progress_file, progress)
-    tmp_flac, tmp_json = _tmp(p.flac), _tmp(p.sidecar)
+    prog = _ProgressFile(None if dest is not None else p.progress_file, progress)
+    flac = dest if dest is not None else p.flac
+    tmp_flac = _tmp(flac)
+    tmp_json = _tmp(p.sidecar) if dest is None else None
     try:
         prog.set("load")
         perf = _score.load_midi(p.midi_path)
@@ -521,20 +551,22 @@ def _render_locked(p: Plan, reg, progress: ProgressCb) -> RenderResult:
             notes=sum(1 for e in perf.events if e.kind == "on"), engine_version=p.engine_version,
             render_version=RENDER_VERSION, created=_dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         )
-        res = RenderResult(path=str(p.flac), sample_rate=sr, duration_s=round(dur, 6),
+        res = RenderResult(path=str(flac), sample_rate=sr, duration_s=round(dur, 6),
                            onset_ms=float(p.inst.get("onset_ms") or 0.0), lufs=mstats.lufs,
                            true_peak_dbtp=mstats.true_peak_dbtp, cache_key=p.key, engine=str(p.inst.get("engine")),
                            instrument=p.inst_id, room=p.room_id, realism=p.realism, stats=stats)
-        os.replace(tmp_flac, p.flac)
-        with open(tmp_json, "w", encoding="utf-8") as f:
-            json.dump(res.to_json(), f, indent=1, default=_json_default)
-        os.replace(tmp_json, p.sidecar)
+        os.replace(tmp_flac, flac)
+        if tmp_json is not None:
+            with open(tmp_json, "w", encoding="utf-8") as f:
+                json.dump(res.to_json(), f, indent=1, default=_json_default)
+            os.replace(tmp_json, p.sidecar)
         return res
     finally:
         prog.close()
         for t in (tmp_flac, tmp_json):
-            with contextlib.suppress(FileNotFoundError):
-                t.unlink()
+            if t is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    t.unlink()
 
 
 def _json_default(o):
