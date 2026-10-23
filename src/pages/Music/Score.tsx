@@ -1500,7 +1500,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
       data-testid="music-stand"
       className={cn(THEME_CLASS, "fixed inset-0 z-50 flex flex-col bg-white text-base antialiased outline-none")}
       style={{
-        paddingTop: "env(safe-area-inset-top)",
+        paddingTop: "var(--app-top)", // clear of the iPad Home Screen app's status bar and edge blur (index.css)
         paddingRight: "env(safe-area-inset-right)",
         paddingBottom: "env(safe-area-inset-bottom)",
         paddingLeft: "env(safe-area-inset-left)",

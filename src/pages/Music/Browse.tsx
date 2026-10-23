@@ -89,7 +89,7 @@ function ComposerSheet({
         {groups.length === 0 && <p className="px-3 py-2 text-base text-muted-foreground">No composer matches “{q.trim()}”.</p>}
         {groups.map((g) => (
           <div key={g.letter}>
-            <p className="sticky top-[env(safe-area-inset-top)] z-10 bg-background px-3 pb-1 pt-2 text-sm font-semibold text-muted-foreground">{g.letter}</p>
+            <p className="sticky top-[var(--app-top)] z-10 bg-background px-3 pb-1 pt-2 text-sm font-semibold text-muted-foreground">{g.letter}</p>
             {g.rows.map((c) => (
               <button
                 key={c.name}

@@ -779,7 +779,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
       <div
         className={`border-b w-full bg-background ${
-          isTabBarFixed ? 'fixed top-[env(safe-area-inset-top)] left-0 right-0 z-[100]' : ''
+          isTabBarFixed ? 'fixed top-[var(--app-top)] left-0 right-0 z-[100]' : ''
         }`}
         style={{ height: TAB_BAR_HEIGHT }}
       >
