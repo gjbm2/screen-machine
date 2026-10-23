@@ -172,3 +172,18 @@ async def test_a_screen_cards_next_effect_is_that_screens(client):
     r = await client.post(f"/api/sessions/{sb}/fx/next", json={"scope": "screen"}, headers=AUTH)
     assert r.status == 200, await r.text()
     assert "fx" in b.own and rooms.auto_fx(b.fx.stack) and not rooms.auto_fx(a.fx.stack)
+
+
+class _Slot:
+    def __init__(self, preset, level, origin="auto"):
+        self.spec = type("S", (), {"preset": preset})()
+        self.level, self.origin = level, origin
+
+
+def test_followers_take_the_sources_levels():
+    from stream_service import rooms
+    src = [_Slot("posterize", 0.35), _Slot("ocean", 0.6), _Slot("mine", 1.0, origin="manual")]
+    lv = rooms.auto_fx_levels(src)
+    assert lv == {"posterize": 0.35, "ocean": 0.6}
+    assert rooms.fx_level_drift([_Slot("posterize", 1.0), _Slot("ocean", 0.6)], lv)
+    assert not rooms.fx_level_drift([_Slot("posterize", 0.35), _Slot("other", 1.0)], lv)

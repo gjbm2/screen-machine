@@ -28,6 +28,7 @@ import {
   droppedWords,
   fxChips,
   fxLabel,
+  fxFixed,
   fxRange,
   useEffectItems,
   useSceneItems,
@@ -202,7 +203,9 @@ const ENERGY: Array<{ label: string; energy: number; style: string | null }> = [
   { label: "Wild", energy: 0.95, style: "wild" },
 ];
 
+// n 0: the art director decides (about two; more for loud music, fewer for quiet or a score page)
 const HOW_MANY: Array<{ label: string; n: number }> = [
+  { label: "Auto", n: 0 },
   { label: "One", n: 1 },
   { label: "Two", n: 2 },
   { label: "Three", n: 3 },
@@ -276,7 +279,7 @@ function FxStatus({
       parts.push(
         eta < 5 ? "next change soon" : eta < 90 ? `next change in ~${Math.max(5, Math.round(eta / 5) * 5)} s` : `next change in ~${Math.round(eta / 60)} min`,
       );
-    if (lo !== hi) parts.push(`${lo} or ${hi} at a time`);
+    if (!fxFixed(look.direction?.fx?.density)) parts.push(`about ${lo === hi ? lo : `${lo}-${hi}`} at a time, more for loud music`);
   } else {
     parts.push("You pick", anyOn ? "these stay on" : "none on");
   }
@@ -379,11 +382,11 @@ export function PickingRows({
       {fxOn && (
         <div className="flex items-center gap-3">
           <span className="w-[4.75rem] shrink-0 text-[15px] text-muted-foreground">How many</span>
-          <div className="grid flex-1 grid-cols-3 gap-2" role="group" aria-label="How many effects">
+          <div className="grid flex-1 grid-cols-4 gap-2" role="group" aria-label="How many effects">
             {HOW_MANY.map((h) => (
               <Chip
                 key={h.n}
-                active={lo === hi && lo === h.n}
+                active={h.n === 0 ? !fxFixed(dir.fx?.density) : fxFixed(dir.fx?.density) && lo === h.n}
                 testId={`howmany-${id}-${h.label.toLowerCase()}`}
                 className="w-full justify-center px-2"
                 onClick={() => onHowMany(h.n)}
@@ -936,13 +939,20 @@ export function LookControls({
           }
           onFxPicking={fxPicking}
           onDirection={(label, d) => void lv.setDirection(label, d)}
-          onHowMany={(n) =>
-            void lv.patch(`${n} ${n === 1 ? "effect" : "effects"} at a time`, { auto: { fx: { max: n } }, direction: { fx: { density: 1 } } }, (l) => ({
-              ...l,
-              auto: { ...(l.auto ?? {}), fx: { ...(l.auto?.fx ?? {}), max: n } },
-              direction: mergeDirection(l.direction, { fx: { density: 1 } }),
-            }))
-          }
+          onHowMany={(n) => {
+            // Auto: about two, and the art director varies it (density 0.5, which the music then moves)
+            const max = n || 2;
+            const density = n ? 1 : 0.5;
+            void lv.patch(
+              n ? `${n} ${n === 1 ? "effect" : "effects"} at a time` : "effects: as many as the art director picks",
+              { auto: { fx: { max } }, direction: { fx: { density } } },
+              (l) => ({
+                ...l,
+                auto: { ...(l.auto ?? {}), fx: { ...(l.auto?.fx ?? {}), max } },
+                direction: mergeDirection(l.direction, { fx: { density } }),
+              }),
+            );
+          }}
         >
           {effectChips}
           {strength}

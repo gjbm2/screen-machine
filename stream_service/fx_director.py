@@ -36,7 +36,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .director import AUTO_FX_DEFAULTS, FX_DIRECTION_DEFAULTS, resolve_pool
+from .director import AUTO_FX_DEFAULTS, AUTO_FX_MAX, FX_DIRECTION_DEFAULTS, resolve_pool
 from .effects import MAX_BUS_SLOTS
 from .fx_interplay import Fit
 from .plugins.base import STAGES
@@ -231,9 +231,32 @@ class FxDirector:
 
     # -- what ----------------------------------------------------------------------
     def target_count(self) -> int:
+        """How many auto effects to run (owner, 23 Oct: "I'd default to 2, but allow art director to vary the max
+        number as it determines").  ``max`` is the usual number (default 2).  ``density`` 1 (the Room page's One /
+        Two / Three) runs exactly that many, 0 none.  Between, the art director varies it: about max x (0.5 +
+        density), so the music's density (0.1 + 0.8 x energy) gives about half for quiet music, max at the middle
+        and 1.5 x for loud; then x the scene: half for a scene that must stay legible (a score page), and x 1.2
+        for a still, plain scene down to x 0.8 for a busy one.  Stochastic rounding, at most AUTO_FX_MAX."""
         mx = int(self.auto_fx.get("max", 2))
-        k = math.floor(self.fxd["density"] * mx + self.rng.random())     # stochastic rounding
-        return max(0, min(mx, k))
+        d = float(self.fxd["density"])
+        if d >= 1.0 or d <= 0.0:
+            return mx if d >= 1.0 else 0
+        x = mx * (0.5 + d) * self.scene_count_factor()
+        k = math.floor(x + self.rng.random())
+        return max(0, min(AUTO_FX_MAX, MAX_BUS_SLOTS, k))
+
+    def scene_count_factor(self) -> float:
+        """x on the art director's count from the scene on screen (fx_interplay scene_props; unknown = 1)."""
+        if self.looks is None:
+            return 1.0
+        try:
+            props = self.looks.scene_props(*self._scene())
+        except Exception:
+            return 1.0
+        if props.get("legible", 0.0) >= 0.5:
+            return 0.5
+        busy = props.get("busy")
+        return 1.0 if busy is None else 1.2 - 0.4 * busy
 
     def weight(self, tags: dict) -> float:
         fxd = self.fxd
@@ -451,6 +474,7 @@ class FxDirector:
     def status(self, now: float) -> dict:
         fxd = self.fxd
         return {**self.auto_fx, "density": fxd["density"], "rate": fxd["rate"], "follow": self.follow,
+                "scene_factor": round(self.scene_count_factor(), 2),
                 "armed": self.armed,
                 "next_in_s": None if self.next_at is None or not self.enabled else round(max(0.0, self.next_at - now), 1),
                 "on_the_bar": self.grid is not None, "event": self.event,

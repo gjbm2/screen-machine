@@ -322,7 +322,7 @@ class Session(EngineListener):
         self._follow_want: Optional[tuple] = None
         self._follow_gen = 0
         self._room_synced: Optional[str] = None   # the leader this follower last caught up with
-        self._fx_want: Optional[tuple] = None     # (leader's auto presets, fade_s, why) to mirror
+        self._fx_want: Optional[tuple] = None     # (leader's auto presets, fade_s, why, their levels) to mirror
         self._fx_check_t = 0.0
         self._following = False
         # -- the room ensemble (ensemble.py; docs/ENSEMBLE.md §8): this screen's part of show_service's form --
@@ -772,12 +772,15 @@ class Session(EngineListener):
     def _room_fx(self) -> None:
         """This screen's auto FX just moved: the screens mirroring it follow."""
         want = [p for _, p in rooms.auto_fx(self.fx.stack)]
+        levels = rooms.auto_fx_levels(self.fx.stack)
         for f in self.room_peers():
             if f.fx_source() is self:
-                f.follow_fx(f._fx_mirror(want), self.fx_director.fade_s(), "room")
+                f.follow_fx(f._fx_mirror(want), self.fx_director.fade_s(), "room", levels)
 
-    def follow_fx(self, want: list, fade_s: float, why: str) -> None:
-        self._fx_want = (list(want), fade_s, why)
+    def follow_fx(self, want: list, fade_s: float, why: str, levels: Optional[dict] = None) -> None:
+        # levels: the source's level per preset, so a mirrored effect plays as strong as the leader's (23 Oct: the
+        # follower took every effect at 1.0 while the leader's director had set 0.35, so north looked far wilder)
+        self._fx_want = (list(want), fade_s, why, dict(levels or {}))
         if self._fx_task is None and self.state == "live" and not self.exited:
             self._fx_task = asyncio.create_task(self._follow_fx())
 
@@ -787,13 +790,16 @@ class Session(EngineListener):
             for _ in range(8):
                 if self._fx_want is None:
                     break
-                want, fade_s, why = self._fx_want
+                want, fade_s, why, levels = self._fx_want
                 add, remove = rooms.fx_step(rooms.auto_fx(self.fx.stack), want)
                 if add is None and remove is None:
                     self._fx_want = None
+                    if rooms.fx_level_drift(self.fx.stack, levels):
+                        await self.fx.auto_levels(levels, fade_s, f"{why}: levels")
                     break
                 op = "swap" if add and remove else "add" if add else "remove"
-                res = await self.fx.auto_move(FxMove(op, add, remove, f"{why}: {op} {add or remove}"), fade_s)
+                res = await self.fx.auto_move(FxMove(op, add, remove, f"{why}: {op} {add or remove}",
+                                                     level=levels.get(add, 1.0) if add else 1.0), fade_s)
                 if res is None:
                     break
                 if add and res.get("rejected"):          # cannot run here: leave it out on this screen
@@ -823,8 +829,10 @@ class Session(EngineListener):
         elif now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and src._fx_task is None:
             self._fx_check_t = now
             want = self._fx_mirror([p for _, p in rooms.auto_fx(src.fx.stack)])
-            if rooms.fx_step(rooms.auto_fx(self.fx.stack), want) != (None, None):
-                self.follow_fx(want, src.fx_director.fade_s(), "room")
+            levels = rooms.auto_fx_levels(src.fx.stack)
+            if rooms.fx_step(rooms.auto_fx(self.fx.stack), want) != (None, None) \
+                    or rooms.fx_level_drift(self.fx.stack, levels):
+                self.follow_fx(want, src.fx_director.fade_s(), "room", levels)
 
     def _fit(self, spec: SceneSpec, explicit: bool) -> SceneSpec:
         return self.mgr.fit_scene(spec, self.gpu, self.pixels_ratio(), explicit)

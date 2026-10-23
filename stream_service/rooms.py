@@ -115,6 +115,21 @@ def auto_fx(stack: list) -> list[tuple[str, Optional[str]]]:
     return [(st.id, st.spec.preset) for st in stack if getattr(st, "origin", None) == "auto"]
 
 
+def auto_fx_levels(stack: list) -> dict[str, float]:
+    """A FX bus's auto slots' levels (the interplay's ceiling the director gave each), by preset: the first slot's."""
+    out: dict[str, float] = {}
+    for st in stack:
+        if getattr(st, "origin", None) == "auto" and st.spec.preset is not None:
+            out.setdefault(st.spec.preset, float(st.level))
+    return out
+
+
+def fx_level_drift(stack: list, levels: dict) -> bool:
+    """A follower's auto slot plays at another level than its source's slot of the same preset."""
+    return any(getattr(st, "origin", None) == "auto" and st.spec.preset in levels
+               and abs(float(st.level) - levels[st.spec.preset]) > 1e-3 for st in stack)
+
+
 def fx_step(have: list[tuple[str, Optional[str]]], want: list[Optional[str]]) -> tuple[Optional[str], Optional[str]]:
     """One move from a follower's auto effects towards the leader's: (preset to add, slot id to remove)."""
     rest = list(want)
