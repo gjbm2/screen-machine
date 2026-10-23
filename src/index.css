@@ -54,7 +54,8 @@
     --console-text: 0 0% 100%;
   }
 
-  .dark {
+  @media (prefers-color-scheme: dark) {
+  html:not(.light-only) {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
@@ -93,6 +94,7 @@
     
     --console-bg: 0 0% 0%;
     --console-text: 0 0% 100%;
+  }
   }
 }
 
@@ -208,4 +210,13 @@
 .drag-grid img {
   -webkit-touch-callout: none;
   user-select: none;
+}
+
+/* dark mode (the device's own setting, src/darkMode.ts): a score's pages read light on dark (the PDF stays black on white) */
+@media (prefers-color-scheme: dark) {
+  html:not(.light-only) img[src*="/api/v1/score/"][src*=".svg"] {
+    filter: invert(1) hue-rotate(180deg);
+    background-color: transparent; /* a filter turns the element's own background too: the paper is what's behind */
+    border-color: transparent;
+  }
 }

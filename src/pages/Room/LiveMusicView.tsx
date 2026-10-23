@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 import { listenOff, setListenView, useListenHere } from "./listenStream";
 import { isBlack, RISE_S, type NoteFeed } from "./noteFeed";
 import { TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
+import { isDark } from "@/darkMode";
 
 // The Room page's warm skin, as canvas colours.
-const C = {
+const LIGHT_C = {
   roll: "#faf8f4",
   octave: "rgba(120, 100, 80, 0.09)",
   note: "15, 118, 110", // teal-700
@@ -29,6 +30,19 @@ const C = {
   blackLit: "#0d9488", // teal-600
   top: "#d6cdc0",
 };
+// ... and at night (dark mode, src/darkMode.ts: owner, 23 Oct): a dark roll, brighter notes, softer keys
+const DARK_C: typeof LIGHT_C = {
+  roll: "#14110f",
+  octave: "rgba(255, 240, 220, 0.07)",
+  note: "45, 212, 191", // teal-400
+  noteBlack: "20, 184, 166", // teal-500
+  white: "#d6d3d1",
+  whiteEdge: "#a8a29e",
+  whiteLit: "#5eead4",
+  black: "#0c0a09",
+  blackLit: "#0d9488",
+  top: "#44403c",
+};
 
 /** A rounded rectangle path (a plain one where the browser has no roundRect: Safari before 16). */
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number | number[]) {
@@ -38,6 +52,7 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 }
 
 function draw(ctx: CanvasRenderingContext2D, w: number, h: number, feed: NoteFeed, now: number) {
+  const C = isDark() ? DARK_C : LIGHT_C;
   const kb = Math.min(130, Math.max(64, h * 0.17));
   const rollH = h - kb;
   const speed = rollH / RISE_S;

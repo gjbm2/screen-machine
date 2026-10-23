@@ -15,8 +15,7 @@ export const CARD_CLASS =
 /** Big, friendly tap target for primary and secondary buttons (≥ 44 px). */
 export const TAP_BUTTON_CLASS = "h-11 rounded-xl px-5 text-base";
 
-const CSS = `
-.${THEME_CLASS} {
+const LIGHT = `
   --background: 40 33% 97%;
   --foreground: 24 14% 15%;
   --card: 0 0% 100%;
@@ -37,9 +36,43 @@ const CSS = `
   --input: 30 14% 80%;
   --ring: 175 60% 32%;
   --radius: 0.875rem;
-  color-scheme: light;
+  color-scheme: light;`;
+
+// dark mode (the device's setting, as a media query, so it turns at once; src/darkMode.ts: owner, 23 Oct "make sure our various screens in this app all respond
+// properly to dark mode"): the same warm skin at night; a .light-island inside (the score's paper) stays light
+const DARK = `
+  --background: 24 10% 6%;
+  --foreground: 30 12% 90%;
+  --card: 24 9% 10%;
+  --card-foreground: 30 12% 90%;
+  --popover: 24 9% 11%;
+  --popover-foreground: 30 12% 90%;
+  --primary: 174 62% 36%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 26 8% 16%;
+  --secondary-foreground: 30 12% 90%;
+  --muted: 26 8% 15%;
+  --muted-foreground: 30 7% 64%;
+  --accent: 172 30% 15%;
+  --accent-foreground: 170 40% 84%;
+  --destructive: 350 62% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 26 8% 20%;
+  --input: 26 8% 28%;
+  --ring: 174 55% 45%;
+  color-scheme: dark;`;
+
+const CSS = `
+.${THEME_CLASS} {${LIGHT}
   color: hsl(var(--foreground));
   -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  html:not(.light-only) .${THEME_CLASS} {${DARK}
+  }
+  html:not(.light-only) .${THEME_CLASS} .light-island, html:not(.light-only) .light-island.${THEME_CLASS} {${LIGHT}
+    color: hsl(var(--foreground));
+  }
 }
 `;
 
