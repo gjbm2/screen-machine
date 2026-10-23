@@ -275,7 +275,7 @@ export function ModeEditor({
     setBusy("use");
     setProblem(null);
     try {
-      await api.setMode(name);
+      await api.setMode(name, "mode-editor");
       addLog({ type: "ui", summary: `mode ${name} used from the editor` });
       onClose();
     } catch (e) {

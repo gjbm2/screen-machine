@@ -323,8 +323,10 @@ export class RoomApi {
     return this.json<Catalog>("GET", "/api/v1/catalog", undefined, signal);
   }
 
-  setMode(mode: string) {
-    return this.json<{ transition_id?: string }>("PUT", "/api/v1/mode", { mode });
+  /** ``via``: which control asked (room_service logs it as the switch's source, "web:<via>"), so a switch nobody
+   *  remembers making can be traced to the button that sent it. */
+  setMode(mode: string, via: string) {
+    return this.json<{ transition_id?: string }>("PUT", "/api/v1/mode", { mode, source: `web:${via}` });
   }
 
   setDesired(screen: string, desired: Desired) {
