@@ -22,9 +22,20 @@
 // open. Scroll in the stand stacks the pages at the screen's width instead. The stand's mode and each piece's place are
 // kept for the tab's session, so closing and opening again comes back to the same page.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
@@ -63,6 +74,165 @@ const ICON_BUTTON =
 const BAR_BUTTON =
   "grid h-11 min-w-11 shrink-0 place-items-center rounded-full px-1.5 text-[15px] font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35 disabled:hover:bg-transparent";
 const FIELD = "h-11 rounded-xl bg-white text-base md:text-base";
+
+// ── Turning pages by hand (owner, 23 Oct: "swipe gestures, sensible clicks to move forward / backward ... with suitable
+// mouse cursor changes") ──────────────────────────────────────────────────────────────────────────────────────────────
+// A page (or the stand's whole screen) has zones: the left third goes back, the right goes forward (the right two thirds
+// when nothing sits in the middle: forward is the common move); the view's middle third opens the stand. A mouse sees
+// the zone it's over as its cursor (a dark disc with an arrow) and a soft band with a chevron on that side; a click
+// there acts. A swipe (touch, pen, or a mouse drag) left goes forward, right back, by distance or by a quick flick; the
+// pointer is captured so a swipe that ends off the page still counts. A trackpad's two-finger swipe sideways turns too
+// (and, where the page doesn't scroll, a wheel turn up or down), once per gesture.
+
+type Zone = "prev" | "next" | "open";
+
+const cursorSvg = (path: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><circle cx='18' cy='18' r='15' fill='rgba(28,25,23,0.82)' stroke='white' stroke-width='1.5'/><path d='${path}' fill='none' stroke='white' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/></svg>`,
+  )}") 18 18`;
+const CURSORS: Record<string, string> = {
+  prev: `${cursorSvg("M20.5 11 13.5 18l7 7")}, w-resize`,
+  next: `${cursorSvg("M15.5 11l7 7-7 7")}, e-resize`,
+  up: `${cursorSvg("M11 20.5 18 13.5l7 7")}, n-resize`,
+  down: `${cursorSvg("M11 15.5l7 7 7-7")}, s-resize`,
+};
+const SWIPE_PX = 60;          // a swipe this long turns ...
+const FLICK_PX = 25;          // ... or a quick flick (this long, at FLICK_V px/ms)
+const FLICK_V = 0.35;
+const TAP_PX = 10;
+const WHEEL_TURN = 90;        // a wheel / trackpad gesture this long turns once ...
+const WHEEL_QUIET_MS = 450;   // ... and its momentum is ignored this long
+
+function usePageTurner(o: {
+  onPrev: () => void;
+  onNext: () => void;
+  canPrev: boolean;
+  canNext: boolean;
+  /** The middle third opens something (the stand) instead of turning. */
+  onOpen?: () => void;
+  /** Turns go up and down a scrolled page (arrows point up / down; no swipe: the page scrolls by itself). */
+  vertical?: boolean;
+  /** Which wheel gestures turn: "x" sideways only (the page scrolls up and down itself), "xy" both, none: none. */
+  wheel?: "x" | "xy";
+  enabled?: boolean;
+}) {
+  const [zone, setZone] = useState<Zone | null>(null);
+  const down = useRef<{ x: number; y: number; t: number } | null>(null);
+  const wheelAcc = useRef({ v: 0, quietUntil: 0, last: 0 });
+  const opts = useRef(o);
+  opts.current = o;
+  const on = o.enabled !== false;
+
+  const zoneOf = (e: { clientX: number; currentTarget: Element }): Zone => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const f = (e.clientX - r.left) / Math.max(1, r.width);
+    if (opts.current.onOpen) return f < 1 / 3 ? "prev" : f > 2 / 3 ? "next" : "open";
+    return f < 1 / 3 ? "prev" : "next";
+  };
+  const act = (z: Zone) => {
+    const c = opts.current;
+    if (z === "prev" && c.canPrev) c.onPrev();
+    else if (z === "next" && c.canNext) c.onNext();
+    else if (z === "open") c.onOpen?.();
+  };
+
+  const handlers = on
+    ? {
+        onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+          if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) {
+            down.current = null;
+            return;
+          }
+          const el = e.currentTarget;
+          if (e.clientX - el.getBoundingClientRect().left > el.clientWidth) {
+            down.current = null; // on the scroll bar: the browser's
+            return;
+          }
+          down.current = { x: e.clientX, y: e.clientY, t: performance.now() };
+          if (!opts.current.vertical) {
+            try {
+              el.setPointerCapture(e.pointerId);
+            } catch {
+              /* an element that can't capture: the swipe must end on it */
+            }
+          }
+        },
+        onPointerMove: (e: ReactPointerEvent<HTMLElement>) => {
+          if (e.pointerType !== "mouse" || down.current) return;
+          const z = zoneOf(e);
+          setZone((cur) => (cur === z ? cur : z));
+        },
+        onPointerLeave: () => setZone(null),
+        onPointerCancel: () => {
+          down.current = null;
+        },
+        onPointerUp: (e: ReactPointerEvent<HTMLElement>) => {
+          const s = down.current;
+          down.current = null;
+          if (!s) return;
+          const dx = e.clientX - s.x;
+          const dy = e.clientY - s.y;
+          const dt = Math.max(1, performance.now() - s.t);
+          const c = opts.current;
+          if (!c.vertical && Math.abs(dx) > 1.4 * Math.abs(dy) && (Math.abs(dx) >= SWIPE_PX || (Math.abs(dx) >= FLICK_PX && Math.abs(dx) / dt >= FLICK_V))) {
+            if (dx < 0) {
+              if (c.canNext) c.onNext();
+            } else if (c.canPrev) c.onPrev();
+            return;
+          }
+          if (Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX) act(zoneOf(e));
+        },
+        onWheel: (e: ReactWheelEvent<HTMLElement>) => {
+          const c = opts.current;
+          if (!c.wheel || e.ctrlKey) return; // ctrl: a pinch (zoom), the browser's
+          const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+          if (!sideways && c.wheel === "x") return;
+          const now = performance.now();
+          const w = wheelAcc.current;
+          if (now - w.last > 200) w.v = 0;
+          w.last = now;
+          if (now < w.quietUntil) return;
+          w.v += sideways ? e.deltaX : e.deltaY;
+          if (Math.abs(w.v) < WHEEL_TURN) return;
+          if (w.v > 0) {
+            if (c.canNext) c.onNext();
+          } else if (c.canPrev) c.onPrev();
+          w.v = 0;
+          w.quietUntil = now + WHEEL_QUIET_MS;
+        },
+      }
+    : {};
+
+  let cursor: string | undefined;
+  if (on && zone) {
+    if (zone === "open") cursor = "zoom-in";
+    else if (zone === "prev") cursor = o.canPrev ? CURSORS[o.vertical ? "up" : "prev"] : "default";
+    else cursor = o.canNext ? CURSORS[o.vertical ? "down" : "next"] : "default";
+  }
+  return { handlers, zone: on ? zone : null, cursor };
+}
+
+/** The mouse's zone, shown: a soft band with a chevron on the side a click would turn to. */
+function ZoneHint({ zone, canPrev, canNext, vertical, withOpen }: { zone: Zone | null; canPrev: boolean; canNext: boolean; vertical?: boolean; withOpen?: boolean }) {
+  if (!zone || zone === "open" || (zone === "prev" ? !canPrev : !canNext)) return null;
+  const left = zone === "prev";
+  const width = left || withOpen ? "33.333%" : "66.667%";
+  const Icon = vertical ? (left ? ChevronUp : ChevronDown) : left ? ChevronLeft : ChevronRight;
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-y-0 flex items-center from-stone-900/[0.06] to-transparent",
+        left ? "left-0 justify-start bg-gradient-to-r" : "right-0 justify-end bg-gradient-to-l",
+      )}
+      style={{ width }}
+    >
+      <span className="mx-3 grid h-11 w-11 place-items-center rounded-full bg-stone-900/70 text-white shadow">
+        <Icon className="h-6 w-6" />
+      </span>
+    </div>
+  );
+}
 
 const tens = (x: number) => Math.max(0, Math.floor(x / 10) * 10);
 
@@ -170,7 +340,6 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const area = useRef<HTMLDivElement>(null);
   const imgs = useRef<(HTMLImageElement | null)[]>([]);
   const scrollToPage = useRef(0);
-  const swipe = useRef<{ x: number; y: number } | null>(null);
   /** The music stand: where it opened (a fraction of the way through), while it's open. */
   const [stand, setStand] = useState<number | null>(null);
   const standOpen = stand !== null;
@@ -263,6 +432,16 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const count = shown?.st.pages ?? 0;
   const cur = Math.min(Math.max(1, page), Math.max(1, count));
   const go = useCallback((n: number) => setPage(Math.min(Math.max(1, n), Math.max(1, count))), [count]);
+  const viewTurner = usePageTurner({
+    onPrev: () => go(cur - 1),
+    onNext: () => go(cur + 1),
+    canPrev: cur > 1,
+    canNext: cur < count,
+    onOpen: () => openStandRef.current(cur),
+    wheel: "x",
+    enabled: mode === "pages" && !!shown && count > 0,
+  });
+  const openStandRef = useRef<(n?: number) => void>(() => undefined);
   const pageUrl = useCallback(
     (n: number) =>
       shown ? api.scorePageUrl(pieceId, n, { w: shown.w, h: shown.h, staff: shown.staff, rev: shown.st.rev, kind: shown.st.kind }) : "",
@@ -369,6 +548,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
     }
     setStand(at);
   };
+  openStandRef.current = openStand;
   /** Closed at this place (by Back: popped): the view follows it (Pages turns to it, Scroll scrolls to it once
    * fullscreen has gone). */
   const closeStand = (at: number, popped = false) => {
@@ -457,29 +637,10 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       ) : (
         <div>
           <div
-            className="cursor-pointer select-none"
-            style={{ touchAction: "pan-y pinch-zoom" }}
-            onPointerDown={(e) => {
-              swipe.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-            }}
-            onPointerCancel={() => {
-              swipe.current = null;
-            }}
-            onPointerUp={(e) => {
-              const s = swipe.current;
-              swipe.current = null;
-              if (!s) return;
-              const dx = e.clientX - s.x;
-              const dy = e.clientY - s.y;
-              if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) go(dx < 0 ? cur + 1 : cur - 1);
-              else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-                const r = e.currentTarget.getBoundingClientRect();
-                const f = (e.clientX - r.left) / r.width;
-                if (f < 1 / 3) go(cur - 1);
-                else if (f > 2 / 3) go(cur + 1);
-                else openStand(cur);
-              }
-            }}
+            className="relative select-none"
+            style={{ touchAction: "pan-y pinch-zoom", cursor: viewTurner.cursor }}
+            title="Click the right of the page for the next, the left for the previous; the middle plays from it full screen"
+            {...viewTurner.handlers}
           >
             <img
               src={pageUrl(cur)}
@@ -490,6 +651,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
               draggable={false}
               className={PAGE_CLASS}
             />
+            <ZoneHint zone={viewTurner.zone} canPrev={cur > 1} canNext={cur < count} withOpen />
           </div>
           <div className="flex items-center justify-center gap-4" style={{ height: PAGER_H }}>
             <button type="button" aria-label="Previous page" disabled={cur <= 1} onClick={() => go(cur - 1)} className={ROUND}>
@@ -847,7 +1009,6 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   const [page, setPage] = useState(() => pageAt(start, seed.st.pages ?? 1, false));
   /** Scroll: the page in view and how far down the piece the screen's bottom is (0..1). */
   const [scrolled, setScrolled] = useState({ page: 1, done: 0 });
-  const swipe = useRef<{ x: number; y: number } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const remember = useCallback(() => sessionSet(standAtKey(pieceId), String(at.current)), [pieceId]);
@@ -1026,6 +1187,34 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   }, [mode, count, cur, spread, pageUrl]);
 
   const close = useCallback(() => onClose(at.current), [onClose]);
+
+  // Clicks, swipes and trackpad gestures turn the pages (Pages), or move a screen up or down (Scroll).
+  const scrollScreen = (d: number) => {
+    const el = box.current;
+    if (el) el.scrollBy({ top: d * el.clientHeight * 0.85, behavior: "smooth" });
+  };
+  const pagesTurner = usePageTurner({
+    onPrev: () => go(cur - step),
+    onNext: () => go(cur + step),
+    canPrev: cur > 1,
+    canNext: cur < last,
+    wheel: "xy",
+    enabled: mode === "pages",
+  });
+  const scrollCanPrev = scrolled.done > 0 && (box.current?.scrollTop ?? 0) > 1;
+  const scrollCanNext = scrolled.done < 0.999;
+  const scrollTurner = usePageTurner({
+    onPrev: () => scrollScreen(-1),
+    onNext: () => scrollScreen(1),
+    canPrev: scrollCanPrev,
+    canNext: scrollCanNext,
+    vertical: true,
+    enabled: mode === "scroll",
+  });
+  const turner =
+    mode === "pages"
+      ? { ...pagesTurner, canPrev: cur > 1, canNext: cur < last }
+      : { ...scrollTurner, canPrev: scrollCanPrev, canNext: scrollCanNext };
 
   // Back closes the stand (the view put an entry on top for it).
   useEffect(() => {
@@ -1229,37 +1418,20 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
           ref={box}
           className={cn(
             "absolute inset-0 select-none overscroll-contain",
-            mode === "scroll" ? "overflow-y-auto overflow-x-hidden" : "cursor-pointer overflow-hidden",
+            mode === "scroll" ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden",
           )}
           style={{
             overflowAnchor: "none",
             WebkitTouchCallout: "none",
             touchAction: mode === "scroll" ? "pan-y pinch-zoom" : "pinch-zoom",
+            cursor: turner.cursor,
           }}
           onScroll={mode === "scroll" ? onScroll : undefined}
-          onPointerDown={(e) => {
-            // the first finger (or the main mouse button) only: a second finger is a pinch
-            swipe.current = mode === "pages" && e.isPrimary && (e.pointerType !== "mouse" || e.button === 0) ? { x: e.clientX, y: e.clientY } : null;
-          }}
-          onPointerCancel={() => {
-            swipe.current = null;
-          }}
-          onPointerUp={(e) => {
-            const s = swipe.current;
-            swipe.current = null;
-            if (!s || mode !== "pages") return;
-            const dx = e.clientX - s.x;
-            const dy = e.clientY - s.y;
-            if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) go(dx < 0 ? cur + step : cur - step);
-            else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
-              // forward is the common move: the right two thirds
-              const r = e.currentTarget.getBoundingClientRect();
-              go((e.clientX - r.left) / r.width < 1 / 3 ? cur - step : cur + step);
-            }
-          }}
+          {...turner.handlers}
         >
           {pages}
         </div>
+        <ZoneHint zone={turner.zone} canPrev={turner.canPrev} canNext={turner.canNext} vertical={mode === "scroll"} />
 
         {problem && (
           <div className="absolute inset-x-0 bottom-4 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-3 rounded-full border border-amber-200 bg-white/95 px-4 py-2 text-[15px] text-amber-800 shadow-sm">
