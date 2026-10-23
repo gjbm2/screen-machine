@@ -3,15 +3,16 @@
 The first version laid out a score by starting Python and Verovio afresh and drawing every page as SVG for each
 size asked: Islamey on a phone is 165 pages, 11-34 s a size, past the page's 30 s wait.  This worker stays up
 (show_service's score_sheet.py starts it with the show and keeps it), keeps the last LRU layouts (one Verovio
-toolkit each: the MEI laid out for one page size and staff, and the pages it has drawn), and while no request waits
-it draws the newest layout's pages ahead, from the one last asked for onwards (owner, 23 Oct: "user is playing the
+toolkit each: the MEI laid out for one page size and staff, a few pages at a time: sheet_pages.Paginator, so a
+count answers once the first pages are laid out, with an estimate, and the rest follow), and while no request waits
+it lays out the rest of the newest layout, then draws its pages ahead, from the one last asked for onwards (owner, 23 Oct: "user is playing the
 piano -- needs to turn pages instantly with a tap": Islamey's pages took 0.2-0.4 s each to draw, and up to 14 s
 queued behind a layout; drawn ahead, a turn is a lookup).
 
     python -m stream_service.score.sheet_worker       (sm-stream's python: Verovio)
 stdin / stdout, one JSON object a line each way:
     {"id", "op": "version"}                                    -> {"id", "version"}
-    {"id", "op": "count", "mei": path, "w", "h", "staff"}       -> {"id", "pages"}
+    {"id", "op": "count", "mei": path, "w", "h", "staff"}       -> {"id", "pages", "partial"} (partial: an estimate)
     {"id", "op": "page", "mei": path, "w", "h", "staff", "n"}   -> {"id", "svg"}
     {"id", "op": "geometry", ... same, "n"}                    -> {"id", "bars": [[n, x0, y0, x1, y1]], "heads": [[id, x, y]]}
     {"id", "op": "pagemap", ... same as count}                 -> {"id", "pages": [[first bar, last bar], ...]}
@@ -31,7 +32,7 @@ import sys
 from typing import Optional
 
 from .sheet import generator_version
-from .sheet_pages import STAFF_UNITS, _toolkit
+from .sheet_pages import STAFF_UNITS, Paginator
 
 LRU = 6
 HERE = pathlib.Path(__file__).parent
@@ -130,45 +131,39 @@ def geometry(svg: str, w: float, h: float) -> dict:
 
 
 class _Layout:
-    """One size's Verovio toolkit and the pages it has drawn."""
+    """One size's layout, laid out a few pages at a time (sheet_pages.Paginator), and the pages it has drawn."""
 
-    def __init__(self, tk) -> None:
-        self.tk = tk
-        self.count = tk.getPageCount()
+    def __init__(self, pg) -> None:
+        self.pg = pg
         self.svg: dict[int, str] = {}
         self.geo: dict[int, dict] = {}
-        self._pages: Optional[list] = None
+
+    @property
+    def count(self) -> int:
+        return self.pg.estimate
+
+    @property
+    def done(self) -> bool:
+        return self.pg.done
 
     def pagemap(self) -> list:
-        """[[first bar, last bar], ...] per page (Verovio's own: which page each bar's measure landed on)."""
-        if self._pages is None:
-            import json as _json
-            first: dict[int, int] = {}
-            last: dict[int, int] = {}
-            n = 1
-            while True:
-                try:
-                    pg = int(self.tk.getPageWithElement(f"m{n}"))
-                except Exception:                        # noqa: BLE001
-                    pg = 0
-                if pg <= 0:
-                    break
-                first.setdefault(pg, n)
-                last[pg] = n
-                n += 1
-            self._pages = [[first.get(p, 0), last.get(p, 0)] for p in range(1, self.count + 1)]
-            _json.dumps(self._pages)
-        return self._pages
+        """[[first bar, last bar], ...] for each page laid out so far."""
+        return [[a, z] for _tk, _p, a, z in self.pg.pages]
 
     def page(self, n: int) -> str:
         got = self.svg.get(n)
         if got is None:
-            got = self.svg[n] = self.tk.renderToSVG(n)
+            self.pg.upto(n)
+            if n > len(self.pg.pages):
+                raise ValueError(f"no page {n} (of {len(self.pg.pages)})")
+            tk, p, _a, _z = self.pg.pages[n - 1]
+            got = self.svg[n] = tk.renderToSVG(p)
         return got
 
     def next_undrawn(self, near: int) -> Optional[int]:
         """The page to draw ahead: the ones after ``near`` first (a reader goes forward), then the rest."""
-        for n in list(range(near, self.count + 1)) + list(range(near - 1, 0, -1)):
+        have = len(self.pg.pages)
+        for n in list(range(near, have + 1)) + list(range(near - 1, 0, -1)):
             if n not in self.svg:
                 return n
         return None
@@ -189,6 +184,9 @@ def main() -> int:
         while ahead is not None and not _ready(stdin):
             lay = layouts.get(ahead[0])
             n = lay.next_undrawn(ahead[1]) if lay is not None else None
+            if lay is not None and not lay.done and (n is None or n >= ahead[1] + 3):
+                lay.pg.more()                             # the next pages drawn first, then the rest laid out
+                continue
             if n is None:
                 ahead = None
                 break
@@ -223,29 +221,30 @@ def main() -> int:
                 lay = layouts.get(key)
                 if lay is None:
                     k = STAFF_UNITS / max(12.0, staff)
-                    lay = layouts[key] = _Layout(_toolkit(pathlib.Path(path).read_text(), w * k, h * k,
-                                                          (50, 50, 50, 50), header=False))
+                    lay = layouts[key] = _Layout(Paginator(pathlib.Path(path).read_text(), w * k, h * k,
+                                                           (50, 50, 50, 50), header=False))
+                    lay.pg.upto(2)
                     while len(layouts) > LRU:
                         layouts.popitem(last=False)
                 else:
                     layouts.move_to_end(key)
                 if op == "count":
-                    out = {"pages": lay.count}
+                    out = {"pages": lay.count, "partial": not lay.done}
                     ahead = (key, 1)
-                elif op == "pagemap":                    # each page's first and last bar
-                    out = {"pages": lay.pagemap()}
+                elif op == "pagemap":                    # each page's first and last bar, as far as laid out
+                    out = {"pages": lay.pagemap(), "partial": not lay.done}
                 elif op == "geometry":
                     n = int(req["n"])
-                    if not 1 <= n <= lay.count:
-                        raise ValueError(f"no page {n} (of {lay.count})")
+                    if n < 1:
+                        raise ValueError(f"no page {n}")
                     g = lay.geo.get(n)
                     if g is None:
                         g = lay.geo[n] = geometry(lay.page(n), w, h)
                     out = g
                 else:
                     n = int(req["n"])
-                    if not 1 <= n <= lay.count:
-                        raise ValueError(f"no page {n} (of {lay.count})")
+                    if n < 1:
+                        raise ValueError(f"no page {n}")
                     svg = lay.page(n)
                     if not svg:
                         raise RuntimeError(f"page {n} wouldn't draw")

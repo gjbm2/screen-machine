@@ -175,6 +175,8 @@ export interface ScoreStatus {
   rev?: string;
   /** failed: what went wrong. */
   detail?: string;
+  /** ready, but the rest of the layout is still coming: `pages` is an estimate (ask again). */
+  partial?: boolean;
   /** The listener's own piece (an upload or a recording): its title and composer can be changed (api.edit). */
   editable?: boolean;
 }

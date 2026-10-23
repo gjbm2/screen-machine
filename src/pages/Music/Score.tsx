@@ -413,7 +413,10 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         }
         setStatus(st);
         setProblem(null);
-        if (st.state === "ready") setShown({ st, ...size, staff });
+        if (st.state === "ready") {
+          setShown({ st, ...size, staff });
+          if (st.partial) timer = setTimeout(ask, POLL_MS); // the rest still being laid out: the page count settles
+        }
         else if (st.state === "queued" || st.state === "making") timer = setTimeout(ask, POLL_MS);
       } catch (e) {
         if (ac.signal.aborted) return;
@@ -457,7 +460,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   );
   // follow along: the player's place lights the bar and notes playing; the page keeps up with it
   const layout = useMemo(
-    () => (shown ? { w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: shown.st.rev } : null),
+    () => (shown ? { w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: `${shown.st.rev}~${shown.st.pages}` } : null),
     [shown],
   );
   const follow = useFollow(pieceId, standOpenRef.current ? null : layout);
@@ -1141,6 +1144,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
         if (st.state === "ready") {
           setProblem(null);
           setShown({ st, ...want });
+          if (st.partial) timer = setTimeout(ask, POLL_MS);
         } else if (st.state === "queued" || st.state === "making") timer = setTimeout(ask, POLL_MS);
         else setProblem({ words: st.detail ? `Couldn't lay the score out for this screen (${st.detail}).` : "Couldn't lay the score out for this screen.", retrying: false });
       } catch (e) {
@@ -1168,7 +1172,7 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     [api, pieceId, shown],
   );
   // follow along on the stand's own layout: the light, and the pages keep up with the music
-  const layout = useMemo(() => ({ w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: shown.st.rev }), [shown]);
+  const layout = useMemo(() => ({ w: shown.w, h: shown.h, staff: shown.staff, kind: shown.st.kind, rev: `${shown.st.rev}~${shown.st.pages}` }), [shown]);
   const follow: Follow = useFollow(pieceId, layout);
 
   const onScroll = useCallback(() => {
