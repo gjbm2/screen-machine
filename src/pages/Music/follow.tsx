@@ -12,6 +12,13 @@
 //                 bar boxes and note heads, GET /score/<id>/page/<n>.json, fetched once a page has the light)
 //   Transport     ⏮ ◀ ⏯ ▶: back to the start, a bar back, play / pause, a bar on; play from the page in view when
 //                 nothing plays
+//
+// A tap answers at once, whatever the sound's delay (owner, 23 Oct: "the interface still needs to be sensibly
+// responsive (even if there's a delay after I press play)"): Pause freezes the light where it is (what was heard) and
+// the button turns to Play; Play, a bar back or on, and back to the start put the light on that bar straight away,
+// "Starting…", and the button turns to Pause (a second tap stops it again) until the sound gets there. Carry on plays
+// from where the light stopped (a seek: what this device heard, not the player's own place, which runs ahead by the
+// stream's delay).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, SkipBack, StepBack, StepForward } from "lucide-react";
@@ -39,9 +46,16 @@ export interface Playhead {
   notes: Set<number>;
   /** The page (1-based) the bar playing is on, or null. */
   page: number | null;
+  /** Asked to play from ``pos``; the sound isn't there yet (the player starting it, or this device's delay). */
+  starting: boolean;
 }
 
-const NO_HEAD: Playhead = { playing: false, mine: false, pos: null, bar: null, notes: new Set(), page: null };
+const NO_HEAD: Playhead = { playing: false, mine: false, pos: null, bar: null, notes: new Set(), page: null, starting: false };
+
+/** A tap not yet borne out by the player: play (from pos) or pause (frozen at pos). */
+type Intent = { kind: "play" | "pause"; pos: number; at: number; answered?: boolean };
+/** A tap's answer is waited for this long; then the player's own view wins again. */
+const INTENT_MS = 20_000;
 
 /** The last index i with key(xs[i]) <= v, or -1. */
 function lastAtOrBefore<T>(xs: T[], v: number, key: (x: T) => number): number {
@@ -94,23 +108,52 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     return () => clearInterval(t);
   }, [playing]);
 
+  // a tap, shown at once (module comment); the player's view takes over once it bears it out
+  const [intent, setIntent] = useState<Intent | null>(null);
+  // where the last play started: the light never shows earlier than that (the sound's delay would pull it back)
+  const anchor = useRef<{ pos: number; until: number } | null>(null);
+  useEffect(() => {
+    if (!intent?.answered) return; // the views from before the player's answer say nothing about the tap
+    if (intent.kind === "play" && playing) setIntent(null);
+    else if (intent.kind === "pause" && v && !["playing", "preparing", "paused"].includes(v.state)) setIntent(null);
+    else if (intent.kind === "pause" && (v?.state === "playing" || v?.state === "preparing")) setIntent(null);
+  }, [intent, playing, v]);
+  useEffect(() => {
+    if (!intent || (intent.kind === "pause" && v?.state === "paused")) return; // a pause holds while it's paused
+    const t = setTimeout(() => setIntent(null), INTENT_MS);
+    return () => clearTimeout(t);
+  }, [intent, v?.state]);
+  useEffect(() => {
+    if (!intent) return;
+    const t = setInterval(() => setNow(performance.now()), 250);
+    return () => clearInterval(t);
+  }, [intent]);
+
   // this device playing the piano itself hears it later than the room: the light waits for what it hears
   const lag = useDeviceLag();
   const head: Playhead = useMemo(() => {
+    const at = (p: number, live: boolean, starting: boolean): Playhead => {
+      if (!data) return { ...NO_HEAD, mine: true, playing: live, pos: p, starting };
+      const bi = lastAtOrBefore(data.bars, p, (x) => x[1]);
+      const bar = bi >= 0 ? data.bars[bi][0] : (data.bars[0]?.[0] ?? null);
+      const notes = new Set<number>();
+      if (live) {
+        const ni = lastAtOrBefore(data.notes, p, (x) => x[1]);
+        for (let i = ni; i >= 0 && data.notes[i][1] > p - GLOW_S; i--) notes.add(data.notes[i][0]);
+      }
+      const page = bar === null ? null : data.pages.findIndex(([a, z]) => a <= bar && bar <= z) + 1 || null;
+      return { playing: live, mine: true, pos: p, bar, notes, page, starting };
+    };
+    if (intent?.kind === "pause") return at(intent.pos, false, false);
+    if (intent?.kind === "play") return at(intent.pos, false, true);
     const b = base;
     if (!mine || !b) return { ...NO_HEAD, mine };
-    const pos = Math.max(0, b.pos + (playing ? (Math.max(0, now - b.at) / 1000) * b.speed : 0) + (playing ? LEAD_S : 0) - (playing && lag ? lag * b.speed : 0));
-    if (!data) return { ...NO_HEAD, mine, playing, pos };
-    const bi = lastAtOrBefore(data.bars, pos, (x) => x[1]);
-    const bar = bi >= 0 ? data.bars[bi][0] : (data.bars[0]?.[0] ?? null);
-    const notes = new Set<number>();
-    if (playing) {
-      const ni = lastAtOrBefore(data.notes, pos, (x) => x[1]);
-      for (let i = ni; i >= 0 && data.notes[i][1] > pos - GLOW_S; i--) notes.add(data.notes[i][0]);
-    }
-    const page = bar === null ? null : data.pages.findIndex(([a, z]) => a <= bar && bar <= z) + 1 || null;
-    return { playing, mine, pos, bar, notes, page };
-  }, [mine, playing, now, data, base, lag]);
+    const raw = Math.max(0, b.pos + (playing ? (Math.max(0, now - b.at) / 1000) * b.speed : 0) + (playing ? LEAD_S : 0) - (playing && lag ? lag * b.speed : 0));
+    const a = anchor.current && performance.now() < anchor.current.until ? anchor.current.pos : null;
+    const waiting = (playing && a !== null && raw < a) || v?.state === "preparing";
+    const pos = a !== null && v?.state !== "paused" ? Math.max(a, raw) : raw;
+    return at(pos, playing && !waiting, waiting);
+  }, [mine, playing, now, data, base, lag, intent, v]);
 
   const barStart = useCallback(
     (n: number): number | null => {
@@ -134,14 +177,28 @@ export function useFollow(pieceId: string, layout: (ScoreSize & { kind?: ScoreKi
     },
     [player],
   );
+  const shown = useCallback(async (it: Intent, run: () => Promise<{ ok: boolean }>) => {
+    setIntent(it);
+    if (it.kind === "play") anchor.current = { pos: it.pos, until: performance.now() + 15_000 };
+    const r = await run();
+    setIntent((i) => (i && i.at === it.at ? (r.ok ? { ...i, answered: true } : null) : i));
+    return r;
+  }, []);
   const playFrom = useCallback(
-    (t: number) => act(mine ? { action: "seek", start_s: t } : { action: "play", piece: pieceId, start_s: t }, { action: "play", piece: pieceId, start_s: t }),
-    [act, mine, pieceId],
+    (t: number) =>
+      shown({ kind: "play", pos: Math.max(0, t), at: Date.now() }, () =>
+        act(mine ? { action: "seek", start_s: Math.max(0, t) } : { action: "play", piece: pieceId, start_s: Math.max(0, t) }, { action: "play", piece: pieceId, start_s: Math.max(0, t) }),
+      ),
+    [act, mine, pieceId, shown],
   );
-  const pause = useCallback(() => act({ action: "pause" }, { action: "stop" }), [act]);
+  const pause = useCallback(
+    () => shown({ kind: "pause", pos: lastPos.current ?? 0, at: Date.now() }, () => act({ action: "pause" }, { action: "stop" })),
+    [act, shown],
+  );
+  /** Carry on from where the light stopped (what was heard), else the player's own resume. */
   const resume = useCallback(
-    () => act({ action: "resume" }, { action: "play", piece: pieceId, start_s: lastPos.current ?? 0 }),
-    [act, pieceId],
+    () => (lastPos.current !== null ? playFrom(lastPos.current) : act({ action: "resume" }, { action: "play", piece: pieceId, start_s: 0 })),
+    [act, pieceId, playFrom],
   );
 
   return { data, head, barStart, firstBarOnPage, playFrom, pause, resume, busy: player.busy };
@@ -197,7 +254,11 @@ export function FollowLight({
     <div aria-hidden className="pointer-events-none absolute inset-0">
       {box && (
         <div
-          className={cn("absolute rounded-md transition-[left,top,width,height] duration-150", head.playing ? "bg-teal-400/15 ring-2 ring-teal-500/40" : "bg-amber-300/20 ring-2 ring-amber-400/50")}
+          className={cn(
+            "absolute rounded-md transition-[left,top,width,height] duration-150",
+            head.playing ? "bg-teal-400/15 ring-2 ring-teal-500/40" : "bg-amber-300/20 ring-2 ring-amber-400/50",
+            head.starting && "motion-safe:animate-pulse",
+          )}
           style={{
             left: `${box[1] * 100}%`,
             top: `${Math.max(0, box[2] - pad) * 100}%`,
@@ -236,8 +297,9 @@ export function Transport({ follow, pageInView, compact }: { follow: Follow; pag
     const j = Math.min(Math.max(0, idx + d), bars.length - 1);
     void playFrom(bars[j][1]);
   };
+  const going = head.playing || head.starting;
   const toggle = () => {
-    if (head.playing) void pause();
+    if (going) void pause();
     else if (head.mine) void resume();
     else void playFrom(startOfPage());
   };
@@ -251,19 +313,20 @@ export function Transport({ follow, pageInView, compact }: { follow: Follow; pag
       </button>
       <button
         type="button"
-        aria-label={head.playing ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
-        title={head.playing ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
+        aria-label={going ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
+        title={going ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
         onClick={toggle}
-        className={cn(ROUND, "h-12 w-12 bg-teal-700 text-white hover:bg-teal-800")}
+        className={cn(ROUND, "relative h-12 w-12 bg-teal-700 text-white hover:bg-teal-800")}
       >
-        {head.playing ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
+        {head.starting && <span aria-hidden className="absolute inset-0 rounded-full border-2 border-white/70 border-t-transparent motion-safe:animate-spin" />}
+        {going ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
       </button>
       <button type="button" aria-label="A bar on" title="A bar on" disabled={!data} onClick={() => step(1)} className={ROUND}>
         <StepForward className="h-5 w-5" aria-hidden />
       </button>
       {!compact && head.mine && head.bar !== null && (
         <span className="ml-1 text-sm tabular-nums text-muted-foreground" aria-live="polite">
-          bar {head.bar}
+          {head.starting ? `Starting at bar ${head.bar}…` : `bar ${head.bar}`}
         </span>
       )}
     </div>
