@@ -6,11 +6,14 @@ Author: smfx
 License: MIT (this file)
 license_class: permissive
 
-Listens to the piano (``listens = ("notes",)``).  x is time: a stationary page of NSYS grand-staff systems is written
-left to right by a "now" cursor, wrapping to the next system; the oldest system is overwritten (its old ink fades out
-just ahead of the cursor), so 30-45 s of music stays on the page.  Each system's seconds adapt to the playing (the
-recent onset spacing per staff, 6.5-12 s a system), and silences longer than IDLE_S are compressed (the cursor parks;
-the map from sound time to page time keeps its history, so a note heard late still lands at its exact time).
+Listens to the piano (``listens = ("notes",)``).  x is time: a page of NSYS grand-staff systems; the one being
+written is always the BOTTOM one, its "now" cursor moving left to right.  As it nears its end (TURN_LEAD_S of page time
+left) the whole page glides up one system (a quintic glide, TURN_S: live_score's page turn), the top system leaving
+off the top as it dims and a fresh one coming in at the bottom; nothing is written over in place.  30-45 s of music
+stays on the page.  Each system's seconds adapt to the playing (the recent onset spacing per staff, 5.5-10 s a
+system), and silences longer than IDLE_S are compressed (the cursor parks; the map from sound time to page time keeps
+its history, so a note heard late still lands at its exact time).  Records are in system coordinates and each
+system's place on the page is a uniform: the glide costs no record rebuild.
 
 ONE flow, no second layer: a note is born, on the frame its onset arrives (self.sound's frame: SoundView onsets), at
 its exact onset x and staff step, with its accidental, and a duration tail grows from the head while the key is held.
@@ -52,6 +55,7 @@ from stream_service.plugins._lib.palettes import palette_coeffs
 from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
+from stream_service.score.motion import Glide
 
 log = logging.getLogger("stream_service.plugins.staff_roll")
 
@@ -72,7 +76,8 @@ S_MIN, S_MAX, S0 = 5.5, 10.0, 8.0            # seconds per system (dense ... spa
 MIN_GAP_SP = 2.3                             # the spacing a system aims to give successive chords in a staff
 CHORD_S = 0.06
 CLOCK_JUMP_S = 5.0                           # the sound clock moving more than this in a frame (or back) is a jump
-ERASE_W, OLD_DIM = 0.10, 0.6                 # old ink fades over this fraction of a system ahead of the cursor
+TURN_S, TURN_LEAD_S = 1.6, 1.2              # the page's glide up one system, started this long before the line ends
+                                             # (live_score's 1.6 s; 1.2 s ahead: the new line is ~90 % in place as it starts)
 KEY_EVERY = 0.5
 MAP_KEEP_S = 150.0
 STRIDE = 32                                  # floats per record (see splat: animation channels)
@@ -156,11 +161,10 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
     const float sp = P[0], now = P[1], halo = P[2], gk = P[3], an = P[20];
     const int slot = (int)Q[24];
     const float* SL = S + slot * 8;
-    const bool old = Q[25] < SL[0] - 0.5f;
-    if (old && Q[28] < SL[1]) return;                    // old ink the cursor's erase has passed
-    float alpha = chan(Q + 9, an) * (old ? SL[2] : SL[3]);
+    const float yo = SL[1];                               // the system's place on the page (it glides up)
+    float alpha = chan(Q + 9, an) * SL[3];
     if (alpha <= 0.002f) return;
-    const float qx = chan(Q + 1, an), qy = chan(Q + 5, an);
+    const float qx = chan(Q + 1, an), qy = chan(Q + 5, an) + yo;
     float bx1 = Q[28];
     float len = chan(Q + 15, an);
     if (kind == 3) {                                       // an open tail: to the slot's tail end (the cursor)
@@ -181,11 +185,10 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
     }
     const float hl = kind == 0 ? halo : halo * 0.5f;      // tails glow tighter than heads
     const float pad = g > 0.004f ? hl * 3.f : 1.f;
-    const int x0 = max(0, (int)floorf(Q[26] - pad)), y0 = max(0, (int)floorf(Q[27] - pad));
-    const int x1 = min(W - 1, (int)ceilf(bx1 + pad)), y1 = min(H - 1, (int)ceilf(Q[29] + pad));
+    const int x0 = max(0, (int)floorf(Q[26] - pad)), y0 = max(0, (int)floorf(Q[27] + yo - pad));
+    const int x1 = min(W - 1, (int)ceilf(bx1 + pad)), y1 = min(H - 1, (int)ceilf(Q[29] + yo + pad));
     if (x1 < x0 || y1 < y0) return;
     const int bw = x1 - x0 + 1, npx = bw * (y1 - y0 + 1);
-    const float ex = SL[1], ew = fmaxf(P[4], 1.f);
     for (int i = part * blockDim.x + threadIdx.x; i < npx; i += blockDim.x * nparts) {
         const int X = x0 + i % bw, Y = y0 + i / bw;
         const float px = X + 0.5f, py = Y + 0.5f;
@@ -215,7 +218,6 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
             d = box_d(fmaxf(qx - px, px - (qx + len)), fabsf(py - qy) - Q[13]);
         }
         float a = alpha;
-        if (old) a *= clamp01((px - ex) / ew);              // old ink: gone just ahead of the cursor
         if (a <= 0.002f) continue;
         const float cov = clamp01(0.5f - d) * a;
         const int idx = Y * W + X;
@@ -500,8 +502,11 @@ class StaffRoll(Source):
         self.sp = sp = max(4.0, round(0.955 * self.h / (n * SYS_SP), 2))
         self.pitch_px = SYS_SP * sp
         top = 0.5 * (self.h - n * self.pitch_px)
-        self.T = [top + j * self.pitch_px + TOP_SP * sp for j in range(n)]
-        self.B = [t + GAP_SP * sp for t in self.T]
+        self.top = top                                      # row 0's top; the bottom row (n - 1) is being written
+        self.TL = TOP_SP * sp                               # a system's treble and bass top lines, from its own top:
+        self.BL = self.TL + GAP_SP * sp                     # records are in system coordinates, placed by the uniforms
+        self.nsl = n + 2                                    # uniform slots: every system on the page while it glides
+        self.turn = Glide(-(n - 1.0))                       # the page's position (rows): system g is at row g - turn
         self.x_l = LM_SP * sp + 1.6 * sp                    # the system's opening line (the brace left of it)
         self.x_r = self.w - RM_SP * sp
         self.x0 = self.x_l + HDR_SP * sp                    # where writing starts
@@ -532,7 +537,7 @@ class StaffRoll(Source):
         self.adv = [float(T[g, 10]) or 1.0 for g in range(len(T))]
         self.head_w = self.adv[GL_BLACK] or 1.18
         # uploads: params, slots, records in one pinned buffer, double-buffered
-        self.NP, self.NS = 32, 8 * n
+        self.NP, self.NS = 32, 8 * self.nsl
         self.n_up = self.NP + self.NS + MAX_RECS * STRIDE
         self.up_dev = cp.zeros(self.n_up, cp.float32)
         # three pinned halves: a GPU two frames behind never makes the render thread wait (it waited, spinning,
@@ -611,8 +616,8 @@ class StaffRoll(Source):
     def _step_y(self, slot: int, staff: int, d: float) -> float:
         sp = self.sp
         if staff == 0:
-            return self.T[slot] + (38 - d) * 0.5 * sp
-        return self.B[slot] + (26 - d) * 0.5 * sp
+            return self.TL + (38 - d) * 0.5 * sp
+        return self.BL + (26 - d) * 0.5 * sp
 
     def _ledgers(self, staff: int, d: int) -> list:
         if staff == 0:
@@ -809,7 +814,7 @@ class StaffRoll(Source):
         sp = self.sp
         out: list = []
         j, g = s.slot, s.gen
-        T, B = self.T[j], self.B[j]
+        T, B = self.TL, self.BL
         act = now < s.hdr_t + HDR_S
         hgt = B + 4 * sp - T
         self._glyph(out, _S(self.x_l - 1.15 * sp), _S(B + 4 * sp), GL_BRACE, sx=sp * 1.7, sy=hgt / 4.0, slot=j,
@@ -885,7 +890,7 @@ class StaffRoll(Source):
     def _new_system(self, u0: float) -> _Sys:
         self.gen += 1
         g = self.gen
-        s = _Sys(g, g % self.nsys, u0, self._pxs(), self.width)
+        s = _Sys(g, g % self.nsl, u0, self._pxs(), self.width)
         s.fifths = self.fifths
         s.metre = self.metre
         prev = self.systems.get(g - self.nsys)
@@ -905,7 +910,15 @@ class StaffRoll(Source):
             self.expiring = [n for n in self.expiring if n.gen >= lo]
         self.bars_dirty = True
         self.stats["systems"] += 1
+        self._turn_to(g)
         return s
+
+    def _turn_to(self, g: int) -> None:
+        """The page glides so that system ``g`` is the bottom row (once per system; a late one re-plans)."""
+        tgt = g - (self.nsys - 1.0)
+        if tgt > self.turn.target + 1e-6:
+            self.turn.to(tgt, TURN_S)
+            self.stats["turns"] += 1
 
     def _advance(self, now: float, dt: float, held: bool) -> None:
         if self.map is None:
@@ -914,6 +927,8 @@ class StaffRoll(Source):
         self.map.advance(now, 1.0 if active else 0.0, dt)
         u = self.map.at(now)
         s = self.systems.get(self.gen)
+        if s is not None and self.map.rate > 0.5 and s.u1 - u <= TURN_LEAD_S * self.map.rate:
+            self._turn_to(s.gen + 1)                        # the page glides up as the line nears its end
         k = 0
         while s is not None and u >= s.u1:
             k += 1
@@ -1367,7 +1382,7 @@ class StaffRoll(Source):
     def _bar_recs(self, bl: dict):
         sp = self.sp
         j = bl["slot"]
-        T, B = self.T[j], self.B[j]
+        T, B = self.TL, self.BL
         out: list = []
         A = (0.85, -0.85, bl["die"], 0.4) if bl["die"] is not None else (0.85, 0.0, 0.0, 0.0)
         self._vbox(out, _S(bl["x"]), T, (0.0, B + 4 * sp - T, bl["t"], BAR_S), BAR_HW * sp, A, j, bl["gen"])
@@ -1423,7 +1438,7 @@ class StaffRoll(Source):
                     break
         parts = []
         for g, s in self.systems.items():
-            if g <= lo_gen:                                 # (the old line in this slot: its header is gone)
+            if g < lo_gen:
                 continue
             if s.dirty or s.recs is None or (s.expire and now > s.expire):
                 s.recs = np.array(self._hdr_recs(s, now), np.float32).reshape(-1, STRIDE)
@@ -1464,6 +1479,9 @@ class StaffRoll(Source):
         self.kick += (pulse - self.kick) * (1.0 - math.exp(-dt / 0.15) if dt > 0 else 1.0)
         e = min(max(float(p["energy"]), 0.0), 1.0)
         self._listen(dt)
+        if dt > 0.5:
+            self.turn.snap()
+        self.turn.step(dt)
         now_s = (self.t_sound - self.t_base) if self.t_base is not None else 0.0
         cur = self.systems.get(self.gen)
         if cur is not None and self.map is not None:
@@ -1479,7 +1497,6 @@ class StaffRoll(Source):
         S = np.zeros(self.NS, np.float32)
         sp = self.sp
         P[0], P[1], P[2], P[3] = sp, now_s, (0.25 + 0.35 * e) * sp, float(p["note_glow"])
-        P[4] = ERASE_W * self.width
         P[5] = self.th
         night = self.look == "night"
         P[6] = 1.0 if night else 0.0
@@ -1499,24 +1516,21 @@ class StaffRoll(Source):
         P[18] = self.kick
         P[19] = float(p["intensity"])
         P[20] = self.clock
-        for j in range(self.nsys):
-            S[8 * j + 5], S[8 * j + 6], S[8 * j + 7] = self.T[j], self.B[j], 1.0
-            S[8 * j + 0] = -1e9
-            S[8 * j + 3] = 1.0
-            S[8 * j + 2] = OLD_DIM
-            S[8 * j + 1] = -1e9
-            S[8 * j + 4] = self.x_r
-        for g, s in self.systems.items():
-            if g <= self.gen - self.nsys:
+        # every system on the page: its place (the glide), staff lines (empty ones above the first), ink alpha (the
+        # top row a little dimmer, one leaving the top fading as it goes), and where its open tails end
+        turn, n = self.turn.x, self.nsys
+        for g in range(math.floor(turn) - 1, math.ceil(turn + n) + 1):
+            row = g - turn
+            if row <= -1.0 or row >= n + 1.0:
                 continue
-            j = 8 * s.slot
-            S[j + 0] = g
-            age = self.gen - g
-            S[j + 3] = (1.0, 1.0, 0.9, 0.78)[min(age, 3)]
+            j = 8 * (g % self.nsl)
+            yt = self.top + row * self.pitch_px
+            a = min(1.0, max(0.0, 1.0 + row)) * (0.8 + 0.2 * min(1.0, max(0.0, row) / max(1.0, n - 1.0)))
+            S[j + 0], S[j + 1], S[j + 3] = g, yt, a
+            S[j + 4] = self.x_r
+            S[j + 5], S[j + 6], S[j + 7] = yt + self.TL, yt + self.BL, a
             if g == self.gen:
-                S[j + 1] = (self.cursor or self.x0) + 1.5 * sp
                 S[j + 4] = self.cursor or self.x0
-                S[j + 2] = OLD_DIM + (1.0 - OLD_DIM) * (1.0 - _ease((self.clock - s.born) / 0.8))
         self._upload(P, S, R)
         cp = self.ctx.cp
         if nr:
@@ -1525,7 +1539,7 @@ class StaffRoll(Source):
                           np.int32(self.atlas_ok), self.ink, self.glow, np.int32(self.w), np.int32(self.h)))
         dst = out if self.direct else self.buf
         launch_2d(self.k_comp, self.w, self.h, (dst, self.page, self.ink, self.glow, self.P_dev, self.S_dev,
-                                                np.int32(self.nsys), np.int32(self.w), np.int32(self.h)))
+                                                np.int32(self.nsl), np.int32(self.w), np.int32(self.h)))
         if not self.direct:
             present(self.ctx, self.buf, out)
         self.n_recs = nr
