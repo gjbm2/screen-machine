@@ -169,6 +169,7 @@ class ScoreSheets:
         # A+ / A- find them ready; while it lays one out the first worker is never held up (a page turn can't wait)
         self.prep = _LayoutWorker()
         self.holder: dict[tuple, _LayoutWorker] = {}       # layout -> the worker that has it
+        self.partial: set = set()                          # layouts whose page count is still an estimate
         self._prepping: set = set()
         self.counts: dict[tuple, int] = {}
         self.svgs: "collections.OrderedDict[tuple, str]" = collections.OrderedDict()
@@ -389,6 +390,7 @@ class ScoreSheets:
                "better": self._state(bkey)["state"]}
         if st["state"] == "ready":
             out["pages"] = await self.count(key, w, h, staff, near)
+            out["partial"] = self._lk(key, w, h, staff) in self.partial
             out["rev"] = key
         return out
 
@@ -406,11 +408,16 @@ class ScoreSheets:
         lk = self._lk(key, w, h, staff)
         got = self.counts.get(lk)
         if got is None:
-            got = int((await self._for(lk).ask({"op": "count", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
-                                                 "staff": lk[3]}))["pages"])
-            if len(self.counts) > 256:
-                self.counts.clear()
-            self.counts[lk] = got
+            r = await self._for(lk).ask({"op": "count", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+                                         "staff": lk[3]})
+            got = int(r["pages"])
+            if r.get("partial"):                       # an estimate while the rest is laid out: asked again
+                self.partial.add(lk)
+            else:
+                self.partial.discard(lk)
+                if len(self.counts) > 256:
+                    self.counts.clear()
+                self.counts[lk] = got
         for st in near:
             nk = self._lk(key, w, h, st)
             if nk not in self.holder and nk not in self.counts and nk not in self._prepping:
@@ -423,7 +430,6 @@ class ScoreSheets:
             got = int((await self.prep.ask({"op": "count", "mei": str(self._mei(key)), "w": nk[1], "h": nk[2],
                                              "staff": nk[3]}))["pages"])
             self.holder[nk] = self.prep
-            self.counts[nk] = got
             if len(self.holder) > 64:
                 self.holder.clear()
         except Exception:                                                   # noqa: BLE001  asked for, it lays out then
@@ -452,7 +458,8 @@ class ScoreSheets:
         tm = await self.worker.ask({"op": "timemap", "mei": str(self._mei(key)), "midi": str(midi), "kind": kind})
         pm = await self._for(lk).ask({"op": "pagemap", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
                                     "staff": lk[3]})
-        return {"bars": tm.get("bars") or [], "notes": tm.get("notes") or [], "pages": pm.get("pages") or []}
+        return {"bars": tm.get("bars") or [], "notes": tm.get("notes") or [], "pages": pm.get("pages") or [],
+                "partial": bool(pm.get("partial"))}
 
     async def geometry(self, key: str, w: float, h: float, staff: float, n: int) -> dict:
         """Page n's bar boxes and note heads (fractions of the page)."""
@@ -550,9 +557,12 @@ class ScoreSheets:
                 return web.json_response({"error": "not_ready", "detail": "The score isn't written yet."}, status=404)
             size = self._size(request.query)
             n = int(request.match_info["n"])
-            if not 1 <= n <= await self.count(key, *size):
-                return web.json_response({"error": "no_page", "detail": "There's no such page."}, status=404)
-            svg = await self.page(key, *size, n)
+            try:
+                svg = await self.page(key, *size, n)
+            except RuntimeError as e:
+                if "no page" in str(e) or "no such page" in str(e):
+                    return web.json_response({"error": "no_page", "detail": "There's no such page."}, status=404)
+                raise
         except LookupError:
             return web.json_response({"error": "unknown_piece", "detail": "That piece has no MIDI file to write."},
                                      status=404)
