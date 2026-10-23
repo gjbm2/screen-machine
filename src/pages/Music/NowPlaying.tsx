@@ -2,15 +2,16 @@
 // (Getting ready… with a bar, Playing 1:23 / 4:32, Stopped, Stepped aside: something else started the
 // piano, or the problem), what's next, Back · Play/Stop · Next, Repeat (Off / All / One), Shuffle, and the sound and
 // where it plays (the player's own, server side; also remembered as the Room page's piano choice so both agree).
+// Beside the title, Score opens the piece's written-out score.
 
-import { Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
+import { FileMusic, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { usePianoSound, type PianoSound } from "@/pages/Room/usePianoSound";
 import { OLD_SHOW_WORDS, percent, playerWords, plural, type PlayerView, type Repeat as RepeatMode } from "./api";
-import { PRIMARY, SECONDARY } from "./bits";
+import { CHIP, CHIP_OFF, hasScore, PRIMARY, SECONDARY, useOpenScore } from "./bits";
 import { useMusic } from "./context";
 import { PLAYER_BUSY } from "./usePlayer";
 
@@ -31,6 +32,7 @@ export function NowPlaying() {
   const { player, setTab, openPlaylist } = useMusic();
   const v = player.view;
   const sound = usePlayerSound(v);
+  const openScore = useOpenScore();
 
   if (player.link === "old") {
     return (
@@ -99,12 +101,24 @@ export function NowPlaying() {
       <div className={cn(CARD_CLASS, "space-y-4 px-3 py-4 sm:px-4")}>
         <div className="min-w-0">
           {cur ? (
-            <>
-              <p className="text-xl font-semibold leading-snug" data-testid="now-title">
-                {cur.title}
-              </p>
-              {who && <p className="text-base text-muted-foreground">{who}</p>}
-            </>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xl font-semibold leading-snug" data-testid="now-title">
+                  {cur.title}
+                </p>
+                {who && <p className="text-base text-muted-foreground">{who}</p>}
+              </div>
+              {cur.id && hasScore(cur) && (
+                <button
+                  type="button"
+                  onClick={() => openScore(cur.id)}
+                  title="The piece's score"
+                  className={cn(CHIP, CHIP_OFF, "min-h-9 shrink-0 px-3 text-sm text-stone-600")}
+                >
+                  <FileMusic className="h-4 w-4" aria-hidden /> Score
+                </button>
+              )}
+            </div>
           ) : (
             <p className="text-xl font-semibold leading-snug text-stone-700">Nothing playing</p>
           )}

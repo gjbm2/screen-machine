@@ -9,12 +9,14 @@
 //   GET    /show/api/v1/piano/recordings/<id>.mid      Download (the file's name is the title)
 //   POST   /show/api/v1/test {source: "piano", piece: "rec:<id>", instrument, output, once: true}   Play (as the test
 //          piano, so the screens, lamps and beat follow it); DELETE /show/api/v1/test/piano stops it.
+//   Score opens the take's score on the Music page (/music?score=rec:<id>).
 // Polled every 1 s while recording or while a take plays, 5 s otherwise, only while the page is visible. While
 // recording, the dot flashes on each key (WS /show/v1/show, music.note, as PianoRow.tsx). The whole card stays hidden
 // until show_service has the recorder. Words only: no ids, files or numbers a person doesn't need.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Circle, Download, Pencil, Play, Square, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Circle, Download, FileMusic, Pencil, Play, Square, Trash2, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -248,6 +250,16 @@ export function SoundChoice({
   );
 }
 
+/** A take's score on the Music page (written from its MIDI the first time it's opened), keeping ?room=. */
+function scoreLink(id: string): string {
+  const q = new URLSearchParams(window.location.search);
+  const out = new URLSearchParams();
+  const room = q.get("room");
+  if (room) out.set("room", room);
+  out.set("score", `rec:${id}`);
+  return `/music?${out.toString()}`;
+}
+
 /** The test piano's progress in words: getting the sound ready (with how far), finished, or why it didn't play. */
 export function PlayStatus({ state, sound }: { state: ShowTestState | null | undefined; sound?: PianoSound }) {
   if (!state) return null;
@@ -257,9 +269,8 @@ export function PlayStatus({ state, sound }: { state: ShowTestState | null | und
     return (
       <div className="space-y-1.5" role="status">
         <p className="flex items-center gap-2 text-base">
-          <Spinner /> First play of this piece with this sound: making it…{pct !== null ? ` ${pct}%` : ""}
+          <Spinner /> Getting ready…{pct ? ` ${pct}%` : ""}
         </p>
-        <p className="text-sm text-stone-500">Once made it's kept, so next time it starts at once.</p>
         {pct !== null && (
           <div className="h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden>
             <div className="h-full rounded-full bg-teal-600 transition-[width] duration-500" style={{ width: `${pct}%` }} />
@@ -666,6 +677,12 @@ export function PianoCard({
                           >
                             <Pencil className="h-4 w-4" aria-hidden /> Rename
                           </button>
+                          <Link
+                            to={scoreLink(r.id)}
+                            className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 px-4")}
+                          >
+                            <FileMusic className="h-4 w-4" aria-hidden /> Score
+                          </Link>
                           <a
                             href={api.pianoRecordingUrl(r.id)}
                             download={`${r.title}.mid`}

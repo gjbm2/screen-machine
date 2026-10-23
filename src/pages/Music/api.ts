@@ -12,6 +12,8 @@
 //   GET    /show/api/v1/library/web?q=            find MIDI on the web; POST …/web/import {ref, title?}
 //   GET    /show/api/v1/playlists                 POST {name, items?}; GET/PUT/DELETE …/<id>
 //   GET    /show/api/v1/player                    POST {action, …}
+//   GET    /show/api/v1/score/<id>?w=&h=&staff=   a piece's score: queued (ahead) / making (progress) / ready (pages, rev) / failed
+//   GET    /show/api/v1/score/<id>/page/<n>.svg?w=&h=&staff=&rev=   page n as an image (an <img src>: the route is open)
 
 import { explainError, loadToken, RoomApiError } from "@/pages/Room/api";
 
@@ -136,6 +138,30 @@ export type PlayerAction =
   | { action: "add" | "play_next"; piece: string }
   | { action: "set"; instrument?: string; output?: string; repeat?: Repeat; shuffle?: boolean };
 
+/** A piece's score (show_service/score_sheet.py): written once from its MIDI, then laid out for the asking screen. */
+export interface ScoreStatus {
+  piece: string;
+  title: string;
+  composer?: string | null;
+  state: "queued" | "making" | "ready" | "failed" | string;
+  /** queued: scores before it. */
+  ahead?: number;
+  /** making: 0..1. */
+  progress?: number;
+  /** ready: how many pages at this size, and the score's version (goes in each page's address). */
+  pages?: number;
+  rev?: string;
+  /** failed: what went wrong. */
+  detail?: string;
+}
+
+/** One page in css px (w x h, multiples of 10) and a staff's height in css px. */
+export interface ScoreSize {
+  w: number;
+  h: number;
+  staff: number;
+}
+
 // ── Words ───────────────────────────────────────────────────────────────────
 
 /** The one line shown while show_service predates the music routes. */
@@ -175,6 +201,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** Web search asks every source in parallel (6 s each); an import downloads and cleans the file. */
 const WEB_TIMEOUT_MS = 20_000;
 const UPLOAD_TIMEOUT_MS = 30_000;
+/** A ready score's answer lays its pages out for a new size first (about 0.6 s, longer for a long piece). */
+const SCORE_TIMEOUT_MS = 30_000;
 /** The room's pass-through takes bodies up to 1 MB. */
 export const MAX_UPLOAD_BYTES = 1024 * 1024;
 
@@ -345,6 +373,20 @@ export class MusicApi {
   playerAction(body: PlayerAction) {
     // a sound change while playing restarts the piece; give it time to answer
     return this.request<PlayerView>("POST", "/player", { body, timeoutMs: 15_000 });
+  }
+
+  // ── Scores ──
+
+  /** The first ask starts writing it; keep asking (every 1.5 s) while it's queued or making, or it's dropped. */
+  score(id: string, size: ScoreSize, signal?: AbortSignal) {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff });
+    return this.request<ScoreStatus>("GET", `/score/${seg(id)}${qs}`, { signal, timeoutMs: SCORE_TIMEOUT_MS });
+  }
+
+  /** Page n (1-based) as an SVG image (an <img src>: the route is open, so no key goes in it). */
+  scorePageUrl(id: string, n: number, size: ScoreSize & { rev?: string }): string {
+    const qs = queryString({ w: size.w, h: size.h, staff: size.staff, rev: size.rev });
+    return `${this.baseUrl}/show/api/v1/score/${seg(id)}/page/${n}.svg${qs}`;
   }
 }
 
