@@ -246,6 +246,11 @@
 }
 @media (display-mode: standalone) {
   @supports (-webkit-touch-callout: none) {
+    /* what iPadOS samples besides the band (html/body): the same colour, so nothing light shows through at night */
+    html,
+    body {
+      background-color: #faf8f5;
+    }
     .ios-status-bar-band {
       display: block;
       position: fixed;
@@ -264,6 +269,8 @@
 }
 @media (display-mode: standalone) and (prefers-color-scheme: dark) {
   @supports (-webkit-touch-callout: none) {
+    html:not(.light-only),
+    html:not(.light-only) body,
     html:not(.light-only) .ios-status-bar-band {
       background-color: #110f0e; /* the Room theme's page at night */
     }
