@@ -4,6 +4,10 @@
   mode follows the music (a per-mode config row: room_service's device ``show.mic`` PUTs ``{"mode": true}`` here and
   ``{"mode": false}`` when it puts it back), or the Room page's AI listening switch is on (owner, 21 Oct: switching
   it on claims the mic; ``set_listening``, the listener's ``on``, read live and woken on a set). **On** = wanted and not muted: the Room page's Mute always wins.
+* **Stream claims** (:meth:`Mic.claim_stream`, 1c 23 Oct: the piano calibration hears the drawing room while a rendered
+  test-piano run plays on Sonos): one named stream captures as well as whatever the rules here capture, while held
+  and not muted. It never touches the Mic choice. The receiver still picks the room's sound from the live streams, so
+  with nothing else on, the claimed stream is it for the claim's while. Held in memory only (a restart drops it).
 * **Off** means the senders' capture devices are closed, not just ignored: ``Receiver.set_off_streams`` lists the
   room-sound streams under each SUBSCRIBE's ``off`` (the senders keep their off heartbeats, so the Mic list still
   shows every mic), the receiver drops anything of theirs that still arrives, and ``Rings.set_off`` makes the
@@ -22,7 +26,8 @@
   file starts unmuted with no mode claim and says so in ``error``. Nothing here raises into the service.
 
 Routes, on show-bus (pages reach them through room's ``/show/*`` pass-through):
-  GET /api/v1/mic   {on, muted, wanted, why, claims: [{by: auto | mode, label}], mode, streams: {capturing, off},
+  GET /api/v1/mic   {on, muted, wanted, why, claims: [{by: auto | mode | listening | <a stream claim's by>, label,
+                    stream (stream claims only)}], mode, streams: {capturing, off},
                     error}
   PUT /api/v1/mic   {muted?: bool, mode?: bool} (at least one) -> the GET body; else 400 {error, detail}. ``muted`` is
                     the Room page's Mute; ``mode`` is room_service's ``show.mic``.
@@ -59,9 +64,16 @@ def _d(v: Any) -> dict:
     return v if isinstance(v, dict) else {}
 
 
-def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str], listening: bool = False) -> str:
-    """The Room page's words for the mic's state (plain words; ``label`` the mode's, else "this mode")."""
+def why_words(on: bool, muted: bool, auto: bool, mode: bool, label: Optional[str], listening: bool = False,
+              side: tuple[str, ...] | list[str] = ()) -> str:
+    """The Room page's words for the mic's state (plain words; ``label`` the mode's, else "this mode"; ``side`` the
+    stream claims' labels)."""
     lab = label or THIS_MODE
+    if side and not auto and not mode and not listening:
+        who = " and ".join(side)
+        if on:
+            return f"Listening for {who}"
+        return f"Switched off: {who} can't hear the room" if muted else f"Off: {who} wants a mic the room doesn't have"
     if listening and not auto and not mode:
         return "Listening for AI listening" if on else "Switched off: AI listening can't hear the room"
     if on:
@@ -97,6 +109,7 @@ class Mic:
         self._listening_fn: Optional[Callable[[], Optional[bool]]] = None
         self._room_fn: Optional[Callable[[], Any]] = None
         self._notify: Optional[Callable[[str, Optional[dict]], None]] = None
+        self._stream_claims: dict[str, tuple[str, str]] = {}   # claim_stream: by -> (stream, label)
         self.muted = False
         self.mode = False
         self.error: Optional[str] = None
@@ -135,6 +148,16 @@ class Mic:
         """The AI listening switch now (the listener's ``on``: any thread, no side effects); the listener wakes the
         mic when it is set (``Listener.add_on_listener``)."""
         self._listening_fn = fn
+
+    def claim_stream(self, stream: str, *, by: str, label: str, on: bool) -> dict:
+        """Hold (``on``) or release a stream claim (module docstring; any thread): ``stream`` captures too while it is
+        held and the mic isn't muted. One claim per ``by``; a new one replaces it. The GET body, decided at once."""
+        with self._lock:
+            if on:
+                self._stream_claims[str(by)] = (str(stream), str(label or by))
+            else:
+                self._stream_claims.pop(str(by), None)
+        return self.evaluate()
 
     def set_room(self, fn: Optional[Callable[[], Any]]) -> None:
         """The room view (autopilot.RoomLink.view), for the mode's label."""
@@ -263,6 +286,9 @@ class Mic:
                 since = max(self._on_since if self._on_since is not None else now, self._choice_since, self._live_at)
                 fallback = states.get(chosen) not in LIVE and now - since >= FALLBACK_S
                 capturing = list(room) if fallback else [chosen]
+            side = [] if broken or self.muted else [st for st, _lab in self._stream_claims.values()]
+            extra = [st for st in dict.fromkeys(side) if st in room and st not in capturing]
+            capturing += extra                          # stream claims: as well, never instead
             if fallback != self.fallback:
                 self.fallback = fallback
                 log.info("mic: %s", f"{chosen} hasn't been live for {FALLBACK_S:.0f} s: every room mic listens"
@@ -270,12 +296,12 @@ class Mic:
             off = [s for s in room if s not in capturing]
             covered = sorted(set(covered) | set(room))
             self._tell(off, covered)
-            body = self._build(on, auto, self._mode_label(), capturing, off, listening)
-            if broken and wanted and not self.muted:
+            body = self._build(on or bool(extra), auto, self._mode_label(), capturing, off, listening)
+            if broken and (wanted or self._stream_claims) and not self.muted:
                 body["why"] = "Off: the room's mics can't be listed (see the log)"
             changed = body != self._body
             if changed and body.get("on") != self._body.get("on"):
-                log.info("mic %s: %s", "on" if on else "off", body["why"])
+                log.info("mic %s: %s", "on" if body["on"] else "off", body["why"])
             self._body = body
         if changed and self._notify is not None:
             try:
@@ -307,12 +333,14 @@ class Mic:
 
     def _build(self, on: bool, auto: bool, label: Optional[str], capturing: list[str], off: list[str],
                listening: bool = False) -> dict:
-        wanted = auto or self.mode or listening
+        side = [{"by": by, "label": lab, "stream": st} for by, (st, lab) in self._stream_claims.items()]
+        wanted = auto or self.mode or listening or bool(side)
         claims = ([{"by": "auto", "label": "Auto"}] if auto else []) + \
                  ([{"by": "mode", "label": label or THIS_MODE}] if self.mode else []) + \
-                 ([{"by": "listening", "label": "AI listening"}] if listening else [])
+                 ([{"by": "listening", "label": "AI listening"}] if listening else []) + side
         return {"on": bool(on), "muted": self.muted, "wanted": bool(wanted),
-                "why": why_words(bool(on), self.muted, auto, self.mode, label, listening), "claims": claims,
+                "why": why_words(bool(on), self.muted, auto, self.mode, label, listening,
+                                 [c["label"] for c in side]), "claims": claims,
                 "mode": self.mode,
                 "streams": {"capturing": list(capturing), "off": list(off)}, "error": self.error}
 
