@@ -19,7 +19,8 @@ size drew every page in a fresh process (Islamey on a phone: 165 pages, 11-34 s,
 the piece takes ages ... and often fails", 23 Oct).  A PDF is printed on demand (never kept on disk).  ``make``
 runs in sm-score-ml's python (numpy, torch), the worker and pdf in sm-stream's (Verovio, Playwright).
 
-  GET /api/v1/score/<piece>?w=&h=&staff=&kind=quick|better[&retry=1]
+  GET /api/v1/score/<piece>?w=&h=&staff=&kind=quick|better[&retry=1][&near=32,50]   (near: staff sizes laid out
+        ahead, on a second worker, for A+ / A-)
         {"state": "queued" (+ "ahead") | "making" (+ "progress" 0-1) | "ready" (+ "pages": count, "rev") |
          "failed" (+ "detail"), "kind", "better": the better pass's state ("none" until asked for), "piece",
          "title", "composer"}; retry=1 forgets an earlier failure and tries again.
@@ -163,6 +164,12 @@ class ScoreSheets:
         self.better: "collections.OrderedDict[str, _Job]" = collections.OrderedDict()   # queued; the first runs
         self.failed: dict[str, tuple[float, str]] = {}
         self.worker = _LayoutWorker()
+        # a second worker lays out the sizes a reader is likely to ask for next (the staff a step larger and smaller:
+        # owner, 23 Oct, "why does increasing font size take ~10s? nuts" -- Islamey takes Verovio 5-7 s a size), so
+        # A+ / A- find them ready; while it lays one out the first worker is never held up (a page turn can't wait)
+        self.prep = _LayoutWorker()
+        self.holder: dict[tuple, _LayoutWorker] = {}       # layout -> the worker that has it
+        self._prepping: set = set()
         self.counts: dict[tuple, int] = {}
         self.svgs: "collections.OrderedDict[tuple, str]" = collections.OrderedDict()
         self._version: tuple[float, str] = (0.0, "")
@@ -356,7 +363,7 @@ class ScoreSheets:
         return {"state": "none"}
 
     async def status(self, piece: str, w: float, h: float, staff: float, kind: str = "quick",
-                     retry: bool = False) -> dict:
+                     retry: bool = False, near: tuple = ()) -> dict:
         midi, it = self._piece(piece)
         title, composer = str(it.get("title") or ""), str(it.get("composer") or "")
         key = await self._key(midi, kind)
@@ -381,7 +388,7 @@ class ScoreSheets:
                "kind": kind, **st,
                "better": self._state(bkey)["state"]}
         if st["state"] == "ready":
-            out["pages"] = await self.count(key, w, h, staff)
+            out["pages"] = await self.count(key, w, h, staff, near)
             out["rev"] = key
         return out
 
@@ -389,17 +396,40 @@ class ScoreSheets:
     def _lk(key: str, w: float, h: float, staff: float) -> tuple:
         return key, round(w / 10) * 10, round(h / 10) * 10, round(staff)
 
-    async def count(self, key: str, w: float, h: float, staff: float) -> int:
-        """Pages in the layout at this size (the worker lays it out once; ~0.3-1.5 s, then kept)."""
+    def _for(self, lk: tuple) -> "_LayoutWorker":
+        """The worker that has this layout (the prep worker's, once it laid it out), else the first."""
+        return self.holder.get(lk, self.worker)
+
+    async def count(self, key: str, w: float, h: float, staff: float, near: tuple = ()) -> int:
+        """Pages in the layout at this size (laid out once, 0.3-7 s, then kept); ``near``: other staff sizes to lay
+        out ahead on the prep worker."""
         lk = self._lk(key, w, h, staff)
         got = self.counts.get(lk)
         if got is None:
-            got = int((await self.worker.ask({"op": "count", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
-                                               "staff": lk[3]}))["pages"])
+            got = int((await self._for(lk).ask({"op": "count", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+                                                 "staff": lk[3]}))["pages"])
             if len(self.counts) > 256:
                 self.counts.clear()
             self.counts[lk] = got
+        for st in near:
+            nk = self._lk(key, w, h, st)
+            if nk not in self.holder and nk not in self.counts and nk not in self._prepping:
+                self._prepping.add(nk)
+                asyncio.get_running_loop().create_task(self._prep(key, nk))
         return got
+
+    async def _prep(self, key: str, nk: tuple) -> None:
+        try:
+            got = int((await self.prep.ask({"op": "count", "mei": str(self._mei(key)), "w": nk[1], "h": nk[2],
+                                             "staff": nk[3]}))["pages"])
+            self.holder[nk] = self.prep
+            self.counts[nk] = got
+            if len(self.holder) > 64:
+                self.holder.clear()
+        except Exception:                                                   # noqa: BLE001  asked for, it lays out then
+            log.debug("score: prep layout failed", exc_info=True)
+        finally:
+            self._prepping.discard(nk)
 
     async def page(self, key: str, w: float, h: float, staff: float, n: int) -> str:
         """Page n's SVG (drawn when asked, ~20-100 ms; the last PAGES_KEPT kept)."""
@@ -408,7 +438,7 @@ class ScoreSheets:
         if got is not None:
             self.svgs.move_to_end(pk)
             return got
-        got = str((await self.worker.ask({"op": "page", "mei": str(self._mei(key)), "w": pk[1], "h": pk[2],
+        got = str((await self._for(pk[:4]).ask({"op": "page", "mei": str(self._mei(key)), "w": pk[1], "h": pk[2],
                                            "staff": pk[3], "n": n}))["svg"])
         self.svgs[pk] = got
         while len(self.svgs) > PAGES_KEPT:
@@ -420,14 +450,14 @@ class ScoreSheets:
         player's elapsed_s counts) and each page's first and last bar."""
         lk = self._lk(key, w, h, staff)
         tm = await self.worker.ask({"op": "timemap", "mei": str(self._mei(key)), "midi": str(midi), "kind": kind})
-        pm = await self.worker.ask({"op": "pagemap", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+        pm = await self._for(lk).ask({"op": "pagemap", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
                                     "staff": lk[3]})
         return {"bars": tm.get("bars") or [], "notes": tm.get("notes") or [], "pages": pm.get("pages") or []}
 
     async def geometry(self, key: str, w: float, h: float, staff: float, n: int) -> dict:
         """Page n's bar boxes and note heads (fractions of the page)."""
         lk = self._lk(key, w, h, staff)
-        got = await self.worker.ask({"op": "geometry", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+        got = await self._for(lk).ask({"op": "geometry", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
                                      "staff": lk[3], "n": n})
         return {"bars": got.get("bars") or [], "heads": got.get("heads") or []}
 
@@ -472,6 +502,7 @@ class ScoreSheets:
             async def go() -> None:
                 try:
                     await self.version()
+                    await self.prep.ask({"op": "version"})
                 except Exception:                       # noqa: BLE001
                     log.debug("score: warm-up failed", exc_info=True)
             asyncio.get_running_loop().create_task(go())
@@ -499,8 +530,9 @@ class ScoreSheets:
     async def _h_status(self, request: Any) -> Any:
         from aiohttp import web
         try:
+            near = tuple(_clamp(x, 16, 120, 0) for x in (request.query.get("near") or "").split(",") if x.strip())
             body = await self.status(request.match_info["id"], *self._size(request.query), kind=self._kind(request.query),
-                                     retry=bool(request.query.get("retry")))
+                                     retry=bool(request.query.get("retry")), near=tuple(x for x in near if x))
         except LookupError:
             return web.json_response({"error": "unknown_piece", "detail": "That piece has no MIDI file to write."},
                                      status=404)
