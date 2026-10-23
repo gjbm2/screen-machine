@@ -48,6 +48,11 @@ low value, not stale).  The desk's path is the fallback.  Tempo: the proposal's 
 searching, conf >= music_feed.Response.tempo_conf).  The mappings' ``energy_slow`` is always ``energy`` below (the
 session swaps the fast one in for ``energy`` while the features arrive: music_feed.music_signals).
 
+The piano (owner, 24 Oct; piano_direction.py, config/live/piano_direction.yaml): while it plays, its live signals
+blend into whichever proposal is made (room, show or desk: the stronger of the audio's and the piano's energy and
+pace, the words leaned by the pedal and the note rate, the density axis by the spread; ``piano`` {lean: s} for the
+FX director's roles).  With no audio reading at all the piano proposes alone (source "piano").  No piano: as before.
+
 Pure state and arithmetic, no I/O: sessions.py calls ``update`` from its 10 Hz tick.
 """
 from __future__ import annotations
@@ -56,6 +61,7 @@ import collections
 import math
 from typing import Any, Optional
 
+from . import piano_direction as PD
 from .director import AUTO_MUSIC_DEFAULTS, DIRECTION_AXES, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS
 
 EVAL_S = 1.0
@@ -127,6 +133,8 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
                 out[k] = music[k]
         if not out["fx"].get("moods") or how == "replace":
             out["fx"]["moods"] = list((music.get("fx") or {}).get("moods") or []) or out["fx"].get("moods")
+        if music.get("piano"):
+            out["piano"] = dict(music["piano"])   # the piano's leans: fx_interplay's roles_by_piano
     return out
 
 
@@ -150,7 +158,16 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
         out += [k for k in DIRECTION_AXES if panel.get(k) is None and music.get(k) is not None]
         if not (panel.get("fx") or {}).get("moods"):
             out.append("fx.moods")
+        if music.get("piano"):
+            out.append("piano")
     return out
+
+
+def _lean_of(d: Optional[dict]) -> tuple:
+    """The words a proposal's piano lean put first, and whether the piano is in it (the piano starting or stopping,
+    or a new lean, is a new set of words: publish at once)."""
+    return (tuple((d or {}).get("moods") or ()), tuple(((d or {}).get("fx") or {}).get("moods") or ()),
+            bool((d or {}).get("piano")))
 
 
 def genres_key(g: Any) -> tuple:
@@ -212,6 +229,8 @@ class MusicDirection:
         self._feed_section: Any = None
         self.room: Optional[dict] = None     # the room.direction in use (SessionManager.room_direction_now)
         self._room_section = None
+        self.piano = PD.PianoFeel()           # the piano's reading (piano_direction.py), stepped every tick
+        self.piano_reading: Optional[PD.Reading] = None
         self.configure(cfg)
 
     def configure(self, cfg: Optional[dict]) -> None:
@@ -229,11 +248,13 @@ class MusicDirection:
         return self._feeding
 
     def update(self, now: float, snap: Any, fresh: bool, follow: Any, active: bool,
-               room: Optional[dict] = None, feed: Any = None) -> Optional[str]:
+               room: Optional[dict] = None, feed: Any = None, piano: Optional[dict] = None) -> Optional[str]:
         """Step the features; -> a cause ("music", "band", "section", "online", "offline", "off", "m") when the
         effective direction should be recomputed, else None.  ``room``: the room director's live direction, or None;
-        ``feed``: show_service's features while they arrive (music_feed.FeedSnap), else None (the desk's)."""
+        ``feed``: show_service's features while they arrive (music_feed.FeedSnap), else None (the desk's);
+        ``piano``: piano.py's levels from the notes (never the room harmony's stand-ins), or None."""
         m_was = self.m
+        self.piano.step(now, piano)
         reseeded = False
         self._feeding = feed is not None
         if feed is not None:                # every tick, director or not: the per-item mappings read the features
@@ -255,16 +276,19 @@ class MusicDirection:
             self._cold = True
             self.source = None
             return "off" if m_was > 0.0 else None
-        src = "room" if room is not None else "show" if feed is not None else "maestro"
+        desk = snap is not None and fresh
+        playing = self.piano.present
+        src = "room" if room is not None else "show" if feed is not None else "maestro" if desk \
+            else "piano" if playing or self.source == "piano" else "maestro"   # the piano alone: no audio reading
         switched = self.source is not None and src != self.source
         if src != self.source:
             self.source, self.proposal, self.band = src, None, None
-        self._liveness(now, room is not None or feed is not None or (snap is not None and fresh))
+        self._liveness(now, room is not None or feed is not None or desk or playing)
         cause = None
         if room is not None:
             cause = self._propose_room(now, room, reseeded)
-        elif feed is not None or (snap is not None and fresh):
-            cause = self._propose(now, reseeded)
+        elif feed is not None or desk or playing:
+            cause = self._propose(now, reseeded, audio=feed is not None or desk)
         if self.m != m_was:
             return "online" if m_was == 0.0 else "offline" if self.m == 0.0 else "m"
         if switched and cause is None:
@@ -279,12 +303,16 @@ class MusicDirection:
                       fx={"density": d["fx"]["density"], "rate": d["fx"]["rate"],
                           "moods": list(d["fx"].get("moods") or [])},
                       **{k: d.get(k) for k in DIRECTION_AXES})
+        r = self.piano_reading = self.piano.reading()
+        pc = self.piano.config.get()
+        target = PD.lean(PD.apply(target, r, pc), r, pc)
         band = self._band_of(target["energy"], float(room.get("groove") or 0.0))
         p = self.proposal
         cause = None
         if p is None:
             cause = "music"
-        elif any(target[k] != p.get(k) for k in ("moods", "transition_style", "genre")) \
+        elif any(target.get(k) != p.get(k) for k in ("moods", "transition_style", "genre")) \
+                or _lean_of(target) != _lean_of(p) \
                 or genres_key(target["genres"]) != genres_key(p.get("genres")) \
                 or target["fx"]["moods"] != p["fx"]["moods"]:
             cause = "band"
@@ -441,28 +469,41 @@ class MusicDirection:
             b = self._split
         return b
 
-    def _propose(self, now: float, reseeded: bool) -> Optional[str]:
+    def _propose(self, now: float, reseeded: bool, audio: bool = True) -> Optional[str]:
         if not reseeded and now - self._last_eval < EVAL_S:
             return None
         self._last_eval = now
-        e = self.features["energy"]
-        tempo = self._tempo_sure
-        pace_in = 0.7 * e + 0.3 * tempo if tempo is not None else e
-        band = self._band_of(e, self.features["D"])
+        r = self.piano_reading = self.piano.reading()
+        if audio:
+            e = self.features["energy"]
+            tempo = self._tempo_sure
+            pace_in = 0.7 * e + 0.3 * tempo if tempo is not None else e
+            drive = self.features["D"]
+            target = PD.numbers(e, pace_in)
+        else:                               # the piano alone (no audio reading): its numbers, its pace as drive
+            target, drive = {"fx": {}}, 0.0
+        pc = self.piano.config.get()
+        target = PD.apply(target, r, pc, audio=audio)
+        if r is not None:
+            drive = max(drive, r.pace)
+        band = self._band_of(e if r is None else target["energy"], drive)   # no piano: exactly as before
         moods, fx_moods, style = BANDS[band]
-        target = {"energy": round(e, 3), "pace": round(0.1 + 0.8 * pace_in, 3), "intensity": DIRECTION_DEFAULTS["intensity"],
-                  "change_rate": round(0.9 * e, 3), "moods": list(moods), "transition_style": style,
-                  "fx": {"density": round(0.1 + 0.8 * e, 3), "rate": round(0.05 + 0.85 * e, 3), "moods": list(fx_moods)}}
+        target.update(intensity=DIRECTION_DEFAULTS["intensity"], moods=list(moods), transition_style=style)
+        target["fx"]["moods"] = list(fx_moods)
+        target = PD.lean(target, r, pc)
+        p = self.proposal
         cause = None
-        if self.proposal is None:
+        if p is None:
             cause = "music"
-        elif band != self.band:
+        elif band != self.band or _lean_of(target) != _lean_of(p):
             cause = "band"
         elif reseeded:
             cause = "section"
         elif now - self._last_apply >= APPLY_MIN_S and (
-                any(abs(target[k] - self.proposal[k]) >= DEADBAND for k in NUMERIC)
-                or any(abs(target["fx"][k] - self.proposal["fx"][k]) >= DEADBAND for k in FX_NUMERIC)):
+                any(abs(target[k] - p[k]) >= DEADBAND for k in NUMERIC)
+                or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC)
+                or (target.get("density") is None) != (p.get("density") is None)
+                or (target.get("density") is not None and abs(target["density"] - p["density"]) >= DEADBAND)):
             cause = "music"
         self.band = band
         if cause is not None:
@@ -497,5 +538,6 @@ class MusicDirection:
         return {"enabled": self.enabled, "online": self.m > 0.0, "m": self.m, "band": self.band,
                 "proposal": self.proposal, "features": self.features, "settling": self.settling(now),
                 "last_change": self.last_change, "source": self.source,
+                "piano": None if self.piano_reading is None or not self.piano.present else self.piano_reading.status(),
                 "room": None if r is None else {"vibe": r.get("vibe"), "section": r.get("section"),
                                                 "groove": r.get("groove"), "age_s": round(now - r["t"], 1)}}
