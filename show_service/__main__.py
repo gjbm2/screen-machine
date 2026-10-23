@@ -275,7 +275,7 @@ class Show:
         self.piano_live: Any = None
         try:
             from . import piano_live as live_mod
-            self.piano_live = live_mod.PianoLive()
+            self.piano_live = live_mod.PianoLive(output_fn=self._piano_output)
         except Exception:
             log.exception("piano_live.py not loaded: no piano stream for devices (the show carries on)")
 
@@ -463,7 +463,7 @@ class Show:
         logs = self._log_files()
         kw: dict[str, Any] = {
             "autopilot": {"log_path": logs["autopilot"]},
-            "sources": {"log_dir": pathlib.Path(self.opts.state_dir)},
+            "sources": {"log_dir": pathlib.Path(self.opts.state_dir), "devices_fn": self._piano_devices},
             "listener": {"log_path": logs["listener"],
                          "clips_dir": pathlib.Path(self.opts.state_dir) / "listen" / "clips"},   # 09, 21 Oct
             "cues": {"log_path": logs["cues"]},
@@ -485,6 +485,24 @@ class Show:
             kw["driver_kw"] = dk
         kw.update(extra)
         return kw
+
+    def _piano_output(self) -> Optional[str]:
+        """Where the piano is heard now (piano_live's gate): the test piano's output while it plays, else the music
+        player's chosen one (PC22 when it has none)."""
+        src = self._component("sources")
+        try:
+            st = (src.status() or {}).get("piano") if src is not None else None
+        except Exception:                                # noqa: BLE001
+            st = None
+        if isinstance(st, dict) and st.get("state") in ("starting", "preparing", "playing") and st.get("output"):
+            return str(st["output"])
+        pl = self._component("playlist")
+        out = getattr(pl, "output", None)
+        return out if isinstance(out, str) and out else "pc22"
+
+    def _piano_devices(self) -> list:
+        live = self.piano_live
+        return live.device_outputs() if live is not None else []
 
     def _component(self, name: str) -> Any:
         comps = getattr(self.brain, "components", None)

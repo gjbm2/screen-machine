@@ -343,9 +343,9 @@ def record_stages(monkeypatch) -> list:
     stages = []
     real = ss.TestStatus.set
 
-    def rec(self, stage, progress=None, error=None):
+    def rec(self, stage, progress=None, error=None, **kw):
         stages.append((stage, progress, error))
-        real(self, stage, progress, error)
+        real(self, stage, progress, error, **kw)
     monkeypatch.setattr(ss.TestStatus, "set", rec)
     return stages
 
@@ -460,7 +460,8 @@ def test_rendered_timing_pad_status_and_once(tiny, tmp_path, helper, monkeypatch
     names = [s[0] for s in stages]
     assert names[0] == "preparing" and ("preparing", 0.4, None) in stages and "playing" in names
     assert stages[-1] == ("done", 1.0, None)
-    assert json.loads(status.read_text()) == {"stage": "done", "progress": 1.0, "error": None}
+    doc = json.loads(status.read_text())
+    assert {k: doc[k] for k in ("stage", "progress", "error")} == {"stage": "done", "progress": 1.0, "error": None}
 
 
 def test_rendered_loops_with_a_new_t_audio0_each_pass(tiny, tmp_path, helper, monkeypatch):
@@ -517,7 +518,8 @@ def test_rendered_screens_only_is_midi_only_without_lead(tiny, tmp_path, helper,
     t0 = ev[0][1] / 1e9
     assert 0 <= t0 - t < 0.05                                              # no lead: from now
     check_timing(ev, EVENTS, t0, 0.0)
-    assert json.loads(status.read_text()) == {"stage": "done", "progress": 1.0, "error": None}
+    doc = json.loads(status.read_text())
+    assert {k: doc[k] for k in ("stage", "progress", "error")} == {"stage": "done", "progress": 1.0, "error": None}
 
 
 def test_windows_synth_once_without_speaker_ends(tiny, monkeypatch):
@@ -694,3 +696,16 @@ def test_shape_events_speed_and_start():
     assert got == [(0.0, 0xB0, 64, 100), (1.0, 0x90, 62, 70), (5.0, 0x80, 62, 0)]     # the pedal carried in
     assert ss.shape_events(ev, 1.0, 99) == ev                                          # past the end: from the top
     assert [t for t, *_ in ss.shape_events(ev, 100.0)][-1] == 6.0 / 4.0                # clamped to 4x
+
+
+def test_a_stop_lets_go_of_held_notes_and_pedals():
+    """Owner, 23 Oct: 'hitting pause doesn't actually stop notes playing...they linger'. release() sends a note off
+    for every key still down and a pedal up for every pedal held, then the state."""
+    sent = []
+    ms = ss.MidiStream("test-piano", lambda st, pkt: sent.append(pkt) or True)
+    ms.events([(1, 0x90, 60, 80), (2, 0x90, 64, 70), (3, 0x80, 64, 0), (4, 0xB0, 64, 127)])
+    sent.clear()
+    ms.release()
+    assert ms.keys == [0] * 88 and ms.cc == {64: 0, 66: 0, 67: 0} and len(sent) == 2          # the offs, the state
+    ms.release()
+    assert len(sent) == 3                                       # nothing held: the state only

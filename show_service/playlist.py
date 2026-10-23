@@ -288,7 +288,7 @@ class Player:
         outs = [o.get("id") for o in ch["outputs"] if isinstance(o, dict)]
         inst = self.instrument if self.instrument in ids else (ch["default_instrument"] if ch["default_instrument"]
                                                                 in ids else (ids[0] if ids else None))
-        out = self.output if self.output in outs else (outs[0] if outs else None)
+        out = self.output if self.output in outs or _is_device(self.output) else (outs[0] if outs else None)
         return inst, out
 
     def _piano(self) -> Optional[dict]:
@@ -445,7 +445,8 @@ class Player:
             self.note = None
             if skipped:
                 self.error = self._skipped_words(skipped)
-            log.info("player: playing %s (%d of %d)", piece, self.pos + 1, len(self.order))
+            log.info("player: playing %s (%d of %d)%s", piece, self.pos + 1, len(self.order),
+                     f" from {start_s:.1f} s" if start_s else "")
             self._save()
             return
         self._stopped("Nothing in the queue could play", error=self._skipped_words(skipped))
@@ -730,6 +731,8 @@ class Player:
             raise ValueError('bad_request: send {"action": "play" | "stop" | "pause" | "resume" | "seek" | "next" | '
                              '"prev" | "add" | "play_next" | "set", ...}')
         a = body["action"]
+        log.info("player: asked %s (was %s%s)", json.dumps(body, separators=(",", ":"))[:200], self.state,
+                 f" at {self.paused_s:.1f} s" if self.paused_s is not None else "")
         self._sync()
         if a == "play":
             self._play(body)
@@ -886,7 +889,7 @@ class Player:
             self.instrument = body["instrument"]
         if "output" in body and body["output"] is not None:
             outs = [o.get("id") for o in ch["outputs"] if isinstance(o, dict)]
-            if body["output"] not in outs:
+            if body["output"] not in outs and not _is_device(body["output"]):
                 raise ValueError("unknown_output: that place to play isn't available")
             restart |= body["output"] != self._effective(ch)[1]
             self.output = body["output"]
@@ -916,6 +919,13 @@ class Player:
                       "playlist": self.q_playlist, "repeat": self.repeat, "shuffle": self.shuffle,
                       "error": self.error, "run": dict(self._run) if self._run else None,
                       "playlists": len(self.playlists), "problems": list(self._problems)}
+
+
+def _is_device(output: Any) -> bool:
+    """A phone or tablet playing the piano itself ("device:<id>", sources.is_device): taken as chosen even before
+    it has connected."""
+    from .sources import is_device
+    return is_device(output)
 
 
 def attach(ctx: contract.BrainContext, **kw: Any) -> Player:

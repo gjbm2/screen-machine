@@ -276,6 +276,16 @@ class MidiStream:
             self._send(vban.pack_midi_events(self.stream, self.counter, obj))
             self.prev = (self.prev + [(self.seq, chunk)])[-MIDI_PREV:]
 
+    def release(self) -> None:
+        """Every key still down and every pedal still held let go, now (a stop or a pause mid-piece: owner, 23 Oct,
+        "hitting pause doesn't actually stop notes playing...they linger"), then the state saying so."""
+        t = now_ns()
+        ev = [(t, 0x80, k + 21, 0) for k, v in enumerate(self.keys) if v] + \
+             [(t, 0xB0, c, 0) for c, v in self.cc.items() if v]
+        if ev:
+            self.events(ev)
+        self.state(t)
+
     def state(self, t_ns: int) -> None:
         obj = vban.midi_state_obj(self.seq, list(self.keys), self.cc[64], self.cc[66], self.cc[67], t_ns,
                                   sess=self.sess)
@@ -702,6 +712,7 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
     Steinway. A rendered ``instrument`` on output pc22 or sonos:<zone>: _run_rendered (``title``: the Sonos app's,
     after TITLE_PREFIX; ``calibration_mic``: the helper's). Returns the exit code (1: it failed)."""
     status = TestStatus(status_file)
+    held: list = []                                        # the MIDI stream, let go of at the end (a stop mid-piece)
     try:
         from stream_service.piano_replay import PHRASES, TestPiano, resolve
         piano = (resolve(piece) if piece.startswith("file:") or piece in PHRASES
@@ -710,6 +721,7 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         status.timeline(start_s, speed)
         length = max(t for t, *_ in events) + LOOP_GAP_S
         ms = MidiStream("test-piano", out.send)
+        held.append(ms)
         silent = output == "none" or (output is None and not speaker)        # --no-speaker: MIDI only too
         if is_rendered(instrument) and not silent:
             return _run_rendered(ms, stop, piece, events, length, instrument, status,
@@ -733,6 +745,11 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         status.set("error", None, f"test piano: {e}")
         return 1
     finally:
+        for ms in held:
+            try:
+                ms.release()
+            except Exception:                              # noqa: BLE001  the socket's gone: nothing to let go of
+                pass
         status.close()
 
 

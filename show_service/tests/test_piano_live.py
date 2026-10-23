@@ -70,3 +70,66 @@ def test_live_stream(tmp_path: pathlib.Path, monkeypatch) -> None:
             assert not live.synths and live._feeds == ()                                       # stopped after linger
 
     asyncio.run(go())
+
+
+def test_only_the_chosen_device_hears(tmp_path: pathlib.Path, monkeypatch) -> None:
+    """Owner, 23 Oct: 'I clicked play on PC22, and the sound came out of ipad'. The piano's output is one choice; a
+    device's stream gets the notes only while it's that device (a panic when it moves away), an older page's always;
+    the chosen device's sound is warmed before it connects; devices are listed (and kept) by name."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    log = tmp_path / "stdin.log"
+    fake = tmp_path / "fake.py"
+    fake.write_text(FAKE.format(py=sys.executable, log=str(log)))
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(piano_live, "PYTHON", fake)
+    monkeypatch.setattr(piano_live, "GATE_S", 0.05)
+    insts = tmp_path / "instruments.json"
+    insts.write_text(json.dumps({"default": "concert-d", "instruments": {"concert-d": {}}}))
+    monkeypatch.setattr(piano_live, "INSTRUMENTS", insts)
+    out = ["pc22"]
+    live = piano_live.PianoLive(output_fn=lambda: out[0], devices_file=tmp_path / "devices.json")
+    note = SimpleNamespace(ev=[(1_000, 0x90, 60, 80)])
+
+    def lines() -> list:
+        return [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
+
+    async def settle(n: int = 6) -> None:
+        for _ in range(n):
+            await asyncio.sleep(0.05)
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            r = await cl.post("/api/v1/piano/devices", json={"id": "ipad-1", "name": "Greg's iPad"})
+            assert r.status == 200
+            d = await r.json()
+            assert d["devices"][0]["id"] == "device:ipad-1" and d["devices"][0]["label"] == "Greg's iPad"
+            assert d["hears"] is None and not live.synths
+            out[0] = "device:ipad-1"                                   # chosen: warmed before it connects
+            await settle()
+            assert list(live.synths) == ["concert-d"] and live._feeds
+            r1 = await cl.get("/api/v1/piano/live.mp3", params={"device": "ipad-1", "name": "Greg's iPad"})
+            await r1.content.read(1000)
+            live.on_midi("piano", note, 5.0, lambda t_ns: 100.0)
+            await settle()
+            assert [g.get("a") for g in lines()] == [60]
+            out[0] = "pc22"                                            # PC22 chosen: the iPad hears nothing
+            await settle()
+            assert live._feeds == () and lines()[-1] == {"panic": True}
+            n = len(lines())
+            live.on_midi("piano", note, 5.0, lambda t_ns: 100.0)
+            await settle()
+            assert len(lines()) == n
+            r2 = await cl.get("/api/v1/piano/live.mp3")                # an older page: hears as before
+            await r2.content.read(1000)
+            assert live._feeds
+            r2.close()
+            r1.close()
+            await settle()
+            assert live.device_outputs()[0]["label"] == "Greg's iPad"
+        again = piano_live.PianoLive(devices_file=tmp_path / "devices.json")
+        assert again.device_outputs()[0]["id"] == "device:ipad-1"     # kept across a restart
+
+    asyncio.run(go())
