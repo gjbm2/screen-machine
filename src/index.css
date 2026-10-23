@@ -105,6 +105,11 @@
 
   body {
     @apply bg-background text-foreground;
+    /* the iPad's Home Screen app (viewport-fit=cover): clear of the status bar and the window's controls (owner,
+       23 Oct: "still showing partially obscured by safari top chrome in web app mode"); 0 everywhere else */
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 }
 
