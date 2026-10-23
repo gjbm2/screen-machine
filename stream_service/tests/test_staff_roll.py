@@ -152,3 +152,45 @@ def test_time_map_parks_and_anchors():
     m.anchor(105.5, 106.0)                                 # an onset heard late: full speed from its time
     assert abs(m.at(106.0) - (m.at(105.5) + 0.5)) < 1e-6
     assert abs(m.at(100.5) - 0.5) < 1e-6                   # history kept: earlier notes keep their x
+
+
+def test_cold_first_frame_720p(ctx):
+    """As a render worker runs it: set up and primed on a stream of its own before the session's first frame (the
+    Sound not updated yet: t_ms 0), then the first real frame on the render stream at photon time on a host up for
+    months, with the piano already playing.  26cdc526's first frame took 22.5 s there (a page-time map running from
+    t 0 to the photon clock, a million lines made in a loop); the guard reads such a span as GPU time."""
+    from stream_service.gpu import RenderContext
+    from stream_service.piano_replay import TestPiano
+    from stream_service.tools.fxtest import FxSound
+    cp = ctx.cp
+    c720 = RenderContext(GPU, 1280, 720, 30, prealloc_buffers=0)
+    with c720.device:
+        snd = FxSound(cp, "chords")                         # its frame is the view's, t_ms 0, as sound.Sound's is
+        T0 = 8.9e6                                          # photon seconds: CLOCK_MONOTONIC after ~103 days up
+        snd.piano = TestPiano(_performance(), loop=True, start_ms=(T0 - 3.0) * 1000.0)
+        from stream_service.plugins.sources.staff_roll import StaffRoll
+        s = StaffRoll()
+        s.sound = snd
+        prime = cp.cuda.Stream(non_blocking=True)
+        try:
+            with prime:                                     # renderer.prepare: setup and one throwaway render
+                s.setup(c720, StaffRoll.validate({"look": "night"}))
+                s.render(0.0, 0.0, c720.new_frame())
+            prime.synchronize()
+            out = [c720.new_frame() for _ in range(2)]
+            spans = []
+            with c720.stream:
+                for i in range(24):
+                    snd.tick(T0 + i / 30.0)
+                    e0, e1 = cp.cuda.Event(), cp.cuda.Event()
+                    e0.record()
+                    s.render(i / 30.0, 1.0 / 30, out[i & 1])
+                    e1.record()
+                    e1.synchronize()
+                    spans.append(cp.cuda.get_elapsed_time(e0, e1))
+            assert s.stats["births"] > 5                    # the piano was heard from the first real frame
+            assert len(s.systems) <= s.nsys + 1 and s.gen <= 1
+            assert spans[0] < 100.0, spans                  # (the bug: seconds)
+            assert max(spans) < 100.0, spans
+        finally:
+            s.close()

@@ -42,6 +42,7 @@ import bisect
 import collections
 import logging
 import math
+import time
 
 import numpy as np
 
@@ -70,13 +71,18 @@ IDLE_S, PARK_TAU = 1.2, 0.45                 # silence (nothing held) before the
 S_MIN, S_MAX, S0 = 5.5, 10.0, 8.0            # seconds per system (dense ... sparse), the first
 MIN_GAP_SP = 2.3                             # the spacing a system aims to give successive chords in a staff
 CHORD_S = 0.06
+CLOCK_JUMP_S = 5.0                           # the sound clock moving more than this in a frame (or back) is a jump
 ERASE_W, OLD_DIM = 0.10, 0.6                 # old ink fades over this fraction of a system ahead of the cursor
 KEY_EVERY = 0.5
 MAP_KEEP_S = 150.0
-STRIDE = 20
+STRIDE = 32                                  # floats per record (see splat: animation channels)
 SPLIT = 4                                    # blocks per record (a long tail's pixels over several blocks)
-MAX_RECS = 12000
-NOTE_KEEP_S = 200.0
+MAX_RECS = 16000
+NBUF = 3                                     # pinned upload buffers
+PENDING = -1.0                               # an animation's start, stamped when its records are built
+BUILD_BUDGET_S = 0.0012                      # per frame (s of thread time): changed notes' records rebuilt (births and
+BAR_BUDGET_S = 0.0008                        # releases always), bars taken, chords settled: a burst (a rewrite, a late
+SETTLE_BUDGET_S = 0.0010                     # metre: 250 notes at once) spreads over frames, oldest first
 
 GL_BLACK, GL_HALF, GL_WHOLE, GL_SHARP, GL_FLAT, GL_NAT = 0, 1, 2, 3, 4, 5
 GL_F8U, GL_F8D, GL_F16U, GL_F16D, GL_GCLEF, GL_FCLEF, GL_BRACE, GL_DOT, GL_T0 = 6, 7, 8, 9, 10, 11, 12, 13, 14
@@ -126,7 +132,17 @@ __device__ __forceinline__ float atlas_d(const float* __restrict__ A, const int 
     return d >= PADSP - 1e-3f ? FAR : d;
 }
 
-// one block per record: its box's pixels -> ink and glow coverage (16-bit fixed point, atomic max)
+// an animation channel (v0, dv, t0, dur): v0 + dv * smoothstep((now - t0) / dur); dur <= 0: v0 + dv
+__device__ __forceinline__ float chan(const float* __restrict__ c, const float now) {
+    if (c[3] <= 0.f) return c[0] + c[1];
+    float t = fminf(fmaxf((now - c[2]) / c[3], 0.f), 1.f);
+    return c[0] + c[1] * t * t * (3.f - 2.f * t);
+}
+
+// one block per record: its box's pixels -> ink and glow coverage (16-bit fixed point, atomic max).  A record:
+// [0] kind (0 glyph, 1 hbox, 2 vbox, 3 open tail) [1-4] x channel [5-8] y [9-12] alpha [13] sx (glyph px/sp; box
+// half thickness) [14] sy [15-18] length channel (box; glyph: the morph a -> b) [19] glyph a [20] glyph b
+// [21] glow velocity [22] t_on [23] t_off (-1 held) [24] slot [25] system gen [26-29] box over the whole motion
 extern "C" __global__
 void splat(const float* __restrict__ R, const int n, const float* __restrict__ P, const float* __restrict__ S,
            const float* __restrict__ A, const int AW, const float* __restrict__ GT, const int atlas_ok,
@@ -137,34 +153,36 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
     const int part = blockIdx.y, nparts = gridDim.y;
     const float* Q = R + r * STRIDE;
     const int kind = (int)Q[0];
-    const float sp = P[0], now = P[1], halo = P[2], gk = P[3];
-    const int slot = (int)Q[12];
+    const float sp = P[0], now = P[1], halo = P[2], gk = P[3], an = P[20];
+    const int slot = (int)Q[24];
     const float* SL = S + slot * 8;
-    const bool old = Q[13] < SL[0] - 0.5f;
-    float alpha = Q[8] * (old ? SL[2] : SL[3]);
+    const bool old = Q[25] < SL[0] - 0.5f;
+    if (old && Q[28] < SL[1]) return;                    // old ink the cursor's erase has passed
+    float alpha = chan(Q + 9, an) * (old ? SL[2] : SL[3]);
     if (alpha <= 0.002f) return;
-    float bx1 = Q[16];
-    float len = Q[4];
+    const float qx = chan(Q + 1, an), qy = chan(Q + 5, an);
+    float bx1 = Q[28];
+    float len = chan(Q + 15, an);
     if (kind == 3) {                                       // an open tail: to the slot's tail end (the cursor)
-        len = fmaxf(0.f, SL[4] - Q[1]);
-        bx1 = Q[1] + len + 2.f;
+        len = fmaxf(0.f, SL[4] - qx);
+        bx1 = qx + len + 2.f;
     }
     // the glow from the record's times: a strike flash, held, then a release fade
     float g = 0.f;
-    const float vel = Q[9];
+    const float vel = Q[21];
     if (vel > 0.f) {
-        const float age = now - Q[10];
-        if (Q[11] < 0.f) g = vel * (0.55f + 0.45f * __expf(-fmaxf(age, 0.f) / 0.3f));
+        const float age = now - Q[22];
+        if (Q[23] < 0.f) g = vel * (0.55f + 0.45f * __expf(-fmaxf(age, 0.f) / 0.3f));
         else {
-            const float ra = now - Q[11];
+            const float ra = now - Q[23];
             g = ra < 4.f ? vel * (0.55f * __expf(-fmaxf(ra, 0.f) / 0.6f) + 0.45f * __expf(-fmaxf(age, 0.f) / 0.3f)) : 0.f;
         }
         g *= gk;
     }
     const float hl = kind == 0 ? halo : halo * 0.5f;      // tails glow tighter than heads
     const float pad = g > 0.004f ? hl * 3.f : 1.f;
-    const int x0 = max(0, (int)floorf(Q[14] - pad)), y0 = max(0, (int)floorf(Q[15] - pad));
-    const int x1 = min(W - 1, (int)ceilf(bx1 + pad)), y1 = min(H - 1, (int)ceilf(Q[17] + pad));
+    const int x0 = max(0, (int)floorf(Q[26] - pad)), y0 = max(0, (int)floorf(Q[27] - pad));
+    const int x1 = min(W - 1, (int)ceilf(bx1 + pad)), y1 = min(H - 1, (int)ceilf(Q[29] + pad));
     if (x1 < x0 || y1 < y0) return;
     const int bw = x1 - x0 + 1, npx = bw * (y1 - y0 + 1);
     const float ex = SL[1], ew = fmaxf(P[4], 1.f);
@@ -173,10 +191,10 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
         const float px = X + 0.5f, py = Y + 0.5f;
         float d;
         if (kind == 0) {
-            const float sx = Q[3], sy = Q[4];
-            const float u = (px - Q[1]) / sx, v = (py - Q[2]) / sy;
-            const int ga = (int)Q[5], gb = (int)Q[6];
-            const float m = Q[7];
+            const float sx = Q[13], sy = Q[14];
+            const float u = (px - qx) / sx, v = (py - qy) / sy;
+            const int ga = (int)Q[19], gb = (int)Q[20];
+            const float m = gb >= 0 ? len : 0.f;
             if (atlas_ok) {
                 float da = m < 1.f ? atlas_d(A, AW, GT, ga, u, v) : FAR;
                 if (gb >= 0 && m > 0.f) {
@@ -191,10 +209,10 @@ void splat(const float* __restrict__ R, const int n, const float* __restrict__ P
                 d = (ga <= 2) ? (sqrtf(ux * ux + v * v * 1.4f) - 0.5f) * sx : FAR;
             }
         } else if (kind == 2) {                             // vertical box: x centre, y .. y + len
-            const float ya = fminf(Q[2], Q[2] + len), yb = fmaxf(Q[2], Q[2] + len);
-            d = box_d(fabsf(px - Q[1]) - Q[3], fmaxf(ya - py, py - yb));
+            const float ya = fminf(qy, qy + len), yb = fmaxf(qy, qy + len);
+            d = box_d(fabsf(px - qx) - Q[13], fmaxf(ya - py, py - yb));
         } else {                                            // horizontal box: x .. x + len, y centre
-            d = box_d(fmaxf(Q[1] - px, px - (Q[1] + len)), fabsf(py - Q[2]) - Q[3]);
+            d = box_d(fmaxf(qx - px, px - (qx + len)), fabsf(py - qy) - Q[13]);
         }
         float a = alpha;
         if (old) a *= clamp01((px - ex) / ew);              // old ink: gone just ahead of the cursor
@@ -280,6 +298,15 @@ void compose(uchar4* __restrict__ out, const unsigned char* __restrict__ page, i
                            (unsigned char)(clamp01(c.z * gain) * 255.f + 0.5f), 255);
 }
 """
+
+
+_ONE = (1.0, 0.0, 0.0, 0.0)
+_ZERO = (0.0, 0.0, 0.0, 0.0)
+
+
+def _S(v: float) -> tuple:
+    """A still channel."""
+    return (v, 0.0, 0.0, 0.0)
 
 
 def _ease(t: float) -> float:
@@ -372,7 +399,14 @@ class TimeMap:
 
     def anchor(self, t_on: float, now: float) -> None:
         """An onset at ``t_on``: page time runs at full speed from there."""
-        if t_on >= self.t[-1] or self.at(now) - self.at(t_on) >= (now - t_on) * 0.98:
+        if t_on >= self.t[-1]:                          # full speed from the onset, not from the last breakpoint
+            if t_on > self.t[-1] and self.rate != 1.0:
+                u0 = self.at(t_on)
+                self.t.append(t_on)
+                self.u.append(u0)
+            self.rate = 1.0
+            return
+        if self.at(now) - self.at(t_on) >= (now - t_on) * 0.98:
             self.rate = 1.0
             return
         u0 = self.at(t_on)
@@ -384,9 +418,14 @@ class TimeMap:
         self.u.append(u0 + (now - t_on))
         self.rate = 1.0
 
+    def shift(self, d: float) -> None:
+        """The sound clock jumped by ``d`` (s): the history moves with it."""
+        self.t = [t + d for t in self.t]
+
 
 class _Sys:
-    __slots__ = ("gen", "slot", "u0", "pxs", "u1", "fifths", "metre", "hdr_t", "hdr_from", "recs", "dirty", "born")
+    __slots__ = ("gen", "slot", "u0", "pxs", "u1", "fifths", "metre", "hdr_t", "hdr_from", "recs", "dirty", "born",
+                 "expire")
 
     def __init__(self, gen, slot, u0, pxs, width):
         self.gen, self.slot, self.u0, self.pxs = gen, slot, u0, pxs
@@ -397,12 +436,13 @@ class _Sys:
         self.hdr_from = (0, None)
         self.recs = None
         self.dirty = True
+        self.expire = 0.0
 
 
 class _Note:
     __slots__ = ("pitch", "vel", "t_on", "t_off", "u", "gen", "slot", "x", "x_from", "t_x", "staff", "d", "acc",
                  "y_from", "t_y", "led_from", "acc_from", "t_acc", "acc_col", "shift", "bid", "bnote", "q",
-                 "head", "head_from", "dots", "flags", "t_val", "lead", "stem", "where", "recs", "active", "fifths",
+                 "head", "head_from", "dots", "flags", "t_val", "lead", "stem", "where", "recs", "expire", "fifths",
                  "conf", "x_exact")
 
     def __init__(self, pitch, vel, t_on):
@@ -421,7 +461,7 @@ class _Note:
         self.stem = None
         self.where = None
         self.recs = None
-        self.active = True
+        self.expire = 0.0
         self.conf = False
 
 
@@ -495,13 +535,23 @@ class StaffRoll(Source):
         self.NP, self.NS = 32, 8 * n
         self.n_up = self.NP + self.NS + MAX_RECS * STRIDE
         self.up_dev = cp.zeros(self.n_up, cp.float32)
-        self._pin = [cp.cuda.alloc_pinned_memory(4 * self.n_up) for _ in range(2)]
+        # three pinned halves: a GPU two frames behind never makes the render thread wait (it waited, spinning,
+        # 11-13 ms on a busy GPU: the stress run's last spikes); a wait, if any, sleeps (a blocking-sync event)
+        self._pin = [cp.cuda.alloc_pinned_memory(4 * self.n_up) for _ in range(NBUF)]
         self.up_host = [np.frombuffer(m, np.float32, self.n_up) for m in self._pin]
-        self.up_ev = [None, None]
+        self.up_ev = [None] * NBUF
         self.up_k = 0
         self.P_dev = self.up_dev[:self.NP]
         self.S_dev = self.up_dev[self.NP:self.NP + self.NS]
         self.R_dev = self.up_dev[self.NP + self.NS:]
+        # first uses here, not on the first frame with notes (a cold worker's first frame: the spelling's import of
+        # score.mei was 50 ms of it, the record kernel's first launch a few more)
+        for p_ in (60, 61):
+            spell(p_, 0)
+        self.k_splat((1, SPLIT, 1), (128, 1, 1),
+                     (self.R_dev, np.int32(0), self.P_dev, self.S_dev, self.A, np.int32(self.AW), self.GT_dev,
+                      np.int32(self.atlas_ok), self.ink, self.glow, np.int32(self.w), np.int32(self.h)))
+        np.array([(0.0,) * STRIDE], np.float32).reshape(-1, STRIDE)
         # the room's transcription (bars, metre, key, note ids), shared with the other screens
         self.room = None
         self.builder = None
@@ -540,8 +590,21 @@ class StaffRoll(Source):
         self.drift = 0.0
         self.kick = 0.0
         self.stats = collections.Counter()
-        self._alive = set()
         self.n_recs = 0
+        self.fresh: list = []                               # notes born this frame (built at once)
+        self.urgent: list = []                              # releases, held notes on a new line (built at once)
+        self.stale: collections.OrderedDict = collections.OrderedDict()   # changed notes, rebuilt in turn
+        self.expiring: list = []
+        self.gen_notes: dict = collections.defaultdict(list)
+        self.gen_blk: dict = {}
+        self.gen_dirty: set = set()
+        self.bar_q: collections.deque = collections.deque()
+        self.settle_q: collections.deque = collections.deque()
+        self.bar_blk = None
+        self.bars_dirty = True
+        self.dying: list = []
+        self.dbg: dict = {}
+        self.dbg_built = 0
         self.last_settle = None
 
     # -- geometry ---------------------------------------------------------------------------------------------------
@@ -578,8 +641,9 @@ class StaffRoll(Source):
         return s, self.x0 + (min(u, s.u1) - s.u0) * s.pxs
 
     # -- records ----------------------------------------------------------------------------------------------------
-    def _glyph(self, out, x, y, ga, gb=-1, m=0.0, a=1.0, sx=None, sy=None, slot=0, gen=0, vel=0.0, t_on=0.0,
+    def _glyph(self, out, X, Y, ga, gb=-1, M=None, A=None, sx=None, sy=None, slot=0, gen=0, vel=0.0, t_on=0.0,
                t_off=-1.0):
+        """A glyph record: X, Y, A, M are channels (v0, dv, t0, dur); M morphs glyph a into b."""
         sx = self.sp if sx is None else sx
         sy = sx if sy is None else sy
         r = self.grect[ga]
@@ -587,134 +651,154 @@ class StaffRoll(Source):
         if gb >= 0:
             q = self.grect[gb]
             x0, y0, x1, y1 = min(x0, q[0]), min(y0, q[1]), max(x1, q[2]), max(y1, q[3])
-        out.append((0.0, x, y, sx, sy, ga, gb, m, a, vel, t_on, t_off, slot, gen,
-                    x + x0 * sx, y + y0 * sy, x + x1 * sx, y + y1 * sy, 0.0, 0.0))
+        xa, xb = (X[0], X[0] + X[1]) if X[1] >= 0 else (X[0] + X[1], X[0])
+        ya, yb = (Y[0], Y[0] + Y[1]) if Y[1] >= 0 else (Y[0] + Y[1], Y[0])
+        A = A or _ONE
+        M = M or _ZERO
+        out.append((0.0, *X, *Y, *A, sx, sy, *M, ga, gb, vel, t_on, t_off, slot, gen,
+                    xa + x0 * sx, ya + y0 * sy, xb + x1 * sx, yb + y1 * sy, 0.0, 0.0))
 
-    def _hbox(self, out, x, y, length, hw, a=1.0, slot=0, gen=0, kind=1.0, vel=0.0, t_on=0.0, t_off=-1.0):
-        out.append((kind, x, y, hw, length, 0, 0, 0, a, vel, t_on, t_off, slot, gen,
-                    x - hw, y - hw, x + max(length, 0.0) + hw, y + hw, 0.0, 0.0))
+    def _hbox(self, out, X, Y, L, hw, A=None, slot=0, gen=0, kind=1.0, vel=0.0, t_on=0.0, t_off=-1.0):
+        xa, xb = (X[0], X[0] + X[1]) if X[1] >= 0 else (X[0] + X[1], X[0])
+        ya, yb = (Y[0], Y[0] + Y[1]) if Y[1] >= 0 else (Y[0] + Y[1], Y[0])
+        lmax = max(L[0], L[0] + L[1], 0.0)
+        out.append((kind, *X, *Y, *(A or _ONE), hw, 0.0, *L, 0, 0, vel, t_on, t_off, slot, gen,
+                    xa - hw, ya - hw, xb + lmax + hw, yb + hw, 0.0, 0.0))
 
-    def _vbox(self, out, x, y, length, hw, a=1.0, slot=0, gen=0):
-        ya, yb = min(y, y + length), max(y, y + length)
-        out.append((2.0, x, y, hw, length, 0, 0, 0, a, 0.0, 0.0, -1.0, slot, gen,
-                    x - hw, ya - hw, x + hw, yb + hw, 0.0, 0.0))
+    def _vbox(self, out, X, y, L, hw, A=None, slot=0, gen=0):
+        xa, xb = (X[0], X[0] + X[1]) if X[1] >= 0 else (X[0] + X[1], X[0])
+        lo, hi = min(0.0, L[0], L[0] + L[1]), max(0.0, L[0], L[0] + L[1])
+        out.append((2.0, *X, y, 0.0, 0.0, 0.0, *(A or _ONE), hw, 0.0, *L, 0, 0, 0.0, 0.0, -1.0, slot, gen,
+                    xa - hw, y + lo - hw, xb + hw, y + hi + hw, 0.0, 0.0))
 
-    def _note_recs(self, n: _Note, now: float):
+    def _stamp(self, n: _Note) -> None:
+        """An event's animations start when its records are built (a burst is spread over frames)."""
+        c = self.clock
+        if n.t_x == PENDING:
+            n.t_x = c
+        if n.t_y == PENDING:
+            n.t_y = c
+        if n.t_acc == PENDING:
+            n.t_acc = c
+        if n.t_val == PENDING:
+            n.t_val = c
+
+    def _note_recs(self, n: _Note):
+        """The note's records, built once per event: every motion (hop, glide, morph, stem growth, fades) is a
+        channel the kernel evaluates on the scene clock."""
+        self._stamp(n)
         sp = self.sp
         out: list = []
-        act = False
         slot, gen = n.slot, n.gen
         tb = self.t_base
         ton = n.t_on - tb
         toff = -1.0 if n.t_off is None else n.t_off - tb
-        e = 1.0
-        if n.t_x is not None:
-            e = _ease((now - n.t_x) / HOP_S)
-            act |= e < 1.0
-        x = n.x_from + (n.x + n.shift - n.x_from) * e
+        c = self.clock
+        xt = n.x + n.shift
+        X = (n.x_from, xt - n.x_from, n.t_x, HOP_S) if n.t_x is not None else (xt, 0.0, 0.0, 0.0)
         y_to = self._step_y(slot, n.staff, n.d)
-        ey = 1.0
-        if n.t_y is not None:
-            ey = _ease((now - n.t_y) / Y_S)
-            act |= ey < 1.0
-        y = n.y_from + (y_to - n.y_from) * ey
-        em = 1.0
-        if n.t_val is not None:
-            em = _ease((now - n.t_val) / MORPH_S)
-            act |= em < 1.0
+        Y = (n.y_from, y_to - n.y_from, n.t_y, Y_S) if n.t_y is not None else (y_to, 0.0, 0.0, 0.0)
+        expire = 0.0
+
+        def off(dx):
+            return (X[0] + dx, X[1], X[2], X[3])
+
         lead = n.lead if n.lead is not None else n
         # ledger lines (the old ones fade as the new ones come)
         hw = self.head_w * sp
-        lx = x - LEDGER_EXT * sp
-        ll = hw + 2 * LEDGER_EXT * sp
+        lx = off(-LEDGER_EXT * sp)
+        ll = (hw + 2 * LEDGER_EXT * sp, 0.0, 0.0, 0.0)
+        gliding = n.t_y is not None and c < n.t_y + Y_S
+        a_in = (0.0, 1.0, n.t_y, Y_S) if gliding else _ONE
         for dd in self._ledgers(n.staff, n.d):
-            self._hbox(out, lx, self._step_y(slot, n.staff, dd), ll, LEDGER_HW * sp, ey, slot, gen)
-        if ey < 1.0 and n.led_from is not None:
+            self._hbox(out, lx, _S(self._step_y(slot, n.staff, dd)), ll, LEDGER_HW * sp, a_in, slot, gen)
+        if gliding and n.led_from is not None:
             st0, d0 = n.led_from
             for dd in self._ledgers(st0, d0):
-                self._hbox(out, lx, self._step_y(slot, st0, dd), ll, LEDGER_HW * sp, 1.0 - ey, slot, gen)
+                self._hbox(out, lx, _S(self._step_y(slot, st0, dd)), ll, LEDGER_HW * sp, (1.0, -1.0, n.t_y, Y_S),
+                           slot, gen)
+            expire = max(expire, n.t_y + Y_S)
         # the tail: strong while provisional, faint once the value carries the duration
-        ta = TAIL_A0
-        if n.t_val is not None:
-            et = _ease((now - n.t_val) / TAIL_S)
-            act |= et < 1.0
-            ta = TAIL_A0 + (TAIL_A1 - TAIL_A0) * et
-        tx = x + hw * 0.92
-        cur = self.systems.get(self.gen)
+        TA = (TAIL_A0, TAIL_A1 - TAIL_A0, n.t_val, TAIL_S) if n.t_val is not None else (TAIL_A0, 0.0, 0.0, 0.0)
+        tdx = hw * 0.92
+        TX = off(tdx)
+        thw = TAIL_HW * sp
         if n.t_off is None:
             if gen == self.gen:
-                self._hbox(out, tx, y, 0.0, TAIL_HW * sp, ta, slot, gen, 3.0, n.vel, ton, toff)
+                self._hbox(out, TX, Y, _ZERO, thw, TA, slot, gen, 3.0, n.vel, ton, toff)
             else:
-                self._hbox(out, tx, y, self.x_r - tx, TAIL_HW * sp, ta, slot, gen, 1.0, n.vel, ton, toff)
+                xs = X[0] + tdx
+                self._hbox(out, TX, Y, (self.x_r - xs, -X[1], X[2], X[3]), thw, TA, slot, gen, 1.0, n.vel, ton,
+                           toff)
                 for g in range(gen + 1, self.gen + 1):
                     s = self.systems.get(g)
                     if s is None:
                         continue
-                    yy = self._step_y(s.slot, n.staff, n.d)
+                    yy = _S(self._step_y(s.slot, n.staff, n.d))
+                    xc = _S(self.x0 - 0.3 * sp)
                     if g == self.gen:
-                        self._hbox(out, self.x0 - 0.3 * sp, yy, 0.0, TAIL_HW * sp, ta, s.slot, g, 3.0, n.vel, ton, toff)
+                        self._hbox(out, xc, yy, _ZERO, thw, TA, s.slot, g, 3.0, n.vel, ton, toff)
                     else:
-                        self._hbox(out, self.x0 - 0.3 * sp, yy, self.x_r - self.x0 + 0.3 * sp, TAIL_HW * sp, ta, s.slot, g,
-                                   1.0, n.vel, ton, toff)
+                        self._hbox(out, xc, yy, _S(self.x_r - self.x0 + 0.3 * sp), thw, TA, s.slot, g, 1.0, n.vel,
+                                   ton, toff)
         else:
             se, xe = self._ux(self.map.at(n.t_off))
+            xs = X[0] + tdx
             if se is None or se.gen <= gen:
-                self._hbox(out, tx, y, max(0.0, (xe if xe is not None else tx) - tx), TAIL_HW * sp, ta, slot, gen, 1.0,
-                           n.vel, ton, toff)
+                xe = xs if xe is None else xe
+                self._hbox(out, TX, Y, (max(0.0, xe - xs), -X[1], X[2], X[3]), thw, TA, slot, gen, 1.0, n.vel, ton,
+                           toff)
             else:
-                self._hbox(out, tx, y, self.x_r - tx, TAIL_HW * sp, ta, slot, gen, 1.0, n.vel, ton, toff)
+                self._hbox(out, TX, Y, (self.x_r - xs, -X[1], X[2], X[3]), thw, TA, slot, gen, 1.0, n.vel, ton,
+                           toff)
                 for g in range(gen + 1, se.gen + 1):
                     s = self.systems.get(g)
                     if s is None:
                         continue
-                    yy = self._step_y(s.slot, n.staff, n.d)
+                    yy = _S(self._step_y(s.slot, n.staff, n.d))
                     end = xe if g == se.gen else self.x_r
-                    self._hbox(out, self.x0 - 0.3 * sp, yy, end - self.x0 + 0.3 * sp, TAIL_HW * sp, ta, s.slot, g, 1.0,
-                               n.vel, ton, toff)
-        # the head (glow from its times, on the GPU)
-        if em < 1.0 and n.head_from != n.head:
-            self._glyph(out, x, y, n.head_from, n.head, em, 1.0, slot=slot, gen=gen, vel=n.vel, t_on=ton, t_off=toff)
+                    self._hbox(out, _S(self.x0 - 0.3 * sp), yy, _S(end - self.x0 + 0.3 * sp), thw, TA, s.slot, g,
+                               1.0, n.vel, ton, toff)
+        # the head (its glow from its times, on the GPU)
+        if n.t_val is not None and n.head_from != n.head:
+            self._glyph(out, X, Y, n.head_from, n.head, (0.0, 1.0, n.t_val, MORPH_S), slot=slot, gen=gen,
+                        vel=n.vel, t_on=ton, t_off=toff)
         else:
-            self._glyph(out, x, y, n.head, slot=slot, gen=gen, vel=n.vel, t_on=ton, t_off=toff)
+            self._glyph(out, X, Y, n.head, slot=slot, gen=gen, vel=n.vel, t_on=ton, t_off=toff)
         # the accidental
         if n.acc or n.acc_from:
-            ea = 1.0
-            if n.t_acc is not None:
-                ea = _ease((now - n.t_acc) / ACC_S)
-                act |= ea < 1.0
-            ax = x - n.acc_col * 1.05 * sp - 0.2 * sp
-            if ea < 1.0 and n.acc_from and n.acc and n.acc_from != n.acc:
+            moving = n.t_acc is not None and c < n.t_acc + ACC_S
+            base = -n.acc_col * 1.05 * sp - 0.2 * sp
+            if moving and n.acc_from and n.acc and n.acc_from != n.acc:
                 ga, gb = ACC_GL[n.acc_from], ACC_GL[n.acc]
-                w = self.adv[ga] + (self.adv[gb] - self.adv[ga]) * ea
-                self._glyph(out, ax - w * sp, y, ga, gb, ea, 1.0, slot=slot, gen=gen)
-            elif ea < 1.0 and n.acc_from and n.acc_from != n.acc:
+                self._glyph(out, off(base - self.adv[gb] * sp), Y, ga, gb, (0.0, 1.0, n.t_acc, ACC_S), slot=slot,
+                            gen=gen)
+            elif moving and n.acc_from and n.acc_from != n.acc:
                 g = ACC_GL[n.acc_from]
-                self._glyph(out, ax - self.adv[g] * sp, y, g, a=1.0 - ea, slot=slot, gen=gen)
+                self._glyph(out, off(base - self.adv[g] * sp), Y, g, A=(1.0, -1.0, n.t_acc, ACC_S), slot=slot,
+                            gen=gen)
+                expire = max(expire, n.t_acc + ACC_S)
             elif n.acc:
                 g = ACC_GL[n.acc]
-                self._glyph(out, ax - self.adv[g] * sp, y, g, a=ea if n.acc_from == 0 else 1.0, slot=slot, gen=gen)
+                A = (0.0, 1.0, n.t_acc, ACC_S) if moving and n.acc_from == 0 else _ONE
+                self._glyph(out, off(base - self.adv[g] * sp), Y, g, A=A, slot=slot, gen=gen)
         # value: dots on every head, the stem and flags on the chord's lead
         if n.t_val is not None:
-            es = _ease((now - n.t_val - 0.05) / STEM_S)
-            act |= es < 1.0
+            AS = (0.0, 1.0, n.t_val + 0.05, STEM_S)
             if n.dots:
                 dy = -0.5 * sp if self._on_line(n.staff, n.d) else 0.0
-                self._glyph(out, x + (self.head_w + 0.35) * sp if n.head != GL_WHOLE else x + (self.adv[GL_WHOLE] + 0.35) * sp,
-                            y + dy, GL_DOT, a=es, slot=slot, gen=gen)
+                dx = ((self.head_w if n.head != GL_WHOLE else self.adv[GL_WHOLE]) + 0.35) * sp
+                self._glyph(out, off(dx), (Y[0] + dy, Y[1], Y[2], Y[3]), GL_DOT, A=AS, slot=slot, gen=gen)
             if n.stem is not None and lead is n:
-                up, ys0, tip = n.stem
+                up, y0, tip = n.stem
                 ga = self.GT[GL_BLACK]
-                sx = x + (ga[6] * sp - STEM_HW * sp if up else ga[8] * sp + STEM_HW * sp)
-                y0 = ys0
-                L = (tip - y0) * es
-                self._vbox(out, sx, y0, L, STEM_HW * sp, 1.0, slot, gen)
+                sdx = ga[6] * sp - STEM_HW * sp if up else ga[8] * sp + STEM_HW * sp
+                self._vbox(out, off(sdx), y0, (0.0, tip - y0, n.t_val + 0.05, STEM_S), STEM_HW * sp, None, slot, gen)
                 if n.flags:
-                    ef = _ease((now - n.t_val - FLAG_DELAY) / FLAG_S)
-                    act |= ef < 1.0
-                    if ef > 0.0:
-                        g = (GL_F16U if up else GL_F16D) if n.flags >= 2 else (GL_F8U if up else GL_F8D)
-                        self._glyph(out, sx - STEM_HW * sp, y0 + L, g, a=ef, slot=slot, gen=gen)
-        n.active = act
+                    g = (GL_F16U if up else GL_F16D) if n.flags >= 2 else (GL_F8U if up else GL_F8D)
+                    self._glyph(out, off(sdx - STEM_HW * sp), _S(tip), g, A=(0.0, 1.0, n.t_val + FLAG_DELAY, FLAG_S),
+                                slot=slot, gen=gen)
+        n.expire = expire if expire > c else 0.0
         return out
 
     @staticmethod
@@ -726,53 +810,54 @@ class StaffRoll(Source):
         out: list = []
         j, g = s.slot, s.gen
         T, B = self.T[j], self.B[j]
-        eh = _ease((now - s.hdr_t) / HDR_S)
-        act = eh < 1.0
+        act = now < s.hdr_t + HDR_S
         hgt = B + 4 * sp - T
-        self._glyph(out, self.x_l - 1.15 * sp, B + 4 * sp, GL_BRACE, sx=sp * 1.7, sy=hgt / 4.0, slot=j, gen=g)
-        self._glyph(out, self.x_l + 0.9 * sp, T + 3 * sp, GL_GCLEF, slot=j, gen=g)
-        self._glyph(out, self.x_l + 0.9 * sp, B + 1 * sp, GL_FCLEF, slot=j, gen=g)
+        self._glyph(out, _S(self.x_l - 1.15 * sp), _S(B + 4 * sp), GL_BRACE, sx=sp * 1.7, sy=hgt / 4.0, slot=j,
+                    gen=g)
+        self._glyph(out, _S(self.x_l + 0.9 * sp), _S(T + 3 * sp), GL_GCLEF, slot=j, gen=g)
+        self._glyph(out, _S(self.x_l + 0.9 * sp), _S(B + 1 * sp), GL_FCLEF, slot=j, gen=g)
         kx = self.x_l + 4.3 * sp
+        a_out = (1.0, -1.0, s.hdr_t, HDR_S)
+        a_in = (0.0, 1.0, s.hdr_t, HDR_S)
 
-        def keysig(f, a):
+        def keysig(f, A):
             n = abs(f)
-            if n == 0 or a <= 0.0:
+            if n == 0:
                 return 0.0
             step = min(1.0, 5.2 / n) * sp
             gl = GL_SHARP if f > 0 else GL_FLAT
             steps = SHARP_STEPS if f > 0 else FLAT_STEPS
             for i in range(n):
-                for st, off in ((0, 0), (1, -14)):
-                    self._glyph(out, kx + i * step, self._step_y(j, st, steps[i] + off), gl, a=a, slot=j, gen=g)
+                for st, o in ((0, 0), (1, -14)):
+                    self._glyph(out, _S(kx + i * step), _S(self._step_y(j, st, steps[i] + o)), gl, A=A, slot=j, gen=g)
             return n * step
 
-        def timesig(m, x, a):
-            if m is None or a <= 0.0:
+        def timesig(m, x, A):
+            if m is None:
                 return
             beats, unit = m
             num_, den = (beats * 3, 8) if unit == 6 else (beats, 4)
-            for st, base in ((0, T), (1, B)):
-                for k, (val, yy) in enumerate(((num_, base + 1.0 * sp), (den, base + 3.0 * sp))):
+            for _st, base in ((0, T), (1, B)):
+                for val, yy in ((num_, base + 1.0 * sp), (den, base + 3.0 * sp)):
                     ds = str(val)
                     w = 1.9 * sp * len(ds)
                     for i, ch in enumerate(ds):
-                        self._glyph(out, x + (w * 0.5 - 0.95 * sp * len(ds)) + i * 1.9 * sp, yy, GL_T0 + int(ch),
-                                    a=a, slot=j, gen=g)
+                        self._glyph(out, _S(x + (w * 0.5 - 0.95 * sp * len(ds)) + i * 1.9 * sp), _S(yy),
+                                    GL_T0 + int(ch), A=A, slot=j, gen=g)
 
         f0, m0 = s.hdr_from
         if act and f0 != s.fifths:
-            w0 = keysig(f0, 1.0 - eh)
-            w1 = keysig(s.fifths, eh)
+            w0 = keysig(f0, a_out)
+            w1 = keysig(s.fifths, a_in)
         else:
-            w0 = w1 = keysig(s.fifths, 1.0)
-        tx0 = kx + w0 + 0.5 * sp
-        tx1 = kx + w1 + 0.5 * sp
+            w0 = w1 = keysig(s.fifths, _ONE)
         if act and (m0 != s.metre or f0 != s.fifths):
-            timesig(m0, tx0, 1.0 - eh)
-            timesig(s.metre, tx1, eh)
+            timesig(m0, kx + w0 + 0.5 * sp, a_out)
+            timesig(s.metre, kx + w1 + 0.5 * sp, a_in)
         else:
-            timesig(s.metre, tx1, 1.0)
-        s.dirty = act
+            timesig(s.metre, kx + w1 + 0.5 * sp, _ONE)
+        s.dirty = False
+        s.expire = s.hdr_t + HDR_S + 0.02 if act else 0.0
         return out
 
     # -- time and systems --------------------------------------------------------------------------------------------
@@ -809,7 +894,16 @@ class StaffRoll(Source):
         self.systems[g] = s
         self.systems.pop(g - self.nsys - 1, None)
         for n in self.open.values():                       # held notes continue on the new line
-            n.recs = None
+            self._touch(n, True)
+        lo = g - self.nsys
+        for og in [k for k in self.gen_notes if k < lo]:   # a system left the page: its notes go, in one step
+            del self.gen_notes[og]
+            self.gen_blk.pop(og, None)
+        if self.notes and self.notes[0].gen < lo:
+            self.notes = [n for n in self.notes if n.gen >= lo]
+            self.stale = collections.OrderedDict((n, None) for n in self.stale if n.gen >= lo)
+            self.expiring = [n for n in self.expiring if n.gen >= lo]
+        self.bars_dirty = True
         self.stats["systems"] += 1
         return s
 
@@ -820,7 +914,12 @@ class StaffRoll(Source):
         self.map.advance(now, 1.0 if active else 0.0, dt)
         u = self.map.at(now)
         s = self.systems.get(self.gen)
+        k = 0
         while s is not None and u >= s.u1:
+            k += 1
+            if k > self.nsys:                               # far behind (it never should be): a fresh line here,
+                s = self._new_system(u)                     # never a loop over every line between
+                break
             s = self._new_system(s.u1)
 
     # -- the music --------------------------------------------------------------------------------------------------
@@ -830,10 +929,15 @@ class StaffRoll(Source):
         if f is None:
             return None
         t = float(f.t_ms) / 1000.0
-        if self.t_base is None:
-            self.t_base = t
-            self.map = TimeMap(t)
+        if not (t > 0.0 and math.isfinite(t)):              # a Sound not updated yet (the renderer primes a scene
+            return None                                     # before its session's first frame: t_ms 0): nothing heard
+        if self.t_base is None:                             # the page starts at this frame's first onset (the
+            t0 = min([t] + [t - float(a) for _p, _v, a in f.onsets if float(a) < 2.0])   # bus delivers in clumps)
+            self.t_base = t0
+            self.map = TimeMap(t0)
             self._new_system(0.0)
+        elif t < self.t_sound - 0.25 or t - self.t_sound > CLOCK_JUMP_S:
+            self._shift_clock(t - self.t_sound - dt)        # the sound clock jumped (a new feed): fold the jump out
         self.t_sound = t
         bars, rev = ([], 0)
         if self.room is not None:
@@ -856,7 +960,7 @@ class StaffRoll(Source):
                 n = self.open.pop(p_, None)
                 if n is not None:
                     n.t_off = max(n.t_on + 0.02, te)
-                    n.recs = None
+                    self._touch(n, True)
                 self.last_activity = max(self.last_activity or te, te)
         if self.open:
             self.last_activity = t
@@ -864,14 +968,49 @@ class StaffRoll(Source):
             for p in [p for p in self.open if nt[p, 3] >= 0.0 and math.isfinite(float(nt[p, 3]))]:
                 n = self.open.pop(p)
                 n.t_off = max(n.t_on + 0.02, t - float(nt[p, 3]))
-                n.recs = None
+                self._touch(n, True)
         if self.builder is not None:
             self._match()
             self._staves(t)
             self._wheres(t)
-            for bar in bars:
-                self._bar(bar)
+            self.bar_q.extend(bars)
+            if self.bar_q:                                   # a burst (a rewrite, a late metre) over frames
+                end = time.thread_time() + BAR_BUDGET_S
+                while self.bar_q:
+                    self._bar(self.bar_q.popleft())
+                    if time.thread_time() > end:
+                        break
+            if self.settle_q:
+                end = time.thread_time() + SETTLE_BUDGET_S
+                while self.settle_q:
+                    key, notes = self.settle_q.popleft()
+                    self._settle(key, notes)
+                    if time.thread_time() > end:
+                        break
         return f
+
+    def _shift_clock(self, d: float) -> None:
+        """Every time the scene holds moves by ``d`` (s), so the page carries on as if the sound clock had not jumped
+        (the glows' times are relative to t_base, which moves too: no records change)."""
+        self.stats["clock_jumps"] += 1
+        log.warning("staff_roll: the sound clock jumped %.1f s; folded out", d)
+        self.t_base += d
+        self.map.shift(d)
+        if self.last_activity is not None:
+            self.last_activity += d
+        self.key_t += d
+        self.staff_t += d
+        self.where_t += d
+        seen = set()
+        for ns in self.gen_notes.values():
+            for n in ns:
+                if id(n) in seen:
+                    continue
+                seen.add(id(n))
+                n.t_on += d
+                if n.t_off is not None:
+                    n.t_off += d
+        self.recent_on = collections.deque(((t + d, st) for t, st in self.recent_on), maxlen=self.recent_on.maxlen)
 
     def _key(self, t: float) -> None:
         """The key the current system is spelled in: the builder's (analysed signature, else Krumhansl), a change
@@ -905,33 +1044,45 @@ class StaffRoll(Source):
         s.fifths = f
         s.hdr_t = self.clock
         s.dirty = True
-        for n in self.notes:                                # re-spell the current system (glides, sign morphs)
-            if n.gen == s.gen:
-                self._respell(n, f)
+        for n in self.gen_notes.get(s.gen, ()):             # re-spell the current system (glides, sign morphs)
+            self._respell(n, f)
         self.stats["key_changes"] += 1
 
     def _respell(self, n: _Note, f: int) -> None:
         d, acc = spell(n.pitch, f)
+        if d == n.d and acc == n.acc:
+            n.fifths = f
+            return
         if d != n.d:
             n.y_from = self._cur_y(n)
             n.led_from = (n.staff, n.d)
-            n.t_y = self.clock
+            n.t_y = PENDING
             n.d = d
         if acc != n.acc:
             n.acc_from = n.acc
             n.acc = acc
-            n.t_acc = self.clock
+            n.t_acc = PENDING
         n.fifths = f
-        n.recs = None
+        self._touch(n)
         r = n.lead
         if n.conf and r is not None and r.stem is not None and isinstance(r.where, list):
             r.stem = self._stem(r.where, n.staff, r.slot, r.head, r.stem[0])
-            r.recs = None
+            self._touch(r)
+
+    def _x_now(self, n: _Note) -> float:
+        xt = n.x + n.shift
+        if n.t_x is None:
+            return xt
+        if n.t_x == PENDING:
+            return n.x_from
+        return n.x_from + (xt - n.x_from) * _ease((self.clock - n.t_x) / HOP_S)
 
     def _cur_y(self, n: _Note) -> float:
         y_to = self._step_y(n.slot, n.staff, n.d)
         if n.t_y is None:
             return y_to
+        if n.t_y == PENDING:
+            return n.y_from
         return n.y_from + (y_to - n.y_from) * _ease((self.clock - n.t_y) / Y_S)
 
     def _birth(self, p: int, vel: float, t_on: float) -> None:
@@ -939,7 +1090,7 @@ class StaffRoll(Source):
         old = self.open.pop(p, None)
         if old is not None:                                # struck again while held
             old.t_off = max(old.t_on + 0.02, t_on)
-            old.recs = None
+            self._touch(old, True)
         s, x = self._ux(self.map.at(t_on))
         if s is None:
             return
@@ -968,6 +1119,8 @@ class StaffRoll(Source):
                 c += 1
             n.acc_col = c
         self.notes.append(n)
+        self.gen_notes[n.gen].append(n)
+        self.fresh.append(n)
         self.open[p] = n
         self.by_pitch[p].append(n)
         self.recent_on.append((t_on, n.staff))
@@ -1007,10 +1160,10 @@ class StaffRoll(Source):
     def _staves(self, t: float) -> None:
         """Unwritten notes follow the builder's staff (its hands) while they wait for their bar (a glide)."""
         b = self.builder
-        if t - self.staff_t < 0.15 or b.ver == self.staff_ver:
+        if t - self.staff_t < 0.4 or b.ver == self.staff_ver:
             return
         self.staff_t, self.staff_ver = t, b.ver
-        ws = [n for n in self.notes[-96:] if n.bnote is not None and not n.conf and t - n.t_on < 20.0]
+        ws = [n for n in self.notes[-24:] if n.bnote is not None and not n.conf and t - n.t_on < 5.0]
         if not ws:
             return
         try:
@@ -1024,9 +1177,9 @@ class StaffRoll(Source):
     def _restaff(self, n: _Note, st: int) -> None:
         n.y_from = self._cur_y(n)
         n.led_from = (n.staff, n.d)
-        n.t_y = self.clock
+        n.t_y = PENDING
         n.staff = st
-        n.recs = None
+        self._touch(n)
 
     def _wheres(self, t: float) -> None:
         """The quantiser's provisional reading of each waiting note (bar, 16th), for LocalAgreement-2."""
@@ -1034,7 +1187,7 @@ class StaffRoll(Source):
             return
         self.where_t = t
         b = self.builder
-        for n in self.notes[-64:]:
+        for n in self.notes[-48:]:
             if n.conf or n.bnote is None:
                 continue
             try:
@@ -1051,6 +1204,7 @@ class StaffRoll(Source):
                     if k[0] == self.phrase and bl["die"] is None:
                         bl["die"] = self.clock
                         bl["recs"] = None
+                        self.bars_dirty = True
                 self.phrase += 0.001                         # (a sub-phrase: the new bar lines are new records)
             else:
                 self.phrase = math.floor(self.phrase) + 1
@@ -1107,11 +1261,11 @@ class StaffRoll(Source):
         for key in dict.fromkeys(touched):
             ch = self.chords.get(key)
             if ch is not None and all(not m.q["pending"] for m in ch["notes"] if m.q is not None):
-                self._settle(key, ch["notes"])
+                self.settle_q.append((key, ch["notes"]))
                 del self.chords[key]
         if len(self.chords) > 256:                          # ties that never closed
             for key in list(self.chords)[:64]:
-                self._settle(key, self.chords.pop(key)["notes"])
+                self.settle_q.append((key, self.chords.pop(key)["notes"]))
 
     def _find(self, p: int, tq: float, bar):
         best, bd = None, 0.35
@@ -1157,10 +1311,10 @@ class StaffRoll(Source):
             sh = False
             if prev_d is not None and abs(n.d - prev_d) == 1 and not prev_shift:
                 sh = True
-            n.x_from = n.x_from + (n.x + n.shift - n.x_from) * (_ease((self.clock - n.t_x) / HOP_S) if n.t_x is not None else 1.0)
+            n.x_from = self._x_now(n)
             n.shift = (hw if up else -hw) if sh else 0.0
             n.x = x
-            n.t_x = self.clock
+            n.t_x = PENDING
             prev_d, prev_shift = n.d, sh
         stem = self._stem(notes, si, lead.slot, head, up)
         # the stem's lead: the unshifted head at its root
@@ -1170,13 +1324,13 @@ class StaffRoll(Source):
             n.head = head
             n.dots = dots
             n.flags = flags if n is root else 0
-            n.t_val = self.clock
+            n.t_val = PENDING
             n.lead = root
             n.stem = stem if n is root else None
             n.where = notes if n is root else None          # (the root keeps its chord, to re-stem on a respell)
             n.conf = True
             n.q["done"] = True
-            n.recs = None
+            self._touch(n)
         if stem is not None and root.shift != 0.0:
             root.shift = 0.0
         self.stats["settled"] += len(notes)
@@ -1207,76 +1361,98 @@ class StaffRoll(Source):
             if o["gen"] == s.gen and o["die"] is None and abs(o["x"] - xb) < 1.5 * sp:   # silence) is one
                 return
         self.bars[key] = {"gen": s.gen, "slot": s.slot, "x": xb, "t": self.clock, "die": None, "recs": None}
+        self.bars_dirty = True
         self.stats["barlines"] += 1
 
-    def _bar_recs(self, bl: dict, now: float):
+    def _bar_recs(self, bl: dict):
         sp = self.sp
         j = bl["slot"]
         T, B = self.T[j], self.B[j]
-        e = _ease((now - bl["t"]) / BAR_S)
-        a = 0.85
-        act = e < 1.0
-        if bl["die"] is not None:
-            ed = _ease((now - bl["die"]) / 0.4)
-            a *= 1.0 - ed
-            act = act or ed < 1.0
         out: list = []
-        L = (B + 4 * sp - T) * e
-        self._vbox(out, bl["x"], T, L, BAR_HW * sp, a, j, bl["gen"])
-        return out, act
+        A = (0.85, -0.85, bl["die"], 0.4) if bl["die"] is not None else (0.85, 0.0, 0.0, 0.0)
+        self._vbox(out, _S(bl["x"]), T, (0.0, B + 4 * sp - T, bl["t"], BAR_S), BAR_HW * sp, A, j, bl["gen"])
+        return out
 
     # -- per frame --------------------------------------------------------------------------------------------------
-    def _collect(self, now: float) -> np.ndarray:
+    def _touch(self, n: _Note, urgent: bool = False) -> None:
+        """The note changed: its records are rebuilt (urgent: this frame; else in turn, within the frame budget)."""
+        if n.recs is None:
+            return                                          # not built yet: it will be, this frame
+        if urgent:
+            self.urgent.append(n)
+        else:
+            self.stale[n] = None
+
+    def _build(self, n: _Note) -> None:
+        if n.gen < self.gen - self.nsys:
+            return
+        r = self._note_recs(n)
+        n.recs = np.array(r, np.float32).reshape(-1, STRIDE) if r else np.zeros((0, STRIDE), np.float32)
+        self.gen_dirty.add(n.gen)
+        if n.expire:
+            self.expiring.append(n)
+        self.dbg_built += 1
+
+    def _collect(self) -> np.ndarray:
+        """The frame's records: cached per system, rebuilt only for what changed.  New notes and releases are
+        built at once; other changes (settles, re-spellings, a rewrite's burst) in order within BUILD_BUDGET_S."""
+        now = self.clock
+        lo_gen = self.gen - self.nsys
+        self.dbg_built = 0
+        fresh, self.fresh = self.fresh, []
+        for n in fresh:
+            self._build(n)
+        urgent, self.urgent = self.urgent, []
+        for n in urgent:
+            self.stale.pop(n, None)
+            self._build(n)
+        if self.expiring:                                   # finished fades: drop their spent records
+            due = [n for n in self.expiring if n.expire and now > n.expire]
+            if due:
+                self.expiring = [n for n in self.expiring if not (n.expire and now > n.expire)]
+                for n in due:
+                    n.expire = 0.0
+                    self._touch(n)
+        if self.stale:
+            end = time.thread_time() + BUILD_BUDGET_S
+            st = self.stale
+            while st:
+                n, _ = st.popitem(last=False)
+                self._build(n)
+                if time.thread_time() > end:
+                    break
         parts = []
-        # systems: prune gens that left the page, the oldest system's erased notes
-        cur = self.systems.get(self.gen)
-        keep = []
-        erase = {}
         for g, s in self.systems.items():
-            if g > self.gen - self.nsys:
-                if s.dirty or s.recs is None:
-                    s.recs = np.asarray(self._hdr_recs(s, now), np.float32).reshape(-1, STRIDE)
-                parts.append(s.recs)
-        if cur is not None:
-            erase[cur.slot] = self.cursor
-        self._alive = set()
-        for n in self.notes:
-            if n.gen <= self.gen - self.nsys:
-                if n.gen < self.gen - self.nsys or n.x_exact + 3 * self.sp < (self.cursor or 0.0) - 2 * self.sp:
-                    continue                                # erased by the new line
-            if self.t_sound - n.t_on > NOTE_KEEP_S:
+            if g <= lo_gen:                                 # (the old line in this slot: its header is gone)
                 continue
-            keep.append(n)
-            self._alive.add(n)
-        if len(keep) != len(self.notes):
-            self.notes = keep
-        for n in keep:
-            if n.recs is None or n.active:
-                r = self._note_recs(n, now)
-                n.recs = np.asarray(r, np.float32).reshape(-1, STRIDE)
-            parts.append(n.recs)
-        dead = []
-        for k, bl in self.bars.items():
-            if bl["gen"] <= self.gen - self.nsys and (bl["gen"] < self.gen - self.nsys or bl["x"] < (self.cursor or 0) - self.sp):
-                dead.append(k)
+            if s.dirty or s.recs is None or (s.expire and now > s.expire):
+                s.recs = np.array(self._hdr_recs(s, now), np.float32).reshape(-1, STRIDE)
+            parts.append(s.recs)
+        for g in sorted(self.gen_notes):
+            if g < lo_gen:
                 continue
-            if bl["recs"] is None or bl.get("act", True):
-                r, act = self._bar_recs(bl, now)
-                bl["recs"] = np.asarray(r, np.float32).reshape(-1, STRIDE)
-                bl["act"] = act
-                if bl["die"] is not None and not act:
-                    dead.append(k)
-                    continue
-            parts.append(bl["recs"])
-        for k in dead:
-            self.bars.pop(k, None)
-        if not parts:
-            return np.zeros((0, STRIDE), np.float32)
-        R = np.concatenate(parts)
-        if len(R) > MAX_RECS:
-            self.stats["recs_capped"] += 1
-            R = R[-MAX_RECS:]
-        return R
+            if g in self.gen_dirty or g not in self.gen_blk:
+                rs = [n.recs for n in self.gen_notes[g] if n.recs is not None and len(n.recs)]
+                self.gen_blk[g] = np.concatenate(rs) if rs else np.zeros((0, STRIDE), np.float32)
+            parts.append(self.gen_blk[g])
+        self.gen_dirty.clear()
+        if self.bars_dirty or any(bl["die"] is not None and now > bl["die"] + 0.45 for bl in self.dying):
+            for k in [k for k, bl in self.bars.items()
+                      if bl["gen"] < lo_gen or (bl["die"] is not None and now > bl["die"] + 0.45)]:
+                del self.bars[k]
+            self.dying = [bl for bl in self.bars.values() if bl["die"] is not None]
+            rs = []
+            for bl in self.bars.values():
+                if bl["recs"] is None:
+                    bl["recs"] = self._bar_recs(bl)
+                rs.extend(bl["recs"])
+            self.bar_blk = np.array(rs, np.float32).reshape(-1, STRIDE)
+            self.bars_dirty = False
+        if self.bar_blk is not None:
+            parts.append(self.bar_blk)
+        self.dbg = {"built": self.dbg_built, "stale": len(self.stale), "barq": len(self.bar_q),
+                    "settleq": len(self.settle_q)}
+        return parts
 
     def render(self, t_local: float, dt: float, out) -> None:
         p = self.step_params(dt)
@@ -1296,8 +1472,8 @@ class StaffRoll(Source):
                 self.cursor = tx
             else:
                 self.cursor += (tx - self.cursor) * (1.0 - math.exp(-dt / 0.06) if dt > 0 else 1.0)
-        R = self._collect(self.clock) if cur is not None else np.zeros((0, STRIDE), np.float32)
-        nr = len(R)
+        R = self._collect() if cur is not None else []
+        nr = min(MAX_RECS, sum(len(b) for b in R))
         # params
         P = np.zeros(self.NP, np.float32)
         S = np.zeros(self.NS, np.float32)
@@ -1322,6 +1498,7 @@ class StaffRoll(Source):
         P[17] = 0.9 if (self.map is not None and self.map.rate > 0.5) else 0.45
         P[18] = self.kick
         P[19] = float(p["intensity"])
+        P[20] = self.clock
         for j in range(self.nsys):
             S[8 * j + 5], S[8 * j + 6], S[8 * j + 7] = self.T[j], self.B[j], 1.0
             S[8 * j + 0] = -1e9
@@ -1355,21 +1532,30 @@ class StaffRoll(Source):
 
     def _upload(self, P, S, R) -> None:
         cp = self.ctx.cp
-        k = self.up_k = 1 - self.up_k
+        k = self.up_k = (self.up_k + 1) % NBUF
         ev = self.up_ev[k]
         if ev is not None and not ev.done:
             ev.synchronize()
         h = self.up_host[k]
         h[:self.NP] = P
         h[self.NP:self.NP + self.NS] = S
-        n = len(R)
-        if n:
-            h[self.NP + self.NS:self.NP + self.NS + n * STRIDE] = R.ravel()
+        o = self.NP + self.NS                               # the record blocks straight into pinned memory
+        end = o + MAX_RECS * STRIDE
+        for blk in R:
+            if not blk.size:
+                continue
+            c = min(blk.size, end - o)
+            if c <= 0:
+                self.stats["recs_capped"] += 1
+                break
+            h[o:o + c] = blk.ravel()[:c]
+            o += c
+        n = (o - self.NP - self.NS) // STRIDE
         st = cp.cuda.get_current_stream()
         m = self.NP + self.NS + n * STRIDE
         self.up_dev[:m].set(h[:m], stream=st)
         if ev is None:
-            ev = self.up_ev[k] = cp.cuda.Event(block=False, disable_timing=True)
+            ev = self.up_ev[k] = cp.cuda.Event(block=True, disable_timing=True)
         ev.record(st)
 
     def close(self) -> None:
