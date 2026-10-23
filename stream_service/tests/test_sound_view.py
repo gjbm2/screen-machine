@@ -333,3 +333,16 @@ def test_show_state_fallback_reads_the_k3_top_level():
         "chroma12": [0.5] * 12, "spectrum32": [0.25] * 32}}})
     f = v.update(T0 + 10)
     assert f.chroma[3] == pytest.approx(0.5) and f.history_row == 0 and f.spectrum[0] == pytest.approx(0.25)
+
+
+def test_a_new_sound_has_a_real_time_base_before_its_first_frame():
+    """7c, 23 Oct: prepare's prime renders a scene before the session's first Sound.update; with frame.t_ms 0 a scene
+    keyed off it ran 8.9e6 s of catch-up on its first real frame."""
+    import time
+
+    from stream_service.sound import Sound
+    t0 = time.monotonic() * 1000.0
+    s = Sound()
+    assert abs(s.frame.t_ms - t0) < 1000.0 and not s.present
+    s.update(time.monotonic() + 0.4)
+    assert s.frame.t_ms > t0
