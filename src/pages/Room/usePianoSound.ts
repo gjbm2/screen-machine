@@ -5,20 +5,19 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { storageGet, storageSet } from "./api";
+import { SPEED_MAX, SPEED_MIN } from "./SpeedNudges";
 import type { ShowInstrument, ShowOutput, ShowTestStartOpts, ShowTestView } from "./types";
 
 const SOUND_KEY = "sm_room_piano_sound";
 const OUTPUT_KEY = "sm_room_piano_output";
 const SPEED_KEY = "sm_room_piano_speed";
 const DEFAULT_OUTPUT = "pc22";
-/** The speeds offered (owner, 23 Oct: "a speed/pacing control setting (1X obviously the default)"). */
-export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
 
 type Saved = { instrument: string | null; output: string | null; speed: number };
 
 function savedSpeed(): number {
   const x = Number(storageGet(SPEED_KEY));
-  return SPEEDS.includes(x) ? x : 1;
+  return Number.isFinite(x) && x >= SPEED_MIN && x <= SPEED_MAX ? x : 1;
 }
 
 // A tiny store, so every user of the hook on the page sees a change at once (and other tabs via "storage").

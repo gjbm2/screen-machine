@@ -33,7 +33,8 @@ import { explainError, RoomApiError, type RoomApi } from "./api";
 import { Pill, Spinner, Unroll } from "./bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import type { PianoRecording, PianoRecordingsView, ShowTestStartOpts, ShowTestState, ShowTestView } from "./types";
-import { SPEEDS, usePianoSound, type PianoSound } from "./usePianoSound";
+import { SpeedNudges } from "./SpeedNudges";
+import { usePianoSound, type PianoSound } from "./usePianoSound";
 import type { NewLogEntry } from "./useRoomConnection";
 
 const POLL_FAST_MS = 1000;
@@ -252,35 +253,6 @@ function scoreLink(id: string): string {
   if (room) out.set("room", room);
   out.set("score", `rec:${id}`);
   return `/music?${out.toString()}`;
-}
-
-/** How fast the piano plays a piece (owner, 23 Oct: "a speed/pacing control setting (1X obviously the default)"): one
- *  row of chips; a change while it plays carries on from where it was (the parent restarts it at pos_s). */
-export function SpeedChoice({ speed, onSpeed, disabled }: { speed: number; onSpeed: (x: number) => void; disabled?: boolean }) {
-  return (
-    <div>
-      <span className="text-base font-medium">Speed</span>
-      <div role="radiogroup" aria-label="Speed" className="mt-2 flex flex-wrap gap-2">
-        {SPEEDS.map((x) => {
-          const sel = x === speed;
-          return (
-            <button
-              key={x}
-              type="button"
-              role="radio"
-              aria-checked={sel}
-              aria-label={x === 1 ? "As written (1×)" : `${x}× the written speed`}
-              disabled={disabled || sel}
-              onClick={() => onSpeed(x)}
-              className={cn(CHIP, "min-w-14 justify-center py-2 tabular-nums", sel ? CHIP_ON : CHIP_OFF, !sel && disabled && "opacity-60")}
-            >
-              {x}×
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 /** The test piano's progress in words: getting the sound ready (with how far), finished, or why it didn't play. */
@@ -608,7 +580,7 @@ export function PianoCard({
           />
         )}
         {canPlay && list.length > 0 && sound.available && (
-          <SpeedChoice speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={!!busy && busy.startsWith("play:")} />
+          <SpeedNudges speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={!!busy && busy.startsWith("play:")} />
         )}
 
         {/* The takes, newest first: tap one for Play, Rename, Download, Delete */}
