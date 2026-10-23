@@ -1,5 +1,6 @@
-"""score_sheet.py: a piece's score is written once on demand (queued, making with progress, ready), its pages laid
-out per size, unknown pieces and failures answered; the writer itself (stream_service/score/sheet.py) is faked."""
+"""score_sheet.py: a piece's quick score comes back in the first answer, the better pass only when asked for (queued,
+making with progress, ready), pages laid out per size, a PDF printed, unknown pieces and failures answered, retry
+tries again; the writer itself (stream_service/score/sheet.py) is faked."""
 from __future__ import annotations
 
 import asyncio
@@ -19,9 +20,12 @@ elif a[0] == "make":
     if "broken" in a[1]:
         say(error="ValueError: no notes to write"); sys.exit(1)
     for p in (0.25, 0.5, 1.0):
-        say(progress=p); time.sleep(0.05)
+        say(progress=p); time.sleep(0.3 if "--neural" in a else 0.02)
     pathlib.Path(a[2]).write_text("<mei/>")
     say(done=True, bars=3)
+elif a[0] == "pdf":
+    pathlib.Path(a[2]).write_bytes(b"%PDF-1.7 " + a[a.index("--paper") + 1].encode())
+    say(done=True, bytes=12)
 elif a[0] == "pages":
     w = a[a.index("--width") + 1]
     say(pages=[f"<svg>{{w}} 1</svg>", f"<svg>{{w}} 2</svg>"])
@@ -47,6 +51,7 @@ def test_score_routes(tmp_path: pathlib.Path, monkeypatch) -> None:
     fake.write_text(FAKE.format(py=sys.executable))
     fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setattr(score_sheet, "PYTHON", fake)
+    monkeypatch.setattr(score_sheet, "MAKE_PYTHON", fake)
     (tmp_path / "maple.mid").write_bytes(b"MThd fake")
     (tmp_path / "broken.mid").write_bytes(b"MThd other")
     sheets = score_sheet.ScoreSheets(Lib(tmp_path), cache=tmp_path / "cache")
@@ -58,29 +63,43 @@ def test_score_routes(tmp_path: pathlib.Path, monkeypatch) -> None:
             r = await cl.get("/api/v1/score/lib:nope")
             assert r.status == 404 and (await r.json())["error"] == "unknown_piece"
             r = await cl.get("/api/v1/score/lib:maple", params={"w": "400", "h": "700"})
-            b = await r.json()
-            assert r.status == 200 and b["state"] in ("queued", "making") and b["title"] == "Maple"
-            for _ in range(100):
-                b = await (await cl.get("/api/v1/score/lib:maple", params={"w": "400", "h": "700"})).json()
+            b = await r.json()                     # the quick pass: in the first answer
+            assert r.status == 200 and b["state"] == "ready" and b["title"] == "Maple" and b["kind"] == "quick"
+            assert b["pages"] == 2 and b["rev"].endswith("-t1-quick") and b["better"] == "none"
+            seen = set()
+            for _ in range(100):                   # the better pass, only when asked for
+                b = await (await cl.get("/api/v1/score/lib:maple", params={"w": "400", "h": "700",
+                                                                             "kind": "better"})).json()
+                seen.add(b["state"])
                 if b["state"] == "ready":
                     break
                 await asyncio.sleep(0.05)
-            assert b["state"] == "ready" and b["pages"] == 2 and b["rev"].endswith("-t1")
+            assert b["state"] == "ready" and b["rev"].endswith("-t1-better") and "making" in seen
+            b = await (await cl.get("/api/v1/score/lib:maple", params={"w": "400", "h": "700"})).json()
+            assert b["kind"] == "quick" and b["better"] == "ready"
             r = await cl.get("/api/v1/score/lib:maple/page/2.svg", params={"w": "400", "h": "700"})
             assert r.status == 200 and r.content_type == "image/svg+xml" and await r.text() == "<svg>400 2</svg>"
             r = await cl.get("/api/v1/score/lib:maple/page/3.svg", params={"w": "400", "h": "700"})
             assert r.status == 404
-            for _ in range(100):
-                b = await (await cl.get("/api/v1/score/lib:broken")).json()
-                if b["state"] == "failed":
-                    break
-                await asyncio.sleep(0.05)
+            r = await cl.get("/api/v1/score/lib:maple/pdf")
+            assert r.status == 200 and r.content_type == "application/pdf" and await r.read() == b"%PDF-1.7 a4"
+            assert r.headers["Content-Disposition"].startswith('inline; filename="Maple.pdf"')
+            r = await cl.get("/api/v1/score/lib:maple/pdf", params={"paper": "letter", "download": "1"})
+            assert await r.read() == b"%PDF-1.7 letter" and r.headers["Content-Disposition"].startswith("attachment")
+            assert (await cl.get("/api/v1/score/lib:maple/pdf", params={"paper": "a3"})).status == 400
+            b = await (await cl.get("/api/v1/score/lib:broken")).json()
             assert b["state"] == "failed" and "no notes" in b["detail"]
+            assert (await (await cl.get("/api/v1/score/lib:broken")).json())["state"] == "failed"   # remembered
+            n0 = len(list((tmp_path / "cache").glob("*")))
+            b = await (await cl.get("/api/v1/score/lib:broken", params={"retry": "1"})).json()
+            assert b["state"] == "failed" and n0 == len(list((tmp_path / "cache").glob("*")))      # tried again
             r = await cl.get("/api/v1/score/lib:broken/page/1.svg")
             assert r.status == 404 and (await r.json())["error"] == "not_ready"
+            assert (await cl.get("/api/v1/score/lib:broken/pdf")).status == 404
 
     asyncio.run(go())
-    assert len(list((tmp_path / "cache").glob("*.mei"))) == 1
+    assert len(list((tmp_path / "cache").glob("*.mei"))) == 2                       # quick + better
+    assert not list((tmp_path / "cache").glob("*.pdf")) and not list((tmp_path / "cache").glob(".*.pdf"))   # never kept
 
 
 def test_abandoned_job_is_dropped(tmp_path: pathlib.Path, monkeypatch) -> None:
@@ -88,8 +107,9 @@ def test_abandoned_job_is_dropped(tmp_path: pathlib.Path, monkeypatch) -> None:
     sheets = score_sheet.ScoreSheets(Lib(tmp_path), cache=tmp_path / "cache")
 
     async def go():
-        sheets.jobs["k"] = score_sheet._Job("k", tmp_path / "maple.mid", "Maple", "")
-        await sheets._run_jobs()
+        job = score_sheet._Job("k", "better", tmp_path / "maple.mid", "Maple", "")
+        sheets.jobs["k"] = sheets.better["k"] = job
+        await sheets._run_better()
 
     asyncio.run(go())
-    assert not sheets.jobs and not sheets.failed
+    assert not sheets.jobs and not sheets.better and not sheets.failed
