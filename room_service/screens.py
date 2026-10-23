@@ -259,6 +259,7 @@ class ScreenController:
         self._warm_task: asyncio.Task | None = None
         self.anchor_png: bytes | None = None
         self.target_png: bytes | None = None
+        self.unmatched: str | None = None       # the last cut went without a matched still (and why), for the page
         self._prefetched: str | None = None
         self._stale_fid: str | None = None   # a freeze left open by a previous process
         self._hello_same_page: bool | None = None   # the last glass hello: same page_load_id as persisted?
@@ -468,7 +469,11 @@ class ScreenController:
         if key not in self._art_sizes:
             if len(self._art_sizes) > 32:
                 self._art_sizes.clear()
-            self._art_sizes[key] = await asyncio.get_running_loop().run_in_executor(None, media_size, path)
+            try:                                   # a header read (ffprobe on a clip): never longer than a still
+                self._art_sizes[key] = await bounded(
+                    asyncio.get_running_loop().run_in_executor(None, media_size, path), self.t.snapshot_s)
+            except asyncio.TimeoutError:
+                return None                        # not cached: tried again next time
         return self._art_sizes[key]
 
     def _shaped(self, state: Any) -> Any:
@@ -510,6 +515,14 @@ class ScreenController:
         except HandshakeError as e:
             if not e.detail.startswith("timeout after"):
                 raise
+
+    async def _snapshotter_ready_or_warn(self) -> None:
+        """Readiness before a freeze, never fatal (degrade, never refuse): a snapshotter that isn't ready only means
+        the still that follows may fail, and that falls back to the last still or black."""
+        try:
+            await self._snapshotter_ready()
+        except HandshakeError as e:
+            self._log("warning", f"snapshotter not ready ({e.detail}); going on (the still may be unmatched)")
 
     async def _snapshotter_ready(self) -> None:
         """Before a freeze: make sure the art-only page is loaded, so the 3 s snapshot
@@ -1706,7 +1719,7 @@ class ScreenController:
         t = self.t
         try:
             await self.mgr.refresh_catalog()
-            await self._snapshotter_ready()
+            await self._snapshotter_ready_or_warn()
             if self._abort_entry:
                 raise EntryAborted()
             # 1. freeze -> ack frozen [3 s]
@@ -1718,8 +1731,19 @@ class ScreenController:
             # 2. snapshot [3 s]
             self._set_phase("snapshot")
             self.art_shape = await self._art_shape_of(ack["data"].get("state"))
-            png = await self._snapshot(self._shaped(ack["data"].get("state")))
-            self._keep_png("anchor", png)
+            try:
+                png = await self._snapshot(self._shaped(ack["data"].get("state")))
+                self._keep_png("anchor", png)
+                anchor: dict = {"png_b64": base64.b64encode(png).decode()}
+                self.unmatched = None
+            except HandshakeError as e:
+                # Degrade, never refuse (owner, 23 Oct): a slow or failed still never stops a screen going live;
+                # it starts from the last anchor still, else black, and the page's cut is unmatched.
+                old = self.anchor_png
+                anchor = {"png_b64": base64.b64encode(old).decode()} if old else {"rgb": [0, 0, 0]}
+                self.unmatched = f"went live without a matched cut ({e.detail})"
+                self._log("warning", f"entry snapshot failed ({e.detail}); going live from "
+                                     f"{'the last still' if old else 'black'}: an unmatched cut")
             if self._abort_entry:
                 raise EntryAborted()
             # 3. POST session -> session.ready [5 s]
@@ -1727,7 +1751,7 @@ class ScreenController:
             profile = live.get("profile") or self.cfg.profile
             body: dict[str, Any] = {
                 "screen": self.id, "gpu": self.cfg.gpu, "profile": profile, **self._render_size(profile),
-                "anchor": {"png_b64": base64.b64encode(png).decode()},
+                "anchor": anchor,
                 **({"hud": True} if self.hud else {}),
                 "scene": scene_with_params(live),
                 "ttl_s": self.mgr.cfg.session_ttl_s,
@@ -2029,7 +2053,7 @@ class ScreenController:
         try:
             await self.mgr.refresh_catalog()
             out_s = self.mgr.transition_seconds(out_spec)
-            await self._snapshotter_ready()
+            await self._snapshotter_ready_or_warn()
             if page.closed:
                 raise PageGone(page.cid)
             # 1. freeze -> ack frozen [3 s] (the hidden art stack's state)
@@ -2038,28 +2062,26 @@ class ScreenController:
             self._send(page, "freeze", {"fid": fid, "reason": "exit"})
             ack = await self._wait(mark, lambda i: self._is_ack(i, "frozen", fid=fid), t.freeze_ack_s,
                                    "ack frozen", page=page, page_art_sid=sid, sid=sid)
-            # 2. snapshot [3 s]. A failure here would end in a hard (visible) cut, and the page
-            # can stay frozen well inside its 30 s safety, so one more attempt comes first.
+            # 2. snapshot [snapshot_s], one try. Degrade, never refuse (owner, 23 Oct: "even if PC is loaded it
+            # should [not] prevent mode changes"): no still in time -> the exit goes on to the last target still,
+            # else black: an unmatched cut instead of a wait.
             self._set_phase("snapshot")
             state = self._shaped(ack["data"].get("state"))
             try:
-                png = await self._snapshot(state)
+                png: bytes | None = await self._snapshot(state)
+                self._keep_png("target", png)
+                target: dict = {"png_b64": base64.b64encode(png).decode()}
             except HandshakeError as e:
-                if e.detail.startswith("timeout") and isinstance(state, dict) and state.get("kind") == "video":
-                    # a clip's frame grab is decode-bound (23 Oct: 8-14 s for a 1440p clip with keyframes 10 s
-                    # apart on a busy box): a second try takes as long, so the hard cut comes now
-                    self._log("warning", f"exit snapshot of a clip failed ({e.detail}); hard cut")
-                    raise
-                self._log("warning", f"exit snapshot failed ({e.detail}); retrying once before a hard cut")
-                await self._snapshotter_ready()
-                png = await self._snapshot(state)
-            self._keep_png("target", png)
+                png = self.target_png
+                target = {"png_b64": base64.b64encode(png).decode()} if png else {"rgb": [0, 0, 0]}
+                self.unmatched = f"left live without a matched cut ({e.detail})"
+                self._log("warning", f"exit snapshot failed ({e.detail}); exiting to "
+                                     f"{'the last still' if png else 'black'}: an unmatched cut")
             # 3. exit(target) -> session.held [out + 5 s]
             self._set_phase("exiting", sid)
             transition = out_spec if out_spec != sess.get("created_out") else None
             try:
-                await self.mgr.stream.exit(sid, {"png_b64": base64.b64encode(png).decode()}, transition,
-                                           timeout=t.exit_session_s)
+                await self.mgr.stream.exit(sid, target, transition, timeout=t.exit_session_s)
             except StreamError as e:
                 raise HandshakeError("exit", str(e)) from None
             held = await self._wait(mark, lambda i: self._is_stream(i, ("session.held",), sid),
@@ -2142,7 +2164,8 @@ class ScreenController:
             "last_error": self.last_error,
             "policy": {**self.policy(), "timed_reload_applied": self.page_timed_reload(),
                        "page_key_required": pages.key_required(self.id)},
-            "snapshots": {"anchor": self.anchor_png is not None, "target": self.target_png is not None},
+            "snapshots": {"anchor": self.anchor_png is not None, "target": self.target_png is not None,
+                          "unmatched": self.unmatched},
         }
 
 
