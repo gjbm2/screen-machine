@@ -2050,6 +2050,17 @@ class ScreenController:
         t = self.t
         live = sess.get("live") or {}
         out_spec = (live.get("transitions") or {}).get("out")
+        # The switch deadline (owner, 23 Oct: "if the mode doesn't change after x seconds then it MUST JUST CHANGE,
+        # otherwise the 'off' switch doesn't work"): whatever step it is in (freeze, still, held, art visible), the
+        # exit hard-cuts to art at switch_to_art_s. Nothing extends it.
+        task = asyncio.current_task()
+        hit: list[bool] = []
+
+        def _deadline() -> None:
+            if self._handshake == "exit" and task is not None and not task.done():
+                hit.append(True)
+                task.cancel("switch deadline")
+        dl = asyncio.get_running_loop().call_later(t.switch_to_art_s, _deadline)
         try:
             await self.mgr.refresh_catalog()
             out_s = self.mgr.transition_seconds(out_spec)
@@ -2113,25 +2124,34 @@ class ScreenController:
             self.session = None
             self._unfreeze(page)
             self._set_phase("idle", "exit: page was already in art")
+        except asyncio.CancelledError:
+            if not hit:
+                raise
+            task.uncancel()
+            await self._exit_hard_cut(sid, f"not back on art within {t.switch_to_art_s:g} s (deadline)")
         except (HandshakeError, PageGone, StreamUnreachable) as e:
-            what = "page went away" if isinstance(e, PageGone) else str(e)
-            self.last_error = f"exit {what}"
-            self._log("warning", f"exit failed: {what}; hard cut to art")
-            cur = self._page()
-            if cur is not None:
-                try:
-                    cur.send("live.abort", {"session": sid, "reason": what[:80]})
-                except PageGone:
-                    pass
-            self.layer = "art"
-            self._publish(what)
-            await self._delete_session(sid)
-            self.session = None
-            self._unfreeze(cur)
-            self._set_phase("idle", "exit aborted (hard cut)")
+            await self._exit_hard_cut(sid, "page went away" if isinstance(e, PageGone) else str(e))
         finally:
+            dl.cancel()
             self._handshake = None
             self._changed()
+
+    async def _exit_hard_cut(self, sid: str, what: str) -> None:
+        """The exit's last resort: the page cuts to its art now (live.abort), the session goes, the page unfreezes."""
+        self.last_error = f"exit {what}"
+        self._log("warning", f"exit failed: {what}; hard cut to art")
+        cur = self._page()
+        if cur is not None:
+            try:
+                cur.send("live.abort", {"session": sid, "reason": what[:80]})
+            except PageGone:
+                pass
+        self.layer = "art"
+        self._publish(what)
+        self.session = None
+        self._unfreeze(cur)
+        self._set_phase("idle", "exit aborted (hard cut)")
+        await self._delete_session(sid)
 
     # -- status -------------------------------------------------------------
     def status(self) -> dict:

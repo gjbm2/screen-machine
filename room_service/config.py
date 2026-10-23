@@ -103,6 +103,8 @@ class MaskConfig:
 @dataclass
 class Timeouts:
     """Handshake timeouts (AV_PROGRAMME §3.3) and supervision timings."""
+    switch_to_art_s: float = 8.0       # owner, 23 Oct: a switch to art is on the glass within this, whatever
+                                       # the PC is doing: at the deadline the exit hard-cuts (nothing extends it)
     freeze_ack_s: float = 5.0          # freeze -> ack frozen (page settle cap 4.5 s: a picture
                                        # change through black takes >= 3.1 s; DCL v3 §3.6)
     snapshot_s: float = 3.0            # headless screenshot

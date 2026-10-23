@@ -1159,3 +1159,21 @@ async def test_live_diagnostics_hud(harness: Harness):
                              for m, p, b in h.stream.calls), 3, "hud off PATCHed")
     st, body = await h.api("GET", "/api/v1/status")
     assert body["screens"]["devtest"]["hud"]["wanted"] is False
+
+
+async def test_a_switch_to_art_always_lands_by_its_deadline(make_harness):
+    """Owner, 23 Oct: "if the mode doesn't change after x seconds then it MUST JUST CHANGE, otherwise the 'off'
+    switch doesn't work". A page slow to freeze (or any slow step) can't hold the exit past switch_to_art_s: the
+    room hard-cuts to art, ends the session and unfreezes the page."""
+    h = await make_harness(timeouts={"switch_to_art_s": 0.6, "freeze_ack_s": 5.0})
+    page = await h.go_live()
+    c = h.screen()
+    await h.wait_phase("live")
+    page.frozen_delay = 3.0                                  # the page takes 3 s to freeze
+    t0 = time.monotonic()
+    st, _ = await h.api("PUT", "/api/v1/screens/devtest", {"desired": "art"})
+    await h.wait(lambda: c.session is None and c.phase == "idle", 2.0, "exit by the deadline")
+    assert time.monotonic() - t0 < 1.5
+    assert c.layer == "art" and "deadline" in c.last_error
+    await h.wait(lambda: "live.abort" in page.types() and "unfreeze" in page.types()[-2:], 2.0, "page cut to art")
+    await h.wait(lambda: any(m == "DELETE" for m, _, _ in h.stream.calls), 2.0, "session deleted")
