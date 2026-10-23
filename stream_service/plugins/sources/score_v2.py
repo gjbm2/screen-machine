@@ -29,8 +29,8 @@ doesn't own: beams, flags, rests, ties, dynamics.  When the metre turns (a rewri
 its ink lifts back into glyphs on their heads, the notes shuffle into the new bars and the bars settle again; once its
 start has gone, what's written stays and the phrase carries on after it with the new time signature.  Nothing blanks.
 
-``page``: a stationary page of ``lines`` grand staves (3-5) that writes in place and wraps: line j sits in slot
-j mod lines, and a line about to be written erases the old one in its slot left to right.  Bars per line follow the
+``page``: a page of ``lines`` grand staves (3-5), the line being played on the bottom one: about a second before
+the playing reaches the next line the whole stack glides up a line, the top line leaving off the top as it dims.  Bars per line follow the
 tempo (a line holds about ``line_s`` of music: more, narrower bars when they're short, never under FIT_MIN of their
 natural width), and a line closes early when the bars landing show the rest won't fit.  Older lines dim.
 ``scroll``: one grand staff on a tape moving at the music's pace (its tempo fed forward, a gentle pull keeping the
@@ -59,7 +59,7 @@ from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 from stream_service.score import glyphs as GL
-from stream_service.score.motion import LinePlan, PlanLine, smoothstep
+from stream_service.score.motion import Glide, LinePlan, PlanLine, smoothstep
 
 log = logging.getLogger("stream_service.plugins.score_v2")
 
@@ -91,6 +91,8 @@ N_MIN, N_MAX = 2, 12
 FEATHER_SP = 1.0
 FRONT_V_SPS, FRONT_A_SPS = 140.0, 1400.0                  # the reveal front's speed and acceleration caps
 SHOW_AT = 0.7                                             # the next line shows once the newest note is this far along
+TURN_S, TURN_EXTRA_S, TURN_LEAD_S = 1.6, 0.5, 1.0         # (page) the stack's glide up a line (+ per extra line),
+                                                          # started this long before the playing reaches the next line
 ERASE_S, ERASE_FEATHER_SP, SHOW_S, HDR_FADE_S = 0.6, 3.0, 0.4, 0.3
 AGE_ALPHA = (1.0, 1.0, 0.86, 0.7, 0.62)
 HDR_WAIT_S, PART_TIMEOUT_S, PARK_MAX = 1.5, 5.0, 8
@@ -847,6 +849,11 @@ class ScoreV2(Source):
         self.x_off = int(0.5 * (self.w - self.cw))
         self.pitch = PITCH_SP * sp
         self.y_top = int(round(0.5 * (self.h - ((self.NL - 1) * self.pitch + self.ch))))
+        self.y_bot = self.y_top + (self.NL - 1) * self.pitch       # (page) the bottom stave: the line being played
+        self.turn = Glide(0.0)                                      # (page) the line on the bottom stave (g, eased)
+        self.turn_fresh = True                                      # (the first placing, or a join: no glide)
+        self.turn_t = None
+        self.turn_dec = -1e9
         self.buf = cp.zeros((self.h, self.w, 4), cp.uint8)
         mod = raw_module(_SRC)
         self.k = mod.get_function("score")
@@ -1012,7 +1019,75 @@ class ScoreV2(Source):
         if self.scroll:
             return
         self.offx[ln.ci] = self.x_off
-        self.offy[ln.ci] = self.y_top + ln.slot * self.pitch
+        self.offy[ln.ci] = self.y_bot + (ln.g - self.turn.x) * self.pitch
+
+    def _gone(self, ph: _Phrase, j: int) -> bool:
+        """(page) Line j of the phrase has left the page (off the top)."""
+        ln = ph.lines.get(j)
+        g = ln.g if ln is not None else ph.g0 + j
+        return g - self.turn.target < -(self.NL - 1) - 0.5
+
+    def _turn_line(self):
+        """(page) The line that should be on the bottom stave now: the one the playing reaches TURN_LEAD_S ahead
+        (its bars by the beat grid, or its time span before the metre); else the newest note's."""
+        ph = self.ph
+        if ph.t0 is None or ph.lift_t is not None:
+            return None
+        t = self.t_sound + TURN_LEAD_S
+        j = None
+        if ph.metre is not None and ph.plan.lines:
+            pos = self.builder.position(t) if ph.k_base is not None else None
+            if pos is not None:
+                k = max(0, int(math.floor(pos - ph.k_base)))
+                if ph.ended:
+                    k = min(k, max(0, ph.committed - 1))
+                self._ensure_plan(ph, k)
+                if ph.plan.covers(k):
+                    j = ph.plan.line_of(k)
+        elif ph.metre is None and ph.v is not None:
+            ln = self._open_line_at(ph, t)[0]
+            j = ln.m if ln is not None else None
+        i = ph.newest
+        N = self.N
+        ln_new = N.line[i] if (i is not None and N.used[i] and N.ph[i] is ph) else None
+        if ln_new is not None:                              # never past the line after the newest note's, nor
+            j_new = ln_new.m                                # past its own in a pause (the grid runs on)
+            fresh = self.t_sound - float(N.t_on[i]) < 2.0
+            j = j_new if j is None else min(j, j_new + 1 if fresh else j_new)
+        if j is None:
+            return None
+        ln = self._line_of(ph, j)
+        if ln is None:
+            return None
+        self._show(ln)
+        return ln.g
+
+    def _turn_step(self, dt: float) -> None:
+        """(page) The stack follows the playing: a glide up when the next line is due (several lines at once a bit
+        longer); a join or the first line is placed at once.  Lines gone off the top are let go."""
+        g = None
+        if self.turn_fresh or self.t_sound - self.turn_dec >= 0.1:  # (the decision ten times a second; the glide every
+            self.turn_dec = self.t_sound                             # frame)
+            g = self._turn_line()
+        T = self.turn
+        if g is not None:
+            if self.turn_fresh:
+                T.snap(float(g))
+                self.turn_fresh = False
+            elif g > T.target + 1e-6:
+                rows = max(1, math.ceil(g - T.x - 1e-6))
+                T.to(float(g), TURN_S + TURN_EXTRA_S * (rows - 1))
+        ts = self.t_sound                                   # (on the music's clock, like every other motion here:
+        dts = min(0.25, max(0.0, ts - self.turn_t)) if self.turn_t is not None else 0.0   # frames may come late)
+        self.turn_t = ts
+        T.step(dts)
+        P = T.x
+        top = -(self.NL - 1) - 1.02
+        for ln in list(self.lines):
+            if ln.g - P < top and ln.g - T.target < top and (ln.phrase is not self.ph or ln.m + 1 in ln.phrase.lines):
+                self._release(ln)
+                continue
+            self.offy[ln.ci] = self.y_bot + (ln.g - P) * self.pitch
 
     def _alloc_canvas(self) -> int:
         used = {ln.ci for ln in self.lines}
@@ -1053,6 +1128,8 @@ class ScoreV2(Source):
         ln = ph.lines.get(m)
         if ln is not None or not create:
             return ln
+        if not self.scroll and self._gone(ph, m):
+            return None                                     # (page) it has left the page: not made again
         g = ph.g0 + m
         ci = self._alloc_canvas()
         ln = _Line(ci, g % self.NL, g, self.sp, self.cw)
@@ -1073,9 +1150,6 @@ class ScoreV2(Source):
             return
         ln.shown = True
         ln.t_shown = self.t_sound
-        for o in self.lines:
-            if o is not ln and o.slot == ln.slot and o.shown and o.erase_t is None and o.g < ln.g:
-                o.erase_t = self.t_sound
         if not ln.sent and not ln.bars:
             f = self._key_now()
             if f != ln.fifths:                              # the key moved since it was planned
@@ -1118,6 +1192,7 @@ class ScoreV2(Source):
             self.joined = self._join(bars)
             if self.joined:
                 self.join_t = self.t_sound
+                self.turn_fresh = True
                 last = max((j for j, bar in enumerate(bars) if bar.marker), default=-1)
                 bars = bars[last + 1:]                      # (bars before a rewrite in the hand-over: superseded)
         self._metre_check()
@@ -1424,6 +1499,8 @@ class ScoreV2(Source):
             j = ph.plan.line_of(k)
             PL = ph.plan.line(j)
             ln = self._line_of(ph, j)
+            if ln is None:
+                return None
             pl = ln.bars.get(k)
             if pl is not None:
                 x0, w = pl[0], pl[1]
@@ -1454,6 +1531,8 @@ class ScoreV2(Source):
                 self._open_setup(ph)
             t = float(self.N.tq[i])
             ln, t_s = self._open_line_at(ph, t)
+            if ln is None:
+                return None
             x = ln.music_x0 + self.A + max(0.0, t - t_s) * ph.v
             barid = q // 16 if typ == "prov" else q // 2000
             geo = None
@@ -1499,10 +1578,14 @@ class ScoreV2(Source):
         t_s = ph.t0 if ph.t0 is not None else t
         m = 0
         while True:
-            ln = self._line_of(ph, m)
-            T = max(0.5, (self.cw - PAD_R_SP * self.sp - ln.music_x0 - self.A) / ph.v)
+            ln = self._line_of(ph, m, create=False)         # (lines passed over aren't made again: (page) the
+            if ln is not None:                              # early ones may have left the page)
+                x0 = ln.music_x0
+            else:
+                x0 = (self._hdr_w(self._key_now()) + (TS_SP * self.sp if m == 0 else 0.0))
+            T = max(0.5, (self.cw - PAD_R_SP * self.sp - x0 - self.A) / ph.v)
             if t < t_s + T or m >= 24:
-                return ln, t_s
+                return (ln if ln is not None else self._line_of(ph, m)), t_s   # (None: gone off the page)
             t_s += T
             m += 1
 
@@ -1803,7 +1886,7 @@ class ScoreV2(Source):
         last = ph.plan.lines[-1] if ph.plan.lines else None
         k0 = last.k0 + last.n if last is not None else 0
         ln = self._line_of(ph, m)
-        avail = self.cw - PAD_R_SP * sp - ln.music_x0
+        avail = self.cw - PAD_R_SP * sp - (ln.music_x0 if ln is not None else self._hdr_w(self._key_now()))
         nat = (ph.nat or NAT_SEED[self.spacing]) * (1.5 if ph.unit == 6 else 1.0)
         nat_px = nat * ph.L * sp
         bar_s = ph.bar_s or self.builder.bar_seconds() or 2.0
@@ -1812,7 +1895,7 @@ class ScoreV2(Source):
         n_fit = int(avail // (FIT_MIN * nat_px))
         n = max(n_nat, min(n_time, n_fit))
         n = min(N_MAX, max(N_MIN, n))
-        ph.plan.lines.append(PlanLine(k0, n, avail / n, ln.music_x0))
+        ph.plan.lines.append(PlanLine(k0, n, avail / n, ln.music_x0 if ln is not None else self.cw - avail - PAD_R_SP * sp))
         if len(ph.plan.lines) > 8:
             ph.plan.lines.pop(0)
             ph.plan.base += 1
@@ -1941,7 +2024,8 @@ class ScoreV2(Source):
                 ln = self.tape_line
                 fifths = ph.bar_fifths.get(k, ph.fifths_tape)
             else:
-                if not ph.plan.covers(k) or ph.plan.line(ph.plan.line_of(k)) is None:
+                if (not ph.plan.covers(k) or ph.plan.line(ph.plan.line_of(k)) is None
+                        or self._gone(ph, ph.plan.line_of(k))):
                     ph.items[k] = SKIP
                     ph.wait.pop(0)
                     continue
@@ -2266,6 +2350,8 @@ class ScoreV2(Source):
         if not plan.covers(k):
             self._ensure_plan(ph, k)
         j = plan.line_of(k)
+        if self._gone(ph, j):
+            return                                          # (its line has left the page)
         PL, ln = plan.line(j), self._line_of(ph, j)
         if PL is None or ln is None:
             return
@@ -2283,6 +2369,8 @@ class ScoreV2(Source):
             self._ensure_plan(ph, k)
             j = plan.line_of(k)
             PL, ln = plan.line(j), self._line_of(ph, j)
+            if PL is None or ln is None:
+                return
             dst = plan.slot_x0(j, k)
             self._bar_gates(ph, ph.lines.get(j - 1))
             self._bar_gates(ph, ln)
@@ -2509,7 +2597,7 @@ class ScoreV2(Source):
             in_view = ph.U0 is not None and ph.U0 > self.S_lo - 2.0 * self.sp     # (span: the room's view)
         else:
             ln0 = ph.lines.get(0)
-            in_view = ln0 is not None and ln0.erase_t is None
+            in_view = ln0 is not None and ln0.g - self.turn.x > -(self.NL - 1) - 0.05
         if (in_view and ph.cut_t is None) or ph.next_place == 0:
             self._lift()
         else:
@@ -2764,9 +2852,18 @@ class ScoreV2(Source):
                     if ln.front >= x_end and dt > 0:
                         ln.open_to = max(x_end + 0.9 * sp, ln.open_to - 60.0 * sp * dt)
         # lines dim by age from the playing line; the playing line's staff a little heavier
+        if not self.scroll:
+            self._turn_step(dt)
         for ln in self.lines:
-            age = self.play_g - ln.g
-            ln.alpha = AGE_ALPHA[min(len(AGE_ALPHA) - 1, max(0, age))] if not ln.placeholder else 0.62
+            if self.scroll:
+                age = self.play_g - ln.g
+                ln.alpha = AGE_ALPHA[min(len(AGE_ALPHA) - 1, max(0, age))] if not ln.placeholder else 0.62
+                continue
+            age = max(0.0, self.turn.x - ln.g)
+            i0 = min(len(AGE_ALPHA) - 1, int(age))
+            i1 = min(len(AGE_ALPHA) - 1, i0 + 1)
+            a = AGE_ALPHA[i0] + (AGE_ALPHA[i1] - AGE_ALPHA[i0]) * (age - int(age)) if not ln.placeholder else 0.62
+            ln.alpha = a * (1.0 - smoothstep(self.NL - 1.0, self.NL - 0.3, age))   # (leaving off the top)
             want = 1.15 if (ln.g == self.play_g and not ln.placeholder) else 1.0
             ln.weight += (want - ln.weight) * (1.0 - math.exp(-dt / 0.4) if dt > 0 else 1.0)
 
