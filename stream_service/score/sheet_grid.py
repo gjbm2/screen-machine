@@ -11,8 +11,7 @@ The notation is the live score's own: quantize.py's bar maths (_voice: chords, r
 beat), its dynamics levels and key profiles, mei.py's spelling and engraving.  A staff is one voice (as on the
 screens); triplets come out on the 16th grid.  Hands: a two-part file (two tracks or channels) puts its higher part
 on the treble staff and its lower on the bass (a note past 3 ledger lines goes to the other staff); one part splits
-at middle C.  Key: the file's key signatures; none (or all C) and the notes say otherwise, the Albrecht-Shanahan
-profile over the whole piece, its opening and close weighing most.
+at middle C.  Key: the file's key signatures; none (or all C): the keys the notes go through (_key).
 """
 from __future__ import annotations
 
@@ -25,8 +24,9 @@ from .quantize import (BASS_HIGH, DYNAMICS, KEY_PROFILE, PROFILES, TREBLE_LOW, B
 GRID_DIV = 12                        # the lattice a sequenced onset sits on: a 16th and an eighth-triplet (ppq / 12)
 ON_GRID = 0.9                        # this share of onsets on it (a performance: ~25 % by chance)
 MIN_NOTES = 8
-KEY_MARGIN = 0.15                    # a C-only file is re-keyed when the best key's fit beats C's by this much
-HOME_W = 4.0                         # the first and last eighth of the notes weigh this much more for the key
+KEY_WIN_Q = 16                       # the key is weighed in windows of this many quarters (4 bars of 4/4) ...
+KEY_SWITCH = 0.6                     # ... and a change of signature costs this much fit (a modulation must last)
+KEY_HOME_BONUS = 0.15                # the first and last windows lean this much towards the whole piece's key
 
 
 @dataclass
@@ -153,28 +153,65 @@ def _metre(num: int, den: int) -> tuple[int, int]:
     return max(1, num), max(1, 16 // den)
 
 
+def _fit(w: list, prof, tonic: int) -> float:
+    """A key profile's correlation with pitch-class weights ``w``."""
+    a = [prof[(i - tonic) % 12] for i in range(12)]
+    ma, mw = sum(a) / 12, sum(w) / 12
+    num = sum((x - ma) * (y - mw) for x, y in zip(a, w))
+    den = (sum((x - ma) ** 2 for x in a) * sum((y - mw) ** 2 for y in w)) ** 0.5
+    return num / den if den else 0.0
+
+
 def _key(mf: MidiFile) -> list:
-    """[(tick, fifths)]: the file's signatures, or the profile's best key for the whole piece."""
+    """[(tick, fifths)]: the file's signatures when it has any but C; else the keys the notes go through (owner, 23 Oct:
+    the quick Islamey was written in A major throughout, the better one in D-flat with its modulations: 'they seem
+    to have different notes').  The piece in windows of KEY_WIN_Q quarters, each window's 24 keys fitted with the
+    Albrecht-Shanahan profiles (with its neighbours' half weight), then the path through them that fits best with
+    KEY_SWITCH paid for each change (a modulation must last, a passing chord doesn't move the signature); the first
+    and last windows lean KEY_HOME_BONUS towards the whole piece's key."""
     declared = [(t, sf) for t, sf, _mi in mf.keys if -7 <= sf <= 7]
-    w = [0.0] * 12
-    lo, hi = (mf.notes[len(mf.notes) // 8].on, mf.notes[-(len(mf.notes) // 8) - 1].on) if mf.notes else (0, 0)
-    for n in mf.notes:                   # the opening and the close weigh most: a piece starts and ends at home
-        w[n.pitch % 12] += min(n.off - n.on, 4 * mf.ppq) * (HOME_W if n.on <= lo or n.on >= hi else 1.0)
+    if any(sf for _t, sf in declared) or not mf.notes:
+        return declared or [(0, 0)]
     major, minor = PROFILES[KEY_PROFILE]
-
-    def fit(prof, tonic):
-        a = [prof[(i - tonic) % 12] for i in range(12)]
-        ma, mw = sum(a) / 12, sum(w) / 12
-        num = sum((x - ma) * (y - mw) for x, y in zip(a, w))
-        den = (sum((x - ma) ** 2 for x in a) * sum((y - mw) ** 2 for y in w)) ** 0.5
-        return num / den if den else 0.0
-
-    fits = {(t, m): fit(minor if m else major, t) for t in range(12) for m in (False, True)}
-    best = max(fits, key=fits.get)
-    if any(sf for _t, sf in declared):
-        return declared
-    c = max(fits[(0, False)], fits[(9, True)])
-    return [(0, _fifths_of(*best) if fits[best] - c > KEY_MARGIN or not declared else 0)]
+    keys = [(t, m) for t in range(12) for m in (False, True)]
+    span = KEY_WIN_Q * mf.ppq
+    t0 = mf.notes[0].on
+    nwin = max(1, (max(n.on for n in mf.notes) - t0) // span + 1)
+    ws = [[0.0] * 12 for _ in range(nwin)]
+    for n in mf.notes:
+        ws[(n.on - t0) // span][n.pitch % 12] += min(n.off - n.on, 4 * mf.ppq)
+    whole = [sum(w[i] for w in ws) for i in range(12)]
+    home = max(keys, key=lambda k: _fit(whole, minor if k[1] else major, k[0]))
+    score = []
+    for i in range(nwin):
+        w = [ws[i][j] + 0.5 * ((ws[i - 1][j] if i else 0.0) + (ws[i + 1][j] if i + 1 < nwin else 0.0)) for j in range(12)]
+        row = {k: _fit(w, minor if k[1] else major, k[0]) if sum(w) else 0.0 for k in keys}
+        if i in (0, nwin - 1):                       # a piece starts and ends at home
+            row[home] += KEY_HOME_BONUS
+        score.append(row)
+    # the best path: a change costs KEY_SWITCH (a relative major / minor is the same signature: free)
+    fifths = {k: _fifths_of(*k) for k in keys}
+    best = {k: score[0][k] for k in keys}
+    back: list = []
+    for i in range(1, nwin):
+        nxt, bk = {}, {}
+        for k in keys:
+            prev = max(keys, key=lambda q: best[q] - (0.0 if fifths[q] == fifths[k] else KEY_SWITCH))
+            nxt[k] = best[prev] - (0.0 if fifths[prev] == fifths[k] else KEY_SWITCH) + score[i][k]
+            bk[k] = prev
+        best, back = nxt, back + [bk]
+    k = max(keys, key=best.get)
+    path = [k]
+    for bk in reversed(back):
+        k = bk[k]
+        path.append(k)
+    path.reverse()
+    out: list = []
+    for i, k in enumerate(path):
+        f = fifths[k]
+        if not out or out[-1][1] != f:
+            out.append((0 if i == 0 else t0 + i * span, f))
+    return out
 
 
 def _staffing(mf: MidiFile) -> dict:
