@@ -48,10 +48,11 @@ HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-authenticate", "proxy
 REQ_DROP = HOP_BY_HOP | {"host", "expect"}
 WS_REQ_DROP = REQ_DROP | {"content-length", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions",
                           "sec-websocket-protocol", "sec-websocket-accept"}
-# Date / Server are aiohttp's own; CORS is room_service's policy, applied below.
+# Date / Server are aiohttp's own; CORS is room_service's policy, applied below. The upstream's Expose-Headers is
+# relayed: it grants nothing by itself (only room's Allow-Origin does), and it lets an allowed page read a header the
+# upstream names (show_service's X-Piano-Instrument on /show/api/v1/piano/live.mp3, 23 Oct).
 RESP_DROP = HOP_BY_HOP | {"date", "server", "access-control-allow-origin", "access-control-allow-credentials",
-                          "access-control-expose-headers", "access-control-allow-methods",
-                          "access-control-allow-headers", "access-control-max-age"}
+                          "access-control-allow-methods", "access-control-allow-headers", "access-control-max-age"}
 # aiohttp adds these when the caller doesn't: send only what the client sent (an Accept-Encoding the client never
 # asked for would come back compressed, and the body is relayed as it is).
 CLIENT_AUTO_HEADERS = ("Accept-Encoding", "User-Agent", "Content-Type")
