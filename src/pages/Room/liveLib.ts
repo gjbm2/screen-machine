@@ -178,13 +178,27 @@ export function bothWords(shared: string[]): string | null {
 
 // ── Effects ──────────────────────────────────────────────────────────────────
 
-/** How many effects the picker runs at a time, from auto.fx.max and direction.fx.density: [lo, hi] (equal: exact). */
+/** The most effects the art director runs at once (stream_service director.AUTO_FX_MAX). */
+export const FX_AUTO_MAX = 4;
+
+/**
+ * How many effects the picker runs at a time, from auto.fx.max and direction.fx.density: [lo, hi] (equal: exact).
+ * Density 1 is the owner's fixed number (max), 0 none; between, the art director runs about max x (0.5 + density)
+ * (stream_service fx_director.target_count; it also halves it for a score page and trims it for a busy scene).
+ */
 export function fxRange(max: number | undefined, density: number | undefined): [number, number] {
   const mx = typeof max === "number" ? max : 2;
-  const x = (typeof density === "number" ? density : 0.5) * mx;
-  const lo = Math.max(0, Math.min(mx, Math.floor(x + 1e-9)));
+  const d = typeof density === "number" ? density : 0.5;
+  if (d >= 1 || d <= 0) return d >= 1 ? [mx, mx] : [0, 0];
+  const x = mx * (0.5 + d);
+  const lo = Math.max(0, Math.min(FX_AUTO_MAX, Math.floor(x + 1e-9)));
   const exact = Math.abs(x - Math.round(x)) < 1e-6;
-  return [lo, exact ? lo : Math.min(mx, lo + 1)];
+  return [lo, exact ? lo : Math.min(FX_AUTO_MAX, lo + 1)];
+}
+
+/** The owner picked a fixed number of effects (the How many chips' One / Two / Three), not the art director. */
+export function fxFixed(density: number | undefined): boolean {
+  return typeof density === "number" && density >= 1;
 }
 
 /** The effect presets as picker tiles, with one chip per kind of effect (warp, trails, colour…). */

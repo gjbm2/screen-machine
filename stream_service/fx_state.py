@@ -258,6 +258,15 @@ class SessionFx:
                                    index=len(items)))
             return await self._apply(items, fade_s, None, "auto", move.why)
 
+    async def auto_levels(self, levels: dict, fade_s: float, why: str) -> Optional[dict]:
+        """A follower's auto effects at its source's levels (by preset; rooms.auto_fx_levels): only levels change."""
+        if self.s.state != "live" or self.s.exited:
+            return None
+        async with self.lock:
+            items = [_Item(st.id, st.spec, levels.get(st.spec.preset, st.level) if st.origin == "auto" else st.level,
+                           st.bypass, index=i) for i, st in enumerate(self.stack)]
+            return await self._apply(items, fade_s, None, "auto", why)
+
     async def _apply(self, items: list[_Item], fade_s: float, master: Optional[dict], cause: str,
                      detail: Optional[str]) -> dict:
         from .sessions import SessionError

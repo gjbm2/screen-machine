@@ -68,9 +68,33 @@ def test_count_vs_density_and_max():
     assert all(d.target_count() == 2 for _ in range(50))
     d = director(density=0.0, mx=2)
     assert all(d.target_count() == 0 for _ in range(50))
-    d = director(density=0.5, mx=3)
+    d = director(density=0.5, mx=2)                                             # the art director's middle: max
+    assert all(d.target_count() == 2 for _ in range(50))
+    d = director(density=0.25, mx=2)
     ks = [d.target_count() for _ in range(400)]
     assert set(ks) <= {1, 2} and 0.35 < ks.count(2) / len(ks) < 0.65       # 1.5 -> stochastic rounding
+    d = director(density=0.9, mx=3)
+    assert all(d.target_count() == 4 for _ in range(50))                       # 4.2, capped at AUTO_FX_MAX
+
+
+class _Looks:
+    def __init__(self, props):
+        self.props = props
+
+    def scene_props(self, name, entry):
+        return self.props
+
+
+def test_count_follows_the_scene():
+    d = director(density=0.5, mx=2)
+    d.looks = _Looks({"legible": 1.0})                                          # a score page: half
+    assert all(d.target_count() == 1 for _ in range(50))
+    d.looks = _Looks({"legible": 0.0, "busy": 1.0})                             # busy: x 0.8 -> 1.6
+    ks = [d.target_count() for _ in range(400)]
+    assert set(ks) <= {1, 2} and 0.45 < ks.count(2) / len(ks) < 0.75
+    d = director(density=1.0, mx=2)
+    d.looks = _Looks({"legible": 1.0})                                          # the owner's fixed number wins
+    assert all(d.target_count() == 2 for _ in range(50))
 
 
 def test_add_until_density_then_remove_oldest_auto():

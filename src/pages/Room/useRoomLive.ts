@@ -209,12 +209,20 @@ export function useRoomLive({ api, roomId, roomName, members, lib, subscribe, ad
 
   /** Exactly n picked effects at a time (density 1: floor(1·n + U) = n); yours are extra. */
   const setHowMany = useCallback(
-    (n: number) =>
-      patch(`${n} ${n === 1 ? "effect" : "effects"} at a time`, { auto: { fx: { max: n } }, direction: { fx: { density: 1 } } }, (l) => ({
-        ...l,
-        auto: { ...(l.auto ?? {}), fx: { ...(l.auto?.fx ?? {}), max: n } },
-        direction: mergeDirection(l.direction, { fx: { density: 1 } }),
-      })),
+    (n: number) => {
+      // n 0 (Auto): about two, and the art director varies it (density 0.5, which the music then moves)
+      const max = n || 2;
+      const density = n ? 1 : 0.5;
+      return patch(
+        n ? `${n} ${n === 1 ? "effect" : "effects"} at a time` : "effects: as many as the art director picks",
+        { auto: { fx: { max } }, direction: { fx: { density } } },
+        (l) => ({
+          ...l,
+          auto: { ...(l.auto ?? {}), fx: { ...(l.auto?.fx ?? {}), max } },
+          direction: mergeDirection(l.direction, { fx: { density } }),
+        }),
+      );
+    },
     [patch],
   );
 
