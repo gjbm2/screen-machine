@@ -21,7 +21,7 @@ import { Pill, Spinner } from "./bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import type { ShowTestSource, ShowTestStartOpts, ShowTestView, TestPianoView, TestShowView } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
-import { PlayStatus, SoundChoice } from "./PianoCard";
+import { PlayStatus, SoundChoice, SpeedChoice } from "./PianoCard";
 import { usePianoSound } from "./usePianoSound";
 
 const POLL_RUNNING_MS = 1000;
@@ -142,6 +142,12 @@ function ShowTestCard({
     const now = view.sources.piano?.piece;
     if (on("piano") && now) void start("piano", now, { ...sound.opts, ...o });
   };
+  // a new speed while the piano plays: the piece carries on from where it was, at the new speed
+  const changeSpeed = (x: number) => {
+    sound.setSpeed?.(x);
+    const cur = view.sources.piano;
+    if (on("piano") && cur?.piece) void start("piano", cur.piece, { ...sound.opts, speed: x, start_s: cur.pos_s ?? 0 });
+  };
   const stop = () => act("stop", async () => Promise.all((["audio", "piano"] as const).filter(on).map((x) => api.showTestStop(x))));
   const disabled = !connected || busy;
 
@@ -212,6 +218,7 @@ function ShowTestCard({
             onInstrument={(id) => changeSound({ instrument: id })}
           />
         )}
+        {source === "piano" && sound.available && <SpeedChoice speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={disabled} />}
 
         <div role="radiogroup" aria-label={source === "audio" ? "Track" : "Piece"} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {pieces.map((pc) => {
