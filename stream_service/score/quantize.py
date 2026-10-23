@@ -5,11 +5,14 @@ Times are seconds on the sound clock (sound_view's photon time / 1000, or any mo
 **With the analysis worker** (analyse.py: PM2S + metre.py, in ~/.venvs/sm-score-ml), which is how it normally runs:
 ``analysis_request(now)`` hands out the phrase's last WINDOW_S of notes every ANALYSE_S, and ``on_analysis(reply)``
 takes back the beats, the metre (beats per bar, where the bar lines fall, simple or compound), the key signature and
-each note's hand.  Each reply's metre adds to the phrase's evidence (log-probabilities per bar length and the
-compound logit, older replies decaying by EV_DECAY: later windows hear more).  The first bar of a phrase waits for
-it (MIN_DECIDE_S of playing and DECIDE_P confident, or MAX_DECIDE_S).  Should the evidence later turn (REWRITE_P
-for a different duple/triple or simple/compound, REWRITE_RUN replies running, within REWRITE_S of the phrase's
-start), the phrase is written again in the new metre: a ``rewrite`` marker bar, then its bars from the start.  Beats come from a BeatGrid: the analysed beat
+each note's hand.  Each reply's metre adds to the phrase's evidence: its duple/triple and simple/compound logits
+(the networks', and accent_cue's reading of the bar-level accent periodicity over the reply's beats: loudness, bass,
+chord size, long notes), as a mean decaying by MEV_DECAY (the 12 s windows overlap: one reply isn't independent
+evidence), against a prior for duple and simple; 2 or 4 beats from the per-length log-probabilities (EV_DECAY).
+The first bar of a phrase waits for the evidence (MIN_DECIDE_S of playing and DECIDE_P confident, or MAX_DECIDE_S).  Should it
+later turn (REWRITE_P for a different duple/triple or simple/compound, REWRITE_RUN replies running, within
+REWRITE_S of the phrase's start, and not after LOCK_RUN replies running agreed with the written metre: locked),
+the phrase is written again in the new metre: a ``rewrite`` marker bar, then its bars from the start.  Beats come from a BeatGrid: the analysed beat
 times, those under written bars frozen, later ones replaced by each new analysis, brought onto the written beat's
 level and phase first (a reply that counts a stretch at twice or half the tempo, or reads the beat half a beat
 off, once turned the rest of a phrase to double time; BeatGrid.merge, _same_level).  After a break of 3+ beats the
@@ -39,9 +42,15 @@ write 4/4 with a beat clock of their own:
 * **Phrases**: rests after the last note wait (a later note makes them rest bars).  After SILENCE_S with nothing
   sounding, the last bars are committed, a marker bar (``marker``, no music) ends the phrase, and the clock
   restarts on the next note (a new system on screen).
-* Key (for the signature and spelling): the analysis's key signature (PM2S's per-note key, duration-weighted over
-  the window; a change needs two replies in a row), else Krumhansl-Kessler profiles against the duration-weighted
-  pitch classes of the last ~30 s.  Dynamics: the bar's mean strike velocity, marked when its level changes.
+* Key (for the signature and spelling; key(): tonic, mode, signature as shown): every key's fit is its
+  Albrecht-Shanahan profile's correlation with the recent pitch classes (each note by its duration, up to
+  KEY_DUR_CAP, and strike, the bass note of a chord counting double, decaying over KEY_EV_TAU_S), plus the
+  analysis's key-signature log-probabilities (PM2S's per-note key over each window, a decaying mean, KEY_SIG_W),
+  plus a minor key's raised leading tone against its natural 7th (LEADING_W).  The best is taken once there's
+  evidence (the first analysis reply re-decides); another must beat it by KEY_MARGIN for KEY_HOLD_S before the key
+  changes (a modulation, not a passing chord).  Each phrase decides its key afresh from its first note (the room's
+  process outlives pieces).  Without the analysis, the profiles alone.
+  Dynamics: the bar's mean strike velocity, marked when its level changes.
   Pedal: damper crossings of 0.5, at their 16th.
 
 Positions are 16ths throughout: a simple beat is 4 of them, a compound (dotted) beat 6, so a bar is beats x unit.
@@ -83,6 +92,15 @@ EV_DECAY = 0.75                    # each reply's weight in the evidence, agains
 REWRITE_P = 0.85                   # the evidence for another metre that rewrites the phrase ...
 REWRITE_RUN = 2                    # ... in this many replies running ...
 REWRITE_S = 45.0                   # ... while the phrase is younger than this
+MEV_DECAY = 0.9                    # the metre's class evidence: each reply's logits, a decaying mean (replies overlap)
+TRIPLE_PRIOR = -0.5                # duple is likelier (logit)
+W_PM2S = 1.0                       # the networks' duple/triple logit ...
+W_CUE = 1.0                        # ... and the accent periodicity's (accent_cue), per unit of contrast
+W_CUE_AC = 2.0                     # ... and of autocorrelation
+COMP_PRIOR = -0.3                  # simple is likelier (logit)
+LOGIT_CAP = 4.0
+CUE_CAP = 1.5                      # the accents' logit at most this (a confident network reading stands)
+LOCK_RUN = 8                       # the written metre is kept for the phrase once this many replies running agree
 HISTORY_S = 60.0                   # the phrase's notes kept (the analysis window, and a rewrite)
 TRUST_S = 0.15                     # a bar is written once it ends this long before the newest analysed note (0.6 until
                                    # 21 Oct: 0.15 writes every bar 0.43 s sooner at no measurable accuracy cost, 13 pieces)
@@ -93,7 +111,6 @@ PHASE_BEATS = 4                    # a reply's phase against ours: over our last
 LOCAL_BEATS = 8                    # the tempo a merge goes by: our last this many beat intervals
 EVEN_IOI, EVEN_VEL = 0.08, 0.05     # metreless: onsets within 8 % of even, velocities within 0.05 of one swell
 BREAK_IOI = 2.5                    # metreless: a gap this many times the usual onset interval ends a run
-KEY_HOLD = 2                       # replies in a row a new key signature needs
 KEY_SHOWN = 0.02                   # a signature's outermost sharp or flat is written once played this much (of the
                                    # most played pitch class): an early C to A doesn't take F major's flat
 SHARPS, FLATS = (6, 1, 8, 3, 10, 5, 0), (10, 3, 8, 1, 6, 11, 4)    # pitch classes, in signature order
@@ -101,6 +118,29 @@ SHARPS, FLATS = (6, 1, 8, 3, 10, 5, 0), (10, 3, 8, 1, 6, 11, 4)    # pitch class
 # Krumhansl-Kessler key profiles (major, minor), tonic first
 KK_MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
 KK_MINOR = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+PROFILES = {
+    0: (KK_MAJOR, KK_MINOR),
+    1: ((0.748, 0.060, 0.488, 0.082, 0.670, 0.460, 0.096, 0.715, 0.104, 0.366, 0.057, 0.400),     # Temperley 2007
+        (0.712, 0.084, 0.474, 0.618, 0.049, 0.460, 0.105, 0.747, 0.404, 0.067, 0.133, 0.330)),
+    2: ((0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.080, 0.008, 0.081),     # Albrecht-Shanahan
+        (0.220, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052)),
+    3: ((17.77, 0.15, 14.93, 0.16, 19.80, 11.36, 0.29, 22.06, 0.15, 8.15, 0.23, 4.95),            # Aarden-Essen
+        (18.26, 0.74, 14.05, 16.86, 0.70, 14.44, 0.70, 18.62, 4.57, 1.93, 7.38, 1.76)),
+    4: ((16.80, 0.86, 12.95, 1.41, 13.49, 11.93, 1.25, 20.28, 1.80, 8.04, 0.62, 10.57),           # Bellman-Budge
+        (18.16, 0.69, 12.99, 13.34, 1.07, 11.15, 1.38, 21.07, 7.49, 1.53, 0.92, 10.21)),
+}
+KEY_PROFILE = 2                    # the profiles the played notes are matched against
+KEY_EV_TAU_S = 30.0                # the key's evidence: notes this long ago weigh 1/e (recency: a modulation wins)
+KEY_DUR_CAP = 2.0                  # a note's weight: its duration up to this (s) ...
+KEY_BASS = 1.0                     # ... more this much when it's the lowest sounding at its strike
+KEY_SIG_W = 0.15                   # the analysis's key signature (log-probability, decayed per reply) against the
+KEY_SIG_DECAY = 0.8                # ... profile correlation
+KEY_MIN_W = 1.0                    # the first key is taken once this much weight is in
+KEY_MARGIN = 0.03                  # another key must beat the shown one by this much ...
+KEY_HOLD_S = 12.0                  # ... for this long: a modulation, not a passing tonicisation (no line-to-line
+                                   # flips; the Black Keys' 9 s on its dominant changed 6 sharps to 5 flats at 4 s)
+KEY_EVAL_S = 0.5                   # the key is weighed at most this often (on releases and analysis replies)
+LEADING_W = 0.05                   # a minor key's raised leading tone (played, against its relative major)
 
 
 @dataclass
@@ -329,6 +369,58 @@ def _steady_start(t: list, ref: float) -> list:
     return t
 
 
+def accent_cue(notes: list, beats: list) -> Optional[dict]:
+    """Bar-level accent periodicity over a window's beats (Brown / Gouyon-style, beat-synchronous, independent of the
+    networks' metre heads): each beat's accent is the z-scored sum of the onsets' loudness, their number, the lowest
+    note's depth, a bass change and the longest note's length at the beat; for each bar length L in 2, 3, 4 the best
+    phase's contrast (mean accent on its downbeats less elsewhere) and the accent's autocorrelation at L beats.
+    -> {"c": {L: contrast}, "ac": {L: autocorrelation}} or None (too few beats)."""
+    m = len(beats)
+    if m < 9:
+        return None
+    ibi = _median_ibi(beats)
+    tol = min(0.07, 0.2 * ibi)
+    vel, cnt, low, dur = [0.0] * m, [0.0] * m, [None] * m, [0.0] * m
+    for n in notes:
+        j = bisect.bisect_left(beats, n.t_on)
+        best = None
+        for k in (j - 1, j):
+            if 0 <= k < m and (best is None or abs(beats[k] - n.t_on) < abs(beats[best] - n.t_on)):
+                best = k
+        if best is None:
+            continue
+        if abs(beats[best] - n.t_on) <= tol:
+            vel[best] += n.vel
+            cnt[best] += 1
+            low[best] = n.pitch if low[best] is None else min(low[best], n.pitch)
+            d = (n.t_off if n.t_off is not None else n.t_on + 0.5) - n.t_on
+            dur[best] = max(dur[best], math.log1p(4.0 * min(d, 4.0)))
+    bass = [min(1.5, max(0.0, (72.0 - x) / 36.0)) if x is not None else 0.0 for x in low]
+    bnew = [1.0 if low[i] is not None and (i == 0 or low[i - 1] is None or low[i] != low[i - 1]) else 0.0
+            for i in range(m)]
+    acc = [0.0] * m
+    for v in (vel, cnt, bass, bnew, dur):
+        mu = sum(v) / m
+        sd = math.sqrt(sum((x - mu) ** 2 for x in v) / m)
+        if sd > 1e-9:
+            acc = [a + (x - mu) / sd for a, x in zip(acc, v)]
+    c, ac = {}, {}
+    for L in (2, 3, 4):
+        best = -9.0
+        for p in range(L):
+            on = [acc[i] for i in range(p, m, L)]
+            off = [acc[i] for i in range(m) if (i - p) % L]
+            if on and off:
+                best = max(best, sum(on) / len(on) - sum(off) / len(off))
+        c[L] = best
+        a, b = acc[:-L], acc[L:]
+        ma, mb = sum(a) / len(a), sum(b) / len(b)
+        sa = math.sqrt(sum((x - ma) ** 2 for x in a))
+        sb = math.sqrt(sum((x - mb) ** 2 for x in b))
+        ac[L] = sum((x - ma) * (y - mb) for x, y in zip(a, b)) / (sa * sb) if sa > 1e-9 and sb > 1e-9 else 0.0
+    return {"c": c, "ac": ac}
+
+
 def split_value(pos: int, dur: int, beats: int = BEATS, unit: int = GRID) -> list[int]:
     """Notatable pieces (16ths) for a value starting ``pos`` 16ths into a bar of ``beats`` x ``unit``: pieces never
     cross a beat, except whole-beat values from a beat (a whole bar from its start; in 4-beat bars nothing crosses
@@ -378,11 +470,20 @@ class ScoreBuilder:
         self.history: collections.deque = collections.deque()   # the phrase's notes for the analysis
         self.req_t = -1e9
         self.req_id = 0
-        self.key_fifths: Optional[int] = None
-        self.key_cand: Optional[int] = None
-        self.key_run = 0
+        self.key_fifths: Optional[int] = None   # the key signature taken (the spelling's), None: none yet
+        self.key_minor = False                  # ... and its mode (the key: its tonic follows from the two)
+        self.kw = [0.0] * 12                    # the key's evidence: pitch classes by duration and bass, decaying
+        self.kw_t: Optional[float] = None
+        self.sig_ev = [0.0] * 12                # the analysis's key signatures: log-probabilities, decaying
+        self.sig_n = 0.0
+        self.key_eval_t: Optional[float] = None
+        self.key_beaten_t: Optional[float] = None   # since when another key has beaten the taken one
         self.ev = {2: 0.0, 3: 0.0, 4: 0.0}      # the phrase's metre evidence (log-probabilities, decaying)
         self.ev_comp = 0.0
+        self.mev = [0.0, 0.0, 0.0]              # the class evidence: triple logits (networks, accents), compound
+        self.mev_n = 0.0
+        self.agree_run = 0
+        self.metre_locked = False
         self.flip_run = 0
         self.rewrite_pending = False
         self.phrase_bar_number = 1
@@ -418,6 +519,7 @@ class ScoreBuilder:
         if self.phrase_t0 is None:
             self.phrase_t0 = t
             self.phrase_bar_number = self.bar_number
+            self._new_key()
         if self.last_chord_t is None or t - self.last_chord_t > CHORD_S:
             self.clock.feed(t)
             self.last_chord_t = t
@@ -504,7 +606,7 @@ class ScoreBuilder:
             beats = self._even_beats()
         for k, h in (rep.get("hands") or {}).items():
             self.hand[int(k)] = int(h)
-        self._key_vote(rep.get("key_fifths"))
+        self._key_vote(rep.get("key_fifths"), rep.get("key_probs"), self.last_event_t)
         self.ver += 1
         if rep.get("last_onset") is not None:
             self.trusted_t = t0 + float(rep["last_onset"]) - TRUST_S
@@ -516,14 +618,34 @@ class ScoreBuilder:
                 self.ev[L] = EV_DECAY * self.ev[L] + math.log(max(1e-3, float(probs.get(str(L), 0.0))))
             cp = min(max(float(m.get("compound_p", 0.9 if m.get("compound") else 0.1)), 1e-3), 1.0 - 1e-3)
             self.ev_comp = EV_DECAY * self.ev_comp + math.log(cp / (1.0 - cp))
+            # the class: duple or triple, simple or compound, from the phrase's replies so far (a decaying mean of
+            # their logits: the windows overlap, so a reply isn't independent evidence), and the accents' own reading
+            p3 = min(max(float(probs.get("3", 0.0)), 0.02), 0.98)
+            z = [_clip(math.log(p3 / (1.0 - p3))), 0.0, _clip(math.log(cp / (1.0 - cp)))]
+            if W_CUE or W_CUE_AC:
+                lo, hi = (beats[0] - 0.1, beats[-1] + 0.1) if beats else (0.0, -1.0)
+                cue = accent_cue([n for n in self.history if lo <= n.t_on <= hi], beats) if len(beats) >= 9 else None
+                if cue is not None:
+                    c, ac = cue["c"], cue["ac"]
+                    z[1] = max(-CUE_CAP, min(CUE_CAP, W_CUE * (c[3] - max(c[2], c[4]))
+                                             + W_CUE_AC * (ac[3] - max(ac[2], ac[4]))))
+            self.mev = [MEV_DECAY * e + x for e, x in zip(self.mev, z)]
+            self.mev_n = MEV_DECAY * self.mev_n + 1.0
         if len(beats) < 4:
             return
-        top = max(self.ev.values())
-        post = {L: math.exp(v - top) for L, v in self.ev.items()}
-        tot = sum(post.values())
-        L = max(post, key=post.get)
-        conf = post[L] / tot
-        unit = COMPOUND_UNIT if self.ev_comp > 0 else GRID
+        if self.mev_n > 0:
+            lt = TRIPLE_PRIOR + (W_PM2S * self.mev[0] + self.mev[1]) / self.mev_n
+            lc = COMP_PRIOR + self.mev[2] / self.mev_n
+            L = 3 if lt > 0 else (2 if self.ev[2] > self.ev[4] else 4)
+            unit = COMPOUND_UNIT if lc > 0 else GRID
+            conf = min(_sig(abs(lt)), _sig(abs(lc)))
+        else:
+            top = max(self.ev.values())
+            post = {L: math.exp(v - top) for L, v in self.ev.items()}
+            tot = sum(post.values())
+            L = max(post, key=post.get)
+            conf = post[L] / tot
+            unit = COMPOUND_UNIT if self.ev_comp > 0 else GRID
         phases = (m or {}).get("phases") or {}
         downbeat = beats[int(phases.get(str(L), (m or {}).get("phase", 0))) % len(beats)] if m else None
         if self.grid is None:
@@ -546,8 +668,13 @@ class ScoreBuilder:
         self._resume_on_beat()
         family = (L == 3, unit == COMPOUND_UNIT)
         young = self.phrase_t0 is not None and (self.last_event_t or t0) - self.phrase_t0 < REWRITE_S
-        if (m is not None and young and family != (self.beats == 3, self.unit == COMPOUND_UNIT) and conf >= REWRITE_P
-                and not even):
+        written = (self.beats == 3, self.unit == COMPOUND_UNIT)
+        if m is not None and LOCK_RUN and not self.metre_locked:
+            self.agree_run = self.agree_run + 1 if family == written else 0
+            if self.agree_run >= LOCK_RUN:
+                self.metre_locked = True       # the evidence has agreed long enough: no more rewrites this phrase
+        if (m is not None and young and family != written and conf >= REWRITE_P and not even
+                and not self.metre_locked):
             self.flip_run += 1
             if self.flip_run >= REWRITE_RUN:
                 self._rewrite(beats, L, unit, downbeat, conf)
@@ -650,6 +777,7 @@ class ScoreBuilder:
         grid.idx0 = j0
         self.swing = self.swing and unit == GRID
         self.flip_run = 0
+        self.agree_run = 0
 
     def _rewrite(self, beats: list, L: int, unit: int, downbeat: Optional[float], conf: float) -> None:
         """The evidence turned: the phrase again from its start in the new metre (beats: ours under the old bars
@@ -666,20 +794,20 @@ class ScoreBuilder:
         self.last_dynamic = None
         self.rewrite_pending = True
 
-    def _key_vote(self, fifths) -> None:
-        if fifths is None:
-            return
-        fifths = int(fifths)
-        if self.key_fifths is None:
-            self.key_fifths = fifths
-        elif fifths == self.key_fifths:
-            self.key_cand, self.key_run = None, 0
-        elif fifths == self.key_cand:
-            self.key_run += 1
-            if self.key_run >= KEY_HOLD:
-                self.key_fifths, self.key_cand, self.key_run = fifths, None, 0
-        else:
-            self.key_cand, self.key_run = fifths, 1
+    def _key_vote(self, fifths, probs=None, t: Optional[float] = None) -> None:
+        """A reply's key signature: its probabilities over the 12 signatures (KEY_FIFTHS order: the major tonic's
+        pitch class), or only the likeliest, add to the phrase's evidence; the key is weighed again at once."""
+        if probs is None or len(probs) != 12:
+            if fifths is None:
+                return
+            pc = (int(fifths) * 7) % 12
+            probs = [0.8 if i == pc else 0.2 / 11 for i in range(12)]
+        if self.sig_n == 0:
+            self.key_fifths = None             # the key so far was the notes' alone: the first reply decides afresh
+        self.sig_ev = [KEY_SIG_DECAY * e + math.log(max(1e-3, float(p))) for e, p in zip(self.sig_ev, probs)]
+        self.sig_n = KEY_SIG_DECAY * self.sig_n + 1.0
+        now = t if t is not None else (self.kw_t if self.kw_t is not None else (self.last_event_t or 0.0))
+        self._key_eval(now, force=True)
 
     # -- key -----------------------------------------------------------------------------------------------------
     def _key_weight(self, n: Note) -> None:
@@ -688,28 +816,88 @@ class ScoreBuilder:
             self.pc_weight = [w * k for w in self.pc_weight]
         self.pc_t = n.t_off
         self.pc_weight[n.pitch % 12] += min(4.0, n.t_off - n.t_on) * (0.5 + n.vel)
+        # the key's evidence: recent notes, by how long they sound and how hard, the bass more
+        if self.kw_t is not None and n.t_off > self.kw_t:
+            k = math.exp(-(n.t_off - self.kw_t) / KEY_EV_TAU_S)
+            self.kw = [w * k for w in self.kw]
+        self.kw_t = n.t_off if self.kw_t is None else max(self.kw_t, n.t_off)
+        w = min(KEY_DUR_CAP, n.t_off - n.t_on) * (0.5 + n.vel)
+        if KEY_BASS and self._is_bass(n):
+            w *= 1.0 + KEY_BASS
+        self.kw[n.pitch % 12] += w
+        self._key_eval(self.kw_t)
+
+    def _is_bass(self, n: Note) -> bool:
+        """Nothing lower sounds when ``n`` is struck (a chord's notes struck together count as sounding)."""
+        for m in reversed(self.history):
+            if m.t_on < n.t_on - 2 * KEY_DUR_CAP:
+                break
+            if m is not n and m.pitch < n.pitch and m.t_on <= n.t_on + CHORD_S and (m.t_off is None or m.t_off > n.t_on):
+                return False
+        return True
+
+    def _key_scores(self) -> Optional[dict]:
+        """Each key's fit, (tonic, minor) -> score: the evidence's correlation with the key's profile, plus the
+        analysis's mean log-probability for the key's signature (relative to the likeliest)."""
+        w = self.kw                             # (not pc_weight: a new phrase's first notes, not the last piece's)
+        if sum(w) <= 0:
+            return None
+        major, minor_p = PROFILES[KEY_PROFILE]
+        sig = None
+        if self.sig_n > 0:
+            top = max(self.sig_ev)
+            sig = [(e - top) / self.sig_n for e in self.sig_ev]
+        out = {}
+        for tonic in range(12):
+            x = [w[(tonic + i) % 12] for i in range(12)]
+            for minor, prof in ((False, major), (True, minor_p)):
+                r = _corr(x, prof)
+                if sig is not None:
+                    r += KEY_SIG_W * sig[(tonic + 3) % 12 if minor else tonic]
+                if minor and LEADING_W:
+                    lead, sub = w[(tonic + 11) % 12], w[(tonic + 10) % 12]
+                    r += LEADING_W * ((lead - sub) / (lead + sub) if lead + sub > 0 else 0.0)
+                out[(tonic, minor)] = r
+        return out
+
+    def _key_eval(self, t: float, force: bool = False) -> None:
+        """Take the best key once there's evidence; change it only when another has beaten it by KEY_MARGIN for
+        KEY_HOLD_S (a modulation, not a passing chord: no key changes line to line)."""
+        if not force and self.key_eval_t is not None and t - self.key_eval_t < KEY_EVAL_S:
+            return
+        self.key_eval_t = t
+        sc = self._key_scores()
+        if sc is None:
+            return
+        best = max(sc, key=sc.get)
+        if self.key_fifths is None:
+            if sum(self.kw) >= KEY_MIN_W or self.sig_n > 0:
+                self._take_key(best)
+            return
+        cur = (_tonic(self.key_fifths, self.key_minor), self.key_minor)
+        if best == cur or sc[best] - sc.get(cur, -9.0) < KEY_MARGIN:
+            self.key_beaten_t = None
+            return
+        if self.key_beaten_t is None:
+            self.key_beaten_t = t
+        elif t - self.key_beaten_t >= KEY_HOLD_S:
+            self._take_key(best)
+
+    def _take_key(self, k: tuple) -> None:
+        self.key_fifths, self.key_minor = _fifths_of(*k), k[1]
+        self.key_beaten_t = None
+        self.ver += 1
 
     def key(self) -> tuple[int, bool, int]:
-        """(tonic pitch class, minor, signature fifths -7..7); with the analysis only the signature is its own (the
-        tonic and mode stay Krumhansl's)."""
-        w = self.pc_weight
-        if sum(w) <= 0:
-            return 0, False, self._shown(self.key_fifths or 0)
-        best = (-2.0, 0, False)
-        for tonic in range(12):
-            for minor, prof in ((False, KK_MAJOR), (True, KK_MINOR)):
-                x = [w[(tonic + i) % 12] for i in range(12)]
-                r = _corr(x, prof)
-                if r > best[0]:
-                    best = (r, tonic, minor)
-        _, tonic, minor = best
+        """(tonic pitch class, minor, signature fifths -5..6 as shown): the key taken (_key_eval), else the best fit
+        so far."""
         if self.key_fifths is not None:
-            return tonic, minor, self._shown(self.key_fifths)
-        major_tonic = (tonic + 3) % 12 if minor else tonic
-        fifths = (major_tonic * 7) % 12
-        if fifths > 6:
-            fifths -= 12                      # prefer flats from F# / Gb (6 -> keep 6 sharps), Db = -5 ...
-        return tonic, minor, self._shown(fifths)
+            return _tonic(self.key_fifths, self.key_minor), self.key_minor, self._shown(self.key_fifths)
+        sc = self._key_scores()
+        if sc is None:
+            return 0, False, self._shown(0)
+        tonic, minor = max(sc, key=sc.get)
+        return tonic, minor, self._shown(_fifths_of(tonic, minor))
 
     def _shown(self, fifths: int) -> int:
         """The signature less its outermost sharps or flats not yet played (the metre comes after 3 s now, often
@@ -828,8 +1016,23 @@ class ScoreBuilder:
         self.swing = False
         self.ev = {2: 0.0, 3: 0.0, 4: 0.0}
         self.ev_comp = 0.0
+        self.mev = [0.0, 0.0, 0.0]
+        self.mev_n = 0.0
+        self.agree_run = 0
+        self.metre_locked = False
         self.flip_run = 0
         self.rewrite_pending = False
+
+    def _new_key(self) -> None:
+        """A new phrase's key is decided afresh (its first note): the room's process outlives pieces, and with the
+        hold a piece played after a silence started in the last one's key (the Black Keys' 6 sharps over a Grieg
+        waltz for 12 s, live 23 Oct).  Not at the phrase's end: its last bars are still read in its key."""
+        self.kw = [0.0] * 12
+        self.kw_t = None
+        self.sig_ev = [0.0] * 12
+        self.sig_n = 0.0
+        self.key_fifths, self.key_minor = None, False
+        self.key_eval_t = self.key_beaten_t = None
 
     def _q(self, b: float) -> int:
         """A beat position -> 16ths, with swing read as straight eighths."""
@@ -1010,6 +1213,25 @@ def _pieces(pos: int, dur: int, beats: int = BEATS, unit: int = GRID) -> list[tu
         out.append((pos, d))
         pos += d
     return out
+
+
+def _fifths_of(tonic: int, minor: bool) -> int:
+    """A key's signature: sharps > 0, flats < 0 (F# major / D# minor keep 6 sharps; Db, not C#)."""
+    f = ((((tonic + 3) % 12) if minor else tonic) * 7) % 12
+    return f - 12 if f > 6 else f
+
+
+def _tonic(fifths: int, minor: bool) -> int:
+    major = (fifths * 7) % 12
+    return (major - 3) % 12 if minor else major
+
+
+def _clip(x: float) -> float:
+    return max(-LOGIT_CAP, min(LOGIT_CAP, x))
+
+
+def _sig(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
 
 
 def _corr(x: list[float], y: tuple) -> float:

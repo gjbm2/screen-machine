@@ -7,7 +7,8 @@ Protocol (as engrave.py's): a 4-byte big-endian length, then JSON; each reply is
   request  {"id", "t0", "phrase", "notes": [[pitch, onset s from t0, duration s, velocity 1-127, note id], ...]}
   reply    {"id", "ok", "t0", "phrase", "beats": [s from t0], "last_onset": s,
             "metre": {"beats", "phase", "compound", "conf", "compound_p", "probs", "phases"} | null,
-            "key_fifths", "key_p", "hands": {note id: 0 treble (right hand) | 1 bass (left hand)}, "ms", "error"?}
+            "key_fifths", "key_p", "key_probs": [12, by KEY_FIFTHS order], "ts_triple",
+            "hands": {note id: 0 treble (right hand) | 1 bass (left hand)}, "ms", "error"?}
 ``phase`` indexes ``beats``.  Weights: PM2S's (pm2s_net.py) in ~/.local/share/screen-machine/pm2s; metre.py's
 fitted weights beside it in the repo.
 """
@@ -46,7 +47,10 @@ def analyse(net, model, req: dict) -> dict:
                                              "conf": round(m.confidence, 3), "compound_p": round(m.compound_p, 3),
                                              "probs": {str(a): round(b, 3) for a, b in m.probs.items()},
                                              "phases": {str(a): b for a, b in m.phases.items()}},
-            "key_fifths": P.KEY_FIFTHS[k], "key_p": round(float(kp[k]), 3), "hands": hands}
+            "key_fifths": P.KEY_FIFTHS[k], "key_p": round(float(kp[k]), 3),
+            "key_probs": [round(float(x), 4) for x in kp],      # the builder weighs the signature with the phrase's notes
+            "ts_triple": round(float(np.mean(out["ts"] > 0.5)), 3) if len(out["ts"]) else None,
+            "hands": hands}
 
 
 def _read(f) -> dict | None:

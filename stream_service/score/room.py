@@ -256,6 +256,7 @@ def view_of(b: ScoreBuilder) -> dict:
             "grid": (list(b.grid.t), b.grid.idx0) if b.grid is not None else None,
             "analysed": b.analysed, "beats": b.beats, "unit": b.unit, "next_bar": b.next_bar, "swing": b.swing,
             "pc_weight": list(b.pc_weight), "key_fifths": b.key_fifths,
+            "key": (b.key_minor, list(b.kw), list(b.sig_ev), b.sig_n),
             "hand": {i: h for i, h in b.hand.items() if i in ids},
             "staff_of": {i: st for i, st in b.staff_of.items() if i in ids},
             "line_staff": b.line_staff, "last_event_t": b.last_event_t,
@@ -280,6 +281,9 @@ class BuilderView(ScoreBuilder):
         self.analysed, self.beats, self.unit = v["analysed"], v["beats"], v["unit"]
         self.next_bar, self.swing = v["next_bar"], v["swing"]
         self.pc_weight, self.key_fifths = list(v["pc_weight"]), v["key_fifths"]
+        if "key" in v:                                        # the key's mode and evidence (key(), _key_scores)
+            minor, kw, sig, n = v["key"]
+            self.key_minor, self.kw, self.sig_ev, self.sig_n = minor, list(kw), list(sig), n
         self.hand, self.staff_of = dict(v["hand"]), dict(v["staff_of"])
         self.line_staff, self.last_event_t = v["line_staff"], v["last_event_t"]
         by_id, notes = {}, []
