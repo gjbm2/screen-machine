@@ -598,6 +598,7 @@ class FakeSnapshotter:
         self.fail: str | None = None
         self.fail_times = 0                # > 0: fail this many calls (with `fail` or a default), then work
         self.not_ready: str | None = None
+        self.deaf: asyncio.Event | None = None     # set: snapshot() ignores its cancel until the event is set
 
     async def start(self, screens: list[str]) -> None:
         return None
@@ -614,6 +615,11 @@ class FakeSnapshotter:
 
     async def snapshot(self, screen: str, state: dict) -> bytes:
         self.calls.append((screen, copy.deepcopy(state)))
+        while self.deaf is not None and not self.deaf.is_set():
+            try:
+                await self.deaf.wait()
+            except asyncio.CancelledError:
+                pass                                # a wedged call that swallows its cancel (23 Oct)
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.fail or self.fail_times > 0:

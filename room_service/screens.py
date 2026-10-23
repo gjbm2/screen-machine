@@ -61,6 +61,28 @@ SHOT_REUSE_S = 600.0     # reuse a snapshot for an identical ArtState at most th
 RENDERER_GONE_S = 30.0    # a fallback this soon after the renderer dropped is its restart, not the screen's fault
 CARRY_S = 600.0          # a re-created session takes over the old one's look if it ended at most this long ago
 
+async def bounded(coro: Any, timeout_s: float) -> Any:
+    """Await ``coro`` as its own task for at most ``timeout_s`` (asyncio.TimeoutError after).  On a timeout the task is
+    cancelled but never awaited, so a call that ignores its cancel (a wedged browser call or child process; 23 Oct:
+    south's exit sat in phase "snapshot" for 2+ min) can't hold a handshake: it carries on without it."""
+    task = asyncio.ensure_future(coro)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout_s)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
+    if not done:
+        task.cancel()
+        task.add_done_callback(_reap)
+        raise asyncio.TimeoutError
+    return task.result()
+
+
+def _reap(task: "asyncio.Future") -> None:
+    if not task.cancelled() and task.exception() is not None:
+        log.info("an abandoned call finished late: %s", describe_exc(task.exception()))
+
+
 PHASES = ("idle", "freezing", "snapshot", "starting", "attaching", "entering", "live",
           "exiting", "leaving", "failed")
 
@@ -497,8 +519,12 @@ class ScreenController:
             return
         self.detail = "waiting for the snapshotter"
         self._changed()
+        scfg = getattr(getattr(self.mgr, "cfg", None), "snapshot", None)
+        bound = float(getattr(scfg, "page_load_timeout_s", 20.0)) + 5.0 + self.t.snapshot_s   # its own + its lock
         try:
-            await ready(self.id)
+            await bounded(ready(self.id), bound)
+        except asyncio.TimeoutError:
+            raise HandshakeError("snapshotter", f"not ready after {bound:g} s") from None
         except Exception as e:
             raise HandshakeError("snapshotter", describe_exc(e)) from None
 
@@ -539,7 +565,7 @@ class ScreenController:
             self.detail = "snapshot reused (identical ArtState)"
             return self._shot[1]
         try:
-            png = await asyncio.wait_for(self.mgr.snapshotter.snapshot(self.id, state), self.t.snapshot_s)
+            png = await bounded(self.mgr.snapshotter.snapshot(self.id, state), self.t.snapshot_s)
         except asyncio.TimeoutError:
             raise HandshakeError("snapshot", f"timeout after {self.t.snapshot_s:g} s") from None
         except Exception as e:
