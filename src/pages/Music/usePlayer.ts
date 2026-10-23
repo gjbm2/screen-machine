@@ -36,7 +36,8 @@ export interface PlayerHook {
   refresh: () => void;
 }
 
-export function usePlayer(api: MusicApi): PlayerHook {
+/** ``enabled`` false: no polling (a component that shares the page's player when there is one: PlayBar). */
+export function usePlayer(api: MusicApi, enabled = true): PlayerHook {
   const [view, setViewState] = useState<PlayerView | null>(null);
   const [link, setLink] = useState<PlayerLink>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function usePlayer(api: MusicApi): PlayerHook {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     let stop = false;
     let inflight = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,7 +102,7 @@ export function usePlayer(api: MusicApi): PlayerHook {
       document.removeEventListener("visibilitychange", onVisible);
       kick.current = () => undefined;
     };
-  }, [api, setView]);
+  }, [api, setView, enabled]);
 
   const act = useCallback(
     async (body: PlayerAction, guess?: Partial<PlayerView>): Promise<ActResult> => {

@@ -35,6 +35,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -44,8 +45,9 @@ import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
 import { isUnreached, musicWords, percent, SCORE_PAPERS, type ScoreKind, type ScorePaper, type ScoreSize, type ScoreStatus } from "./api";
 import { CHIP, CHIP_OFF, CHIP_ON, PRIMARY, SECONDARY } from "./bits";
 import { useMusic } from "./context";
-import { FollowLight, Transport, useFollow, type Follow } from "./follow";
-import { PlayOn } from "@/pages/Room/PlayOn";
+import { FollowLight, useFollow, type Follow } from "./follow";
+import { PlayBar } from "./PlayBar";
+import { openPianola } from "@/pages/Room/listenStream";
 
 type Mode = "scroll" | "pages";
 
@@ -584,6 +586,21 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
     setStand(at);
   };
   openStandRef.current = openStand;
+  // ?stand=1 (the pianola's Watch: Score): straight into full screen once the pages are there
+  const [params, setParams] = useSearchParams();
+  const wantStand = params.get("stand") === "1";
+  useEffect(() => {
+    if (!wantStand || !shown || !count || stand !== null) return;
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete("stand");
+        return next;
+      },
+      { replace: true },
+    );
+    openStandRef.current();
+  }, [wantStand, shown, count, stand, setParams]);
   /** Closed at this place (by Back: popped): the view follows it (Pages turns to it, Scroll scrolls to it once
    * fullscreen has gone). */
   const closeStand = (at: number, popped = false) => {
@@ -1002,10 +1019,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       )}
 
       <div ref={area}>{shown && count > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Transport follow={follow} pageInView={cur} />
-          <PlayOn baseUrl={api.baseUrl} compact className="ml-auto" />
-        </div>
+        <PlayBar baseUrl={api.baseUrl} follow={follow} pageInView={cur} watching="score" onWatch={(w) => w === "pianola" && openPianola()} />
       )}
       {body}</div>
 
@@ -1494,11 +1508,19 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
           </p>
         </div>
         {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
-        <Transport follow={follow} pageInView={cur} compact />
-        {/* its own clicks stay its own: the bar's click hands focus to the page, which would close the choices */}
-        <span className="contents" onClick={(e) => e.stopPropagation()}>
-          <PlayOn baseUrl={api.baseUrl} compact className="mx-1 h-8 max-w-[8rem] px-2.5" />
-        </span>
+        <PlayBar
+          baseUrl={api.baseUrl}
+          follow={follow}
+          pageInView={cur}
+          compact
+          watching="score"
+          onWatch={(w) => {
+            if (w !== "pianola") return;
+            close(); // out of full screen first: the pianola is drawn over the page
+            openPianola();
+          }}
+          className="flex-nowrap"
+        />
         <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
           {where}
         </span>

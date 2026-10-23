@@ -33,6 +33,11 @@ export interface MusicCtx {
 const Ctx = createContext<MusicCtx | null>(null);
 export const MusicProvider = Ctx.Provider;
 
+/** The Music page's shared parts, or null outside it (a component that also lives elsewhere: PlayBar). */
+export function useMusicMaybe(): MusicCtx | null {
+  return useContext(Ctx);
+}
+
 export function useMusic(): MusicCtx {
   const c = useContext(Ctx);
   if (!c) throw new Error("useMusic outside the Music page");
