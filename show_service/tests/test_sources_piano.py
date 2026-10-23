@@ -548,7 +548,7 @@ def cal_argv(r) -> list[str]:
 
 def test_a_sonos_run_claims_its_rooms_mic_and_names_it_to_show_sender(lib):
     r = cal_make(lib)
-    assert sources.sender_flags(lib / "cal_sender.py") == frozenset(sources.SENDER_FLAGS)
+    assert sources.sender_flags(lib / "cal_sender.py") == frozenset(sources.SENDER_FLAGS) - {"--speed", "--start-s"}
     st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="sonos:drawing-room")
     assert st["state"] == "starting" and r.claims == [("room-mic", True)]       # room-piano is MIDI: not the mic
     assert cal_argv(r) == ["--calibration-mic", "room-mic"]
@@ -798,4 +798,39 @@ def test_if_idle_starts_only_while_the_source_is_idle(lib):
     assert r.src.status()["piano"]["state"] not in sources.RUNNING
     r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", if_idle=True)
     assert r.src.status()["piano"]["piece"] == "file:Nocturne.mid"
+    r.src.stop()
+
+
+# -- speed (owner, 23 Oct: "midi playback: need a speed/pacing control setting (1X obviously the default)") -------------
+SPEED_SENDER = NEW_SENDER + 'ap.add_argument("--speed")\nap.add_argument("--start-s")\n'
+
+
+def test_speed_and_start_go_to_show_sender_and_its_place_comes_back(lib):
+    instruments(lib)
+    (lib / "speed_sender.py").write_text(SPEED_SENDER)
+    r = make(lib, script="speed_sender.py")
+    status = lib / "state" / "test-piano.status.json"
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True, speed=0.75, start_s=30)
+    argv = r.popen.argv
+    assert argv[argv.index("--speed") + 1] == "0.75" and argv[argv.index("--start-s") + 1] == "30.000"
+    assert st["speed"] == 0.75 and st["pos_s"] is None
+    status.write_text(json.dumps({"stage": "playing", "progress": 0.3, "pos_s": 41.5, "speed": 0.75}))
+    r.health.live = True
+    r.clock.t += 0.1
+    r.src.tick(0.0)
+    s = r.src.status()["piano"]
+    assert s["state"] == "playing" and s["pos_s"] == 41.5 and s["speed"] == 0.75
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs", once=True)       # 1x: no flags
+    argv = r.popen.argv
+    assert "--speed" not in argv and "--start-s" not in argv and "--status-file" in argv   # where the GS synth is
+    with pytest.raises(ValueError, match="bad_speed"):
+        r.src.start_test("piano", "file:Nocturne.mid", speed=9)
+    r.src.stop()
+
+
+def test_an_older_show_sender_gets_no_speed(lib):
+    instruments(lib)
+    r = make(lib)
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True, speed=1.5)
+    assert "--speed" not in r.popen.argv and st["speed"] == 1.0                            # said: it plays at 1x
     r.src.stop()

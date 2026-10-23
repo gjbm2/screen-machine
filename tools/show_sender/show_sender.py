@@ -102,6 +102,9 @@ now_ns = time.monotonic_ns
 # the test piano (PC22 only; nothing below runs or imports on the kiosk)
 LOOP_GAP_S = 3.0                                  # between passes of a looping piece (after its last event)
 ONCE_TAIL_S = 1.5                                 # --once on the GS synth: its release rings this long, then exit
+SPEED_RANGE = (0.25, 4.0)                         # --speed: the piece's tempo times this (owner, 23 Oct: "a speed/pacing
+                                                  # control setting (1X obviously the default)")
+PEDAL_CCS = (64, 66, 67)
 LIVE_INSTRUMENT = "windows-gs"                    # today's sound: PC22's GS synth (Speaker)
 OUTPUTS = ("pc22", "none")
 SONOS_PREFIX = "sonos:"                           # --output sonos:<zone> (a zone of config/room/sonos.json)
@@ -430,12 +433,22 @@ class TestStatus:
     def stage(self) -> Optional[str]:
         return self.doc["stage"] if self.doc else None
 
-    def set(self, stage: str, progress: Optional[float] = None, error: Optional[str] = None) -> None:
+    def timeline(self, start_s: float = 0.0, speed: float = 1.0) -> None:
+        """Where this run starts in the piece and how fast it goes: what ``pos_s`` counts from."""
+        self.start_s, self.speed = max(0.0, float(start_s or 0.0)), float(speed or 1.0)
+
+    def set(self, stage: str, progress: Optional[float] = None, error: Optional[str] = None,
+            elapsed_s: Optional[float] = None) -> None:
+        """``elapsed_s``: seconds played of this run; written as "pos_s", the place in the piece at its own tempo
+        (show_service restarts a piece there at another speed)."""
         if self.path is None:
             return
         prog = None if progress is None else round(min(1.0, max(0.0, float(progress))), 4)
+        pos = None if elapsed_s is None else round(getattr(self, "start_s", 0.0)
+                                                   + max(0.0, float(elapsed_s)) * getattr(self, "speed", 1.0), 3)
         with self.lock:
-            self.doc = {"stage": stage, "progress": prog, "error": error}
+            self.doc = {"stage": stage, "progress": prog, "error": error, "pos_s": pos,
+                        "speed": getattr(self, "speed", 1.0)}
             self._write()
         if self.thread is None and stage in ("preparing", "playing"):
             self.thread = threading.Thread(target=self._beat, name="status", daemon=True)
@@ -682,7 +695,7 @@ class _Beat:
 def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = False, *,
                    instrument: Optional[str] = None, output: Optional[str] = None, status_file: Optional[str] = None,
                    lead_ms: Optional[float] = None, once: bool = False, title: Optional[str] = None,
-                   calibration_mic: Optional[str] = None) -> int:
+                   calibration_mic: Optional[str] = None, speed: float = 1.0, start_s: float = 0.0) -> int:
     """A piece from the test-piano library played in real time as test-piano MIDI, looping (``once``: one pass);
     with ``speaker`` also out loud on PC22 (Speaker), so PC22's mic hears it as the boundary mic will hear the
     Steinway. A rendered ``instrument`` on output pc22 or sonos:<zone>: _run_rendered (``title``: the Sonos app's,
@@ -692,7 +705,8 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         from stream_service.piano_replay import PHRASES, TestPiano, resolve
         piano = (resolve(piece) if piece.startswith("file:") or piece in PHRASES
                  else TestPiano.from_file(piece, loop=True))
-        events = piano.midi()
+        events = shape_events(piano.midi(), speed, start_s)    # --speed, --start-s (1x from the top: as before)
+        status.timeline(start_s, speed)
         length = max(t for t, *_ in events) + LOOP_GAP_S
         ms = MidiStream("test-piano", out.send)
         silent = output == "none" or (output is None and not speaker)        # --no-speaker: MIDI only too
@@ -719,6 +733,26 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         return 1
     finally:
         status.close()
+
+
+def shape_events(events: list, speed: float = 1.0, start_s: float = 0.0) -> list:
+    """The piece played at ``speed`` times its tempo from ``start_s`` seconds in (at its own tempo): events before it
+    dropped (the pedals carried in as they stood there, at time 0), the rest moved to start at 0 and their times
+    divided by ``speed``.  A start past the last event leaves the piece as it was."""
+    speed = min(max(float(speed or 1.0), SPEED_RANGE[0]), SPEED_RANGE[1])
+    start_s = max(0.0, float(start_s or 0.0))
+    if start_s > 0 and events and start_s < max(t for t, *_ in events):
+        pedals: dict = {}
+        for t, st, d1, d2 in events:
+            if t >= start_s:
+                break
+            if st & 0xF0 == 0xB0 and d1 in PEDAL_CCS:
+                pedals[(st, d1)] = d2
+        events = [(0.0, st, d1, d2) for (st, d1), d2 in pedals.items() if d2] + \
+                 [(t - start_s, st, d1, d2) for t, st, d1, d2 in events if t >= start_s]
+    if speed != 1.0:
+        events = [(t / speed, st, d1, d2) for t, st, d1, d2 in events]
+    return events
 
 
 def _send_due(ms: MidiStream, events: list, i: int, t0: float, now: float, spk: Optional[Speaker] = None) -> int:
@@ -756,7 +790,7 @@ def _play_test_piano(ms: MidiStream, stop: threading.Event, piece: str, events: 
             ms.state(now_ns())
             last_state = now
             if status is not None:
-                status.set("playing", (now - t0) / (end if once else length))
+                status.set("playing", (now - t0) / (end if once else length), elapsed_s=now - t0)
         nxt = (t0 + events[i][0] - time.monotonic()) if i < len(events) else 0.01
         stop.wait(max(0.0005, min(0.01, nxt)))
 
@@ -865,7 +899,7 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
                         raise HelperFailed(_why(msg))
                     msg = helper.get(0)
                 if beat(now):
-                    status.set("playing", (now - t_audio0) / duration, note[0])
+                    status.set("playing", (now - t_audio0) / duration, note[0], elapsed_s=now - t_audio0)
                 nxt = (t0 + events[i][0] - time.monotonic()) if i < len(events) else 0.01
                 stop.wait(max(0.0005, min(0.01, nxt)))
             if stop.is_set():
@@ -1073,6 +1107,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test piano, rendered on pc22: send each MIDI event L ms before its sound (show_service "
                          "holds the stream's notes that long)")
     ap.add_argument("--once", action="store_true", help="test piano: play the piece once, then exit 0")
+    ap.add_argument("--speed", type=float, default=1.0, metavar="X",
+                    help="test piano: play at X times the piece's tempo (0.25-4; the rendered sound follows)")
+    ap.add_argument("--start-s", type=float, default=0.0, metavar="S",
+                    help="test piano: start S seconds into the piece (at its own tempo)")
     ap.add_argument("--calibration-mic", default=None, metavar="STREAM",
                     help="test piano, rendered: the mic stream that hears the output, for the helper's timing check "
                          "(show_service names it; \"\" = none hears it)")
@@ -1118,7 +1156,8 @@ def _main_test_piano(a: argparse.Namespace, out: Out, stop: threading.Event, net
         try:
             rc[0] = run_test_piano(out, stop, a.test_piano, not a.no_speaker, instrument=a.instrument,
                                    output=a.output, status_file=a.status_file, lead_ms=a.lead_ms, once=a.once,
-                                   title=a.title, calibration_mic=a.calibration_mic)
+                                   title=a.title, calibration_mic=a.calibration_mic, speed=a.speed,
+                                   start_s=a.start_s)
         except BaseException:                              # noqa: BLE001
             log.exception("test piano")
             rc[0] = 1
