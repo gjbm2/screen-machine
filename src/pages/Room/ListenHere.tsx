@@ -149,6 +149,8 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
   const [liveAt, setLiveAt] = useState(0);
   const feed = useMemo(() => new NoteFeed(), []);
   const sound = usePianoSound(test);
+  // the pianola can be open without the sound here (openPianola): the notes and what's playing are read for it too
+  const watching = here.on || here.viewOpen;
 
   // show_service's sounds (and, while on, what's playing): only while the page is visible
   useEffect(() => {
@@ -160,7 +162,7 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
       if (document.visibilityState === "visible") {
         const [t, p, d] = await Promise.all([
           api.showTest(ac.signal).catch(() => undefined),
-          here.on ? music.player(ac.signal).catch(() => null) : Promise.resolve(null),
+          watching ? music.player(ac.signal).catch(() => null) : Promise.resolve(null),
           here.on ? fetchDevices(ac.signal) : Promise.resolve(null),
         ]);
         if (stop) return;
@@ -176,7 +178,7 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
         }
         setLoaded(true);
       }
-      timer = window.setTimeout(() => void poll(), here.on ? POLL_ON_MS : POLL_OFF_MS);
+      timer = window.setTimeout(() => void poll(), watching ? POLL_ON_MS : POLL_OFF_MS);
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -191,16 +193,16 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [api, music, here.on]);
+  }, [api, music, here.on, watching]);
 
   // the stream's sound: once show_service has answered (or not), so the first connect has it
   useEffect(() => {
     if (loaded) configureListen(api.baseUrl, sound.instrument);
   }, [loaded, api.baseUrl, sound.instrument]);
 
-  // the notes, while on
+  // the notes, while on or watching
   useEffect(() => {
-    if (!here.on) return;
+    if (!watching) return;
     const url = api.showEventsUrl().replace(/\/v1\/events$/, "/v1/show");
     let sock: WebSocket | null = null;
     let retry: number | undefined;
@@ -240,9 +242,9 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
       window.clearTimeout(retry);
       sock?.close();
     };
-  }, [api, feed, here.on]);
+  }, [api, feed, watching]);
 
-  if (!here.on) return null;
+  if (!watching) return null;
 
   // what's playing
   const piano = test?.sources?.piano;
@@ -264,8 +266,8 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
   return (
     <>
       {/* the bar sits over the page's foot: the page gets the room back under it */}
-      {!onScore && <div aria-hidden className="h-24" />}
-      {!here.viewOpen && !onScore && (
+      {here.on && !onScore && <div aria-hidden className="h-24" />}
+      {here.on && !here.viewOpen && !onScore && (
         <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-testid="listen-here-bar">
           <div className={cn(CARD_CLASS, "mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2")}>
             <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />
@@ -281,7 +283,8 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
           </div>
         </div>
       )}
-      {here.viewOpen && !onScore && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
+      {/* opened by a tap (Open, or Watch: Pianola), so on a score page too; only the auto-open is held back there */}
+      {here.viewOpen && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
     </>
   );
 }

@@ -163,6 +163,7 @@ export function LiveMusicView({
   sub,
   soundLabel,
   line,
+  bar,
 }: {
   feed: NoteFeed;
   title: string;
@@ -170,6 +171,8 @@ export function LiveMusicView({
   soundLabel?: string | null;
   /** The sound's line (ListenHere's ListenLine): Tap to start sound, Getting the sound ready…, how far behind. */
   line: ReactNode;
+  /** The play controls (PlayBar: transport, speed, Play on, Watch: Score | Pianola), under the title. */
+  bar?: ReactNode;
 }) {
   const here = useListenHere();
   const [roll, setRoll] = useState<RollState>({ sustain: false, idle: false });
@@ -193,13 +196,13 @@ export function LiveMusicView({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Music on this device"
+      aria-label={here.on ? "Music on this device" : "Pianola"}
       className={cn(THEME_CLASS, "fixed inset-0 z-50 flex flex-col bg-background text-foreground")}
       data-testid="live-music-view"
     >
       <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-teal-800">Playing on this device</p>
+          <p className="text-sm font-medium text-teal-800">{here.on ? "Playing on this device" : "Pianola"}</p>
           <p className="text-xl font-semibold leading-snug [overflow-wrap:anywhere]">{title}</p>
           {sub && <p className="truncate text-base text-muted-foreground">{sub}</p>}
           {soundLabel && <p className="truncate text-sm text-muted-foreground">Sound: {soundLabel}</p>}
@@ -215,6 +218,8 @@ export function LiveMusicView({
         </button>
       </div>
 
+      {bar && <div className="mx-auto w-full max-w-3xl px-4 pb-2 sm:px-6">{bar}</div>}
+
       <div className="relative min-h-0 flex-1 border-y border-stone-200/80">
         <Roll feed={feed} onState={setRoll} />
         {roll.sustain && (
@@ -222,7 +227,7 @@ export function LiveMusicView({
             Sustain pedal
           </span>
         )}
-        {roll.idle && (here.status === "playing" || here.status === "quiet") && (
+        {roll.idle && (!here.on || here.status === "playing" || here.status === "quiet") && (
           <p className="pointer-events-none absolute inset-x-0 top-1/3 px-6 text-center text-base text-muted-foreground">
             The notes show here as the music plays.
           </p>
@@ -231,13 +236,15 @@ export function LiveMusicView({
 
       <div className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6">
         {line}
-        <button
-          type="button"
-          onClick={listenOff}
-          className={cn(TAP_BUTTON_CLASS, "inline-flex h-12 w-full items-center justify-center gap-2 border border-stone-300 bg-white font-semibold hover:bg-stone-50")}
-        >
-          <Square className="h-4 w-4" aria-hidden /> Stop sound here
-        </button>
+        {here.on && (
+          <button
+            type="button"
+            onClick={listenOff}
+            className={cn(TAP_BUTTON_CLASS, "inline-flex h-12 w-full items-center justify-center gap-2 border border-stone-300 bg-white font-semibold hover:bg-stone-50")}
+          >
+            <Square className="h-4 w-4" aria-hidden /> Stop sound here
+          </button>
+        )}
       </div>
     </div>
   );
