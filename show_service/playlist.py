@@ -439,7 +439,10 @@ class Player:
         if st is not None and st.get("piece") == run["piece"] and st.get("state") in RUNNING:
             src = self._sources()
             try:
-                src.stop_test(PIANO)
+                try:
+                    src.stop_test(PIANO, piece=run["piece"])       # only if it's still ours (23 Oct)
+                except TypeError:                      # a sources without the piece guard
+                    src.stop_test(PIANO)
             except Exception:                          # noqa: BLE001
                 log.exception("player: stop_test failed")
 
