@@ -1,6 +1,8 @@
 """piano_render/sonos.py against fakes only: a fake room_service (GET /api/v1/status, PUT /api/v1/room/targets, its
-Sonos adapter's unknown-key 400) and a fake Sonos UPnP responder (read-only GetTransportInfo / GetPositionInfo; any
-other action fails the test). Nothing reaches the real room_service or a real Sonos; files in tmp only.
+Sonos adapter's unknown-key 400), a fake Sonos UPnP responder (read-only GetTransportInfo / GetPositionInfo /
+GetMediaInfo; any other action fails the test) that fetches a radio stream over HTTP like the real one, and a fake
+show_service stream route (follows the growing MP3 to its .done). Nothing reaches the real room_service or a real
+Sonos; files in tmp only (streams: real ffmpeg, into tmp).
 
     chrt -i 0 nice -n 19 ~/.venvs/sm-piano/bin/python -m pytest -q piano_render/tests/test_sonos.py
 """
@@ -8,9 +10,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import re
+import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -41,12 +47,41 @@ class FakeSonos:
         self.rel_offset = 0.0                  # RelTime ahead of the truth by this much
         self.actions: list[str] = []
         self.reads_fail = False
+        self.media_uri = ""                    # GetMediaInfo's CurrentURI
+        self.track_override = None             # a radio stream's TrackURI, when the Sonos reports another one
+        self.stop_at_end = True                # a stream: STOPPED once what it fetched has played (else PLAYING on)
+        self.fetched = b""
+        self.fetch_done = threading.Event()
+        self.gets: list[str] = []
 
     def play(self, uri: str, dur: float) -> None:
         def go():
             time.sleep(self.delay)
             with self.lock:
-                self.state, self.uri, self.t0, self.dur = "PLAYING", uri, time.monotonic(), dur
+                self.state, self.uri, self.media_uri, self.t0, self.dur = "PLAYING", uri, uri, time.monotonic(), dur
+        threading.Thread(target=go, daemon=True).start()
+
+    def play_stream(self, uri: str) -> None:
+        """A radio URI: fetch it over plain http (as a Sonos does), play from its first byte, to its end."""
+        def go():
+            time.sleep(self.delay)
+            url = "http://" + uri.split("://", 1)[1]
+            self.gets.append(url)
+            r = urllib.request.urlopen(url, timeout=10)
+            with self.lock:
+                self.state, self.uri, self.media_uri = "PLAYING", uri, uri
+                self.t0, self.dur = time.monotonic(), float("inf")
+            buf = bytearray()
+            while True:
+                b = r.read(4096)
+                if not b:
+                    break
+                buf += b
+            with self.lock:
+                self.fetched = bytes(buf)
+                if self.stop_at_end:
+                    self.dur = len(buf) / 40000.0          # 320 kb/s
+            self.fetch_done.set()
         threading.Thread(target=go, daemon=True).start()
 
     def set(self, state: str, uri: "str | None" = None) -> None:
@@ -63,7 +98,8 @@ class FakeSonos:
                 if self.state == "PLAYING" and rel >= self.dur:
                     self.state, rel = "STOPPED", 0.0
             s = max(0, int(math.floor(rel))) if self.state == "PLAYING" else 0
-            return self.state, self.uri, f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}"
+            uri = self.track_override if (self.track_override and self.uri) else self.uri
+            return self.state, uri, f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}"
 
 
 def _serve(handler_cls) -> ThreadingHTTPServer:
@@ -82,7 +118,7 @@ def upnp_server(dev: FakeSonos) -> ThreadingHTTPServer:
             action = self.headers.get("SOAPACTION", "").strip('"').split("#")[-1]
             self.rfile.read(int(self.headers.get("Content-Length") or 0))
             dev.actions.append(action)
-            assert action in ("GetTransportInfo", "GetPositionInfo"), action      # read-only, never a command
+            assert action in ("GetTransportInfo", "GetPositionInfo", "GetMediaInfo"), action   # read-only only
             if dev.reads_fail:
                 self.send_response(500)
                 self.end_headers()
@@ -90,6 +126,8 @@ def upnp_server(dev: FakeSonos) -> ThreadingHTTPServer:
             state, uri, rel = dev.read()
             fields = ({"CurrentTransportState": state, "CurrentTransportStatus": "OK", "CurrentSpeed": "1"}
                       if action == "GetTransportInfo" else
+                      {"NrTracks": "1", "MediaDuration": "NOT_IMPLEMENTED", "CurrentURI": dev.media_uri,
+                       "CurrentURIMetaData": ""} if action == "GetMediaInfo" else
                       {"Track": "1", "TrackDuration": "0:00:10", "TrackMetaData": "", "TrackURI": uri, "RelTime": rel,
                        "AbsTime": "NOT_IMPLEMENTED", "RelCount": "2147483647", "AbsCount": "2147483647"})
             inner = "".join(f"<{k}>{v}</{k}>" for k, v in fields.items())
@@ -135,7 +173,10 @@ class FakeRoom:
         if extra:
             return 400, {"error": "bad_value", "detail": f"{t}: playback has unknown keys {extra}; it takes "
                                                          f"{sorted(self.takes - {'uri'})}"}
-        self.dev.play(v["uri"], self.play_s)
+        if v["uri"].startswith("x-rincon-mp3radio://") or "/piano/stream/" in v["uri"]:
+            self.dev.play_stream(v["uri"])
+        else:
+            self.dev.play(v["uri"], self.play_s)
         return 202, {"accepted": [t]}
 
 
@@ -163,15 +204,53 @@ def room_server(room: FakeRoom) -> ThreadingHTTPServer:
     return _serve(H)
 
 
+STREAM_RE = re.compile(r"^/show/api/v1/piano/stream/([0-9a-f]{32})\.mp3$")
+
+
+def route_server(folder: Path) -> ThreadingHTTPServer:
+    """show_service's GET /api/v1/piano/stream/<id>.mp3 under room's /show door, as api.py does it: the growing file,
+    no length (HTTP/1.0: the body ends at close), to its .done."""
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            m = STREAM_RE.match(self.path)
+            p = folder / f"{m.group(1)}.mp3" if m else None
+            if p is None or not p.exists():
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.end_headers()
+            done, seen = folder / f"{m.group(1)}.done", False
+            with open(p, "rb") as f:
+                while True:
+                    b = f.read(65536)
+                    if b:
+                        self.wfile.write(b)
+                    elif seen:
+                        return
+                    elif done.exists():
+                        seen = True
+                    else:
+                        time.sleep(0.01)
+    return _serve(H)
+
+
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
     """(out factory, FakeRoom, FakeSonos, events, render path); sonos.UNSUPPORTED cleared; fast watch."""
     monkeypatch.setattr(sonos, "UNSUPPORTED", set())
     monkeypatch.setattr(sonos, "WATCH_HZ", 10.0)
     monkeypatch.setattr(sonos, "END_SLACK_S", 0.4)
+    streams = tmp_path / "streams"
+    monkeypatch.setenv(sonos.STREAM_DIR_ENV, str(streams))
+    reaped: list = []
+    monkeypatch.setattr(sonos, "_reap_later", lambda paths, delay_s: reaped.append(([str(p) for p in paths], delay_s)))
     dev = FakeSonos()
     room = FakeRoom(dev)
-    servers = [upnp_server(dev), room_server(room)]
+    servers = [upnp_server(dev), room_server(room), route_server(streams)]
     cache = tmp_path / "renders"
     cache.mkdir()
     render = cache / f"{KEY}.flac"
@@ -183,9 +262,13 @@ def rig(tmp_path, monkeypatch):
     events: list[dict] = []
 
     def make(**kw):
+        kw = {"stream_dir": streams, "stream_start_ms": 300, "put_after_s": 0.5, "stream_ahead_s": 1.0, **kw}
         return sonos.SonosOutput(ZONE, emit=events.append, room_url=f"http://127.0.0.1:{servers[1].server_port}",
                                  sonos_file=tmp_path / "sonos.json", latency_file=tmp_path / "latency.json",
                                  upnp_port=servers[0].server_port, **kw)
+    make.door = f"http://127.0.0.1:{servers[2].server_port}/show"
+    make.reaped = reaped
+    make.streams = streams
     yield make, room, dev, events, render, tmp_path
     for s in servers:
         s.shutdown()
@@ -444,3 +527,311 @@ def test_an_unknown_zone_and_a_url_that_isnt_the_render(rig, tmp_path):
     assert out.pad_s == 0.0 and room.puts[-1][1]["values"][TARGET]["uri"] == "http://lan-host:8700/elsewhere.flac"
     out.stop()
     assert set(dev.actions) <= {"GetTransportInfo", "GetPositionInfo"}
+
+
+# -- streams (render on demand: an MP3 radio stream made as it plays) ---------------------------------------------------
+def _sine(seconds, f=440.0, start=0):
+    t = (np.arange(int(seconds * SR)) + start) / SR
+    x = (0.3 * np.sin(2 * np.pi * f * t)).astype(np.float32)
+    return np.stack([x, x], 1)
+
+
+def _blocks(a, n=512):
+    return [a[i:i + n] for i in range(0, len(a), n)]
+
+
+def _decode(data: bytes, tmp: Path) -> np.ndarray:
+    p = tmp / "dec.mp3"
+    p.write_bytes(data)
+    raw = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(p), "-f", "f32le", "-ac", "2",
+                          "-ar", str(SR), "-"], capture_output=True, check=True).stdout
+    return np.frombuffer(raw, "<f4").reshape(-1, 2)
+
+
+def _onset(y, thr=0.05):
+    return int(np.argmax(np.abs(y[:, 0]) > thr))
+
+
+class Paced:
+    """A Streamer's shape: blocks(position) stays ahead_s ahead of position(); notes how far and if Halted ended it."""
+
+    def __init__(self, seconds, ahead_s=0.25, fail_at_s=None):
+        self.a = _sine(seconds)
+        self.ahead_s, self.sr, self.fail_at = ahead_s, SR, None if fail_at_s is None else int(fail_at_s * SR)
+        self.emitted, self.max_lead, self.halted, self.t0 = 0, 0.0, False, None
+
+    def blocks(self, position):
+        from piano_render import pc22
+        try:
+            while self.emitted < len(self.a):
+                pos = position()
+                if self.t0 is None:
+                    self.t0 = time.monotonic()
+                if self.emitted >= pos + self.ahead_s * SR:
+                    time.sleep(0.002)
+                    continue
+                if self.fail_at is not None and self.emitted >= self.fail_at:
+                    raise RuntimeError("the engine broke")
+                b = self.a[self.emitted:self.emitted + 512]
+                self.emitted += len(b)
+                self.max_lead = max(self.max_lead, self.emitted / SR - (time.monotonic() - self.t0))
+                yield b
+        except pc22.Halted:
+            self.halted = True
+            raise
+
+
+def test_stream_urls_and_matching(tmp_path):
+    sid = "f" * 32
+    assert sonos.stream_url(url_of(), sid) == f"x-rincon-mp3radio://lan-host:8700/show/api/v1/piano/stream/{sid}.mp3"
+    assert sonos.stream_url("http://lan-host:8700/show/", sid, "http") == \
+        f"http://lan-host:8700/show/api/v1/piano/stream/{sid}.mp3"
+    with pytest.raises(sonos.SonosError):
+        sonos.stream_url("/show/api/v1/piano/audio/x.flac", sid)
+    assert sonos.same_uri("x-rincon-mp3radio://h:8700/show/a%20b.mp3", "http://h:8700/show/a b.mp3")
+    assert not sonos.same_uri("x-rincon-mp3radio://h/a.mp3", "http://h/b.mp3")
+    (tmp_path / "sonos.json").write_text(json.dumps({"zones": {ZONE: {"ip": "127.0.0.1"}}}))
+    with pytest.raises(ValueError):
+        sonos.SonosOutput(ZONE, sonos_file=tmp_path / "sonos.json", stream_scheme="rtsp")
+
+
+def test_mp3_stream_is_written_as_it_is_made_and_marked_done(tmp_path, monkeypatch):
+    reaped = []
+    monkeypatch.setattr(sonos, "_reap_later", lambda paths, d: reaped.append((paths, d)))
+    x = _sine(1.5)
+    st = sonos.Mp3Stream(_blocks(x), pad_s=0.5, folder=tmp_path, ahead_s=0.5)
+    t = time.monotonic()
+    st.start()
+    sizes = []
+    while not st.ended.is_set():
+        sizes.append(st.audio_in_file_s())
+        time.sleep(0.05)
+    wall = time.monotonic() - t
+    assert st.error is None and st.frames == int(0.5 * SR) + len(x) and st.duration_s == pytest.approx(2.0)
+    assert sizes and sizes[0] < 1.5 and max(sizes) > 1.0 and sorted(sizes) == sizes          # it grew as it went
+    assert 1.2 < wall < 3.5                                     # a plain iterable is paced: 0.5 s ahead of the clock
+    doc = json.loads(st.done_path.read_text())
+    assert doc["frames"] == st.frames and doc["error"] is None and sonos.KEY_RE.match(st.id)
+    assert reaped == [([st.path, st.done_path], sonos.STREAM_KEEP_S)]
+    y = _decode(st.path.read_bytes(), tmp_path)
+    on = _onset(y)
+    assert abs(on - (int(0.5 * SR) + sonos.MP3_DELAY_FRAMES)) < 40                # pad + the MP3 delay, then the sine
+    assert not np.abs(y[:int(0.5 * SR)]).max() > 1e-3
+    n = int(0.5 * SR) + sonos.MP3_DELAY_FRAMES
+    assert np.corrcoef(y[n + 2000:n + 40000, 0], x[2000:40000, 0])[0, 1] > 0.99
+
+
+def test_mp3_stream_paces_a_streamer_shape_by_its_position(tmp_path, monkeypatch):
+    monkeypatch.setattr(sonos, "_reap_later", lambda paths, d: None)
+    src = Paced(2.0, ahead_s=1.0)
+    st = sonos.Mp3Stream(src, folder=tmp_path)
+    st.start()
+    assert st.ended.wait(10) and st.error is None and src.emitted == 2 * SR
+    assert 0.8 < src.max_lead < 1.0 + 0.05                      # its ahead_s ahead of the clock from its start
+
+
+def test_mp3_stream_stop_ends_the_source_and_the_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(sonos, "_reap_later", lambda paths, d: None)
+    src = Paced(30.0)
+    st = sonos.Mp3Stream(src, folder=tmp_path, ahead_s=0.5)
+    st.start()
+    assert st.wait_ready(0.3, 5)
+    st.stop()
+    assert st.ended.is_set() and src.halted and st.error is None and src.emitted < 3 * SR
+    assert json.loads(st.done_path.read_text())["frames"] == st.frames
+    with pytest.raises(Exception) as e:
+        st.position()
+    assert type(e.value).__name__ == "Halted"
+
+
+def test_mp3_stream_source_error_ends_it_and_says_why(tmp_path, monkeypatch):
+    monkeypatch.setattr(sonos, "_reap_later", lambda paths, d: None)
+    st = sonos.Mp3Stream(Paced(5.0, fail_at_s=0.5), folder=tmp_path, ahead_s=0.5)
+    st.start()
+    assert st.ended.wait(10) and st.error == "RuntimeError: the engine broke"
+    assert json.loads(st.done_path.read_text())["error"] == st.error and st.audio_in_file_s() > 0.4
+
+
+def test_sweep_and_the_detached_reaper(tmp_path):
+    a, b, c, d = ("a" * 32, "b" * 32, "c" * 32, "d" * 32)
+    for sid in (a, b, c, d):
+        (tmp_path / f"{sid}.mp3").write_bytes(b"x")
+    for sid in (a, b):
+        (tmp_path / f"{sid}.done").write_text("{}")
+    (tmp_path / "keep.txt").write_text("not a stream")
+    old = time.time() - sonos.STREAM_KEEP_S - 5
+    for f in (f"{a}.mp3", f"{a}.done", f"{b}.mp3", f"{c}.mp3"):
+        os.utime(tmp_path / f, (old, old))                       # a ended long ago; b's .done is fresh; c died
+    assert sorted(sonos.sweep_streams(tmp_path)) == [a, c]
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([f"{b}.mp3", f"{b}.done", f"{d}.mp3", "keep.txt"])
+    sonos._reap_later([tmp_path / f"{b}.mp3", tmp_path / f"{b}.done"], 1)
+    deadline = time.monotonic() + 5
+    while (tmp_path / f"{b}.mp3").exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not (tmp_path / f"{b}.mp3").exists() and not (tmp_path / f"{b}.done").exists()
+
+
+def test_a_stream_plays_as_a_radio_stream_through_room_service(rig):
+    make, room, dev, events, render, tmp = rig
+    out = make()
+    x = _sine(1.0)
+    t_audio0 = out.start(_blocks(x), lead_in_ms=250, url=make.door + "/api/v1/piano/audio/" + KEY + ".flac",
+                         title="Piano: Nocturne")
+    (t_put, body), = room.puts
+    v = body["values"][TARGET]
+    st = out.session.stream
+    port = make.door.split(":")[2].split("/")[0]
+    assert v["uri"] == f"x-rincon-mp3radio://127.0.0.1:{port}/show/api/v1/piano/stream/{st.id}.mp3"
+    assert v["fade_s"] == 0 and v["title"] == "Piano: Nocturne" and v["volume"] == 40
+    assert t_audio0 == pytest.approx(t_put + 0.3 + 0.25 + sonos.MP3_DELAY_FRAMES / SR, abs=0.05)   # ours: 300 ms
+    assert out.wait(10)
+    assert out.session.error is None and out.session.done["by"] == "sonos", (out.session.error, out.session.done)
+    d = out.session.done
+    assert d["stream_s"] == pytest.approx(1.25) and 250 <= d["seen_ms"] < 1500
+    assert dev.fetch_done.wait(2) and dev.fetched == st.path.read_bytes()          # the whole stream, as written
+    assert dev.gets == [v["uri"].replace("x-rincon-mp3radio://", "http://")]
+    y = _decode(dev.fetched, tmp)
+    assert abs(_onset(y) - (int(0.25 * SR) + sonos.MP3_DELAY_FRAMES)) < 40
+    assert make.reaped and make.reaped[-1][0] == [str(st.path), str(st.done_path)]
+    assert room.puts[1:] == [] and set(dev.actions) <= {"GetTransportInfo", "GetPositionInfo", "GetMediaInfo"}
+
+
+def test_a_stream_still_playing_after_its_end_is_paused(rig, monkeypatch):
+    make, room, dev, events, render, tmp = rig
+    monkeypatch.setattr(sonos, "STREAM_END_SLACK_S", 0.5)
+    dev.stop_at_end = False                                   # a Sonos that sits on (or re-fetches) a finished stream
+    out = make()
+    out.start(_blocks(_sine(0.6)), lead_in_ms=0, url=make.door)
+    assert out.wait(10) and out.session.done["by"] == "stream" and out.session.error is None
+    assert room.puts[-1][1]["values"] == {TARGET: "paused"} and dev.state == "PAUSED_PLAYBACK"
+
+
+def test_a_radio_trackuri_of_its_own_is_matched_on_the_media_uri(rig):
+    make, room, dev, events, render, tmp = rig
+    dev.track_override = "x-sonosapi-stream:piano?sid=1"
+    out = make()
+    out.start(_blocks(_sine(0.8)), lead_in_ms=0, url=make.door)
+    assert out.wait(10) and out.session.error is None and out.session.done["by"] == "sonos"
+    assert "GetMediaInfo" in dev.actions and out.session.track_uri == dev.track_override
+
+
+def test_relTime_edges_of_a_stream_are_recorded_not_rebased(rig):
+    make, room, dev, events, render, tmp = rig
+    dev.delay = 1.0                                          # 0.7 s later than our 300 ms
+    out = make()
+    out.start(Paced(3.6), lead_in_ms=0, url=make.door)
+    assert out.wait(15) and out.session.error is None, out.session.error
+    assert not [e for e in events if e["ev"] == "rebase"] and out.session.rebased == 0
+    assert 400 < out.session.done["rel_start_ms"] < 1100       # what RelTime says: for the mic to check
+
+
+def test_stop_during_a_stream_pauses_it_and_ends_the_render(rig):
+    make, room, dev, events, render, tmp = rig
+    src = Paced(30.0)
+    out = make()
+    out.start(src, lead_in_ms=0, url=make.door)
+    time.sleep(1.0)
+    out.stop()
+    assert room.puts[-1][1]["values"] == {TARGET: "paused"} and dev.state == "PAUSED_PLAYBACK"
+    st = out.session.stream
+    assert st.ended.is_set() and src.halted and st.done_path.exists() and src.emitted < 4 * SR
+
+
+def test_a_stream_that_fails_after_the_put_is_an_error(rig):
+    make, room, dev, events, render, tmp = rig
+    out = make()
+    out.start(Paced(5.0, fail_at_s=1.0), lead_in_ms=0, url=make.door)
+    assert out.wait(10)
+    assert out.session.error == "the piano stream failed: RuntimeError: the engine broke" and out.session.done is None
+
+
+def test_a_stream_that_never_makes_sound_is_refused_before_the_put(rig, monkeypatch):
+    make, room, dev, events, render, tmp = rig
+    monkeypatch.setattr(sonos, "STREAM_READY_TIMEOUT_S", 1.0)
+
+    def broken(position):
+        raise ValueError("no samples")
+        yield                                                # noqa: unreachable: a generator
+
+    with pytest.raises(sonos.SonosError, match="no samples"):
+        make().start(broken, lead_in_ms=0, url=make.door)
+    assert room.puts == []
+
+
+def test_a_stop_during_a_streams_start_stops_it_before_the_put(rig, monkeypatch):
+    make, room, dev, events, render, tmp = rig
+    out = make()
+    real = sonos.Mp3Stream.wait_ready
+
+    def slow(self, *a, **kw):
+        out.stop()
+        return real(self, *a, **kw)
+    monkeypatch.setattr(sonos.Mp3Stream, "wait_ready", slow)
+    src = Paced(10.0)
+    with pytest.raises(sonos.SonosError, match="stopped before"):
+        out.start(src, lead_in_ms=0, url=make.door)
+    assert room.puts == []
+    deadline = time.monotonic() + 3
+    while not src.halted and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert src.halted
+
+
+# -- the whole chain: session.py -> Streamer -> SonosOutput -> Mp3Stream -> the route -> the Sonos (all fakes) --------
+def test_a_session_streams_a_piece_to_the_sonos_and_times_it(rig, gm_registry, midi):
+    """The live path end to end: a real Session on a real Streamer (TimGM6mb) plays on the fake Sonos, which fetches
+    the radio stream as it is made; t_audio0 is the PUT + the start delay + the pad left over + the encoder's delay."""
+    import queue
+
+    from piano_render import session, stream
+    make, room, dev, events, render, tmp = rig
+    m = midi([(0.0, "on", 60, 100), (0.4, "off", 60, 64), (0.5, "on", 67, 90), (0.9, "off", 67, 64)], name="tune.mid")
+    out = make()
+    lines: "queue.Queue[dict]" = queue.Queue()
+
+    class W:
+        def write(self, s):
+            for ln in s.splitlines():
+                lines.put(json.loads(ln))
+
+        def flush(self):
+            pass
+
+    def want(ev, timeout=20.0):
+        end = time.monotonic() + timeout
+        while True:
+            msg = lines.get(timeout=max(0.01, end - time.monotonic()))
+            if msg["ev"] == "error":
+                raise AssertionError(msg)
+            if msg["ev"] == ev:
+                return msg
+
+    s = session.Session(str(m), "gm", 0.75, proto=session.Proto(W()), output_factory=lambda: out,
+                        output=f"sonos:{ZONE}", ahead_s=1.0, loads_file=tmp / "loads.json",
+                        streamer_factory=lambda: stream.Streamer(str(m), "gm", registry=gm_registry, ahead_s=1.0))
+    r, w = os.pipe()
+    cmds, wf = os.fdopen(r, "r"), os.fdopen(w, "w")
+    rc: list = []
+    th = threading.Thread(target=lambda: rc.append(s.run(cmds)), daemon=True)
+    th.start()
+    try:
+        want("rendered")
+        wf.write(json.dumps({"url": make.door, "title": "Piano: Tune"}).join(["play-sonos ", "\n"]))
+        wf.flush()
+        st = want("started")
+        (t_put, body), = room.puts
+        v = body["values"][TARGET]
+        assert v["uri"].startswith("x-rincon-mp3radio://") and v["title"] == "Piano: Tune"
+        pad = 0.75 - 0.3 - sonos.MP3_DELAY_FRAMES / SR                       # what the 300 ms start delay leaves
+        assert st["pad_s"] == pytest.approx(pad, abs=1e-3)
+        assert st["t_audio0"] == pytest.approx(t_put + 0.3 + pad + sonos.MP3_DELAY_FRAMES / SR, abs=0.05)
+        played = want("played")
+        assert played["by"] == "sonos" and played["complete"] and played["late_blocks"] == 0
+        assert dev.fetch_done.wait(5)
+        y = _decode(dev.fetched, tmp)
+        assert abs(_onset(y, 0.01) - (round(pad * SR) + sonos.MP3_DELAY_FRAMES)) < 0.01 * SR   # MIDI 0 after the pad
+        assert len(y) > (pad + 0.9) * SR
+    finally:
+        wf.close()
+        th.join(10)
+    assert rc == [0]

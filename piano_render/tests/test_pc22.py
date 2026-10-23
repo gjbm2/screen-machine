@@ -1,6 +1,8 @@
-"""PC22 output: the player's buffer/callback logic (anywhere) and the real thing on PC22 (only with Windows here).
+"""PC22 output: the player's buffer/callback logic (anywhere); files and streams through the real player and pc22.py
+on a fake device (anywhere: no Windows, no sound); and the real thing on PC22 (only with Windows here).
 
-Only digital silence is ever sent to PC22's speakers.
+Only digital silence is ever sent to PC22's speakers. The four PC22 device tests (test_windows_*) run only with
+PIANO_PC22_DEVICE_TESTS=1 (and Windows here); everything else is logic and runs anywhere:
 
     chrt -i 0 nice -n 19 ~/.venvs/sm-piano/bin/python -m pytest -q piano_render/tests/test_pc22.py
 """
@@ -166,9 +168,304 @@ def test_audio0_formula():
     assert pc22.audio0(50.0, {"dac_in_ms": 0.0, "first_frame": 0}, 48000, extra_ms=25) == pytest.approx(50.025)
 
 
+# ---- streams (and files) through the real player and pc22.py, on a fake device (no Windows, no sound) ------------
+#
+# The player runs under this Linux Python with a stand-in "sounddevice" module: its OutputStream calls the callback
+# every 10 ms of audio in real time and writes what it was given to $FAKE_SD_OUT. Everything else is the real thing:
+# pc22.py's writer, pacing and protocol, pc22_player.py's Feed, Player and main().
+
+FAKE_SD = r'''
+import os, threading, time
+import numpy as np
+
+
+class CallbackStop(Exception):
+    pass
+
+
+class CallbackAbort(Exception):
+    pass
+
+
+class WasapiSettings:
+    def __init__(self, **kw):
+        self.kw = kw
+
+
+def query_hostapis():
+    return [{"name": "Windows WASAPI", "default_output_device": 0}]
+
+
+def query_devices(i=None):
+    devs = [{"name": "Fake speakers", "hostapi": 0, "max_output_channels": 2, "default_samplerate": 48000.0}]
+    return devs if i is None else devs[i]
+
+
+class _Status:
+    output_underflow = False
+
+
+class _TI:
+    def __init__(self, cur, dac):
+        self.currentTime, self.outputBufferDacTime = cur, dac
+
+
+class OutputStream:
+    BLOCK = 480
+
+    def __init__(self, device=None, samplerate=48000, channels=2, dtype="float32", latency=0.02, extra_settings=None,
+                 callback=None, finished_callback=None):
+        self.rate, self.ch, self.cb, self.fin = int(samplerate), int(channels), callback, finished_callback
+        self.latency = max(float(latency or 0), self.BLOCK / self.rate) + 0.01
+        self.out = []
+        self._stop = threading.Event()
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        t, n = time.perf_counter(), 0
+        try:
+            while not self._stop.is_set():
+                buf = np.zeros((self.BLOCK, self.ch), np.float32)
+                now = time.perf_counter()
+                try:
+                    self.cb(buf, self.BLOCK, _TI(now, now + self.latency), _Status())
+                except (CallbackStop, CallbackAbort):
+                    self.out.append(buf)
+                    break
+                self.out.append(buf)
+                n += self.BLOCK
+                d = t + n / self.rate - time.perf_counter()
+                if d > 0:
+                    time.sleep(d)
+        finally:
+            p = os.environ.get("FAKE_SD_OUT")
+            if p and self.out:
+                with open(p, "ab") as f:
+                    f.write(np.concatenate(self.out).astype("<f4").tobytes())
+            if self.fin:
+                self.fin()
+
+    def close(self):
+        self._stop.set()
+
+    def abort(self):
+        self._stop.set()
+'''
+
+
+@pytest.fixture
+def fake_dev(tmp_path, monkeypatch):
+    """(PC22Output factory, read_played()): the real player on a fake device; read_played() -> (frames, 2) float32."""
+    d = tmp_path / "fake_sd"
+    d.mkdir()
+    (d / "sounddevice.py").write_text(FAKE_SD)
+    out_file = tmp_path / "played.f32"
+    monkeypatch.setenv("PYTHONPATH", str(d))
+    monkeypatch.setenv("FAKE_SD_OUT", str(out_file))
+    monkeypatch.setattr(pc22, "PY_ARGS", ())
+
+    def make(**kw):
+        return pc22.PC22Output(py=sys.executable, **kw)
+
+    def played():
+        if not out_file.exists():
+            return np.zeros((0, 2), np.float32)
+        return np.frombuffer(out_file.read_bytes(), "<f4").reshape(-1, 2)
+    yield make, played
+    assert not pc22.live_pids()
+
+
+def _ramp(n, start=0):
+    x = (np.arange(start, start + n, dtype=np.float64) % 9973) / 9973.0 * 0.5
+    return np.stack([x, -x], 1).astype(np.float32)
+
+
+class PacedSource:
+    """A Streamer's shape: blocks(position) yields BLOCK-frame blocks while it is less than ahead_s ahead of
+    position(); records how far ahead it ever was, and whether a Halted ended it."""
+
+    def __init__(self, seconds, ahead_s=0.3, sr=RATE, block=512, fail_at=None):
+        self.n, self.ahead_s, self.sr, self.block, self.fail_at = int(seconds * sr), ahead_s, sr, block, fail_at
+        self.max_ahead = 0.0
+        self.halted = False
+        self.emitted = 0
+        self.positions = []
+
+    def blocks(self, position):
+        ahead = self.ahead_s * self.sr
+        try:
+            while self.emitted < self.n:
+                pos = position()
+                self.positions.append((time.monotonic(), pos))
+                if self.emitted >= pos + ahead:
+                    time.sleep(0.002)
+                    continue
+                if self.fail_at is not None and self.emitted >= self.fail_at:
+                    raise RuntimeError("the engine broke")
+                k = min(self.block, self.n - self.emitted)
+                b = _ramp(k, self.emitted)
+                self.emitted += k
+                self.max_ahead = max(self.max_ahead, self.emitted - pos)
+                yield b
+        except pc22.Halted:
+            self.halted = True
+            raise
+
+
+def test_a_stream_plays_every_block_in_order_and_ends_by_itself(fake_dev):
+    make, played = fake_dev
+    parts = [_ramp(n, s) for s, n in ((0, 700), (700, 10000), (10700, 37), (10737, 30000))]   # any sizes
+    total = sum(len(p) for p in parts)
+    o = make()
+    t = time.monotonic()
+    t0 = o.start(iter(parts))
+    assert o.session.stream and o.session.header["frames"] is None and o.session.prebuffer_ms == 300.0
+    assert t < t0 < time.monotonic() + 0.5
+    assert o.wait(10)
+    d, s = o.done, o.session
+    assert d["frames"] == total and d["underruns"] == 0 and not d["stopped"] and not d["short"]
+    assert s.eof_sent and s.duration_s == pytest.approx(total / RATE) and s.stream_error is None and s.error is None
+    y = played()
+    assert np.array_equal(y[:total], np.concatenate(parts)) and not y[total:].any()
+    assert s.t_done - t0 > total / RATE - 0.05
+
+
+def test_a_paced_stream_keeps_its_ahead_and_the_prebuffer_is_that_ahead(fake_dev):
+    make, played = fake_dev
+    src = PacedSource(1.5, ahead_s=0.3)
+    o = make()
+    t0 = o.start(src)
+    s = o.session
+    assert s.prebuffer_ms == pytest.approx(300.0)                 # the source's ahead_s, never more
+    assert o.wait(10)
+    d = o.done
+    assert d["frames"] == src.n and d["underruns"] == 0 and not d["stopped"]
+    assert np.array_equal(played()[:src.n], _ramp(src.n))
+    assert src.max_ahead <= 0.3 * RATE + 512 + 1
+    # position() follows the device: 0 before the start, then the wall clock from t_audio0 (+ the device latency)
+    late = [(t, p) for t, p in src.positions if t > t0 + 0.2]
+    assert late and all(abs(p - (t - t0 + s.dev_latency_s) * RATE) < 0.01 * RATE for t, p in late)
+    assert all(p == 0.0 for t, p in src.positions if t < s.t_started - 0.01)
+    assert s.writes < src.n / 512                                  # coalesced into fewer, larger writes
+
+
+def test_a_stop_mid_stream_fades_and_ends_the_source(fake_dev):
+    make, played = fake_dev
+    src = PacedSource(30.0, ahead_s=0.3)
+    o = make()
+    o.start(src)
+    time.sleep(0.6)
+    t = time.monotonic()
+    o.stop()
+    assert time.monotonic() - t < 1.0
+    d = o.done
+    assert d["stopped"] and 0.3 * RATE < d["frames"] < 1.5 * RATE and d["stop_to_silence_ms"] < 100
+    assert src.halted and src.emitted < 1.5 * RATE                 # the render stopped too
+    with pytest.raises(pc22.Halted):
+        o.position()
+    assert not o.playing
+
+
+def test_a_stop_in_the_streams_last_part_still_fades(fake_dev):
+    make, played = fake_dev
+    o = make()
+    o.start(iter([_ramp(int(0.8 * RATE))]))
+    s = o.session
+    deadline = time.monotonic() + 5
+    while not s.eof_sent and time.monotonic() < deadline:
+        time.sleep(0.005)
+    t_eof = time.monotonic()
+    assert s.eof_sent and t_eof >= s.t0 + 0.8 - pc22.END_HOLD_S - 0.06     # held until the end was near
+    assert o.wait(3) and o.done["frames"] == int(0.8 * RATE) and o.done["underruns"] == 0
+
+
+def test_a_source_that_fails_ends_the_stream_and_says_why(fake_dev):
+    make, played = fake_dev
+    src = PacedSource(5.0, ahead_s=0.3, fail_at=RATE // 2)
+    o = make()
+    o.start(src)
+    assert o.wait(10)
+    s = o.session
+    assert s.stream_error == "RuntimeError: the engine broke" and s.error is None
+    assert o.done["frames"] == src.emitted and not o.done["stopped"]              # what was sent played out
+    assert np.array_equal(played()[:src.emitted], _ramp(src.emitted))
+
+
+def test_a_source_that_fails_at_once_is_a_start_error(fake_dev):
+    make, played = fake_dev
+
+    def broken(position):
+        raise ValueError("no samples")
+        yield                                                    # noqa: unreachable: a generator
+
+    o = make()
+    with pytest.raises(pc22.PC22Error, match="no samples"):
+        o.start(broken)
+
+
+def test_the_session_gain_still_scales_a_stream(fake_dev, monkeypatch):
+    from piano_render import session
+    make, played = fake_dev
+    monkeypatch.setattr(pc22, "to_pcm", pc22.to_pcm)            # put back after the test
+    assert session.apply_gain(pc22, -120.0) == pytest.approx(1e-6)
+    x = np.full((RATE // 2, 2), 0.5, np.float32)
+    o = make()
+    o.start([x])
+    assert o.wait(10) and o.done["frames"] == RATE // 2
+    y = played()
+    assert y[:RATE // 2].max() == pytest.approx(0.5e-6, rel=1e-3)
+
+
+def test_a_file_still_plays_as_before(fake_dev, tmp_path):
+    make, played = fake_dev
+    p = tmp_path / "half.wav"
+    x = _ramp(RATE // 2)
+    sf.write(str(p), x, RATE, subtype="FLOAT")
+    o = make()
+    o.start(p, lead_in_ms=100)
+    assert not o.session.stream and o.session.header["frames"] == RATE // 2 and o.session.prebuffer_ms == 300.0
+    assert o.started["first_frame"] == -RATE // 10
+    assert o.wait(10) and o.done["frames"] == RATE // 2 and o.done["underruns"] == 0
+    y = played()
+    assert not y[:RATE // 10].any() and np.array_equal(y[RATE // 10:RATE // 10 + RATE // 2], x)
+
+
+def test_a_real_streamer_on_the_fake_device(fake_dev, gm_registry):
+    """piano_render.stream.Streamer through PC22Output: the position contract end to end (FluidSynth, no realism)."""
+    from piano_render import score, stream
+    make, played = fake_dev
+    perf = score.from_events([(0.05, "on", 60, 100), (0.4, "on", 64, 90), (0.9, "off", 60, 64), (1.0, "off", 64, 64)])
+    st = stream.Streamer(perf, "gm", registry=gm_registry, ahead_s=0.3, realism=False)
+    try:
+        st.open()
+        o = make()
+        o.start(st)
+        assert o.session.prebuffer_ms == pytest.approx(300.0)
+        assert o.wait(30)
+        n = o.done["frames"]
+        assert n == o.session.sent and abs(n - st.stats["audio_s"] * RATE) <= RATE // 1000     # (audio_s: ms)
+        assert o.done["underruns"] == 0 and st.stats["late_blocks"] == 0
+        assert np.abs(played()[:n]).max() > 0.01                 # it played the piano
+    finally:
+        st.close()
+
+
+def test_position_raises_once_halted():
+    s = pc22._Session(iter([]), py=sys.executable, device=None, prebuffer_ms=None, latency_ms=20, fmt="f32le",
+                      lead_s=2.0, buffer_ms=None, lead_in_ms=0, extra_ms=0)
+    assert s.position() == 0.0 and s.rate == pc22.STREAM_RATE
+    s.halt.set()
+    with pytest.raises(pc22.Halted):
+        s.position()
+
+
 # ---- the real thing on PC22 (digital silence only) ----------------------------------------------------------------
 
-windows = pytest.mark.skipif(not pc22.available(), reason="no Windows here (WSL interop, /mnt/c/Windows/py.exe)")
+DEVICE_ENV = "PIANO_PC22_DEVICE_TESTS"
+windows = pytest.mark.skipif(not (pc22.available() and os.environ.get(DEVICE_ENV) == "1"),
+                             reason=f"PC22's audio device: only with Windows here and {DEVICE_ENV}=1")
 
 
 @pytest.fixture(scope="module")
@@ -200,7 +497,7 @@ def _my_children():
 
 
 @windows
-def test_silence_end_to_end(silent3):
+def test_windows_silence_end_to_end(silent3):
     o = pc22.PC22Output()
     t = time.monotonic()
     t0 = o.start(silent3)
@@ -219,7 +516,7 @@ def test_silence_end_to_end(silent3):
 
 
 @windows
-def test_stop_midway(silent3):
+def test_windows_stop_midway(silent3):
     o = pc22.PC22Output()
     o.start(silent3)
     time.sleep(0.8)
@@ -233,7 +530,7 @@ def test_stop_midway(silent3):
 
 
 @windows
-def test_repeated_start_stop_leaves_nothing_behind(silent3):
+def test_windows_repeated_start_stop_leaves_nothing_behind(silent3):
     pids = []
     o = pc22.PC22Output()
     for i in range(3):
@@ -259,7 +556,7 @@ def test_repeated_start_stop_leaves_nothing_behind(silent3):
 
 
 @windows
-def test_play_helper(tmp_path):
+def test_windows_play_helper(tmp_path):
     p = tmp_path / "silent1.wav"
     sf.write(str(p), np.zeros((RATE, 1), np.float32), RATE)      # mono WAV: sent as stereo
     r = pc22.play(p)

@@ -1,21 +1,22 @@
 """python -m piano_render [--config PATH] [--cache DIR] [--no-idle] COMMAND ...
 
   list [--json]                                        instruments (available or why not) and rooms
-  render MID [--instrument ID] [--room R] [--no-realism] [--force] [--json]
-                                                       render (or find in the cache); prints the FLAC path
-  prerender [--instrument ID] [DIR] [--room R] [--no-realism] [--json]
-                                                       every .mid in DIR (default config/live/test-piano), in order
+  render MID [--instrument ID] [--room R] [--no-realism] [--out FILE] [--force] [--json]
+                                                       render offline to FILE (default "<piece> - <instrument>.flac"
+                                                       here), or with --cache / $PIANO_RENDER_CACHE into that cache
+                                                       (or found there); prints the FLAC path
   fetch [IDS...] [--status] [--registry PATH]         install instruments/rooms/sfizz (piano_render.fetch)
   play-pc22 FILE_OR_MID [--instrument ID] [--room R] [--no-realism]
-                                                       play on PC22's speakers (piano_render.pc22)
+                                                       play on PC22's speakers (piano_render.pc22; a .mid is
+                                                       rendered as it plays, nothing kept)
   audition [--out DIR] [--instruments ID ...] [--excerpts N ...] [--no-ab] [--work DIR] [--json]
                                                        the audition set: excerpts x instruments as tagged 16-bit
                                                        FLACs (piano_render.audition; default out: PC22's
                                                        C:\\Users\\Greg\\Music\\Piano audition)
 
---config (or $PIANO_RENDER_CONFIG) picks the instruments.json; --cache (or $PIANO_RENDER_CACHE) the render cache.
-render, prerender and audition drop to idle CPU priority first (SCHED_IDLE, nice 19) unless --no-idle: this box also
-runs the live TV streams. fetch, play-pc22 and audition live in modules of their own, imported only when used: if one
+--config (or $PIANO_RENDER_CONFIG) picks the instruments.json; --cache (or $PIANO_RENDER_CACHE) names a render cache
+(there is none unless named: the live test piano renders as it plays and keeps nothing). render and audition drop to
+idle CPU priority first (SCHED_IDLE, nice 19) unless --no-idle: this box also runs the live TV streams. fetch, play-pc22 and audition live in modules of their own, imported only when used: if one
 is missing, the other commands still work.
 """
 
@@ -127,15 +128,23 @@ def _result_line(res) -> str:
             f"TP {res.true_peak_dbtp} dBTP  {how}")
 
 
+def default_out(midi: str, instrument: Optional[str], reg) -> Path:
+    """render's file when neither --out nor a cache is named: "<piece> - <instrument>.flac" in the current folder."""
+    return Path.cwd() / f"{Path(midi).stem} - {instrument or reg.default}.flac"
+
+
 def cmd_render(args) -> int:
     from . import render as _render
     if not args.no_idle:
         lower_priority()
     reg = _registry(args)
+    out = args.out
+    if out is None and _render.cache_dir() is None:
+        out = default_out(args.midi, args.instrument, reg)
     prog = _TTYProgress(Path(args.midi).name)
     try:
         res = _render.render(args.midi, args.instrument, room=args.room, realism=not args.no_realism, registry=reg,
-                             progress=prog, force=args.force)
+                             progress=prog, force=args.force, out=out)
     finally:
         prog.done()
     if args.json:
@@ -145,37 +154,6 @@ def cmd_render(args) -> int:
     else:
         print(_result_line(res))
     return 0
-
-
-def cmd_prerender(args) -> int:
-    from . import render as _render
-    if not args.no_idle:
-        lower_priority()
-    reg = _registry(args)
-    d = Path(args.dir) if args.dir else TEST_PIANO_DIR
-    mids = sorted(p for p in d.iterdir() if p.suffix.lower() in (".mid", ".midi")) if d.is_dir() else []
-    if not mids:
-        print(f"no .mid files in {d}", file=sys.stderr)
-        return 1
-    out, failed = [], 0
-    for m in mids:
-        prog = _TTYProgress(m.name)
-        try:
-            res = _render.render(str(m), args.instrument, room=args.room, realism=not args.no_realism,
-                                 registry=reg, progress=prog)
-            prog.done()
-            out.append({"midi": str(m), **res.to_json(), "cached": res.cached})
-            if not args.json:
-                print(f"{m.name}: {_result_line(res)}", flush=True)
-        except Exception as e:  # noqa: BLE001 - one bad file never stops the batch
-            prog.done()
-            failed += 1
-            out.append({"midi": str(m), "error": f"{type(e).__name__}: {e}"})
-            if not args.json:
-                print(f"{m.name}: FAILED {type(e).__name__}: {e}", flush=True)
-    if args.json:
-        print(json.dumps(out, indent=1))
-    return 1 if failed else 0
 
 
 def cmd_fetch(args) -> int:
@@ -218,13 +196,9 @@ def cmd_play_pc22(args) -> int:
         info = mod.play(str(path), instrument=args.instrument, room=args.room, realism=not args.no_realism)
         print(json.dumps(info, indent=1, default=str))
         return 0 if not (isinstance(info, dict) and info.get("error")) else 1
-    # fall back on the contract's class
     if path.suffix.lower() in (".mid", ".midi"):
-        from . import render as _render
-        lower_priority()
-        res = _render.render(str(path), args.instrument, room=args.room, realism=not args.no_realism,
-                             registry=_registry(args))
-        path = Path(res.path)
+        print("piano_render.pc22 has no play() to render a .mid as it plays", file=sys.stderr)
+        return 2
     out = mod.PC22Output()
     t0 = out.start(str(path))
     print(json.dumps({"path": str(path), "t_audio0": t0}))
@@ -242,9 +216,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m piano_render", description=__doc__.split("\n")[0])
     ap.add_argument("--config", default=None, help=f"instruments.json (default ${_instruments.CONFIG_ENV} or "
                                                     f"{_instruments.DEFAULT_CONFIG})")
-    ap.add_argument("--cache", default=None, help="render cache dir (default $PIANO_RENDER_CACHE or "
-                                                  "~/.cache/screen-machine/piano/renders)")
-    ap.add_argument("--no-idle", action="store_true", help="keep normal CPU priority for render/prerender")
+    ap.add_argument("--cache", default=None, help="a render cache to keep renders in (default $PIANO_RENDER_CACHE; "
+                                                  "none: nothing is kept)")
+    ap.add_argument("--no-idle", action="store_true", help="keep normal CPU priority for render/audition")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("list", help="instruments and rooms")
@@ -258,14 +232,12 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--no-realism", action="store_true", help="engine + master only")
         p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("render", help="render one MIDI file")
+    p = sub.add_parser("render", help="render one MIDI file offline")
     render_opts(p, "midi", help_="the .mid file")
+    p.add_argument("--out", default=None, help="the FLAC to write (default: \"<piece> - <instrument>.flac\" here, "
+                                               "unless a cache is named)")
     p.add_argument("--force", action="store_true", help="render again even if cached")
     p.set_defaults(fn=cmd_render)
-
-    p = sub.add_parser("prerender", help="render every .mid in a directory")
-    render_opts(p, "dir", nargs="?", help_=f"directory (default {TEST_PIANO_DIR})")
-    p.set_defaults(fn=cmd_prerender)
 
     # fetch's own options, declared here (an argparse.REMAINDER passthrough rejected "fetch --status")
     p = sub.add_parser("fetch", help="install instruments, rooms and sfizz (piano_render.fetch)")
@@ -284,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_audition)
 
-    p = sub.add_parser("play-pc22", help="play a file (or render a .mid first) on PC22's speakers")
+    p = sub.add_parser("play-pc22", help="play a file, or a .mid rendered as it plays, on PC22's speakers")
     p.add_argument("path")
     p.add_argument("--instrument", "-i", default=None)
     p.add_argument("--room", default=None)

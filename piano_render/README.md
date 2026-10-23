@@ -1,10 +1,16 @@
 # piano_render
 
-MIDI file + instrument id → a rendered, mastered audio file, offline and cached. It replaces the test piano's
-Windows GS Wavetable synth with sampled pianos: sfizz plays SFZ libraries and FluidSynth plays SF2s. The first
-output is PC22's speakers (`pc22.py`); Sonos comes later. File time 0 is MIDI time 0, so the MIDI sent to the
-screens can be started against the same clock. Engines are pluggable, so a paid engine (Pianoteq, a VST3 host)
-is one more module.
+MIDI file + instrument id → sampled piano, rendered on demand as it plays, on PC22's speakers (`pc22.py`) or a Sonos
+(`sonos.py`). Nothing is rendered ahead and nothing is stored (owner, 22 Oct: "it should be rendered on demand").
+It replaces the test piano's Windows GS Wavetable synth with sampled pianos: sfizz plays SFZ libraries and
+FluidSynth plays SF2s. Stream frame 0 is MIDI time 0, and each output reports when it is heard, so the MIDI sent to
+the screens is timed against the same clock (see Latency and compute). Engines are pluggable, so a paid engine
+(Pianoteq, a VST3 host) is one more module.
+
+- The live path: `session.py` (started by show_sender) loads the sound once and renders each play through
+  `stream.py` into the sink while it plays; `calibrate.py` hears it through the room's mic and moves the MIDI clock.
+- `render.py` still renders a whole piece offline to a FLAC, for the audition set and comparisons only. It keeps
+  nothing unless asked (`out=` a file, or a cache you name). There is no prerender any more.
 
 ## Run
 
@@ -15,19 +21,19 @@ PY=~/.venvs/sm-piano/bin/python                       # run from the repo root
 $PY -m piano_render list                              # instruments (ok, or why not) and rooms
 $PY -m piano_render fetch                             # install instruments, IRs and sfizz (fetch.py)
 $PY -m piano_render render "config/live/test-piano/Classical - Chopin - Nocturne in E-flat, Op. 9 No. 2.mid" \
-    --instrument grand-c5 [--room recital|none] [--no-realism] [--force] [--json]
-$PY -m piano_render prerender --instrument grand-c5   # every .mid in config/live/test-piano
-$PY -m piano_render play-pc22 FILE_OR_MID [--instrument ID]   # pc22.py: plays out loud on PC22
+    --instrument grand-c5 [--out FILE.flac] [--room recital|none] [--no-realism] [--force] [--json]   # offline
+$PY -m piano_render play-pc22 FILE_OR_MID [--instrument ID]   # pc22.py: out loud on PC22 (a .mid renders as it plays)
+$PY -m piano_render.session --midi MID --instrument ID [--pad-s S] [--output pc22|sonos:ZONE]   # show_sender's helper
 $PY -m piano_render fetch --status                    # what is installed (no network)
 $PY -m piano_render audition [--out DIR] [--instruments ID ...] [--excerpts N ...]   # see Audition
+$PY -m piano_render.stream MIDI --instrument ID [--out FILE.wav | --out -] [--ahead 0.5] [--unpaced]  # render as it plays
 ```
 
 - `--config PATH` (or `$PIANO_RENDER_CONFIG`) picks the registry. The default is
   `config/piano/instruments.json`.
-- `--cache DIR` (or `$PIANO_RENDER_CACHE`) picks the render cache. The default is
-  `~/.cache/screen-machine/piano/renders`.
-- `render`, `prerender` and `audition` drop themselves to idle CPU priority (SCHED_IDLE, nice 19) unless you
-  pass `--no-idle`.
+- `render` writes `--out FILE` (default `<piece> - <instrument>.flac` in the current folder). `--cache DIR` (or
+  `$PIANO_RENDER_CACHE`) keeps renders in a cache of your own instead; there is no default cache.
+- `render` and `audition` drop themselves to idle CPU priority (SCHED_IDLE, nice 19) unless you pass `--no-idle`.
 - On this box, still wrap long jobs as the CLAUDE.md rule says:
   `chrt -i 0 flock -w 1800 ~/.cache/screen-machine/cpu.lock nice -n 19 ...`
 - The package sets `OMP/OPENBLAS/MKL/NUMBA_NUM_THREADS=1` unless they are already set.
@@ -37,27 +43,239 @@ $PY -m piano_render audition [--out DIR] [--instruments ID ...] [--excerpts N ..
 From Python:
 
 ```python
-from piano_render import render
-res = render.render(midi_path, "grand-c5")      # RenderResult; res.path = FLAC 24-bit 48 kHz
+from piano_render import stream, render
+st = stream.Streamer(midi_path, "grand-c5", ahead_s=1.0); st.open()   # as it plays (see the contract)
+for blk in st.blocks(position=sink_position): sink.write(blk.data)
+st.rewind()                                      # back to frame 0 for another play, samples still loaded
+
+res = render.render(midi_path, "grand-c5", out="piece.flac")         # offline; RenderResult, FLAC 24-bit 48 kHz
+res = render.render(midi_path, "grand-c5", cache_dir="work/renders") # or in a cache you name (audition does)
 res.cached, res.lufs, res.true_peak_dbtp, res.onset_ms, res.stats
-render.cached(midi_path, "grand-c5")            # lookup only, never renders
-render.read_progress(res.cache_key)             # {"stage", "done_s", "total_s", "pid", "updated"} or None
+render.cached(midi_path, "grand-c5", cache_dir=...)  # lookup only, never renders
 ```
 
 ## Tests
 
 ```bash
 OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 chrt -i 0 flock -w 1800 ~/.cache/screen-machine/cpu.lock nice -n 19 \
-  ~/.venvs/sm-piano/bin/python -m pytest -q piano_render/tests --ignore=piano_render/tests/test_pc22.py
+  ~/.venvs/sm-piano/bin/python -m pytest -q piano_render/tests
 ```
 
-The tests take about a minute with no network and no sound.
+The tests take about four minutes with no network and no sound (`test_stream.py` alone about 35 s).
 
 - sfizz tests build a one-sample SFZ in tmp. They need libsfizz under
   `~/.local/share/screen-machine/piano/engines/sfizz` (or `$PIANO_RENDER_SFIZZ_LIB`) and are skipped without it.
 - FluidSynth tests use `/usr/share/sounds/sf2/TimGM6mb.sf2`.
-- `test_pc22.py` and `test_fetch.py` belong to those modules. `test_pc22.py` may use PC22's audio device, so
-  run it only when sound is allowed.
+- `test_pc22.py` and `test_fetch.py` belong to those modules. `test_pc22.py` runs files and streams through the
+  real player and `pc22.py` on a fake device (no Windows, no sound). Its four `test_windows_*` tests use PC22's
+  audio device (digital silence) and run only with `PIANO_PC22_DEVICE_TESTS=1`.
+- `test_sonos.py`: fakes only (room_service, the Sonos's UPnP and its HTTP fetch of a radio stream, show_service's
+  stream route); streams use the real ffmpeg, into tmp. Its last test is the whole live chain on Sonos: a real
+  `Session` on a real Streamer through `SonosOutput` to the fake Sonos.
+- `test_session.py`: the session's protocol on real Streamers (TimGM6mb) into fake sinks that pace and read them as
+  the real ones do; the arm; the calibrator's wiring; the kept copy (real ffmpeg, into tmp); the load estimate;
+  `main`'s refusals; the gain through the real `PC22Output` with a fake player.
+- `test_stream.py`: streamed engines equal `render()` sample for sample, the realism chain against
+  `realism.apply` + `master.process`, block-size independence, pacing (a fake clock), the limiter and the
+  memory cap.
+
+## Latency and compute
+
+Measured 23 Oct on this box (20 vCPU WSL, no screen live, load average 3-13), for `stream.py`: the piece is
+rendered while it plays and nothing is stored. `session.py` plays every press this way (since 23 Oct; before, it
+rendered whole pieces into a FLAC cache, up to 12 sounds x 25 pieces, about 35 MB each).
+
+**The rule.** The MIDI for an event at MIDI time t is sent at `t_heard(t) - L`.
+- `t_heard(t) = H0 + t`. H0 is when sample 0 is heard: the sink's own report plus that output's calibrated delay.
+  - PC22: the player's DAC time of sample 0 (`t_audio0`).
+  - Sonos: the start estimate, corrected by the RelTime edges.
+  - The calibrated delay is measured with the mic in the same room. PC22 has its own mic; the drawing room has the
+    room mic: cross-correlating what we sent with what it hears gives the delay. Our own numbers go in
+    `~/.local/state/screen-machine/piano/latency.json`.
+- `L` is show.yaml `tests.piano.lead_ms` (650 ms). show_service moves the stream's notes `+L`, so the screens draw
+  each note when it is heard.
+- The render-ahead buffer (`ahead_s`, 0.5 s) is the only latency we choose. It delays only the start, because H0 is
+  measured at the sink, after the buffer.
+
+**The MIDI path to the screens.**
+1. show_sender sends each event at `t_heard - L`.
+2. show_service receives it over UDP on this box (well under 1 ms) and applies the `+L` runtime acoustic offset.
+3. stream_service's sound_view evaluates notes at photon time. Its render→photon lead was 536-541 ms on tonight's
+   sessions; notes stamped ahead wait, up to 2 s.
+4. The photons appear at `t_heard`. That leaves 0.1 s of slack, so L must stay above about 0.6 s and below
+   1.9 s (`LEAD_MS_MAX`).
+
+**From press to sound, per output.**
+
+| Step | PC22 (WASAPI) | Sonos (live stream) |
+|---|---|---|
+| Process start and `import piano_render.stream` | 0.36-0.38 s | the same |
+| `open()`: the engine (partial preload) alongside the chain build | concert-d 2.9 s (engine 1.0 s, chain 2.9 s), fazioli-sf2 1.9 s (engine 0.07 s); see the engine loads below | the same |
+| ...of which `import scipy.signal` (the chain's) | 2.5 s quiet, 4.2 s busy, in parallel with the engine | the same |
+| Fill: `ahead_s` plus the pipeline's own lookahead (4,250 frames, 89 ms), at sfizz's `max_speed` 2.28x | 0.26 s (FluidSynth: as fast as it renders) | Sonos's own buffer (below) |
+| Sink start | player spawn→ready 2.55-2.85 s (py.exe, sounddevice, WASAPI open; 4 silent runs), can overlap `open()`; then prebuffer 100-300 ms; WASAPI buffer 30 ms (20 asked) | the PUT, then the Sonos fetches over HTTP and buffers before it plays: unknown for a live stream, expected 1-3 s (a file took 0.50 s, PUT to heard, 21 Oct) |
+| After `t_audio0` | the Windows engine (one 10 ms period) and the DisplayPort monitor's audio: unmeasured, expected 20-80 ms; calibrate with PC22's mic | the Drawing Room Amp: a few ms after its buffer; calibrate with the room mic |
+| **Press → heard** | **measured end to end (The live session, below): 3.6-4.2 s for fazioli-sf2 and concert-d, 5.6-6.6 s for grand-c5, with the player started during the load** | about 3.5 s plus Sonos's buffer at up to 2.3x |
+
+- Most of a cold start is process work that repeats on every press: the imports, the engine load and the PC22
+  player spawn. `session.py` overlaps the player's spawn with the load (the arm, below), so on PC22 a press costs the
+  load, about 0.5 s of fill and start, and the pad.
+- A persistent stream process that kept the current sound and its player open would remove the load and the spawn
+  too: about 0.4 s plus the pad on PC22 (an estimate from the parts). Not built: show_service starts show_sender, and
+  so the session, per press.
+- For Sonos the render is paced by the wall clock from its first block, `ahead_s` ahead (use
+  `sonos.STREAM_AHEAD_S`, 4 s). The Sonos reads the growing MP3 at its own pace (TCP) and starts later than that
+  clock, so its buffer holds at least `ahead_s`.
+
+**The sinks** (`pc22.py`, `sonos.py`; measured 23 Oct, no screen live, nothing audible).
+- `PC22Output.start(streamer)`: the player's prebuffer is the stream's `ahead_s`, and `position()` is the frame
+  the WASAPI callback takes now (within 1 ms of the wall clock from `t_audio0`). 20 s silent runs (the PCM at
+  -120 dB) on the real device: fazioli-sf2 and concert-d, 0 underruns, 0 late blocks, 39 pipe writes a second
+  (blocks are coalesced to 50 ms), stop to silence 30-37 ms, `t_audio0` 1.8-2.3 s after `start()` with a cold
+  player, peak RSS 0.24 / 0.93 GB.
+- `SonosOutput.start(streamer, url=...)`: `Mp3Stream` encodes the stream with ffmpeg (libmp3lame 320 kb/s CBR)
+  into `~/.local/state/screen-machine/piano/streams/<id>.mp3` as it plays; show_service serves it at
+  `/api/v1/piano/stream/<id>.mp3`; the Sonos plays `x-rincon-mp3radio://<host>:8700/show/api/v1/piano/stream/<id>.mp3`.
+  Files go 10 minutes after the stream ends (2.4 MB a minute meanwhile).
+  - ffmpeg: 7-10% of one core while it streams (piano audio, paced), plus about 0.3 s and 1.5 CPU-s to start.
+    It adds 64-80 ms before the bytes are in the file, and LAME's delay (1,105 frames, 23 ms) to the sound.
+  - The PUT waits for 2 s of audio in the file (`STREAM_PUT_AFTER_S`): 0.8-1.1 s after the stream starts
+    (concert-d, fazioli-sf2, with a 0.75 s pad).
+  - Through room_service's real `/show` pass-through and the route, a reader got the stream chunked and byte for
+    byte, live (first bytes 0.07 s after its request).
+  - The Sonos's own start delay for a live stream is `STREAM_START_MS_DEFAULT` (1.5 s, a guess) until
+    `calibrate.py` measures what follows it with the room mic.
+
+**The live session** (`session.py`, the live path since 23 Oct).
+- A press: show_service starts show_sender, which starts the session. The session loads the sound once
+  (`Streamer.open()`); its "preparing" bar is the time so far over this sound's last loads on this box
+  (`~/.local/state/screen-machine/piano/loads.json`). On PC22 it starts the player at the same time, timed to be ready
+  about when the load ends (the arm: `ARM_LEAD_S` 3 s before the expected end; the player waits silent, its device
+  open). On "play" the stream fills the player's prebuffer and starts.
+- Render-ahead: PC22 1.0 s (`PC22_AHEAD_S`: a heavy sound gets 1 s against bursts; filling it at 2.28x takes 0.44 s
+  and happens while the player starts); Sonos 4 s (`sonos.STREAM_AHEAD_S`).
+- The pad: show_sender asks for `L - first event + 0.1` s (0.75 s for a piece that starts at once, 0 for a recording
+  with a second of silence first) so the first MIDI event is never late. PC22 plays it as silence. On Sonos it is
+  reduced by the Sonos's expected start delay (its 1.5 s guess plus the measured delay), so usually 0: the MIDI just
+  goes out later.
+- Loops and re-presses within a session reuse the loaded sound: `Streamer.rewind()` runs in the background as soon as
+  a play ends (fazioli-sf2 0.02-0.10 s, concert-d 0.06-0.09 s), and the next pass's player is armed 0.5 s after it
+  (`REARM_S`; a once-only play's stop drops it before it starts). A silent two-pass loop (fazioli-sf2, the recording
+  below, show_sender's loop): 0 underruns both passes; the second pass's start 2.3 s without the re-arm, 1.7 s with
+  it even when its "play" came 0.05 s after the first ended (with show_sender's own 3 s gap the player is ready first).
+- Calibration: every block also goes to `calibrate.py`'s `StreamReference`; `begin()` at each start (its prior delay is
+  in "started"'s `t_audio0` and `delay_ms`), `end()` at each end. Off for a silent check (`PIANO_SESSION_GAIN_DB`)
+  and with `PIANO_CALIBRATE=0`.
+- Kept copies: none by default. `PIANO_SESSION_KEEP_DIR=<dir>` keeps an MP3 (LAME VBR q2) of each play that played to
+  its end, the newest 50 (`PIANO_SESSION_KEEP_MAX`).
+- Until show_service serves `GET /api/v1/piano/stream/<id>.mp3` (it needs a restart), `--output sonos:<zone>` execs
+  `session_files.py`, the old cached-file path, unchanged (it probes the route at each start). Delete that file and
+  `~/.cache/screen-machine/piano/renders` once the route is live.
+
+Measured end to end, 23 Oct, silent (show_sender's `run_test_piano` in process with its MIDI recorded, the real session
+and the real PC22 player and device, the PCM at -120 dB; lead 650 ms; the arm on; nice 5 as live; no screen live). The
+test piece is the Grieg Waltz Op. 12/2 (111 s, first note at 0); the recording is 46 s of the Chopin Nocturne Op. 9/2
+written by `show_service/recorder.encode_smf`, with 1.3 s of silence first. The grand-c5 rows and the last ran beside
+another session's score stress test (8 CPUs at nice 19, load average 4.6-6).
+
+| Sound | Piece | Load | Press → `t_audio0` (after the load) | CPU (one core) | Peak RSS | Underruns / late blocks | MIDI sent vs due: median / p99 / max |
+|---|---|---|---|---|---|---|---|
+| fazioli-sf2 | Grieg | 2.4 s | 4.2 s (1.5 s: 0.7 start + 0.75 pad) | 7% | 241 MB | 0 / 0 | 0.30 / 0.83 / 2.3 ms |
+| fazioli-sf2 | recording | 2.5 s | 3.7 s (0.7 s) | 6% | 237 MB | 0 / 0 | 0.30 / 0.79 / 1.3 ms |
+| concert-d | Grieg | 2.5 s | 4.1 s (1.35 s: 0.6 + 0.75 pad) | 24% | 943 MB | 0 / 0 | 0.32 / 0.87 / 10.9 ms |
+| concert-d | recording | 2.9 s | 3.6 s (0.5 s) | 24% | 980 MB | 0 / 0 | 0.30 / 0.82 / 1.2 ms |
+| grand-c5 | Grieg | 4.2 s | 6.6 s (1.9 s: 1.1 + 0.75 pad) | 38% | 847 MB | 0 / 0 | 0.37 / 0.97 / 13.4 ms |
+| grand-c5 | recording | 4.0 s | 5.6 s (1.1 s) | 103% | 913 MB | 295 / 2,638 (up to 2.4 s late) | 0.40 / 1.13 / 4.5 ms |
+| concert-d, arm off | recording | 5.2 s (busy) | 8.1 s (2.4 s) | 33% | 986 MB | 0 / 0 | 0.36 / 0.89 / 3.8 ms |
+
+- Every event was sent and stamped on time against `t_audio0` (stamps within 0.26 ms). The arm takes about 1.9 s off
+  each press.
+- **grand-c5 can't keep real time on dense pedalled music when the box is busy.** Its wrapper turns on sampled
+  release, hammer noise, pedal noise and pedal resonance (15,336 regions, up to 193 voices). On the recording, in a
+  fresh process beside the stress test: the render thread 91% of a core, 112% with sfizz's loader. Sample quality 1:
+  84% (the output -60 dB from quality 2); 128 voices 87% (-42 dB); 96 voices 63% (-34 dB). The underruns put the
+  sound late against the MIDI (the calibrator, when its mic is on, would see it). `"stream_voices"` in
+  instruments.json caps an instrument's voices while streaming (sfizz can't change it mid-render: that silences every
+  voice); it isn't set for any instrument yet.
+
+**Engine loads with partial preload** (`STREAM_PRELOAD` 32768 frames). Each figure is the median (range) over 40
+fresh processes, with the resident memory right after the load.
+
+| Sound | Load | RSS after load |
+|---|---|---|
+| concert-d | 1.9 s (1.2-4.2) | 211 MB |
+| grand-c5 | 4.3 s (3.0-5.8) | 218 MB |
+| steinway-b-162 | 5.0 s (2.4-10.0; 2.5 s with the page cache warm) | 281 MB |
+| fazioli-sf2 | 0.13 s (0.10-0.19) | 60 MB |
+
+The full preload of the offline path took 10-60 s and 2.5-7 GB per load.
+
+**Compute at 1x** (realism on, paced like a sink, one stream alone, the whole process's CPU):
+
+| Sound | Piece | CPU (% of one core) | Late blocks | Peak RSS / VmData |
+|---|---|---|---|---|
+| fazioli-sf2 | Rachmaninoff Op. 32/8 (112 s) | 9 | 0 | 0.30 / 0.26 GB |
+| steinway-b-162 | Chopin Op. 9/2 (first 60 s) | 28 | 0 | 0.92 / 1.10 GB |
+| steinway-b-162 | Rachmaninoff (first 60 s) | 45 | 0 | 1.40 / 1.55 GB |
+| concert-d | Chopin Op. 9/2 (257 s) | 45 | 0 | 1.42 / 1.73 GB |
+| concert-d | Rachmaninoff (112 s) | 61 | 0 | 1.84 / 1.90 GB |
+| grand-c5 | Rachmaninoff (first 60 s) | 74 | 0 | 1.32 / 1.50 GB |
+| grand-c5 | Chopin Op. 9/2 (first 60 s) | 80 | 10 (11 ms at most) | 1.04 / 1.22 GB |
+
+- **Where it goes.** sfizz itself takes most of it, in two parts.
+  1. The voice rendering, on the stream's own thread: about 0.75 core for grand-c5's 160 voices, 0.2-0.45 for
+     20-75 voices.
+  2. sfizz's background loader: it reads each sample whole once a note needs more than its preload. That is
+     10-30 MB of float32 per note, with its page faults. It costs a third (grand-c5) to about as much (concert-d)
+     as the voice rendering, and twice as much for steinway-b-162, whose samples are FLAC.
+- **The chain** (thread CPU, concert-d): resonance 4.4%, room 4.6%, master 1.1-2.1%, una corda/EQ/width 1.1%,
+  trim <0.1%. That is 11-12% of a core.
+- **Memory** is bounded by sfizz's working set. sfizz 1.2.3 keeps a whole sample in memory while a voice plays it
+  and frees it about 5 s after its last voice. So peaks follow the playing density: 0.3 GB for the SF2, 0.9-1.9 GB
+  for the big SFZ sets, against 2.5-7 GB with full preload. sfizz 1.2.3 cannot stream a sample from disk.
+- **grand-c5** is the heaviest sound: 160 voices at 0.75-0.8 core.
+  - Alone it had 10 late blocks in one of two minutes.
+  - With the other tests running beside it (20 s excerpts, 7 streams at once), 32 of 40 runs fell behind, up to
+    5 s.
+  - It needs `ahead_s` 1.0 and the box to itself, or fewer voices.
+- concert-d fell behind in 1 of 40 runs under the same contention. steinway-b-162 and fazioli-sf2 never did.
+
+**No cut notes with partial preload.**
+- sfizz in live mode plays a fresh note from its preloaded start while the background loader reads the rest.
+- The test, on 20 s excerpts (Rachmaninoff dense, Chopin sparse) for concert-d, grand-c5 and steinway-b-162, with
+  a fresh process per load, paced at 1x:
+  - 20 loads per excerpt and sound: all 120 renders bit-identical per excerpt;
+  - identical to a 0.25x-paced render (4x the loader's time);
+  - for concert-d, identical to the freewheeling offline mode.
+- With sfizz's own 8192-frame preload, 20 of 52 loads cut notes: mostly in the first 0.6 s, while the buffer
+  filled at full speed, but also at 1.3 s and 15.7 s.
+- So streams use 32768 frames (0.68 s). They never render faster than 0.68 / `LOADER_BUDGET_S` (0.3 s) = 2.28x real
+  time, so a fresh note always leaves its load at least 0.3 s of wall time (`Engine.max_speed`).
+- fazioli-sf2 (FluidSynth, whole SF2 in memory): 40 of 40 identical.
+
+**Against today's offline renders.**
+- On the same 60 s, against an offline render made in a fresh process:
+  - concert-d -78.7 dB: the pedal-lift noise follows the dry's running RMS, not the whole piece's;
+  - fazioli-sf2 -139 dB: rounding.
+- Against the cached files (whole pieces):
+  - concert-d -42 to -45 dB. A fresh offline render differs from the cached one by -43.5 dB too: sfizz's random
+    pedal-noise round robins depend on the process's history.
+  - fazioli-sf2 -87 dB: FluidSynth's first render after a load differs slightly from later ones.
+- Where the offline master turned a whole piece down, the stream limits only the peaks instead:
+  - the Chopin: 1.3-1.9 dB at most, for 5.6-10.6 s of 257 s;
+  - the Rachmaninoff up to 4.7 dB, for 34-50 s of 112 s, where the offline turned the whole piece down 4.6 dB.
+  - Those windows differ by -18 to -55 dB.
+- Synthetic SFZ (tests): engines, una corda, EQ, width and the master (unlimited) are bit-exact; the room is
+  -140 dB; the resonance bank is exact without the pedal noise.
+
+**The streaming process** (`stream.prepare_process`).
+- Normal scheduling at nice 5, sfizz's loader threads included (checked).
+- Single-threaded DSP.
+- A hard cap: `RLIMIT_DATA` 3 GB (`DATA_CAP_MB`, `$PIANO_STREAM_DATA_CAP_MB`), 1.6x the largest measured.
+  - At the cap, sfizz's loader throws `std::bad_alloc` and the process aborts (exit 134). That kills that stream,
+    never the box.
+  - Core dumps are off (`RLIMIT_CORE` 0, not dumpable). With them on, WSL wrote a 0.9 GB `.dmp` to
+    `%TEMP%\wsl-crashes`.
 
 ## The contract
 
@@ -87,6 +305,7 @@ Instrument fields read here:
 | `half_pedal` | optional, default false; see Engines |
 | `una_corda` | optional, default true; false turns off the soft-pedal shaping (an engine that models CC67) |
 | `resonance_pan` | optional, default 0.3; the bank's key-tracked pan width (bass left), negative = audience view |
+| `stream_voices` | optional: sfizz's voice cap while streaming (default 256); see The live session |
 | `layers` | optional, a blend: `[{file, gain_db, offset_ms}]`, each file rendered by the instrument's engine with the same events and summed (see Engines, Layers). `file` stays the main layer, the one show_service checks; the instrument is available only when every layer file exists |
 
 Rooms: `ir` (a 48 kHz float WAV, 4 channels true stereo L→L, L→R, R→L, R→R; 2 = mono in, stereo out),
@@ -156,7 +375,24 @@ wet). IRs are normalised to unit energy, so `wet_db` is the wet level relative t
   - Applies `gain_db`, then cuts the gain only as far as needed for true peak ≤ -1 dBTP.
   - Plain gain: no compression, no limiter, no delay.
   - `master.write_flac` writes FLAC 24-bit 48 kHz.
-- `render.render(midi, instrument_id=None, *, room=None, realism=True, registry=None, progress=None, force=False, cache_dir=None, lock_timeout=None) -> RenderResult`
+- `stream.Streamer(perf_or_midi, instrument_id, *, registry=None, sr=48000, block=512, ahead_s=0.5, room=None, realism=True, gain_db=None, limiter=True, max_speed="auto")`:
+  render as it plays, nothing stored (see Latency and compute).
+  - `open()` loads (engine with partial preload, the IR, the cached tuning); `blocks(position=None)` yields
+    `Block(pos, data)` paced to the sink (`position()` = its playback frame; default the wall clock);
+    `next_block()` / `render_all()` unpaced (still within the engine's `max_speed`); `rewind()` back to frame 0
+    for another play (engines restart clean with their samples loaded, the chain is built again); `close()`;
+    `stats`.
+  - `stream.prepare_process(nice=5, data_cap_mb=None)`: the stream process's scheduling and memory cap.
+  - Engines stream through `engine.realtime = True`, `start(perf)`, `render_blocks(n)`, `finished`; `render()` is
+    built on the same step, so it is unchanged sample for sample. `engines.base.StreamMixer` sums layers and
+    detuned copies block by block.
+  - `dsp/streaming.py`: the realism stages and the master, block by block with their state carried over.
+- `session.py`: show_sender's helper, the live path (its docstring has the protocol; Latency and compute, The live
+  session, has what a press does).
+- `render.render(midi, instrument_id=None, *, room=None, realism=True, registry=None, progress=None, force=False, cache_dir=None, lock_timeout=None, out=None) -> RenderResult`
+  - Offline only (the audition set, comparisons). `out`: the FLAC goes there, no cache is read or written. Else the
+    cache named by `cache_dir` or `$PIANO_RENDER_CACHE`; with neither it raises ValueError (nothing is kept unless
+    asked).
   - RenderResult fields: path, sample_rate, duration_s, onset_ms, lufs, true_peak_dbtp, cache_key, engine,
     instrument, room, realism, stats, cached.
   - `room=None` means the instrument's own room. `"none"` means no room, unless a room has that id.
@@ -164,7 +400,10 @@ wet). IRs are normalised to unit energy, so `wet_db` is the wet level relative t
   - `stats` holds the timings, the master stats, `first_onset_ms` (when the first note becomes audible,
     relative to its MIDI time) and `first_audible_s`.
 
-## Cache, locking and progress
+## Cache, locking and progress (offline renders into a cache you name)
+
+There is no default cache: the live test piano renders as it plays and keeps nothing. These rules hold for a cache
+named by `cache_dir` / `$PIANO_RENDER_CACHE` (audition uses `<work>/renders`).
 
 Files: `<cache>/<key>.flac` + `<key>.json` (the RenderResult). The key is a sha256 over:
 - the MIDI bytes;
@@ -189,8 +428,7 @@ How a render is written and shared:
 - In-process, the most recently used engine stays loaded (`render.release_engines()` frees it). Renders in
   one process run one at a time.
 - A cache hit imports no scipy and no numba: `realism.py`, `master.py` and the `dsp` modules import them only when
-  they run (scipy.signal alone costs about 1.8 s). `piano_render.session`'s render child answers a cached piece
-  in 0.21-0.25 s (1.55-1.84 s before, 22 Oct), and a whole session start to its "rendered" line takes 0.31-0.35 s.
+  they run (scipy.signal alone costs about 1.8 s).
 
 ## Engines: behaviour worth knowing (measured 22 Oct)
 
@@ -464,7 +702,7 @@ OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 chrt -i 0 flock -w 3600 ~/.cache/screen-ma
 ```
 
 - It cuts the excerpts into `~/.cache/screen-machine/piano/audition/excerpts/` (`--work DIR` moves that
-  folder), renders them with `render.render()` into `<work>/renders` (never the live cache), and writes the
+  folder), renders them with `render.render()` into its own cache, `<work>/renders`, and writes the
   16-bit FLACs to `--out` (default PC22's folder above), replacing files of the same name (temp name, then
   rename).
 - Each file's measurements (LUFS, true and sample peak, clipped samples, the quietest 100 ms, render

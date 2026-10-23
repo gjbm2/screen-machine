@@ -55,6 +55,12 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
     cache (or its padded copy), with Range/206, ``Content-Type: audio/flac``, ``Cache-Control: no-cache``; the Sonos
     fetches it through room's ``:8700/show/*``. 404 for a key that isn't 32 hex digits or isn't there. It answers
     before the brain runs.
+  - ``GET /api/v1/piano/stream/<id>.mp3`` (owner, 22 Oct: render on demand): a live MP3 stream piano_render's
+    sonos.py is still writing (``$PIANO_STREAM_DIR``, else ~/.local/state/screen-machine/piano/streams): ``audio/mpeg``,
+    no Content-Length (chunked), no ranges, the file from its start then what is added, until ``<id>.done``; HEAD
+    answers the headers. 404 for an id that isn't 32 hex digits or isn't there, and for one already sent to its end.
+    The Sonos plays it as ``x-rincon-mp3radio://<host>:8700/show/api/v1/piano/stream/<id>.mp3``. It answers before
+    the brain runs.
   - ``GET``/``PUT /api/v1/listening`` (owner, 20 Oct): the PUT takes ``{"on"?: bool, "mode"?: bool}`` (at least
     one; a bare bool is ``{"on": ...}``): ``on`` is the Room page's AI listening switch, ``mode`` the mode's
     permission (room_service's per-mode device ``show.ai``). Both answer the ListenerView (with ``mode``) and
@@ -134,6 +140,18 @@ PIANO_PADDED_DIR = "sonos"
 PIANO_AUDIO_PATH = "/api/v1/piano/audio/{key}.flac"
 PIANO_AUDIO_KEY = re.compile(r"^[0-9a-f]{32}$")
 NO_PIANO_AUDIO = "There's no rendered piano sound with that key."
+#: Play on Sonos as it renders (owner, 22 Oct: render on demand, nothing kept): GET /api/v1/piano/stream/<id>.mp3 is a
+#: live MP3 stream that piano_render/sonos.py's Mp3Stream is still writing ($PIANO_STREAM_DIR, else PIANO_STREAM_DIR:
+#: <id>.mp3, and <id>.done once it has ended): the file so far, then what is added, to its end. Answers before the
+#: brain runs.
+PIANO_STREAM_DIR_ENV = "PIANO_STREAM_DIR"
+PIANO_STREAM_DIR = Path("~/.local/state/screen-machine/piano/streams")
+PIANO_STREAM_PATH = "/api/v1/piano/stream/{id}.mp3"
+PIANO_STREAM_CHUNK = 64 * 1024
+PIANO_STREAM_POLL_S = 0.02                           # at the live edge: look for more this often
+PIANO_STREAM_STALL_S = 30.0                          # nothing new and no .done this long: the writer died; end the body
+PIANO_STREAM_ENDED_KEEP = 256                        # streams sent to their end, remembered (a re-fetch is refused)
+NO_PIANO_STREAM = "There's no piano stream with that id (it may have ended)."
 NO_RIG = "The rig isn't running (outputs.py isn't loaded), so no light is driven from here."
 #: README S5.23: the Lights page's writes answer 400 for a light that can't be added as asked, except these
 RIG_ERROR_STATUS: dict[str, int] = {"unknown_fixture": 404, "in_hand_file": 409, "no_registry": 503, "not_saved": 500,
@@ -189,7 +207,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/test"), ("POST", "/api/v1/test"), ("DELETE", "/api/v1/test"), ("DELETE", "/api/v1/test/{source}"),
     ("GET", "/api/v1/piano/recordings"), ("POST", "/api/v1/piano/record"),
     ("GET", "/api/v1/piano/recordings/{id}.mid"), ("PATCH", "/api/v1/piano/recordings/{id}"),
-    ("DELETE", "/api/v1/piano/recordings/{id}"), ("GET", PIANO_AUDIO_PATH),
+    ("DELETE", "/api/v1/piano/recordings/{id}"), ("GET", PIANO_AUDIO_PATH), ("GET", PIANO_STREAM_PATH),
     ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
 )
 
@@ -1072,6 +1090,7 @@ class Api:
         self.events = EventsHub(self, max_clients=max_clients, queue_max=queue_max, hz=card_hz)
         self.describe_state: dict = dict(DESCRIBE_IDLE)
         self.mounted: list[tuple[str, str]] = []
+        self.streams_ended: collections.OrderedDict = collections.OrderedDict()   # piano stream ids sent to the end
         self.boot_id = uuid.uuid4().hex[:12]          # this process: the read-back carries it (the room adapter's
                                                        # cold-start check)
         self.publish: Optional[contract.Publish] = None    # the show bus (__main__ sets it): room.why
@@ -1149,6 +1168,8 @@ class Api:
         self.mounted.append(("POST", "/api/v1/hue/release"))
         r.add_get(PIANO_AUDIO_PATH, self._piano_audio)              # a file: answers even before the brain runs
         self.mounted.append(("GET", PIANO_AUDIO_PATH))
+        r.add_get(PIANO_STREAM_PATH, self._piano_stream)            # a live file: answers before the brain runs too
+        self.mounted.append(("GET", PIANO_STREAM_PATH))
         r.add_get(EVENTS_PATH, self.events.handle)
         self.mounted.append(("GET", EVENTS_PATH))
         app.on_startup.append(self.events.on_startup)
@@ -2717,6 +2738,55 @@ class Api:
             return _err(404, "not_found", NO_PIANO_AUDIO)
         return web.FileResponse(p, headers={"Content-Type": "audio/flac", "Cache-Control": "no-cache"})
 
+    async def _piano_stream(self, request: web.Request) -> web.StreamResponse:
+        """A live piano stream for the Sonos (sonos.py's Mp3Stream writes it): 200, audio/mpeg, no Content-Length
+        (chunked; to the close for HTTP/1.0), no ranges: the file from its start, then what is added, paced by the
+        client, until <id>.done is there and all of it is sent. HEAD: the headers only. 404 for an id that isn't 32
+        hex digits or isn't there, and for a stream already sent to its end (a radio player that fetches a finished
+        stream again must not play it again)."""
+        sid = request.match_info.get("id", "")
+        p = piano_stream_path(sid)
+        if p is None or sid in self.streams_ended:
+            return _err(404, "not_found", NO_PIANO_STREAM)
+        resp = web.StreamResponse(status=200, headers={"Content-Type": "audio/mpeg", "Accept-Ranges": "none",
+                                                       "Cache-Control": "no-cache, no-store"})
+        if request.method == "HEAD":
+            await resp.prepare(request)
+            return resp
+        done = p.with_suffix(".done")
+        ended = False
+        await resp.prepare(request)
+        try:
+            with open(p, "rb") as f:                 # a local file just written (page cache): read inline
+                last, seen_done = time.monotonic(), False
+                while True:
+                    chunk = f.read(PIANO_STREAM_CHUNK)
+                    if chunk:
+                        await resp.write(chunk)
+                        last = time.monotonic()
+                    elif seen_done:
+                        ended = True
+                        break
+                    elif done.exists():
+                        seen_done = True             # one more read: what was written before .done
+                    elif time.monotonic() - last > PIANO_STREAM_STALL_S:
+                        log.warning("piano stream %s: nothing new for %.0f s and no end: closing it", sid,
+                                    PIANO_STREAM_STALL_S)
+                        break
+                    else:
+                        await asyncio.sleep(PIANO_STREAM_POLL_S)
+            await resp.write_eof()
+        except ConnectionError:                      # the client went away
+            return resp
+        except OSError as e:
+            log.warning("piano stream %s: %s", sid, e)
+            return resp
+        if ended:
+            self.streams_ended[sid] = True
+            while len(self.streams_ended) > PIANO_STREAM_ENDED_KEEP:
+                self.streams_ended.popitem(last=False)
+        return resp
+
     # -- the console ---------------------------------------------------------------------------------------------------------
     async def _look(self, request: web.Request, brain: Any) -> web.Response:
         snap = _snap_of(_components(brain).get(DIRECTOR))
@@ -2768,6 +2838,27 @@ def piano_audio_path(key: str, cache: Optional[Path] = None) -> Optional[Path]:
                 return real
         except OSError:
             continue
+    return None
+
+
+def piano_stream_dir() -> Path:
+    """sonos.py's streams folder: $PIANO_STREAM_DIR, else PIANO_STREAM_DIR (~ expanded)."""
+    raw = os.environ.get(PIANO_STREAM_DIR_ENV)
+    return Path(raw).expanduser() if raw else PIANO_STREAM_DIR.expanduser()
+
+
+def piano_stream_path(sid: str, folder: Optional[Path] = None) -> Optional[Path]:
+    """<folder>/<sid>.mp3 for an id of exactly 32 lower-case hex digits whose file is there (never outside the
+    folder, symlinks included); else None."""
+    if not isinstance(sid, str) or not PIANO_AUDIO_KEY.match(sid):
+        return None
+    base = folder if folder is not None else piano_stream_dir()
+    try:
+        real = (base / f"{sid}.mp3").resolve()
+        if real.is_file() and real.is_relative_to(base.resolve()):
+            return real
+    except OSError:
+        pass
     return None
 
 

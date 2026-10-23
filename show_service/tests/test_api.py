@@ -414,7 +414,7 @@ def test_everything_answers_starting_before_the_brain_runs(tmp_path):
     async def go():
         async with served(api) as cl:
             for method, path in apimod.ROUTES:
-                if path in (c.EVENTS_PATH, "/api/v1/hue/release", apimod.PIANO_AUDIO_PATH):
+                if path in (c.EVENTS_PATH, "/api/v1/hue/release", apimod.PIANO_AUDIO_PATH, apimod.PIANO_STREAM_PATH):
                     continue
                 path = path.replace("{id}", "all").replace("{source}", "piano").replace("{name}", "piano") \
                     .replace("{n}", "0")
@@ -464,6 +464,90 @@ def test_piano_audio_serves_renders_and_padded_copies_with_ranges(tmp_path, monk
 
     run(go())
     assert apimod.piano_audio_path("../" + key) is None and apimod.piano_audio_path(key, cache) == cache / f"{key}.flac"
+
+
+def test_piano_stream_follows_the_growing_file_to_its_end(tmp_path, monkeypatch):
+    """Play on Sonos as it renders: GET /api/v1/piano/stream/<id>.mp3 sends the file so far, then what a writer (here a
+    thread, as sonos.py's Mp3Stream in another process) adds, to its .done; audio/mpeg, chunked, no length, no ranges;
+    before the brain runs; HEAD; a stream sent to its end is never sent again; ids that aren't 32 hex digits, files
+    that aren't there or lead outside the folder -> 404."""
+    streams = tmp_path / "streams"
+    streams.mkdir()
+    sid, other = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+    mp3, done = streams / f"{sid}.mp3", streams / f"{sid}.done"
+    first = bytes(range(256)) * 8
+    mp3.write_bytes(first)
+    (tmp_path / "outside.mp3").write_bytes(b"no")
+    (streams / f"{other}.mp3").symlink_to(tmp_path / "outside.mp3")
+    monkeypatch.setenv(apimod.PIANO_STREAM_DIR_ENV, str(streams))
+    api = apimod.routes(lambda: None, lambda: ENGINE, patch_path=tmp_path / "patch.yaml",
+                        fixtures_path=tmp_path / "fixtures.yaml")
+    added = [bytes([i]) * 3000 for i in range(10)]
+    t_done: list = []
+
+    def writer():                                        # 10 more chunks, 50 ms apart, then .done
+        time.sleep(0.2)
+        for a in added:
+            with open(mp3, "ab") as f:
+                f.write(a)
+            time.sleep(0.05)
+        done.write_text("{}")
+        t_done.append(time.monotonic())
+
+    async def go():
+        async with served(api) as cl:
+            r = await cl.head(f"/api/v1/piano/stream/{sid}.mp3")
+            assert r.status == 200 and r.headers["Content-Type"] == "audio/mpeg" and await r.read() == b""
+            th = threading.Thread(target=writer, daemon=True)
+            th.start()
+            r = await cl.get(f"/api/v1/piano/stream/{sid}.mp3", headers={"Range": "bytes=100-"})
+            assert r.status == 200 and r.headers["Content-Type"] == "audio/mpeg"          # ranges ignored: from 0
+            assert r.headers.get("Transfer-Encoding") == "chunked" and "Content-Length" not in r.headers
+            assert r.headers["Accept-Ranges"] == "none" and "no-store" in r.headers["Cache-Control"]
+            got, t_first = b"", None
+            async for chunk in r.content.iter_any():
+                if t_first is None:
+                    t_first = time.monotonic()
+                got += chunk
+            t_end = time.monotonic()
+            th.join(2)
+            assert got == first + b"".join(added)                                        # all of it, in order
+            assert t_first < t_done[0] <= t_end                                           # live, not after the end
+            r = await cl.get(f"/api/v1/piano/stream/{sid}.mp3")                           # sent to its end once
+            assert r.status == 404 and (await body(r))["error"] == "not_found"
+            r = await cl.head(f"/api/v1/piano/stream/{sid}.mp3")
+            assert r.status == 404
+            for bad in (sid.upper(), sid[:31], "0" * 33, "..%2Foutside", "%2E%2E%2Foutside", "e" * 32, other):
+                r = await cl.get(f"/api/v1/piano/stream/{bad}.mp3")
+                assert r.status == 404, bad
+
+    run(go())
+    assert apimod.piano_stream_path("../outside", streams) is None
+    assert apimod.piano_stream_path(sid, streams) == mp3.resolve()
+    assert apimod.piano_stream_dir() == streams
+
+
+def test_piano_stream_without_an_end_closes_after_a_stall(tmp_path, monkeypatch):
+    """A writer that died (no .done, nothing new): the body ends after PIANO_STREAM_STALL_S; not marked as ended."""
+    streams = tmp_path / "streams"
+    streams.mkdir()
+    sid = "a" * 32
+    (streams / f"{sid}.mp3").write_bytes(b"X" * 500)
+    monkeypatch.setenv(apimod.PIANO_STREAM_DIR_ENV, str(streams))
+    monkeypatch.setattr(apimod, "PIANO_STREAM_STALL_S", 0.3)
+    api = apimod.routes(lambda: None, lambda: ENGINE, patch_path=tmp_path / "patch.yaml",
+                        fixtures_path=tmp_path / "fixtures.yaml")
+
+    async def go():
+        async with served(api) as cl:
+            t = time.monotonic()
+            r = await cl.get(f"/api/v1/piano/stream/{sid}.mp3")
+            assert r.status == 200 and await r.read() == b"X" * 500
+            assert 0.25 < time.monotonic() - t < 3
+            r = await cl.get(f"/api/v1/piano/stream/{sid}.mp3")
+            assert r.status == 200 and await r.read() == b"X" * 500                     # not ended: served again
+    run(go())
+    assert not api.streams_ended
 
 
 @pytest.mark.parametrize("streamer,hue_on,want", [("show", True, False), ("show", False, True), ("room", True, True),

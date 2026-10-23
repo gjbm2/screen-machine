@@ -5,9 +5,10 @@ xUbuntu_24.04 libsfizz1 1.2.3 .deb unpacked there). If it needs a library the sy
 looked for under the same tree and loaded first by absolute path (RTLD_GLOBAL), so no LD_LIBRARY_PATH is needed.
 
 Settings (research r7): freewheeling on, whole samples preloaded (PRELOAD below: freewheeling alone did not stop
-sfizz 1.2.3 from cutting notes short), sample quality 2 in both process modes (10 is 5-6x slower for no audible
-gain), 256 voices, 512-frame blocks, every event at its exact frame offset inside the block. Note-offs carry their
-release velocity.
+sfizz 1.2.3 from cutting notes short; streaming, realtime = True, instead runs in live mode with STREAM_PRELOAD),
+sample quality 2 in both process modes (10 is 5-6x slower for no audible gain), 256 voices (streaming: the
+instrument's "stream_voices" when it has one; sfizz can't change it mid-render: it silences every voice), 512-frame blocks,
+every event at its exact frame offset inside the block. Note-offs carry their release velocity.
 
 pitch_cents: sfizz 1.2.3 ignores RPN 0 (its bend range is the SFZ's bend_up/bend_down, 200 cents unless the file
 says otherwise; measured 22 Oct), so instead of the pitch wheel we move the tuning reference,
@@ -40,6 +41,18 @@ NUM_VOICES = 256
 # to load, 2.5 GB resident (vs 0.8 s / 93 MB). $PIANO_RENDER_SFIZZ_PRELOAD (frames; 0 = sfizz's default) overrides.
 PRELOAD_ENV = "PIANO_RENDER_SFIZZ_PRELOAD"
 PRELOAD: Optional[int] = 1 << 30
+# Streaming (engine.realtime = True, piano_render/stream.py): live mode (no freewheeling) and only the start of each
+# sample preloaded; the rest is read by sfizz's background loader while the voice plays its preloaded start. The
+# streamer renders at playback pace, so the loader gets the preload's own length in wall time per fresh note
+# (measured in piano_render/README.md, "Latency and compute"). $PIANO_RENDER_SFIZZ_STREAM_PRELOAD (frames) overrides.
+STREAM_PRELOAD_ENV = "PIANO_RENDER_SFIZZ_STREAM_PRELOAD"
+STREAM_PRELOAD: Optional[int] = 32768
+# ...and the stream never renders faster than STREAM_PRELOAD / LOADER_BUDGET_S times real time (max_speed), so every
+# fresh note leaves the loader at least LOADER_BUDGET_S of wall time, also while the stream fills its buffer at the
+# start. Measured 23 Oct (20 s excerpts paced at 1x, a fresh process each): with sfizz's own 8192 frames and an
+# unpaced fill, 20 of 52 loads cut notes (mostly in the first 0.6 s, the fill; some at 1.3 s and 15.7 s); with
+# 32768, 0 of 120, every run bit-identical to a 0.25x-paced one and to freewheeling.
+LOADER_BUDGET_S = 0.3
 A4_HZ = 440.0
 
 _P = C.c_void_p
@@ -180,19 +193,29 @@ class SfizzEngine(Engine):
         self._synth = s
         lib.sfizz_set_sample_rate(s, float(sr))
         lib.sfizz_set_samples_per_block(s, self.block)
-        lib.sfizz_set_num_voices(s, NUM_VOICES)
+        voices = NUM_VOICES
+        if self.realtime and self.inst.get("stream_voices"):
+            voices = max(8, int(self.inst["stream_voices"]))          # instruments.json: a lighter live load
+        lib.sfizz_set_num_voices(s, voices)
         lib.sfizz_set_sample_quality(s, SFIZZ_PROCESS_LIVE, SAMPLE_QUALITY)
         lib.sfizz_set_sample_quality(s, SFIZZ_PROCESS_FREEWHEELING, SAMPLE_QUALITY)
-        lib.sfizz_enable_freewheeling(s)
-        if self.preload is not None:
-            lib.sfizz_set_preload_size(s, int(self.preload))
+        if self.realtime:
+            env = os.environ.get(STREAM_PRELOAD_ENV)
+            preload = (int(env) or None) if env else STREAM_PRELOAD
+        else:
+            lib.sfizz_enable_freewheeling(s)
+            preload = self.preload
+        if preload is not None:
+            lib.sfizz_set_preload_size(s, int(preload))
         if not lib.sfizz_load_file(s, str(self.file).encode()):
             raise EngineError(f"sfizz could not load {self.file}")
         regions = lib.sfizz_get_num_regions(s)
         if regions <= 0:
             raise EngineError(f"sfizz loaded no regions from {self.file}")
         self.stats.update(lib=str(path.resolve()), regions=regions,
-                          preloaded_samples=lib.sfizz_get_num_preloaded_samples(s))
+                          preloaded_samples=lib.sfizz_get_num_preloaded_samples(s),
+                          preload_frames=int(lib.sfizz_get_preload_size(s)), live_mode=bool(self.realtime),
+                          voices=voices)
 
     def _reset(self) -> None:
         lib, s = self._lib, self._synth
@@ -222,6 +245,12 @@ class SfizzEngine(Engine):
 
     def _active_voices(self) -> int:
         return int(self._lib.sfizz_get_num_active_voices(self._synth))
+
+    def max_speed(self, sr: int = 48000) -> Optional[float]:
+        if not self.realtime:
+            return None
+        frames = self.stats.get("preload_frames") or 8192
+        return max(1.0, frames / float(sr) / LOADER_BUDGET_S)
 
     def close(self) -> None:
         s, self._synth = getattr(self, "_synth", None), None

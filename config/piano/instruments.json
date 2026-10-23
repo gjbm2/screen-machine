@@ -269,7 +269,7 @@
       "file": "accurate-salamander/sfz_live/Accurate-SalamanderGrandPiano_flat.Recommended.screen-machine.sfz",
       "order": 20,
       "velocity_gamma": 1.0,
-      "gain_db": 10.3,
+      "stream_voices": 96, "gain_db": 10.3,
       "onset_ms": 1.5,
       "room": "recital",
       "width": 1.0,

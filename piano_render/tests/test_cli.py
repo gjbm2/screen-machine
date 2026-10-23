@@ -1,4 +1,5 @@
-"""python -m piano_render: list, render, prerender, and the lazy fetch / play-pc22 imports."""
+"""python -m piano_render: list, render (into a named cache, or to a file with no cache at all), and the lazy fetch /
+play-pc22 imports. There is no prerender any more (owner, 22 Oct: the test piano renders as it plays)."""
 
 import json
 import os
@@ -13,10 +14,13 @@ from piano_render import __main__ as cli
 REPO = Path(__file__).resolve().parents[2]
 
 
-def run(*args, env_extra=None):
+def run(*args, env_extra=None, cwd=None):
     env = dict(os.environ, PYTHONPATH=str(REPO))
     env.update(env_extra or {})
-    p = subprocess.run([sys.executable, "-m", "piano_render", *args], cwd=str(REPO), env=env,
+    for k, v in list(env.items()):
+        if v is None:
+            del env[k]
+    p = subprocess.run([sys.executable, "-m", "piano_render", *args], cwd=str(cwd or REPO), env=env,
                        capture_output=True, text=True, timeout=300)
     return p.returncode, p.stdout, p.stderr
 
@@ -61,18 +65,29 @@ def test_render_errors_are_one_line(sfz_registry, midi, cache):
     assert rc == 1 and "PC22" in err
 
 
-def test_prerender_dir(sfz_registry, midi, cache, tmp_path):
-    d = tmp_path / "pieces"
-    d.mkdir()
-    for i in range(2):
-        midi([(0.2 + i * 0.1, "on", 60 + i, 90), (0.6, "off", 60 + i, 64)], name=f"pieces/p{i}.mid")
-    (d / "notes.txt").write_text("not midi")
-    rc, out, err = run("prerender", str(d), "--instrument", "synth", "--json")
+def test_with_no_cache_render_writes_its_file_and_keeps_nothing_else(sfz_registry, midi, tmp_path, monkeypatch):
+    monkeypatch.delenv("PIANO_RENDER_CACHE", raising=False)
+    m = midi([(0.5, "on", 69, 100), (0.8, "off", 69, 64)], name="tune.mid")
+    work = tmp_path / "here"
+    work.mkdir()
+    rc, out, err = run("--no-idle", "render", str(m), "--instrument", "synth", "--json", cwd=work,
+                       env_extra={"PIANO_RENDER_CACHE": None})
     assert rc == 0, err
-    res = json.loads(out)
-    assert [Path(r["midi"]).name for r in res] == ["p0.mid", "p1.mid"] and not any(r["cached"] for r in res)
-    rc, out, err = run("prerender", str(d), "--instrument", "synth")
-    assert rc == 0 and out.count("cached") == 2
+    d = json.loads(out)
+    assert d["path"] == str(work / "tune - synth.flac") and not d["cached"]
+    assert sorted(p.name for p in work.iterdir()) == ["tune - synth.flac"]            # no sidecar, lock or progress
+    rc, out, err = run("render", str(m), "--out", str(tmp_path / "x" / "y.flac"), env_extra={"PIANO_RENDER_CACHE":
+                                                                                         None})
+    assert rc == 0, err
+    assert (tmp_path / "x" / "y.flac").exists()
+    from piano_render import render
+    with pytest.raises(ValueError, match="nothing is kept unless asked"):
+        render.render(m, "synth", registry=sfz_registry)
+
+
+def test_there_is_no_prerender_any_more():
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["prerender"])
 
 
 def test_optional_modules_missing_message(capsys):

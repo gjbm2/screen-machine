@@ -34,19 +34,24 @@ Streams:
               --once: the piece once, then exit 0 (default: loop, 3 s between passes).
               --instrument ID (not windows-gs) --output pc22: a rendered sound instead (the Room page's choice): the
               helper ``~/.venvs/sm-piano/bin/python -m piano_render.session`` (piano_render/session.py; its own
-              session, stopped by "stop" + EOF on every exit path) renders the piece (cached; idle CPU) and plays it
-              on PC22; its "started" t_audio0 (when MIDI time 0 is heard) times the MIDI: each event is sent, and
-              stamped, at t_audio0 + t_s - L (--lead-ms L: show_service holds the stream's notes L ms, so the screens
-              match the sound).  The file played is the library .mid itself (so prerendered files are hit) or, for a
-              built-in phrase, a .mid written from the same events.  --output none: MIDI only (no render, no lead).
+              session, stopped by "stop" + EOF on every exit path) loads the sound ("preparing": the load only,
+              seconds) and renders the piece as it plays on PC22 (owner, 22 Oct: on demand, nothing stored); its
+              "started" t_audio0 (when MIDI time 0 is heard: the sink's own report plus the output's measured
+              delay) times the MIDI: each event is sent, and stamped, at t_audio0 + t_s - L (--lead-ms L:
+              show_service holds the stream's notes L ms, so the screens match the sound).  An output heard later
+              than L after "started" (a Sonos) simply gets its MIDI later, never early.  Its "rebase" (the mic heard
+              the piano elsewhere: piano_render/calibrate.py; or the Sonos's own position) moves the MIDI clock.
+              --pad-s = lead - first event + 0.1 (at least 0): the first event is never due sooner than 0.1 s after
+              "started"; the helper plays that much silence first on PC22, less what the Sonos's start delay
+              already gives on Sonos.  The .mid played is the library file itself, a recording's own path, or for
+              a built-in phrase a .mid written from the same events.  --output none: MIDI only (no sound, no lead).
               --output sonos:<zone> (Play on Sonos, 22 Oct): the helper runs with --output sonos:<zone> and, once
-              rendered, is sent "play-sonos {url, title}" each pass: url = http://<SM_LAN_HOST>:8700/show/api/v1/
-              piano/audio/<key>.flac (SM_LAN_HOST from the repo's .env, else the environment; 8700 = room_service's
-              LAN door, whose /show/* reaches show_service), <key> the rendered file's; title "Piano: <label>"
-              (--title, else the piece's own name).  --pad-s is max(lead - first event + 0.1, SONOS_PAD_MIN_S);
-              the helper pads more (and says so in "started") while room_service fades every play in.  Its
-              "rebase" moves the MIDI clock to the new t_audio0; its "warning" (e.g. "Sonos volume is 0") is logged
-              and shown in the status's error while it plays.
+              loaded, is sent "play-sonos {url, title}" each pass: url = http://<SM_LAN_HOST>:8700/show (the door
+              the Sonos fetches the live stream through: SM_LAN_HOST from the repo's .env, else the environment;
+              8700 = room_service's LAN door, whose /show/* reaches show_service's /api/v1/piano/stream/<id>.mp3);
+              an older helper that still names a rendered file gets its .../api/v1/piano/audio/<key>.flac as before.
+              title "Piano: <label>" (--title, else the piece's own name).  Its "warning" (e.g. "Sonos volume is 0")
+              is logged and shown in the status's error while it plays.
               --status-file PATH: {"stage": preparing|playing|done|error, "progress", "error"} for show_service,
               written atomically, at least every second while preparing or playing.  SIGTERM: silence and exit 0.
 """
@@ -97,9 +102,9 @@ ONCE_TAIL_S = 1.5                                 # --once on the GS synth: its 
 LIVE_INSTRUMENT = "windows-gs"                    # today's sound: PC22's GS synth (Speaker)
 OUTPUTS = ("pc22", "none")
 SONOS_PREFIX = "sonos:"                           # --output sonos:<zone> (a zone of config/room/sonos.json)
-SONOS_PAD_MIN_S = 0.75                            # the Sonos's own buffer fill starts on silence
 ROOM_DOOR_PORT = 8700                             # room_service's LAN door: its /show/* reaches show_service
-PIANO_AUDIO_PATH = "/show/api/v1/piano/audio/{key}.flac"
+SHOW_DOOR = "/show"                               # ...under which show_service serves the live stream
+PIANO_AUDIO_PATH = "/show/api/v1/piano/audio/{key}.flac"   # an older helper's rendered file
 ENV_FILE = REPO / ".env"                          # SM_LAN_HOST: the address the Sonos fetches the sound from
 TITLE_PREFIX = "Piano: "
 SESSION_PY = "~/.venvs/sm-piano/bin/python"       # piano_render's venv
@@ -488,9 +493,8 @@ def smf_bytes(events: list) -> bytes:
 
 
 def render_midi(piece: str, events: list) -> pathlib.Path:
-    """The .mid the rendered sound is made from: the library file itself (piano_render's cache, prerendered from the
-    library, is then hit), a recording's own path, or for a built-in phrase a .mid written (once, by content) from the
-    very events the MIDI loop sends."""
+    """The .mid the rendered sound is played from: the library file itself, a recording's own path, or for a built-in
+    phrase a .mid written (once, by content) from the very events the MIDI loop sends."""
     from stream_service.piano_replay import LIBRARY_DIR, PHRASES
     if piece.startswith("file:"):
         return LIBRARY_DIR / piece[5:]
@@ -540,14 +544,20 @@ def lan_host() -> Optional[str]:
     return os.environ.get("SM_LAN_HOST") or None
 
 
-def sonos_url(rendered_path: str, host: Optional[str] = None) -> str:
-    """The URL the Sonos fetches the rendered file from (module docstring). HelperFailed without a host or a key."""
-    key = pathlib.Path(str(rendered_path)).stem
-    if not re.match(r"^[0-9a-f]{32}$", key):
-        raise HelperFailed(f"the rendered file {pathlib.Path(str(rendered_path)).name} isn't one show_service serves")
+def sonos_url(rendered_path: Optional[str] = None, host: Optional[str] = None) -> str:
+    """The URL for "play-sonos" (module docstring): the door the Sonos fetches the live stream through; for an older
+    helper that names a rendered file, that file's URL. HelperFailed without a host, or for a file that isn't one."""
+    key = None
+    if rendered_path:
+        key = pathlib.Path(str(rendered_path)).stem
+        if not re.match(r"^[0-9a-f]{32}$", key):
+            raise HelperFailed(f"the rendered file {pathlib.Path(str(rendered_path)).name} isn't one show_service "
+                               "serves")
     host = host or lan_host()
     if not host:
         raise HelperFailed("no SM_LAN_HOST in .env (the address the Sonos fetches the sound from)")
+    if key is None:
+        return f"http://{host}:{ROOM_DOOR_PORT}{SHOW_DOOR}"
     return f"http://{host}:{ROOM_DOOR_PORT}{PIANO_AUDIO_PATH.format(key=key)}"
 
 
@@ -642,6 +652,8 @@ def _num(v) -> Optional[float]:
 def _why(msg: dict) -> str:
     if msg.get("ev") == "error":
         return str(msg.get("why") or "the rendered piano failed")
+    if msg.get("rc") in (-6, 134):                         # SIGABRT: the sample loader hit the stream's memory cap
+        return "the rendered piano ran out of memory (its cap stops it before the box swaps)"
     return f"the rendered piano stopped (exit code {msg.get('rc')})"
 
 
@@ -761,13 +773,13 @@ def _await(helper: PianoSession, stop: threading.Event, beat: _Beat, want: str,
 def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
                   instrument: str, status: TestStatus, lead_s: float, once: bool, output: Optional[str] = None,
                   title: Optional[str] = None) -> int:
-    """The rendered sound on PC22 or a Sonos (module docstring): preparing while the helper renders, then per pass
-    "play" (Sonos: "play-sonos {url, title}") and the MIDI from its t_audio0 (each event sent at t_audio0 + t_s -
+    """The rendered sound on PC22 or a Sonos (module docstring): preparing while the helper loads the sound, then per
+    pass "play" (Sonos: "play-sonos {url, title}") and the MIDI from its t_audio0 (each event sent at t_audio0 + t_s -
     lead_s; a "rebase" moves it); a pass ends when both the MIDI and the audio have; looping, the next play goes
     LOOP_GAP_S after the last event at the earliest."""
     import json
     sonos = is_sonos(output)
-    pad_s = max(pad_for(events, lead_s), SONOS_PAD_MIN_S) if sonos else pad_for(events, lead_s)
+    pad_s = pad_for(events, lead_s)
     last_t = max(t for t, *_ in events)
     status.set("preparing", 0.0)
     try:
@@ -789,6 +801,8 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
         if m.get("ev") == "warning":
             note[0] = str(m.get("why") or "") or None
             log.warning("test piano: %s", note[0])
+        elif m.get("ev") == "calibration":
+            log.info("test piano: timing check: %s: %s", m.get("state"), m.get("why"))
     try:
         rendered = _await(helper, stop, beat, "rendered",
                           lambda m: status.set("preparing", m.get("frac")) if m.get("ev") == "progress" else None)
@@ -796,8 +810,12 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
             status.set("done")
             return 0
         duration = max(float(rendered.get("duration_s") or 0.0), last_t, 0.001)
-        log.info("test piano: rendered %s (%.1f s, %s)", rendered.get("path"), duration,
-                 "cached" if rendered.get("cached") else f"{float(rendered.get('render_s') or 0):.1f} s")
+        if rendered.get("streaming"):
+            log.info("test piano: %s loaded in %.1f s: it renders as it plays (%.0f s of MIDI)", instrument,
+                     float(rendered.get("load_s") or 0.0), duration)
+        else:
+            log.info("test piano: rendered %s (%.1f s, %s)", rendered.get("path"), duration,
+                     "cached" if rendered.get("cached") else f"{float(rendered.get('render_s') or 0):.1f} s")
         play_cmd = "play"
         if sonos:
             play_cmd = "play-sonos " + json.dumps({"url": sonos_url(rendered.get("path")), "title": title})
@@ -812,8 +830,9 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
             t0 = t_audio0 - lead_s
             now = time.monotonic()
             log.info("test piano: started %.0f ms after play; t_audio0 %.6f (in %+.0f ms), MIDI t0 %.6f (in %+.0f ms)"
-                     ", pad %.2f s", (now - t_play) * 1000, t_audio0, (t_audio0 - now) * 1000, t0, (t0 - now) * 1000,
-                     float(started.get("pad_s") or 0.0))
+                     ", pad %.2f s, measured delay %+.0f ms", (now - t_play) * 1000, t_audio0, (t_audio0 - now) * 1000,
+                     t0, (t0 - now) * 1000, float(started.get("pad_s") or 0.0),
+                     float(started.get("delay_ms") or 0.0))
             status.set("playing", 0.0, note[0])
             i, played = 0, False
             while not stop.is_set() and not (i >= len(events) and played):
@@ -828,9 +847,9 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
                     elif msg.get("ev") == "rebase" and _num(msg.get("t_audio0")) is not None:
                         was, t_audio0 = t_audio0, float(msg["t_audio0"])
                         t0 = t_audio0 - lead_s
-                        log.info("test piano: rebased: MIDI time 0 is heard %+.0f ms from the estimate",
-                                 (t_audio0 - was) * 1000)
-                    elif msg.get("ev") == "warning":
+                        log.info("test piano: rebased (%s): MIDI time 0 is heard %+.0f ms from the estimate",
+                                 msg.get("by") or "sink", (t_audio0 - was) * 1000)
+                    elif msg.get("ev") in ("warning", "calibration"):
                         warned(msg)
                     elif msg.get("ev") in ("error", PianoSession.EOF):
                         raise HelperFailed(_why(msg))
