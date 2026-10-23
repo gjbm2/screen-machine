@@ -715,6 +715,9 @@ export interface ShowTestState {
   once?: boolean;
   /** 0..1 while the sound is got ready, else null. */
   progress?: number | null;
+  /** The speed it plays at, and where in the piece it is (seconds at its own tempo); a newer show_service's. */
+  speed?: number | null;
+  pos_s?: number | null;
 }
 /** A virtual piano sound show_service can play the test piano with (only installed ones are listed). */
 export interface ShowInstrument {
@@ -733,6 +736,10 @@ export interface ShowTestStartOpts {
   instrument?: string | null;
   output?: string | null;
   once?: boolean;
+  /** The piece's tempo times this (0.25-4; 1 as written). */
+  speed?: number;
+  /** Start this far into the piece (seconds at its own tempo): a speed change carries on from pos_s. */
+  start_s?: number;
 }
 export interface ShowTestView {
   sources: Record<ShowTestSource, ShowTestState>;
