@@ -5,7 +5,9 @@
 // remembered as the Room page's piano choice so both agree).
 // Beside the title, Score opens the piece's written-out score.
 
+import { useEffect, useRef, useState } from "react";
 import { FileMusic, Gauge, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
@@ -19,9 +21,69 @@ import { PLAYER_BUSY } from "./usePlayer";
 
 const ROUND = "grid h-12 w-12 shrink-0 place-items-center rounded-full border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** Playback speeds offered (1c's chips on the Room page, 23 Oct); 1× is the default. */
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
-const speedWords = (s: number) => `${Number(s.toFixed(2))}×`;
+/** Playback speed in 5% steps (owner, 23 Oct: "finer grain ... speed it up / slow it down fractionally"); 100% is
+ *  the piece's own tempo. The slider spans 50-150%; the − / + steps go on to the player's 25-200%. A change is sent
+ *  once you stop moving it (each one carries the piece on from where it is). */
+const SPEED_STEP = 0.05;
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 2;
+const SLIDE_MIN = 0.5;
+const SLIDE_MAX = 1.5;
+const SPEED_SETTLE_MS = 600;
+const speedWords = (s: number) => `${Math.round(s * 100)}%`;
+const snapSpeed = (s: number) => Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(s / SPEED_STEP) * SPEED_STEP));
+
+function SpeedControl({ speed, onSpeed }: { speed: number; onSpeed: (s: number) => void }) {
+  const [draft, setDraft] = useState<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const shown = draft ?? speed;
+  const change = (s: number, now = false) => {
+    const v = Number(snapSpeed(s).toFixed(2));
+    setDraft(v);
+    clearTimeout(timer.current);
+    const send = () => {
+      setDraft(null);
+      if (Math.abs(v - speed) > 1e-6) onSpeed(v);
+    };
+    if (now) send();
+    else timer.current = setTimeout(send, SPEED_SETTLE_MS);
+  };
+  const step = "inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-lg font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40";
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[15px] font-medium">
+          <Gauge className="h-4 w-4" aria-hidden /> Speed
+        </span>
+        <button type="button" className={step} aria-label="Slower" disabled={shown <= SPEED_MIN + 1e-6}
+          onClick={() => change(shown - SPEED_STEP)}>
+          −
+        </button>
+        <span className="min-w-14 text-center text-base font-semibold tabular-nums" aria-live="polite">{speedWords(shown)}</span>
+        <button type="button" className={step} aria-label="Faster" disabled={shown >= SPEED_MAX - 1e-6}
+          onClick={() => change(shown + SPEED_STEP)}>
+          +
+        </button>
+        {Math.abs(shown - 1) > 1e-6 && (
+          <button type="button" onClick={() => change(1, true)}
+            className="min-h-9 rounded-full border border-stone-200 bg-white px-3 text-[15px] font-medium text-stone-700 hover:bg-stone-50">
+            Normal
+          </button>
+        )}
+      </div>
+      <Slider
+        aria-label="Speed"
+        min={SLIDE_MIN * 100}
+        max={SLIDE_MAX * 100}
+        step={SPEED_STEP * 100}
+        value={[Math.min(SLIDE_MAX, Math.max(SLIDE_MIN, shown)) * 100]}
+        onValueChange={(x) => change((x[0] ?? 100) / 100)}
+        className="max-w-sm"
+      />
+    </div>
+  );
+}
 
 /** The player's sound and output as usePianoSound's PianoSound, so the Room page's SoundChoice chips fit. */
 export function usePlayerSound(view: PlayerView | null): PianoSound {
@@ -77,7 +139,6 @@ export function NowPlaying() {
   };
   const setRepeat = (r: RepeatMode) => void player.act({ action: "set", repeat: r }, { repeat: r });
   const speed = typeof v.speed === "number" ? v.speed : null;          // null: an older show_service (no control)
-  const speeds = speed !== null && !SPEEDS.includes(speed) ? [...SPEEDS, speed].sort((a, b) => a - b) : SPEEDS;
   const setSpeed = (s: number) => void player.act({ action: "set", speed: s }, { speed: s });
   const soundHint = sound.instruments.find((i) => i.id === sound.instrument)?.label ?? "";
 
@@ -248,31 +309,9 @@ export function NowPlaying() {
           >
             <Shuffle className="h-4 w-4" aria-hidden /> Shuffle {v.shuffle ? "on" : "off"}
           </button>
-          {speed !== null && (
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[15px] font-medium">
-                <Gauge className="h-4 w-4" aria-hidden /> Speed
-              </span>
-              <div role="radiogroup" aria-label="Speed" className="inline-flex rounded-full border border-stone-200 bg-white p-0.5">
-                {speeds.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    role="radio"
-                    aria-checked={speed === s}
-                    onClick={() => speed !== s && setSpeed(s)}
-                    className={cn(
-                      "min-h-9 min-w-11 rounded-full px-2.5 text-[15px] font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      speed === s ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
-                    )}
-                  >
-                    {speedWords(s)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+
+        {speed !== null && <SpeedControl speed={speed} onSpeed={setSpeed} />}
 
         <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
 
