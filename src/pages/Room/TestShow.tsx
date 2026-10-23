@@ -21,7 +21,8 @@ import { Pill, Spinner } from "./bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import type { ShowTestSource, ShowTestStartOpts, ShowTestView, TestPianoView, TestShowView } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
-import { PlayStatus, SoundChoice, SpeedChoice } from "./PianoCard";
+import { PlayStatus, SoundChoice } from "./PianoCard";
+import { SpeedNudges } from "./SpeedNudges";
 import { usePianoSound } from "./usePianoSound";
 
 const POLL_RUNNING_MS = 1000;
@@ -218,7 +219,7 @@ function ShowTestCard({
             onInstrument={(id) => changeSound({ instrument: id })}
           />
         )}
-        {source === "piano" && sound.available && <SpeedChoice speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={disabled} />}
+        {source === "piano" && sound.available && <SpeedNudges speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={disabled} />}
 
         <div role="radiogroup" aria-label={source === "audio" ? "Track" : "Piece"} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {pieces.map((pc) => {
