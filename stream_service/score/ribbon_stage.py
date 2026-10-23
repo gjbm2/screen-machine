@@ -674,6 +674,8 @@ class Stage:
         return min(0.55, 0.24 + 0.025 * abs(d_px) / self.sp)
 
     # -- applying a layout ----------------------------------------------------------------------------------------------
+    adopt_now = False                                   # provisional places adopted at once (no second estimate)
+
     def sync(self, serial: int, out: RL.Out, A: float, now_s: float, *, final: bool, mapver: int, regrid: bool,
              owned: set, note_info: dict, reuse: set | None = None) -> set:
         """Apply a phrase's targets (``final``: written bars, adopted at once; else provisional: a head moves only
@@ -751,7 +753,7 @@ class Stage:
                     alpha_to(H, i, H_A0, 1.0, now)
                 cx, cy = float(H[i, H_X1]), float(H[i, H_Y1])
                 if abs(X - cx) > 0.5 or abs(Y - cy) > 0.5:
-                    adopt = final or regrid
+                    adopt = final or regrid or self.adopt_now   # (span: room: a place from onsets, not an estimate)
                     if not adopt:
                         pd = self.pend.get(i)
                         if pd is not None and abs(pd[0] - X) < 0.5 and abs(pd[1] - Y) < 0.5:

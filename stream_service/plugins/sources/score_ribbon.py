@@ -41,6 +41,7 @@ no analysis -> the room's beat clock in 4/4; no clock yet -> free time at the la
 """
 from __future__ import annotations
 
+import bisect
 import collections
 import logging
 import math
@@ -89,6 +90,8 @@ V_IDLE_SP = 0.25                   # the paper's creep with nothing playing (sp/
 AHEAD_BEATS = 2.0                  # with nothing sounding the paper runs on at most this far past the last sound
 ROOM_PASS_S = 0.08                 # span: room: at most a layout pass this often (a birth waits up to this long)
 ROOM_HOT_N = 32                    # span: room: a pass lays out again the bars holding the newest this many notes
+SCREEN_PUSH_CAP = 1.5              # one screen: likewise (its warp runs through where notes are drawn)
+ROOM_PUSH_CAP = 1.0                # span: room: a column moves at most this far (sp) off its onset's x for room
 ROOM_CHORD_S = 0.045               # span: room: onsets this close are one column (a spread chord)
 ROOM_GAP_SP = 1.7                  # ... and columns at least this far apart (heads, a little white), from onsets alone
 AHEAD_ROOM_S = 1.0                 # span: room: with nothing sounding the paper runs on this long past the last sound
@@ -291,6 +294,7 @@ class ScoreRibbon(Source):
         self.stage = RS.Stage(sp, float(params.get("flourish", 0.7)))
         self.stage.gpu_setup(cp, raw_module, HELPERS, R, self.painter.NC, launch_2d)
         self.painter._graph(None, self.stage)                   # (captured now, not in a render)
+        self.stage.adopt_now = roomy                            # (span: room: every screen draws a place at once)
         # the room's one transcription
         self.room = None
         try:
@@ -406,14 +410,21 @@ class ScoreRibbon(Source):
                 pre = self._joining and bars_m and m.get("view") is not None
                 if pre:                                  # a join: its bars were written under the state that comes
                     room.builder.apply(m["view"])        # with them (key, metre, grid); the scene has no other yet
+                skipped = []
                 if self._joining and self.ph is None:
+                    full_ = bars_m
                     bars_m = self._join_visible(bars_m)
+                    kept_ = {id(b_) for b_ in bars_m}
+                    skipped = [b_ for b_ in full_ if id(b_) not in kept_ and not b_.marker]
                 nb_ = sum(1 for b_ in bars_m if not b_.marker)
                 self._held_outs = [] if nb_ >= 2 and not self._joining else None   # (a rewrite's phrase at once)
                 for j, bar in enumerate(bars_m):
                     self._batch = bars_m[j:]
                     self._batch_head = j == 0 or bars_m[j - 1].marker
                     self._on_bar(bar)
+                if skipped and self._roomy and self.ph is not None:
+                    for b_ in skipped:                           # (span: room: their onsets still chain, so a screen
+                        self._note_tons(self.ph, b_)             # that joined late spaces a run as the others do)
                 if m.get("view") is not None:
                     if not pre:
                         room.builder.apply(m["view"])
@@ -463,6 +474,10 @@ class ScoreRibbon(Source):
         ph = _Phrase(self.serial, A, self.Q)
         ph.T_ref = tr
         ph.pl.local_wkey = True
+        ph.pl.push_cap = ROOM_PUSH_CAP if self._roomy else SCREEN_PUSH_CAP
+        if self._roomy:
+            ph.xon = {}
+            ph.pl.xmap = ph.xon                                  # (each note's column at its onset's x)
         if prev is not None:
             ph.slot_s = prev.slot_s
         self.phrases.append(ph)
@@ -992,13 +1007,33 @@ class ScoreRibbon(Source):
         if xon is None:
             xon = ph.xon = {}
         chain = getattr(ph, "chain", None)                     # (last t, last x) of the chained onsets
-        new = sorted((t, nid) for t, nid, _s in items if nid not in xon)
-        if new and chain is not None and new[0][0] < chain[0]:  # (out of order: all again, from the phrase's onsets)
-            xon.clear()
-            chain = None
-            new = sorted({(t, nid) for nid, t in ph.ton.items() if t is not None} | {(t, nid) for t, nid, _s in items})
+        # every onset the phrase has (not only this fit's): each gets its x once, in the order it becomes known,
+        # and keeps it (a late, earlier onset goes between its neighbours, moving none of them)
+        new = set((t, nid) for t, nid, _s in items if nid not in xon)
+        if len(ph.ton) > len(xon):
+            new |= {(t, nid) for nid, t in ph.ton.items() if t is not None and nid not in xon}
+        new = sorted(new)
         last_t, last_x = chain if chain is not None else (None, None)
         for t, nid in new:
+            if last_t is not None and t < last_t - 1e-9:     # (out of order: between what is placed already)
+                ts = getattr(ph, "chain_ts", None)
+                if ts is None:
+                    ts = ph.chain_ts = []
+                j = bisect.bisect_right(ts, (t, float("inf")))
+                pt, px = ts[j - 1] if j else (None, None)
+                nt, nx = ts[j] if j < len(ts) else (None, None)
+                if pt is not None and t - pt < ROOM_CHORD_S:
+                    x = px
+                else:
+                    x = self.pace * (t - ph.T_ref)
+                    if px is not None:
+                        x = max(x, px + ROOM_GAP_SP)
+                    if nx is not None:
+                        x = min(x, nx)
+                xon[nid] = x
+                bisect.insort(ts, (t, x))
+                self._event("chain_late", {"early": last_t - t})
+                continue
             if last_t is not None and t - last_t < ROOM_CHORD_S:
                 xon[nid] = last_x
                 continue
@@ -1006,6 +1041,10 @@ class ScoreRibbon(Source):
             if last_x is not None:
                 x = max(x, last_x + ROOM_GAP_SP)
             xon[nid], last_t, last_x = x, t, x
+            ts = getattr(ph, "chain_ts", None)
+            if ts is None:
+                ts = ph.chain_ts = []
+            ts.append((t, x))
         if last_x is not None:
             ph.chain = (last_t, last_x)
             ph.x_last = (last_t, last_x)                       # (the playhead keeps up with a spread run)
@@ -1335,10 +1374,18 @@ class ScoreRibbon(Source):
             held = any(n.t_off is None for n in b.notes if n.id in ph.notes)
             if not held and ph.t_last is not None:
                 t_n = min(t_n, ph.t_last + AHEAD_ROOM_S)
+            # the onset chain at t_n (through the chained onsets, at the pace past the last): what every screen
+            # has by then, not how many notes this one has chained so far
+            ts = getattr(ph, "chain_ts", None)
             x = self.pace * (t_n - ph.T_ref)
-            xl = getattr(ph, "x_last", None)
-            if xl is not None and t_n >= xl[0]:
-                x = max(x, xl[1])
+            if ts:
+                j = bisect.bisect_right(ts, (t_n, float("inf")))
+                if j:
+                    tk, xk = ts[j - 1]
+                    if j < len(ts) and ts[j][0] > tk:
+                        x = xk + (ts[j][1] - xk) * (t_n - tk) / (ts[j][0] - tk)
+                    else:
+                        x = xk + self.pace * (t_n - tk)
             return ph.A + x * self.sp
         if ph is None or ph.closed or b is None or ph.pl.q0 is None:
             return None
