@@ -10,7 +10,7 @@
 //     until the first reading. The first note after the sound is
 //     turned on opens the screen; once closed it stays closed until it's turned on again.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
@@ -135,7 +135,12 @@ export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?:
 }
 
 /** The page's "This device": mount once, inside the page's themed root. */
-export function ListenHere({ api }: { api: RoomApi }) {
+export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: boolean }) {
+  // on a score (owner, 23 Oct: "the playing behind this device piece floating panel gets in the way when you're
+  // watching a score"): no bar over the music and the live music screen doesn't open by itself; the score's own
+  // Play on shows the line
+  const scoreRef = useRef(onScore);
+  scoreRef.current = onScore;
   const here = useListenHere();
   const music = useMemo(() => new MusicApi(api.baseUrl), [api.baseUrl]);
   const [test, setTest] = useState<ShowTestView | null>(null);
@@ -214,7 +219,7 @@ export function ListenHere({ api }: { api: RoomApi }) {
           const s = listenSnap();
           feed.push(m, s.on ? behindS() * 1000 : 0);
           if (m.type === "music.note" && m.data?.on === true) {
-            if (s.on && !s.dismissed && !s.viewOpen) setListenView(true);
+            if (s.on && !s.dismissed && !s.viewOpen && !scoreRef.current) setListenView(true);
             const now = Date.now();
             if (m.data.source === "live" && now - liveMark > 2_000) {
               liveMark = now;
@@ -259,8 +264,8 @@ export function ListenHere({ api }: { api: RoomApi }) {
   return (
     <>
       {/* the bar sits over the page's foot: the page gets the room back under it */}
-      <div aria-hidden className="h-24" />
-      {!here.viewOpen && (
+      {!onScore && <div aria-hidden className="h-24" />}
+      {!here.viewOpen && !onScore && (
         <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-testid="listen-here-bar">
           <div className={cn(CARD_CLASS, "mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2")}>
             <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />
@@ -276,7 +281,7 @@ export function ListenHere({ api }: { api: RoomApi }) {
           </div>
         </div>
       )}
-      {here.viewOpen && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
+      {here.viewOpen && !onScore && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
     </>
   );
 }

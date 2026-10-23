@@ -16,8 +16,8 @@
 //
 // The music stand (owner, 23 Oct: "it should be possible for a pianist to PLAY the score from e.g. an iPad screen"):
 // "Full screen", or a tap on the score (Scroll: any page; Pages: the middle third), opens the score full screen
-// on white paper, laid out for exactly the screen below its slim bar, again whenever the screen turns. Landscape and wide
-// (an iPad on its side) shows two pages side by side. A tap on the right two thirds turns forward, the left third back;
+// on white paper, laid out for exactly the screen below its slim bar, again whenever the screen turns: one page, its
+// shape the screen's, landscape too. A tap on the right two thirds turns forward, the left third back;
 // a swipe; the arrow and page keys, Space and Enter (Bluetooth page-turner pedals). The screen is kept awake while it's
 // open. Scroll in the stand stacks the pages at the screen's width instead. The stand's mode and each piece's place are
 // kept for the tab's session, so closing and opening again comes back to the same page.
@@ -1139,8 +1139,9 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     };
   }, []);
 
-  // Two pages side by side on a wide, landscape screen (an iPad on its side), else one fitted to the screen.
-  const spread = mode === "pages" && !!room && room.w >= 900 && room.w >= 1.25 * room.h;
+  // One page, laid out to the screen's own shape, landscape too (owner, 23 Oct: "in landscape full screen on an ipad,
+  // I don't want to see 2 columns in score mode"); the two-page spread stays off.
+  const spread = false as boolean;
   const want = useMemo<ScoreSize | null>(
     () => (room ? { w: spread ? tens((room.w - 1) / 2) : room.w, h: room.h, staff } : null),
     [room, spread, staff],
