@@ -2619,6 +2619,11 @@ class Api:
             return _err(400, "bad_request", "“once” is true or false.", choices=[True, False])
         if once is not None:
             opts["once"] = once
+        if_idle = body.get("if_idle") if isinstance(body, dict) else None
+        if if_idle is not None and not isinstance(if_idle, bool):
+            return _err(400, "bad_request", "“if_idle” is true or false.", choices=[True, False])
+        if if_idle:
+            opts["if_idle"] = True                     # scripts: start only while the source is idle (23 Oct)
         src = _components(brain).get(SOURCES)
         if src is None:
             return _json(neutral_source(source, MISSING[SOURCES]))
@@ -2631,6 +2636,8 @@ class Api:
             code, _ = _code(e, "unknown_piece")
             if code == "unknown_source":
                 return _err(400, code, SAY_SOURCE, choices=list(TEST_SOURCES))
+            if code == "busy":
+                return _err(409, "busy", f"The {source} is already playing something; nothing was started.")
             if code in ("unknown_instrument", "unknown_output"):
                 key = "instruments" if code == "unknown_instrument" else "outputs"
                 ids: list = []
@@ -2655,22 +2662,31 @@ class Api:
 
     async def _test_delete(self, request: web.Request, brain: Any) -> web.Response:
         source = request.match_info.get("source")
-        if source is None:
+        body: Any = None
+        if source is None or request.can_read_body:
             body, bad = await self._body(request)
             if bad:
                 return bad
+        if source is None:
             source = self._word(body, "source") if body is not None else None
         source = source.lower() if isinstance(source, str) else None
+        # ?piece=<id> (or {"piece"}): stop only while that piece is still the one playing (scripts, 23 Oct)
+        piece = request.query.get("piece") or (self._word(body, "piece") if isinstance(body, dict) else None)
         src = _components(brain).get(SOURCES)
         if src is None:
             return _json({"stopped": [], "detail": MISSING[SOURCES]})
         if source is not None and source not in TEST_SOURCES:
             return _json({"stopped": [], "detail": f"There's no test source called “{source}”.",
                           "choices": list(TEST_SOURCES)})
-        stopped = await self._call(brain, src.stop_test, source)
+        if piece is not None:
+            stopped = await self._call(brain, lambda: src.stop_test(source, piece=piece))
+        else:
+            stopped = await self._call(brain, src.stop_test, source)
         stopped = [str(s) for s in stopped] if isinstance(stopped, (list, tuple)) else []
         if stopped:
             self._changed()
+        elif piece is not None:
+            return _json({"stopped": [], "why": "That piece isn't the one playing; nothing was stopped."})
         return _json({"stopped": stopped})
 
     # -- piano recordings (the Room page's Record; recorder.py) -------------------------------------------------------------

@@ -612,12 +612,17 @@ class Sources:
         return {"instruments": rows, "default_instrument": default, "outputs": self._outputs()}
 
     def start_test(self, source: str, piece: Optional[str] = None, instrument: Optional[str] = None,
-                   output: Optional[str] = None, once: Optional[bool] = None) -> contract.SourceStatus:
+                   output: Optional[str] = None, once: Optional[bool] = None,
+                   if_idle: bool = False) -> contract.SourceStatus:
         """Start (or switch) a test source. ValueError("unknown_source" | "unknown_piece" | "unknown_instrument" |
-        "unknown_output"). ``instrument``/``output``/``once`` are the piano's (module docstring); test audio ignores
-        them."""
+        "unknown_output" | "busy"). ``instrument``/``output``/``once`` are the piano's (module docstring); test audio
+        ignores them. ``if_idle`` (scripts, 23 Oct: a check's start replaced the owner's playing piece): start only
+        while the source is idle, else ValueError("busy"); a person's start (the pages) takes over as before."""
         if source not in PLAYERS:
             raise ValueError("unknown_source")
+        cur = self._cur.get(source)
+        if if_idle and cur is not None and cur.state in RUNNING + ("stopping",):
+            raise ValueError("busy")
         midi = PLAYERS[source]["kind"] == "midi"
         path: Optional[pathlib.Path] = None
         if midi and isinstance(piece, str) and piece.startswith(REC_PREFIX):
@@ -683,12 +688,13 @@ class Sources:
         self._schedule()
         return self._status(source, now)
 
-    def stop_test(self, source: Optional[str] = None) -> list[str]:
-        """Stop one source (or all); returns the sources that were running."""
+    def stop_test(self, source: Optional[str] = None, piece: Optional[str] = None) -> list[str]:
+        """Stop one source (or all); returns the sources that were running. With ``piece`` (scripts and the player,
+        23 Oct: a check's stop killed the owner's piece), only a source still playing that piece is stopped."""
         now = self.clock()
         stopped = []
         for src, c in self._cur.items():
-            if c is None or (source is not None and src != source):
+            if c is None or (source is not None and src != source) or (piece is not None and c.piece != piece):
                 continue
             if c.state in RUNNING:
                 stopped.append(src)

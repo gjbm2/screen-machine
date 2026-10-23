@@ -761,3 +761,41 @@ def test_main_wires_the_sources_mic_claim_seam(monkeypatch, tmp_path):
         assert not any(c.get("by") == "test" for c in show.mic.state()["claims"])
     finally:
         show.stop()
+
+
+def test_a_stop_for_a_piece_stops_only_that_piece(lib):
+    """23 Oct (a check's stop killed the owner's playing piece): stop_test(source, piece=X) stops only while X is
+    still the one playing; without piece, as before."""
+    instruments(lib)
+    (lib / "piano" / "Rag.mid").write_bytes(b"MThd")
+    r = make(lib)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander")
+    r.src.start_test("piano", "file:Rag.mid", instrument="salamander")        # someone else took over
+    assert r.src.stop_test("piano", piece="file:Nocturne.mid") == []          # not ours any more: untouched
+    assert r.src.status()["piano"]["piece"] == "file:Rag.mid" and r.src.status()["piano"]["state"] in sources.RUNNING
+    assert r.src.stop_test("piano", piece="file:Rag.mid") == ["piano"]
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander")
+    assert r.src.stop_test("piano") == ["piano"]                              # unguarded, as before
+    r.src.stop()
+
+
+def test_if_idle_starts_only_while_the_source_is_idle(lib):
+    """23 Oct: a script's start (if_idle) never replaces a playing piece: ValueError("busy"); a person's start (no
+    if_idle) takes over as before; once stopped, if_idle starts."""
+    instruments(lib)
+    (lib / "piano" / "Rag.mid").write_bytes(b"MThd")
+    r = make(lib)
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander")
+    with pytest.raises(ValueError, match="busy"):
+        r.src.start_test("piano", "file:Rag.mid", instrument="salamander", if_idle=True)
+    assert r.src.status()["piano"]["piece"] == "file:Nocturne.mid"
+    r.src.start_test("piano", "file:Rag.mid", instrument="salamander")         # a person's start takes over
+    assert r.src.status()["piano"]["piece"] == "file:Rag.mid"
+    r.src.stop_test("piano")
+    r.popen.procs[-1].rc = 0
+    r.clock.t += 1.0
+    r.src.tick(0.0)
+    assert r.src.status()["piano"]["state"] not in sources.RUNNING
+    r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", if_idle=True)
+    assert r.src.status()["piano"]["piece"] == "file:Nocturne.mid"
+    r.src.stop()
