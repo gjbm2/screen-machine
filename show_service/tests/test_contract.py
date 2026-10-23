@@ -71,5 +71,5 @@ def test_song_end_kinds_and_shapes():
     assert set(c.TrackTransition.__annotations__) == {"style", "out_s", "in_s", "seconds", "on", "change",
                                                       "dark_max_s"}
     assert c.TRANSITION_STYLES == ("fade-dark", "crossfade", "cut") and c.TRANSITION_ON == ("downbeat", "now")
-    assert c.CHANGE_SIZES == ("big", "small") and c.TRACK_VIA == ("sonos", "dsp")
+    assert c.CHANGE_SIZES == ("big", "small") and c.TRACK_VIA == ("sonos", "dsp", "player")
     assert c.BrainContext(publish=lambda m: None).track_transition is None

@@ -1179,6 +1179,9 @@ class BrainContext:
     # brain side (provided by components)
     ml: Optional[Callable[[], "MLView"]] = None                        # mllink.MLLink.view
     music_context: Optional[Callable[[], Optional["MusicContext"]]] = None   # structure.Structure.context
+    now_playing: Optional[Callable[[], Optional[dict]]] = None        # playlist.Player.now_playing: the Music page's
+                                                                       # piece {key, state, pos_s, dur_s, speed}; structure
+                                                                       # follows its end like a Sonos song's (via player)
     on_music_event: list[Callable[[dict], None]] = field(default_factory=list)   # structure calls each with every
                                                                        # MusicEventData it publishes (show-brain, guarded);
                                                                        # brain.add appends what components provide
@@ -1532,7 +1535,8 @@ EVENT_KINDS_STAGE4: tuple[str, ...] = ("breakdown", "track_change", "track_end_a
                                        "track_end")             # room.event kinds beyond EVENT_KINDS (song ends: 17 Oct)
 # -- song ends (README S5.17; SHOW_ENGINE §8.5 "Song ends", 17 Oct; the event shape agreed with 04) ------------------
 TRACK_EVENT_KINDS: tuple[str, ...] = ("track_end_armed", "track_end", "track_change")   # each carries "transition"
-TRACK_VIA: tuple[str, ...] = ("sonos", "dsp")
+TRACK_VIA: tuple[str, ...] = ("sonos", "dsp", "player")
+TRACK_VIA_PLAYER = TRACK_VIA[2]           # the Music page's player (structure follows its pieces like Sonos songs)
 TRACK_END_DETAILS: tuple[str, ...] = ("disarmed", "sound_back", "stop", "fade")   # track_end_armed called off;
                                    # track_end: sound again; cues.py's standing cues (README S5.22): an abrupt stop, a
                                    # fade-out
@@ -1619,7 +1623,7 @@ class TrackInfo(TypedDict):
     id: int                            # +1 per track change (0: since start)
     changed: bool                      # True only in the first music.context after a change (compare ids)
     age_s: Optional[float]             # since this track began
-    via: Optional[str]                 # "sonos" | "dsp" | None (the first track)
+    via: Optional[str]                 # "sonos" | "dsp" | "player" | None (the first track)
 
 
 class MusicContext(TypedDict):
@@ -1671,7 +1675,7 @@ class MusicEventData(EventData):
                                        # "disarmed": the build ended over drop.disarm_bars before it, or a new
                                        # track; "missed": the line passed with no drop), at_ms = that line
     track_id: NotRequired[int]         # track_end_armed, track_end: the ENDING song's track id; track_change: the new
-    via: NotRequired[str]              # TRACK_EVENT_KINDS: TRACK_VIA ("sonos": now-playing; "dsp": the sound)
+    via: NotRequired[str]              # TRACK_EVENT_KINDS: TRACK_VIA ("sonos": now-playing; "dsp": the sound; "player": the Music page's player)
     # song ends (README S5.17, 17 Oct; agreed with 04)
     prev_track_id: NotRequired[int]    # track_change: the song that ended
     eta_s: NotRequired[Optional[float]]   # track_end_armed: seconds from t_ms to at_ms (the predicted end); None:
