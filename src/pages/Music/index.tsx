@@ -201,7 +201,7 @@ export default function MusicPage() {
                   <div
                     role="tablist"
                     aria-label="Music"
-                    className="sticky top-0 z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-1 shadow-sm"
+                    className="sticky top-[env(safe-area-inset-top)] z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-1 shadow-sm"
                     data-testid="music-tabs"
                   >
                     {TABS.map(([t, words]) => (
