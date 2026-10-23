@@ -11,10 +11,12 @@ stream_service/score/sheet.py writes a piece in one of two passes:
   ScoreBuilder; ~25 ms of CPU a note (seconds for a recording, a minute or two for a long piece).  One at a time
   box-wide, nice 19 on the host's last 4 CPUs (nice only ranks within WSL), dropped if nobody polls for ABANDON_S.
 What it keeps is the MEI (text, ~60 KB a piece, KEEP at most) in ~/.cache/screen-machine/score, named by the MIDI's
-hash, the generator's version and the pass, so a recording or a changed generator is written again.  Pages are laid
-out by Verovio for the asking screen's size (~0.6 s; the last few kept in memory); a PDF is printed on demand
-(never kept on disk).  ``make`` runs in sm-score-ml's python (numpy, torch), pages / pdf / version in sm-stream's
-(Verovio, Playwright).
+hash, the generator's version and the pass, so a recording or a changed generator is written again.  Pages come from a
+warm worker (sheet_worker.py: Verovio kept loaded, the last few layouts kept): a size is laid out once and counted
+(~0.3-1.5 s), a page drawn only when it's asked for (~20-100 ms; the last PAGES_KEPT kept here).  Before it, every
+size drew every page in a fresh process (Islamey on a phone: 165 pages, 11-34 s, past the page's wait: "Finding
+the piece takes ages ... and often fails", 23 Oct).  A PDF is printed on demand (never kept on disk).  ``make``
+runs in sm-score-ml's python (numpy, torch), the worker and pdf in sm-stream's (Verovio, Playwright).
 
   GET /api/v1/score/<piece>?w=&h=&staff=&kind=quick|better[&retry=1]
         {"state": "queued" (+ "ahead") | "making" (+ "progress" 0-1) | "ready" (+ "pages": count, "rev") |
@@ -52,11 +54,12 @@ CACHE = pathlib.Path(os.environ.get("SM_SCORE_CACHE", pathlib.Path.home() / ".ca
 KINDS = ("quick", "better")
 KEEP = 400                           # MEI files kept (oldest dropped): ~25 MB
 QUICK_AT_ONCE = 3
-QUICK_WAIT_S = 6.0                   # the first answer for a quick score waits this long for it
+QUICK_WAIT_S = 2.0                   # the first answer for a quick score waits this long for it (then: making)
 ABANDON_S = 45.0                     # a queued or running better pass nobody has polled for this long is dropped
 FAILED_S = 120.0                     # a failure is answered as such this long (or until retry=1)
 VERSION_S = 30.0                     # the generator's version is asked again at most this often
-LAYOUTS = 6                          # page layouts kept in memory
+PAGES_KEPT = 96                      # drawn pages (SVG) kept in memory
+WORKER_TIMEOUT_S = 90.0
 PDFS = 4                             # PDFs kept in memory (never on disk)
 PAPERS = ("a4", "a4-landscape", "letter")
 PIN_LAST = 4
@@ -70,10 +73,11 @@ def _clamp(v: Any, lo: float, hi: float, default: float) -> float:
     return default if x != x else min(hi, max(lo, x))
 
 
-def _cmd(*args: str, python: Optional[pathlib.Path] = None, heavy: bool = False) -> list[str]:
+def _cmd(*args: str, python: Optional[pathlib.Path] = None, heavy: bool = False,
+         module: str = "stream_service.score.sheet") -> list[str]:
     """The sheet command: nice 10 (someone waiting on it), or ``heavy`` (the better pass): nice 19 on the host's
     last PIN_LAST CPUs, the screens' own analysis worker's footing."""
-    cmd = [str(python or PYTHON), "-m", "stream_service.score.sheet", *args]
+    cmd = [str(python or PYTHON), "-m", module, *args]
     if not heavy:
         return ["nice", "-n", "10"] + cmd
     n = os.cpu_count() or 0
@@ -91,6 +95,61 @@ class _Job:
         self.done = asyncio.Event()
 
 
+class _LayoutWorker:
+    """stream_service.score.sheet_worker, kept warm: the generator's version, a layout's page count, one page's SVG.
+    One request at a time; started on first use, again if it ended (it ends itself when its code changes)."""
+
+    def __init__(self) -> None:
+        self.proc: Optional[asyncio.subprocess.Process] = None
+        self.lock: Optional[asyncio.Lock] = None
+        self.n = 0
+
+    async def ask(self, req: dict) -> dict:
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        async with self.lock:
+            for attempt in (0, 1):
+                if self.proc is None or self.proc.returncode is not None:
+                    self.proc = await asyncio.create_subprocess_exec(
+                        *_cmd(module="stream_service.score.sheet_worker"), cwd=str(REPO),
+                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL, env={**os.environ, "PYTHONPATH": str(REPO)},
+                        limit=64 << 20)
+                self.n += 1
+                rid = self.n
+                try:
+                    assert self.proc.stdin is not None and self.proc.stdout is not None
+                    self.proc.stdin.write((json.dumps({"id": rid, **req}) + "\n").encode())
+                    await self.proc.stdin.drain()
+                    while True:
+                        line = await asyncio.wait_for(self.proc.stdout.readline(), WORKER_TIMEOUT_S)
+                        if not line:
+                            raise ConnectionError("the layout worker ended")
+                        try:
+                            msg = json.loads(line)
+                        except ValueError:
+                            continue                     # a library's own print
+                        if msg.get("id") == rid:
+                            break
+                except (ConnectionError, BrokenPipeError, asyncio.TimeoutError, OSError):
+                    self.stop()
+                    if attempt:
+                        raise RuntimeError("the layout worker didn't answer") from None
+                    continue
+                if msg.get("error"):
+                    raise RuntimeError(msg["error"])
+                return msg
+        raise RuntimeError("unreachable")
+
+    def stop(self) -> None:
+        p, self.proc = self.proc, None
+        if p is not None and p.returncode is None:
+            try:
+                p.kill()
+            except ProcessLookupError:
+                pass
+
+
 class ScoreSheets:
     def __init__(self, library: Any, cache: pathlib.Path = CACHE) -> None:
         self.library = library
@@ -98,7 +157,9 @@ class ScoreSheets:
         self.jobs: dict[str, _Job] = {}
         self.better: "collections.OrderedDict[str, _Job]" = collections.OrderedDict()   # queued; the first runs
         self.failed: dict[str, tuple[float, str]] = {}
-        self.layouts: "collections.OrderedDict[tuple, list[str]]" = collections.OrderedDict()
+        self.worker = _LayoutWorker()
+        self.counts: dict[tuple, int] = {}
+        self.svgs: "collections.OrderedDict[tuple, str]" = collections.OrderedDict()
         self._version: tuple[float, str] = (0.0, "")
         self._runner: Optional[asyncio.Task] = None
         self._quick: Optional[asyncio.Semaphore] = None
@@ -110,10 +171,10 @@ class ScoreSheets:
         t, v = self._version
         if v and time.monotonic() - t < VERSION_S:
             return v
-        out, _err = await self._run([str(PYTHON), "-m", "stream_service.score.sheet", "version"], timeout=30)
         try:
-            v = json.loads(out.strip().splitlines()[-1])["version"]
+            v = str((await self.worker.ask({"op": "version"}))["version"])
         except Exception:                                                   # noqa: BLE001
+            log.warning("score: the generator's version wasn't read", exc_info=True)
             v = v or "unknown"
         self._version = (time.monotonic(), v)
         return v
@@ -301,35 +362,39 @@ class ScoreSheets:
                "kind": kind, **st,
                "better": self._state(bkey)["state"]}
         if st["state"] == "ready":
-            out["pages"] = len(await self.pages(key, w, h, staff))
+            out["pages"] = await self.count(key, w, h, staff)
             out["rev"] = key
         return out
 
-    async def pages(self, key: str, w: float, h: float, staff: float) -> list[str]:
-        lk = (key, round(w / 10) * 10, round(h / 10) * 10, round(staff))
-        got = self.layouts.get(lk)
+    @staticmethod
+    def _lk(key: str, w: float, h: float, staff: float) -> tuple:
+        return key, round(w / 10) * 10, round(h / 10) * 10, round(staff)
+
+    async def count(self, key: str, w: float, h: float, staff: float) -> int:
+        """Pages in the layout at this size (the worker lays it out once; ~0.3-1.5 s, then kept)."""
+        lk = self._lk(key, w, h, staff)
+        got = self.counts.get(lk)
+        if got is None:
+            got = int((await self.worker.ask({"op": "count", "mei": str(self._mei(key)), "w": lk[1], "h": lk[2],
+                                               "staff": lk[3]}))["pages"])
+            if len(self.counts) > 256:
+                self.counts.clear()
+            self.counts[lk] = got
+        return got
+
+    async def page(self, key: str, w: float, h: float, staff: float, n: int) -> str:
+        """Page n's SVG (drawn when asked, ~20-100 ms; the last PAGES_KEPT kept)."""
+        pk = (*self._lk(key, w, h, staff), n)
+        got = self.svgs.get(pk)
         if got is not None:
-            self.layouts.move_to_end(lk)
+            self.svgs.move_to_end(pk)
             return got
-        if self._layout_lock is None:
-            self._layout_lock = asyncio.Lock()
-        async with self._layout_lock:                                       # one layout at a time
-            got = self.layouts.get(lk)
-            if got is not None:
-                return got
-            out, err = await self._run(_cmd("pages", str(self._mei(key)), "--width", str(lk[1]), "--height",
-                                            str(lk[2]), "--staff", str(lk[3])), timeout=120)
-            try:
-                msg = json.loads(out.strip().splitlines()[-1])
-            except (ValueError, IndexError):
-                raise RuntimeError(f"the layout gave nothing ({err.strip()[-200:]})") from None
-            if msg.get("error"):
-                raise RuntimeError(msg["error"])
-            got = list(msg["pages"])
-            self.layouts[lk] = got
-            while len(self.layouts) > LAYOUTS:
-                self.layouts.popitem(last=False)
-            return got
+        got = str((await self.worker.ask({"op": "page", "mei": str(self._mei(key)), "w": pk[1], "h": pk[2],
+                                           "staff": pk[3], "n": n}))["svg"])
+        self.svgs[pk] = got
+        while len(self.svgs) > PAGES_KEPT:
+            self.svgs.popitem(last=False)
+        return got
 
     async def pdf(self, key: str, paper: str, title: str, composer: str) -> bytes:
         """The score printed to a PDF on ``paper`` (sheet_pages.pdf: headless Chromium, ~5-10 s), kept in memory."""
@@ -340,7 +405,7 @@ class ScoreSheets:
             return got
         if self._layout_lock is None:
             self._layout_lock = asyncio.Lock()
-        async with self._layout_lock:                                       # one at a time, with the layouts
+        async with self._layout_lock:                                       # one PDF at a time
             got = self.pdfs.get(pk)
             if got is not None:
                 return got
@@ -403,10 +468,11 @@ class ScoreSheets:
             key = await self._key(midi, self._kind(request.query))
             if not self._mei(key).exists():
                 return web.json_response({"error": "not_ready", "detail": "The score isn't written yet."}, status=404)
-            pages = await self.pages(key, *self._size(request.query))
+            size = self._size(request.query)
             n = int(request.match_info["n"])
-            if not 1 <= n <= len(pages):
+            if not 1 <= n <= await self.count(key, *size):
                 return web.json_response({"error": "no_page", "detail": "There's no such page."}, status=404)
+            svg = await self.page(key, *size, n)
         except LookupError:
             return web.json_response({"error": "unknown_piece", "detail": "That piece has no MIDI file to write."},
                                      status=404)
@@ -415,7 +481,7 @@ class ScoreSheets:
         except Exception as e:                                              # noqa: BLE001
             log.exception("score: page failed")
             return web.json_response({"error": "failed", "detail": f"{type(e).__name__}: {e}"}, status=500)
-        return web.Response(text=pages[n - 1], content_type="image/svg+xml",
+        return web.Response(text=svg, content_type="image/svg+xml",
                             headers={"Cache-Control": "private, max-age=300"})
 
     async def _h_pdf(self, request: Any) -> Any:
