@@ -57,8 +57,9 @@ const PAPER_KEY = "music.score.paper";
 /** The stand's own mode, and each piece's place in it (a fraction of the way through), for this tab's session. */
 const STAND_MODE_KEY = "music.stand.mode";
 const standAtKey = (id: string) => `music.stand.at.${id}`;
-/** A staff's height in css px, smallest to largest. */
-const STAFFS = [26, 32, 40, 50, 62];
+/** A staff's height in css px, smallest to largest (16 and 20: owner, 23 Oct, "even smaller than the currently
+ *  smallest option"; show_service takes 16 at the least). */
+const STAFFS = [16, 20, 26, 32, 40, 50, 62];
 /** The staff sizes a step either side: laid out ahead on the server, so A+ / A- are ready. */
 const nearStaffs = (staff: number) => {
   const i = STAFFS.indexOf(staff);
