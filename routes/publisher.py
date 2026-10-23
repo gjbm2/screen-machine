@@ -12,7 +12,7 @@ publisher.py – one canonical place for every way we can publish an asset.
 
 from __future__ import annotations
 
-import json, shutil, subprocess
+import json, shutil, subprocess, threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -550,6 +550,103 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
 
 _TEMP_MEDIA_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
 
+def _place_atomically(src: Path, dst: Path) -> None:
+    """Copy ``src`` to ``dst`` in one step (a hidden temp file in the same folder, then os.replace), with the mtime set
+    to now as before. A reader (the TV page, room's live art feed) never sees a half-written file: at 06:37 on 23 Oct
+    the live art feed hit "moov atom not found" mid-copy."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(f".{dst.name}.{os.getpid()}.tmp")
+    try:
+        shutil.copy2(src, tmp)
+        tmp.touch()
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# Video art is re-encoded once it is placed, so a still at any moment of it is quick: room_service grabs a frame for the
+# matched cut between art and live, and a clip with keyframes 10 s apart and its index at the end took 10-12 s to grab
+# on a busy PC (23 Oct, south). One keyframe a second and the index first make that well under 2 s.
+_REENCODE_LOCK = threading.Lock()
+KEYFRAME_MAX_GAP_S = 1.1
+
+
+def _keyframes_dense(path: Path) -> tuple[bool, float]:
+    """(already dense enough to skip, the video's fps) from ffprobe: keyframes at most KEYFRAME_MAX_GAP_S apart and
+    the moov index before the media data."""
+    fps = 24.0
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate",
+                              "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=30).stdout.strip()
+        num, _, den = out.partition("/")
+        fps = float(num) / float(den or 1) if num else fps
+        keys = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey",
+                               "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(path)],
+                              capture_output=True, text=True, timeout=60).stdout.split()
+        ts = sorted(float(k.strip(",")) for k in keys if k.strip(","))
+        dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                    str(path)], capture_output=True, text=True, timeout=30).stdout.strip() or 0)
+        gaps = [b - a for a, b in zip(ts, ts[1:] + [dur])]
+        with open(path, "rb") as fh:
+            head = fh.read(64 * 1024)
+        moov_first = head.find(b"moov") != -1 and (head.find(b"mdat") == -1 or head.find(b"moov") < head.find(b"mdat"))
+        return bool(ts) and max(gaps or [0]) <= KEYFRAME_MAX_GAP_S and moov_first, fps
+    except Exception as e:                          # noqa: BLE001 - can't tell: re-encode
+        warning(f"publish: ffprobe of {path.name} failed ({e}); re-encoding it")
+        return False, fps
+
+
+def _reencode_video_art(dst: Path) -> None:
+    """Re-encode the placed clip ``dst`` (x264, a keyframe every second, index first; audio copied) at idle CPU
+    priority, and swap it in only if ``dst`` is still the file placed (a newer publish wins). The mtime is kept, so the
+    page's cache-busting ``?t=`` doesn't reload the same picture. A worker thread; never raises."""
+    try:
+        st = dst.stat()
+    except OSError:
+        return
+    placed = (st.st_size, st.st_mtime_ns)
+    tmp = dst.with_name(f".{dst.name}.{os.getpid()}.reencode.tmp")
+    with _REENCODE_LOCK:                            # one at a time: a burst of publishes never stacks encodes
+        try:
+            dense, fps = _keyframes_dense(dst)
+            if dense:
+                debug(f"publish: {dst.name} already has a keyframe a second and its index first")
+                return
+            g = str(max(1, round(fps)))
+            cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(dst),
+                   "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+                   "-g", g, "-keyint_min", g, "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "copy",
+                   "-movflags", "+faststart", "-f", "mp4", str(tmp)]
+            if shutil.which("chrt"):
+                cmd = ["chrt", "-i", "0"] + cmd     # SCHED_IDLE: nice 19 isn't enough under WSL
+            t0 = datetime.utcnow()
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode != 0 or not tmp.exists():
+                warning(f"publish: re-encode of {dst.name} failed (rc {r.returncode}): {r.stderr[-300:].strip()}")
+                return
+            try:
+                now = dst.stat()
+            except OSError:
+                return
+            if (now.st_size, now.st_mtime_ns) != placed:
+                info(f"publish: {dst.name} was replaced while it re-encoded; keeping the newer file")
+                return
+            os.replace(tmp, dst)
+            os.utime(dst, ns=(now.st_atime_ns, placed[1]))
+            info(f"publish: {dst.name} re-encoded for quick stills (a keyframe every {g} frames, index first) in "
+                 f"{(datetime.utcnow() - t0).total_seconds():.0f} s")
+        except Exception as e:                      # noqa: BLE001
+            warning(f"publish: re-encode of {dst.name} failed: {e}")
+        finally:
+            tmp.unlink(missing_ok=True)
+
+
+def _after_placing(dst: Path) -> None:
+    """Video art goes to the re-encoder in the background; anything else needs nothing."""
+    if dst.suffix.lower() in (".mp4", ".m4v", ".mov"):
+        threading.Thread(target=_reencode_video_art, args=(dst,), name=f"reencode-{dst.stem}", daemon=True).start()
+
+
 def _source_within_allowed_roots(source, output_root) -> bool:
     """Local publish sources must be media-store files or our own temp media
     files (URL downloads, uploads). Anything else would be copied into the
@@ -653,16 +750,15 @@ def _publish_to_destination(
                 debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
                 
                 try:
-                    shutil.copy2(source_filepath, direct_output_path)
-                    direct_output_path.touch()
+                    _place_atomically(source_filepath, direct_output_path)
+                    _after_placing(direct_output_path)
                 except Exception as e:
                     error(f"Failed to copy to direct output path: {e}")
         
         # Only copy to display path if we're updating the published pointer
         if update_published and source_filepath != display_path:
-            display_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_filepath, display_path)
-            display_path.touch()
+            _place_atomically(source_filepath, display_path)
+            _after_placing(display_path)
 
         effective_metadata = None
         
