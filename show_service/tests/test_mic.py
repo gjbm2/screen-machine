@@ -171,6 +171,30 @@ def test_a_choice_that_is_not_an_input_captures_every_room_mic(tmp_path):
     assert e.mic.state()["streams"]["capturing"] == ["room-mic", "pc22-mic"]
 
 
+def test_a_stream_claim_captures_its_stream_as_well_and_mute_wins(tmp_path):
+    e = Env(tmp_path)
+    e.inputs.put("pc22-mic")
+    b = e.mic.claim_stream("room-mic", by="test", label="Test piano", on=True)
+    assert b["on"] is True and b["wanted"] is True and b["why"] == "Listening for Test piano"
+    assert b["claims"] == [{"by": "test", "label": "Test piano", "stream": "room-mic"}]
+    assert b["streams"] == {"capturing": ["room-mic"], "off": ["pc22-mic"]}     # only it: nothing else wants the mic
+    assert e.rx.calls[-1][0] == ["pc22-mic"] and e.inputs.choice()["stream"] == "pc22-mic"   # the choice stays
+    e.auto = True                                                  # Auto too: the choice, and the claim as well
+    b = e.mic.evaluate()
+    assert b["streams"] == {"capturing": ["pc22-mic", "room-mic"], "off": []} and b["why"] == "Listening for Auto"
+    assert [c["by"] for c in b["claims"]] == ["auto", "test"]
+    b = e.mic.put(muted=True)                                      # Mute wins over a claim too
+    assert b["on"] is False and b["streams"]["capturing"] == [] and e.rx.calls[-1][0] == ["pc22-mic", "room-mic"]
+    e.auto = None
+    assert e.mic.evaluate()["why"] == "Switched off: Test piano can't hear the room"
+    e.mic.put(muted=False)
+    b = e.mic.claim_stream("room-mic", by="test", label="Test piano", on=False)
+    assert b["on"] is False and b["claims"] == [] and b["why"] == "Off: nothing needs it"
+    b = e.mic.claim_stream("test-audio", by="test", label="Test piano", on=True)   # not a room mic: nothing captures
+    assert b["on"] is False and b["streams"]["capturing"] == []
+    assert b["why"] == "Off: Test piano wants a mic the room doesn't have"
+
+
 def test_the_mic_turning_on_restarts_the_choice_clock(tmp_path):
     e = Env(tmp_path)
     e.inputs.put("pc22-mic")
@@ -224,6 +248,7 @@ def test_why_words():
     assert w(True, False, True, True, None) == "Listening for Auto and this mode"
     assert w(False, False, False, False, None) == "Off: nothing needs it"
     assert w(False, True, False, False, None) == "Switched off"
+    assert w(True, False, False, False, None, side=["Test piano"]) == "Listening for Test piano"
 
 
 def test_the_thread_wakes_at_once(tmp_path):
