@@ -183,3 +183,21 @@ def test_the_websocket_stream_is_stamped_pcm_with_the_piece_map(tmp_path: pathli
             await ws.close()
 
     asyncio.run(go())
+
+
+def test_a_device_can_be_forgotten(tmp_path: pathlib.Path) -> None:
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    live = piano_live.PianoLive(devices_file=tmp_path / "devices.json")
+    live.register("ipad-1", "iPad")
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            r = await cl.delete("/api/v1/piano/devices/device:ipad-1")
+            assert r.status == 200 and (await r.json())["devices"] == []
+            assert (await cl.delete("/api/v1/piano/devices/ipad-1")).status == 404
+        assert piano_live.PianoLive(devices_file=tmp_path / "devices.json").device_outputs() == []
+
+    asyncio.run(go())
