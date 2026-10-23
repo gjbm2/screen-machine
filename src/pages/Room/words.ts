@@ -103,6 +103,12 @@ export function stepFailure(step: TransitionStep): string {
   return `${stepText(step)} didn't work`;
 }
 
+/** A screen step the room is still taking live past its deadline (room_service: "unconfirmed", detail "going live…"):
+ *  in progress, not a problem. */
+export function stepGoingLive(s: Pick<TransitionStep, "subsystem" | "status" | "detail">): boolean {
+  return s.status === "unconfirmed" && !!s.subsystem?.startsWith("screens.") && /^going live/i.test(s.detail?.trim() ?? "");
+}
+
 export const STEP_WORDS: Record<string, string> = {
   pending: "Waiting",
   running: "Working…",

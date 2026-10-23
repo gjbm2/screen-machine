@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explainError, RoomApi, RoomApiError } from "./api";
+import { stepGoingLive } from "./words";
 import type {
   Catalog,
   Library,
@@ -373,7 +374,7 @@ export function useRoomConnection(baseUrl: string, token: string) {
           const step = td.step;
           addLog({
             type: ev.type,
-            level: step?.status === "failed" ? "error" : step?.status === "unconfirmed" ? "warn" : "info",
+            level: step?.status === "failed" ? "error" : step?.status === "unconfirmed" && !stepGoingLive(step) ? "warn" : "info",
             summary: step
               ? `${td.id ?? ""} step ${step.subsystem} ${step.action}: ${step.status}${step.detail ? ` (${step.detail})` : ""}`
               : `${td.id ?? ""} ${td.phase ?? ""}`,
