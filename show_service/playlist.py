@@ -54,6 +54,17 @@ STATES = ("stopped", "preparing", "playing", "stepped_aside", "error")
 ASIDE_WORDS = "Something else started the piano"
 
 
+SPEED_RANGE = (0.25, 4.0)      # sources.SPEED_RANGE: a piece's tempo times this (owner, 23 Oct: "a speed/pacing
+                               # control setting (1X obviously the default)")
+
+
+def _speed(v: Any) -> Optional[float]:
+    """A valid playback speed, else None."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v) if SPEED_RANGE[0] <= float(v) <= SPEED_RANGE[1] else None
+
+
 def _num(v: Any) -> Optional[float]:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else None
 
@@ -108,6 +119,7 @@ class Player:
         self.q_name: Optional[str] = None
         self.instrument: Optional[str] = None
         self.output: Optional[str] = None
+        self.speed = 1.0                       # the piece's tempo times this, on every start (1c's start_test speed)
         self.repeat = "off"
         self.shuffle = False
         self.state = "stopped"
@@ -184,6 +196,7 @@ class Player:
             self.output = doc.get("output") if isinstance(doc.get("output"), str) else None
             self.repeat = doc.get("repeat") if doc.get("repeat") in REPEATS else "off"
             self.shuffle = doc.get("shuffle") is True
+            self.speed = _speed(doc.get("speed")) or 1.0
             if not self.shuffle:
                 self.order = list(range(len(self.items)))
         self.state, self._run, self.phase, self.progress = "stopped", None, None, None
@@ -211,7 +224,8 @@ class Player:
     def _player_doc(self) -> dict:
         return {"v": 1, "queue": {"playlist": self.q_playlist, "name": self.q_name, "items": self.items,
                                   "order": self.order, "index": self.pos},
-                "instrument": self.instrument, "output": self.output, "repeat": self.repeat, "shuffle": self.shuffle}
+                "instrument": self.instrument, "output": self.output, "repeat": self.repeat, "shuffle": self.shuffle,
+                "speed": self.speed}
 
     def _save(self, inline: bool = False) -> None:
         """Write what changed: in the worker thread when show-brain's loop runs (FIFO, so the latest lands last),
@@ -359,16 +373,32 @@ class Player:
         it = self._item(piece) if piece else None
         return str(it.get("title")) if it else "That piece"
 
-    def _start(self, piece: str) -> dict:
-        """start_test for ``piece`` with the effective sound and output. ValueError (sources'), RuntimeError (none)."""
+    def _start(self, piece: str, start_s: Optional[float] = None) -> dict:
+        """start_test for ``piece`` with the effective sound, output and speed (``start_s``: that far into the piece,
+        at its own tempo). ValueError (sources'), RuntimeError (none)."""
         src = self._sources()
         if src is None or not callable(getattr(src, "start_test", None)):
             raise RuntimeError("The piano player isn't running.")
         inst, out = self._effective(self._choices(src))
-        st = src.start_test(PIANO, piece, instrument=inst, output=out, once=True)
+        kw: dict[str, Any] = {}
+        if self.speed != 1.0:
+            kw["speed"] = self.speed
+        if start_s:
+            kw["start_s"] = start_s
+        try:
+            st = src.start_test(PIANO, piece, instrument=inst, output=out, once=True, **kw)
+        except TypeError:                              # a sources without speed / start points
+            st = src.start_test(PIANO, piece, instrument=inst, output=out, once=True)
         return st if isinstance(st, dict) else {}
 
-    def _start_current(self) -> None:
+    def _pos_s(self) -> Optional[float]:
+        """Where in the current piece the piano is (sources' pos_s, at the piece's own tempo), while it's ours."""
+        run, st = self._run, self._piano()
+        if run is None or st is None or st.get("piece") != run["piece"]:
+            return None
+        return _num(st.get("pos_s"))
+
+    def _start_current(self, start_s: Optional[float] = None) -> None:
         """Play the piece at ``pos``; a piece sources can't find is skipped (a word in ``error``)."""
         tries = max(1, len(self.order))
         skipped: list[str] = []
@@ -379,7 +409,7 @@ class Player:
                 self._stopped("Nothing queued")
                 return
             try:
-                st = self._start(piece)
+                st = self._start(piece, start_s)
             except RuntimeError as e:
                 self._run, self.state, self.error = None, "error", str(e)
                 self._save()
@@ -644,8 +674,12 @@ class Player:
         cur_item = self._item_or_stub(cur)
         run = self._run
         elapsed = None
-        if run is not None and self.state == "playing" and run.get("playing_at") is not None:
-            elapsed = round(max(0.0, self.clock() - run["playing_at"]), 1)
+        if run is not None and self.state == "playing":
+            pos = self._pos_s()                        # the place in the piece at its own tempo (any speed)
+            if pos is not None:
+                elapsed = round(pos, 1)
+            elif run.get("playing_at") is not None:
+                elapsed = round(max(0.0, self.clock() - run["playing_at"]) * self.speed, 1)
         name = pl["name"] if pl else (self.q_name or ("Queue" if self.items else None))
         return {"state": self.state, "words": self._words(),
                 "queue": {"playlist": {"id": pl["id"], "name": pl["name"]} if pl else None, "name": name,
@@ -655,7 +689,7 @@ class Player:
                 "upcoming": upcoming, "progress": self.progress if self.state == "preparing" else None,
                 "elapsed_s": elapsed, "duration_s": _num((cur_item or {}).get("duration_s")),
                 "instrument": inst, "output": out, "repeat": self.repeat, "shuffle": self.shuffle,
-                "error": self.error, "choices": ch}
+                "speed": self.speed, "error": self.error, "choices": ch}
 
     def _next_pos(self) -> Optional[int]:
         n = len(self.order)
@@ -798,8 +832,15 @@ class Player:
             if not isinstance(body["shuffle"], bool):
                 raise ValueError("bad_shuffle: shuffle is on or off")
             self._set_shuffle(body["shuffle"])
+        if "speed" in body and body["speed"] is not None:
+            sp = _speed(body["speed"])
+            if sp is None:
+                raise ValueError("bad_speed: the speed is between 0.25 and 4 times")
+            restart |= sp != self.speed
+            self.speed = sp
         if restart and self.state in ("playing", "preparing"):
-            self._start_current()                      # the new sound / place, from the top of this piece
+            # the new sound, place or speed, carrying on from where the piece was (1c: start_s = its pos_s)
+            self._start_current(self._pos_s())
         else:
             self._save()
 

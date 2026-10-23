@@ -5,7 +5,7 @@
 // remembered as the Room page's piano choice so both agree).
 // Beside the title, Score opens the piece's written-out score.
 
-import { FileMusic, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
+import { FileMusic, Gauge, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Play, Search, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
@@ -18,6 +18,10 @@ import { useMusic } from "./context";
 import { PLAYER_BUSY } from "./usePlayer";
 
 const ROUND = "grid h-12 w-12 shrink-0 place-items-center rounded-full border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** Playback speeds offered (1c's chips on the Room page, 23 Oct); 1× is the default. */
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
+const speedWords = (s: number) => `${Number(s.toFixed(2))}×`;
 
 /** The player's sound and output as usePianoSound's PianoSound, so the Room page's SoundChoice chips fit. */
 export function usePlayerSound(view: PlayerView | null): PianoSound {
@@ -72,6 +76,9 @@ export function NowPlaying() {
     void player.act({ action: "set", ...o }, o);
   };
   const setRepeat = (r: RepeatMode) => void player.act({ action: "set", repeat: r }, { repeat: r });
+  const speed = typeof v.speed === "number" ? v.speed : null;          // null: an older show_service (no control)
+  const speeds = speed !== null && !SPEEDS.includes(speed) ? [...SPEEDS, speed].sort((a, b) => a - b) : SPEEDS;
+  const setSpeed = (s: number) => void player.act({ action: "set", speed: s }, { speed: s });
   const soundHint = sound.instruments.find((i) => i.id === sound.instrument)?.label ?? "";
 
   return (
@@ -241,6 +248,30 @@ export function NowPlaying() {
           >
             <Shuffle className="h-4 w-4" aria-hidden /> Shuffle {v.shuffle ? "on" : "off"}
           </button>
+          {speed !== null && (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[15px] font-medium">
+                <Gauge className="h-4 w-4" aria-hidden /> Speed
+              </span>
+              <div role="radiogroup" aria-label="Speed" className="inline-flex rounded-full border border-stone-200 bg-white p-0.5">
+                {speeds.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={speed === s}
+                    onClick={() => speed !== s && setSpeed(s)}
+                    className={cn(
+                      "min-h-9 min-w-11 rounded-full px-2.5 text-[15px] font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      speed === s ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
+                    )}
+                  >
+                    {speedWords(s)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
@@ -249,7 +280,7 @@ export function NowPlaying() {
           <Unroll title="Sound" hint={soundHint} testId="music-sound">
             <div className="pb-1">
               <SoundChoice sound={sound} onInstrument={(id) => setSound({ instrument: id })} />
-              {busy && <p className="mt-2 text-sm text-muted-foreground">A change starts the piece again with it.</p>}
+              {busy && <p className="mt-2 text-sm text-muted-foreground">A change carries on from where the piece is.</p>}
             </div>
           </Unroll>
         )}
