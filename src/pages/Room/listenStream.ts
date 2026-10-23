@@ -11,7 +11,15 @@
 //                                                      sound ready…" until the element plays); then it runs about
 //                                                      0.25 s plus the browser's own buffer behind the room (lagS).
 // The instrument is the page's chosen sound (usePianoSound); a new one reopens the stream. Off drops the element's
-// source, so the connection closes (PC22 stops 10 s after its last listener).
+// source, so the connection closes.
+//
+// This device is one of the room's outputs (show_service, 23 Oct; owner: "I clicked play on PC22, and the sound came
+// out of ipad"): each browser has its own id (random, kept here), "device:<id>", registered by name (POST
+// …/piano/devices {id, name}: "iPad", from the browser). Picking This device makes it the room's output (the player's
+// and the test piano's), so another page sees it by name; the stream (…&device=<id>) carries the notes only while it
+// is the output and silence otherwise, staying open so choosing it again is instant. "Also play on this device" adds
+// &also=1: it hears whatever the output. On a pause, stop or seek the element jumps to its live edge (listenFlush), so
+// what it holds unplayed (1-3 s) isn't heard after the tap.
 //
 // On or off is remembered in this browser (like the piano's sound and output). Mobile browsers play sound only from a
 // tap: the tap that turns it on plays a short silence at once, which unlocks this element for the stream that follows
@@ -23,13 +31,14 @@
 import { useSyncExternalStore } from "react";
 import { resolveRoomUrl, storageGet, storageSet } from "./api";
 
-/** The client-side output id for "This device" (never sent: show_service is told "none", the screens only). */
-export const HERE_OUTPUT = "browser";
 export const HERE_LABEL = "This device";
 /** show_service's output for the screens only (PC22 and Sonos quiet). */
 export const SCREENS_ONLY = "none";
 
 const ON_KEY = "sm_room_listen_here";
+const ALSO_KEY = "sm_room_listen_also";
+const DEVICE_KEY = "sm_room_device_id";
+const DEVICES_PATH = "/show/api/v1/piano/devices";
 const STREAM_PATH = "/show/api/v1/piano/live.mp3";
 const PROBE_TIMEOUT_MS = 12_000;
 /** From the stream's request to the element playing: the sound loads first (up to 7 s), then the browser buffers. */
@@ -69,9 +78,23 @@ export interface ListenSnap {
   viewOpen: boolean;
   /** The sound PC22 is actually streaming (its X-Piano-Instrument), when it said. */
   instrumentUsed: string | null;
+  /** "Also play on this device": hears whatever the room's output (else only while this device is the output). */
+  also: boolean;
+  /** The room's output now (GET …/piano/devices, while on), and its name; null until read. */
+  roomOutput: string | null;
+  roomOutputLabel: string | null;
 }
 
-let snap: ListenSnap = { on: storageGet(ON_KEY) === "1", status: "off", dismissed: true, viewOpen: false, instrumentUsed: null };
+let snap: ListenSnap = {
+  on: storageGet(ON_KEY) === "1",
+  status: "off",
+  dismissed: true,
+  viewOpen: false,
+  instrumentUsed: null,
+  also: storageGet(ALSO_KEY) === "1",
+  roomOutput: null,
+  roomOutputLabel: null,
+};
 const listeners = new Set<() => void>();
 let base: string | null = null;
 let instrument: string | null = null;
@@ -110,9 +133,87 @@ export function useListenHere(): ListenSnap {
   return useSyncExternalStore(subscribe, getSnap, getSnap);
 }
 
+const showBase = () => (base ?? resolveRoomUrl(window.location.search)).replace(/\/+$/, "");
+
+let myId: string | null = null;
+/** This browser's own id (1-64 of [A-Za-z0-9_-]), made once and kept. */
+export function deviceId(): string {
+  if (myId) return myId;
+  let id = storageGet(DEVICE_KEY);
+  if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+    const b = new Uint8Array(9);
+    crypto.getRandomValues(b);
+    id = Array.from(b, (x) => x.toString(36).padStart(2, "0")).join("").slice(0, 16);
+    storageSet(DEVICE_KEY, id);
+  }
+  myId = id;
+  return id;
+}
+
+/** This device as a room output id. */
+export const myOutput = (): string => `device:${deviceId()}`;
+
+/** What other pages call this device: the kind of thing it is, from the browser. */
+export function deviceName(): string {
+  const ua = navigator.userAgent;
+  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android phone" : "Android tablet";
+  if (/Macintosh/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows PC";
+  if (/CrOS/.test(ua)) return "Chromebook";
+  if (/Linux/.test(ua)) return "Linux PC";
+  return "A browser";
+}
+
+/** Tell show_service this device exists, by name (before it's made the output). False if it didn't answer. */
+export async function registerDevice(inst: string | null): Promise<boolean> {
+  try {
+    const r = await fetch(`${showBase()}${DEVICES_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: deviceId(), name: deviceName(), ...(inst ? { instrument: inst } : {}) }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface DevicesView {
+  devices: { id: string; label: string; streaming?: boolean; seen_s?: number }[];
+  output: string | null;
+  hears?: unknown;
+}
+
+/** GET …/piano/devices: the room's output now and the devices it knows; null if it didn't answer. */
+export async function fetchDevices(signal?: AbortSignal): Promise<DevicesView | null> {
+  try {
+    const r = await fetch(`${showBase()}${DEVICES_PATH}`, { cache: "no-store", signal });
+    if (!r.ok) return null;
+    const v = (await r.json()) as DevicesView;
+    return v && Array.isArray(v.devices) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The room's output as last read (ListenHere, while on). Moving away from this device drops what it holds. */
+export function setRoomOutput(id: string | null, label: string | null) {
+  if (id === snap.roomOutput && label === snap.roomOutputLabel) return;
+  const leftMe = snap.roomOutput === myOutput() && id !== myOutput();
+  set({ roomOutput: id, roomOutputLabel: label });
+  if (leftMe && !snap.also) listenFlush();
+}
+
 function streamUrl(): string {
-  const b = (base ?? resolveRoomUrl(window.location.search)).replace(/\/+$/, "");
-  return `${b}${STREAM_PATH}${instrument ? `?instrument=${encodeURIComponent(instrument)}` : ""}`;
+  const q = new URLSearchParams();
+  if (instrument) q.set("instrument", instrument);
+  q.set("device", deviceId());
+  q.set("name", deviceName());
+  if (snap.also) q.set("also", "1");
+  return `${showBase()}${STREAM_PATH}?${q.toString()}`;
 }
 
 /** 0.1 s of silence as a WAV (8 kHz, 16-bit mono): played from the tap so the browser lets this element play later. */
@@ -298,13 +399,25 @@ function watch() {
   }, WATCH_MS);
 }
 
+/** Jump to the live edge, so what the element holds unplayed isn't heard (a pause, a stop, a seek, the output moving
+ *  away). Nothing while it isn't playing the stream. */
+export function listenFlush() {
+  const a = audio;
+  if (!a || !snap.on || !a.src || a.src === silentUrl || !a.buffered?.length) return;
+  try {
+    const edge = a.buffered.end(a.buffered.length - 1) - 0.05;
+    if (edge > a.currentTime + 0.1) a.currentTime = edge;
+  } catch {
+    /* not seekable just now: it plays out */
+  }
+}
+
 /** The element playing the stream (null before the first connect): deviceLag.ts measures it. */
 export const listenAudio = (): HTMLAudioElement | null => audio;
 
 /** GET …/piano/live/clock for the stream's sound (deviceLag.ts); ``inst`` null: show_service's default. */
 export function listenClockUrl(inst: string | null): string {
-  const b = (base ?? resolveRoomUrl(window.location.search)).replace(/\/+$/, "");
-  return `${b}${STREAM_PATH.replace(/\.mp3$/, "")}/clock${inst ? `?instrument=${encodeURIComponent(inst)}` : ""}`;
+  return `${showBase()}${STREAM_PATH.replace(/\.mp3$/, "")}/clock${inst ? `?instrument=${encodeURIComponent(inst)}` : ""}`;
 }
 
 /** How far behind the newest sound received the element is playing (s): the browser's own share of the delay. */
@@ -334,11 +447,13 @@ export function configureListen(baseUrl: string, inst: string | null) {
   }
 }
 
-/** Turn "This device" on. Call it from the tap itself (mobile browsers play sound only from a tap). */
-export function listenOn() {
+/** Turn "This device" on: as the output (`also` false) or as well as it ("Also play on this device"). Call it from
+ *  the tap itself (mobile browsers play sound only from a tap). */
+export function listenOn(also = false) {
   storageSet(ON_KEY, "1");
+  storageSet(ALSO_KEY, also ? "1" : "0");
   retries = 0;
-  set({ on: true, dismissed: false });
+  set({ on: true, dismissed: false, also });
   connect({ tap: true });
 }
 
@@ -353,7 +468,7 @@ export function listenOff() {
 /** "Tap to start sound" / "Try again": from a tap. */
 export function listenTap() {
   if (!snap.on) {
-    listenOn();
+    listenOn(snap.also);
     return;
   }
   // a fresh connect from this tap, at the live edge (a held-back or paused element would resume behind it)

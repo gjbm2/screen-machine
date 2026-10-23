@@ -730,6 +730,8 @@ export interface ShowInstrument {
 export interface ShowOutput {
   id: string;
   label: string;
+  /** A browser that plays PC22's stream ("device:<id>", listenStream.ts), seen in the last 12 h. */
+  device?: boolean;
 }
 /** POST /show/api/v1/test's optional piano fields. */
 export interface ShowTestStartOpts {

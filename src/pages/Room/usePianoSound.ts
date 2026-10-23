@@ -1,10 +1,11 @@
 // The virtual piano's sound, where it plays and how fast: one choice for the whole page (Test music's piano and the
 // Piano card's recordings use the same), remembered in this browser. The lists come from show_service (GET
 // /show/api/v1/test: `instruments`, only installed ones, `default_instrument`, `outputs`); a remembered choice the
-// server no longer lists falls back to its default sound and to PC22's speakers.
+// server no longer lists falls back to its default sound and to PC22's speakers (this device's own output stands).
 
 import { useCallback, useSyncExternalStore } from "react";
 import { storageGet, storageSet } from "./api";
+import { myOutput } from "./listenStream";
 import { SPEED_MAX, SPEED_MIN } from "./SpeedNudges";
 import type { ShowInstrument, ShowOutput, ShowTestStartOpts, ShowTestView } from "./types";
 
@@ -75,7 +76,8 @@ export function usePianoSound(view: Pick<ShowTestView, "instruments" | "default_
   const instrument = instruments.some((i) => i.id === s.instrument)
     ? s.instrument
     : (instruments.find((i) => i.id === view?.default_instrument)?.id ?? instruments[0]?.id ?? null);
-  const output = outputs.some((o) => o.id === s.output)
+  // this device is an output as soon as it's picked, before show_service's list has it
+  const output = outputs.some((o) => o.id === s.output) || (!!s.output && s.output === myOutput())
     ? s.output
     : (outputs.find((o) => o.id === DEFAULT_OUTPUT)?.id ?? outputs[0]?.id ?? null);
   const available = instruments.length > 0;
