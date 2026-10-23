@@ -275,7 +275,7 @@ class Show:
         self.piano_live: Any = None
         try:
             from . import piano_live as live_mod
-            self.piano_live = live_mod.PianoLive(output_fn=self._piano_output)
+            self.piano_live = live_mod.PianoLive(output_fn=self._piano_output, pos_fn=self._piano_pos)
         except Exception:
             log.exception("piano_live.py not loaded: no piano stream for devices (the show carries on)")
 
@@ -499,6 +499,20 @@ class Show:
         pl = self._component("playlist")
         out = getattr(pl, "output", None)
         return out if isinstance(out, str) and out else "pc22"
+
+    def _piano_pos(self) -> Optional[dict]:
+        """Where the test piano is in its piece now (piano_live's map for a device's own light): {piece, pos_s, at
+        (host CLOCK_MONOTONIC), speed, state}, or None while it plays nothing."""
+        src = self._component("sources")
+        try:
+            st = (src.status() or {}).get("piano") if src is not None else None
+        except Exception:                                # noqa: BLE001
+            return None
+        if not isinstance(st, dict) or not st.get("piece"):
+            return None
+        pos = st.get("pos_s")
+        return {"piece": st.get("piece"), "pos_s": pos if isinstance(pos, (int, float)) else None,
+                "at": round(time.monotonic(), 4), "speed": st.get("speed") or 1.0, "state": st.get("state")}
 
     def _piano_devices(self) -> list:
         live = self.piano_live

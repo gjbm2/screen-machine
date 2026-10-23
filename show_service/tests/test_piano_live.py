@@ -21,10 +21,11 @@ def read():
             f.write(line)
     sys.exit(0)
 threading.Thread(target=read, daemon=True).start()
-sys.stderr.write('{{"ready": true, "load_s": 0.1}}\\n'); sys.stderr.flush()
+sys.stderr.write('{{"ready": true, "load_s": 0.1}}\\n')
+sys.stderr.write('{{"clock": {{"t0": %r, "delay_s": 0.35, "sr": 48000}}}}\\n' % time.monotonic()); sys.stderr.flush()
 while True:
-    sys.stdout.buffer.write(b"\\xff\\xfb" + b"x" * 1000); sys.stdout.buffer.flush()
-    time.sleep(0.02)
+    sys.stdout.buffer.write(b"\\x00" * 4096); sys.stdout.buffer.flush()   # 1024 frames of silence
+    time.sleep(1024 / 48000)
 '''
 
 
@@ -53,7 +54,7 @@ def test_live_stream(tmp_path: pathlib.Path, monkeypatch) -> None:
             assert r1.status == 200 and r1.headers["X-Piano-Instrument"] == "concert-d"     # can't stream: default
             r2 = await cl.get("/api/v1/piano/live.mp3")
             a, b = await r1.content.read(3000), await r2.content.read(3000)
-            assert a[:2] == b"\xff\xfb" and len(b) > 0 and len(live.synths) == 1               # one shared synth
+            assert len(a) > 0 and len(b) > 0 and len(live.synths) == 1                             # one shared synth
             msg = SimpleNamespace(ev=[(1_000, 0x90, 60, 80), (2_000, 0x80, 60, 0), (3_000, 0xE0, 0, 64)])
             live.on_midi("piano", msg, 5.0, lambda t_ns: 100.0 + t_ns * 1e-9)
             for _ in range(50):
@@ -131,5 +132,54 @@ def test_only_the_chosen_device_hears(tmp_path: pathlib.Path, monkeypatch) -> No
             assert live.device_outputs()[0]["label"] == "Greg's iPad"
         again = piano_live.PianoLive(devices_file=tmp_path / "devices.json")
         assert again.device_outputs()[0]["id"] == "device:ipad-1"     # kept across a restart
+
+    asyncio.run(go())
+
+
+def test_the_websocket_stream_is_stamped_pcm_with_the_piece_map(tmp_path: pathlib.Path, monkeypatch) -> None:
+    """live.ws: hello, then s16le chunks each stamped with the sound time of its first frame (t0 + frame/SR - delay)
+    and the host clock, and the piece's map (pos_fn) every MAP_S; a ping is answered."""
+    import struct
+    from aiohttp import WSMsgType, web
+    from aiohttp.test_utils import TestClient, TestServer
+    fake = tmp_path / "fake.py"
+    fake.write_text(FAKE.format(py=sys.executable, log=str(tmp_path / "stdin.log")))
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(piano_live, "PYTHON", fake)
+    monkeypatch.setattr(piano_live, "MAP_S", 0.1)
+    insts = tmp_path / "instruments.json"
+    insts.write_text(json.dumps({"default": "concert-d", "instruments": {"concert-d": {}}}))
+    monkeypatch.setattr(piano_live, "INSTRUMENTS", insts)
+    live = piano_live.PianoLive(devices_file=tmp_path / "devices.json",
+                                pos_fn=lambda: {"piece": "lib:x", "pos_s": 12.0, "at": time.monotonic(),
+                                                "speed": 1.0, "state": "playing"})
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            ws = await cl.ws_connect("/api/v1/piano/live.ws", params={"device": "ipad-1", "name": "iPad"})
+            hello = await ws.receive_json(timeout=5)
+            assert hello["hello"]["sr"] == 48000 and hello["hello"]["format"] == "s16le"
+            stamps, maps, pong = [], [], None
+            await ws.send_json({"ping": 42})
+            t_end = time.monotonic() + 5
+            while time.monotonic() < t_end and (len(stamps) < 5 or not maps or pong is None):
+                m = await ws.receive(timeout=5)
+                if m.type == WSMsgType.BINARY:
+                    t, host_now = struct.unpack("<dd", m.data[:16])
+                    assert len(m.data) - 16 == piano_live.PCM_BYTES and host_now <= time.monotonic()
+                    stamps.append(t)
+                elif m.type == WSMsgType.TEXT:
+                    d = json.loads(m.data)
+                    if "map" in d:
+                        maps.append(d["map"])
+                    if "pong" in d:
+                        pong = d["pong"]
+            steps = [round(b - a, 5) for a, b in zip(stamps, stamps[1:])]
+            assert set(steps) == {round(piano_live.PCM_FRAMES / 48000, 5)}       # one chunk's length apart
+            assert maps[0]["piece"] == "lib:x" and pong == 42
+            assert live.devices_view()["devices"][0]["streaming"] is True
+            await ws.close()
 
     asyncio.run(go())
