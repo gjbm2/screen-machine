@@ -66,7 +66,9 @@ log = logging.getLogger("stream_service.plugins.score_v2")
 LOOKS = ("paper", "night")
 LAYOUTS = ("page", "scroll")
 SPACINGS = ("proportional", "classic")
-SPANS = ("screen", "room")                                 # scroll: each screen its own tape, or one across the room
+SPANS = ("screen", "room", "book")                         # scroll: each screen its own tape, or one across the room;
+                                                          # page: book (the screens an open book's pages)
+BOOK_TURN_S, BOOK_SHADOW_SP, BOOK_SHADOW = 1.0, 5.0, 0.28  # (book) a page turn: its sweep, its fold shadow
 SPAN_HEADERS = ("every", "first")                          # span: room: the sticky header on every screen, or the first
 SPAN_SP, SPAN_NMAX = 1.25, 3                               # span: the staff this much larger (one row); the ring holds n
 SPAN_DT, SPAN_NS = 1.5, 9                                  # span: the paper is where the music was, averaged over this
@@ -249,6 +251,11 @@ void score(uchar4* __restrict__ out, const float* __restrict__ P, const unsigned
             blend_glow(c, fresh_c, inkv * vis * Q[5] * __expf(-(Q[3] - cx) / Q[6]), night);
     }
     glyph_pass(c, X, Y, GN, GU, GA, GAW, GT, inkc, night);
+    if (P[36] > 0.f) {                                   // (book) a page turn's fold shadow at its edge
+        const float d = (X - P[34]) / P[35];
+        const float s = P[36] * __expf(-d * d) * (d < 0.f ? 1.f : 0.55f);
+        c.x *= 1.f - s; c.y *= 1.f - s; c.z *= 1.f - s;
+    }
     const float g = 255.f * P[18];
     out[y * W + x] = pack(make_float4(clamp01(c.x) * g, clamp01(c.y) * g, clamp01(c.z) * g, 255.f));
 }
@@ -274,6 +281,30 @@ def _ease(u):
 
 
 EMPTY, SKIP = "empty", "skip"
+
+
+def book_place(bm: int, L: int, n: int) -> tuple:
+    """(book) Book line bm (from the phrase's bar 0) -> (page, screen, row): L lines a page, pages left to right
+    across n screens."""
+    pg = bm // L
+    return pg, pg % n, bm % L
+
+
+def book_show(pg_lead: int, k: int, n: int):
+    """(book) The page screen k shows once the writing (TURN_LEAD_S ahead) is on page pg_lead: its latest page
+    up to it, or None (it hasn't one yet: it keeps what it shows)."""
+    if pg_lead < k:
+        return None
+    return pg_lead - ((pg_lead - k) % n)
+
+
+def book_bars_per_line(d0: float, beats: int, unit: int, sp: float, avail: float, line_s: float, spacing: str) -> int:
+    """(book) Bars a line for a phrase, from its first bar's length only (every screen's instance agrees)."""
+    nat_px = NAT_SEED[spacing] * (1.5 if unit == 6 else 1.0) * beats * sp
+    n_time = int(math.ceil(line_s / max(0.2, d0)))
+    n_nat = int(avail // (WANT * nat_px))
+    n_fit = int(avail // (FIT_MIN * nat_px))
+    return min(N_MAX, max(N_MIN, max(n_nat, min(n_time, n_fit))))
 
 
 class _Line:
@@ -315,6 +346,7 @@ class _Line:
         self.glow = 0.0
         self.glow_len = 4.0 * sp
         self.placeholder = False
+        self.book_turn = False                  # (book) erasing with its page's turn
 
     @property
     def music_x0(self) -> float:
@@ -329,6 +361,9 @@ class _Phrase:
         self.id = _Phrase._ids
         self.epoch = 0
         self.g0 = g0
+        self.m_base = 0                         # (book) its first line's number from its bar 0 (a join: later)
+        self.book_n = None                      # (book) bars a line
+        self.book_d0 = None                     # (book) its bar 0's length (s)
         self.t0 = None
         self.lines: dict[int, _Line] = {}
         self.plan = LinePlan()
@@ -412,6 +447,7 @@ class _Notes:
         self.moves = np.zeros(cap, np.int64)
         self.pend = np.zeros(cap, bool)                      # engraved, its settle still queued (_settle_step)
         self.tn_st = np.full(cap, -1, np.int64)              # the staff its t_next was found on (_relayout)
+        self.placed = np.zeros(cap, bool)                    # laid out on a line at least once (else not drawn)
         self.fixed = np.zeros(cap, bool)                     # its bar is committed: its 16th and staff are known
         self.bar_end = z(np.inf)                             # (engraved) its bar's right edge on its line
 
@@ -440,6 +476,7 @@ class _Notes:
         self.moves[i] = 0
         self.fixed[i] = False
         self.pend[i] = False
+        self.placed[i] = False
         self.bar_end[i] = np.inf
         self.arc[i] = 0.0
         return i
@@ -480,6 +517,7 @@ class _Notes:
         return tuple(out)
 
     def place(self, i: int, ln, x: float, y: float) -> None:
+        self.placed[i] = True
         self.lid[i] = ln.ci
         self.line[i] = ln
         self.C[:, :, i] = 0.0
@@ -490,6 +528,7 @@ class _Notes:
     def hop(self, i: int, ln, x1: float, y1: float, T: float, arc: float, now: float, offx, offy,
             start: float | None = None) -> None:
         x, vx, ax, y, vy, ay = self.state_at(i, now)
+        self.placed[i] = True
         ci = ln.ci
         self.line[i] = ln
         oc = int(self.lid[i])
@@ -808,7 +847,7 @@ class ScoreV2(Source):
             "look": enum(LOOKS, "paper", "Look", tier="structural", basic=True),
             "lines": num(3, 5, 4, "Lines on the page", tier="structural", integer=True),
             "rows": num(1, 3, 2, "Scroll rows", tier="structural", integer=True),
-            "span": enum(SPANS, "screen", "Span (scroll)", tier="structural"),
+            "span": enum(SPANS, "screen", "Span (scroll: room; page: book)", tier="structural"),
             "span_header": enum(SPAN_HEADERS, "every", "Header when spanning", tier="structural"),
             "staff_size": num(0.6, 1.5, 1.0, "Staff size", tier="structural"),
             "spacing": enum(SPACINGS, "proportional", "Spacing", tier="structural"),
@@ -832,6 +871,11 @@ class ScoreV2(Source):
         if seg is None:
             seg = self._segment()
         self.span = seg if (self.span_room and seg is not None and seg[1] > 1) else None     # (k, n): spanning
+        self.span_book = (not self.scroll) and params.get("span") == "book"
+        self.book = seg if (self.span_book and seg is not None and seg[1] > 1) else None      # (k, n): a book
+        self.page_show = None                       # (book) (phrase id, page) on this screen
+        self.book_t0 = None                         # (book) a page turn's start
+        self.book_fresh = True                      # (book) the first page, or a join: no turn animation
         self.spacing = params.get("spacing") if params.get("spacing") in SPACINGS else "proportional"
         self.line_s = float(params.get("line_s", LINE_S))
         self.flourish = float(params.get("flourish", 0.7))
@@ -873,7 +917,7 @@ class ScoreV2(Source):
             self.cwid = [self.TW, self.HW]
             sizes = [self.ch * self.TW, self.ch * self.HW]
         else:
-            self.NC = self.NL + 2
+            self.NC = self.NL + 2 if self.book is None else 2 * self.NL + 2   # (book: the page and the one leaving)
             self.cwid = [self.cw] * self.NC
             sizes = [self.ch * self.cw] * self.NC
         self.coff = [int(sum(sizes[:i])) for i in range(self.NC)]
@@ -1001,7 +1045,7 @@ class ScoreV2(Source):
         if self.scroll:
             self._setup_scroll()
         else:
-            for s in range(1, self.NL):              # an empty page: staves waiting
+            for s in range(1, self.NL) if self.book is None else range(self.NL):   # an empty page: staves waiting
                 ln = _Line(self._alloc_canvas(), s, s - self.NL, sp, self.cw)
                 ln.placeholder, ln.shown, ln.show_a = True, True, 1.0
                 ln.fifths = 0
@@ -1010,19 +1054,30 @@ class ScoreV2(Source):
                 self.lines.append(ln)
                 self._request_header(ln)
             self.ph = _Phrase(0)
-            ln = self._line_of(self.ph, 0)
-            self._show(ln)
-            ln.show_a = 1.0
+            if self.book is None:
+                ln = self._line_of(self.ph, 0)
+                self._show(ln)
+                ln.show_a = 1.0
 
     # -- lines ----------------------------------------------------------------------------------------------------
     def _line_geom(self, ln: _Line) -> None:
         if self.scroll:
             return
         self.offx[ln.ci] = self.x_off
+        if self.book is not None:
+            row = ln.slot if ln.phrase is None else (ln.m + ln.phrase.m_base) % self.NL
+            self.offy[ln.ci] = self.y_top + row * self.pitch
+            return
         self.offy[ln.ci] = self.y_bot + (ln.g - self.turn.x) * self.pitch
 
     def _gone(self, ph: _Phrase, j: int) -> bool:
         """(page) Line j of the phrase has left the page (off the top)."""
+        if self.book is not None:
+            pg, k, _r = book_place(j + ph.m_base, self.NL, self.book[1])
+            if k != self.book[0]:
+                return True                                 # (another screen's page)
+            ps = self.page_show
+            return ps is not None and (ph.id < ps[0] or (ph.id == ps[0] and pg < ps[1]))
         ln = ph.lines.get(j)
         g = ln.g if ln is not None else ph.g0 + j
         return g - self.turn.target < -(self.NL - 1) - 0.5
@@ -1061,6 +1116,95 @@ class ScoreV2(Source):
             return None
         self._show(ln)
         return ln.g
+
+    def _book_on(self, ln: _Line) -> bool:
+        ps = self.page_show
+        if ln.phrase is None:
+            return ps is None and ln.placeholder
+        return ps is not None and ps[0] == ln.phrase.id and (ln.m + ln.phrase.m_base) // self.NL == ps[1]
+
+    def _book_lead(self, ph: _Phrase):
+        """(book) The book line the writing reaches TURN_LEAD_S ahead (by the beat grid and the phrase's bars a
+        line; before the metre by its lines' time spans), never past the line after the newest note's."""
+        if ph.t0 is None or ph.lift_t is not None:
+            return None
+        t = self.t_sound + TURN_LEAD_S
+        bm = None
+        if ph.metre is not None and ph.book_n:
+            pos = self.builder.position(t)
+            if pos is not None:
+                bm = max(0, int(math.floor(pos))) // ph.book_n
+        elif ph.metre is None and ph.v is not None:
+            T = max(0.5, (self.cw - PAD_R_SP * self.sp - self._hdr_est(0) - self.A) / ph.v)
+            bm = ph.m_base + max(0, int((t - ph.t0) // T))
+        if bm is None:
+            return None
+        i = ph.newest
+        N = self.N
+        if i is not None and N.used[i] and N.ph[i] is ph and N.line[i] is not None:
+            fresh = self.t_sound - float(N.t_on[i]) < 2.0
+            bn = N.line[i].m + ph.m_base
+            bm = min(bm, bn + 1 if fresh else bn)
+        return bm
+
+    def _book_step(self) -> None:
+        """(book) This screen's page: turned to its next one once the writing is about to reach it (a sweep: the
+        old page wiped left to right with a fold shadow at the edge, the new page's staves drawn behind it); a join
+        or the first page shown at once.  Only this page's lines are seen."""
+        k, n = self.book
+        L = self.NL
+        ph = self.ph
+        bm = self._book_lead(ph)
+        ps = self.page_show
+        if bm is not None:
+            cand = book_show(bm // L, k, n)
+            if cand is not None and (ps is None or ps[0] != ph.id or cand > ps[1]):
+                self._book_turn(ph, cand)
+        now = self.t_sound
+        edge = None
+        if self.book_t0 is not None:
+            u = (now - self.book_t0) / BOOK_TURN_S
+            if u >= 1.0:
+                self.book_t0 = None
+            else:
+                fe = ERASE_FEATHER_SP * self.sp
+                edge = -0.5 * fe + u * (self.cw + fe)
+        for ln in self.lines:
+            on = self._book_on(ln)
+            if ln.erase_t is not None:
+                continue
+            ln.shown = on
+            ln.alpha = 1.0 if not ln.placeholder else 0.62
+            if on and edge is not None:
+                ln.open_to = min(float(self.cw), max(ln.staff_x0, edge))
+            elif on and ln.open_to < ln.staff_x0 + 1.0:
+                ln.open_to = float(self.cw)
+        self.book_edge = (self.x_off + edge) if edge is not None else None
+
+    def _book_turn(self, ph: _Phrase, pg: int) -> None:
+        """(book) This screen turns to page pg of the phrase: the page on it wipes away, the new page's lines are
+        made (their staves drawn by the sweep)."""
+        now = self.t_sound
+        anim = not self.book_fresh
+        self.book_fresh = False
+        for ln in [x for x in self.lines if self._book_on(x)]:
+            if anim:
+                ln.erase_t, ln.book_turn = now, True
+            else:
+                self._release(ln)
+        self.page_show = (ph.id, pg)
+        for r in range(self.NL):
+            m = pg * self.NL + r - ph.m_base
+            if m < 0:
+                continue
+            ln = self._line_of(ph, m)
+            if ln is None:
+                continue
+            self._show(ln)
+            ln.show_a = 1.0
+            if anim:
+                ln.open_to = ln.staff_x0
+        self.book_t0 = now if anim else None
 
     def _turn_step(self, dt: float) -> None:
         """(page) The stack follows the playing: a glide up when the next line is due (several lines at once a bit
@@ -1146,7 +1290,7 @@ class ScoreV2(Source):
         return ln
 
     def _show(self, ln: _Line) -> None:
-        if ln.shown:
+        if ln is None or ln.shown:
             return
         ln.shown = True
         ln.t_shown = self.t_sound
@@ -1243,6 +1387,20 @@ class ScoreV2(Source):
         keep = JOIN_SCROLL_S if self.scroll else min(JOIN_PAGE_S, (self.NL - 1) * self.line_s)
         cut = self.t_sound - keep
         earliest = min(times)
+        if self.book is not None and cur and cur[0].pos == 0:   # (book) from the previous page's first line
+            ph.book_d0 = float(cur[0].t_end - cur[0].t_start)
+            ph.book_n = self._book_n(ph, cur[0].beats, cur[0].unit)
+            pg = (cur[-1].pos // ph.book_n) // self.NL
+            p_cut = max(0, (pg - 1) * self.NL * ph.book_n)
+            ph.t0 = earliest
+            if p_cut > 0:
+                ph.cut_t = float(next((bar.t_start for bar in cur if bar.pos == p_cut), cur[0].t_start)) - 0.06
+                ph.k_base = p_cut
+                ph.m_base = p_cut // ph.book_n
+                ph.t0 = max(earliest, ph.cut_t)
+            self.book_fresh = True
+            self._phrase_started(ph)
+            return True
         if earliest < cut:
             ph.cut_t = cut
             ph.k_base = next((bar.pos for bar in cur if bar.t_end > cut + 0.05), None)
@@ -1814,10 +1972,12 @@ class ScoreV2(Source):
             self._s_metre(ph)
             self.epoch_force = True
             return
-        if ph.cut_t is not None:                            # joined mid-phrase, or carried on after a rewrite: its
+        if self.book is not None and ph.book_n is None:
+            ph.book_n = self._book_n(ph, beats, unit)
+        if ph.cut_t is not None or self.book is not None:  # joined mid-phrase, or carried on after a rewrite: its
             ph.plan = LinePlan()                            # bars are known, so its lines are planned by the tempo
-            ph.open_m = set()                               # (_ensure_plan) rather than fitted to open lines
-            self.epoch_force = True
+            ph.open_m = set()                               # (_ensure_plan) rather than fitted to open lines; (book)
+            self.epoch_force = True                         # its bars a line
             return
         b = self.builder
         tl = b.timeline
@@ -1878,6 +2038,11 @@ class ScoreV2(Source):
                 k_next = k if k_next is None else min(k_next, k)
         return k_last, k_next
 
+    def _book_n(self, ph: _Phrase, beats: int, unit: int) -> int:
+        d0 = ph.book_d0 or self.builder.bar_seconds() or beats * self._beat_period()
+        avail = self.cw - PAD_R_SP * self.sp - (self._hdr_est(0) + TS_SP * self.sp)
+        return book_bars_per_line(d0, beats, unit, self.sp, avail, self.line_s, self.spacing)
+
     def _plan_line(self, ph: _Phrase) -> None:
         """The phrase's next line after its open ones: as many bars as about LINE_S of music, never squeezed past
         FIT_MIN of their natural width, more if they fit at WANT."""
@@ -1885,6 +2050,16 @@ class ScoreV2(Source):
         m = ph.plan.last + 1 if ph.plan.lines else 0
         last = ph.plan.lines[-1] if ph.plan.lines else None
         k0 = last.k0 + last.n if last is not None else 0
+        if self.book is not None and ph.book_n:            # (book) the phrase's bars a line, always
+            ln = self._line_of(ph, m)
+            avail = self.cw - PAD_R_SP * sp - (ln.music_x0 if ln is not None else self._hdr_est(0))
+            n = ph.book_n
+            ph.plan.lines.append(PlanLine(k0, n, avail / n, self.cw - avail - PAD_R_SP * sp))
+            if len(ph.plan.lines) > 8:
+                ph.plan.lines.pop(0)
+                ph.plan.base += 1
+            self._bar_gates(ph, ln)
+            return
         ln = self._line_of(ph, m)
         avail = self.cw - PAD_R_SP * sp - (ln.music_x0 if ln is not None else self._hdr_w(self._key_now()))
         nat = (ph.nat or NAT_SEED[self.spacing]) * (1.5 if ph.unit == 6 else 1.0)
@@ -1911,6 +2086,8 @@ class ScoreV2(Source):
             guard += 1
 
     def _commit(self, ph: _Phrase, bar) -> None:
+        if bar.pos == 0 and ph.book_d0 is None:
+            ph.book_d0 = float(bar.t_end - bar.t_start)
         if ph.cut_t is not None:
             if bar.t_end <= ph.cut_t + 0.05:
                 return                                      # written already, in the metre before the rewrite
@@ -2364,7 +2541,7 @@ class ScoreV2(Source):
         else:
             width = PL.bw
         dst = plan.slot_x0(j, k)
-        if dst + width > self.cw - 2 and k > PL.k0 and plan.spill(k):
+        if dst + width > self.cw - 2 and k > PL.k0 and self.book is None and plan.spill(k):
             self.spills += 1
             self._ensure_plan(ph, k)
             j = plan.line_of(k)
@@ -2404,7 +2581,7 @@ class ScoreV2(Source):
         engraver, can't fit what's left, the line closes after bar k now (their notes move on while still being
         written, not after their ink)."""
         rest = PL.k0 + PL.n - 1 - k
-        if rest <= 0 or ph.ended:
+        if rest <= 0 or ph.ended or self.book is not None:
             return
         nxt = k + 1
         if nxt in ph.items or any(kk == nxt for kk in ph.sub.values()):
@@ -2574,7 +2751,7 @@ class ScoreV2(Source):
             for gi in np.flatnonzero(self.g_used & (self.g_lid == ln.ci)):
                 if self.g_line[gi] is ln:
                     self._gate_free(int(gi))
-            if ln.g == new.g0 and not self.scroll:
+            if ln.g == new.g0 and not self.scroll and self.book is None:
                 ln.phrase, ln.m, ln.ts_w = new, 0, TS_SP * self.sp
                 ln.bars, ln.sent = {}, 0
                 ln.front = ln.music_x0 - 0.5 * self.FE
@@ -2812,7 +2989,8 @@ class ScoreV2(Source):
                                 self._plan_line(ph)
                                 guard += 1
                         nxt = self._line_of(ph, ln.m + 1)
-                        self._show(nxt)
+                        if nxt is not None:
+                            self._show(nxt)
                     elif N.tx[inew] > SHOW_AT * self.cw and ph.lines.get(ln.m + 1) is not None:
                         self._show(ph.lines[ln.m + 1])
         a_up = 1.0 - math.exp(-dt / 0.15) if dt > 0 else 1.0
@@ -2820,7 +2998,8 @@ class ScoreV2(Source):
         for ln in list(self.lines):
             if ln.erase_t is not None:
                 span = self.cw + ERASE_FEATHER_SP * sp
-                ln.erase_x = (now - ln.erase_t) / ERASE_S * span - 0.5 * ERASE_FEATHER_SP * sp
+                ln.erase_x = (now - ln.erase_t) / (BOOK_TURN_S if ln.book_turn else ERASE_S) * span \
+                    - 0.5 * ERASE_FEATHER_SP * sp
                 if ln.erase_x > self.cw + ERASE_FEATHER_SP * sp:
                     self._release(ln)
                     continue
@@ -2852,9 +3031,13 @@ class ScoreV2(Source):
                     if ln.front >= x_end and dt > 0:
                         ln.open_to = max(x_end + 0.9 * sp, ln.open_to - 60.0 * sp * dt)
         # lines dim by age from the playing line; the playing line's staff a little heavier
-        if not self.scroll:
+        if self.book is not None:
+            self._book_step()
+        elif not self.scroll:
             self._turn_step(dt)
         for ln in self.lines:
+            if self.book is not None:
+                continue                                    # (alpha: _book_step)
             if self.scroll:
                 age = self.play_g - ln.g
                 ln.alpha = AGE_ALPHA[min(len(AGE_ALPHA) - 1, max(0, age))] if not ln.placeholder else 0.62
@@ -2921,7 +3104,7 @@ class ScoreV2(Source):
             pf = live[st == 4]
             for i in pf[now - N.die_t0[pf] >= PUFF_S]:
                 N.free(int(i))
-        idx = np.nonzero(N.used & (N.state != 3))[0]
+        idx = np.nonzero(N.used & (N.state != 3) & N.placed)[0]
         cap = GL.MAXN - 64                                  # (room for the bar lines and time signatures)
         if len(idx) > cap:                                  # degrade: the newest notes drawn, the oldest wait for ink
             idx = np.sort(idx[np.argsort(-N.t_on[idx], kind="stable")[:cap]])
@@ -3573,6 +3756,14 @@ class ScoreV2(Source):
         return (min(max(k, 0), n - 1), n) if n > 1 else None
 
     def render(self, t_local: float, dt: float, out) -> None:
+        if self.span_book:
+            want = self._segment()
+            if (want is None) != (self.book is None) or (want is not None and want[1] != self.book[1]):
+                self._seg_cfg = want                        # (a book starts or stops: the layout set up again)
+                self.close()
+                self.setup(self._ctx0, self._params0)
+            elif want is not None and want != self.book:
+                self.book = want
         if self.span_room:
             want = self._segment()
             if (want is None) != (self.span is None) or (want is not None and want[1] != self.span[1]):
@@ -3635,6 +3826,8 @@ class ScoreV2(Source):
         Ph[29] = self.th
         Ph[30:33] = _pal3(Ph[0:12], self.drift % 10.0 + 0.1)
         Ph[33] = self.NR
+        be = getattr(self, "book_edge", None)
+        Ph[34], Ph[35], Ph[36] = ((be, BOOK_SHADOW_SP * self.sp, BOOK_SHADOW) if be is not None else (0.0, 1.0, 0.0))
         self._canvas_params(e)
         self._upload()
         direct = (getattr(out, "shape", None) == self.buf.shape and out.dtype == self.buf.dtype

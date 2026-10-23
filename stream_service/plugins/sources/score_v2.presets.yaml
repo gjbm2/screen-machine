@@ -77,3 +77,44 @@ live-score-v2-scroll-night:
     family: score
     dims: 2d
     weight: 1.0
+
+live-score-v2-book-paper:
+  label: "Live score v2: book across the screens (paper)"
+  source: score_v2
+  params:
+    layout: page
+    span: book
+    look: paper
+    lines: 4
+    palette: ember
+    note_glow: 0.8
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
+
+live-score-v2-book-night:
+  label: "Live score v2: book across the screens (night)"
+  source: score_v2
+  params:
+    layout: page
+    span: book
+    look: night
+    lines: 4
+    palette: ember
+    note_glow: 1.0
+    ink_glow: 1.6
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.0, 1.0]
+    moods: [elegant, dreamy, dark]
+    modes: [piano]
+    family: score
+    dims: 2d
+    weight: 1.0
