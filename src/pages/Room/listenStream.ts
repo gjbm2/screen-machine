@@ -298,6 +298,15 @@ function watch() {
   }, WATCH_MS);
 }
 
+/** The element playing the stream (null before the first connect): deviceLag.ts measures it. */
+export const listenAudio = (): HTMLAudioElement | null => audio;
+
+/** GET …/piano/live/clock for the stream's sound (deviceLag.ts); ``inst`` null: show_service's default. */
+export function listenClockUrl(inst: string | null): string {
+  const b = (base ?? resolveRoomUrl(window.location.search)).replace(/\/+$/, "");
+  return `${b}${STREAM_PATH.replace(/\.mp3$/, "")}/clock${inst ? `?instrument=${encodeURIComponent(inst)}` : ""}`;
+}
+
 /** How far behind the newest sound received the element is playing (s): the browser's own share of the delay. */
 export function lagS(): number {
   const a = audio;

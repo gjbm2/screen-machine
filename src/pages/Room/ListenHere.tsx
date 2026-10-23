@@ -6,7 +6,8 @@
 //   - what's playing, while on: the music player's piece (GET /show/api/v1/player), else the test piano's (Test music
 //     or a recording), else "The piano" while the real one sends notes;
 //   - the notes, while on: WS /show/v1/show (music.note, music.pedal, music.notes; every source, as PianoRow), drawn
-//     the stream's delay later (show_service's 0.25 s plus the browser's buffer). The first note after the sound is
+//     the stream's delay later: measured against PC22's clock (deviceLag.ts: GET …/piano/live/clock), else
+//     show_service's 0.25 s plus the browser's buffer until the first reading. The first note after the sound is
 //     turned on opens the screen; once closed it stays closed until it's turned on again.
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,9 +16,12 @@ import { cn } from "@/lib/utils";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
+import { getDeviceLag, useDeviceLag, useDeviceLagTracker } from "./deviceLag";
 import {
   configureListen,
   lagS,
+  listenAudio,
+  listenClockUrl,
   listenOff,
   listenSnap,
   listenTap,
@@ -52,12 +56,14 @@ const STOPPED_WORDS: Partial<Record<ListenStatus, string>> = {
   failed: "The sound stopped.",
 };
 
-/** The stream's delay behind the room, in seconds (show_service's share plus the browser's buffer). */
-const behindS = () => SERVER_LAG_S + lagS();
+/** The stream's delay behind the room, in seconds: as measured against PC22's clock (deviceLag.ts) once it has a
+ *  reading, until then show_service's share plus the browser's buffer. */
+const behindS = () => getDeviceLag() ?? SERVER_LAG_S + lagS();
 
 /** "This device" in words, with its one action (Tap to start sound, Try again, Open). Nothing while it's off. */
 export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?: () => void; className?: string }) {
   const here = useListenHere();
+  useDeviceLag(); // re-render when the measured lag changes
   const [, tick] = useState(0);
   useEffect(() => {
     if (here.status !== "playing") return;
@@ -136,6 +142,12 @@ export function ListenHere({ api }: { api: RoomApi }) {
   const [liveAt, setLiveAt] = useState(0);
   const feed = useMemo(() => new NoteFeed(), []);
   const sound = usePianoSound(test);
+  // how far behind the room this device hears it, against PC22's clock: the notes below wait by it (so does the score)
+  const streamSound = here.instrumentUsed ?? sound.instrument;
+  useDeviceLagTracker(
+    here.status === "playing" ? listenAudio() : null,
+    here.status === "playing" ? listenClockUrl(streamSound) : null,
+  );
 
   // show_service's sounds (and, while on, what's playing): only while the page is visible
   useEffect(() => {
