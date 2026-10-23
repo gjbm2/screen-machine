@@ -270,7 +270,7 @@ export default function MusicPage() {
         )}
       </MusicProvider>
 
-      <ListenHere api={roomApi} />
+      <ListenHere api={roomApi} onScore={!!scoreId} />
 
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="music" />
     </div>
