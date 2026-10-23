@@ -433,6 +433,17 @@ class ScoreSheets:
 
     # -- routes (show-bus) ---------------------------------------------------------------------------------------
     def routes(self, app: Any) -> None:
+        async def warm(_app: Any) -> None:              # Verovio loaded before the first score is asked for
+            async def go() -> None:
+                try:
+                    await self.version()
+                except Exception:                       # noqa: BLE001
+                    log.debug("score: warm-up failed", exc_info=True)
+            asyncio.get_running_loop().create_task(go())
+        try:
+            app.on_startup.append(warm)
+        except (AttributeError, RuntimeError):          # an app already started (tests)
+            pass
         r = app.router
         r.add_get("/api/v1/score/{id}", self._h_status)
         r.add_get("/api/v1/score/{id}/page/{n}.svg", self._h_page)
