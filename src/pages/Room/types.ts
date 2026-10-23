@@ -968,8 +968,6 @@ export interface ShowMicState {
   muted?: boolean;
   /** Something needs it (Auto, or the mode follows the music), muted or not. */
   wanted?: boolean;
-  /** The Room mic switch is on (and not muted): the mic listens because the owner said so. */
-  switch?: boolean;
   /** In words: "Listening for Auto", "Off: nothing needs it", "Muted". */
   why?: string | null;
   /** What needs it: Auto, or the mode (its label). */

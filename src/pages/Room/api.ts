@@ -600,11 +600,6 @@ export class RoomApi {
     return this.json<ShowMicState>("PUT", "/show/api/v1/mic", { muted });
   }
 
-  /** The Room mic switch (owner, 24 Oct): on = the mic listens (unmuted, its own claim); off = muted. */
-  showSetMicSwitch(on: boolean) {
-    return this.json<ShowMicState>("PUT", "/show/api/v1/mic", { switch: on });
-  }
-
   /** The mics show_service can hear (each sender's devices) and the one chosen. */
   showInputs(signal?: AbortSignal) {
     return this.json<ShowInputs>("GET", "/show/api/v1/inputs", undefined, signal);

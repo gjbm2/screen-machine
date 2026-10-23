@@ -494,8 +494,7 @@ export function MusicCard({
   // ── The mic: on only while something needs it (Auto, or a mode that follows the music). The owner's switch reads in
   // the same sense as Auto (17 Oct): on = the room may listen; off always wins. ──
   const mic = card?.mic_state ?? null;
-  // On = the mic listens (owner, 24 Oct: the switch alone turns it on, Auto or not); off = muted.
-  const micAllowed = pendingMute !== null && pendingMute !== undefined ? !pendingMute : mic?.switch === true && mic?.muted !== true;
+  const micAllowed = !(pendingMute ?? mic?.muted === true);
   const claimWords = (mic?.claims ?? []).map((c) => (c.by === "auto" ? "Auto" : c.label || mic?.mode || "This mode"));
   const micListening = !!mic?.on && micAllowed;
   // The switch says whether the room may use the mic; this line says whether it's in use right now, and for what.
@@ -505,9 +504,7 @@ export function MusicCard({
       ? `In use · ${
           (mic.claims ?? [])
             .map((c) =>
-              c.by === "switch"
-                ? "switched on"
-                : c.by === "auto"
+              c.by === "auto"
                 ? "for Auto"
                 : c.by === "listening"
                   ? "for AI listening"
@@ -528,7 +525,7 @@ export function MusicCard({
   const setMicAllowed = (on: boolean) => {
     setPendingMute(!on);
     void micSend
-      .send("mic", on ? "Mic on" : "Mic off", () => api.showSetMicSwitch(on), {
+      .send("mic", on ? "Mic on" : "Mic off", () => api.showSetMuted(!on), {
         latest: true,
         ok: (r) => {
           if (isObj(r)) feed.patch({ mic_state: r as ShowMicState });
