@@ -14,6 +14,19 @@ FAKE = '''#!{py}
 import json, pathlib, sys, time
 a = sys.argv[3:]                                   # after "-m stream_service.score.sheet"
 say = lambda **k: print(json.dumps(k), flush=True)
+if sys.argv[2] == "stream_service.score.sheet_worker":
+    print("a library's own print", flush=True)
+    for line in sys.stdin:
+        q = json.loads(line)
+        if q["op"] == "version":
+            say(id=q["id"], version="t1")
+        elif q["op"] == "count":
+            say(id=q["id"], pages=2)
+        elif q["n"] <= 2:
+            say(id=q["id"], svg=f"<svg>{{int(q['w'])}} {{q['n']}}</svg>")
+        else:
+            say(id=q["id"], error="ValueError: no such page")
+    sys.exit(0)
 if a[0] == "version":
     say(version="t1")
 elif a[0] == "make":
@@ -96,6 +109,10 @@ def test_score_routes(tmp_path: pathlib.Path, monkeypatch) -> None:
             r = await cl.get("/api/v1/score/lib:broken/page/1.svg")
             assert r.status == 404 and (await r.json())["error"] == "not_ready"
             assert (await cl.get("/api/v1/score/lib:broken/pdf")).status == 404
+            proc = sheets.worker.proc
+            sheets.worker.stop()
+            if proc is not None:
+                await proc.wait()
 
     asyncio.run(go())
     assert len(list((tmp_path / "cache").glob("*.mei"))) == 2                       # quick + better
