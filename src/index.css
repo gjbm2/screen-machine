@@ -233,8 +233,9 @@
      midpoint spans at least 90% of the viewport and is over 10px tall (LocalFrameView::fixedContainerEdges).
      .ios-status-bar-band is that box: 12px, full width, topmost, in the page's colour, and painting nothing
      (background-clip: text, no text). As coder/coder #31027 and coder/xum #7022 ship it, checked on an iPad.
-   - anticipate: every top bar starts --app-top down, 2.5rem below the safe area in that app (as klbsjpolp/skip-bo
-     #279), so even a blur that stays falls on empty background, never on a control.
+   - anticipate (off for now: the owner checks whether the band alone clears it, and a spacer would hide the
+     answer): every top bar starts --app-top down; setting --edge-clear to 2.5rem here would push them below a blur
+     that stays (as klbsjpolp/skip-bo #279).
    Only in a standalone display on iOS/iPadOS (-webkit-touch-callout is WebKit-on-iOS only); 0 / hidden elsewhere. */
 :root {
   --edge-clear: 0px;
@@ -245,9 +246,6 @@
 }
 @media (display-mode: standalone) {
   @supports (-webkit-touch-callout: none) {
-    :root {
-      --edge-clear: 2.5rem;
-    }
     .ios-status-bar-band {
       display: block;
       position: fixed;
