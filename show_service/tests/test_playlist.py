@@ -490,3 +490,34 @@ def test_speed_persists_rides_every_start_and_a_change_carries_on_from_where_it_
     r.p.stop()
     p2 = r.new()
     assert p2.view()["speed"] == 1.25 and p2.view()["state"] == "stopped"
+
+
+def test_pause_resume_seek_and_play_from_a_place(tmp_path):
+    """1c's score follow-along (23 Oct): play {piece, start_s}; seek {start_s} carries on from there (playing,
+    paused or stopped); pause stops the piano but keeps the piece and its place (state paused, elapsed_s = the place),
+    resume or a bare play carries on from it; the view says when elapsed_s was true (at_ms)."""
+    r = Rig(tmp_path)
+    r.src = SpeedSources(r.clock)
+    v = r.p.act({"action": "play", "piece": "lib:p2", "start_s": 30.0})
+    assert r.src.calls[-1][1] == "lib:p2" and r.src.calls[-1][-1] == 30.0 and isinstance(v["at_ms"], int)
+    r.playing()
+    r.src.pos_s = 47.25
+    v = r.p.act({"action": "pause"})
+    assert v["state"] == "paused" and v["words"] == "Paused" and v["elapsed_s"] in (47.2, 47.3)
+    assert r.src.calls[-1] == ("stop",) and r.src.cur["state"] == "off"
+    r.tick()
+    assert r.p.view()["state"] == "paused"                            # a stopped piano doesn't end the pause
+    r.p.act({"action": "resume"})
+    assert r.src.calls[-1][1] == "lib:p2" and r.src.calls[-1][-1] == 47.25
+    r.playing()
+    r.p.act({"action": "pause"})
+    r.p.act({"action": "play"})                                       # a bare Play resumes too
+    assert r.src.calls[-1][1] == "lib:p2" and r.src.calls[-1][-1] == 47.25
+    r.playing()
+    r.p.act({"action": "seek", "start_s": 12})
+    assert r.src.calls[-1][1] == "lib:p2" and r.src.calls[-1][-1] == 12.0
+    r.p.act({"action": "stop"})
+    r.p.act({"action": "seek", "start_s": 5})                         # stopped: seek plays from there
+    assert r.src.calls[-1][-1] == 5.0 and r.p.view()["state"] in ("preparing", "playing")
+    with pytest.raises(ValueError, match="bad_start"):
+        r.p.act({"action": "seek", "start_s": -1})

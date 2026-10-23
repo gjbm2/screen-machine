@@ -27,6 +27,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import math
 import pathlib
 import random
 import secrets
@@ -50,7 +51,7 @@ ITEMS_MAX = 2000
 PLAYLISTS_MAX = 500
 STATE_SLACK_S = 1.5                    # the same state starting this much later: someone restarted the piano
 ERROR_MAX = 160
-STATES = ("stopped", "preparing", "playing", "stepped_aside", "error")
+STATES = ("stopped", "preparing", "playing", "paused", "stepped_aside", "error")
 ASIDE_WORDS = "Something else started the piano"
 
 
@@ -120,6 +121,7 @@ class Player:
         self.instrument: Optional[str] = None
         self.output: Optional[str] = None
         self.speed = 1.0                       # the piece's tempo times this, on every start (1c's start_test speed)
+        self.paused_s: Optional[float] = None  # paused: the place in the current piece (its own tempo) to resume at
         self.repeat = "off"
         self.shuffle = False
         self.state = "stopped"
@@ -674,7 +676,9 @@ class Player:
         cur_item = self._item_or_stub(cur)
         run = self._run
         elapsed = None
-        if run is not None and self.state == "playing":
+        if self.state == "paused" and self.paused_s is not None:
+            elapsed = round(self.paused_s, 1)
+        elif run is not None and self.state == "playing":
             pos = self._pos_s()                        # the place in the piece at its own tempo (any speed)
             if pos is not None:
                 elapsed = round(pos, 1)
@@ -689,7 +693,9 @@ class Player:
                 "upcoming": upcoming, "progress": self.progress if self.state == "preparing" else None,
                 "elapsed_s": elapsed, "duration_s": _num((cur_item or {}).get("duration_s")),
                 "instrument": inst, "output": out, "repeat": self.repeat, "shuffle": self.shuffle,
-                "speed": self.speed, "error": self.error, "choices": ch}
+                "speed": self.speed, "error": self.error, "choices": ch,
+                # when elapsed_s was true (wall ms): the score page carries it on between polls at ``speed``
+                "at_ms": int(time.time() * 1000)}
 
     def _next_pos(self) -> Optional[int]:
         n = len(self.order)
@@ -708,6 +714,8 @@ class Player:
             if self.phase == "preparing":
                 return "Getting ready"         # loading the sound (1c, 22 Oct: the piano renders as it plays)
             return "Starting"
+        if self.state == "paused":
+            return "Paused"
         if self.state == "stepped_aside":
             return f"Stepped aside: {ASIDE_WORDS[0].lower()}{ASIDE_WORDS[1:]}"
         if self.state == "error":
@@ -719,18 +727,27 @@ class Player:
     def act(self, body: Any) -> dict:
         """POST /api/v1/player: one action (the SPEC's), then the view. ValueError("<code>: <words>")."""
         if not isinstance(body, dict) or not isinstance(body.get("action"), str):
-            raise ValueError('bad_request: send {"action": "play" | "stop" | "next" | "prev" | "add" | "play_next" | '
-                             '"set", ...}')
+            raise ValueError('bad_request: send {"action": "play" | "stop" | "pause" | "resume" | "seek" | "next" | '
+                             '"prev" | "add" | "play_next" | "set", ...}')
         a = body["action"]
         self._sync()
         if a == "play":
             self._play(body)
         elif a == "stop":
             self._stop_piano()
+            self.paused_s = None
             self._stopped(None)
+        elif a == "seek":
+            self._seek(body)
+        elif a == "pause":
+            self._pause()
+        elif a == "resume":
+            self._resume()
         elif a == "next":
+            self.paused_s = None
             self._next()
         elif a == "prev":
+            self.paused_s = None
             self._prev()
         elif a in ("add", "play_next"):
             piece = self._known(body.get("piece"))
@@ -751,7 +768,21 @@ class Player:
             raise ValueError("bad_index: index is a position from 0")
         return i
 
+    def _start_s(self, body: dict) -> Optional[float]:
+        """A request's ``start_s`` (seconds into the piece at its own tempo), None when absent."""
+        v = body.get("start_s")
+        if v is None:
+            return None
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+            raise ValueError("bad_start: start_s is a number of seconds into the piece")
+        return float(v)
+
     def _play(self, body: dict) -> None:
+        start_s = self._start_s(body)
+        bare = all(body.get(k) is None for k in ("playlist", "piece", "items")) and "index" not in body
+        if bare and start_s is None and self.state == "paused" and self._cur_piece() is not None:
+            start_s = self.paused_s                    # Play on a paused piece carries on from where it was
+        self.paused_s = None
         self._stop_piano_quiet()
         if body.get("playlist") is not None:
             try:
@@ -779,7 +810,42 @@ class Player:
                 self.pos = i
         self._fails = 0
         self.error = None
-        self._start_current()
+        self._start_current(start_s)
+
+    def _seek(self, body: dict) -> None:
+        """Carry on with the current piece from ``start_s`` (playing, paused or stopped: it plays from there)."""
+        start_s = self._start_s(body)
+        if start_s is None:
+            raise ValueError("bad_start: say where: start_s, seconds into the piece")
+        if self._cur_piece() is None:
+            raise ValueError("nothing_queued: nothing is queued: pick a piece or a playlist")
+        self.paused_s = None
+        self._stop_piano_quiet()
+        self._fails, self.error = 0, None
+        self._start_current(start_s)
+
+    def _pause(self) -> None:
+        """Stop the piano but keep the piece and its place (``paused``); Resume (or Play) carries on from there."""
+        if self.state not in ("playing", "preparing"):
+            return
+        pos = self._pos_s()
+        if pos is None and self._run is not None and self._run.get("playing_at") is not None:
+            pos = max(0.0, self.clock() - self._run["playing_at"]) * self.speed
+        self._stop_piano()
+        self._run, self.phase, self.progress = None, None, None
+        self.state, self.paused_s, self.note = "paused", round(pos or 0.0, 3), None
+        log.info("player: paused %s at %.1f s", self._cur_piece(), self.paused_s)
+        self._save()
+
+    def _resume(self) -> None:
+        if self.state != "paused" or self._cur_piece() is None:
+            if self.state in ("playing", "preparing"):
+                return
+            if not self.order:
+                raise ValueError("nothing_queued: nothing is queued: pick a piece or a playlist")
+        start_s, self.paused_s = (self.paused_s if self.state == "paused" else None), None
+        self._fails, self.error = 0, None
+        self._start_current(start_s)
 
     def _stop_piano_quiet(self) -> None:
         """Before starting something new: nothing to stop (start_test switches the piano itself)."""
