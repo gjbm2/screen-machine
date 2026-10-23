@@ -4,6 +4,8 @@
 //   live.leave  -> leaving -> [exit cut at hold_pts] -> teardown
 //   failures: warm-up 8 s -> ack live_failed; no presented frame for 2 s while live -> NO cut (owner, 17 Oct:
 //             a slow stream never takes the screen out of live): the last frame stays, the player is nudged;
+//             no presented frame for 10 s -> cut to art, ack art_visible{stall} (owner, 23 Oct: a dead man's
+//             handle, so a missed live.leave or a session that is gone never leaves a frozen live frame on glass);
 //             player error -> live_failed before the cut, art_visible{error} after it;
 //             live.abort -> cut if visible, ack art_visible{abort}; leave timeout 20 s -> exit-timeout cut.
 //
@@ -16,6 +18,8 @@ import { probeCaps } from "../control/caps";
 
 const WARMUP_TIMEOUT_MS = 8_000;
 const STALL_MS = 2_000;
+/** Dead man's handle (owner, 23 Oct): this long with no presented frame means the stream is gone, not slow. */
+const DEAD_MS = 10_000;
 const EXIT_TIMEOUT_MS = 20_000;
 /** How many ended session ids are remembered (bounded; a session id is never reused). */
 const ENDED_MAX = 64;
@@ -153,7 +157,8 @@ export class LiveController {
       onEnded: (reason) => {
         deps.event("media-ended", { session: a.session, reason });
         if (!s.visible) this.fail(s, reason === "eos" ? "eos-before-cut" : "media-closed");
-        // Once live, the screen stays live: room_service ends it (a new attach, live.leave or live.abort).
+        // Once live, the screen stays live: room_service ends it (a new attach, live.leave or live.abort), or the
+        // dead man's handle in checkStall does when no frame has come for DEAD_MS.
       },
       log: deps.log,
     }, deps.role);
@@ -280,6 +285,15 @@ export class LiveController {
     const now = performance.now();
     // Owner, 17 Oct: a slow or stuck stream must never stop live by itself. Keep the last frame on glass, report
     // it, and nudge the player to the live edge every STALL_MS while no frame comes; room_service ends live.
+    // Dead man's handle (owner, 23 Oct: "if live mode stops for a period of time, the display page flips out of live
+    // mode"): DEAD_MS with no frame is a stream that is gone (a missed live.leave, a deleted session), not a slow one.
+    // Cut to art and say so (art_visible{stall}): room_service treats it as a fallback and goes live again if it
+    // still wants live.
+    if (last !== null && now - last > DEAD_MS) {
+      this.deps.event("dead", { session: s.attach.session, since_last_frame_ms: Math.round(now - last) });
+      this.finish(s, "stall", s.player.lastMediaTime);
+      return;
+    }
     if (last !== null && now - last > STALL_MS && now - s.lastKick > STALL_MS) {
       s.lastKick = now;
       this.deps.event("stall", { session: s.attach.session, since_last_frame_ms: Math.round(now - last) });
