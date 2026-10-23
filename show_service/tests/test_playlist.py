@@ -521,3 +521,13 @@ def test_pause_resume_seek_and_play_from_a_place(tmp_path):
     assert r.src.calls[-1][-1] == 5.0 and r.p.view()["state"] in ("preparing", "playing")
     with pytest.raises(ValueError, match="bad_start"):
         r.p.act({"action": "seek", "start_s": -1})
+
+
+def test_a_device_output_is_kept_even_before_it_connects(tmp_path):
+    """The player takes 'device:<id>' as the output (This device on a phone), listed by sources yet or not."""
+    r = Rig(tmp_path)
+    r.p.act({"action": "set", "output": "device:ipad-1"})
+    r.play(items=ITEMS)
+    assert r.p.view()["output"] == "device:ipad-1"
+    with pytest.raises(ValueError, match="unknown_output"):
+        r.p.act({"action": "set", "output": "device:"})

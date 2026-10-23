@@ -8,6 +8,18 @@ page's "This device" output plays PC22's own piano sound, streamed.
   HEAD /api/v1/piano/live.mp3                   200 with the headers: it's here (the page probes before offering it)
   GET  /api/v1/piano/live/clock?instrument=     the stream's clock (clock()): how far behind a listener hears; the
                                                 stream's own reply carries it too (X-Piano-Clock: its join position)
+  GET  /api/v1/piano/devices                    {"devices": [{"id": "device:<id>", "label", "streaming", "seen_s"}],
+                                                 "output": the piano's output now, "hears": the device it plays on}
+  POST /api/v1/piano/devices {id, name}         this device, by name (before it's chosen as the output)
+
+Where it's heard (owner, 23 Oct: "I clicked play on PC22, and the sound came out of ipad... reason through how
+connections are created and destroyed"): the piano's output is one choice for the whole room (sources' "device:<id>"
+names a device; output_fn says the choice now). A device's stream (?device=<id>&name=<label>) gets the notes only
+while the output is that device; otherwise it carries silence (the connection stays, so choosing it again is
+instant), and notes still sounding are let go of at once when the output moves away; &also=1 hears whatever the
+output ("as well as the speakers").  A stream that names no device (an older page) hears everything, as before.
+Warm: while the output is a device, its sound is started even before the device connects (so Play doesn't wait for
+the instrument to load), and kept WARM_S after its last listener leaves; otherwise LINGER_S.
 
 One synth process per instrument with listeners (sm-piano's python, nice 5, its own memory cap: stream.py's
 prepare_process), started by the first and stopped LINGER_S after the last leaves; every listener of it shares its
@@ -35,6 +47,12 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 PYTHON = pathlib.Path(os.environ.get("PIANO_PYTHON", pathlib.Path.home() / ".venvs" / "sm-piano" / "bin" / "python"))
 INSTRUMENTS = REPO / "config" / "piano" / "instruments.json"
 LINGER_S = 10.0
+WARM_S = 900.0                       # kept this long after the last listener while the output is still a device
+GATE_S = 0.25                        # how often the output is looked at (the reaper's pace)
+DEVICE_KEEP_S = 12 * 3600.0          # a device stays among the outputs this long after it was last seen
+DEVICES_MAX = 8
+DEVICES_FILE = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show" / "piano-devices.json"
+PANIC = b'{"panic": true}\n'
 CHUNK = 4096
 CLIENT_QUEUE = 256                   # chunks (~64 s at 128 kb/s) a listener may fall behind before it's dropped
 BITRATE = 128
@@ -55,7 +73,8 @@ class _Synth:
     def __init__(self, instrument: str) -> None:
         self.instrument = instrument
         self.proc: Optional[asyncio.subprocess.Process] = None
-        self.clients: set = set()
+        self.clients: dict = {}                          # listener queue -> (its device id or None: an older page,
+        #                                                  also: it hears whatever the output, "as well as the speakers")
         self.feed: "queue.SimpleQueue" = queue.SimpleQueue()
         self.ready = False
         self.stop_at: Optional[float] = None
@@ -64,13 +83,157 @@ class _Synth:
         self.t0: Optional[float] = None                  # host time of the stream's first audio frame
         self.delay_s = 0.25                              # piano_render.live's DELAY_S (its clock line says)
         self.bytes_out = 0                               # MP3 bytes made so far: the stream's position, CBR
+        self.heard = False                               # the notes go to it now (the output is its listener's)
+        self.last_client = time.monotonic()
+
+
+def _device_id(v: Any) -> Optional[str]:
+    from .sources import DEVICE_ID_OK
+    return v if isinstance(v, str) and 0 < len(v) <= 64 and set(v) <= DEVICE_ID_OK else None
+
+
+def _label(v: Any) -> Optional[str]:
+    if not isinstance(v, str):
+        return None
+    v = " ".join(v.split())[:40]
+    return v if v and v.isprintable() else None
 
 
 class PianoLive:
-    def __init__(self) -> None:
+    def __init__(self, output_fn: Optional[Callable[[], Optional[str]]] = None,
+                 devices_file: Optional[pathlib.Path] = None) -> None:
         self.synths: dict[str, _Synth] = {}
-        self._feeds: tuple = ()                          # the synths' queues, read by on_midi (show-rx)
+        self._feeds: tuple = ()                          # the heard synths' queues, read by on_midi (show-rx)
         self._reaper: Optional[asyncio.Task] = None
+        self.output_fn = output_fn                       # the piano's output now (sources' / the player's)
+        self.devices_file = devices_file if devices_file is not None else DEVICES_FILE
+        self.devices: dict[str, dict] = self._load_devices()
+        self._gate_task: Optional[asyncio.Task] = None
+
+    # -- where it's heard ----------------------------------------------------------------------------------------
+    def _output(self) -> Optional[str]:
+        fn = self.output_fn
+        if fn is None:
+            return None
+        try:
+            v = fn()
+        except Exception:                                # noqa: BLE001
+            log.debug("piano live: output_fn failed", exc_info=True)
+            return None
+        return v if isinstance(v, str) else None
+
+    def _target(self, out: Optional[str]) -> Optional[str]:
+        """The device id ``out`` names, else None."""
+        from .sources import DEVICE_PREFIX, is_device
+        return out[len(DEVICE_PREFIX):] if is_device(out) else None
+
+    def _hears(self, s: _Synth, out: Optional[str]) -> bool:
+        """Do ``s``'s notes reach anyone who should hear them, with the output ``out``?"""
+        if self.output_fn is None:
+            return True                                  # nothing to say where: everyone hears (tests, older wiring)
+        target = self._target(out)
+        if target is not None and s.instrument == self._instrument_for(target) and not s.clients:
+            return True                                  # warm for the chosen device: it's about to connect
+        for dev, also in s.clients.values():
+            if dev is None or also or dev == target:
+                return True                              # an older page (hears everything, as before), "as well as
+        return False                                     # the speakers", or the chosen device
+
+    def _instrument_for(self, device: str) -> Optional[str]:
+        return self._pick((self.devices.get(device) or {}).get("instrument"))
+
+    def _regate(self) -> None:
+        """Feed the synths whose listeners should hear now; let go of the notes in one that stops being heard."""
+        out = self._output()
+        feeds = []
+        for s in self.synths.values():
+            h = self._hears(s, out)
+            if s.heard and not h:
+                s.feed.put(PANIC)                        # the output moved away: nothing left ringing
+            s.heard = h
+            if h:
+                feeds.append(s.feed)
+        self._feeds = tuple(feeds)
+
+    async def _gate(self) -> None:
+        """Every GATE_S: the output now; the chosen device's sound warmed (started before it connects)."""
+        while True:
+            await asyncio.sleep(GATE_S)
+            try:
+                target = self._target(self._output())
+                if target is not None:
+                    inst = self._instrument_for(target)
+                    if inst is not None and inst not in self.synths and len(self.synths) < MAX_SYNTHS \
+                            and PYTHON.exists():
+                        s = self.synths[inst] = _Synth(inst)
+                        await self._start(s)
+                        self._reap_soon()
+                self._regate()
+            except asyncio.CancelledError:
+                raise
+            except Exception:                            # noqa: BLE001
+                log.exception("piano live: gate")
+
+    def _gate_soon(self) -> None:
+        if self.output_fn is not None and (self._gate_task is None or self._gate_task.done()):
+            self._gate_task = asyncio.get_running_loop().create_task(self._gate())
+
+    def _reap_soon(self) -> None:
+        if self._reaper is None or self._reaper.done():
+            self._reaper = asyncio.get_running_loop().create_task(self._reap())
+
+    # -- the devices ---------------------------------------------------------------------------------------------
+    def _load_devices(self) -> dict:
+        try:
+            doc = json.loads(self.devices_file.read_text())
+        except (OSError, ValueError):
+            return {}
+        now_wall = time.time()
+        out = {}
+        for k, v in (doc.get("devices") or {}).items() if isinstance(doc, dict) else []:
+            if _device_id(k) and isinstance(v, dict) and now_wall - float(v.get("seen_wall") or 0) < DEVICE_KEEP_S:
+                out[k] = {"label": _label(v.get("label")) or "A phone or tablet", "instrument": v.get("instrument"),
+                          "seen_wall": float(v.get("seen_wall") or 0)}
+        return out
+
+    def _save_devices(self) -> None:
+        try:
+            self.devices_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.devices_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"devices": self.devices}))
+            tmp.replace(self.devices_file)
+        except OSError:
+            log.debug("piano live: devices not saved", exc_info=True)
+
+    def register(self, device: Any, name: Any = None, instrument: Optional[str] = None) -> Optional[str]:
+        """A device seen (its stream, or its page saying who it is): the id, or None for a bad one."""
+        d = _device_id(device)
+        if d is None:
+            return None
+        row = self.devices.get(d) or {"label": "A phone or tablet", "instrument": None}
+        row["label"] = _label(name) or row.get("label") or "A phone or tablet"
+        if instrument:
+            row["instrument"] = instrument
+        row["seen_wall"] = time.time()
+        self.devices[d] = row
+        if len(self.devices) > DEVICES_MAX:
+            for k in sorted(self.devices, key=lambda k: self.devices[k].get("seen_wall") or 0)[:-DEVICES_MAX]:
+                del self.devices[k]
+        self._save_devices()
+        return d
+
+    def device_outputs(self) -> list[dict]:
+        """sources' outputs for the devices seen lately (newest first): {"id": "device:<id>", "label"}."""
+        from .sources import DEVICE_PREFIX
+        now_wall = time.time()
+        rows = sorted(((k, v) for k, v in self.devices.items()
+                       if now_wall - float(v.get("seen_wall") or 0) < DEVICE_KEEP_S),
+                      key=lambda kv: -(kv[1].get("seen_wall") or 0))
+        return [{"id": DEVICE_PREFIX + k, "label": v.get("label") or "A phone or tablet", "device": True}
+                for k, v in rows]
+
+    def _streaming(self, device: str) -> bool:
+        return any(dev == device for s in self.synths.values() for dev, _also in s.clients.values())
 
     # -- the notes (show-rx thread) ------------------------------------------------------------------------------
     def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
@@ -94,7 +257,7 @@ class PianoLive:
                 q.put(blob)
 
     def _refeed(self) -> None:
-        self._feeds = tuple(s.feed for s in self.synths.values())
+        self._regate()
 
     # -- the synths (the bus's loop) -------------------------------------------------------------------------------
     def _pick(self, asked: Optional[str]) -> Optional[str]:
@@ -176,7 +339,7 @@ class PianoLive:
                 s.bytes_out += len(chunk)
                 for q in list(s.clients):
                     if q.qsize() >= CLIENT_QUEUE:
-                        s.clients.discard(q)
+                        s.clients.pop(q, None)
                         q.put_nowait(None)               # too far behind: that listener ends
                     else:
                         q.put_nowait(chunk)
@@ -209,18 +372,27 @@ class PianoLive:
         while self.synths:
             await asyncio.sleep(1.0)
             now = time.monotonic()
+            target = self._target(self._output())
             for s in list(self.synths.values()):
                 if s.clients:
                     s.stop_at = None
-                elif s.stop_at is None:
-                    s.stop_at = now + LINGER_S
-                elif now >= s.stop_at:
+                    s.last_client = now
+                    continue
+                warm = target is not None and s.instrument == self._instrument_for(target)
+                until = (max(s.last_client, s.started) + WARM_S) if warm else None
+                if s.stop_at is None or (warm and s.stop_at < until):
+                    s.stop_at = until if warm else now + LINGER_S
+                elif not warm and s.stop_at > now + LINGER_S:
+                    s.stop_at = now + LINGER_S           # no longer the output: the short linger
+                if now >= s.stop_at:
                     await self._stop(s)
 
     # -- routes (show-bus) ---------------------------------------------------------------------------------------
     def routes(self, app: Any) -> None:
         app.router.add_get("/api/v1/piano/live.mp3", self._h_live)
         app.router.add_get("/api/v1/piano/live/clock", self._h_clock)
+        app.router.add_get("/api/v1/piano/devices", self._h_devices)
+        app.router.add_post("/api/v1/piano/devices", self._h_device_post)
 
     def clock(self, s: _Synth, pos_s: Optional[float] = None) -> dict:
         """The stream's clock (owner, 23 Oct: "when playing from 'this device' we need to match latency with local
@@ -239,6 +411,34 @@ class PianoLive:
             return web.json_response({"error": "not_streaming", "detail": "No piano sound is streaming."}, status=404)
         return web.json_response(self.clock(s), headers={"Cache-Control": "no-store"})
 
+    def devices_view(self) -> dict:
+        out = self._output()
+        now_wall = time.time()
+        rows = [{**d, "streaming": self._streaming(d["id"].split(":", 1)[1]),
+                 "seen_s": round(now_wall - float(self.devices[d["id"].split(":", 1)[1]].get("seen_wall") or 0), 1)}
+                for d in self.device_outputs()]
+        return {"devices": rows, "output": out, "hears": self._target(out)}
+
+    async def _h_devices(self, request: Any) -> Any:
+        from aiohttp import web
+        self._gate_soon()
+        return web.json_response(self.devices_view(), headers={"Cache-Control": "no-store"})
+
+    async def _h_device_post(self, request: Any) -> Any:
+        from aiohttp import web
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        d = self.register((body or {}).get("id"), (body or {}).get("name"),
+                          self._pick((body or {}).get("instrument")) if (body or {}).get("instrument") else None) \
+            if isinstance(body, dict) else None
+        if d is None:
+            return web.json_response({"error": "bad_device", "detail": "Say which device: an id of letters, digits, "
+                                      "- or _ (up to 64)."}, status=400)
+        self._gate_soon()
+        return web.json_response(self.devices_view(), headers={"Cache-Control": "no-store"})
+
     async def _h_live(self, request: Any) -> Any:
         from aiohttp import web
         inst = self._pick(request.query.get("instrument"))
@@ -249,18 +449,21 @@ class PianoLive:
                    "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "X-Piano-Instrument"}
         if request.method == "HEAD":
             return web.Response(headers=headers)
+        dev = self.register(request.query.get("device"), request.query.get("name"), inst) \
+            if request.query.get("device") else None
+        self._gate_soon()
         s = self.synths.get(inst)
         if s is None:
             if len(self.synths) >= MAX_SYNTHS:
                 return web.json_response({"error": "busy", "detail": "Two piano sounds are streaming already."},
                                          status=503)
             s = self.synths[inst] = _Synth(inst)
-            self._refeed()
             await self._start(s)
-            if self._reaper is None or self._reaper.done():
-                self._reaper = asyncio.get_running_loop().create_task(self._reap())
+            self._reap_soon()
         q: asyncio.Queue = asyncio.Queue()
-        s.clients.add(q)
+        s.clients[q] = (dev, request.query.get("also") in ("1", "true", "yes"))
+        s.last_client = time.monotonic()
+        self._regate()
         # where in the stream this listener starts (its audio element's currentTime 0), and the stream's clock
         headers = {**headers, "X-Piano-Clock": json.dumps(self.clock(s)),
                    "Access-Control-Expose-Headers": "X-Piano-Instrument, X-Piano-Clock"}
@@ -276,5 +479,7 @@ class PianoLive:
         except (ConnectionResetError, asyncio.CancelledError):
             pass
         finally:
-            s.clients.discard(q)
+            s.clients.pop(q, None)
+            s.last_client = time.monotonic()
+            self._regate()
         return resp

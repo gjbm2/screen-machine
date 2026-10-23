@@ -834,3 +834,18 @@ def test_an_older_show_sender_gets_no_speed(lib):
     st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True, speed=1.5)
     assert "--speed" not in r.popen.argv and st["speed"] == 1.0                            # said: it plays at 1x
     r.src.stop()
+
+
+def test_a_device_output_plays_midi_only_and_is_listed(lib):
+    """'device:<id>' (piano_live's "This device"): show_sender is told none (PC22 and Sonos quiet), the status keeps
+    the device; the devices piano_live has seen are outputs; any device id is taken, a bad one isn't."""
+    instruments(lib)
+    r = make(lib)
+    r.src.devices_fn = lambda: [{"id": "device:ipad-1", "label": "Greg's iPad", "device": True}]
+    assert {"id": "device:ipad-1", "label": "Greg's iPad", "device": True} in r.src.choices()["outputs"]
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="device:phone-2", once=True)
+    argv = r.popen.argv
+    assert argv[argv.index("--output") + 1] == "none" and "--lead-ms" not in argv and st["output"] == "device:phone-2"
+    with pytest.raises(ValueError, match="unknown_output"):
+        r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="device:../x", once=True)
+    r.src.stop()

@@ -108,6 +108,21 @@ LIVE_INSTRUMENT = {"id": "windows-gs", "label": "Basic (Windows synth)", "kind":
 OUTPUTS: tuple[dict[str, str], ...] = ({"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"})
 DEFAULT_OUTPUT = "pc22"
 SILENT_OUTPUT = "none"
+# a phone or tablet playing PC22's piano itself ("This device", piano_live.py): "device:<its id>". The piano plays
+# there only (PC22 and Sonos quiet, show_sender runs as for "none"); piano_live lets that device's stream hear it.
+DEVICE_PREFIX = "device:"
+DEVICE_ID_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+
+
+def is_device(output: Any) -> bool:
+    """``output`` names a device (DEVICE_PREFIX and a sane id)."""
+    return (isinstance(output, str) and output.startswith(DEVICE_PREFIX) and 0 < len(output) - len(DEVICE_PREFIX)
+            <= 64 and set(output[len(DEVICE_PREFIX):]) <= DEVICE_ID_OK)
+
+
+def sender_output(output: Optional[str]) -> Optional[str]:
+    """What show_sender is told: a device's output is the screens only on PC22 (the device plays it itself)."""
+    return SILENT_OUTPUT if is_device(output) else output
 LEAD_MS_DEFAULT = 650.0                # show.yaml tests.piano.lead_ms: the rendered sound starts this long after its MIDI
 LEAD_MS_MAX = 1900.0                   # below stream_service sound_view's FUTURE_MAX_MS (2000)
 REC_PREFIX = "rec:"
@@ -511,7 +526,8 @@ class Sources:
                  recordings_dir: pathlib.Path = recorder.RECORDINGS_DIR,
                  set_offset: Optional[Callable[[str, Optional[float]], None]] = None,
                  sonos_file: pathlib.Path = SONOS_FILE,
-                 set_mic_claim: Optional[Callable[[str, bool], Any]] = None) -> None:
+                 set_mic_claim: Optional[Callable[[str, bool], Any]] = None,
+                 devices_fn: Optional[Callable[[], list]] = None) -> None:
         """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it).
         ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins), ``sonos_file``: tests
         pass tmp ones.
@@ -521,6 +537,7 @@ class Sources:
         self.recordings_dir = pathlib.Path(recordings_dir)
         self._set_offset = set_offset
         self._mic_claim = set_mic_claim
+        self.devices_fn = devices_fn                     # piano_live's devices: [{"id": "device:<id>", "label"}]
         self._claim_applied: Optional[str] = None
         self._instr: Optional[tuple[list[dict], Optional[str], list[str]]] = None
         self._instr_at = -1e18
@@ -666,8 +683,8 @@ class Sources:
             if spec is None:
                 raise ValueError("unknown_instrument")
             out = output if output is not None else DEFAULT_OUTPUT
-            if out not in {o["id"] for o in self._outputs()}:
-                raise ValueError("unknown_output")
+            if not is_device(out) and out not in {o["id"] for o in self._outputs()}:
+                raise ValueError("unknown_output")      # a device is taken as asked (it may not have connected yet)
             note = None
             if out.startswith(SONOS_PREFIX) and spec.get("engine") == LIVE_ENGINE:
                 out, note = DEFAULT_OUTPUT, LIVE_ON_SONOS          # the GS synth is PC22's: play it there, say so
@@ -692,10 +709,11 @@ class Sources:
             if not c.live:
                 c.status_path = self.log_dir / f"test-{source}.status.json"
                 lead = self._lead_ms(source)
-                if (out != SILENT_OUTPUT and lead is not None and self._set_offset is not None
+                heard = sender_output(out)
+                if (heard != SILENT_OUTPUT and lead is not None and self._set_offset is not None
                         and "--lead-ms" in flags):
                     c.lead_ms = lead
-                if out != SILENT_OUTPUT:                       # heard: the mic that hears it (module docstring)
+                if heard != SILENT_OUTPUT:                     # heard: the mic that hears it (module docstring)
                     mic, c.cal_why = self._calibration_mic(source, out)
                     c.cal_mic = mic or ""
                     if mic and out.startswith(SONOS_PREFIX):
@@ -773,7 +791,7 @@ class Sources:
     def _outputs(self) -> list[dict]:
         """The places the piano can play (module docstring): OUTPUTS, plus a "sonos:<zone>" per sonos.json zone (re-read
         every RELOAD_S) while a rendered sound is offered and the piano script names SONOS_FLAGS."""
-        out = [dict(o) for o in OUTPUTS]
+        out = [dict(o) for o in OUTPUTS] + self._devices()
         rows, _ = self._instruments()
         if not (RENDER_FLAGS | SONOS_FLAGS) <= self._sender_flags() or all(r.get("engine") == LIVE_ENGINE
                                                                            for r in rows):
@@ -782,6 +800,17 @@ class Sources:
         if self._sonos is None or now - self._sonos_at >= contract.RELOAD_S:
             self._sonos, self._sonos_at = load_sonos_outputs(self.sonos_file), now
         return out + [dict(o) for o in self._sonos[0]]
+
+    def _devices(self) -> list[dict]:
+        """The devices that have played the piano lately (piano_live's), as outputs."""
+        fn = self.devices_fn
+        if fn is None:
+            return []
+        try:
+            return [dict(d) for d in (fn() or []) if isinstance(d, dict) and is_device(d.get("id"))]
+        except Exception:                                # noqa: BLE001
+            log.debug("sources: devices() failed", exc_info=True)
+            return []
 
     def _sender_flags(self) -> frozenset:
         """SENDER_FLAGS the test piano's script takes (re-read when the script changes)."""
@@ -870,10 +899,10 @@ class Sources:
             argv = [self.python, str(self.piano_script), "--test-piano", piece, "--port", port,
                     "--bind", LOCAL_BIND]
             if c.live:                                         # windows-gs + pc22: today's argv exactly
-                if c.output == SILENT_OUTPUT:
+                if sender_output(c.output) == SILENT_OUTPUT:
                     argv.append("--no-speaker")
             elif c.instrument is not None:
-                argv += ["--instrument", c.instrument, "--output", str(c.output or DEFAULT_OUTPUT),
+                argv += ["--instrument", c.instrument, "--output", str(sender_output(c.output) or DEFAULT_OUTPUT),
                          "--status-file", str(c.status_path)]
                 if str(c.output).startswith(SONOS_PREFIX) and "--title" in self._sender_flags():
                     argv += ["--title", c.label]

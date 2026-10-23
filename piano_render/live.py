@@ -145,7 +145,7 @@ class Live:
                         m = self.q.get_nowait()
                     except queue.Empty:
                         break
-                    if m.get("panic"):
+                    if m.get("panic") or _all_off(m):
                         pending.clear()
                         pending.extend((frame, Event(0.0, "off", k, 0)) for k in range(21, 109))
                         pending.extend((frame, Event(0.0, "cc", c, 0)) for c in PEDALS)
@@ -219,6 +219,14 @@ class Live:
         if kind == 0xB0 and a in PEDALS:
             return Event(0.0, "cc", a, b)
         return None
+
+
+def _all_off(m: dict) -> bool:
+    """CC 120 (all sound off) or 123 (all notes off): everything let go at once, as a panic."""
+    try:
+        return int(m.get("s", 0)) & 0xF0 == 0xB0 and int(m.get("a", -1)) in (120, 123)
+    except (TypeError, ValueError):
+        return False
 
 
 def main(argv: Optional[list] = None) -> int:
