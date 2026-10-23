@@ -297,7 +297,8 @@ class ScoreSheets:
         job = self.jobs.get(key)
         if job is not None:
             job.polled = time.monotonic()
-        out = {"piece": piece, "title": title, "composer": composer or None, "kind": kind, **st,
+        out = {"piece": piece, "title": title, "composer": composer or None, "editable": bool(it.get("editable")),
+               "kind": kind, **st,
                "better": self._state(bkey)["state"]}
         if st["state"] == "ready":
             out["pages"] = len(await self.pages(key, w, h, staff))
@@ -332,7 +333,7 @@ class ScoreSheets:
 
     async def pdf(self, key: str, paper: str, title: str, composer: str) -> bytes:
         """The score printed to a PDF on ``paper`` (sheet_pages.pdf: headless Chromium, ~5-10 s), kept in memory."""
-        pk = (key, paper)
+        pk = (key, paper, title, composer)
         got = self.pdfs.get(pk)
         if got is not None:
             self.pdfs.move_to_end(pk)

@@ -10,6 +10,7 @@ MuPDF misread Verovio's nested viewBox).
 from __future__ import annotations
 
 import html
+import re
 
 STAFF_UNITS = 72.0                   # a staff's height in Verovio units at scale 100 (4 spaces of 2 x unit 9)
 PAPERS = {"a4": (210.0, 297.0), "a4-landscape": (297.0, 210.0), "letter": (215.9, 279.4)}    # mm
@@ -43,8 +44,15 @@ def pages(mei: str, width_px: float, height_px: float, staff_px: float = 36.0) -
 
 def pdf(mei: str, paper: str = "a4", staff_mm: float = PRINT_STAFF_MM, title: str = "", composer: str = "") -> bytes:
     """The score as a PDF on ``paper`` (PAPERS: a4 portrait by default), a staff ``staff_mm`` high, one page per
-    sheet.  ``composer`` is in the score's own heading (the MEI's); ``title`` names the document."""
+    sheet.  ``title`` and ``composer`` head the first page (they replace the MEI's: the piece may have been renamed
+    since it was written) and name the document."""
     from playwright.sync_api import sync_playwright
+    if title or composer:                                 # the piece's names now (renamed since it was written)
+        from xml.sax.saxutils import escape
+        names = (f"<title>{escape(title)}</title>" if title else "<title/>") + \
+                (f"<composer>{escape(composer)}</composer>" if composer else "")
+        mei = re.sub(r"<titleStmt>.*?</titleStmt>", lambda _m: f"<titleStmt>{names}</titleStmt>", mei, count=1,
+                     flags=re.S)
     w_mm, h_mm = PAPERS[paper]
     k = STAFF_UNITS / max(3.0, staff_mm)                   # Verovio units per mm
     tk = _toolkit(mei, w_mm * k, h_mm * k, tuple(m * k for m in PRINT_MARGINS_MM))

@@ -920,6 +920,13 @@ class RecorderOps:
         brain, rec = self._parts()
         return await brain.call(rec.rename, rid, title, timeout=self.TIMEOUT_S)
 
+    async def edit(self, rid: str, changes: dict) -> Any:
+        brain, rec = self._parts()
+        fn = getattr(rec, "edit", None)
+        if callable(fn):
+            return await brain.call(fn, rid, changes, timeout=self.TIMEOUT_S)
+        return await brain.call(rec.rename, rid, changes.get("title"), timeout=self.TIMEOUT_S)
+
     async def delete(self, rid: str) -> Any:
         brain, rec = self._parts()
         return await brain.call(rec.delete, rid, timeout=self.TIMEOUT_S)
@@ -1097,13 +1104,16 @@ class Library:
         for rid in sorted(names, reverse=True):
             meta = _rec_meta(folder, rid)
             if meta is not None:
-                out.append({"id": rid, "title": meta.get("title"), "recorded_at": meta.get("recorded_at"),
+                out.append({"id": rid, "title": meta.get("title"), "composer": meta.get("composer"),
+                            "genre": meta.get("genre"), "recorded_at": meta.get("recorded_at"),
                             "duration_s": meta.get("duration_s")})
         return out
 
     @staticmethod
     def _rec_item(r: dict) -> dict:
         return _drop_none({"id": f"{REC_PREFIX}{r['id']}", "title": _str(r.get("title")) or "Recording",
+                           "composer": _str(r.get("composer")), "genre": _str(r.get("genre")),
+                           "genre_label": GENRE_LABEL.get(_str(r.get("genre")) or ""),
                            "duration_s": _num(r.get("duration_s")), "kind": "rec", "editable": True,
                            "added_at": _str(r.get("recorded_at")), "source": "Recorded here"})
 
@@ -1439,7 +1449,7 @@ class Library:
     # -- edits -----------------------------------------------------------------------------------------------------
     async def edit(self, piece: str, title: Any = None, composer: Any = None, genre: Any = None, *,
                    fields: Optional[set] = None) -> dict:
-        """PATCH: a user: piece's title/composer/genre, a rec: piece's title (the recorder's rename). ``fields``: the
+        """PATCH: a user: or rec: piece's title/composer/genre (a rec:'s through the recorder). ``fields``: the
         keys the request named (a named null clears composer/genre). ValueError("not_editable") for other kinds,
         LookupError("unknown_piece")."""
         got = split_id(piece)
@@ -1449,15 +1459,22 @@ class Library:
             raise LookupError("unknown_piece")
         kind, rest = got
         if kind == "rec":
-            if "title" not in fields:
+            if not fields:
                 it = self.item(piece)
                 if it is None:
                     raise LookupError("unknown_piece")
                 return it
             if self.recorder_ops is None:
                 raise ValueError("unavailable: recordings can't be renamed right now")
+            changes = {k: v for k, v in (("title", title), ("composer", composer), ("genre", genre)) if k in fields}
+            if "genre" in changes:
+                changes["genre"] = clean_genre(genre)
             try:
-                await _maybe_await(self.recorder_ops.rename(rest, title))
+                edit = getattr(self.recorder_ops, "edit", None)
+                if callable(edit):             # title, composer and genre (1c, 23 Oct: a take's score prints them)
+                    await _maybe_await(edit(rest, changes))
+                elif "title" in changes:
+                    await _maybe_await(self.recorder_ops.rename(rest, title))
             except LookupError:
                 raise LookupError("unknown_piece") from None
             it = self.item(piece)

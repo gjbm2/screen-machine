@@ -2714,12 +2714,17 @@ class Api:
         body, bad = await self._body(request)
         if bad:
             return bad
-        title = body.get("title") if isinstance(body, dict) else body
+        changes = {k: body[k] for k in ("title", "composer", "genre") if k in body} if isinstance(body, dict) \
+            else {"title": body}
         rec = _components(brain).get(RECORDER)
         if rec is None:
             return _err(503, "unavailable", NO_RECORDER)
+        edit = getattr(rec, "edit", None)
         try:
-            return _json(await self._call(brain, rec.rename, rid, title, timeout=RECORDING_FILE_TIMEOUT_S))
+            if callable(edit):                 # {title?, composer?, genre?} (1c, 23 Oct)
+                return _json(await self._call(brain, edit, rid, changes, timeout=RECORDING_FILE_TIMEOUT_S))
+            return _json(await self._call(brain, rec.rename, rid, changes.get("title"),
+                                          timeout=RECORDING_FILE_TIMEOUT_S))
         except LookupError:
             return _err(404, "unknown_recording", UNKNOWN_RECORDING)
 
