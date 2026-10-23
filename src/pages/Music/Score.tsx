@@ -15,7 +15,7 @@
 // prints them).
 //
 // The music stand (owner, 23 Oct: "it should be possible for a pianist to PLAY the score from e.g. an iPad screen"):
-// "Play from the score", or a tap on the score (Scroll: any page; Pages: the middle third), opens the score full screen
+// "Full screen", or a tap on the score (Scroll: any page; Pages: the middle third), opens the score full screen
 // on white paper, laid out for exactly the screen below its slim bar, again whenever the screen turns. Landscape and wide
 // (an iPad on its side) shows two pages side by side. A tap on the right two thirds turns forward, the left third back;
 // a swipe; the arrow and page keys, Space and Enter (Bluetooth page-turner pedals). The screen is kept awake while it's
@@ -628,7 +628,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
               height={shown.h}
               loading="lazy"
               decoding="async"
-              title="Play from here, full screen"
+              title="Full screen from this page"
               onClick={() => openStand(i + 1)}
               className={cn(PAGE_CLASS, "cursor-zoom-in")}
             />
@@ -639,18 +639,25 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
           <div
             className="relative select-none"
             style={{ touchAction: "pan-y pinch-zoom", cursor: viewTurner.cursor }}
-            title="Click the right of the page for the next, the left for the previous; the middle plays from it full screen"
+            title="Click the right of the page for the next, the left for the previous; the middle opens it full screen"
             {...viewTurner.handlers}
           >
-            <img
-              src={pageUrl(cur)}
-              alt={`Page ${cur} of ${count}`}
-              width={shown.w}
-              height={shown.h}
-              decoding="async"
-              draggable={false}
-              className={PAGE_CLASS}
-            />
+            {/* the page before and the two after stay mounted and painted (see-through), so a turn is instant */}
+            {[cur - 1, cur, cur + 1, cur + 2]
+              .filter((n) => n >= 1 && n <= count)
+              .map((n) => (
+                <img
+                  key={`p${n}`}
+                  src={pageUrl(n)}
+                  alt={n === cur ? `Page ${cur} of ${count}` : ""}
+                  aria-hidden={n !== cur}
+                  width={shown.w}
+                  height={shown.h}
+                  decoding="async"
+                  draggable={false}
+                  className={cn(PAGE_CLASS, n !== cur && "pointer-events-none absolute inset-x-0 top-0 opacity-0")}
+                />
+              ))}
             <ZoneHint zone={viewTurner.zone} canPrev={cur > 1} canNext={cur < count} withOpen />
           </div>
           <div className="flex items-center justify-center gap-4" style={{ height: PAGER_H }}>
@@ -806,7 +813,7 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
             title="Full screen, to play from: tap the right of the page to turn forward, the left to go back"
             className={cn(CHIP, PRIMARY, "border-transparent font-semibold")}
           >
-            <Maximize2 className="h-4 w-4" aria-hidden /> Play from the score
+            <Maximize2 className="h-4 w-4" aria-hidden /> Full screen
           </button>
         )}
         <div role="radiogroup" aria-label="How to read it" className="flex gap-1.5">
@@ -1009,6 +1016,8 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   const [page, setPage] = useState(() => pageAt(start, seed.st.pages ?? 1, false));
   /** Scroll: the page in view and how far down the piece the screen's bottom is (0..1). */
   const [scrolled, setScrolled] = useState({ page: 1, done: 0 });
+  /** The page images that have loaded (their URLs): the one shown not yet loaded shows a spinner. */
+  const [loaded, setLoaded] = useState<Set<string>>(() => new Set());
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const remember = useCallback(() => sessionSet(standAtKey(pieceId), String(at.current)), [pieceId]);
@@ -1174,17 +1183,36 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
     [count, last, remember],
   );
 
-  // Pages: the next and previous pages (spreads) load ahead, so a turn is instant.
+  // Every page of this layout comes into the browser's cache, nearest first, one at a time (the server draws them
+  // ahead too): a turn, or a jump, never waits on the network. The window of mounted pages below makes it instant.
+  const fetchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (mode !== "pages" || !count) return;
-    const ahead = spread ? [cur + 2, cur + 3, cur - 2, cur - 1] : [cur + 1, cur + 2, cur - 1];
-    for (const n of ahead) {
-      if (n < 1 || n > count) continue;
-      const im = new Image();
-      im.decoding = "async";
-      im.src = pageUrl(n);
+    let stop = false;
+    const order: number[] = [];
+    for (let d = 0; d <= count; d++) {
+      for (const n of d ? [cur + d, cur - d] : [cur]) if (n >= 1 && n <= count && !order.includes(n)) order.push(n);
     }
-  }, [mode, count, cur, spread, pageUrl]);
+    void (async () => {
+      for (const n of order) {
+        if (stop) return;
+        const url = pageUrl(n);
+        if (fetchedRef.current.has(url)) continue;
+        try {
+          const r = await fetch(url, { cache: "force-cache" });
+          if (r.ok) {
+            await r.blob();
+            fetchedRef.current.add(url);
+          }
+        } catch {
+          return; // offline or the size changed under us: the visible pages still load as images
+        }
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [mode, count, cur, pageUrl]);
 
   const close = useCallback(() => onClose(at.current), [onClose]);
 
@@ -1305,6 +1333,10 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
       src={pageUrl(n)}
       alt={`Page ${n} of ${count}`}
       draggable={false}
+      onLoad={(e) => {
+        const src = e.currentTarget.getAttribute("src") ?? "";
+        setLoaded((m) => (m.has(src) ? m : new Set(m).add(src)));
+      }}
       className="block max-h-full max-w-full shrink-0 object-contain"
       style={{ width: slot.w, height: slot.h }}
     />
@@ -1330,18 +1362,40 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
         ))}
       </div>
     );
-  else
+  else {
+    // the spread shown, the one before and the two after, all mounted and painted (the hidden ones see-through), so a
+    // turn swaps layers that are already decoded: nothing loads at the tap
+    const firsts: number[] = [];
+    for (let f = cur - step; f <= cur + 2 * step; f += step) if (f >= 1 && f <= count) firsts.push(f);
     pages = (
-      <div className="flex h-full w-full items-center justify-center">
-        {pageImg(cur, "a")}
-        {spread && (
-          <>
-            <div aria-hidden className="w-px shrink-0 bg-stone-200" style={{ height: slot.h * 0.92 }} />
-            {cur + 1 <= count ? pageImg(cur + 1, "b") : <div aria-hidden className="shrink-0" style={{ width: slot.w, height: slot.h }} />}
-          </>
+      <div className="relative h-full w-full">
+        {firsts.map((f) => {
+          const here = f === cur;
+          return (
+            <div
+              key={`spread-${f}`}
+              aria-hidden={!here}
+              className="absolute inset-0 flex items-center justify-center"
+              style={{ opacity: here ? 1 : 0, zIndex: here ? 1 : 0 }}
+            >
+              {pageImg(f, `p${f}`)}
+              {spread && (
+                <>
+                  <div aria-hidden className="w-px shrink-0 bg-stone-200" style={{ height: slot.h * 0.92 }} />
+                  {f + 1 <= count ? pageImg(f + 1, `p${f + 1}`) : <div aria-hidden className="shrink-0" style={{ width: slot.w, height: slot.h }} />}
+                </>
+              )}
+            </div>
+          );
+        })}
+        {!loaded.has(pageUrl(cur)) && (
+          <div className="pointer-events-none absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow">
+            <Spinner className="text-stone-500" />
+          </div>
         )}
       </div>
     );
+  }
 
   return createPortal(
     <div
