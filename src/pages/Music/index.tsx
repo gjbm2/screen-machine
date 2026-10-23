@@ -9,9 +9,12 @@
 // player is polled every 1 s while it prepares or plays and every 5 s otherwise, only while the page is visible. An
 // older show_service without these routes gets one line: "Music needs the newer show service". Same light, warm skin
 // and menu as /room.
+//
+// ?score=<piece id> shows that piece's score (Score.tsx) in place of Now playing, the tabs and the test tracks (they
+// stay as they were underneath, and the scroll position comes back with them). Any page can link to /music?score=<id>.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Menu } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { useRoomLink } from "@/components/room/roomLink";
@@ -23,12 +26,14 @@ import { TestShowSection } from "@/pages/Room/TestShow";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import type { Tone } from "@/pages/Room/tones";
 import { MusicApi } from "./api";
+import { SCORE_PARAM } from "./bits";
 import { Browse } from "./Browse";
 import { MusicProvider, useFlash, usePlaylists, type MusicCtx, type MusicTab } from "./context";
 import { FromWeb } from "./FromWeb";
 import { Mine } from "./Mine";
 import { NowPlaying } from "./NowPlaying";
 import { Playlists } from "./Playlists";
+import { ScoreView } from "./Score";
 import { usePlayer } from "./usePlayer";
 
 const TAB_KEY = "music.tab";
@@ -82,6 +87,38 @@ export default function MusicPage() {
   const [visited, setVisited] = useState<MusicTab[]>(() => [storedTab()]);
   const [openPl, setOpenPl] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const scoreId = params.get(SCORE_PARAM);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Opened here (useOpenScore marks the entry): Back is the browser's Back; a link straight to a score drops the param.
+  const closeScore = useCallback(() => {
+    if ((location.state as { score?: boolean } | null)?.score) navigate(-1);
+    else
+      setParams((p) => {
+        const next = new URLSearchParams(p);
+        next.delete(SCORE_PARAM);
+        return next;
+      });
+  }, [location.state, navigate, setParams]);
+
+  // The page's scroll position is kept while a score is open and put back when it closes.
+  const lastY = useRef(0);
+  const inScore = useRef(scoreId);
+  useEffect(() => {
+    const onScroll = () => {
+      if (!inScore.current) lastY.current = window.scrollY;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  useLayoutEffect(() => {
+    const was = inScore.current;
+    inScore.current = scoreId;
+    if (scoreId && !was) window.scrollTo(0, 0);
+    else if (!scoreId && was) window.scrollTo(0, lastY.current);
+  }, [scoreId]);
 
   const setTab = useCallback((t: MusicTab) => {
     setTabState(t);
@@ -152,68 +189,72 @@ export default function MusicPage() {
           </header>
 
           <main className="space-y-5 pt-2">
-            <NowPlaying />
+            {scoreId && <ScoreView key={scoreId} pieceId={scoreId} onBack={closeScore} />}
 
-            {!old && (
-              <>
-                <div
-                  role="tablist"
-                  aria-label="Music"
-                  className="sticky top-0 z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-1 shadow-sm"
-                  data-testid="music-tabs"
-                >
-                  {TABS.map(([t, words]) => (
-                    <button
-                      key={t}
-                      type="button"
-                      role="tab"
-                      aria-selected={tab === t}
-                      onClick={() => {
-                        if (t === "playlists" && tab === "playlists") setOpenPl(null);
-                        setTab(t);
-                      }}
-                      className={cn(
-                        "min-h-10 rounded-full px-1 text-[14px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[15px]",
-                        tab === t ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
-                      )}
-                    >
-                      {words}
-                    </button>
-                  ))}
-                </div>
+            <div hidden={!!scoreId} className="space-y-5">
+              <NowPlaying />
 
-                {/* A tab stays as it was (search, scroll) when you come back to it. */}
-                {visited.includes("browse") && (
-                  <div role="tabpanel" hidden={tab !== "browse"}>
-                    <Browse />
+              {!old && (
+                <>
+                  <div
+                    role="tablist"
+                    aria-label="Music"
+                    className="sticky top-0 z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-1 shadow-sm"
+                    data-testid="music-tabs"
+                  >
+                    {TABS.map(([t, words]) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === t}
+                        onClick={() => {
+                          if (t === "playlists" && tab === "playlists") setOpenPl(null);
+                          setTab(t);
+                        }}
+                        className={cn(
+                          "min-h-10 rounded-full px-1 text-[14px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[15px]",
+                          tab === t ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
+                        )}
+                      >
+                        {words}
+                      </button>
+                    ))}
                   </div>
-                )}
-                {visited.includes("playlists") && (
-                  <div role="tabpanel" hidden={tab !== "playlists"}>
-                    <Playlists openId={openPl} onOpen={setOpenPl} />
-                  </div>
-                )}
-                {visited.includes("mine") && (
-                  <div role="tabpanel" hidden={tab !== "mine"}>
-                    <Mine />
-                  </div>
-                )}
-                {visited.includes("web") && (
-                  <div role="tabpanel" hidden={tab !== "web"}>
-                    <FromWeb />
-                  </div>
-                )}
-              </>
-            )}
 
-            <Unroll
-              title="Test tracks and patterns"
-              hint="recorded test music, the test piano"
-              className="border-t border-stone-200/80 pt-3"
-              testId="music-test-tracks"
-            >
-              <TestTracks api={roomApi} />
-            </Unroll>
+                  {/* A tab stays as it was (search, scroll) when you come back to it. */}
+                  {visited.includes("browse") && (
+                    <div role="tabpanel" hidden={tab !== "browse"}>
+                      <Browse />
+                    </div>
+                  )}
+                  {visited.includes("playlists") && (
+                    <div role="tabpanel" hidden={tab !== "playlists"}>
+                      <Playlists openId={openPl} onOpen={setOpenPl} />
+                    </div>
+                  )}
+                  {visited.includes("mine") && (
+                    <div role="tabpanel" hidden={tab !== "mine"}>
+                      <Mine />
+                    </div>
+                  )}
+                  {visited.includes("web") && (
+                    <div role="tabpanel" hidden={tab !== "web"}>
+                      <FromWeb />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <Unroll
+                title="Test tracks and patterns"
+                hint="recorded test music, the test piano"
+                className="border-t border-stone-200/80 pt-3"
+                testId="music-test-tracks"
+              >
+                <TestTracks api={roomApi} />
+              </Unroll>
+            </div>
           </main>
         </div>
 

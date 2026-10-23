@@ -1,8 +1,9 @@
 // The Music page's shared pieces: a piece's row (tap = play now, ⋯ = more), the sheet behind ⋯ (Play next, Add to the
-// queue, Add to a playlist…, Pin), a search box, chips, and a confirm dialog. Same light, warm skin as /room.
+// queue, Add to a playlist…, Score, Pin), a search box, chips, and a confirm dialog. Same light, warm skin as /room.
 
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronLeft, ListEnd, ListMusic, ListPlus, MoreHorizontal, Pin, PinOff, Play, Plus, Search, X } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Check, ChevronLeft, FileMusic, ListEnd, ListMusic, ListPlus, MoreHorizontal, Pin, PinOff, Play, Plus, Search, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,31 @@ export interface PieceRef {
   kind?: string;
   pinned?: boolean;
   editable?: boolean;
+}
+
+/** The page's address carries an open score: /music?score=<piece id> (any other page can link to it). */
+export const SCORE_PARAM = "score";
+
+/** Has this piece a MIDI file to write a score from? Everything but the test patterns (bare ids, no "lib:" etc.). */
+export function hasScore(p: { id: string; kind?: string | null }): boolean {
+  return p.kind ? p.kind !== "phrase" : /^(lib|user|rec|file):/.test(p.id);
+}
+
+/** Open a piece's score on this page: ?score=<id>, the other params kept, a new history entry (so Back closes it). */
+export function useOpenScore(): (id: string) => void {
+  const [, setParams] = useSearchParams();
+  return useCallback(
+    (id: string) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          next.set(SCORE_PARAM, id);
+          return next;
+        },
+        { state: { score: true } },
+      ),
+    [setParams],
+  );
 }
 
 /** The guess shown while "play now" is on its way (the reply replaces it). */
@@ -130,8 +156,8 @@ export function PieceRow({
 }
 
 /**
- * The sheet behind a row's ⋯: Play now · Play next · Add to the queue · Add to a playlist… · Pin / Unpin, then
- * anything the list adds (`extra`: Rename, Download, Delete in Mine).
+ * The sheet behind a row's ⋯: Play now · Play next · Add to the queue · Add to a playlist… · Score · Pin / Unpin,
+ * then anything the list adds (`extra`: Rename, Download, Delete in Mine).
  */
 export function PieceSheet({
   piece,
@@ -148,6 +174,7 @@ export function PieceSheet({
   const [err, setErr] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [naming, setNaming] = useState(false);
+  const openScore = useOpenScore();
 
   useEffect(() => {
     setChoosing(false);
@@ -231,6 +258,18 @@ export function PieceSheet({
           >
             <ListMusic className="h-5 w-5 text-stone-600" aria-hidden /> Add to a playlist…
           </button>
+          {hasScore(piece) && (
+            <button
+              type="button"
+              className={SHEET_ROW}
+              onClick={() => {
+                onClose();
+                openScore(piece.id);
+              }}
+            >
+              <FileMusic className="h-5 w-5 text-stone-600" aria-hidden /> Score
+            </button>
+          )}
           <button
             type="button"
             className={SHEET_ROW}
