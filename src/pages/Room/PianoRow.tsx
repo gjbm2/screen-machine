@@ -249,7 +249,11 @@ export function PianoRow({ api }: { api: RoomApi }) {
           {line}
         </p>
       </div>
-      {connected && down.length > 0 && <p className="text-sm leading-snug text-stone-600">Pedal down: {down.join(", ")}</p>}
+      {/* always there while connected, so the card doesn't jump with every pedal (owner, 23 Oct: "glitchy ui which
+          vertical height of component changes rapidly when sustain pressed & released") */}
+      {connected && (
+        <p className="text-sm leading-snug text-stone-600">{down.length > 0 ? `Pedal down: ${down.join(", ")}` : "Pedals up"}</p>
+      )}
       {connected && autoLine && (
         <p className="text-sm leading-snug text-stone-600" data-testid="music-piano-auto">
           {autoLine}
