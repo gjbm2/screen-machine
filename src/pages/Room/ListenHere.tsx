@@ -11,6 +11,7 @@
 //     turned on opens the screen; once closed it stays closed until it's turned on again.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Maximize2, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
@@ -32,6 +33,7 @@ import {
   type ListenStatus,
 } from "./listenStream";
 import { LiveMusicView } from "./LiveMusicView";
+import { PlayBar } from "@/pages/Music/PlayBar";
 import { NoteFeed } from "./noteFeed";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import type { ShowTestView } from "./types";
@@ -139,6 +141,7 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
   // on a score (owner, 23 Oct: "the playing behind this device piece floating panel gets in the way when you're
   // watching a score"): no bar over the music and the live music screen doesn't open by itself; the score's own
   // Play on shows the line
+  const navigate = useNavigate();
   const scoreRef = useRef(onScore);
   scoreRef.current = onScore;
   const here = useListenHere();
@@ -260,6 +263,9 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
     title = "The piano";
     sub = "Played in the room";
   }
+  // the piece the pianola shows, when it has a score (the player's, else the test piano's library piece or recording)
+  const playingId = (player && PLAYER_BUSY.includes(player.state) ? player.current?.id : null) ?? piano?.piece ?? player?.current?.id ?? null;
+  const scorePiece = playingId && /^(lib|user|rec|file):/.test(playingId) ? playingId : null;
   const used = here.instrumentUsed ?? sound.instrument;
   const soundLabel = sound.instruments.find((i) => i.id === used)?.label ?? null;
 
@@ -284,7 +290,32 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
         </div>
       )}
       {/* opened by a tap (Open, or Watch: Pianola), so on a score page too; only the auto-open is held back there */}
-      {here.viewOpen && <LiveMusicView feed={feed} title={title} sub={sub} soundLabel={soundLabel} line={<ListenLine big />} />}
+      {here.viewOpen && (
+        <LiveMusicView
+          feed={feed}
+          title={title}
+          sub={sub}
+          soundLabel={soundLabel}
+          line={<ListenLine big />}
+          bar={
+            // the same play bar as the score's; Watch: Score opens this piece's score full screen (1c, owner 23 Oct)
+            <PlayBar
+              baseUrl={api.baseUrl}
+              compact
+              watching="pianola"
+              onWatch={
+                scorePiece
+                  ? (w) => {
+                      if (w !== "score") return;
+                      setListenView(false);
+                      navigate(`/music?score=${encodeURIComponent(scorePiece)}&stand=1`);
+                    }
+                  : undefined
+              }
+            />
+          }
+        />
+      )}
     </>
   );
 }
