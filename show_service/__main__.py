@@ -262,15 +262,25 @@ class Show:
         except Exception:
             log.exception("library.py not loaded: the Music page has no library (the show carries on)")
         pl_mod = self._import("playlist") if opts.brain else None
+        # whole-piece scores for the Music page (1c, 23 Oct): GET /api/v1/score/<piece> (score_sheet.py)
+        self.sheets: Any = None
+        if self.library is not None:
+            try:
+                from . import score_sheet as sheet_mod
+                self.sheets = sheet_mod.ScoreSheets(self.library)
+            except Exception:
+                log.exception("score_sheet.py not loaded: no scores on the Music page (the show carries on)")
 
         def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
-                    mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod) -> None:
+                    mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod, sh: Any = self.sheets) -> None:
             lv.routes(app)
             inp.routes(app)
             if mc is not None:
                 mc.routes(app)
             if lib is not None:
                 lib.routes(app)
+            if sh is not None:
+                sh.routes(app)
             if plm is not None:
                 plm.routes(app, lambda: self.brain)
             if api is not None:
