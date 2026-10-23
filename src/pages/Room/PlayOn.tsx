@@ -108,9 +108,11 @@ function usePlayOn(baseUrl: string, addLog?: (e: NewLogEntry) => void) {
   const known = (id: string | null) => !!id && (id === myOutput() || server.some((o) => o.id === id));
   const output = known(roomOutput) ? roomOutput : local.output;
   // this device's line ("Quiet here · the room plays on …") follows what this control reads too
+  // keyed on the strings, not the list (a fresh array every render): two mounts on one page must not trade labels
+  const roomLabel = outputLabel(roomOutput, server);
   useEffect(() => {
-    if (here.on && roomOutput) setListenRoomOutput(roomOutput, outputLabel(roomOutput, server));
-  }, [here.on, roomOutput, server]);
+    if (here.on && roomOutput && roomLabel) setListenRoomOutput(roomOutput, roomLabel);
+  }, [here.on, roomOutput, roomLabel]);
 
   const apply = async (id: string) => {
     local.setOutput(id);
