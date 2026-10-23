@@ -24,7 +24,8 @@ async def _echo(request: web.Request) -> web.Response:
                               "len": len(body), "ctype": request.headers.get("Content-Type"),
                               "prefix": request.headers.get("X-Forwarded-Prefix"),
                               "ae": request.headers.get("Accept-Encoding")},
-                             headers={"Cache-Control": "no-store"})
+                             headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*",
+                                      "Access-Control-Expose-Headers": "X-Test"})
 
 
 async def _blob(request: web.Request) -> web.Response:
@@ -116,6 +117,8 @@ async def rig():
 async def test_get_and_post_with_query(rig: Rig) -> None:
     async with rig.http.get(rig.url("/renderer/api/echo?a=1&b=x%20y"), skip_auto_headers=["Accept-Encoding"]) as r:
         assert r.status == 200 and r.headers["Cache-Control"] == "no-store"
+        assert "Access-Control-Allow-Origin" not in r.headers                  # the upstream's "*": room's policy
+        assert r.headers["Access-Control-Expose-Headers"] == "X-Test"         # relayed (23 Oct: X-Piano-Instrument)
         assert await r.json() == {"method": "GET", "path": "/api/echo", "query": {"a": "1", "b": "x y"}, "len": 0,
                                   "ctype": None, "prefix": "/renderer", "ae": None}   # nothing the client didn't send
     async with rig.http.post(rig.url("/renderer/api/echo?k=v"), json={"x": 1},
