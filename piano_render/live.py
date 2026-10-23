@@ -127,6 +127,10 @@ class Live:
         out_r = np.zeros(B, np.float32)
         zeros = np.zeros((B, 2), np.float32)
         t0 = self.clock()
+        # the stream's clock, for a listener matching what it hears to the screens and the score: audio at stream
+        # second x carries the notes whose sound time is t0 + x - DELAY_S (host CLOCK_MONOTONIC)
+        sys.stderr.write(json.dumps({"clock": {"t0": round(t0, 4), "delay_s": DELAY_S, "sr": SR}}) + "\n")
+        sys.stderr.flush()
         frame = 0
         last_sound = 0
         idle = False

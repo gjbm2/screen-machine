@@ -6,6 +6,8 @@ page's "This device" output plays PC22's own piano sound, streamed.
                                                 synthesised by piano_render.live with that instrument (the default
                                                 one for none, an unknown one, or windows-gs, which can't stream)
   HEAD /api/v1/piano/live.mp3                   200 with the headers: it's here (the page probes before offering it)
+  GET  /api/v1/piano/live/clock?instrument=     the stream's clock (clock()): how far behind a listener hears; the
+                                                stream's own reply carries it too (X-Piano-Clock: its join position)
 
 One synth process per instrument with listeners (sm-piano's python, nice 5, its own memory cap: stream.py's
 prepare_process), started by the first and stopped LINGER_S after the last leaves; every listener of it shares its
@@ -59,6 +61,9 @@ class _Synth:
         self.stop_at: Optional[float] = None
         self.task: Optional[asyncio.Task] = None
         self.started = time.monotonic()
+        self.t0: Optional[float] = None                  # host time of the stream's first audio frame
+        self.delay_s = 0.25                              # piano_render.live's DELAY_S (its clock line says)
+        self.bytes_out = 0                               # MP3 bytes made so far: the stream's position, CBR
 
 
 class PianoLive:
@@ -150,6 +155,10 @@ class PianoLive:
                     log.info("piano live: %s ready (load %.1f s, room %s)", s.instrument, m.get("load_s") or 0,
                              m.get("room"))
                     continue
+                if isinstance(m.get("clock"), dict):
+                    s.t0 = float(m["clock"].get("t0") or 0.0) or None
+                    s.delay_s = float(m["clock"].get("delay_s") or s.delay_s)
+                    continue
                 if "stats" in m:
                     log.info("piano live: %s ended: %s", s.instrument, json.dumps(m["stats"])[:300])
                     continue
@@ -164,6 +173,7 @@ class PianoLive:
                 chunk = await proc.stdout.read(CHUNK)
                 if not chunk:
                     break
+                s.bytes_out += len(chunk)
                 for q in list(s.clients):
                     if q.qsize() >= CLIENT_QUEUE:
                         s.clients.discard(q)
@@ -210,6 +220,24 @@ class PianoLive:
     # -- routes (show-bus) ---------------------------------------------------------------------------------------
     def routes(self, app: Any) -> None:
         app.router.add_get("/api/v1/piano/live.mp3", self._h_live)
+        app.router.add_get("/api/v1/piano/live/clock", self._h_clock)
+
+    def clock(self, s: _Synth, pos_s: Optional[float] = None) -> dict:
+        """The stream's clock (owner, 23 Oct: "when playing from 'this device' we need to match latency with local
+        score and/or pianola view because local device is quite a few seconds behind"): audio at stream second x
+        carries the sound time t0 + x - delay_s (host CLOCK_MONOTONIC); host_now is that clock now; pos_s the
+        stream second a listener joining now starts at. A listener whose audio element's currentTime is c (from its
+        own start) hears sound time t0 + pos_s(at its join) + c - delay_s: it is host_now minus that behind."""
+        return {"t0": s.t0, "delay_s": s.delay_s, "host_now": round(time.monotonic(), 4),
+                "pos_s": round(pos_s if pos_s is not None else s.bytes_out * 8 / (BITRATE * 1000), 3),
+                "instrument": s.instrument}
+
+    async def _h_clock(self, request: Any) -> Any:
+        from aiohttp import web
+        s = self.synths.get(self._pick(request.query.get("instrument")) or "")
+        if s is None:
+            return web.json_response({"error": "not_streaming", "detail": "No piano sound is streaming."}, status=404)
+        return web.json_response(self.clock(s), headers={"Cache-Control": "no-store"})
 
     async def _h_live(self, request: Any) -> Any:
         from aiohttp import web
@@ -233,6 +261,9 @@ class PianoLive:
                 self._reaper = asyncio.get_running_loop().create_task(self._reap())
         q: asyncio.Queue = asyncio.Queue()
         s.clients.add(q)
+        # where in the stream this listener starts (its audio element's currentTime 0), and the stream's clock
+        headers = {**headers, "X-Piano-Clock": json.dumps(self.clock(s)),
+                   "Access-Control-Expose-Headers": "X-Piano-Instrument, X-Piano-Clock"}
         resp = web.StreamResponse(status=200, headers=headers)
         resp.enable_chunked_encoding()
         try:
