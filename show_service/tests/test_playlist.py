@@ -448,3 +448,45 @@ def test_routes_through_a_brain(rig):
     finally:
         brain.close()
         rig.p.stop()
+
+
+class SpeedSources(FakeSources):
+    """1c's start_test(speed, start_s) and status pos_s (23 Oct)."""
+
+    def __init__(self, clock: Clock) -> None:
+        super().__init__(clock)
+        self.pos_s: float | None = None
+
+    def start_test(self, source, piece=None, instrument=None, output=None, once=None, speed=None, start_s=None):
+        st = super().start_test(source, piece, instrument, output, once)
+        self.calls[-1] = self.calls[-1] + (speed, start_s)
+        return st
+
+    def status(self) -> dict:
+        s = super().status()
+        s["piano"]["pos_s"] = self.pos_s
+        return s
+
+
+def test_speed_persists_rides_every_start_and_a_change_carries_on_from_where_it_was(tmp_path):
+    """Owner, 23 Oct: a speed control, 1x by default. The player's speed goes to every start_test; a change while a
+    piece plays restarts it at the new speed from sources' pos_s (its own run, never 'stepped aside'); elapsed is
+    the place in the piece; a bad speed is refused; it survives a restart."""
+    r = Rig(tmp_path)
+    r.src = SpeedSources(r.clock)
+    r.play(items=ITEMS)
+    assert r.src.calls[-1][-2:] == (None, None)                       # 1x: nothing extra sent
+    r.playing()
+    r.src.pos_s = 42.5
+    v = r.p.act({"action": "set", "speed": 1.25})
+    assert r.src.calls[-1][:2] == ("start", "lib:p1") and r.src.calls[-1][-2:] == (1.25, 42.5)
+    assert v["speed"] == 1.25 and v["state"] in ("preparing", "playing")
+    r.playing()
+    assert r.p.view()["state"] == "playing" and r.p.view()["elapsed_s"] == 42.5      # ours, the place in the piece
+    r.finish()
+    assert r.src.calls[-1][1] == "lib:p2" and r.src.calls[-1][-2:] == (1.25, None)    # the next piece keeps it
+    with pytest.raises(ValueError, match="bad_speed"):
+        r.p.act({"action": "set", "speed": 9})
+    r.p.stop()
+    p2 = r.new()
+    assert p2.view()["speed"] == 1.25 and p2.view()["state"] == "stopped"

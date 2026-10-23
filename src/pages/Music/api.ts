@@ -128,6 +128,8 @@ export interface PlayerView {
   output: string | null;
   repeat: Repeat;
   shuffle: boolean;
+  /** The piece's tempo times this (owner, 23 Oct: a speed control, 1× by default); older show_service: absent. */
+  speed?: number;
   error: string | null;
   choices: PlayerChoices;
 }
@@ -138,7 +140,7 @@ export type PlayerAction =
   | { action: "play"; items: string[]; name?: string }
   | { action: "stop" | "next" | "prev" }
   | { action: "add" | "play_next"; piece: string }
-  | { action: "set"; instrument?: string; output?: string; repeat?: Repeat; shuffle?: boolean };
+  | { action: "set"; instrument?: string; output?: string; repeat?: Repeat; shuffle?: boolean; speed?: number };
 
 /** A piece's score (show_service/score_sheet.py): written once from its MIDI, then laid out for the asking screen. */
 /** Paper for a score's PDF. */
