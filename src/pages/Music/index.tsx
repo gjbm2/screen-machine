@@ -161,7 +161,8 @@ export default function MusicPage() {
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <MusicProvider value={ctx}>
-        <div className="mx-auto w-full max-w-3xl px-4 pb-24 sm:px-6">
+        {/* a score is read wider (its pages are laid out for the width they get) */}
+        <div className={cn("mx-auto w-full px-4 pb-24 sm:px-6", scoreId ? "max-w-6xl" : "max-w-3xl")}>
           <header className="pb-1 pt-3">
             <div className="flex items-center gap-1">
               <h1 className="mr-auto text-[28px] font-semibold leading-tight tracking-tight">Music</h1>

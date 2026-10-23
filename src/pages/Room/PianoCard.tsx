@@ -4,7 +4,7 @@
 // room_service's /show pass-through to show_service:
 //   GET    /show/api/v1/piano/recordings              the recorder ("off" | "recording", how long, notes) and the takes
 //   POST   /show/api/v1/piano/record {on}              Record / Stop; a stop saves the take ("last"), unless nothing was played
-//   PATCH  /show/api/v1/piano/recordings/<id> {title}  Keep (with a new name) and Rename
+//   PATCH  /show/api/v1/piano/recordings/<id> {title, composer?}  Keep (with a new name) and Edit details
 //   DELETE /show/api/v1/piano/recordings/<id>          Discard and Delete
 //   GET    /show/api/v1/piano/recordings/<id>.mid      Download (the file's name is the title)
 //   POST   /show/api/v1/test {source: "piano", piece: "rec:<id>", instrument, output, once: true}   Play (as the test
@@ -319,6 +319,7 @@ export function PianoCard({
   const [open, setOpen] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
+  const [renameComposer, setRenameComposer] = useState("");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [all, setAll] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -435,12 +436,13 @@ export function PianoCard({
   // ── Rename, Delete / Discard ──
   const saveRename = (r: PianoRecording) => {
     const title = renameText.trim();
-    if (!title || title === r.title) {
+    const composer = renameComposer.trim();
+    if (!title || (title === r.title && composer === (r.composer ?? ""))) {
       setRenaming(null);
       return;
     }
-    void run(`rename:${r.id}`, `renamed "${r.title}" to "${title}"`, async () => {
-      await api.pianoRename(r.id, title);
+    void run(`rename:${r.id}`, `saved "${title}"`, async () => {
+      await api.pianoEdit(r.id, { title, composer: composer || null });
       setRenaming(null);
       await refreshRecs();
     });
@@ -593,6 +595,7 @@ export function PianoCard({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-base font-medium">{r.title}</span>
                       <span className="block text-sm text-muted-foreground">
+                        {r.composer ? `${r.composer} · ` : ""}
                         {clock(r.duration_s)}
                         {when(r.recorded_at) ? ` · ${when(r.recorded_at)}` : ""}
                         {playing ? (status?.state === "preparing" ? " · getting ready" : " · playing") : ""}
@@ -606,35 +609,47 @@ export function PianoCard({
                   {isOpen && (
                     <div className="space-y-3 border-t border-stone-200 px-3 py-3">
                       {renaming === r.id ? (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div
+                          className="space-y-2"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveRename(r);
+                            if (e.key === "Escape") setRenaming(null);
+                          }}
+                        >
                           <Input
-                            aria-label="New name"
+                            aria-label="Title"
+                            placeholder="Title"
                             autoFocus
                             value={renameText}
                             maxLength={120}
                             onChange={(e) => setRenameText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") saveRename(r);
-                              if (e.key === "Escape") setRenaming(null);
-                            }}
-                            className="h-11 min-w-0 flex-1 basis-48 rounded-xl bg-white text-base md:text-base"
+                            className="h-11 rounded-xl bg-white text-base md:text-base"
                           />
-                          <button
-                            type="button"
-                            disabled={!!busy}
-                            onClick={() => saveRename(r)}
-                            className={cn(TAP_BUTTON_CLASS, "inline-flex items-center gap-2 bg-primary font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60")}
-                          >
-                            {busy === `rename:${r.id}` ? <Spinner /> : <Check className="h-4 w-4" aria-hidden />} Save
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Cancel renaming"
-                            onClick={() => setRenaming(null)}
-                            className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", SECONDARY)}
-                          >
-                            <X className="h-4 w-4" aria-hidden />
-                          </button>
+                          <Input
+                            aria-label="Composer"
+                            placeholder="Composer (whose piece it is)"
+                            value={renameComposer}
+                            maxLength={120}
+                            onChange={(e) => setRenameComposer(e.target.value)}
+                            className="h-11 rounded-xl bg-white text-base md:text-base"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={!!busy}
+                              onClick={() => saveRename(r)}
+                              className={cn(TAP_BUTTON_CLASS, "inline-flex items-center gap-2 bg-primary font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60")}
+                            >
+                              {busy === `rename:${r.id}` ? <Spinner /> : <Check className="h-4 w-4" aria-hidden />} Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenaming(null)}
+                              className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 px-4")}
+                            >
+                              <X className="h-4 w-4" aria-hidden /> Cancel
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-2">
@@ -665,10 +680,11 @@ export function PianoCard({
                             onClick={() => {
                               setRenaming(r.id);
                               setRenameText(r.title);
+                              setRenameComposer(r.composer ?? "");
                             }}
                             className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 px-4 disabled:opacity-60")}
                           >
-                            <Pencil className="h-4 w-4" aria-hidden /> Rename
+                            <Pencil className="h-4 w-4" aria-hidden /> Edit details
                           </button>
                           <Link
                             to={scoreLink(r.id)}

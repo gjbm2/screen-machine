@@ -7,7 +7,7 @@
 //   GET    /show/api/v1/library/item/<id>         one piece
 //   PUT    /show/api/v1/library/pins/<id>         pin (DELETE unpins)
 //   POST   /show/api/v1/library/upload?filename=&title=&composer=&genre=   raw MIDI body (≤ 1 MB)
-//   PATCH  /show/api/v1/library/item/<id>         rename (uploads and recordings)      DELETE: remove
+//   PATCH  /show/api/v1/library/item/<id>         title, composer, genre (uploads and recordings)   DELETE: remove
 //   GET    /show/api/v1/library/item/<id>.mid     download
 //   GET    /show/api/v1/library/web?q=            find MIDI on the web; POST …/web/import {ref, title?}
 //   GET    /show/api/v1/playlists                 POST {name, items?}; GET/PUT/DELETE …/<id>
@@ -168,6 +168,8 @@ export interface ScoreStatus {
   rev?: string;
   /** failed: what went wrong. */
   detail?: string;
+  /** The listener's own piece (an upload or a recording): its title and composer can be changed (api.edit). */
+  editable?: boolean;
 }
 
 export type ScoreKind = "quick" | "better";
@@ -336,7 +338,7 @@ export class MusicApi {
     return this.request<UploadResult>("POST", `/library/upload${qs}`, { raw: file, timeoutMs: UPLOAD_TIMEOUT_MS });
   }
 
-  /** Uploads and recordings only (a recording's rename is the recorder's). */
+  /** Uploads and recordings only: title, composer and genre (the score's PDF prints the title and composer). */
   edit(id: string, patch: { title?: string; composer?: string | null; genre?: string | null }) {
     return this.request<MusicItem>("PATCH", `/library/item/${seg(id)}`, { body: patch });
   }
@@ -407,9 +409,10 @@ export class MusicApi {
     return `${this.baseUrl}/show/api/v1/score/${seg(id)}/page/${n}.svg${qs}`;
   }
 
-  /** The whole score as a PDF to print (opened in a new tab: the browser's viewer prints or saves it). */
-  scorePdfUrl(id: string, paper: ScorePaper, rev?: string, kind?: ScoreKind): string {
-    return `${this.baseUrl}/show/api/v1/score/${seg(id)}/pdf${queryString({ paper, kind, rev })}`;
+  /** The whole score as a PDF to print (opened in a new tab: the browser's viewer prints or saves it). names: a tag of
+   * the title and composer, so a renamed piece's PDF isn't the browser's cached copy with the old names (5 min). */
+  scorePdfUrl(id: string, paper: ScorePaper, rev?: string, kind?: ScoreKind, names?: string): string {
+    return `${this.baseUrl}/show/api/v1/score/${seg(id)}/pdf${queryString({ paper, kind, rev, v: names })}`;
   }
 }
 
