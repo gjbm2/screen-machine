@@ -64,6 +64,13 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# Every service runs in a screen session, and screen needs /run/screen, which systemd-tmpfiles makes
+# (screen-cleanup.conf). The boot task can run before that: on 23 Oct every start failed with "Cannot make
+# directory '/run/screen'". So wait for systemd to finish booting and for the directory (up to 2 min).
+timeout 120 systemctl is-system-running --wait >/dev/null 2>&1
+for ((i = 0; i < 120; i++)); do [[ -d /run/screen ]] && break; sleep 1; done
+[[ -d /run/screen ]] || log "WARNING: /run/screen still missing after the wait; screen sessions will fail"
+
 if ! cd "$REPO"; then
   log "ERROR: cannot cd to $REPO; nothing started"
   exit 1
