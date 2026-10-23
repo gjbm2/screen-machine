@@ -105,6 +105,12 @@ class Timeouts:
     """Handshake timeouts (AV_PROGRAMME §3.3) and supervision timings."""
     switch_to_art_s: float = 8.0       # owner, 23 Oct: a switch to art is on the glass within this, whatever
                                        # the PC is doing: at the deadline the exit hard-cuts (nothing extends it)
+    switch_to_live_s: float = 15.0     # the art -> live half (owner, 23 Oct): at this the page is unfrozen (the art goes
+                                       # on as normal) and the entry carries on behind it, cutting to live unmatched
+                                       # when the renderer is ready; at twice this a try not yet on glass is ended
+                                       # (page on art) and retried on the backoff
+    entry_freeze_wait_s: float = 2.0   # entry: wait at most this (and freeze_ack_s) for ack frozen, then go on without
+                                       # it (the last anchor still, else black: an unmatched cut)
     freeze_ack_s: float = 5.0          # freeze -> ack frozen (page settle cap 4.5 s: a picture
                                        # change through black takes >= 3.1 s; DCL v3 §3.6)
     snapshot_s: float = 3.0            # headless screenshot
@@ -128,9 +134,8 @@ class Timeouts:
     exit_session_s: float = 5.0        # POST /api/sessions/{id}/exit HTTP timeout
     settle_before_go_s: float = 1.0    # after ack live_visible, before go: the browser's decoder warms up on the
                                        # held anchor (nothing visible changes), so the in-fade starts smoothly
-    go_s: float = 2.0                  # POST go HTTP timeout, inside the freeze. Entry worst case:
-                                       # 5 + 3 + 3 + 7 + 8 (page's live_failed) + 1 (settle) + 2 = 29 s,
-                                       # under the page's 30 s freeze safety
+    go_s: float = 2.0                  # POST go HTTP timeout. An entry never holds the page frozen past
+                                       # switch_to_live_s, nor tries past twice it
     policy_ack_s: float = 10.0         # page policy: wait this long for kiosk.state to report it
     sweep_delay_s: float = 2.0         # after a create that failed client-side: sweep orphans this soon
     step_timeout_s: float = 120.0      # coordinator: how long a screen step may take to settle
