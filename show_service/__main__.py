@@ -366,6 +366,8 @@ class Show:
                                                                     split_midi="split" not in off))
         if self.rx is not None:
             self.inputs.attach(self.rx)
+            if hasattr(self.rx, "set_level_watch"):     # the live meter's ?stream=<name>: show-rx pushes it too
+                self.levels.on_watch = self.rx.set_level_watch
             if self.mic is not None:
                 self.mic.attach(self.rx)                 # decided before show-rx starts: the first SUBSCRIBE has it
         amod = self._import("artnet_out")

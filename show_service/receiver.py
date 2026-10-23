@@ -457,6 +457,7 @@ class Receiver:
         self.cfg = cfg
         self._on_audio, self._on_midi, self._on_tick = on_audio, on_midi, on_tick
         self._on_level = on_level                        # levels.LevelFeed.push: each live packet's peak, at arrival
+        self._level_watch: frozenset = frozenset()       # streams a levels client names (?stream=): pushed too
         self._clock = clock
         self._kts_want = bool(kernel_stamps)
         self._split_want = bool(split_midi)
@@ -1343,8 +1344,9 @@ class Receiver:
         if st.first_data_s is None:
             st.first_data_s = seen
         self._meter(st, pkt.pcm, arrival)
-        if self._on_level is not None and st.clock is not None and st.name == self._active:
-            self._level(st, pkt, seen)
+        if self._on_level is not None and st.clock is not None and (st.name == self._active
+                                                                    or st.name in self._level_watch):
+            self._level(st, pkt, seen, st.name == self._active)
         if self._active is None:                         # nothing live: take this one now, not at the next 0.1 s
             self._update_states(seen)
         if st.clock is None:
@@ -1567,7 +1569,12 @@ class Receiver:
         except Exception:                                # noqa: BLE001
             self._error("audio")
 
-    def _level(self, st: _Stream, pkt: vban.AudioPacket, arrival: float) -> None:
+    def set_level_watch(self, names: Any) -> None:
+        """The streams a levels client names (``?stream=``; levels.LevelFeed.on_watch, any thread): their packets go
+        to the feed too, marked not active. The active stream, and what listens to it, is unchanged."""
+        self._level_watch = frozenset(str(n) for n in (names or ()))
+
+    def _level(self, st: _Stream, pkt: vban.AudioPacket, arrival: float, active: bool = True) -> None:
         """The live meter (levels.py): this packet's peak and its capture time on the sender's clock, at arrival."""
         try:
             pcm = pkt.pcm
@@ -1575,7 +1582,11 @@ class Receiver:
             t = None
             if st.capture is not None and st.capture.ready:
                 t = st.capture.to_remote_ns(st.base_n + _signed(vban.counter_delta(st.base_c, pkt.counter)) * st.frames)
-            self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr)  # type: ignore[misc]
+            if active:
+                self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr)  # type: ignore[misc]
+            else:                                        # a watched stream that isn't the active one
+                self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr,  # type: ignore[misc]
+                               active=False)
         except Exception:                                # noqa: BLE001
             self._error("audio")
 
