@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import logging
 import math
 import os
@@ -115,6 +116,27 @@ ENV_FILE = REPO / ".env"                          # SM_LAN_HOST: the address the
 TITLE_PREFIX = "Piano: "
 SESSION_PY = "~/.venvs/sm-piano/bin/python"       # piano_render's venv
 SESSION_CMD_ENV = "PIANO_SESSION_CMD"             # overrides the helper's command (tests)
+# Every rendered play's timing, one JSON line per event, kept across plays (owner, 23 Oct: "when sonos plays music it's
+# nowhere NEAR in time with the midi notes ... you need a way to detect and measure"): when it said MIDI time 0 would
+# be heard, each rebase (by the mic or the Sonos's own clock) and the timing check's states, per output.
+TIMING_LOG = pathlib.Path(os.environ.get("SM_PIANO_TIMING_LOG",
+                                       "~/.local/state/screen-machine/piano/timing.jsonl")).expanduser()
+TIMING_LOG_MAX = 1_000_000                       # bytes; then the older half goes
+
+
+def _timing(output: Optional[str], ev: str, **kw) -> None:
+    try:
+        TIMING_LOG.parent.mkdir(parents=True, exist_ok=True)
+        if TIMING_LOG.exists() and TIMING_LOG.stat().st_size > TIMING_LOG_MAX:
+            lines = TIMING_LOG.read_text().splitlines()
+            TIMING_LOG.write_text("\n".join(lines[len(lines) // 2:]) + "\n")
+        with TIMING_LOG.open("a") as f:
+            f.write(json.dumps({"t_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "output": output,
+                                "ev": ev, **kw}, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
 PAD_EXTRA_S = 0.1                                 # the first event is never due sooner than this after "started"
 PHRASE_MIDI_DIR = "~/.cache/screen-machine/piano/phrases"
 SMF_TPQ = 10000                                   # with tempo 1 s a quarter: 0.1 ms ticks
@@ -865,6 +887,7 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
         elif m.get("ev") == "calibration":
             log.info("test piano: timing check (%s): %s: %s", f"mic {m['mic']}" if m.get("mic") else "no mic",
                      m.get("state"), m.get("why"))
+            _timing(output, "check", state=m.get("state"), why=m.get("why"), mic=m.get("mic"))
     try:
         rendered = _await(helper, stop, beat, "rendered",
                           lambda m: status.set("preparing", m.get("frac")) if m.get("ev") == "progress" else None)
@@ -895,6 +918,8 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
                      ", pad %.2f s, measured delay %+.0f ms", (now - t_play) * 1000, t_audio0, (t_audio0 - now) * 1000,
                      t0, (t0 - now) * 1000, float(started.get("pad_s") or 0.0),
                      float(started.get("delay_ms") or 0.0))
+            _timing(output, "started", piece=piece, heard_in_ms=round((t_audio0 - now) * 1000),
+                    prior_delay_ms=started.get("delay_ms"), sink_t0=started.get("sink_t0"), t_audio0=t_audio0)
             status.set("playing", 0.0, note[0])
             i, played = 0, False
             while not stop.is_set() and not (i >= len(events) and played):
@@ -906,11 +931,14 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
                         played = True
                         log.info("test piano: audio ended (%s)", {k: msg[k] for k in ("frames", "underruns", "by")
                                                                   if k in msg})
+                        _timing(output, "played", **{k: msg[k] for k in msg if k != "ev"})
                     elif msg.get("ev") == "rebase" and _num(msg.get("t_audio0")) is not None:
                         was, t_audio0 = t_audio0, float(msg["t_audio0"])
                         t0 = t_audio0 - lead_s
                         log.info("test piano: rebased (%s): MIDI time 0 is heard %+.0f ms from the estimate",
                                  msg.get("by") or "sink", (t_audio0 - was) * 1000)
+                        _timing(output, "rebase", by=msg.get("by") or "sink", moved_ms=round((t_audio0 - was) * 1000),
+                                delay_ms=msg.get("delay_ms"))
                     elif msg.get("ev") in ("warning", "calibration"):
                         warned(msg)
                     elif msg.get("ev") in ("error", PianoSession.EOF):
