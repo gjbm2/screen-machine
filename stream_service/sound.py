@@ -62,6 +62,10 @@ class Sound(ScopeFields):
 
         self.view = SoundView()
         self.frame: Any = self.view.frame
+        try:                                  # a real time base before the first frame: prepare's prime renders a scene
+            self.frame = self.view.update(time.monotonic() * 1000.0)   # before any update, and a scene keyed off
+        except Exception:                     # frame.t_ms 0 ran 8.9e6 s of catch-up on its first real frame (7c, 23 Oct)
+            log.exception("sound view: first frame failed")
         self.notes_gpu = None
         self.spectrum_gpu = None
         self._failed = False
