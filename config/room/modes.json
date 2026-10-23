@@ -101,6 +101,12 @@
             "sonos.drawing-room.playback": [
               {
                 "uri": "http://*/show/api/v1/piano/audio/*"
+              },
+              {
+                "uri": "x-rincon-mp3radio://*/show/api/v1/piano/stream/*"
+              },
+              {
+                "uri": "http://*/show/api/v1/piano/stream/*"
               }
             ]
           }
@@ -113,6 +119,12 @@
             "sonos.drawing-room.playback": [
               {
                 "uri": "http://*/show/api/v1/piano/audio/*"
+              },
+              {
+                "uri": "x-rincon-mp3radio://*/show/api/v1/piano/stream/*"
+              },
+              {
+                "uri": "http://*/show/api/v1/piano/stream/*"
               }
             ]
           }
