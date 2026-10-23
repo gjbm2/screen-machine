@@ -20,5 +20,5 @@ dmx: {enabled: true}
 # A 4K anchor of detailed art is an ~11 MB PNG: 2-3 s to capture, more with both TVs at once (3 s failed
 # north, 15 Oct). The page holds its art while frozen, so the longer bound is invisible.
 # exit_session_s (18 Oct, 4K60 plan change 3): exit used to share create's 20 s; kept at 20 until exits are measured.
-timeouts: {create_session_s: 20, exit_session_s: 20, snapshot_s: 10, session_ready_s: 15}
+timeouts: {create_session_s: 20, exit_session_s: 20, snapshot_s: 10, session_ready_s: 15, switch_to_art_s: 8, switch_to_live_s: 15}   # owner 23 Oct: switch_to_art_s, the off switch always lands (hard cut at the deadline); switch_to_live_s, the page is never held frozen past it and a try not live by twice it is retried
 snapshot: {timeout_s: 10}
