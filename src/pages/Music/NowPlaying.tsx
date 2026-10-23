@@ -12,6 +12,7 @@ import { SoundChoice } from "@/pages/Room/PianoCard";
 import { PlayOnChoice } from "@/pages/Room/PlayOn";
 import { SpeedNudges } from "@/pages/Room/SpeedNudges";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
+import { myOutput } from "@/pages/Room/listenStream";
 import { usePianoSound, type PianoSound } from "@/pages/Room/usePianoSound";
 import { OLD_SHOW_WORDS, percent, playerWords, plural, type PlayerView, type Repeat as RepeatMode } from "./api";
 import { CHIP, CHIP_OFF, hasScore, PRIMARY, SECONDARY, useOpenScore } from "./bits";
@@ -27,7 +28,7 @@ export function usePlayerSound(view: PlayerView | null): PianoSound {
   return {
     ...local,
     instrument: has(local.instruments, view?.instrument) ? view!.instrument : local.instrument,
-    output: has(local.outputs, view?.output) ? view!.output : local.output,
+    output: has(local.outputs, view?.output) || (!!view?.output && view.output === myOutput()) ? view!.output : local.output,
   };
 }
 

@@ -19,14 +19,18 @@ import { Spinner } from "./bits";
 import { getDeviceLag, useDeviceLag, useDeviceLagTracker } from "./deviceLag";
 import {
   configureListen,
+  fetchDevices,
   lagS,
   listenAudio,
   listenClockUrl,
+  listenFlush,
   listenOff,
+  myOutput,
   listenSnap,
   listenTap,
   SERVER_LAG_S,
   setListenView,
+  setRoomOutput,
   useListenHere,
   type ListenStatus,
 } from "./listenStream";
@@ -91,6 +95,8 @@ export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?:
   const busy = BUSY_WORDS[here.status];
   const stopped = STOPPED_WORDS[here.status];
   const behind = Math.max(1, Math.round(behindS()));
+  // connected, but the room's output moved elsewhere (another page or device): the stream carries silence
+  const quiet = !here.also && !!here.roomOutput && here.roomOutput !== myOutput();
   return (
     <div className={cn("flex min-h-11 items-center gap-2", className)} role="status">
       {busy ? (
@@ -102,12 +108,19 @@ export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?:
         />
       )}
       <p className={cn("min-w-0 flex-1 text-base leading-snug", stopped ? "text-amber-800" : "text-stone-700")}>
-        {busy ?? stopped ?? (
-          <>
-            Playing on this device
-            <span className="text-muted-foreground"> · about {behind} s behind the room</span>
-          </>
-        )}
+        {busy ??
+          stopped ??
+          (quiet ? (
+            <>
+              Quiet here
+              <span className="text-muted-foreground"> · the room plays on {here.roomOutputLabel || "something else"}</span>
+            </>
+          ) : (
+            <>
+              Playing on this device
+              <span className="text-muted-foreground"> · about {behind} s behind the room</span>
+            </>
+          ))}
       </p>
       {stopped ? (
         <button
@@ -153,16 +166,26 @@ export function ListenHere({ api }: { api: RoomApi }) {
   useEffect(() => {
     let stop = false;
     let timer: number | undefined;
+    let was: string | null = null;
     const ac = new AbortController();
     const poll = async () => {
       if (document.visibilityState === "visible") {
-        const [t, p] = await Promise.all([
+        const [t, p, d] = await Promise.all([
           api.showTest(ac.signal).catch(() => undefined),
           here.on ? music.player(ac.signal).catch(() => null) : Promise.resolve(null),
+          here.on ? fetchDevices(ac.signal) : Promise.resolve(null),
         ]);
         if (stop) return;
         if (t) setTest(t);
+        // paused or stopped from another page: what this device holds unplayed isn't heard
+        if (p && was && PLAYER_BUSY.includes(was) && !PLAYER_BUSY.includes(p.state)) listenFlush();
+        was = p?.state ?? null;
         setPlayer(p);
+        if (d) {
+          const o = d.output ?? null;
+          const label = o === myOutput() ? "This device" : ((t?.outputs ?? []).find((x) => x.id === o)?.label ?? d.devices.find((x) => x.id === o)?.label ?? null);
+          setRoomOutput(o, label);
+        }
         setLoaded(true);
       }
       timer = window.setTimeout(() => void poll(), here.on ? POLL_ON_MS : POLL_OFF_MS);
