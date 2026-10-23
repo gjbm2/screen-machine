@@ -172,9 +172,10 @@ class Spacer:
         the notes are drawn, pushes included: adding them again would move the phrase on at every refit)."""
         return self.push if self.warp() is None else 0.0
 
-    def place(self, p: float, ext: dict) -> float:
-        """A column at slot p with {staff: (left, right)} -> its x."""
-        x = self.base(p) + self.off()
+    def place(self, p: float, ext: dict, x_at: Optional[float] = None) -> float:
+        """A column at slot p with {staff: (left, right)} -> its x (``x_at``: the column's own x, its notes'
+        onset x in a room span, instead of the slot's)."""
+        x = self.base(p) + self.off() if x_at is None else x_at
         if self.first_left is None:
             self.first_left = max((lr[0] for lr in ext.values()), default=0.0)
         need = 0.0
@@ -187,7 +188,11 @@ class Spacer:
         if need > 0.0:
             if self.warp() is None:
                 self.push += need                       # proportional: what follows moves on with it
-            x += need                                   # warped: only this column moves
+            else:                                       # warped: only this column moves (span: room: at most
+                cap = getattr(self.owner, "push_cap", None)   # push_cap: it never strays from its onset's x,
+                if cap is not None:                     # so no push can carry on through a dense run)
+                    need = min(need, cap)
+            x += need
         for st, (_left, right) in ext.items():
             self.edge[st] = max(self.edge[st], x + right)
             self.edge_slot[st] = p
@@ -609,15 +614,21 @@ class PhraseLayout:
             for ch in chs:
                 l0, r0 = ext.get(ch.staff, (0.0, 0.0))
                 ext[ch.staff] = (max(l0, ch.left), max(r0, ch.right))
+            xm = getattr(self, "xmap", None)               # (span: room: a column of notes sits at their onset's x)
+            x_at = None
+            if xm is not None:
+                xs_ = [xm[h[1][0]] for ch in chs if not ch.rest for h in ch.heads if h[1][1] == 0 and h[1][0] in xm]
+                if xs_:
+                    x_at = min(xs_)
             if need_bl and abs(slot - lo) < 1e-6:
-                x = sp.place(slot, ext)
+                x = sp.place(slot, ext, x_at)
                 out.bars[key] = (x - max(ch.left for ch in chs) - BL_OFF, 0)
                 need_bl = False
             else:
                 if need_bl:
                     out.bars[key] = (sp.barline(k, 0.0), 0)
                     need_bl = False
-                x = sp.place(slot, ext)
+                x = sp.place(slot, ext, x_at)
             for ch in chs:
                 self._marks(ch, x, out, Q, touts, sp)
         if need_bl:
