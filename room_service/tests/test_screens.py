@@ -7,6 +7,8 @@ import base64
 import json
 import time
 
+import pytest
+
 from .conftest import LIVE, Harness
 from .fakes import FakePage, PNG_SIG
 
@@ -114,38 +116,28 @@ async def test_entry_timeout_no_frozen_ack(make_harness):
     assert "ack frozen" in h.screen().last_error and not h.snap.calls
 
 
-async def test_entry_snapshot_timeout(make_harness):
+@pytest.mark.parametrize("how", ["slow", "error", "deaf"])
+async def test_a_slow_or_failed_entry_still_goes_live_unmatched(make_harness, how):
+    """Degrade, never refuse (owner, 23 Oct: "why even if PC is loaded it should prevent mode changes?"): no still in
+    time (slow, failed, or a call that swallows its cancel) -> the screen goes live anyway, from the last anchor still
+    or black, with an unmatched cut and a word for the page."""
     h = await make_harness(timeouts={"backoff_s": [30.0]})
     page = await h.page()
-    h.snap.delay = 1.0
-    await put_live(h)
-    await wait_retry(h)
-    await assert_clean_entry_abort(h, page, attached=False, session_created=False)
-    assert "snapshot" in h.screen().last_error
-
-
-async def test_a_snapshot_that_ignores_its_cancel_cannot_hold_the_handshake(make_harness):
-    """23 Oct: south's exit sat in phase "snapshot" for 2+ min, no error: a call that swallowed its cancel held the
-    wait_for.  The handshake abandons it at the budget and goes on."""
-    h = await make_harness(timeouts={"backoff_s": [30.0]})
-    page = await h.page()
-    h.snap.deaf = asyncio.Event()
+    if how == "slow":
+        h.snap.delay = 1.0
+    elif how == "error":
+        h.snap.fail = "page crashed"
+    else:
+        h.snap.deaf = asyncio.Event()
     t0 = time.monotonic()
-    await put_live(h)
-    await wait_retry(h)
+    await h.go_live(page)
     assert time.monotonic() - t0 < 3.0
-    await assert_clean_entry_abort(h, page, attached=False, session_created=False)
-    assert "snapshot" in h.screen().last_error
-    h.snap.deaf.set()
-
-
-async def test_entry_snapshot_error(make_harness):
-    h = await make_harness(timeouts={"backoff_s": [30.0]})
-    page = await h.page()
-    h.snap.fail = "page crashed"
-    await put_live(h)
-    await wait_retry(h)
-    await assert_clean_entry_abort(h, page, attached=False, session_created=False)
+    c = h.screen()
+    body = next(iter(h.stream.sessions.values()))["body"]
+    assert body["anchor"] == {"rgb": [0, 0, 0]}                                # no earlier still: black
+    assert c.unmatched and "without a matched cut" in c.unmatched
+    if h.snap.deaf is not None:
+        h.snap.deaf.set()
 
 
 async def test_entry_session_ready_timeout(make_harness):
@@ -789,13 +781,12 @@ async def test_cold_snapshotter_is_waited_for_before_the_freeze(harness: Harness
     assert time.monotonic() - t0 >= 1.0 and h.screen().last_error is None
 
 
-async def test_snapshotter_unavailable_fails_entry_without_freezing(make_harness):
+async def test_a_snapshotter_that_is_not_ready_never_stops_an_entry(make_harness):
     h = await make_harness(timeouts={"backoff_s": [30.0]})
     h.snap.not_ready = "chrome missing"
     page = await h.page()
-    await put_live(h)
-    await wait_retry(h)
-    assert not page.of("freeze") and "snapshotter" in h.screen().last_error
+    await h.go_live(page)
+    assert page.of("freeze") and h.screen().layer == "live"
 
 
 async def test_kiosk_state_prefetches_new_stills(harness: Harness):
@@ -1106,26 +1097,37 @@ async def test_identical_art_state_reuses_the_snapshot(harness: Harness):
     assert len(h.snap.calls) == 2
 
 
-async def test_exit_snapshot_failure_is_retried_before_a_hard_cut(harness: Harness):
+async def test_an_exit_still_that_fails_exits_at_once_to_the_last_still_or_black(harness: Harness):
     h = harness
     page = await h.go_live()
     c = h.screen()
     await h.wait_phase("live")
     page.state = {**page.state, "base_url": "/output/devtest.jpg?v=9"}     # needs a fresh capture
     h.snap.fail_times = 1
+    n_calls = len(h.snap.calls)
     st, _ = await h.api("PUT", "/api/v1/screens/devtest", {"desired": "art"})
     await h.wait(lambda: c.session is None and c.phase == "idle", 3, "exit done")
-    assert "live.leave" in page.types() and "live.abort" not in page.types(), "matched cut after one retry"
-    # Failing twice: the hard cut is the last resort.
+    assert len(h.snap.calls) == n_calls + 1, "one try, no retry"
+    assert "live.leave" in page.types() and "live.abort" not in page.types(), "the exit went on"
+    exits = [b for m, path, b in h.stream.calls if m == "POST" and path.endswith("/exit")]
+    assert exits[-1]["target"] == {"rgb": [0, 0, 0]} and "without a matched cut" in c.unmatched
+    # A good exit keeps its still; a later failed one exits to that still.
+    await h.go_live(page)
+    await h.wait_phase("live")
     page.state = {**page.state, "base_url": "/output/devtest.jpg?v=10"}
+    st, _ = await h.api("PUT", "/api/v1/screens/devtest", {"desired": "art"})
+    await h.wait(lambda: c.session is None and c.phase == "idle", 3, "exit done")
+    assert c.target_png is not None
+    good = c.target_png
     await h.go_live(page)
     await h.wait_phase("live")
     page.state = {**page.state, "base_url": "/output/devtest.jpg?v=11"}
-    h.snap.fail_times = 2
-    n = len(page.received)
+    h.snap.fail_times = 1
     st, _ = await h.api("PUT", "/api/v1/screens/devtest", {"desired": "art"})
     await h.wait(lambda: c.session is None and c.phase == "idle", 3, "exit done")
-    assert [t for t, _ in page.received[n:] if t in ("live.leave", "live.abort")] == ["live.abort"]
+    import base64
+    exits = [b for m, path, b in h.stream.calls if m == "POST" and path.endswith("/exit")]
+    assert base64.b64decode(exits[-1]["target"]["png_b64"]) == good
 
 
 async def test_a_new_mode_does_not_carry_the_old_direction(harness: Harness):
