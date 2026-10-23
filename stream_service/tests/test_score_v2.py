@@ -125,3 +125,22 @@ def test_alloc_free_reuse():
     N.free(a)
     c = N.alloc(12)
     assert c == a and N.by_id == {11: b, 12: c} and math.isinf(N.t_off[c])
+
+
+def test_book_page_and_line_assignment():
+    """span: book: book lines fill page 0 (screen 0) top to bottom, then page 1 (screen 1), then page 2 back on
+    screen 0; a screen shows its latest page up to the writing's (none before its first); bars a line come from the
+    phrase's first bar only."""
+    L, n = 4, 2
+    assert [SV.book_place(bm, L, n) for bm in (0, 3, 4, 7, 8, 12, 13)] == [
+        (0, 0, 0), (0, 0, 3), (1, 1, 0), (1, 1, 3), (2, 0, 0), (3, 1, 0), (3, 1, 1)]
+    # screen 0 turns to page 2 when the writing reaches page 2; screen 1 keeps page 1 until page 3
+    assert [SV.book_show(pg, 0, n) for pg in range(5)] == [0, 0, 2, 2, 4]
+    assert [SV.book_show(pg, 1, n) for pg in range(5)] == [None, 1, 1, 3, 3]
+    # three screens
+    assert [SV.book_show(pg, 2, 3) for pg in range(7)] == [None, None, 2, 2, 2, 5, 5]
+    # bars a line: the same inputs give the same answer (both screens' instances), tempo-based within the clamps
+    a = SV.book_bars_per_line(2.0, 4, 4, 20.0, 3200.0, 7.0, "proportional")
+    b = SV.book_bars_per_line(2.0, 4, 4, 20.0, 3200.0, 7.0, "proportional")
+    assert a == b and SV.N_MIN <= a <= SV.N_MAX
+    assert SV.book_bars_per_line(0.6, 4, 4, 20.0, 3200.0, 7.0, "proportional") >= a
