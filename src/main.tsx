@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
 import App from './App';
 import './index.css';
+import './palette.css';
 
 // Create a client
 const queryClient = new QueryClient();

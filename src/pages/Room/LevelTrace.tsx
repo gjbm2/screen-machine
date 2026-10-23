@@ -13,6 +13,7 @@
 // audio engine adds its own 10 ms bursts before that, and the screen one frame (up to 17 ms) after.
 
 import { useEffect, useRef, useState } from "react";
+import { isDark } from "@/darkMode";
 
 const WINDOW_MS = 5000;
 const FLOOR_DB = -72;
@@ -146,12 +147,13 @@ export function LevelTrace({ url, className }: { url: string | null; className?:
       const g = c.getContext("2d");
       if (!g) return;
       g.clearRect(0, 0, w, h);
-      g.fillStyle = "#f5f5f4";
+      const night = isDark(); // dark mode (src/darkMode.ts)
+      g.fillStyle = night ? "#231f1d" : "#f5f5f4";
       g.fillRect(0, 0, w, h);
-      g.strokeStyle = "#d6d3d1";
+      g.strokeStyle = night ? "#44403c" : "#d6d3d1";
       g.lineWidth = dpr;
       g.font = `${10 * dpr}px ui-sans-serif, system-ui`;
-      g.fillStyle = "#a8a29e";
+      g.fillStyle = night ? "#78716c" : "#a8a29e";
       for (const db of GRID_DB) {
         const gy = Math.round(y(db, h)) + 0.5;
         g.beginPath();

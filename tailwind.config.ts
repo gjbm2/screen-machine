@@ -1,8 +1,20 @@
 
 import type { Config } from "tailwindcss";
 
+// Dark mode (owner, 23 Oct: "make sure our various screens in this app all respond properly to dark mode"): every
+// Tailwind colour is a CSS variable, one set per use, so a class like bg-stone-50 or text-teal-900 turns dark by
+// itself (src/palette.css, written by scripts/gen_palette.mjs; the device's own setting, as a media query).
+const FAMILIES = ["slate", "gray", "zinc", "neutral", "stone", "red", "orange", "amber", "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "pink", "rose"];
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const palette = (role: "bg" | "fg" | "bd") =>
+	Object.fromEntries(FAMILIES.map((f) => [f, Object.fromEntries(SHADES.map((s) => [s, `rgb(var(--${role}-${f}-${s}) / <alpha-value>)`]))]));
+const bg = { ...palette("bg"), white: "rgb(var(--bg-white) / <alpha-value>)" };
+const fg = palette("fg");
+const bd = palette("bd");
+
 export default {
-	darkMode: ["class"],
+	// dark: variants follow the device too, never under html.light-only (the TVs' /display pages)
+	darkMode: ["variant", "@media (prefers-color-scheme: dark) { html:not(.light-only) & }"],
 	content: [
 		"./pages/**/*.{ts,tsx}",
 		"./components/**/*.{ts,tsx}",
@@ -19,6 +31,21 @@ export default {
 			}
 		},
 		extend: {
+			backgroundColor: bg,
+			gradientColorStops: bg,
+			ringOffsetColor: bg,
+			textColor: fg,
+			fill: fg,
+			stroke: fg,
+			caretColor: fg,
+			accentColor: fg,
+			placeholderColor: fg,
+			textDecorationColor: fg,
+			borderColor: bd,
+			ringColor: bd,
+			divideColor: bd,
+			outlineColor: bd,
+			boxShadowColor: bd,
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

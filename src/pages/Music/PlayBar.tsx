@@ -150,13 +150,11 @@ export function PlayBar({
           )}
           {speed !== null && (
             <div>
-              <p className="mb-1.5 text-sm font-medium text-stone-600">Speed</p>
               <SpeedNudges speed={speed} onSpeed={setSpeed} />
             </div>
           )}
           {sound.available && (
             <div>
-              <p className="mb-1.5 text-sm font-medium text-stone-600">Sound</p>
               <SoundChoice sound={sound} onInstrument={setInstrument} />
             </div>
           )}

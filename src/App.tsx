@@ -18,6 +18,7 @@ import AdminPanel from './pages/AdminPanel';
 import RoomPage from './pages/Room';
 import LightsPage from './pages/Lights';
 import MusicPage from './pages/Music';
+import { DarkMode } from './darkMode';
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
     <TooltipProvider>
       <ReferenceImagesProvider>
         <LoopeViewProvider>
+          <DarkMode />
           <Toaster />
           <Sonner />
           <Routes>
