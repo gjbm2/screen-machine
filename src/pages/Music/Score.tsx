@@ -291,7 +291,17 @@ type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFu
 type FsEl = HTMLElement & { webkitRequestFullscreen?: () => void };
 
 /** Real fullscreen for the stand, asked for in the tap itself (browsers want a gesture); nothing where it isn't offered (an iPhone). */
+/** The browser's own full screen only where it is clean: not on an iPad or iPhone, where Safari draws its exit
+ *  controls over the top of the page and buries the stand's bar (owner, 23 Oct: "the top nav is still buried
+ *  underneath safari ... in webapp mode"), and not in the Home Screen app, which has the whole screen already. */
+function fullscreenHelps(): boolean {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return !ios && !standalone;
+}
+
 function enterFullscreen() {
+  if (!fullscreenHelps()) return;
   const el = document.documentElement as FsEl;
   try {
     if (el.requestFullscreen) void el.requestFullscreen({ navigationUI: "hide" }).catch(() => undefined);
