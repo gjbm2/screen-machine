@@ -523,6 +523,11 @@ export class RoomApi {
     return this.json<PianoRecording>("PATCH", `/show/api/v1/piano/recordings/${encodeURIComponent(id)}`, { title });
   }
 
+  /** A take's details: title, composer (null clears it), genre. */
+  pianoEdit(id: string, changes: { title?: string; composer?: string | null; genre?: string | null }) {
+    return this.json<PianoRecording>("PATCH", `/show/api/v1/piano/recordings/${encodeURIComponent(id)}`, changes);
+  }
+
   pianoDelete(id: string) {
     return this.json<{ deleted: string }>("DELETE", `/show/api/v1/piano/recordings/${encodeURIComponent(id)}`);
   }

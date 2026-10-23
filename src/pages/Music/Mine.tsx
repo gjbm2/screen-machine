@@ -1,8 +1,9 @@
 // Mine: what's been added here. "Upload a MIDI file" up front (a .mid or .midi up to 1 MB; title, composer and genre
 // filled in from the file's name, all changeable), then the piano recordings (made with the Room page's Piano card)
 // and the uploads and finds from the web, newest first. Tap to play; ⋯ for Play next, Add to the queue, Add to a
-// playlist…, Pin, Rename, Download and Delete. After an upload it says what the cleaning took out ("Kept the piano;
-// dropped the drums and bass.").
+// playlist…, Pin, Edit details (title, composer and genre, for a recording as for an upload: the score's PDF prints
+// them), Download and Delete. After an upload it says what the cleaning took out ("Kept the piano; dropped the drums
+// and bass.").
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Download, Pencil, Play, Trash2, Upload, X } from "lucide-react";
@@ -33,64 +34,57 @@ function guessFromName(filename: string): { title: string; composer: string; gen
 
 const FIELD = "h-11 rounded-xl bg-white text-base md:text-base";
 
-/** Title, composer and genre, for an upload or a rename. */
+/** Title, composer and genre, for an upload or a piece's details (a recording's too). */
 function PieceFields({
   title,
   composer,
   genre,
   onChange,
-  withMore,
   onSubmit,
 }: {
   title: string;
   composer: string;
   genre: string;
   onChange: (p: Partial<{ title: string; composer: string; genre: string }>) => void;
-  /** Composer and genre too (not for a recording, which has only a name). */
-  withMore: boolean;
   onSubmit: () => void;
 }) {
   return (
     <div className="space-y-3">
       <label className="block space-y-1">
-        <span className="text-[15px] font-medium">{withMore ? "Title" : "Name"}</span>
+        <span className="text-[15px] font-medium">Title</span>
         <Input autoFocus value={title} maxLength={120} onChange={(e) => onChange({ title: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onSubmit()} className={FIELD} />
       </label>
-      {withMore && (
-        <>
-          <label className="block space-y-1">
-            <span className="text-[15px] font-medium">Composer</span>
-            <Input
-              value={composer}
-              maxLength={120}
-              placeholder="If you know it"
-              onChange={(e) => onChange({ composer: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && onSubmit()}
-              className={FIELD}
-            />
-          </label>
-          <div className="space-y-1">
-            <span className="text-[15px] font-medium">Genre</span>
-            <div role="radiogroup" aria-label="Genre" className="flex flex-wrap gap-2">
-              {[{ id: "", label: "Not sure" }, ...GENRES].map((g) => (
-                <button
-                  key={g.id || "none"}
-                  type="button"
-                  role="radio"
-                  aria-checked={genre === g.id}
-                  onClick={() => onChange({ genre: g.id })}
-                  className={cn(
-                    "min-h-10 rounded-full border px-3 text-[15px] font-medium",
-                    genre === g.id ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50",
-                  )}
-                >
-                  {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+      <label className="block space-y-1">
+        <span className="text-[15px] font-medium">Composer</span>
+        <Input
+          value={composer}
+          maxLength={120}
+          placeholder="If you know it"
+          onChange={(e) => onChange({ composer: e.target.value })}
+          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+          className={FIELD}
+        />
+      </label>
+      <div className="space-y-1">
+        <span className="text-[15px] font-medium">Genre</span>
+        <div role="radiogroup" aria-label="Genre" className="flex flex-wrap gap-2">
+          {[{ id: "", label: "Not sure" }, ...GENRES].map((g) => (
+            <button
+              key={g.id || "none"}
+              type="button"
+              role="radio"
+              aria-checked={genre === g.id}
+              onClick={() => onChange({ genre: g.id })}
+              className={cn(
+                "min-h-10 rounded-full border px-3 text-[15px] font-medium",
+                genre === g.id ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50",
+              )}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -172,10 +166,9 @@ export function Mine() {
     setBusy(true);
     setRenameErr(null);
     try {
-      const patch = renaming.kind === "user" ? { title: t, composer: renameForm.composer.trim() || null, genre: renameForm.genre || null } : { title: t };
-      await api.edit(renaming.id, patch);
+      await api.edit(renaming.id, { title: t, composer: renameForm.composer.trim() || null, genre: renameForm.genre || null });
       setRenaming(null);
-      flash("Renamed");
+      flash("Saved");
       bumpLibrary();
     } catch (e) {
       setRenameErr(musicWords(e));
@@ -208,7 +201,7 @@ export function Mine() {
           setRenaming(p);
         }}
       >
-        <Pencil className="h-5 w-5 text-stone-600" aria-hidden /> Rename
+        <Pencil className="h-5 w-5 text-stone-600" aria-hidden /> Edit details
       </button>
       <a href={api.downloadUrl(p.id)} download={`${p.title}.mid`} className={SHEET_ROW} onClick={() => close()}>
         <Download className="h-5 w-5 text-stone-600" aria-hidden /> Download the MIDI file
@@ -309,7 +302,7 @@ export function Mine() {
 
       <Modal open={!!file} onOpenChange={(o) => !o && !busy && setFile(null)} title="Add this piece" description={file?.name}>
         <div className="space-y-4">
-          <PieceFields {...form} withMore onChange={(p) => setForm((f) => ({ ...f, ...p }))} onSubmit={() => void upload()} />
+          <PieceFields {...form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} onSubmit={() => void upload()} />
           {uploadErr && <p className="text-[15px] text-rose-700">{uploadErr}</p>}
           <button type="button" onClick={() => void upload()} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex w-full items-center justify-center gap-2 font-semibold")}>
             {busy ? <Spinner /> : <Upload className="h-4 w-4" aria-hidden />} {busy ? "Adding it…" : "Add it"}
@@ -317,9 +310,9 @@ export function Mine() {
         </div>
       </Modal>
 
-      <Modal open={!!renaming} onOpenChange={(o) => !o && !busy && setRenaming(null)} title="Rename">
+      <Modal open={!!renaming} onOpenChange={(o) => !o && !busy && setRenaming(null)} title="Edit details">
         <div className="space-y-4">
-          <PieceFields {...renameForm} withMore={renaming?.kind === "user"} onChange={(p) => setRenameForm((f) => ({ ...f, ...p }))} onSubmit={() => void saveRename()} />
+          <PieceFields {...renameForm} onChange={(p) => setRenameForm((f) => ({ ...f, ...p }))} onSubmit={() => void saveRename()} />
           {renameErr && <p className="text-[15px] text-rose-700">{renameErr}</p>}
           <button type="button" onClick={() => void saveRename()} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex w-full items-center justify-center gap-2 font-semibold")}>
             {busy ? <Spinner /> : <Check className="h-4 w-4" aria-hidden />} Save

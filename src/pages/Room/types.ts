@@ -748,6 +748,9 @@ export interface ShowTestView {
 export interface PianoRecording {
   id: string;
   title: string;
+  /** Whose piece it is, and its genre, when the player said (printed on its score). */
+  composer?: string | null;
+  genre?: string | null;
   /** ISO 8601 with offset. */
   recorded_at: string;
   duration_s: number;
