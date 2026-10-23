@@ -139,7 +139,20 @@ class Player:
 
     # -- Component -------------------------------------------------------------------------------------------------
     def provides(self) -> dict[str, Any]:
-        return {}
+        return {"now_playing": self.now_playing}
+
+    def now_playing(self) -> Optional[dict]:
+        """show-brain: the piece the player runs, for structure's song ends (owner, 23 Oct: a piece's end "ought to"
+        tell the art director, "it's a natural moment to change scene"): {key, state, pos_s (the piece's own time),
+        dur_s, speed}; None while it isn't running one."""
+        if self.state not in ("playing", "paused", "preparing"):
+            return None
+        cur = self._cur_piece()
+        if cur is None:
+            return None
+        pos = self.paused_s if self.state == "paused" else self._pos_s() if self.state == "playing" else None
+        return {"key": cur, "state": self.state, "pos_s": pos,
+                "dur_s": _num((self._item_or_stub(cur) or {}).get("duration_s")), "speed": self.speed}
 
     def configure(self, settings: dict) -> None:
         pass

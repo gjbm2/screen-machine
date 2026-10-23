@@ -1433,3 +1433,28 @@ def test_real_test_music_through_the_dsp_fallback(name, capsys):
         if b["kind"] == "confirmed" and b.get("to") == "bar":
             k = b["snapped"] / bar
             assert abs(k - round(k)) < 1e-6                                  # on the fake clock's bar lines
+
+
+def test_the_music_players_piece_end_is_armed_ends_and_changes_track_with_no_gap():
+    """Owner, 23 Oct: the Music page's pieces ran back to back, so nothing told the art director one had ended."""
+    r = Rig(lambda t: {"vec": "A"})
+    pieces = [(-100.0, 130.0, "lib:a"), (30.0, 90.0, "lib:b")]          # (start, duration, piece): no gap between
+
+    def now_playing():
+        start, dur, key = [p for p in pieces if r.t >= p[0]][-1]
+        return {"key": key, "state": "playing", "pos_s": r.t - start, "dur_s": dur, "speed": 1.0}
+    r.ctx.now_playing = now_playing
+    r.run(9.0)
+    assert not r.kinds("track_end_armed")
+    r.run(11.0)
+    arms = r.kinds("track_end_armed")
+    assert len(arms) == 1 and arms[0]["via"] == "player"
+    assert arms[0]["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.2)
+    r.run(31.0)
+    te, tc = r.kinds("track_end"), r.kinds("track_change")
+    assert len(te) == 1 and te[0]["via"] == "player" and te[0]["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.2)
+    assert len(tc) == 1 and tc[0]["via"] == "player" and tc[0]["seq"] > te[0]["seq"]
+    assert r.s.snapshot()["ends"]["counts"]["player"] == 1
+    r.ctx.now_playing = lambda: None                                      # the player stopped
+    r.run(35.0)
+    json.dumps(r.s.snapshot(), allow_nan=False)

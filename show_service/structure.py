@@ -720,6 +720,7 @@ class Structure:
         self.track_start: Optional[float] = None
         self._track_pending = False
         self._sonos_key: Optional[tuple] = None
+        self._np_via = "sonos"                           # whose now-playing the song-end path follows: sonos | player
         self._tags_stream: Optional[str] = None          # the stream the ML state below was heard on
         self._reset_ml_state()
         # song ends (README S5.17): across track changes
@@ -736,7 +737,8 @@ class Structure:
         self._heard = False                              # music since the last track_end or track change
         self._trk_e = [0.0, 0]                           # this song's energy while it sounded: (sum, n)
         self._kind_n: collections.Counter = collections.Counter()   # per-track counts for event ids
-        self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, "sound_back": 0, "waited": 0,
+        self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, contract.TRACK_VIA_PLAYER: 0, "sound_back": 0,
+                     "waited": 0,
                      "hook_errors": 0, "piano_held": 0}
         self._ctx_parts: dict = {}
         self._build_snapshot(mono())
@@ -975,6 +977,8 @@ class Structure:
     # -- Sonos now-playing (README S4.7 step 6a; the song's end, S5.17) -------------------------------------------------
     def _sonos(self, now_s: float) -> None:
         self._first_sound_wait(now_s)
+        if self._player(now_s):
+            return
         if not self.np_target:
             return
         room = _call(self.ctx.room)
@@ -1016,6 +1020,39 @@ class Structure:
             self._np_read(now_s, key, b, m.get("age_s"))
         self._sonos_arm(now_s)
 
+    def _player(self, now_s: float) -> bool:
+        """The Music page's player runs a piece (ctx.now_playing): its end is known exactly, so it is followed like a
+        Sonos song (armed ahead, track_end at the end, track_change into the next piece), via "player" (owner, 23
+        Oct: the pieces ran back to back with no gap, so nothing told the art director a piece had ended). True
+        while the player has a piece (Sonos waits)."""
+        np_ = _call(self.ctx.now_playing) if self.ctx.now_playing is not None else None
+        if not isinstance(np_, dict) or not np_.get("key"):
+            if self._np_via == contract.TRACK_VIA_PLAYER:                 # the player stopped: its song-end path ends with it
+                self._sonos_stopped(now_s)
+                self._np_via, self._sonos_key = "sonos", None
+            return False
+        if self._np_via != contract.TRACK_VIA_PLAYER:
+            self._np_via, self._sonos_key, self._np = contract.TRACK_VIA_PLAYER, None, None
+            if self._end_arm is not None:
+                self._end_disarm(now_s)
+        key = (contract.TRACK_VIA_PLAYER, str(np_["key"]))
+        if np_.get("state") != "playing":
+            self._sonos_stopped(now_s)                   # paused (or starting): the next play decides
+            self._sonos_key = key if self._sonos_key is None else self._sonos_key
+            return True
+        if self._sonos_key is None:
+            self._sonos_key = key
+        elif key != self._sonos_key:
+            self._sonos_key, self._np = key, None
+            self._sonos_flip(now_s, None, None)
+        sp = _f(np_.get("speed"), 1.0) or 1.0
+        dur, pos = _f(np_.get("dur_s"), None), _f(np_.get("pos_s"), None)
+        if dur is not None and dur > 0.0 and pos is not None and 0.0 <= pos <= dur + 1.0:
+            start = now_s - pos / sp                     # exact: the piano's own place in the piece
+            self._np = {"key": key, "dur": dur / sp, "lo": start, "hi": start, "reads": 1, "read_s": now_s}
+        self._sonos_arm(now_s)
+        return True
+
     def _np_read(self, now_s: float, key: tuple, b: dict, age: Any) -> None:
         """One now_playing read: the song's start on the monotonic clock is in [read - position - 1 s, read -
         position] (whole-second positions); a read that agrees narrows the interval, one that doesn't (a seek, a
@@ -1045,7 +1082,8 @@ class Structure:
         """Sonos plays this song with a known length and its end is more than arm_s away: a silence now is a break
         inside the song, not its end."""
         end = self._np_end()
-        return bool(self.np_target) and end is not None and end - now_s > self.cfg["track"]["arm_s"]
+        return (bool(self.np_target) or self._np_via == contract.TRACK_VIA_PLAYER) and end is not None \
+            and end - now_s > self.cfg["track"]["arm_s"]
 
     def _sonos_arm(self, now_s: float) -> None:
         tr = self.cfg["track"]
@@ -1063,7 +1101,7 @@ class Structure:
                                  "conf": conf}
                 self.ends["armed"] += 1
                 self._emit("track_end_armed", end, now_s, facts=self._facts(), ev_id=self._end_arm["id"],
-                           eta_s=round(rem, 3), via="sonos", conf=conf, track_id=self.track_id)
+                           eta_s=round(rem, 3), via=self._np_via, conf=conf, track_id=self.track_id)
             return
         if self._end is not None and not self._end["back"]:
             if now_s >= a["at_s"] - 1e-6:                # the sound ended first (a dsp end): the arm just runs out
@@ -1076,18 +1114,18 @@ class Structure:
             a.update(at_s=end, conf=conf)
             self.ends["rearmed"] += 1
             self._emit("track_end_armed", end, now_s, facts=self._facts(), ev_id=a["id"],
-                       eta_s=round(max(0.0, rem), 3), via="sonos", conf=conf, track_id=a["track_id"])
+                       eta_s=round(max(0.0, rem), 3), via=self._np_via, conf=conf, track_id=a["track_id"])
         if now_s >= a["at_s"] - 1e-6:
             self._end_arm = None
             if self._end is None or self._end["back"]:
-                self._track_end(now_s, "sonos", a["at_s"])
+                self._track_end(now_s, self._np_via, a["at_s"])
 
     def _end_disarm(self, now_s: float) -> None:
         a, self._end_arm = self._end_arm, None
         if a is None:
             return
         self.ends["disarmed"] += 1
-        self._emit("track_end_armed", a["at_s"], now_s, ev_id=a["id"], eta_s=None, via="sonos", conf=a["conf"],
+        self._emit("track_end_armed", a["at_s"], now_s, ev_id=a["id"], eta_s=None, via=self._np_via, conf=a["conf"],
                    track_id=a["track_id"], detail="disarmed")
 
     def _sonos_stopped(self, now_s: float) -> None:
@@ -1100,7 +1138,7 @@ class Structure:
         if a["at_s"] - now_s <= self.cfg["track"]["end_slack_s"] + 1e-9:
             self._end_arm = None
             if self._end is None or self._end["back"]:
-                self._track_end(now_s, "sonos", min(a["at_s"], now_s))
+                self._track_end(now_s, self._np_via, min(a["at_s"], now_s))
             return
         self._end_disarm(now_s)
 
@@ -1119,7 +1157,7 @@ class Structure:
         elif a is not None:
             self._end_arm = None
             if e is None or e["back"]:
-                self._track_end(now_s, "sonos", min(a["at_s"], now_s))
+                self._track_end(now_s, self._np_via, min(a["at_s"], now_s))
         e = self._end
         w = {"since_s": now_s, "junction_s": e["at_s"] if natural and e is not None else now_s, "natural": natural,
              "old_artist": old_artist, "artist": artist}
@@ -1144,7 +1182,7 @@ class Structure:
             if w["natural"] and q is not None and w["junction_s"] - self.cfg["track"]["end_slack_s"] <= q[1] <= now_s:
                 first_s = max(first_s, q[1])             # a short gap at the junction: the new song began after it
         new = {"genre": None, "key": None, "mode": None, "bpm": None, "energy": None, "artist": w.get("artist")}
-        self._track_change(now_s, "sonos", min(first_s, now_s), adopt=False, first_s=min(first_s, now_s),
+        self._track_change(now_s, self._np_via, min(first_s, now_s), adopt=False, first_s=min(first_s, now_s),
                            new_profile=new, old_artist=w.get("old_artist"))
 
     # -- the end in the sound, and the sound back (S5.17) ---------------------------------------------------------------
