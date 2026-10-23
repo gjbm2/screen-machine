@@ -33,7 +33,7 @@ from typing import Optional
 from .sheet import generator_version
 from .sheet_pages import STAFF_UNITS, _toolkit
 
-LRU = 4
+LRU = 6
 HERE = pathlib.Path(__file__).parent
 WATCH = (HERE / "sheet_pages.py", HERE / "sheet_worker.py")
 
