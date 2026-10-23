@@ -2041,12 +2041,18 @@ class ScreenController:
             # 2. snapshot [3 s]. A failure here would end in a hard (visible) cut, and the page
             # can stay frozen well inside its 30 s safety, so one more attempt comes first.
             self._set_phase("snapshot")
+            state = self._shaped(ack["data"].get("state"))
             try:
-                png = await self._snapshot(self._shaped(ack["data"].get("state")))
+                png = await self._snapshot(state)
             except HandshakeError as e:
+                if e.detail.startswith("timeout") and isinstance(state, dict) and state.get("kind") == "video":
+                    # a clip's frame grab is decode-bound (23 Oct: 8-14 s for a 1440p clip with keyframes 10 s
+                    # apart on a busy box): a second try takes as long, so the hard cut comes now
+                    self._log("warning", f"exit snapshot of a clip failed ({e.detail}); hard cut")
+                    raise
                 self._log("warning", f"exit snapshot failed ({e.detail}); retrying once before a hard cut")
                 await self._snapshotter_ready()
-                png = await self._snapshot(self._shaped(ack["data"].get("state")))
+                png = await self._snapshot(state)
             self._keep_png("target", png)
             # 3. exit(target) -> session.held [out + 5 s]
             self._set_phase("exiting", sid)
