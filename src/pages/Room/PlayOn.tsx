@@ -26,7 +26,8 @@ import type { ShowTestView } from "./types";
 import { usePianoSound, type PianoSound } from "./usePianoSound";
 import type { NewLogEntry } from "./useRoomConnection";
 
-const CHIP = "min-h-11 rounded-xl border px-3 py-2 text-left text-base font-medium leading-snug transition-colors disabled:cursor-default";
+// one compact row of small pills (owner, 23 Oct: the 2x2 grid of big buttons was "ridiculously space inefficient")
+const CHIP = "min-h-9 whitespace-nowrap rounded-full border px-3 text-[15px] font-medium transition-colors disabled:cursor-default";
 const CHIP_ON = "border-teal-300 bg-teal-50 text-teal-900";
 const CHIP_OFF = "border-stone-200 bg-white hover:bg-stone-50";
 const LIST_MS = 30_000;
@@ -69,9 +70,9 @@ export function PlayOnChoice({
   };
 
   return (
-    <div className="space-y-2">
-      {label && <span className="text-base font-medium">{label}</span>}
-      <div role="radiogroup" aria-label="Play on" className="grid grid-cols-2 gap-2" data-testid="play-on-chips">
+    <div className="space-y-1.5">
+      <div role="radiogroup" aria-label="Play on" className="flex flex-wrap items-center gap-1.5" data-testid="play-on-chips">
+        {label && <span className="mr-1 text-[15px] font-medium text-stone-700">{label}</span>}
         {items.map((it) => {
           const sel = it.id === shown;
           return (
@@ -90,8 +91,8 @@ export function PlayOnChoice({
         })}
       </div>
       {speakers && (
-        <label className="flex min-h-11 cursor-pointer items-center gap-3">
-          <span className="min-w-0 flex-1 text-base">Also play on this device</span>
+        <label className="flex min-h-9 cursor-pointer items-center gap-2">
+          <span className="text-sm text-muted-foreground">Also play on this device</span>
           <Switch
             aria-label="Also play on this device"
             checked={here.on}
@@ -178,8 +179,7 @@ export function PlayOnCard({
         </h2>
         {busy && <Spinner />}
       </div>
-      <div className={cn(CARD_CLASS, "space-y-2 px-3 py-3 sm:px-4")}>
-        <p className="text-sm text-muted-foreground">Where the piano music is heard.</p>
+      <div className={cn(CARD_CLASS, "space-y-2 px-3 py-2.5 sm:px-4")}>
         <PlayOnChoice sound={sound} disabled={busy} onOutput={(id) => void apply(id)} label={null} />
         {err && <p className="text-sm text-rose-700">{err}</p>}
       </div>

@@ -244,9 +244,8 @@ export function NowPlaying() {
           >
             <Shuffle className="h-4 w-4" aria-hidden /> Shuffle {v.shuffle ? "on" : "off"}
           </button>
+          {speed !== null && <SpeedNudges speed={speed} onSpeed={setSpeed} />}
         </div>
-
-        {speed !== null && <SpeedNudges speed={speed} onSpeed={setSpeed} />}
 
         <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
 
