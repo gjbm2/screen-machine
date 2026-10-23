@@ -105,9 +105,8 @@
 
   body {
     @apply bg-background text-foreground;
-    /* the iPad's Home Screen app (viewport-fit=cover): clear of the status bar and the window's controls (owner,
-       23 Oct: "still showing partially obscured by safari top chrome in web app mode"); 0 everywhere else */
-    padding-top: env(safe-area-inset-top);
+    /* the iPad's Home Screen app: clear of the status bar and its edge blur (--app-top, below); 0 everywhere else */
+    padding-top: var(--app-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
@@ -223,5 +222,52 @@
     filter: invert(1) hue-rotate(180deg);
     background-color: transparent; /* a filter turns the element's own background too: the paper is what's behind */
     border-color: transparent;
+  }
+}
+
+/* The iPad's Home Screen app (owner, 23 Oct: "Safari / iOS shows a partially faded section at the top of the page
+   ... a blur fade effect OVER THE TOP OF THE VIEWPORT ... either prevent it or anticipate it and move your content
+   below"). iPadOS 26+ blurs about 40pt of a Home Screen web app below its status bar (its scroll-edge effect), and
+   env(safe-area-inset-top) is 0 there, so safe-area padding can't see it. Both remedies the field has found:
+   - prevent: WebKit colours the status-bar area solid instead of blurring when the fixed box 4px below the top edge's
+     midpoint spans at least 90% of the viewport and is over 10px tall (LocalFrameView::fixedContainerEdges).
+     .ios-status-bar-band is that box: 12px, full width, topmost, in the page's colour, and painting nothing
+     (background-clip: text, no text). As coder/coder #31027 and coder/xum #7022 ship it, checked on an iPad.
+   - anticipate: every top bar starts --app-top down, 2.5rem below the safe area in that app (as klbsjpolp/skip-bo
+     #279), so even a blur that stays falls on empty background, never on a control.
+   Only in a standalone display on iOS/iPadOS (-webkit-touch-callout is WebKit-on-iOS only); 0 / hidden elsewhere. */
+:root {
+  --edge-clear: 0px;
+  --app-top: calc(env(safe-area-inset-top, 0px) + var(--edge-clear));
+}
+.ios-status-bar-band {
+  display: none;
+}
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    :root {
+      --edge-clear: 2.5rem;
+    }
+    .ios-status-bar-band {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 12px;
+      background-color: #faf8f5; /* the Room theme's page */
+      -webkit-background-clip: text; /* WebKit reads the colour from the style; with no text this paints nothing */
+      background-clip: text;
+      color: transparent;
+      z-index: 2147483647; /* topmost: no menu or overlay covers the sampled point */
+      pointer-events: none;
+    }
+  }
+}
+@media (display-mode: standalone) and (prefers-color-scheme: dark) {
+  @supports (-webkit-touch-callout: none) {
+    html:not(.light-only) .ios-status-bar-band {
+      background-color: #110f0e; /* the Room theme's page at night */
+    }
   }
 }

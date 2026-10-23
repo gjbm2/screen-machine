@@ -215,7 +215,7 @@ export function LiveMusicView({
       className={cn(THEME_CLASS, "fixed inset-0 z-50 flex flex-col bg-background text-foreground")}
       data-testid="live-music-view"
     >
-      <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
+      <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-4 pb-3 pt-[max(0.75rem,var(--app-top))] sm:px-6">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-teal-800">{here.on ? "Playing on this device" : "Pianola"}</p>
           <p className="text-xl font-semibold leading-snug [overflow-wrap:anywhere]">{title}</p>

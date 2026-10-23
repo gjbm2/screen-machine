@@ -32,6 +32,9 @@
   </head>
 
   <body>
+    <!-- the colour iPadOS gives its status bar in the Home Screen app, instead of blurring the top of the page: see
+         .ios-status-bar-band in src/index.css. Here, not in React, so it is there from the first frame. -->
+    <div class="ios-status-bar-band" aria-hidden="true"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
