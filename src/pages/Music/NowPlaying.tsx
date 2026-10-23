@@ -1,7 +1,7 @@
 // The Now playing card at the top of /music: what's on (title, composer · performer), what it's doing in words
 // (Getting ready… with a bar, Playing 1:23 / 4:32, Stopped, Stepped aside: something else started the
 // piano, or the problem), what's next, Back · Play/Stop · Next, Repeat (Off / All / One), Shuffle, Play on (where it's
-// heard, in view: the Room page's PlayOnChoice, with This device) and the sound (the player's own, server side; also
+// heard, in view: the shared PlayOn control, with This device) and the sound (the player's own, server side; also
 // remembered as the Room page's piano choice so both agree).
 // Beside the title, Score opens the piece's written-out score.
 
@@ -9,7 +9,7 @@ import { FileMusic, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Square, Pla
 import { cn } from "@/lib/utils";
 import { Notice, Pill, Spinner, Unroll } from "@/pages/Room/bits";
 import { SoundChoice } from "@/pages/Room/PianoCard";
-import { PlayOnChoice } from "@/pages/Room/PlayOn";
+import { PlayOn } from "@/pages/Room/PlayOn";
 import { SpeedNudges } from "@/pages/Room/SpeedNudges";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { myOutput } from "@/pages/Room/listenStream";
@@ -33,7 +33,7 @@ export function usePlayerSound(view: PlayerView | null): PianoSound {
 }
 
 export function NowPlaying() {
-  const { player, setTab, openPlaylist } = useMusic();
+  const { api, player, setTab, openPlaylist } = useMusic();
   const v = player.view;
   const sound = usePlayerSound(v);
   const openScore = useOpenScore();
@@ -248,7 +248,7 @@ export function NowPlaying() {
           {speed !== null && <SpeedNudges speed={speed} onSpeed={setSpeed} />}
         </div>
 
-        <PlayOnChoice sound={sound} onOutput={(id) => setSound({ output: id })} />
+        <PlayOn baseUrl={api.baseUrl} />
 
         {sound.available && (
           <Unroll title="Sound" hint={soundHint} testId="music-sound">

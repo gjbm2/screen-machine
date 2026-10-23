@@ -4,7 +4,7 @@
 // Shared by the Music page and the Room page's Music player row.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listenFlush } from "@/pages/Room/listenStream";
+import { listenFlush, listenResume } from "@/pages/Room/listenStream";
 import { isOldShow, isUnreached, musicWords, type MusicApi, type PlayerAction, type PlayerView } from "./api";
 
 const POLL_FAST_MS = 1000;
@@ -106,8 +106,11 @@ export function usePlayer(api: MusicApi): PlayerHook {
     async (body: PlayerAction, guess?: Partial<PlayerView>): Promise<ActResult> => {
       gen.current += 1;
       // a device playing PC22's stream drops what it holds unplayed, so a pause, stop or jump is heard at once
-      if (["pause", "stop", "seek", "next", "prev", "play"].includes(body.action) || (body.action === "set" && body.output !== undefined))
-        listenFlush();
+      if (body.action === "pause" || body.action === "stop") listenFlush();
+      else if (["seek", "next", "prev"].includes(body.action)) {
+        listenFlush(); // the old place's sound is dropped, the new one's plays
+        listenResume();
+      } else if (body.action === "play" || body.action === "resume") listenResume();
       const before = viewRef.current;
       if (guess && before) setView({ ...before, ...guess });
       setBusy(body.action);
