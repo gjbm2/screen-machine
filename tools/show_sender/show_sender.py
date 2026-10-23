@@ -448,7 +448,8 @@ class TestStatus:
                                                    + max(0.0, float(elapsed_s)) * getattr(self, "speed", 1.0), 3)
         with self.lock:
             self.doc = {"stage": stage, "progress": prog, "error": error, "pos_s": pos,
-                        "speed": getattr(self, "speed", 1.0)}
+                        "speed": getattr(self, "speed", 1.0),
+                        "at": round(time.monotonic(), 3) if pos is not None else None}   # when pos_s was so
             self._write()
         if self.thread is None and stage in ("preparing", "playing"):
             self.thread = threading.Thread(target=self._beat, name="status", daemon=True)
