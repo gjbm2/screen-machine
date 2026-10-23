@@ -1351,3 +1351,31 @@ def test_kernel_stamps_and_split_midi_off_bind_the_old_plain_socket(sender_sock)
         assert sk["text"]["split"] is False and sk["text"]["error"] is None and sk["text"]["rx"] == 0
     finally:
         rx.stop()
+
+
+def test_a_watched_stream_reaches_the_level_feed_marked_not_active():
+    """set_level_watch (the live meter's ?stream=): a named non-active stream's packets go to on_level with
+    active=False; the active stream's go as before (no active keyword); nothing else changes."""
+    calls: list = []
+    rx, rec = make(on_level=lambda *a, **kw: calls.append((a[0], kw.get("active", True))))
+    mic = Sim(rx, "room-mic")
+    pc = Sim(rx, "pc22-mic", addr=("192.0.2.11", 40001), t0=T0 + 0.001)
+
+    def run(seconds: float) -> None:
+        end = max(mic.arrival(mic.i), pc.arrival(pc.i)) + seconds
+        while mic.arrival(mic.i) < end:
+            first = mic if mic.arrival(mic.i) <= pc.arrival(pc.i) else pc
+            first.run(1)
+    run(3.0)
+    assert rx.active_audio() == "room-mic" and {c for c in calls} == {("room-mic", True)}
+    n_audio = len(rec.of("pc22-mic"))
+    rx.set_level_watch({"pc22-mic"})
+    k = len(calls)
+    run(1.0)
+    got = set(calls[k:])
+    assert ("pc22-mic", False) in got and ("room-mic", True) in got and ("pc22-mic", True) not in got
+    assert rx.active_audio() == "room-mic" and len(rec.of("pc22-mic")) == n_audio   # its audio isn't delivered
+    rx.set_level_watch(frozenset())
+    k = len(calls)
+    run(1.0)
+    assert {c[0] for c in calls[k:]} == {"room-mic"}

@@ -126,3 +126,36 @@ def test_ws_query_wave_end_to_end():
             await big.close()
 
     asyncio.run(go())
+
+
+def test_a_named_stream_has_its_own_frames_and_the_default_keeps_the_active():
+    """?stream=<name> (1c's calibration, 23 Oct): a client naming a stream gets only that stream's frames (peak,
+    spectrum, wave); the default clients keep the active stream's; a not-active push never reaches them."""
+    plain, named = asyncio.Queue(maxsize=8), asyncio.Queue(maxsize=8)
+    f, loop = _feed_with({plain: None, named: 128})
+    told: list = []
+    f.on_watch = told.append
+    try:
+        f._key[named] = "room-mic"
+        f._rewatch()
+        assert told == [frozenset({"room-mic"})] and f.snapshot()["watched"] == ["room-mic"]
+        f.push("pc22-mic", 5, 0.5, None, 2.0, pcm=_sine(4096, amp=0.5), sr=48000)               # the active one
+        f.push("room-mic", 9, 0.1, None, 2.001, pcm=_sine(4096, amp=0.1), sr=48000, active=False)
+        f._flush()
+        a, b = json.loads(plain.get_nowait()), json.loads(named.get_nowait())
+        assert a["s"] == "pc22-mic" and a["c"] == 5 and "wb" not in a
+        assert b["s"] == "room-mic" and b["c"] == 9 and len(_w(b)) == 128 and max(_w(b)) <= 0.11 * 32767
+        assert plain.empty() and named.empty()
+        f.push("room-mic", 10, 0.1, None, 2.01, pcm=_sine(128, amp=0.1), sr=48000, active=False)
+        f._flush()
+        assert plain.empty() and json.loads(named.get_nowait())["c"] == 10
+        del f._key[named]
+        f._rewatch()
+        assert told[-1] == frozenset() and set(f._taps) == {None}
+    finally:
+        loop.close()
+
+
+def test_stream_param():
+    assert LevelFeed.stream_param(None) is None and LevelFeed.stream_param("") is None
+    assert LevelFeed.stream_param(" room-mic ") == "room-mic" and LevelFeed.stream_param("x" * 17) is None

@@ -442,7 +442,12 @@ def test_python_m_show_service_with_the_brain(tmp_path):
                 time.sleep(0.2)
             assert card and "hearing" in card, log_path.read_text()
             assert card["vibe"]["name"] is None and card["auto"]["state"] in ("blind", "off")   # no room: blind
-            code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
+            ready_by = time.monotonic() + 20                  # the card answers before Show.ready: /state is 503
+            while True:                                         # "starting" until start() finishes (a load race)
+                code, body = _get(f"http://127.0.0.1:{port}/api/v1/state")
+                if code == 200 or time.monotonic() > ready_by:
+                    break
+                time.sleep(0.2)
             assert code == 200 and body["brain"]["running"] is True, body.get("brain")
             assert set(body["brain"]["components"]) == {"room", "situations", "autopilot", "sources", "recorder",
                                                         "player", "ml", "structure", "listener", "cues", "director",

@@ -23,6 +23,13 @@ samples of the ring, oldest first, as little-endian int16 (scaled to +-32767, cl
 yet read 0), base64-encoded.  Each distinct N is built once per flush, however many clients ask for it, and is
 spliced onto the frame already serialised (no second json.dumps; 3a, 18 Oct: a JSON int list cost ~11 % of the bus
 loop).  Clients without ``wave`` get exactly the frames they always did.
+
+A named input (23 Oct, 1c's latency calibration: the drawing-room mic while the active input is PC22's): a client
+that connects with ``?stream=<name>`` gets that stream's frames (its own peak, spectrum and ``wave``) instead of the
+active stream's. While anyone watches a name, show-rx also pushes that stream's packets here (``on_watch``: the
+receiver's ``set_level_watch``); the active stream, and everything that listens to it, is unchanged. A watched
+stream that isn't sending (off, or not subscribed) simply sends no frames. Clients without ``stream`` get exactly
+the frames they always did.
 """
 
 from __future__ import annotations
@@ -55,52 +62,90 @@ RING_N = 4096
 WAVE_MIN, WAVE_MAX = 64, 2048                         # ?wave=N clamp (WAVE_MAX <= RING_N)
 
 
+class _Tap:
+    """One feed's state: the active stream's (key None) or a named stream's. Written on show-rx under the feed's
+    lock, read on the bus loop."""
+
+    def __init__(self) -> None:
+        self.slot: Optional[list] = None                 # [stream, counter, peak, packets, t_cap_ns, arrival]
+        self.ring = np.zeros(RING_N, np.float32)        # the newest mono samples
+        self.ring_w = 0
+        self.ring_fill = 0
+        self.ring_stream: Optional[str] = None
+        self.sr = 48000
+        self.bins: Optional[list[tuple[int, int]]] = None
+
+    def store(self, stream: str, counter: int, peak: float, t_cap_ns: Optional[float], arrival_s: float,
+              pcm: Any, sr: Optional[int]) -> None:
+        if pcm is not None:                              # store the samples for the spectrum (no FFT here)
+            m = pcm[:, 0] if getattr(pcm, "ndim", 1) == 2 else pcm
+            if stream != self.ring_stream or (sr and sr != self.sr):
+                self.ring_stream, self.ring_fill, self.ring_w = stream, 0, 0
+                if sr:
+                    self.sr, self.bins = int(sr), None
+            k = min(len(m), RING_N)
+            end = self.ring_w + k
+            if end <= RING_N:
+                self.ring[self.ring_w:end] = m[-k:]
+            else:
+                cut = RING_N - self.ring_w
+                self.ring[self.ring_w:] = m[-k:][:cut]
+                self.ring[:end - RING_N] = m[-k:][cut:]
+            self.ring_w = end % RING_N
+            self.ring_fill = min(RING_N, self.ring_fill + k)
+        s = self.slot
+        if s is None or s[0] != stream:
+            self.slot = [stream, counter, peak, 1, t_cap_ns, arrival_s]
+        else:
+            s[1], s[2], s[3], s[4], s[5] = counter, max(s[2], peak), s[3] + 1, t_cap_ns, arrival_s
+
+
 class LevelFeed:
     def __init__(self) -> None:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._clients: set[asyncio.Queue] = set()
         self._wave: dict[asyncio.Queue, int] = {}        # clients that asked for ?wave=N -> N
+        self._key: dict[asyncio.Queue, Optional[str]] = {}   # client -> its tap (None: the active stream)
         self._lock = threading.Lock()
-        self._slot: Optional[list] = None                # [stream, counter, peak, packets, t_cap_ns, arrival]
-        self._ring = np.zeros(RING_N, np.float32)       # the newest mono samples (show-rx writes, the loop reads)
-        self._ring_w = 0
-        self._ring_fill = 0
-        self._ring_stream: Optional[str] = None
-        self._sr = 48000
+        self._taps: dict[Optional[str], _Tap] = {None: _Tap()}
         self._win = np.hanning(FFT_N).astype(np.float32)
-        self._bins: Optional[list[tuple[int, int]]] = None
         self._last_flush = 0.0
         self._scheduled = False
+        self.on_watch: Optional[Any] = None              # receiver.set_level_watch(frozenset): __main__ wires it
+        self.watched: frozenset = frozenset()            # the named streams someone watches (?stream=)
         self.sent = 0
         self.dropped = 0
 
+    # back-compat for readers of the active tap (tests, the monitor page's code)
+    @property
+    def _ring(self) -> np.ndarray:
+        return self._taps[None].ring
+
+    @property
+    def _ring_fill(self) -> int:
+        return self._taps[None].ring_fill
+
+    @property
+    def _ring_w(self) -> int:
+        return self._taps[None].ring_w
+
+    @property
+    def _sr(self) -> int:
+        return self._taps[None].sr
+
     # -- show-rx: store only ----------------------------------------------------------------------------------------
     def push(self, stream: str, counter: int, peak: float, t_cap_ns: Optional[float], arrival_s: float,
-             pcm: Any = None, sr: Optional[int] = None) -> None:
+             pcm: Any = None, sr: Optional[int] = None, active: bool = True) -> None:
+        """One live packet (show-rx): the active stream's (``active``) to the default tap, and a watched stream's
+        to its own tap (both, for an active stream someone also names)."""
         if not self._clients or self._loop is None:
             return
         with self._lock:
-            if pcm is not None:                          # store the samples for the spectrum (no FFT here)
-                m = pcm[:, 0] if getattr(pcm, "ndim", 1) == 2 else pcm
-                if stream != self._ring_stream or (sr and sr != self._sr):
-                    self._ring_stream, self._ring_fill, self._ring_w = stream, 0, 0
-                    if sr:
-                        self._sr, self._bins = int(sr), None
-                k = min(len(m), RING_N)
-                end = self._ring_w + k
-                if end <= RING_N:
-                    self._ring[self._ring_w:end] = m[-k:]
-                else:
-                    cut = RING_N - self._ring_w
-                    self._ring[self._ring_w:] = m[-k:][:cut]
-                    self._ring[:end - RING_N] = m[-k:][cut:]
-                self._ring_w = end % RING_N
-                self._ring_fill = min(RING_N, self._ring_fill + k)
-            s = self._slot
-            if s is None or s[0] != stream:
-                self._slot = [stream, counter, peak, 1, t_cap_ns, arrival_s]
-            else:
-                s[1], s[2], s[3], s[4], s[5] = counter, max(s[2], peak), s[3] + 1, t_cap_ns, arrival_s
+            if active:
+                self._taps[None].store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr)
+            tap = self._taps.get(stream) if stream in self.watched else None
+            if tap is not None:
+                tap.store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr)
             if self._scheduled:
                 return
             self._scheduled = True
@@ -114,41 +159,44 @@ class LevelFeed:
             pass
 
     # -- bus loop ---------------------------------------------------------------------------------------------------
-    def _band_bins(self) -> list[tuple[int, int]]:
+    @staticmethod
+    def _band_bins(tap: _Tap) -> list[tuple[int, int]]:
         """Each band's FFT bin range [lo, hi) (at least one bin), log-spaced SPEC_LO_HZ..SPEC_HI_HZ."""
-        if self._bins is None:
-            edges = np.geomspace(SPEC_LO_HZ, min(SPEC_HI_HZ, self._sr / 2 * 0.98), SPEC_BANDS + 1)
-            hz = self._sr / FFT_N
+        if tap.bins is None:
+            edges = np.geomspace(SPEC_LO_HZ, min(SPEC_HI_HZ, tap.sr / 2 * 0.98), SPEC_BANDS + 1)
+            hz = tap.sr / FFT_N
             out = []
             for lo, hi in zip(edges[:-1], edges[1:]):
                 a, b = int(round(lo / hz)), int(round(hi / hz))
                 out.append((a, max(a + 1, b)))
-            self._bins = out
-        return self._bins
+            tap.bins = out
+        return tap.bins
 
-    def _spectrum(self) -> Optional[list[int]]:
+    def _spectrum(self, tap: Optional[_Tap] = None) -> Optional[list[int]]:
         """The newest FFT_N samples' spectrum in SPEC_BANDS bands, dBFS (bus loop; ~0.1 ms)."""
+        tap = tap if tap is not None else self._taps[None]
         with self._lock:
-            if self._ring_fill < FFT_N:
+            if tap.ring_fill < FFT_N:
                 return None
-            idx = (np.arange(self._ring_w - FFT_N, self._ring_w)) % RING_N
-            x = self._ring[idx]
+            idx = (np.arange(tap.ring_w - FFT_N, tap.ring_w)) % RING_N
+            x = tap.ring[idx]
         mag = np.abs(np.fft.rfft(x * self._win)) / (FFT_N / 4.0)     # a full-scale sine's bin reads 1
         out = []
-        for a, b in self._band_bins():
+        for a, b in self._band_bins(tap):
             v = float(mag[a:b].max()) if b > a else 0.0
             out.append(int(round(max(FLOOR_DBFS, 20.0 * math.log10(v)) if v > 1e-6 else FLOOR_DBFS)))
         return out
 
-    def _wave_b64(self, n: int) -> str:
+    def _wave_b64(self, n: int, tap: Optional[_Tap] = None) -> str:
         """The newest ``n`` ring samples, oldest first, as base64 little-endian int16 scaled to +-32767 (zeros where
         the ring is empty)."""
+        tap = tap if tap is not None else self._taps[None]
         with self._lock:
-            fill, w = min(self._ring_fill, n), self._ring_w
+            fill, w = min(tap.ring_fill, n), tap.ring_w
             x = np.zeros(n, np.float32)
             if fill:
                 idx = np.arange(w - fill, w) % RING_N
-                x[n - fill:] = self._ring[idx]
+                x[n - fill:] = tap.ring[idx]
         np.multiply(x, 32767.0, out=x)
         np.clip(x, -32767.0, 32767.0, out=x)
         return base64.b64encode(np.rint(x).astype("<i2").tobytes()).decode("ascii")
@@ -166,29 +214,60 @@ class LevelFeed:
 
     def _flush(self) -> None:
         with self._lock:
-            s, self._slot, self._scheduled = self._slot, None, False
+            slots = {k: tap.slot for k, tap in self._taps.items() if tap.slot is not None}
+            for tap in self._taps.values():
+                tap.slot = None
+            self._scheduled = False
         self._last_flush = time.monotonic()
-        if s is None:
+        for key, s in slots.items():
+            tap = self._taps.get(key)
+            if tap is None:
+                continue
+            stream, counter, peak, n, t, a = s
+            body: dict[str, Any] = {"s": stream, "c": counter, "n": n,
+                                    "pk": round(20.0 * math.log10(peak), 1) if peak > 1e-6 else FLOOR_DBFS,
+                                    "t": int(t) if t is not None and math.isfinite(t) else None, "a": round(a, 6)}
+            spec = self._spectrum(tap)
+            if spec is not None:
+                body["f"] = spec
+                body["fl"], body["fh"] = SPEC_LO_HZ, round(min(SPEC_HI_HZ, tap.sr / 2 * 0.98))
+            frame = json.dumps(body, separators=(",", ":"))
+            mine = [q for q in self._clients if self._key.get(q) == key]
+            waved: dict[int, str] = {}
+            for wn in {self._wave[q] for q in mine if q in self._wave}:   # each distinct N once per flush, spliced
+                waved[wn] = f'{frame[:-1]},"wb":"{self._wave_b64(wn, tap)}"}}'
+            for q in mine:
+                if q.full():
+                    self.dropped += 1
+                else:
+                    wn = self._wave.get(q)
+                    q.put_nowait(frame if wn is None else waved.get(wn, frame))
+
+    @staticmethod
+    def stream_param(raw: Optional[str]) -> Optional[str]:
+        """``?stream=<name>`` -> the name (1-16 printable characters, VBAN's limit), or None."""
+        if raw is None:
+            return None
+        name = raw.strip()
+        return name if 0 < len(name) <= 16 and name.isprintable() else None
+
+    def _rewatch(self) -> None:
+        """The watched names changed (bus loop): taps for them, and the receiver told (swapped by reference)."""
+        names = frozenset(k for k in self._key.values() if k is not None)
+        if names == self.watched:
             return
-        stream, counter, peak, n, t, a = s
-        body: dict[str, Any] = {"s": stream, "c": counter, "n": n,
-                                "pk": round(20.0 * math.log10(peak), 1) if peak > 1e-6 else FLOOR_DBFS,
-                                "t": int(t) if t is not None and math.isfinite(t) else None, "a": round(a, 6)}
-        spec = self._spectrum()
-        if spec is not None:
-            body["f"] = spec
-            body["fl"], body["fh"] = SPEC_LO_HZ, round(min(SPEC_HI_HZ, self._sr / 2 * 0.98))
-        frame = json.dumps(body, separators=(",", ":"))
-        waved: dict[int, str] = {}
-        if self._wave:
-            for n in set(self._wave.values()):            # each distinct N once per flush, spliced onto the frame
-                waved[n] = f'{frame[:-1]},"wb":"{self._wave_b64(n)}"}}'
-        for q in self._clients:
-            if q.full():
-                self.dropped += 1
-            else:
-                n = self._wave.get(q)
-                q.put_nowait(frame if n is None else waved.get(n, frame))
+        with self._lock:
+            for k in names:
+                self._taps.setdefault(k, _Tap())
+            for k in [k for k in self._taps if k is not None and k not in names]:
+                del self._taps[k]
+            self.watched = names
+        fn = self.on_watch
+        if fn is not None:
+            try:
+                fn(names)
+            except Exception:                             # noqa: BLE001
+                log.exception("levels: the receiver didn't take the watched streams")
 
     def routes(self, app: web.Application) -> None:
         app.router.add_get(PATH, self._ws)
@@ -210,7 +289,9 @@ class LevelFeed:
         n_wave = self.wave_param(request.query.get("wave"))
         if n_wave is not None:
             self._wave[q] = n_wave
+        self._key[q] = self.stream_param(request.query.get("stream"))
         self._clients.add(q)
+        self._rewatch()
 
         async def reader() -> None:                       # pings (clock alignment); notice the close
             async for msg in ws:
@@ -239,9 +320,12 @@ class LevelFeed:
         finally:
             self._clients.discard(q)
             self._wave.pop(q, None)
+            self._key.pop(q, None)
+            self._rewatch()
             rd.cancel()
             await ws.close()
         return ws
 
     def snapshot(self) -> dict[str, Any]:
-        return {"clients": len(self._clients), "sent": self.sent, "dropped": self.dropped}
+        return {"clients": len(self._clients), "sent": self.sent, "dropped": self.dropped,
+                "watched": sorted(self.watched)}
