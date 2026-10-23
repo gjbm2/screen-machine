@@ -190,7 +190,9 @@ export async function fetchDevices(signal?: AbortSignal, baseUrl?: string): Prom
 
 /** The room's output as last read. Moving away from this device silences it at once (unless it also plays). */
 export function setRoomOutput(id: string | null, label: string | null) {
-  if (id === snap.roomOutput && label === snap.roomOutputLabel) return;
+  // the same output, a mount that doesn't know its name yet: keep the name (two Play on mounts, one with the list
+  // and one without, set it back and forth for ever: the score page's "Maximum update depth", 23 Oct)
+  if (id === snap.roomOutput && (label === snap.roomOutputLabel || label === null)) return;
   const leftMe = snap.roomOutput === myOutput() && id !== myOutput();
   const toMe = id === myOutput() && snap.roomOutput !== myOutput();
   set({ roomOutput: id, roomOutputLabel: label });
