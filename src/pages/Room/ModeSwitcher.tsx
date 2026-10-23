@@ -62,7 +62,7 @@ import type {
 } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
 import { modeChanges, stepSentence, switchingWords, targetName } from "./modeWords";
-import { modeDescription, modeLabel, STEP_WORDS, stepFailure, stepText } from "./words";
+import { modeDescription, modeLabel, STEP_WORDS, stepFailure, stepGoingLive, stepText } from "./words";
 
 /** How long "Now <mode>" stays after a clean switch. */
 const DONE_SHOWN_MS = 15_000;
@@ -821,7 +821,9 @@ function ModeProgress({
   if (!transition) return null;
   const steps = transition.steps ?? [];
   const failed = steps.filter((s) => s.status === "failed").length;
-  const unchecked = steps.filter((s) => s.status === "unconfirmed").length;
+  // a screen still going live past its deadline is in progress, not "not confirmed"
+  const goingLive = steps.filter(stepGoingLive).length;
+  const unchecked = steps.filter((s) => s.status === "unconfirmed" && !stepGoingLive(s)).length;
   const finished = transition.phase === "done" || transition.phase === "cancelled";
   const age = finished && transition.finishedAt ? now - transition.finishedAt : 0;
   const to = modeLabel(transition.to, modes);
@@ -876,6 +878,7 @@ function ModeProgress({
     tone = "ok";
     text = `Now ${to}`;
     if (unchecked) sub = `${unchecked} not confirmed`;
+    if (goingLive) sub = [goingLive === 1 ? "a screen still going live" : `${goingLive} screens still going live`, sub].filter(Boolean).join(" · ");
   }
   if (auto) {
     text = `Auto: ${text}`;
@@ -941,6 +944,7 @@ function stepStatusWords(s: TransitionStep): string {
   if (reason === "unavailable") return "The room can't switch it yet";
   if (reason === "unknown_state") return "Not sent: on or off not known";
   if (s.detail === "dry run") return "Not wired up yet";
+  if (stepGoingLive(s)) return "Going live…";
   if (reason === "hand") return "Left as you set it";
   if (reason === "left_alone") return "Left alone";
   if (reason === "quiet_before" || s.detail === "re-apply") return "Not needed";
@@ -972,13 +976,15 @@ export function StepList({
           data-step-status={s.status}
           className="flex items-start gap-2.5 rounded-xl bg-white/80 px-3 py-2 text-sm text-foreground"
         >
-          <StepIcon status={s.status} />
+          <StepIcon status={stepGoingLive(s) ? "running" : s.status} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <span className={cn("font-medium", (s.status === "cancelled" || s.status === "skipped") && "opacity-60", s.status === "cancelled" && "line-through")}>
                 {stepSentence(describe, s, names)?.text ?? stepText(s)}
               </span>
-              <span className={cn("text-[13px] font-medium", TEXT_CLASSES[stepTone(s.status)])}>{stepStatusWords(s)}</span>
+              <span className={cn("text-[13px] font-medium", TEXT_CLASSES[stepTone(stepGoingLive(s) ? "running" : s.status)])}>
+                {stepStatusWords(s)}
+              </span>
             </div>
             {s.status === "failed" && s.detail && (
               <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{s.detail}</div>
