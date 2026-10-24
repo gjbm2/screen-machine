@@ -1,11 +1,10 @@
 // Settings › Connection (#connection): how this device reaches the room. The room service address (this device's
 // sm_room_url, as ?room= sets it; moved here from the Room page's menu), the services as they answer now (the room,
-// live pictures, the music side), the last mode change, the activity log (read only), and Spectre, the house PC's
-// dashboard (LAN only; its address comes from the room's own LAN address, nothing written in).
+// live pictures, the music side), the last mode change, and the activity log (read only).
+// No link to Spectre: the owner ruled it must not be reachable from this app.
 
 import { useEffect, useState } from "react";
 import { RefreshCw, Wifi } from "lucide-react";
-import { spectreUrl } from "@/components/nav/appNav";
 import { useRoomLink } from "@/components/room/roomLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,7 @@ import { EventLog } from "@/pages/Room/EventLog";
 import type { LogEntry, ModeDef, RoomStatus, TrackedTransition } from "@/pages/Room/types";
 import type { ConnectionState } from "@/pages/Room/useRoomConnection";
 import { modeLabel } from "@/pages/Room/words";
-import { Group, Hint, LinkRow, ReadRow, Row, Sub } from "./Group";
+import { Group, Hint, ReadRow, Row, Sub } from "./Group";
 
 export function ConnectionGroup({
   baseUrl,
@@ -133,11 +132,6 @@ export function ConnectionGroup({
         <EventLog log={log} statusCount={statusCount} onClear={onClearLog} className="mb-2 h-[60vh]" />
       </Unroll>
 
-      {room.onLan && (
-        <LinkRow href={spectreUrl()} newTab>
-          Spectre: the house PC's servers
-        </LinkRow>
-      )}
     </Group>
   );
 }

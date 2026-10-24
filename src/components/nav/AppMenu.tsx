@@ -4,7 +4,7 @@
 //               and Lights only while the room answers)
 //   <this page> whatever the page passes as children (the Room page: its connection, last mode change, activity log)
 //   Screens     folded ("7 screens"): each screen's live badge and its Room, Generator, Schedule and TV page links
-//   Tools       LAN only, each in a new tab: the scene library, Spectre, the DSP monitor
+//   Tools       LAN only, each in a new tab: the scene library, the DSP monitor (never Spectre: owner, it is not reachable from this app)
 //   Developer   folded: the page's technical extras (`dev`), then the developer pages
 // Links are AppLinks (inside the app: no reload, the dock and the socket stay), and a tap closes the menu.
 
