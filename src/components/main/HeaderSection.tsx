@@ -1,124 +1,121 @@
-import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import Header from '@/components/Header';
+// The generator's header (and, until Schedules has its own, the scheduler's): the app's one header (PageHeader) with
+// the title, Mic and AI while the room answers, the live-updates link as the status pill (only when it isn't fine),
+// the places row and the one menu (owner, 24 Oct: "you just haven't really worked the interface ui through properly
+// throughout"). The menu is navigation and read-only status only: the console and About sit in its Developer fold;
+// "Cancel all" lives on the generator's jobs strip, next to the jobs it cancels.
+
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Info, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, StopCircle, SlidersHorizontal } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
-import { generationApi } from '@/shared/api';
-import { useRoomLink, liveStateOf, roomPageUrl } from '@/components/room/roomLink';
+import { roomPageUrl } from '@/components/room/roomLink';
 import { AppMenu } from '@/components/nav/AppMenu';
+import { PageHeader, type HeaderStatus } from '@/components/nav/PageHeader';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
   isConsoleVisible: boolean;
   onOpenAdvancedOptions?: () => void;
   onOpenAboutDialog?: () => void;
+  /** The generator's live-updates socket (job progress, new pictures). Undefined: the page has none. */
+  wsConnected?: boolean;
 }
 
-// The generator's own menu actions, under "On this page" in the shared menu.
-const PAGE_ACTION =
-  'flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-base font-medium hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-const PAGE_ICON = 'grid h-9 w-9 shrink-0 place-items-center rounded-full bg-stone-100 text-stone-600';
+const DEV_ROW =
+  'flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-[15px] font-medium hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-const HeaderSection: React.FC<HeaderSectionProps> = ({ 
-  onToggleConsole,
-  isConsoleVisible,
-  onOpenAboutDialog
-}) => {
+/** The screen tab the generator shows (?publish=<id>, kept in the address by the tabs). */
+function shownScreen(): string | null {
+  return new URLSearchParams(window.location.search).get('publish');
+}
+
+const HeaderSection: React.FC<HeaderSectionProps> = ({ onToggleConsole, isConsoleVisible, onOpenAboutDialog, wsConnected }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  // This header is shared by the generator (/) and the scheduler (/scheduler).
-  const current = useLocation().pathname.startsWith('/scheduler') ? 'scheduler' : 'generator';
-  const room = useRoomLink();
-  const liveCount = Object.values(room.status?.screens ?? {}).filter(s => liveStateOf(s) === 'live').length;
+  const navigate = useNavigate();
+  const isScheduler = useLocation().pathname.startsWith('/scheduler');
+  const current = isScheduler ? 'scheduler' : 'generator';
 
-  const handleCancelAllJobs = async () => {
-    toast.loading("Cancelling all jobs...");
-    try {
-      const result = await generationApi.cancelAllJobs();
-      if (result.success) {
-        toast.success(`Cancelled ${result.cancelled} jobs`);
-      } else {
-        toast.error(`Failed to cancel jobs: ${result.error}`);
-      }
-    } catch (error) {
-      console.error("Error cancelling jobs:", error);
-      toast.error("Failed to cancel jobs due to an unexpected error");
-    }
+  // The socket takes a moment on load: say nothing until it has had a fair chance.
+  const [settling, setSettling] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setSettling(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
+  const status: HeaderStatus | null =
+    wsConnected === undefined
+      ? null
+      : wsConnected
+        ? { tone: 'ok', word: 'Connected' }
+        : settling
+          ? null
+          : {
+              tone: 'warn',
+              word: 'Reconnecting',
+              sentence: "The generator's live updates aren't connected. Pictures still get made; progress shows again once it reconnects.",
+              pulse: true,
+            };
+
+  // The places row's Room opens the Room page on the screen whose tab is showing (?publish=<id>).
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (isScheduler || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const room = (e.target as HTMLElement).closest('[data-testid="place-room"]');
+    const screen = shownScreen();
+    if (!room || !screen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(roomPageUrl(screen));
   };
 
   return (
-    <div className="flex justify-between items-center">
-      <Header onOpenAboutDialog={onOpenAboutDialog} />
-      
-      <div className="flex items-center space-x-1">
-        {/* Room console: up front whenever the room's LAN door answers */}
-        {room.onLan && (
-          <Button
-            asChild
-            size="sm"
-            className="h-10 rounded-full px-3 sm:px-4 mr-1 bg-teal-700 text-white hover:bg-teal-800"
-          >
-            <a href={roomPageUrl()} data-testid="home-room-button">
-              <SlidersHorizontal className="h-4 w-4" />
-              <span className="ml-1.5">Room</span>
-              {liveCount > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" />
-                  {liveCount} live
-                </span>
-              )}
-            </a>
-          </Button>
-        )}
-
-        {/* Only show console button outside the menu if visible */}
-        {isConsoleVisible && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={onToggleConsole}
-                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
-              >
-                <Terminal className="h-5 w-5 text-primary" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Toggle Command Console</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        
-        {/* The shared menu (same as the Room console's): Go to, Screens, this page, Developer */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => setMenuOpen(true)}
-          aria-label="Menu"
-          data-testid="menu-button"
-          className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current={current} pageTitle="On this page">
-          <div className="space-y-1">
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void handleCancelAllJobs(); }}>
-              <span className={PAGE_ICON}><StopCircle className="h-5 w-5" /></span>
-              Cancel all jobs
-            </button>
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onToggleConsole(); }}>
-              <span className={PAGE_ICON}><Terminal className="h-5 w-5" /></span>
+    <div onClickCapture={onClickCapture}>
+      <PageHeader
+        title={isScheduler ? 'Schedules' : 'Generator'}
+        current={current}
+        compact
+        toggles="auto"
+        status={status}
+        onMenu={() => setMenuOpen(true)}
+        actions={
+          isConsoleVisible ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleConsole}
+              aria-label="Hide the console"
+              title="Hide the console"
+              className="h-11 w-11 shrink-0 rounded-full hover:bg-stone-200/60"
+            >
+              <Terminal className="h-5 w-5" />
+            </Button>
+          ) : null
+        }
+      />
+      <AppMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        current={current}
+        pageTitle={status ? 'This page' : undefined}
+        dev={
+          <div className="space-y-0.5">
+            <button type="button" className={DEV_ROW} onClick={() => { setMenuOpen(false); onToggleConsole(); }}>
+              <Terminal className="h-4 w-4 shrink-0 text-stone-500" aria-hidden />
               {isConsoleVisible ? 'Hide the console' : 'Show the console'}
             </button>
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onOpenAboutDialog?.(); }}>
-              <span className={PAGE_ICON}><Info className="h-5 w-5" /></span>
-              About
-            </button>
+            {onOpenAboutDialog && (
+              <button type="button" className={DEV_ROW} onClick={() => { setMenuOpen(false); onOpenAboutDialog(); }}>
+                <Info className="h-4 w-4 shrink-0 text-stone-500" aria-hidden />
+                About
+              </button>
+            )}
           </div>
-        </AppMenu>
-      </div>
+        }
+      >
+        {status ? (
+          <p className="px-1 text-[15px] leading-snug text-muted-foreground" data-testid="generator-link-sentence">
+            {status.tone === 'ok' ? 'Live updates are connected: job progress and new pictures show as they happen.' : status.sentence}
+          </p>
+        ) : null}
+      </AppMenu>
     </div>
   );
 };

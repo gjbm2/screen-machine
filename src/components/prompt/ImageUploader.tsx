@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Upload, Camera } from 'lucide-react';
+import { Upload, Camera, ImagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
@@ -347,7 +347,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
-  const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
+  const dragButtonClass = `${isDragging ? 'bg-accent border-teal-600' : 'border border-input'} transition-colors`;
 
   // TEMPORARY: Debug message display function
   const showDebugMessage = (message: string) => {
@@ -421,10 +421,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             <Button
               type="button"
               variant="outline"
-              className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 ${dragButtonClass} ${
-                menuOpen
-                  ? 'bg-purple-500/10 text-purple-700'
-                  : 'hover:bg-purple-500/10 text-purple-700'
+              className={`h-9 rounded-full flex-shrink-0 text-sm flex items-center gap-1.5 px-3 bg-card font-medium ${dragButtonClass} ${
+                menuOpen ? 'bg-accent' : ''
               }`}
               disabled={isLoading}
               ref={buttonRef}
@@ -433,12 +431,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               onDragOver={handleDragOver}
               onDrop={handleDrop}
             >
-              <Upload className="h-4 w-4" />
+              <ImagePlus className="h-4 w-4" />
+              <span>Add picture</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuPortal>
             <DropdownMenuContent align="start" className="w-64 p-2">
-              <div className="text-sm font-semibold mb-1 px-2">Upload options</div>
+              <div className="text-sm font-semibold mb-1 px-2">Add a picture to the prompt</div>
               <DropdownMenuItem onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -478,7 +477,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button"
         variant="outline"
         onClick={triggerFileInput}
-        className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 ${dragButtonClass}`}
+        className={`h-9 rounded-full flex-shrink-0 text-sm flex items-center gap-1.5 px-3 bg-card font-medium ${dragButtonClass}`}
         disabled={isLoading}
         ref={buttonRef}
         onDragEnter={handleDragEnter}
@@ -486,8 +485,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <Upload className="h-4 w-4" />
-        {!hideLabel && "Upload"}
+        <ImagePlus className="h-4 w-4" />
+        {!hideLabel && "Add picture"}
       </Button>
     </>
   );
