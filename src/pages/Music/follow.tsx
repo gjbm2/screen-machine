@@ -11,7 +11,11 @@
 //   FollowLight   over one page image: a soft band on the bar playing and a glow on the notes just struck (the page's
 //                 bar boxes and note heads, GET /score/<id>/page/<n>.json, fetched once a page has the light)
 //   Transport     ⏮ ◀ ⏯ ▶: back to the start, a bar back, play / pause, a bar on; play from the page in view when
-//                 nothing plays
+//                 nothing plays (the pianola's and the stand's play bar)
+//   useScoreTransport  the same, as parts for the app's shared Transport (components/player/Transport.tsx): its bar
+//                 steps either side of Play, and its Play (the score's docked bar)
+//   BarBand       over one page image: an amber band on each bar chosen for Record › These bars, and (`onPick`) a tap
+//                 target on every bar, so a tap on the score chooses the bars
 //
 // A tap answers at once, whatever the sound's delay (owner, 23 Oct: "the interface still needs to be sensibly
 // responsive (even if there's a delay after I press play)"): Pause freezes the light where it is (what was heard) and
@@ -23,8 +27,9 @@
 // When this device plays the piano itself over its own buffer (Room/deviceAudio.ts), the light is what it hears:
 // the place in the piece of the very frame playing (exact, no estimate), and Pause silences it at once.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pause, Play, SkipBack, StepBack, StepForward } from "lucide-react";
+import type { TransportPlay } from "@/components/player/Transport";
 import { cn } from "@/lib/utils";
 import type { MusicApi, PlayerAction, ScoreFollow, ScoreGeometry, ScoreKind, ScoreSize } from "./api";
 import { useDeviceLag } from "@/pages/Room/deviceLag";
@@ -299,8 +304,9 @@ export function FollowLight({
 
 const ROUND = "grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
 
-/** ⏮ ◀ ⏯ ▶ for the score: the player's, on this piece. ``pageInView``: where Play starts when nothing plays. */
-export function Transport({ follow, pageInView, compact }: { follow: Follow; pageInView: number; compact?: boolean }) {
+/** The score's play logic: a bar back or on (from the page in view when nothing plays here), and Play / Pause / Carry
+ *  on / Play from this page. */
+function useScoreMoves(follow: Follow, pageInView: number) {
   const { head, data, barStart, firstBarOnPage, playFrom, pause, resume } = follow;
   const bars = data?.bars ?? [];
   const idx = head.bar !== null ? bars.findIndex((b) => b[0] === head.bar) : -1;
@@ -319,25 +325,53 @@ export function Transport({ follow, pageInView, compact }: { follow: Follow; pag
     else if (head.mine) void resume();
     else void playFrom(startOfPage());
   };
+  const label = going ? "Pause" : head.mine ? "Carry on" : "Play from this page";
+  return { step, toggle, going, label, starting: head.starting, ready: !!data };
+}
+
+/** The score's parts for the shared Transport: its bar steps (either side of Play) and its Play. */
+export function useScoreTransport(follow: Follow, pageInView: number): { steps: { back: ReactNode; on: ReactNode }; play: TransportPlay } {
+  const m = useScoreMoves(follow, pageInView);
+  return {
+    steps: {
+      back: (
+        <button type="button" aria-label="A bar back" title="A bar back" disabled={!m.ready} onClick={() => m.step(-1)} className={ROUND}>
+          <StepBack className="h-5 w-5" aria-hidden />
+        </button>
+      ),
+      on: (
+        <button type="button" aria-label="A bar on" title="A bar on" disabled={!m.ready} onClick={() => m.step(1)} className={ROUND}>
+          <StepForward className="h-5 w-5" aria-hidden />
+        </button>
+      ),
+    },
+    play: { going: m.going, starting: m.starting, label: m.label, onClick: m.toggle },
+  };
+}
+
+/** ⏮ ◀ ⏯ ▶ for the score: the player's, on this piece. ``pageInView``: where Play starts when nothing plays. */
+export function Transport({ follow, pageInView, compact }: { follow: Follow; pageInView: number; compact?: boolean }) {
+  const { head, data, playFrom } = follow;
+  const m = useScoreMoves(follow, pageInView);
   return (
     <div className={cn("flex items-center", compact ? "gap-0" : "gap-1")} role="group" aria-label="Play">
       <button type="button" aria-label="Back to the start" title="Back to the start" onClick={() => void playFrom(0)} className={ROUND}>
         <SkipBack className="h-5 w-5" aria-hidden />
       </button>
-      <button type="button" aria-label="A bar back" title="A bar back" disabled={!data} onClick={() => step(-1)} className={ROUND}>
+      <button type="button" aria-label="A bar back" title="A bar back" disabled={!data} onClick={() => m.step(-1)} className={ROUND}>
         <StepBack className="h-5 w-5" aria-hidden />
       </button>
       <button
         type="button"
-        aria-label={going ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
-        title={going ? "Pause" : head.mine ? "Carry on" : "Play from this page"}
-        onClick={toggle}
+        aria-label={m.label}
+        title={m.label}
+        onClick={m.toggle}
         className={cn(ROUND, "relative h-12 w-12 bg-teal-700 text-white hover:bg-teal-800")}
       >
         {head.starting && <span aria-hidden className="absolute inset-0 rounded-full border-2 border-white/70 border-t-transparent motion-safe:animate-spin" />}
-        {going ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
+        {m.going ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
       </button>
-      <button type="button" aria-label="A bar on" title="A bar on" disabled={!data} onClick={() => step(1)} className={ROUND}>
+      <button type="button" aria-label="A bar on" title="A bar on" disabled={!data} onClick={() => m.step(1)} className={ROUND}>
         <StepForward className="h-5 w-5" aria-hidden />
       </button>
       {!compact && head.mine && head.bar !== null && (
@@ -345,6 +379,65 @@ export function Transport({ follow, pageInView, compact }: { follow: Follow; pag
           {head.starting ? `Starting at bar ${head.bar}…` : `bar ${head.bar}`}
         </span>
       )}
+    </div>
+  );
+}
+
+/** Record › These bars over page ``n``: an amber band on each chosen bar (``from``..``to``), and with ``onPick`` a tap
+ *  target on every bar of the page (the first tap sets From, the next To: the caller decides). Put it in the image's
+ *  relative box, after the image. Its taps stay its own (the page turner and the stand's tap never see them). */
+export function BarBand({
+  pieceId,
+  n,
+  layout,
+  from,
+  to,
+  onPick,
+}: {
+  pieceId: string;
+  n: number;
+  layout: ScoreSize & { kind?: ScoreKind; rev?: string };
+  from: number | null;
+  to: number | null;
+  onPick?: (bar: number) => void;
+}) {
+  const { api } = useMusic();
+  const geo = useGeometry(api, pieceId, n, layout, true);
+  if (!geo) return null;
+  const pad = 0.012;
+  const inRange = (b: number) => from !== null && to !== null && b >= from && b <= to;
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  return (
+    <div aria-hidden={!onPick} className="pointer-events-none absolute inset-0" data-testid={`bar-band-${n}`}>
+      {geo.bars.map((b, i) => {
+        const chosen = inRange(b[0]);
+        if (!chosen && !onPick) return null;
+        const style = {
+          left: `${b[1] * 100}%`,
+          top: `${Math.max(0, b[2] - pad) * 100}%`,
+          width: `${(b[3] - b[1]) * 100}%`,
+          height: `${(b[4] - b[2] + 2 * pad) * 100}%`,
+        };
+        const cls = cn("absolute rounded-md", chosen ? "bg-amber-300/30 ring-2 ring-amber-500/60" : "");
+        return onPick ? (
+          <button
+            key={`${b[0]}-${i}`}
+            type="button"
+            aria-label={`Bar ${b[0]}`}
+            aria-pressed={chosen}
+            onPointerDown={stop}
+            onPointerUp={stop}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPick(b[0]);
+            }}
+            className={cn(cls, "pointer-events-auto cursor-pointer hover:bg-amber-200/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500")}
+            style={style}
+          />
+        ) : (
+          <div key={`${b[0]}-${i}`} className={cls} style={style} />
+        );
+      })}
     </div>
   );
 }

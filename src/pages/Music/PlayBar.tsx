@@ -8,7 +8,10 @@
 //             start, 10 s back, play / pause, 10 s on
 //   100%      the speed; a tap opens More
 //   Play on   where it's heard (Room/PlayOn.tsx, compact)
-//   ⋯ More    the speed (fine nudges), the sound (instrument), and Watch: Score | Pianola (onWatch)
+//   ⋯ More    Watch: Score | Pianola (onWatch), the speed (fine nudges), the sound (instrument); it scrolls when the
+//             screen is short (a phone)
+// The score's own docked bar uses the app's shared Transport (components/player/Transport.tsx) instead; this bar is the
+// pianola's (Room/LiveMusicView) and the music stand's on a tablet.
 //
 // Inside the Music page it shares the page's player (context); elsewhere (the Room page's pianola) it keeps its own.
 
@@ -31,7 +34,48 @@ export type Watching = "score" | "pianola";
 
 const ROUND = "grid h-10 w-10 shrink-0 place-items-center rounded-full text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
 const PILL = "inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 text-[15px] font-medium tabular-nums text-stone-700 hover:bg-stone-50";
-const SEG = "min-h-9 flex-1 rounded-full px-3 text-[15px] font-medium";
+const SEG = "min-h-9 flex-1 whitespace-nowrap rounded-full px-3 text-[15px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+const WATCH: [Watching, string][] = [
+  ["score", "Score"],
+  ["pianola", "Pianola"],
+];
+
+/** The one segmented control of the score and its bars (owner rule: one look, one order everywhere): Pages | Scroll,
+ *  Quick | Better, Whole piece | These bars, Watch: Score | Pianola. */
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+  className,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (v: T) => void;
+  /** Every choice but the one chosen is off (e.g. while recording). */
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex gap-1 rounded-full border border-stone-200 bg-stone-50 p-1", className)} role="radiogroup" aria-label={label}>
+      {options.map(([v, words]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          disabled={disabled && value !== v}
+          onClick={() => onChange(v)}
+          className={cn(SEG, value === v ? "bg-white text-teal-900 shadow-sm" : "text-stone-600 hover:bg-white/60")}
+        >
+          {words}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function useBarPlayer(baseUrl: string): PlayerHook {
   const ctx = useMusicMaybe();
@@ -125,29 +169,25 @@ export function PlayBar({
         </PopoverTrigger>
         <PopoverContent
           align="end"
-          className={cn(THEME_CLASS, "z-[70] w-[min(22rem,calc(100vw-2rem))] space-y-4 rounded-2xl p-3")}
+          collisionPadding={12}
+          className={cn(
+            THEME_CLASS,
+            "z-[70] max-h-[var(--radix-popover-content-available-height)] w-[min(22rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-2xl p-3",
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           {watching && onWatch && (
             <div>
               <p className="mb-1.5 text-sm font-medium text-stone-600">Watch</p>
-              <div className="flex gap-1 rounded-full border border-stone-200 bg-stone-50 p-1" role="radiogroup" aria-label="Watch">
-                {(["score", "pianola"] as const).map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    role="radio"
-                    aria-checked={watching === w}
-                    onClick={() => {
-                      setOpen(false);
-                      if (w !== watching) onWatch(w);
-                    }}
-                    className={cn(SEG, watching === w ? "bg-white text-teal-900 shadow-sm" : "text-stone-600 hover:bg-white/60")}
-                  >
-                    {w === "score" ? "Score" : "Pianola"}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label="Watch"
+                value={watching}
+                options={WATCH}
+                onChange={(w) => {
+                  setOpen(false);
+                  if (w !== watching) onWatch(w);
+                }}
+              />
             </div>
           )}
           {speed !== null && (
@@ -157,7 +197,8 @@ export function PlayBar({
           )}
           {sound.available && (
             <div>
-              <SoundChoice sound={sound} onInstrument={setInstrument} />
+              <p className="mb-1.5 text-sm font-medium text-stone-600">Sound</p>
+              <SoundChoice sound={sound} onInstrument={setInstrument} bare />
             </div>
           )}
         </PopoverContent>
