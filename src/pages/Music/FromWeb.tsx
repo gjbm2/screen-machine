@@ -76,7 +76,7 @@ export function FromWeb() {
   return (
     <div className="space-y-3" data-testid="music-web">
       <div className="flex items-center gap-2">
-        <SearchBox value={q} onChange={setQ} onSubmit={() => void search()} placeholder="A tune, a composer, a show" label="Look on the web" />
+        <SearchBox value={q} onChange={setQ} onSubmit={() => void search()} placeholder="Tune or composer" label="Look on the web" />
         <button type="button" onClick={() => void search()} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex h-12 shrink-0 items-center gap-2 px-4 font-semibold")}>
           {loading ? <Spinner /> : <Globe className="h-4 w-4" aria-hidden />} Look
         </button>

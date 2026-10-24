@@ -10,6 +10,7 @@
 //           sound view exactly as the Steinway's MIDI arrives, so the piano scenes (Piano mode) follow it.
 //           Pieces are built-in phrases plus any .mid file dropped in config/live/test-piano/.
 // One plays at a time: starting one stops the other.
+// `bare` (Music's Test music sheet, whose title already says "Test music"): no heading of its own, just what plays.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Guitar, Minus, Music, Piano, Play, Plus, SkipForward, Square } from "lucide-react";
@@ -86,10 +87,12 @@ function ShowTestCard({
   addLog,
   reportError,
   stopOthers,
+  bare,
 }: {
   api: RoomApi;
   connected: boolean;
   liveNow: boolean;
+  bare?: boolean;
   view: ShowPolled;
   setView: (v: ShowPolled) => void;
   addLog: (e: NewLogEntry) => void;
@@ -153,11 +156,13 @@ function ShowTestCard({
   const disabled = !connected || busy;
 
   return (
-    <section aria-labelledby="room-test-music">
+    <section aria-labelledby={bare ? undefined : "room-test-music"} aria-label={bare ? "Test music" : undefined}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="room-test-music" className="text-lg font-semibold text-stone-800">
-          Test music
-        </h2>
+        {!bare && (
+          <h2 id="room-test-music" className="text-lg font-semibold text-stone-800">
+            Test music
+          </h2>
+        )}
         <Pill tone={playingSrc ? "live" : "muted"} pulse={!!playingSrc}>
           {playingSrc ? `${playingSrc === "audio" ? "Music" : "Piano"} · ${label(playingSrc, view.sources[playingSrc].piece)}` : "Off"}
         </Pill>
@@ -217,6 +222,7 @@ function ShowTestCard({
             sound={sound}
             disabled={disabled}
             onInstrument={(id) => changeSound({ instrument: id })}
+            scope="Test piano"
           />
         )}
         {source === "piano" && sound.available && <SpeedNudges speed={sound.speed ?? 1} onSpeed={changeSpeed} disabled={disabled} />}
@@ -261,12 +267,15 @@ export function TestShowSection({
   liveNow,
   addLog,
   reportError,
+  bare = false,
 }: {
   api: RoomApi;
   connected: boolean;
   liveNow: boolean;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
+  /** No heading of its own (a sheet titled "Test music"). */
+  bare?: boolean;
 }) {
   const fetchBand = useCallback((s: AbortSignal) => api.testShow(s), [api]);
   const fetchPiano = useCallback((s: AbortSignal) => api.testPiano(s), [api]);
@@ -338,6 +347,7 @@ export function TestShowSection({
         addLog={addLog}
         reportError={reportError}
         stopOthers={stopOthers}
+        bare={bare}
       />
     );
   }
@@ -381,11 +391,13 @@ export function TestShowSection({
   const yielded = !bandOn && band.view?.stopped?.startsWith("real Art-Net");
 
   return (
-    <section aria-labelledby="room-test-music">
+    <section aria-labelledby={bare ? undefined : "room-test-music"} aria-label={bare ? "Test music" : undefined}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="room-test-music" className="text-lg font-semibold text-stone-800">
-          Test music
-        </h2>
+        {!bare && (
+          <h2 id="room-test-music" className="text-lg font-semibold text-stone-800">
+            Test music
+          </h2>
+        )}
         {(band.view || piano.view) && (
           <Pill tone={playing ? "live" : "muted"} pulse={playing}>
             {bandOn ? `Band · ${song?.section ?? ""}` : pianoOn ? `Piano · ${pieceLabel(piano.view?.piece)}` : "Off"}
