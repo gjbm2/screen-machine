@@ -23,6 +23,13 @@ import {
   swatchOf,
   typesFrom,
   wiringWords,
+  identifyWhy,
+  lightInModes,
+  mapWhereWords,
+  modeUseLines,
+  roomOfLight,
+  shortName,
+  whereWords,
   type LightRow,
   type LightType,
 } from "./lib.ts";
@@ -558,4 +565,64 @@ test("the room, the live view and the rig's extras read tolerantly", () => {
   const rows = rowsFromRig({ fixtures: [{ id: "dmx.mover", label: "Mover", output: "dmx-a", address: 1, caps: MOVER_FULL, setup: { home: { pan: 5, tilt: 6 } } }] });
   assert.equal(rows[0].caps?.moves, true);
   assert.deepEqual(rows[0].setup.home, { pan: 5, tilt: 6 });
+});
+
+// -- the room around a light (B10) ---------------------------------------------------------------------------------------
+
+test("shortName drops the containing room's name, never everything", () => {
+  assert.equal(shortName("Drawing room NE", "Drawing room"), "NE");
+  assert.equal(shortName("drawing room: Par 1", "Drawing room"), "Par 1");
+  assert.equal(shortName("Drawing room", "Drawing room"), "Drawing room");
+  assert.equal(shortName("Drawing roomette", "Drawing room"), "Drawing roomette");
+  assert.equal(shortName("Spot", null), "Spot");
+});
+
+test("roomOfLight: Hue lamps by id, DMX lights by 'light' or 'light.<id>'", () => {
+  const rooms = [
+    { id: "lab", name: "Lab", lights: ["light.par1"] },
+    { id: "dr", name: "Drawing room", lights: ["hue.ne", "light"] },
+  ];
+  assert.equal(roomOfLight(rooms, "hue.ne", false)?.id, "dr");
+  assert.equal(roomOfLight(rooms, "par1", true)?.id, "lab");
+  assert.equal(roomOfLight(rooms, "par2", true)?.id, "dr");
+  assert.equal(roomOfLight(rooms, "hue.sw", false), null);
+});
+
+test("mapWhereWords reads the drawing room as placed on the map", () => {
+  const size: [number, number, number] = [5, 10, 5];
+  const screens = [
+    { name: "North screen", at: [0, 7.17, 2.11] as [number, number, number] },
+    { name: "South screen", at: [0, 3.19, 2.03] as [number, number, number] },
+  ];
+  assert.equal(mapWhereWords([0.77, 7.96, 3.5], size, screens), "Above the north screen");
+  assert.equal(mapWhereWords([5, 7.9, 3.53], size, screens), "Opposite the north screen");
+  assert.equal(mapWhereWords([4.74, 2.55, 3.58], size, screens), "Opposite the south screen");
+  assert.equal(mapWhereWords([0, 2.51, 3.89], size, screens), "Above the south screen");
+  assert.equal(mapWhereWords([4.5, 9.5, 3], size, []), "In the north-east corner");
+  assert.equal(mapWhereWords([2.5, 9.5, 3], size, []), "On the north wall");
+  assert.equal(mapWhereWords([2.5, 5, 3], size, screens), "Near the middle of the room");
+  assert.equal(mapWhereWords([2.5, 5, 3], null, screens), null);
+});
+
+test("whereWords falls back to the placement words off the map", () => {
+  assert.equal(whereWords("hue.ne", null, [], "above", "north"), "Above the north screen");
+});
+
+test("identifyWhy never shows a file or config path", () => {
+  assert.equal(identifyWhy("outputs.hue.enabled is false in config/room/fixtures.yaml"), "This light can't flash right now.");
+  assert.equal(identifyWhy(null), "This light can't flash right now.");
+  assert.equal(identifyWhy("bridge busy"), "This light can't flash right now: bridge busy");
+});
+
+test("lightInModes: own entry first, else its kind's, in mode order", () => {
+  const modes = {
+    party: { label: "Party", order: 2, entries: { "hue.ne": { value: "dmx", words: "Follows the music", selector: "hue" } } },
+    gallery: { label: "Normal", order: 0, entries: { "screens.n": { value: "art" } } },
+    off: { label: "Off", order: 1, entries: { "light.x": { value: "off", words: "Off", selector: "light" } } },
+    base: { abstract: true, entries: { "hue.ne": { value: "off" } } },
+  };
+  assert.deepEqual(lightInModes(modes, "hue.ne", []).map((u) => u.label), ["Party"]);
+  const fresh = lightInModes(modes, "light.new", ["light"]);
+  assert.deepEqual(fresh.map((u) => [u.label, u.words, u.follows]), [["Off", "Off", false]]);
+  assert.deepEqual(modeUseLines(lightInModes(modes, "hue.ne", [])), [["Follows the music", ["Party"]]]);
 });

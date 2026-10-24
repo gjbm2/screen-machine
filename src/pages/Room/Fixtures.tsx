@@ -1,83 +1,52 @@
 // The room's lights. Hue lamps (room_service dmx/api.py): each one device that either follows the music
 // (Art-Net, streamed to the bridge) or is under house control. DMX lights (show_service's rig, registered on
-// the Lights setup page, read through room_service's /show pass-through): each follows the music or is off.
-// Both are set through the room state model (PUT /api/v1/room/targets: hue.<id>, light.<id>), so a mode
-// change and a hand change go through the same coordinator.
+// the Lights setup page, read through room_service's /show pass-through): each follows the music, holds a steady
+// colour, or is off. Both are set through the room state model (PUT /api/v1/room/targets: hue.<id>, light.<id>), so a
+// mode change and a hand change go through the same coordinator. Each row is the Lights setup page's own (LightShell:
+// the same name, kind, where it is, Identify always at the right, the same colour block) and ends with
+// "Set up this light ›" (/lights?light=<id>). Names drop their room's name (rooms.json); where a light is comes from
+// the Room map once it's placed there.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Lightbulb, Moon, Radio, Sparkles } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Lightbulb, Moon, Palette, Radio } from "lucide-react";
+import { AppLink } from "@/components/nav/AppLink";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { LightsApi } from "@/pages/Lights/api";
+import { useIdentify } from "@/pages/Lights/Identify";
+import { ColourBlock, LightShell, summaryLine } from "@/pages/Lights/LightItem";
+import {
+  COLOUR_PRESETS,
+  fixtureStatus,
+  fixtureSwatch,
+  roomOfLight,
+  shortName,
+  whereWords,
+  type RoomSpace,
+  type ScreenSpot,
+} from "@/pages/Lights/lib";
+import { useRoomFacts, useSpace } from "@/pages/Lights/useRig";
 import { explainError, RoomApiError, type RoomApi } from "./api";
 import { Pill, Spinner } from "./bits";
-import { DeviceList, DeviceRow, DeviceSection } from "./Devices";
+import { DeviceList, DeviceSection } from "./Devices";
 import type { Tone } from "./tones";
 import type { Fixture, HueValue } from "./types";
 import { type FixturesState, useFixtures } from "./useFixtures";
 import type { NewLogEntry } from "./useRoomConnection";
 
-const STATUS_TONE: Record<string, Tone> = {
-  following: "live",
-  armed: "info",
-  house: "muted",
-  off: "muted",
-  taken_over: "warn",
-  error: "bad",
-  unreachable: "bad",
-  unavailable: "bad",
-};
+/** The words for a quick colour in the log ("warm"), else its hex. */
+function colourName(hex: string): string {
+  return COLOUR_PRESETS.find((p) => p.hex === hex.toLowerCase())?.name.toLowerCase() ?? `colour ${hex}`;
+}
 
-/** Quick colours for a lamp under house control. */
-const PRESETS: { name: string; hex: string }[] = [
-  { name: "Warm", hex: "#ffc367" },
-  { name: "Soft white", hex: "#ffe2b8" },
-  { name: "Daylight", hex: "#f4f6ff" },
-  { name: "Amber", hex: "#ff9a2e" },
-  { name: "Red", hex: "#ff2a1a" },
-  { name: "Pink", hex: "#ff4fa0" },
-  { name: "Purple", hex: "#8a3dff" },
-  { name: "Blue", hex: "#2f6bff" },
-  { name: "Teal", hex: "#17c3b2" },
-  { name: "Green", hex: "#3ddc5a" },
-];
-
-
-function placementText(f: Fixture): string | null {
+/** Where a lamp is when it isn't on the Room map yet: patch.yaml's screen and placement. */
+function placementText(f: Fixture, screenNames: Record<string, string>): string | null {
   if (!f.screen) return null;
-  const screen = f.screen.replace(/-screen$/, "");
-  if (f.placement === "above") return `Above the ${screen} screen`;
-  if (f.placement === "opposite") return `Opposite the ${screen} screen`;
-  return `By the ${screen} screen`;
-}
-
-function lampName(f: Fixture): string {
-  return f.label.replace(/^Drawing room\s*/i, "") ? `${f.label.replace(/^Drawing room\s*/i, "")} lamp` : f.label;
-}
-
-/** What the lamp is showing now: the show's colour while following, else the bridge's reading. */
-function swatch(f: Fixture): { hex: string | null; dim: number } {
-  if (f.status === "following") {
-    const level = typeof f.dmx?.level === "number" ? (f.dmx.level as number) : 1;
-    return { hex: f.dmx_hex, dim: level };
-  }
-  const l = f.light;
-  if (!l || !l.on || !l.hex) return { hex: null, dim: 0 };
-  return { hex: l.hex, dim: Math.max(0.25, (l.bri ?? 100) / 100) };
-}
-
-function Swatch({ hex, dim, size = "h-11 w-11" }: { hex: string | null; dim: number; size?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("relative inline-block shrink-0 rounded-full border border-stone-300/80 bg-stone-200", size)}
-      style={
-        hex
-          ? { background: hex, opacity: 0.35 + 0.65 * Math.min(1, Math.max(0, dim)), boxShadow: `0 0 14px -2px ${hex}` }
-          : undefined
-      }
-    />
-  );
+  const name = screenNames[f.screen];
+  const screen = name ? name.replace(/^([A-Z])(?=[a-z])/, (c) => c.toLowerCase()) : `${f.screen.replace(/-screen$/, "")} screen`;
+  if (f.placement === "above") return `Above the ${screen}`;
+  if (f.placement === "opposite") return `Opposite the ${screen}`;
+  return `By the ${screen}`;
 }
 
 function stateOf(f: Fixture): { on: boolean; bri: number; hex: string | null } {
@@ -86,9 +55,67 @@ function stateOf(f: Fixture): { on: boolean; bri: number; hex: string | null } {
   return { on: false, bri: f.light?.bri ?? 50, hex: f.light?.hex ?? null };
 }
 
+/** "Set up this light ›": its row on the Lights setup page. */
+function SetupLink({ id }: { id: string }) {
+  return (
+    <AppLink
+      href={`/lights?light=${encodeURIComponent(id)}`}
+      state={{ from: "Room" }}
+      className="inline-flex min-h-11 items-center text-[15px] font-medium text-teal-800 underline-offset-4 hover:underline"
+      data-testid={`setup-${id}`}
+    >
+      Set up this light ›
+    </AppLink>
+  );
+}
+
+/** One choice of what a light does (a radio tile). */
+function Choice({
+  on,
+  disabled,
+  busy,
+  icon,
+  title,
+  sub,
+  onPick,
+}: {
+  on: boolean;
+  disabled: boolean;
+  busy: boolean;
+  icon: JSX.Element;
+  title: string;
+  sub: string;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      disabled={disabled || on}
+      onClick={onPick}
+      className={cn(
+        "min-h-14 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-default",
+        on ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
+        !on && disabled && "opacity-60",
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-base font-semibold">
+        {icon}
+        {title}
+        {busy && <Spinner className="ml-auto" />}
+      </span>
+      <span className="block text-sm text-muted-foreground">{sub}</span>
+    </button>
+  );
+}
+
 function LampRow({
   f,
   api,
+  lights,
+  name,
+  where,
   connected,
   addLog,
   reportError,
@@ -96,6 +123,9 @@ function LampRow({
 }: {
   f: Fixture;
   api: RoomApi;
+  lights: LightsApi;
+  name: string;
+  where: string | null;
   connected: boolean;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
@@ -103,12 +133,8 @@ function LampRow({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const ident = useIdentify(lights, f.id, true);
   const st = stateOf(f);
-  const [bri, setBri] = useState(st.bri);
-  const dragging = useRef(false);
-  useEffect(() => {
-    if (!dragging.current) setBri(st.bri);
-  }, [st.bri]);
 
   const target = f.target ?? `hue.${f.id.split(".")[1]}`;
   const following = f.control === "dmx";
@@ -137,61 +163,35 @@ function LampRow({
     return hv && typeof hv === "object" ? hv : { on: true, bri: 60, xy: [0.4573, 0.41] };
   };
 
-  const identify = async () => {
-    setBusy("identify");
-    setErr(null);
-    try {
-      await api.identify(f.id);
-    } catch (e) {
-      reportError(e);
-      setErr(explainError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const sw = swatch(f);
-  const where = placementText(f);
   return (
-    <DeviceRow
+    <LightShell
       testId={`fixture-${f.id}`}
-      visual={<Swatch hex={sw.hex} dim={sw.dim} />}
-      name={lampName(f)}
-      status={{ tone: STATUS_TONE[f.status ?? ""] ?? "muted", text: f.status_text ?? "", pulse: f.status === "following" }}
-      summary={where ?? f.label}
+      swatch={fixtureSwatch(f)}
+      name={name}
+      status={fixtureStatus(f)}
+      summary={summaryLine("Hue lamp", where)}
+      identify={ident}
     >
       {/* Who drives it */}
-      <div role="radiogroup" aria-label={`${f.label}: who controls it`} className="grid grid-cols-2 gap-2">
-        {(
-          [
-            ["house", "House", "Normal lighting"],
-            ["dmx", "Follows the music", "Colours from the show"],
-          ] as const
-        ).map(([k, title, sub]) => {
-          const on = (k === "dmx") === following;
-          return (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              disabled={disabled || on}
-              onClick={() => void send(k === "dmx" ? "follows the music" : "house lighting", k === "dmx" ? "dmx" : house())}
-              className={cn(
-                "min-h-14 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-default",
-                on ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
-                !on && disabled && "opacity-60",
-              )}
-            >
-              <span className="flex items-center gap-1.5 text-base font-semibold">
-                {k === "dmx" ? <Radio className="h-4 w-4" aria-hidden /> : <Lightbulb className="h-4 w-4" aria-hidden />}
-                {title}
-                {busy && ((k === "dmx") !== following) && <Spinner className="ml-auto" />}
-              </span>
-              <span className="block text-sm text-muted-foreground">{sub}</span>
-            </button>
-          );
-        })}
+      <div role="radiogroup" aria-label={`${name}: who controls it`} className="grid grid-cols-2 gap-2">
+        <Choice
+          on={!following}
+          disabled={disabled}
+          busy={!!busy && following}
+          icon={<Lightbulb className="h-4 w-4" aria-hidden />}
+          title="House"
+          sub="Normal lighting"
+          onPick={() => void send("house lighting", house())}
+        />
+        <Choice
+          on={following}
+          disabled={disabled}
+          busy={!!busy && !following}
+          icon={<Radio className="h-4 w-4" aria-hidden />}
+          title="Follows the music"
+          sub="Colours from the show"
+          onPick={() => void send("follows the music", "dmx")}
+        />
       </div>
 
       {following ? (
@@ -207,85 +207,32 @@ function LampRow({
           <div className="flex min-h-11 items-center justify-between gap-3">
             <span className="text-base font-medium">On</span>
             <Switch
-              aria-label={`${f.label} on`}
+              aria-label={`${name} on`}
               checked={st.on}
               disabled={disabled}
               onCheckedChange={(on) =>
-                void send(on ? "on" : "off", on ? { ...(house() as object), on: true } as HueValue : "off")
+                void send(on ? "on" : "off", on ? ({ ...(house() as object), on: true } as HueValue) : "off")
               }
             />
           </div>
-          <div className="flex min-h-11 items-center gap-3">
-            <span className="shrink-0 text-base font-medium">Brightness</span>
-            <Slider
-              aria-label={`${f.label} brightness`}
-              className="flex-1 py-3 [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[role=slider]]:shadow-sm"
-              min={1}
-              max={100}
-              step={1}
-              value={[bri]}
-              disabled={disabled}
-              onValueChange={([v]) => {
-                dragging.current = true;
-                setBri(v);
-              }}
-              onValueCommit={([v]) => {
-                dragging.current = false;
-                const base = house();
-                void send(`brightness ${v}%`, { ...(typeof base === "object" ? base : {}), on: true, bri: v } as HueValue);
-              }}
-            />
-            <span className="w-11 shrink-0 text-right font-mono text-[15px] tabular-nums text-muted-foreground">{bri}%</span>
-          </div>
-          <div>
-            <span className="text-base font-medium">Colour</span>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.name}
-                  type="button"
-                  title={p.name}
-                  aria-label={p.name}
-                  disabled={disabled}
-                  onClick={() => void send(p.name.toLowerCase(), { on: true, bri: Math.max(bri, 1), hex: p.hex })}
-                  className="h-10 w-10 rounded-full border border-stone-300 shadow-sm transition-transform hover:scale-105 disabled:opacity-50"
-                  style={{ background: p.hex }}
-                />
-              ))}
-              <label className="relative h-10 w-10 cursor-pointer overflow-hidden rounded-full border border-dashed border-stone-400" title="Any colour">
-                <span className="sr-only">Any colour</span>
-                <input
-                  type="color"
-                  disabled={disabled}
-                  defaultValue={st.hex ?? "#ffc367"}
-                  onChange={(e) => {
-                    const hex = e.currentTarget.value;
-                    window.clearTimeout((e.currentTarget as unknown as { _t?: number })._t);
-                    (e.currentTarget as unknown as { _t?: number })._t = window.setTimeout(
-                      () => void send(`colour ${hex}`, { on: true, bri: Math.max(bri, 1), hex }),
-                      350,
-                    );
-                  }}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-                <Sparkles className="absolute inset-0 m-auto h-4 w-4 text-stone-500" aria-hidden />
-              </label>
-            </div>
-          </div>
-          <button
-            type="button"
+          <ColourBlock
+            label={name}
+            hex={st.hex}
+            bri={st.bri}
             disabled={disabled}
-            onClick={() => void identify()}
-            className="min-h-11 rounded-xl border border-stone-200 bg-white px-4 text-base hover:bg-stone-50 disabled:opacity-50"
-          >
-            {busy === "identify" ? <Spinner className="mr-2 inline" /> : null}Identify (the lamp breathes)
-          </button>
+            onBrightness={(v) => {
+              const base = house();
+              void send(`brightness ${v}%`, { ...(typeof base === "object" ? base : {}), on: true, bri: v } as HueValue);
+            }}
+            onColour={(hex, bri) => void send(colourName(hex), { on: true, bri, hex })}
+          />
         </div>
       )}
 
       {err && <p className="text-sm text-rose-700">{err}</p>}
       {!f.writable && <p className="text-sm text-muted-foreground">Can't change this lamp right now.</p>}
-    </DeviceRow>
+      <SetupLink id={f.id} />
+    </LightShell>
   );
 }
 
@@ -308,6 +255,8 @@ interface RigLight {
   follow?: LightValue | null;
   online?: boolean | null;
   last_rgb?: number[] | string | null;
+  placement?: string | null;
+  zone?: string | null;
 }
 
 type RigBody = {
@@ -381,7 +330,7 @@ function rigLights(body: RigBody | undefined): RigLight[] {
 }
 
 /** The rig's DMX lights, polled every few seconds while the tab is visible; null until the first answer. */
-function useRigLights(api: RoomApi, enabled: boolean) {
+export function useRigLights(api: RoomApi, enabled: boolean) {
   const [lights, setLights] = useState<RigLight[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [tick, setTick] = useState(0);
@@ -436,6 +385,9 @@ function lightStatus(l: RigLight, unreachable: boolean): { tone: Tone; text: str
 function DmxRow({
   l,
   api,
+  lights,
+  name,
+  where,
   connected,
   unreachable,
   addLog,
@@ -444,6 +396,9 @@ function DmxRow({
 }: {
   l: RigLight;
   api: RoomApi;
+  lights: LightsApi;
+  name: string;
+  where: string | null;
   connected: boolean;
   unreachable: boolean;
   addLog: (e: NewLogEntry) => void;
@@ -452,15 +407,17 @@ function DmxRow({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const ident = useIdentify(lights, l.id, false);
   const disabled = !connected || !!busy;
   const now = l.follow;
+  const steady = now && typeof now === "object" ? now : null;
 
-  const send = async (value: "dmx" | "off") => {
-    setBusy(value);
+  const send = async (key: string, value: LightValue, words: string) => {
+    setBusy(key);
     setErr(null);
     try {
       await api.setTargets({ [`light.${l.id}`]: value });
-      addLog({ type: "fixture", level: "info", summary: `${l.label}: ${value === "dmx" ? "follows the music" : "off"}` });
+      addLog({ type: "fixture", level: "info", summary: `${l.label}: ${words}` });
       window.setTimeout(onChanged, 800);              // the room applies it in the background
     } catch (e) {
       if (e instanceof RoomApiError && e.code === "unknown_target") {
@@ -474,85 +431,82 @@ function DmxRow({
     }
   };
 
-  const identify = async () => {
-    setBusy("identify");
-    setErr(null);
-    try {
-      const r = await showFetch<{ ok?: boolean; why?: string }>(
-        api,
-        "POST",
-        `/api/v1/rig/fixtures/${encodeURIComponent(l.id)}/identify`,
-        {},
-      );
-      if (r && r.ok === false) setErr(r.why ? `Can't light it up: ${r.why}` : "Can't light it up right now.");
-    } catch (e) {
-      reportError(e);
-      setErr(explainError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const hex = rgbHex(l.last_rgb);
+  // A steady colour starts where the room's own form does (room_service adapters/lights.py): full white.
+  const startSteady = steady ?? { hex: "#ffffff", bri: 100 };
+  const hex = steady ? steady.hex : rgbHex(l.last_rgb);
   return (
-    <DeviceRow
+    <LightShell
       testId={`light-${l.id}`}
-      visual={<Swatch hex={hex} dim={1} />}
-      name={l.label}
+      swatch={{ hex, dim: steady ? Math.max(0.25, steady.bri / 100) : 1 }}
+      name={name}
       status={lightStatus(l, unreachable)}
-      summary={l.type_label || "DMX light"}
+      summary={summaryLine("DMX light", where)}
+      identify={ident}
     >
-      <div role="radiogroup" aria-label={`${l.label}: what it does`} className="grid grid-cols-2 gap-2">
-        {(
-          [
-            ["dmx", "Follows the music", "Colours from the show"],
-            ["off", "Off", "Dark"],
-          ] as const
-        ).map(([k, title, subText]) => {
-          const on = now === k;
-          return (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              disabled={disabled || on}
-              onClick={() => void send(k)}
-              className={cn(
-                "min-h-14 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-default",
-                on ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
-                !on && disabled && "opacity-60",
-              )}
-            >
-              <span className="flex items-center gap-1.5 text-base font-semibold">
-                {k === "dmx" ? <Radio className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
-                {title}
-                {busy === k && <Spinner className="ml-auto" />}
-              </span>
-              <span className="block text-sm text-muted-foreground">{subText}</span>
-            </button>
-          );
-        })}
+      <div role="radiogroup" aria-label={`${name}: what it does`} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <Choice
+          on={!!steady}
+          disabled={disabled}
+          busy={busy === "steady"}
+          icon={<Palette className="h-4 w-4" aria-hidden />}
+          title="Steady colour"
+          sub="One colour, as set below"
+          onPick={() => void send("steady", startSteady, `steady colour ${startSteady.hex}`)}
+        />
+        <Choice
+          on={now === "dmx"}
+          disabled={disabled}
+          busy={busy === "dmx"}
+          icon={<Radio className="h-4 w-4" aria-hidden />}
+          title="Follows the music"
+          sub="Colours from the show"
+          onPick={() => void send("dmx", "dmx", "follows the music")}
+        />
+        <Choice
+          on={now === "off"}
+          disabled={disabled}
+          busy={busy === "off"}
+          icon={<Moon className="h-4 w-4" aria-hidden />}
+          title="Off"
+          sub="Dark"
+          onPick={() => void send("off", "off", "off")}
+        />
       </div>
-      {now && typeof now === "object" && (
-        <p className="text-base text-muted-foreground">The mode holds it at a steady colour.</p>
+      {steady && (
+        <ColourBlock
+          label={name}
+          hex={steady.hex}
+          bri={steady.bri}
+          disabled={disabled}
+          onBrightness={(v) => void send("bri", { hex: steady.hex, bri: v }, `brightness ${v}%`)}
+          onColour={(c, bri) => void send("colour", { hex: c, bri }, colourName(c))}
+        />
       )}
       {l.online === false && (
         <p className="text-base text-muted-foreground">
-          Its DMX box{l.node_ip ? ` (${l.node_ip})` : ""} isn't answering. Check it is plugged in and powered.
+          It isn't answering. Check it is plugged in and powered.
         </p>
       )}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => void identify()}
-        className="min-h-11 rounded-xl border border-stone-200 bg-white px-4 text-base hover:bg-stone-50 disabled:opacity-50"
-      >
-        {busy === "identify" ? <Spinner className="mr-2 inline" /> : null}Identify (full white for a few seconds)
-      </button>
       {err && <p className="text-sm text-rose-700">{err}</p>}
-    </DeviceRow>
+      <SetupLink id={l.id} />
+    </LightShell>
   );
+}
+
+/** Where things are on the Room map, and the screens by name, for the rows' "where" words: read once (and when the
+ *  page comes back into view), not polled. */
+function useWhere(api: RoomApi, view: FixturesState["view"]) {
+  const lights = useMemo(() => new LightsApi(api.baseUrl), [api.baseUrl]);
+  const facts = useRoomFacts(api.baseUrl);
+  const { space } = useSpace(lights);
+  const spots = useMemo((): ScreenSpot[] => {
+    if (!space) return [];
+    return (view?.fixtures ?? []).flatMap((f) => {
+      const at = f.kind === "screen" ? space.appliances[f.id]?.at : null;
+      return at ? [{ name: (f.screen && facts.screenNames[f.screen]) || f.label, at }] : [];
+    });
+  }, [space, view, facts.screenNames]);
+  return { lights, facts, space: space as RoomSpace | null, spots };
 }
 
 export function LightsSection({
@@ -586,6 +540,8 @@ export function LightsSection({
   const dmx = wantsDmx
     ? (rig.lights ?? []).filter((l) => !only || only.includes("light") || only.includes(`light.${l.id}`))
     : [];
+  const where = useWhere(api, view);
+  const rooms = where.facts.rooms;
   const hueOn = !(missing || (view && !view.enabled));
   const lamps = hueOn ? (view?.fixtures.filter((f) => f.kind === "hue") ?? []).filter((f) => !only || only.includes(f.id)) : [];
   if (!hueOn && dmx.length === 0) return null;
@@ -614,13 +570,29 @@ export function LightsSection({
       {(view || dmx.length > 0) && (
         <DeviceList>
           {lamps.map((f) => (
-            <LampRow key={f.id} f={f} api={api} connected={connected} addLog={addLog} reportError={reportError} onChanged={refresh} />
+            <LampRow
+              key={f.id}
+              f={f}
+              api={api}
+              lights={where.lights}
+              name={shortName(f.label, roomOfLight(rooms, f.id, false)?.name)}
+              where={
+                whereWords(f.id, where.space, where.spots, null, null) ?? placementText(f, where.facts.screenNames)
+              }
+              connected={connected}
+              addLog={addLog}
+              reportError={reportError}
+              onChanged={refresh}
+            />
           ))}
           {dmx.map((l) => (
             <DmxRow
               key={l.id}
               l={l}
               api={api}
+              lights={where.lights}
+              name={shortName(l.label, roomOfLight(rooms, l.id, true)?.name)}
+              where={whereWords(l.id, where.space, where.spots, l.placement ?? null, l.zone ?? null)}
               connected={connected}
               unreachable={rig.unreachable}
               addLog={addLog}

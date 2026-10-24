@@ -9,10 +9,12 @@
 //   5. Its name and where it is in the room (PUT with only what changed).
 // Closing after step 3 leaves the light registered and offers "Remove this light". Edit shows the same questions with
 // Move it as a section that unrolls ("Move it and set it up"). The server's problems come back in its words, inline.
-// After saving a new light the sheet offers Identify, and "Put it on the Room map".
+// After saving a new light the sheet says which modes it follows the music in, and offers Identify and "Put it on the
+// Room map".
 
 import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Check, ChevronLeft, MapPin, Trash2 } from "lucide-react";
+import { AppLink } from "@/components/nav/AppLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,7 +40,9 @@ import {
   problemWords,
   provisionalName,
   rowsFromRig,
+  andList,
   wholeNumber,
+  type ModeUse,
   type Draft,
   type DraftField,
   type LightRow,
@@ -66,6 +70,7 @@ export function LightSheet({
   ui,
   onSaved,
   onShowOnMap,
+  inModes,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,6 +84,8 @@ export function LightSheet({
   onSaved: () => void;
   /** Open the Room map with this light selected. */
   onShowOnMap?: (id: string) => void;
+  /** The modes that set a DMX light (by its id), for the saved panel; absent while the modes aren't known. */
+  inModes?: (id: string) => ModeUse[];
 }) {
   // Closing the sheet half way through adding asks first (the light is already saved): the form says when.
   const guard = useRef<(() => boolean) | null>(null);
@@ -101,6 +108,7 @@ export function LightSheet({
         ui={ui}
         guard={guard}
         onSaved={onSaved}
+        inModes={inModes}
         onClose={() => onOpenChange(false)}
         onShowOnMap={
           onShowOnMap
@@ -171,6 +179,7 @@ function LightForm({
   onSaved,
   onClose,
   onShowOnMap,
+  inModes,
 }: {
   editing: LightRow | null;
   api: LightsApi;
@@ -181,6 +190,7 @@ function LightForm({
   onSaved: () => void;
   onClose: () => void;
   onShowOnMap?: (id: string) => void;
+  inModes?: (id: string) => ModeUse[];
 }) {
   const adding = editing === null;
   // Adding: the light as saved at the end of step 3 (under its provisional name), so Move it can drive it.
@@ -335,6 +345,7 @@ function LightForm({
     return (
       <SavedPanel
         saved={saved}
+        inModes={inModes}
         api={api}
         adding={adding}
         onAnother={() => {
@@ -725,6 +736,7 @@ function TypeList({
 
 function SavedPanel({
   saved,
+  inModes,
   api,
   adding,
   onAnother,
@@ -732,6 +744,7 @@ function SavedPanel({
   onShowOnMap,
 }: {
   saved: Saved;
+  inModes?: (id: string) => ModeUse[];
   api: LightsApi;
   adding: boolean;
   onAnother: () => void;
@@ -745,6 +758,7 @@ function SavedPanel({
         <Check className="h-5 w-5 text-teal-700" aria-hidden /> {saved.label} is saved
       </p>
       {saved.words && <p className="text-[15px] text-muted-foreground">{saved.words}.</p>}
+      {saved.id && inModes && <FollowsIn uses={inModes(saved.id)} />}
       {saved.problems.length > 0 && (
         <Notice tone="warn" className="text-[15px]">
           <p>Worth a look:</p>
@@ -757,7 +771,7 @@ function SavedPanel({
       )}
       {saved.id && (
         <div className="space-y-1.5">
-          <p className="text-[15px]">Find it: it shows full white for a moment, whatever it was doing.</p>
+          <p className="text-[15px]">Find it: it flashes for a few seconds, whatever it was doing.</p>
           <IdentifyButton state={ident.state} onClick={() => void ident.run()} label={saved.label} wide className="h-12 px-4 text-base" />
           {ident.why && <p className="text-sm text-rose-700">{ident.why}</p>}
         </div>
@@ -778,5 +792,18 @@ function SavedPanel({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** "It follows the music in: Party, Disco and Ambient", from the modes as the room has them now. */
+function FollowsIn({ uses }: { uses: ModeUse[] }) {
+  const follows = uses.filter((u) => u.follows).map((u) => u.label);
+  return (
+    <p className="text-[15px]" data-testid="saved-modes">
+      {follows.length ? `It follows the music in: ${andList(follows)}.` : "No mode makes it follow the music yet."}{" "}
+      <AppLink href="/room#modes" className="font-medium text-teal-800 underline-offset-4 hover:underline">
+        Change a mode ›
+      </AppLink>
+    </p>
   );
 }

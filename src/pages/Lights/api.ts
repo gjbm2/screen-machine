@@ -58,7 +58,12 @@ export class LightsApi {
     this.roomUrl = roomUrl;
   }
 
-  private async json<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  /** show_service's rig routes (through room_service's /show pass-through). */
+  private json<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>(method, `${this.roomUrl}/show/api/v1/rig${path}`, body, signal);
+  }
+
+  private async request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const ac = new AbortController();
     const onAbort = () => ac.abort();
     signal?.addEventListener("abort", onAbort);
@@ -69,7 +74,7 @@ export class LightsApi {
       ac.abort();
     }, REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(`${this.roomUrl}/show/api/v1/rig${path}`, {
+      const res = await fetch(url, {
         method,
         headers: body === undefined ? {} : { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -131,8 +136,12 @@ export class LightsApi {
     return this.json<{ removed?: string }>("DELETE", `/fixtures/${encodeURIComponent(id)}`);
   }
 
-  /** Full white for `seconds`, whatever it was doing. */
-  identify(id: string, seconds: number) {
+  /** Make it flash so it can be found: a DMX light shows full white for `seconds` (show_service's rig); a Hue lamp
+   *  breathes through room_service, which drives the Hue bridge (the rig's own Hue output is usually off). */
+  identify(id: string, seconds: number, hue = false) {
+    if (hue) {
+      return this.request<IdentifyResult>("POST", `${this.roomUrl}/api/v1/fixtures/${encodeURIComponent(id)}/identify`, {});
+    }
     return this.json<IdentifyResult>("POST", `/fixtures/${encodeURIComponent(id)}/identify`, { seconds });
   }
 

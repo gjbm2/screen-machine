@@ -1,28 +1,51 @@
-// /lights: setting up the room's lights (contract D), linked from the Room page's menu ("Lights setup"). Every light
-// show_service's rig knows (GET /show/api/v1/rig, polled every 2 s while the page is visible): the DMX lights on
-// Art-Net boxes, which can be added, edited and removed here, and the Hue lamps, which come from the Hue bridge. Each
-// row has Identify (full white for a moment). Add a light is the page's main action (LightForm.tsx; Move it inside it).
-// "Lights | Room map" at the top (remembered on this device) switches to the Room map (RoomMap.tsx): where the screens,
-// lights and places are. What a light does with the music is chosen on the Room page, not here. Same light, warm skin
-// as /room (its theme and pieces).
+// /lights, Lights setup: add, place and identify the room's lights (contract D). A sub-page of the Room page: the
+// app's one header (PageHeader) with "‹ Room" back to the Room page's Lights fold, and a gear to the light settings.
+// Every light show_service's rig knows (GET /show/api/v1/rig, polled every 2 s while the page is visible): the DMX
+// lights on Art-Net boxes, which are added, edited and removed here, and the Hue lamps from the Hue bridge, whose
+// status and colour come from room_service (it drives them). Lights are grouped by room (rooms.json), each row with its
+// kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
+// Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
+// "Lights | Room map" at the top (?tab=map, else remembered on this device) switches to the Room map (RoomMap.tsx).
+// ?light=<id> opens that light's row (from the Room page's "Set up this light ›"). What a light does is chosen on the
+// Room page, not here. Same light, warm skin as /room (its theme and pieces).
 
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Menu, Plus } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Settings } from "lucide-react";
+import { AppLink } from "@/components/nav/AppLink";
 import { AppMenu } from "@/components/nav/AppMenu";
+import { settingsUrl } from "@/components/nav/appNav";
+import { PageHeader, type HeaderStatus } from "@/components/nav/PageHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Dot, Notice, Spinner, Unroll } from "@/pages/Room/bits";
-import { DeviceList, DeviceSection } from "@/pages/Room/Devices";
-import { storageGet, storageSet } from "@/pages/Room/api";
-import { RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
-import type { Tone } from "@/pages/Room/tones";
+import { RoomApi, storageGet, storageSet } from "@/pages/Room/api";
+import { Notice, Spinner, Unroll } from "@/pages/Room/bits";
+import { DeviceList } from "@/pages/Room/Devices";
+import { CARD_CLASS, RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
+import type { Fixture } from "@/pages/Room/types";
+import { useFixtures } from "@/pages/Room/useFixtures";
 import { LightsApi } from "./api";
 import { LightSheet } from "./LightForm";
-import { LightItem } from "./LightItem";
-import type { LightRow } from "./lib";
+import { LightItem, type LightView } from "./LightItem";
+import {
+  doingWords,
+  fixtureStatus,
+  fixtureSwatch,
+  kindWords,
+  lightInModes,
+  modeUseLines,
+  roomOfLight,
+  screenSpots,
+  shortName,
+  statusOf,
+  swatchOf,
+  whereWords,
+  type LightRow,
+  type ModeUse,
+  type Placeable,
+} from "./lib";
 import { RoomMap } from "./RoomMap";
-import { useLightTypes, useRig } from "./useRig";
+import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
 
 type Tab = "lights" | "map";
 const TAB_KEY = "lights.tab";
@@ -43,38 +66,120 @@ function usePageTitle(title: string) {
   }, [title]);
 }
 
-const PILL =
-  "inline-flex h-9 items-center gap-2 rounded-full border border-stone-200/80 bg-card px-3 text-[15px] font-medium text-stone-700 shadow-sm";
-
 const byPlace = (a: LightRow, b: LightRow) =>
-  (a.zone ?? "~").localeCompare(b.zone ?? "~") || a.label.localeCompare(b.label, undefined, { numeric: true });
+  Number(b.hue) - Number(a.hue) ||
+  (a.zone ?? "~").localeCompare(b.zone ?? "~") ||
+  a.label.localeCompare(b.label, undefined, { numeric: true });
+
+interface Group {
+  key: string;
+  title: string;
+  roomId: string | null;
+  rows: LightRow[];
+}
 
 export default function LightsPage() {
-  usePageTitle("Lights · screen/machine");
+  usePageTitle("Lights setup · screen/machine");
+  const [params, setParams] = useSearchParams();
   const api = useMemo(() => new LightsApi(), []);
+  const roomApi = useMemo(() => new RoomApi(api.roomUrl, ""), [api]);
   const rig = useRig(api);
   const types = useLightTypes(api);
+  const facts = useRoomFacts(api.roomUrl, true);
+  const fixtures = useFixtures(roomApi, true);
+  const space = useSpace(api);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<LightRow | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tab, setTabState] = useState<Tab>(storedTab);
+  const focusId = params.get("light");
+  const [tab, setTabState] = useState<Tab>(() => (focusId ? "lights" : params.get("tab") === "map" ? "map" : storedTab()));
   const [mapSelect, setMapSelect] = useState<string | null>(null);
   const setTab = (t: Tab) => {
     setTabState(t);
     storageSet(TAB_KEY, t);
+    const next = new URLSearchParams(params);
+    next.delete("light");
+    if (t === "map") next.set("tab", "map");
+    else next.delete("tab");
+    setParams(next, { replace: true });
   };
+  // The map's words change when something is moved there: read the room again when coming back to the list.
+  const reloadSpace = space.reload;
+  useEffect(() => {
+    if (tab === "lights") reloadSpace();
+  }, [tab, reloadSpace]);
 
   const rows = useMemo(() => rig.rows ?? [], [rig.rows]);
-  const dmx = useMemo(() => rows.filter((r) => r.dmx).sort(byPlace), [rows]);
-  const hue = useMemo(() => rows.filter((r) => r.hue).sort(byPlace), [rows]);
-  const other = useMemo(() => rows.filter((r) => !r.dmx && !r.hue).sort(byPlace), [rows]);
+  const dmxCount = rows.filter((r) => r.dmx).length;
+  const hueById = useMemo(() => {
+    const m = new Map<string, Fixture>();
+    for (const f of fixtures.view?.fixtures ?? []) if (f.kind === "hue") m.set(f.id, f);
+    return m;
+  }, [fixtures.view]);
+  const bridge = fixtures.view?.hue?.bridge ?? null;
 
-  const link: { tone: Tone; word: string } = rig.error
+  const spots = useMemo(() => screenSpots(space.space, rig.all, facts.screenNames), [space.space, rig.all, facts.screenNames]);
+  const describe = facts.describe;
+
+  /** The modes that set a light: its own entry, else (a light the room hasn't picked up yet) its kind's. */
+  const inModes = useMemo(
+    () =>
+      (id: string, dmx: boolean): ModeUse[] => {
+        const target = dmx ? `light.${id}` : id;
+        const room = roomOfLight(facts.rooms, id, dmx);
+        const known = !!describe?.targets?.[target];
+        const kinds = known || !dmx ? [] : ["light", ...(room ? [`${room.id}:lights`, `${room.id}:light`] : [])];
+        return lightInModes(describe?.modes, target, kinds);
+      },
+    [describe, facts.rooms],
+  );
+
+  const viewOf = (r: LightRow): LightView => {
+    const room = roomOfLight(facts.rooms, r.id, r.dmx);
+    const f = r.hue ? hueById.get(r.id) : undefined;
+    return {
+      name: shortName(r.label, room?.name),
+      kind: kindWords(r),
+      where: whereWords(r.id, space.space, spots, r.placement, r.zone),
+      status: f ? fixtureStatus(f) : statusOf(r),
+      swatch: f ? fixtureSwatch(f) : { hex: swatchOf(r) },
+      doing: f?.status_text || doingWords(r),
+      modes: describe ? modeUseLines(inModes(r.id, r.dmx)) : null,
+    };
+  };
+
+  // By room (rooms.json), the rooms with lights only; lights no room lists last.
+  const groups = useMemo((): Group[] => {
+    const out: Group[] = [];
+    const taken = new Set<string>();
+    for (const room of facts.rooms) {
+      const mine = rows.filter((r) => !taken.has(r.id) && roomOfLight([room], r.id, r.dmx));
+      if (!mine.length) continue;
+      mine.forEach((r) => taken.add(r.id));
+      out.push({ key: room.id, title: room.name, roomId: room.id, rows: [...mine].sort(byPlace) });
+    }
+    const rest = rows.filter((r) => !taken.has(r.id)).sort(byPlace);
+    if (rest.length) out.push({ key: "_rest", title: out.length ? "Not in a room" : "Lights", roomId: null, rows: rest });
+    return out;
+  }, [rows, facts.rooms]);
+
+  // The map: lights by their short names, screens by the screen's own name.
+  const mapThings = useMemo(
+    (): Placeable[] =>
+      rig.all.map((t) => {
+        if (t.kind === "screen") return { ...t, label: (t.screen && facts.screenNames[t.screen]) || t.label };
+        const room = roomOfLight(facts.rooms, t.id, rows.find((r) => r.id === t.id)?.dmx ?? false);
+        return { ...t, label: shortName(t.label, room?.name) };
+      }),
+    [rig.all, rows, facts.rooms, facts.screenNames],
+  );
+
+  const status: HeaderStatus | null = rig.error
     ? rig.rows
-      ? { tone: "warn", word: "Reconnecting" }
-      : { tone: "bad", word: "Offline" }
+      ? { tone: "warn", word: "Reconnecting", sentence: rig.error, pulse: true }
+      : { tone: "bad", word: "Offline", sentence: rig.error }
     : rig.at
-      ? { tone: "ok", word: "Connected" }
+      ? null
       : { tone: "muted", word: "Connecting" };
 
   const openAdd = () => {
@@ -88,44 +193,27 @@ export default function LightsPage() {
     setSheetOpen(true);
   };
 
-  const list = (items: LightRow[]) => (
-    <DeviceList>
-      {items.map((r) => (
-        <LightItem key={r.id} row={r} api={api} types={types.types ?? []} onEdit={openEdit} onChanged={rig.refresh} />
-      ))}
-    </DeviceList>
-  );
-
   return (
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
-        <header className="pb-1 pt-3">
-          <div className="flex items-center gap-1">
-            <h1 className="mr-auto text-[28px] font-semibold leading-tight tracking-tight">Lights</h1>
-            <span className={PILL} data-testid="lights-link" title={rig.error ?? undefined}>
-              <Dot tone={link.tone} pulse={link.tone === "warn"} className="h-2.5 w-2.5" />
-              {link.word}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setMenuOpen(true)}
-              aria-label="Menu"
-              data-testid="menu-button"
-              className="-mr-2 h-11 w-11 rounded-full hover:bg-stone-200/60 [&_svg]:size-6"
+        <PageHeader
+          title="Lights"
+          current="lights"
+          onMenu={() => setMenuOpen(true)}
+          back={{ to: "/room#lights", label: "Room" }}
+          status={status}
+          actions={
+            <AppLink
+              href={settingsUrl("lights")}
+              aria-label="Light settings"
+              title="Light settings"
+              className="grid h-11 w-11 place-items-center rounded-full text-stone-700 hover:bg-stone-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Menu />
-            </Button>
-          </div>
-          <nav aria-label="Back" className="flex flex-wrap items-center gap-x-1 text-[15px]">
-            <Link to="/room" className="group grid h-11 place-items-center rounded-full px-0.5 focus-visible:outline-none">
-              <span className={cn(PILL, "group-hover:bg-stone-50 group-focus-visible:ring-2 group-focus-visible:ring-ring")}>
-                <ArrowLeft className="h-4 w-4 text-teal-700" aria-hidden /> Room
-              </span>
-            </Link>
-          </nav>
-        </header>
+              <Settings className="h-5 w-5" aria-hidden />
+            </AppLink>
+          }
+        />
 
         <main className="space-y-5 pt-2">
           <div role="tablist" aria-label="Show" className="grid grid-cols-2 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
@@ -152,73 +240,82 @@ export default function LightsPage() {
           </div>
 
           {tab === "map" ? (
-            <RoomMap api={api} things={rig.all} selectedId={mapSelect} />
-          ) : (
-          <>
-          <div className="space-y-2">
-            <Button onClick={openAdd} className={cn(TAP_BUTTON_CLASS, "w-full sm:w-auto")} data-testid="add-light">
-              <Plus aria-hidden /> Add a light
-            </Button>
-            <p className="text-[15px] text-muted-foreground">
-              Plug it into an Art-Net box on the house network, then tell the room what it is and where.
-            </p>
-          </div>
-
-          {rig.error && (
-            <Notice tone={rig.rows ? "warn" : "bad"} className="text-base">
-              {rig.error}
-            </Notice>
-          )}
-
-          {rig.off !== null && (
-            <Notice tone="warn" className="text-base">
-              <p>The lights side isn't driving any lights right now, so they won't follow the music or identify.</p>
-              {rig.off && (
-                <Unroll title={<span className="text-sm">Details</span>} className="mt-1">
-                  <p className="pb-1 text-sm">{rig.off}</p>
-                </Unroll>
-              )}
-            </Notice>
-          )}
-
-          {rig.rows === null ? (
-            !rig.error && (
-              <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
-                <Spinner /> Finding the lights…
-              </p>
-            )
+            <RoomMap api={api} things={mapThings} selectedId={mapSelect} />
           ) : (
             <>
-              <DeviceSection title="DMX lights">
-                {dmx.length > 0 ? (
-                  list(dmx)
-                ) : (
-                  <p className="py-3 text-base text-muted-foreground">No DMX lights yet. Add one with the button above.</p>
-                )}
-              </DeviceSection>
-              {hue.length > 0 && <DeviceSection title="Hue lamps">{list(hue)}</DeviceSection>}
-              {other.length > 0 && <DeviceSection title="Other lights">{list(other)}</DeviceSection>}
+              <div className="space-y-2">
+                <Button onClick={openAdd} className={cn(TAP_BUTTON_CLASS, "w-full sm:w-auto")} data-testid="add-light">
+                  <Plus aria-hidden /> Add a light
+                </Button>
+                <p className="text-[15px] text-muted-foreground">
+                  {rig.rows !== null && dmxCount === 0
+                    ? "No DMX lights yet. Plug one into an Art-Net box on the house network, then add it here."
+                    : "Plug it into an Art-Net box on the house network, then tell the room what it is and where."}
+                </p>
+              </div>
+
+              {rig.error && (
+                <Notice tone={rig.rows ? "warn" : "bad"} className="text-base">
+                  {rig.error}
+                </Notice>
+              )}
+
+              {rig.off !== null && (
+                <Notice tone="warn" className="text-base">
+                  <p>The lights side isn't driving any lights right now, so they won't follow the music or identify.</p>
+                  {rig.off && (
+                    <Unroll title={<span className="text-sm">Details</span>} className="mt-1">
+                      <p className="pb-1 text-sm">{rig.off}</p>
+                    </Unroll>
+                  )}
+                </Notice>
+              )}
+
+              {rig.rows === null ? (
+                !rig.error && (
+                  <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
+                    <Spinner /> Finding the lights…
+                  </p>
+                )
+              ) : (
+                groups.map((g) => (
+                  <section key={g.key} aria-label={g.title} data-testid={`lights-group-${g.key}`}>
+                    <h2 className="text-lg font-semibold text-stone-800">{g.title}</h2>
+                    {g.rows.some((r) => r.hue) && (
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        The Hue lamps come from the Hue bridge{bridge ? ` (${bridge})` : ""} and are named in the Hue app.
+                      </p>
+                    )}
+                    <div className={cn(CARD_CLASS, "mt-2 px-3 py-2 sm:px-4")}>
+                      <DeviceList>
+                        {g.rows.map((r) => (
+                          <LightItem
+                            key={r.id}
+                            row={r}
+                            view={viewOf(r)}
+                            api={api}
+                            types={types.types ?? []}
+                            focus={focusId === r.id}
+                            onEdit={openEdit}
+                            onChanged={rig.refresh}
+                          />
+                        ))}
+                      </DeviceList>
+                    </div>
+                  </section>
+                ))
+              )}
+
+              {rig.problems.length > 0 && (
+                <Unroll title="Things to check" hint={`${rig.problems.length}`} testId="lights-problems">
+                  <ul className="list-disc space-y-1 pb-2 pl-6 text-[15px]">
+                    {rig.problems.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ul>
+                </Unroll>
+              )}
             </>
-          )}
-
-          {rig.problems.length > 0 && (
-            <Unroll title="Things to check" hint={`${rig.problems.length}`} testId="lights-problems">
-              <ul className="list-disc space-y-1 pb-2 pl-6 text-[15px]">
-                {rig.problems.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
-            </Unroll>
-          )}
-
-          <p className="text-sm text-muted-foreground">
-            Changes here work at once. Whether each light follows the music is chosen on the{" "}
-            <Link to="/room" className="font-medium text-teal-800 underline underline-offset-2">
-              Room page
-            </Link>
-            .
-          </p>
-          </>
           )}
         </main>
       </div>
@@ -231,6 +328,7 @@ export default function LightsPage() {
         rows={rows}
         types={types}
         ui={rig.ui}
+        inModes={describe ? (id) => inModes(id, true) : undefined}
         onSaved={rig.refresh}
         onShowOnMap={(id) => {
           setMapSelect(id);
@@ -238,7 +336,7 @@ export default function LightsPage() {
         }}
       />
 
-      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="other" />
+      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="lights" />
     </div>
   );
 }
