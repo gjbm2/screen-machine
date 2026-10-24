@@ -1,11 +1,12 @@
 // The top bar's two switches, Mic and AI (owner, 24 Oct: "Mic on at top should be a toggle. AI on should prob. also be
-// a top toggle -- those are pretty central"). Shared by the Room page and /music; each switch is only here.
+// a top toggle -- those are pretty central"). In every page's header (PageHeader.tsx); each switch is only there.
 //   - Mic: on = the room may use the mic (PUT /show/api/v1/mic {muted}); it listens while Auto or a mode claims it. A
 //     red pulsing dot while it is in use right now.
 //   - AI: AI listening (PUT /show/api/v1/listening {on}); on = it sends short clips to an online AI. A teal dot while
 //     it is sending.
-// Under the bar, one small line in words ("Mic in use · for Auto · AI on · about $0.40 an evening"); tapping it, or a
-// long press on a switch, opens the Listening fold for the details (the input, history, levels). Both read the show
+// Under the bar, one small line in words ("Mic in use · for Auto · AI on") ending in "Listening details ›"; that link,
+// or a long press on a switch, opens the details (each page says where: the Room page's Listening fold, which also
+// has what the AI costs; elsewhere /room#listening). Both read the show
 // card the page already has (no new polling); a tap shows at once and is sent with the card's own retry pattern.
 
 import { useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
@@ -203,27 +204,29 @@ export function TopToggleButtons({ t, onDetails }: { t: TopToggles; onDetails?: 
   );
 }
 
-/** The switches in words, one line under the title row; tapping it opens the Listening details. A failed or retrying
- *  tap's words take its place. */
-export function TopToggleLine({ t, onDetails }: { t: TopToggles; onDetails?: () => void }) {
-  if (t.note) return <NoteLine note={t.note} className="pb-1" />;
+/** The switches in words, one line under the title row ("Mic in use · AI off"; what the AI costs is in the Listening
+ *  details), ending in "Listening details ›" when the page has them: on /room that opens the Listening fold, elsewhere
+ *  it goes to /room#listening. A failed or retrying tap's words take its place. */
+export function TopToggleLine({ t, onDetails, className }: { t: TopToggles; onDetails?: () => void; className?: string }) {
+  if (t.note) return <NoteLine note={t.note} className={cn("pb-1", className)} />;
   const mic = !t.known ? null : t.mic.allowed ? (t.mic.line ? `Mic ${t.mic.line.charAt(0).toLowerCase()}${t.mic.line.slice(1)}` : "Mic on") : "Mic off";
   const ai = !t.known ? null : t.ai.on ? (t.ai.state && t.ai.state !== "Listening" ? `AI on · ${t.ai.state}` : "AI on") : "AI off";
-  const words = t.known ? [mic, ai, t.ai.cost ? t.ai.cost.split(" · ")[0] : null].filter(Boolean).join(" · ") : "The music side isn't answering yet";
-  const inner = (
-    <>
+  const words = t.known ? [mic, ai].filter(Boolean).join(" · ") : "The music side isn't answering yet";
+  const cls = cn("flex min-h-8 min-w-0 items-center gap-2 text-sm leading-snug text-muted-foreground", className);
+  return (
+    <div className={cls} data-testid="top-toggles-line">
       <span className="min-w-0 truncate">{words}</span>
-      {onDetails && <ChevronRight aria-hidden className="h-4 w-4 shrink-0" />}
-    </>
-  );
-  const cls = "flex min-h-8 w-full min-w-0 items-center gap-1 text-left text-sm leading-snug text-muted-foreground";
-  return onDetails ? (
-    <button type="button" onClick={onDetails} className={cn(cls, "hover:text-stone-800")} data-testid="top-toggles-line" aria-label={`${words}. Listening details`}>
-      {inner}
-    </button>
-  ) : (
-    <p className={cls} data-testid="top-toggles-line">
-      {inner}
-    </p>
+      {onDetails && (
+        <button
+          type="button"
+          onClick={onDetails}
+          data-testid="top-toggles-details"
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-md font-medium text-teal-800 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Listening details
+          <ChevronRight aria-hidden className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   );
 }

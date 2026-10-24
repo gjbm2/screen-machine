@@ -1,12 +1,13 @@
-// Where things are, for every page's menu (the generator home page and the Room console share one menu).
+// Where things are, for every page's menu and header (one menu and one header for the whole app).
 //
-// Links are same-origin where the page is the app itself (the generator, the scheduler, a screen's tab), so
-// they work on whichever address the page was opened from (the LAN, the friendly HTTPS name, the public
-// address). Room and the renderer's Library are LAN-only and come from the room link (roomLink.ts).
+// Links are same-origin relative paths where the page is the app itself (the generator, Schedules, Room, Music,
+// Lights setup, Settings, a screen's TV page), so they work on whichever address the page was opened from (the LAN,
+// the friendly HTTPS name, the public address) and stay inside the app (AppLink.tsx: no reload). The renderer's
+// Library, the DSP monitor and Spectre are LAN-only tools and come from the room link (roomLink.ts).
 
-import { rendererConsoleUrl, roomPageUrl, roomStatusUrl } from "@/components/room/roomLink";
+import { rendererConsoleUrl, roomApi, roomPageUrl, roomStatusUrl } from "@/components/room/roomLink";
 
-export type AppPage = "generator" | "room" | "music" | "scheduler" | "other";
+export type AppPage = "generator" | "room" | "music" | "lights" | "settings" | "scheduler" | "other";
 
 /** The generator (home page), opened on a screen's tab with ?publish=<id>. */
 export function generatorUrl(screen?: string | null): string {
@@ -24,14 +25,56 @@ export function displayUrl(screen: string): string {
 
 export { roomPageUrl, rendererConsoleUrl };
 
-/** The Music page (piano pieces, playlists, recordings): LAN-only like Room, on the same address as the Room console. */
-export function musicPageUrl(): string {
-  return roomPageUrl().replace(/\/room$/, "/music");
+/** The Music page (piano pieces, playlists, recordings), next to the Room console (same address rules). */
+export function musicPageUrl(tab?: "browse" | "playlists" | "mine" | "web" | null): string {
+  return `${roomPageUrl().replace(/\/room$/, "/music")}${tab ? `?tab=${tab}` : ""}`;
 }
+
+/** Lights setup: add, name and find lights. */
+export function lightsPageUrl(tab?: "map" | null): string {
+  return tab ? `/lights?tab=${tab}` : "/lights";
+}
+
+/** Settings, opened on one group (/settings#<group>, e.g. "modes", "screen-north", "listening"). */
+export function settingsUrl(group?: string | null): string {
+  return group ? `/settings#${encodeURIComponent(group)}` : "/settings";
+}
+
+/** The DSP monitor (show_service's levels and spectrum page, through room_service's /show pass-through). */
+export function dspMonitorUrl(): string {
+  return `${roomApi().baseUrl}/show/dev/dsp`;
+}
+
+/** Spectre, the house PC's control dashboard: on the room's LAN host, port 80 (derived, not written in). */
+export function spectreUrl(): string {
+  const env = (import.meta.env.VITE_ROOM_URL as string | undefined) ?? "";
+  let host = window.location.hostname;
+  try {
+    if (env) host = new URL(env).hostname;
+  } catch {
+    /* this page's host */
+  }
+  return `http://${host}/`;
+}
+
+/** The places row under every page's title (PageHeader.tsx), in this order. `lan`: shown only while the room
+ *  answers (or on that page itself). */
+export const PLACES: Array<{ page: AppPage; label: string; href: () => string; lan?: boolean }> = [
+  { page: "room", label: "Room", href: () => roomPageUrl(), lan: true },
+  { page: "music", label: "Music", href: () => musicPageUrl(), lan: true },
+  { page: "lights", label: "Lights", href: () => lightsPageUrl(), lan: true },
+  { page: "generator", label: "Generator", href: () => generatorUrl() },
+];
+
+/** Tools for the house PC, LAN only, each in a new tab. */
+export const TOOL_LINKS: Array<{ label: string; hint: string; href: () => string }> = [
+  { label: "Scene library", hint: "Live scenes, effects and ratings", href: rendererConsoleUrl },
+  { label: "Spectre", hint: "The house PC's servers and services", href: spectreUrl },
+  { label: "DSP monitor", hint: "What the room's ears hear, in detail", href: dspMonitorUrl },
+];
 
 /** Developer pages. `lan` ones live on room_service's LAN door, so they show only when it answers. */
 export const DEV_LINKS: Array<{ label: string; href: () => string; lan?: boolean }> = [
-  { label: "Renderer console & Library", href: rendererConsoleUrl, lan: true },
   { label: "Room status (JSON)", href: roomStatusUrl, lan: true },
   { label: "LightSense", href: () => "/lightsense" },
   { label: "Scheduler simulator", href: () => "/simulate-scheduler" },
