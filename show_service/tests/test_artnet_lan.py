@@ -973,3 +973,102 @@ def test_budget_set_frame_a_full_universe(tmp_path):
         plan_us.append((time.perf_counter() - t0) * 1e6)
     plan_us.sort()
     print(f"artnet_lan plan (beat grid): p95 {plan_us[int(0.95 * len(plan_us))]:.1f} us")
+
+
+# -- finding boxes on the LAN (GET /api/v1/rig/nodes/find) -------------------------------------------------------------
+def _fake_box(reply: bytes):
+    """A box on loopback that answers each ArtPoll with ``reply`` (to the poll's source address)."""
+    import threading
+    box = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    box.bind(("127.0.0.1", 0))
+    box.settimeout(0.1)
+    stop = threading.Event()
+    polls: list[bytes] = []
+
+    def serve():
+        while not stop.is_set():
+            try:
+                data, addr = box.recvfrom(2048)
+            except (socket.timeout, OSError):
+                continue
+            polls.append(data)
+            box.sendto(reply, addr)
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+    return box, stop, t, polls
+
+
+def _real_socket():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.1", 0))
+    s.setblocking(False)
+    return s
+
+
+def test_find_nodes_lists_the_box_that_answers(monkeypatch):
+    import ipaddress
+    monkeypatch.setattr(al, "_heard", {})
+    box, stop, t, polls = _fake_box(make_reply(ip="192.168.1.50"))
+    try:
+        got = al.find_nodes(subnets=[ipaddress.IPv4Network("127.0.0.0/30")], wait_s=0.3, port=box.getsockname()[1],
+                            sock_factory=_real_socket,
+                            nodes={"node-1": {"match": {"mac": "00:1d:c1:12:34:56"}, "last_ip": "192.168.1.9"}})
+    finally:
+        stop.set()
+        t.join(1)
+        box.close()
+    assert polls and polls[0] == al.ARTPOLL
+    assert got["searched"] == ["127.0.0.0/30"] and got["polled"] >= 2 and got["words"] is None
+    [row] = got["nodes"]
+    assert row["ip"] == "192.168.1.50" and row["name"] == "eDMX1 MAX" and row["heard"] == "now"
+    assert row["label"] == "eDMX1 MAX (192.168.1.50)" and row["node"] == "node-1"
+    assert row["mac"] == "00:1d:c1:12:34:56"
+
+
+def test_find_nodes_nothing_answers_and_never_polls_rooms_receiver(monkeypatch):
+    import ipaddress
+    monkeypatch.setattr(al, "_heard", {})
+    sent: list[tuple] = []
+
+    class Sock:
+        def setsockopt(self, *a):
+            pass
+
+        def sendto(self, data, addr):
+            sent.append(addr)
+
+        def fileno(self):
+            return -1
+
+        def close(self):
+            pass
+    got = al.find_nodes(subnets=[ipaddress.IPv4Network("127.0.0.0/30")], wait_s=0.2, sock_factory=Sock)
+    assert sent == [] and got["nodes"] == []                  # 127.x on udp 6454 is room's receiver: never sent to
+    assert got["words"] == al.FIND_NONE
+
+
+def test_find_nodes_lists_what_nodes_heard(monkeypatch):
+    import ipaddress
+    monkeypatch.setattr(al, "_heard", {})
+    al.remember_reply(al.parse_artpollreply(make_reply(ip="192.168.1.60", short="Box B")), "192.168.1.60",
+                      now=time.monotonic() - 30)
+    got = al.find_nodes(subnets=[ipaddress.IPv4Network("127.0.0.0/30")], wait_s=0.2, port=9,
+                        sock_factory=_real_socket)
+    [row] = got["nodes"]
+    assert row["name"] == "Box B" and row["heard"] == "earlier" and row["age_s"] >= 29
+
+
+def test_find_subnets_defaults_and_refusals():
+    nets, probs = al.find_subnets(None, ("192.168.1.80", None, "10.0.0.5"), "192.168.1.205")
+    assert [str(n) for n in nets] == ["192.168.1.0/24", "10.0.0.0/24"] and probs == []
+    nets, probs = al.find_subnets(["8.8.8.0/24", "192.168.0.0/16", "nope", "192.168.4.0/23"])
+    assert [str(n) for n in nets] == ["192.168.4.0/23"] and len(probs) == 3
+    assert al.find_subnets(None, (), None) == ([], [])
+
+
+def test_lan_host_reads_env_file(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("OTHER=1\nSM_LAN_HOST=192.168.7.20\n")
+    assert al.lan_host({}, f) == "192.168.7.20"
+    assert al.lan_host({"SM_LAN_HOST": "10.1.2.3"}, tmp_path / "missing") == "10.1.2.3"
+    assert al.lan_host({}, tmp_path / "missing") is None
