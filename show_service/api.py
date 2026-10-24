@@ -21,7 +21,7 @@ object ``routes()`` returns is the mount function (``api_obj(app)``) and also ca
 * **Stage 5** (README S5.4, the rig): ``GET /api/v1/rig`` (the Rig snapshot plus ``registry_view``), ``GET
   /api/v1/rig/frame?output=<id>`` (the output's last frame; 404 ``unknown_output`` with ``choices``), ``GET
   /api/v1/rig/dmx`` (the virtual nodes' universes, decoded: previz), ``POST /api/v1/rig/nodes/{id}/record-failsafe``
-  (404 ``unknown_node``), and room's hue adapter's routes (68's contract, 16 Oct): ``POST /api/v1/hue/stream
+  (404 ``unknown_node``), ``GET /api/v1/rig/nodes/find`` (the Art-Net boxes that answer an ArtPoll on the LAN), and room's hue adapter's routes (68's contract, 16 Oct): ``POST /api/v1/hue/stream
   {lights, on}`` (the full set each time; HueAnswer at once), ``POST /api/v1/hue/release {lights?}`` (HueRelease,
   ``released`` true once the lamps are writable; the call waits ``rig.hue.release_timeout_s`` + 2, at most 19 s) and
   ``GET /api/v1/hue/status`` (HueAnswer). Their ``state`` is exactly one of ``idle | armed | streaming | taken_over``
@@ -188,7 +188,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"), ("GET", "/api/v1/listening/clips/{name}"),
     ("POST", "/api/v1/hue/release"), ("POST", "/api/v1/hue/stream"), ("GET", "/api/v1/hue/status"),
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
-    ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"),
+    ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"), ("GET", "/api/v1/rig/nodes/find"),
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
     ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
@@ -1135,6 +1135,7 @@ class Api:
             ("GET", "/api/v1/rig/frame", self._rig_frame),
             ("GET", "/api/v1/rig/dmx", self._rig_dmx),
             ("POST", "/api/v1/rig/nodes/{id}/record-failsafe", self._record_failsafe),
+            ("GET", "/api/v1/rig/nodes/find", self._rig_nodes_find),
             ("GET", "/api/v1/rig/types", self._rig_types),
             ("POST", "/api/v1/rig/fixtures", self._rig_add),
             ("PUT", "/api/v1/rig/fixtures/{id}", self._rig_update),
@@ -1681,6 +1682,27 @@ class Api:
             return _err(404, "unknown_node", f"No node {nid!r} in config/room/fixtures.yaml.",
                         choices=sorted((view or {}).get("nodes") or {}))
         return _json(await self._call(brain, rig.record_failsafe, nid))
+
+    async def _rig_nodes_find(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/rig/nodes/find[?subnet=192.168.1.0/24][&wait_s=1.5]: the Art-Net boxes on the LAN
+        (artnet_lan.find_nodes: a unicast ArtPoll to each address of the LAN /24, the replies with their names). With
+        no ``subnet``: the /24 of SM_LAN_HOST (.env) and of each configured node. Runs off the loop; never 4xx."""
+        from . import artnet_lan as al
+        rig = _components(brain).get(RIG)
+        nodes = {str(k): v for k, v in _d(_d(self._view_of(rig)).get("nodes")).items() if isinstance(v, dict)}
+        lan = await asyncio.to_thread(al.lan_host)
+        asked = [x.strip() for v in request.query.getall("subnet", []) for x in v.split(",") if x.strip()]
+        nets, problems = al.find_subnets(asked or None, tuple(n.get("last_ip") for n in nodes.values()), lan)
+        artnet = _d(_d(_d(getattr(getattr(brain, "ctx", None), "settings", None)).get("rig")).get("artnet"))
+        try:
+            wait = float(request.query.get("wait_s", al.FIND_WAIT_S))
+        except ValueError:
+            wait = None
+        wait = wait if wait is not None and math.isfinite(wait) else None
+        got = await asyncio.to_thread(lambda: al.find_nodes(
+            subnets=nets, wait_s=al.FIND_WAIT_S if wait is None else wait, skip=(lan,) if lan else (),
+            reply_bind=al.parse_settings(artnet).reply_bind, nodes=nodes, problems=tuple(problems)))
+        return _json(got)
 
     # -- the Lights page (README S5.23) --------------------------------------------------------------------------------
     @staticmethod

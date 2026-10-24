@@ -446,6 +446,7 @@ class Nodes:
             return
         ip = unicast_ip(r["ip"]) or unicast_ip(addr[0] if addr else None) or r["ip"]
         now = self._mono()
+        remember_reply(r, ip)                           # for GET /api/v1/rig/nodes/find
         hit = False
         for nid, n in self._cfg.items():
             d = self._dests.get(nid)
@@ -1227,3 +1228,192 @@ class ArtNetLan:
                           "last_send_error": self.last_send_error, "callback_errors": self.callback_errors,
                           "problems": list(u.problems) if u else [],
                           "caps": dict(self.caps)}}
+
+
+# -- finding boxes on the LAN (GET /api/v1/rig/nodes/find: the Lights page's "Boxes found") ---------------------------
+# WSL's NAT can't broadcast onto the LAN (module docstring), so finding is a unicast ArtPoll to every address of each
+# LAN /24 (14 bytes each: about 3.5 kB for a /24), then the replies on a socket of its own for FIND_WAIT_S. A box that
+# answers only on PC22's udp 6454 reaches room_service's receiver through ca's relay, not us: it's heard once
+# rig.artnet.reply_bind is set (bound here for the search when no Nodes holds it, else heard through Nodes.on_reply).
+FIND_WAIT_S = 1.5               # starting point: Art-Net 4 nodes answer an ArtPoll within 3 s, most within a few ms
+FIND_MAX_WAIT_S = 5.0
+FIND_PREFIX_MIN = 22            # at most a /22 (1022 addresses) per search
+FIND_MAX_SUBNETS = 4
+HEARD_KEEP_S = 600.0            # a reply Nodes heard in the last 10 minutes is listed too ("heard earlier")
+HEARD_MAX = 64
+ENV_FILE = contract.REPO_ROOT / ".env"     # SM_LAN_HOST: PC22's LAN address (as tools/show_sender reads it)
+FIND_NONE = "No Art-Net box answered. Type the box's address instead."
+
+_heard: dict[str, dict] = {}    # ip -> {reply, at (monotonic)}: every ArtPollReply Nodes parsed (any socket)
+_heard_lock = threading.Lock()
+
+
+def remember_reply(r: Mapping[str, Any], ip: str, now: Optional[float] = None) -> None:
+    """Keep one parsed ArtPollReply for ``find_nodes`` (bounded; any thread)."""
+    at = time.monotonic() if now is None else now
+    with _heard_lock:
+        _heard[ip] = {"reply": dict(r), "at": at}
+        if len(_heard) > HEARD_MAX:
+            for k in sorted(_heard, key=lambda k: _heard[k]["at"])[:len(_heard) - HEARD_MAX]:
+                del _heard[k]
+
+
+def lan_host(env: Mapping[str, str] | None = None, env_file: pathlib.Path = ENV_FILE) -> Optional[str]:
+    """SM_LAN_HOST from the repo's .env, else the environment; None when neither gives an IPv4 address."""
+    got = None
+    try:
+        for line in env_file.read_text().splitlines():
+            if line.startswith("SM_LAN_HOST="):
+                got = line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    if not got:
+        got = (os.environ if env is None else env).get("SM_LAN_HOST")
+    return unicast_ip(got) if got else None
+
+
+def parse_subnet(s: Any) -> tuple[Optional[ipaddress.IPv4Network], Optional[str]]:
+    """``192.168.1.0/24`` (or a bare address: its /24) -> (network, None); else (None, plain words). LAN ranges only."""
+    raw = str(s).strip()
+    try:
+        net = ipaddress.IPv4Network(raw if "/" in raw else f"{raw}/24", strict=False)
+    except (ipaddress.AddressValueError, ipaddress.NetmaskValueError, ValueError):
+        return None, f"{raw!r} isn't a LAN range like 192.168.1.0/24"
+    if not net.is_private or net.is_loopback or net.is_link_local or net.is_multicast:
+        return None, f"{net} isn't a home network range: not searched"
+    if net.prefixlen < FIND_PREFIX_MIN:
+        return None, f"{net} is too big to search (at most /{FIND_PREFIX_MIN})"
+    return net, None
+
+
+def find_subnets(asked: Optional[list[str]] = None, near: tuple[Any, ...] = (),
+                 lan: Optional[str] = None) -> tuple[list[ipaddress.IPv4Network], list[str]]:
+    """What to search: the ranges asked for, else the /24 of PC22's LAN address and of every configured node's
+    address. (networks, problems)."""
+    nets: list[ipaddress.IPv4Network] = []
+    problems: list[str] = []
+    for s in (asked or []) if asked else [x for x in (lan, *near) if unicast_ip(x)]:
+        net, why = parse_subnet(s)
+        if why:
+            if asked:
+                problems.append(why)
+            continue
+        if net not in nets and not any(net.subnet_of(n) for n in nets):
+            nets.append(net)
+    if len(nets) > FIND_MAX_SUBNETS:
+        problems.append(f"only the first {FIND_MAX_SUBNETS} ranges were searched")
+        nets = nets[:FIND_MAX_SUBNETS]
+    return nets, problems
+
+
+def _found_row(r: Mapping[str, Any], ip: str, heard: str, age_s: float,
+               nodes: Mapping[str, Mapping[str, Any]]) -> dict:
+    node = None
+    for nid, n in nodes.items():
+        m = _match(n.get("match") or {}, r)
+        if m is True or (m is None and unicast_ip(n.get("last_ip")) == ip):
+            node = nid
+            break
+    name = r.get("short_name") or r.get("long_name") or ip
+    return {"ip": ip, "name": name, "short_name": r.get("short_name"), "long_name": r.get("long_name"),
+            "mac": r.get("mac"), "port": r.get("port") or PORT, "num_ports": r.get("num_ports"),
+            "port_addresses": r.get("port_addresses"), "oem": r.get("oem"), "esta": r.get("esta"),
+            "node_report": r.get("node_report"), "node": node, "heard": heard, "age_s": round(age_s, 1),
+            "label": f"{name} ({ip})"}
+
+
+def find_nodes(*, subnets: list[ipaddress.IPv4Network], wait_s: float = FIND_WAIT_S,
+               skip: tuple[str, ...] = (), reply_bind: Optional[tuple[str, int]] = None,
+               nodes: Mapping[str, Mapping[str, Any]] | None = None,
+               sock_factory: Callable[[], Any] = _udp_socket, port: int = PORT,
+               mono: Callable[[], float] = time.monotonic, problems: tuple[str, ...] = ()) -> dict:
+    """ArtPoll every address of ``subnets`` (unicast, plus each range's broadcast where the route allows it), read the
+    replies for ``wait_s``, and list the boxes that answered (with those Nodes heard in the last HEARD_KEEP_S).
+    Blocking: run it off the show-bus loop. Never sends to room's receiver."""
+    import select
+
+    wait_s = max(0.2, min(FIND_MAX_WAIT_S, float(wait_s)))
+    nodes = nodes or {}
+    probs = list(problems)
+    t0 = mono()
+    socks: list[Any] = []
+    polled = 0
+    replies: dict[str, dict] = {}
+    try:
+        s = sock_factory()
+        socks.append(s)
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        except (OSError, AttributeError):
+            pass
+        if reply_bind is not None:
+            try:
+                socks.append(_bound_socket(*reply_bind))
+            except OSError:
+                pass                                    # Nodes holds it: its replies come through remember_reply
+        skipped = {unicast_ip(x) for x in skip}
+        targets = [str(h) for net in subnets for h in net.hosts() if str(h) not in skipped]
+        targets += [str(net.broadcast_address) for net in subnets]
+        errors = 0
+        for ip in targets:
+            if is_room_receiver(ip, port):
+                continue
+            for _ in range(3):
+                try:
+                    s.sendto(ARTPOLL, (ip, port))
+                    polled += 1
+                    break
+                except (BlockingIOError, InterruptedError):
+                    time.sleep(0.002)                   # the send buffer is full: let it drain
+                except OSError:
+                    errors += 1                         # no route, a broadcast WSL refuses: carry on
+                    break
+        if errors and errors >= len(targets):
+            probs.append("no ArtPoll could be sent (no route to the LAN?)")
+        deadline = mono() + wait_s
+        while socks and (polled or len(socks) > 1):     # nothing sent and no reply_bind: nothing to wait for
+            left = deadline - mono()
+            if left <= 0:
+                break
+            try:
+                ready, _, _ = select.select(socks, [], [], left)
+            except (OSError, ValueError):
+                break
+            for rs in ready:
+                for _ in range(DRAIN_MAX):
+                    try:
+                        data, addr = rs.recvfrom(2048)
+                    except (BlockingIOError, InterruptedError, ConnectionRefusedError):
+                        break
+                    except OSError:
+                        break
+                    r = parse_artpollreply(data)
+                    if r is None:
+                        continue
+                    ip = unicast_ip(r["ip"]) or unicast_ip(addr[0] if addr else None) or str(r["ip"])
+                    replies[ip] = r
+                    remember_reply(r, ip)
+    except OSError as e:
+        probs.append(f"the search couldn't run: {type(e).__name__}: {e}")
+    finally:
+        for x in socks:
+            try:
+                x.close()
+            except OSError:
+                pass
+    now = mono()
+    rows = [_found_row(r, ip, "now", 0.0, nodes) for ip, r in replies.items()]
+    with _heard_lock:
+        heard = dict(_heard)
+    for ip, h in heard.items():
+        age = now - h["at"]
+        if ip in replies or age > HEARD_KEEP_S:
+            continue
+        rows.append(_found_row(h["reply"], ip, "now" if h["at"] >= t0 else "earlier", max(0.0, age), nodes))
+    rows.sort(key=lambda x: (x["heard"] != "now", tuple(int(p) for p in x["ip"].split(".")) if
+                             unicast_ip(x["ip"]) else (999,)))
+    return {"nodes": rows, "searched": [str(n) for n in subnets], "polled": polled, "wait_s": wait_s,
+            "took_s": round(mono() - t0, 2), "problems": probs,
+            "words": None if rows else (FIND_NONE if subnets else (probs[0] + ". Type the box's address instead.")
+                                        if probs else "No LAN range to search (SM_LAN_HOST isn't in .env). Type the "
+                                        "box's address instead.")}
