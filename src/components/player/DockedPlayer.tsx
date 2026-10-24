@@ -1,10 +1,12 @@
 // The docked player (owner, 24 Oct: "when music is playing through the app, that apparatus should anchor bottom
-// throughout the app, probably"): while the music player plays, prepares or is paused, the mini player (Room/
-// NowPlayingRow.tsx's MiniPlayer: title, composer, Play/Pause, Next, Stop, Play on, Playlist, Open Music) sits fixed at
-// the bottom of the screen on every page a person uses (appPlayer.tsx's DOCK_PATHS: /, /room, /music, /lights,
-// /scheduler). Not shown when nothing plays, on a score (/music?score=: the score has its own play bar), or while the
-// live music screen is open (it has its own too). When the sound plays on this device too, the dock carries this
-// device's line and Stop sound here, and ListenHere leaves its own bar off (dockState.ts): one bar, never two.
+// throughout the app, probably"): the mini player (Room/NowPlayingRow.tsx's MiniPlayer: title, composer, the shared
+// Transport, Score, Play on, Playlist, Open Music) fixed at the bottom of the screen on every page a person uses
+// (appPlayer.tsx's DOCK_PATHS: /, /room, /music, /lights, /scheduler, /settings):
+//   - on the Room page, always (idle: "Nothing playing", what else is on, Play when there's a queue, Playlist);
+//   - elsewhere, while the music player plays, prepares or is paused.
+// Not shown on a score (/music?score=: the score has its own play bar), or while the live music screen is open (it
+// has its own too). When the sound plays on this device too, the dock carries this device's line and Stop sound here,
+// and ListenHere leaves its own bar off (dockState.ts): one bar, never two.
 // Its height is --dock-h on <html>, so the page gets the room back under it (index.css: body's padding-bottom) and
 // anything else fixed to the foot can sit above it. Mounted once, in App.tsx.
 
@@ -26,8 +28,10 @@ export function DockedPlayer() {
   const here = useListenHere();
   const v = ctx?.player.view ?? null;
   const onMusic = pathname.startsWith("/music");
+  const onRoom = pathname.startsWith("/room");
   const onScore = onMusic && new URLSearchParams(search).has(SCORE_PARAM);
-  const show = !!ctx?.enabled && ctx.player.link === "ok" && !onScore && !here.viewOpen && !!v?.current && SHOWN.includes(v.state);
+  const playing = ctx?.player.link === "ok" && !!v?.current && SHOWN.includes(v.state);
+  const show = !!ctx?.enabled && !onScore && !here.viewOpen && (onRoom || playing);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,7 +69,7 @@ export function DockedPlayer() {
     >
       <RoomThemeStyle />
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-        <MiniPlayer player={ctx.player} baseUrl={ctx.baseUrl} docked openMusicLink={!onMusic} />
+        <MiniPlayer player={ctx.player} baseUrl={ctx.baseUrl} docked />
       </div>
     </div>
   );

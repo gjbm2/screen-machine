@@ -9,6 +9,8 @@
 //     as late as this device hears them (deviceAudio.ts knows the exact frame it plays: deviceLag.ts), else 0.5 s
 //     until the first reading. The first note after the sound is
 //     turned on opens the screen; once closed it stays closed until it's turned on again.
+// nowWords is that what's-playing logic on its own; useWhatsOn reads it for the docked player while the music player
+// is idle (a test piece with Stop, else "Someone's playing the piano", else "Hearing: <what the room hears>").
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -16,7 +18,7 @@ import { Maximize2, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocked } from "@/components/player/dockState";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
-import type { RoomApi } from "./api";
+import { loadToken, RoomApi } from "./api";
 import { Spinner } from "./bits";
 import { useDeviceLag } from "./deviceLag";
 import {
@@ -37,7 +39,7 @@ import { LiveMusicView } from "./LiveMusicView";
 import { PlayBar } from "@/pages/Music/PlayBar";
 import { NoteFeed } from "./noteFeed";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
-import type { ShowTestView } from "./types";
+import type { ShowCard, ShowTestSource, ShowTestView } from "./types";
 import { usePianoSound } from "./usePianoSound";
 
 const POLL_ON_MS = 4_000;
@@ -55,6 +57,88 @@ const BUSY_WORDS: Partial<Record<ListenStatus, string>> = {
 const STOPPED_WORDS: Partial<Record<ListenStatus, string>> = {
   failed: "The sound stopped.",
 };
+
+/** What's playing, in words: the music player's piece, else the test piano's (Test music or a recording), else the
+ *  real piano while it sends notes. `kind` says which ("none": nothing). */
+export function nowWords(
+  player: PlayerView | null,
+  test: ShowTestView | null,
+  pianoLive: boolean,
+): { kind: "player" | "test" | "piano" | "none"; title: string; sub: string | null; source?: ShowTestSource } {
+  const piano = test?.sources?.piano;
+  if (player && PLAYER_BUSY.includes(player.state) && player.current)
+    return { kind: "player", title: player.current.title, sub: [player.current.composer, player.current.performer].filter(Boolean).join(" · ") || null };
+  if (piano && PIANO_BUSY.includes(piano.state)) return { kind: "test", title: piano.label || "The test piano", sub: "Test piano", source: "piano" };
+  const audio = test?.sources?.audio;
+  if (audio && PIANO_BUSY.includes(audio.state)) return { kind: "test", title: audio.label || "Test music", sub: "Test music", source: "audio" };
+  if (pianoLive) return { kind: "piano", title: "The piano", sub: "Played in the room" };
+  return { kind: "none", title: "Nothing playing just now", sub: "It plays here as soon as the music starts." };
+}
+
+const WHATS_ON_MS = 5_000;
+/** Hearing words that say nothing about the music. */
+const HEARING_SKIP = new Set(["", "Listening", "Quiet", "No sound coming in"]);
+
+export interface WhatsOn {
+  /** The idle line's words: "Test music: <piece>", "Someone's playing the piano", "Hearing: soul · relaxed". */
+  line: string;
+  /** A test piece plays: its Stop. */
+  stop?: () => Promise<void>;
+}
+
+/**
+ * What's on while the music player is idle, for the docked player's empty line: a test piece (with Stop), else
+ * someone at the piano (its MIDI streaming: GET /show/api/v1/inputs), else what the room hears (GET
+ * /show/api/v1/card's hearing). Read every 5 s while `enabled` and the page is visible; null: nothing to say.
+ */
+export function useWhatsOn(baseUrl: string, enabled: boolean): WhatsOn | null {
+  const api = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const [test, setTest] = useState<ShowTestView | null>(null);
+  const [pianoLive, setPianoLive] = useState(false);
+  const [hearing, setHearing] = useState<string | null>(null);
+  const [n, bump] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let stop = false;
+    let timer: number | undefined;
+    const ac = new AbortController();
+    const poll = async () => {
+      if (document.visibilityState === "visible") {
+        const [t, inp, card] = await Promise.all([
+          api.showTest(ac.signal).catch(() => null),
+          api.showInputs(ac.signal).catch(() => null) as Promise<{ pianos?: { state?: string }[] } | null>,
+          api.showCard(ac.signal).catch(() => null) as Promise<ShowCard | null>,
+        ]);
+        if (stop) return;
+        setTest(t);
+        setPianoLive(!!inp?.pianos?.some((p) => p.state === "streaming"));
+        setHearing(card?.hearing?.text ?? null);
+      }
+      timer = window.setTimeout(() => void poll(), WHATS_ON_MS);
+    };
+    void poll();
+    return () => {
+      stop = true;
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [api, enabled, n]);
+  if (!enabled) return null;
+  const w = nowWords(null, test, pianoLive);
+  if (w.kind === "test" && w.source) {
+    const source = w.source;
+    return {
+      line: `${w.sub}: ${w.title}`,
+      stop: async () => {
+        await api.showTestStop(source).catch(() => undefined);
+        bump((x) => x + 1);
+      },
+    };
+  }
+  if (w.kind === "piano") return { line: "Someone's playing the piano" };
+  if (hearing && !HEARING_SKIP.has(hearing)) return { line: `Hearing: ${hearing}` };
+  return null;
+}
 
 /** "This device" in words, with its one action (Tap to start sound, Try again, Open). Nothing while it's off. */
 export function ListenLine({ big, onOpen, className }: { big?: boolean; onOpen?: () => void; className?: string }) {
@@ -254,18 +338,7 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
 
   // what's playing
   const piano = test?.sources?.piano;
-  let title = "Nothing playing just now";
-  let sub: string | null = "It plays here as soon as the music starts.";
-  if (player && PLAYER_BUSY.includes(player.state) && player.current) {
-    title = player.current.title;
-    sub = [player.current.composer, player.current.performer].filter(Boolean).join(" · ") || null;
-  } else if (piano && PIANO_BUSY.includes(piano.state)) {
-    title = piano.label || "The test piano";
-    sub = "Test piano";
-  } else if (Date.now() - liveAt < LIVE_FOR_MS) {
-    title = "The piano";
-    sub = "Played in the room";
-  }
+  const { title, sub } = nowWords(player, test, Date.now() - liveAt < LIVE_FOR_MS);
   // the piece the pianola shows, when it has a score (the player's, else the test piano's library piece or recording)
   const playingId = (player && PLAYER_BUSY.includes(player.state) ? player.current?.id : null) ?? piano?.piece ?? player?.current?.id ?? null;
   const scorePiece = playingId && /^(lib|user|rec|file):/.test(playingId) ? playingId : null;
@@ -311,7 +384,7 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
                   ? (w) => {
                       if (w !== "score") return;
                       setListenView(false);
-                      navigate(`/music?score=${encodeURIComponent(scorePiece)}&stand=1`);
+                      navigate(`/music?score=${encodeURIComponent(scorePiece)}&stand=1`, { state: { score: true, from: "Room" } });
                     }
                   : undefined
               }
