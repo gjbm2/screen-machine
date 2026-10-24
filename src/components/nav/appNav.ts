@@ -3,7 +3,7 @@
 // Links are same-origin relative paths where the page is the app itself (the generator, Schedules, Room, Music,
 // Lights setup, Settings, a screen's TV page), so they work on whichever address the page was opened from (the LAN,
 // the friendly HTTPS name, the public address) and stay inside the app (AppLink.tsx: no reload). The renderer's
-// Library, the DSP monitor and Spectre are LAN-only tools and come from the room link (roomLink.ts).
+// Library and the DSP monitor are LAN-only tools and come from the room link (roomLink.ts).
 
 import { rendererConsoleUrl, roomApi, roomPageUrl, roomStatusUrl } from "@/components/room/roomLink";
 
@@ -45,18 +45,6 @@ export function dspMonitorUrl(): string {
   return `${roomApi().baseUrl}/show/dev/dsp`;
 }
 
-/** Spectre, the house PC's control dashboard: on the room's LAN host, port 80 (derived, not written in). */
-export function spectreUrl(): string {
-  const env = (import.meta.env.VITE_ROOM_URL as string | undefined) ?? "";
-  let host = window.location.hostname;
-  try {
-    if (env) host = new URL(env).hostname;
-  } catch {
-    /* this page's host */
-  }
-  return `http://${host}/`;
-}
-
 /** The places row under every page's title (PageHeader.tsx), in this order. `lan`: shown only while the room
  *  answers (or on that page itself). */
 export const PLACES: Array<{ page: AppPage; label: string; href: () => string; lan?: boolean }> = [
@@ -69,7 +57,6 @@ export const PLACES: Array<{ page: AppPage; label: string; href: () => string; l
 /** Tools for the house PC, LAN only, each in a new tab. */
 export const TOOL_LINKS: Array<{ label: string; hint: string; href: () => string }> = [
   { label: "Scene library", hint: "Live scenes, effects and ratings", href: rendererConsoleUrl },
-  { label: "Spectre", hint: "The house PC's servers and services", href: spectreUrl },
   { label: "DSP monitor", hint: "What the room's ears hear, in detail", href: dspMonitorUrl },
 ];
 
