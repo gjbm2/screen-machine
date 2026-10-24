@@ -531,3 +531,27 @@ def test_a_device_output_is_kept_even_before_it_connects(tmp_path):
     assert r.p.view()["output"] == "device:ipad-1"
     with pytest.raises(ValueError, match="unknown_output"):
         r.p.act({"action": "set", "output": "device:"})
+
+
+def test_a_device_output_stays_across_pieces_pauses_stops_and_a_restart(tmp_path):
+    """Owner, 24 Oct: 'check that play on this device doesn't get switched off / broken when user is moving between
+    modes / recordings'. Once the player's output is a device, every start names it: a new piece, the next one on
+    the finished edge, pause and resume, seek, stop then play, and a show_service restart (player.json)."""
+    r = Rig(tmp_path)
+    dev = "device:ipad-1"
+    r.p.act({"action": "set", "output": dev})
+    r.play(items=ITEMS)
+    r.playing()
+    r.finish()                                           # the next piece starts by itself
+    r.p.act({"action": "pause"})
+    r.p.act({"action": "resume"})
+    r.p.act({"action": "seek", "start_s": 3})
+    r.p.act({"action": "next"})
+    r.p.act({"action": "stop"})
+    r.play(piece="lib:p4")
+    starts = [c for c in r.src.calls if c[0] == "start"]
+    assert len(starts) >= 5 and all(c[3] == dev for c in starts)
+    r.p = r.new()                                        # a restart: the output comes back from player.json
+    assert r.p.view()["output"] == dev
+    r.play(piece="lib:p5")
+    assert r.src.calls[-1][3] == dev

@@ -11,7 +11,12 @@
 //   - hush(): silence at once (the buffer dropped, what arrives for a moment after ignored: notes already on their
 //     way, the room's tail), for Pause; unhush() for the next Play
 // PC22's clock is learned from the stamps (each message's host_now: the largest host_now - local time seen is the
-// closest to the truth, the network only ever adds). Reconnects by itself while on (1 s, doubling to 8 s).
+// closest to the truth, the network only ever adds; each new connection starts it afresh). Reconnects by itself while
+// on (1 s, doubling to 8 s), and at once when the socket goes silent (STALL_MS: the stream sends ~50 messages a
+// second, so a quiet socket is a dead one: Wi-Fi changing, a phone waking) or the page comes back into view.
+// It stays on until it's turned off (owner, 24 Oct: "check that 'play on this device' doesn't get switched off /
+// broken when user is moving between modes / recordings"): a phone that suspended the sound (the lock screen, a call,
+// another app) gets it back on the page's next tap, any tap (a mode, Play, a recording), not only Tap to start sound.
 //
 //   startDeviceAudio(url)  in a tap (the AudioContext needs one): url is …/show/api/v1/piano/live.ws?instrument=…
 //   stopDeviceAudio()      off: the socket closed, the context suspended
@@ -31,6 +36,9 @@ const REPORT_MS = 100;
 const RETRY_FIRST_MS = 1000;
 const RETRY_CAP_MS = 8000;
 const MAPS_KEPT = 20;
+/** No message for this long while on: the socket is dead (it may never say so), so it's opened again. */
+const STALL_MS = 5000;
+const STALL_CHECK_MS = 1000;
 
 export type DeviceAudioStatus = "off" | "connecting" | "buffering" | "playing" | "quiet" | "failed";
 
@@ -139,6 +147,8 @@ let offset: number | null = null; // PC22's clock minus ours (seconds), the larg
 let offsetAt = 0;
 let report: { t: number | null; at: number; playing: boolean } | null = null;
 let quiet = false;
+let lastMsgAt = 0;
+let stallTimer: number | undefined;
 const maps: PieceMap[] = [];
 
 function set(p: Partial<DeviceAudioSnap>) {
@@ -176,7 +186,8 @@ export function heardPiece(): { piece: string; pos: number; playing: boolean } |
 /** Silence now (Pause): what's held is dropped and what arrives for HUSH_S after is ignored. */
 export function hushDeviceAudio() {
   const h = hostNow();
-  node?.port.postMessage({ hush: h === null ? Number.POSITIVE_INFINITY : h + HUSH_S });
+  // PC22's clock not known yet (nothing has arrived): what's held is dropped and nothing is muted for ever after
+  node?.port.postMessage({ hush: h === null ? Number.NEGATIVE_INFINITY : h + HUSH_S });
 }
 
 /** The next Play: what arrives is played again. */
@@ -202,6 +213,12 @@ export function useDeviceAudio(): DeviceAudioSnap {
 }
 
 async function ensureContext(): Promise<AudioContext> {
+  if (ctx && ctx.state === "closed") {
+    // the browser closed it (it may, after a long suspension): a new one, from this tap
+    node = null;
+    ctx = null;
+    report = null;
+  }
   if (!ctx) {
     try {
       // iOS: keep playing with the ring/silent switch on (Safari 16.4+)
@@ -235,6 +252,42 @@ async function ensureContext(): Promise<AudioContext> {
   return ctx;
 }
 
+/** On and the sound held back (a phone suspended it, or the page reloaded): any tap on the page lets it play again. */
+function resumeOnGesture() {
+  if (!on || !ctx || ctx.state === "running") return;
+  void ctx.resume().catch(() => undefined);
+}
+if (typeof window !== "undefined") {
+  for (const ev of ["pointerdown", "pointerup", "touchend", "click", "keydown"])
+    window.addEventListener(ev, resumeOnGesture, { capture: true, passive: true });
+  // back in view (a phone woken, the tab shown, the page restored from the back/forward cache): sound and socket at once
+  const back = () => {
+    if (!on) return;
+    resumeOnGesture(); // some browsers let an interrupted context carry on without a tap
+    checkStall(true);
+  };
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && back());
+  window.addEventListener("pageshow", back);
+}
+
+/** While on: a socket that has gone quiet is closed and opened again at once (it may never fire close); `now`: one
+ *  waiting to retry tries now (the page is back in view). */
+function checkStall(now = false) {
+  if (!on || !url) return;
+  if (ws && performance.now() - lastMsgAt > STALL_MS) {
+    const s = ws;
+    ws = null;
+    s.onclose = null;
+    s.onmessage = null;
+    s.close();
+    retryMs = RETRY_FIRST_MS;
+    connect();
+  } else if (!ws && (now || retryTimer === undefined)) {
+    retryMs = RETRY_FIRST_MS;
+    connect();
+  }
+}
+
 function wsUrl(u: string): string {
   const x = new URL(u, window.location.href);
   x.protocol = x.protocol === "https:" ? "wss:" : "ws:";
@@ -244,12 +297,27 @@ function wsUrl(u: string): string {
 function connect() {
   if (!on || !url) return;
   window.clearTimeout(retryTimer);
+  retryTimer = undefined;
   set({ status: snap.status === "playing" ? "buffering" : "connecting" });
-  const sock = new WebSocket(wsUrl(url));
+  let sock: WebSocket;
+  try {
+    sock = new WebSocket(wsUrl(url));
+  } catch {
+    retryTimer = window.setTimeout(connect, retryMs);
+    retryMs = Math.min(RETRY_CAP_MS, retryMs * 2);
+    return;
+  }
   sock.binaryType = "arraybuffer";
   ws = sock;
+  lastMsgAt = performance.now(); // the handshake gets STALL_MS too
+  let fresh = true; // this connection's first clock reading replaces the old one (PC22 may have restarted)
   sock.onmessage = (e) => {
     if (ws !== sock) return;
+    lastMsgAt = performance.now();
+    if (fresh && typeof e.data === "string") {
+      fresh = false;
+      offset = null;
+    }
     if (typeof e.data === "string") {
       let m: Record<string, unknown>;
       try {
@@ -289,6 +357,7 @@ function connect() {
     ws = null;
     if (!on) return;
     set({ status: "connecting" });
+    window.clearTimeout(retryTimer);
     retryTimer = window.setTimeout(connect, retryMs);
     retryMs = Math.min(RETRY_CAP_MS, retryMs * 2);
   };
@@ -335,13 +404,17 @@ export async function startDeviceAudio(streamUrl: string): Promise<void> {
   retryMs = RETRY_FIRST_MS;
   connect();
   trackLag();
+  window.clearInterval(stallTimer);
+  stallTimer = window.setInterval(() => checkStall(), STALL_CHECK_MS);
 }
 
 /** Off: the socket closed, the sound silent at once. */
 export function stopDeviceAudio() {
   on = false;
   window.clearTimeout(retryTimer);
+  retryTimer = undefined;
   window.clearInterval(lagTimer);
+  window.clearInterval(stallTimer);
   const s = ws;
   ws = null;
   s?.close();

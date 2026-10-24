@@ -185,6 +185,52 @@ def test_the_websocket_stream_is_stamped_pcm_with_the_piece_map(tmp_path: pathli
     asyncio.run(go())
 
 
+def test_the_websocket_keeps_talking_while_nothing_plays_and_logs_who_listens(tmp_path: pathlib.Path, monkeypatch,
+                                                                              caplog) -> None:
+    """Owner, 24 Oct ('play on this device' must not get broken): with no piece, the socket still carries the clock
+    every MAP_S (the page's stall check closes a silent socket and opens it again), and who joins and leaves is
+    logged (the evidence when a device goes quiet)."""
+    import logging
+    from aiohttp import WSMsgType, web
+    from aiohttp.test_utils import TestClient, TestServer
+    fake = tmp_path / "fake.py"
+    fake.write_text(FAKE.format(py=sys.executable, log=str(tmp_path / "stdin.log")))
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(piano_live, "PYTHON", fake)
+    monkeypatch.setattr(piano_live, "MAP_S", 0.1)
+    insts = tmp_path / "instruments.json"
+    insts.write_text(json.dumps({"default": "concert-d", "instruments": {"concert-d": {}}}))
+    monkeypatch.setattr(piano_live, "INSTRUMENTS", insts)
+    live = piano_live.PianoLive(output_fn=lambda: "device:ipad-1", devices_file=tmp_path / "devices.json",
+                                pos_fn=lambda: None)
+    caplog.set_level(logging.INFO, logger="show_service.piano_live")
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            ws = await cl.ws_connect("/api/v1/piano/live.ws", params={"device": "ipad-1", "name": "iPad"})
+            await ws.receive_json(timeout=5)                           # hello
+            clocks = 0
+            t_end = time.monotonic() + 5
+            while time.monotonic() < t_end and clocks < 3:
+                m = await ws.receive(timeout=5)
+                if m.type == WSMsgType.TEXT:
+                    d = json.loads(m.data)
+                    assert "map" not in d
+                    clocks += set(d) == {"host_now"}
+            assert clocks >= 3
+            await ws.close()
+            for _ in range(40):
+                if "left concert-d" in caplog.text:
+                    break
+                await asyncio.sleep(0.05)
+
+    asyncio.run(go())
+    assert "ipad-1 listening to concert-d (output device:ipad-1)" in caplog.text
+    assert "ipad-1 left concert-d after" in caplog.text
+
+
 def test_a_device_can_be_forgotten(tmp_path: pathlib.Path) -> None:
     from aiohttp import web
     from aiohttp.test_utils import TestClient, TestServer

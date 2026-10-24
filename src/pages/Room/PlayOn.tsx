@@ -12,12 +12,17 @@
 //     it carries on with it, and remembers it while stopped or paused), and a test piece or recording playing on the
 //     test piano starts again with it. Kept as this browser's choice too (usePianoSound: Test music and the Piano card
 //     start with it).
+//   - The room's output, once read, is this browser's choice too (owner, 24 Oct: "check that 'play on this device'
+//     doesn't get switched off / broken when user is moving between modes / recordings"): a take, Test music or a new
+//     piece started here plays where Play on shows, never on an older choice of this browser's, which would move the
+//     room off a phone or tablet that was picked meanwhile.
 //   - This device plays here; picking anything else (here or on any page) moves the output away and this device goes
-//     quiet by itself. Also play on this device (a switch, shown while PC22 or Sonos is picked): the sound here as well
+//     quiet by itself. While the room plays on this device with its sound turned off here (Stop on the bar), Play on
+//     says so, with Turn on. Also play on this device (a switch, shown while PC22 or Sonos is picked): the sound here as well
 //     as the speakers. Screens only turns this device off too.
 // Turning This device on happens in the tap itself (mobile browsers start sound only from one).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Speaker } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -106,7 +111,17 @@ function usePlayOn(baseUrl: string, addLog?: (e: NewLogEntry) => void) {
 
   const server = local.outputs;
   const known = (id: string | null) => !!id && (id === myOutput() || server.some((o) => o.id === id));
-  const output = known(roomOutput) ? roomOutput : local.output;
+  const roomKnown = known(roomOutput);
+  const output = roomKnown ? roomOutput : local.output;
+  // what the room plays on is what this browser starts things on (usePianoSound's output: takes, Test music); once
+  // per new reading, so two mounts reading a moment apart can't trade the choice back and forth
+  const { setOutput: keepOutput, output: localOutput } = local;
+  const synced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!roomKnown || !roomOutput || roomOutput === synced.current) return;
+    synced.current = roomOutput;
+    if (roomOutput !== localOutput) keepOutput(roomOutput);
+  }, [roomKnown, roomOutput, localOutput, keepOutput]);
   // this device's line ("Quiet here · the room plays on …") follows what this control reads too
   // keyed on the strings, not the list (a fresh array every render): two mounts on one page must not trade labels
   const roomLabel = outputLabel(roomOutput, server);
@@ -209,6 +224,19 @@ export function PlayOn({
         </label>
       )}
       <ListenLine onOpen={() => setListenView(true)} />
+      {p.output === myOutput() && !p.here.on && (
+        <div className="flex min-h-11 items-center gap-2" role="status">
+          <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
+          <p className="min-w-0 flex-1 text-base leading-snug text-stone-700">Sound is off on this device</p>
+          <button
+            type="button"
+            onClick={() => p.pick(myOutput())}
+            className="h-11 shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-[15px] font-medium hover:bg-stone-50"
+          >
+            Turn on
+          </button>
+        </div>
+      )}
       {p.err && <p className="text-sm text-rose-700">{p.err}</p>}
     </div>
   );
