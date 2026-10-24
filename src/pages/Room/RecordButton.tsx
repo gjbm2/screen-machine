@@ -24,14 +24,31 @@ export function clock(s: number | null | undefined): string {
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-/** A piece's score on the Music page (written from its MIDI the first time it's opened), keeping ?room=. */
-export function scoreLink(pieceId: string): string {
+/** Where a score was opened from, in the words its back control uses ("Room", "Music", …). */
+export function pageFrom(pathname: string = window.location.pathname): string {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  if (p === "/" || p === "/room") return "Room";
+  if (p === "/music") return "Music";
+  if (p === "/lights") return "Lights";
+  if (p === "/scheduler") return "Schedules";
+  return "Back";
+}
+
+/** What a score's link carries: it was opened from the app (Back goes back there), and from which page. */
+export interface ScoreState {
+  score: true;
+  from: string;
+}
+
+/** A piece's score on the Music page (written from its MIDI the first time it's opened), keeping ?room=, with the
+ *  page it was opened from in the history state: <Link to={l.to} state={l.state}> or navigate(l.to, {state: l.state}). */
+export function scoreLink(pieceId: string, from: string = pageFrom()): { to: string; state: ScoreState } {
   const q = new URLSearchParams(window.location.search);
   const out = new URLSearchParams();
   const room = q.get("room");
   if (room) out.set("room", room);
   out.set("score", pieceId);
-  return `/music?${out.toString()}`;
+  return { to: `/music?${out.toString()}`, state: { score: true, from } };
 }
 
 /** room_service's address -> the show bus socket (WS /show/v1/show). */
