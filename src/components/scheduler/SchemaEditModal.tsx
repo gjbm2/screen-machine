@@ -16,6 +16,8 @@ interface SchemaEditModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   destination: string;
+  /** The screen's name for the title (the id when left out). */
+  destinationName?: string;
   schema: string;
   initialData: any;
   saveEndpoint: string;
@@ -204,6 +206,7 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
   open,
   onOpenChange,
   destination,
+  destinationName,
   schema,
   initialData,
   saveEndpoint,
@@ -876,7 +879,7 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
               textOverflow: 'ellipsis',
               whiteSpace: isMobile ? 'nowrap' : 'normal'
             }}>
-              {isMobile ? `Edit ${destination}` : `Edit Schedule for ${destination}`}
+              {isMobile ? (destinationName || destination) : `Schedule for ${destinationName || destination}`}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <FormControlLabel

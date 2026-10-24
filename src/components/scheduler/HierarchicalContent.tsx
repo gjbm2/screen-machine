@@ -30,7 +30,7 @@ export const HierarchicalContent: React.FC<HierarchicalContentProps> = ({
   };
   
   return (
-    <CardContent className={`${getPaddingClass()} ${className}`}>
+    <CardContent className={`min-w-0 break-words ${getPaddingClass()} ${className}`}>
       {children}
     </CardContent>
   );

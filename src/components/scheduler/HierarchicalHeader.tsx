@@ -68,8 +68,8 @@ export const HierarchicalHeader: React.FC<HierarchicalHeaderProps> = ({
       className={styles.headerClass}
       onClick={onToggle}
     >
-      <div className="flex items-center justify-between">
-        <CardTitle className={styles.titleClass}>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <CardTitle className={`min-w-0 break-words ${styles.titleClass}`}>
           {isOpen ? (
             <ChevronDown className={`${styles.iconSize} mr-2 text-muted-foreground`} />
           ) : (
@@ -84,7 +84,7 @@ export const HierarchicalHeader: React.FC<HierarchicalHeaderProps> = ({
           )}
         </CardTitle>
         {actions && (
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex min-w-0 flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
             {actions}
           </div>
         )}

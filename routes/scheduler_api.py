@@ -708,6 +708,82 @@ def api_throw_event():
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
+# Control instructions that say nothing about what a timed block does (its label skips them).
+_PLUMBING_ACTIONS = {"import_var", "export_var", "set_var", "terminate", "log", "wait", "sleep"}
+
+
+def timed_block_info(schedule: Any, next_action: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The timed block the next run belongs to, for the Schedules page and the Room page's screen cards:
+    interval_min (its repeat_schedule's "every", in minutes; None when it doesn't repeat), until (its end, "23:59"
+    when unset, as the scheduler runs it) and next_label (what it does: its first thrown event, else its first
+    action that isn't plumbing, as a label). All None when the next run isn't a timed block of `schedule`."""
+    from routes.scheduler_room import label_for
+    out: Dict[str, Any] = {"interval_min": None, "until": None, "next_label": None}
+    nt = (next_action or {}).get("next_time") if isinstance(next_action, dict) else None
+    if not isinstance(schedule, dict) or not isinstance(nt, str):
+        return out
+    try:
+        nt_min = int(nt[:2]) * 60 + int(nt[3:5])
+    except ValueError:
+        return out
+    today = datetime.now().strftime("%A")
+    found = None
+    for trig in schedule.get("triggers") or []:
+        if not isinstance(trig, dict) or trig.get("type") != "day_of_week":
+            continue
+        on_today = today in (trig.get("days") or [])
+        for sa in trig.get("scheduled_actions") or []:
+            if not isinstance(sa, dict):
+                continue
+            try:
+                t = datetime.strptime(str(sa.get("time", "")), "%H:%M")
+            except ValueError:
+                continue
+            start = t.hour * 60 + t.minute
+            rep = sa.get("repeat_schedule") if isinstance(sa.get("repeat_schedule"), dict) else None
+            every = None
+            if rep:
+                try:
+                    every = float(str(rep.get("every", "0")).strip())
+                except ValueError:
+                    every = None
+            until = str((rep or {}).get("until") or "23:59")
+            hit = False
+            if every and every > 0:
+                try:
+                    u = datetime.strptime(until, "%H:%M")
+                except ValueError:
+                    continue
+                end = u.hour * 60 + u.minute
+                if end < start:
+                    end += 24 * 60
+                n = nt_min if nt_min >= start else nt_min + 24 * 60
+                if start <= n <= end + 1:
+                    off = (n - start) % every
+                    # the scheduler rounds the next time down to the minute
+                    hit = off < 1.0001 or every - off < 1.0001
+            else:
+                hit = start == nt_min
+            if hit and (found is None or (on_today and not found[0])):
+                found = (on_today, sa, every if every and every > 0 else None, until)
+    if not found:
+        return out
+    _, sa, every, until = found
+    if every is not None:
+        out["interval_min"] = int(every) if every == int(every) else every
+        out["until"] = until
+    block = (sa.get("trigger_actions") or {}).get("instructions_block") or []
+    events = [i.get("event") for i in block if isinstance(i, dict) and i.get("action") == "throw_event" and i.get("event")]
+    events = [e for e in events if not str(e).startswith("_")]
+    if events:
+        out["next_label"] = label_for(events[0])
+    else:
+        acts = [i.get("action") for i in block if isinstance(i, dict) and i.get("action") and i.get("action") not in _PLUMBING_ACTIONS]
+        if acts:
+            out["next_label"] = label_for(acts[0])
+    return out
+
+
 @scheduler_bp.route("/schedulers/all/status", methods=["GET"])
 def api_get_all_scheduler_statuses():
     """Get the status of all schedulers at once."""
@@ -750,6 +826,12 @@ def api_get_all_scheduler_statuses():
                 "is_paused": state == "paused",
                 "next_action": next_action
             }
+            # How often the next run's block repeats, and what it does (plain words on the Schedules page)
+            try:
+                statuses[destination_id].update(
+                    timed_block_info(schedule_stack[-1] if schedule_stack else None, next_action))
+            except Exception as e:
+                error(f"Error describing the next block for {destination_id}: {str(e)}")
         except Exception as e:
             # Handle errors for a specific destination
             error(f"Error getting status for {destination_id}: {str(e)}")

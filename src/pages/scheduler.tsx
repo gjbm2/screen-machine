@@ -1,1002 +1,385 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { 
-  Play, 
-  Pause, 
-  Plus, 
-  AlertCircle, 
-  RefreshCcw, 
-  ArrowDownToLine, 
-  X, 
-  Settings,
-  ChevronDown,
-  ChevronRight,
-  Zap,
-  List
-} from 'lucide-react';
-import MainLayout from '@/components/layout/MainLayout';
-import { useConsoleManagement } from '@/hooks/use-console-management';
-import { useIsMobile } from '@/hooks/useIsMobile';
-import { publishApi, schedulerApi, API_URL } from '@/shared/api';
-import { useNavigate } from 'react-router-dom';
-import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
-import { SetVarsButton } from '../components/scheduler/SetVarsButton';
-import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
-import { SchedulerEventsPanel } from '../components/scheduler/SchedulerEventsPanel';
-import { extractEventTriggers } from '@/utils/scheduleUtils';
-import { MobileActionSheet } from '@/components/ui/MobileActionSheet';
-import { SchedulerCard } from '../components/scheduler/SchedulerCard';
-import { CollapsibleCardHeader } from '../components/scheduler/CollapsibleCardHeader';
-import { HierarchicalHeader } from '../components/scheduler/HierarchicalHeader';
-import { HierarchicalContent } from '../components/scheduler/HierarchicalContent';
-import { 
-  Destination, 
-  SchedulerStatus, 
-  InstructionQueueResponse,
-  NextAction
-} from '@/types/scheduler';
+// /scheduler: Schedules, what each screen does through the day (owner, 24 Oct: "you just haven't really worked the
+// interface ui through properly throughout"; plan B11). A power page for the desk at PC22, usable on a phone.
+//
+// One header (PageHeader: "‹ Room" back, "Schedules", Mic and AI, the menu), then folds grouped by the site's rooms
+// (rooms.json, from room_service's status): one per room with its screens, "Other screens" for the rest, a folded
+// "Behind the scenes" (hidden destinations, and schedules that serve a room's actions without being a screen of it,
+// e.g. the cloud's) and a folded "Advanced" (the variables registry and every scheduler event). Empty groups are left
+// out. Each schedule is a SchedulerCard: one row closed (status dot, name, the next run in words), the controls open.
+//
+// Deep links: ?destination=<id> opens that card and its group, scrolls to it and rings it; ?room=<room id> opens that
+// room's group (the Room page's Today's art links here). An unknown id says so in one line.
+//
+// Reads: the destinations once (and on Refresh), and ONE poll of /api/schedulers/all/status every 10 s while the page
+// is visible. A card reads its own stack, queue and log only while open. The first load shows "Reading…"; after that
+// refreshes happen in the background and every card keeps its place and open state.
 
-// Extend Window interface to include fetchDestinations
-declare global {
-  interface Window {
-    fetchDestinations?: () => Promise<void>;
-  }
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { RefreshCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AppMenu } from "@/components/nav/AppMenu";
+import { PageHeader } from "@/components/nav/PageHeader";
+import { roomPageUrl, useRoomLink } from "@/components/room/roomLink";
+import { useRoomEvents } from "@/components/room/EventsList";
+import { SchemaEditModal } from "@/components/scheduler/SchemaEditModal";
+import { SchedulerCard, type RoomRef, type ScheduleDest } from "@/components/scheduler/SchedulerCard";
+import { SchedulerEventsPanel } from "@/components/scheduler/SchedulerEventsPanel";
+import { VarsRegistryCard } from "@/components/scheduler/VarsRegistryCard";
+import { runState, type SchedStatus } from "@/components/scheduler/scheduleWords";
+import { cn } from "@/lib/utils";
+import { Notice, Unroll } from "@/pages/Room/bits";
+import { openFold, Section } from "@/pages/Room/Section";
+import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
+import { publishApi, schedulerApi, API_URL } from "@/shared/api";
+
+const POLL_MS = 10_000;
+
+interface Dest extends ScheduleDest {
+  hidden?: boolean;
 }
 
-interface Schedule {
-  id: string;
+interface EditorState {
+  destination: string;
   name: string;
-  cron: string;
-  is_running: boolean;
-  is_paused?: boolean;
-  last_run: string;
-  next_run: string;
-  error?: string;
+  schema: string;
+  initialData: unknown;
+  saveEndpoint: string;
+  saveMethod: "POST" | "PUT";
 }
 
-interface Context {
-  vars: Record<string, any>;
-  [key: string]: any;
+interface Group {
+  id: string;
+  title: string;
+  items: string[];
+  defaultOpen: boolean;
+  room?: RoomRef;
 }
 
-interface ScheduleStack {
-  schedule: any;
-  context: Context;
+function usePageTitle(title: string) {
+  useEffect(() => {
+    const prev = document.title;
+    document.title = title;
+    return () => {
+      document.title = prev;
+    };
+  }, [title]);
 }
 
-interface InstructionQueueItem {
-  action: string;
-  important: boolean;
-  urgent: boolean;
-  details: Record<string, any>;
+/** "2 running · 1 paused" for a closed group. */
+function groupSummary(ids: string[], statuses: Record<string, SchedStatus>): string {
+  const n = { running: 0, paused: 0, stopped: 0, error: 0 };
+  ids.forEach((id) => n[runState(statuses[id])]++);
+  const parts = [
+    n.running && `${n.running} running`,
+    n.paused && `${n.paused} paused`,
+    n.stopped && `${n.stopped} not running`,
+    n.error && `${n.error} with a problem`,
+  ].filter(Boolean);
+  return parts.join(" · ") || `${ids.length} schedules`;
+}
+
+/** Reports which destinations run a room's actions (from the same shared read as its EventsList). */
+function RoomActionsProbe({ room, report }: { room: RoomRef; report: (room: RoomRef, dests: string[]) => void }) {
+  const actions = useRoomEvents(room.id);
+  const key = actions ? [...new Set(actions.map((a) => a.dest ?? a.scope))].sort().join("|") : null;
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  useEffect(() => {
+    if (key !== null) reportRef.current(room, key ? key.split("|") : []);
+  }, [key, room]);
+  return null;
 }
 
 const Scheduler = () => {
-  const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const isMobile = useIsMobile();
-  const { 
-    consoleVisible, 
-    consoleLogs, 
-    toggleConsole, 
-    clearConsole,
-    addLog 
-  } = useConsoleManagement();
-  
-  // State for schema edit modal
-  const [schemaEditModalOpen, setSchemaEditModalOpen] = useState(false);
-  const [schemaEditData, setSchemaEditData] = useState<{
-    destination: string;
-    schema: any;
-    initialData: any;
-    saveEndpoint: string;
-    saveMethod: string;
-  } | null>(null);
+  usePageTitle("Schedules · screen/machine");
+  const [params] = useSearchParams();
+  const wantDest = params.get("destination");
+  const wantRoom = params.get("room");
+  const link = useRoomLink();
 
-  const [showAlert, setShowAlert] = useState(false);
-  const [alertMessage, setAlertMessage] = useState('');
-  const [alertSeverity, setAlertSeverity] = useState('success');
-  const [localLogs, setLocalLogs] = useState<{[key: string]: string[]}>({});
-  const [showLogs, setShowLogs] = useState<{[key: string]: boolean}>({});
-  const [showSchedule, setShowSchedule] = useState<{[key: string]: boolean}>({});
-  const [schedulerStatus, setSchedulerStatus] = useState<{[key: string]: SchedulerStatus}>({});
+  const [dests, setDests] = useState<Dest[] | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, SchedStatus>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [openCards, setOpenCards] = useState<Set<string>>(() => new Set(wantDest ? [wantDest] : []));
+  const [highlight, setHighlight] = useState<string | null>(wantDest);
+  const [note, setNote] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [servesByRoom, setServesByRoom] = useState<Record<string, { room: RoomRef; dests: string[] }>>({});
 
-  // Add state for instruction queues
-  const [instructionQueues, setInstructionQueues] = useState<{[key: string]: InstructionQueueResponse}>({});
-  const [showInstructionQueue, setShowInstructionQueue] = useState<{[key: string]: boolean}>({});
-
-  const [varsRegistryVisible, setVarsRegistryVisible] = useState(false);
-  const [runningSectionVisible, setRunningSectionVisible] = useState(true);
-  const [pausedSectionVisible, setPausedSectionVisible] = useState(false);
-  const [stoppedSectionVisible, setStoppedSectionVisible] = useState(false);
-  const [eventsSectionVisible, setEventsSectionVisible] = useState(false);
-  const [eventCount, setEventCount] = useState(0);
-
-  const [mobileActionSheetOpen, setMobileActionSheetOpen] = useState(false);
-
-  const fetchDestinations = useCallback(async () => {
-    setLoading(true);
+  const readStatuses = useCallback(async () => {
     try {
-      // Get list of running schedulers
-      const response = await schedulerApi.listSchedulers();
-      const runningSchedulers = response.running || [];
-      
-      // Get publish destinations from the service
-      const publishDestinations = await publishApi.getPublishDestinations(true);
-      
-      // Extract destination IDs from the publish destinations
-      const destinationIds = publishDestinations.map(dest => dest.id);
-      
-      // Combine both lists to make sure we have all destinations
-      const allDestinations = [...new Set([...destinationIds, ...runningSchedulers])];
-      
-      // Create empty destinations array to populate
-      const enhancedDestinations: Destination[] = [];
-      
-      // Get all scheduler statuses in one batch request
-      const allStatusesResponse = await schedulerApi.getAllSchedulerStatuses();
-      const allStatuses = allStatusesResponse.statuses || {};
-      
-      // Get details for each destination
-      for (const destId of allDestinations) {
-        try {
-          // Find destination info from publish destinations if available
-          const publishDestInfo = publishDestinations.find(d => d.id === destId);
-          
-          // Create destination object with default values
-          const destination: Destination = {
-            id: destId,
-            name: publishDestInfo?.name || destId,
-            schedules: [],
-            isRunning: false, // Default to not running
-            isPaused: false,
-          };
-          
-          // Get status from the batch response
-          const statusInfo = allStatuses[destId];
-          if (statusInfo) {
-            console.log(`Processing scheduler status for ${destId}:`, statusInfo);
-            
-            // SIMPLE LOGIC: If status is paused OR is_paused is true -> it's paused
-            if (statusInfo.status === 'paused' || statusInfo.is_paused === true) {
-              destination.isPaused = true;
-              // We intentionally don't set isRunning here
-            } else if (statusInfo.status === 'running' || statusInfo.is_running === true) {
-              destination.isRunning = true;
-              destination.isPaused = false;
-            } else {
-              // Status is stopped or unknown
-              destination.isRunning = false;
-              destination.isPaused = false;
-            }
-          }
-          
-          // Check if this destination is in the running list
-          if (runningSchedulers.includes(destId)) {
-            // If it's running, get additional details
-            try {
-              // Get logs
-              const logsResponse = await schedulerApi.getSchedulerLogs(destId);
-              destination.logs = logsResponse.log || [];
-              
-              // Get schedule stack
-              try {
-                const stackResponse = await schedulerApi.getScheduleStack(destId);
-                destination.scheduleStack = stackResponse.stack || [];
-              } catch (stackError) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn(`No schedule stack for running scheduler ${destId}`);
-                }
-                destination.scheduleStack = [];
-              }
-              
-              // Get context
-              try {
-                const contextResponse = await schedulerApi.getSchedulerContext(destId);
-                if (contextResponse.context_stack) {
-                  destination.contextStack = contextResponse.context_stack || [];
-                } else if (contextResponse.vars || contextResponse.last_generated) {
-                  destination.contextStack = [contextResponse];
-                } else {
-                  destination.contextStack = [];
-                }
-              } catch (contextError) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn(`No context for running scheduler ${destId}`);
-                }
-                destination.contextStack = [];
-              }
-              
-              // Convert schedule stack items to individual schedules for the UI
-              if (destination.scheduleStack && destination.scheduleStack.length > 0) {
-                destination.schedules = destination.scheduleStack.map((schedule, index) => ({
-                  id: `${destId}-schedule-${index}`,
-                  name: schedule.name || `Schedule ${index + 1}`,
-                  cron: schedule.cron || 'Unknown',
-                  is_running: destination.isRunning && !destination.isPaused,
-                  is_paused: destination.isPaused,
-                  last_run: 'N/A',
-                  next_run: 'N/A'
-                }));
-              }
-            } catch (error) {
-              console.error(`Error fetching details for running scheduler ${destId}:`, error);
-            }
-          } else {
-            // If it's not running AND it's not already marked as paused 
-            // (don't override the paused state from the statusInfo)
-            if (!destination.isPaused) {
-              destination.isRunning = false;
-              // Only set isPaused=false if it's not already true
-              destination.isPaused = false;
-            }
-            
-            // Even though it's not running or is paused, try to get the schedule stack
-            try {
-              const stackResponse = await schedulerApi.getScheduleStack(destId);
-              destination.scheduleStack = stackResponse.stack || [];
-              
-              // Try to get context as well
-              try {
-                const contextResponse = await schedulerApi.getSchedulerContext(destId);
-                if (contextResponse.context_stack) {
-                  destination.contextStack = contextResponse.context_stack || [];
-                } else if (contextResponse.vars || contextResponse.last_generated) {
-                  destination.contextStack = [contextResponse];
-                } else {
-                  destination.contextStack = [];
-                }
-              } catch (contextError) {
-                // Silently handle - context may not exist for stopped schedulers
-                destination.contextStack = [];
-              }
-              
-              // Convert schedule stack items to individual schedules for the UI
-              if (destination.scheduleStack && destination.scheduleStack.length > 0) {
-                destination.schedules = destination.scheduleStack.map((schedule, index) => ({
-                  id: `${destId}-schedule-${index}`,
-                  name: schedule.name || `Schedule ${index + 1}`,
-                  cron: schedule.cron || 'Unknown',
-                  is_running: false,
-                  is_paused: false,
-                  last_run: 'N/A',
-                  next_run: 'N/A'
-                }));
-              }
-            } catch (stackError) {
-              // Silently handle - schedule may not exist for stopped schedulers
-              destination.scheduleStack = [];
-              destination.contextStack = [];
-            }
-          }
-          
-          enhancedDestinations.push(destination);
-        } catch (error) {
-          console.error(`Error processing destination ${destId}:`, error);
-          // Add destination with basic info even if processing failed
-          enhancedDestinations.push({
-            id: destId,
-            name: publishDestinations.find(d => d.id === destId)?.name || destId,
-            schedules: [],
-            isRunning: runningSchedulers.includes(destId)
-          });
-        }
-      }
-      
-      setDestinations(enhancedDestinations);
-      
-      // Also update the scheduler status state from the batch response
-      setSchedulerStatus(allStatuses);
-      
-      addLog({ type: 'info', message: 'Fetched scheduler data successfully' });
-    } catch (error) {
-      console.error('Error fetching schedulers:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch schedulers',
-        variant: 'destructive',
-      });
-      addLog({ type: 'error', message: 'Failed to fetch schedulers' });
-    } finally {
-      setLoading(false);
+      const r = await schedulerApi.getAllSchedulerStatuses();
+      setStatuses((r?.statuses ?? {}) as Record<string, SchedStatus>);
+      setReadError(null);
+    } catch (e) {
+      setReadError(e instanceof Error ? e.message : String(e));
     }
-  }, [toast]);
+  }, []);
 
-  // Make fetchDestinations available in component scope
-  (window as any).fetchDestinations = fetchDestinations;
-
-  useEffect(() => {
-    fetchDestinations();
-  }, [fetchDestinations]);
-
-  useEffect(() => {
-    // Initialize local state for destinations
-    const initialLogs = {};
-    const initialShowLogs = {};
-    const initialShowSchedule = {};
-    const initialStatus = {};
-
-    destinations.forEach(destination => {
-      initialLogs[destination.id] = destination.logs || [];
-      initialShowLogs[destination.id] = false;
-      initialShowSchedule[destination.id] = false;
-      initialStatus[destination.id] = {
-        is_running: false,
-        next_action: null
-      };
-    });
-
-    setLocalLogs(initialLogs);
-    setShowLogs(initialShowLogs);
-    setShowSchedule(initialShowSchedule);
-    setSchedulerStatus(initialStatus);
-  }, [destinations]);
+  const readDests = useCallback(async () => {
+    try {
+      const d = await publishApi.getPublishDestinations(true);
+      setDests(d.map((x) => ({ id: x.id, name: x.name || x.id, hidden: x.hidden })));
+    } catch (e) {
+      setDests((prev) => prev ?? []);
+      setReadError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   useEffect(() => {
-    // Set up polling for logs and status
-    const pollingIntervalId = setInterval(() => {
-      // Fetch logs for destinations with visible logs
-      destinations.forEach(destination => {
-        if (showLogs[destination.id]) {
-          fetchLogs(destination.id);
-        }
-      });
-      
-      // Fetch all scheduler statuses in a single request
-      fetchAllSchedulerStatuses();
-    }, 5000); // Poll every 5 seconds (changed from 15 seconds)
+    void Promise.allSettled([readDests(), readStatuses()]).finally(() => setLoaded(true));
+  }, [readDests, readStatuses]);
 
-    return () => {
-      clearInterval(pollingIntervalId);
+  // one poll of every schedule's status, only while the page is visible (and at once when it comes back)
+  useEffect(() => {
+    if (!loaded) return;
+    let id: ReturnType<typeof setInterval> | null = null;
+    const startPoll = () => {
+      if (id === null) id = setInterval(() => void readStatuses(), POLL_MS);
     };
-  }, [destinations, showLogs]);
-
-  const fetchLogs = async (destinationId: string) => {
-    try {
-      const logs = await schedulerApi.getSchedulerLogs(destinationId);
-      setLocalLogs(prevLogs => ({
-        ...prevLogs,
-        [destinationId]: logs.log || []
-      }));
-    } catch (error) {
-      console.error('Error fetching logs:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch logs',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const fetchSchedulerStatus = async (destinationId: string) => {
-    try {
-      // First check if scheduler is running
-      const runningResponse = await schedulerApi.getDestinations();
-      const destination = runningResponse.destinations.find(d => d.id === destinationId);
-      const isRunning = destination?.scheduler_running || false;
-      
-      // Only log in debug mode
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`Destination ${destinationId} running status:`, isRunning);
+    const stopPoll = () => {
+      if (id !== null) clearInterval(id);
+      id = null;
+    };
+    const onVis = () => {
+      if (document.hidden) stopPoll();
+      else {
+        void readStatuses();
+        startPoll();
       }
-      
-      // Then get next action if scheduler is running
-      let nextAction = null;
-      if (isRunning) {
-        try {
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`Fetching next action for destination ${destinationId}`);
-            const apiUrl = API_URL;
-            console.log(`Using API URL: ${apiUrl}/schedulers/${destinationId}/next_action`);
-          }
-          
-          const actionResponse = await schedulerApi.getNextScheduledAction(destinationId);
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`Next action response:`, actionResponse);
-          }
-          
-          if (actionResponse && actionResponse.success !== false && actionResponse.next_action) {
-            nextAction = actionResponse.next_action;
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`Next action received:`, nextAction);
-            }
-          } else if (actionResponse && actionResponse.error) {
-            console.warn(`Warning fetching next action: ${actionResponse.error}`);
-          }
-        } catch (actionError) {
-          // Error already handled in the API service
-          console.error(`Error fetching next action for destination ${destinationId}:`, actionError);
-        }
-      }
-      
-      setSchedulerStatus(prevStatus => ({
-        ...prevStatus,
-        [destinationId]: {
-          is_running: isRunning,
-          next_action: nextAction
-        }
-      }));
-    } catch (error) {
-      console.error(`Error fetching scheduler status for destination ${destinationId}:`, error);
-      // Don't break the UI on error
-      setSchedulerStatus(prevStatus => ({
-        ...prevStatus,
-        [destinationId]: {
-          is_running: false,
-          next_action: null
-        }
-      }));
-    }
+    };
+    if (!document.hidden) startPoll();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stopPoll();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [loaded, readStatuses]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.allSettled([readDests(), readStatuses()]);
+    setRefreshKey((k) => k + 1);
+    setRefreshing(false);
   };
 
-  // New function to fetch all scheduler statuses at once
-  const fetchAllSchedulerStatuses = async () => {
-    try {
-      const response = await schedulerApi.getAllSchedulerStatuses();
-      if (response && response.statuses) {
-        setSchedulerStatus(response.statuses);
-      }
-    } catch (error) {
-      console.error('Error fetching all scheduler statuses:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch scheduler statuses',
-        variant: 'destructive',
-      });
-    }
-  };
+  // ── groups ──
+  const rooms = useMemo(
+    () => (link.status?.rooms ?? []).map((r) => ({ id: r.id, name: r.name || r.id, screens: r.screens ?? [] })),
+    [link.status?.rooms],
+  );
+  const reportServes = useCallback((room: RoomRef, ds: string[]) => {
+    setServesByRoom((prev) => {
+      const old = prev[room.id];
+      if (old && old.dests.join("|") === ds.join("|")) return prev;
+      return { ...prev, [room.id]: { room, dests: ds } };
+    });
+  }, []);
 
-  const handleToggleSchedule = async (destinationId: string, currentlyPaused: boolean) => {
-    try {
-      // Save previous state
-      const previousStatus = schedulerStatus[destinationId];
-      
-      // Update UI immediately for better UX
-      setSchedulerStatus(prevStatus => ({
-        ...prevStatus,
-        [destinationId]: {
-          ...prevStatus[destinationId],
-          is_running: !prevStatus[destinationId]?.is_running || false,
-          is_paused: !currentlyPaused // Toggle paused state
-        }
-      }));
-      
-      // If currently paused, unpause it
-      if (currentlyPaused) {
-        await schedulerApi.unpauseScheduler(destinationId);
-      } else {
-        // Otherwise pause it
-        await schedulerApi.pauseScheduler(destinationId);
-      }
-      
-      // Refresh the data to ensure we have accurate state
-      await fetchDestinations();
-      
-      // Immediately fetch updated status
-      await fetchSchedulerStatus(destinationId);
-      
-      toast({
-        title: 'Success',
-        description: `Scheduler ${currentlyPaused ? 'resumed' : 'paused'} successfully`,
-      });
-    } catch (error) {
-      console.error('Error toggling scheduler:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to toggle scheduler',
-        variant: 'destructive',
-      });
-    }
-  };
+  const { byId, groups, roomOf, servesOf } = useMemo(() => {
+    const byId = new Map<string, Dest>();
+    (dests ?? []).forEach((d) => byId.set(d.id, d));
+    Object.keys(statuses).forEach((id) => {
+      if (!byId.has(id)) byId.set(id, { id, name: id, hidden: id.startsWith("_") });
+    });
+    const roomOf = new Map<string, RoomRef>();
+    rooms.forEach((r) => r.screens.forEach((s) => roomOf.set(s, { id: r.id, name: r.name })));
+    const servesOf = new Map<string, RoomRef[]>();
+    Object.values(servesByRoom).forEach(({ room, dests: ds }) =>
+      ds.forEach((d) => {
+        if (!roomOf.has(d)) servesOf.set(d, [...(servesOf.get(d) ?? []), room]);
+      }),
+    );
+    const ids = [...byId.keys()];
+    const backstage = ids.filter((id) => !roomOf.has(id) && (byId.get(id)?.hidden || id.startsWith("_") || servesOf.has(id)));
+    const other = ids.filter((id) => !roomOf.has(id) && !backstage.includes(id));
+    const groups: Group[] = [
+      ...rooms.map((r) => ({
+        id: `sched-room-${r.id}`,
+        title: r.name,
+        items: r.screens.filter((s) => byId.has(s)),
+        defaultOpen: true,
+        room: { id: r.id, name: r.name },
+      })),
+      { id: "sched-other", title: rooms.length ? "Other screens" : "Screens", items: other, defaultOpen: true },
+      { id: "sched-backstage", title: "Behind the scenes", items: backstage, defaultOpen: false },
+    ].filter((g) => g.items.length > 0);
+    return { byId, groups, roomOf, servesOf };
+  }, [dests, statuses, rooms, servesByRoom]);
 
-  const handleCreateSchedule = async (destinationId: string) => {
-    try {
-      // Get the schema
-      console.log('SCHEDULER: Fetching schema from API');
-      const schemaResponse = await schedulerApi.getSchedulerSchema();
-      console.log('SCHEDULER: Schema received (first 100 chars):', schemaResponse.substring(0, 100));
-      console.log('SCHEDULER: Schema type:', typeof schemaResponse);
-      console.log('SCHEDULER: Schema length:', schemaResponse.length);
-      
-      if (!schemaResponse) {
-        throw new Error('Failed to get schema');
+  // ── ?destination= / ?room=: once the groups are known (rooms come from room_service; give it 3 s) ──
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWaited(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const ready = loaded && dests !== null && (link.onLan === false || !!link.status || waited);
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (!ready || revealed.current) return;
+    if (!wantDest && !wantRoom) return;
+    revealed.current = true;
+    if (wantDest) {
+      const g = groups.find((x) => x.items.includes(wantDest));
+      if (!g) {
+        setNote(`There's no schedule for “${wantDest}” here.`);
+        setHighlight(null);
+        return;
       }
-      
-      // Try parsing to see structure 
-      try {
-        const parsedSchema = JSON.parse(schemaResponse);
-        console.log('SCHEDULER: First property in schema.properties:', Object.keys(parsedSchema.properties)[0]);
-      } catch (e) {
-        console.error('SCHEDULER: Error parsing schema:', e);
-      }
-      
-      // Set up schema edit data
-      setSchemaEditData({
-        destination: destinationId,
-        schema: schemaResponse,
-        initialData: {},
-        saveEndpoint: `${API_URL}/schedulers/${destinationId}/schedule`,
-        saveMethod: 'POST'
-      });
-      
-      // Open the modal
-      setSchemaEditModalOpen(true);
-      
-      toast({
-        title: 'Info',
-        description: 'Opening schedule editor...',
-      });
-    } catch (error) {
-      console.error('Error creating schedule:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to create schedule',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleStartScheduler = async (destinationId: string) => {
-    try {
-      // Start the scheduler with an empty schedule
-      await schedulerApi.startScheduler(destinationId, {});
-      
-      // Refresh the data
-      await fetchDestinations();
-      
-      toast({
-        title: 'Success',
-        description: `Started scheduler successfully`,
-      });
-    } catch (error) {
-      console.error('Error starting scheduler:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to start scheduler',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleStopScheduler = async (destinationId: string) => {
-    try {
-      // Stop the scheduler
-      await schedulerApi.stopScheduler(destinationId);
-      
-      // Refresh the data
-      await fetchDestinations();
-      
-      toast({
-        title: 'Success',
-        description: `Stopped scheduler successfully`,
-      });
-    } catch (error) {
-      console.error('Error stopping scheduler:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to stop scheduler',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleUnloadSchedule = async (destinationId: string) => {
-    try {
-      // Unload the top schedule
-      await schedulerApi.unloadSchedule(destinationId);
-      
-      // Refresh the data
-      await fetchDestinations();
-      
-      toast({
-        title: 'Success',
-        description: `Unloaded top schedule successfully`,
-      });
-    } catch (error) {
-      console.error('Error unloading schedule:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to unload schedule',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleEditSchedule = async (destinationId: string, layer: number) => {
-    try {
-      // Get the schedule at the specified position
-      const response = await schedulerApi.getScheduleAtPosition(destinationId, layer);
-      
-      if (!response.schedule) {
-        throw new Error('Failed to get schedule');
-      }
-      
-      // Get the schema
-      const schemaResponse = await schedulerApi.getSchedulerSchema();
-      
-      if (!schemaResponse) {
-        throw new Error('Failed to get schema');
-      }
-      
-      // Set up schema edit data
-      setSchemaEditData({
-        destination: destinationId,
-        schema: schemaResponse,
-        initialData: response.schedule,
-        saveEndpoint: `${API_URL}/schedulers/${destinationId}/schedule/${layer}`,
-        saveMethod: 'PUT'
-      });
-      
-      // Open the modal
-      setSchemaEditModalOpen(true);
-      
-      toast({
-        title: 'Info',
-        description: 'Opening schedule editor...',
-      });
-    } catch (error) {
-      console.error('Error editing schedule:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to get schedule for editing',
-        variant: 'destructive',
-      });
-    }
-  };
-  
-  const handleSchemaEditSave = async () => {
-    // Get the current destination from schemaEditData
-    const destinationId = schemaEditData?.destination;
-    
-    if (!destinationId) {
-      console.error('No destination ID found for schema edit');
-      toast({
-        title: 'Error',
-        description: 'Failed to save schedule: Missing destination ID',
-        variant: 'destructive',
-      });
+      openFold(g.id);
+      setOpenCards((s) => new Set(s).add(wantDest));
+      const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      setTimeout(() => document.getElementById(`schedule-${wantDest}`)?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" }), 350);
       return;
     }
-    
+    if (wantRoom) {
+      const g = groups.find((x) => x.room?.id === wantRoom);
+      if (g) openFold(g.id);
+      else setNote(`There's no room called “${wantRoom}” here.`);
+    }
+  }, [ready, wantDest, wantRoom, groups]);
+
+  // ── the full editor ──
+  const openEditor = async (destId: string, layer: number | null) => {
     try {
-      // First refresh the data to ensure we have the latest state
-      await fetchDestinations();
-      
-      // Wait a short moment to ensure the schedule is saved
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Auto-start the scheduler if it's a new schedule (POST method)
-      if (schemaEditData?.saveMethod === 'POST') {
-        console.log(`Auto-starting scheduler for ${destinationId} after creating new schedule`);
-        try {
-          await handleStartScheduler(destinationId);
-          toast({
-            title: 'Success',
-            description: 'Schedule saved and started automatically',
-          });
-        } catch (error) {
-          console.error('Error starting scheduler:', error);
-          toast({
-            title: 'Warning',
-            description: 'Schedule was saved but could not be started automatically. Try starting it manually.',
-            variant: 'destructive',
-          });
-        }
+      const schema = await schedulerApi.getSchedulerSchema();
+      if (!schema) return;
+      const name = byId.get(destId)?.name ?? destId;
+      if (layer === null) {
+        setEditor({ destination: destId, name, schema, initialData: {}, saveEndpoint: `${API_URL}/schedulers/${destId}/schedule`, saveMethod: "POST" });
       } else {
-        // For existing schedules, ensure the state is properly updated
-        const destination = destinations.find(d => d.id === destinationId);
-        if (destination?.isRunning) {
-          // If the scheduler is running, fetch its status to update UI
-          await fetchSchedulerStatus(destinationId);
-        }
-        
-        toast({
-          title: 'Success',
-          description: 'Schedule saved successfully',
+        const r = await schedulerApi.getScheduleAtPosition(destId, layer);
+        setEditor({
+          destination: destId,
+          name,
+          schema,
+          initialData: r.schedule,
+          saveEndpoint: `${API_URL}/schedulers/${destId}/schedule/${layer}`,
+          saveMethod: "PUT",
         });
       }
-    } catch (error) {
-      console.error('Error updating state after schema edit:', error);
-      toast({
-        title: 'Warning',
-        description: 'There was an error updating the UI. Please refresh the page.',
-        variant: 'destructive',
-      });
+    } catch {
+      /* the API layer has said what went wrong */
     }
   };
-
-  // Add function to fetch instruction queue for a destination
-  const fetchInstructionQueue = async (destinationId: string) => {
-    try {
-      const response = await schedulerApi.getInstructionQueue(destinationId);
-      setInstructionQueues(prevQueues => ({
-        ...prevQueues,
-        [destinationId]: response
-      }));
-    } catch (error) {
-      console.error(`Error fetching instruction queue for destination ${destinationId}:`, error);
-      // Don't break the UI on error
-    }
-  };
-
-  // Modify the refreshInterval to also fetch instruction queues
-  useEffect(() => {
-    if (!loading) {
-      const interval = setInterval(() => {
-        destinations.forEach(destination => {
-          if (destination.isRunning) {
-            // Fetch status for running destinations
-            fetchSchedulerStatus(destination.id);
-            // Also fetch instruction queue
-            fetchInstructionQueue(destination.id);
-          }
-        });
-      }, 5000); // Refresh every 5 seconds
-      
-      return () => clearInterval(interval);
-    }
-  }, [loading, destinations]);
-
-  // Initial fetch of instruction queues for running destinations
-  useEffect(() => {
-    destinations.forEach(destination => {
-      if (destination.isRunning) {
-        fetchInstructionQueue(destination.id);
+  const editorSaved = async () => {
+    const ed = editor;
+    if (!ed) return;
+    if (ed.saveMethod === "POST" && runState(statuses[ed.destination]) === "stopped") {
+      // a new schedule on a schedule that isn't running starts it, as before
+      try {
+        await schedulerApi.startScheduler(ed.destination, {});
+      } catch {
+        /* said by the API layer */
       }
+    }
+    await readStatuses();
+    setRefreshKey((k) => k + 1);
+  };
+
+  const backTo = wantDest && roomOf.has(wantDest) ? roomPageUrl(wantDest) : "/room#today";
+  const toggleCard = (id: string, open: boolean) => {
+    if (!open && highlight === id) setHighlight(null);
+    setOpenCards((s) => {
+      const n = new Set(s);
+      if (open) n.add(id);
+      else n.delete(id);
+      return n;
     });
-  }, [destinations]);
-
-  if (loading) {
-    return (
-      <MainLayout
-        onToggleConsole={toggleConsole}
-        consoleVisible={consoleVisible}
-        onOpenAdvancedOptions={() => {}}
-        consoleLogs={consoleLogs}
-        onClearConsole={clearConsole}
-      >
-        <div className="flex items-center justify-center h-full">
-          <p>Loading schedulers...</p>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  // Sort destinations: running schedulers first, then paused, then stopped
-  const sortedDestinations = [...destinations].sort((a, b) => {
-    // First running schedulers (not paused)
-    if (a.isRunning === true && a.isPaused !== true && (b.isRunning !== true || b.isPaused === true)) {
-      return -1;
-    }
-    if (b.isRunning === true && b.isPaused !== true && (a.isRunning !== true || a.isPaused === true)) {
-      return 1;
-    }
-    
-    // Then paused schedulers
-    if (a.isPaused === true && b.isPaused !== true) {
-      return -1;
-    }
-    if (b.isPaused === true && a.isPaused !== true) {
-      return 1;
-    }
-    
-    // Alphabetically within the same category
-    return a.name.localeCompare(b.name);
-  });
-
-  // Group destinations by status
-  const groupedDestinations = {
-    running: sortedDestinations.filter((d) => d.isRunning && !d.isPaused),
-    paused: sortedDestinations.filter((d) => d.isPaused),
-    stopped: sortedDestinations.filter((d) => !d.isRunning && !d.isPaused)
   };
 
   return (
-    <MainLayout
-      onToggleConsole={toggleConsole}
-      consoleVisible={consoleVisible}
-      onOpenAdvancedOptions={() => {}}
-      consoleLogs={consoleLogs}
-      onClearConsole={clearConsole}
-    >
-      <div className={isMobile ? "-mx-4" : ""}>
-        <div className={`mx-auto ${
-          isMobile 
-            ? 'px-1 pb-20 max-w-full space-y-2' 
-            : 'px-4 pb-24 max-w-7xl space-y-4'
-        }`}>
-          {/* Page Header with Refresh Button */}
-          <div className="flex justify-between items-center mb-4 px-3">
-            <h1 className="text-2xl sm:text-3xl font-bold">Schedulers</h1>
-            <Button 
-              variant="outline" 
-              onClick={fetchDestinations} 
-              disabled={loading}
-              size={isMobile ? "sm" : "default"}
-            >
-              <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              {!isMobile && 'Refresh'}
-            </Button>
-          </div>
+    <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
+      <RoomThemeStyle />
+      {rooms.map((r) => (
+        <RoomActionsProbe key={r.id} room={{ id: r.id, name: r.name }} report={reportServes} />
+      ))}
+      <div className="mx-auto w-full min-w-0 max-w-4xl px-4 pb-28 sm:px-6">
+        <PageHeader title="Schedules" current="scheduler" onMenu={() => setMenuOpen(true)} toggles="auto" back={{ to: backTo }} compact />
 
-          {/* Vars Registry Section */}
-          <Card>
-            <HierarchicalHeader
-              title="Variables Registry"
-              level={1}
-              isOpen={varsRegistryVisible}
-              onToggle={() => setVarsRegistryVisible(!varsRegistryVisible)}
-            />
-            {varsRegistryVisible && (
-              <HierarchicalContent level={1}>
-                <VarsRegistryCard />
-              </HierarchicalContent>
-            )}
-          </Card>
-
-          {/* Events Section */}
-          <Card>
-            <HierarchicalHeader
-              title="All Scheduler Events"
-              level={1}
-              isOpen={eventsSectionVisible}
-              onToggle={() => setEventsSectionVisible(!eventsSectionVisible)}
-              count={eventCount}
-            />
-            {eventsSectionVisible && (
-              <HierarchicalContent level={1}>
-                <SchedulerEventsPanel onEventCountChange={setEventCount} />
-              </HierarchicalContent>
-            )}
-          </Card>
-
-          {/* Running Schedulers Section */}
-          <Card>
-            <HierarchicalHeader
-              title="Running Schedulers"
-              level={1}
-              isOpen={runningSectionVisible}
-              onToggle={() => setRunningSectionVisible(!runningSectionVisible)}
-              count={destinations.filter(d => d.isRunning && !d.isPaused).length}
-            />
-            {runningSectionVisible && (
-              <HierarchicalContent level={1}>
-                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
-                  {destinations
-                    .filter(d => d.isRunning && !d.isPaused)
-                    .map(destination => (
-                      <SchedulerCard
-                        key={destination.id}
-                        destination={destination}
-                        onToggle={handleToggleSchedule}
-                        onCreate={handleCreateSchedule}
-                        onStart={handleStartScheduler}
-                        onStop={handleStopScheduler}
-                        onUnload={handleUnloadSchedule}
-                        onEdit={handleEditSchedule}
-                        schedulerStatus={schedulerStatus}
-                        instructionQueue={instructionQueues[destination.id]}
-                        onToggleQueueView={() => {
-                          setShowInstructionQueue(prev => ({
-                            ...prev,
-                            [destination.id]: !prev[destination.id]
-                          }));
-                        }}
-                        showInstructionQueue={showInstructionQueue[destination.id] || false}
-                        isMobile={isMobile}
-                      />
-                    ))}
-                </div>
-              </HierarchicalContent>
-            )}
-          </Card>
-
-          {/* Paused Schedulers Section */}
-          <Card>
-            <HierarchicalHeader
-              title="Paused Schedulers"
-              level={1}
-              isOpen={pausedSectionVisible}
-              onToggle={() => setPausedSectionVisible(!pausedSectionVisible)}
-              count={destinations.filter(d => d.isPaused).length}
-            />
-            {pausedSectionVisible && (
-              <HierarchicalContent level={1}>
-                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
-                  {destinations
-                    .filter(d => d.isPaused)
-                    .map(destination => (
-                      <SchedulerCard
-                        key={destination.id}
-                        destination={destination}
-                        onToggle={handleToggleSchedule}
-                        onCreate={handleCreateSchedule}
-                        onStart={handleStartScheduler}
-                        onStop={handleStopScheduler}
-                        onUnload={handleUnloadSchedule}
-                        onEdit={handleEditSchedule}
-                        schedulerStatus={schedulerStatus}
-                        instructionQueue={instructionQueues[destination.id]}
-                        onToggleQueueView={() => {
-                          setShowInstructionQueue(prev => ({
-                            ...prev,
-                            [destination.id]: !prev[destination.id]
-                          }));
-                        }}
-                        showInstructionQueue={showInstructionQueue[destination.id] || false}
-                        isMobile={isMobile}
-                      />
-                    ))}
-                </div>
-              </HierarchicalContent>
-            )}
-          </Card>
-
-          {/* Stopped Schedulers Section */}
-          <Card>
-            <HierarchicalHeader
-              title="Stopped Schedulers"
-              level={1}
-              isOpen={stoppedSectionVisible}
-              onToggle={() => setStoppedSectionVisible(!stoppedSectionVisible)}
-              count={destinations.filter(d => !d.isRunning && !d.isPaused).length}
-            />
-            {stoppedSectionVisible && (
-              <HierarchicalContent level={1}>
-                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
-                  {destinations
-                    .filter(d => !d.isRunning && !d.isPaused)
-                    .map(destination => (
-                      <SchedulerCard
-                        key={destination.id}
-                        destination={destination}
-                        onToggle={handleToggleSchedule}
-                        onCreate={handleCreateSchedule}
-                        onStart={handleStartScheduler}
-                        onStop={handleStopScheduler}
-                        onUnload={handleUnloadSchedule}
-                        onEdit={handleEditSchedule}
-                        schedulerStatus={schedulerStatus}
-                        instructionQueue={instructionQueues[destination.id]}
-                        onToggleQueueView={() => {
-                          setShowInstructionQueue(prev => ({
-                            ...prev,
-                            [destination.id]: !prev[destination.id]
-                          }));
-                        }}
-                        showInstructionQueue={showInstructionQueue[destination.id] || false}
-                        isMobile={isMobile}
-                      />
-                    ))}
-                </div>
-              </HierarchicalContent>
-            )}
-          </Card>
-
-          {/* Schema Edit Modal */}
-          {schemaEditModalOpen && schemaEditData && (
-            <SchemaEditModal
-              open={schemaEditModalOpen}
-              onOpenChange={setSchemaEditModalOpen}
-              onSave={handleSchemaEditSave}
-              destination={schemaEditData.destination}
-              schema={schemaEditData.schema}
-              initialData={schemaEditData.initialData}
-              saveEndpoint={schemaEditData.saveEndpoint}
-              saveMethod={schemaEditData.saveMethod}
-              scriptsDirectory="routes/scheduler/scripts"
-            />
-          )}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="min-w-0 flex-1 basis-56 text-[15px] leading-snug text-muted-foreground">
+            What each screen does through the day. Today's values, such as the theme, are changed on the Room page under Today's art.
+          </p>
+          <Button type="button" variant="outline" onClick={() => void refresh()} disabled={refreshing} className="h-11 rounded-xl px-4 text-base">
+            <RefreshCcw aria-hidden className={cn(refreshing && "motion-safe:animate-spin")} /> Refresh
+          </Button>
         </div>
+
+        {note && (
+          <Notice tone="info" className="mt-3">
+            {note}
+          </Notice>
+        )}
+        {readError && loaded && (
+          <Notice tone="warn" className="mt-3">
+            The schedules can't be read just now ({readError}). It keeps trying.
+          </Notice>
+        )}
+
+        {!loaded ? (
+          <p className="py-10 text-center text-[15px] text-muted-foreground">Reading the schedules…</p>
+        ) : (
+          <main className="mt-2 min-w-0 divide-y divide-stone-200/80 border-y border-stone-200/80" data-testid="schedules-page">
+            {groups.map((g) => (
+              <Section key={g.id} id={g.id} title={g.title} summary={groupSummary(g.items, statuses)} defaultOpen={g.defaultOpen}>
+                <div className="grid min-w-0 gap-3">
+                  {g.items.map((id) => (
+                    <SchedulerCard
+                      key={id}
+                      dest={{ id, name: byId.get(id)?.name ?? id }}
+                      status={statuses[id]}
+                      open={openCards.has(id)}
+                      onOpenChange={(o) => toggleCard(id, o)}
+                      highlight={highlight === id}
+                      room={roomOf.get(id) ?? null}
+                      servesRooms={servesOf.get(id) ?? []}
+                      refreshKey={refreshKey}
+                      onChanged={() => void readStatuses()}
+                      onEdit={(d, layer) => void openEditor(d, layer)}
+                    />
+                  ))}
+                </div>
+              </Section>
+            ))}
+            {groups.length === 0 && <p className="py-6 text-[15px] text-muted-foreground">No screens have a schedule.</p>}
+            <Section id="sched-advanced" title="Advanced" summary="The variables registry and every scheduler event">
+              <div className="min-w-0 space-y-2">
+                <Unroll title="Variables registry" contentClassName="min-w-0 pt-2">
+                  <VarsRegistryCard />
+                </Unroll>
+                <Unroll title="All scheduler events" contentClassName="min-w-0 pt-2">
+                  <SchedulerEventsPanel />
+                </Unroll>
+              </div>
+            </Section>
+          </main>
+        )}
       </div>
-    </MainLayout>
+
+      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="scheduler" />
+
+      {editor && (
+        <SchemaEditModal
+          open={!!editor}
+          onOpenChange={(o) => !o && setEditor(null)}
+          onSave={() => void editorSaved()}
+          destination={editor.destination}
+          destinationName={editor.name}
+          schema={editor.schema}
+          initialData={editor.initialData}
+          saveEndpoint={editor.saveEndpoint}
+          saveMethod={editor.saveMethod}
+          scriptsDirectory="routes/scheduler/scripts"
+        />
+      )}
+    </div>
   );
 };
 
-export default Scheduler; 
+export default Scheduler;
