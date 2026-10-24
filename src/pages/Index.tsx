@@ -1089,7 +1089,7 @@ const Index = () => {
   // Progress indicator - show active job messages
   const activeJobs = Object.values(jobStatuses).filter(status => status.visible);
   const progressIndicator = activeJobs.length > 0 ? (
-    <div className="fixed bottom-4 left-4 z-50">
+    <div className="fixed bottom-[calc(var(--dock-h,0px)_+_1rem)] left-4 z-50">
       <div className="bg-gray-900/90 text-white rounded-lg p-3 max-w-md">
         {/* Header with expand/collapse control */}
         <div className="flex items-center justify-between mb-2">
@@ -1323,7 +1323,7 @@ const Index = () => {
       />
       
       {wsConnected && (
-        <div className="fixed bottom-4 right-4 p-1 px-2 bg-green-100 text-green-800 text-xs rounded-full border border-green-300 opacity-60">
+        <div className="fixed bottom-[calc(var(--dock-h,0px)_+_1rem)] right-4 p-1 px-2 bg-green-100 text-green-800 text-xs rounded-full border border-green-300 opacity-60">
           <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
           Connected
         </div>

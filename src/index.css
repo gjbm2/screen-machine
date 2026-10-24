@@ -109,6 +109,8 @@
     padding-top: var(--app-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* the docked player's height while it shows (components/player/DockedPlayer.tsx), so it never covers the page's end */
+    padding-bottom: var(--dock-h, 0px);
   }
 }
 

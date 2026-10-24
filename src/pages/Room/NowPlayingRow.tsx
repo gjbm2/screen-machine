@@ -1,19 +1,28 @@
-// The Room page's mini player (owner, 24 Oct, layout A: one compact now-playing bar at the bottom): what the music
-// player is playing (title, composer, and where it plays), Pause / Play, Next, Stop, Play on (Room/PlayOn.tsx, compact:
-// the page's only Play on), and "Playlist ▾" (a sheet of the saved playlists, tap one to play it, and Open Music).
-// Nothing queued: "Nothing playing", Choose a playlist, Open Music. Polls show_service's player through room_service's
-// /show pass-through (src/pages/Music/usePlayer.ts: 1 s while it prepares or plays, 5 s otherwise, only while the
-// page is visible). An older show_service without the player gets one line, and nothing else.
+// The mini player (owner, 24 Oct, layout A: one compact now-playing bar): what the music player is playing (title,
+// composer, and where it plays), Pause / Play, Next, Stop, Play on (Room/PlayOn.tsx, compact), and "Playlist ▾" (a
+// sheet of the saved playlists, tap one to play it, and Open Music). Two places use it:
+//   - MiniPlayer `docked`: the docked player (src/components/player/DockedPlayer.tsx; owner, 24 Oct: "when music is
+//     playing through the app, that apparatus should anchor bottom throughout the app"), with this device's line
+//     (ListenHere's ListenLine and Stop sound here) when the sound plays here too, so there's one bar, never two;
+//   - NowPlayingRow: the Room page's row at the end of the page, while the dock isn't showing (nothing playing:
+//     "Nothing playing", Choose a playlist, Open Music). While music plays the dock is the Room page's player.
+// Both read the app's one player poll (components/player/appPlayer.tsx: 1 s while it prepares or plays, 5 s otherwise,
+// only while the page is visible); NowPlayingRow keeps its own when the page talks to another address. An older
+// show_service without the player gets one line, and nothing else.
 
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ListMusic, Music, Pause, Play, SkipForward, Square } from "lucide-react";
+import { ChevronDown, ListMusic, Music, Pause, Play, SkipForward, Square, X } from "lucide-react";
+import { useAppPlayer } from "@/components/player/appPlayer";
+import { useDocked } from "@/components/player/dockState";
 import { cn } from "@/lib/utils";
 import { MusicApi, OLD_SHOW_WORDS, playerWords, plural, totalWords } from "@/pages/Music/api";
 import { usePlaylists } from "@/pages/Music/context";
-import { PLAYER_BUSY, usePlayer } from "@/pages/Music/usePlayer";
+import { PLAYER_BUSY, usePlayer, type PlayerHook } from "@/pages/Music/usePlayer";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
+import { ListenLine } from "./ListenHere";
+import { listenOff, setListenView, useListenHere } from "./listenStream";
 import { ActionSheet } from "./overlays";
 import { PlayOn } from "./PlayOn";
 import { CARD_CLASS } from "./theme";
@@ -23,9 +32,34 @@ const PRIMARY = "bg-primary text-primary-foreground hover:bg-primary/90";
 const SECONDARY = "border border-stone-300 bg-white hover:bg-stone-50";
 const ROW = "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-base hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+/** The Room page's row at the end of the page; hidden while the docked player shows (the dock is it then). */
 export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewLogEntry) => void }) {
+  const shared = useAppPlayer(api.baseUrl);
   const music = useMemo(() => new MusicApi(api.baseUrl), [api.baseUrl]);
-  const player = usePlayer(music);
+  const own = usePlayer(music, !shared);
+  const docked = useDocked();
+  if (docked) return null;
+  return <MiniPlayer player={shared ?? own} baseUrl={api.baseUrl} addLog={addLog} />;
+}
+
+export function MiniPlayer({
+  player,
+  baseUrl,
+  addLog,
+  docked,
+  openMusicLink = true,
+}: {
+  player: PlayerHook;
+  /** room_service's address (the page's API base). */
+  baseUrl: string;
+  addLog?: (e: NewLogEntry) => void;
+  /** At the bottom of the screen: a stronger shadow, and this device's line when the sound plays here. */
+  docked?: boolean;
+  /** Open Music (off on /music itself). */
+  openMusicLink?: boolean;
+}) {
+  const music = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
+  const here = useListenHere();
   const [sheet, setSheet] = useState(false);
   const playlists = usePlaylists(music, sheet);
   const [err, setErr] = useState<string | null>(null);
@@ -45,7 +79,7 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
   const busy = !!v && PLAYER_BUSY.includes(v.state);
   const queued = (v?.queue?.count ?? 0) > 0;
   const cur = v?.current ?? null;
-  const openMusic = (
+  const openMusic = openMusicLink && (
     <Link to="/music" className={cn("inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium", SECONDARY)} data-testid="open-music">
       <Music className="h-4 w-4" aria-hidden /> Open Music
     </Link>
@@ -57,8 +91,14 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
   const PLAY_GUESS = { state: "preparing", words: "Getting ready…", progress: null, error: null } as const;
 
   return (
-    <section aria-label="Music player" data-testid="now-playing-row">
-      <div className={cn(CARD_CLASS, "space-y-2 px-3 py-2.5 sm:px-4")}>
+    <section aria-label="Music player" data-testid={docked ? "docked-player-card" : "now-playing-row"}>
+      <div
+        className={cn(
+          CARD_CLASS,
+          "space-y-2 px-3 py-2.5 sm:px-4",
+          docked && "shadow-[0_2px_4px_rgba(68,48,28,0.08),0_12px_32px_-8px_rgba(68,48,28,0.28)]",
+        )}
+      >
         {player.link === "old" ? (
           <p className="text-base text-muted-foreground">{OLD_SHOW_WORDS}</p>
         ) : !v ? (
@@ -142,7 +182,7 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <PlayOn baseUrl={api.baseUrl} compact addLog={addLog} />
+              <PlayOn baseUrl={baseUrl} compact addLog={addLog} />
               <button
                 type="button"
                 onClick={() => setSheet(true)}
@@ -156,6 +196,22 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
               </button>
               {openMusic}
             </div>
+
+            {/* this device (was ListenHere's own bar): its line, Open the music screen, Stop sound here */}
+            {docked && here.on && (
+              <div className="flex items-center gap-2 border-t border-stone-200/80 pt-2" data-testid="docked-listen-here">
+                <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />
+                <button
+                  type="button"
+                  aria-label="Stop sound here"
+                  title="Stop sound here"
+                  onClick={listenOff}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                >
+                  <X className="h-5 w-5" aria-hidden />
+                </button>
+              </div>
+            )}
           </>
         )}
         {(err || player.error) && <p className="text-[15px] text-rose-700">{err ?? player.error}</p>}

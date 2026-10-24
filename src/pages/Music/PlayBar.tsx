@@ -13,6 +13,7 @@
 // Inside the Music page it shares the page's player (context); elsewhere (the Room page's pianola) it keeps its own.
 
 import { useMemo, useState } from "react";
+import { useAppPlayer } from "@/components/player/appPlayer";
 import { MoreHorizontal, Pause, Play, Rewind, FastForward, SkipBack } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -35,8 +36,9 @@ const SEG = "min-h-9 flex-1 rounded-full px-3 text-[15px] font-medium";
 function useBarPlayer(baseUrl: string): PlayerHook {
   const ctx = useMusicMaybe();
   const api = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
-  const own = usePlayer(api, !ctx); // only polls when there's no page player to share
-  return ctx?.player ?? own;
+  const shared = useAppPlayer(baseUrl);
+  const own = usePlayer(api, !ctx && !shared); // only polls when there's no page or app player to share
+  return ctx?.player ?? shared ?? own;
 }
 
 /** ⏮ ◀ ⏯ ▶ by time, for a view without bars (the pianola). */
