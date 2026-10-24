@@ -273,6 +273,16 @@
                 {% endif %}
               ],
               "description": "The scope to which this variable should be exported."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Optional. A line shown under the variable on the Room page."
+            },
+            "room": {
+              "type": "boolean",
+              "title": "Show on the Room page",
+              "description": "Optional. false keeps a group export off the Room page (names starting with _ are never shown)."
             }
           },
           "required": [
@@ -1129,6 +1139,21 @@
           "$ref": "#/definitions/instruction_array",
           "title": "Event Instructions",
           "description": "Steps to execute when the selected event occurs."
+        },
+        "display_name": {
+          "type": "string",
+          "title": "Display Name",
+          "description": "Optional. The event's button label on the Room page (else made from its name)."
+        },
+        "description": {
+          "type": "string",
+          "title": "Description",
+          "description": "Optional. A line about what the event does, shown on the Room page."
+        },
+        "room": {
+          "type": "boolean",
+          "title": "Show on the Room page",
+          "description": "Optional. false keeps this event off the Room page (names starting with _ are never shown)."
         }
       },
       "required": [
