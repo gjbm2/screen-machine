@@ -475,6 +475,8 @@ class Show:
         }.get(name, {})
         if name == "outputs":
             kw = self._rig_kw(patch_path)
+        if name == "recorder":                           # Stop for a piece (the score page): its file and names
+            kw = {"library": self.library}
         if name == "playlist":                           # the Music page's player: it drives sources' test piano
             kw = {"state_dir": pathlib.Path(self.opts.state_dir), "library": self.library,
                   "sources_fn": lambda: self._component("sources")}

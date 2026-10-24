@@ -9,14 +9,16 @@
 //   GET    /show/api/v1/piano/recordings/<id>.mid      Download (the file's name is the title)
 //   POST   /show/api/v1/test {source: "piano", piece: "rec:<id>", instrument, output, once: true}   Play (as the test
 //          piano, so the screens, lamps and beat follow it); DELETE /show/api/v1/test/piano stops it.
-//   Score opens the take's score on the Music page (/music?score=rec:<id>).
+//   Score opens the take's score on the Music page (/music?score=rec:<id>): "See the score" on the take just recorded
+//   (owner, 24 Oct: "after a recording from /room, link to score produced should appear"), and a score button on every
+//   take in the list. Record / Stop and its line are RecordButton.tsx's, shared with Record on a score.
 // Polled every 1 s while recording or while a take plays, 5 s otherwise, only while the page is visible. While
 // recording, the dot flashes on each key (WS /show/v1/show, music.note, as PianoRow.tsx). The whole card stays hidden
 // until show_service has the recorder. Words only: no ids, files or numbers a person doesn't need.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Circle, Download, FileMusic, Pencil, Play, Square, Trash2, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Check, ChevronDown, Download, FileMusic, Pencil, Play, Square, Trash2, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { explainError, RoomApiError, type RoomApi } from "./api";
 import { Pill, Spinner, Unroll } from "./bits";
+import { clock, RecordButton, RecordingLine, scoreLink, useKeyFlash } from "./RecordButton";
 import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import type { PianoRecording, PianoRecordingsView, ShowTestStartOpts, ShowTestState, ShowTestView } from "./types";
 import { SpeedNudges } from "./SpeedNudges";
@@ -39,8 +42,6 @@ import type { NewLogEntry } from "./useRoomConnection";
 
 const POLL_FAST_MS = 1000;
 const POLL_SLOW_MS = 5000;
-const FLASH_MS = 220;
-const RETRY_MS = 2000;
 /** Takes shown before "Show all". */
 const SHOW_FIRST = 8;
 
@@ -53,15 +54,6 @@ const SECONDARY = "border border-stone-300 bg-white hover:bg-stone-50";
 const PIANO_BUSY = ["preparing", "starting", "playing", "stopping"];
 const REC = "rec:";
 const recPiece = (id: string) => `${REC}${id}`;
-
-/** 83 -> "1:23"; 3725 -> "1:02:05". */
-function clock(s: number | null | undefined): string {
-  const t = Math.max(0, Math.floor(typeof s === "number" && Number.isFinite(s) ? s : 0));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const ss = String(t % 60).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
-}
 
 /** "Today 22:15", "Yesterday 09:03", "Tue 14 Oct, 18:40" (local time). */
 function when(iso: string): string {
@@ -160,48 +152,6 @@ function usePoll<T>(load: (s: AbortSignal) => Promise<T | null>, fast: (v: T) =>
 const recordingFast = (v: PianoRecordingsView) => v.recording?.state === "recording";
 const testFast = (v: ShowTestView) => PIANO_BUSY.includes(v.sources?.piano?.state ?? "off");
 
-/** True for a moment on each key while `on` (the show bus's music.note, the room's piano only). */
-function useKeyFlash(api: RoomApi, on: boolean): boolean {
-  const [flash, setFlash] = useState(false);
-  useEffect(() => {
-    if (!on) return;
-    const url = api.showEventsUrl().replace(/\/v1\/events$/, "/v1/show");
-    let sock: WebSocket | null = null;
-    let retry: number | undefined;
-    let off: number | undefined;
-    let closed = false;
-    const open = () => {
-      sock = new WebSocket(url);
-      sock.onopen = () =>
-        sock?.send(JSON.stringify({ type: "hello", v: 2, role: "room-page", client_id: "room-piano-recorder", want: ["music.note"] }));
-      sock.onmessage = (ev) => {
-        try {
-          const m = JSON.parse(ev.data as string) as { type?: string; data?: Record<string, unknown> };
-          if (m.type === "music.note" && m.data?.on === true && m.data?.source !== "test") {
-            setFlash(true);
-            window.clearTimeout(off);
-            off = window.setTimeout(() => setFlash(false), FLASH_MS);
-          }
-        } catch {
-          /* a message we can't read: skipped */
-        }
-      };
-      sock.onclose = () => {
-        if (!closed) retry = window.setTimeout(open, RETRY_MS);
-      };
-    };
-    open();
-    return () => {
-      closed = true;
-      window.clearTimeout(retry);
-      window.clearTimeout(off);
-      sock?.close();
-      setFlash(false);
-    };
-  }, [api, on]);
-  return flash && on;
-}
-
 /** The piano's Sound, from show_service's list (labels exactly as it sends them). Nothing without it. Where it plays is
  *  its own control on the page (Play on: PlayOn.tsx), so the choice shows once. */
 export function SoundChoice({
@@ -243,16 +193,6 @@ export function SoundChoice({
     </div>
   );
   return group("Sound", sound.instruments, sound.instrument, onInstrument ?? sound.setInstrument);
-}
-
-/** A take's score on the Music page (written from its MIDI the first time it's opened), keeping ?room=. */
-function scoreLink(id: string): string {
-  const q = new URLSearchParams(window.location.search);
-  const out = new URLSearchParams();
-  const room = q.get("room");
-  if (room) out.set("room", room);
-  out.set("score", `rec:${id}`);
-  return `/music?${out.toString()}`;
 }
 
 /** The test piano's progress in words: getting the sound ready (with how far), finished, or why it didn't play. */
@@ -327,7 +267,8 @@ export function PianoCard({
 
   const rec = recs.view?.recording;
   const recording = rec?.state === "recording";
-  const flash = useKeyFlash(api, recording);
+  const flash = useKeyFlash(api.showEventsUrl().replace(/\/v1\/events$/, "/v1/show"), recording);
+  const navigate = useNavigate();
 
   // the elapsed time ticks between polls
   useEffect(() => {
@@ -388,7 +329,8 @@ export function PianoCard({
         setFresh(v.last);
         setDraft(v.last.title);
         setOpen(null);
-      } else setNote("Nothing was played, so there's no take to keep.");
+        if (v.error) setNote(v.error);
+      } else setNote(v.error ?? "Nothing was played, so there's no take to keep.");
     });
 
   // ── The new take ──
@@ -403,6 +345,15 @@ export function PianoCard({
       }
       setFresh(null);
       await refreshRecs();
+    });
+
+  // ── The new take's score: its name kept first (as Keep), then the score page ──
+  const seeScore = (t: PianoRecording) =>
+    run("score", null, async () => {
+      const title = draft.trim();
+      if (title && title !== t.title) await api.pianoRename(t.id, title);
+      setFresh(null);
+      navigate(scoreLink(recPiece(t.id)));
     });
 
   // ── Play a take (as the test piano, play-once): whatever else plays stops first ──
@@ -488,44 +439,15 @@ export function PianoCard({
       <div className={cn(CARD_CLASS, "space-y-4 px-3 py-3 sm:px-4")}>
         {/* Record / Stop: the card's main action */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={busy === "record" || (!recording && !connected)}
+          <RecordButton
+            recording={recording}
+            busy={busy === "record"}
+            disabled={!recording && !connected}
+            elapsed={elapsed}
             onClick={() => void (recording ? stopRecording() : startRecording())}
-            className={cn(
-              TAP_BUTTON_CLASS,
-              "inline-flex h-12 min-w-[9.5rem] items-center justify-center gap-2 text-[17px] font-semibold disabled:opacity-60",
-              recording ? SECONDARY : "bg-rose-700 text-white hover:bg-rose-800",
-            )}
-          >
-            {busy === "record" ? (
-              <Spinner />
-            ) : recording ? (
-              <Square className="h-4 w-4 fill-current text-rose-700" aria-hidden />
-            ) : (
-              <Circle className="h-4 w-4 fill-current" aria-hidden />
-            )}
-            {recording ? (
-              <>
-                Stop <span className="font-mono tabular-nums">{clock(elapsed)}</span>
-              </>
-            ) : (
-              "Record"
-            )}
-          </button>
+          />
           {recording ? (
-            <p className="flex min-w-0 flex-1 items-center gap-2 text-base" role="status">
-              <span
-                aria-hidden
-                className={cn(
-                  "h-2.5 w-2.5 shrink-0 rounded-full transition-transform duration-150",
-                  flash ? "scale-150 bg-rose-500" : "bg-rose-600 motion-safe:animate-pulse",
-                )}
-              />
-              <span className="min-w-0">
-                Recording · <span className="tabular-nums">{plural(rec?.notes ?? 0, "note")}</span>
-              </span>
-            </p>
+            <RecordingLine notes={rec?.notes ?? 0} flash={flash} />
           ) : (
             <p className="min-w-0 flex-1 text-sm text-muted-foreground">Record what's played on the piano, then keep it or play it back.</p>
           )}
@@ -555,8 +477,16 @@ export function PianoCard({
               <button
                 type="button"
                 disabled={!!busy}
-                onClick={() => void keep(fresh)}
+                onClick={() => void seeScore(fresh)}
                 className={cn(TAP_BUTTON_CLASS, "inline-flex items-center gap-2 bg-primary font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60")}
+              >
+                {busy === "score" ? <Spinner /> : <FileMusic className="h-4 w-4" aria-hidden />} See the score
+              </button>
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={() => void keep(fresh)}
+                className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 font-semibold disabled:opacity-60")}
               >
                 {busy === "keep" ? <Spinner /> : <Check className="h-4 w-4" aria-hidden />} Keep
               </button>
@@ -592,6 +522,7 @@ export function PianoCard({
               const status = playingId === r.id ? piano : null;
               return (
                 <li key={r.id} className={cn("rounded-xl border", playing ? "border-teal-300 bg-teal-50/40" : "border-stone-200")}>
+                  <div className="flex items-center">
                   <button
                     type="button"
                     aria-expanded={isOpen}
@@ -599,7 +530,7 @@ export function PianoCard({
                       setOpen(isOpen ? null : r.id);
                       setRenaming(null);
                     }}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-base font-medium">{r.title}</span>
@@ -615,6 +546,15 @@ export function PianoCard({
                       className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-180")}
                     />
                   </button>
+                  <Link
+                    to={scoreLink(recPiece(r.id))}
+                    aria-label={`See the score of ${r.title}`}
+                    title="See the score"
+                    className="mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <FileMusic className="h-5 w-5" aria-hidden />
+                  </Link>
+                  </div>
                   {isOpen && (
                     <div className="space-y-3 border-t border-stone-200 px-3 py-3">
                       {renaming === r.id ? (
@@ -696,10 +636,10 @@ export function PianoCard({
                             <Pencil className="h-4 w-4" aria-hidden /> Edit details
                           </button>
                           <Link
-                            to={scoreLink(r.id)}
+                            to={scoreLink(recPiece(r.id))}
                             className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 px-4")}
                           >
-                            <FileMusic className="h-4 w-4" aria-hidden /> Score
+                            <FileMusic className="h-4 w-4" aria-hidden /> See the score
                           </Link>
                           <a
                             href={api.pianoRecordingUrl(r.id)}
