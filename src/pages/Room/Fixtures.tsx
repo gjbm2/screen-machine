@@ -563,6 +563,7 @@ export function LightsSection({
   fixtures,
   only,
   sub = false,
+  title = "Lights",
 }: {
   api: RoomApi;
   connected: boolean;
@@ -575,6 +576,8 @@ export function LightsSection({
   only?: string[];
   /** Inside a room's section: a smaller "Lights" heading under the room name. */
   sub?: boolean;
+  /** The heading (inside the page's Lights fold: "Lamps", or the room's name when several rooms have lights). */
+  title?: string;
 }) {
   const own = useFixtures(api, !fixtures);
   const { view, missing, error, refresh } = fixtures ?? own;
@@ -596,7 +599,7 @@ export function LightsSection({
 
   return (
     <DeviceSection
-      title="Lights"
+      title={title}
       sub={sub}
       badge={hueOn && view && lamps.length > 0 && <Pill tone={feed.tone} pulse={!!a?.online}>{feed.text}</Pill>}
     >

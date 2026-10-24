@@ -1,21 +1,22 @@
-// The Room page's Music player card (in the place of the old Test music): what the music player is playing and
-// what's next, Stop · Next (Play when it's stopped with something queued), "Playlist ▾" (a sheet of the saved
-// playlists, tap one to play it, and Open Music), and Open Music (/music: the library, playlists, uploads and the test
-// tracks). Nothing queued: "Nothing playing", Choose a playlist, Open Music. Polls show_service's player through
-// room_service's /show pass-through (src/pages/Music/usePlayer.ts: 1 s while it prepares or plays, 5 s otherwise,
-// only while the page is visible). An older show_service without the player gets one line, and nothing else.
+// The Room page's mini player (owner, 24 Oct, layout A: one compact now-playing bar at the bottom): what the music
+// player is playing (title, composer, and where it plays), Pause / Play, Next, Stop, Play on (Room/PlayOn.tsx, compact:
+// the page's only Play on), and "Playlist ▾" (a sheet of the saved playlists, tap one to play it, and Open Music).
+// Nothing queued: "Nothing playing", Choose a playlist, Open Music. Polls show_service's player through room_service's
+// /show pass-through (src/pages/Music/usePlayer.ts: 1 s while it prepares or plays, 5 s otherwise, only while the
+// page is visible). An older show_service without the player gets one line, and nothing else.
 
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ListMusic, Music, Play, SkipForward, Square } from "lucide-react";
+import { ChevronDown, ListMusic, Music, Pause, Play, SkipForward, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MusicApi, OLD_SHOW_WORDS, playerWords, plural, totalWords } from "@/pages/Music/api";
 import { usePlaylists } from "@/pages/Music/context";
 import { PLAYER_BUSY, usePlayer } from "@/pages/Music/usePlayer";
 import type { RoomApi } from "./api";
-import { Pill, Spinner } from "./bits";
+import { Spinner } from "./bits";
 import { ActionSheet } from "./overlays";
-import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
+import { PlayOn } from "./PlayOn";
+import { CARD_CLASS } from "./theme";
 import type { NewLogEntry } from "./useRoomConnection";
 
 const PRIMARY = "bg-primary text-primary-foreground hover:bg-primary/90";
@@ -45,24 +46,19 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
   const queued = (v?.queue?.count ?? 0) > 0;
   const cur = v?.current ?? null;
   const openMusic = (
-    <Link to="/music" className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 px-4")} data-testid="open-music">
+    <Link to="/music" className={cn("inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium", SECONDARY)} data-testid="open-music">
       <Music className="h-4 w-4" aria-hidden /> Open Music
     </Link>
   );
 
+  const paused = v?.state === "paused";
+  const shown = cur && (busy || paused) ? cur : null;
+  const ROUND = "grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const PLAY_GUESS = { state: "preparing", words: "Getting ready…", progress: null, error: null } as const;
+
   return (
-    <section aria-labelledby="room-music-player" data-testid="now-playing-row">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="room-music-player" className="text-lg font-semibold text-stone-800">
-          Music player
-        </h2>
-        {v && busy && (
-          <Pill tone="live" pulse={v.state === "playing"}>
-            {v.state === "preparing" ? "Getting ready" : "Playing"}
-          </Pill>
-        )}
-      </div>
-      <div className={cn(CARD_CLASS, "space-y-3 px-3 py-3 sm:px-4")}>
+    <section aria-label="Music player" data-testid="now-playing-row">
+      <div className={cn(CARD_CLASS, "space-y-2 px-3 py-2.5 sm:px-4")}>
         {player.link === "old" ? (
           <p className="text-base text-muted-foreground">{OLD_SHOW_WORDS}</p>
         ) : !v ? (
@@ -75,73 +71,87 @@ export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewL
           )
         ) : (
           <>
-            <div className="min-w-0">
-              {cur && busy ? (
-                <>
-                  <p className="text-base leading-snug">
-                    <span className="text-muted-foreground">Now playing </span>
-                    <span className="font-semibold">{cur.title}</span>
-                    {cur.composer && <span className="text-muted-foreground"> · {cur.composer}</span>}
-                  </p>
-                  {v.state === "preparing" && (
-                    <p className="flex items-center gap-2 text-[15px] text-muted-foreground">
-                      <Spinner /> {playerWords(v)}
-                    </p>
-                  )}
-                  {v.next && (
-                    <p className="truncate text-[15px]">
-                      <span className="text-muted-foreground">Next </span>
-                      <span className="font-medium">{v.next.title}</span>
-                    </p>
-                  )}
-                </>
+            <div className="flex items-center gap-2">
+              {busy ? (
+                <button
+                  type="button"
+                  aria-label="Pause"
+                  title="Pause"
+                  onClick={() => void act("pause", { action: "pause" })}
+                  className={cn(ROUND, "bg-teal-700 text-white hover:bg-teal-800")}
+                >
+                  {player.busy === "pause" ? <Spinner /> : <Pause className="h-5 w-5" aria-hidden />}
+                </button>
+              ) : (paused || queued) ? (
+                <button
+                  type="button"
+                  aria-label="Play"
+                  title="Play"
+                  onClick={() => void (paused ? act("resume", { action: "resume" }) : act("play", { action: "play" }, PLAY_GUESS))}
+                  className={cn(ROUND, "bg-teal-700 text-white hover:bg-teal-800")}
+                >
+                  {player.busy === "play" || player.busy === "resume" ? <Spinner /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
+                </button>
               ) : (
-                <>
-                  <p className="text-base text-muted-foreground">Nothing playing</p>
-                  {(v.state === "stepped_aside" || v.state === "error") && (
-                    <p className={cn("text-[15px]", v.state === "error" ? "text-amber-800" : "text-muted-foreground")}>{playerWords(v)}</p>
-                  )}
-                  {cur && queued && (
-                    <p className="truncate text-[15px]">
-                      <span className="text-muted-foreground">Play starts </span>
-                      <span className="font-medium">{cur.title}</span>
+                <span aria-hidden className={cn(ROUND, "bg-stone-100 text-stone-500")}>
+                  <Music className="h-5 w-5" />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                {shown ? (
+                  <>
+                    <p className="truncate text-base font-semibold leading-snug">{shown.title}</p>
+                    <p className="truncate text-sm leading-snug text-muted-foreground">
+                      {v.state === "preparing"
+                        ? playerWords(v)
+                        : [paused ? "Paused" : null, shown.composer, v.next ? `next ${v.next.title}` : null].filter(Boolean).join(" · ") ||
+                          playerWords(v)}
                     </p>
-                  )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base leading-snug text-muted-foreground">Nothing playing</p>
+                    {(v.state === "stepped_aside" || v.state === "error") && (
+                      <p className={cn("truncate text-sm", v.state === "error" ? "text-amber-800" : "text-muted-foreground")}>{playerWords(v)}</p>
+                    )}
+                    {cur && queued && (
+                      <p className="truncate text-sm">
+                        <span className="text-muted-foreground">Play starts </span>
+                        <span className="font-medium">{cur.title}</span>
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+              {(busy || paused) && (
+                <>
+                  <button type="button" aria-label="Next" title="Next" onClick={() => void act("next", { action: "next" })} className={cn(ROUND, "text-stone-700 hover:bg-stone-100")}>
+                    {player.busy === "next" ? <Spinner /> : <SkipForward className="h-5 w-5" aria-hidden />}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Stop"
+                    title="Stop"
+                    onClick={() => void act("stop", { action: "stop" }, { state: "stopped", words: "Stopped", progress: null })}
+                    className={cn(ROUND, "text-stone-700 hover:bg-stone-100")}
+                  >
+                    {player.busy === "stop" ? <Spinner /> : <Square className="h-4 w-4" aria-hidden />}
+                  </button>
                 </>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {busy ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void act("stop", { action: "stop" }, { state: "stopped", words: "Stopped", progress: null })}
-                    className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 font-semibold")}
-                  >
-                    {player.busy === "stop" ? <Spinner /> : <Square className="h-4 w-4" aria-hidden />} Stop
-                  </button>
-                  <button type="button" onClick={() => void act("next", { action: "next" })} className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2")}>
-                    {player.busy === "next" ? <Spinner /> : <SkipForward className="h-4 w-4" aria-hidden />} Next
-                  </button>
-                </>
-              ) : (
-                queued && (
-                  <button
-                    type="button"
-                    onClick={() => void act("play", { action: "play" }, { state: "preparing", words: "Getting ready…", progress: null, error: null })}
-                    className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex items-center gap-2 font-semibold")}
-                  >
-                    {player.busy === "play" ? <Spinner /> : <Play className="h-4 w-4" aria-hidden />} Play
-                  </button>
-                )
-              )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <PlayOn baseUrl={api.baseUrl} compact addLog={addLog} />
               <button
                 type="button"
                 onClick={() => setSheet(true)}
-                className={cn(TAP_BUTTON_CLASS, !busy && !queued ? PRIMARY : SECONDARY, "inline-flex items-center gap-2 px-4", !busy && !queued && "font-semibold")}
+                className={cn(
+                  "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium",
+                  !busy && !queued && !paused ? PRIMARY : SECONDARY,
+                )}
               >
-                <ListMusic className="h-4 w-4" aria-hidden /> {busy || queued ? "Playlist" : "Choose a playlist"}
+                <ListMusic className="h-4 w-4" aria-hidden /> {busy || queued || paused ? "Playlist" : "Choose a playlist"}
                 <ChevronDown className="h-4 w-4" aria-hidden />
               </button>
               {openMusic}
