@@ -419,8 +419,7 @@ class Session(EngineListener):
         return g[1], bpb
 
     def _source_listens(self, source: Optional[str]) -> tuple:
-        cls = self.mgr.registry.sources.get(source or "") if getattr(self.mgr, "registry", None) else None
-        return tuple(getattr(cls, "listens", ()) or ())
+        return self.mgr.source_listens(source) if getattr(self.mgr, "registry", None) else ()
 
     def _notes_age(self) -> Optional[float]:
         """Seconds since this session's view last saw a note struck (piano.py), None if never."""
@@ -2706,6 +2705,15 @@ class SessionManager:
         sheets, _ = vetting()
         return not (origin_of(plugin) == "imported" and plugin not in sheets)
 
+    def source_listens(self, source: Optional[str]) -> tuple:
+        cls = self.registry.sources.get(source or "")
+        return tuple(getattr(cls, "listens", ()) or ())
+
+    def notes_age(self) -> Optional[float]:
+        """Seconds since any session's view last saw a note struck, None if none has (a fresh process: none)."""
+        ts = [s.piano.played_t for s in list(self.sessions.values()) if s.piano.played_t is not None]
+        return None if not ts else max(0.0, time.monotonic() - max(ts))
+
     def first_scene(self, p: dict, look: dict, leader: Optional[Session]) -> SceneSpec:
         """A session created with scene "auto": the room leader's scene when joining a room (the screens start
         together), else the director's weighted pick from the auto pool for this direction (vetted pool, ratings),
@@ -2720,6 +2728,8 @@ class SessionManager:
                 d = Director(auto, look.get("direction") or dict(DIRECTION_DEFAULTS, moods=[]))
                 d.vet = lambda kind, plugin: self.auto_ok(kind, plugin, p["gpu"], budget)
                 d.rate = self.rating_weight
+                d.listens = self.source_listens      # no MIDI heard: notes scenes nearly never (d1543b06)
+                d.notes_age = self.notes_age
                 got = d.pick_scene(self.presets.scenes, None, time.monotonic())
                 if got is not None:
                     name = got[0]
