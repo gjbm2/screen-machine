@@ -10,16 +10,17 @@
 //     top bar (TopToggles.tsx, owner 24 Oct: "those are pretty central"); the menu has no controls.
 //   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar;
 //     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
-//   - Calmer · Wilder, the palette, Next look · Keep this look · House lights.
+//   - Calmer · Wilder, Describe it (one line), the palette, Next look · Keep this look.
 //   - The active nudges as chips, each with an ×, and Clear all.
-//   - More: Lamp brightness (the Lights low toggle, c8's ruling, S3.9) and Describe it.
-// On the Room page (layout A, 24 Oct) the parts sit apart: AutoRow under the modes, DirectorControls in Look,
-// ListeningPanel in Listening; MusicCard still puts them together.
+// House lights and Lights low change the lamps, so they sit in the Room page's Lights fold (RoomLightsRow.tsx).
+// On the Room page (layout A, 24 Oct) the parts sit apart: AutoRow under the modes (with "How Auto picks ›": each
+// mode's start rule, AutoTriggers.tsx useAutoRules), DirectorControls in Look, ListeningPanel in Listening (the piano's
+// MIDI line is in the Piano fold); MusicCard still puts them together.
 // Nothing is ever disabled: a tap the music side can't take yet
 // is sent again for half a minute, and the card says so. The words are show_service's own or written here; never an id.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Feather, Flame, Image as ImageIcon, Lamp, Pin, SkipForward, X, type LucideIcon } from "lucide-react";
+import { ChevronRight, Feather, Flame, Image as ImageIcon, Pin, SkipForward, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -28,7 +29,7 @@ import { RoomApi, RoomApiError } from "./api";
 import { Pill, Spinner, Unroll } from "./bits";
 import { LevelTrace } from "./LevelTrace";
 import { MicPicker } from "./MicPicker";
-import { PianoRow } from "./PianoRow";
+import { useAutoRules, type AutoRuleWords } from "./AutoTriggers";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, type Tone } from "./tones";
 import type { ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowListenRound, ShowMicState, ShowPaletteChoice } from "./types";
@@ -536,16 +537,36 @@ export function aiWords(l: ShowCard["listening"] | null | undefined, on: boolean
   return { about, state, cost };
 }
 
-/** Listening's closed summary: "Piano · room mic · AI off". `piano`: the piano's MIDI is connected (PianoRow). */
+/** Listening's closed summary: "Room mic · AI off · piano connected". `piano`: the piano's MIDI is connected (PianoRow). */
 export function listeningWords(card: ShowCard | null, piano: boolean | null): string {
   if (!card) return "The music side isn't answering yet";
   const mic = card.mic_state;
   const micWords = !mic ? null : mic.muted ? "mic off" : mic.on ? "room mic" : "mic not in use";
-  return [piano ? "Piano" : null, micWords, card.listening?.on ? "AI on" : "AI off"].filter(Boolean).join(" · ");
+  const line = [micWords, card.listening?.on ? "AI on" : "AI off", piano ? "piano connected" : null].filter(Boolean).join(" · ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
-/** Auto, the room-level one: it picks the mode by itself. Its switch, its line, Resume, its chip and suggestion. */
-export function AutoRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; addLog: (e: NewLogEntry) => void }) {
+/** Auto's line while it watches, in plain words (show_service says "Auto · watching"). */
+const AUTO_WATCHING = "Auto · picks the mode from what it hears";
+
+/**
+ * Auto, the room-level one: it picks the mode by itself. Its switch, its line, Resume, its chip and suggestion, and
+ * "How Auto picks ›": each mode's start rule in words. `onEdit`: opens that mode's editor (its "Starts by itself").
+ */
+export function AutoRow({
+  api,
+  feed,
+  addLog,
+  onEdit,
+  current,
+}: {
+  api: RoomApi;
+  feed: ShowFeed;
+  addLog: (e: NewLogEntry) => void;
+  onEdit?: (mode: string) => void;
+  /** The room's mode now (its rule reads "On now"). */
+  current?: string | null;
+}) {
   const { card } = useShowState(feed);
   const autoSend = useSend(feed, addLog);
   const [pendingAuto, setPendingAuto] = useState<boolean | null>(null);
@@ -553,7 +574,7 @@ export function AutoRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; a
   const autoOn = pendingAuto ?? auto?.on === true;
   const rawLine = auto?.line?.trim() || (card ? "Auto" : "Auto · waiting for the music side");
   const resumable = /\s·\s*Resume$/.test(rawLine);
-  const autoLine = rawLine.replace(/\s·\s*Resume$/, "");
+  const autoLine = auto?.state === "watching" && autoOn ? AUTO_WATCHING : rawLine.replace(/\s·\s*Resume$/, "");
   const setAuto = (on: boolean) => {
     setPendingAuto(on);
     void autoSend
@@ -610,19 +631,77 @@ export function AutoRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; a
         </button>
       )}
       <NoteLine note={autoSend.note} />
+      <Unroll title="How Auto picks" className="-mx-1 border-t border-stone-100 pt-0.5" testId="music-auto-rules">
+        <AutoRules api={api} onEdit={onEdit} current={current} />
+      </Unroll>
+    </div>
+  );
+}
+
+/** Each mode's start rule (show_service's sentence), what Auto is doing about it now, and an Edit link. Read every
+ *  2 s, only while unrolled. */
+function AutoRules({ api, onEdit, current }: { api: RoomApi; onEdit?: (mode: string) => void; current?: string | null }) {
+  const rules = useAutoRules(api, 2_000);
+  if (rules === null)
+    return (
+      <p className="flex items-center gap-2 px-1 pb-2 text-[15px] text-muted-foreground">
+        <Spinner /> Reading the rules…
+      </p>
+    );
+  const ruled = rules.filter((r) => r.enter);
+  const byHand = rules.filter((r) => !r.enter);
+  const now = (r: AutoRuleWords) =>
+    r.mode === current || r.blocked === "it's the current mode"
+      ? "On now"
+      : r.inS !== null
+        ? r.inS > 0
+          ? `Counting now: switches in ${r.inS} s`
+          : "Switching now"
+        : r.blocked
+          ? `Won't switch now: ${r.blocked}`
+          : null;
+  return (
+    <div className="space-y-2 px-1 pb-2">
+      {ruled.length === 0 && <p className="text-[15px] text-muted-foreground">No mode starts by itself yet.</p>}
+      {ruled.length > 0 && (
+        <ul className="space-y-2" aria-label="Modes that start by themselves">
+          {ruled.map((r) => (
+            <li key={r.mode} className="flex items-start gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] leading-snug">{r.summary ?? `${r.label}: when ${r.enter}.`}</span>
+                {now(r) && <span className="block text-sm leading-snug text-teal-800">{now(r)}</span>}
+              </span>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(r.mode)}
+                  aria-label={`Edit when ${r.label} starts`}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-[15px] font-medium text-teal-800 hover:underline"
+                >
+                  Edit <ChevronRight className="h-4 w-4" aria-hidden />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {byHand.length > 0 && (
+        <p className="text-sm leading-snug text-muted-foreground">
+          Only when someone picks them: {byHand.map((r) => r.label).join(", ")}.
+        </p>
+      )}
     </div>
   );
 }
 
 /**
- * The room director's controls: Calmer · Wilder, the palette, Next look · Keep this look · House lights, the nudges
- * that are on (each with ×, and Clear all), and under More: Lamp brightness and Describe it.
+ * The room director's controls: Calmer · Wilder, Describe it (one line under them), the palette, Next look · Keep this
+ * look, and the nudges that are on (each with ×, and Clear all). House lights and Lights low are in the Lights fold.
  */
 export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; addLog: (e: NewLogEntry) => void }) {
   const { card } = useShowState(feed);
   const main = useSend(feed, addLog);
   const { send, busy } = main;
-  const [pendingLow, setPendingLow] = useState<boolean | null>(null);
   const [text, setText] = useState("");
 
   const steps = card?.steps;
@@ -648,18 +727,6 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
     void send("keep", typeof card?.look?.keep_in_s === "number" ? "stop keeping this look" : "Keep this look", () =>
       api.showAction("keep"),
     );
-  const house = () =>
-    void send("house", card?.house ? "back from house lights" : "House lights", () => api.showAction("house", !card?.house));
-  const setLow = (on: boolean) => {
-    setPendingLow(on);
-    void send("low", on ? "Lights low" : "lights back up", () => api.showAction("low", on)).then((ok) => {
-      if (ok) setTimeout(() => setPendingLow(null), 3_000);
-      else setPendingLow(null);
-    });
-  };
-  useEffect(() => {
-    if (pendingLow !== null && !!card?.low === pendingLow) setPendingLow(null);
-  }, [card?.low, pendingLow]);
   const clear = (c: ShowChip) => void send(`chip:${c.id}`, `clear ${c.label || "a change"}`, () => api.showClearNudge(c.id));
   const backToAuto = () => void send("all", "Clear all", () => api.showClearNudge("all"));
   const describeIt = () => {
@@ -671,8 +738,6 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
   const changing = busy("next") || !!card?.look?.next_pending;
   const keepIn = card?.look?.keep_in_s;
   const keepMin = typeof keepIn === "number" ? Math.max(1, Math.ceil(keepIn / 60)) : null;
-  const houseOn = !!card?.house;
-  const lowOn = pendingLow ?? !!card?.low;
   const ranged = !!steps && typeof steps.min === "number" && typeof steps.max === "number" && steps.min < steps.max;
   const atEnd = (dir: "calmer" | "wilder") =>
     ranged && typeof steps?.value === "number" && (dir === "calmer" ? steps.value <= steps.min! : steps.value >= steps.max!);
@@ -708,6 +773,50 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
         ))}
       </div>
 
+      {/* Describe it: say how it should feel, in your own words (out of More: owner's walk, 24 Oct) */}
+      <div data-testid="music-describe">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            describeIt();
+          }}
+        >
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={300}
+            placeholder="Describe it, e.g. smoky jazz club"
+            aria-label="Describe how it should feel"
+            enterKeyHint="send"
+            className="h-11 min-w-0 flex-1 rounded-xl bg-white text-base md:text-base"
+          />
+          <Button type="submit" className={cn(TAP_BUTTON_CLASS, "shrink-0")}>
+            {working && <Spinner />} Go
+          </Button>
+        </form>
+        {working ? (
+          <p className="mt-2 text-[15px] text-muted-foreground">Working on it…</p>
+        ) : (
+          describe?.state === "done" &&
+          describe.reply && (
+            <p className="mt-2 text-[15px]">
+              {describe.text && <span className="text-muted-foreground">“{describe.text}”: </span>}
+              {describe.reply}
+            </p>
+          )
+        )}
+        {!working && describe?.state === "done" && describe.suggest?.mode && (
+          <button
+            type="button"
+            onClick={() => switchTo(describe.suggest!.mode, `switch to ${suggestLabel}`)}
+            className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-4 text-[15px] font-semibold text-teal-900 hover:bg-teal-100"
+          >
+            {busy("mode") && <Spinner />} Switch to {suggestLabel}?
+          </button>
+        )}
+      </div>
+
       {/* Palette */}
       <div>
         <div className="mb-2 flex items-baseline justify-between gap-2">
@@ -740,8 +849,8 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
         </div>
       </div>
 
-      {/* Next look · Keep this look · House lights */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Next look · Keep this look */}
+      <div className="grid grid-cols-2 gap-2">
         <ActionButton icon={SkipForward} label={changing ? "Changing…" : "Next look"} busy={changing} onClick={next} />
         <ActionButton
           icon={Pin}
@@ -750,14 +859,6 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
           on={keepMin !== null}
           busy={busy("keep")}
           onClick={keep}
-        />
-        <ActionButton
-          icon={Lamp}
-          label="House lights"
-          sub={houseOn ? "Tap to go back" : undefined}
-          on={houseOn}
-          busy={busy("house")}
-          onClick={house}
         />
       </div>
 
@@ -792,90 +893,25 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
 
       <NoteLine note={main.note} />
 
-      <Unroll title="More" className="border-t border-stone-100 pt-1" testId="music-more">
-        <div className="space-y-5 px-1 pb-2">
-          <div>
-            <p className="text-base font-medium">Lamp brightness</p>
-            <label className="mt-2 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-2">
-              <span>
-                <span className="block text-base">Lights low</span>
-                <span className="block text-sm text-muted-foreground">Dims the lamps. The screens stay as they are.</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                {busy("low") && <Spinner />}
-                <Switch aria-label="Lights low" checked={lowOn} onCheckedChange={setLow} />
-              </span>
-            </label>
-          </div>
-
-          <div>
-            <p className="text-base font-medium">Describe it</p>
-            <p className="text-sm text-muted-foreground">Say how it should feel, in your own words.</p>
-            <form
-              className="mt-2 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                describeIt();
-              }}
-            >
-              <Input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                maxLength={300}
-                placeholder="e.g. smoky jazz club"
-                aria-label="Describe how it should feel"
-                enterKeyHint="send"
-                className="h-11 min-w-0 flex-1 rounded-xl bg-white text-base md:text-base"
-              />
-              <Button type="submit" className={cn(TAP_BUTTON_CLASS, "shrink-0")}>
-                {working && <Spinner />} Go
-              </Button>
-            </form>
-            {working ? (
-              <p className="mt-2 text-[15px] text-muted-foreground">Working on it…</p>
-            ) : (
-              describe?.state === "done" &&
-              describe.reply && (
-                <p className="mt-2 text-[15px]">
-                  {describe.text && <span className="text-muted-foreground">“{describe.text}”: </span>}
-                  {describe.reply}
-                </p>
-              )
-            )}
-            {!working && describe?.state === "done" && describe.suggest?.mode && (
-              <button
-                type="button"
-                onClick={() => switchTo(describe.suggest!.mode, `switch to ${suggestLabel}`)}
-                className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-4 text-[15px] font-semibold text-teal-900 hover:bg-teal-100"
-              >
-                {busy("mode") && <Spinner />} Switch to {suggestLabel}?
-              </button>
-            )}
-          </div>
-        </div>
-      </Unroll>
     </div>
   );
 }
 
 /**
  * Listening, all in one place: the room mic (whether it's in use, and for what; heard here, on PC22) with its input,
- * the piano's MIDI, AI listening (short clips to an online AI: cost and round trips), then what it hears and the
- * levels. The Mic and AI switches are the top bar's (TopToggles.tsx), nowhere else. `onPiano`: told whether the piano's MIDI is connected (for the fold's summary).
+ * AI listening (short clips to an online AI: cost and round trips), then what it hears and the levels. The Mic and AI
+ * switches are the top bar's (TopToggles.tsx), nowhere else. The piano's MIDI line is in the Room page's Piano fold.
  */
 export function ListeningPanel({
   api,
   feed,
   now,
-  addLog,
-  onPiano,
 }: {
   api: RoomApi;
   feed: ShowFeed;
   /** The page's 1 s clock (whether a polled card is still fresh). */
   now: number;
-  addLog: (e: NewLogEntry) => void;
-  onPiano?: (connected: boolean | null) => void;
+  addLog?: (e: NewLogEntry) => void;
 }) {
   const { card, live, lastAt } = useShowState(feed);
   const answering = !!card && (live || (lastAt !== null && now - lastAt < FRESH_MS));
@@ -918,7 +954,6 @@ export function ListeningPanel({
             <MicPicker api={api} />
           </div>
         )}
-        <PianoRow api={api} onConnected={onPiano} />
         <AiListeningRow api={api} feed={feed} />
       </div>
 

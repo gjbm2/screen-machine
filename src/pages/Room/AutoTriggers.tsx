@@ -228,7 +228,7 @@ function sayNode(node: unknown, words: Map<string, Word>, ctx: "top" | Combine =
 // ── show_service ──
 
 /** One show_service call through room_service's pass-through. Status 0: no answer. Throws only when aborted. */
-async function show(api: RoomApi, path: string, body: unknown, signal: AbortSignal): Promise<{ status: number; body?: any }> {
+async function show(api: RoomApi, path: string, body: unknown, signal: AbortSignal): Promise<{ status: number; body?: unknown }> {
   const ac = new AbortController();
   const stop = () => ac.abort();
   signal.addEventListener("abort", stop);
@@ -1061,4 +1061,77 @@ export function AutoTriggers({
       )}
     </section>
   );
+}
+
+// ── Each mode's start rule in words, for the Room page's "How Auto picks ›" (owner, 24 Oct) ──
+
+/** One mode as Auto runs it (GET /show/api/v1/autopilot/rules), in show_service's words (never code). */
+export interface AutoRuleWords {
+  mode: string;
+  label: string;
+  /** The whole rule in one sentence ("Auto switches to Piano when the piano is playing, for at least 10 s …"). */
+  summary: string | null;
+  /** What starts it, or null: it starts only when someone picks it. */
+  enter: string | null;
+  /** Auto is counting towards it now: seconds to go. */
+  inS: number | null;
+  /** Why Auto won't switch to it now (show_service's words). */
+  blocked: string | null;
+}
+
+const plainWords = (v: unknown) => (typeof v === "string" && v.trim() && !CODE.test(v) ? v.trim() : null);
+
+function ruleWordsOf(b: unknown): AutoRuleWords[] {
+  const list: unknown[] = isObj(b) && Array.isArray(b.modes) ? b.modes : isObj(b) && isObj(b.modes) ? Object.entries(b.modes).map(([k, v]) => ({ mode: k, ...(isObj(v) ? v : {}) })) : [];
+  return list.flatMap((m) => {
+    if (!isObj(m) || typeof m.mode !== "string") return [];
+    const auto = isObj(m.auto) ? m.auto : null;
+    const enter = auto && isObj(auto.enter) ? auto.enter : null;
+    const held = typeof enter?.held_s === "number" ? enter.held_s : 0;
+    const needs = typeof enter?.needs_s === "number" ? enter.needs_s : null;
+    return [
+      {
+        mode: m.mode,
+        label: plainWords(m.label) ?? friendly(m.mode),
+        summary: plainWords(m.summary),
+        enter: plainWords(m.enter),
+        inS: enter?.holds === true && needs !== null ? Math.max(0, Math.ceil(needs - held)) : null,
+        blocked: plainWords(enter?.blocked),
+      },
+    ];
+  });
+}
+
+/**
+ * Every mode's start rule in words, read every `everyMs` while the page is visible (null until the first answer, [] when
+ * show_service has no rules). `enabled` false: nothing is read.
+ */
+export function useAutoRules(api: RoomApi, everyMs: number, enabled = true): AutoRuleWords[] | null {
+  const [rules, setRules] = useState<AutoRuleWords[] | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ac = new AbortController();
+    const read = async () => {
+      if (document.visibilityState === "visible") {
+        try {
+          const r = await show(api, "autopilot/rules", undefined, ac.signal);
+          if (stop) return;
+          if (r.status === 404 || r.status === 405) setRules([]);
+          else if (r.status > 0 && r.status < 300) setRules(ruleWordsOf(r.body));
+        } catch {
+          return; // aborted
+        }
+      }
+      if (!stop) timer = setTimeout(read, everyMs);
+    };
+    void read();
+    return () => {
+      stop = true;
+      ac.abort();
+      clearTimeout(timer);
+    };
+  }, [api, everyMs, enabled]);
+  return rules;
 }
