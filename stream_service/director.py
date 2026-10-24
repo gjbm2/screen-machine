@@ -60,6 +60,12 @@ SNAPS = ("now", "beat", "bar")
 # "piano scenes much too likely when no midi ... if no midi, piano scenes unlikely to be good"): its auto weight is
 # x NOTES_NONE when nothing has been played for NOTES_RECENT_S[1] s, x 1 within NOTES_RECENT_S[0] s, linear between.
 NOTES_RECENT_S = (30.0, 120.0)
+# How much the style fit (tags.scene_weight: energy, moods, genre, axes) counts against the owner's stars: the fit is
+# raised to this power before the rating multiplies it (owner, 24 Oct: "isn't doing a good job of selecting scenes
+# appropriate to the music type or style ... completely arbitrary").  At 1 a 4-star scene with no mood in common
+# (0.3 x 4 = 1.2) beat an unrated perfect fit (1 x 0.35); in Party 57% of picks fitted poorly (<= 0.3) and 25% fitted
+# well (>= 0.7).  At 3: 7% poor, 73% good, still about 17 scenes in real rotation (catalog of 24 Oct, 415 auto presets).
+STYLE_POWER = 3.0
 NOTES_NONE = 0.05
 # direction.music: how the music's words meet the mode's own (aa's Room page control "How the music changes it").
 # fill: only where the mode set none; blend (default): the mode's lead, the music's shade them (music_moods /
@@ -501,7 +507,7 @@ class Director:
                 avoid = {prev} if prev else set()
         else:
             avoid = {prev} if prev else set()
-        got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction)
+        got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER
                             * self._rated("source", scenes[n].get("source"))
                             * self._heard(scenes[n].get("source")), self.rng_scene, avoid)
         if got is None:
