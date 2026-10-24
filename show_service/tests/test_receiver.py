@@ -619,7 +619,12 @@ def test_set_senders_adds_and_removes_senders():
         rx._resolve_all()                                     # (show-dns, woken by set_senders)
         rx.tick(10.1)                                         # a new list: subscribed at once, not at 11.0
         assert _subs(a) == [["room-mic"]] and _subs(b) == [["test-audio"]]
+        rx.tick(10.2)
+        assert _subs(a, 0.01) == [] and _subs(b, 0.01) == []
+        rx.tick(10.31)                                        # and soon again (a sender just spawned binds late)
+        assert _subs(a) == [["room-mic"]] and _subs(b) == [["test-audio"]]
         rx.tick(10.6)
+        _subs(a), _subs(b)
         h = rx.health()["senders"]
         assert set(h) == {"one", "two"} and h["two"]["on_demand"] is True and h["two"]["hosts"][0]["host"] == "127.0.0.1"
         rx.set_senders((two,))                                # "one" removed: no more SUBSCRIBEs to it

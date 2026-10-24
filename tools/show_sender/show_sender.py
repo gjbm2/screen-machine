@@ -32,6 +32,8 @@ Streams:
               (pc22_synth.py, run by Windows Python through interop; --no-speaker: MIDI only), so PC22's mic hears
               it as the boundary mic will hear the Steinway.  Without Windows it is MIDI only.
               --once: the piece once, then exit 0 (default: loop, 3 s between passes).
+              The piece starts once show_service has SUBSCRIBEd to test-piano (at most 3 s, then anyway):
+              what is sent before goes to no one, so a piece's first notes were lost (24 Oct).
               --instrument ID (not windows-gs) --output pc22: a rendered sound instead (the Room page's choice): the
               helper ``~/.venvs/sm-piano/bin/python -m piano_render.session`` (piano_render/session.py; its own
               session, stopped by "stop" + EOF on every exit path) loads the sound ("preparing": the load only,
@@ -138,6 +140,9 @@ def _timing(output: Optional[str], ev: str, **kw) -> None:
 
 
 PAD_EXTRA_S = 0.1                                 # the first event is never due sooner than this after "started"
+# a test piece starts only once show_service has SUBSCRIBEd (Out.send drops what is sent before; its first SUBSCRIBE
+# goes out as it spawns us, before this port is bound, and the next one a second later): at most this long, then on
+SUBSCRIBER_WAIT_S = 3.0
 PHRASE_MIDI_DIR = "~/.cache/screen-machine/piano/phrases"
 SMF_TPQ = 10000                                   # with tempo 1 s a quarter: 0.1 ms ticks
 STATUS_S = 0.5
@@ -748,13 +753,18 @@ def run_test_piano(out: Out, stop: threading.Event, piece: str, speaker: bool = 
         if is_rendered(instrument) and not silent:
             return _run_rendered(ms, stop, piece, events, length, instrument, status,
                                  max(0.0, float(lead_ms or 0.0)) / 1000.0, once, output=output,
-                                 title=TITLE_PREFIX + (title or piece_label(piece)), calibration_mic=calibration_mic)
+                                 title=TITLE_PREFIX + (title or piece_label(piece)), calibration_mic=calibration_mic,
+                                 subscribed=lambda: await_subscriber(out, ms.stream, stop))
         if is_sonos(output):
             log.warning("test piano: the Windows synth plays on PC22 only: playing it there")
         if lead_ms:
             log.info("test piano: --lead-ms ignored (the sound isn't rendered on PC22)")
         spk = Speaker() if speaker and not silent and not is_rendered(instrument) else None
         try:
+            await_subscriber(out, ms.stream, stop)
+            if stop.is_set():
+                status.set("done")
+                return 0
             status.set("playing", 0.0)
             _play_test_piano(ms, stop, piece, events, length, spk, once=once, status=status)
         finally:
@@ -793,6 +803,28 @@ def shape_events(events: list, speed: float = 1.0, start_s: float = 0.0) -> list
     if speed != 1.0:
         events = [(t / speed, st, d1, d2) for t, st, d1, d2 in events]
     return events
+
+
+def await_subscriber(out, stream: str, stop: threading.Event, wait_s: float = SUBSCRIBER_WAIT_S) -> bool:
+    """Wait until someone has SUBSCRIBEd to ``stream`` (owner, 24 Oct: "first note of each recording appears to get
+    lost": the piece's clock started at once, its first batches went to no one, and the first SUBSCRIBE's batch
+    healed only two of them, too late for the sound). True once subscribed (at once for an ``out`` without
+    subscriptions: tests); False on stop, or after ``wait_s`` (logged; the piece plays anyway)."""
+    subs = getattr(out, "subs", None)
+    if subs is None:
+        return True
+    t_start = time.monotonic()
+    while not stop.is_set():
+        now = time.monotonic()
+        if subs.target(stream, now) is not None:
+            if now - t_start > 0.05:
+                log.info("test piano: subscribed %.0f ms after the start", (now - t_start) * 1000)
+            return True
+        if now - t_start >= wait_s:
+            log.warning("test piano: no SUBSCRIBE for %s in %.1f s: playing anyway", stream, wait_s)
+            return False
+        stop.wait(0.005)
+    return False
 
 
 def _send_due(ms: MidiStream, events: list, i: int, t0: float, now: float, spk: Optional[Speaker] = None) -> int:
@@ -855,7 +887,8 @@ def _await(helper: PianoSession, stop: threading.Event, beat: _Beat, want: str,
 
 def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: list, length: float,
                   instrument: str, status: TestStatus, lead_s: float, once: bool, output: Optional[str] = None,
-                  title: Optional[str] = None, calibration_mic: Optional[str] = None) -> int:
+                  title: Optional[str] = None, calibration_mic: Optional[str] = None,
+                  subscribed: Optional[Callable[[], bool]] = None) -> int:
     """The rendered sound on PC22 or a Sonos (module docstring): preparing while the helper loads the sound, then per
     pass "play" (Sonos: "play-sonos {url, title}") and the MIDI from its t_audio0 (each event sent at t_audio0 + t_s -
     lead_s; a "rebase" moves it); a pass ends when both the MIDI and the audio have; looping, the next play goes
@@ -901,6 +934,8 @@ def _run_rendered(ms: MidiStream, stop: threading.Event, piece: str, events: lis
         else:
             log.info("test piano: rendered %s (%.1f s, %s)", rendered.get("path"), duration,
                      "cached" if rendered.get("cached") else f"{float(rendered.get('render_s') or 0):.1f} s")
+        if subscribed is not None:                          # (loading took seconds: subscribed long ago, as a rule)
+            subscribed()
         play_cmd = "play"
         if sonos:
             play_cmd = "play-sonos " + json.dumps({"url": sonos_url(rendered.get("path")), "title": title})
