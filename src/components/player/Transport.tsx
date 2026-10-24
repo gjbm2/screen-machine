@@ -161,7 +161,12 @@ export function Transport({
               <SpeedNudges speed={speed} onSpeed={(s) => void act("speed", { action: "set", speed: s }, { speed: s })} />
             </div>
           )}
-          {sound.available && <SoundChoice sound={sound} onInstrument={setInstrument} />}
+          {sound.available && (
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-stone-600">Sound</p>
+              <SoundChoice sound={sound} onInstrument={setInstrument} bare />
+            </div>
+          )}
           {more}
         </PopoverContent>
       </Popover>
