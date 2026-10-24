@@ -1,9 +1,28 @@
-// The Music page's shared pieces: a piece's row (tap = play now, ⋯ = more), the sheet behind ⋯ (Play next, Add to the
-// queue, Add to a playlist…, Score, Pin), a search box, chips, and a confirm dialog. Same light, warm skin as /room.
+// The Music page's shared pieces: a piece's row (tap = play now, a score button, ⋯ = more), the sheet behind ⋯ (Play
+// next, Add to the queue, Add to a playlist…, Score, Pin, and for your own pieces Edit details, Download the MIDI file
+// and Delete), a search box, chips, and a confirm dialog. Same light, warm skin as /room. The row and sheet also serve
+// the Room page's Piano fold (its last recordings), inside a MusicProvider of its own.
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Check, ChevronLeft, FileMusic, ListEnd, ListMusic, ListPlus, MoreHorizontal, Pin, PinOff, Play, Plus, Search, X } from "lucide-react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Check,
+  ChevronLeft,
+  Download,
+  FileMusic,
+  ListEnd,
+  ListMusic,
+  ListPlus,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Play,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,9 +37,11 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
+import { pageFrom, scoreLink } from "@/pages/Room/RecordButton";
 import { THEME_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { musicWords, plural, totalWords, type MusicItem, type PlayerView } from "./api";
 import { useMusic } from "./context";
+import { EditDetails } from "./EditDetails";
 import { PLAYER_BUSY } from "./usePlayer";
 
 export const PRIMARY = "bg-primary text-primary-foreground hover:bg-primary/90";
@@ -50,20 +71,35 @@ export function hasScore(p: { id: string; kind?: string | null }): boolean {
   return p.kind ? p.kind !== "phrase" : /^(lib|user|rec|file):/.test(p.id);
 }
 
-/** Open a piece's score on this page: ?score=<id>, the other params kept, a new history entry (so Back closes it). */
+/** A recording still under the name it was given when it was made ("Take - Sat 24 Oct 09:26"): its date is its name. */
+export function isDefaultTake(title: string | null | undefined): boolean {
+  return /^Take - /.test(title ?? "");
+}
+
+/** Open a piece's score: on /music, ?score=<id> with the other params kept, a new history entry (so Back closes it);
+ *  from any other page, /music?score=<id>. Either way the entry says where it was opened from (the score's back). */
 export function useOpenScore(): (id: string) => void {
   const [, setParams] = useSearchParams();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   return useCallback(
-    (id: string) =>
+    (id: string) => {
+      const from = pageFrom(pathname);
+      if (from !== "Music") {
+        const l = scoreLink(id, from);
+        navigate(l.to, { state: l.state });
+        return;
+      }
       setParams(
         (p) => {
           const next = new URLSearchParams(p);
           next.set(SCORE_PARAM, id);
           return next;
         },
-        { state: { score: true } },
-      ),
-    [setParams],
+        { state: { score: true, from } },
+      );
+    },
+    [navigate, pathname, setParams],
   );
 }
 
@@ -102,6 +138,7 @@ export function PieceRow({
   testId?: string;
 }) {
   const { player, flash, pinnedOf } = useMusic();
+  const openScore = useOpenScore();
   const on = useNowOn(piece.id);
   const pinned = pinnedOf(piece.id, !!piece.pinned);
   const play =
@@ -141,6 +178,17 @@ export function PieceRow({
         )}
       </button>
       {right}
+      {!missing && hasScore(piece) && (
+        <button
+          type="button"
+          onClick={() => openScore(piece.id)}
+          aria-label={`Score of ${piece.title}`}
+          title="Score"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <FileMusic className="h-5 w-5" aria-hidden />
+        </button>
+      )}
       {onMore && (
         <button
           type="button"
@@ -156,8 +204,9 @@ export function PieceRow({
 }
 
 /**
- * The sheet behind a row's ⋯: Play now · Play next · Add to the queue · Add to a playlist… · Score · Pin / Unpin,
- * then anything the list adds (`extra`: Rename, Download, Delete in Mine).
+ * The sheet behind a row's ⋯: Play now · Play next · Add to the queue · Add to a playlist… · Score · Pin / Unpin, and
+ * for your own pieces (`editable`: uploads, finds from the web, recordings) Edit details · Download the MIDI file ·
+ * Delete (asked first), then anything the list adds (`extra`).
  */
 export function PieceSheet({
   piece,
@@ -168,8 +217,10 @@ export function PieceSheet({
   onClose: () => void;
   extra?: (p: PieceRef, close: () => void) => ReactNode;
 }) {
-  const { api, player, playlists, flash, pinnedOf, setPinned } = useMusic();
+  const { api, player, playlists, flash, pinnedOf, setPinned, bumpLibrary } = useMusic();
   const [choosing, setChoosing] = useState(false);
+  const [editing, setEditing] = useState<PieceRef | null>(null);
+  const [deleting, setDeleting] = useState<PieceRef | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -183,7 +234,32 @@ export function PieceSheet({
     setNewName("");
   }, [piece?.id]);
 
-  if (!piece) return null;
+  // Edit details and the delete question outlive the sheet (it closes as they open)
+  const after = (
+    <>
+      <EditDetails piece={editing} onClose={() => setEditing(null)} />
+      <Confirm
+        open={!!deleting}
+        title={`Delete ${deleting?.title ?? ""}?`}
+        body="It goes for good. Playlists keep its place, marked as no longer in the library."
+        action="Delete"
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          const p = deleting;
+          setDeleting(null);
+          if (!p) return;
+          void api
+            .remove(p.id)
+            .then(() => {
+              flash(`Deleted ${p.title}`);
+              bumpLibrary();
+            })
+            .catch((e) => flash(musicWords(e)));
+        }}
+      />
+    </>
+  );
+  if (!piece) return after;
   const pinned = pinnedOf(piece.id, !!piece.pinned);
 
   const run = async (what: string, fn: () => Promise<string | null>) => {
@@ -226,6 +302,8 @@ export function PieceSheet({
   const icon = (what: string, I: typeof Play) => (busy === what ? <Spinner className="h-5 w-5" /> : <I className="h-5 w-5 text-stone-600" aria-hidden />);
 
   return (
+    <>
+    {after}
     <ActionSheet
       open={!!piece}
       onOpenChange={(o) => !o && onClose()}
@@ -284,6 +362,33 @@ export function PieceSheet({
             {busy === "pin" ? <Spinner className="h-5 w-5" /> : pinned ? <PinOff className="h-5 w-5 text-stone-600" aria-hidden /> : <Pin className="h-5 w-5 text-stone-600" aria-hidden />}
             {pinned ? "Unpin" : "Pin"}
           </button>
+          {piece.editable && (
+            <>
+              <button
+                type="button"
+                className={SHEET_ROW}
+                onClick={() => {
+                  onClose();
+                  setEditing(piece);
+                }}
+              >
+                <Pencil className="h-5 w-5 text-stone-600" aria-hidden /> Edit details
+              </button>
+              <a href={api.downloadUrl(piece.id)} download={`${piece.title}.mid`} className={SHEET_ROW} onClick={() => onClose()}>
+                <Download className="h-5 w-5 text-stone-600" aria-hidden /> Download the MIDI file
+              </a>
+              <button
+                type="button"
+                className={cn(SHEET_ROW, "text-rose-800")}
+                onClick={() => {
+                  onClose();
+                  setDeleting(piece);
+                }}
+              >
+                <Trash2 className="h-5 w-5" aria-hidden /> Delete
+              </button>
+            </>
+          )}
           {extra?.(piece, onClose)}
         </div>
       ) : (
@@ -333,6 +438,7 @@ export function PieceSheet({
       )}
       {err && <p className="px-3 pb-2 text-[15px] text-rose-700">{err}</p>}
     </ActionSheet>
+    </>
   );
 }
 
