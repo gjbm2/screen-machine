@@ -33,7 +33,6 @@ export function musicPageUrl(): string {
 export const DEV_LINKS: Array<{ label: string; href: () => string; lan?: boolean }> = [
   { label: "Renderer console & Library", href: rendererConsoleUrl, lan: true },
   { label: "Room status (JSON)", href: roomStatusUrl, lan: true },
-  { label: "Spectre (ops)", href: () => "http://192.168.1.205/", lan: true },
   { label: "LightSense", href: () => "/lightsense" },
   { label: "Scheduler simulator", href: () => "/simulate-scheduler" },
   { label: "Bucket test UI", href: () => "/test-buckets/" },
