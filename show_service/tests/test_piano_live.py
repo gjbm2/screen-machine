@@ -247,3 +247,50 @@ def test_a_device_can_be_forgotten(tmp_path: pathlib.Path) -> None:
         assert piano_live.PianoLive(devices_file=tmp_path / "devices.json").device_outputs() == []
 
     asyncio.run(go())
+
+
+def test_a_warm_sound_nobody_hears_stays_off(tmp_path: pathlib.Path, monkeypatch) -> None:
+    """The output set to a device nobody listens on: its warm sound stops after WARM_S and stays off (it was
+    restarted every WARM_S, forever); the device naming itself, or the output chosen again, warms it again."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    fake = tmp_path / "fake.py"
+    fake.write_text(FAKE.format(py=sys.executable, log=str(tmp_path / "stdin.log")))
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(piano_live, "PYTHON", fake)
+    monkeypatch.setattr(piano_live, "GATE_S", 0.05)
+    monkeypatch.setattr(piano_live, "WARM_S", 0.5)
+    insts = tmp_path / "instruments.json"
+    insts.write_text(json.dumps({"default": "concert-d", "instruments": {"concert-d": {}}}))
+    monkeypatch.setattr(piano_live, "INSTRUMENTS", insts)
+    out = ["device:ipad-1"]
+    live = piano_live.PianoLive(output_fn=lambda: out[0], devices_file=tmp_path / "devices.json")
+    live.register("ipad-1", "iPad")
+
+    async def until(cond, limit: float = 6.0) -> bool:
+        t0 = time.monotonic()
+        while not cond() and time.monotonic() - t0 < limit:
+            await asyncio.sleep(0.05)
+        return cond()
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            await cl.get("/api/v1/piano/devices")                      # the page's poll starts the gate
+            assert await until(lambda: "concert-d" in live.synths)     # warmed for the chosen device
+            assert await until(lambda: not live.synths)                # nobody came: stopped
+            await asyncio.sleep(1.0)
+            await cl.get("/api/v1/piano/devices")                      # the page still polling: not a listener
+            await asyncio.sleep(0.5)
+            assert not live.synths                                     # and not started again
+            await cl.post("/api/v1/piano/devices", json={"id": "ipad-1", "name": "iPad"})
+            assert await until(lambda: "concert-d" in live.synths)     # the device named itself: warm again
+            assert await until(lambda: not live.synths)
+            out[0] = "pc22"
+            await asyncio.sleep(0.3)
+            out[0] = "device:ipad-1"                                   # chosen again: warm again
+            assert await until(lambda: "concert-d" in live.synths)
+            await live._stop(live.synths["concert-d"])
+
+    asyncio.run(go())

@@ -20,7 +20,9 @@ while the output is that device; otherwise it carries silence (the connection st
 instant), and notes still sounding are let go of at once when the output moves away; &also=1 hears whatever the
 output ("as well as the speakers").  A stream that names no device (an older page) hears everything, as before.
 Warm: while the output is a device, its sound is started even before the device connects (so Play doesn't wait for
-the instrument to load), and kept WARM_S after its last listener leaves; otherwise LINGER_S.
+the instrument to load), and kept WARM_S after its last listener leaves; otherwise LINGER_S. A warm sound that
+lapses with nobody listening stays off (it was restarted every WARM_S, forever, while nobody listened) until
+something says someone is there: the device connects or names itself, or the output is chosen again.
 
 One synth process per instrument with listeners (sm-piano's python, nice 5, its own memory cap: stream.py's
 prepare_process), started by the first and stopped LINGER_S after the last leaves; every listener of it shares its
@@ -120,6 +122,7 @@ class PianoLive:
         self.devices_file = devices_file if devices_file is not None else DEVICES_FILE
         self.devices: dict[str, dict] = self._load_devices()
         self._gate_task: Optional[asyncio.Task] = None
+        self._cooled: Optional[tuple] = None             # (device, instrument) whose warm lapsed unheard: not re-warmed
 
     # -- where it's heard ----------------------------------------------------------------------------------------
     def _output(self) -> Optional[str]:
@@ -172,8 +175,10 @@ class PianoLive:
             await asyncio.sleep(GATE_S)
             try:
                 target = self._target(self._output())
-                if target is not None:
-                    inst = self._instrument_for(target)
+                inst = self._instrument_for(target) if target is not None else None
+                if self._cooled is not None and self._cooled != (target, inst):
+                    self._cooled = None                  # the output moved: choosing the device again warms it
+                if target is not None and self._cooled is None:
                     if inst is not None and inst not in self.synths and len(self.synths) < MAX_SYNTHS \
                             and PYTHON.exists():
                         s = self.synths[inst] = _Synth(inst)
@@ -227,6 +232,7 @@ class PianoLive:
             row["instrument"] = instrument
         row["seen_wall"] = time.time()
         self.devices[d] = row
+        self._cooled = None                              # someone is there: the chosen device's sound may warm again
         if len(self.devices) > DEVICES_MAX:
             for k in sorted(self.devices, key=lambda k: self.devices[k].get("seen_wall") or 0)[:-DEVICES_MAX]:
                 del self.devices[k]
@@ -459,6 +465,10 @@ class PianoLive:
                 elif not warm and s.stop_at > now + LINGER_S:
                     s.stop_at = now + LINGER_S           # no longer the output: the short linger
                 if now >= s.stop_at:
+                    if warm:                             # nobody came in WARM_S: don't start it again until they do
+                        self._cooled = (target, s.instrument)
+                        log.info("piano live: %s warm for %s lapsed unheard; off until it's wanted", s.instrument,
+                                 target)
                     await self._stop(s)
 
     # -- routes (show-bus) ---------------------------------------------------------------------------------------
