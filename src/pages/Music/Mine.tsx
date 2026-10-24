@@ -194,7 +194,7 @@ export function Mine() {
         <h3 id="mine-ups" className="text-[15px] font-semibold">
           Uploads and finds from the web{ups.total > 0 ? <span className="font-normal text-muted-foreground"> · {ups.total}</span> : null}
         </h3>
-        {list(ups, "Nothing yet. Upload a MIDI file above, or find one under From the web.", "Uploads")}
+        {list(ups, "Nothing yet. Upload a MIDI file above, or find one under Web.", "Uploads")}
       </section>
 
       <PieceSheet piece={sheet} onClose={() => setSheet(null)} />

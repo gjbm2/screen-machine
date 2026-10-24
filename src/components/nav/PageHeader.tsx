@@ -249,13 +249,17 @@ function HeaderBody({
 
   return (
     <header className={cn("pb-1 pt-3", className)} data-testid="page-header">
-      <div className="flex min-w-0 items-center gap-x-1">
+      {/* a back link and the switches leave a phone no room for the title on the same line (it shrank to "S…"):
+          there the title takes the line under them, in full */}
+      <div className={cn("flex min-w-0 items-center gap-x-1", back && toggles && "max-sm:flex-wrap")}>
         {back && <BackLink to={back.to} label={back.label} />}
+        {back && toggles && <span aria-hidden className="flex-1 sm:hidden" />}
         <h1
           className={cn(
             "mr-auto min-w-0 truncate font-semibold leading-tight tracking-tight",
             compact ? "text-[22px]" : "text-[28px]",
             back && "text-[22px]",
+            back && toggles && "max-sm:order-last max-sm:mr-0 max-sm:basis-full",
           )}
         >
           {title}

@@ -28,6 +28,21 @@ export class LightsApiError extends Error {
 }
 
 /** The lights side couldn't be reached at all (not a refusal of what was asked). */
+export interface FoundBox {
+  ip: string;
+  name: string;
+  label: string;
+  /** The configured box it already is, if any. */
+  node: string | null;
+  /** "now" (answered this search) or "earlier" (in the last 10 minutes). */
+  heard: string;
+}
+
+export interface FoundBoxes {
+  nodes?: FoundBox[];
+  words?: string | null;
+}
+
 export function unreached(e: unknown): boolean {
   return e instanceof LightsApiError && (e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504);
 }
@@ -115,6 +130,12 @@ export class LightsApi {
   /** The whole rig view (read with lib.rowsFromRig). */
   rig(signal?: AbortSignal) {
     return this.json<unknown>("GET", "", undefined, signal);
+  }
+
+  /** The Art-Net boxes that answer an ArtPoll on the LAN (show_service artnet_lan.find_nodes): each with its name,
+   *  address and a ready label; `words` says so when none answered. It listens about 1.5 s. */
+  findBoxes(signal?: AbortSignal) {
+    return this.json<FoundBoxes>("GET", "/nodes/find", undefined, signal);
   }
 
   /** The kinds of light it can drive (read with lib.typesFrom). */

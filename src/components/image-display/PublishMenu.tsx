@@ -44,6 +44,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   
   const handlePublish = async (destinationId: string) => {
     if (!imageUrl) return;
+    const where = destinations.find((d) => d.id === destinationId)?.name ?? destinationId;
     
     try {
       let success;
@@ -54,7 +55,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
         
         if (!filename) {
           console.error('Could not extract filename from URL');
-          toast.error('Failed to publish image: Invalid filename');
+          toast.error(`Couldn't show it on ${where}: the picture has no file name`);
           return;
         }
         
@@ -76,13 +77,13 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
       }
       
       if (success) {
-        toast.success('Image published successfully');
+        toast.success(`Showing on ${where}`);
       } else {
-        toast.error('Failed to publish image');
+        toast.error(`Couldn't show it on ${where}`);
       }
     } catch (error) {
       console.error('Error publishing image:', error);
-      toast.error('Failed to publish image');
+      toast.error(`Couldn't show it on ${where}`);
     }
   };
 
@@ -109,7 +110,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className={buttonClass}>
           <Share className="h-4 w-4" />
-          {showLabel && !isRolledUp && <span className="ml-1">Publish</span>}
+          {showLabel && !isRolledUp && <span className="ml-1">Show on</span>}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

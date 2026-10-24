@@ -205,7 +205,7 @@ function ModesBody({
       {error && <Notice tone="bad">{error}</Notice>}
 
       <Sub>Modes</Sub>
-      <Hint>The tiles on the Room page, in this order. Tap a tile there to switch the room.</Hint>
+      <Hint>The modes on the Room page, in this order. Tap one there to switch the room.</Hint>
       {modes === null ? (
         <p className="flex items-center gap-2 text-base text-muted-foreground">
           <Spinner /> Loading modes…
@@ -221,6 +221,9 @@ function ModesBody({
                     {label}
                     {name === current && <span className="ml-2 text-[13px] font-semibold text-teal-700">Now</span>}
                     {name === startMode && <span className="ml-2 text-[13px] font-normal text-muted-foreground">Starts here</span>}
+                    {(def as { on_room_page?: unknown }).on_room_page === "more" && (
+                      <span className="ml-2 text-[13px] font-normal text-muted-foreground">Under More modes</span>
+                    )}
                   </p>
                   {modeDescription(def) && <p className="line-clamp-2 text-sm text-muted-foreground">{modeDescription(def)}</p>}
                 </div>
@@ -263,7 +266,7 @@ function ModesBody({
           })}
         </ul>
       )}
-      <Hint>To delete a mode, use its ⋯ on the Room page: it tidies everything else that names it.</Hint>
+      <Hint>To delete a mode, use its ⋯ (or the pencil at the end of the modes) on the Room page: it tidies everything else that names it.</Hint>
 
       <Row
         label="Auto waits before changing mode again"
