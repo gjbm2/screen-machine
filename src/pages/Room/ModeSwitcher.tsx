@@ -621,7 +621,7 @@ export function ModeSwitcher({
               role="group"
               aria-label="Modes"
               data-testid="mode-strip"
-              className="flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="flex min-w-0 flex-1 flex-wrap gap-2 px-0.5 py-1"
             >
               {chips.map(([name, def]) => {
                 const i = entries.findIndex(([k]) => k === name);

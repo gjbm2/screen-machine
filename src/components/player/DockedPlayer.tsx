@@ -75,12 +75,13 @@ export function DockedPlayer() {
   const here = useListenHere();
   const v = ctx?.player.view ?? null;
   const onMusic = pathname.startsWith("/music");
-  const onRoom = pathname.startsWith("/room");
   const onScore = onMusic && new URLSearchParams(search).has(SCORE_PARAM);
   const playing = ctx?.player.link === "ok" && !!v?.current && SHOWN.includes(v.state);
   const [recording, setRecording] = useState(false);
   const [take, setTake] = useState(false);
-  const show = !!ctx?.enabled && !onScore && !here.viewOpen && (onRoom || playing || recording);
+  // docked only while something plays or records (owner, 24 Oct: "when music is playing through the app, that apparatus
+  // should anchor bottom"); idle, the Room page shows its own row at the end instead of a bar over the page
+  const show = !!ctx?.enabled && !onScore && !here.viewOpen && (playing || recording);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
