@@ -5,11 +5,16 @@
 //     stands.  Never disabled.
 //   * LiveDetails (under More → Technical details): the same lines as text, read once a second while that section
 //     is open, so they work with the TV panel off too (the per-viewer view).
+//   * TransitionDetails (under Technical details): the chosen transitions with their parameters; the pickers show
+//     the label only (24 Oct walkthrough).
+// Where the switch sits (24 Oct walkthrough): on the card's face while the screen is live, and at the top of
+// Technical details while it shows art, so it is in one place at a time.
 
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { explainError, type RoomApi } from "./api";
-import type { ScreenStatus } from "./types";
+import { transitionSpecKey, type TransitionChoice } from "./catalog";
+import type { ScreenStatus, TransitionSpec } from "./types";
 
 interface HudView {
   on?: boolean;
@@ -21,7 +26,17 @@ interface HudView {
 
 const STALE_MS = 3000;
 
-export function DetailsSwitch({ api, screenId, screen }: { api: RoomApi; screenId: string; screen: ScreenStatus }) {
+export function DetailsSwitch({
+  api,
+  screenId,
+  screen,
+  className = "px-4 pb-3",
+}: {
+  api: RoomApi;
+  screenId: string;
+  screen: ScreenStatus;
+  className?: string;
+}) {
   const hud = screen.hud;
   const [want, setWant] = useState<boolean | null>(null); // a tap not yet reflected in status
   const [err, setErr] = useState<string | null>(null);
@@ -46,7 +61,7 @@ export function DetailsSwitch({ api, screenId, screen }: { api: RoomApi; screenI
   };
 
   return (
-    <div className="px-4 pb-3" data-testid={`details-switch-${screenId}`}>
+    <div className={className} data-testid={`details-switch-${screenId}`}>
       <label className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-1.5">
         <span className="min-w-0">
           <span className="block text-[15px] font-medium">Details on the screen</span>
@@ -117,6 +132,46 @@ export function LiveDetails({ api, screenId, screen }: { api: RoomApi; screenId:
           </pre>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The transitions this screen will use, with their parameters (the pickers in More show the label only). */
+export function TransitionDetails({
+  screenId,
+  inSpec,
+  outSpec,
+  choices,
+}: {
+  screenId: string;
+  inSpec: TransitionSpec | null;
+  outSpec: TransitionSpec | null;
+  choices: TransitionChoice[];
+}) {
+  const row = (label: string, spec: TransitionSpec | null) => {
+    const key = transitionSpecKey(spec);
+    const c = key ? choices.find((x) => x.key === key) : undefined;
+    const params = c ? Object.entries(c.params).map(([k, v]) => `${k} ${String(v)}`) : [];
+    return (
+      <p className="break-words">
+        <span className="text-muted-foreground">{label}: </span>
+        {c ? (
+          <>
+            {c.label} <span className="font-mono text-[12px] text-stone-700">({[c.transition, ...params].join(" · ")})</span>
+          </>
+        ) : key ? (
+          <span className="font-mono text-[12px]">{key.replace(/^raw:/, "")}</span>
+        ) : (
+          "default"
+        )}
+      </p>
+    );
+  };
+  return (
+    <div className="space-y-1 pb-3 text-sm" data-testid={`transition-details-${screenId}`}>
+      <p className="text-[15px] font-medium">Transitions</p>
+      {row("Going live", inSpec)}
+      {row("Back to art", outSpec)}
     </div>
   );
 }

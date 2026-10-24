@@ -2,12 +2,16 @@
 // picture and prompt as its tab in the generator, from GET /api/published/<id>, whose small thumbnail
 // comes inline), or, while it's live, the live scene. The TV page reports the art it shows
 // (status observed.kiosk_state.base_url, with the file's mtime), so a new picture re-reads it at once.
+// Under the card's title, two pill rows: "In the generator" with the art's prompt, and "Schedule" with what the
+// screen's schedule is doing (useScreenSchedules.ts, one read for the page). Both stay inside the app (AppLink).
 
 import { useEffect, useState } from "react";
-import { CircleAlert, Sparkles, Tv } from "lucide-react";
+import { CalendarClock, CircleAlert, Sparkles, Tv } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_URL } from "@/shared/http/client";
-import { generatorUrl } from "@/components/nav/appNav";
+import { AppLink } from "@/components/nav/AppLink";
+import { generatorUrl, schedulerUrl } from "@/components/nav/appNav";
+import { scheduleWords, useScreenSchedule } from "./useScreenSchedules";
 
 export interface PublishedArt {
   thumb: string | null;
@@ -80,20 +84,37 @@ export function ArtThumb({
   );
 }
 
-/** "In the generator": this screen's tab in the generator (where its art is made and chosen). */
+const PILL =
+  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[14px] font-medium text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** "In the generator": this screen's tab in the generator (where its art is made and chosen), and the art's prompt. */
 export function GeneratorLink({ screenId, prompt }: { screenId: string; prompt?: string | null }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 px-4 pb-3">
-      <a
-        href={generatorUrl(screenId)}
-        data-testid={`generator-${screenId}`}
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[14px] font-medium text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
+    <div className="flex min-w-0 items-center gap-2 px-4 pb-2">
+      <AppLink href={generatorUrl(screenId)} state={{ from: "Room" }} data-testid={`generator-${screenId}`} className={PILL}>
         <Sparkles className="h-4 w-4 text-teal-700" aria-hidden /> In the generator
-      </a>
+      </AppLink>
       {prompt && (
         <span className="min-w-0 truncate text-sm text-muted-foreground" title={prompt}>
           {prompt}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** "Schedule": this screen's schedule on the Schedules page, and what it's doing in a line
+ *  ("New art every 2 h · next 20:04", "Schedule paused", "No schedule running"). */
+export function ScheduleLink({ screenId }: { screenId: string }) {
+  const words = scheduleWords(useScreenSchedule(screenId));
+  return (
+    <div className="flex min-w-0 items-center gap-2 px-4 pb-3">
+      <AppLink href={schedulerUrl(screenId)} state={{ from: "Room" }} data-testid={`schedule-${screenId}`} className={PILL}>
+        <CalendarClock className="h-4 w-4 text-teal-700" aria-hidden /> Schedule
+      </AppLink>
+      {words && (
+        <span className="min-w-0 truncate text-sm text-muted-foreground" title={words} data-testid={`schedule-words-${screenId}`}>
+          {words}
         </span>
       )}
     </div>
