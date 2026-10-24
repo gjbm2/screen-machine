@@ -7,6 +7,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { ArtThumb, GeneratorLink, usePublishedArt } from "@/components/room/ScreenArt";
+import { EventsList, useRoomEvents } from "@/components/room/EventsList";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RoomApi } from "./api";
@@ -41,6 +42,8 @@ export interface ScreenCardProps {
   focused?: boolean;
   /** Its room's live card (RoomLive.tsx), when the room has one: the room-wide controls live there, not here. */
   scope?: LookScope | null;
+  /** Its room (rooms.json id): its schedule's events unroll under More. */
+  room?: string;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
 }
@@ -58,6 +61,7 @@ export const ScreenCard = memo(function ScreenCard({
   inModeChange = false,
   focused = false,
   scope = null,
+  room,
   addLog,
   reportError,
 }: ScreenCardProps) {
@@ -228,6 +232,8 @@ export const ScreenCard = memo(function ScreenCard({
 
             <Snapshots api={api} screenId={screenId} revs={snapRevs} exists={screen.snapshots} onError={reportError} />
 
+            {room && <ScreenEvents room={room} screenId={screenId} addLog={addLog} />}
+
             <Unroll title="Technical details" testId={`details-${screenId}`}>
               <LiveDetails api={api} screenId={screenId} screen={screen} />
               <ScreenDetails screenId={screenId} screen={screen} scenes={sc.scenes} transitions={sc.transitions} />
@@ -238,3 +244,19 @@ export const ScreenCard = memo(function ScreenCard({
     </section>
   );
 });
+
+/** The screen's schedule events (from its schedule, none named here), unrolled on request. */
+function ScreenEvents({ room, screenId, addLog }: { room: string; screenId: string; addLog: (e: NewLogEntry) => void }) {
+  const events = useRoomEvents(room, screenId);
+  if (!events?.length) return null;
+  return (
+    <Unroll title="Events" hint={`${events.length}`} testId={`events-${screenId}`}>
+      <EventsList
+        room={room}
+        destination={screenId}
+        className="px-1 pb-1"
+        onSent={(ev) => addLog({ type: "schedule", screen: screenId, level: "info", summary: `${ev.label} sent to ${screenId}` })}
+      />
+    </Unroll>
+  );
+}

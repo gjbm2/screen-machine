@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { KeyRound, Settings2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TodayCard } from "@/components/room/TodayCard";
 import { cn } from "@/lib/utils";
 import { loadToken, resolveRoomUrl, saveToken, storageSet, URL_KEY } from "./api";
 import { Notice, Spinner, Unroll } from "./bits";
@@ -224,7 +225,7 @@ export default function RoomPage() {
     requestAnimationFrame(() => el.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" }));
   }, [focusScreen, laidOut, screens.length]);
 
-  const screenCard = (id: string, scope?: LookScope | null) => {
+  const screenCard = (id: string, scope?: LookScope | null, roomId?: string) => {
     const sc = status?.screens?.[id];
     if (!sc) return null;
     return (
@@ -242,6 +243,7 @@ export default function RoomPage() {
         inModeChange={modeBusy.has(id)}
         focused={id === focusScreen}
         scope={scope}
+        room={roomId}
         addLog={room.addLog}
         reportError={room.reportError}
       />
@@ -356,10 +358,18 @@ export default function RoomPage() {
                         addLog={room.addLog}
                         reportError={room.reportError}
                       >
-                        {(scopeFor) => sec.screens.map((id) => screenCard(id, scopeFor(id)))}
+                        {(scopeFor) => sec.screens.map((id) => screenCard(id, scopeFor(id), sec.key))}
                       </RoomLive>
                     ) : (
-                      sec.screens.map((id) => screenCard(id))
+                      sec.screens.map((id) => screenCard(id, null, sec.key === "_other" ? undefined : sec.key))
+                    )}
+                    {/* The room's daily art cascade: its schedules' exported variables and room actions (all from config). */}
+                    {sec.key !== "_other" && (
+                      <TodayCard
+                        room={sec.key}
+                        className={CARD_CLASS}
+                        onChange={(what) => room.addLog({ type: "schedule", level: "info", summary: what })}
+                      />
                     )}
                     {sec.lights && (
                       <LightsSection
