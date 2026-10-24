@@ -56,6 +56,11 @@ AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
 SNAPS = ("now", "beat", "bar")
+# A scene drawn from the piano's notes (its plug-in listens "notes") with no MIDI is an empty page (owner, 24 Oct:
+# "piano scenes much too likely when no midi ... if no midi, piano scenes unlikely to be good"): its auto weight is
+# x NOTES_NONE when nothing has been played for NOTES_RECENT_S[1] s, x 1 within NOTES_RECENT_S[0] s, linear between.
+NOTES_RECENT_S = (30.0, 120.0)
+NOTES_NONE = 0.05
 # direction.music: how the music's words meet the mode's own (aa's Room page control "How the music changes it").
 # fill: only where the mode set none; blend (default): the mode's lead, the music's shade them (music_moods /
 # music_style); replace: the music's win; ignore: none of the music's words, genre or axes (the numbers still trim).
@@ -334,6 +339,22 @@ class Director:
         self.last: Optional[dict] = None              # the last decision, for the panel and GET session
         self.vet: Optional[Callable[[str, Optional[str]], bool]] = None   # (kind, plug-in) -> auto may pick it
         self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
+        self.listens: Optional[Callable[[Optional[str]], tuple]] = None   # plug-in -> what it draws from the sound
+        self.notes_age: Optional[Callable[[], Optional[float]]] = None     # s since the piano last played (None: never)
+
+    def _heard(self, plugin: Optional[str]) -> float:
+        """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is nearly never picked."""
+        if self.listens is None or self.notes_age is None:
+            return 1.0
+        try:
+            if "notes" not in (self.listens(plugin) or ()):
+                return 1.0
+            age = self.notes_age()
+        except Exception:
+            return 1.0
+        lo, hi = NOTES_RECENT_S
+        h = 0.0 if age is None else max(0.0, min(1.0, (hi - age) / (hi - lo)))
+        return NOTES_NONE + (1.0 - NOTES_NONE) * h
 
     def _rated(self, kind: str, plugin: Optional[str]) -> float:
         if self.rate is None:
@@ -481,7 +502,8 @@ class Director:
         else:
             avoid = {prev} if prev else set()
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction)
-                            * self._rated("source", scenes[n].get("source")), self.rng_scene, avoid)
+                            * self._rated("source", scenes[n].get("source"))
+                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid)
         if got is None:
             return None
         name, p, n = got
