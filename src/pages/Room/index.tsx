@@ -1,29 +1,40 @@
 // /room: the room's control panel (AV_PROGRAMME §5), used mostly from a phone on
-// the house Wi-Fi. Layout A (owner, 24 Oct: "too much going on today and not enough folded away"): the header and the
-// modes with Auto under them, then one scroll of the same folds (Section.tsx), each with a one-line summary while
-// closed, so the closed page reads as an overview:
-//   Look         who is choosing; the room director's controls (MusicCard.tsx DirectorControls) and, while a room's
-//                screens are live, that room's scene and effect picking (RoomLive.tsx); open by default while live
+// the house Wi-Fi. Layout A (owner, 24 Oct: "too much going on today and not enough folded away"): the header, one
+// line saying what the room is doing ("Normal · art on all 3 screens · lights off · nothing playing"), the modes with
+// Auto above them, then one scroll of the same folds (Section.tsx), each with a one-line summary while closed, so the
+// closed page reads as an overview:
+//   Look         who is choosing; Calmer · Wilder, Describe it, the palette (MusicCard.tsx DirectorControls) and, while
+//                a room's screens are live, that room's scene and effect picking (RoomLive.tsx)
 //   Screens      each screen's card, under its room's name (status.rooms, from routes/data/rooms.json; "Other" last)
 //   Today's art  each room's TodayCard (TodayFold.tsx)
-//   Listening    room mic, piano, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel); the Mic and AI
+//   Listening    room mic, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel); the Mic and AI
 //                switches are the header's (TopToggles.tsx), and tapping their line opens this fold
-//   Lights       each room's lamps and room effects (the glitterball)
-//   Piano        Record, then the takes (folded)
-// and the mini player at the bottom (NowPlayingRow.tsx, with the page's one Play on). Everything technical sits
-// behind the menu button or a screen's "More".
+//   Lights       House lights and Lights low (RoomLightsRow.tsx), each room's lamps and room effects (the glitterball);
+//                "Set up lights ›" at the right of its heading
+//   Piano        the piano's keys and pedals (PianoRow.tsx), Record (also in its heading), the last recordings
+// and the dock at the bottom (the app's player). Each fold ends with its "… settings ›" link (/settings#<group>).
+//
+// What is open (ia, 24 Oct): the person's taps are remembered per fold; on top of that, when the room changes mode
+// while the page is open, Look opens for a mode that puts the screens live, Lights for one where only the lamps
+// follow the music, and Piano for the mode Auto starts when the piano plays (each closes again on leaving); a
+// recording starting anywhere opens Piano. Fold order never changes. Everything technical sits behind the menu
+// button or a screen's "More".
 //
 // Talks to room_service (LIVE_V1 §3) over HTTP and its events socket. room_service
 // is found at ?room=<url> (remembered), else the remembered sm_room_url, else this
 // host on :8700. See README.md in this folder.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { KeyRound, Settings2, WifiOff } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ChevronRight, KeyRound, Settings2, WifiOff } from "lucide-react";
+import { rendererConsoleUrl, settingsUrl } from "@/components/nav/appNav";
+import { useAppPlayer } from "@/components/player/appPlayer";
+import { PLAYER_BUSY } from "@/pages/Music/usePlayer";
 import { Button } from "@/components/ui/button";
 import { shortNames } from "@/components/room/TodayCard";
 import { cn } from "@/lib/utils";
-import { loadToken, resolveRoomUrl, saveToken, storageSet, URL_KEY } from "./api";
+import { loadToken, resolveRoomUrl, saveToken, type RoomApi } from "./api";
+import { useAutoRules } from "./AutoTriggers";
 import { Notice, Spinner, Unroll } from "./bits";
 import { isConnected, linkState } from "./connection";
 import { EffectsSection } from "./Effects";
@@ -39,17 +50,20 @@ import { ModeSwitcher } from "./ModeSwitcher";
 import { AutoRow, directorWords, DirectorControls, ListeningPanel, listeningWords, useShowFeed, useShowState } from "./MusicCard";
 import { ListenHere } from "./ListenHere";
 import { PianoCard } from "./PianoCard";
+import { RecordPill, useRecorder } from "./PianoRecorder";
+import { PianoRow } from "./PianoRow";
+import { lightsFollow, lightsWords, RoomLightsRow } from "./RoomLightsRow";
 import type { LookScope } from "./liveLib";
 import type { LiveMember } from "./roomFx";
 import { RoomLives, type RoomLiveSpec } from "./RoomLive";
 import { ScreenCard } from "./ScreenCard";
 import { sceneChoices } from "./catalog";
-import { openFold, Section } from "./Section";
+import { FOOT_LINK, openFold, Section, setFold } from "./Section";
 import { useTopToggles } from "./TopToggles";
 import { TodayFold } from "./TodayFold";
 import { CARD_CLASS, RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import { TokenDialog } from "./TokenPrompt";
-import type { ModeDef, RoomStatus, SiteEffect, TrackedTransition } from "./types";
+import type { FixturesView, ModeDef, RoomStatus, SiteEffect, TrackedTransition } from "./types";
 import { usePcLoad } from "./usePcLoad";
 import { useRoomConnection } from "./useRoomConnection";
 import { liveOf } from "./useScreenControls";
@@ -101,6 +115,58 @@ function screensInModeChange(t: TrackedTransition | null, modes: Record<string, 
   return out;
 }
 
+/** What a mode puts on show, from its targets (the modes view: target -> {value}): a screen live, a lamp following. */
+function modeShows(def: ModeDef | undefined): { screens: boolean; lamps: boolean } {
+  const targets = (def as { targets?: Record<string, { value?: unknown } | null> } | undefined)?.targets ?? {};
+  let screens = false;
+  let lamps = false;
+  for (const [k, t] of Object.entries(targets)) {
+    const v = t?.value;
+    if (k.startsWith("screens.") && !!v && typeof v === "object" && "live" in v) screens = true;
+    if ((k.startsWith("hue.") || k === "light" || k.startsWith("light.")) && v === "dmx") lamps = true;
+  }
+  return { screens, lamps };
+}
+
+/** A mode's tile is on the Room page's own strip (the mode's generic on_room_page field; absent = yes). */
+function onRoomPage(def: ModeDef | undefined): boolean {
+  const v = (def as { on_room_page?: unknown } | undefined)?.on_room_page;
+  return v !== false && v !== "more";
+}
+
+function andList(xs: string[]): string {
+  return xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+}
+
+/** show_service's own words for "the piano is playing" (its vocabulary), read once: the rule that starts the piano's
+ *  mode names it. Until it answers, the word's usual label. */
+function usePianoWord(api: RoomApi, enabled: boolean): string {
+  const [label, setLabel] = useState("the piano is playing");
+  useEffect(() => {
+    if (!enabled) return;
+    const ac = new AbortController();
+    fetch(`${api.baseUrl}/show/api/v1/situations`, { signal: ac.signal, cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b: { vocabulary?: { id?: string; label?: string }[] } | null) => {
+        const w = b?.vocabulary?.find((x) => x?.id === "piano_playing")?.label;
+        if (w) setLabel(w);
+      })
+      .catch(() => {
+        /* the usual label */
+      });
+    return () => ac.abort();
+  }, [api, enabled]);
+  return label;
+}
+
+/** The lamps in a word for the top line: following the music, on, or off (null: no lamps). */
+function lampsWord(view: FixturesView | null, status: RoomStatus | null): string | null {
+  const lamps = view?.enabled ? view.fixtures.filter((f) => f.kind === "hue") : [];
+  if (!lamps.length) return null;
+  if (lightsFollow(view, status)) return "lights follow the music";
+  return lamps.some((f) => f.status === "house" || f.light?.on) ? "lights on" : "lights off";
+}
+
 /** One section of the page: a room (its screens, then its lights and effects), or "Other". */
 interface Section {
   key: string;
@@ -144,8 +210,8 @@ function buildSections(status: RoomStatus | null, lampIds: string[] | null): Sec
 
 export default function RoomPage() {
   usePageTitle("Room · screen/machine");
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [baseUrl, setBaseUrl] = useState(() => resolveRoomUrl(window.location.search));
+  const [searchParams] = useSearchParams();
+  const [baseUrl] = useState(() => resolveRoomUrl(window.location.search));
   // The saved token only goes to the server it was entered for (see loadToken).
   // URL and token always change together, in one render, so a token never reaches a server it wasn't meant for.
   const [saved, setSaved] = useState(() => loadToken(baseUrl));
@@ -175,26 +241,7 @@ export default function RoomPage() {
     [baseUrl, reconnect],
   );
 
-  const changeUrl = useCallback(
-    (url: string | null) => {
-      storageSet(URL_KEY, url);
-      // Keep ?room= in step, since it wins over the remembered URL on reload.
-      const next = new URLSearchParams(searchParams);
-      if (url) next.set("room", url);
-      else next.delete("room");
-      setSearchParams(next, { replace: true });
-      const nextUrl = resolveRoomUrl(next.toString() ? `?${next.toString()}` : "");
-      setBaseUrl(nextUrl);
-      setSaved(loadToken(nextUrl));
-    },
-    [searchParams, setSearchParams],
-  );
-
   const openMenu = useCallback(() => setMenuOpen(true), []);
-  const openToken = useCallback(() => {
-    setMenuOpen(false);
-    setTokenOpen(true);
-  }, []);
 
   const screens = Object.entries(status?.screens ?? {});
   // One fixtures poll for every room's lights.
@@ -237,6 +284,13 @@ export default function RoomPage() {
   const focusScreen = searchParams.get("screen")?.trim() || null;
   const laidOut = !!status && (room.modes !== null || !!room.modesError);
   const unknownFocus = !!focusScreen && !!status && !(focusScreen in (status.screens ?? {}));
+  // "Whole room ›": the same page without ?screen= (anything else in the address stays)
+  const wholeRoomHref = useMemo(() => {
+    const q = new URLSearchParams(searchParams);
+    q.delete("screen");
+    const qs = q.toString();
+    return `/room${qs ? `?${qs}` : ""}`;
+  }, [searchParams]);
   const scrolledTo = useRef<string | null>(null);
   useEffect(() => {
     if (!focusScreen || !laidOut || scrolledTo.current === focusScreen) return;
@@ -264,15 +318,86 @@ export default function RoomPage() {
       })
       .filter(Boolean)
       .join(", ") || "No screens set up";
-  const lampCount = lampIds?.length ?? null;
-  const lightsSummary =
-    lampCount === null
-      ? "Finding the lamps…"
-      : lampCount > 0
-        ? `${lampCount} lamp${lampCount === 1 ? "" : "s"}${fixtures.view?.artnet?.online ? " follow the music" : ""}`
-        : lightGroups.some((sec) => sec.effects.length > 0)
-          ? "Room effects"
-          : "No lamps";
+  const pianoSummary =
+    [pianoLinked === false ? "Not connected" : null, pianoLine].filter(Boolean).join(" · ") || (pianoLinked ? "Connected" : "Piano");
+  // From the lights' real states (owner's walk, 24 Oct: it said "4 lamps follow the music" while all four were off).
+  const lightsSummary = lightsWords(fixtures.view, fixtures.missing, status, lightGroups.some((sec) => sec.effects.length > 0));
+  const lampsFollow = lightsFollow(fixtures.view, status);
+
+  // ── What the room is doing, in one line at the top (ia, 24 Oct: "is anything on?" without opening anything) ──
+  const modeLabel = (id: string | null | undefined) => (id ? room.modes?.[id]?.label || friendlyName(id) : null);
+  const liveIds = orderedScreens.filter((id) => {
+    const o = status?.screens?.[id]?.observed;
+    return ["live", "entering"].includes(o?.phase ?? "") || o?.layer === "live";
+  });
+  const screensWord = (() => {
+    const n = orderedScreens.length;
+    if (!n) return null;
+    const all = n === 1 ? "the screen" : n === 2 ? "both screens" : `all ${n} screens`;
+    if (!liveIds.length) return `art on ${all}`;
+    if (liveIds.length === n) return `live on ${all}`;
+    const nameOf = (id: string) => shortScreenNames[orderedScreens.indexOf(id)] ?? friendlyName(id);
+    return `${andList(liveIds.map(nameOf))} live · art on ${andList(orderedScreens.filter((id) => !liveIds.includes(id)).map(nameOf))}`;
+  })();
+  const recorder = useRecorder(room.api.baseUrl);
+  const player = useAppPlayer(room.api.baseUrl);
+  const pv = player?.view ?? null;
+  const sonosPlaying = Object.entries(
+    ((status?.subsystems as Record<string, { believed?: unknown }> | undefined)?.sonos?.believed as Record<string, unknown> | undefined) ?? {},
+  ).some(([k, v]) => k.endsWith(".playback") && v === "playing");
+  const musicWord = recorder.recording
+    ? "recording the piano"
+    : pv?.current && PLAYER_BUSY.includes(pv.state)
+      ? `playing ${pv.current.title}`
+      : pv?.current && pv.state === "paused"
+        ? `paused: ${pv.current.title}`
+        : sonosPlaying
+          ? "music playing"
+          : "nothing playing";
+  const target = status?.mode?.target ?? null;
+  const roomLine = [
+    target && target !== status?.mode?.current ? `Switching to ${modeLabel(target)}` : modeLabel(status?.mode?.current),
+    screensWord,
+    lampsWord(fixtures.view, status),
+    musicWord,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  // ── Look: whether anything shows the look now, and the modes it shows in (read from the modes, never named here) ──
+  const nothingFollows = !anyLive && !lampsFollow;
+  const lookModes = Object.entries(room.modes ?? {})
+    .filter(([, def]) => onRoomPage(def) && (modeShows(def).screens || modeShows(def).lamps))
+    .map(([id, def]) => def.label || friendlyName(id));
+  const nothingLine = `Nothing follows the look right now.${lookModes.length ? ` It shows in ${andList(lookModes)}.` : ""}`;
+
+  // ── Folds that open with the room's state (ia, 24 Oct); the person's taps are remembered after that ──
+  const autoRules = useAutoRules(room.api, 60_000, !!status);
+  const pianoWord = usePianoWord(room.api, !!status);
+  const pianoModes = useMemo(
+    () => new Set((autoRules ?? []).filter((r) => !!r.enter && r.enter.includes(pianoWord)).map((r) => r.mode)),
+    [autoRules, pianoWord],
+  );
+  const current = status?.mode?.current ?? null;
+  const seenMode = useRef<string | null>(null);
+  useEffect(() => {
+    if (!current || !room.modes) return;
+    if (seenMode.current === null) {
+      seenMode.current = current; // the mode the page opened in: the folds stay as remembered
+      return;
+    }
+    if (seenMode.current === current) return;
+    seenMode.current = current;
+    const shows = modeShows(room.modes[current]);
+    setFold("look", shows.screens);
+    setFold("lights", shows.lamps && !shows.screens);
+    setFold("piano", pianoModes.has(current) || recorder.recording);
+  }, [current, room.modes, pianoModes, recorder.recording]);
+  const wasRecording = useRef(recorder.recording);
+  useEffect(() => {
+    if (recorder.recording && !wasRecording.current) setFold("piano", true);
+    wasRecording.current = recorder.recording;
+  }, [recorder.recording]);
 
   const screenCard = (id: string, scope?: LookScope | null, roomId?: string) => {
     const sc = status?.screens?.[id];
@@ -320,7 +445,14 @@ export default function RoomPage() {
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
-        <Header link={link} onMenu={openMenu} screen={focusScreen} toggles={status ? toggles : undefined} onDetails={openListening} pc={pc} />
+        <Header
+          link={link}
+          onMenu={openMenu}
+          screen={focusScreen && !unknownFocus ? focusScreen : null}
+          toggles={status ? toggles : undefined}
+          onDetails={openListening}
+          pc={pc}
+        />
 
         <main className="space-y-5 pt-1">
           {conn.authRequired && !tokenOpen && (
@@ -356,6 +488,10 @@ export default function RoomPage() {
 
           {status ? (
             <>
+              <p className="px-1 text-base leading-snug text-stone-700" data-testid="room-line" role="status">
+                {roomLine}
+              </p>
+
               <section aria-labelledby="room-modes">
                 <h2 id="room-modes" className={H2}>
                   Mode
@@ -363,7 +499,7 @@ export default function RoomPage() {
                 {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
                     determines them after all") */}
                 <div className="mb-3">
-                  <AutoRow api={room.api} feed={show} addLog={room.addLog} />
+                  <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={setEditing} current={status.mode?.current} />
                 </div>
                 <ModeSwitcher
                   api={room.api}
@@ -404,27 +540,50 @@ export default function RoomPage() {
                         <Section
                           id="look"
                           title="Look"
-                          summary={[director.summary, byHand ? "scenes picked by you" : null].filter(Boolean).join(" · ")}
+                          summary={
+                            nothingFollows
+                              ? "Nothing follows the look right now"
+                              : [director.summary, byHand ? "scenes picked by you" : null].filter(Boolean).join(" · ")
+                          }
                           defaultOpen={anyLive}
+                          foot={
+                            <>
+                              <Link to={settingsUrl("look")} className={FOOT_LINK}>
+                                Look settings <ChevronRight className="h-4 w-4" aria-hidden />
+                              </Link>
+                              <a href={rendererConsoleUrl()} target="_blank" rel="noopener noreferrer" className={FOOT_LINK}>
+                                Scene library <ChevronRight className="h-4 w-4" aria-hidden />
+                              </a>
+                            </>
+                          }
                         >
-                          <div className="px-1">
-                            <p className="text-base font-semibold leading-snug" data-testid="look-who">
-                              {director.line}
-                            </p>
-                            <p className="text-[15px] leading-snug text-muted-foreground">
-                              Your picks stay until you clear them or the mode changes.
-                            </p>
-                          </div>
+                          {/* the controls stay usable while nothing shows the look: a pick is kept for later */}
+                          <p className="px-1 text-base font-semibold leading-snug" data-testid="look-who">
+                            {nothingFollows ? nothingLine : director.line}
+                          </p>
                           <DirectorControls api={room.api} feed={show} addLog={room.addLog} />
                           {cards}
-                          {cards.length === 0 && liveSpecs.length > 0 && (
-                            <p className="px-1 text-[15px] leading-snug text-muted-foreground">
-                              Picking scenes and effects for the screens shows here while they're live.
-                            </p>
-                          )}
                         </Section>
 
-                        <Section id="screens" title="Screens" summary={screensSummary} forceOpen={!!focusScreen && !unknownFocus}>
+                        <Section
+                          id="screens"
+                          title="Screens"
+                          summary={screensSummary}
+                          forceOpen={focusScreen}
+                          foot={
+                            <Link to={settingsUrl("screens")} className={FOOT_LINK}>
+                              Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
+                            </Link>
+                          }
+                        >
+                          {focusScreen && !unknownFocus && (
+                            <p className="px-1 text-[15px] leading-snug text-stone-700" data-testid="screens-opened-for">
+                              Opened for {status.screens?.[focusScreen]?.name || friendlyName(focusScreen)} ·{" "}
+                              <Link to={wholeRoomHref} className="font-medium text-teal-800 underline-offset-4 hover:underline">
+                                Whole room ›
+                              </Link>
+                            </p>
+                          )}
                           {unknownFocus && (
                             <Notice tone="muted" className="text-base">
                               There's no screen called “{focusScreen}” in the room. Here are the ones it has.
@@ -461,11 +620,40 @@ export default function RoomPage() {
                   onChange={(what) => room.addLog({ type: "schedule", level: "info", summary: what })}
                 />
 
-                <Section id="listening" title="Listening" summary={listeningWords(showCard, pianoLinked)}>
-                  <ListeningPanel api={room.api} feed={show} now={now} addLog={room.addLog} onPiano={setPianoLinked} />
+                <Section
+                  id="listening"
+                  title="Listening"
+                  summary={listeningWords(showCard, pianoLinked)}
+                  foot={
+                    <Link to={settingsUrl("listening")} className={FOOT_LINK}>
+                      Listening settings <ChevronRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                  }
+                >
+                  <ListeningPanel api={room.api} feed={show} now={now} addLog={room.addLog} />
                 </Section>
 
-                <Section id="lights" title="Lights" summary={lightsSummary} hidden={sections.length > 0 && lightGroups.length === 0}>
+                <Section
+                  id="lights"
+                  title="Lights"
+                  summary={lightsSummary}
+                  hidden={sections.length > 0 && lightGroups.length === 0}
+                  action={
+                    // the setup page from the heading, not ~2,000 px down under the rows (owner, 24 Oct)
+                    <Link
+                      to="/lights"
+                      className="inline-flex min-h-11 items-center gap-0.5 rounded-xl px-2 text-[15px] font-medium text-teal-800 hover:bg-stone-100/70 hover:underline"
+                    >
+                      Set up lights <ChevronRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                  }
+                  foot={
+                    <Link to={settingsUrl("lights")} className={FOOT_LINK}>
+                      Light settings <ChevronRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                  }
+                >
+                  {(lampIds === null || lampIds.length > 0) && <RoomLightsRow api={room.api} feed={show} addLog={room.addLog} />}
                   {sections.length > 0 ? (
                     lightGroups.map((sec) => (
                       <div key={sec.key} className="space-y-3">
@@ -477,7 +665,7 @@ export default function RoomPage() {
                             reportError={room.reportError}
                             fixtures={fixtures}
                             only={sec.lights}
-                            title={lightGroups.length > 1 ? sec.title : "Lamps"}
+                            title={sec.title}
                             sub
                           />
                         )}
@@ -501,20 +689,25 @@ export default function RoomPage() {
                       addLog={room.addLog}
                       reportError={room.reportError}
                       fixtures={fixtures}
-                      title="Lamps"
+                      title="Lights"
                       sub
                     />
                   )}
-                  {/* the setup page is reached from here too, not only from the menu (owner, 24 Oct) */}
-                  <a
-                    href="/lights"
-                    className="inline-flex min-h-11 items-center gap-1 text-[15px] font-medium text-teal-800 underline-offset-4 hover:underline"
-                  >
-                    Set up lights ›
-                  </a>
                 </Section>
 
-                <Section id="piano" title="Piano" summary={pianoLine ?? undefined} hidden={pianoLine === null}>
+                {/* one Piano fold, always there (so /room#piano works): its keys and pedals, then Record and the
+                    recordings; Record is in its heading too, one tap with the fold closed */}
+                <Section
+                  id="piano"
+                  title="Piano"
+                  summary={pianoSummary}
+                  defaultOpen={recorder.recording}
+                  action={(open) => <RecordPill baseUrl={room.api.baseUrl} idle={!open} />}
+                >
+                  <PianoRow api={room.api} onConnected={setPianoLinked} className={cn(CARD_CLASS, "px-3 py-2 sm:px-4")} />
+                  {pianoLine === null && pianoLinked === null && (
+                    <p className="px-1 text-base text-muted-foreground">Nothing has come from the piano yet.</p>
+                  )}
                   <PianoCard
                     api={room.api}
                     connected={connected}
@@ -573,10 +766,6 @@ export default function RoomPage() {
         catalog={room.catalog}
         describe={describe}
         names={screenNames}
-        hasToken={!!token}
-        foreignToken={saved.foreign}
-        onChangeUrl={changeUrl}
-        onOpenToken={openToken}
         onRefresh={() => void room.refreshMeta()}
         log={room.log}
         statusCount={room.statusCount}
