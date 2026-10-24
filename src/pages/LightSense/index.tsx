@@ -17,6 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import dragDataPlugin from 'chartjs-plugin-dragdata';
+import { BackLink } from "@/components/nav/BackLink";
+import { roomPageUrl } from "@/components/room/roomLink";
+import { cn } from "@/lib/utils";
+import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 
 // Register ChartJS components
 ChartJS.register(
@@ -248,15 +252,21 @@ export default function LightSense() {
   };
 
   return (
-    <div className="container mx-auto p-8">
+    <div className={cn(THEME_CLASS, "min-h-screen bg-background text-foreground antialiased")}>
+      <RoomThemeStyle />
+      {/* a minimal header: the one way back (also in the iPad Home Screen app, which has no browser Back) */}
+      <header className="border-b border-border/70 bg-background/95 px-4 py-1 sm:px-8">
+        <BackLink to={roomPageUrl()} />
+      </header>
+    <div className="container mx-auto px-4 py-6 sm:p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-4">Light Sensor Settings</h1>
-        <div className="flex gap-4 mb-4">
+        <div className="flex flex-wrap gap-3 mb-4">
           <Select
             value={selectedSensor}
             onValueChange={setSelectedSensor}
           >
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Select sensor" />
             </SelectTrigger>
             <SelectContent>
@@ -271,7 +281,7 @@ export default function LightSense() {
             placeholder="Target group"
             value={targetGroup}
             onChange={(e) => setTargetGroup(e.target.value)}
-            className="w-[200px]"
+            className="w-full sm:w-[200px]"
           />
           <Button onClick={handleSave} disabled={!isEditing}>
             Save Changes
@@ -314,7 +324,7 @@ export default function LightSense() {
       {/* Intensity Curve */}
       <div className="mb-8">
         <h2 className="text-xl font-bold mb-4">Intensity Curve</h2>
-        <div className="bg-white p-4 rounded-lg shadow">
+        <div className="bg-white p-2 sm:p-4 rounded-lg shadow">
           <Line data={chartData} options={chartOptions} />
         </div>
       </div>
@@ -355,6 +365,7 @@ export default function LightSense() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 } 
