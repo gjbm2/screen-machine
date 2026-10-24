@@ -5,8 +5,9 @@
 // whole card, then RFC 7386 merge patches at 2 Hz, chip changes at once), with a 5 s poll while that socket is down.
 //   - Auto, the room-level one (it picks the mode by itself): its switch, its line, Resume, and the
 //     "Auto → Piano · the piano is playing · Undo" chip after a switch. Nothing else on the page is called "Auto".
-//   - Listening: the Room mic switch and its input, the piano's MIDI (connected, and each key as it arrives), then AI
-//     listening (short clips to an online AI). Both listening switches live here, together; the menu has no controls.
+//   - Listening: the room mic's state and its input, the piano's MIDI (connected, and each key as it arrives), then AI
+//     listening (short clips to an online AI: its cost and round trips). The two switches, Mic and AI, sit in the page's
+//     top bar (TopToggles.tsx, owner 24 Oct: "those are pretty central"); the menu has no controls.
 //   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar;
 //     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
 //   - Calmer · Wilder, the palette, Next look · Keep this look · House lights.
@@ -306,7 +307,7 @@ function failWords(e: unknown): string {
   return "That didn't go through; try again in a moment.";
 }
 
-interface Note {
+export interface Note {
   tone: Tone;
   text: string;
 }
@@ -316,7 +317,7 @@ interface Note {
  * on the card), and one plain line afterwards. `latest`: a newer tap on the same control replaces an older one still
  * trying (a palette pick, a switch). Resolves true when it landed, false when it gave up, undefined when replaced.
  */
-function useSend(feed: ShowFeed, addLog: (e: NewLogEntry) => void) {
+export function useSend(feed: ShowFeed, addLog: (e: NewLogEntry) => void) {
   const [busy, setBusy] = useState<Record<string, number>>({});
   const [note, setNote] = useState<Note | null>(null);
   const gen = useRef<Record<string, number>>({});
@@ -378,7 +379,7 @@ function useSend(feed: ShowFeed, addLog: (e: NewLogEntry) => void) {
   return { send, busy: isBusy, note };
 }
 
-function NoteLine({ note, className }: { note: Note | null; className?: string }) {
+export function NoteLine({ note, className }: { note: Note | null; className?: string }) {
   if (!note) return null;
   return (
     <p role="status" className={cn("text-sm leading-snug", TEXT_CLASSES[note.tone], className)}>
@@ -491,6 +492,48 @@ export function directorWords(card: ShowCard | null, answering: boolean): { line
   const line = [yours ? "Your picks are on" : "Director is choosing", palette, follows].filter(Boolean).join(" · ");
   const summary = [yours ? "Your picks" : "Director choosing", palette].filter(Boolean).join(" · ");
   return { line, summary };
+}
+
+/** The room mic in words. `allowed`: the switch (on = the room may use the mic, owner 17 Oct; off always wins).
+ *  `line`: whether it's in use right now and for what ("In use · for Auto"); `listening`: in use now (the red dot). */
+export function micWords(mic: ShowMicState | null | undefined, pendingMute: boolean | null = null) {
+  const allowed = !(pendingMute ?? mic?.muted === true);
+  const listening = !!mic?.on && allowed;
+  const line = !mic
+    ? null
+    : listening
+      ? `In use · ${
+          (mic.claims ?? [])
+            .map((c) =>
+              c.by === "auto"
+                ? "for Auto"
+                : c.by === "listening"
+                  ? "for AI listening"
+                  : `${c.label || mic.mode || "this mode"} follows the music`,
+            )
+            .join(" · ") || "for the room"
+        }`
+      : !allowed
+        ? "Off"
+        : mic.wanted
+          ? "Not in use · waiting for the mic"
+          : "Not in use · nothing needs it right now";
+  return { allowed, listening, line };
+}
+
+/** AI listening in words: `state` ("Listening", or show_service's words for a pause), `about` (what it does, while
+ *  off), and `cost` (show_service's own numbers, shown on or off so the price is there before switching on). */
+export function aiWords(l: ShowCard["listening"] | null | undefined, on: boolean) {
+  const about = `Lets an online AI${l?.provider ? ` (${l.provider})` : ""} listen to the music and foresee what's coming (a chorus, a climax, the end), so the screens and lights change on time`;
+  const state = !on ? null : l?.effective ? "Listening" : l?.why ? l.why.replace(/\.+$/, "") : "Not sending right now";
+  const money = (v: number) => `$${v.toFixed(2)}`;
+  const cost = [
+    typeof l?.est_evening_usd === "number" ? `about ${money(l.est_evening_usd)} an evening` : null,
+    typeof l?.spend_today_usd === "number" ? `${money(l.spend_today_usd)} so far today` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { about, state, cost };
 }
 
 /** Listening's closed summary: "Piano · room mic · AI off". `piano`: the piano's MIDI is connected (PianoRow). */
@@ -816,9 +859,9 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
 }
 
 /**
- * Listening, all in one place: the room mic (on = the room may use it; heard here, on PC22) with its input, the
- * piano's MIDI, AI listening (short clips to an online AI), then what it hears and the levels. Neither switch is
- * anywhere else. `onPiano`: told whether the piano's MIDI is connected (for the fold's summary).
+ * Listening, all in one place: the room mic (whether it's in use, and for what; heard here, on PC22) with its input,
+ * the piano's MIDI, AI listening (short clips to an online AI: cost and round trips), then what it hears and the
+ * levels. The Mic and AI switches are the top bar's (TopToggles.tsx), nowhere else. `onPiano`: told whether the piano's MIDI is connected (for the fold's summary).
  */
 export function ListeningPanel({
   api,
@@ -836,53 +879,19 @@ export function ListeningPanel({
 }) {
   const { card, live, lastAt } = useShowState(feed);
   const answering = !!card && (live || (lastAt !== null && now - lastAt < FRESH_MS));
-  const [pendingMute, setPendingMute] = useState<boolean | null>(null);
-  const micSend = useSend(feed, addLog);
   const hearing = card?.hearing;
   const vibeLabel = card?.vibe?.label || null;
 
-  // ── The mic: on only while something needs it (Auto, or a mode that follows the music). The owner's switch reads in
-  // the same sense as Auto (17 Oct): on = the room may listen; off always wins. ──
+  // ── The mic: on only while something needs it (Auto, or a mode that follows the music). Its switch is the top bar's
+  // Mic (on = the room may listen; off always wins); here, whether it's in use right now, and for what. ──
   const mic = card?.mic_state ?? null;
-  const micAllowed = !(pendingMute ?? mic?.muted === true);
+  const { allowed: micAllowed, listening: micListening, line: micLine } = micWords(mic);
   const claimWords = (mic?.claims ?? []).map((c) => (c.by === "auto" ? "Auto" : c.label || mic?.mode || "This mode"));
-  const micListening = !!mic?.on && micAllowed;
-  // The switch says whether the room may use the mic; this line says whether it's in use right now, and for what.
-  const micLine = !mic
-    ? null
-    : micListening
-      ? `In use · ${
-          (mic.claims ?? [])
-            .map((c) =>
-              c.by === "auto"
-                ? "for Auto"
-                : c.by === "listening"
-                  ? "for AI listening"
-                  : `${c.label || mic.mode || "this mode"} follows the music`,
-            )
-            .join(" · ") || "for the room"
-        }`
-      : !micAllowed
-        ? "Off"
-        : mic.wanted
-          ? "Not in use · waiting for the mic"
-          : "Not in use · nothing needs it right now";
-  // Off here while something wants it: say who loses the room's sound.
+  // Off while something wants it: say who loses the room's sound.
   const micMissed =
     mic && !micAllowed && (mic.wanted || claimWords.length || card?.auto?.on === true)
       ? `${claimWords.length ? claimWords.join(" and ") : "Auto"} can't hear the room. It still sees the piano and Sonos.`
       : null;
-  const setMicAllowed = (on: boolean) => {
-    setPendingMute(!on);
-    void micSend
-      .send("mic", on ? "Mic on" : "Mic off", () => api.showSetMuted(!on), {
-        latest: true,
-        ok: (r) => {
-          if (isObj(r)) feed.patch({ mic_state: r as ShowMicState });
-        },
-      })
-      .then((r) => r !== undefined && setPendingMute(null));
-  };
 
   const level = answering ? clamp01(hearing?.level) : 0;
   // The live input meter: show_service's per-packet levels (WS /v1/levels), beside the card's own socket.
@@ -893,11 +902,9 @@ export function ListeningPanel({
       <div className="space-y-3 border-b border-stone-100 pb-3" data-testid="music-listening">
         {mic && (
           <div className="space-y-1">
-            <div className="flex min-h-11 items-center gap-3">
-              <p className="min-w-0 flex-1 text-base font-semibold leading-snug">Room mic</p>
-              {micSend.busy("mic") && <Spinner className="shrink-0" />}
-              <Switch aria-label="Room mic" checked={micAllowed} onCheckedChange={setMicAllowed} />
-            </div>
+            <p className="text-base font-semibold leading-snug">
+              Room mic <span className="text-sm font-normal text-muted-foreground">· switch it with Mic at the top</span>
+            </p>
             <div className="flex items-center gap-2">
               <span
                 aria-hidden
@@ -908,12 +915,11 @@ export function ListeningPanel({
               </p>
             </div>
             {micMissed && <p className="text-sm leading-snug text-amber-800">{micMissed}</p>}
-            <NoteLine note={micSend.note} />
             <MicPicker api={api} />
           </div>
         )}
         <PianoRow api={api} onConnected={onPiano} />
-        <IdentifyMusicRow api={api} feed={feed} addLog={addLog} />
+        <AiListeningRow api={api} feed={feed} />
       </div>
 
       {/* What it hears */}
@@ -1007,56 +1013,29 @@ function AiHears({ listening }: { listening: ShowCard["listening"] }) {
   );
 }
 
-/** The online AI switch (§7.5, the card's listening block, under the room mic): with it off, no sound leaves the house;
- *  the buttons and Describe it carry on. */
-function IdentifyMusicRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; addLog: (e: NewLogEntry) => void }) {
+/** AI listening (§7.5, the card's listening block, under the room mic): what it's doing, what it costs, and each round
+ *  trip. Its switch is the top bar's AI (with it off, no sound leaves the house; the buttons and Describe it carry on). */
+function AiListeningRow({ api, feed }: { api: RoomApi; feed: ShowFeed }) {
   const { card } = useShowState(feed);
-  const { send, busy, note } = useSend(feed, addLog);
-  const [pending, setPending] = useState<boolean | null>(null);
   const l = card?.listening;
-  const on = pending ?? !!l?.on;
+  const on = !!l?.on;
+  const { about, state, cost } = aiWords(l, on);
   // Owner, 21 Oct: on = it sends; the line just says Listening, or show_service's own words for a pause.
-  const sub = !card
-    ? "The music side isn't answering yet."
-    : !on || pending !== null
-      ? `Lets an online AI${l?.provider ? ` (${l.provider})` : ""} listen to the music and foresee what's coming (a chorus, a climax, the end), so the screens and lights change on time`
-      : l?.effective
-        ? "Listening"
-        : (l?.why ? l.why.replace(/\.+$/, "") : "Not sending right now");
-  // What it costs (owner, 17 Oct: "guide the user to the fact that this is going to run up the bills"), shown whether
-  // it's on or off, so the price is there before switching on. Both numbers are show_service's; none is made up here.
-  const money = (v: number) => `$${v.toFixed(2)}`;
-  const cost = [
-    typeof l?.est_evening_usd === "number" ? `about ${money(l.est_evening_usd)} an evening` : null,
-    typeof l?.spend_today_usd === "number" ? `${money(l.spend_today_usd)} so far today` : null,
-  ].filter(Boolean).join(" · ");
-  const set = (v: boolean) => {
-    setPending(v);
-    void send("listening", v ? "AI listening on" : "AI listening off", () => api.showListening(v), {
-      latest: true,
-      ok: (r) => {
-        if (r && typeof r.on === "boolean") feed.patch({ listening: { ...l, on: r.on, effective: !!r.effective, why: r.why ?? null } });
-      },
-    }).then((r) => r !== undefined && setPending(null));
-  };
+  const sub = !card ? "The music side isn't answering yet." : (state ?? about);
   return (
     <div className="space-y-1" data-testid="music-identify">
-      <label className="flex min-h-11 items-center justify-between gap-3">
-        <span className="min-w-0">
-          <span className="block text-base font-semibold leading-snug">AI listening</span>
-          <span className="block text-sm leading-snug text-muted-foreground">{sub}</span>
-          {cost && (
-            <span className="block text-sm leading-snug text-amber-800" data-testid="music-identify-cost">
-              {cost}
-            </span>
-          )}
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {busy("listening") && <Spinner />}
-          <Switch aria-label="AI listening" checked={on} onCheckedChange={set} />
-        </span>
-      </label>
-      <NoteLine note={note} />
+      <div className="min-h-11">
+        <p className="text-base font-semibold leading-snug">
+          AI listening{" "}
+          <span className="text-sm font-normal text-muted-foreground">· {on ? "On" : "Off"} · switch it with AI at the top</span>
+        </p>
+        <p className="text-sm leading-snug text-muted-foreground">{sub}</p>
+        {cost && (
+          <p className="text-sm leading-snug text-amber-800" data-testid="music-identify-cost">
+            {cost}
+          </p>
+        )}
+      </div>
       {on && <ListenRounds rounds={l?.history} base={api.baseUrl} />}
     </div>
   );

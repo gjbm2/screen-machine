@@ -25,6 +25,8 @@ import { loadToken, resolveRoomUrl, RoomApi, storageGet, storageSet } from "@/pa
 import { Dot, Unroll } from "@/pages/Room/bits";
 import { TestShowSection } from "@/pages/Room/TestShow";
 import { ListenHere } from "@/pages/Room/ListenHere";
+import { useShowFeed } from "@/pages/Room/MusicCard";
+import { TopToggleButtons, TopToggleLine, useTopToggles } from "@/pages/Room/TopToggles";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import type { Tone } from "@/pages/Room/tones";
 import { MusicApi } from "./api";
@@ -92,6 +94,9 @@ export default function MusicPage() {
   const [visited, setVisited] = useState<MusicTab[]>(() => [storedTab()]);
   const [openPl, setOpenPl] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The top bar's Mic and AI switches, as on /room (owner, 24 Oct); their details are in the Room page's Listening.
+  const showFeed = useShowFeed(roomApi, true, noop);
+  const toggles = useTopToggles(roomApi, showFeed, noop);
   const [params, setParams] = useSearchParams();
   const scoreId = params.get(SCORE_PARAM);
   const location = useLocation();
@@ -124,6 +129,8 @@ export default function MusicPage() {
     if (scoreId && !was) window.scrollTo(0, 0);
     else if (!scoreId && was) window.scrollTo(0, lastY.current);
   }, [scoreId]);
+
+  const toListening = useCallback(() => navigate("/room#listening"), [navigate]);
 
   const setTab = useCallback((t: MusicTab) => {
     setTabState(t);
@@ -170,7 +177,9 @@ export default function MusicPage() {
           <header className="pb-1 pt-3">
             <div className="flex items-center gap-1">
               <h1 className="mr-auto text-[28px] font-semibold leading-tight tracking-tight">Music</h1>
-              <span className={PILL} data-testid="music-link">
+              <TopToggleButtons t={toggles} onDetails={toListening} />
+              {/* at phone width, while all is well, "Connected" is just a dot on the menu button */}
+              <span className={cn(PILL, link.tone === "ok" && "max-sm:hidden")} data-testid="music-link">
                 <Dot tone={link.tone} pulse={link.tone === "warn"} className="h-2.5 w-2.5" />
                 {link.word}
               </span>
@@ -178,13 +187,15 @@ export default function MusicPage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setMenuOpen(true)}
-                aria-label="Menu"
+                aria-label={link.tone === "ok" ? "Menu (connected)" : "Menu"}
                 data-testid="menu-button"
-                className="-mr-2 h-11 w-11 rounded-full hover:bg-stone-200/60 [&_svg]:size-6"
+                className="relative -mr-2 h-11 w-11 shrink-0 rounded-full hover:bg-stone-200/60 [&_svg]:size-6"
               >
                 <Menu />
+                {link.tone === "ok" && <Dot tone={link.tone} className="absolute right-1.5 top-2 h-2.5 w-2.5 ring-2 ring-background sm:hidden" />}
               </Button>
             </div>
+            <TopToggleLine t={toggles} onDetails={toListening} />
             <nav aria-label="Back" className="flex flex-wrap items-center gap-x-1 text-[15px]">
               <Link to="/room" className="group grid h-11 place-items-center rounded-full px-0.5 focus-visible:outline-none">
                 <span className={cn(PILL, "group-hover:bg-stone-50 group-focus-visible:ring-2 group-focus-visible:ring-ring")}>
