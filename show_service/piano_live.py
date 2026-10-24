@@ -22,7 +22,8 @@ output ("as well as the speakers").  A stream that names no device (an older pag
 Warm: while the output is a device, its sound is started even before the device connects (so Play doesn't wait for
 the instrument to load), and kept WARM_S after its last listener leaves; otherwise LINGER_S. A warm sound that
 lapses with nobody listening stays off (it was restarted every WARM_S, forever, while nobody listened) until
-something says someone is there: the device connects or names itself, or the output is chosen again.
+something says someone is there: the device connects or names itself, or the output is chosen again; or something
+plays (a note on, or a piece starting), which also keeps it warm while it plays.
 
 One synth process per instrument with listeners (sm-piano's python, nice 5, its own memory cap: stream.py's
 prepare_process), started by the first and stopped LINGER_S after the last leaves; every listener of it shares its
@@ -123,6 +124,8 @@ class PianoLive:
         self.devices: dict[str, dict] = self._load_devices()
         self._gate_task: Optional[asyncio.Task] = None
         self._cooled: Optional[tuple] = None             # (device, instrument) whose warm lapsed unheard: not re-warmed
+        self._cooled_at = 0.0                            # when it lapsed (a note after that warms it again)
+        self._played = 0.0                               # the last note on (show-rx's monotonic clock)
 
     # -- where it's heard ----------------------------------------------------------------------------------------
     def _output(self) -> Optional[str]:
@@ -178,6 +181,8 @@ class PianoLive:
                 inst = self._instrument_for(target) if target is not None else None
                 if self._cooled is not None and self._cooled != (target, inst):
                     self._cooled = None                  # the output moved: choosing the device again warms it
+                elif self._cooled is not None and (self._played > self._cooled_at or self._playing()):
+                    self._cooled = None                  # something plays: warm again
                 if target is not None and self._cooled is None:
                     if inst is not None and inst not in self.synths and len(self.synths) < MAX_SYNTHS \
                             and PYTHON.exists():
@@ -193,6 +198,11 @@ class PianoLive:
     def _gate_soon(self) -> None:
         if self.output_fn is not None and (self._gate_task is None or self._gate_task.done()):
             self._gate_task = asyncio.get_running_loop().create_task(self._gate())
+
+    def _playing(self) -> bool:
+        """A piece starting or playing (the test piano / the player), for the warm sound."""
+        pos = self._pos()
+        return bool(pos) and pos.get("state") in ("starting", "preparing", "playing")
 
     def _reap_soon(self) -> None:
         if self._reaper is None or self._reaper.done():
@@ -254,11 +264,15 @@ class PianoLive:
 
     # -- the notes (show-rx thread) ------------------------------------------------------------------------------
     def on_midi(self, stream: str, msg: Any, arrival_s: float, to_host: Callable[[int], float]) -> None:
-        feeds = self._feeds
-        if not feeds:
-            return
         ev = getattr(msg, "ev", None)
         if not ev:
+            return
+        for _t, status, _d1, d2 in ev:
+            if status & 0xF0 == 0x90 and d2:
+                self._played = time.monotonic()          # something plays: the warm sound is wanted (the gate)
+                break
+        feeds = self._feeds
+        if not feeds:
             return
         lines = []
         for t_ns, status, d1, d2 in ev:
@@ -459,14 +473,15 @@ class PianoLive:
                     s.last_client = now
                     continue
                 warm = target is not None and s.instrument == self._instrument_for(target)
-                until = (max(s.last_client, s.started) + WARM_S) if warm else None
+                busy = now if warm and self._playing() else max(s.last_client, s.started, self._played)
+                until = (busy + WARM_S) if warm else None
                 if s.stop_at is None or (warm and s.stop_at < until):
                     s.stop_at = until if warm else now + LINGER_S
                 elif not warm and s.stop_at > now + LINGER_S:
                     s.stop_at = now + LINGER_S           # no longer the output: the short linger
                 if now >= s.stop_at:
                     if warm:                             # nobody came in WARM_S: don't start it again until they do
-                        self._cooled = (target, s.instrument)
+                        self._cooled, self._cooled_at = (target, s.instrument), now
                         log.info("piano live: %s warm for %s lapsed unheard; off until it's wanted", s.instrument,
                                  target)
                     await self._stop(s)

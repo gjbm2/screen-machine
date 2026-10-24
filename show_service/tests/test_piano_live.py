@@ -294,3 +294,57 @@ def test_a_warm_sound_nobody_hears_stays_off(tmp_path: pathlib.Path, monkeypatch
             await live._stop(live.synths["concert-d"])
 
     asyncio.run(go())
+
+
+def test_a_cooled_sound_warms_again_when_something_plays(tmp_path: pathlib.Path, monkeypatch) -> None:
+    """Cooled (its warm lapsed unheard): a note on, or a piece starting, on the device's output warms it again, and
+    a piece playing keeps it warm."""
+    from types import SimpleNamespace
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    fake = tmp_path / "fake.py"
+    fake.write_text(FAKE.format(py=sys.executable, log=str(tmp_path / "stdin.log")))
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr(piano_live, "PYTHON", fake)
+    monkeypatch.setattr(piano_live, "GATE_S", 0.05)
+    monkeypatch.setattr(piano_live, "WARM_S", 0.5)
+    insts = tmp_path / "instruments.json"
+    insts.write_text(json.dumps({"default": "concert-d", "instruments": {"concert-d": {}}}))
+    monkeypatch.setattr(piano_live, "INSTRUMENTS", insts)
+    pos: list = [None]
+    live = piano_live.PianoLive(output_fn=lambda: "device:ipad-1", devices_file=tmp_path / "devices.json",
+                                pos_fn=lambda: pos[0])
+    live.register("ipad-1", "iPad")
+
+    async def until(cond, limit: float = 6.0) -> bool:
+        t0 = time.monotonic()
+        while not cond() and time.monotonic() - t0 < limit:
+            await asyncio.sleep(0.05)
+        return cond()
+
+    async def go():
+        app = web.Application()
+        live.routes(app)
+        async with TestClient(TestServer(app, host="127.0.0.1", port=0)) as cl:
+            await cl.get("/api/v1/piano/devices")
+            assert await until(lambda: "concert-d" in live.synths)
+            assert await until(lambda: not live.synths and live._cooled is not None)
+            await asyncio.sleep(0.5)
+            assert not live.synths                                     # cooled: stays off
+            live.on_midi("piano", SimpleNamespace(ev=[(0, 0x80, 60, 0)]), time.monotonic(), lambda t: 0.0)
+            await asyncio.sleep(0.5)
+            assert not live.synths                                     # a note off isn't playing
+            live.on_midi("piano", SimpleNamespace(ev=[(0, 0x90, 60, 80)]), time.monotonic(), lambda t: 0.0)
+            assert await until(lambda: "concert-d" in live.synths)     # a note: warm again
+            assert await until(lambda: not live.synths and live._cooled is not None)
+            pos[0] = {"piece": "x", "pos_s": 0.0, "at": time.monotonic(), "speed": 1.0, "state": "starting"}
+            assert await until(lambda: "concert-d" in live.synths)     # a piece starting: warm again
+            pos[0] = {**pos[0], "state": "playing"}
+            await asyncio.sleep(1.5)
+            assert "concert-d" in live.synths                          # kept warm while it plays (WARM_S 0.5)
+            pos[0] = None
+            assert await until(lambda: not live.synths)                # stopped: lapses again
+            await asyncio.sleep(0.5)
+            assert not live.synths
+
+    asyncio.run(go())
