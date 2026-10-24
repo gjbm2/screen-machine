@@ -310,6 +310,8 @@ class Session(EngineListener):
         self.prev_spec: Optional[SceneSpec] = None        # the one before it: a slow scene's recovery target
         self.director.vet = self.fx_director.vet = self.room_ok
         self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
+        self.director.listens = self._source_listens      # a notes scene with no MIDI: nearly never picked
+        self.director.notes_age = self._notes_age
         self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
         self.fx_director.looks = fx_interplay.shared(self.mgr.presets.dir)   # scenes and effects together
         self.fx_director.scene = lambda: (self.current_name, self.mgr.presets.scenes.get(self.current_name or ""))
@@ -415,6 +417,15 @@ class Session(EngineListener):
         except (TypeError, ValueError):
             bpb = 4
         return g[1], bpb
+
+    def _source_listens(self, source: Optional[str]) -> tuple:
+        cls = self.mgr.registry.sources.get(source or "") if getattr(self.mgr, "registry", None) else None
+        return tuple(getattr(cls, "listens", ()) or ())
+
+    def _notes_age(self) -> Optional[float]:
+        """Seconds since this session's view last saw a note struck (piano.py), None if never."""
+        t = self.piano.played_t
+        return None if t is None else max(0.0, time.monotonic() - t)
 
     def _heard_now(self) -> dict:
         """{listens kind: 0..1} what there is to hear now (fx_interplay's listens): the piano's notes, and the
