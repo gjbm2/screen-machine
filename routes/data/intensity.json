@@ -1,7 +1,7 @@
 {
   "sensor_mappings": {
     "living-room": {
-      "target_group": "living-room",
+      "target_group": "drawing-room",
       "lux_to_intensity": [
         {"lux": 100, "intensity": 1.0},
         {"lux": 75, "intensity": 0.88},

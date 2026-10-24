@@ -35,26 +35,26 @@
               {
                 "action": "export_var",
                 "friendly_name": "A theme of the day",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "a_theme"
               },
               {
                 "action": "export_var",
                 "var_name": "b_theme",
                 "friendly_name": "B theme of the day",
-                "scope": "living-room"
+                "scope": "drawing-room"
               },
               {
                 "action": "export_var",
                 "friendly_name": "Style of the day",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "style"
               },
               {
                 "action": "export_var",
                 "var_name": "guidance",
                 "friendly_name": "Generator guidance",
-                "scope": "living-room"
+                "scope": "drawing-room"
               }
             ]
           }

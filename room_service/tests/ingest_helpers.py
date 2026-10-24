@@ -38,9 +38,9 @@ def write_light_config(tmp: Path, *, devtest_adjust: bool = True) -> dict[str, P
     (d / "intensity.json").write_text(json.dumps(mapping))
     icfg = {"lat": 51.5074, "lon": -0.1278, "east_west_bias": 0.25, "adjust": True}
     dests = [
-        {"id": "north-screen", "has_bucket": True, "groups": ["living-room", "home"], "intensity_cfg": icfg},
-        {"id": "south-screen", "has_bucket": True, "groups": ["living-room", "home"], "intensity_cfg": icfg},
-        {"id": "devtest", "has_bucket": True, "groups": ["living-room", "home"],
+        {"id": "north-screen", "has_bucket": True, "groups": ["drawing-room", "home"], "intensity_cfg": icfg},
+        {"id": "south-screen", "has_bucket": True, "groups": ["drawing-room", "home"], "intensity_cfg": icfg},
+        {"id": "devtest", "has_bucket": True, "groups": ["drawing-room", "home"],
          "intensity_cfg": ({**icfg} if devtest_adjust else {})},
         {"id": "the-beast", "has_bucket": True, "groups": ["work"], "intensity_cfg": {}},
     ]

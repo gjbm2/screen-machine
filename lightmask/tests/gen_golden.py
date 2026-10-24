@@ -114,7 +114,7 @@ REAL_DESTS = [strip_dest(d) for d in rutils._load_json_once("destination", "publ
 REAL_MAPPING = copy.deepcopy(rls.intensity_mapper.mapping_data)
 
 SYN_DESTS = REAL_DESTS + [
-    {"id": "syn-west", "has_bucket": True, "groups": ["living-room"],
+    {"id": "syn-west", "has_bucket": True, "groups": ["drawing-room"],
      "intensity_cfg": {"lat": 51.5074, "lon": -0.1278, "east_west_bias": -0.6, "day_stretch": 0, "adjust": True}},
     {"id": "syn-season", "has_bucket": True, "groups": ["hall-group"],
      "intensity_cfg": {"lat": 55.9533, "lon": -3.1883, "seasonality_factor": 0.5, "smoothstep": True,
@@ -122,11 +122,11 @@ SYN_DESTS = REAL_DESTS + [
                        "warmest_temp_K": 1800, "dusk_offset_deg": -4, "adjust": True}},
     {"id": "syn-nyc", "has_bucket": True, "groups": ["work"],
      "intensity_cfg": {"lat": "40.7128", "lon": "-74.0060", "east_west_bias": 1.0, "adjust": True}},
-    {"id": "syn-nobucket", "groups": ["living-room"],
+    {"id": "syn-nobucket", "groups": ["drawing-room"],
      "intensity_cfg": {"lat": 51.5074, "lon": -0.1278, "adjust": True}},
-    {"id": "syn-adjust-false", "has_bucket": True, "groups": ["living-room"],
+    {"id": "syn-adjust-false", "has_bucket": True, "groups": ["drawing-room"],
      "intensity_cfg": {"lat": 51.5074, "lon": -0.1278, "adjust": False, "night_floor": 0.5}},
-    {"id": "syn-sensor-id", "has_bucket": True, "groups": ["living-room"],
+    {"id": "syn-sensor-id", "has_bucket": True, "groups": ["drawing-room"],
      "intensity_cfg": {"lat": 50.0, "lon": 5.0, "smoothstep": 1, "east_west_bias": "0.3",
                        "coolest_temp_K": 5000, "adjust": True}},
 ]
