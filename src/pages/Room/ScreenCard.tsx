@@ -1,21 +1,25 @@
 // One screen, compact: what's on it (the art's thumbnail, or the live scene), a friendly name and what
-// it's doing in plain words, and the way to its tab in the generator. While
-// live, its core controls sit inline (scene, the basic settings, Back to art).
-// Everything else unrolls under "More": going live with a choice of scene,
-// transitions and quality, every setting, snapshots, and the technical details.
+// it's doing in plain words, the way to its tab in the generator, and its schedule ("Schedule" pill and what it is
+// doing: "New art every 2 h · next 20:04"). While showing art, the face has the scene chip and "Go live"; while
+// live, its core controls sit inline (scene, the basic settings, Back to art) with "Details on the screen".
+// Everything else unrolls under "More": the scene and picture (settings, transitions and quality), every live
+// setting, snapshots, the schedule's events, the technical details (where "Details on the screen" sits while the
+// screen shows art), and links to its settings and its TV page.
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { ArtThumb, GeneratorLink, usePublishedArt } from "@/components/room/ScreenArt";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { AppLink } from "@/components/nav/AppLink";
+import { displayUrl, schedulerUrl, settingsUrl } from "@/components/nav/appNav";
+import { ArtThumb, GeneratorLink, ScheduleLink, usePublishedArt } from "@/components/room/ScreenArt";
 import { EventsList, useRoomEvents } from "@/components/room/EventsList";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RoomApi } from "./api";
 import { Dot, Notice, Unroll } from "./bits";
-import { CoreControls, GoLivePanel, LiveSettingsPanel, type LiveBits } from "./LiveControls";
+import { CoreControls, GoLiveRow, LiveSettingsPanel, ScenePanel, type LiveBits } from "./LiveControls";
 import { hasFeature, LOOK_SCOPE_FEATURE, sceneInfo, type LookScope } from "./liveLib";
 import { ScreenDetails } from "./ScreenDetails";
-import { DetailsSwitch, LiveDetails } from "./LiveDetails";
+import { DetailsSwitch, LiveDetails, TransitionDetails } from "./LiveDetails";
 import { Snapshots } from "./Snapshots";
 import { CARD_CLASS } from "./theme";
 import { TEXT_CLASSES } from "./tones";
@@ -135,6 +139,8 @@ export const ScreenCard = memo(function ScreenCard({
   // switch wins and the mode's row reads "set by hand during the switch").
   const canStop = sc.canBackToArt || sc.busy === "back to art";
   const showCore = sc.liveNow || (canStop && (phase === "failed" || !!desiredLive));
+  // Showing art, with live allowed: going live is one tap on the face.
+  const showGoLive = !showCore && !sc.liveNow && !sc.alreadyLive && sc.liveDisabled !== "policy";
   const name = screen.name || friendlyName(screenId);
 
   return (
@@ -184,9 +190,13 @@ export const ScreenCard = memo(function ScreenCard({
         </CollapsibleTrigger>
 
         <GeneratorLink screenId={screenId} prompt={summary.live ? null : art?.prompt} />
-        <DetailsSwitch api={api} screenId={screenId} screen={screen} />
+        <ScheduleLink screenId={screenId} />
+        {sc.liveNow && <DetailsSwitch api={api} screenId={screenId} screen={screen} />}
 
         {showCore && <CoreControls screenId={screenId} sc={sc} live={sc.liveNow ? live : undefined} />}
+        {showGoLive && (
+          <GoLiveRow screenId={screenId} sc={sc} streamReachable={streamReachable} live={library ? { lib: library, api } : undefined} />
+        )}
         {sc.actionError && (
           <div className="px-4 pb-4">
             <Notice tone="bad">{sc.actionError}</Notice>
@@ -222,12 +232,7 @@ export const ScreenCard = memo(function ScreenCard({
             ) : sc.alreadyLive ? (
               <Notice tone="muted">This screen is on its way to live. Its settings appear here once it's live.</Notice>
             ) : (
-              <GoLivePanel
-                screenId={screenId}
-                sc={sc}
-                streamReachable={streamReachable}
-                live={library ? { lib: library, api } : undefined}
-              />
+              <ScenePanel screenId={screenId} sc={sc} />
             )}
 
             <Snapshots api={api} screenId={screenId} revs={snapRevs} exists={screen.snapshots} onError={reportError} />
@@ -235,9 +240,20 @@ export const ScreenCard = memo(function ScreenCard({
             {room && <ScreenEvents room={room} screenId={screenId} addLog={addLog} />}
 
             <Unroll title="Technical details" testId={`details-${screenId}`}>
+              {!sc.liveNow && <DetailsSwitch api={api} screenId={screenId} screen={screen} className="pb-3" />}
               <LiveDetails api={api} screenId={screenId} screen={screen} />
+              <TransitionDetails screenId={screenId} inSpec={sc.form.inSpec} outSpec={sc.form.outSpec} choices={sc.transitions} />
               <ScreenDetails screenId={screenId} screen={screen} scenes={sc.scenes} transitions={sc.transitions} />
             </Unroll>
+
+            <div className="flex flex-wrap gap-x-4">
+              <AppLink href={settingsUrl(`screen-${screenId}`)} state={{ from: "Room" }} className={cn(FOOT_LINK, "text-stone-600")}>
+                Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
+              </AppLink>
+              <AppLink href={displayUrl(screenId)} newTab className={cn(FOOT_LINK, "text-stone-600")}>
+                TV page <ChevronRight className="h-4 w-4" aria-hidden />
+              </AppLink>
+            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -245,7 +261,9 @@ export const ScreenCard = memo(function ScreenCard({
   );
 });
 
-/** The screen's schedule events (from its schedule, none named here), unrolled on request. */
+const FOOT_LINK = "inline-flex min-h-11 items-center gap-1 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:underline";
+
+/** The screen's schedule events (from its schedule, none named here), unrolled on request, and its schedule. */
 function ScreenEvents({ room, screenId, addLog }: { room: string; screenId: string; addLog: (e: NewLogEntry) => void }) {
   const events = useRoomEvents(room, screenId);
   if (!events?.length) return null;
@@ -257,6 +275,9 @@ function ScreenEvents({ room, screenId, addLog }: { room: string; screenId: stri
         className="px-1 pb-1"
         onSent={(ev) => addLog({ type: "schedule", screen: screenId, level: "info", summary: `${ev.label} sent to ${screenId}` })}
       />
+      <AppLink href={schedulerUrl(screenId)} state={{ from: "Room" }} className={FOOT_LINK}>
+        Edit this schedule <ChevronRight className="h-4 w-4" aria-hidden />
+      </AppLink>
     </Unroll>
   );
 }

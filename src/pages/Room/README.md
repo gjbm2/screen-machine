@@ -49,6 +49,12 @@ URLs, JSON or ids:
    truncates on a narrow phone. An art screen shows just "Showing art", even when its page
    isn't on room control or live is off for it: that only matters for going live, so it is
    explained under **More**.
+   - Under the name, every card has two pill rows: **In the generator** (the screen's tab, `/?publish=<id>`) with
+     the art's prompt, and **Schedule** (`/scheduler?destination=<id>`) with what its schedule is doing in words:
+     "New art every 2 h · next 20:04", "Schedule paused" or "No schedule running" (`useScreenSchedules.ts`: one
+     read of `GET /api/schedulers/all/status` for the page, again every 5 min while visible).
+   - An **art** screen (live allowed) has the scene chip and **Go live** on its face: tap the chip to choose
+     the scene, then Go live. Its settings, transitions and quality are under **More › Scene and picture**.
    - A **live** screen has its core controls inline (the live controls, below, when
      room_service has the live routes; otherwise a plain scene select):
      - **Scene**: a button with the scene on glass (thumbnail and name, following the
@@ -116,9 +122,10 @@ URLs, JSON or ids:
 
 ### Behind each screen's "More"
 
-- **Going live** (an art screen): the scene, its settings, transitions in and out, picture
-  quality, and **Go live**. If live is off for the screen (`policy.live_enabled` false, or a
-  409 `live_disabled`), this says so instead, and how the owner turns it on.
+- **Scene and picture** (an art screen): the chosen scene's words, its settings, transitions in and out (by
+  label; their parameters are under Technical details) and picture quality, used when it goes live from the card's
+  face. If live is off for the screen (`policy.live_enabled` false), this says so instead, and how the owner turns it
+  on; a 409 `live_disabled` says so next to Go live, with **Try again**.
 - **While live**: every parameter, **Reset all** and per-field reset, a Sending/Applied
   indicator; **Picking, the feel and fades**: scene picking (what it picks from, how long each scene stays, how
   often it changes, on the beat) and effect picking (how often they change, change with the music), none of it
@@ -126,13 +133,16 @@ URLs, JSON or ids:
   neutral**); how long colour changes and effects take to blend; and what the renderer hears of the music; then
   transitions and quality for next time. On a room's screen card it is **The feel and fades** (picking is on the
   room's live card).
-- **Going live** uses the same scene picker (choose mode: no transition footer).
+- The face's scene chip uses the same scene picker (choose mode: no transition footer).
 - Explanations when they apply: the last change failed (with the raw error), the screen's
   page isn't on room control (`?ctl=`), the scene list won't load, the stream service is
   down.
 - **Snapshots**: the anchor and target stills of the last cut, full size on tap.
-- **Technical details**: desired vs observed, phase, session, acks, the brightness mask,
-  playback stats.
+- **Events**: the screen's schedule events as buttons, and **Edit this schedule ›**.
+- **Technical details**: **Details on the screen** (at the top while the screen shows art; on the card's face
+  while it is live), the live details, the transitions with their parameters, desired vs observed, phase,
+  session, acks, the brightness mask, playback stats.
+- At the foot: **Screen settings ›** (`/settings#screen-<id>`) and **TV page ›** (new tab).
 
 ### Behind the menu
 
@@ -209,7 +219,7 @@ Use it from the LAN address. room_service is not exposed through ngrok.
 
 | What | How |
 |---|---|
-| One screen | `?screen=<id>` (the TVs' QR codes: `http://192.168.1.205:8080/room?screen=<id>`, built by `get_qr` in `routes/utils.py`). That screen's card starts unrolled and highlighted (a teal ring), and the page scrolls to it once the modes above it have loaded. The header gains a row with the screen's name and two links: **Art** (`/?publish=<id>`, the main app on that screen) and **Scheduler** (`/scheduler?destination=<id>`). An id the room doesn't have gets a short note above the screen cards. |
+| One screen | `?screen=<id>` (the TVs' QR codes: `http://192.168.1.205:8080/room?screen=<id>`, built by `get_qr` in `routes/utils.py`). That screen's card starts unrolled and highlighted (a teal ring), and the page scrolls to it once the modes above it have loaded. The header stays the page's own; the card itself has **In the generator** (`/?publish=<id>`) and **Schedule** (`/scheduler?destination=<id>`) under its name, and **Screen settings ›** and **TV page ›** at the foot of its More. An id the room doesn't have gets a short note above the screen cards. |
 | room_service URL | `?room=<url>` (remembered), else `localStorage.sm_room_url`, else `${location.protocol}//${location.hostname}:8700`. Change it in the menu under **Room service address**. **Use default** clears the stored URL. |
 | Token | None needed to operate the room: it is open on the LAN (LIVE_V1 §3), so the page connects and works without one. The admin token ("setup key" on the page) is only for setup edits. It is entered from the menu (**Setup access**), kept in `localStorage.sm_room_token` like the admin panel, and sent only once entered. If room_service ever answers 401, the page stops and brings up the key dialog ("This room needs a key… Ask whoever runs the room"); if that is dismissed, a "This room needs a key" card offers it again. The dialog's **Where's the key?** unroll names the file (`~/.config/screen-machine/room_service.token` on the workstation) and the server it is for. |
 | Token binding | `?room=` comes from the address bar, so a crafted link could aim the page at another host. The token is therefore saved together with the URL it was entered for (`localStorage.sm_room_token_url`) and sent only there. A token with no binding (e.g. seeded by a test harness) is used only for a room_service on the page's own hostname. Anything else gets the prompt, with a note saying which server the saved token belongs to. |
@@ -309,7 +319,7 @@ compact row each (label and value beside the control, no per-field reset; that i
 | `modeWords.ts` | What a mode changes in the room, in words from describe: the tiles' line, the progress line's "glitterball starting", the menu's "not connected yet" sentences, steps in words |
 | `ScreenCard.tsx` | One screen: status in words, inline core controls (hidden Cancel while a mode change owns the go-live), the "More" unroll |
 | `useScreenControls.ts` | A screen's live-control state: form, desired-state sync, Go live / Back to art / scene switch, batched live PATCH (kept in the always-mounted card, so it survives "More" closing) |
-| `LiveControls.tsx` | `CoreControls` (inline), `LiveSettingsPanel` and `GoLivePanel` (in "More"), and the plain selects |
+| `LiveControls.tsx` | `CoreControls` and `GoLiveRow` (inline), `LiveSettingsPanel` and `ScenePanel` (in "More"), and the plain selects |
 | `LivePanel.tsx` | The live controls: `SceneButton`, `ScenePicker`, `PickingRows` (Scenes and Effects, How many, energy), the effect chips, sheet and picker, `ColoursRow`, `LookControls` (a screen's) and `LookSettings` (under "More") |
 | `useLiveLook.ts` | A live screen's look as state: reads, event-driven refresh, look PATCHes (scope "screen" when it may), cues, the effects bus read-change-write and the throttled strength slider |
 | `RoomLive.tsx`, `useRoomLive.ts` | A room's live card and its state: every live screen's session read, room-wide changes once per renderer room, per-screen ones on each |

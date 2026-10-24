@@ -1,7 +1,11 @@
-// A screen's live controls, as three pieces over one state (useScreenControls):
+// A screen's live controls, as four pieces over one state (useScreenControls):
 //   - CoreControls: inline on the card while live: scene, the "basic" parameters, Back to art;
 //   - LiveSettingsPanel: in "More" while live: every parameter, reset, transitions and quality;
-//   - GoLivePanel: in "More" while showing art: scene, its settings, transitions, quality, Go live.
+//   - GoLiveRow: on the card's face while showing art: the scene chip and "Go live" (24 Oct walkthrough: going live
+//     was only inside More);
+//   - ScenePanel: in "More" while showing art, "Scene and picture": the chosen scene's words, its settings,
+//     transitions and quality (no second Go live).
+// A transition shows by its label only; its parameters are under Technical details (LiveDetails.tsx).
 
 import { useState } from "react";
 import { Play, RotateCcw, X } from "lucide-react";
@@ -253,9 +257,9 @@ function LiveEditIndicator({ state }: { state: LiveEditState }) {
   );
 }
 
-// ── In "More", while showing art ──────────────────────────────────────────────
+// ── On the card's face, while showing art ─────────────────────────────────────
 
-export function GoLivePanel({
+export function GoLiveRow({
   screenId,
   sc,
   streamReachable,
@@ -267,6 +271,68 @@ export function GoLivePanel({
   live?: Omit<LiveBits, "lv">;
 }) {
   const [pickOpen, setPickOpen] = useState(false);
+  return (
+    <div className="space-y-2 px-4 pb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-[12rem] flex-1">
+          {live ? (
+            <>
+              <SceneButton
+                info={sceneInfo(live.lib, live.api, sc.form.sceneKey)}
+                caption="Scene · tap to change"
+                onClick={() => setPickOpen(true)}
+                disabled={sc.pickersDisabled}
+                testId={`scene-${screenId}`}
+              />
+              <ScenePicker
+                open={pickOpen}
+                onOpenChange={setPickOpen}
+                lib={live.lib}
+                api={live.api}
+                mode="choose"
+                currentKey={sc.form.sceneKey}
+                onPick={(key) => sc.setScene(key)}
+                testId={`scenepicker-${screenId}`}
+              />
+            </>
+          ) : (
+            <>
+              <Label htmlFor={`${screenId}-scene`} className="sr-only">
+                Scene
+              </Label>
+              <ScenePickerSelect id={`${screenId}-scene`} testId={`scene-${screenId}`} sc={sc} onChange={sc.setScene} disabled={sc.pickersDisabled} />
+            </>
+          )}
+        </div>
+        <Button
+          data-testid={`golive-${screenId}`}
+          onClick={sc.goLive}
+          disabled={!sc.canGoLive}
+          className={cn(TAP_BUTTON_CLASS, "shrink-0 px-5")}
+          title={sc.liveDisabled ? "Live is switched off for this screen" : sc.alreadyLive ? "Already live" : undefined}
+        >
+          {sc.busy === "go live" ? <Spinner /> : <Play />} Go live
+        </Button>
+      </div>
+      {sc.liveDisabled === "refused" && (
+        <Notice tone="warn">
+          <strong className="font-semibold">Live is switched off for this screen.</strong> The room refused it. The owner
+          turns it on in the room setup.{" "}
+          <button type="button" className="font-medium underline underline-offset-2" onClick={sc.clearRefused}>
+            Try again
+          </button>
+        </Notice>
+      )}
+      {streamReachable === false && (
+        <Notice tone="warn">The live pictures aren't answering right now. Going live starts by itself as soon as they're back.</Notice>
+      )}
+    </div>
+  );
+}
+
+// ── In "More", while showing art ──────────────────────────────────────────────
+
+export function ScenePanel({ screenId, sc }: { screenId: string; sc: ScreenControls }) {
   if (sc.liveDisabled === "policy") {
     return (
       <Notice tone="muted">
@@ -278,36 +344,18 @@ export function GoLivePanel({
   const changed = sc.overridden.size;
   return (
     <div className="space-y-3">
-      <SectionTitle>Go live</SectionTitle>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${screenId}-scene`} className="text-sm font-normal text-muted-foreground">
-          Scene
-        </Label>
-        {live ? (
+      <SectionTitle>Scene and picture</SectionTitle>
+      <p className="-mt-1 text-sm text-muted-foreground">
+        {sc.choice ? (
           <>
-            <SceneButton
-              info={sceneInfo(live.lib, live.api, sc.form.sceneKey)}
-              caption="Tap to choose another"
-              onClick={() => setPickOpen(true)}
-              disabled={sc.pickersDisabled}
-              testId={`scene-${screenId}`}
-            />
-            <ScenePicker
-              open={pickOpen}
-              onOpenChange={setPickOpen}
-              lib={live.lib}
-              api={live.api}
-              mode="choose"
-              currentKey={sc.form.sceneKey}
-              onPick={(key) => sc.setScene(key)}
-              testId={`scenepicker-${screenId}`}
-            />
+            <span className="font-medium text-stone-700">{sc.choice.label}</span>
+            {sc.choice.description ? ` · ${sc.choice.description}` : ""}
           </>
         ) : (
-          <ScenePickerSelect id={`${screenId}-scene`} testId={`scene-${screenId}`} sc={sc} onChange={sc.setScene} disabled={sc.pickersDisabled} />
-        )}
-        {sc.choice?.description && <p className="text-sm text-muted-foreground">{sc.choice.description}</p>}
-      </div>
+          "Choose a scene on the card above."
+        )}{" "}
+        These apply when it goes live.
+      </p>
 
       <Unroll title="Scene settings" hint={changed ? `${changed} changed` : undefined}>
         {sc.choice ? (
@@ -335,29 +383,6 @@ export function GoLivePanel({
       <Unroll title="Transitions and picture quality">
         <TransitionAndQuality screenId={screenId} sc={sc} />
       </Unroll>
-
-      {sc.liveDisabled === "refused" && (
-        <Notice tone="warn">
-          <strong className="font-semibold">Live is switched off for this screen.</strong> The room refused it. The owner
-          turns it on in the room setup.{" "}
-          <button type="button" className="font-medium underline underline-offset-2" onClick={sc.clearRefused}>
-            Try again
-          </button>
-        </Notice>
-      )}
-      {streamReachable === false && (
-        <Notice tone="warn">The live pictures aren't answering right now. Going live starts by itself as soon as they're back.</Notice>
-      )}
-
-      <Button
-        data-testid={`golive-${screenId}`}
-        onClick={sc.goLive}
-        disabled={!sc.canGoLive}
-        className={cn(TAP_BUTTON_CLASS, "w-full sm:w-auto")}
-        title={sc.liveDisabled ? "Live is switched off for this screen" : sc.alreadyLive ? "Already live" : undefined}
-      >
-        {sc.busy === "go live" ? <Spinner /> : <Play />} Go live
-      </Button>
     </div>
   );
 }
@@ -492,7 +517,6 @@ function TransitionPicker({
 }) {
   const key = transitionSpecKey(spec);
   const known = key ? choices.some((c) => c.key === key) : false;
-  const current = choices.find((c) => c.key === key);
   return (
     <div className="min-w-0 space-y-1.5">
       <Label htmlFor={id} className="text-sm font-normal text-muted-foreground">
@@ -520,14 +544,6 @@ function TransitionPicker({
           )}
         </SelectContent>
       </Select>
-      {current && (
-        <p className="truncate text-xs text-muted-foreground" title={JSON.stringify(current.params)}>
-          {current.transition}
-          {Object.entries(current.params)
-            .map(([k, v]) => ` · ${k} ${String(v)}`)
-            .join("")}
-        </p>
-      )}
     </div>
   );
 }
