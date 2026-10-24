@@ -212,10 +212,13 @@ export function PieceSheet({
   piece,
   onClose,
   extra,
+  noScore,
 }: {
   piece: PieceRef | null;
   onClose: () => void;
   extra?: (p: PieceRef, close: () => void) => ReactNode;
+  /** On the score itself: no "Score" row (it would reopen the same score). */
+  noScore?: boolean;
 }) {
   const { api, player, playlists, flash, pinnedOf, setPinned, bumpLibrary } = useMusic();
   const [choosing, setChoosing] = useState(false);
@@ -336,7 +339,7 @@ export function PieceSheet({
           >
             <ListMusic className="h-5 w-5 text-stone-600" aria-hidden /> Add to a playlist…
           </button>
-          {hasScore(piece) && (
+          {!noScore && hasScore(piece) && (
             <button
               type="button"
               className={SHEET_ROW}

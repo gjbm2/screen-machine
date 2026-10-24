@@ -267,7 +267,16 @@ export default function MusicPage() {
           )}
 
           <main className="space-y-5 pt-2">
-            {scoreId && <ScoreView key={scoreId} pieceId={scoreId} onBack={closeScore} />}
+            {scoreId && (
+              <ScoreView
+                key={scoreId}
+                pieceId={scoreId}
+                onBack={closeScore}
+                toggles={toggles}
+                onDetails={toListening}
+                onMenu={() => setMenuOpen(true)}
+              />
+            )}
 
             <div hidden={!!scoreId} className="space-y-5">
               <NowPlaying />

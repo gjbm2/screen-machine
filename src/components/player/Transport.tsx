@@ -126,7 +126,7 @@ export function Transport({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className={cn(ROUND, speed !== null && speed !== 1 && "w-auto gap-0.5 px-2 text-[15px] font-medium tabular-nums")}
+            className={cn(ROUND, speed !== null && speed !== 1 && "flex w-auto items-center justify-center gap-0.5 px-2 text-[15px] font-medium tabular-nums")}
             aria-label={`More: stop, speed and sound${speed !== null && speed !== 1 ? ` (speed ${Math.round(speed * 100)}%)` : ""}`}
             title="Stop, speed and sound"
             onClick={(e) => e.stopPropagation()}
@@ -157,7 +157,7 @@ export function Transport({
           </button>
           {speed !== null && (
             <div>
-              <p className="mb-1.5 text-sm font-medium text-stone-600">Speed</p>
+              {/* SpeedNudges carries its own "Speed" label */}
               <SpeedNudges speed={speed} onSpeed={(s) => void act("speed", { action: "set", speed: s }, { speed: s })} />
             </div>
           )}

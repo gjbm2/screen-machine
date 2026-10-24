@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { Notice, Spinner, Unroll } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
 import { TAP_BUTTON_CLASS } from "@/pages/Room/theme";
-import { explainLightsError, LightsApiError, type LightsApi } from "./api";
+import { explainLightsError, LightsApiError, type FoundBox, type LightsApi } from "./api";
 import { IdentifyButton, useIdentify } from "./Identify";
 import { MoveIt } from "./MoveIt";
 import {
@@ -125,6 +125,76 @@ export function LightSheet({
 
 function FieldError({ text }: { text?: string }) {
   return text ? <p className="text-sm text-rose-700">{text}</p> : null;
+}
+
+/** "Boxes found": the Art-Net boxes that answered a search of the LAN (GET /show/api/v1/rig/nodes/find), as chips
+ *  that fill in the address; typing it stays the way when none answer. Searched once when the step opens, and again
+ *  on "Look again". A show_service without the route (or out of reach) just shows nothing here. */
+function BoxesFound({ api, chosen, skip, onPick }: { api: LightsApi; chosen: string; skip: string[]; onPick: (ip: string) => void }) {
+  const [found, setFound] = useState<FoundBox[] | null>(null);
+  const [words, setWords] = useState<string | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [gone, setGone] = useState(false);
+  const [round, setRound] = useState(0);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setLooking(true);
+    api
+      .findBoxes(ac.signal)
+      .then((r) => {
+        setFound(Array.isArray(r?.nodes) ? r.nodes.filter((n) => n && typeof n.ip === "string") : []);
+        setWords(typeof r?.words === "string" ? r.words : null);
+        setGone(false);
+      })
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setGone(true);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLooking(false);
+      });
+    return () => ac.abort();
+  }, [api, round]);
+
+  if (gone) return null;
+  const shownBoxes = (found ?? []).filter((b) => !skip.includes(b.ip));
+  return (
+    <div className="space-y-1.5 pt-1" data-testid="boxes-found">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        {looking ? (
+          <>
+            <Spinner /> Looking for boxes on the network…
+          </>
+        ) : shownBoxes.length > 0 ? (
+          "Boxes found:"
+        ) : (
+          (found?.length ? "No other boxes answered." : words) ?? "No Art-Net box answered. Type the box's address instead."
+        )}
+        {!looking && (
+          <button type="button" onClick={() => setRound((n) => n + 1)} className="min-h-9 font-medium text-teal-800 underline-offset-4 hover:underline">
+            Look again
+          </button>
+        )}
+      </p>
+      {shownBoxes.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {shownBoxes.map((b) => (
+            <button
+              key={b.ip}
+              type="button"
+              onClick={() => onPick(b.ip)}
+              className={cn(CHIP, chosen === b.ip ? CHIP_ON : CHIP_OFF)}
+              title={b.heard === "earlier" ? `${b.label}: answered a few minutes ago` : b.label}
+            >
+              <span className="max-w-[10rem] truncate">{b.name}</span>
+              <span className="ml-1.5 font-mono font-normal text-muted-foreground">{b.ip}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StepHead({ n, title, sub, adding }: { n: number; title: string; sub?: ReactNode; adding: boolean }) {
@@ -438,6 +508,7 @@ function LightForm({
             ))}
           </div>
         )}
+        <BoxesFound api={api} chosen={draft.node_ip.trim()} skip={boxes.map(([ip]) => ip)} onPick={(ip) => set({ node_ip: ip })} />
         <FieldError text={shown("node_ip")} />
       </div>
       <div className="space-y-1.5">

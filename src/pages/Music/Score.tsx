@@ -1086,7 +1086,7 @@ export function ScoreView({
         />
       )}
 
-      <PieceSheet piece={sheetOpen ? pieceRef : null} onClose={() => setSheetOpen(false)} extra={(_p, close) => scoreGroup(close)} />
+      <PieceSheet piece={sheetOpen ? pieceRef : null} onClose={() => setSheetOpen(false)} noScore extra={(_p, close) => scoreGroup(close)} />
       <RecordSheet take={take} editable={editable} />
       <TakeSheet take={take} />
       {!onMenu && <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="music" />}
