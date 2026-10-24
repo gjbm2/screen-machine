@@ -22,25 +22,25 @@
               {
                 "action": "import_var",
                 "as": "_a_theme",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "a_theme"
               },
               {
                 "action": "import_var",
                 "as": "_b_theme",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "b_theme"
               },
               {
                 "action": "import_var",
                 "as": "_style",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "style"
               },
               {
                 "action": "import_var",
                 "as": "_guidance",
-                "scope": "living-room",
+                "scope": "drawing-room",
                 "var_name": "guidance"
               },
               {

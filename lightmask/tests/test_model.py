@@ -23,13 +23,13 @@ BASE_CFG = {
     "smoothstep": False, "east_west_bias": 0.0, "seasonality_factor": 0.0, "day_stretch": 0.2,
     "default_lat": 51.5074, "default_lon": -0.1278,
 }
-CURVE = {"sensor_mappings": {"living-room": {"target_group": "living-room", "lux_to_intensity": [
+CURVE = {"sensor_mappings": {"living-room": {"target_group": "drawing-room", "lux_to_intensity": [
     {"lux": 100, "intensity": 1.0}, {"lux": 22, "intensity": 0.5}, {"lux": 0, "intensity": 0.01}]}}}
 DESTS = [
-    {"id": "a", "has_bucket": True, "groups": ["living-room"],
+    {"id": "a", "has_bucket": True, "groups": ["drawing-room"],
      "intensity_cfg": {"lat": 51.5, "lon": -0.12, "adjust": True}},
-    {"id": "b", "has_bucket": True, "groups": ["living-room"]},
-    {"id": "c", "groups": ["living-room"], "intensity_cfg": {"adjust": True, "lat": 51.5, "lon": -0.12}},
+    {"id": "b", "has_bucket": True, "groups": ["drawing-room"]},
+    {"id": "c", "groups": ["drawing-room"], "intensity_cfg": {"adjust": True, "lat": 51.5, "lon": -0.12}},
     {"id": "d", "has_bucket": True, "groups": ["work"], "intensity_cfg": {"adjust": True}},
 ]
 
@@ -149,7 +149,7 @@ def test_watcher_without_any_good_config_raises(tmp_path):
 
 def test_destinations_for_group_rules():
     dests = DESTS + [{"id": "work", "has_bucket": True, "groups": ["x"]}, {"id": "nb", "groups": ["work"]}]
-    assert lm.destinations_for_group(dests, "living-room") == ["a", "b"]          # c has no bucket
+    assert lm.destinations_for_group(dests, "drawing-room") == ["a", "b"]          # c has no bucket
     assert lm.destinations_for_group(dests, "global") == ["a", "b", "d", "work"]
     assert lm.destinations_for_group(dests, "a") == ["a"]                          # by id
     assert lm.destinations_for_group(dests, "work") == ["work"]                    # id beats group name

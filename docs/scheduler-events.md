@@ -84,7 +84,7 @@ Events can be created from within schedules with the `throw_event` action:
   "action": "throw_event",
   "key": "image_generated",
   "scope": "dest",
-  "dest_id": "living-room-display",
+  "dest_id": "drawing-room-display",
   "payload": {"image": "{{ vars.generated_image }}"}
 }
 ```

@@ -154,14 +154,9 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
       console.log('SchedulerEventsPanel: Received destinations:', publishDestinations);
       setDestinations(publishDestinations);
       
-      // Extract groups from the destinations using 'groups' property
+      // The groups come from the destinations' 'groups' (publish-destinations.json); none are written here.
       const uniqueGroups = new Set<string>();
       
-      // Add default groups
-      const defaultGroups = ['living-room', 'bedroom', 'kitchen'];
-      defaultGroups.forEach(group => uniqueGroups.add(group));
-      
-      // Extract groups directly from destinations
       publishDestinations.forEach(dest => {
         if (dest.groups && Array.isArray(dest.groups)) {
           dest.groups.forEach(group => {
@@ -214,18 +209,10 @@ export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEv
       console.error('Error fetching destinations and groups:', error);
       toast.error('Failed to fetch destinations');
       
-      // FALLBACK: Set some basic scopes
-      setAllScopes(['global', 'living-room', 'bedroom', 'kitchen', 'devtest']);
+      // FALLBACK: only the global scope (the groups and destinations come from the config, which didn't load)
+      setAllScopes(['global']);
       setScope('global');
-      
-      // Set basic display names for fallback
-      const basicMap = new Map<string, string>();
-      basicMap.set('global', 'Global (All Destinations)');
-      basicMap.set('living-room', 'living-room');
-      basicMap.set('bedroom', 'bedroom');
-      basicMap.set('kitchen', 'kitchen');
-      basicMap.set('devtest', 'Development Test [devtest]');
-      setScopeDisplayMap(basicMap);
+      setScopeDisplayMap(new Map<string, string>([['global', 'Global (All Destinations)']]));
     }
   };
   
