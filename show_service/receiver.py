@@ -19,7 +19,9 @@ audio on B (an overlapping process swapped the slots) closes both and binds them
 socket.text.misrouted / rebinds). SO_RCVBUF is asked for 4 MB and read back (Linux caps it at net.core.rmem_max;
 never SO_RCVBUFFORCE). A failed bind shows in health and is retried every 2 s. Every 1 s (and at once when an address
 first resolves or changes, or the sender list changes) it sends ``vban.subscribe_packet(sender.streams, counter)``
-from A to each sender's resolved address: the sender streams to the source of the latest one (NAT-safe).
+from A to each sender's resolved address: the sender streams to the source of the latest one (NAT-safe). After a
+sender-list change the next SUBSCRIBE_SOON_N go every SUBSCRIBE_SOON_S: a sender just spawned (the test piano) binds
+its port a few hundred ms after the at-once one was sent to nothing, and it plays only once subscribed (24 Oct).
 
 Wakes (show-rx): select on both; B (when readable) is drained first and its MIDI dispatched at once, then A's batch;
 B is polled again (non-blocking, about 3 us when empty) before each on_audio call once it has gone TEXT_POLL_S
@@ -145,6 +147,7 @@ KTS_MISS_MAX = 50                                # datagrams in a row without a 
 REBIND_EVERY_S = 5.0                             # the misroute self-heal's most frequent rebind
 BIND_RETRY_S = 2.0
 SUBSCRIBE_EVERY_S = vban.SUBSCRIBE_EVERY_S       # 1 s
+SUBSCRIBE_SOON_S, SUBSCRIBE_SOON_N = 0.2, 5      # after a sender-list change: 5 more at 0.2 s, then every 1 s
 DNS_EVERY_S = 30.0
 DNS_RETRY_S = 5.0
 HOLD_MIN_MS, HOLD_MAX_MS, HOLD_JITTERS = 4.0, 40.0, 3.0
@@ -535,6 +538,7 @@ class Receiver:
         self._sub_gen = -1
         self._sub_counter = 0
         self._sub_next = -math.inf
+        self._sub_soon = 0                               # SUBSCRIBEs still to go at SUBSCRIBE_SOON_S
         self._sub_last: dict[str, float] = {}
         self._send_err: dict[str, Optional[str]] = {}
         self._states_next = -math.inf
@@ -1197,6 +1201,7 @@ class Receiver:
         keep = set(self._host_keys(senders))
         self._answered = {k: v for k, v in self._answered.items() if k in keep}
         self._sub_next = -math.inf                       # subscribe the (already resolved) ones at once
+        self._sub_soon = SUBSCRIBE_SOON_N                # and soon again: a sender just spawned isn't bound yet
         log.info("senders: %s", ", ".join(f"{s.name}={'|'.join(sender_hosts(s))}:{s.port}/{','.join(s.streams)}"
                                           for s in senders) or "none")
 
@@ -1276,7 +1281,11 @@ class Receiver:
 
     # -- SUBSCRIBE --------------------------------------------------------------------------------------------------
     def _subscribe(self, now: float) -> None:
-        self._sub_next = now + SUBSCRIBE_EVERY_S
+        if self._sub_soon > 0:
+            self._sub_soon -= 1
+            self._sub_next = now + SUBSCRIBE_SOON_S
+        else:
+            self._sub_next = now + SUBSCRIBE_EVERY_S
         self._sub_gen = self._dns_gen
         sock, resolved = self._sock, self._resolved
         if sock is None:

@@ -172,6 +172,39 @@ def test_test_piano_streams_to_the_subscriber_over_udp():
     assert seqs == list(range(1, len(seqs) + 1)) and len(seqs) >= 4
 
 
+def test_test_piano_waits_for_the_subscriber_so_the_first_note_is_kept():
+    """Owner, 24 Oct: "first note of each recording appears to get lost": show_service's first SUBSCRIBE reaches the
+    port before it's bound, the next a second later; the piece's clock now starts once someone subscribed."""
+    rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx.bind(("127.0.0.1", 0))
+    out = ss.Out(0, "127.0.0.1")
+    port = out.sock.getsockname()[1]
+    stop = threading.Event()
+    threading.Thread(target=out.serve, args=(stop,), daemon=True).start()
+    threading.Thread(target=ss.run_test_piano, args=(out, stop, "scale"), daemon=True).start()
+    try:
+        time.sleep(0.4)                                   # nobody subscribed yet: nothing goes, nothing is lost
+        rx.sendto(vban.subscribe_packet(["test-piano"], 0), ("127.0.0.1", port))
+        rx.settimeout(2.0)
+        while True:
+            p = vban.parse(rx.recvfrom(2048)[0])
+            if vban.classify(p) == "midi_events":
+                break
+    finally:
+        stop.set()
+        rx.close()
+    b = vban.parse_midi_events(p)
+    assert b.seq == 1 and b.prev == []
+
+
+def test_await_subscriber_gives_up_and_plays(monkeypatch):
+    out, stop = ss.Out(0, "127.0.0.1"), threading.Event()
+    t = time.monotonic()
+    assert ss.await_subscriber(out, "test-piano", stop, 0.1) is False and 0.1 <= time.monotonic() - t < 0.5
+    assert ss.await_subscriber(RecOut(), "test-piano", stop) is True          # no subscriptions to wait for
+    out.sock.close()
+
+
 def test_mic_captures_only_while_subscribed(monkeypatch):
     """Off in the SUBSCRIBE: no arecord, off heartbeats with the devices; on: arecord opens; off again: it closes."""
     opened, closed = [], []
