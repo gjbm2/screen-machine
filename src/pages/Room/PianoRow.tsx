@@ -76,7 +76,8 @@ function ago(ms: number): string {
   return m < 60 ? `${m} min ago` : "over an hour ago";
 }
 
-export function PianoRow({ api }: { api: RoomApi }) {
+/** `onConnected`: told whether the piano's MIDI is coming in (null: no piano known), e.g. for a fold's summary. */
+export function PianoRow({ api, onConnected }: { api: RoomApi; onConnected?: (connected: boolean | null) => void }) {
   const [pianos, setPianos] = useState<Piano[] | null>(null);
   const [last, setLast] = useState<Key | null>(null);
   const [recent, setRecent] = useState<number[]>([]);
@@ -189,6 +190,12 @@ export function PianoRow({ api }: { api: RoomApi }) {
       sock?.close();
     };
   }, [api]);
+
+  const known = !!pianos?.length || !!last;
+  const linked = !known ? null : !pianos?.[0] || CONNECTED.includes(pianos[0].state ?? "");
+  const tell = useRef(onConnected);
+  tell.current = onConnected;
+  useEffect(() => tell.current?.(linked), [linked]);
 
   if (!pianos?.length && !last) return null;
 

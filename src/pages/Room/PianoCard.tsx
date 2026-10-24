@@ -240,11 +240,18 @@ export function PianoCard({
   connected,
   addLog,
   reportError,
+  bare = false,
+  onSummary,
 }: {
   api: RoomApi;
   connected: boolean;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
+  /** Inside a fold that already says "Piano": no heading of its own (its pill, when there is one, stays). */
+  bare?: boolean;
+  /** Told the card in one line ("Record · last take Today 14:05", "Recording · 1:23"), or null while the recorder
+   *  isn't there (the card is hidden), e.g. for a fold's closed summary. */
+  onSummary?: (line: string | null) => void;
 }) {
   const loadRecs = useCallback((s: AbortSignal) => api.pianoRecordings(s), [api]);
   const loadTest = useCallback((s: AbortSignal) => api.showTest(s), [api]);
@@ -303,6 +310,25 @@ export function PianoCard({
     const v = await api.showTest();
     if (v) test.setView(v);
   };
+
+  // The card in one line, for the fold it sits in (from the readings above: nothing new is fetched).
+  const sumRef = useRef(onSummary);
+  sumRef.current = onSummary;
+  const summaryLine = (() => {
+    if (recs.missing) return null;
+    if (!recs.view) return undefined;
+    if (recording) return `Recording · ${clock(rec?.since_s ?? rec?.duration_s ?? 0)}`;
+    const p = test.view?.sources?.piano;
+    const pid = p?.piece?.startsWith(REC) ? p.piece.slice(REC.length) : null;
+    const takes = recs.view.recordings ?? [];
+    if (pid && PIANO_BUSY.includes(p?.state ?? "off")) return `Playing · ${takes.find((r) => r.id === pid)?.title ?? p?.label ?? "a take"}`;
+    const newest = takes.reduce<PianoRecording | null>((a, r) => (!a || r.recorded_at > a.recorded_at ? r : a), null);
+    const at = newest ? when(newest.recorded_at) : "";
+    return newest ? `Record · last take ${at || newest.title}` : "Record · no takes yet";
+  })();
+  useEffect(() => {
+    if (summaryLine !== undefined) sumRef.current?.(summaryLine);
+  }, [summaryLine]);
 
   if (recs.missing || !recs.view) return null;
 
@@ -422,10 +448,16 @@ export function PianoCard({
 
   return (
     <section aria-labelledby="room-piano">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="room-piano" className="text-lg font-semibold text-stone-800">
-          Piano
-        </h2>
+      <div className={cn("mb-2 flex items-center justify-between gap-2", bare && !recording && !playingTitle && "hidden")}>
+        {bare ? (
+          <span id="room-piano" className="sr-only">
+            Piano
+          </span>
+        ) : (
+          <h2 id="room-piano" className="text-lg font-semibold text-stone-800">
+            Piano
+          </h2>
+        )}
         {recording ? (
           <Pill tone="bad" pulse>
             Recording
@@ -502,6 +534,9 @@ export function PianoCard({
           </div>
         )}
 
+        {/* The takes, folded (owner, 24 Oct: Record first, the takes list inside, folded) */}
+        {rows.length > 0 || (canPlay && list.length > 0) ? (
+        <Unroll title="Takes" hint={plural(rows.length, "take")} testId="piano-takes" contentClassName="space-y-4">
         {canPlay && list.length > 0 && (
           <SoundChoice
             sound={sound}
@@ -670,9 +705,7 @@ export function PianoCard({
               );
             })}
           </ul>
-        ) : (
-          !fresh && !recording && <p className="text-base text-muted-foreground">No takes yet.</p>
-        )}
+        ) : null}
         {!all && rows.length > SHOW_FIRST && (
           <button
             type="button"
@@ -681,6 +714,10 @@ export function PianoCard({
           >
             Show all {rows.length}
           </button>
+        )}
+        </Unroll>
+        ) : (
+          !fresh && !recording && <p className="text-base text-muted-foreground">No takes yet.</p>
         )}
 
         {err && <p className="text-sm text-rose-700">{err}</p>}

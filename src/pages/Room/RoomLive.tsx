@@ -6,6 +6,8 @@
 // that screen's: its scene by hand, its settings, its colours and feel, its own effects and their strength.
 //
 // It shows while any screen in the room is live; the screens' cards are drawn by `children`, given each one's scope.
+// RoomLives does the same for several rooms and hands back each room's card and scopes, for a page that puts the card
+// in one place (the Room page's Look fold) and the screens in another (its Screens fold).
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Sparkles } from "lucide-react";
@@ -22,29 +24,32 @@ import type { NewLogEntry, StreamEvent } from "./useRoomConnection";
 import { useRoomLive, type RoomLiveState } from "./useRoomLive";
 import { useUpNext } from "./useUpNext";
 
-export function RoomLive({
-  room,
-  members,
-  total,
-  api,
-  lib,
-  subscribe,
-  addLog,
-  reportError,
-  children,
-}: {
-  room: { id: string; name: string };
-  /** The room's live screens, in rooms.json order. */
-  members: LiveMember[];
-  /** How many screens the room has. */
-  total: number;
+interface Shared {
   api: RoomApi;
   lib: Library | null;
   subscribe: (fn: (e: StreamEvent) => void) => () => void;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
-  children: (scopeFor: (screenId: string) => LookScope | null) => ReactNode;
-}) {
+}
+
+/** One multi-screen room, as RoomLive takes it. */
+export interface RoomLiveSpec {
+  room: { id: string; name: string };
+  /** The room's live screens, in rooms.json order. */
+  members: LiveMember[];
+  /** How many screens the room has. */
+  total: number;
+}
+
+/** What a room's live state gives the page: its live card (null while none of its screens is live), each screen's
+ *  scope for its own card, and whether scenes are picked by themselves (null before the screens' settings are read). */
+export interface RoomLiveSlot {
+  card: ReactNode;
+  scopeFor: (screenId: string) => LookScope | null;
+  scenesByItself: boolean | null;
+}
+
+function useRoomLiveSlot({ room, members, total, api, lib, subscribe, addLog, reportError }: RoomLiveSpec & Shared): RoomLiveSlot {
   const rl = useRoomLive({ api, roomId: room.id, roomName: room.name, members, lib, subscribe, addLog, reportError });
   const { takeOffPickedRaw, swapPickedRaw, views } = rl;
   const key = members.map((m) => `${m.id}=${m.name}=${(views[m.id]?.own ?? []).join(",")}`).join(" ");
@@ -62,12 +67,75 @@ export function RoomLive({
     // members and views are rebuilt often; key is what the scopes say
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, takeOffPickedRaw, swapPickedRaw]);
+  return {
+    card: members.length > 0 ? <RoomLiveCard rl={rl} room={room} members={members} total={total} api={api} lib={lib} subscribe={subscribe} /> : null,
+    scopeFor: (id) => scopes[id] ?? null,
+    scenesByItself: members.length > 0 && rl.look ? !!rl.look.auto?.enabled : null,
+  };
+}
+
+export function RoomLive({
+  children,
+  ...props
+}: RoomLiveSpec &
+  Shared & {
+    children: (scopeFor: (screenId: string) => LookScope | null) => ReactNode;
+  }) {
+  const slot = useRoomLiveSlot(props);
   return (
     <>
-      {members.length > 0 && <RoomLiveCard rl={rl} room={room} members={members} total={total} api={api} lib={lib} subscribe={subscribe} />}
-      {children((id) => scopes[id] ?? null)}
+      {slot.card}
+      {children(slot.scopeFor)}
     </>
   );
+}
+
+/**
+ * Several rooms' live state at once, for a page that puts each room's live card in one place (the Room page's Look)
+ * and its screens' cards in another (Screens): `children` gets every room's slot, by room id. One level per room, so
+ * each room keeps its own hooks.
+ */
+export function RoomLives({
+  specs,
+  children,
+  ...shared
+}: Shared & { specs: RoomLiveSpec[]; children: (slots: Record<string, RoomLiveSlot>) => ReactNode }) {
+  return (
+    <RoomLivesFrom specs={specs} i={0} acc={{}} shared={shared}>
+      {children}
+    </RoomLivesFrom>
+  );
+}
+
+function RoomLivesFrom({
+  specs,
+  i,
+  acc,
+  shared,
+  children,
+}: {
+  specs: RoomLiveSpec[];
+  i: number;
+  acc: Record<string, RoomLiveSlot>;
+  shared: Shared;
+  children: (slots: Record<string, RoomLiveSlot>) => ReactNode;
+}) {
+  if (i >= specs.length) return <>{children(acc)}</>;
+  const spec = specs[i];
+  return (
+    <RoomLiveOne key={spec.room.id} spec={spec} shared={shared}>
+      {(slot) => (
+        <RoomLivesFrom specs={specs} i={i + 1} acc={{ ...acc, [spec.room.id]: slot }} shared={shared}>
+          {children}
+        </RoomLivesFrom>
+      )}
+    </RoomLiveOne>
+  );
+}
+
+function RoomLiveOne({ spec, shared, children }: { spec: RoomLiveSpec; shared: Shared; children: (slot: RoomLiveSlot) => ReactNode }) {
+  const slot = useRoomLiveSlot({ ...spec, ...shared });
+  return <>{children(slot)}</>;
 }
 
 function RoomLiveCard({

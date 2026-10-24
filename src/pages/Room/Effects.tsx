@@ -258,7 +258,7 @@ export function EffectsSection({
   const shown = effects.filter((e) => !!status.subsystems?.[split(e.power)[0]] && !!describe?.targets?.[e.power]);
   if (!describe || !shown.length) return null;
   return (
-    <DeviceSection title="Effects" sub>
+    <DeviceSection title="Room effects" sub>
       <DeviceList>
         {shown.map((e) => (
           <EffectCard
