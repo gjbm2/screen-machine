@@ -24,6 +24,8 @@ import useFullscreen from './hooks/useFullscreen';
 import RecentView from '@/components/recent/RecentView';
 import { ScreenLivePanel } from '@/components/room/ScreenLivePanel';
 import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
+import { OPEN_SHOW_ON } from '@/components/prompt-form/PublishSelector';
+import { MonitorUp } from 'lucide-react';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -67,6 +69,9 @@ interface IndexImageDisplayProps {
   onDeleteContainer?: (batchId: string) => void;
   fullscreenRefreshTrigger?: number;
   publishDestinations?: string[];
+  /** Where new pictures go ("north-screen", "a,b", or "none"), and a way to change it (the "Make art for" chip). */
+  selectedPublish?: string;
+  onPublishChange?: (publishId: string) => void;
 }
 
 // Combined props type using a discriminated union
@@ -198,8 +203,23 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Use destinationsWithBuckets instead of publishDestinations
   const allDestinations = destinationsWithBuckets;
 
-  // Convert array of destinations to tabs format
+  // Generated first, then the room's screens (the ones room_service knows), then the rest after a divider.
+  const roomScreenIds = useMemo(() => new Set(Object.keys(room.status?.screens ?? {})), [room.status?.screens]);
   const destinationTabs = useMemo(() => {
+    const tabs = destinationsWithBuckets.map(dest => {
+      // Get the icon component from Lucide icons if specified
+      const IconComponent = dest.icon ? (LucideIcons as any)[dest.icon] : Image;
+      return {
+        id: dest.id,
+        label: dest.name || dest.id,
+        icon: <IconComponent className="h-4 w-4 mr-2" />,
+        highlight: false,
+        file: dest.file || dest.id,
+        headless: dest.headless || false
+      } as DestinationTab;
+    });
+    const inRoom = tabs.filter(t => roomScreenIds.has(t.id));
+    const rest = tabs.filter(t => !roomScreenIds.has(t.id));
     return [
       // Re-label the Recent tab as "Generated"
       {
@@ -210,20 +230,17 @@ export function ImageDisplay(props: ImageDisplayProps) {
         file: '_recent',
         headless: true
       } as DestinationTab,
-      ...destinationsWithBuckets.map(dest => {
-        // Get the icon component from Lucide icons if specified
-        const IconComponent = dest.icon ? (LucideIcons as any)[dest.icon] : Image;
-        return {
-          id: dest.id,
-          label: dest.name,
-          icon: <IconComponent className="h-4 w-4 mr-2" />,
-          highlight: false,
-          file: dest.file || dest.id,
-          headless: dest.headless || false
-        };
-      })
+      ...inRoom,
+      ...(inRoom.length && rest.length ? [{ id: '__divider', label: '', icon: null, highlight: false, file: null } as DestinationTab] : []),
+      ...rest,
     ];
-  }, [destinationsWithBuckets]);
+  }, [destinationsWithBuckets, roomScreenIds]);
+
+  /** A destination's name ("north-screen" → "North screen"), never its id when the name is known. */
+  const nameOf = useCallback(
+    (id: string) => destinationsWithBuckets.find(d => d.id === id)?.name || id,
+    [destinationsWithBuckets]
+  );
 
   // ?publish=<id> (the Room page's "Art" link, the TV QR codes) opens that screen's tab, once.
   const publishParamApplied = useRef(false);
@@ -446,6 +463,15 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Set tab and scroll it into view
   const handleTabClick = (tabId: string) => {
     setSelectedTab(tabId);
+    // The address keeps the tab (?publish=<id>), so a reload or Back comes back to it; the Generated tab clears it.
+    try {
+      const url = new URL(window.location.href);
+      if (tabId === 'recent' || tabId === 'generated') url.searchParams.delete('publish');
+      else url.searchParams.set('publish', tabId);
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch {
+      /* the tab still changes */
+    }
     
     // Find the selected tab element and scroll it into view
     setTimeout(() => {
@@ -571,11 +597,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
               stableRefreshBucket('_recent');
             }
             
-            toast.success('Published successfully');
+            toast.success(`Showing on ${nameOf(destId)}`);
           })
           .catch((err) => {
             console.error('Publish failed:', err);
-            toast.error('Publish failed');
+            toast.error(`Couldn't show it on ${nameOf(destId)}`);
           });
           return;
         }
@@ -613,7 +639,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       console.log(`Copying image ${imageId} from ${selectedTab} to ${destId}`);
       bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
         .then(() => {
-          toast.success(`Copied to ${destId}`);
+          toast.success(`Copied to ${nameOf(destId)}`);
           stableRefreshBucket(destId);
         })
         .catch((err) => {
@@ -624,7 +650,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       console.log(`Moving image ${imageId} from ${selectedTab} to ${destId}`);
       bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
         .then(() => {
-          toast.success(`Moved to ${destId}`);
+          toast.success(`Moved to ${nameOf(destId)}`);
           stableRefreshBucket(destId);
           // Also refresh the source bucket since the file should be removed
           stableRefreshBucket(getDestinationFile(selectedTab));
@@ -645,12 +671,12 @@ export function ImageDisplay(props: ImageDisplayProps) {
           filename: imageId
         })
         .then(() => {
-          toast.success('Published successfully');
+          toast.success(`Showing on ${nameOf(destId)}`);
           stableRefreshBucket(destId);
         })
         .catch((err) => {
           console.error('Publish failed:', err);
-          toast.error('Publish failed');
+          toast.error(`Couldn't show it on ${nameOf(destId)}`);
         });
       } else {
         // For generated images, use the full URL with the external source method
@@ -664,12 +690,12 @@ export function ImageDisplay(props: ImageDisplayProps) {
           skip_bucket: false
         })
         .then(() => {
-          toast.success('Published successfully');
+          toast.success(`Showing on ${nameOf(destId)}`);
           stableRefreshBucket(destId);
         })
         .catch((err) => {
           console.error('Publish failed:', err);
-          toast.error('Publish failed');
+          toast.error(`Couldn't show it on ${nameOf(destId)}`);
         });
       }
     }
@@ -689,7 +715,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // ---------- Droppable Tab Button ---------- //
   const DroppableTabButton: React.FC<{ tab: DestinationTab }> = ({ tab }) => {
     // Allow droppable on 'recent'
-    const isDroppable = tab.id !== 'generated';
+    const isDroppable = tab.id !== 'generated' && tab.id !== '__divider';
     
     // Use a dummy ref for non-droppable tabs
     const dummyRef = useRef<HTMLButtonElement>(null);
@@ -718,7 +744,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
           <div className="absolute inset-0 -right-4 -left-4" style={{ zIndex: -1 }} />
         )}
         {tab.icon}
-        <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
+        <span className="whitespace-nowrap">{tab.label}</span>
         {(() => {
           // Live screens are marked on their tab (red), and screens on the way in or out (amber).
           const ls = liveStateOf(room.status?.screens?.[tab.id]);
@@ -733,6 +759,41 @@ export function ImageDisplay(props: ImageDisplayProps) {
           );
         })()}
       </button>
+    );
+  };
+
+  // Under the prompt, on a screen's tab: where new pictures go, and, when that isn't this screen, one tap to make it so.
+  const selectedPublish = isIndexProps ? (props as IndexImageDisplayProps).selectedPublish : undefined;
+  const onPublishChange = isIndexProps ? (props as IndexImageDisplayProps).onPublishChange : undefined;
+  const openShowOn = () => {
+    document.querySelector('[data-testid="show-on-chip"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setTimeout(() => window.dispatchEvent(new Event(OPEN_SHOW_ON)), 250);
+  };
+  const renderTargetLine = (screenId: string) => {
+    if (selectedPublish === undefined || !onPublishChange) return null;
+    const targets = selectedPublish && selectedPublish !== 'none' ? selectedPublish.split(',').filter(Boolean) : [];
+    const here = targets.includes(screenId);
+    const where = targets.length ? targets.map(nameOf).join(' and ') : 'nowhere yet';
+    return (
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px]" data-testid="target-line">
+        <span className="min-w-0 text-muted-foreground">
+          New pictures go to: <span className="font-medium text-foreground">{where}</span>
+          {' · '}
+          <button type="button" onClick={openShowOn} className="font-medium text-teal-800 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            change
+          </button>
+        </span>
+        {!here && (
+          <button
+            type="button"
+            onClick={() => onPublishChange(screenId)}
+            data-testid="make-art-for"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-teal-300 bg-teal-50 px-3 text-[14px] font-medium text-teal-900 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MonitorUp className="h-4 w-4" aria-hidden /> Make art for {nameOf(screenId)}
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -774,7 +835,9 @@ export function ImageDisplay(props: ImageDisplayProps) {
   return (
     <div className="bg-background h-full overflow-y-auto">
       {/* Sentinel element: its presence tells us when we've scrolled past the tab bar */}
-      <div ref={sentinelRef} style={{ height: TAB_BAR_HEIGHT }} />
+      <div ref={sentinelRef} style={{ height: 1 }} />
+      {/* while the bar is pinned (fixed), hold its place so the page doesn't jump */}
+      {isTabBarFixed && <div aria-hidden style={{ height: TAB_BAR_HEIGHT }} />}
 
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
       <div
@@ -816,9 +879,13 @@ export function ImageDisplay(props: ImageDisplayProps) {
             className="w-full overflow-x-auto scrollbar-hide px-6"
           >
             <div className="inline-flex items-center space-x-1 p-1">
-              {destinationTabs.map(tab => (
-                <DroppableTabButton key={tab.id} tab={tab} />
-              ))}
+              {destinationTabs.map(tab =>
+                tab.id === '__divider' ? (
+                  <span key={tab.id} aria-hidden className="mx-1 inline-block h-6 w-px shrink-0 bg-border" />
+                ) : (
+                  <DroppableTabButton key={tab.id} tab={tab} />
+                )
+              )}
             </div>
           </div>
         </div>
@@ -876,6 +943,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         ) : (
           selectedTab && selectedTab !== 'generated' && (
             <>
+            {renderTargetLine(selectedTab)}
             <ScreenLivePanel screenId={selectedTab} />
             <BucketGridView
               key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
@@ -912,7 +980,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             }}
           >
             <Copy className="mr-2 h-4 w-4" />
-            Copy to {contextMenu.destId}
+            Copy to {nameOf(contextMenu.destId)}
           </Button>
           <Button
             variant="ghost"
@@ -923,7 +991,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             }}
           >
             <Send className="mr-2 h-4 w-4" />
-            Move to {contextMenu.destId}
+            Move to {nameOf(contextMenu.destId)}
           </Button>
           {!contextMenu.isHeadless && (
             <Button
@@ -935,7 +1003,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
               }}
             >
               <Share className="mr-2 h-4 w-4" />
-              Publish to {contextMenu.destId}
+              Show on {nameOf(contextMenu.destId)}
             </Button>
           )}
         </div>

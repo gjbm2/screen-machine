@@ -15,7 +15,6 @@ import { Separator } from '@/components/ui/separator';
 import { Workflow, WorkflowParam } from '@/types/workflows';
 import ParamSection from './advanced/ParamSection';
 import ResourceLinks from './advanced/ResourceLinks';
-import globalOptionsData from '@/data/global-options.json';
 import refinersData from '@/data/refiners.json';
 import refinerParamsData from '@/data/refiner-params.json';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -42,8 +41,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   onWorkflowChange,
   params,
   onParamChange,
-  globalParams = {},
-  onGlobalParamChange = () => {},
   selectedRefiner = 'none',
   onRefinerChange = () => {},
   refinerParams = {},
@@ -53,7 +50,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
 }) => {
   const [isParamsOpen, setIsParamsOpen] = useState(true);
   const [isRefinerParamsOpen, setIsRefinerParamsOpen] = useState(true);
-  const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
   const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
   const isMobile = useIsMobile();
   
@@ -63,7 +59,10 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     onOpenChange(open);
   };
   
-  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
+  // "auto": the generator picks for the prompt, so no one workflow's description or parameters apply.
+  const chosenWorkflow = workflows.find(w => w.id === selectedWorkflow);
+  const currentWorkflow = selectedWorkflow === 'auto' ? undefined : chosenWorkflow || workflows[0];
+  const chosenRefiner = refinersData.find(r => r.id === selectedRefiner);
 
   useEffect(() => {
     const refinerData = refinerParamsData.find(r => r.id === selectedRefiner);
@@ -100,9 +99,9 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
         <SheetHeader className="text-left p-0">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <SheetTitle>Advanced Options</SheetTitle>
+              <SheetTitle>Advanced</SheetTitle>
               <SheetDescription>
-                Configure generation settings for your images
+                How pictures get made: the style engine, the finish and their settings
               </SheetDescription>
             </div>
           </div>
@@ -110,7 +109,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
         
         <div className="py-6 space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Generation Workflow</label>
+            <label className="text-sm font-medium">Style engine</label>
             <Select 
               value={selectedWorkflow} 
               onValueChange={onWorkflowChange}
@@ -119,6 +118,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 <SelectValue placeholder="Select workflow" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="auto">Auto (picks for your prompt)</SelectItem>
                 {workflows.map((workflow) => (
                   <SelectItem key={workflow.id} value={workflow.id}>
                     {workflow.name}
@@ -126,14 +126,14 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              {currentWorkflow?.description}
-            </p>
+            {currentWorkflow?.description && (
+              <p className="text-xs text-muted-foreground mt-1">{currentWorkflow.description}</p>
+            )}
           </div>
 
           {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
             <ParamSection
-              title="Workflow Parameters"
+              title="Style engine settings"
               params={currentWorkflow.params}
               values={params}
               onChange={onParamChange}
@@ -143,7 +143,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Generation Refiner</label>
+            <label className="text-sm font-medium">Finish</label>
             <Select 
               value={selectedRefiner} 
               onValueChange={onRefinerChange}
@@ -152,6 +152,9 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 <SelectValue placeholder="Select refiner" />
               </SelectTrigger>
               <SelectContent>
+                {!refinersData.some(r => r.id === 'auto') && (
+                  <SelectItem value="auto">Auto (picks for your prompt)</SelectItem>
+                )}
                 {refinersData.map((refiner) => (
                   <SelectItem key={refiner.id} value={refiner.id}>
                     {refiner.name}
@@ -159,14 +162,14 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              {refinersData.find(r => r.id === selectedRefiner)?.description || ''}
-            </p>
+            {selectedRefiner !== 'auto' && chosenRefiner?.description && (
+              <p className="text-xs text-muted-foreground mt-1">{chosenRefiner.description}</p>
+            )}
           </div>
 
           {currentRefinerParams.length > 0 && (
             <ParamSection
-              title="Refiner Parameters"
+              title="Finish settings"
               params={currentRefinerParams}
               values={refinerParams}
               onChange={onRefinerParamChange}
@@ -175,14 +178,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             />
           )}
 
-          <ParamSection
-            title="Global Settings"
-            params={globalOptionsData as WorkflowParam[]}
-            values={globalParams}
-            onChange={onGlobalParamChange}
-            isOpen={isGlobalParamsOpen}
-            onOpenChange={setIsGlobalParamsOpen}
-          />
         </div>
         
         <Separator className="my-4" />
