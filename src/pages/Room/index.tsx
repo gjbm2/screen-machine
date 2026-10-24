@@ -502,6 +502,13 @@ export default function RoomPage() {
                       sub
                     />
                   )}
+                  {/* the setup page is reached from here too, not only from the menu (owner, 24 Oct) */}
+                  <a
+                    href="/lights"
+                    className="inline-flex min-h-11 items-center gap-1 text-[15px] font-medium text-teal-800 underline-offset-4 hover:underline"
+                  >
+                    Set up lights ›
+                  </a>
                 </Section>
 
                 <Section id="piano" title="Piano" summary={pianoLine ?? undefined} hidden={pianoLine === null}>
