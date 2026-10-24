@@ -49,12 +49,11 @@ export function pageName(pathname: string): string {
   );
 }
 
-/** The Room page's in-page row; never on the Room page itself (the dock is its player) or while the dock shows. */
+/** The Room page's in-page row at the end of the page, while the dock isn't showing (nothing plays). */
 export function NowPlayingRow({ api, addLog }: { api: RoomApi; addLog?: (e: NewLogEntry) => void }) {
-  const { pathname } = useLocation();
   const shared = useAppPlayer(api.baseUrl);
   const music = useMemo(() => new MusicApi(api.baseUrl), [api.baseUrl]);
-  const off = useDocked() || pathname.startsWith("/room");
+  const off = useDocked();
   const own = usePlayer(music, !shared && !off);
   if (off) return null;
   return <MiniPlayer player={shared ?? own} baseUrl={api.baseUrl} addLog={addLog} />;
