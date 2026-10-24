@@ -357,6 +357,11 @@ export default function RoomPage() {
                 <h2 id="room-modes" className={H2}>
                   Mode
                 </h2>
+                {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
+                    determines them after all") */}
+                <div className="mb-3">
+                  <AutoRow api={room.api} feed={show} addLog={room.addLog} />
+                </div>
                 <ModeSwitcher
                   api={room.api}
                   modes={room.modes}
@@ -377,9 +382,6 @@ export default function RoomPage() {
                     refreshDescribe();
                   }}
                 />
-                <div className="mt-3">
-                  <AutoRow api={room.api} feed={show} addLog={room.addLog} />
-                </div>
               </section>
 
               <div className="divide-y divide-stone-200/80 border-y border-stone-200/80">
