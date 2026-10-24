@@ -154,9 +154,10 @@ export function useRoomLink(): RoomLinkState {
 
 const APP_LAN_URL = ((import.meta.env.VITE_APP_LAN_URL as string | undefined) ?? "").replace(/\/+$/, "");
 
-/** The Room console. On the app's LAN address, so it works however the home page was opened. */
+/** The Room console: relative (/room), so the app stays on this address and keeps its state (the dock, the socket).
+ *  Only a page on a host that can't reach the room (the probe said so) goes to the app's LAN address. */
 export function roomPageUrl(screen?: string | null): string {
-  const base = APP_LAN_URL || window.location.origin;
+  const base = state.onLan === false && APP_LAN_URL && APP_LAN_URL !== window.location.origin ? APP_LAN_URL : "";
   return `${base}/room${screen ? `?screen=${encodeURIComponent(screen)}` : ""}`;
 }
 
