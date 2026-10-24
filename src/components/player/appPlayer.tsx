@@ -11,8 +11,8 @@ import { MusicApi } from "@/pages/Music/api";
 import { usePlayer, type PlayerHook } from "@/pages/Music/usePlayer";
 import { resolveRoomUrl } from "@/pages/Room/api";
 
-/** The pages a person uses that get the docked player: /, /room, /music, /lights, /scheduler. */
-export const DOCK_PATHS = /^\/(room|music|lights|scheduler)?\/?$/;
+/** The pages a person uses that get the docked player: /, /room, /music, /lights, /scheduler, /settings. */
+export const DOCK_PATHS = /^\/(room|music|lights|scheduler|settings)?\/?$/;
 
 interface AppPlayerCtx {
   baseUrl: string;

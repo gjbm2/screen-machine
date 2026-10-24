@@ -21,6 +21,7 @@
 //     says so, with Turn on. Also play on this device (a switch, shown while PC22 or Sonos is picked): the sound here as well
 //     as the speakers. Screens only turns this device off too.
 // Turning This device on happens in the tap itself (mobile browsers start sound only from one).
+// The compact chip says the short name ("Sonos"); its sheet says the full one ("Playing on Sonos (Drawing Room)").
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Speaker } from "lucide-react";
@@ -69,6 +70,13 @@ function outputLabel(id: string | null, server: ShowOutput[]): string | null {
   if (!id) return null;
   if (id === myOutput()) return HERE_LABEL;
   return server.find((o) => o.id === id)?.label ?? null;
+}
+
+/** The short name for the compact chip: the label without its "(…)" detail ("Sonos (Drawing Room)" -> "Sonos"); the
+ *  full name is in its sheet. */
+export function shortOutputLabel(label: string): string {
+  const short = label.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return short || label;
 }
 
 /** Where the piano plays: the choices, what's picked, and a pick. One per mount; each reads the room for itself. */
@@ -242,13 +250,15 @@ export function PlayOn({
   );
   if (!compact) return body;
 
-  const where = outputLabel(p.output, p.server) ?? "Play on";
+  const full = outputLabel(p.output, p.server);
+  const where = full ? shortOutputLabel(full) : "Play on";
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          title="Where the music plays"
+          title={full ? `Playing on ${full}` : "Where the music plays"}
+          aria-label={full ? `Play on: ${full}` : "Play on"}
           className={cn(
             "inline-flex h-9 max-w-[11rem] shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[15px] font-medium text-stone-700 hover:bg-stone-50",
             className,
@@ -260,6 +270,7 @@ export function PlayOn({
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className={cn(THEME_CLASS, "z-[70] w-[min(22rem,calc(100vw-2rem))] rounded-2xl p-3")}>
+        {full && <p className="mb-2 text-sm text-muted-foreground">Playing on {full}</p>}
         {body}
       </PopoverContent>
     </Popover>

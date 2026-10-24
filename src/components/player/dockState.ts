@@ -1,6 +1,7 @@
 // Whether the docked player (DockedPlayer.tsx) is showing at the bottom of the screen just now. Read by the page parts
 // that would otherwise put a second bar there or say the same thing twice: ListenHere's "This device" bar (the dock
-// carries its line instead) and the Room page's in-page mini player (NowPlayingRow: the dock is it while music plays).
+// carries its line instead), the in-page mini player (NowPlayingRow: the dock is it) and Music's Now playing (one
+// heading row while the dock shows). The dock is on the Room page at all times, elsewhere while music plays.
 // No imports, so anything can read it without pulling the player in.
 
 import { useSyncExternalStore } from "react";
