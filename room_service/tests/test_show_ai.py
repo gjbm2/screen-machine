@@ -179,7 +179,7 @@ def test_normalize_takes_bools_and_on_off_words():
 
 def test_ai_words_and_form(tmp_path):
     a = ShowAdapter(nowhere(), vibes_yaml(tmp_path))
-    assert a.label("ai") == "AI listening" and a.label("mic") == "Microphone" and a.label("main") == "Feel"
+    assert a.label("ai") == "AI listening" and a.label("mic") == "Mic" and a.label("main") == "Feel"
     assert a.show("ai", True) == "AI listens" and a.show("ai", False) == "AI off"
     assert a.show("mic", True) == "Mic listens"                                  # the mic's words unchanged
     s = a.value_schema("ai")
@@ -223,7 +223,7 @@ async def test_a_mode_that_lets_the_ai_listen_and_the_room_drops_it(show, tmp_pa
     assert show.puts == [] and show.mic_puts == []                                # the Feel and the mic never touched
     d = r.c.describe()
     t = d["targets"]["show.ai"]
-    assert t["category"] == "setting" and t["label"] == "AI listening" and t["subsystem_label"] == "Feel"
+    assert t["category"] == "setting" and t["label"] == "AI listening" and t["subsystem_label"] == "Listening and feel"
     assert d["subsystems"]["show"]["members"] == ["main", "mic", "ai"]
     assert d["modes"]["disco"]["entries"]["show.ai"]["words"] == "Listens in this mode"
     await settled(a.show)

@@ -310,3 +310,17 @@ def test_put_back_stores_what_a_fresh_read_says_and_idle_targets_stay_polled(tmp
         await go(r, "normal")
         assert r.sonos.value["lounge.volume"] == 33
     asyncio.run(body())
+
+
+def test_on_room_page_is_a_plain_mode_field():
+    every = list(vars(fake_adapters()).values())
+    ok = copy.deepcopy(FLAT)
+    ok["modes"]["disco"]["on_room_page"] = "more"
+    ok["modes"]["disco"]["icon"] = "lamp"
+    assert validate(ok, every) == []
+    cfg = RoomConfig(ok, every)
+    assert cfg.modes["disco"].on_room_page == "more" and cfg.modes["normal"].on_room_page == "main"
+    bad = copy.deepcopy(ok)
+    bad["modes"]["disco"]["on_room_page"] = "hidden"
+    found = {e["path"]: e for e in validate(bad, every)}
+    assert found["/modes/disco/on_room_page"]["code"] == "bad_room_page"

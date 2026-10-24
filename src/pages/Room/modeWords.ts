@@ -9,7 +9,7 @@ import type { RoomDescribe, RoomStatus, TransitionStep } from "./types";
 
 type Target = RoomDescribe["targets"][string] & { subsystem?: string; member?: string; category?: string };
 type Resolved = { verb?: string; value?: unknown };
-type SubInfo = { available?: boolean; placeholder?: boolean; dry_run?: boolean; members?: string[]; category?: string; kind?: string };
+type SubInfo = { label?: string; available?: boolean; placeholder?: boolean; dry_run?: boolean; members?: string[]; category?: string; kind?: string };
 /** describe, with the parts read here that types.ts doesn't name. */
 type Describe = RoomDescribe & { targets: Record<string, Target>; subsystems?: Record<string, SubInfo> };
 type Live = RoomStatus["subsystems"];
@@ -224,6 +224,50 @@ export function modeChangeList(describe: RoomDescribe | null | undefined, mode: 
 export function modeChanges(describe: RoomDescribe | null | undefined, mode: string, opts: WordsOpts = {}): string {
   return modeChangeList(describe, mode, opts)
     .map((c) => (c.offline ? `${c.text} (the room can't switch it yet)` : c.text))
+    .join(" · ");
+}
+
+/** "Live (modes:piano)" → "Live": a value's bracketed id is for the editor, not the mode row. */
+function plainWords(w: string): string {
+  return w.replace(/\s*\([^()]*:[^()]*\)/g, "").trim() || w;
+}
+
+/** One kind's change for the mode row's line: several devices as "<value> on <which>" ("Art on all 3 screens",
+ *  "Live on North and South, Art on Dev test"), not "Screens: Live / Art"; one device or a phrase as it reads. */
+function lineText(d: Describe, c: ModeChange, opts: WordsOpts): string {
+  const all = Object.keys(c.sets);
+  if (all.length < 2 || !c.text.includes(": ")) return plainWords(c.text);
+  const sub = subOf(d, all[0]);
+  const kind = lowerFirst(d.subsystems?.[sub]?.label || kindName(sub, all.length));
+  const byWords = new Map<string, string[]>();
+  for (const [t, v] of Object.entries(c.sets)) {
+    const w = plainWords(valueWords(schemaOf(d, t), v));
+    byWords.set(w, [...(byWords.get(w) ?? []), t]);
+  }
+  return [...byWords.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([w, ts]) => {
+      const which =
+        ts.length === all.length
+          ? all.length === 2
+            ? `both ${kind}`
+            : `all ${all.length} ${kind}`
+          : ts.length <= 3
+            ? ts.map((t) => targetName(d, t, opts.names)).join(" and ")
+            : `${ts.length} ${kind}`;
+      return `${w} on ${which}`;
+    })
+    .join(", ");
+}
+
+/** The current mode in one line under the mode row: what it changes in the room, only the devices that work (what
+ *  isn't connected yet is the editor's business). Empty when describe hasn't loaded or it changes nothing. */
+export function modeLine(describe: RoomDescribe | null | undefined, mode: string | null | undefined, opts: WordsOpts = {}): string {
+  const d = describe as Describe | null | undefined;
+  if (!d) return "";
+  return modeChangeList(d, mode, opts)
+    .filter((c) => !c.offline)
+    .map((c) => lineText(d, c, opts))
     .join(" · ");
 }
 

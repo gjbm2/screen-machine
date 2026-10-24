@@ -1,26 +1,44 @@
-// The modes (GET /api/v1/modes) as big, friendly tap targets; tapping one switches the room (PUT /api/v1/mode). Each
-// tile says what its mode changes in the room (modeWords, from describe). Tiles never go dead: a tap while a switch
-// runs simply wins (room_service: the last request wins), and a tap while the room is out of reach keeps trying for a
-// minute. The "⋯" in a tile's corner edits, copies, moves or deletes that mode. While a switch runs, one plain line says
-// what's happening ("Switching to Disco · glitterball starting"), with the steps behind "Details".
+// The modes (GET /api/v1/modes) as one row of chips that scrolls sideways (icon and name; the one the room is in filled
+// teal); tapping one switches the room (PUT /api/v1/mode). Under the row, one full line says what the current mode
+// changes in the room (modeWords.modeLine, from describe). Chips never go dead: a tap while a switch runs simply wins
+// (room_service: the last request wins), and a tap while the room is out of reach keeps trying for a minute.
+//   - Each chip's "⋯" edits, copies, makes it the start mode ("Start here"), moves or deletes that mode (owner, 15 Oct:
+//     "modes editable via ⋯"). The pencil at the end of the row opens EditModesSheet: the same, for every mode, and
+//     "Add a mode".
+//   - A mode's icon is its modes.json "icon" (picked in the editor), else a guess from its name.
+//   - Modes with "on_room_page": "more" (a plain per-mode field, set in the editor) sit behind a "More modes" chip at
+//     the end of the row, unless the room is in one.
+//   - While a switch runs, after a problem, or after Auto switched (with its reason), one plain line says so
+//     ("Switching to Disco · glitterball starting"), with the steps behind "Details". A clean switch by hand needs no
+//     line: the chip says it.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleHelp,
   Clapperboard,
+  Disc3,
+  FlaskConical,
+  House,
   Image as ImageIcon,
+  Lamp,
   LayoutGrid,
   Minus,
   Moon,
   MoreHorizontal,
   Music,
   PartyPopper,
-  Plus,
+  Pencil,
+  Piano,
+  Power,
   Sparkles,
+  Sun,
+  Waves,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +57,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -47,6 +66,7 @@ import { cn } from "@/lib/utils";
 import { explainError, RoomApi, RoomApiError } from "./api";
 import { Notice, Spinner } from "./bits";
 import { sceneChoices, type SceneChoice } from "./catalog";
+import { EditModesSheet, type EditModesRow } from "./EditModesSheet";
 import { THEME_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, stepTone, type Tone } from "./tones";
 import type {
@@ -61,11 +81,13 @@ import type {
   TransitionStep,
 } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
-import { modeChanges, stepSentence, switchingWords, targetName } from "./modeWords";
+import { modeLine, stepSentence, switchingWords, targetName } from "./modeWords";
 import { modeDescription, modeLabel, STEP_WORDS, stepFailure, stepGoingLive, stepText } from "./words";
 
-/** How long "Now <mode>" stays after a clean switch. */
+/** How long an interrupted switch stays said. */
 const DONE_SHOWN_MS = 15_000;
+/** How long "Auto: Now <mode> · <why>" stays after Auto switched (a clean switch by hand shows no line). */
+const AUTO_SHOWN_MS = 5 * 60_000;
 /** How long a switch with failed steps stays on the main screen (the menu keeps it). */
 const PROBLEM_SHOWN_MS = 10 * 60_000;
 /** A tap the room doesn't answer is sent again this often, for this long. */
@@ -242,8 +264,33 @@ function removeMode(
   return out;
 }
 
-/** A fitting icon from the mode's name and label, else a neutral one. */
-function modeIcon(name: string, label?: string): LucideIcon {
+/** The room's mode icons by their modes.json name (room_service's ICONS; the editor's picker draws these). */
+export const MODE_ICONS: Record<string, LucideIcon> = {
+  home: House,
+  music: Music,
+  piano: Piano,
+  party: PartyPopper,
+  disco: Disc3,
+  film: Clapperboard,
+  moon: Moon,
+  sun: Sun,
+  sparkles: Sparkles,
+  power: Power,
+  lamp: Lamp,
+  image: ImageIcon,
+  waves: Waves,
+  grid: LayoutGrid,
+  flask: FlaskConical,
+};
+
+/** A mode's icon: its own ("icon" in modes.json), else a fitting one guessed from its name and label. */
+export function modeIcon(name: string, def?: { label?: string; icon?: unknown } | null): LucideIcon {
+  const own = typeof def?.icon === "string" ? MODE_ICONS[def.icon] : undefined;
+  return own ?? guessIcon(name, def?.label);
+}
+
+/** The guess, from words in the mode's name and label, else a neutral one. */
+function guessIcon(name: string, label?: string): LucideIcon {
   const s = `${name} ${label ?? ""}`.toLowerCase().replace(/[-_]/g, " ");
   if (/\b(disco|party|dance|club)\b/.test(s)) return PartyPopper;
   if (/\b(music|sonos|piano|tracks?|songs?|listen|radio)\b/.test(s)) return Music;
@@ -326,9 +373,6 @@ export function ModeSwitcher({
   const target = mode?.target ?? null;
   const defaultMode = mode?.default ?? (describe as (RoomDescribe & { default?: string | null }) | null | undefined)?.default ?? null;
   const entries = Object.entries(modes ?? {});
-  // With four or more modes a phone shows them two to a row (one short line each), so the modes and every screen
-  // still fit on one screen.
-  const twoUp = entries.length >= 4;
   const wordsOpts = { names, live: subsystems };
   const nameOf = (t: string) => (describe ? targetName(describe, t, names) : t);
 
@@ -396,6 +440,52 @@ export function ModeSwitcher({
       const all = cfg.modes ?? {};
       cfg.modes = Object.fromEntries(keys.map((k) => [k, all[k]]));
     }, `mode ${name} moved ${by < 0 ? "earlier" : "later"} on the Room page`);
+
+  // "Start here": the room's start mode (modes.json "default"), the one it comes up in after a restart.
+  const startHere = async (name: string) => {
+    const ok = await editModes((cfg) => {
+      cfg.default = name;
+    }, `room starts in ${name} (set on the Room page)`);
+    if (ok) showToast({ text: `The room starts in ${modeLabel(name, modes)} now`, ms: 4_000 });
+  };
+
+  const addFrom = current && modes?.[current] ? current : (entries[0]?.[0] ?? null);
+  const add = () => {
+    if (addFrom) void duplicate(addFrom, true);
+  };
+
+  // The row: modes marked "more" (on_room_page) wait behind "More modes", unless the room is in or going to one.
+  const [editAll, setEditAll] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const isMore = (def: ModeDef) => (def as ModeDef & { on_room_page?: unknown }).on_room_page === "more";
+  const pinned = (name: string) => name === current || name === target || name === busy;
+  const main = entries.filter(([n, d]) => !isMore(d) || pinned(n));
+  const extra = entries.filter(([n, d]) => isMore(d) && !pinned(n));
+  const chips = showMore ? [...main, ...extra] : main;
+  const shownLine = describe && current ? modeLine(describe, current, wordsOpts) : "";
+  const currentDesc = current && modes?.[current] ? modeDescription(modes[current]) : undefined;
+  const lineText = shownLine || currentDesc || "";
+
+  // Keep the current chip in view in the sideways row (only the row scrolls, never the page).
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    const el = row?.querySelector<HTMLElement>('[aria-pressed="true"]')?.parentElement;
+    if (!row || !el) return;
+    const left = el.offsetLeft - row.offsetLeft;
+    if (left < row.scrollLeft || left + el.offsetWidth > row.scrollLeft + row.clientWidth) {
+      row.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
+    }
+  }, [current, chips.length]);
+
+  const sheetRows: EditModesRow[] = entries.map(([name, def]) => ({
+    name,
+    label: def.label || modeLabel(name, modes),
+    icon: modeIcon(name, def as ModeDef & { icon?: unknown }),
+    isDefault: name === defaultMode,
+    isCurrent: name === current,
+    more: isMore(def),
+  }));
 
   // Delete is never refused: the mode the room is in is switched away from first, the start mode is replaced, and
   // whatever names it is tidied in the same save (removeMode). Undo saves the file as it was.
@@ -524,152 +614,159 @@ export function ModeSwitcher({
       ) : entries.length === 0 ? (
         <p className="text-base text-muted-foreground">No modes are set up yet.</p>
       ) : (
-        <div className={cn("grid", twoUp ? "grid-cols-2 gap-2 sm:gap-2.5" : "grid-cols-1 gap-2.5 sm:grid-cols-2")}>
-          {entries.map(([name, def], i) => {
-            const isCurrent = name === current;
-            const isTarget = name === target && target !== current;
-            const label = def.label || modeLabel(name, modes);
-            const desc = modeDescription(def);
-            const changes = modeChanges(describe, name, wordsOpts);
-            const Icon = modeIcon(name, def.label);
-            return (
-              <div key={name} className="relative min-w-0">
-                <button
-                  type="button"
-                  data-mode={name}
-                  aria-pressed={isCurrent}
-                  onClick={() => void choose(name)}
-                  className={cn(
-                    "flex min-h-16 w-full min-w-0 items-center rounded-2xl border text-left shadow-sm transition-colors motion-reduce:transition-none",
-                    twoUp ? "gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3" : "gap-3 px-4 py-3",
-                    onEdit && "pr-10",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    isCurrent
-                      ? "border-teal-600 bg-teal-50 ring-1 ring-teal-600"
-                      : isTarget
-                        ? "border-amber-300 bg-amber-50"
-                        : "border-stone-200/80 bg-card hover:border-stone-300 hover:bg-stone-50",
-                  )}
-                >
-                  <span
-                    aria-hidden
+        <>
+          <div className="flex items-center gap-1">
+            <div
+              ref={rowRef}
+              role="group"
+              aria-label="Modes"
+              data-testid="mode-strip"
+              className="flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {chips.map(([name, def]) => {
+                const i = entries.findIndex(([k]) => k === name);
+                const isCurrent = name === current;
+                const isTarget = name === target && target !== current;
+                const label = def.label || modeLabel(name, modes);
+                const Icon = modeIcon(name, def as ModeDef & { icon?: unknown });
+                const switching = !isCurrent && (isTarget || busy === name);
+                return (
+                  <div
+                    key={name}
                     className={cn(
-                      "grid shrink-0 place-items-center rounded-full",
-                      twoUp ? "h-9 w-9 sm:h-10 sm:w-10" : "h-10 w-10",
-                      isCurrent ? "bg-teal-700 text-white" : isTarget ? "bg-amber-100 text-amber-800" : "bg-stone-100 text-stone-600",
+                      "flex shrink-0 snap-start items-center rounded-full border shadow-sm transition-colors motion-reduce:transition-none",
+                      isCurrent
+                        ? "border-teal-700 bg-teal-700 text-white"
+                        : isTarget
+                          ? "border-amber-300 bg-amber-50 text-amber-900"
+                          : "border-stone-200/80 bg-card text-stone-800 hover:border-stone-300 hover:bg-stone-50",
                     )}
                   >
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
+                    <button
+                      type="button"
+                      data-mode={name}
+                      aria-pressed={isCurrent}
+                      title={isCurrent ? `${label} (on now)` : `Switch to ${label}`}
+                      onClick={() => void choose(name)}
                       className={cn(
-                        "text-base font-semibold leading-snug",
-                        // line-clamp sets its own display, so no "block" alongside it.
-                        twoUp ? "line-clamp-2 [overflow-wrap:anywhere] sm:line-clamp-none" : "block",
+                        "flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full pl-3.5 text-[15px] font-semibold",
+                        onEdit ? "pr-1" : "pr-4",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                       )}
                     >
-                      {label}
-                    </span>
-                    {twoUp && isCurrent && (
-                      <span className="mt-0.5 flex items-center gap-1 text-[15px] font-semibold leading-snug text-teal-700 sm:hidden">
-                        <Check className="h-4 w-4" aria-hidden /> Now
-                      </span>
+                      {switching ? <Spinner className="h-[18px] w-[18px]" /> : <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />}
+                      <span>{label}</span>
+                      {isCurrent && <Check className="h-4 w-4 shrink-0" aria-label="on now" />}
+                    </button>
+                    {onEdit && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          aria-label={`${label}: edit, copy, start here, move or delete`}
+                          title={`Edit, copy, start here, move or delete ${label}`}
+                          className={cn(
+                            "grid h-11 w-9 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            isCurrent ? "text-white/80 hover:text-white" : "text-stone-500 hover:text-stone-800",
+                          )}
+                        >
+                          <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className={cn(THEME_CLASS, "min-w-[11rem]")}>
+                          <DropdownMenuItem className="min-h-11 text-base" onSelect={() => onEdit(name)}>
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="min-h-11 text-base" onSelect={() => void duplicate(name)}>
+                            Duplicate
+                          </DropdownMenuItem>
+                          {name === defaultMode ? (
+                            <DropdownMenuLabel className="flex min-h-11 items-center gap-1.5 text-base font-normal text-muted-foreground">
+                              <Check className="h-4 w-4" aria-hidden /> The room starts here
+                            </DropdownMenuLabel>
+                          ) : (
+                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => void startHere(name)}>
+                              Start here
+                            </DropdownMenuItem>
+                          )}
+                          {i > 0 && (
+                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, -1)}>
+                              Move earlier
+                            </DropdownMenuItem>
+                          )}
+                          {i < entries.length - 1 && (
+                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, 1)}>
+                              Move later
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="min-h-11 text-base text-rose-700 focus:text-rose-800" onSelect={() => askDelete(name)}>
+                            Delete…
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
-                    {desc && (
-                      <span
-                        className={cn(
-                          "mt-0.5 leading-snug text-muted-foreground",
-                          twoUp ? "line-clamp-1 text-[13px] sm:line-clamp-2 sm:text-[15px]" : "line-clamp-2 text-[15px]",
-                        )}
-                      >
-                        {desc}
-                      </span>
-                    )}
-                    {changes && (
-                      <span
-                        className={cn(
-                          "mt-0.5 leading-snug text-stone-500",
-                          twoUp ? "line-clamp-1 text-[13px] sm:line-clamp-2 sm:text-sm" : "line-clamp-2 text-sm",
-                        )}
-                        title={changes}
-                      >
-                        {changes}
-                      </span>
-                    )}
-                    {name === defaultMode && (
-                      <span className="mt-0.5 block text-[13px] font-medium leading-snug text-stone-500">Starts here</span>
-                    )}
-                  </span>
-                  {isCurrent ? (
-                    <span
-                      className={cn(
-                        "shrink-0 items-center gap-1 text-[15px] font-semibold text-teal-700",
-                        twoUp ? "hidden sm:flex" : "flex",
-                      )}
-                    >
-                      <Check className="h-4 w-4" aria-hidden /> Now
-                    </span>
-                  ) : isTarget || busy === name ? (
-                    <span className="flex shrink-0 items-center gap-1.5 text-[15px] font-medium text-amber-700">
-                      <Spinner />{" "}
-                      <span className={twoUp ? "hidden sm:inline" : "hidden min-[400px]:inline"}>Switching</span>
-                    </span>
-                  ) : null}
+                  </div>
+                );
+              })}
+              {extra.length > 0 && (
+                <button
+                  type="button"
+                  aria-expanded={showMore}
+                  onClick={() => setShowMore((v) => !v)}
+                  className="flex min-h-11 shrink-0 snap-start items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3.5 text-[15px] text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {showMore ? (
+                    <>
+                      <ChevronLeft className="h-4 w-4" aria-hidden /> Fewer modes
+                    </>
+                  ) : (
+                    <>
+                      More modes <ChevronRight className="h-4 w-4" aria-hidden />
+                    </>
+                  )}
                 </button>
-                {onEdit && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      aria-label={`${label}: edit, copy, move or delete`}
-                      title={`Edit, copy, move or delete ${label}`}
-                      className="group absolute right-0 top-0 flex h-11 w-11 items-start justify-end rounded-2xl p-1 text-stone-500 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="grid h-8 w-8 place-items-center rounded-full group-hover:bg-stone-200/60">
-                        <MoreHorizontal className="h-5 w-5" aria-hidden />
-                      </span>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className={cn(THEME_CLASS, "min-w-[11rem]")}>
-                      <DropdownMenuItem className="min-h-11 text-base" onSelect={() => onEdit(name)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="min-h-11 text-base" onSelect={() => void duplicate(name)}>
-                        Duplicate
-                      </DropdownMenuItem>
-                      {i > 0 && (
-                        <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, -1)}>
-                          Move earlier
-                        </DropdownMenuItem>
-                      )}
-                      {i < entries.length - 1 && (
-                        <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, 1)}>
-                          Move later
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="min-h-11 text-base text-rose-700 focus:text-rose-800" onSelect={() => askDelete(name)}>
-                        Delete…
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => setEditAll(true)}
+                aria-label="Edit modes"
+                title="Edit modes: change, copy, order, delete or add"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Pencil className="h-[18px] w-[18px]" aria-hidden />
+              </button>
+            )}
+          </div>
+          {lineText && (
+            <p className="text-[15px] leading-snug text-stone-600 break-words" data-testid="mode-line">
+              {lineText}
+            </p>
+          )}
+        </>
       )}
 
-      {onEdit && modes && entries.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            const from = current && modes[current] ? current : entries[0]?.[0];
-            if (from) void duplicate(from, true);
+      {onEdit && (
+        <EditModesSheet
+          open={editAll}
+          onOpenChange={setEditAll}
+          rows={sheetRows}
+          addFrom={addFrom ? modeLabel(addFrom, modes) : null}
+          onEdit={(n) => {
+            setEditAll(false);
+            onEdit(n);
           }}
-          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-stone-300 text-[15px] text-stone-600 hover:border-stone-400 hover:bg-stone-50"
-        >
-          <Plus className="h-4 w-4" aria-hidden /> Add a mode
-          <span className="text-sm text-muted-foreground">(a copy of {modeLabel(current && modes[current] ? current : entries[0]?.[0], modes)})</span>
-        </button>
+          onDuplicate={(n) => {
+            setEditAll(false);
+            void duplicate(n);
+          }}
+          onStartHere={(n) => void startHere(n)}
+          onMove={move}
+          onDelete={askDelete}
+          onAdd={() => {
+            setEditAll(false);
+            add();
+          }}
+        />
       )}
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
@@ -797,8 +894,9 @@ function plainReason(r: unknown): string | null {
   return s && s.length <= 100 && !/[{}[\]<>=_]|https?:/.test(s) ? s : null;
 }
 
-/** The one plain line under the modes: switching (and what that's doing to the room), just switched, or switched
- *  with problems. "Auto:" in front when Auto made the switch. */
+/** The one plain line under the modes: switching (and what that's doing to the room), switched with problems, or
+ *  interrupted; and after Auto switched, "Auto: Now <mode>" with its reason. A clean switch by hand shows nothing (the
+ *  chip says it). */
 function ModeProgress({
   transition,
   mode,
@@ -874,7 +972,8 @@ function ModeProgress({
     const why = first ? (stepSentence(describe, first, names)?.failure ?? stepFailure(first)) : null;
     text = `${to} is on, but ${failed === 1 && why ? why : `${failed} things didn't work`}`;
   } else {
-    if (age > DONE_SHOWN_MS) return null;
+    // a clean switch by hand: the chip already says it; only Auto's own switch is told (with its reason)
+    if (!auto || age > AUTO_SHOWN_MS) return null;
     tone = "ok";
     text = `Now ${to}`;
     if (unchecked) sub = `${unchecked} not confirmed`;

@@ -234,6 +234,7 @@ class RoomService:
                 else:
                     state.setdefault(sub, {})[member] = v
             out[name] = {"label": m.label, "description": m.description, "icon": m.icon, "voice": m.voice,
+                         "on_room_page": m.on_room_page,
                          "state": state, "targets": targets,
                          "on_enter": [s.signal for s in m.on_enter], "on_exit": [s.signal for s in m.on_exit]}
         return {"default": cfg.default, "error": self.room_config.error, "revision": cfg.revision, "modes": out}

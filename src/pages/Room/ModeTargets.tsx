@@ -2,7 +2,9 @@
 // on 15 Oct to see each fixture and choose whether it is part of a mode, so this is one switch per device. Rows follow
 // the site's rooms (status.rooms: the first open, the rest folded; anything in no room last), and within a room its
 // kinds of device in a fixed order (screens, TVs, blinds, lamps, music, the room's effects such as the glitterball with
-// its settings nested), then the settings that aren't devices, folded under "Behind the scenes".
+// its settings nested), then the settings that aren't devices, folded under "Behind the scenes". Devices the room
+// can't move yet (describe: a placeholder, a dry run, or unavailable) are all in one closed row at the end, "Not wired
+// yet (n)", whatever room they're in, so they don't take half the editor; every one is still listed there.
 //
 // Modes are flat (owner, 16 Oct): a mode lists everything it sets. On = this mode sets it. Off = not changed by this
 // mode: no entry, or null over a broader key that would name it (model.py merge rule 4). "Put back afterwards" is
@@ -291,6 +293,7 @@ export function ModeTargets({
   renderValue,
   words,
   wholeMode,
+  nowText,
 }: {
   /** The mode being edited. */
   name: string;
@@ -311,6 +314,8 @@ export function ModeTargets({
   words: (t: string, value: unknown) => string;
   /** Drawn last in "For the whole mode" (the editor's "Starts by itself"). */
   wholeMode?: ReactNode;
+  /** A row's "now" in the page's own words, by target (the Mic's, from the mic itself), over the room's value. */
+  nowText?: Record<string, string>;
 }) {
   const describe = describeIn as Describe;
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -468,7 +473,14 @@ export function ModeTargets({
   };
 
   // ── Rooms and their parts ──
-  const shown = all.filter((t) => !readOnly(t));
+  // Devices the room can't move yet go in one closed row of their own at the end (generic: describe's own flags).
+  const unwiredSub = (sub: string) => {
+    const info = describe.subsystems?.[sub] as { placeholder?: boolean; dry_run?: boolean; available?: boolean } | undefined;
+    return !behind(sub) && !!(info?.placeholder || info?.dry_run || info?.available === false);
+  };
+  const visible = all.filter((t) => !readOnly(t));
+  const unwired = visible.filter((t) => unwiredSub(subOf(t)));
+  const shown = visible.filter((t) => !unwiredSub(subOf(t)));
   const rooms: SiteRoom[] =
     status?.rooms ??
     [...new Set(Object.keys(groups).filter((g) => g.includes(":")).map((g) => g.split(":")[0]))].map((id) => ({
@@ -560,6 +572,8 @@ export function ModeTargets({
   };
 
   const nowWords = (ts: string[]): string => {
+    const own = ts.map((t) => nowText?.[t]);
+    if (own[0] && own.every((x) => x === own[0])) return own[0];
     const ns = ts.map(nowValue);
     if (ns[0] === undefined || !ns.every((n) => jsonKey(n) === jsonKey(ns[0]))) return "";
     return words(ts[0], ns[0]);
@@ -795,8 +809,20 @@ export function ModeTargets({
       <p className="text-sm text-muted-foreground">
         ↩ Put back afterwards: when the room leaves this mode, it goes back to how it was, unless the next mode sets it.
       </p>
-      {sections.map((sec, i) =>
-        sec.name
+      {[...sections, ...(unwired.length ? [{ id: "~unwired", name: `Not wired yet (${unwired.length})`, ts: unwired, flat: false }] : [])].map((sec, i) =>
+        sec.id === "~unwired"
+          ? folded(
+              `room/${sec.id}`,
+              sec.name,
+              `${sec.ts.filter((t) => view(t).on).length} of ${sec.ts.length} in this mode`,
+              open[`room/${sec.id}`] ?? hasIssues(sec.ts),
+              <>
+                <p className="text-sm text-muted-foreground">The room can't move these yet; a mode can still list them for later.</p>
+                {partsOf(sec.ts, sec.id).map(part)}
+              </>,
+              true,
+            )
+          : sec.name
           ? folded(
               `room/${sec.id}`,
               sec.name,

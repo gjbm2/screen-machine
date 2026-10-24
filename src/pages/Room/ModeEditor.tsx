@@ -9,17 +9,27 @@
 // The draft is checked as it is edited (POST /api/v1/room/config/validate, read-only) and its problems are shown in
 // words under their rows. A draft is never lost: offline, Save says so and keeps it; if someone else saved meanwhile,
 // a save over another mode's change rebases silently, and a change to this mode asks "Keep mine" or "Use theirs".
-// Editing the mode the room is in offers "Save and use now" (save, then PUT /api/v1/mode with the same mode).
+// The footer: Cancel (Close once saved) · Save (only with changes) · "Save and switch to it" ("Switch to it" with no
+// changes; for the mode the room is in, "Save and apply now" / "Apply now": save, then PUT /api/v1/mode with it).
+//
+// Also here: the mode's icon (a small picker of the room's icons; none = guessed from the name) and whether its tile is
+// in the Room page's mode row or under "More modes" (the plain per-mode field on_room_page). A setup note (describe's
+// warnings) that names devices shows only when this mode sets one of them. initialSection "starts" opens the editor at
+// "Starts by itself" (the Room page's Auto rules link there).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { RoomApiError, type RoomApi } from "./api";
 import { AutoTriggers } from "./AutoTriggers";
 import { Notice, Spinner } from "./bits";
-import { kindWords, ModeTargets, targetsOf } from "./ModeTargets";
+import { MODE_ICONS, modeIcon } from "./ModeSwitcher";
+import { kindWords, ModeTargets, setTargets, targetsOf } from "./ModeTargets";
+import { micWords } from "./MusicCard";
+import { THEME_CLASS } from "./theme";
 import { editable, inWords, jsonKey, ValueControl, type Schema } from "./SchemaControls";
 import type { SceneTagIndex } from "./sceneTags";
 import type { RawMode, RawRoomConfig, RoomDescribe, RoomStatus } from "./types";
@@ -123,10 +133,20 @@ function issuesOf(problems: RoomProblem[] | undefined, describe: RoomDescribe | 
   return out;
 }
 
-/** The room's setup notes (describe/validate warnings), in words. */
-function warningWords(ws: RoomProblem[] | undefined, describe: RoomDescribe | null): string {
+/** The targets a setup note names (its target, or the ids its message starts with: "blinds.ch02, blinds.ch03: ..."). */
+function warningTargets(w: RoomProblem, describe: RoomDescribe | null): string[] {
+  if (w.target) return [w.target];
+  if (!describe) return [];
+  return (w.message ?? "").split(":")[0].split(", ").filter((t) => !!describe.targets[t]);
+}
+
+/** The room's setup notes (describe/validate warnings), in words. A note about devices shows only when this mode sets
+ *  one of them (`sets`): every editor opened with "the blinds aren't wired up", even for modes that leave the blinds. */
+function warningWords(ws: RoomProblem[] | undefined, describe: RoomDescribe | null, sets?: Set<string>): string {
   const out = new Set<string>();
   for (const w of ws ?? []) {
+    const named = warningTargets(w, describe);
+    if (sets && named.length && !named.some((t) => sets.has(t))) continue;
     if (w.text) {
       out.add(w.text);
       continue;
@@ -157,6 +177,7 @@ export function ModeEditor({
   addLog,
   names,
   status: statusIn,
+  initialSection,
 }: {
   /** The mode being edited; null when closed. */
   name: string | null;
@@ -173,6 +194,8 @@ export function ModeEditor({
   addLog: (e: NewLogEntry) => void;
   /** The room's status (its rooms, the current mode, what each device is doing now); read once on open if not given. */
   status?: RoomStatus | null;
+  /** Open at this part: "starts" = "Starts by itself" (Auto's rules for this mode). */
+  initialSection?: "starts" | null;
 }) {
   const [base, setBase] = useState<Base | null>(null);
   const [draft, setDraft] = useState<RawMode | null>(null);
@@ -185,6 +208,10 @@ export function ModeEditor({
   const [warnings, setWarnings] = useState<RoomProblem[] | null>(null);
   const [conflict, setConflict] = useState<{ base: Base; andUse: boolean } | null>(null);
   const [saved, setSaved] = useState<{ pending: number | null } | null>(null);
+  // What the mic is doing now, in the top bar's words ("In use · for Auto"): the Mic row's "now" (its own value is
+  // only this mode's claim on the mic, which read "now: Off" while the mic was in use for Auto).
+  const [micNow, setMicNow] = useState<string | null>(null);
+  const startsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!name) return;
@@ -208,6 +235,19 @@ export function ModeEditor({
       });
     return () => ac.abort();
   }, [api, name, reload]);
+
+  useEffect(() => {
+    if (!name) return;
+    const ac = new AbortController();
+    setMicNow(null);
+    api
+      .showMic(ac.signal)
+      .then((m) => setMicNow(micWords(m).line))
+      .catch(() => {
+        /* the row says the room's own value instead */
+      });
+    return () => ac.abort();
+  }, [api, name]);
 
   // The room's status, when the caller doesn't pass it: rooms, the current mode, what each device is doing now.
   useEffect(() => {
@@ -249,6 +289,14 @@ export function ModeEditor({
       ac.abort();
     };
   }, [api, name, base, draft, dirty, describe]);
+
+  // Opened at "Starts by itself": scroll there once the editor has drawn.
+  const ready = !!draft && !!describe;
+  useEffect(() => {
+    if (!name || !ready || initialSection !== "starts") return;
+    const id = requestAnimationFrame(() => startsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    return () => cancelAnimationFrame(id);
+  }, [name, ready, initialSection]);
 
   if (!name) return null;
   const status = statusIn === undefined ? read : statusIn;
@@ -314,7 +362,7 @@ export function ModeEditor({
       addLog({ type: "ui", summary: `mode ${name} saved` });
       onSaved();
       if (andUse) {
-        await switchTo("Use now");                          // saved: the buttons now read "No changes" / "Use now"
+        await switchTo(current ? "Apply now" : "Switch to it");   // saved: the button now reads that
         return;
       }
       if (current && (r.pending_targets?.length || r.deferred)) setSaved({ pending: r.pending_targets?.length ?? null });
@@ -328,7 +376,7 @@ export function ModeEditor({
   };
 
   const onSave = () => (dirty ? void persist(false) : onClose());
-  const onSaveAndUse = () => (busy ? undefined : dirty ? void persist(true) : void switchTo("Use now"));
+  const onSaveAndUse = () => (busy ? undefined : dirty ? void persist(true) : void switchTo(current ? "Apply now" : "Switch to it"));
 
   const mine = (issues ?? []).filter((i) => i.mode === name);
   const elsewhere = (issues ?? []).filter((i) => i.mode !== name);
@@ -336,11 +384,19 @@ export function ModeEditor({
   for (const i of mine) for (const t of i.targets) byTarget[t] = [...(byTarget[t] ?? []), i.text];
   const general = [...mine.filter((i) => !i.targets.length).map((i) => i.text), ...elsewhere.map((i) => (i.mode ? `${labelOf(i.mode)}: ${i.text}` : i.text))];
   const count = (issues ?? []).length;
-  const notes = warningWords(warnings ?? (describe as (RoomDescribe & { warnings?: RoomProblem[] }) | null)?.warnings, describe);
+  const sets = describe && draft ? new Set(setTargets(describe, draft.state as Record<string, unknown> | undefined)) : undefined;
+  const notes = warningWords(warnings ?? (describe as (RoomDescribe & { warnings?: RoomProblem[] }) | null)?.warnings, describe, sets);
+  // The icons the room accepts (its mode schema's list), drawn by the page; none picked = guessed from the name.
+  const iconEnum = (describe as (RoomDescribe & { mode_schema?: { properties?: { icon?: { enum?: string[] } } } }) | null)?.mode_schema
+    ?.properties?.icon?.enum;
+  const icons = (iconEnum ?? Object.keys(MODE_ICONS)).filter((k) => MODE_ICONS[k]);
+  const ownIcon = typeof draft?.icon === "string" ? draft.icon : null;
+  const Guess = modeIcon(name, { label: modeLabel });
+  const inRow = draft?.on_room_page !== "more";
 
   return (
     <Sheet open={!!name} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-full overflow-y-auto bg-background sm:max-w-lg">
+      <SheetContent side="right" className={cn(THEME_CLASS, "w-full overflow-y-auto bg-background sm:max-w-lg")}>
         <SheetHeader className="text-left">
           <SheetTitle>Edit {modeLabel}</SheetTitle>
           <SheetDescription>What the room does in this mode.</SheetDescription>
@@ -427,6 +483,74 @@ export function ModeEditor({
                   Keep it short and unlike the others. Without one, this mode can’t be chosen by voice.
                 </span>
               </label>
+
+              <div>
+                <span className="text-sm font-medium text-stone-700">Icon</span>
+                <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Icon">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!ownIcon}
+                    title="Picked from the name"
+                    onClick={() =>
+                      update((d) => {
+                        delete d.icon;
+                      })
+                    }
+                    className={cn(
+                      "flex h-11 items-center gap-1.5 rounded-full border px-3 text-sm",
+                      !ownIcon ? "border-teal-600 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50",
+                    )}
+                  >
+                    <Guess className="h-[18px] w-[18px]" aria-hidden /> From the name
+                  </button>
+                  {icons.map((k) => {
+                    const I = MODE_ICONS[k];
+                    const on = ownIcon === k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-label={k}
+                        title={k}
+                        onClick={() =>
+                          update((d) => {
+                            d.icon = k;
+                          })
+                        }
+                        className={cn(
+                          "grid h-11 w-11 place-items-center rounded-full border",
+                          on ? "border-teal-600 bg-teal-600 text-white" : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50",
+                        )}
+                      >
+                        <I className="h-5 w-5" aria-hidden />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-stone-700">In the mode row on the Room page</span>
+                  <span className="block text-xs text-stone-500">
+                    {inRow ? "Its tile is in the row of modes." : "Its tile waits under “More modes” at the end of the row."}
+                  </span>
+                </span>
+                <Switch
+                  className="mt-0.5"
+                  aria-label="In the mode row on the Room page"
+                  checked={inRow}
+                  onCheckedChange={(on) =>
+                    update((d) => {
+                      if (on) delete d.on_room_page;
+                      else d.on_room_page = "more";
+                    })
+                  }
+                />
+              </label>
             </div>
 
             <div>
@@ -447,8 +571,10 @@ export function ModeEditor({
                   ) : null;
                 }}
                 words={(t, v) => inWords(describe.targets[t]?.schema as Schema | undefined, v)}
+                nowText={micNow ? { "show.mic": micNow } : undefined}
                 wholeMode={
                   base && (
+                    <div ref={startsRef} className="scroll-mt-4">
                     <AutoTriggers
                       name={name}
                       draft={draft}
@@ -460,6 +586,7 @@ export function ModeEditor({
                       status={status}
                       names={names}
                     />
+                    </div>
                   )
                 }
               />
@@ -516,25 +643,21 @@ export function ModeEditor({
             </p>
           )}
           {problem && <p className="text-sm font-medium text-amber-800">{problem}</p>}
-          <div className="grid grid-cols-[auto_1fr_1.5fr] gap-2">
+          <div className="grid grid-cols-[auto_auto_1fr] gap-2">
             <Button variant="outline" className="h-11 rounded-xl bg-white px-4 text-[15px]" onClick={onClose}>
-              {saved ? "Close" : "Cancel"}
+              {saved || !dirty ? "Close" : "Cancel"}
             </Button>
-            <Button
-              variant={current ? "outline" : "default"}
-              className={cn("h-11 rounded-xl px-2 text-[15px]", current && "bg-white")}
-              onClick={onSave}
-            >
+            <Button className="h-11 rounded-xl px-4 text-[15px]" disabled={!dirty || busy === "save"} onClick={onSave}>
               {busy === "save" ? <Spinner className="mr-1.5" /> : null}
-              {dirty ? "Save" : "No changes"}
+              Save
             </Button>
             <Button
-              variant={current ? "default" : "outline"}
-              className={cn("h-11 whitespace-nowrap rounded-xl px-2 text-[15px]", !current && "bg-white")}
+              variant="outline"
+              className="h-11 whitespace-nowrap rounded-xl bg-white px-2 text-[15px]"
               onClick={onSaveAndUse}
             >
               {busy === "use" ? <Spinner className="mr-1.5" /> : null}
-              {dirty ? "Save and use now" : "Use now"}
+              {current ? (dirty ? "Save and apply now" : "Apply now") : dirty ? "Save and switch to it" : "Switch to it"}
             </Button>
           </div>
         </div>

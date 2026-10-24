@@ -206,7 +206,16 @@ export function useRoomConnection(baseUrl: string, token: string) {
         if (last && last.id) {
           // Also covers a page opened after the transition ended, or one that missed the events.
           const seen = prev && prev.id === last.id ? prev.finishedAt : undefined;
-          const at = seen ?? (last.finished_at ? Date.parse(last.finished_at) : NaN);
+          // status sends finished_age_s (seconds since it ended) when it has no finished_at: a switch 87 min old
+          // is 87 min old, not "just now" (it showed "Now Normal" for 15 s on every page open).
+          const ageS = (last as { finished_age_s?: number | null }).finished_age_s;
+          const at =
+            seen ??
+            (last.finished_at
+              ? Date.parse(last.finished_at)
+              : typeof ageS === "number" && Number.isFinite(ageS)
+                ? Date.now() - ageS * 1000
+                : NaN);
           return {
             ...last,
             phase: last.phase === "cancelled" ? "cancelled" : "done",
