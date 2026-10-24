@@ -11,9 +11,14 @@
 // left or right third). Both use the same pages, so switching is instant. PDF opens the whole score laid out for
 // paper (A4 portrait unless another paper is chosen) in a new tab, to print or keep.
 //
-// Your own pieces (uploads and recordings) have a pencil by the title: change the title and composer in place (the PDF
-// prints them). They have Record too (ScoreRecord.tsx, owner 24 Oct): a new take of the whole piece, or of a few bars
-// that go in place of those bars in a new copy; either way its score is offered at once.
+// The page (owner, 24 Oct: "you just haven't really worked the interface ui through properly throughout"): a slim
+// header (one back named for where it goes, "‹ Room" or "‹ Music"; the title on up to two lines and the composer; Mic
+// and AI; ⋯ and the menu), one row (Full screen · Record · Pages | Scroll), the music, and a bar docked at the foot
+// (the app's shared Transport with the score's bar steps, Play on, ‹ n / N ›, and the red timer with Stop while the
+// piano records). ⋯ is the piece's sheet (Music/bits.tsx PieceSheet: play, playlists, Edit details for your own) with
+// "This score": Smaller / Larger notes, Score: Quick | Better, PDF to print (paper, Open PDF). Record is on every score
+// with MIDI (ScoreRecord.tsx): the whole piece in one tap, or chosen bars, banded on the score. While a score is open
+// the tab's title is "<piece> · Score".
 //
 // The music stand (owner, 23 Oct: "it should be possible for a pianist to PLAY the score from e.g. an iPad screen"):
 // "Full screen", or a tap on the score (Scroll: any page; Pages: the middle third), opens the score full screen
@@ -36,20 +41,30 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, FileDown, Maximize2, Menu, MoreHorizontal, Pause, Play, RotateCcw, X } from "lucide-react";
+import { BackLink } from "@/components/nav/BackLink";
+import { Transport as AppTransport } from "@/components/player/Transport";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
+import { AppMenu } from "@/components/nav/AppMenu";
+import { loadToken, RoomApi, RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
+import { useShowFeed } from "@/pages/Room/MusicCard";
 import { Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
 import { isUnreached, musicWords, percent, SCORE_PAPERS, type ScoreKind, type ScorePaper, type ScoreSize, type ScoreStatus } from "./api";
-import { CHIP, CHIP_OFF, CHIP_ON, PRIMARY, SECONDARY } from "./bits";
+import { CHIP, CHIP_OFF, CHIP_ON, hasScore, PieceSheet, PRIMARY, SCORE_PARAM, SECONDARY, type PieceRef } from "./bits";
 import { useMusic } from "./context";
-import { FollowLight, useFollow, type Follow } from "./follow";
-import { PlayBar } from "./PlayBar";
-import { ScoreRecord } from "./ScoreRecord";
+import { BarBand, FollowLight, useFollow, useScoreTransport, type Follow } from "./follow";
+import { PlayBar, Segmented, type Watching } from "./PlayBar";
+import { RecordChip, RecordSheet, RecordTimer, recordingWords, TakeSheet, useScoreTake, type ScoreTake } from "./ScoreRecord";
 import { openPianola } from "@/pages/Room/listenStream";
+import { PlayOn } from "@/pages/Room/PlayOn";
+import { recPiece } from "@/pages/Room/PianoRecorder";
+import { scoreLink } from "@/pages/Room/RecordButton";
+import { SpeedNudges } from "@/pages/Room/SpeedNudges";
+import { TopToggleButtons, useTopToggles, type TopToggles } from "@/pages/Room/TopToggles";
+import type { MusicItem } from "./api";
 
 type Mode = "scroll" | "pages";
 
@@ -73,8 +88,23 @@ const RETRY_MS = 3000;
 const RESIZE_MS = 300;
 /** The stand lays out again this long after the screen stops changing (a rotation, fullscreen coming or going). */
 const STAND_RESIZE_MS = 250;
-/** The page turner's row under a page (kept in both modes, so switching doesn't lay the score out again). */
-const PAGER_H = 52;
+/** The page turner's row under a page: none (it's in the docked bar; owner, 24 Oct: Pages must fit the screen). */
+const PAGER_H = 0;
+const MODES: [Mode, string][] = [
+  ["pages", "Pages"],
+  ["scroll", "Scroll"],
+];
+const PASSES: [ScoreKind, string][] = [
+  ["quick", "Quick"],
+  ["better", "Better"],
+];
+const WATCH: [Watching, string][] = [
+  ["score", "Score"],
+  ["pianola", "Pianola"],
+];
+const MORE_HEAD = "mb-1.5 text-sm font-medium text-stone-600";
+/** The docked bar's height before it has been measured (so the first layout already leaves room for it). */
+const BAR_GUESS_H = 80;
 const MIN_H = 420;
 
 const PAGE_CLASS = "block h-auto w-full rounded-sm border border-stone-200 bg-white shadow-sm";
@@ -85,7 +115,9 @@ const ICON_BUTTON =
 /** The stand's bar: quiet, 44 px targets. */
 const BAR_BUTTON =
   "grid h-11 min-w-11 shrink-0 place-items-center rounded-full px-1.5 text-[15px] font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35 disabled:hover:bg-transparent";
-const FIELD = "h-11 rounded-xl bg-white text-base md:text-base";
+/** The docked bar's page turner. */
+const PAGER_BUTTON =
+  "grid h-11 w-9 shrink-0 place-items-center rounded-full text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35";
 
 // ── Turning pages by hand (owner, 23 Oct: "swipe gestures, sensible clicks to move forward / backward ... with suitable
 // mouse cursor changes") ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -342,8 +374,26 @@ interface Problem {
   noMidi: boolean;
 }
 
-export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => void }) {
-  const { api, bumpLibrary } = useMusic();
+export function ScoreView({
+  pieceId,
+  toggles,
+  onDetails,
+  onMenu,
+}: {
+  pieceId: string;
+  /** Kept for the Music page's call; the header's BackLink goes back the same way (history, else Music). */
+  onBack?: () => void;
+  /** The Mic and AI switches: the Music page's own (it has the show feed), null for none; when not given the score
+   *  runs its own. */
+  toggles?: TopToggles | null;
+  /** Where "Listening details" goes (a long press on a switch); by default /room#listening. */
+  onDetails?: () => void;
+  /** Opens the app's menu (the Music page's AppMenu); when not given the score has its own. */
+  onMenu?: () => void;
+}) {
+  const { api, libraryRev } = useMusic();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(() => (storageGet(MODE_KEY) === "pages" ? "pages" : "scroll"));
   const [paper, setPaper] = useState<ScorePaper>(() => {
     const p = storageGet(PAPER_KEY);
@@ -354,15 +404,16 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const [status, setStatus] = useState<ScoreStatus | null>(null);
   // the piece's name at once from the library (owner, 23 Oct: '"Finding the piece" takes weirdly long'): the score's
   // own answer waits for its layout
-  const [named, setNamed] = useState<{ pieceId: string; title: string; composer: string | null } | null>(null);
+  // (and again when the library changes here: Edit details in ⋯)
+  const [named, setNamed] = useState<{ pieceId: string; item: MusicItem } | null>(null);
   useEffect(() => {
     const ac = new AbortController();
     api
       .item(pieceId, ac.signal)
-      .then((it) => it?.title && setNamed({ pieceId, title: it.title, composer: it.composer ?? null }))
+      .then((it) => it?.title && setNamed({ pieceId, item: it }))
       .catch(() => undefined);
     return () => ac.abort();
-  }, [api, pieceId]);
+  }, [api, pieceId, libraryRev]);
   const [shown, setShown] = useState<Shown | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tick, setTick] = useState(0);
@@ -383,12 +434,23 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const remeasure = useRef<() => void>(() => undefined);
   /** The stand put a history entry on top, so Back (an edge swipe, a phone's Back) closes the stand, not the score. */
   const standEntry = useRef(false);
-  /** The title and composer being changed, in place of the title. */
-  const [editing, setEditing] = useState<{ title: string; composer: string } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [editErr, setEditErr] = useState<string | null>(null);
-  /** Record on the piano (your own pieces): its panel is open. */
-  const [recOpen, setRecOpen] = useState(false);
+  /** The piece's ⋯ sheet is open. */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /** The score's own menu (when the page didn't pass one). */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const details = onDetails ?? (() => navigate("/room#listening"));
+  /** The docked bar's height (the page is laid out to the screen above it). */
+  const barH = useRef(BAR_GUESS_H);
+  /** Scroll: the page in view (the docked bar's n / N, and where Record's bars start). */
+  const [viewPage, setViewPage] = useState(1);
+  /** The stand stopped a take: the take's sheet opens when the stand closes. */
+  const standTake = useRef(false);
+
+  // a renamed piece (Edit details in ⋯): the score's answer carries the new names (and the PDF prints them)
+  const firstRev = useRef(libraryRev);
+  useEffect(() => {
+    if (libraryRev !== firstRev.current) setTick((n) => n + 1);
+  }, [libraryRev]);
 
   // The page size: the area's width, by the height left below the controls.
   useLayoutEffect(() => {
@@ -399,8 +461,9 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
       const w = Math.max(240, tens(el.clientWidth));
       const top = el.getBoundingClientRect().top + window.scrollY;
       // the layout viewport's height: steady while a phone's address bar comes and goes
-      const h = tens(Math.max(MIN_H, document.documentElement.clientHeight - top - 12 - PAGER_H));
-      setSize((s) => (s && s.w === w && Math.abs(s.h - h) < 40 ? s : { w, h }));
+      const h = tens(Math.max(MIN_H, document.documentElement.clientHeight - top - 12 - PAGER_H - barH.current));
+      // a little more room keeps the pages (no new layout for a few px); less never does (the foot would go under the bar)
+      setSize((s) => (s && s.w === w && h >= s.h && h - s.h < 40 ? s : { w, h }));
     };
     measure();
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -411,6 +474,9 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
     remeasure.current = later;
     const ro = new ResizeObserver(later);
     ro.observe(el);
+    // the header growing (a line of words, the better score's progress) moves the music down: measure again (the
+    // section changes size then; the same size measured again changes nothing)
+    if (el.parentElement) ro.observe(el.parentElement);
     window.addEventListener("resize", later);
     return () => {
       clearTimeout(t);
@@ -612,12 +678,93 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         next.delete("stand");
         return next;
       },
-      { replace: true },
+      { replace: true, state: location.state }, // where it was opened from stays (the back control's words)
     );
     openStandRef.current();
-  }, [wantStand, shown, count, stand, setParams]);
+  }, [wantStand, shown, count, stand, setParams, location.state]);
+  const early = named?.pieceId === pieceId ? named.item : null;
+  const title = status?.title || shown?.st.title || early?.title || (problem ? "Score" : null);
+  const composer = status?.composer ?? shown?.st.composer ?? early?.composer ?? null;
+  const editable = !!(status?.editable ?? shown?.st.editable ?? early?.editable);
+  const retry = () => {
+    setProblem(null);
+    retryNext.current = true;
+    setTick((n) => n + 1);
+  };
+  const choosePass = (k: ScoreKind) => {
+    if (k === "better" && status?.better === "failed") retryNext.current = true;
+    setKind(k);
+  };
+  // the tab's title while the score is open (owner rule: say what's on screen), put back as it closes
+  useEffect(() => {
+    if (!title) return;
+    const prev = document.title;
+    document.title = `${title} · Score`;
+    return () => {
+      document.title = prev;
+    };
+  }, [title]);
+  // the better pass being written (or failed) while the quick score is on screen
+  const betterBusy = !!shown && status?.kind === "better" && (status.state === "queued" || status.state === "making");
+  const betterFailed = !!shown && status?.kind === "better" && status.state === "failed";
+  const shownKind = shown?.st.kind ?? "quick";
+
+  // Scroll: the page in view, kept as the page scrolls (the docked bar's n / N; where Record's bars start).
+  const scrollPage = useCallback(() => {
+    const mid = window.innerHeight / 2;
+    let n = 1;
+    imgs.current.slice(0, count).forEach((el, i) => {
+      if (el && el.getBoundingClientRect().top <= mid) n = i + 1;
+    });
+    return n;
+  }, [count]);
+  useEffect(() => {
+    if (mode !== "scroll" || !count) return;
+    let raf = 0;
+    const on = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setViewPage(scrollPage()));
+    };
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", on);
+    };
+  }, [mode, count, scrollPage]);
+  const pageHere = mode === "pages" ? cur : Math.min(Math.max(1, viewPage), Math.max(1, count));
+  const toPage = (n: number) => {
+    const p = Math.min(Math.max(1, n), Math.max(1, count));
+    if (mode === "pages") go(p);
+    else imgs.current[p - 1]?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+
+  // Record on the piano (every score with MIDI): the app's one recorder
+  const take = useScoreTake({
+    baseUrl: api.baseUrl,
+    pieceId,
+    bars: follow.data?.bars ?? null,
+    hereBar: follow.head.mine && follow.head.bar !== null ? follow.head.bar : follow.firstBarOnPage(pageHere),
+  });
+  const canRecord = hasScore({ id: pieceId, kind: early?.kind }) && !problem?.noMidi;
+  // These bars chosen (or From changed in the sheet): the score turns or scrolls to the first of them
+  useEffect(() => {
+    const first = take.from;
+    if (!take.jump || first === null) return;
+    const i = follow.data?.pages.findIndex(([a, z]) => a <= first && first <= z) ?? -1;
+    if (i < 0) return;
+    if (mode === "pages") setPage(i + 1);
+    else imgs.current[i]?.scrollIntoView({ block: "start", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [take.jump]);
+  const picking = take.what === "section" && !take.r.recording;
+  const band = (n: number) =>
+    layout && take.what === "section" ? (
+      <BarBand pieceId={pieceId} n={n} layout={layout} from={take.from} to={take.to} onPick={picking ? take.pick : undefined} />
+    ) : null;
+
   /** Closed at this place (by Back: popped): the view follows it (Pages turns to it, Scroll scrolls to it once
-   * fullscreen has gone). */
+   * fullscreen has gone). A take stopped in the stand opens in its sheet. */
   const closeStand = (at: number, popped = false) => {
     if (standEntry.current && !popped) window.history.back();
     standEntry.current = false;
@@ -630,54 +777,88 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         if (n > 1) imgs.current[n - 1]?.scrollIntoView({ block: "start" });
       }, 150);
     remeasure.current();
+    if (standTake.current && take.r.fresh) take.setTakeOpen(true);
+    standTake.current = false;
+  };
+  /** The stand's "New take · Score": keep it, leave the stand, open the take's score. */
+  const takeScore = async (at: number) => {
+    const k = await take.r.keep();
+    if (!k) return;
+    standTake.current = false;
+    const l = scoreLink(recPiece(k.id), "Score");
+    const open = () => navigate(l.to, { state: l.state });
+    const popping = standEntry.current;
+    if (popping) window.addEventListener("popstate", () => setTimeout(open, 0), { once: true });
+    closeStand(at);
+    if (!popping) open();
   };
 
-  const early = named?.pieceId === pieceId ? named : null;
-  const title = status?.title || shown?.st.title || early?.title || (problem ? "Score" : null);
-  const composer = status?.composer ?? shown?.st.composer ?? early?.composer ?? null;
-  const editable = !!(status?.editable ?? shown?.st.editable);
-  const retry = () => {
-    setProblem(null);
-    retryNext.current = true;
-    setTick((n) => n + 1);
-  };
-  const choosePass = (k: ScoreKind) => {
-    if (k === "better" && status?.better === "failed") retryNext.current = true;
-    setKind(k);
-  };
-  const startEdit = () => {
-    setEditErr(null);
-    setEditing({ title: title && title !== "Score" ? title : "", composer: composer ?? "" });
-  };
-  const saveEdit = async () => {
-    if (!editing || saving) return;
-    const t = editing.title.trim();
-    const c = editing.composer.trim() || null;
-    if (!t) {
-      setEditErr("It needs a title.");
-      return;
-    }
-    setSaving(true);
-    setEditErr(null);
-    try {
-      await api.edit(pieceId, { title: t, composer: c });
-      // the new names at once; then ask the score again, which carries them
-      setStatus((s) => (s ? { ...s, title: t, composer: c } : s));
-      setShown((s) => (s ? { ...s, st: { ...s.st, title: t, composer: c } } : s));
-      setEditing(null);
-      bumpLibrary();
-      setTick((n) => n + 1);
-    } catch (e) {
-      setEditErr(musicWords(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-  // the better pass being written (or failed) while the quick score is on screen
-  const betterBusy = !!shown && status?.kind === "better" && (status.state === "queued" || status.state === "making");
-  const betterFailed = !!shown && status?.kind === "better" && status.state === "failed";
-  const shownKind = shown?.st.kind ?? "quick";
-  const haveBetter = status?.better === "ready" || shownKind === "better";
+  const backTo = useMemo(() => {
+    const q = new URLSearchParams(location.search);
+    q.delete(SCORE_PARAM);
+    q.delete("stand");
+    const qs = q.toString();
+    return `/music${qs ? `?${qs}` : ""}`;
+  }, [location.search]);
+  const pieceRef: PieceRef = early
+    ? { id: early.id, title: early.title, composer: early.composer, genre: early.genre, kind: early.kind, pinned: early.pinned, editable: early.editable }
+    : { id: pieceId, title: title || "Score", composer, editable };
+  const pdfUrl = shown ? api.scorePdfUrl(pieceId, paper, shown.st.rev, shown.st.kind, tag(`${title ?? ""}\n${composer ?? ""}`)) : null;
+  const ready = !!shown && count > 0;
+
+  // ⋯'s own group: this score's notes, pass and paper
+  const scoreGroup = (close: () => void) => (
+    <div className="mt-3 space-y-4 border-t border-stone-200 px-1 pt-4" data-testid="score-sheet-group">
+      <p className="text-base font-semibold text-stone-800">This score</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-auto text-[15px] text-stone-700">Notes</span>
+        <button type="button" disabled={si <= 0} onClick={() => resize(-1)} className={cn(CHIP, CHIP_OFF, "disabled:opacity-40")}>
+          A− Smaller
+        </button>
+        <button type="button" disabled={si >= STAFFS.length - 1} onClick={() => resize(1)} className={cn(CHIP, CHIP_OFF, "disabled:opacity-40")}>
+          A+ Larger
+        </button>
+      </div>
+      {ready && (
+        <div className="space-y-1.5">
+          <p className="text-[15px] text-stone-700">Score</p>
+          <Segmented label="Which score" value={kind ?? shownKind} options={PASSES} onChange={choosePass} />
+          <p className="text-sm text-muted-foreground">Better: a closer reading of beat, bars and hands; a minute or two.</p>
+        </div>
+      )}
+      {ready && pdfUrl && (
+        <div className="space-y-2">
+          <p className="text-[15px] text-stone-700">PDF to print</p>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Paper">
+            {SCORE_PAPERS.map(([id, words]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={paper === id}
+                onClick={() => {
+                  setPaper(id);
+                  storageSet(PAPER_KEY, id);
+                }}
+                className={cn(CHIP, paper === id ? CHIP_ON : CHIP_OFF)}
+              >
+                {words}
+              </button>
+            ))}
+          </div>
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener"
+            onClick={close}
+            className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2 font-medium")}
+          >
+            <FileDown className="h-4 w-4" aria-hidden /> Open PDF
+          </a>
+        </div>
+      )}
+    </div>
+  );
 
   let body: ReactNode = null;
   if (shown && count > 0) {
@@ -701,47 +882,36 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
                 className={cn(PAGE_CLASS, "cursor-zoom-in")}
               />
               {layout && <FollowLight pieceId={pieceId} n={i + 1} layout={layout} head={follow.head} />}
+              {band(i + 1)}
             </div>
           ))}
         </div>
       ) : (
-        <div>
-          <div
-            className="relative select-none"
-            style={{ touchAction: "pan-y pinch-zoom", cursor: viewTurner.cursor }}
-            title="Click the right of the page for the next, the left for the previous; the middle opens it full screen"
-            {...viewTurner.handlers}
-          >
-            {/* the page before and the two after stay mounted and painted (see-through), so a turn is instant */}
-            {[cur - 1, cur, cur + 1, cur + 2]
-              .filter((n) => n >= 1 && n <= count)
-              .map((n) => (
-                <img
-                  key={`p${n}`}
-                  src={pageUrl(n)}
-                  alt={n === cur ? `Page ${cur} of ${count}` : ""}
-                  aria-hidden={n !== cur}
-                  width={shown.w}
-                  height={shown.h}
-                  decoding="async"
-                  draggable={false}
-                  className={cn(PAGE_CLASS, n !== cur && "pointer-events-none absolute inset-x-0 top-0 opacity-0")}
-                />
-              ))}
-            {layout && <FollowLight pieceId={pieceId} n={cur} layout={layout} head={follow.head} />}
-            <ZoneHint zone={viewTurner.zone} canPrev={cur > 1} canNext={cur < count} withOpen />
-          </div>
-          <div className="flex items-center justify-center gap-4" style={{ height: PAGER_H }}>
-            <button type="button" aria-label="Previous page" disabled={cur <= 1} onClick={() => go(cur - 1)} className={ROUND}>
-              <ChevronLeft className="h-5 w-5" aria-hidden />
-            </button>
-            <span className="min-w-16 text-center text-base tabular-nums text-stone-700" aria-live="polite">
-              {cur} / {count}
-            </span>
-            <button type="button" aria-label="Next page" disabled={cur >= count} onClick={() => go(cur + 1)} className={ROUND}>
-              <ChevronRight className="h-5 w-5" aria-hidden />
-            </button>
-          </div>
+        <div
+          className="relative select-none"
+          style={{ touchAction: "pan-y pinch-zoom", cursor: viewTurner.cursor }}
+          title="Click the right of the page for the next, the left for the previous; the middle opens it full screen"
+          {...viewTurner.handlers}
+        >
+          {/* the page before and the two after stay mounted and painted (see-through), so a turn is instant */}
+          {[cur - 1, cur, cur + 1, cur + 2]
+            .filter((n) => n >= 1 && n <= count)
+            .map((n) => (
+              <img
+                key={`p${n}`}
+                src={pageUrl(n)}
+                alt={n === cur ? `Page ${cur} of ${count}` : ""}
+                aria-hidden={n !== cur}
+                width={shown.w}
+                height={shown.h}
+                decoding="async"
+                draggable={false}
+                className={cn(PAGE_CLASS, n !== cur && "pointer-events-none absolute inset-x-0 top-0 opacity-0")}
+              />
+            ))}
+          {layout && <FollowLight pieceId={pieceId} n={cur} layout={layout} head={follow.head} />}
+          <ZoneHint zone={viewTurner.zone} canPrev={cur > 1} canNext={cur < count} withOpen />
+          {band(cur)}
         </div>
       );
   } else if (problem) {
@@ -802,214 +972,60 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
 
   return (
     <section aria-label="Score" data-testid="music-score" className="space-y-3">
-      <div className={cn("flex gap-2", editing ? "items-start" : "items-center")}>
-        <button type="button" onClick={onBack} aria-label="Back to Music" className={cn(ICON_BUTTON, "-ml-2")}>
-          <ArrowLeft className="h-5 w-5" aria-hidden />
-        </button>
-        {editing ? (
-          <form
-            className="min-w-0 flex-1 space-y-3"
-            aria-label="Title and composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void saveEdit();
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape" || saving) return;
-              e.preventDefault();
-              setEditing(null);
-            }}
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1">
-                <span className="text-[15px] font-medium">Title</span>
-                <Input
-                  autoFocus
-                  required
-                  value={editing.title}
-                  maxLength={120}
-                  onChange={(e) => setEditing((d) => d && { ...d, title: e.target.value })}
-                  className={FIELD}
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-[15px] font-medium">Composer</span>
-                <Input
-                  value={editing.composer}
-                  maxLength={120}
-                  placeholder="If you know it"
-                  onChange={(e) => setEditing((d) => d && { ...d, composer: e.target.value })}
-                  className={FIELD}
-                />
-              </label>
-            </div>
-            {editErr && <p className="text-[15px] text-rose-700">{editErr}</p>}
-            <div className="flex gap-2">
-              <button type="submit" disabled={saving} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex items-center gap-2 font-semibold")}>
-                {saving ? <Spinner /> : <Check className="h-4 w-4" aria-hidden />} Save
-              </button>
-              <button type="button" disabled={saving} onClick={() => setEditing(null)} className={cn(TAP_BUTTON_CLASS, SECONDARY)}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        ) : (
-          <>
-            <div className="min-w-0 flex-1">
-              {title ? (
-                <h1 className="truncate text-xl font-semibold leading-7" title={title}>
-                  {title}
-                </h1>
-              ) : (
-                <p className="flex h-7 items-center gap-2 text-base text-muted-foreground">
-                  <Spinner /> Finding the piece…
-                </p>
-              )}
-              <p className="truncate text-[15px] leading-5 text-muted-foreground">{composer || " "}</p>
-            </div>
-            {editable && (
-              <button type="button" onClick={startEdit} aria-label="Edit title and composer" title="Edit title and composer" className={cn(ICON_BUTTON, "-mr-2 text-stone-500")}>
-                <Pencil className="h-[18px] w-[18px]" aria-hidden />
-              </button>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {shown && count > 0 && (
+      <header className="space-y-2" data-testid="score-header">
+        <div className="flex min-w-0 items-center gap-1">
+          <BackLink to={backTo} testId="score-back" />
+          <span className="flex-1" />
+          {toggles === undefined ? (
+            <OwnToggles baseUrl={api.baseUrl} render={(t) => <TopToggleButtons t={t} onDetails={details} />} />
+          ) : (
+            toggles && <TopToggleButtons t={toggles} onDetails={details} />
+          )}
           <button
             type="button"
-            onClick={() => openStand()}
-            title="Full screen, to play from: tap the right of the page to turn forward, the left to go back"
-            className={cn(CHIP, PRIMARY, "border-transparent font-semibold")}
+            onClick={() => setSheetOpen(true)}
+            aria-label="More: this piece and this score"
+            title="This piece and this score"
+            className={ICON_BUTTON}
+            data-testid="score-more"
           >
-            <Maximize2 className="h-4 w-4" aria-hidden /> Full screen
+            <MoreHorizontal className="h-6 w-6" aria-hidden />
           </button>
-        )}
-        {editable && !recOpen && (
-          <button
-            type="button"
-            onClick={() => setRecOpen(true)}
-            title="Record on the piano: the whole piece, or a few bars in place of these"
-            className={cn(CHIP, CHIP_OFF)}
-          >
-            <Circle className="h-3.5 w-3.5 fill-rose-700 text-rose-700" aria-hidden /> Record
-          </button>
-        )}
-        <div role="radiogroup" aria-label="How to read it" className="flex gap-1.5">
-          {(
-            [
-              ["scroll", "Scroll"],
-              ["pages", "Pages"],
-            ] as [Mode, string][]
-          ).map(([m, words]) => (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={mode === m}
-              onClick={() => choose(m)}
-              className={cn(CHIP, mode === m ? CHIP_ON : CHIP_OFF)}
-            >
-              {words}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            aria-label="Smaller notes"
-            title="Smaller notes"
-            disabled={si <= 0}
-            onClick={() => resize(-1)}
-            className={cn(CHIP, CHIP_OFF, "px-3 disabled:opacity-40")}
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            aria-label="Larger notes"
-            title="Larger notes"
-            disabled={si >= STAFFS.length - 1}
-            onClick={() => resize(1)}
-            className={cn(CHIP, CHIP_OFF, "px-3 disabled:opacity-40")}
-          >
-            A+
+          <button type="button" onClick={onMenu ?? (() => setMenuOpen(true))} aria-label="Menu" className={cn(ICON_BUTTON, "-mr-2")} data-testid="menu-button">
+            <Menu className="h-6 w-6" aria-hidden />
           </button>
         </div>
-        {shown && count > 0 && (
-          <div className="flex items-center gap-1">
-            <a
-              href={api.scorePdfUrl(pieceId, paper, shown.st.rev, shown.st.kind, tag(`${title ?? ""}\n${composer ?? ""}`))}
-              target="_blank"
-              rel="noopener"
-              title="The whole score as a PDF, to print or keep"
-              className={cn(CHIP, CHIP_OFF)}
-            >
-              <FileDown className="h-4 w-4" aria-hidden /> PDF
-            </a>
-            <select
-              aria-label="Paper"
-              value={paper}
-              onChange={(e) => {
-                const p = e.target.value as ScorePaper;
-                setPaper(p);
-                storageSet(PAPER_KEY, p);
-              }}
-              className={cn(CHIP, CHIP_OFF, "appearance-none bg-white pr-3.5")}
-            >
-              {SCORE_PAPERS.map(([id, words]) => (
-                <option key={id} value={id}>
-                  {words}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {shown && count > 0 && (haveBetter ? (
-          <div role="radiogroup" aria-label="Which score" className="flex gap-1.5">
-            {(
-              [
-                ["quick", "Quick"],
-                ["better", "Better"],
-              ] as [ScoreKind, string][]
-            ).map(([k, words]) => (
-              <button
-                key={k}
-                type="button"
-                role="radio"
-                aria-checked={shownKind === k}
-                onClick={() => choosePass(k)}
-                className={cn(CHIP, shownKind === k ? CHIP_ON : CHIP_OFF)}
-              >
-                {words}
-              </button>
-            ))}
-          </div>
-        ) : (
-          !betterBusy && (
+        <div className="min-w-0">
+          {title ? (
+            <h1 className="break-words text-[22px] font-semibold leading-tight tracking-tight">{title}</h1>
+          ) : (
+            <p className="flex h-7 items-center gap-2 text-base text-muted-foreground">
+              <Spinner /> Finding the piece…
+            </p>
+          )}
+          {composer && <p className="break-words text-[15px] leading-5 text-muted-foreground">{composer}</p>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {ready && (
             <button
               type="button"
-              onClick={() => choosePass("better")}
-              title="A slower, closer reading of the beat, bars and hands (the live score's neural networks): a minute or two for a long piece"
-              className={cn(CHIP, CHIP_OFF)}
+              onClick={() => openStand()}
+              title="Full screen, to play from: tap the right of the page to turn forward, the left to go back"
+              className={cn(CHIP, PRIMARY, "border-transparent font-semibold")}
             >
-              <Sparkles className="h-4 w-4" aria-hidden /> Better score
+              <Maximize2 className="h-4 w-4" aria-hidden /> Full screen
             </button>
-          )
-        ))}
-        {relaying && !problem && <Spinner className="ml-auto h-5 w-5 text-muted-foreground" />}
-      </div>
-
-      {editable && recOpen && (
-        <ScoreRecord
-          pieceId={pieceId}
-          bars={follow.data?.bars ?? null}
-          hereBar={follow.head.mine && follow.head.bar !== null ? follow.head.bar : follow.firstBarOnPage(cur)}
-          onClose={() => setRecOpen(false)}
-        />
-      )}
+          )}
+          {ready && canRecord && <RecordChip take={take} />}
+          <Segmented label="How to read it" value={mode} options={MODES} onChange={choose} />
+          {relaying && !problem && <Spinner className="ml-auto h-5 w-5 text-muted-foreground" />}
+        </div>
+        {picking && (
+          <p className="text-sm text-muted-foreground" data-testid="score-bars-hint">
+            {take.span ? `Record will take ${take.span}.` : "Choose the bars."} Tap a bar on the score to start there, then the bar to end on.
+          </p>
+        )}
+      </header>
 
       {betterBusy && status && (
         <div className={cn(CARD_CLASS, "space-y-2 px-4 py-3")} role="status">
@@ -1052,10 +1068,28 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         </p>
       )}
 
-      <div ref={area}>{shown && count > 0 && (
-        <PlayBar baseUrl={api.baseUrl} follow={follow} pageInView={cur} watching="score" onWatch={(w) => w === "pianola" && openPianola()} />
+      {/* only the music: the page is laid out to the height from here down to the docked bar */}
+      <div ref={area}>{body}</div>
+
+      {ready && (
+        <ScoreBar
+          follow={follow}
+          pageInView={pageHere}
+          count={count}
+          onPage={toPage}
+          take={take}
+          onHeight={(h) => {
+            if (Math.abs(h - barH.current) < 2) return;
+            barH.current = h;
+            remeasure.current();
+          }}
+        />
       )}
-      {body}</div>
+
+      <PieceSheet piece={sheetOpen ? pieceRef : null} onClose={() => setSheetOpen(false)} extra={(_p, close) => scoreGroup(close)} />
+      <RecordSheet take={take} editable={editable} />
+      <TakeSheet take={take} />
+      {!onMenu && <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="music" />}
 
       {stand !== null && shown && (
         <MusicStand
@@ -1069,9 +1103,124 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
           start={stand}
           seed={shown}
           onClose={closeStand}
+          take={canRecord ? take : null}
+          onTakeStopped={() => {
+            standTake.current = true;
+          }}
+          onTakeScore={(at) => void takeScore(at)}
         />
       )}
     </section>
+  );
+}
+
+const noop = () => undefined;
+
+/** Mic and AI when the page didn't pass its own: the score's own show feed (the room's two switches). */
+function OwnToggles({ baseUrl, render }: { baseUrl: string; render: (t: TopToggles) => ReactNode }) {
+  const api = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const feed = useShowFeed(api, true, noop);
+  const t = useTopToggles(api, feed, noop);
+  return <>{render(t)}</>;
+}
+
+/** The score's bar, docked at the foot of the screen (in the app dock's place, which a score doesn't show): the shared
+ *  Transport with the score's bar steps (⋯ More: Stop, Speed, Sound, Play on on a phone, Watch), Play on, ‹ n / N ›,
+ *  and while the piano records a first line with the red timer and Stop. Its height is --dock-h (the page's foot clears
+ *  it, the Music page's messages sit above it). */
+function ScoreBar({
+  follow,
+  pageInView,
+  count,
+  onPage,
+  take,
+  onHeight,
+}: {
+  follow: Follow;
+  pageInView: number;
+  count: number;
+  onPage: (n: number) => void;
+  take: ScoreTake;
+  onHeight: (h: number) => void;
+}) {
+  const { api, player } = useMusic();
+  const t = useScoreTransport(follow, pageInView);
+  const ref = useRef<HTMLDivElement>(null);
+  const heightRef = useRef(onHeight);
+  heightRef.current = onHeight;
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const el = ref.current;
+    if (!el) return;
+    const set = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      root.style.setProperty("--dock-h", `${h}px`);
+      heightRef.current(h);
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--dock-h");
+      heightRef.current(0);
+    };
+  }, []);
+  return (
+    <div
+      ref={ref}
+      className={cn(THEME_CLASS, "pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 text-base antialiased")}
+      data-testid="score-bar"
+    >
+      <div
+        className={cn(
+          CARD_CLASS,
+          "pointer-events-auto mx-auto w-full max-w-3xl space-y-1.5 px-1.5 py-1.5 sm:px-3",
+          "shadow-[0_2px_4px_rgba(68,48,28,0.08),0_12px_32px_-8px_rgba(68,48,28,0.28)]",
+        )}
+      >
+        {take.r.recording && (
+          <div className="flex items-center gap-2 border-b border-stone-200/80 px-1.5 pb-1.5" data-testid="score-bar-recording">
+            <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600 motion-safe:animate-pulse" />
+            <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-rose-900">{recordingWords(take)}</p>
+            <RecordTimer take={take} />
+          </div>
+        )}
+        <div className="flex min-w-0 items-center gap-1">
+          <AppTransport
+            player={player}
+            compact
+            steps={t.steps}
+            play={t.play}
+            pieceSteps={false}
+            more={
+              <>
+                <div className="sm:hidden">
+                  <p className={MORE_HEAD}>Play on</p>
+                  <PlayOn baseUrl={api.baseUrl} label={null} />
+                </div>
+                <div>
+                  <p className={MORE_HEAD}>Watch</p>
+                  <Segmented label="Watch" value={"score" as Watching} options={WATCH} onChange={(w) => w === "pianola" && openPianola()} />
+                </div>
+              </>
+            }
+          />
+          <PlayOn baseUrl={api.baseUrl} compact className="max-sm:hidden" />
+          <div className="ml-auto flex shrink-0 items-center" role="group" aria-label="Pages">
+            <button type="button" aria-label="Previous page" disabled={pageInView <= 1} onClick={() => onPage(pageInView - 1)} className={PAGER_BUTTON}>
+              <ChevronLeft className="h-5 w-5" aria-hidden />
+            </button>
+            <span className="min-w-[3.25rem] text-center text-[15px] tabular-nums text-stone-700" aria-live="polite" data-testid="score-bar-page">
+              {pageInView} / {count}
+            </span>
+            <button type="button" aria-label="Next page" disabled={pageInView >= count} onClick={() => onPage(pageInView + 1)} className={PAGER_BUTTON}>
+              <ChevronRight className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1091,11 +1240,25 @@ interface StandProps {
   seed: Shown;
   /** Closed at this place (a fraction of the way through); popped: by Back. */
   onClose: (at: number, popped?: boolean) => void;
+  /** Record on the piano (null: this piece has no MIDI). */
+  take: ScoreTake | null;
+  /** A take was stopped here (its sheet opens when the stand closes). */
+  onTakeStopped: () => void;
+  /** The "New take · Score" line's Score: leave the stand at this place, open the take's score. */
+  onTakeScore: (at: number) => void;
 }
 
 /** The music stand: the score full screen, to play from (see the top of the file). */
-function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResize, start, seed, onClose }: StandProps) {
-  const { api } = useMusic();
+function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResize, start, seed, onClose, take, onTakeStopped, onTakeScore }: StandProps) {
+  const { api, player } = useMusic();
+  const [moreOpen, setMoreOpen] = useState(false);
+  /** "New take · Score", for a while after a take stops here. */
+  const [newTake, setNewTake] = useState(false);
+  useEffect(() => {
+    if (!newTake) return;
+    const t = setTimeout(() => setNewTake(false), 12_000);
+    return () => clearTimeout(t);
+  }, [newTake]);
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>(() => (sessionGet(STAND_MODE_KEY) === "scroll" ? "scroll" : "pages"));
@@ -1326,6 +1489,33 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
   }, [mode, count, cur, pageUrl]);
 
   const close = useCallback(() => onClose(at.current), [onClose]);
+  const playParts = useScoreTransport(follow, cur);
+  const speed = typeof player.view?.speed === "number" ? player.view.speed : null;
+  const stopTake = async () => {
+    if (!take) return;
+    const t = await take.stop(false);
+    if (t) {
+      onTakeStopped();
+      setNewTake(true);
+    }
+  };
+  /** Record (what the score has chosen), or the red dot with the time and Stop while it records. */
+  const recordControl = (cls?: string) =>
+    !take || !take.available ? null : take.r.recording ? (
+      <RecordTimer take={take} onStop={() => void stopTake()} className={cn("h-9 px-2.5", cls)} />
+    ) : (
+      <button
+        type="button"
+        aria-label={take.what === "section" && take.span ? `Record ${take.span}` : "Record"}
+        title={take.what === "section" && take.span ? `Record ${take.span}` : "Record on the piano"}
+        disabled={take.r.busy === "record"}
+        onClick={() => void take.start()}
+        className={cn(BAR_BUTTON, cls)}
+        data-testid="stand-record"
+      >
+        {take.r.busy === "record" ? <Spinner /> : <Circle className="h-4 w-4 fill-rose-600 text-rose-600" aria-hidden />}
+      </button>
+    );
 
   // Clicks, swipes and trackpad gestures turn the pages (Pages), or move a screen up or down (Scroll).
   const scrollScreen = (d: number) => {
@@ -1530,69 +1720,138 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
       }}
     >
       <div
-        className="flex h-11 shrink-0 items-center gap-0.5 border-b border-stone-100 pl-3 pr-1 text-stone-600"
+        className="flex h-12 shrink-0 items-center gap-0.5 border-b border-stone-100 pl-1 pr-1 text-stone-600 sm:pl-3"
         // a tap on the bar hands the keys back to the page (a pedal's Space or Enter mustn't press the last button)
         onClick={(e) => {
           if (e.detail > 0) root.current?.focus({ preventScroll: true });
         }}
       >
-        <div className="min-w-0 flex-1">
-          <p className="hidden truncate text-[15px] font-medium text-stone-700 sm:block" title={title}>
-            {title}
-          </p>
-        </div>
-        {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
-        <PlayBar
-          baseUrl={api.baseUrl}
-          follow={follow}
-          pageInView={cur}
-          compact
-          watching="score"
-          onWatch={(w) => {
-            if (w !== "pianola") return;
-            close(); // out of full screen first: the pianola is drawn over the page
-            openPianola();
-          }}
-          className="flex-nowrap"
-        />
-        <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
-          {where}
-        </span>
-        <button type="button" aria-label="Smaller notes" title="Smaller notes" disabled={!canSmaller} onClick={() => onResize(-1)} className={BAR_BUTTON}>
-          A−
-        </button>
-        <button type="button" aria-label="Larger notes" title="Larger notes" disabled={!canLarger} onClick={() => onResize(1)} className={BAR_BUTTON}>
-          A+
-        </button>
-        <div role="radiogroup" aria-label="How to read it" className="flex">
-          {(
-            [
-              ["pages", "Pages"],
-              ["scroll", "Scroll"],
-            ] as [Mode, string][]
-          ).map(([m, words]) => (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={mode === m}
-              onClick={() => chooseMode(m)}
-              className="h-11 shrink-0 rounded-full px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        {/* a phone: Close · ⏯ · n / N · Record · ⋯ (the rest in ⋯) */}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 sm:hidden" data-testid="stand-bar-phone">
+          <button type="button" aria-label="Close" title="Close (Esc)" onClick={close} className={BAR_BUTTON}>
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={playParts.play.label}
+            title={playParts.play.label}
+            onClick={playParts.play.onClick}
+            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-700 text-white hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {playParts.play.starting && <span aria-hidden className="absolute inset-0 rounded-full border-2 border-white/70 border-t-transparent motion-safe:animate-spin" />}
+            {playParts.play.going ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
+          </button>
+          <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
+            {where}
+          </span>
+          <span className="flex-1" />
+          {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
+          {recordControl()}
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label="More: notes, pages, play on, speed, pianola" className={BAR_BUTTON} data-testid="stand-more">
+                <MoreHorizontal className="h-5 w-5" aria-hidden />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              collisionPadding={12}
+              className={cn(
+                THEME_CLASS,
+                "z-[70] max-h-[var(--radix-popover-content-available-height)] w-[min(22rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-2xl p-3",
+              )}
+              onClick={(e) => e.stopPropagation()}
             >
-              <span
-                className={cn(
-                  "inline-flex h-8 items-center rounded-full px-2.5 text-[15px] font-medium",
-                  mode === m ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-800",
-                )}
+              <div className="flex items-center gap-2">
+                <span className="mr-auto text-[15px] text-stone-700">Notes</span>
+                <button type="button" disabled={!canSmaller} onClick={() => onResize(-1)} className={cn(CHIP, CHIP_OFF, "disabled:opacity-40")}>
+                  A−
+                </button>
+                <button type="button" disabled={!canLarger} onClick={() => onResize(1)} className={cn(CHIP, CHIP_OFF, "disabled:opacity-40")}>
+                  A+
+                </button>
+              </div>
+              <Segmented label="How to read it" value={mode} options={MODES} onChange={chooseMode} />
+              <div>
+                <p className={MORE_HEAD}>Play on</p>
+                <PlayOn baseUrl={api.baseUrl} label={null} />
+              </div>
+              {speed !== null && (
+                <div>
+                  <SpeedNudges speed={speed} onSpeed={(v) => void player.act({ action: "set", speed: v }, { speed: v })} />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  close(); // out of full screen first: the pianola is drawn over the page
+                  openPianola();
+                }}
+                className={cn(TAP_BUTTON_CLASS, SECONDARY, "w-full font-medium")}
               >
-                {words}
-              </span>
-            </button>
-          ))}
+                Watch the pianola
+              </button>
+            </PopoverContent>
+          </Popover>
         </div>
-        <button type="button" aria-label="Close" title="Close (Esc)" onClick={close} className={cn(BAR_BUTTON, "ml-0.5")}>
-          <X className="h-5 w-5" aria-hidden />
-        </button>
+
+        {/* a tablet and up: the whole bar */}
+        <div className="hidden min-w-0 flex-1 items-center gap-0.5 sm:flex" data-testid="stand-bar">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-medium text-stone-700" title={title}>
+              {title}
+            </p>
+          </div>
+          {relaying && !problem && <Spinner className="mx-1 text-stone-400" />}
+          <PlayBar
+            baseUrl={api.baseUrl}
+            follow={follow}
+            pageInView={cur}
+            compact
+            watching="score"
+            onWatch={(w) => {
+              if (w !== "pianola") return;
+              close(); // out of full screen first: the pianola is drawn over the page
+              openPianola();
+            }}
+            className="flex-nowrap"
+          />
+          <span className="px-1.5 text-[15px] tabular-nums text-stone-600" aria-live="polite">
+            {where}
+          </span>
+          {recordControl()}
+          <button type="button" aria-label="Smaller notes" title="Smaller notes" disabled={!canSmaller} onClick={() => onResize(-1)} className={BAR_BUTTON}>
+            A−
+          </button>
+          <button type="button" aria-label="Larger notes" title="Larger notes" disabled={!canLarger} onClick={() => onResize(1)} className={BAR_BUTTON}>
+            A+
+          </button>
+          <div role="radiogroup" aria-label="How to read it" className="flex">
+            {MODES.map(([m, words]) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => chooseMode(m)}
+                className="h-11 shrink-0 rounded-full px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span
+                  className={cn(
+                    "inline-flex h-8 items-center rounded-full px-2.5 text-[15px] font-medium",
+                    mode === m ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-800",
+                  )}
+                >
+                  {words}
+                </span>
+              </button>
+            ))}
+          </div>
+          <button type="button" aria-label="Close" title="Close (Esc)" onClick={close} className={cn(BAR_BUTTON, "ml-0.5")}>
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -1631,6 +1890,23 @@ function MusicStand({ pieceId, title, kind, staff, canSmaller, canLarger, onResi
                 Try again
               </button>
             )}
+          </div>
+        )}
+
+        {newTake && take?.r.fresh && (
+          <div
+            role="status"
+            className="absolute inset-x-0 bottom-4 z-10 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-3 rounded-full bg-stone-900/90 py-1.5 pl-4 pr-1.5 text-[15px] font-medium text-white shadow-lg"
+            data-testid="stand-new-take"
+          >
+            <span className="min-w-0 truncate">New take</span>
+            <button
+              type="button"
+              onClick={() => onTakeScore(at.current)}
+              className="h-9 shrink-0 rounded-full bg-white px-3.5 text-[15px] font-semibold text-stone-900 hover:bg-stone-100"
+            >
+              Score
+            </button>
           </div>
         )}
 
