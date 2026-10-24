@@ -142,8 +142,17 @@ export function deviceId(): string {
 /** This device as a room output id. */
 export const myOutput = (): string => `device:${deviceId()}`;
 
-/** What other pages call this device: the kind of thing it is, from the browser. */
+/** The name this device was given in Settings › This device ("Greg's iPad"), kept in this browser. */
+export const DEVICE_NAME_KEY = "sm_device_name";
+
+/** What other pages call this device: the name it was given in Settings, else the kind of thing it is. */
 export function deviceName(): string {
+  const own = storageGet(DEVICE_NAME_KEY)?.trim();
+  return own ? own.slice(0, 40) : guessDeviceName();
+}
+
+/** The kind of thing this device is, from the browser ("iPad"): the name until it's given one. */
+export function guessDeviceName(): string {
   const ua = navigator.userAgent;
   if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
   if (/iPhone/.test(ua)) return "iPhone";
