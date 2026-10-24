@@ -30,7 +30,7 @@ export function whenWords(iso: string | null, now = new Date()): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   if (d.toDateString() === now.toDateString()) return time;
   const days = (now.getTime() - d.getTime()) / 86_400_000;
   if (days >= 0 && days < 6) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
@@ -64,7 +64,7 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
   const [error, setError] = useState<string | null>(null);
   const long = text.length > CLAMP_AT;
   const when = whenWords(v.set_at);
-  const users = shortNames(v.used_by.map((u) => u.name));
+  const users = shortNames(v.used_by.map((u) => u.name).sort((a, b) => a.localeCompare(b)));
 
   const save = async () => {
     if (draft === null) return;
