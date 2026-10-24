@@ -38,7 +38,8 @@ from routes.scheduler_utils import (
     catch_up_on_important_actions,
     # Globals from scheduler_utils
     scheduler_logs, scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, 
-    running_schedulers, important_triggers, active_events, get_events_for_destination
+    running_schedulers, important_triggers, active_events, get_events_for_destination,
+    get_exported_variables_with_values
 )
 
 # === Storage for global scheduler state ===
@@ -877,6 +878,17 @@ def api_set_exported_var(var_name):
         
         # Set the value in the context
         context["vars"][actual_var_name] = new_value
+
+        # Who changed it by hand ("set_by", e.g. the Room page), kept on its registry entry until the
+        # owner's schedule exports it again (register_exported_var replaces the entry).
+        set_by = data.get("set_by")
+        if isinstance(set_by, str) and set_by.strip():
+            for scope_vars in [registry.get("global", {})] + list(registry.get("groups", {}).values()):
+                if actual_var_name in scope_vars and scope_vars[actual_var_name].get("owner") == owner_id:
+                    scope_vars[actual_var_name]["edited_by"] = set_by.strip()[:60]
+                    scope_vars[actual_var_name]["edited_at"] = datetime.now().isoformat()
+            from routes.scheduler_utils import save_vars_registry
+            save_vars_registry(registry)
         
         # Update the context stack in memory and on disk
         update_scheduler_state(
@@ -1262,5 +1274,26 @@ def api_get_instruction_queue(publish_destination):
         })
     except Exception as e:
         error_msg = f"Error getting instruction queue: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+
+@scheduler_bp.route("/rooms/<room_id>/schedule", methods=["GET"])
+def api_room_schedule(room_id):
+    """The Room page's view of a room's schedules: the variables exported to its scheduler group (values, who set
+    them, who uses them), its room actions (events of the non-screen destinations that export to the group) and
+    each of its screens' events. See routes/scheduler_room.py."""
+    try:
+        from routes.utils import _load_json_once
+        from routes.scheduler_utils import load_vars_registry
+        from routes.scheduler_room import build_room_schedule
+        rooms = _load_json_once("rooms", "rooms.json")
+        if room_id not in rooms or not isinstance(rooms.get(room_id), dict):
+            return jsonify({"error": f"No room '{room_id}'"}), 404
+        destinations = _load_json_once("destination", "publish-destinations.json")
+        return jsonify(build_room_schedule(room_id, rooms, destinations, load_vars_registry(),
+                                           scheduler_schedule_stacks, scheduler_contexts_stacks))
+    except Exception as e:
+        error_msg = f"Error building the room's schedule view: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500
