@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Maximize2, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDocked } from "@/components/player/dockState";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
@@ -145,6 +146,8 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
   const scoreRef = useRef(onScore);
   scoreRef.current = onScore;
   const here = useListenHere();
+  // the docked player carries this device's line while music plays (one bar at the foot, not two)
+  const docked = useDocked();
   const music = useMemo(() => new MusicApi(api.baseUrl), [api.baseUrl]);
   const [test, setTest] = useState<ShowTestView | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -272,8 +275,8 @@ export function ListenHere({ api, onScore = false }: { api: RoomApi; onScore?: b
   return (
     <>
       {/* the bar sits over the page's foot: the page gets the room back under it */}
-      {here.on && !onScore && <div aria-hidden className="h-24" />}
-      {here.on && !here.viewOpen && !onScore && (
+      {here.on && !onScore && !docked && <div aria-hidden className="h-24" />}
+      {here.on && !here.viewOpen && !onScore && !docked && (
         <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-testid="listen-here-bar">
           <div className={cn(CARD_CLASS, "mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2")}>
             <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />

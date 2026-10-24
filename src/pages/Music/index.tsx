@@ -17,6 +17,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Menu } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
+import { useAppPlayer } from "@/components/player/appPlayer";
 import { useRoomLink } from "@/components/room/roomLink";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,10 @@ export default function MusicPage() {
   const baseUrl = useMemo(() => resolveRoomUrl(window.location.search), []);
   const api = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
   const roomApi = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
-  const player = usePlayer(api);
+  // the app's player poll (shared with the docked player) when it's for this address, else the page's own
+  const shared = useAppPlayer(baseUrl);
+  const own = usePlayer(api, !shared);
+  const player = shared ?? own;
   const old = player.link === "old";
   const playlists = usePlaylists(api, !old);
   const [msg, flash] = useFlash();
@@ -263,7 +267,7 @@ export default function MusicPage() {
         {msg && (
           <div
             role="status"
-            className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg"
+            className="fixed inset-x-0 bottom-[max(calc(var(--dock-h,0px)_+_1rem),env(safe-area-inset-bottom))] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg"
           >
             {msg}
           </div>

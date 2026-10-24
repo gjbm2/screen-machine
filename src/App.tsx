@@ -19,6 +19,8 @@ import RoomPage from './pages/Room';
 import LightsPage from './pages/Lights';
 import MusicPage from './pages/Music';
 import { DarkMode } from './darkMode';
+import { AppPlayerProvider } from "@/components/player/appPlayer";
+import { DockedPlayer } from "@/components/player/DockedPlayer";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,7 @@ const App = () => (
           <DarkMode />
           <Toaster />
           <Sonner />
+          <AppPlayerProvider>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/display/:screenId" element={<DisplayPage />} />
@@ -47,6 +50,9 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          {/* the music player, docked at the foot of the pages people use while music plays */}
+          <DockedPlayer />
+          </AppPlayerProvider>
         </LoopeViewProvider>
       </ReferenceImagesProvider>
     </TooltipProvider>
