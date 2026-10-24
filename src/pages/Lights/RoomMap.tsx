@@ -158,6 +158,7 @@ export function RoomDrawing({
   const down = (key: string, part: "plan" | "side") => (e: ReactPointerEvent<SVGElement>) => onItemDown?.(key, part, e);
   const flow = live?.flow ?? null;
   const fc: [number, number] = flow?.at_xyz ? toPlan(fr, flow.at_xyz[0], flow.at_xyz[1]) : toPlan(fr, X / 2, Y / 2);
+  const labelY = labelRows(fr, items);
 
   return (
     <svg
@@ -274,7 +275,7 @@ export function RoomDrawing({
               <g onPointerDown={down(it.key, "plan")} className={cn("cursor-grab", onItemDown && "touch-none")}>
                 <circle cx={px} cy={py} r={18} className="fill-transparent" />
                 {shape}
-                <text x={px} y={py - 12} textAnchor="middle" className="fill-stone-700 text-[11px]" style={{ paintOrder: "stroke" }} stroke="white" strokeWidth={3}>
+                <text x={px} y={labelY.get(it.key) ?? py - 12} textAnchor="middle" className="fill-stone-700 text-[11px]" style={{ paintOrder: "stroke" }} stroke="white" strokeWidth={3}>
                   {it.label}
                 </text>
               </g>
@@ -299,6 +300,26 @@ export function RoomDrawing({
       <line x1={left} y1={side(0, 0, Z)[1]} x2={right} y2={side(0, 0, Z)[1]} className="stroke-stone-300" strokeWidth={1} strokeDasharray="5 4" />
     </svg>
   );
+}
+
+/** Each label's baseline: above its dot, or below it when that box would run into a label already placed (two
+ *  lights side by side would otherwise print over each other). */
+function labelRows(fr: PlanFrame, items: DrawItem[]): Map<string, number> {
+  const CHAR_W = 6.2; // 11 px text, roughly
+  const boxes: [number, number, number, number][] = [];
+  const hits = (b: [number, number, number, number]) => boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
+  const out = new Map<string, number>();
+  for (const it of items) {
+    if (it.kind === "area") continue;
+    const [px, py] = toPlan(fr, it.at[0], it.at[1]);
+    const half = (it.label.length * CHAR_W) / 2 + 3;
+    const box = (y: number): [number, number, number, number] => [px - half, y - 10, px + half, y + 3];
+    let y = py - 12;
+    if (hits(box(y)) && !hits(box(py + 21))) y = py + 21;
+    boxes.push(box(y));
+    out.set(it.key, y);
+  }
+  return out;
 }
 
 function FlowArrow({ fr, dir, c, marker, sideTop }: { fr: PlanFrame; dir: string; c: [number, number]; marker: string; sideTop: number }) {

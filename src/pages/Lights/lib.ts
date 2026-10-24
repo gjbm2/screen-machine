@@ -1092,17 +1092,239 @@ export interface Placeable {
   label: string;
   kind: "screen" | "mover" | "lamp";
   zone: string | null;
+  /** A screen fixture's screen (publish-destinations id, e.g. "north-screen"), for its name. */
+  screen: string | null;
 }
 
 export function placeablesFromRig(rig: unknown): Placeable[] {
   if (!isObj(rig)) return [];
   const raw = rig.fixtures;
+  const rv = isObj(rig.registry_view) && isObj(rig.registry_view.fixtures) ? (rig.registry_view.fixtures as Obj) : {};
   const list: Obj[] = Array.isArray(raw) ? raw.filter(isObj) : isObj(raw) ? Object.entries(raw).flatMap(([id, v]) => (isObj(v) ? [{ id, ...v }] : [])) : [];
   return list.flatMap((o) => {
     const id = str(o.id);
     if (!id) return [];
     const caps = parseCaps(o.caps);
     const kind = str(o.kind) === "screen" ? "screen" : caps?.moves ? "mover" : "lamp";
-    return [{ id, label: str(o.label) ?? id, kind, zone: str(o.zone) }];
+    const reg = isObj(rv[id]) ? (rv[id] as Obj) : null;
+    return [{ id, label: str(o.label) ?? id, kind, zone: str(o.zone), screen: str(o.screen) ?? (reg ? str(reg.screen) : null) }];
   });
+}
+
+// -- the room around a light: its name, where it is, what it does, which modes use it ------------------------------------
+
+/** One of the site's rooms (room_service GET /api/v1/status `rooms`, from rooms.json). */
+export interface SiteRoomLite {
+  id: string;
+  name: string;
+  /** Hue lamps by fixture id ("hue.ne"); "light" names every DMX light, "light.<id>" one. */
+  lights: string[];
+}
+
+/** Whether a room's lights list holds this light. */
+export function roomHasLight(lights: string[], id: string, dmx: boolean): boolean {
+  if (lights.includes(id)) return true;
+  return dmx && (lights.includes("light") || lights.includes(`light.${id}`));
+}
+
+/** The room a light is in (the first that lists it), or null. */
+export function roomOfLight<R extends SiteRoomLite>(rooms: R[], id: string, dmx: boolean): R | null {
+  return rooms.find((r) => roomHasLight(r.lights ?? [], id, dmx)) ?? null;
+}
+
+/** A light's name without its room's ("Drawing room NE" in the Drawing room is "NE"); the whole name when that would
+ *  leave nothing. The room's name comes from rooms.json, never from code. */
+export function shortName(label: string, roomName?: string | null): string {
+  const t = label.trim();
+  const r = roomName?.trim();
+  if (r && t.length > r.length && t.toLowerCase().startsWith(r.toLowerCase())) {
+    const rest = t.slice(r.length);
+    if (/^[\s:·,–-]/.test(rest)) {
+      const left = rest.replace(/^[\s:·,–-]+/, "").trim();
+      if (left) return left;
+    }
+  }
+  return t;
+}
+
+/** "Hue lamp" / "DMX light": the kind tag on a light's row. */
+export function kindWords(r: { hue: boolean; dmx: boolean }): string | null {
+  return r.hue ? "Hue lamp" : r.dmx ? "DMX light" : null;
+}
+
+/** A screen's name inside a sentence: "North screen" reads "north screen" ("TV 2" stays as it is). */
+export function inSentence(name: string): string {
+  return /^[A-Z][a-z]/.test(name) ? name[0].toLowerCase() + name.slice(1) : name;
+}
+
+/** A screen on the map, by its name (status `screens[id].name`). */
+export interface ScreenSpot {
+  name: string;
+  at: Vec3;
+}
+
+const NEAR_WALL_M = 1.2;
+const BESIDE_M = 1.5;
+const OPPOSITE: Record<Front, Front> = { north: "south", south: "north", east: "west", west: "east" };
+
+/** Where a light is in words, from where it sits on the Room map: "Above the north screen", "Opposite the south
+ *  screen", "In the north-east corner", "On the east wall", "Near the middle of the room". Null when the room has no
+ *  size yet. */
+export function mapWhereWords(at: Vec3, size: Vec3 | null, screens: ScreenSpot[]): string | null {
+  if (!size) return null;
+  const [x, y, z] = at;
+  const dist: Record<Front, number> = { west: x, east: size[0] - x, south: y, north: size[1] - y };
+  const wall = snapToWall(size, x, y).wall;
+  const along = (w: Front, p: Vec3) => (w === "west" || w === "east" ? p[1] : p[0]);
+  if (dist[wall] <= NEAR_WALL_M) {
+    let best: { words: string; d: number } | null = null;
+    for (const s of screens) {
+      const sw = snapToWall(size, s.at[0], s.at[1]).wall;
+      const d = Math.abs(along(sw, at) - along(sw, s.at));
+      if (d > BESIDE_M || (best && d >= best.d)) continue;
+      const name = inSentence(s.name);
+      if (sw === wall) {
+        const words = z > s.at[2] + 0.3 ? `Above the ${name}` : z < s.at[2] - 0.3 ? `Below the ${name}` : `Beside the ${name}`;
+        best = { words, d };
+      } else if (OPPOSITE[sw] === wall) {
+        best = { words: `Opposite the ${name}`, d };
+      }
+    }
+    if (best) return best.words;
+  }
+  const near = (Object.keys(dist) as Front[]).filter((w) => dist[w] <= NEAR_WALL_M);
+  const ns = near.find((w) => w === "north" || w === "south");
+  const ew = near.find((w) => w === "east" || w === "west");
+  if (ns && ew) return `In the ${ns}-${ew} corner`;
+  if (near.length) return `On the ${near.sort((a, b) => dist[a] - dist[b])[0]} wall`;
+  return "Near the middle of the room";
+}
+
+/** Where a light is: from the Room map when it's placed there, else its placement words. */
+export function whereWords(
+  id: string,
+  space: RoomSpace | null,
+  screens: ScreenSpot[],
+  placement: string | null,
+  zone: string | null,
+): string | null {
+  const at = space?.appliances[id]?.at ?? null;
+  return (at && mapWhereWords(at, space?.size ?? null, screens)) || placementWords(placement, zone);
+}
+
+/** The screens placed on the map, by name: each screen fixture's screen name (status), else its own label. */
+export function screenSpots(space: RoomSpace | null, things: Placeable[], names: Record<string, string>): ScreenSpot[] {
+  if (!space) return [];
+  return things.flatMap((t) => {
+    const at = space.appliances[t.id]?.at;
+    if (t.kind !== "screen" || !at) return [];
+    return [{ name: (t.screen && names[t.screen]) || t.label, at }];
+  });
+}
+
+/** A reason a light couldn't identify, fit to show: never a file or config path. */
+export function identifyWhy(raw: string | null | undefined): string {
+  const w = raw?.trim();
+  if (!w || /[/\\]|\.(ya?ml|json|py)\b|\b[a-z_]+\.[a-z_]+\.[a-z_]+\b/i.test(w)) return "This light can't flash right now.";
+  return `This light can't flash right now: ${w}`;
+}
+
+/** room_service's fixture status -> the pill's tone (as the Room page shows a Hue lamp). */
+export const FIXTURE_STATUS_TONE: Record<string, Tone> = {
+  following: "live",
+  armed: "info",
+  house: "muted",
+  off: "muted",
+  taken_over: "warn",
+  error: "bad",
+  unreachable: "bad",
+  unavailable: "bad",
+};
+
+/** A Hue lamp as room_service's fixtures view has it (GET /api/v1/fixtures), the parts these helpers read. */
+export interface FixtureLite {
+  status?: string;
+  status_text?: string;
+  dmx?: Record<string, unknown> | null;
+  dmx_hex?: string | null;
+  light?: { on?: boolean; bri?: number; hex?: string | null } | null;
+}
+
+/** The lamp's status pill from room_service ("Off", "Following the music", ...). */
+export function fixtureStatus(f: FixtureLite): StatusWords | null {
+  if (!f.status_text) return null;
+  return { tone: FIXTURE_STATUS_TONE[f.status ?? ""] ?? "muted", text: f.status_text, pulse: f.status === "following" };
+}
+
+/** What the lamp shows now: the show's colour while following, else the bridge's reading (dark: none). */
+export function fixtureSwatch(f: FixtureLite): { hex: string | null; dim: number } {
+  if (f.status === "following") {
+    const level = typeof f.dmx?.level === "number" ? (f.dmx.level as number) : 1;
+    return { hex: f.dmx_hex ?? null, dim: level };
+  }
+  const l = f.light;
+  if (!l || !l.on || !l.hex) return { hex: null, dim: 0 };
+  return { hex: l.hex, dim: Math.max(0.25, (l.bri ?? 100) / 100) };
+}
+
+/** Quick colours for a light at a steady colour. */
+export const COLOUR_PRESETS: { name: string; hex: string }[] = [
+  { name: "Warm", hex: "#ffc367" },
+  { name: "Soft white", hex: "#ffe2b8" },
+  { name: "Daylight", hex: "#f4f6ff" },
+  { name: "Amber", hex: "#ff9a2e" },
+  { name: "Red", hex: "#ff2a1a" },
+  { name: "Pink", hex: "#ff4fa0" },
+  { name: "Purple", hex: "#8a3dff" },
+  { name: "Blue", hex: "#2f6bff" },
+  { name: "Teal", hex: "#17c3b2" },
+  { name: "Green", hex: "#3ddc5a" },
+];
+
+/** The modes as room_service's describe resolves them (GET /api/v1/room/describe `modes`), the parts read here. */
+export type DescribeModes = Record<
+  string,
+  {
+    label?: string;
+    abstract?: boolean;
+    order?: number;
+    entries?: Record<string, { value?: unknown; words?: string; selector?: string }>;
+  }
+>;
+
+export interface ModeUse {
+  mode: string;
+  label: string;
+  /** What the mode does with it, in room_service's words ("Follows the music"). */
+  words: string;
+  follows: boolean;
+}
+
+/** Which modes set this light, and to what: its own entry (hue.<id>, light.<id>), else an entry for its kind or its
+ *  room's lights (a light added since the room last read the modes). */
+export function lightInModes(modes: DescribeModes | null | undefined, target: string, kinds: string[]): ModeUse[] {
+  if (!modes) return [];
+  return Object.entries(modes)
+    .filter(([, m]) => !m.abstract)
+    .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+    .flatMap(([mode, m]) => {
+      const entries = m.entries ?? {};
+      const e = entries[target] ?? Object.values(entries).find((x) => !!x.selector && kinds.includes(x.selector));
+      if (!e) return [];
+      const follows = e.value === "dmx" || e.value === "show";
+      const words = e.words ?? (follows ? "Follows the music" : e.value === "off" ? "Off" : "Set");
+      return [{ mode, label: m.label ?? mode, words, follows }];
+    });
+}
+
+/** The modes, grouped by what they do with the light: [["Follows the music", ["Party", "Disco"]], ...]. */
+export function modeUseLines(uses: ModeUse[]): [string, string[]][] {
+  const out = new Map<string, string[]>();
+  for (const u of uses) out.set(u.words, [...(out.get(u.words) ?? []), u.label]);
+  return [...out.entries()];
+}
+
+/** "Party, Disco and Ambient". */
+export function andList(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

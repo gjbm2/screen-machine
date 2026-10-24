@@ -1,8 +1,11 @@
 // The rig view, polled every 2 s while the page is visible (and at once when it comes back into view), and the light
 // types, read once and again whenever the Add flow asks. The last good copy is kept through a failed read. The Room
 // map's space is read on demand (and after each change); the live view (where every beam lands) at 4 Hz while shown.
+// useRoomFacts: the rooms, the screens' names and the modes, from room_service, for the lights' words.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RoomApi } from "@/pages/Room/api";
+import type { RoomDescribe, RoomStatus, SiteRoom } from "@/pages/Room/types";
 import { explainLightsError, type LightsApi } from "./api";
 import {
   lightsUiFrom,
@@ -210,4 +213,48 @@ export function useLive(api: LightsApi, on: boolean): LiveView | null {
     };
   }, [api, on]);
   return live;
+}
+
+export interface RoomFacts {
+  /** The site's rooms (rooms.json, through room_service's status). */
+  rooms: SiteRoom[];
+  /** Each screen's name ("North screen"), by its id. */
+  screenNames: Record<string, string>;
+  /** Every mode as room_service resolves it (only when asked for). */
+  describe: RoomDescribe | null;
+}
+
+/** What the room says about itself that the lights' words need: the rooms and the screens' names (GET /api/v1/status)
+ *  and, when `withModes`, the modes (GET /api/v1/room/describe). Read once, and again when the page comes back into
+ *  view. */
+export function useRoomFacts(roomUrl: string, withModes = false): RoomFacts {
+  const api = useMemo(() => new RoomApi(roomUrl, ""), [roomUrl]);
+  const [facts, setFacts] = useState<RoomFacts>({ rooms: [], screenNames: {}, describe: null });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const ac = new AbortController();
+    api
+      .status(ac.signal)
+      .then((s: RoomStatus) => {
+        const names: Record<string, string> = {};
+        for (const [id, sc] of Object.entries(s.screens ?? {})) if (sc?.name) names[id] = sc.name;
+        setFacts((f) => ({ ...f, rooms: s.rooms ?? [], screenNames: names }));
+      })
+      .catch(() => undefined);
+    if (withModes) {
+      api
+        .describe(ac.signal)
+        .then((d) => setFacts((f) => ({ ...f, describe: d })))
+        .catch(() => undefined);
+    }
+    return () => ac.abort();
+  }, [api, withModes, tick]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setTick((t) => t + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  return facts;
 }
