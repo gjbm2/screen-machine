@@ -2,10 +2,12 @@
 // scheduler group (routes/scheduler_room.py: names starting with "_" and exports with "room": false never show), in the
 // order a schedule run sets them, under its friendly name: the value (long text clamped, tap to read it all), who set
 // it and when, and which screens use it. Edit changes it through the exported-vars API; the screens pick it up on their
-// next run. Under them, the room's actions (EventsList: e.g. "Get inspiration", "Develop theme").
+// next run. Each value shows on one line with "Show all" when there is more (24 Oct walkthrough: five long prompts filled
+// the fold). Under them, the room's actions (EventsList: e.g. "Get inspiration", "Develop theme") after a lead-in line,
+// each with its description when the schedule gives one, then the caller's footer (the Room page: "Schedules ›").
 // No variable or event name is written here. No frame: the caller passes the card's classes.
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,13 +19,31 @@ import { refreshRoomSchedule, useRoomSchedule } from "./useRoomSchedule";
 export interface TodayCardProps {
   /** The room (rooms.json id). */
   room: string;
-  title?: string;
+  /** The card's heading; null for none (the Room page's fold already says "Today's art"). */
+  title?: string | null;
   className?: string;
   /** Told about each change and event sent (e.g. the page's log). */
   onChange?: (what: string) => void;
+  /** Shown at the foot while the card shows (e.g. a link to the schedules). */
+  footer?: ReactNode;
 }
 
-const CLAMP_AT = 140;
+/** True when the one-line text is cut off (re-checked as the width changes). */
+function useOverflows(text: string) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [over, setOver] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOver(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text]);
+  return { ref, over };
+}
 
 /** "06:00" today, "Fri 06:00" this week, else "23 Oct". */
 export function whenWords(iso: string | null, now = new Date()): string | null {
@@ -62,7 +82,8 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const long = text.length > CLAMP_AT;
+  const fit = useOverflows(open ? "" : text);
+  const long = open || fit.over;
   const when = whenWords(v.set_at);
   const users = shortNames(v.used_by.map((u) => u.name).sort((a, b) => a.localeCompare(b)));
 
@@ -138,7 +159,9 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
           aria-expanded={long ? open : undefined}
           className="mt-1 block w-full rounded-md text-left text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
         >
-          <span className={cn("block whitespace-pre-wrap break-words", long && !open && "line-clamp-3")}>{text}</span>
+          <span ref={fit.ref} className={cn("block break-words", open ? "whitespace-pre-wrap" : "line-clamp-1")}>
+            {text}
+          </span>
           {long && <span className="text-sm font-medium text-primary">{open ? "Show less" : "Show all"}</span>}
         </button>
       ) : (
@@ -153,7 +176,7 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
   );
 }
 
-export function TodayCard({ room, title = "Today", className, onChange }: TodayCardProps) {
+export function TodayCard({ room, title = "Today", className, onChange, footer }: TodayCardProps) {
   const { data, error } = useRoomSchedule(room);
   if (!data) return null;
   const { variables, actions } = data;
@@ -162,7 +185,7 @@ export function TodayCard({ room, title = "Today", className, onChange }: TodayC
 
   return (
     <section aria-label={title} className={cn("p-4", className)}>
-      <h3 className="mb-3 text-[17px] font-semibold">{title}</h3>
+      {title && <h3 className="mb-3 text-[17px] font-semibold">{title}</h3>}
       {variables.length > 0 && (
         <ul className="divide-y divide-border">
           {variables.map((v) => (
@@ -171,8 +194,15 @@ export function TodayCard({ room, title = "Today", className, onChange }: TodayC
         </ul>
       )}
       {actions.length > 0 && (
-        <EventsList room={room} onSent={sent} className={cn(variables.length > 0 && "mt-4 border-t border-border pt-4")} />
+        <EventsList
+          room={room}
+          onSent={sent}
+          lead="Ask the schedule for new ideas:"
+          describe
+          className={cn(variables.length > 0 && "mt-4 border-t border-border pt-4")}
+        />
       )}
+      {footer && <div className="mt-3">{footer}</div>}
       {error && <p className="mt-3 text-sm text-muted-foreground">Couldn't refresh just now; showing the last read.</p>}
     </section>
   );
