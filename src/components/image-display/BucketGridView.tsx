@@ -6,7 +6,7 @@ import { audioApi, bucketsApi, generationApi, lightApi, publishApi } from '@/sha
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/shared/api';
-import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon, MoreHorizontal, ImagePlus, MessageSquareText } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -38,7 +38,9 @@ import { ImageItem } from '@/types/image-types';
 
 // Import the new SchedulerControl component
 import { SchedulerControl } from './SchedulerPanel';
-import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
+import { useRoomLink, liveStateOf, roomPageUrl } from '@/components/room/roomLink';
+import { AppLink } from '@/components/nav/AppLink';
+import { displayUrl, schedulerUrl } from '@/components/nav/appNav';
 
 // Import the new DROP_ZONES
 import { DROP_ZONES } from '@/dnd/dropZones';
@@ -359,10 +361,15 @@ export const BucketGridView = ({
   // Live mode is the GPU renderer at full intensity: the light mask applies to art only.
   const roomLink = useRoomLink();
   const screenLive = liveStateOf(roomLink.status?.screens?.[destination]) === 'live';
+  // A room screen (room_service knows it): the room's links and the room-light dimming apply.
+  const roomScreen = !!roomLink.status?.screens?.[destination];
+  const name = destinationName || destination;
+
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const canSpeak = isAndroid && !headless;
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isNewVersion, setIsNewVersion] = useState(false);
 
@@ -406,9 +413,7 @@ export const BucketGridView = ({
   }, [destination]);
 
   useEffect(() => {
-    // Detect iOS
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+    setIsAndroid(/android/i.test(window.navigator.userAgent));
   }, []);
 
   const fetchDestinations = async () => {
@@ -680,7 +685,7 @@ export const BucketGridView = ({
         // Refresh bucket details to ensure everything is in sync
         await fetchBucketDetails();
         
-        toast.success('Image published successfully');
+        toast.success(`Showing on ${destinations.find(d => d.id === bucket)?.name || bucket}`);
       } else {
         // Handle successful response but unsuccessful operation
         console.warn('Publish operation returned false');
@@ -708,11 +713,11 @@ export const BucketGridView = ({
       const originalId = getOriginalId(image.id);
       const result = await bucketsApi.copyImageToBucket(destination, targetBucket, originalId, true);
       if (result && (result.status === 'copied' || result.status === 'moved')) {
-        toast.success(`Image ${result.status} to ${targetBucket} successfully`);
+        toast.success(`${result.status === 'moved' ? 'Moved' : 'Copied'} to ${destinations.find(d => d.id === targetBucket)?.name || targetBucket}`);
         // Refresh the target bucket to show the new image
         debouncedFetchBucketDetails();
       } else {
-        toast.error(`Failed to copy image to ${targetBucket}`);
+        toast.error(`Couldn't copy it to ${destinations.find(d => d.id === targetBucket)?.name || targetBucket}`);
       }
     } catch (error) {
       console.error('Error copying image:', error);
@@ -778,7 +783,7 @@ export const BucketGridView = ({
     console.log('[handleGenerateAgain] Generated reference URLs:', referenceUrls);
 
     // Reuse the original batch ID for "Generate Again" to maintain consistency
-    const batchId = image.batchId || `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const batchId = (image as BucketImage & { batchId?: string }).batchId || `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create parameters for generation
     // For "Generate Again", we want to use the exact same refined prompt and settings
@@ -1950,7 +1955,7 @@ export const BucketGridView = ({
           
           // Create title generator function for dynamic titles when swiping
           const getTitleForPublishedImage = (img: ImageItem, idx: number, total: number) => {
-            return `Currently published - ${img.destinationName} (${idx + 1}/${total})`;
+            return `On the screen now · ${img.destinationName} (${idx + 1}/${total})`;
           };
           
           // Open Loope view with the initial title
@@ -1983,14 +1988,16 @@ export const BucketGridView = ({
     const imageUrl = currentImage.thumbnail_url || '';
 
     return (
+      <figure className="m-0 flex w-24 shrink-0 flex-col items-center gap-1">
       <div 
         ref={setNodeRef}
-        className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
+        className={`relative w-24 h-24 rounded-xl overflow-hidden bg-black/10 flex-shrink-0 transition-all
           ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
           ${activeId ? 'cursor-copy' : 'cursor-pointer'}
         `}
         onClick={handleOpenLoopeView}
-        title="Click to view all published images"
+        title="What each screen shows now"
+        aria-label="On the screen now. Open what each screen shows"
       >
         {isLoadingPublished && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
@@ -2014,14 +2021,14 @@ export const BucketGridView = ({
         {isOver && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
             <Send className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">Publish</span>
+            <span className="text-xs font-medium">Show it</span>
           </div>
         )}
         
         {/* Helper label that shows when dragging any item */}
         {activeId && !isOver && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-opacity-70">
-            <span className="text-xs">Drop to publish</span>
+            <span className="text-xs">Drop to show</span>
           </div>
         )}
         
@@ -2032,6 +2039,8 @@ export const BucketGridView = ({
           </div>
         )}
       </div>
+      <figcaption className="text-center text-[12px] leading-tight text-muted-foreground">On the screen now</figcaption>
+      </figure>
     );
   };
 
@@ -2058,11 +2067,11 @@ export const BucketGridView = ({
           <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
           <p className="text-lg font-medium mb-2">No images found</p>
           <p className="text-sm text-muted-foreground mb-4">
-            Upload some images to get started.
+            Add some pictures to get started.
           </p>
           <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
             <Upload className="h-4 w-4 mr-2" />
-            Upload Images
+            Add pictures
           </Button>
         </div>
       );
@@ -2135,12 +2144,8 @@ export const BucketGridView = ({
     }
   };
 
+  // "Speak a prompt": the Android voice app's deep link, so only on Android and only for a screen with a picture.
   const handleRecordClick = async () => {
-    if (isIOS) {
-      toast.error('iOS support coming soon');
-      return;
-    }
-
     // First check if we need to update
     const needsUpdate = await checkAppVersion();
     if (needsUpdate) {
@@ -2271,126 +2276,126 @@ export const BucketGridView = ({
             destination={destination}
             onActionComplete={debouncedFetchBucketDetails}
           />
-          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
+          <section
+            aria-label={name}
+            data-testid={`screen-header-${destination}`}
+            className={`mb-3 w-full rounded-2xl border border-stone-200/80 bg-card p-3 shadow-sm sm:p-4 [contain:inline-size] ${headerPinned ? 'sm:sticky sm:top-12 sm:z-40' : ''}`}
+          >
             <div className="flex items-start gap-3">
-              {/* Left side with droppable published image area */}
+              {/* What the screen shows now (drop a picture here to show it) */}
               <PublishedImageDroppable currentImage={currentPublishedImage} />
-              
-              {/* Controls area */}
-              <div className="flex-1 flex flex-col min-w-0 h-full">
-                {/* All publish destinations use same layout */}
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-wrap gap-1 items-center">
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      onClick={handleRefresh} 
-                      disabled={loading || externalLoading}
-                      className="flex-nowrap h-8"
-                    >
-                      <RefreshCw 
-                        className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
-                      />
-                      <span className="ml-1 hidden sm:inline">Refresh</span>
-                    </Button>
-                    {/* Only show upload/maintenance for destinations with buckets */}
-                    {hasBucket && (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="secondary"
-                          onClick={() => setShowUploadModal(true)}
-                          className="flex-nowrap h-8"
-                        >
-                          <Upload className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">Upload</span>
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="flex-nowrap h-8">
-                              <Settings className="h-4 w-4" />
-                              <span className="ml-1 hidden sm:inline">Maintenance</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Purge Non-Favorites
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleReindex}>
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Re-Index
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleExtractJson}>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Extract JSON
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
-                    )}
-                  </div>
 
-                  {/* Add mask toggle and record button */}
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        {/* span: a disabled button gets no hover, so the tooltip still explains why */}
-                        <span tabIndex={screenLive ? 0 : undefined}>
-                          <Button
-                            size="sm"
-                            variant={maskEnabled && !screenLive ? "default" : "outline"}
-                            onClick={() => handleMaskToggle(!maskEnabled)}
-                            disabled={screenLive}
-                            className="h-8 px-2 sm:px-3"
-                          >
-                            <Moon className="h-4 w-4" />
-                            <span className="ml-1 hidden sm:inline">Mask</span>
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {screenLive
-                          ? "Live runs at full brightness; the mask is for art"
-                          : maskEnabled ? "Disable mask" : "Enable mask"}
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant={isTranscribing ? "default" : "outline"}
-                          onClick={handleRecordClick}
-                          className="h-8 px-2 sm:px-3"
-                        >
-                          <Mic className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
-                          <span className="ml-1 hidden sm:inline">
-                            {isTranscribing ? "Stop Recording" : "Start Recording"}
-                          </span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {isTranscribing ? "Stop recording" : "Start recording"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-start gap-2">
+                  <h2 className="min-w-0 flex-1 break-words text-[19px] font-semibold leading-tight">{name}</h2>
+                  {/* Housekeeping: one ⋯ for the rarely used tools */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="-mr-1 -mt-1 h-10 w-10 shrink-0 rounded-full" aria-label={`More for ${name}`}>
+                        <MoreHorizontal className="h-5 w-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handleRefresh} disabled={loading || externalLoading}>
+                        <RefreshCw className={`h-4 w-4 mr-2 ${(loading || externalLoading) ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </DropdownMenuItem>
+                      {hasBucket && (
+                        <>
+                          <DropdownMenuItem onClick={handleReindex}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Re-index
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleExtractJson}>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Extract JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handlePurgeNonFavorites}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Remove all but favourites…
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                
-                {/* Create a flex spacer that pushes the controls to the bottom */}
-                <div className="flex-grow"></div>
-                
-                {/* Replace the inline scheduler controls with the SchedulerControl component */}
-                <SchedulerControl 
-                  destination={destination}
-                  isRunning={schedulerStatus?.is_running}
-                  isPaused={schedulerStatus?.is_paused}
-                  nextAction={schedulerStatus?.next_action}
-                  refreshScheduler={refreshBucket}
-                />
+
+                {/* Where this screen lives elsewhere in the app */}
+                <nav aria-label={`${name} elsewhere`} className="-ml-2 flex flex-wrap items-center gap-x-1 text-[15px]">
+                  {!headless && (
+                    <a
+                      href={displayUrl(destination)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-9 items-center gap-1 rounded-full px-2 font-medium text-teal-800 hover:bg-teal-50"
+                    >
+                      Open screen <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                    </a>
+                  )}
+                  <AppLink href={schedulerUrl(destination)} className="inline-flex h-9 items-center rounded-full px-2 font-medium text-teal-800 hover:bg-teal-50">
+                    Schedule ›
+                  </AppLink>
+                  {roomScreen && (
+                    <AppLink href={roomPageUrl(destination)} className="inline-flex h-9 items-center rounded-full px-2 font-medium text-teal-800 hover:bg-teal-50">
+                      In Room ›
+                    </AppLink>
+                  )}
+                </nav>
+
               </div>
             </div>
-          </div>
+
+            {/* This screen's own controls, labelled */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {hasBucket && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowUploadModal(true)}
+                  className="h-9 rounded-full bg-card px-3 text-[14px] font-medium"
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Add pictures to {name}
+                </Button>
+              )}
+              {roomScreen && (
+                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border border-stone-300 bg-card pl-3 pr-1.5 text-[14px] font-medium">
+                  Dim with room light
+                  <Switch
+                    checked={maskEnabled}
+                    onCheckedChange={(on) => void handleMaskToggle(on)}
+                    aria-label="Dim with room light"
+                    data-testid={`dim-with-room-${destination}`}
+                  />
+                </label>
+              )}
+              {roomScreen && screenLive && (
+                <span className="text-[13px] text-muted-foreground">Live runs at full brightness; this dims the art.</span>
+              )}
+              {canSpeak && (
+                <Button
+                  size="sm"
+                  variant={isTranscribing ? 'default' : 'outline'}
+                  onClick={handleRecordClick}
+                  className="h-9 rounded-full px-3 text-[14px] font-medium"
+                >
+                  <MessageSquareText className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
+                  {isTranscribing ? 'Stop speaking' : 'Speak a prompt'}
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-3 border-t border-stone-200/80 pt-3">
+              <SchedulerControl
+                destination={destination}
+                destinationName={name}
+                isRunning={schedulerStatus?.is_running}
+                isPaused={schedulerStatus?.is_paused}
+                nextAction={schedulerStatus?.next_action}
+                refreshScheduler={refreshBucket}
+              />
+            </div>
+          </section>
         </>
       )}
       
@@ -2410,7 +2415,7 @@ export const BucketGridView = ({
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload to {destinationName || destination}</DialogTitle>
+            <DialogTitle>Add pictures to {destinationName || destination}</DialogTitle>
           </DialogHeader>
           
           <Tabs defaultValue="file" value={uploadTab} onValueChange={handleUploadTabChange}>
