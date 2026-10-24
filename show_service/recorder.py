@@ -31,8 +31,16 @@
   Rename changes the title in the JSON and the track name in the .mid (spliced, no re-encode); ids never change.
 - Nothing persists across a restart but the files; a take running at shutdown is saved by :meth:`stop`.
 
+**Of a piece** (owner, 24 Oct: "record should be on score page as well (if it's 'mine') so user can record and/or
+record sections"): Stop can name the piece the take was played for, ``{"on": false, "piece": "<library id>"}``: the
+take is kept as a recording named after it (its composer and genre too, ``of``: the piece). With ``"section": {"from_s",
+"to_s", "from_bar"?, "to_bar"?}`` (the piece's own seconds, from its score's bar map) the take replaces that section
+of the piece instead (punch.py) and the result is kept as a NEW recording (``version_of``: the piece, ``section``);
+the piece's own file is never touched. A piece that can't be read keeps the take on its own (and says why). The
+answer's ``made`` says which: "take" | "version"; ``last`` is the new row either way.
+
 The API (api.py; the page reaches it through room_service's /show pass-through): ``GET /api/v1/piano/recordings`` ->
-:meth:`view`, ``POST /api/v1/piano/record {"on"}`` -> :meth:`record`, ``PATCH /api/v1/piano/recordings/{id}
+:meth:`view`, ``POST /api/v1/piano/record {"on", "piece"?, "section"?}`` -> :meth:`record`, ``PATCH /api/v1/piano/recordings/{id}
 {"title"?, "composer"?, "genre"?}`` -> :meth:`edit`, ``DELETE`` -> :meth:`delete`, ``GET .../{id}.mid`` -> :meth:`file_of`. Playback is the
 test piano's: ``POST /api/v1/test {"source": "piano", "piece": "rec:<id>"}`` (sources.py reads this folder through
 :func:`recordings_folder` and :func:`read_meta`).
@@ -53,7 +61,7 @@ import secrets
 import time
 from typing import Any, Callable, Optional
 
-from . import contract, vban
+from . import contract, punch, vban
 
 log = logging.getLogger("show.recorder")
 
@@ -254,10 +262,15 @@ def read_meta(folder: pathlib.Path, rid: str) -> Optional[dict]:
 
 def item(meta: dict) -> dict:
     """The contract's row: {id, title, composer, genre, recorded_at, duration_s, notes} (composer and genre: what the
-    player set, else null)."""
-    return {"id": meta.get("id"), "title": meta.get("title"), "composer": meta.get("composer"),
-            "genre": meta.get("genre"), "recorded_at": meta.get("recorded_at"),
-            "duration_s": meta.get("duration_s"), "notes": meta.get("notes")}
+    player set, else null), plus ``of`` / ``version_of`` (the library id of the piece it was played for or spliced
+    into) when it has one."""
+    row = {"id": meta.get("id"), "title": meta.get("title"), "composer": meta.get("composer"),
+           "genre": meta.get("genre"), "recorded_at": meta.get("recorded_at"),
+           "duration_s": meta.get("duration_s"), "notes": meta.get("notes")}
+    for k in ("of", "version_of"):
+        if isinstance(meta.get(k), str):
+            row[k] = meta[k]
+    return row
 
 
 def clean_detail(value: Any, what: str) -> Optional[str]:
@@ -307,6 +320,54 @@ class _Job:
                  folder: pathlib.Path) -> None:
         self.rid, self.title, self.meta, self.events = rid, title, meta, events
         self.t0, self.t_end, self.folder = t0, t_end, folder
+        self.ask: Optional[dict] = None                  # Stop's piece / section (check_ask)
+
+
+_VERSION_RE = re.compile(r"\s*\((?:bars? [0-9]+(?:-[0-9]+)? re-played|a section re-played|take, [^)]*)\)\s*$")
+
+
+def check_ask(ask: Any) -> Optional[dict]:
+    """Stop's ``piece`` and ``section`` as the page sent them -> {"piece", "section"?} or None (neither sent).
+    ValueError("bad_piece" / "bad_section")."""
+    if not isinstance(ask, dict):
+        return None
+    piece, sec = ask.get("piece"), ask.get("section")
+    if piece is None and sec is None:
+        return None
+    if not isinstance(piece, str) or not piece.strip() or len(piece) > 200:
+        raise ValueError("bad_piece: say which piece the take was played for (its library id)")
+    out: dict = {"piece": piece.strip()}
+    if sec is not None:
+        if not isinstance(sec, dict):
+            raise ValueError("bad_section: a section is {from_s, to_s, from_bar?, to_bar?}")
+        a, b = punch.check_section(sec.get("from_s"), sec.get("to_s"))
+        bars = {}
+        for k in ("from_bar", "to_bar"):
+            v = sec.get(k)
+            if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 100_000:
+                bars[k] = v
+        out["section"] = {"from_s": round(a, 3), "to_s": round(b, 3), **bars}
+    return out
+
+
+def version_title(base: str, section: Optional[dict], take_name: str) -> str:
+    """"Nocturne (bars 5-8 re-played)" for a section, "Nocturne (take, Fri 24 Oct 14:05)" for a whole take; an
+    earlier such ending on ``base`` is dropped first, and ``base`` cut to fit TITLE_MAX."""
+    base = _VERSION_RE.sub("", base or "").strip() or "Piece"
+    if section is None:
+        end = f" (take, {take_name.split(' - ', 1)[-1]})"
+    else:
+        a, b = section.get("from_bar"), section.get("to_bar")
+        if isinstance(a, int) and isinstance(b, int) and b != a:
+            end = f" (bars {min(a, b)}-{max(a, b)} re-played)"
+        elif isinstance(a, int):
+            end = f" (bar {a} re-played)"
+        else:
+            end = " (a section re-played)"
+    room = TITLE_MAX - len(end)
+    if len(base) > room:
+        base = base[:max(1, room - 1)].rstrip() + "\u2026"
+    return base + end
 
 
 class Recorder:
@@ -316,9 +377,12 @@ class Recorder:
     tick_hz = contract.SLOW_TICK_HZ
 
     def __init__(self, ctx: Optional[contract.BrainContext] = None, *, folder: Optional[pathlib.Path] = None,
-                 clock: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time) -> None:
-        """``folder``: the default folder (show.yaml ``tests.piano.recordings`` still wins); tests pass a tmp one."""
+                 clock: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time,
+                 library: Any = None) -> None:
+        """``folder``: the default folder (show.yaml ``tests.piano.recordings`` still wins); tests pass a tmp one.
+        ``library``: library.Library (a piece's file and names for Stop's ``piece``; None: library.resolve)."""
         self.ctx = ctx
+        self.library = library
         self.clock, self.wall = clock, wall
         self._default_folder = pathlib.Path(folder) if folder is not None else RECORDINGS_DIR
         self.folder = self._default_folder
@@ -406,10 +470,12 @@ class Recorder:
             self._rebuild()
         return {"recording": self._state(take), "recordings": self.recordings()}
 
-    def record(self, on: bool) -> Any:
+    def record(self, on: bool, ask: Any = None) -> Any:
         """POST /api/v1/piano/record. On: a new take (already recording: the view as it is). Off: the take ends and is
-        saved; the view gains ``last`` (the new row, or None for a take with no note, or nothing to stop). On the
-        brain loop the save runs in a worker thread and this returns an awaitable."""
+        saved; the view gains ``last`` (the new row, or None for a take with no note, or nothing to stop). ``ask``
+        (off only): {"piece", "section"?} (the module docstring; ValueError before anything stops when it's bad). On
+        the brain loop the save runs in a worker thread and this returns an awaitable."""
+        want = None if on else check_ask(ask)
         if on:
             if self._take is None:
                 self._take = _Take(self.clock(), self.wall(), self._streams, self._channels)
@@ -424,6 +490,7 @@ class Recorder:
             log.info("recording: stopped, no notes: nothing saved")
             self._rebuild()
             return {**self.view(), "last": None}
+        job.ask = want
         return self._off_thread(self._save_view, job)
 
     def recordings(self) -> list[dict]:
@@ -612,10 +679,15 @@ class Recorder:
                       (json.dumps(job.meta, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
 
     def _save_view(self, job: _Job) -> dict:
-        """Write the take, then the view with ``last`` (runs in a worker thread on the brain loop: no brain state is
-        touched but the list cache and the counters, each one assignment)."""
+        """Write the take (or, for Stop's section, the piece with it spliced in), then the view with ``last`` (runs in
+        a worker thread on the brain loop: no brain state is touched but the list cache and the counters, each one
+        assignment)."""
+        made, extra, note = "take", {}, None
         try:
-            self._write(job)
+            if job.ask is not None:
+                made, extra, note = self._of_piece(job)
+            if made != "version":
+                self._write(job)
             last: Optional[dict] = item(job.meta)
             err = None
         except Exception as e:                           # noqa: BLE001  the page says why
@@ -624,8 +696,79 @@ class Recorder:
         self._list = None
         self._last = last
         self._errors = [err] if err else []
-        return {"recording": self._state(self._take), "recordings": self.recordings(), "last": last,
-                **({"error": err} if err else {})}
+        out = {"recording": self._state(self._take), "recordings": self.recordings(), "last": last, "made": made,
+               **extra}
+        if err or note:
+            out["error"] = err or note
+        return out
+
+    def _piece_of(self, piece: str) -> tuple[Optional[pathlib.Path], dict]:
+        """(the piece's .mid or None, its {title, composer, genre}) — any thread."""
+        if piece.startswith("rec:"):
+            meta = read_meta(self.folder, piece[4:]) or {}
+            path = self.folder / f"{piece[4:]}.mid" if meta else None
+            return path, {k: meta.get(k) for k in ("title", "composer", "genre")}
+        lib = self.library
+        it: dict = {}
+        if lib is not None:
+            path = lib.resolve(piece)
+            try:
+                it = lib.item(piece) or {}
+            except Exception:                            # noqa: BLE001  names are a nicety
+                log.debug("library.item(%s) failed", piece, exc_info=True)
+        else:
+            from . import library as libmod
+            path = libmod.resolve(piece, recs=self.folder)
+            it = {"title": libmod.piece_title(piece)}
+        return path, {k: it.get(k) for k in ("title", "composer", "genre")}
+
+    def _of_piece(self, job: _Job) -> tuple[str, dict, Optional[str]]:
+        """Stop named a piece: name the take after it, or splice it into the piece's section and write that (the
+        piece's file is only read). -> (made, extra answer fields, a note for the page or None)."""
+        ask = job.ask or {}
+        piece, section = ask["piece"], ask.get("section")
+        path, names = self._piece_of(piece)
+        meta = job.meta
+        base = names.get("title") if isinstance(names.get("title"), str) else None
+        for k in ("composer", "genre"):
+            if isinstance(names.get(k), str) and names[k]:
+                meta[k] = names[k]
+        if section is None or path is None:
+            if base:
+                job.title = meta["title"] = version_title(base, None, job.title)
+            meta["of"] = piece
+            if section is None:
+                return "take", {"of": piece}, None
+            return "take", {"of": piece}, "That piece's MIDI couldn't be found, so the take was kept on its own."
+        title = version_title(base or "Piece", section, job.title)
+        try:
+            data, report = punch.splice(path.read_bytes(), capped(job.events), section["from_s"], section["to_s"],
+                                        title)
+        except (OSError, ValueError) as e:
+            log.warning("recording %s: the section couldn't go into %s (%s): kept as a take", job.rid, piece, e)
+            if base:
+                job.title = meta["title"] = version_title(base, None, job.title)
+            meta["of"] = piece
+            return "take", {"of": piece}, "The section couldn't be put into the piece, so the take was kept on its own."
+        meta.update({"title": title, "version_of": piece, "section": section,
+                     "duration_s": report["duration_s"], "notes": report["notes"],
+                     "take": {"notes": meta.get("notes"), "duration_s": meta.get("duration_s"),
+                              "host_t0": meta.get("host_t0"), "wall_start": meta.get("wall_start")},
+                     "punch": {k: report[k] for k in ("replaced", "played", "left_out", "stretch")},
+                     "host_t0": None, "wall_start": None})
+        job.title = title
+        job.folder.mkdir(parents=True, exist_ok=True)
+        _atomic_write(job.folder / f"{job.rid}.mid", data)
+        _atomic_write(job.folder / f"{job.rid}.json",
+                      (json.dumps(meta, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
+        log.info("recording %s: bars %s-%s of %s re-played (%d notes out, %d in, %d left out, x%.2f)", job.rid,
+                 section.get("from_bar"), section.get("to_bar"), piece, report["replaced"], report["played"],
+                 report["left_out"], report["stretch"])
+        note = None
+        if report["left_out"]:
+            note = (f"{report['left_out']} of the notes you played ran past the end of the section and were left "
+                    "out.")
+        return "version", {"version_of": piece, "section": section, "punch": meta["punch"]}, note
 
     def _edit_files(self, folder: pathlib.Path, rid: str, ch: dict) -> dict:
         meta = read_meta(folder, rid)

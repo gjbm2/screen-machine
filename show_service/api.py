@@ -2716,7 +2716,16 @@ class Api:
         rec = _components(brain).get(RECORDER)
         if rec is None:
             return _json({**NO_RECORDINGS, **({} if on else {"last": None}), "detail": NO_RECORDER})
-        return _json(await self._call(brain, rec.record, on, timeout=RECORD_TIMEOUT_S))
+        # Stop for a piece (the score page, 24 Oct): {"on": false, "piece", "section"?: {from_s, to_s, from_bar?,
+        # to_bar?}} keeps the take named after it, or spliced into that section as a new recording (recorder.py)
+        ask = {k: body[k] for k in ("piece", "section") if k in body} if isinstance(body, dict) and not on else None
+        try:
+            if ask:
+                return _json(await self._call(brain, rec.record, on, ask, timeout=RECORD_TIMEOUT_S))
+            return _json(await self._call(brain, rec.record, on, timeout=RECORD_TIMEOUT_S))
+        except ValueError as e:
+            code, _, words = str(e).partition(": ")
+            return _err(400, code or "bad_request", words or str(e))
 
     async def _rec_rename(self, request: web.Request, brain: Any) -> web.Response:
         rid = request.match_info.get("id", "")

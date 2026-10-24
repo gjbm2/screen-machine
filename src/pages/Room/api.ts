@@ -36,6 +36,7 @@ import type {
   ShowTestView,
   ShowUndoResult,
   PianoRecording,
+  PianoRecordAsk,
   PianoRecordingsView,
   TestPianoView,
   TestShowView,
@@ -517,8 +518,8 @@ export class RoomApi {
   }
 
   /** Record (on) or Stop (off); a stop saves the take and returns it as `last` (null when nothing was played). */
-  pianoRecord(on: boolean) {
-    return this.json<PianoRecordingsView>("POST", "/show/api/v1/piano/record", { on });
+  pianoRecord(on: boolean, ask?: PianoRecordAsk) {
+    return this.json<PianoRecordingsView>("POST", "/show/api/v1/piano/record", on || !ask ? { on } : { on, ...ask });
   }
 
   pianoRename(id: string, title: string) {

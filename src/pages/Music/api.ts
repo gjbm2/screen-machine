@@ -17,8 +17,10 @@
 //   GET    /show/api/v1/score/<id>/page/<n>.svg?w=&h=&staff=&rev=   page n as an image (an <img src>: the route is open)
 //   GET    /show/api/v1/score/<id>/pdf?paper=a4|a4-landscape|letter   the score as a PDF to print (A4 portrait by default)
 //   GET    /show/api/v1/score/<id>/follow, …/page/<n>.json   follow-along: the timings, and a page's bar boxes and note heads
+//   GET    /show/api/v1/piano/recordings          the recorder; POST …/piano/record {on, piece?, section?}   Record on a score
 
 import { explainError, loadToken, RoomApiError } from "@/pages/Room/api";
+import type { PianoRecordAsk, PianoRecordingsView } from "@/pages/Room/types";
 
 // ── Shapes (the spec's) ─────────────────────────────────────────────────────
 
@@ -417,6 +419,19 @@ export class MusicApi {
   playerAction(body: PlayerAction) {
     // a sound change while playing restarts the piece; give it time to answer
     return this.request<PlayerView>("POST", "/player", { body, timeoutMs: 15_000 });
+  }
+
+  // ── The piano's recorder (the Room page's, recorder.py): Record on a score ──
+
+  /** The recorder ("off" | "recording", notes so far) and the takes. */
+  pianoRecordings(signal?: AbortSignal) {
+    return this.request<PianoRecordingsView>("GET", "/piano/recordings", { signal });
+  }
+
+  /** Record (on), or Stop (off) for this piece: the take named after it, or with a section (the piece's own seconds,
+   *  from its score's bar map) spliced into those bars as a new recording; `last` is the new one either way. */
+  pianoRecord(on: boolean, ask?: PianoRecordAsk) {
+    return this.request<PianoRecordingsView>("POST", "/piano/record", { body: on || !ask ? { on } : { on, ...ask }, timeoutMs: 35_000 });
   }
 
   // ── Scores ──

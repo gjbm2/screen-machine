@@ -764,6 +764,16 @@ export interface PianoRecording {
   recorded_at: string;
   duration_s: number;
   notes: number;
+  /** The library id of the piece it was played for (Record on a score), or the piece a section of it was spliced
+   *  into (a new version: the piece itself is untouched). */
+  of?: string | null;
+  version_of?: string | null;
+}
+/** Stop for a piece (the score page): the take named after it, or (with a section, in the piece's own seconds from
+ *  its score's bar map) spliced into that section as a new recording. */
+export interface PianoRecordAsk {
+  piece: string;
+  section?: { from_s: number; to_s: number; from_bar?: number; to_bar?: number };
 }
 export interface PianoRecordingState {
   state: "off" | "recording" | string;
@@ -778,6 +788,10 @@ export interface PianoRecordingsView {
   recordings: PianoRecording[];
   /** POST {on: false} only: the take just saved, or null when nothing was played. */
   last?: PianoRecording | null;
+  /** POST {on: false} only: "take", or "version" (a section spliced into the piece). */
+  made?: "take" | "version" | string;
+  /** Why it was kept differently (a section that couldn't go in), or why it couldn't be saved. */
+  error?: string;
 }
 
 /** The test piano: the renderer plays a piece into every screen's sound view (GET/POST /renderer/api/sound/test). */

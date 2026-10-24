@@ -12,7 +12,8 @@
 // paper (A4 portrait unless another paper is chosen) in a new tab, to print or keep.
 //
 // Your own pieces (uploads and recordings) have a pencil by the title: change the title and composer in place (the PDF
-// prints them).
+// prints them). They have Record too (ScoreRecord.tsx, owner 24 Oct): a new take of the whole piece, or of a few bars
+// that go in place of those bars in a new copy; either way its score is offered at once.
 //
 // The music stand (owner, 23 Oct: "it should be possible for a pianist to PLAY the score from e.g. an iPad screen"):
 // "Full screen", or a tap on the score (Scroll: any page; Pages: the middle third), opens the score full screen
@@ -36,7 +37,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, FileDown, Maximize2, Pencil, RotateCcw, Sparkles, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
@@ -47,6 +48,7 @@ import { CHIP, CHIP_OFF, CHIP_ON, PRIMARY, SECONDARY } from "./bits";
 import { useMusic } from "./context";
 import { FollowLight, useFollow, type Follow } from "./follow";
 import { PlayBar } from "./PlayBar";
+import { ScoreRecord } from "./ScoreRecord";
 import { openPianola } from "@/pages/Room/listenStream";
 
 type Mode = "scroll" | "pages";
@@ -385,6 +387,8 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
   const [editing, setEditing] = useState<{ title: string; composer: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+  /** Record on the piano (your own pieces): its panel is open. */
+  const [recOpen, setRecOpen] = useState(false);
 
   // The page size: the area's width, by the height left below the controls.
   useLayoutEffect(() => {
@@ -883,6 +887,16 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
             <Maximize2 className="h-4 w-4" aria-hidden /> Full screen
           </button>
         )}
+        {editable && !recOpen && (
+          <button
+            type="button"
+            onClick={() => setRecOpen(true)}
+            title="Record on the piano: the whole piece, or a few bars in place of these"
+            className={cn(CHIP, CHIP_OFF)}
+          >
+            <Circle className="h-3.5 w-3.5 fill-rose-700 text-rose-700" aria-hidden /> Record
+          </button>
+        )}
         <div role="radiogroup" aria-label="How to read it" className="flex gap-1.5">
           {(
             [
@@ -987,6 +1001,15 @@ export function ScoreView({ pieceId, onBack }: { pieceId: string; onBack: () => 
         ))}
         {relaying && !problem && <Spinner className="ml-auto h-5 w-5 text-muted-foreground" />}
       </div>
+
+      {editable && recOpen && (
+        <ScoreRecord
+          pieceId={pieceId}
+          bars={follow.data?.bars ?? null}
+          hereBar={follow.head.mine && follow.head.bar !== null ? follow.head.bar : follow.firstBarOnPage(cur)}
+          onClose={() => setRecOpen(false)}
+        />
+      )}
 
       {betterBusy && status && (
         <div className={cn(CARD_CLASS, "space-y-2 px-4 py-3")} role="status">
