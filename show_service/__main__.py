@@ -463,7 +463,8 @@ class Show:
         logs = self._log_files()
         kw: dict[str, Any] = {
             "autopilot": {"log_path": logs["autopilot"]},
-            "sources": {"log_dir": pathlib.Path(self.opts.state_dir), "devices_fn": self._piano_devices},
+            "sources": {"log_dir": pathlib.Path(self.opts.state_dir), "devices_fn": self._piano_devices,
+                        "output_fn": self._player_output},
             "listener": {"log_path": logs["listener"],
                          "clips_dir": pathlib.Path(self.opts.state_dir) / "listen" / "clips"},   # 09, 21 Oct
             "cues": {"log_path": logs["cues"]},
@@ -488,6 +489,11 @@ class Show:
 
     def _piano_output(self) -> Optional[str]:
         """Where the piano is heard now (piano_live's gate): the test piano's output while it plays, else the music
+    def _player_output(self) -> Optional[str]:
+        """The music player's chosen output (sources' default for a start that names none), or None."""
+        out = getattr(self._component("player"), "output", None)
+        return out if isinstance(out, str) and out else None
+
         player's chosen one (PC22 when it has none)."""
         src = self._component("sources")
         try:

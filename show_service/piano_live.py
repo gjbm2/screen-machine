@@ -591,7 +591,8 @@ class PianoLive:
                  frame (the MIDI it carries was due then), host_now: that clock as it was sent
           text   {"map": {piece, pos_s, at, speed, state}, "host_now"} every MAP_S: the piece is at pos_s at host
                  time at (moving at speed while state is playing), so the frame of sound time T is at
-                 pos_s + (T - at) * speed in the piece
+                 pos_s + (T - at) * speed in the piece; {"host_now"} alone every MAP_S while nothing plays (so a
+                 page always hears from a live socket)
           text   {"quiet": true} / {"quiet": false}  whether the room's output is elsewhere (the notes don't come)
         The page may send {"ping": <its clock>}; the answer is {"pong": <that>, "host_now"}."""
         from aiohttp import WSMsgType, web
@@ -609,9 +610,14 @@ class PianoLive:
         ws = web.WebSocketResponse(heartbeat=20.0, max_msg_size=1 << 16, compress=False)
         await ws.prepare(request)
         q: asyncio.Queue = asyncio.Queue()
-        s.clients[q] = (dev, request.query.get("also") in ("1", "true", "yes"), "pcm")
+        also = request.query.get("also") in ("1", "true", "yes")
+        s.clients[q] = (dev, also, "pcm")
         s.last_client = time.monotonic()
         self._regate()
+        # who listens, and when they leave: the evidence for "this device went quiet" (owner, 24 Oct)
+        log.info("piano live: %s listening to %s%s (output %s)", dev or "a page", inst, ", also" if also else "",
+                 self._output())
+        joined = time.monotonic()
 
         async def reader() -> None:
             async for msg in ws:
@@ -642,8 +648,8 @@ class PianoLive:
                 if now >= next_map:
                     next_map = now + MAP_S
                     pos = self._pos()
-                    if pos is not None:
-                        await ws.send_json({"map": pos, "host_now": now})
+                    # nothing playing: the clock alone, so the page always hears from a live socket (its stall check)
+                    await ws.send_json({"map": pos, "host_now": now} if pos is not None else {"host_now": now})
                     q_now = not s.heard
                     if q_now != quiet:
                         quiet = q_now
@@ -656,10 +662,12 @@ class PianoLive:
             pass
         finally:
             rd.cancel()
-            s.clients.pop(q, None)
+            dropped = s.clients.pop(q, None) is None     # None: _pump let it go (too far behind, the synth ended)
             s.last_client = time.monotonic()
             self._regate()
             await ws.close()
+            log.info("piano live: %s left %s after %.0f s (%s)", dev or "a page", inst, time.monotonic() - joined,
+                     "dropped by the stream" if dropped else f"socket closed {ws.close_code}")
         return ws
 
     def _pos(self) -> Optional[dict]:

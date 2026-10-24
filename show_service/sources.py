@@ -527,7 +527,8 @@ class Sources:
                  set_offset: Optional[Callable[[str, Optional[float]], None]] = None,
                  sonos_file: pathlib.Path = SONOS_FILE,
                  set_mic_claim: Optional[Callable[[str, bool], Any]] = None,
-                 devices_fn: Optional[Callable[[], list]] = None) -> None:
+                 devices_fn: Optional[Callable[[], list]] = None,
+                 output_fn: Optional[Callable[[], Optional[str]]] = None) -> None:
         """``pdeath``: run each child through PDEATH_SHIM (off only for a ``popen`` that can't take it).
         ``instruments_file``, ``recordings_dir`` (show.yaml ``tests.piano.recordings`` wins), ``sonos_file``: tests
         pass tmp ones.
@@ -538,6 +539,10 @@ class Sources:
         self._set_offset = set_offset
         self._mic_claim = set_mic_claim
         self.devices_fn = devices_fn                     # piano_live's devices: [{"id": "device:<id>", "label"}]
+        # the room's chosen output (the music player's): what a start naming no output plays on, so a script or an
+        # older page never moves the room off "This device" (owner, 24 Oct: "check that 'play on this device' doesn't
+        # get switched off / broken when user is moving between modes / recordings")
+        self.output_fn = output_fn
         self._claim_applied: Optional[str] = None
         self._instr: Optional[tuple[list[dict], Optional[str], list[str]]] = None
         self._instr_at = -1e18
@@ -682,7 +687,7 @@ class Sources:
             spec = next((r for r in rows if r["id"] == iid), None)
             if spec is None:
                 raise ValueError("unknown_instrument")
-            out = output if output is not None else DEFAULT_OUTPUT
+            out = output if output is not None else self._room_output()
             if not is_device(out) and out not in {o["id"] for o in self._outputs()}:
                 raise ValueError("unknown_output")      # a device is taken as asked (it may not have connected yet)
             note = None
@@ -787,6 +792,19 @@ class Sources:
         if want in ids:
             return rows, want
         return rows, next((r["id"] for r in rows if r.get("engine") == LIVE_ENGINE), ids[0])
+
+    def _room_output(self) -> str:
+        """Where a start that names no output plays: the room's choice (output_fn) while it's a device or offered,
+        else DEFAULT_OUTPUT."""
+        fn = self.output_fn
+        try:
+            v = fn() if fn is not None else None
+        except Exception:                                # noqa: BLE001
+            log.debug("sources: output_fn failed", exc_info=True)
+            v = None
+        if isinstance(v, str) and (is_device(v) or v in {o["id"] for o in self._outputs()}):
+            return v
+        return DEFAULT_OUTPUT
 
     def _outputs(self) -> list[dict]:
         """The places the piano can play (module docstring): OUTPUTS, plus a "sonos:<zone>" per sonos.json zone (re-read

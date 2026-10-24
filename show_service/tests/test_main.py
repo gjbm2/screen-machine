@@ -684,7 +684,10 @@ def test_brain_wiring_with_fake_components(monkeypatch, tmp_path):
         assert made["listener"].kw == {"log_path": sd / "listener.jsonl", "llm": "fake-llm",
                                        "clips_dir": sd / "listen" / "clips"}
         assert made["cues"].kw == {"log_path": sd / "cues.jsonl"} and ctx.cue_sheet() == []
-        assert made["sources"].kw == {"log_dir": sd} and made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
+        skw = made["sources"].kw                         # piano_live's devices and the player's output (24 Oct)
+        assert set(skw) == {"log_dir", "devices_fn", "output_fn"} and skw["log_dir"] == sd
+        assert callable(skw["devices_fn"]) and callable(skw["output_fn"])
+        assert made["autopilot"][2].kw == {"log_path": sd / "autopilot.jsonl"}
         assert made["mllink"].kw == {"log_path": sd / "ml-worker.log", "child_pids": show._child_pids}
         assert made["structure"].kw == {} and show._child_pids() == []           # the fake clock has no beat process
         # Stage 5: the rig, after the director, fed by reference (the fake clock has no snapshot: no clock)

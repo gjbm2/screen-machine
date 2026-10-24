@@ -849,3 +849,31 @@ def test_a_device_output_plays_midi_only_and_is_listed(lib):
     with pytest.raises(ValueError, match="unknown_output"):
         r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="device:../x", once=True)
     r.src.stop()
+
+
+def test_a_start_naming_no_output_plays_where_the_room_plays(lib):
+    """Owner, 24 Oct: 'check that play on this device doesn't get switched off'. A start that names no output (a
+    script, an older page) plays on the room's choice (output_fn: the player's) while that's a device or offered,
+    never moving the room off This device; an unknown or missing choice falls back to PC22."""
+    instruments(lib)
+    r = make(lib)
+    room = {"out": "device:ipad-1"}
+    r.src.output_fn = lambda: room["out"]
+    st = r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True)
+    argv = r.popen.argv
+    assert st["output"] == "device:ipad-1" and argv[argv.index("--output") + 1] == "none"
+    room["out"] = "none"                                 # Screens only: an offered output
+    assert r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True)["output"] == "none"
+    for gone in ("sonos:nowhere", None, 7):              # not offered, none chosen, nonsense: PC22, as before
+        room["out"] = gone
+        assert r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True)["output"] == "pc22"
+
+    def broken():
+        raise RuntimeError("player gone")
+    r.src.output_fn = broken
+    assert r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", once=True)["output"] == "pc22"
+    # a named output still wins
+    r.src.output_fn = lambda: "device:ipad-1"
+    assert r.src.start_test("piano", "file:Nocturne.mid", instrument="salamander", output="pc22",
+                            once=True)["output"] == "pc22"
+    r.src.stop()
