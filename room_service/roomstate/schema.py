@@ -70,7 +70,10 @@ def range_schema(lo: int, hi: int, label: str, unit: str = "", step: int = 1, de
     return {"type": "integer", "minimum": lo, "maximum": hi, "default": lo if default is None else default, "x-ui": ui}
 
 
-ICONS = ("home", "music", "piano", "party", "disco", "film", "moon", "sun", "sparkles", "power")   # names; the page draws them
+ICONS = ("home", "music", "piano", "party", "disco", "film", "moon", "sun", "sparkles", "power",
+         "lamp", "image", "waves", "grid", "flask")   # names; the page draws them
+# A mode's tile on the Room page (generic, per mode): "main" in the mode row, "more" behind its "More modes" chip.
+ROOM_PAGE_PLACES = ("main", "more")
 PUT_BACK_PRESETS = {"1 hour": 3600, "3 hours": 10800, "12 hours": 43200}
 AUTOPILOT_KEYS = ("on", "quiet_hours", "min_dwell_s", "hold", "chips")
 MODE_AUTOPILOT_KEYS = ("enter_when", "otherwise_suggest_when", "from", "leave_when", "leave_to", "skip")
@@ -155,6 +158,9 @@ def mode_schema(modes: list[str], situations: list[dict] | None = None) -> dict:
         "label": {"type": "string", "x-ui": {"label": "Name"}},
         "description": {"type": "string", "x-ui": {"label": "Description", "widget": "textarea"}},
         "icon": {"type": "string", "enum": list(ICONS), "x-ui": {"label": "Icon", "widget": "icon"}},
+        "on_room_page": {"type": "string", "enum": list(ROOM_PAGE_PLACES), "default": "main",
+                         "x-ui": {"label": "Tile on the Room page",
+                                  "labels": {"main": "In the mode row", "more": "Under More modes"}}},
         "autopilot": mode_autopilot_schema(modes, situations)}}
 
 
@@ -242,6 +248,7 @@ def room_config_schema(target_schemas: dict[str, dict], groups: list[str]) -> di
             "modes": {"type": "object", "patternProperties": comment, "additionalProperties": obj({
                 "label": {"type": "string"}, "description": {"type": "string"},
                 "icon": {"enum": list(ICONS)}, "autopilot": mode_autopilot,
+                "on_room_page": {"enum": list(ROOM_PAGE_PLACES)}, "voice": {"type": "string"},
                 "extends": {"type": "string"}, "abstract": {"type": "boolean"},
                 "state": {"type": "object", "patternProperties": comment, "additionalProperties": entry},
                 "on_enter": {"type": "array", "items": signal}, "on_exit": {"type": "array", "items": signal}})},

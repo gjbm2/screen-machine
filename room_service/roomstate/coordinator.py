@@ -1459,6 +1459,7 @@ class Coordinator:
                 if (slot := e.retrieve or (None if e.restore else e.store)):
                     entries[t]["slot"] = slot     # an old-style pair only: the page keeps pairs whole when deleting
             modes[name] = {"label": mode.label, "description": mode.description, "icon": mode.icon, "voice": mode.voice,
+                           "on_room_page": mode.on_room_page,
                            "order": len(modes), "entries": entries,
                            "on_enter": [s.signal for s in mode.on_enter], "on_exit": [s.signal for s in mode.on_exit]}
         names = list(modes)

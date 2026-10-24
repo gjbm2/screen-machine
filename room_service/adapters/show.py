@@ -1,6 +1,6 @@
 """show.main: the room's Feel, i.e. the vibe show_service's director plays (docs/SHOW_ENGINE.md §8.1; the build spec is
 show_service/README.md "Stage 3 > S3.11"). show.mic: whether the current mode follows the music, i.e. claims the room's
-mic (owner, 16 Oct: the mic runs only while Auto is on or the mode follows the music; Mute on the Music card always
+mic (owner, 16 Oct: the mic runs only while Auto is on or the mode follows the music; the Mic switch at the top always
 wins). show.ai: whether the current mode lets the AI listen (owner, 20 Oct: by default the AI hears the room only in a
 live mode; people just talking in the room shouldn't cost anything; a mode can allow it, Normal too, if wanted). aa's
 adapter contract v1.0 (roomstate/contract.py, ROOM_STATE_MODEL §5).
@@ -44,7 +44,7 @@ the room's. A mode that follows the music has "show.mic": {"set": true, "restore
            unreachable, a timeout or 5xx failed, retried. Members in one apply go at once; Outcome.members has
            each, the status is the worst of them.
 - The mic is not a console control: the subsystem is a "setting" (the mode editor's "Behind the scenes"); the Room
-  page's one mic control is Mute on the Music card (show_service's own, not a room target).
+  page's one mic control is the Mic switch at the top (show_service's own, not a room target).
 
 show.ai's value is a bool too: true = this mode lets the AI listen, false = it doesn't. It is only the mode's
 permission, show_service's GET/PUT /api/v1/listening "mode" (false until the room sets it: show_service fails closed).
@@ -96,7 +96,7 @@ RETRY_S = 15.0          # ... or this soon after a failed fetch
 FETCH_TIMEOUT_S = 5.0
 LISTEN_HELP = ("Not used: whether the AI listens in a mode is its own AI listening row (show.ai; owner, 20 Oct); the "
                "feel's listening has gated nothing since 17 Oct and is hidden in the editor")
-MIC_HELP = "The room's mic listens while this mode is on. Auto always listens; Mute on the Music card always wins."
+MIC_HELP = "The room's mic listens while this mode is on. Auto always listens; the Mic switch at the top always wins."
 AI_HELP = ("Lets the AI hear the music in this mode (while the Music card's AI listening switch is on). It sends short "
            "clips to a cloud model and costs money.")
 MIC_WORDS = {"on": True, "listen": True, "listens": True, "true": True, "off": False, "false": False}   # mic and ai
@@ -253,7 +253,7 @@ class _Flag:
 
 class ShowAdapter(Adapter):
     subsystem = "show"
-    subsystem_label = "Feel"
+    subsystem_label = "Listening and feel"   # its members: the Feel, the Mic and AI listening (the editor's group)
     category = "setting"          # the room's own behaviour: the mode editor's "Behind the scenes", never a console row
     kind = "level"
     members = ["main", "mic", "ai"]
@@ -338,7 +338,7 @@ class ShowAdapter(Adapter):
 
     # -- the editor ----------------------------------------------------------------------------------------------------
     def label(self, member: str) -> str:
-        return {"mic": "Microphone", "ai": "AI listening"}.get(member, "Feel")
+        return {"mic": "Mic", "ai": "AI listening"}.get(member, "Feel")
 
     def value_schema(self, member: str) -> dict:
         if member in FLAGS:                         # two choices, as the pages' on/off settings (PageAdapter)

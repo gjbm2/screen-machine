@@ -47,7 +47,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from .schema import AUTOPILOT_KEYS, ICONS, MODE_AUTOPILOT_KEYS, default_policy
+from .schema import AUTOPILOT_KEYS, ICONS, MODE_AUTOPILOT_KEYS, ROOM_PAGE_PLACES, default_policy
 from .contract import Adapter, Placeholder
 
 LEAVE = "leave"
@@ -67,7 +67,10 @@ RETRIEVE_ONLY = {"else", "max_age_s"}
 # store_if: value patterns (as in a rule's `when`); store only when the current value matches one, e.g.
 # ["favourite", "uri"] stores Sonos music only while something is playing, so a retrieve then has nothing to undo.
 TOP_KEYS = {"default", "labels", "groups", "modes", "transitions", "description", "autopilot", "put_back_max_age_s"}
-MODE_KEYS = {"label", "extends", "abstract", "state", "on_enter", "on_exit", "description", "autopilot", "icon", "voice"}
+MODE_KEYS = {"label", "extends", "abstract", "state", "on_enter", "on_exit", "description", "autopilot", "icon", "voice",
+             "on_room_page"}
+# "on_room_page": where the mode's tile sits on the Room page, "main" (the mode row, the default) or "more" (behind
+# the row's "More modes" chip). A plain per-mode field (owner, 24 Oct), read by the page only.
 # "voice": the mode's short name for Alexa (owner 18 Oct; routes/alexa.py feeds only these to its AI step); "" = none.
 VOICE_MAX = 40
 # "autopilot" (show_brain's Auto, docs/SHOW_ENGINE.md §8.9): read by show_brain, carried here as an object, unchecked
@@ -201,6 +204,7 @@ class Mode:
     description: str = ""
     icon: str | None = None
     voice: str = ""
+    on_room_page: str = "main"
 
 
 @dataclass
@@ -594,6 +598,10 @@ class RoomConfig:
             self._fail(ptr("modes", name, "icon"), f"icon must be one of {list(ICONS)}")
             icon = None
         self._check_autopilot(raw.get("autopilot"), ptr("modes", name, "autopilot"), MODE_AUTOPILOT_KEYS)
+        place = raw.get("on_room_page", "main")
+        if place not in ROOM_PAGE_PLACES:
+            self._fail(ptr("modes", name, "on_room_page"), f"on_room_page must be one of {list(ROOM_PAGE_PLACES)}")
+            place = "main"
         voice = raw.get("voice")
         if voice is not None and not (isinstance(voice, str) and len(voice.strip()) <= VOICE_MAX):
             self._fail(ptr("modes", name, "voice"), f"voice is a short name (up to {VOICE_MAX} letters)")
@@ -605,7 +613,7 @@ class RoomConfig:
                     {t: origin[t] for t in self.targets if t in origin},
                     signals["on_enter"], signals["on_exit"],
                     description=str(raw.get("description") or ""), icon=icon,
-                    voice=" ".join(str(voice or "").split()))
+                    voice=" ".join(str(voice or "").split()), on_room_page=place)
         self.modes[name] = mode
         return mode
 
@@ -986,6 +994,7 @@ _ERRORS = [   # (substring of the internal message, code, text; {sel} = the row'
     ("missing or abstract", "bad_default", "The starting mode doesn't exist"),
     ("unknown mode", "no_such_mode", "This names a mode that doesn't exist"),
     ("icon must be", "bad_icon", "That icon isn't one of the room's icons"),
+    ("on_room_page must be", "bad_room_page", "The tile can only be in the mode row or under More modes"),
     ("unknown key", "unknown_setting", "This has a setting the room doesn't know: {detail}"),
     ("is not one of", "bad_value", "That isn't one of its choices: {detail}"),
 ]

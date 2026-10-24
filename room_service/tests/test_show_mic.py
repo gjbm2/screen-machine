@@ -125,7 +125,7 @@ async def test_both_members_in_one_apply(show, tmp_path):
     show.status["mic_put"] = 400                                                 # one refused: the worst wins
     out = await a.apply({"main": "home", "mic": False}, {})
     assert out.status == "failed" and out.members["main"].status == "ok" and out.members["mic"].retry is False
-    assert out.retry is False and out.detail.startswith("Microphone: bad_mic")
+    assert out.retry is False and out.detail.startswith("Mic: bad_mic")
     show.status["mic_put"] = 503                                                 # one down: retried
     out = await a.apply({"main": "home", "mic": False}, {})
     assert out.status == "failed" and out.retry is True and out.members["mic"].retry is True
@@ -178,11 +178,11 @@ def test_normalize_takes_bools_and_on_off_words():
 
 def test_mic_words_and_form(tmp_path):
     a = ShowAdapter(nowhere(), vibes_yaml(tmp_path))
-    assert a.label("mic") == "Microphone" and a.label("main") == "Feel"
+    assert a.label("mic") == "Mic" and a.label("main") == "Feel"
     assert a.show("mic", True) == "Mic listens" and a.show("mic", False) == "Mic off"
     s = a.value_schema("mic")
     assert s["type"] == "boolean" and s["x-ui"]["labels"] == {"true": "Listens in this mode", "false": "Off"}
-    assert "Mute on the Music card always wins" in s["description"] and s["x-ui"]["label"] == "Microphone"
+    assert "the Mic switch at the top always wins" in s["description"] and s["x-ui"]["label"] == "Mic"
     assert "widget" not in s["x-ui"]                                             # two choices, like the pages' setting
     assert check_value(True, s) is None and check_value("on", s) is not None
     assert schema_words(s, True) == "Listens in this mode" and a.words("mic", False) == "Off"
@@ -211,7 +211,7 @@ async def test_a_mode_that_follows_the_music_claims_the_mic_and_the_room_drops_i
     assert show.puts == []                                                        # the Feel never touched
     d = r.c.describe()
     t = d["targets"]["show.mic"]
-    assert t["category"] == "setting" and t["label"] == "Microphone" and t["subsystem_label"] == "Feel"
+    assert t["category"] == "setting" and t["label"] == "Mic" and t["subsystem_label"] == "Listening and feel"
     assert d["subsystems"]["show"]["members"] == ["main", "mic", "ai"]
     assert d["modes"]["disco"]["entries"]["show.mic"]["words"] == "Listens in this mode"
     await settled(a.show)

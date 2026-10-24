@@ -381,7 +381,7 @@ def test_build_adapters_registers_show_and_a_placeholder_for_tests(tmp_path):
     built = {a.subsystem: a for a in build_adapters({}, mask, lambda l, m: None, tmp_path, blinds=blinds, sonos=False,
                                                       remotes=[])}
     assert isinstance(built["show"], ShowAdapter) and built["show"].cache_file == tmp_path / "show_catalog.json"
-    assert built["show"].category == "setting" and built["show"].subsystem_label == "Feel"
+    assert built["show"].category == "setting" and built["show"].subsystem_label == "Listening and feel"
     assert built["show"].members == ["main", "mic", "ai"]
     off = {a.subsystem: a for a in build_adapters({}, mask, lambda l, m: None, tmp_path, blinds=blinds, sonos=False,
                                                     remotes=[], show=False)}

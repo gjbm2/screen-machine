@@ -138,7 +138,7 @@ async def test_modes_endpoint(harness: Harness):
     st, body = await harness.api("GET", "/api/v1/modes")
     assert st == 200 and set(body["modes"]) == {"gallery", "live-test", "show"}
     m = body["modes"]["live-test"]
-    assert set(m) == {"label", "description", "icon", "voice", "state", "targets", "on_enter", "on_exit"}
+    assert set(m) == {"label", "description", "icon", "voice", "on_room_page", "state", "targets", "on_enter", "on_exit"}
     assert m["voice"] == ""                                               # no Alexa name configured
     assert m["state"]["screens"]["devtest"]["live"]["profile"] == "h264-720p30"
     assert m["state"]["screens"]["north-screen"] == "art"                 # inherited from gallery
