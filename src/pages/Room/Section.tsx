@@ -6,8 +6,10 @@
 //
 // The content stays mounted while closed (only hidden), so what's inside keeps the state and readings it has today and
 // the summaries above can come from it; anything expensive inside rolls up under its own Unroll as before.
+//
+// openFold(id) opens a fold and scrolls to it (the top bar's Mic and AI details); so does a link to /room#<id>.
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,13 @@ function writeFold(id: string, open: boolean) {
   } catch {
     /* not remembered on this device */
   }
+}
+
+const OPEN_EVENT = "sm-open-fold";
+
+/** Opens the fold `id` on this page and scrolls it into view (remembered open, as a tap would). */
+export function openFold(id: string) {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: id }));
 }
 
 export function Section({
@@ -65,8 +74,29 @@ export function Section({
     setStored(next);
     writeFold(id, next);
   };
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const show = () => {
+      setStored(true);
+      writeFold(id, true);
+      // after the content is shown, so the scroll lands on the opened fold
+      requestAnimationFrame(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+    const onOpen = (e: Event) => {
+      if ((e as CustomEvent).detail === id) show();
+    };
+    window.addEventListener(OPEN_EVENT, onOpen);
+    if (window.location.hash === `#${id}`) show();
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+  }, [id]);
   return (
-    <section aria-labelledby={hid} data-testid={`fold-${id}`} hidden={hidden} className={cn("py-1.5", className)}>
+    <section
+      ref={ref}
+      aria-labelledby={hid}
+      data-testid={`fold-${id}`}
+      hidden={hidden}
+      className={cn("scroll-mt-[calc(var(--app-top,0px)+0.5rem)] py-1.5", className)}
+    >
       <h2 className="m-0">
         <button
           type="button"

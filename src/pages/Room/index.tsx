@@ -6,7 +6,8 @@
 //                screens are live, that room's scene and effect picking (RoomLive.tsx); open by default while live
 //   Screens      each screen's card, under its room's name (status.rooms, from routes/data/rooms.json; "Other" last)
 //   Today's art  each room's TodayCard (TodayFold.tsx)
-//   Listening    room mic, piano, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel)
+//   Listening    room mic, piano, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel); the Mic and AI
+//                switches are the header's (TopToggles.tsx), and tapping their line opens this fold
 //   Lights       each room's lamps and room effects (the glitterball)
 //   Piano        Record, then the takes (folded)
 // and the mini player at the bottom (NowPlayingRow.tsx, with the page's one Play on). Everything technical sits
@@ -43,7 +44,8 @@ import type { LiveMember } from "./roomFx";
 import { RoomLives, type RoomLiveSpec } from "./RoomLive";
 import { ScreenCard } from "./ScreenCard";
 import { sceneChoices } from "./catalog";
-import { Section } from "./Section";
+import { openFold, Section } from "./Section";
+import { useTopToggles } from "./TopToggles";
 import { TodayFold } from "./TodayFold";
 import { CARD_CLASS, RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import { TokenDialog } from "./TokenPrompt";
@@ -202,8 +204,9 @@ export default function RoomPage() {
   const showState = useShowState(show);
   const showCard = showState.card;
   const showAnswering = !!showCard && (showState.live || (showState.lastAt !== null && now - showState.lastAt < SHOW_FRESH_MS));
-  const micState = showCard?.mic_state;
-  const micOn = !!micState?.on && !micState.muted;
+  // The top bar's Mic and AI switches (owner, 24 Oct), on the same card; their details are in Listening.
+  const toggles = useTopToggles(room.api, show, room.addLog);
+  const openListening = useCallback(() => openFold("listening"), []);
   // What the folds' summaries need that a card inside them reads for itself (told up, nothing fetched again).
   const [pianoLinked, setPianoLinked] = useState<boolean | null>(null);
   const [pianoLine, setPianoLine] = useState<string | null | undefined>(undefined);
@@ -317,7 +320,7 @@ export default function RoomPage() {
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
-        <Header link={link} onMenu={openMenu} screen={focusScreen} micOn={micOn} pc={pc} />
+        <Header link={link} onMenu={openMenu} screen={focusScreen} toggles={status ? toggles : undefined} onDetails={openListening} pc={pc} />
 
         <main className="space-y-5 pt-1">
           {conn.authRequired && !tokenOpen && (
