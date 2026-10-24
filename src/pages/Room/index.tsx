@@ -275,6 +275,16 @@ export default function RoomPage() {
     [status?.screens],
   );
   const [editing, setEditing] = useState<string | null>(null);
+  // "How Auto picks ›" Edit opens the mode's editor at "Starts by itself"
+  const [editAt, setEditAt] = useState<"starts" | null>(null);
+  const editRule = useCallback((mode: string) => {
+    setEditAt("starts");
+    setEditing(mode);
+  }, []);
+  const editMode = useCallback((mode: string) => {
+    setEditAt(null);
+    setEditing(mode);
+  }, []);
   // The scene library's tags (every facet and word, with counts): what a mode can steer the Art Director with.
   const tagIndex = useMemo(() => buildTagIndex(room.catalog), [room.catalog]);
   const modeBusy = useMemo(() => screensInModeChange(room.transition, room.modes), [room.transition, room.modes]);
@@ -499,7 +509,7 @@ export default function RoomPage() {
                 {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
                     determines them after all") */}
                 <div className="mb-3">
-                  <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={setEditing} current={status.mode?.current} />
+                  <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
                 </div>
                 <ModeSwitcher
                   api={room.api}
@@ -512,7 +522,7 @@ export default function RoomPage() {
                   now={now}
                   addLog={room.addLog}
                   reportError={room.reportError}
-                  onEdit={setEditing}
+                  onEdit={editMode}
                   describe={describe}
                   subsystems={status.subsystems}
                   names={screenNames}
@@ -774,6 +784,7 @@ export default function RoomPage() {
 
       <ModeEditor
         name={editing}
+        initialSection={editAt}
         onClose={() => setEditing(null)}
         api={room.api}
         describe={describe}
