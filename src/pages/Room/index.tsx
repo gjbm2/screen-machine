@@ -381,7 +381,6 @@ export default function RoomPage() {
   const lookModes = Object.entries(room.modes ?? {})
     .filter(([, def]) => onRoomPage(def) && (modeShows(def).screens || modeShows(def).lamps))
     .map(([id, def]) => def.label || friendlyName(id));
-  const nothingLine = `Nothing follows the look right now.${lookModes.length ? ` It shows in ${andList(lookModes)}.` : ""}`;
 
   // ── Folds that open with the room's state (ia, 24 Oct); the person's taps are remembered after that ──
   const autoRules = useAutoRules(room.api, 60_000, !!status);
@@ -520,7 +519,7 @@ export default function RoomPage() {
                         <section id="modes" aria-label="Modes" className="scroll-mt-[calc(var(--app-top,0px)+0.5rem)]">
                           {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
                               determines them after all") */}
-                          <div className="mb-3">
+                          <div className="mb-2">
                             <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
                           </div>
                           <ModeSwitcher
@@ -566,9 +565,12 @@ export default function RoomPage() {
                             }
                           >
                             {/* the controls stay usable while nothing shows the look: a pick is kept for later */}
-                            <p className="px-1 text-base font-semibold leading-snug" data-testid="look-who">
-                              {nothingFollows ? nothingLine : director.line}
-                            </p>
+                            {/* the fold summary already says who is choosing / that nothing follows: here only what it adds */}
+                            {(nothingFollows ? lookModes.length > 0 : !!director.line) && (
+                              <p className="px-1 text-sm leading-snug text-muted-foreground" data-testid="look-who">
+                                {nothingFollows ? `Shows in ${andList(lookModes)}` : director.line}
+                              </p>
+                            )}
                             <DirectorControls api={room.api} feed={show} addLog={room.addLog} />
                             {cards}
                           </Section>
