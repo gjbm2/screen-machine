@@ -593,11 +593,7 @@ export function ModeSwitcher({
   };
 
   return (
-    <div className="space-y-3" data-testid="mode-switcher">
-      <span className="sr-only" data-testid="mode-current">
-        {current ?? "—"}
-      </span>
-
+    <div className="space-y-2" data-testid="mode-switcher">
       {modesError && (
         <Notice tone={modes ? "warn" : "bad"}>
           {modes ? "Couldn't refresh the modes; showing the last list." : "The modes couldn't be loaded."}{" "}
@@ -621,7 +617,7 @@ export function ModeSwitcher({
               role="group"
               aria-label="Modes"
               data-testid="mode-strip"
-              className="flex min-w-0 flex-1 flex-wrap gap-2 px-0.5 py-1"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 px-0.5 py-0.5"
             >
               {chips.map(([name, def]) => {
                 const i = entries.findIndex(([k]) => k === name);
@@ -646,15 +642,15 @@ export function ModeSwitcher({
                       type="button"
                       data-mode={name}
                       aria-pressed={isCurrent}
-                      title={isCurrent ? `${label} (on now)` : `Switch to ${label}`}
+                      title={isCurrent ? `${label} (on now)${lineText ? `: ${lineText}` : ""}` : `Switch to ${label}`}
                       onClick={() => void choose(name)}
                       className={cn(
-                        "flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full pl-3.5 text-[15px] font-semibold",
-                        onEdit ? "pr-1" : "pr-4",
+                        "flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full pl-3 text-sm font-semibold sm:text-[15px]",
+                        onEdit ? "pr-0.5" : "pr-3.5",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                       )}
                     >
-                      {switching ? <Spinner className="h-[18px] w-[18px]" /> : <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />}
+                      {switching ? <Spinner className="h-[18px] w-[18px]" /> : <Icon className="h-[18px] w-[18px] shrink-0 max-sm:hidden lg:hidden" aria-hidden />}
                       <span>{label}</span>
                       {isCurrent && <Check className="h-4 w-4 shrink-0" aria-label="on now" />}
                     </button>
@@ -664,7 +660,7 @@ export function ModeSwitcher({
                           aria-label={`${label}: edit, copy, start here, move or delete`}
                           title={`Edit, copy, start here, move or delete ${label}`}
                           className={cn(
-                            "grid h-11 w-9 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            "grid h-11 w-7 shrink-0 place-items-center rounded-full sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             isCurrent ? "text-white/80 hover:text-white" : "text-stone-500 hover:text-stone-800",
                           )}
                         >
@@ -710,38 +706,35 @@ export function ModeSwitcher({
                 <button
                   type="button"
                   aria-expanded={showMore}
+                  aria-label={showMore ? "Fewer modes" : "More modes"}
                   onClick={() => setShowMore((v) => !v)}
-                  className="flex min-h-11 shrink-0 snap-start items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3.5 text-[15px] text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-11 shrink-0 snap-start items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3 text-sm sm:text-[15px] text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {showMore ? (
                     <>
-                      <ChevronLeft className="h-4 w-4" aria-hidden /> Fewer modes
+                      <ChevronLeft className="h-4 w-4" aria-hidden /> Fewer<span className="max-sm:hidden"> modes</span>
                     </>
                   ) : (
                     <>
-                      More modes <ChevronRight className="h-4 w-4" aria-hidden />
+                      More<span className="max-sm:hidden"> modes</span> <ChevronRight className="h-4 w-4" aria-hidden />
                     </>
                   )}
                 </button>
               )}
+              {/* Edit modes: inline at the end of the chips (owner, 25 Oct space pass) */}
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => setEditAll(true)}
+                  aria-label="Edit modes"
+                  title="Edit modes: change, copy, order, delete or add"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Pencil className="h-[18px] w-[18px]" aria-hidden />
+                </button>
+              )}
             </div>
-            {onEdit && (
-              <button
-                type="button"
-                onClick={() => setEditAll(true)}
-                aria-label="Edit modes"
-                title="Edit modes: change, copy, order, delete or add"
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Pencil className="h-[18px] w-[18px]" aria-hidden />
-              </button>
-            )}
           </div>
-          {lineText && (
-            <p className="text-[15px] leading-snug text-stone-600 break-words" data-testid="mode-line">
-              {lineText}
-            </p>
-          )}
         </>
       )}
 
@@ -846,6 +839,11 @@ export function ModeSwitcher({
         subsystems={subsystems}
         names={names}
       />
+
+      {/* last, so the row above isn't pushed down by the spacing */}
+      <span className="sr-only" data-testid="mode-current">
+        {current ?? "—"}
+      </span>
 
       {toast && (
         <div
