@@ -1,28 +1,30 @@
-// The Now playing card at the top of /music, compact so the tabs show on the first screen of a phone (owner, 24 Oct:
-// "you just haven't really worked the interface ui through properly throughout"):
-//   heading   "Now playing", the playlist it's from ("Pop on the piano · 3 of 18": a tap opens it), ● Record
-//   card      the title, composer · performer and Score; what it's doing in words (Getting ready… with a bar,
-//             Playing 1:23 / 4:32, Stopped, Stepped aside, or the problem); the shared Transport (⏮ ⏯ ⏭ and ⋯ More:
-//             Stop, Speed, Sound, then Repeat, Shuffle and Coming up) beside Play on as the compact pill; "Next: …".
+// The Now playing card at the top of /music, one compact card (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a
+// mobile ... MOST important: ipad"): the title · composer · performer (no heading: "Now playing" is read out), then
+// one line of what it's doing (Getting ready…, Playing 1:23 / 4:32, Stopped, Stepped aside, or the problem) · the
+// playlist it's from ("Pop on the piano 3 of 18": a tap opens it) · "Next: …" or "stops after this one"; the shared
+// Transport (⏮ ⏯ ⏭ and ⋯ More: Stop, Speed, Sound, then Repeat, Shuffle and Coming up), Play on as the compact pill,
+// Score (an icon) and ● Record (`record`: off on Mine, which has its own beside Upload). A thin bar shows progress.
 // While the docked player shows at the foot of the screen (dockState's useDocked: music plays, prepares or is paused,
-// or the piano records), the dock is the one player: the card shrinks to one heading row, "Now playing · Pop on the
-// piano 3 of 18", Score, ● Record and a ⋯ More with Repeat, Shuffle, Coming up and the playlist (the dock has Stop,
-// Speed and Sound).
+// or the piano records), the dock is the one player and says the piece: the card shrinks to one heading row, "Now
+// playing · Pop on the piano 3 of 18" (the playlist opens on a tap), Score, ● Record and a ⋯ More with Repeat,
+// Shuffle, Coming up and the playlist (the dock has Stop, Speed and Sound).
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { FileMusic, ListMusic, MoreHorizontal, Repeat, Repeat1, Search, Shuffle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDocked } from "@/components/player/dockState";
 import { Transport } from "@/components/player/Transport";
 import { cn } from "@/lib/utils";
-import { Notice, Pill, Spinner } from "@/pages/Room/bits";
+import { Notice, Spinner } from "@/pages/Room/bits";
 import { RecordPill, useRecorder } from "@/pages/Room/PianoRecorder";
 import { PlayOn } from "@/pages/Room/PlayOn";
-import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
+import { CARD_CLASS, THEME_CLASS } from "@/pages/Room/theme";
 import { myOutput } from "@/pages/Room/listenStream";
 import { usePianoSound, type PianoSound } from "@/pages/Room/usePianoSound";
 import { OLD_SHOW_WORDS, percent, playerWords, type PlayerView, type Repeat as RepeatMode } from "./api";
-import { CHIP, CHIP_OFF, hasScore, PRIMARY, SECONDARY, useOpenScore } from "./bits";
+import { hasScore, PRIMARY, SECONDARY, useOpenScore } from "./bits";
+
+const PILL = "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[15px] font-medium";
 import { useMusic } from "./context";
 import { PLAYER_BUSY } from "./usePlayer";
 
@@ -120,37 +122,36 @@ function Record({ baseUrl, docked }: { baseUrl: string; docked: boolean }) {
   return <RecordPill baseUrl={baseUrl} />;
 }
 
-function ScoreButton({ id, compact }: { id: string; compact?: boolean }) {
+function ScoreButton({ id }: { id: string }) {
   const openScore = useOpenScore();
   return (
     <button
       type="button"
       onClick={() => openScore(id)}
       title="The piece's score"
-      aria-label={compact ? "Score" : undefined}
-      className={cn(CHIP, CHIP_OFF, "min-h-9 shrink-0 px-3 text-sm text-stone-600", compact && "max-sm:px-2.5")}
+      aria-label="Score"
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <FileMusic className="h-4 w-4" aria-hidden />
-      <span className={cn(compact && "max-sm:sr-only")}>Score</span>
+      <FileMusic className="h-5 w-5" aria-hidden />
     </button>
   );
 }
 
-export function NowPlaying() {
+export function NowPlaying({ record = true, className }: { record?: boolean; className?: string }) {
   const { api, player, setTab, openPlaylist } = useMusic();
   const docked = useDocked();
   const v = player.view;
 
   if (player.link === "old") {
     return (
-      <Notice tone="muted" className="text-base">
+      <Notice tone="muted" className={cn("text-base", className)}>
         {OLD_SHOW_WORDS}
       </Notice>
     );
   }
   if (!v) {
     return (
-      <div className={cn(CARD_CLASS, "px-4 py-4")}>
+      <div className={cn(CARD_CLASS, "px-4 py-3", className)}>
         {player.link === "unreached" ? (
           <p className="text-base text-amber-800">The music side isn't answering just now. The page keeps trying.</p>
         ) : (
@@ -162,7 +163,6 @@ export function NowPlaying() {
     );
   }
 
-  const busy = PLAYER_BUSY.includes(v.state);
   const queued = (v.queue?.count ?? 0) > 0;
   const pct = v.state === "preparing" ? percent(v.progress) : null;
   const cur = v.current;
@@ -175,107 +175,108 @@ export function NowPlaying() {
 
   // The dock is the player: one heading row.
   if (docked) {
-    return <DockedRow v={v} where={where} pos={pos} scoreId={scoreId} onPlaylist={toPlaylist} baseUrl={api.baseUrl} />;
+    return <DockedRow v={v} where={where} pos={pos} scoreId={scoreId} onPlaylist={toPlaylist} baseUrl={api.baseUrl} className={className} />;
   }
 
-  let wherePill: ReactNode = null;
-  if (where) {
-    const pill = (
-      <Pill tone={busy ? "live" : "muted"} pulse={v.state === "playing"} className="max-w-full truncate">
-        {where}
-        {pos ? ` · ${pos}` : ""}
-      </Pill>
-    );
-    wherePill = toPlaylist ? (
-      <button type="button" onClick={toPlaylist} title="Open the playlist" className="min-w-0 max-w-full rounded-full">
-        {pill}
-      </button>
-    ) : (
-      pill
-    );
-  }
+  // the plain queue's name says nothing unless it has a place to give ("Queue 2 of 5"); a playlist always says its name
+  const whereWords = where && (plId || pos) ? `${where}${pos ? ` ${pos}` : ""}` : null;
+  const stops = !v.next && cur && queued && v.repeat === "off" && PLAYER_BUSY.includes(v.state);
+  const dur = v.duration_s ?? cur?.duration_s;
 
+  // One card, compact (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): from 640 px one row
+  // (⏮ ⏯ ⏭ ⋯ · the piece and what it's doing · Play on · Score · Record); on a phone, and in the side column of a
+  // wide screen, two (the piece, Score and Record; then the transport and Play on).
   return (
-    <section aria-labelledby="music-now" data-testid="now-playing">
-      <div className="mb-2 flex min-w-0 items-center gap-2">
-        <h2 id="music-now" className="shrink-0 text-lg font-semibold text-stone-800">
-          Now playing
-        </h2>
-        <div className="flex min-w-0 flex-1">{wherePill}</div>
-        <Record baseUrl={api.baseUrl} docked={false} />
-      </div>
-      <div className={cn(CARD_CLASS, "space-y-3 px-3 py-3 sm:px-4")}>
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            {cur ? (
-              <>
-                <p className="text-xl font-semibold leading-snug" data-testid="now-title">
-                  {cur.title}
-                </p>
-                {who && <p className="text-base text-muted-foreground">{who}</p>}
-              </>
-            ) : (
-              <p className="text-xl font-semibold leading-snug text-stone-700">Nothing playing</p>
+    <section aria-labelledby="music-now" data-testid="now-playing" className={className}>
+      <h2 id="music-now" className="sr-only">
+        Now playing
+      </h2>
+      <div className={cn(CARD_CLASS, "px-3 py-2 sm:px-4")}>
+        <div
+          className={cn(
+            "grid items-center gap-x-2",
+            "grid-cols-[minmax(0,1fr)_auto] [grid-template-areas:'t_a''s_a''p_o']",
+            "sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:[grid-template-areas:'p_t_t_t''p_s_o_a']",
+            "lg:grid-cols-[minmax(0,1fr)_auto] lg:[grid-template-areas:'t_a''s_a''p_o']",
+          )}
+        >
+          <p
+            className="min-w-0 self-end truncate text-base font-semibold leading-snug [grid-area:t] lg:line-clamp-2 lg:whitespace-normal"
+            data-testid="now-title"
+            title={cur ? [cur.title, who].filter(Boolean).join(" · ") : undefined}
+          >
+            {cur ? cur.title : <span className="text-stone-700">Nothing playing</span>}
+            {who && <span className="font-normal text-muted-foreground"> · {who}</span>}
+          </p>
+          <p
+            role="status"
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 self-start text-sm leading-snug [grid-area:s] max-sm:mb-1.5 sm:self-center lg:mb-1.5 lg:self-start",
+              v.state === "error" ? "text-amber-800" : v.state === "playing" ? "text-teal-800" : "text-muted-foreground",
             )}
-            <p
-              role="status"
-              className={cn(
-                "mt-1 flex items-center gap-2 text-base",
-                v.state === "error" ? "text-amber-800" : v.state === "playing" ? "text-teal-800" : "text-muted-foreground",
-              )}
-            >
-              {v.state === "preparing" && <Spinner />}
-              {v.state === "playing" && <span aria-hidden className="h-2 w-2 rounded-full bg-teal-600 motion-safe:animate-pulse" />}
-              {playerWords(v)}
-            </p>
+          >
+            {v.state === "preparing" && <Spinner className="h-3.5 w-3.5 shrink-0" />}
+            {v.state === "playing" && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-teal-600 motion-safe:animate-pulse" />}
+            <span className="shrink-0">{queued || cur ? playerWords(v) : "Pick a piece below, or a playlist"}</span>
+            {whereWords &&
+              (toPlaylist ? (
+                <button
+                  type="button"
+                  onClick={toPlaylist}
+                  title="Open the playlist"
+                  className="min-w-0 truncate font-medium text-teal-800 underline-offset-2 hover:underline"
+                >
+                  · {whereWords}
+                </button>
+              ) : (
+                <span className="min-w-0 truncate text-muted-foreground">· {whereWords}</span>
+              ))}
+            {v.next ? (
+              <span className="min-w-0 truncate text-muted-foreground" title={`Next: ${v.next.title}${v.next.composer ? ` · ${v.next.composer}` : ""}`}>
+                · Next: <span className="font-medium text-stone-700">{v.next.title}</span>
+                {v.next.composer && ` · ${v.next.composer}`}
+              </span>
+            ) : stops ? (
+              <span className="min-w-0 truncate text-muted-foreground">· stops after this one</span>
+            ) : null}
+          </p>
+          <div className="flex items-center gap-1 [grid-area:a]">
+            {scoreId && <ScoreButton id={scoreId} />}
+            {record && <Record baseUrl={api.baseUrl} docked={false} />}
           </div>
-          {scoreId && <ScoreButton id={scoreId} />}
+          <div className="flex items-center gap-1.5 [grid-area:p]">
+            {queued || cur ? (
+              <Transport player={player} more={<MoreRows v={v} />} className="-ml-1.5" />
+            ) : (
+              <>
+                <button type="button" onClick={() => setTab("browse")} className={cn(PILL, PRIMARY)}>
+                  <Search className="h-4 w-4" aria-hidden /> Find a piece
+                </button>
+                <button type="button" onClick={() => setTab("playlists")} className={cn(PILL, SECONDARY)}>
+                  <ListMusic className="h-4 w-4" aria-hidden /> Playlists
+                </button>
+              </>
+            )}
+          </div>
+          <div className="justify-self-end [grid-area:o]">
+            <PlayOn baseUrl={api.baseUrl} compact />
+          </div>
         </div>
         {v.state === "preparing" && (
-          <div className="h-1.5 overflow-hidden rounded-full bg-stone-100" aria-hidden>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-stone-100" aria-hidden>
             <div className="h-full rounded-full bg-teal-600 transition-[width] duration-500" style={{ width: `${pct ?? 4}%` }} />
           </div>
         )}
-        {v.state === "playing" && typeof v.elapsed_s === "number" && (v.duration_s ?? cur?.duration_s) ? (
-          <div className="h-1 overflow-hidden rounded-full bg-stone-100" aria-hidden>
+        {v.state === "playing" && typeof v.elapsed_s === "number" && dur ? (
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-stone-100" aria-hidden>
             <div
               className="h-full rounded-full bg-teal-600/70 transition-[width] duration-1000 ease-linear"
-              style={{ width: `${Math.min(100, (100 * v.elapsed_s) / (v.duration_s ?? cur?.duration_s ?? 1))}%` }}
+              style={{ width: `${Math.min(100, (100 * v.elapsed_s) / dur)}%` }}
             />
           </div>
         ) : null}
-        {v.state === "error" && v.error && v.words && v.words !== v.error && <p className="text-sm text-muted-foreground">{v.words}</p>}
-
-        {queued || cur ? (
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <Transport player={player} more={<MoreRows v={v} />} className="-ml-1.5" />
-            <PlayOn baseUrl={api.baseUrl} compact />
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-base text-muted-foreground">Pick a piece below, or play one of your playlists.</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setTab("browse")} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex items-center gap-2 font-semibold")}>
-                <Search className="h-4 w-4" aria-hidden /> Find a piece
-              </button>
-              <button type="button" onClick={() => setTab("playlists")} className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex items-center gap-2")}>
-                <ListMusic className="h-4 w-4" aria-hidden /> Playlists
-              </button>
-              <PlayOn baseUrl={api.baseUrl} compact className="ml-auto" />
-            </div>
-          </div>
-        )}
-
-        {v.next && (
-          <p className="truncate text-base">
-            <span className="text-muted-foreground">Next: </span>
-            <span className="font-medium">{v.next.title}</span>
-            {v.next.composer && <span className="text-muted-foreground"> · {v.next.composer}</span>}
-          </p>
-        )}
-        {!v.next && cur && queued && v.repeat === "off" && <p className="text-sm text-muted-foreground">It stops after this one.</p>}
-
-        {player.error && <p className="text-[15px] text-rose-700">{player.error}</p>}
+        {v.state === "error" && v.error && v.words && v.words !== v.error && <p className="mt-1 text-sm text-muted-foreground">{v.words}</p>}
+        {player.error && <p className="mt-1 text-[15px] text-rose-700">{player.error}</p>}
       </div>
     </section>
   );
@@ -289,6 +290,7 @@ function DockedRow({
   scoreId,
   onPlaylist,
   baseUrl,
+  className,
 }: {
   v: PlayerView;
   where: string | null;
@@ -296,20 +298,32 @@ function DockedRow({
   scoreId: string | null;
   onPlaylist?: () => void;
   baseUrl: string;
+  className?: string;
 }) {
   const { player } = useMusic();
   const [open, setOpen] = useState(false);
-  const what = v.current?.title ?? where ?? "Nothing playing";
+  // the piece's title is the dock's to say; this row says where it plays from
+  const what = where && (v.queue?.playlist || pos) ? where : null;
   return (
-    <section aria-labelledby="music-now" data-testid="now-playing" data-docked="">
+    <section aria-labelledby="music-now" data-testid="now-playing" data-docked="" className={className}>
       <div className="flex min-w-0 items-center gap-2">
         <h2 id="music-now" className="min-w-0 flex-1 truncate text-lg font-semibold text-stone-800">
-          {/* at phone width the piece is what fits: "Now playing" is read out, not shown */}
-          <span className="max-sm:sr-only">Now playing · </span>
-          <span className="sm:font-normal sm:text-stone-600">{what}</span>
-          {pos && <span className="font-normal text-muted-foreground"> {pos}</span>}
+          Now playing
+          {what && (
+            <>
+              <span className="font-normal text-stone-600"> · </span>
+              {onPlaylist ? (
+                <button type="button" onClick={onPlaylist} title="Open the playlist" className="font-normal text-teal-800 underline-offset-2 hover:underline">
+                  {what}
+                </button>
+              ) : (
+                <span className="font-normal text-stone-600">{what}</span>
+              )}
+              {pos && <span className="font-normal text-muted-foreground"> {pos}</span>}
+            </>
+          )}
         </h2>
-        {scoreId && <ScoreButton id={scoreId} compact />}
+        {scoreId && <ScoreButton id={scoreId} />}
         <Record baseUrl={baseUrl} docked />
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>

@@ -1,7 +1,9 @@
-// The mini player (owner, 24 Oct, layout A: one compact now-playing bar): what the music player is playing (title,
-// composer, and where it plays), the shared Transport (components/player/Transport.tsx: ⏮ ⏯ ⏭, and ⋯ More with Stop,
-// Speed and Sound), Score when the piece has one, Play on (Room/PlayOn.tsx, compact), and "Playlist ▾" (a sheet of
-// the saved playlists, tap one to play it, Open Music, and Upload or find a piece). Two places use it:
+// The mini player, one row (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): what the music player is
+// playing (title, composer), the shared Transport (components/player/Transport.tsx: ⏯ ⏭, ⏮ from 640 px up, and ⋯ More
+// with Stop, Speed and Sound), then in that ⋯: Play on (Room/PlayOn.tsx), Playlist (a sheet of the saved playlists,
+// tap one to play it, Open Music, and Upload or find a piece), Score when the piece has one, and Open Music. Idle it
+// says "Nothing playing" (or what else is on, with its Stop), with Play when there's a queue (else "Choose a
+// playlist") and a ⋯ of its own. Two places use it:
 //   - MiniPlayer `docked`: the docked player (src/components/player/DockedPlayer.tsx; owner, 24 Oct: "when music is
 //     playing through the app, that apparatus should anchor bottom throughout the app"), with this device's line
 //     (ListenHere's ListenLine and Stop sound here) when the sound plays here too, so there's one bar, never two. On
@@ -15,7 +17,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight, FileMusic, ListMusic, Music, Play, Square, Upload, X } from "lucide-react";
+import { ChevronRight, FileMusic, ListMusic, MoreHorizontal, Music, Play, Square, Upload, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAppPlayer } from "@/components/player/appPlayer";
 import { useDocked } from "@/components/player/dockState";
 import { Transport } from "@/components/player/Transport";
@@ -30,12 +33,14 @@ import { ListenLine, useWhatsOn } from "./ListenHere";
 import { listenOff, setListenView, useListenHere } from "./listenStream";
 import { ActionSheet } from "./overlays";
 import { PlayOn } from "./PlayOn";
-import { CARD_CLASS } from "./theme";
+import { CARD_CLASS, THEME_CLASS } from "./theme";
 import type { NewLogEntry } from "./useRoomConnection";
 
 const PRIMARY = "bg-primary text-primary-foreground hover:bg-primary/90";
 const SECONDARY = "border border-stone-300 bg-white hover:bg-stone-50";
 const PILL = "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium";
+const MORE_ROW =
+  "inline-flex min-h-11 w-full items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 text-left text-base font-medium hover:bg-stone-50";
 const ROW = "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-base hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const ROUND = "grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const PLAY_GUESS = { state: "preparing", words: "Getting ready…", progress: null, error: null } as const;
@@ -82,6 +87,7 @@ export function MiniPlayer({
   const music = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
   const here = useListenHere();
   const [sheet, setSheet] = useState(false);
+  const [more, setMore] = useState(false);
   const playlists = usePlaylists(music, sheet);
   const [err, setErr] = useState<string | null>(null);
   const v = player.view;
@@ -119,39 +125,74 @@ export function MiniPlayer({
   const pos = v && queued && v.queue.count > 1 ? `${Math.min(v.queue.index + 1, v.queue.count)} of ${v.queue.count}` : null;
   const stoppedWords = v?.state === "stopped" && where ? `Stopped · ${where}${pos ? `, ${pos}` : ""}` : null;
 
+  // ⋯'s own rows (after the Transport's Stop, Speed and Sound): Play on, Playlist, Score, Open Music
+  const moreRows = (close: () => void, playlistInRow: boolean) => (
+    <>
+      <PlayOn baseUrl={baseUrl} addLog={addLog} />
+      <div className="space-y-1">
+        {!playlistInRow && (
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              setSheet(true);
+            }}
+            className={MORE_ROW}
+          >
+            <ListMusic className="h-4 w-4" aria-hidden /> {active || queued ? "Playlist" : "Choose a playlist"}
+          </button>
+        )}
+        {shown?.id && hasScore(shown) && (
+          <Link
+            to={scoreTo(shown.id)}
+            state={{ score: true, from }}
+            onClick={close}
+            className={MORE_ROW}
+            aria-label={`Score of ${shown.title}`}
+            data-testid="dock-score"
+          >
+            <FileMusic className="h-4 w-4" aria-hidden /> Score
+          </Link>
+        )}
+        {showOpenMusic && (
+          <Link to="/music" onClick={close} className={MORE_ROW} data-testid="open-music">
+            <Music className="h-4 w-4" aria-hidden /> Open Music
+          </Link>
+        )}
+      </div>
+    </>
+  );
+  const idleNoQueue = !!v && !active && !queued;
+
   return (
     <section aria-label="Music player" data-testid={docked ? "docked-player-card" : "now-playing-row"}>
       <div
         className={cn(
           CARD_CLASS,
-          "space-y-2 px-3 py-2.5 sm:px-4",
+          "space-y-1.5 px-3 py-1 sm:px-4",
           docked && "shadow-[0_2px_4px_rgba(68,48,28,0.08),0_12px_32px_-8px_rgba(68,48,28,0.28)]",
         )}
       >
         {top}
         {player.link === "old" ? (
-          <p className="text-base text-muted-foreground">{OLD_SHOW_WORDS}</p>
+          <p className="py-2 text-base text-muted-foreground">{OLD_SHOW_WORDS}</p>
         ) : !v ? (
           player.link === "unreached" ? (
-            <p className="text-base text-amber-800">The music side isn't answering just now. The page keeps trying.</p>
+            <p className="py-2 text-base text-amber-800">The music side isn't answering just now. The page keeps trying.</p>
           ) : (
-            <p className="flex items-center gap-2 text-base text-muted-foreground">
+            <p className="flex items-center gap-2 py-2 text-base text-muted-foreground">
               <Spinner /> Finding the player…
             </p>
           )
         ) : (
           <>
-            <div className="flex items-center gap-2">
-              {!active && !queued && (
-                <span aria-hidden className={cn(ROUND, "bg-stone-100 text-stone-500")}>
-                  <Music className="h-5 w-5" />
-                </span>
-              )}
+            {/* one row (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): what plays, ⏯ ⏭, ⋯ */}
+            <div className="flex min-h-11 items-center gap-2">
               <div className="min-w-0 flex-1">
                 {shown ? (
                   <>
-                    <p className="truncate text-base font-semibold leading-snug">{shown.title}</p>
-                    <p className="truncate text-sm leading-snug text-muted-foreground">
+                    <p className="truncate text-base font-semibold leading-tight">{shown.title}</p>
+                    <p className="truncate text-sm leading-tight text-muted-foreground">
                       {v.state === "preparing"
                         ? playerWords(v)
                         : [paused ? "Paused" : null, shown.composer, v.next ? `next ${v.next.title}` : null].filter(Boolean).join(" · ") ||
@@ -160,80 +201,85 @@ export function MiniPlayer({
                   </>
                 ) : (
                   <>
-                    <p className="truncate text-base leading-snug text-muted-foreground">{stoppedWords ?? "Nothing playing"}</p>
-                    {(v.state === "stepped_aside" || v.state === "error") && (
-                      <p className={cn("truncate text-sm", v.state === "error" ? "text-amber-800" : "text-muted-foreground")}>{playerWords(v)}</p>
-                    )}
-                    {cur && queued && (
-                      <p className="truncate text-sm">
+                    <p className="truncate text-base leading-tight text-muted-foreground">{stoppedWords ?? "Nothing playing"}</p>
+                    {/* idle: what else is on (a test piece, with its Stop; someone at the piano; what the room hears) */}
+                    {whatsOn ? (
+                      <p className="flex min-w-0 items-center gap-1.5 text-sm leading-tight text-stone-700" data-testid="dock-whats-on">
+                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-teal-600 motion-safe:animate-pulse" />
+                        <span className="min-w-0 truncate">{whatsOn.line}</span>
+                      </p>
+                    ) : v.state === "stepped_aside" || v.state === "error" ? (
+                      <p className={cn("truncate text-sm leading-tight", v.state === "error" ? "text-amber-800" : "text-muted-foreground")}>{playerWords(v)}</p>
+                    ) : cur && queued ? (
+                      <p className="truncate text-sm leading-tight">
                         <span className="text-muted-foreground">Play starts </span>
                         <span className="font-medium">{cur.title}</span>
                       </p>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
+              {!active && whatsOn?.stop && (
+                <button type="button" onClick={() => void whatsOn.stop?.()} className={cn(PILL, SECONDARY, "shrink-0")}>
+                  <Square className="h-3.5 w-3.5" aria-hidden /> Stop
+                </button>
+              )}
               {active ? (
-                <Transport player={player} compact onDone={(what, problem) => (problem ? setErr(problem) : addLog?.({ type: "fixture", level: "info", summary: `Music: ${what}` }))} />
+                <Transport
+                  player={player}
+                  compact
+                  slimPrev
+                  more={(close) => moreRows(close, false)}
+                  onDone={(what, problem) => (problem ? setErr(problem) : addLog?.({ type: "fixture", level: "info", summary: `Music: ${what}` }))}
+                />
               ) : (
-                queued && (
-                  <button
-                    type="button"
-                    aria-label="Play"
-                    title="Play"
-                    onClick={() => void act("play", { action: "play" }, PLAY_GUESS)}
-                    className={cn(ROUND, "h-12 w-12 bg-teal-700 text-white hover:bg-teal-800")}
-                  >
-                    {player.busy === "play" ? <Spinner /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
-                  </button>
-                )
-              )}
-            </div>
-
-            {/* idle: what else is on (a test piece, with its Stop; someone at the piano; what the room hears) */}
-            {!active && whatsOn && (
-              <div className="flex items-center gap-2" data-testid="dock-whats-on">
-                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-teal-600 motion-safe:animate-pulse" />
-                <p className="min-w-0 flex-1 truncate text-sm text-stone-700">{whatsOn.line}</p>
-                {whatsOn.stop && (
-                  <button
-                    type="button"
-                    onClick={() => void whatsOn.stop?.()}
-                    className={cn(PILL, SECONDARY, "h-9 shrink-0")}
-                  >
-                    <Square className="h-3.5 w-3.5" aria-hidden /> Stop
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <PlayOn baseUrl={baseUrl} compact addLog={addLog} />
-              <button type="button" onClick={() => setSheet(true)} className={cn(PILL, !active && !queued ? PRIMARY : SECONDARY)}>
-                <ListMusic className="h-4 w-4" aria-hidden /> {active || queued ? "Playlist" : "Choose a playlist"}
-                <ChevronDown className="h-4 w-4" aria-hidden />
-              </button>
-              {shown?.id && hasScore(shown) && (
-                <Link
-                  to={scoreTo(shown.id)}
-                  state={{ score: true, from }}
-                  className={cn(PILL, SECONDARY)}
-                  aria-label={`Score of ${shown.title}`}
-                  data-testid="dock-score"
-                >
-                  <FileMusic className="h-4 w-4" aria-hidden /> Score
-                </Link>
-              )}
-              {showOpenMusic && (
-                <Link to="/music" className={cn(PILL, SECONDARY)} data-testid="open-music">
-                  <Music className="h-4 w-4" aria-hidden /> Open Music
-                </Link>
+                <>
+                  {queued ? (
+                    <button
+                      type="button"
+                      aria-label="Play"
+                      title="Play"
+                      onClick={() => void act("play", { action: "play" }, PLAY_GUESS)}
+                      className={cn(ROUND, "bg-teal-700 text-white hover:bg-teal-800")}
+                    >
+                      {player.busy === "play" ? <Spinner /> : <Play className="h-5 w-5 translate-x-px" aria-hidden />}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setSheet(true)} className={cn(PILL, PRIMARY, "shrink-0")}>
+                      <ListMusic className="h-4 w-4" aria-hidden /> <span className="sm:hidden">Playlist</span>
+                      <span className="max-sm:hidden">Choose a playlist</span>
+                    </button>
+                  )}
+                  <Popover open={more} onOpenChange={setMore}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="More: play on, playlists, Music"
+                        title="Play on, playlists, Music"
+                        className={cn(ROUND, "text-stone-700 hover:bg-stone-100")}
+                        data-testid="dock-more"
+                      >
+                        <MoreHorizontal className="h-5 w-5" aria-hidden />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      collisionPadding={12}
+                      className={cn(
+                        THEME_CLASS,
+                        "z-[70] max-h-[var(--radix-popover-content-available-height)] w-[min(22rem,calc(100vw-2rem))] space-y-3 overflow-y-auto rounded-2xl p-3",
+                      )}
+                    >
+                      {moreRows(() => setMore(false), idleNoQueue)}
+                    </PopoverContent>
+                  </Popover>
+                </>
               )}
             </div>
 
             {/* this device (was ListenHere's own bar): its line, Open the music screen, Stop sound here */}
             {docked && here.on && (
-              <div className="flex items-center gap-2 border-t border-stone-200/80 pt-2" data-testid="docked-listen-here">
+              <div className="flex items-center gap-2 border-t border-stone-200/80 pt-1.5" data-testid="docked-listen-here">
                 <ListenLine className="min-w-0 flex-1" onOpen={() => setListenView(true)} />
                 <button
                   type="button"
@@ -248,7 +294,7 @@ export function MiniPlayer({
             )}
           </>
         )}
-        {(err || player.error) && <p className="text-[15px] text-rose-700">{err ?? player.error}</p>}
+        {(err || player.error) && <p className="pb-1 text-[15px] text-rose-700">{err ?? player.error}</p>}
       </div>
 
       <ActionSheet open={sheet} onOpenChange={setSheet} title="Play a playlist" description="It plays from the top, one piece after another." testId="room-playlists">

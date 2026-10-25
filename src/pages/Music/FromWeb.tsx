@@ -1,5 +1,5 @@
 // From the web: look for a MIDI file on the web's MIDI libraries (every source at once; solo piano first where it's
-// known), then "Add to Mine" or "Add and play". Each result says where it's from. A source that didn't answer says
+// known), then "Add to Mine" or "Add and play". Each result is one line and says where it's from. A source that didn't answer says
 // so in words ("BitMidi didn't answer") and the others' results still show.
 
 import { useRef, useState } from "react";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import { TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { musicWords, type WebResult, type WebSearch } from "./api";
-import { playGuess, PRIMARY, SearchBox, SECONDARY } from "./bits";
+import { InfoTip, PIECE_LIST, playGuess, PRIMARY, SearchBox, SECONDARY } from "./bits";
 import { useMusic } from "./context";
 
 /** 23456 -> "23 KB". */
@@ -77,15 +77,11 @@ export function FromWeb() {
     <div className="space-y-3" data-testid="music-web">
       <div className="flex items-center gap-2">
         <SearchBox value={q} onChange={setQ} onSubmit={() => void search()} placeholder="Tune or composer" label="Look on the web" />
-        <button type="button" onClick={() => void search()} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex h-12 shrink-0 items-center gap-2 px-4 font-semibold")}>
+        <button type="button" onClick={() => void search()} className={cn(TAP_BUTTON_CLASS, PRIMARY, "inline-flex shrink-0 items-center gap-2 px-4 font-semibold")}>
           {loading ? <Spinner /> : <Globe className="h-4 w-4" aria-hidden />} Look
         </button>
+        <InfoTip label="About Web">Finds MIDI files in libraries on the web. What you add goes into Mine, cleaned so it plays as piano.</InfoTip>
       </div>
-      {!res && !loading && !error && (
-        <p className="text-[15px] text-muted-foreground">
-          Finds MIDI files in libraries on the web. What you add goes into Mine, cleaned so it plays as piano.
-        </p>
-      )}
       {loading && (
         <p className="flex items-center gap-2 text-base text-muted-foreground">
           <Spinner /> Looking on the web for “{asked}”…
@@ -104,35 +100,47 @@ export function FromWeb() {
           {res.results.length === 0 ? (
             <p className="text-base text-muted-foreground">Nothing found for “{asked}”. Try fewer words, or another spelling.</p>
           ) : (
-            <ul className="space-y-2" aria-label="Found on the web">
+            <ul className={PIECE_LIST} aria-label="Found on the web">
               {res.results.map((r) => {
                 const a = added[r.ref];
                 const b = busy[r.ref];
+                const from = [r.source_label, r.detail, sizeWords(r.size)].filter(Boolean).join(" · ");
                 return (
-                  <li key={r.ref} className="space-y-2 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="break-words text-base font-medium leading-snug">{r.title}</p>
-                      <p className="text-sm text-muted-foreground">{[r.source_label, r.detail, sizeWords(r.size)].filter(Boolean).join(" · ")}</p>
-                    </div>
-                    {a && (
-                      <p className="flex items-start gap-1.5 text-sm text-emerald-800">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                        <span>
-                          In Mine.{a.words ? ` ${a.words}` : ""}
-                        </span>
+                  <li key={r.ref} className="px-3 py-1">
+                    {/* one line: the title, where it's from, then Add and play (Play once in Mine) and Add to Mine */}
+                    <div className="flex min-h-11 items-center gap-2">
+                      <p className="flex min-w-0 flex-1 items-center gap-1.5" title={[r.title, from].filter(Boolean).join(" · ")}>
+                        <span className="min-w-0 max-w-[70%] shrink-0 truncate text-base font-medium">{r.title}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{from}</span>
                       </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void add(r, true)} className={cn("inline-flex h-11 items-center gap-2 rounded-xl px-4 text-[15px] font-semibold", PRIMARY)}>
-                        {b === "play" ? <Spinner /> : <Play className="h-4 w-4" aria-hidden />} {a ? "Play" : "Add and play"}
+                      <button
+                        type="button"
+                        onClick={() => void add(r, true)}
+                        aria-label={a ? `Play ${r.title}` : `Add and play ${r.title}`}
+                        className={cn("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[15px] font-semibold", PRIMARY)}
+                      >
+                        {b === "play" ? <Spinner /> : <Play className="h-4 w-4" aria-hidden />}
+                        <span className="max-sm:sr-only">{a ? "Play" : "Add and play"}</span>
                       </button>
-                      {!a && (
-                        <button type="button" onClick={() => void add(r, false)} className={cn("inline-flex h-11 items-center gap-2 rounded-xl px-4 text-[15px]", SECONDARY)}>
-                          {b === "add" ? <Spinner /> : <Plus className="h-4 w-4" aria-hidden />} Add to Mine
+                      {a ? (
+                        <span className="grid h-10 w-10 shrink-0 place-items-center text-emerald-700" title="In Mine" aria-label="In Mine">
+                          <Check className="h-5 w-5" aria-hidden />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void add(r, false)}
+                          aria-label={`Add ${r.title} to Mine`}
+                          title="Add to Mine"
+                          className={cn("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[15px]", SECONDARY)}
+                        >
+                          {b === "add" ? <Spinner /> : <Plus className="h-4 w-4" aria-hidden />}
+                          <span className="max-sm:sr-only">Add to Mine</span>
                         </button>
                       )}
                     </div>
-                    {rowErr[r.ref] && <p className="text-sm text-rose-700">{rowErr[r.ref]}</p>}
+                    {a?.words && <p className="pb-1 text-sm text-emerald-800">In Mine. {a.words}</p>}
+                    {rowErr[r.ref] && <p className="pb-1 text-sm text-rose-700">{rowErr[r.ref]}</p>}
                   </li>
                 );
               })}

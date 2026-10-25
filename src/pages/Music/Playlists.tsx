@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Pill, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS } from "@/pages/Room/theme";
 import { clock, musicWords, plural, totalWords, type Playlist, type PlaylistEntry } from "./api";
-import { Confirm, ListState, PieceRow, PieceSheet, PRIMARY, SECONDARY, type PieceRef } from "./bits";
+import { Confirm, ListState, PIECE_LIST, PieceRow, PieceSheet, PRIMARY, SECONDARY, type PieceRef } from "./bits";
 import { useMusic } from "./context";
 import { PLAYER_BUSY } from "./usePlayer";
 
@@ -171,8 +171,8 @@ function PlaylistView({ id, onBack }: { id: string; onBack: () => void }) {
   const total = (pl?.items ?? []).reduce((s, x) => s + (x.missing ? 0 : (x.duration_s ?? 0)), 0);
 
   return (
-    <div className="space-y-3" data-testid="playlist-view">
-      <button type="button" onClick={onBack} className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:bg-stone-100">
+    <div className="space-y-2" data-testid="playlist-view">
+      <button type="button" onClick={onBack} className="-ml-1 -my-1 inline-flex min-h-11 items-center gap-1 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:bg-stone-100">
         <ChevronLeft className="h-5 w-5" aria-hidden /> All playlists
       </button>
       {error && <p className="text-base text-amber-800">{error}</p>}
@@ -183,7 +183,7 @@ function PlaylistView({ id, onBack }: { id: string; onBack: () => void }) {
       )}
       {pl && (
         <>
-          <div className={cn(CARD_CLASS, "space-y-3 px-3 py-3 sm:px-4")}>
+          <div className={cn(CARD_CLASS, "space-y-2 px-3 py-2 sm:px-4")}>
             {renaming ? (
               <div className="flex flex-wrap items-center gap-2">
                 <Input
@@ -204,12 +204,13 @@ function PlaylistView({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             ) : (
               <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-xl font-semibold leading-snug">{pl.name}</h3>
-                  <p className="text-[15px] text-muted-foreground">
+                <h3 className="min-w-0 flex-1 truncate py-1 text-lg font-semibold leading-snug">
+                  {pl.name}
+                  <span className="text-[15px] font-normal text-muted-foreground">
+                    {" · "}
                     {[plural(pl.items.length, "piece"), totalWords(total)].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
+                  </span>
+                </h3>
                 {onThis && v && PLAYER_BUSY.includes(v.state) && (
                   <Pill tone="live" pulse>
                     Playing
@@ -256,12 +257,14 @@ function PlaylistView({ id, onBack }: { id: string; onBack: () => void }) {
           {pl.items.length === 0 ? (
             <p className="text-base text-muted-foreground">Nothing in it yet. Add pieces from Browse or Mine with ⋯.</p>
           ) : (
-            <ol className="space-y-2" aria-label="Pieces in order">
+            <ol className={PIECE_LIST} aria-label="Pieces in order">
               {pl.items.map((x, i) => (
                 <PieceRow
                   key={`${x.piece}-${i}`}
+                  joined
                   piece={{ id: x.piece, title: x.title, composer: x.composer }}
-                  line={[x.composer, x.genre_label, clock(x.duration_s)].filter(Boolean).join(" · ")}
+                  line={[x.composer, x.genre_label].filter(Boolean).join(" · ")}
+                  meta={clock(x.duration_s)}
                   missing={x.missing}
                   onPlay={() => {
                     if (!ordering) void playFrom(i);
@@ -331,7 +334,7 @@ export function Playlists({ openId, onOpen }: { openId: string | null; onOpen: (
   };
 
   return (
-    <div className="space-y-3" data-testid="music-playlists">
+    <div className="space-y-2" data-testid="music-playlists">
       <NewPlaylist onMade={(id) => onOpen(id)} />
       <ListState
         loading={list === null}
@@ -340,31 +343,27 @@ export function Playlists({ openId, onOpen }: { openId: string | null; onOpen: (
         emptyWords="No playlists yet. Make one, then add pieces to it from Browse or Mine with ⋯."
       />
       {list && list.length > 0 && (
-        <ul className="space-y-2" aria-label="Playlists">
+        <ul className={PIECE_LIST} aria-label="Playlists">
           {list.map((pl) => (
-            <li key={pl.id} className={cn("flex items-center gap-1 rounded-xl border bg-white", playingId === pl.id ? "border-teal-300 bg-teal-50/50" : "border-stone-200")}>
+            <li key={pl.id} className={cn("flex items-center gap-1", playingId === pl.id ? "bg-teal-50/70" : "bg-white")}>
               <button
                 type="button"
                 aria-label={`Play ${pl.name}`}
                 onClick={() => void play(pl.id, pl.name)}
-                className="ml-1 grid h-11 w-11 shrink-0 place-items-center rounded-full bg-teal-600 text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-600 text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Play className="h-4 w-4 fill-white" aria-hidden />
               </button>
               <button
                 type="button"
                 onClick={() => onOpen(pl.id)}
-                className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-12 min-w-0 flex-1 items-center gap-2 py-1 pl-2 pr-2 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <ListMusic className="h-4 w-4 shrink-0 text-stone-500" aria-hidden />
-                    <span className="truncate text-base font-medium">{pl.name}</span>
-                  </span>
-                  <span className="block text-sm text-muted-foreground">
-                    {playingId === pl.id && <span className="font-medium text-teal-800">Playing · </span>}
-                    {[plural(pl.count, "piece"), totalWords(pl.duration_s)].filter(Boolean).join(" · ")}
-                  </span>
+                <ListMusic className="h-4 w-4 shrink-0 text-stone-500" aria-hidden />
+                <span className="min-w-0 truncate text-base font-medium">{pl.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                  {playingId === pl.id && <span className="font-medium text-teal-800">Playing · </span>}
+                  {[plural(pl.count, "piece"), totalWords(pl.duration_s)].filter(Boolean).join(" · ")}
                 </span>
                 <ChevronRight className="h-5 w-5 shrink-0 text-stone-400" aria-hidden />
               </button>

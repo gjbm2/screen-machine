@@ -1,4 +1,4 @@
-// The Music page's shared pieces: a piece's row (tap = play now, a score button, ⋯ = more), the sheet behind ⋯ (Play
+// The Music page's shared pieces: a piece's row (one line; tap = play now, a score button, ⋯ = more), the sheet behind ⋯ (Play
 // next, Add to the queue, Add to a playlist…, Score, Pin, and for your own pieces Edit details, Download the MIDI file
 // and Delete), a search box, chips, and a confirm dialog. Same light, warm skin as /room. The row and sheet also serve
 // the Room page's Piano fold (its last recordings), inside a MusicProvider of its own.
@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Download,
   FileMusic,
+  Info,
   ListEnd,
   ListMusic,
   ListPlus,
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
@@ -116,18 +118,29 @@ export function useNowOn(id: string): "playing" | "preparing" | null {
   return v.state === "preparing" ? "preparing" : "playing";
 }
 
+/** A list of PieceRow `joined` rows: one card, a hairline between rows. */
+export const PIECE_LIST = "divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white";
+
+/**
+ * A piece, one line (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): the title, then `line` muted
+ * (composer · performer …), `meta` at the end (the duration), the score button and ⋯. Tap the row to play it.
+ */
 export function PieceRow({
   piece,
   line,
+  meta,
   onMore,
   onPlay,
   missing,
   right,
+  joined,
   testId,
 }: {
   piece: PieceRef;
-  /** The second line: composer · performer · genre · 4:32. */
+  /** After the title, muted: composer · performer · genre. */
   line?: ReactNode;
+  /** At the end of the line: the duration. */
+  meta?: ReactNode;
   onMore?: () => void;
   /** Tap the row; default: play it now. */
   onPlay?: () => void;
@@ -135,6 +148,8 @@ export function PieceRow({
   missing?: boolean;
   /** Extra buttons before ⋯ (a playlist's up / down / remove). */
   right?: ReactNode;
+  /** Inside a PIECE_LIST (no border of its own). */
+  joined?: boolean;
   testId?: string;
 }) {
   const { player, flash, pinnedOf } = useMusic();
@@ -146,29 +161,32 @@ export function PieceRow({
     (() => {
       void player.act({ action: "play", piece: piece.id }, playGuess(piece)).then((r) => flash(r.ok ? `Playing ${piece.title}` : r.words));
     });
+  const sub = missing ? "No longer in the library" : line;
   return (
     <li
       data-testid={testId}
-      className={cn("flex items-center gap-1 rounded-xl border bg-white", on ? "border-teal-300 bg-teal-50/50" : "border-stone-200")}
+      className={cn(
+        "flex items-center",
+        joined ? (on ? "bg-teal-50/70" : "bg-white") : cn("rounded-xl border bg-white", on ? "border-teal-300 bg-teal-50/50" : "border-stone-200"),
+      )}
     >
       <button
         type="button"
         onClick={play}
+        title={[piece.title, typeof line === "string" ? line : null].filter(Boolean).join(" · ")}
         className={cn(
-          "flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "flex min-h-12 min-w-0 flex-1 items-center gap-2 py-1 pl-3 pr-1 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          !joined && "rounded-xl",
           missing && "opacity-60",
         )}
       >
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-base font-medium">{piece.title}</span>
+        {/* from 640 px one line; on a phone the composer goes under the title, inside the same 48 px */}
+        <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-1.5">
+          <span className={cn("flex min-w-0 items-center gap-1.5", sub ? "sm:max-w-[70%] sm:shrink-0" : "sm:flex-1")}>
+            <span className="min-w-0 truncate text-base font-medium leading-tight">{piece.title}</span>
             {pinned && <Pin className="h-3.5 w-3.5 shrink-0 fill-teal-700 text-teal-700" aria-label="Pinned" />}
           </span>
-          {missing ? (
-            <span className="block text-sm text-muted-foreground">No longer in the library</span>
-          ) : (
-            line && <span className="block truncate text-sm text-muted-foreground">{line}</span>
-          )}
+          {sub && <span className="min-w-0 truncate text-sm leading-tight text-muted-foreground sm:flex-1">{sub}</span>}
         </span>
         {on && (
           <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-teal-800">
@@ -176,6 +194,7 @@ export function PieceRow({
             <span className="sr-only sm:not-sr-only">{on === "preparing" ? "Getting ready" : "Playing"}</span>
           </span>
         )}
+        {meta && !missing && <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{meta}</span>}
       </button>
       {right}
       {!missing && hasScore(piece) && (
@@ -184,7 +203,7 @@ export function PieceRow({
           onClick={() => openScore(piece.id)}
           aria-label={`Score of ${piece.title}`}
           title="Score"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="grid h-11 w-10 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <FileMusic className="h-5 w-5" aria-hidden />
         </button>
@@ -194,12 +213,33 @@ export function PieceRow({
           type="button"
           onClick={onMore}
           aria-label={`More for ${piece.title}`}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mr-0.5 grid h-11 w-10 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <MoreHorizontal className="h-5 w-5" aria-hidden />
         </button>
       )}
     </li>
+  );
+}
+
+/** An ⓘ that opens a few words of explanation (in place of a paragraph on the page). */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-500 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Info className="h-5 w-5" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" collisionPadding={12} className={cn(THEME_CLASS, "z-[70] w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3 text-[15px] leading-snug text-stone-700")}>
+        {children}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -475,7 +515,7 @@ export function SearchBox({
         onKeyDown={(e) => {
           if (e.key === "Enter") onSubmit?.();
         }}
-        className="h-12 rounded-xl bg-white pl-11 pr-11 text-base shadow-sm md:text-base [&::-webkit-search-cancel-button]:hidden"
+        className="h-11 rounded-xl bg-white pl-11 pr-11 text-base shadow-sm md:text-base [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button

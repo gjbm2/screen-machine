@@ -3,7 +3,8 @@
 // once and then the next in the queue: no endless repeat unless Repeat says so.
 //   - The app's header (PageHeader): Music, the state pills, Mic and AI ("Listening details ›" goes to the Room page's
 //     Listening), the link's state when it isn't fine, the menu, and the places row (Room · Music · Lights · Generator).
-//   - Now playing (NowPlaying.tsx: compact; one heading row while the docked player shows), with ● Record.
+//   - Now playing (NowPlaying.tsx: one compact card; one row while the docked player shows), with ● Record (Mine has
+//     its own beside Upload, so not while Mine is open). From 1024 px wide it sits beside the tabs and their lists.
 //   - The tabs Browse · Playlists · Mine · Web. ?tab=browse|playlists|mine|web opens one (ahead of the one this device
 //     remembers, music.tab); changing tab keeps the address in step. Opening a playlist adds an entry
 //     (?tab=playlists&pl=<id>), so Back (and "All playlists") comes back to the list. When something outside the tab
@@ -253,7 +254,7 @@ export default function MusicPage() {
       <RoomThemeStyle />
       <MusicProvider value={ctx}>
         {/* a score is read wider (its pages are laid out for the width they get) */}
-        <div className={cn("mx-auto w-full px-4 pb-24 sm:px-6", scoreId ? "max-w-6xl" : "max-w-3xl")}>
+        <div className={cn("mx-auto w-full px-4 pb-24 sm:px-6", scoreId ? "max-w-6xl" : "max-w-3xl lg:max-w-6xl")}>
           {/* a score draws its own slim header */}
           {!scoreId && (
             <PageHeader
@@ -266,7 +267,7 @@ export default function MusicPage() {
             />
           )}
 
-          <main className="space-y-5 pt-2">
+          <main className="space-y-3 pt-2">
             {scoreId && (
               <ScoreView
                 key={scoreId}
@@ -278,17 +279,24 @@ export default function MusicPage() {
               />
             )}
 
-            <div hidden={!!scoreId} className="space-y-5">
-              <NowPlaying />
+            {/* from 1024 px wide, Now playing sits beside the tabs and their lists (owner, 25 Oct: use the width) */}
+            <div
+              hidden={!!scoreId}
+              className={cn(
+                "space-y-3",
+                !scoreId && "lg:grid lg:grid-cols-[minmax(0,25rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0",
+              )}
+            >
+              <NowPlaying record={tab !== "mine"} className="lg:sticky lg:top-[calc(var(--app-top,0px)+0.5rem)]" />
 
               {!old && (
-                <>
-                  <div ref={tabsAnchor} aria-hidden className="-mb-5 h-0" />
+                <div className="space-y-3">
+                  <div ref={tabsAnchor} aria-hidden className="-mb-3 h-0" />
                   <div
                     ref={tabBar}
                     role="tablist"
                     aria-label="Music"
-                    className="sticky top-[var(--app-top)] z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-1 shadow-sm"
+                    className="sticky top-[var(--app-top)] z-20 grid grid-cols-4 rounded-full border border-stone-200 bg-card p-0.5 shadow-sm"
                     data-testid="music-tabs"
                   >
                     {TABS.map(([t, words]) => (
@@ -302,7 +310,7 @@ export default function MusicPage() {
                           else if (t !== tab) selectTab(t);
                         }}
                         className={cn(
-                          "min-h-10 rounded-full px-1 text-[14px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[15px]",
+                          "min-h-10 rounded-full px-1 text-[15px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           tab === t ? "bg-teal-600 text-white" : "text-stone-700 hover:bg-stone-100",
                         )}
                       >
@@ -332,7 +340,7 @@ export default function MusicPage() {
                       <FromWeb />
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
           </main>

@@ -1,6 +1,6 @@
 // The docked player (owner, 24 Oct: "when music is playing through the app, that apparatus should anchor bottom
-// throughout the app, probably"): the mini player (Room/NowPlayingRow.tsx's MiniPlayer: title, composer, the shared
-// Transport, Score, Play on, Playlist, Open Music) fixed at the bottom of the screen on every page a person uses
+// throughout the app, probably"): the mini player (Room/NowPlayingRow.tsx's MiniPlayer, one row of at most 64 px with
+// its margin: title, composer, ⏯ ⏭ and ⋯ with Stop, Play on, Playlist, Score, Open Music and Speed) fixed at the bottom of the screen on every page a person uses
 // (appPlayer.tsx's DOCK_PATHS: /, /room, /music, /lights, /scheduler, /settings):
 //   - on the Room page, always (idle: "Nothing playing", what else is on, Play when there's a queue, Playlist);
 //   - elsewhere, while the music player plays, prepares or is paused, or while the piano records.
@@ -117,7 +117,7 @@ export function DockedPlayer() {
           ref={ref}
           className={cn(
             THEME_CLASS,
-            "pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 text-base antialiased",
+            "pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base antialiased",
           )}
           data-testid="docked-player"
         >
