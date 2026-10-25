@@ -526,6 +526,23 @@ def test_the_hold_ends_when_the_activity_ends(tmp_path):
     run(tmp_path, body)
 
 
+def test_a_hand_picked_mode_is_left_by_its_own_rule_once_the_hold_ends(tmp_path):
+    """Owner, 25 Oct: Piano picked by hand at 10:15 sat there for 9 hours with nobody playing. Once the person's hold
+    ends (the room idle and quiet), the mode they picked is Auto's to look after: its leave rule takes the room back
+    to where they came from."""
+    async def body(h: H):
+        assert h.room.current == "gallery"
+        await h.room.person("piano")                     # nobody playing: Auto wouldn't pick it, so it's a hold
+        await h.settle()
+        assert h.state()["state"] == "holding"
+        await h.step_until(lambda: h.state()["state"] == "watching", limit=10)
+        assert h.state()["entered"]["mode"] == "piano" and h.state()["entered"]["previous"] == "gallery"
+        await h.step_until(lambda: h.room.current == "gallery")
+        put = h.room.auto_puts()[-1]
+        assert put["mode"] == "gallery" and put["reason"] == "the piano has stopped (piano/leave_when)"
+    run(tmp_path, body)
+
+
 def test_picking_the_mode_auto_would_pick_is_not_an_override(tmp_path):
     async def body(h: H):
         h.room.config["autopilot"] = {**AUTO, "quiet_hours": {"from": "11:00", "to": "13:00"}}

@@ -986,6 +986,17 @@ class Autopilot:
                 if held:
                     ended = self._reason(info, "hold", self._settings["hold"]["until"])
             if ended:
+                # the person's mode is Auto's to look after now: its own leave rule may take the room back to where
+                # the person came from (owner, 25 Oct: a hand-picked Piano sat "gormlessly" for 9 hours after the
+                # playing stopped, because Auto only ever left the modes it had entered itself)
+                h = self.hold
+                cur = view.get("current")
+                if (h.get("by") in ("person", "correction") and isinstance(h.get("mode"), str) and h["mode"] == cur
+                        and isinstance(h.get("from"), str) and h["from"] != cur
+                        and not (self.entered and self.entered.get("mode") == cur)):
+                    self.entered = {"mode": cur, "previous": h["from"], "rule": None, "at": wall,
+                                    "transition_id": None, "by": "hold"}
+                    self._entered_seq = self.link.status_count()
                 self.hold = None
                 changed = True
                 self._announce("resume", "Auto · watching again", reason=ended,
@@ -1265,7 +1276,8 @@ class Autopilot:
             by = "correction"
         else:
             by = "person"
-        self.hold = {"mode": to, "by": by, "since": wall, "until": wall + hs["max_s"]}
+        self.hold = {"mode": to, "by": by, "since": wall, "until": wall + hs["max_s"],
+                     "from": frm if isinstance(frm, str) else None}
         self.cond.reset("_hold")
         if e and e.get("mode") != to:
             self.entered = None
