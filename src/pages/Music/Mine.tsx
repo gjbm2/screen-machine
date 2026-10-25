@@ -1,6 +1,7 @@
-// Mine: what's been added here. Record (the piano's recorder, PianoRecorder.tsx, the same as the Room page's Piano
-// fold) and "Upload a MIDI file" up front (a .mid or .midi up to 1 MB; title, composer and genre filled in from the
-// file's name, all changeable), then the piano recordings and the uploads and finds from the web, newest first. Tap to
+// Mine: what's been added here. ● Record (the piano's recorder, PianoRecorder.tsx's RecordPill, the same recorder as the
+// Room page's Piano fold; the take just stopped shows below it) and "Upload a MIDI file" up front, two compact buttons
+// in one row, what they do behind ⓘ (a .mid or .midi up to 1 MB; title, composer and genre filled in from the file's
+// name, all changeable), then the piano recordings and the uploads and finds from the web, newest first. Tap to
 // play; the score button; ⋯ for Play next, Add to the queue, Add to a playlist…, Pin, Edit details (title, composer and
 // genre: the score's PDF prints them), Download and Delete (PieceSheet). After an upload it says what the cleaning took
 // out ("Kept the piano; dropped the drums and bass.").
@@ -10,10 +11,12 @@ import { Play, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import { Modal } from "@/pages/Room/overlays";
-import { PianoRecorder, useRecorder } from "@/pages/Room/PianoRecorder";
+import { useDocked } from "@/components/player/dockState";
+import { NewTakePanel, RecordPill, useRecorder } from "@/pages/Room/PianoRecorder";
+import { RecordingLine, showSocketUrl, useKeyFlash } from "@/pages/Room/RecordButton";
 import { TAP_BUTTON_CLASS } from "@/pages/Room/theme";
-import { GENRES, itemLine, MAX_UPLOAD_BYTES, musicWords, whenWords, type MusicItem } from "./api";
-import { isDefaultTake, ListState, PieceRow, PieceSheet, PRIMARY, SECONDARY, playGuess, type PieceRef } from "./bits";
+import { clock, GENRES, MAX_UPLOAD_BYTES, musicWords, whenWords, type MusicItem } from "./api";
+import { InfoTip, isDefaultTake, ListState, PIECE_LIST, PieceRow, PieceSheet, PRIMARY, SECONDARY, playGuess, type PieceRef } from "./bits";
 import { useMusic } from "./context";
 import { PieceFields } from "./EditDetails";
 
@@ -56,6 +59,33 @@ function useMineList(kind: "rec" | "user") {
     };
   }, [api, kind, limit, libraryRev]);
   return { items, total, error, more: () => setLimit((l) => l + PAGE) };
+}
+
+/** ● Record, or "● 1:23 | Stop" with the notes line while recording (the dock carries the Stop while it shows). */
+function MineRecord({ baseUrl }: { baseUrl: string }) {
+  const r = useRecorder(baseUrl);
+  const docked = useDocked();
+  const flashKey = useKeyFlash(showSocketUrl(r.api.baseUrl), r.recording);
+  if (r.missing || !r.ready) return null;
+  return (
+    <>
+      {!(r.recording && docked) && <RecordPill baseUrl={baseUrl} sheet={false} className="h-11 px-4" />}
+      {r.recording && <RecordingLine notes={r.notes} flash={flashKey} />}
+    </>
+  );
+}
+
+/** The take just stopped (Play it · Score · Keep · Discard), what the recorder said, and its problem. */
+function MineTake({ baseUrl }: { baseUrl: string }) {
+  const r = useRecorder(baseUrl);
+  if (r.missing || !r.ready) return null;
+  return (
+    <>
+      {r.note && !r.recording && <p className="text-base text-muted-foreground">{r.note}</p>}
+      <NewTakePanel baseUrl={baseUrl} />
+      {!r.fresh && r.err && <p className="text-sm text-rose-700">{r.err}</p>}
+    </>
+  );
 }
 
 export function Mine() {
@@ -111,12 +141,14 @@ export function Mine() {
     <>
       <ListState loading={l.items === null} error={l.error} empty={!l.items || l.items.length === 0} emptyWords={emptyWords} />
       {l.items && l.items.length > 0 && (
-        <ul className="space-y-2" aria-label={label}>
+        <ul className={PIECE_LIST} aria-label={label}>
           {l.items.map((it) => (
             <PieceRow
               key={it.id}
+              joined
               piece={it}
-              line={[itemLine(it), isDefaultTake(it.title) ? null : whenWords(it.added_at)].filter(Boolean).join(" · ")}
+              line={[it.composer, it.performer, it.genre_label, isDefaultTake(it.title) ? null : whenWords(it.added_at)].filter(Boolean).join(" · ")}
+              meta={clock(it.duration_s)}
               onMore={() => setSheet(it)}
             />
           ))}
@@ -131,22 +163,25 @@ export function Mine() {
   );
 
   return (
-    <div className="space-y-5" data-testid="music-mine">
+    <div className="space-y-4" data-testid="music-mine">
       <div className="space-y-2">
-        <PianoRecorder
-          baseUrl={api.baseUrl}
-          hint={null}
-          extra={
-            <button
-              type="button"
-              onClick={() => fileInput.current?.click()}
-              className={cn(TAP_BUTTON_CLASS, SECONDARY, "inline-flex h-12 items-center gap-2 font-semibold")}
-              data-testid="upload-midi"
-            >
-              <Upload className="h-4 w-4" aria-hidden /> Upload a MIDI file
-            </button>
-          }
-        />
+        {/* Record and Upload, two compact buttons in one row (owner, 25 Oct); what they do is behind ⓘ */}
+        <div className="flex flex-wrap items-center gap-2">
+          <MineRecord baseUrl={api.baseUrl} />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className={cn("inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold", SECONDARY)}
+            data-testid="upload-midi"
+          >
+            <Upload className="h-4 w-4" aria-hidden /> <span className="sm:hidden">Upload MIDI</span>
+            <span className="max-sm:hidden">Upload a MIDI file</span>
+          </button>
+          <InfoTip label="About Record and Upload">
+            Record what's played on the piano, or add a .mid file up to 1 MB (drums and other instruments are taken out so it plays as piano).
+          </InfoTip>
+        </div>
+        <MineTake baseUrl={api.baseUrl} />
         <input
           ref={fileInput}
           type="file"
@@ -157,9 +192,6 @@ export function Mine() {
             e.target.value = "";
           }}
         />
-        <p className="text-[15px] text-muted-foreground">
-          Record what's played on the piano, or add a .mid file up to 1 MB (drums and other instruments are taken out so it plays as piano).
-        </p>
         {tooBig && <Notice tone="warn" className="text-base">{tooBig}</Notice>}
         {done && (
           <Notice tone="ok" className="text-base">

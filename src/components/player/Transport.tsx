@@ -3,7 +3,10 @@
 //   ⏯   Play / Pause (paused: carry on; stopped: play the queue)
 //   ⏭   the next piece
 //   ⋯   More: Stop, Speed (SpeedNudges) and Sound (SoundChoice), then whatever the page adds (`more`: Watch, Repeat,
-//       Shuffle, Coming up)
+//       Shuffle, Coming up; or the dock's Play on, Playlist, Score, Open Music). `more` may be a function of a close()
+//       for rows that leave (a sheet, a link).
+// `compact` (the dock's one row, owner 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): a 44 px Play, and
+// with `slimPrev` ⏮ sits in the row from 640 px up and in More (Previous) on a phone.
 // The score passes its bar steps (`steps`, either side of Play) and its own Play (`play`: play from the page in view);
 // `pieceSteps={false}` drops ⏮ ⏭ there. Every action goes through the shared PlayerHook (components/player/appPlayer).
 
@@ -47,6 +50,7 @@ export function Transport({
   play,
   pieceSteps = true,
   more,
+  slimPrev,
   onDone,
   className,
 }: {
@@ -60,7 +64,9 @@ export function Transport({
   /** ⏮ previous and ⏭ next (off on the score, which steps by bars). */
   pieceSteps?: boolean;
   /** More's own rows, after Stop, Speed and Sound. */
-  more?: ReactNode;
+  more?: ReactNode | ((close: () => void) => ReactNode);
+  /** ⏮ in the row from 640 px up only; on a phone it is More's first row (Previous). */
+  slimPrev?: boolean;
   /** Told how each action went: what it was, and the problem in words when it failed. */
   onDone?: (what: string, problem: string | null) => void;
   className?: string;
@@ -99,7 +105,14 @@ export function Transport({
   return (
     <div className={cn("flex shrink-0 items-center", compact ? "gap-0" : "gap-0.5", className)} role="group" aria-label="Play">
       {pieceSteps && (
-        <button type="button" aria-label="Previous" title="Previous (back to the start once it's playing)" disabled={!has} onClick={back} className={ROUND}>
+        <button
+          type="button"
+          aria-label="Previous"
+          title="Previous (back to the start once it's playing)"
+          disabled={!has}
+          onClick={back}
+          className={cn(ROUND, slimPrev && "max-sm:hidden")}
+        >
           {player.busy === "prev" || player.busy === "seek" ? <Spinner /> : <SkipBack className="h-5 w-5" aria-hidden />}
         </button>
       )}
@@ -110,7 +123,7 @@ export function Transport({
         title={p.label}
         disabled={!play && !has}
         onClick={p.onClick}
-        className={cn(ROUND, "relative h-12 w-12", PLAY)}
+        className={cn(ROUND, "relative", !compact && "h-12 w-12", PLAY)}
         data-testid="transport-play"
       >
         {p.starting && <span aria-hidden className="absolute inset-0 rounded-full border-2 border-white/70 border-t-transparent motion-safe:animate-spin" />}
@@ -145,6 +158,19 @@ export function Transport({
           )}
           onClick={(e) => e.stopPropagation()}
         >
+          {pieceSteps && slimPrev && (
+            <button
+              type="button"
+              disabled={!has}
+              onClick={() => {
+                setOpen(false);
+                back();
+              }}
+              className="inline-flex min-h-11 w-full items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 text-base font-medium hover:bg-stone-50 disabled:opacity-40 sm:hidden"
+            >
+              <SkipBack className="h-4 w-4" aria-hidden /> Previous
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -167,7 +193,7 @@ export function Transport({
               <SoundChoice sound={sound} onInstrument={setInstrument} bare />
             </div>
           )}
-          {more}
+          {typeof more === "function" ? more(() => setOpen(false)) : more}
         </PopoverContent>
       </Popover>
     </div>

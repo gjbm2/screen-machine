@@ -1,7 +1,9 @@
-// Browse: the whole library. The search box up front (as you type, a quarter of a second after the last key), then
-// the genres with how many pieces each has, Composer (a sheet: A–Z with counts and its own search), Pinned, and the
-// order. Results 50 at a time, more as the list scrolls (and a More button). Tap a row to play it now; ⋯ for Play
-// next, Add to the queue, Add to a playlist…, Pin. Counts come from the library and follow the other filters.
+// Browse: the whole library. The search box up front (as you type, a quarter of a second after the last key; it says
+// how many pieces there are), with Composer (a sheet: A–Z with counts and its own search) and the order beside it, then
+// Pinned and the genres with how many pieces each has, on one line that scrolls sideways. Results 50 at a time, one line
+// each (title · composer · performer, the duration), more as the list scrolls (and a More button). Tap a row to play
+// it now; ⋯ for Play next, Add to the queue, Add to a playlist…, Pin. Counts come from the library and follow the
+// other filters.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Pin, UserRound, X } from "lucide-react";
@@ -9,8 +11,8 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
 import { TAP_BUTTON_CLASS } from "@/pages/Room/theme";
-import { itemLine, musicWords, plural, type Facets, type MusicItem, type SortOrder } from "./api";
-import { CHIP, CHIP_OFF, CHIP_ON, ListState, PieceRow, PieceSheet, SearchBox, SECONDARY, SHEET_ROW, type PieceRef } from "./bits";
+import { clock, musicWords, plural, type Facets, type MusicItem, type SortOrder } from "./api";
+import { CHIP, CHIP_OFF, CHIP_ON, ListState, PIECE_LIST, PieceRow, PieceSheet, SearchBox, SECONDARY, SHEET_ROW, type PieceRef } from "./bits";
 import { useMusic } from "./context";
 
 const PAGE = 50;
@@ -194,34 +196,23 @@ export function Browse() {
   };
 
   return (
-    <div className="space-y-3" data-testid="music-browse">
-      <SearchBox value={q} onChange={setQ} placeholder="Search by title, composer or style" label="Search the library" />
-
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Genre">
-        <button type="button" aria-pressed={!genre} onClick={() => setGenre(null)} className={cn(CHIP, !genre ? CHIP_ON : CHIP_OFF)}>
-          All
-        </button>
-        {genres.map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            aria-pressed={genre === g.id}
-            onClick={() => setGenre(genre === g.id ? null : g.id)}
-            className={cn(CHIP, genre === g.id ? CHIP_ON : CHIP_OFF)}
-          >
-            {g.label}
-            <span className="tabular-nums text-sm font-normal text-muted-foreground">{g.count}</span>
-          </button>
-        ))}
-      </div>
-
+    <div className="space-y-2" data-testid="music-browse">
+      {/* the search with Composer and the order: one row from 640 px, two on a phone */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 basis-full sm:basis-0 sm:flex-1">
+          <SearchBox
+            value={q}
+            onChange={setQ}
+            placeholder={total > 0 && !anyFilter ? `Search ${plural(total, "piece")}` : "Search by title, composer or style"}
+            label="Search the library"
+          />
+        </div>
         {composer ? (
-          <span className={cn(CHIP, CHIP_ON, "pr-1")}>
-            <button type="button" onClick={() => setComposerOpen(true)} className="inline-flex items-center gap-1.5">
-              <UserRound className="h-4 w-4" aria-hidden /> {composer}
+          <span className={cn(CHIP, CHIP_ON, "max-w-[14rem] pr-1")}>
+            <button type="button" onClick={() => setComposerOpen(true)} className="inline-flex min-w-0 items-center gap-1.5">
+              <UserRound className="h-4 w-4 shrink-0" aria-hidden /> <span className="truncate">{composer}</span>
             </button>
-            <button type="button" aria-label="Any composer" onClick={() => setComposer(null)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-teal-100">
+            <button type="button" aria-label="Any composer" onClick={() => setComposer(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-teal-100">
               <X className="h-4 w-4" aria-hidden />
             </button>
           </span>
@@ -230,11 +221,8 @@ export function Browse() {
             <UserRound className="h-4 w-4" aria-hidden /> Composer <ChevronDown className="h-4 w-4" aria-hidden />
           </button>
         )}
-        <button type="button" aria-pressed={pinned} onClick={() => setPinned(!pinned)} className={cn(CHIP, pinned ? CHIP_ON : CHIP_OFF)}>
-          <Pin className={cn("h-4 w-4", pinned && "fill-teal-700")} aria-hidden /> Pinned
-        </button>
-        <label className="ml-auto inline-flex items-center gap-1.5 text-[15px] text-muted-foreground">
-          <span className="sr-only sm:not-sr-only">Order</span>
+        <label className="ml-auto inline-flex items-center sm:ml-0">
+          <span className="sr-only">Order</span>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOrder)}
@@ -249,8 +237,36 @@ export function Browse() {
         </label>
       </div>
 
-      {items && !error && (
-        <p className="flex items-center gap-2 text-[15px] text-muted-foreground" aria-live="polite">
+      {/* Pinned and the genres: one line that scrolls sideways */}
+      <div
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden"
+        role="group"
+        aria-label="Genre"
+      >
+        <button type="button" aria-pressed={pinned} onClick={() => setPinned(!pinned)} className={cn(CHIP, "shrink-0", pinned ? CHIP_ON : CHIP_OFF)}>
+          <Pin className={cn("h-4 w-4", pinned && "fill-teal-700")} aria-hidden /> Pinned
+        </button>
+        <span aria-hidden className="my-2 w-px shrink-0 bg-stone-200" />
+        <button type="button" aria-pressed={!genre} onClick={() => setGenre(null)} className={cn(CHIP, "shrink-0", !genre ? CHIP_ON : CHIP_OFF)}>
+          All
+        </button>
+        {genres.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            aria-pressed={genre === g.id}
+            onClick={() => setGenre(genre === g.id ? null : g.id)}
+            className={cn(CHIP, "shrink-0 whitespace-nowrap", genre === g.id ? CHIP_ON : CHIP_OFF)}
+          >
+            {g.label}
+            <span className="tabular-nums text-sm font-normal text-muted-foreground">{g.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* how many, only once a filter narrows it (unfiltered, the search box says it) */}
+      {items && !error && (anyFilter || total === 0 || loading) && (
+        <p className="flex min-h-6 items-center gap-2 text-[15px] text-muted-foreground" aria-live="polite">
           {loading && <Spinner />}
           {total > 0 ? plural(total, "piece") : "Nothing matches."}
           {anyFilter && (
@@ -272,12 +288,14 @@ export function Browse() {
       )}
 
       {shown.length > 0 && (
-        <ul className="space-y-2" aria-label="Pieces">
+        <ul className={PIECE_LIST} aria-label="Pieces">
           {shown.map((it) => (
             <PieceRow
               key={it.id}
+              joined
               piece={it}
-              line={itemLine(it, { genre: !genre })}
+              line={[it.composer, it.performer, genre ? null : it.genre_label].filter(Boolean).join(" · ")}
+              meta={clock(it.duration_s)}
               onMore={() => setSheet(it)}
               testId="piece-row"
             />
