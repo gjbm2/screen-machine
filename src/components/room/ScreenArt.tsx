@@ -2,7 +2,7 @@
 // picture and prompt as its tab in the generator, from GET /api/published/<id>, whose small thumbnail
 // comes inline), or, while it's live, the live scene. The TV page reports the art it shows
 // (status observed.kiosk_state.base_url, with the file's mtime), so a new picture re-reads it at once.
-// Under the card's title, two pill rows: "In the generator" with the art's prompt, and "Schedule" with what the
+// Under the card's More, two one-line links: "In the generator" with the art's prompt, and "Schedule" with what the
 // screen's schedule is doing (useScreenSchedules.ts, one read for the page). Both stay inside the app (AppLink).
 
 import { useEffect, useState } from "react";
@@ -84,14 +84,15 @@ export function ArtThumb({
   );
 }
 
-const PILL =
-  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[14px] font-medium text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const ROW = "flex min-h-11 min-w-0 items-center gap-2";
+const LINK =
+  "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** "In the generator": this screen's tab in the generator (where its art is made and chosen), and the art's prompt. */
 export function GeneratorLink({ screenId, prompt }: { screenId: string; prompt?: string | null }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 px-4 pb-2">
-      <AppLink href={generatorUrl(screenId)} state={{ from: "Room" }} data-testid={`generator-${screenId}`} className={PILL}>
+    <div className={ROW}>
+      <AppLink href={generatorUrl(screenId)} state={{ from: "Room" }} data-testid={`generator-${screenId}`} className={LINK}>
         <Sparkles className="h-4 w-4 text-teal-700" aria-hidden /> In the generator
       </AppLink>
       {prompt && (
@@ -108,8 +109,8 @@ export function GeneratorLink({ screenId, prompt }: { screenId: string; prompt?:
 export function ScheduleLink({ screenId }: { screenId: string }) {
   const words = scheduleWords(useScreenSchedule(screenId));
   return (
-    <div className="flex min-w-0 items-center gap-2 px-4 pb-3">
-      <AppLink href={schedulerUrl(screenId)} state={{ from: "Room" }} data-testid={`schedule-${screenId}`} className={PILL}>
+    <div className={ROW}>
+      <AppLink href={schedulerUrl(screenId)} state={{ from: "Room" }} data-testid={`schedule-${screenId}`} className={LINK}>
         <CalendarClock className="h-4 w-4 text-teal-700" aria-hidden /> Schedule
       </AppLink>
       {words && (
